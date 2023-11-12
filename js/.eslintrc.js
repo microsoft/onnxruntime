@@ -5,7 +5,7 @@
 
 module.exports = {
   root: true,
-  ignorePatterns: ['**/*.js', 'ort-schema/', 'common/test/type-tests/', 'node_modules/', 'types/', 'dist/'],
+  ignorePatterns: ['**/*.js', 'ort-schema/', 'common/test/type-tests/', 'test/data/', 'node_modules/', 'dist/'],
   env: { 'es6': true },
   parser: '@typescript-eslint/parser',
   parserOptions: { 'project': 'tsconfig.json', 'sourceType': 'module' },
@@ -144,7 +144,9 @@ module.exports = {
       'no-unused-expressions': 'off',
     }
   }, {
-    files: ['web/lib/**/*.ts'], rules: {
+    files: ['web/lib/**/*.ts'],
+    excludedFiles: 'web/lib/wasm/proxy-worker/**/*',
+    parserOptions: { 'project': 'web/tsconfig.json' },rules: {
       'no-underscore-dangle': 'off',
     }
   }, {

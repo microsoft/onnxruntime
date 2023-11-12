@@ -22,7 +22,9 @@ from fusion_qordered_gelu import FusionQOrderedGelu
 from fusion_qordered_layernorm import FusionQOrderedLayerNormalization
 from fusion_qordered_matmul import FusionQOrderedMatMul
 from fusion_reshape import FusionReshape
+from fusion_rotary_attention import FusionRotaryEmbeddings
 from fusion_shape import FusionShape
+from fusion_simplified_layernorm import FusionSimplifiedLayerNormalization, FusionSkipSimplifiedLayerNormalization
 from fusion_skiplayernorm import FusionBiasSkipLayerNormalization, FusionSkipLayerNormalization
 from fusion_utils import FusionUtils
 from onnx import GraphProto, ModelProto, TensorProto, ValueInfoProto, helper
@@ -106,9 +108,35 @@ class BertOnnxModel(OnnxModel):
         fusion = FusionQOrderedLayerNormalization(self)
         fusion.apply()
 
+    def fuse_simplified_layer_norm(self):
+        fusion = FusionSimplifiedLayerNormalization(self)
+        fusion.apply()
+
     def fuse_skip_layer_norm(self):
         fusion = FusionSkipLayerNormalization(self)
         fusion.apply()
+
+    def fuse_skip_simplified_layer_norm(self):
+        fusion = FusionSkipSimplifiedLayerNormalization(self)
+        fusion.apply()
+
+    def fuse_rotary_embeddings(self):
+        fusion = FusionRotaryEmbeddings(self)
+        fusion.apply()
+        # Remove non-MS domain functions
+        rot_emb_nodes = list(
+            filter(
+                lambda node: node.op_type == "RotaryEmbedding" and node.domain != "com.microsoft", self.model.graph.node
+            )
+        )
+        non_ms_domains_to_keep = set(map(lambda node: node.domain, rot_emb_nodes))
+        i = 0
+        while i < len(self.model.functions):
+            fn = self.model.functions[i]
+            if "RotaryEmbedding" in fn.name and fn.domain not in non_ms_domains_to_keep:
+                self.model.functions.remove(fn)
+            else:
+                i += 1
 
     # Only relevant in models with Q-DQ nodes
     def fuse_qordered_mamtul(self):
@@ -367,6 +395,7 @@ class BertOnnxModel(OnnxModel):
 
         if (options is None) or options.enable_layer_norm:
             self.fuse_layer_norm()
+            self.fuse_simplified_layer_norm()
 
         if (options is None) or options.enable_gelu:
             self.fuse_gelu()
@@ -377,6 +406,10 @@ class BertOnnxModel(OnnxModel):
 
         if (options is None) or options.enable_skip_layer_norm:
             self.fuse_skip_layer_norm()
+            self.fuse_skip_simplified_layer_norm()
+
+        if (options is None) or options.enable_rotary_embeddings:
+            self.fuse_rotary_embeddings()
 
         if options is not None:
             self.attention_mask.set_mask_format(options.attention_mask_format)
@@ -442,38 +475,56 @@ class BertOnnxModel(OnnxModel):
             "BiasGelu",
             "GemmFastGelu",
             "LayerNormalization",
+            "SimplifiedLayerNormalization",
             "SkipLayerNormalization",
+            "SkipSimplifiedLayerNormalization",
+            "RotaryEmbedding",
         ]
         q_ops = ["QOrderedAttention", "QOrderedGelu", "QOrderedLayerNormalization", "QOrderedMatMul"]
         for op in ops + q_ops:
             nodes = self.get_nodes_by_op_type(op)
             op_count[op] = len(nodes)
 
-        logger.info(f"Optimized operators:{op_count}")
+        logger.info(f"Optimized operators: {op_count}")
         return op_count
 
-    def is_fully_optimized(self):
+    def is_fully_optimized(self, fused_op_count=None):
         """
         Returns True when the model is fully optimized.
         """
-        op_count = self.get_fused_operator_statistics()
-        embed = op_count["EmbedLayerNormalization"]
-        attention = op_count["Attention"] + op_count["MultiHeadAttention"] + op_count["QOrderedAttention"]
-        gelu = op_count["Gelu"] + op_count["BiasGelu"] + op_count["FastGelu"]
-        layer_norm = op_count["LayerNormalization"] + op_count["SkipLayerNormalization"]
-        is_perfect = (embed > 0) and (attention > 0) and (attention == gelu) and (layer_norm >= 2 * attention)
+        if fused_op_count is None:
+            fused_op_count = self.get_fused_operator_statistics()
+
+        def op_count(op_name: str):
+            return fused_op_count.get(op_name) or 0
+
+        embed = op_count("EmbedLayerNormalization")
+        attention = op_count("Attention") + op_count("MultiHeadAttention") + op_count("QOrderedAttention")
+        gelu = op_count("Gelu") + op_count("BiasGelu") + op_count("FastGelu")
+        layer_norm = op_count("LayerNormalization") + op_count("SkipLayerNormalization")
+        simple_layer_norm = op_count("SimplifiedLayerNormalization") + op_count("SkipSimplifiedLayerNormalization")
+
+        is_perfect = (
+            (embed > 0)
+            and (attention > 0)
+            and (attention == gelu)
+            and ((layer_norm >= 2 * attention) or (simple_layer_norm >= 2 * attention))
+        )
 
         if layer_norm == 0:
             logger.debug("Layer Normalization not fused")
 
+        if simple_layer_norm == 0:
+            logger.debug("Simple Layer Normalization not fused")
+
         if gelu == 0:
-            logger.debug("Gelu/FastGelu not fused")
+            logger.debug("Gelu (or FastGelu) not fused")
 
         if embed == 0:
-            logger.debug("Embed Layer not fused")
+            logger.debug("EmbedLayerNormalization not fused")
 
         if attention == 0:
-            logger.warning("Attention not fused")
+            logger.warning("Attention (or MultiHeadAttention) not fused")
 
         return is_perfect
 

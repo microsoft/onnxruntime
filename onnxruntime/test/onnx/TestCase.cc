@@ -944,6 +944,18 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"simple_rnn_batchwise", "type error", {}},
       {"mod_float_mixed_sign_example", "fmod attribute must be true for floating point types", {}},
       {"col2im_pads", "result mismatch", {"opset18"}},
+      {"reduce_l1_empty_set", "unknown version", {}},
+      {"reduce_l1_empty_set_expanded", "unknown version", {}},
+      {"reduce_l2_empty_set", "unknown version", {}},
+      {"reduce_l2_empty_set_expanded", "unknown version", {}},
+      {"reduce_log_sum_empty_set", "unknown version", {}},
+      {"reduce_log_sum_empty_set_expanded", "unknown version", {}},
+      {"reduce_log_sum_exp_empty_set", "unknown version", {}},
+      {"reduce_log_sum_exp_empty_set_expanded", "unknown version", {}},
+      {"reduce_prod_empty_set", "unknown version", {}},
+      {"reduce_sum_empty_set", "unknown version", {}},
+      {"reduce_sum_square_empty_set", "unknown version", {}},
+      {"reduce_sum_square_empty_set_expanded", "unknown version", {}},
 #ifdef ENABLE_TRAINING_CORE
       {"adagrad", "not a registered function/op", {}},                  // Op not registered.
       {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
@@ -1337,8 +1349,11 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"sce_sum_log_prob", "result differs"});
     broken_tests->insert({"sce_sum_log_prob_expanded", "result differs"});
     broken_tests->insert({"gridsample_reflection_padding", "result differs"});
+    broken_tests->insert({"gridsample_volumetric_nearest_align_corners_0", "unknown version"});
+    broken_tests->insert({"gridsample_volumetric_nearest_align_corners_1", "unknown version"});
     broken_tests->insert({"spacetodepth", "result differs"});
   }
+
 #ifdef DISABLE_CONTRIB_OPS
   broken_tests->insert({"coreml_SqueezeNet_ImageNet", "This model uses contrib ops."});
   broken_tests->insert({"keras2coreml_Permute_ImageNet", "This model uses contrib ops."});

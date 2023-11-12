@@ -43,15 +43,38 @@ def get_args():
     )
 
     parser.add_argument(
-        "--hf-ort-model-path",
+        "--hf-pt-eager",
+        default=False,
+        action="store_true",
+        help="Benchmark in PyTorch without `torch.compile`",
+    )
+
+    parser.add_argument(
+        "--hf-pt-compile",
+        default=False,
+        action="store_true",
+        help="Benchmark in PyTorch with `torch.compile`",
+    )
+
+    parser.add_argument(
+        "--hf-ort-dir-path",
         type=str,
+        default="",
         help="Path to folder containing ONNX models for Optimum + ORT benchmarking",
     )
 
     parser.add_argument(
-        "--ort-model-path",
+        "--ort-msft-model-path",
         type=str,
-        help="Path to ONNX model for ORT benchmarking",
+        default="",
+        help="Path to ONNX model from https://github.com/microsoft/Llama-2-Onnx",
+    )
+
+    parser.add_argument(
+        "--ort-convert-to-onnx-model-path",
+        type=str,
+        default="",
+        help="Path to ONNX model from convert_to_onnx",
     )
 
     parser.add_argument(
@@ -65,7 +88,7 @@ def get_args():
         "--precision",
         type=str,
         required=True,
-        choices=["int8", "fp16", "fp32"],
+        choices=["int4", "int8", "fp16", "fp32"],
         help="Precision to run model",
     )
 
@@ -138,8 +161,6 @@ def process_log_file(device_id, log_file, base_results):
                 step = "per-token"
             elif latency_pattern in line:
                 latency_s = float(line[len(latency_pattern) : line.rfind(" ")])
-                if step == "prompt":
-                    latency_s /= sequence_length
                 latency_ms = latency_s * 1000
             elif throughput_pattern in line:
                 throughput = float(line[len(throughput_pattern) : line.rfind(" ")])
@@ -184,7 +205,7 @@ def save_results(results, filename):
             "Step",
             "Latency (s)",
             "Latency (ms)",
-            "Throughput (qps)",
+            "Throughput (tps)",
             "Memory (GB)",
         ],
     )
@@ -194,7 +215,7 @@ def save_results(results, filename):
     df["Sequence Length"] = df["Sequence Length"].astype("int")
     df["Latency (s)"] = df["Latency (s)"].astype("float")
     df["Latency (ms)"] = df["Latency (ms)"].astype("float")
-    df["Throughput (qps)"] = df["Throughput (qps)"].astype("float")
+    df["Throughput (tps)"] = df["Throughput (tps)"].astype("float")
     df["Memory (GB)"] = df["Memory (GB)"].astype("float")
 
     df.to_csv(filename, index=False)
@@ -226,75 +247,16 @@ def main():
     torch.backends.cudnn.benchmark = True
 
     all_results = []
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device_id)
+
     # Benchmark PyTorch without torch.compile
-    benchmark_cmd = [
-        "python3",
-        "benchmark.py",
-        "--benchmark-type",
-        "hf-pt",
-        "--model-name",
-        args.model_name,
-        "--precision",
-        args.precision,
-        "--batch-sizes",
-        args.batch_sizes,
-        "--sequence-lengths",
-        args.sequence_lengths,
-        "--device",
-        args.device,
-        "--device-id",
-        str(args.device_id),
-        "--warmup-runs",
-        str(args.warmup_runs),
-        "--num-runs",
-        str(args.num_runs),
-        "--log-folder",
-        args.log_folder,
-        "--auth",
-    ]
-    logger.info("Benchmark PyTorch without torch.compile")
-    results = benchmark(args, benchmark_cmd, "pytorch")
-    all_results.extend(results)
-
-    # Benchmark PyTorch with torch.compile
-    benchmark_cmd = [
-        "python3",
-        "benchmark.py",
-        "--benchmark-type",
-        "hf-pt2",
-        "--model-name",
-        args.model_name,
-        "--precision",
-        args.precision,
-        "--batch-sizes",
-        args.batch_sizes,
-        "--sequence-lengths",
-        args.sequence_lengths,
-        "--device",
-        args.device,
-        "--device-id",
-        str(args.device_id),
-        "--warmup-runs",
-        str(args.warmup_runs),
-        "--num-runs",
-        str(args.num_runs),
-        "--log-folder",
-        args.log_folder,
-        "--auth",
-    ]
-    logger.info("Benchmark PyTorch with torch.compile")
-    results = benchmark(args, benchmark_cmd, "pytorch-2")
-    all_results.extend(results)
-
-    # Benchmark Optimum + ONNX Runtime
-    if args.hf_ort_model_path:
+    if args.hf_pt_eager:
         benchmark_cmd = [
-            "python3",
-            "benchmark.py",
+            "python",
+            "-m",
+            "models.llama.benchmark",
             "--benchmark-type",
-            "hf-ort",
-            "--hf-ort-model-path",
-            args.hf_ort_model_path,
+            "hf-pt-eager",
             "--model-name",
             args.model_name,
             "--precision",
@@ -305,8 +267,68 @@ def main():
             args.sequence_lengths,
             "--device",
             args.device,
-            "--device-id",
-            str(args.device_id),
+            "--warmup-runs",
+            str(args.warmup_runs),
+            "--num-runs",
+            str(args.num_runs),
+            "--log-folder",
+            args.log_folder,
+            "--auth",
+        ]
+        logger.info("Benchmark PyTorch without torch.compile")
+        results = benchmark(args, benchmark_cmd, "pytorch-eager")
+        all_results.extend(results)
+
+    # Benchmark PyTorch with torch.compile
+    if args.hf_pt_compile:
+        benchmark_cmd = [
+            "python",
+            "-m",
+            "models.llama.benchmark",
+            "--benchmark-type",
+            "hf-pt-compile",
+            "--model-name",
+            args.model_name,
+            "--precision",
+            args.precision,
+            "--batch-sizes",
+            args.batch_sizes,
+            "--sequence-lengths",
+            args.sequence_lengths,
+            "--device",
+            args.device,
+            "--warmup-runs",
+            str(args.warmup_runs),
+            "--num-runs",
+            str(args.num_runs),
+            "--log-folder",
+            args.log_folder,
+            "--auth",
+        ]
+        logger.info("Benchmark PyTorch with torch.compile")
+        results = benchmark(args, benchmark_cmd, "pytorch-compile")
+        all_results.extend(results)
+
+    # Benchmark Optimum + ONNX Runtime
+    if args.hf_ort_dir_path:
+        benchmark_cmd = [
+            "python",
+            "-m",
+            "models.llama.benchmark",
+            "--benchmark-type",
+            "hf-ort",
+            "--hf-ort-dir-path",
+            args.hf_ort_dir_path,
+            "--model-name",
+            args.model_name,
+            "--precision",
+            args.precision,
+            "--batch-sizes",
+            args.batch_sizes,
+            "--sequence-lengths",
+            args.sequence_lengths,
+            "--device",
+            args.device,
             "--warmup-runs",
             str(args.warmup_runs),
             "--num-runs",
@@ -316,18 +338,19 @@ def main():
             "--auth",
         ]
         logger.info("Benchmark Optimum + ONNX Runtime")
-        results = benchmark(args, benchmark_cmd, "pytorch-ort")
+        results = benchmark(args, benchmark_cmd, "optimum-ort")
         all_results.extend(results)
 
-    # Benchmark ONNX Runtime
-    if args.ort_model_path:
+    # Benchmark Microsoft model in ONNX Runtime
+    if args.ort_msft_model_path:
         benchmark_cmd = [
-            "python3",
-            "benchmark.py",
+            "python",
+            "-m",
+            "models.llama.benchmark",
             "--benchmark-type",
-            "ort",
+            "ort-msft",
             "--ort-model-path",
-            args.ort_model_path,
+            args.ort_msft_model_path,
             "--model-name",
             args.model_name,
             "--precision",
@@ -338,8 +361,6 @@ def main():
             args.sequence_lengths,
             "--device",
             args.device,
-            "--device-id",
-            str(args.device_id),
             "--warmup-runs",
             str(args.warmup_runs),
             "--num-runs",
@@ -347,7 +368,38 @@ def main():
             "--log-folder",
             args.log_folder,
         ]
-        logger.info("Benchmark ONNX Runtime")
+        logger.info("Benchmark Microsoft model in ONNX Runtime")
+        results = benchmark(args, benchmark_cmd, "ort-msft")
+        all_results.extend(results)
+
+    # Benchmark convert_to_onnx model in ONNX Runtime
+    if args.ort_convert_to_onnx_model_path:
+        benchmark_cmd = [
+            "python",
+            "-m",
+            "models.llama.benchmark",
+            "--benchmark-type",
+            "ort-convert-to-onnx",
+            "--ort-model-path",
+            args.ort_convert_to_onnx_model_path,
+            "--model-name",
+            args.model_name,
+            "--precision",
+            args.precision,
+            "--batch-sizes",
+            args.batch_sizes,
+            "--sequence-lengths",
+            args.sequence_lengths,
+            "--device",
+            args.device,
+            "--warmup-runs",
+            str(args.warmup_runs),
+            "--num-runs",
+            str(args.num_runs),
+            "--log-folder",
+            args.log_folder,
+        ]
+        logger.info("Benchmark convert_to_onnx model in ONNX Runtime")
         results = benchmark(args, benchmark_cmd, "onnxruntime")
         all_results.extend(results)
 

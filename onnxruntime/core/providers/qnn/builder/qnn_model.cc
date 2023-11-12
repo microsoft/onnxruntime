@@ -87,7 +87,8 @@ const NodeUnit& QnnModel::GetNodeUnit(const Node* node,
 }
 
 Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
-                              const onnxruntime::Node& fused_node) {
+                              const onnxruntime::Node& fused_node,
+                              const QnnGraph_Config_t** graph_configs) {
   LOGS(logger_, VERBOSE) << "ComposeGraph Graph name: " << graph_viewer.Name();
 
   // Holder for the NodeUnits in the graph, this will guarantee the NodeUnits is
@@ -107,7 +108,7 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
                                                       initializer_inputs_,
                                                       qnn_backend_manager_->GetQnnBackendType());
   bool rt = true;
-  rt = qnn_model_wrapper.CreateQnnGraph(qnn_backend_manager_->GetQnnContext(), graph_name);
+  rt = qnn_model_wrapper.CreateQnnGraph(qnn_backend_manager_->GetQnnContext(), graph_name, graph_configs);
   if (!rt) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to initialize qnn_model_wrapper.");
   }

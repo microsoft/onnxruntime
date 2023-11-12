@@ -23,7 +23,7 @@ import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
 import {ProgramInfo} from '../../types';
 import {getBroadcastDims, IndicesHelper, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from '../common';
-import {getActicationSnippet, InternalActivationAttributes} from '../fuse-utils';
+import {getActivationSnippet, InternalActivationAttributes} from '../fuse-utils';
 
 import {typeSnippet} from './activation_util';
 
@@ -440,7 +440,6 @@ export const createMatmulProgramInfo =
       const dimInner = aShape[aShape.length - 1];
       const dimBOuter = bShape[bShape.length - 1];
       const isVec4 = dimInner % 4 === 0 && dimBOuter % 4 === 0;
-      const {activationFunction, applyActivation} = getActicationSnippet(activationAttributes);
 
       // TODO: fine tune size
       const elementsPerThread = dimAOuter <= 8 ? [4, 1, 1] : [4, 4, 1];
@@ -462,6 +461,7 @@ export const createMatmulProgramInfo =
       variables.push(output);
       const inputVariables = [A, B];
       const hasBias = inputs.length > 2;
+      const {activationFunction, applyActivation} = getActivationSnippet(activationAttributes, output.type.value);
       const declareFunctions =
           matMulReadWriteFnSource(components, hasBias, applyActivation, variables, batchShapes, isChannelsLast);
       if (hasBias) {
@@ -473,8 +473,8 @@ export const createMatmulProgramInfo =
   const dimBOuter: i32 = ${dimBOuter};
   const dimInner: i32 = ${dimInner};
   ${shaderHelper.declareVariables(...inputVariables, output)}
-  ${declareFunctions}
   ${activationFunction}
+  ${declareFunctions}
   ${
           isVec4 ? makeMatMulPackedVec4Source(elementsPerThread, workgroupSize, dataType, batchDims) :
                    makeMatMulPackedSource(elementsPerThread, workgroupSize, dataType, batchDims)}
