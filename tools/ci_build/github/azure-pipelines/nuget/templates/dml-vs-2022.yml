@@ -143,6 +143,14 @@ stages:
           msbuildArguments: '-t:restore -p:OrtPackageId=${{ parameters.OrtPackageId }}'
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
+      - task: PowerShell@2
+        displayName: Install workloads
+        inputs:
+          targetType: 'inline'
+          script: |
+            dotnet workload install macos
+          workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
       - task: MSBuild@1
         displayName: 'Build C#'
         inputs:
