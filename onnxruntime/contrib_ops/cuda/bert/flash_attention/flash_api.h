@@ -91,6 +91,7 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        int seqlen_q,
                        int seqlen_k,
                        int seqlen_k_new,
+                       int seqlen_k_max,
                        const float softmax_scale,
                        bool is_causal,
                        bool past_bsnh,  // otherwise bnsh

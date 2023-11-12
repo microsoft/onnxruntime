@@ -102,6 +102,8 @@ struct GroupQueryAttentionParameters {
   float scale;
   AttentionQkvFormat qkv_format;
   AttentionQkvFormat past_kv_format;
+  int zeros_count;
+  int* zero_ptr;
 };
 
 namespace attention {

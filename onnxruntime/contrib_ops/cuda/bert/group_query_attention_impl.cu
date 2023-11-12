@@ -441,7 +441,6 @@ Status LaunchUngroup(contrib::GroupQueryAttentionParameters& parameters,
   return CUDA_CALL(cudaGetLastError());
 }
 
-
 __global__ void PastToTotalSeqlen(int32_t* seqlens_k,
                                   int32_t* seqlens_k_buff,
                                   const int add_seqlen) {
@@ -451,7 +450,7 @@ __global__ void PastToTotalSeqlen(int32_t* seqlens_k,
 // Convert Past to Total sequence length tensor
 Status LaunchGetSeqlenBuff(contrib::GroupQueryAttentionParameters& parameters, int32_t* seqlens_k,
                            int32_t* seqlens_k_buff, bool is_total, cudaStream_t stream,
-                               const int threads_per_block) {
+                           const int threads_per_block) {
   if (parameters.is_prompt) {
     return Status::OK();
   }
@@ -531,7 +530,6 @@ Status FlashAttention(
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
   const int kv_sequence_length = parameters.sequence_length;
-  const int present_sequence_length = parameters.seqlen_present_kv_cache;
   const int num_heads = parameters.num_heads;
   const int kv_num_heads = parameters.kv_num_heads;
   const int head_size = parameters.head_size;
@@ -543,76 +541,34 @@ Status FlashAttention(
 
   bool is_causal = parameters.is_unidirectional;
 
-  // Note: seqlens_k is past sequence length for flash
-  if (parameters.is_prompt) {
-    // Launch kernel to copy seqlen
-    constexpr int thr_per_blk = 256;
-    int blk_in_grid = (batch_size + thr_per_blk -1) / thr_per_blk;
-    repeat_seqlen<<<blk_in_grid, thr_per_blk, 0, stream>>>(data.seqlens_k_total, parameters.sequence_length, batch_size);
-  }
-
   void* seqlens_k = reinterpret_cast<void*>(data.seqlens_k);
-
-  if (parameters.kv_share_buffer) {
-    // Share buffer case
-    if (data.past_key == nullptr || data.past_key != data.present_key) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Past and present kv shall share the same tensor when kv_share_buffer is on.");
+  if (parameters.is_prompt) {
+    // set seqlens_k to zeros
+    if (batch_size <= parameters.zeros_count) {
+      seqlens_k = parameters.zero_ptr;
+    } else {
+      // Launch kernel to copy seqlen
+      constexpr int thr_per_blk = 256;
+      int blk_in_grid = (batch_size + thr_per_blk - 1) / thr_per_blk;
+      repeat_seqlen<<<blk_in_grid, thr_per_blk, 0, stream>>>(data.seqlens_k_total, 0, batch_size);
+      seqlens_k = data.seqlens_k_total;
     }
-
-    if (parameters.is_prompt) {
-      ORT_RETURN_IF_ERROR(LaunchConcatKVInPlace(parameters, data, stream, max_threads_per_block));
-      key = nullptr;
-      value = nullptr;
-      seqlens_k = reinterpret_cast<void*>(data.seqlens_k_total);
-    }
-
-    void* present_key = reinterpret_cast<void*>(const_cast<T*>(data.present_key));
-    void* present_value = reinterpret_cast<void*>(const_cast<T*>(data.present_value));
-
-    DUMP_TENSOR_INIT();
-    DUMP_TENSOR("seqlens_k", reinterpret_cast<int*>(seqlens_k), batch_size, 1);
-
-    bool past_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
-    ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
-        device_prop, stream, query, present_key, present_value, key, value, data.output, reinterpret_cast<void*>(data.softmax_lse),
-        seqlens_k, batch_size, num_heads, kv_num_heads,
-        head_size, sequence_length, present_sequence_length, kv_sequence_length,
-        scale, is_causal, past_bsnh, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
-        reinterpret_cast<void*>(data.out_accum)));
-  } else {
-    // Not share buffer case
-    // Note that Flash Attention kv-caching operates in place on a buffer... therefore this path is inneficient
-    if (data.past_key != nullptr && data.past_key == data.present_key) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Past and present kv share the same tensor but kv_share_buffer is not on.");
-    }
-
+  } else if (!parameters.kv_share_buffer) {  // copy past kv to present kv
     ORT_RETURN_IF_ERROR(LaunchConcatNewToPastKV(parameters, data, stream, max_threads_per_block));
-
-    if (!parameters.is_prompt) {
-      ORT_RETURN_IF_ERROR(LaunchGetSeqlenBuff(parameters, data.seqlens_k, data.seqlens_k_total, true, stream, 256));
-    }
-
-    seqlens_k = reinterpret_cast<void*>(data.seqlens_k_total);
-
-    void* present_key = reinterpret_cast<void*>(const_cast<T*>(data.present_key));
-    void* present_value = reinterpret_cast<void*>(const_cast<T*>(data.present_value));
-
-    DUMP_TENSOR_INIT();
-    DUMP_TENSOR("seqlens_k", reinterpret_cast<int*>(seqlens_k), batch_size, 1);
-    DUMP_TENSOR("Q", data.query, batch_size, sequence_length, num_heads, head_size);
-    DUMP_TENSOR("K", data.present_key, batch_size, kv_num_heads, present_sequence_length, head_size);
-    DUMP_TENSOR("V", data.present_value, batch_size, kv_num_heads, present_sequence_length, head_size);
-
-    bool past_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
-    ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
-        device_prop, stream, query, present_key, present_value, nullptr, nullptr, data.output, reinterpret_cast<void*>(data.softmax_lse),
-        seqlens_k, batch_size, num_heads, kv_num_heads,
-        head_size, sequence_length, present_sequence_length, 0,
-        scale, is_causal, past_bsnh, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
-        reinterpret_cast<void*>(data.out_accum)));
   }
+
+  void* present_key = reinterpret_cast<void*>(const_cast<T*>(data.present_key));
+  void* present_value = reinterpret_cast<void*>(const_cast<T*>(data.present_value));
+
+  bool past_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
+  ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
+      device_prop, stream,
+      query, present_key, present_value, key, value,
+      data.output, reinterpret_cast<void*>(data.softmax_lse), seqlens_k,
+      batch_size, num_heads, kv_num_heads, head_size,
+      sequence_length, parameters.seqlen_present_kv_cache, kv_sequence_length, parameters.seqlen_present_kv_cache,
+      scale, is_causal, past_bsnh, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
+      reinterpret_cast<void*>(data.out_accum)));
 
   // if (parameters.left_padding && parameters.is_prompt) {
   //   ORT_RETURN_IF_ERROR(LaunchLeftPadLast(parameters, data, stream, device_prop.maxThreadsPerBlock));

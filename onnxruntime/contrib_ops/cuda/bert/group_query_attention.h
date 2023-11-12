@@ -28,6 +28,8 @@ class GroupQueryAttention final : public CudaKernel {
   float scale_;
   bool disable_flash_attention_;
   bool disable_memory_efficient_attention_;
+  static constexpr int kZerosCount = 256;
+  IAllocatorUniquePtr<int> zeros_;
 };
 
 }  // namespace cuda
