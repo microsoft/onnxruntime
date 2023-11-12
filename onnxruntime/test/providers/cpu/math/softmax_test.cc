@@ -170,11 +170,11 @@ TEST(SoftmaxOperator, ThreeAndFourDimsAxis0) {
 
   RunTest(input_vals_60, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 0,
           // axis=0 is not supported by TensorRT
-          {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
+          {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider, kCoreMLExecutionProvider});
 
   RunTest(input_vals_60, expected_vals, four_dimensions, /*opset*/ 7, /*axis*/ 0,
           // axis=0 is not supported by TensorRT
-          {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
+          {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider, kCoreMLExecutionProvider});
 }
 
 TEST(SoftmaxOperator, ThreeAndFourDimsSecondLastAxis) {
@@ -201,10 +201,10 @@ TEST(SoftmaxOperator, ThreeAndFourDimsSecondLastAxis) {
       0.040478885f, 0.033857856f, 0.080346674f, 0.06199841f, 0.040481992f};
 
   RunTest(input_vals_60, expected_vals, three_dimensions, /*opset*/ 7, /*axis*/ 1,
-          {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
+          {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider, kCoreMLExecutionProvider});
 
   RunTest(input_vals_60, expected_vals, four_dimensions, /*opset*/ 7, /*axis*/ 2,
-          {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
+          {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider, kCoreMLExecutionProvider});
 }
 
 TEST(SoftmaxOperator, ThreeAndFourDimsSecondLastAxis_opset13) {
