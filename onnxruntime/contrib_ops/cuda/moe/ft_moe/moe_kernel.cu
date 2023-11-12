@@ -508,12 +508,8 @@ void CubKeyValueSorter::run(void*        workspace,
     size_t actual_ws_size   = workspace_size;
 
     if (expected_ws_size > workspace_size) {
-        std::stringstream err_ss;
-        err_ss << "[FT Error][CubKeyValueSorter::run]\n";
-        err_ss << "Error. The allocated workspace is too small to run this problem.\n";
-        err_ss << "Expected workspace size of at least " << expected_ws_size << " but got problem size "
-               << workspace_size << "\n";
-        throw std::runtime_error(err_ss.str());
+        ORT_THROW("Error. The allocated workspace is too small to run this problem. Expected workspace size of at least ",
+                  expected_ws_size, " but got problem size ", workspace_size, "\n");
     }
     cub::DeviceRadixSort::SortPairs(
         workspace, actual_ws_size, keys_in, keys_out, values_in, values_out, (int)num_key_value_pairs, 0, num_bits_, stream);
@@ -555,8 +551,9 @@ __global__ void compute_total_rows_before_expert_kernel(const int*    sorted_exp
 }
 
 template<typename T, typename WeightType, typename Enable>
-CutlassMoeFCRunner<T, WeightType, Enable>::CutlassMoeFCRunner()
+CutlassMoeFCRunner<T, WeightType, Enable>::CutlassMoeFCRunner(int sm_version)
 {
+    moe_gemm_runner_.initialize(sm_version);
 }
 
 template<typename T, typename WeightType, typename Enable>
@@ -650,21 +647,21 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(const T*          inp
 
     if (scales_required) {
         if (fc1_scales == nullptr) {
-            throw std::runtime_error(
+            ORT_THROW(
                 "[FT Error][Run MoE FC] Scales expected but scale for first matmul is a null pointer");
         }
         else if (fc2_scales == nullptr) {
-            throw std::runtime_error(
+            ORT_THROW(
                 "[FT Error][Run MoE FC] Scales expected but scale for second matmul is a null pointer");
         }
     }
     else {
         if (fc1_scales != nullptr) {
-            throw std::runtime_error(
+            ORT_THROW(
                 "[FT Error][Run MoE FC] Scales are ignored for fp32/fp16/bf16 but received scale for FC1");
         }
         else if (fc2_scales != nullptr) {
-            throw std::runtime_error(
+            ORT_THROW(
                 "[FT Error][Run MoE FC] Scales are ignored for fp32/fp16/bf16 but received scale for FC2");
         }
     }

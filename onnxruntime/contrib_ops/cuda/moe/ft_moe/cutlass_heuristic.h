@@ -22,6 +22,10 @@
 #include <cstdint>
 #include <vector>
 
+#include "core/common/common.h"
+
+using namespace onnxruntime;
+
 namespace ort_fastertransformer {
 
 std::vector<CutlassGemmConfig> get_candidate_configs(int sm, const bool is_weight_only, const bool simt_configs_only);

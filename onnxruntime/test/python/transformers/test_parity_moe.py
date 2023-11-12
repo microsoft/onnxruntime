@@ -11,6 +11,7 @@
 # -------------------------------------------------------------------------
 
 import pytest
+import time
 import unittest
 
 import numpy
@@ -26,6 +27,7 @@ numpy.random.seed(42)
 
 
 ORT_DTYPE = TensorProto.FLOAT16
+NP_TYPE = numpy.float16 if ORT_DTYPE == TensorProto.FLOAT16 else numpy.float32
 THRESHOLD = 3e-2
 
 
@@ -168,7 +170,7 @@ class MoEGate(nn.Module):
     def _cosine(self, mat1, mat2, eps=1e-4):
         assert mat1.dim() == 2
         assert mat2.dim() == 2
-        # mat1 = F.normalize(mat1, p=2.0, dim=1, eps=eps)
+
         mat2 = F.normalize(mat2.float(), p=2.0, dim=1, eps=eps)
         return mat1.float().matmul(mat2.transpose(0, 1)).type_as(mat1)
 
@@ -271,6 +273,49 @@ class MoE(nn.Module):
 
         return ort_session
 
+    def ort_run_with_iobinding(self, ort_inputs, repeat=1000):
+        iobinding = self.ort_sess.io_binding()
+        device_id = torch.cuda.current_device()
+
+        iobinding.bind_input(
+            name="input",
+            device_type="cuda",
+            device_id=device_id,
+            element_type=NP_TYPE,
+            shape=ort_inputs["input"].shape,
+            buffer_ptr=onnxruntime.OrtValue.ortvalue_from_numpy(ort_inputs["input"], "cuda", device_id).data_ptr(),
+        )
+        iobinding.bind_input(
+            name="router_probs",
+            device_type="cuda",
+            device_id=device_id,
+            element_type=NP_TYPE,
+            shape=ort_inputs["router_probs"].shape,
+            buffer_ptr=onnxruntime.OrtValue.ortvalue_from_numpy(
+                ort_inputs["router_probs"], "cuda", device_id
+            ).data_ptr(),
+        )
+
+        iobinding.synchronize_inputs()
+
+        iobinding.bind_output(
+            name="output",
+            device_type="cuda",
+            device_id=device_id,
+            element_type=NP_TYPE,
+            shape=ort_inputs["input"].shape,
+            buffer_ptr=onnxruntime.OrtValue.ortvalue_from_numpy(
+                numpy.zeros(ort_inputs["input"].shape), "cuda", device_id
+            ).data_ptr(),
+        )
+        iobinding.synchronize_outputs()
+
+        s = time.time()
+        for _ in range(repeat):
+            self.ort_sess.run_with_iobinding(iobinding)
+        e = time.time()
+        print(f"MoE cuda kernel time: {(e - s) / repeat * 1000} ms")
+
     def torch_forward(self):
         x = self.torch_input
 
@@ -288,23 +333,25 @@ class MoE(nn.Module):
 
         return x, torch.sum(x)
 
-    def onnx_forward(self):
+    def onnx_forward(self, iobinding=False):
         x = self.torch_input
 
         _, _, c = x.shape
         y = x.reshape(-1, c)
         logits = self.gate(y)
 
-        np_type = numpy.float16 if ORT_DTYPE == TensorProto.FLOAT16 else numpy.float32
-
         ort_inputs = {
-            "input": numpy.ascontiguousarray(y.detach().numpy().astype(np_type)),
-            "router_probs": numpy.ascontiguousarray(logits.detach().numpy().astype(np_type)),
+            "input": numpy.ascontiguousarray(y.detach().numpy().astype(NP_TYPE)),
+            "router_probs": numpy.ascontiguousarray(logits.detach().numpy().astype(NP_TYPE)),
         }
 
         ort_output = None
         if self.ort_sess is not None:
-            ort_output = self.ort_sess.run(None, ort_inputs)
+            if not iobinding:
+                ort_output = self.ort_sess.run(None, ort_inputs)
+            else:
+                self.ort_run_with_iobinding(ort_inputs)
+                return None
 
         # print_tensor("input", ort_inputs["input"])
         # print_tensor("router_probs", ort_inputs["router_probs"])
@@ -323,8 +370,22 @@ class MoE(nn.Module):
             # print("max diff", numpy.max(numpy.abs(torch_out[0].detach().numpy() - ort_out[0])))
             assert numpy.allclose(torch_out[0].detach().numpy(), ort_out[0], rtol=THRESHOLD, atol=THRESHOLD)
 
+    def benchmark(self):
+        self.onnx_forward(iobinding=True)
+
 
 class TestMoE(unittest.TestCase):
+    def test_moe_small(self):
+        rt = MoE(
+            batch_size=2,
+            num_rows=8,
+            num_experts=4,
+            in_features=16,
+            hidden_features=32,
+            out_features=16,
+        )
+        rt.parity_check()
+
     @pytest.mark.slow
     def test_moe_large(self):
         for batch_size in [1, 8]:
@@ -345,16 +406,25 @@ class TestMoE(unittest.TestCase):
                             )
                             rt.parity_check()
 
-    def test_moe_small(self):
-        rt = MoE(
-            batch_size=2,
-            num_rows=8,
-            num_experts=4,
-            in_features=16,
-            hidden_features=32,
-            out_features=16,
-        )
-        rt.parity_check()
+    @pytest.mark.slow
+    def test_moe_benchmark(self):
+        for batch_size in [32, 64]:
+            for num_rows in [128, 512]:
+                for num_experts in [64, 128]:
+                    for in_features in [256, 512]:
+                        for hidden_features in [1024, 2048]:
+                            print(
+                                f"batch_size={batch_size}, num_rows={num_rows}, num_experts={num_experts}, in_features={in_features}, hidden_features={hidden_features}"
+                            )
+                            rt = MoE(
+                                batch_size=batch_size,
+                                num_rows=num_rows,
+                                num_experts=num_experts,
+                                in_features=in_features,
+                                hidden_features=hidden_features,
+                                out_features=in_features,
+                            )
+                            rt.benchmark()
 
 
 if __name__ == "__main__":

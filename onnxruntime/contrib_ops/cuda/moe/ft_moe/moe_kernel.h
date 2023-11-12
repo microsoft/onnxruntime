@@ -19,6 +19,10 @@
 #include "moe_gemm_kernels.h"
 #include <cuda_runtime_api.h>
 
+#include "core/common/common.h"
+
+using namespace onnxruntime;
+
 namespace ort_fastertransformer {
 
 static inline size_t pad_to_multiple_of_16(const size_t& input) {
@@ -137,7 +141,7 @@ template <typename T,          /*The type used for activations/scales/compute*/
           typename Enable = void>
 class CutlassMoeFCRunner {
  public:
-  CutlassMoeFCRunner();
+  CutlassMoeFCRunner(int sm_version);
 
   size_t getWorkspaceSize(
       const int num_rows, const int hidden_size, const int inter_size, const int num_experts, const int k);
@@ -218,7 +222,7 @@ class CutlassMoeFCRunner {
 template <typename WeightType>
 class CutlassMoeFCRunner<float, WeightType, typename std::enable_if_t<!std::is_same<float, WeightType>::value>> {
  public:
-  CutlassMoeFCRunner() = default;
+  CutlassMoeFCRunner(int sm_version);
 
   size_t getWorkspaceSize(
       const int num_rows, const int hidden_size, const int inter_size, const int num_experts, const int k) {

@@ -50,16 +50,6 @@
 
 namespace ort_fastertransformer {
 
-inline int getSMVersion() {
-  int device{-1};
-  cudaGetDevice(&device);
-  int sm_major = 0;
-  int sm_minor = 0;
-  cudaDeviceGetAttribute(&sm_major, cudaDevAttrComputeCapabilityMajor, device);
-  cudaDeviceGetAttribute(&sm_minor, cudaDevAttrComputeCapabilityMinor, device);
-  return sm_major * 10 + sm_minor;
-}
-
 // ============================= Variable batched Gemm things ===========================
 template <typename T,
           typename WeightType,
@@ -82,7 +72,7 @@ void generic_moe_gemm_kernelLauncher(const T* A,
                                      cudaStream_t stream,
                                      int* kernel_occupancy = nullptr) {
   if (gemm_config.split_k_style != SplitKStyle::NO_SPLIT_K) {
-    throw std::runtime_error("[FT Error][MoeGemm] Grouped gemm does not support split-k");
+    ORT_THROW("[FT Error][MoeGemm] Grouped gemm does not support split-k");
   }
 
   static_assert(cutlass::platform::is_same<T, half>::value || cutlass::platform::is_same<T, float>::value,
@@ -146,7 +136,7 @@ void generic_moe_gemm_kernelLauncher(const T* A,
   }
   int occupancy = std::min(2, GemmGrouped::maximum_active_blocks());
   if (occupancy == 0) {
-    throw std::runtime_error(
+    ORT_THROW(
         "[FT Error][MoE Runner] GPU lacks the shared memory resources to run GroupedGEMM kernel");
   }
   const int threadblock_count = multi_processor_count * occupancy;
@@ -171,20 +161,20 @@ void generic_moe_gemm_kernelLauncher(const T* A,
   if (can_implement != cutlass::Status::kSuccess) {
     std::string err_msg =
         "MoEFC kernel will fail for params. Error: " + std::string(cutlassGetStatusString(can_implement));
-    throw std::runtime_error("[FT Error][MoE Runner] " + err_msg);
+    ORT_THROW("[FT Error][MoE Runner] " + err_msg);
   }
 
   auto init_status = gemm.initialize(args);
   if (init_status != cutlass::Status::kSuccess) {
     std::string err_msg = "Failed to initialize cutlass variable batched gemm. Error: " + std::string(cutlassGetStatusString(init_status));
-    throw std::runtime_error("[FT Error][MoE Runner] " + err_msg);
+    ORT_THROW("[FT Error][MoE Runner] " + err_msg);
   }
 
   auto run_status = gemm.run(stream);
   if (run_status != cutlass::Status::kSuccess) {
     std::string err_msg =
         "Failed to run cutlass variable batched gemm. Error: " + std::string(cutlassGetStatusString(run_status));
-    throw std::runtime_error("[FT Error][MoE Runner] " + err_msg);
+    ORT_THROW("[FT Error][MoE Runner] " + err_msg);
   }
 }
 
@@ -211,7 +201,7 @@ struct dispatch_stages {
                        cudaStream_t stream,
                        int* occupancy = nullptr) {
     std::string err_msg = "Cutlass fpA_intB gemm. Not instantiates for arch " + std::to_string(arch::kMinComputeCapability) + " with stages set to " + std::to_string(Stages);
-    throw std::runtime_error("[FT Error][dispatch_stages::dispatch] " + err_msg);
+    ORT_THROW("[FT Error][dispatch_stages::dispatch] " + err_msg);
   }
 };
 
@@ -371,7 +361,7 @@ void dispatch_gemm_config(const T* A,
       break;
     default:
       std::string err_msg = "dispatch_gemm_config does not support stages " + std::to_string(gemm_config.stages);
-      throw std::runtime_error("[FT Error][MoE][dispatch_gemm_config] " + err_msg);
+      ORT_THROW("[FT Error][MoE][dispatch_gemm_config] " + err_msg);
       break;
   }
 }
@@ -460,14 +450,14 @@ void dispatch_moe_gemm_to_cutlass(const T* A,
                                                                  occupancy);
       break;
     case CutlassTileConfig::Undefined:
-      throw std::runtime_error("[FT Error][dispatch_moe_gemm_to_cutlass] gemm config undefined.");
+      ORT_THROW("[FT Error][dispatch_moe_gemm_to_cutlass] gemm config undefined.");
       break;
     case CutlassTileConfig::ChooseWithHeuristic:
-      throw std::runtime_error(
+      ORT_THROW(
           "[FT Error][dispatch_moe_gemm_to_cutlass] gemm config should have already been set by heuristic.");
       break;
     default:
-      throw std::runtime_error(
+      ORT_THROW(
           "[FT Error][dispatch_moe_gemm_to_cutlass] Config is invalid for same type MoE tensorop GEMM.");
       break;
   }
@@ -559,14 +549,14 @@ void dispatch_moe_gemm_to_cutlass(const T* A,
                                                                   occupancy);
       break;
     case CutlassTileConfig::Undefined:
-      throw std::runtime_error("[FT Error][dispatch_moe_gemm_to_cutlass] gemm config undefined.");
+      ORT_THROW("[FT Error][dispatch_moe_gemm_to_cutlass] gemm config undefined.");
       break;
     case CutlassTileConfig::ChooseWithHeuristic:
-      throw std::runtime_error(
+      ORT_THROW(
           "[FT Error][dispatch_moe_gemm_to_cutlass] gemm config should have already been set by heuristic.");
       break;
     default:
-      throw std::runtime_error(
+      ORT_THROW(
           "[FT Error][dispatch_moe_gemm_to_cutlass] Config is invalid for mixed type tensorop GEMM.");
       break;
   }
@@ -615,14 +605,14 @@ void dispatch_moe_gemm_to_cutlass(const T* A,
                                                                 occupancy);
       break;
     case CutlassTileConfig::Undefined:
-      throw std::runtime_error("[FT Error][dispatch_moe_gemm_to_cutlass][SIMT] gemm config undefined.");
+      ORT_THROW("[FT Error][dispatch_moe_gemm_to_cutlass][SIMT] gemm config undefined.");
       break;
     case CutlassTileConfig::ChooseWithHeuristic:
-      throw std::runtime_error(
+      ORT_THROW(
           "[FT Error][dispatch_moe_gemm_to_cutlass][SIMT] gemm config should have already been set by heuristic.");
       break;
     default:
-      throw std::runtime_error(
+      ORT_THROW(
           "[FT Error][dispatch_moe_gemm_to_cutlass][SIMT] Unsupported config for float MoE gemm.");
       break;
   }
@@ -630,9 +620,13 @@ void dispatch_moe_gemm_to_cutlass(const T* A,
 
 template <typename T, typename WeightType>
 MoeGemmRunner<T, WeightType>::MoeGemmRunner() {
+}
+
+template <typename T, typename WeightType>
+void MoeGemmRunner<T, WeightType>::initialize(int sm_version) {
   int device{-1};
   cudaGetDevice(&device);
-  sm_ = getSMVersion();
+  sm_ = sm_version;
   cudaDeviceGetAttribute(&multi_processor_count_, cudaDevAttrMultiProcessorCount, device);
 }
 
@@ -700,7 +694,7 @@ void MoeGemmRunner<T, WeightType>::dispatch_to_arch<EpilogueTag>(const T* A,
                                                                                   stream,
                                                                                   occupancy);
   } else {
-    throw std::runtime_error("[FT Error][MoE][GEMM Dispatch] Arch unsupported for MoE GEMM");
+    ORT_THROW("[FT Error][MoE][GEMM Dispatch] Arch unsupported for MoE GEMM");
   }
 }
 
@@ -832,10 +826,10 @@ void MoeGemmRunner<T, WeightType>::moe_gemm_bias_act(const T* A,
                                stream);
       break;
     case ActivationType::InvalidType:
-      std::runtime_error("[FT Error][MoE Runner] Invalid activation type for MoE GEMM");
+      ORT_THROW("[FT Error][MoE Runner] Invalid activation type for MoE GEMM");
       break;
     default: {
-      std::runtime_error("[FT Error][MoE Runner] Invalid activation type for MoE GEMM");
+      ORT_THROW("[FT Error][MoE Runner] Invalid activation type for MoE GEMM");
     }
   }
 }

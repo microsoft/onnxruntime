@@ -38,6 +38,8 @@ class MoeGemmRunner {
  public:
   MoeGemmRunner();
 
+  void initialize(int sm);
+
   void moe_gemm_bias_act(const T* A,
                          const WeightType* B,
                          const T* weight_scales,

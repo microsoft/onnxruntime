@@ -15,7 +15,7 @@ namespace cuda {
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      MoE,                                                   \
+      MoE,                                                        \
       kMSDomain,                                                  \
       1,                                                          \
       T,                                                          \
@@ -140,10 +140,10 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   auto stream = context->GetComputeStream();
 
-  // auto& device_prop = GetDeviceProp();
-  // const int sm = device_prop.major * 10 + device_prop.minor;
+  auto& device_prop = GetDeviceProp();
+  const int sm = device_prop.major * 10 + device_prop.minor;
 
-  ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaT> moe_runner;
+  ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaT> moe_runner(sm);
 
   size_t ws_size = moe_runner.getWorkspaceSize(static_cast<int>(num_rows),
                                                static_cast<int>(hidden_size),

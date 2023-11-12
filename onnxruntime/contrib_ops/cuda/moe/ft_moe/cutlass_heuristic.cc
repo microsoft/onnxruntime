@@ -39,7 +39,7 @@ TileShape get_cta_shape_for_config(CutlassTileConfig tile_config) {
     case CutlassTileConfig::CtaShape128x128x64_WarpShape128x32x64:
       return TileShape{128, 128};
     default:
-      throw std::runtime_error("[FT Error][get_grid_shape_for_config] Invalid config");
+      ORT_THROW("[FT Error][get_grid_shape_for_config] Invalid config");
   }
 }
 
@@ -124,7 +124,7 @@ CutlassGemmConfig estimate_best_config_from_occupancies(const std::vector<Cutlas
                                                         const int multi_processor_count,
                                                         const int is_weight_only) {
   if (occupancies.size() != candidate_configs.size()) {
-    throw std::runtime_error(
+    ORT_THROW(
         "[FT Error][estimate_best_config_from_occupancies] occpancies and "
         "candidate configs vectors must have equal length.");
   }
@@ -186,7 +186,7 @@ CutlassGemmConfig estimate_best_config_from_occupancies(const std::vector<Cutlas
   }
 
   if (best_config.tile_config == CutlassTileConfig::ChooseWithHeuristic) {
-    throw std::runtime_error("[FT Error] Heurisitc failed to find a valid config.");
+    ORT_THROW("[FT Error] Heurisitc failed to find a valid config.");
   }
 
   return best_config;
