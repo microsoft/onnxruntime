@@ -695,6 +695,7 @@ class UniPCMultistepScheduler:
         self,
         original_samples: torch.FloatTensor,
         noise: torch.FloatTensor,
+        idx,
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
