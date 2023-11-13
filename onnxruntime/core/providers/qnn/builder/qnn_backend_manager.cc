@@ -380,15 +380,48 @@ Status QnnBackendManager::ReleaseProfilehandle() {
   return Status::OK();
 }
 
+Status SetQnnContextConfig(ContextPriority context_priority, QnnContext_Config_t& qnn_context_config) {
+  qnn_context_config.option = QNN_CONTEXT_CONFIG_OPTION_PRIORITY;
+  switch (context_priority) {
+    case ContextPriority::LOW: {
+      qnn_context_config.priority = QNN_PRIORITY_LOW;
+      break;
+    }
+    case ContextPriority::NORMAL: {
+      qnn_context_config.priority = QNN_PRIORITY_NORMAL;
+      break;
+    }
+    case ContextPriority::NORMAL_HIGH: {
+      qnn_context_config.priority = QNN_PRIORITY_NORMAL_HIGH;
+      break;
+    }
+    case ContextPriority::HIGH: {
+      qnn_context_config.priority = QNN_PRIORITY_HIGH;
+      break;
+    }
+    case ContextPriority::UNDEFINED: {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid Qnn context priority.");
+    }
+    default:
+      qnn_context_config.priority = QNN_PRIORITY_NORMAL;
+  }  // switch
+
+  return Status::OK();
+}
+
 Status QnnBackendManager::CreateContext() {
   if (true == context_created_) {
     LOGS_DEFAULT(INFO) << "Context created already.";
     return Status::OK();
   }
 
+  QnnContext_Config_t qnn_context_config = QNN_CONTEXT_CONFIG_INIT;
+  ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, qnn_context_config));
+  const QnnContext_Config_t* context_configs[] = {&qnn_context_config, nullptr};
+
   auto result = qnn_interface_.contextCreate(backend_handle_,
                                              device_handle_,
-                                             (const QnnContext_Config_t**)&context_config_,
+                                             context_configs,
                                              &context_);
 
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context.");
@@ -486,9 +519,14 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 
   ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinary,
                 "Invalid function pointer for contextCreateFromBinary.");
+
+  QnnContext_Config_t qnn_context_config = QNN_CONTEXT_CONFIG_INIT;
+  ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, qnn_context_config));
+  const QnnContext_Config_t* context_configs[] = {&qnn_context_config, nullptr};
+
   rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
                                               device_handle_,
-                                              (const QnnContext_Config_t**)&context_config_,
+                                              context_configs,
                                               static_cast<void*>(buffer),
                                               buffer_length,
                                               &context_,

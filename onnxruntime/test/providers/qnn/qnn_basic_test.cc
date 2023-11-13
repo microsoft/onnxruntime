@@ -174,7 +174,8 @@ TEST(QnnEP, TestDisableCPUFallback_ConflictingConfig) {
 // shape inferencing issues on QNN. Thus, the models are expected to have a specific input/output
 // types and shapes.
 static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bool enable_qnn_saver = false,
-                               std::string htp_graph_finalization_opt_mode = "") {
+                               std::string htp_graph_finalization_opt_mode = "",
+                               std::string qnn_context_priority = "") {
   Ort::SessionOptions so;
 
   // Ensure all type/shape inference warnings result in errors!
@@ -197,6 +198,10 @@ static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bo
 
   if (!htp_graph_finalization_opt_mode.empty()) {
     options["htp_graph_finalization_optimization_mode"] = std::move(htp_graph_finalization_opt_mode);
+  }
+
+  if (!qnn_context_priority.empty()) {
+    options["qnn_context_priority"] = std::move(qnn_context_priority);
   }
 
   so.AppendExecutionProvider("QNN", options);
@@ -320,6 +325,15 @@ TEST_F(QnnHTPBackendTests, HTPGraphFinalizationOptimizationModes) {
                        false,  // enable_qnn_saver
                        mode);  // htp_graph_finalization_opt_mode
   }
+}
+
+// Test that models run with high QNN context priority.
+TEST_F(QnnHTPBackendTests, QnnContextPriorityHigh) {
+  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
+                     true,     // use_htp
+                     false,    // enable_qnn_saver
+                     "",       // htp_graph_finalization_opt_mode
+                     "high");  // qnn_context_priority
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
