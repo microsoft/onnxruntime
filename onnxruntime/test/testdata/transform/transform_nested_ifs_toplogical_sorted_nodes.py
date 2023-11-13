@@ -1,7 +1,8 @@
 import google.protobuf.text_format
 import numpy as np
-from numpy import array, float16, float32, float64, int32, int64
 import onnx
+from numpy import array, float16, float32, float64, int32, int64
+
 import onnxruntime as ort
 
 # Run n times
@@ -840,7 +841,7 @@ functions {
 
 """
 
-ort_inputs = {'input_0': array(0.8965, dtype=float16)}
+ort_inputs = {"input_0": array(0.8965, dtype=float16)}
 
 # Set up the inference session
 session_options = ort.SessionOptions()
