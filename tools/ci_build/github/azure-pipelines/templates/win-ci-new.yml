@@ -112,7 +112,7 @@ stages:
 
       - template: jobs/download_win_gpu_library.yml
         parameters:
-          CUDA_Version: ${{ parameters.CudaVersion }}
+          CudaVersion: ${{ parameters.CudaVersion }}
           ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
             DownloadCUDA: true
           ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
