@@ -171,7 +171,7 @@ stages:
     timeoutInMinutes: 120
     pool: 'Onnxruntime-Linux-GPU'
     variables:
-      CudaVersion: ${{ parameters.CudaVersion }}
+      CUDA_VERSION: ${{ parameters.CudaVersion }}
     steps:
     - template: templates/set-version-number-variables-step.yml
     - template: templates/get-docker-image-steps.yml
