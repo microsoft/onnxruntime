@@ -49,16 +49,11 @@ namespace gemm {
 namespace kernel {
 
 /// Visitor class to abstract away the algorithm for iterating over tiles
-template <typename ThreadblockShape,
-          GroupScheduleMode GroupScheduleMode_,
-          int PrefetchTileCount,
-          int ThreadCount,
+template <typename ThreadblockShape, GroupScheduleMode GroupScheduleMode_, int PrefetchTileCount, int ThreadCount,
           bool Transposed = false>
-struct GemmMoeProblemVisitor : public MoeProblemVisitor<detail::GemmGroupedProblemSizeHelper<ThreadblockShape, Transposed>,
-                                                        ThreadblockShape,
-                                                        GroupScheduleMode_,
-                                                        PrefetchTileCount,
-                                                        ThreadCount> {
+struct GemmMoeProblemVisitor
+    : public MoeProblemVisitor<detail::GemmGroupedProblemSizeHelper<ThreadblockShape, Transposed>, ThreadblockShape,
+                               GroupScheduleMode_, PrefetchTileCount, ThreadCount> {
   static bool const kTransposed = Transposed;
 
   using ProblemSizeHelper = detail::GemmGroupedProblemSizeHelper<ThreadblockShape, Transposed>;
@@ -71,8 +66,8 @@ struct GemmMoeProblemVisitor : public MoeProblemVisitor<detail::GemmGroupedProbl
   // Methods
   //
   CUTLASS_DEVICE
-  GemmMoeProblemVisitor(Params const& params_, SharedStorage& shared_storage_, int32_t block_idx) : Base(params_, shared_storage_, block_idx) {
-  }
+  GemmMoeProblemVisitor(Params const& params_, SharedStorage& shared_storage_, int32_t block_idx)
+      : Base(params_, shared_storage_, block_idx) {}
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////

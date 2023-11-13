@@ -65,15 +65,14 @@ struct GELU_taylor<float> {
     float k1 = float(0.044715);
 
     return float(
-        cutlass::constants::half<float>() * z * (cutlass::constants::one<float>() + tanh_opt(k0 * z * (cutlass::constants::one<float>() + k1 * z * z))));
+        cutlass::constants::half<float>() * z *
+        (cutlass::constants::one<float>() + tanh_opt(k0 * z * (cutlass::constants::one<float>() + k1 * z * z))));
   }
 
   using Params = LinearCombinationGenericParams<float>;
 
   CUTLASS_DEVICE
-  float operator()(float const& scalar, Params const& params_) const {
-    return this->operator()(scalar);
-  }
+  float operator()(float const& scalar, Params const& params_) const { return this->operator()(scalar); }
 };
 
 }  // namespace thread
@@ -93,55 +92,42 @@ struct EpilogueOpBias {};
 struct EpilogueOpNoBias {};
 
 template <typename ElementType, int ElementsPerVectorAccess, typename ElementAccumulator, typename Op>
-struct Epilogue {
-};
+struct Epilogue {};
 
 template <typename ElementType, int ElementsPerVectorAccess, typename ElementAccumulator>
 struct Epilogue<ElementType, ElementsPerVectorAccess, ElementAccumulator, EpilogueOpBiasSilu> {
-  using Op = cutlass::epilogue::thread::LinearCombinationSilu<ElementType,
-                                                              ElementsPerVectorAccess,
-                                                              ElementAccumulator,
+  using Op = cutlass::epilogue::thread::LinearCombinationSilu<ElementType, ElementsPerVectorAccess, ElementAccumulator,
                                                               ElementAccumulator,
                                                               cutlass::epilogue::thread::ScaleType::NoBetaScaling>;
 };
 
 template <typename ElementType, int ElementsPerVectorAccess, typename ElementAccumulator>
 struct Epilogue<ElementType, ElementsPerVectorAccess, ElementAccumulator, EpilogueOpBiasReLU> {
-  using Op = cutlass::epilogue::thread::LinearCombinationRelu<ElementType,
-                                                              ElementsPerVectorAccess,
-                                                              ElementAccumulator,
+  using Op = cutlass::epilogue::thread::LinearCombinationRelu<ElementType, ElementsPerVectorAccess, ElementAccumulator,
                                                               ElementAccumulator,
                                                               cutlass::epilogue::thread::ScaleType::NoBetaScaling>;
 };
 
 template <typename ElementType, int ElementsPerVectorAccess, typename ElementAccumulator>
 struct Epilogue<ElementType, ElementsPerVectorAccess, ElementAccumulator, EpilogueOpBiasFtGelu> {
-  using Op = cutlass::epilogue::thread::LinearCombinationGeneric<cutlass::epilogue::thread::GELU_taylor,
-                                                                 ElementType,
-                                                                 ElementsPerVectorAccess,
-                                                                 ElementAccumulator,
-                                                                 ElementAccumulator,
-                                                                 cutlass::epilogue::thread::ScaleType::NoBetaScaling,
-                                                                 cutlass::FloatRoundStyle::round_to_nearest,
-                                                                 true>;
+  using Op = cutlass::epilogue::thread::LinearCombinationGeneric<
+      cutlass::epilogue::thread::GELU_taylor, ElementType, ElementsPerVectorAccess, ElementAccumulator,
+      ElementAccumulator, cutlass::epilogue::thread::ScaleType::NoBetaScaling,
+      cutlass::FloatRoundStyle::round_to_nearest, true>;
 };
 
 template <typename ElementType, int ElementsPerVectorAccess, typename ElementAccumulator>
 struct Epilogue<ElementType, ElementsPerVectorAccess, ElementAccumulator, EpilogueOpBias> {
-  using Op = cutlass::epilogue::thread::LinearCombination<ElementType,
-                                                          ElementsPerVectorAccess,
-                                                          ElementAccumulator,
+  using Op = cutlass::epilogue::thread::LinearCombination<ElementType, ElementsPerVectorAccess, ElementAccumulator,
                                                           ElementAccumulator,
                                                           cutlass::epilogue::thread::ScaleType::NoBetaScaling>;
 };
 
 template <typename ElementType, int ElementsPerVectorAccess, typename ElementAccumulator>
 struct Epilogue<ElementType, ElementsPerVectorAccess, ElementAccumulator, EpilogueOpNoBias> {
-  using Op = cutlass::epilogue::thread::LinearCombination<ElementType,
-                                                          ElementsPerVectorAccess,
-                                                          ElementAccumulator,
-                                                          ElementAccumulator,
-                                                          cutlass::epilogue::thread::ScaleType::Default>;
+  using Op =
+      cutlass::epilogue::thread::LinearCombination<ElementType, ElementsPerVectorAccess, ElementAccumulator,
+                                                   ElementAccumulator, cutlass::epilogue::thread::ScaleType::Default>;
 };
 
 }  // namespace ort_fastertransformer

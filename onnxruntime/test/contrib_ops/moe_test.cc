@@ -228,17 +228,17 @@ TEST(MoETest, MoETest_Gelu) {
       1.3354061f, 0.5049282f, 0.72775036f, 0.90331376f, 1.2945517f, 0.9123066f, 1.1995136f, 0.7708638f};
 
   RunMoETest(input,
-                  router_probs,
-                  fc1_experts_weights,
-                  fc2_experts_weights,
-                  fc1_experts_bias,
-                  fc2_experts_bias,
-                  output,
-                  num_rows,
-                  num_experts,
-                  hidden_size,
-                  inter_size,
-                  "gelu");
+             router_probs,
+             fc1_experts_weights,
+             fc2_experts_weights,
+             fc1_experts_bias,
+             fc2_experts_bias,
+             output,
+             num_rows,
+             num_experts,
+             hidden_size,
+             inter_size,
+             "gelu");
 }
 
 TEST(MoETest, MoETest_Relu) {
@@ -406,17 +406,17 @@ TEST(MoETest, MoETest_Relu) {
       4.8571277f, 5.649453f, 5.485141f, 5.306299f, 4.767025f, 6.9010167f, 5.3520975f, 6.711155f};
 
   RunMoETest(input,
-                  router_probs,
-                  fc1_experts_weights,
-                  fc2_experts_weights,
-                  fc1_experts_bias,
-                  fc2_experts_bias,
-                  output,
-                  num_rows,
-                  num_experts,
-                  hidden_size,
-                  inter_size,
-                  "relu");
+             router_probs,
+             fc1_experts_weights,
+             fc2_experts_weights,
+             fc1_experts_bias,
+             fc2_experts_bias,
+             output,
+             num_rows,
+             num_experts,
+             hidden_size,
+             inter_size,
+             "relu");
 }
 
 }  // namespace test

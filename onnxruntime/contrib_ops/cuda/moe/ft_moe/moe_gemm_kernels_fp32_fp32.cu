@@ -18,4 +18,4 @@
 
 namespace ort_fastertransformer {
 template class MoeGemmRunner<float, float>;
-} // namespace ort_fastertransformer
+}  // namespace ort_fastertransformer

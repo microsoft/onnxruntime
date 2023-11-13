@@ -37,8 +37,7 @@ namespace gemm {
 namespace kernel {
 
 template <typename TypeB, typename Arch, typename Enable = void>
-struct LayoutDetailsB {
-};
+struct LayoutDetailsB {};
 
 // Volta specialiations. Volta will dequantize before STS, so we need a different operator
 template <typename TypeB>
@@ -60,8 +59,7 @@ struct LayoutDetailsB<half_t, Arch, typename platform::enable_if<Arch::kMinCompu
 };
 
 template <typename TypeA, typename TypeB, typename arch, typename Enable = void>
-struct MixedGemmArchTraits {
-};
+struct MixedGemmArchTraits {};
 
 template <typename arch>
 struct MixedGemmArchTraits<float, float, arch> {
@@ -84,9 +82,7 @@ struct MixedGemmArchTraits<float, float, arch> {
 // This will instantiate any HMMA tensorcore kernels for Volta.
 template <typename TypeA, typename TypeB>
 struct MixedGemmArchTraits<
-    TypeA,
-    TypeB,
-    cutlass::arch::Sm70,
+    TypeA, TypeB, cutlass::arch::Sm70,
     typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value>::type> {
  private:
   using LayoutDetails = LayoutDetailsB<TypeB, cutlass::arch::Sm70>;
@@ -109,9 +105,7 @@ struct MixedGemmArchTraits<
 // ======================= Turing Traits ==============================
 template <typename TypeA, typename TypeB>
 struct MixedGemmArchTraits<
-    TypeA,
-    TypeB,
-    cutlass::arch::Sm75,
+    TypeA, TypeB, cutlass::arch::Sm75,
     typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value>::type> {
  private:
   using LayoutDetails = LayoutDetailsB<TypeB, cutlass::arch::Sm75>;
@@ -134,9 +128,7 @@ struct MixedGemmArchTraits<
 // ======================= Ampere Traits ==============================
 template <typename TypeA, typename TypeB>
 struct MixedGemmArchTraits<
-    TypeA,
-    TypeB,
-    cutlass::arch::Sm80,
+    TypeA, TypeB, cutlass::arch::Sm80,
     typename cutlass::platform::enable_if<cutlass::platform::is_same<TypeA, cutlass::half_t>::value>::type> {
  private:
   using LayoutDetails = LayoutDetailsB<TypeB, cutlass::arch::Sm80>;

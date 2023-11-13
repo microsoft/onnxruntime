@@ -13,16 +13,10 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      MoE,                                                        \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCudaExecutionProvider,                                     \
-      (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      MoE<T>);
+#define REGISTER_KERNEL_TYPED(T)                                                                                     \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(MoE, kMSDomain, 1, T, kCudaExecutionProvider,                                        \
+                                (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+                                MoE<T>);
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
@@ -50,13 +44,11 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 
   // TODO: refactor to helper function.
   if (fc1_experts_weights_dims.size() != 3) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "fc1_experts_weights_dims must be 3D, got ",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc1_experts_weights_dims must be 3D, got ",
                            fc1_experts_weights_dims.size());
   }
   if (fc2_experts_weights_dims.size() != 3) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "fc2_experts_weights_dims must be 3D, got ",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc2_experts_weights_dims must be 3D, got ",
                            fc2_experts_weights_dims.size());
   }
   if (fc1_experts_weights_dims[1] != hidden_size) {
@@ -66,13 +58,13 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   }
   if (fc2_experts_weights_dims[1] != inter_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "fc2_experts_weights_dims[1] must be equal to inter_size, got ",
-                           fc2_experts_weights_dims[1], " and ", inter_size);
+                           "fc2_experts_weights_dims[1] must be equal to inter_size, got ", fc2_experts_weights_dims[1],
+                           " and ", inter_size);
   }
   if (fc1_experts_weights_dims[2] != inter_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "fc1_experts_weights_dims[2] must be equal to inter_size, got ",
-                           fc1_experts_weights_dims[2], " and ", inter_size);
+                           "fc1_experts_weights_dims[2] must be equal to inter_size, got ", fc1_experts_weights_dims[2],
+                           " and ", inter_size);
   }
   if (fc2_experts_weights_dims[2] != hidden_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -80,60 +72,53 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
                            fc2_experts_weights_dims[2], " and ", hidden_size);
   }
   if (router_probs_dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "router_probs_dims must be 2D, got ",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "router_probs_dims must be 2D, got ",
                            router_probs_dims.size());
   }
   if (router_probs_dims[0] != num_rows) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "router_probs_dims[0] must be equal to num_rows, got ",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "router_probs_dims[0] must be equal to num_rows, got ",
                            router_probs_dims[0], " and ", num_rows);
   }
   if (router_probs_dims[1] != num_experts) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "router_probs_dims[1] must be equal to num_experts, got ",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "router_probs_dims[1] must be equal to num_experts, got ",
                            router_probs_dims[1], " and ", num_experts);
   }
   if (fc1_experts_bias_optional != nullptr && fc2_experts_bias_optional == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "fc1_experts_bias is set but fc2_experts_bias is not set");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc1_experts_bias is set but fc2_experts_bias is not set");
   }
   if (fc1_experts_bias_optional == nullptr && fc2_experts_bias_optional != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "fc1_experts_bias is not set but fc2_experts_bias is set");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc1_experts_bias is not set but fc2_experts_bias is set");
   }
   if (fc1_experts_bias_optional != nullptr && fc2_experts_bias_optional != nullptr) {
     const auto& fc1_experts_bias_dims = fc1_experts_bias_optional->Shape().GetDims();
     const auto& fc2_experts_bias_dims = fc2_experts_bias_optional->Shape().GetDims();
     if (fc1_experts_bias_dims.size() != 2) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "fc1_experts_bias_dims must be 2D, got ",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc1_experts_bias_dims must be 2D, got ",
                              fc1_experts_bias_dims.size());
     }
     if (fc2_experts_bias_dims.size() != 2) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "fc2_experts_bias_dims must be 2D, got ",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc2_experts_bias_dims must be 2D, got ",
                              fc2_experts_bias_dims.size());
     }
     if (fc1_experts_bias_dims[0] != num_experts) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "fc1_experts_bias_dims[0] must be equal to num_experts, got ",
-                             fc1_experts_bias_dims[0], " and ", num_experts);
+                             "fc1_experts_bias_dims[0] must be equal to num_experts, got ", fc1_experts_bias_dims[0],
+                             " and ", num_experts);
     }
     if (fc2_experts_bias_dims[0] != num_experts) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "fc2_experts_bias_dims[0] must be equal to num_experts, got ",
-                             fc2_experts_bias_dims[0], " and ", num_experts);
+                             "fc2_experts_bias_dims[0] must be equal to num_experts, got ", fc2_experts_bias_dims[0],
+                             " and ", num_experts);
     }
     if (fc1_experts_bias_dims[1] != inter_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "fc1_experts_bias_dims[1] must be equal to inter_size, got ",
-                             fc1_experts_bias_dims[1], " and ", inter_size);
+                             "fc1_experts_bias_dims[1] must be equal to inter_size, got ", fc1_experts_bias_dims[1],
+                             " and ", inter_size);
     }
     if (fc2_experts_bias_dims[1] != hidden_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "fc2_experts_bias_dims[1] must be equal to hidden_size, got ",
-                             fc2_experts_bias_dims[1], " and ", hidden_size);
+                             "fc2_experts_bias_dims[1] must be equal to hidden_size, got ", fc2_experts_bias_dims[1],
+                             " and ", hidden_size);
     }
   }
 
@@ -145,11 +130,9 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 
   ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaT> moe_runner(sm);
 
-  size_t ws_size = moe_runner.getWorkspaceSize(static_cast<int>(num_rows),
-                                               static_cast<int>(hidden_size),
-                                               static_cast<int>(inter_size),
-                                               static_cast<int>(num_experts),
-                                               static_cast<int>(k_));
+  size_t ws_size =
+      moe_runner.getWorkspaceSize(static_cast<int>(num_rows), static_cast<int>(hidden_size),
+                                  static_cast<int>(inter_size), static_cast<int>(num_experts), static_cast<int>(k_));
   size_t fc2_output_size = k_ * num_rows * hidden_size * sizeof(CudaT);
   size_t expert_scales_size = k_ * num_rows * sizeof(CudaT);
   size_t expanded_source_row_to_expanded_dest_row_size = k_ * num_rows * sizeof(int);
@@ -161,9 +144,12 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   // TODO: allocate one buffer and reuse it.
   IAllocatorUniquePtr<void> work_space = IAllocator::MakeUniquePtr<void>(allocator, ws_size, false, stream);
   IAllocatorUniquePtr<void> fc2_output = IAllocator::MakeUniquePtr<void>(allocator, fc2_output_size, false, stream);
-  IAllocatorUniquePtr<void> expert_scales = IAllocator::MakeUniquePtr<void>(allocator, expert_scales_size, false, stream);
-  IAllocatorUniquePtr<void> expanded_source_row_to_expanded_dest_row = IAllocator::MakeUniquePtr<void>(allocator, expanded_source_row_to_expanded_dest_row_size, false, stream);
-  IAllocatorUniquePtr<void> expert_for_source_row = IAllocator::MakeUniquePtr<void>(allocator, expert_for_source_row_size, false, stream);
+  IAllocatorUniquePtr<void> expert_scales =
+      IAllocator::MakeUniquePtr<void>(allocator, expert_scales_size, false, stream);
+  IAllocatorUniquePtr<void> expanded_source_row_to_expanded_dest_row =
+      IAllocator::MakeUniquePtr<void>(allocator, expanded_source_row_to_expanded_dest_row_size, false, stream);
+  IAllocatorUniquePtr<void> expert_for_source_row =
+      IAllocator::MakeUniquePtr<void>(allocator, expert_for_source_row_size, false, stream);
 
   // fc1_scales and fc2_scales are used in quantized MoE
   const CudaT* fc1_scales_ptr = nullptr;
@@ -173,34 +159,28 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
                         reinterpret_cast<const CudaT*>(router_probs->template Data<T>()),
                         reinterpret_cast<const CudaT*>(fc1_experts_weights->template Data<T>()),
                         std::move(fc1_scales_ptr),
-                        fc1_experts_bias_optional == nullptr ? nullptr : reinterpret_cast<const CudaT*>(fc1_experts_bias_optional->template Data<T>()),
-                        activation_type_,
-                        reinterpret_cast<const CudaT*>(fc2_experts_weights->template Data<T>()),
-                        std::move(fc2_scales_ptr),
-                        static_cast<int>(num_rows),
-                        static_cast<int>(hidden_size),
-                        static_cast<int>(inter_size),
-                        static_cast<int>(num_experts),
-                        static_cast<int>(k_),
-                        reinterpret_cast<char*>(work_space.get()),
-                        reinterpret_cast<CudaT*>(fc2_output.get()),
+                        fc1_experts_bias_optional == nullptr
+                            ? nullptr
+                            : reinterpret_cast<const CudaT*>(fc1_experts_bias_optional->template Data<T>()),
+                        activation_type_, reinterpret_cast<const CudaT*>(fc2_experts_weights->template Data<T>()),
+                        std::move(fc2_scales_ptr), static_cast<int>(num_rows), static_cast<int>(hidden_size),
+                        static_cast<int>(inter_size), static_cast<int>(num_experts), static_cast<int>(k_),
+                        reinterpret_cast<char*>(work_space.get()), reinterpret_cast<CudaT*>(fc2_output.get()),
                         reinterpret_cast<CudaT*>(expert_scales.get()),
                         reinterpret_cast<int*>(expanded_source_row_to_expanded_dest_row.get()),
-                        reinterpret_cast<int*>(expert_for_source_row.get()),
-                        Stream(context));
+                        reinterpret_cast<int*>(expert_for_source_row.get()), Stream(context));
 
   Tensor* output = context->Output(0, input->Shape());
 
-  ort_fastertransformer::finalize_moe_routing_kernelLauncher(reinterpret_cast<CudaT*>(fc2_output.get()),
-                                                             reinterpret_cast<CudaT*>(output->template MutableData<T>()),
-                                                             fc2_experts_bias_optional == nullptr ? nullptr : reinterpret_cast<const CudaT*>(fc2_experts_bias_optional->template Data<T>()),
-                                                             reinterpret_cast<CudaT*>(expert_scales.get()),
-                                                             reinterpret_cast<int*>(expanded_source_row_to_expanded_dest_row.get()),
-                                                             reinterpret_cast<int*>(expert_for_source_row.get()),
-                                                             static_cast<int>(num_rows),
-                                                             static_cast<int>(hidden_size),
-                                                             static_cast<int>(k_),
-                                                             Stream(context));
+  ort_fastertransformer::finalize_moe_routing_kernelLauncher(
+      reinterpret_cast<CudaT*>(fc2_output.get()), reinterpret_cast<CudaT*>(output->template MutableData<T>()),
+      fc2_experts_bias_optional == nullptr
+          ? nullptr
+          : reinterpret_cast<const CudaT*>(fc2_experts_bias_optional->template Data<T>()),
+      reinterpret_cast<CudaT*>(expert_scales.get()),
+      reinterpret_cast<int*>(expanded_source_row_to_expanded_dest_row.get()),
+      reinterpret_cast<int*>(expert_for_source_row.get()), static_cast<int>(num_rows), static_cast<int>(hidden_size),
+      static_cast<int>(k_), Stream(context));
 
   return Status::OK();
 }

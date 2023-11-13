@@ -10,11 +10,11 @@
 # license information.
 # -------------------------------------------------------------------------
 
-import pytest
 import time
 import unittest
 
 import numpy
+import pytest
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

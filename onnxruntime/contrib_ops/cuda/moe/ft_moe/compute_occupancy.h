@@ -42,8 +42,8 @@ inline int compute_occupancy_for_kernel() {
   }
 
   int max_active_blocks = -1;
-  CUDA_CALL_THROW(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-      &max_active_blocks, cutlass::Kernel<GemmKernel>, GemmKernel::kThreadCount, smem_size));
+  CUDA_CALL_THROW(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&max_active_blocks, cutlass::Kernel<GemmKernel>,
+                                                                GemmKernel::kThreadCount, smem_size));
 
   return max_active_blocks;
 }

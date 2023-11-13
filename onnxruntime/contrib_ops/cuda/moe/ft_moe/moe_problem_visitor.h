@@ -59,8 +59,8 @@ struct BaseMoeProblemVisitor {
     ProblemInfo() : problem_idx(kNoPrefetchEntry), problem_start(kNoPrefetchEntry) {}
 
     CUTLASS_DEVICE
-    ProblemInfo(int32_t problem_idx_, int32_t problem_start_) : problem_idx(problem_idx_), problem_start(problem_start_) {
-    }
+    ProblemInfo(int32_t problem_idx_, int32_t problem_start_)
+        : problem_idx(problem_idx_), problem_start(problem_start_) {}
   };
 
   struct Params {
@@ -77,23 +77,19 @@ struct BaseMoeProblemVisitor {
 
     /// Ctor
     CUTLASS_HOST_DEVICE
-    Params() : last_row_for_problem(nullptr), gemm_n(0), gemm_k(0), problem_count(0), workspace(nullptr), tile_count(0) {
-    }
+    Params()
+        : last_row_for_problem(nullptr), gemm_n(0), gemm_k(0), problem_count(0), workspace(nullptr), tile_count(0) {}
 
     /// Ctor
     CUTLASS_HOST_DEVICE
-    Params(int64_t const* last_row_for_problem,
-           int64_t gemm_n,
-           int64_t gemm_k,
-           int32_t problem_count,
-           void const* workspace = nullptr,
-           int32_t tile_count = 0) : last_row_for_problem(last_row_for_problem),
-                                     gemm_n(gemm_n),
-                                     gemm_k(gemm_k),
-                                     problem_count(problem_count),
-                                     workspace(workspace),
-                                     tile_count(tile_count) {
-    }
+    Params(int64_t const* last_row_for_problem, int64_t gemm_n, int64_t gemm_k, int32_t problem_count,
+           void const* workspace = nullptr, int32_t tile_count = 0)
+        : last_row_for_problem(last_row_for_problem),
+          gemm_n(gemm_n),
+          gemm_k(gemm_k),
+          problem_count(problem_count),
+          workspace(workspace),
+          tile_count(tile_count) {}
   };
 
   Params const& params;
@@ -105,38 +101,29 @@ struct BaseMoeProblemVisitor {
   // Methods
   //
   CUTLASS_DEVICE
-  BaseMoeProblemVisitor(Params const& params_, int32_t block_idx) : params(params_), tile_idx(block_idx), problem_tile_start(0), problem_idx(0) {
-  }
+  BaseMoeProblemVisitor(Params const& params_, int32_t block_idx)
+      : params(params_), tile_idx(block_idx), problem_tile_start(0), problem_idx(0) {}
 
   /// Get the grid shape
   CUTLASS_HOST_DEVICE
   static cutlass::gemm::GemmCoord grid_shape(const cutlass::gemm::GemmCoord& problem) {
     return cutlass::gemm::GemmCoord(((problem.m() - 1 + ThreadblockShape::kM) / ThreadblockShape::kM),
-                                    ((problem.n() - 1 + ThreadblockShape::kN) / ThreadblockShape::kN),
-                                    1);
+                                    ((problem.n() - 1 + ThreadblockShape::kN) / ThreadblockShape::kN), 1);
   }
 
   /// Gets the global tile index
   CUTLASS_HOST_DEVICE
-  int32_t tile_index() const {
-    return tile_idx;
-  }
+  int32_t tile_index() const { return tile_idx; }
 
   /// Gets the index of the problem
   CUTLASS_HOST_DEVICE
-  int32_t problem_index() const {
-    return problem_idx;
-  }
+  int32_t problem_index() const { return problem_idx; }
 
   CUTLASS_HOST_DEVICE
-  int32_t threadblock_idx() const {
-    return tile_idx - problem_tile_start;
-  }
+  int32_t threadblock_idx() const { return tile_idx - problem_tile_start; }
 
   CUTLASS_DEVICE
-  void advance(int32_t grid_size) {
-    tile_idx += grid_size;
-  }
+  void advance(int32_t grid_size) { tile_idx += grid_size; }
 
   CUTLASS_HOST_DEVICE
   static void possibly_transpose_problem(cutlass::gemm::GemmCoord& problem) {
@@ -145,9 +132,7 @@ struct BaseMoeProblemVisitor {
 
   /// Returns the problem size for the current problem
   CUTLASS_HOST_DEVICE
-  cutlass::gemm::GemmCoord problem_size() const {
-    return problem_size(problem_idx);
-  }
+  cutlass::gemm::GemmCoord problem_size() const { return problem_size(problem_idx); }
 
   CUTLASS_HOST_DEVICE
   cutlass::gemm::GemmCoord problem_size(int idx) const {
@@ -160,9 +145,7 @@ struct BaseMoeProblemVisitor {
   }
 
   CUTLASS_HOST_DEVICE
-  static int32_t tile_count(const cutlass::gemm::GemmCoord& grid) {
-    return ProblemSizeHelper::tile_count(grid);
-  }
+  static int32_t tile_count(const cutlass::gemm::GemmCoord& grid) { return ProblemSizeHelper::tile_count(grid); }
 
   static int32_t group_tile_count(const cutlass::gemm::GemmCoord* host_problem_sizes_ptr, int32_t problem_count) {
     int32_t total_tiles = 0;
@@ -179,21 +162,15 @@ struct BaseMoeProblemVisitor {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
-template <typename ProblemSizeHelper,
-          typename ThreadblockShape,
-          GroupScheduleMode GroupScheduleMode_,
-          int PrefetchTileCount,
-          int ThreadCount>
+template <typename ProblemSizeHelper, typename ThreadblockShape, GroupScheduleMode GroupScheduleMode_,
+          int PrefetchTileCount, int ThreadCount>
 struct MoeProblemVisitor;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 // ProblemVisitor that performs all scheduling on device
 //
 template <typename ProblemSizeHelper, typename ThreadblockShape, int PrefetchTileCount, int ThreadCount>
-struct MoeProblemVisitor<ProblemSizeHelper,
-                         ThreadblockShape,
-                         GroupScheduleMode::kDeviceOnly,
-                         PrefetchTileCount,
+struct MoeProblemVisitor<ProblemSizeHelper, ThreadblockShape, GroupScheduleMode::kDeviceOnly, PrefetchTileCount,
                          ThreadCount> : public BaseMoeProblemVisitor<ProblemSizeHelper, ThreadblockShape> {
   using Base = BaseMoeProblemVisitor<ProblemSizeHelper, ThreadblockShape>;
   using Params = typename Base::Params;
@@ -213,7 +190,8 @@ struct MoeProblemVisitor<ProblemSizeHelper,
   // Methods
   //
   CUTLASS_DEVICE
-  MoeProblemVisitor(Params const& params_, SharedStorage& shared_storage_, int32_t block_idx) : Base(params_, block_idx), problem_ending_tile(0), shared_storage(shared_storage_) {
+  MoeProblemVisitor(Params const& params_, SharedStorage& shared_storage_, int32_t block_idx)
+      : Base(params_, block_idx), problem_ending_tile(0), shared_storage(shared_storage_) {
     this->problem_idx = -1 * kThreadsPerWarp;
     this->problem_tile_start = 0;
   }
@@ -298,17 +276,13 @@ struct MoeProblemVisitor<ProblemSizeHelper,
     return true;
   }
 
-  static size_t get_workspace_size(const cutlass::gemm::GemmCoord* host_problem_sizes_ptr,
-                                   int32_t problem_count,
+  static size_t get_workspace_size(const cutlass::gemm::GemmCoord* host_problem_sizes_ptr, int32_t problem_count,
                                    int32_t block_count) {
     return 0;
   }
 
-  static void host_precompute(const cutlass::gemm::GemmCoord* host_problem_sizes_ptr,
-                              int32_t problem_count,
-                              int32_t block_count,
-                              void* host_workspace_ptr) {
-  }
+  static void host_precompute(const cutlass::gemm::GemmCoord* host_problem_sizes_ptr, int32_t problem_count,
+                              int32_t block_count, void* host_workspace_ptr) {}
 };
 
 }  // namespace kernel

@@ -43,13 +43,8 @@ TileShape get_cta_shape_for_config(CutlassTileConfig tile_config) {
   }
 }
 
-bool is_valid_split_k_factor(const int64_t m,
-                             const int64_t n,
-                             const int64_t k,
-                             const TileShape tile_shape,
-                             const int split_k_factor,
-                             const size_t workspace_bytes,
-                             const bool is_weight_only) {
+bool is_valid_split_k_factor(const int64_t m, const int64_t n, const int64_t k, const TileShape tile_shape,
+                             const int split_k_factor, const size_t workspace_bytes, const bool is_weight_only) {
   // All tile sizes have a k_tile of 64.
   static constexpr int k_tile = 64;
 
@@ -114,15 +109,10 @@ std::vector<CutlassGemmConfig> get_candidate_configs(int sm, const bool is_weigh
 }
 
 CutlassGemmConfig estimate_best_config_from_occupancies(const std::vector<CutlassGemmConfig>& candidate_configs,
-                                                        const std::vector<int>& occupancies,
-                                                        const int64_t m,
-                                                        const int64_t n,
-                                                        const int64_t k,
-                                                        const int64_t,
-                                                        const int split_k_limit,
-                                                        const size_t workspace_bytes,
-                                                        const int multi_processor_count,
-                                                        const int is_weight_only) {
+                                                        const std::vector<int>& occupancies, const int64_t m,
+                                                        const int64_t n, const int64_t k, const int64_t,
+                                                        const int split_k_limit, const size_t workspace_bytes,
+                                                        const int multi_processor_count, const int is_weight_only) {
   if (occupancies.size() != candidate_configs.size()) {
     ORT_THROW(
         "[FT Error][estimate_best_config_from_occupancies] occpancies and "
@@ -147,7 +137,8 @@ CutlassGemmConfig estimate_best_config_from_occupancies(const std::vector<Cutlas
     }
 
     // Keep small tile sizes when possible.
-    if (best_config.tile_config != CutlassTileConfig::ChooseWithHeuristic && m < current_m_tile && current_m_tile < tile_shape.m) {
+    if (best_config.tile_config != CutlassTileConfig::ChooseWithHeuristic && m < current_m_tile &&
+        current_m_tile < tile_shape.m) {
       continue;
     }
 
@@ -164,20 +155,21 @@ CutlassGemmConfig estimate_best_config_from_occupancies(const std::vector<Cutlas
         const float current_score = float(num_waves_total) - num_waves_fractional;
 
         const float score_slack = 0.1f;
-        if (current_score < config_score || ((config_waves > num_waves_total) && (current_score < config_score + score_slack))) {
+        if (current_score < config_score ||
+            ((config_waves > num_waves_total) && (current_score < config_score + score_slack))) {
           config_score = current_score;
           config_waves = num_waves_total;
-          SplitKStyle split_style =
-              split_k_factor > 1 ? SplitKStyle::SPLIT_K_SERIAL : SplitKStyle::NO_SPLIT_K;
-          best_config = CutlassGemmConfig{
-              candidate_config.tile_config, split_style, split_k_factor, candidate_config.stages};
+          SplitKStyle split_style = split_k_factor > 1 ? SplitKStyle::SPLIT_K_SERIAL : SplitKStyle::NO_SPLIT_K;
+          best_config =
+              CutlassGemmConfig{candidate_config.tile_config, split_style, split_k_factor, candidate_config.stages};
           current_m_tile = tile_shape.m;
-        } else if (current_score == config_score && (best_config.stages < candidate_config.stages || split_k_factor < best_config.split_k_factor || current_m_tile < tile_shape.m)) {
+        } else if (current_score == config_score &&
+                   (best_config.stages < candidate_config.stages || split_k_factor < best_config.split_k_factor ||
+                    current_m_tile < tile_shape.m)) {
           // Prefer deeper pipeline or smaller split-k
-          SplitKStyle split_style =
-              split_k_factor > 1 ? SplitKStyle::SPLIT_K_SERIAL : SplitKStyle::NO_SPLIT_K;
-          best_config = CutlassGemmConfig{
-              candidate_config.tile_config, split_style, split_k_factor, candidate_config.stages};
+          SplitKStyle split_style = split_k_factor > 1 ? SplitKStyle::SPLIT_K_SERIAL : SplitKStyle::NO_SPLIT_K;
+          best_config =
+              CutlassGemmConfig{candidate_config.tile_config, split_style, split_k_factor, candidate_config.stages};
           current_m_tile = tile_shape.m;
           config_waves = num_waves_total;
         }
