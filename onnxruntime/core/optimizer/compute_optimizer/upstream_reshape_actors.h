@@ -111,13 +111,11 @@ class UpStreamReshapeOperatorActorBase : public UpStreamOperatorActorBase {
    * So far, we don't have requirements to override PostProcess function.
 
    */
-  bool PostProcess(Graph& /* graph */, Node& /* current_node */, const ReshapeInfo& /* info_without_node */,
+  virtual bool PostProcess(Graph& /* graph */, Node& /* current_node */, const ReshapeInfo& /* info_without_node */,
                    const logging::Logger& /* logger */,
                    std::vector<int>& /* propagate_input_indices */,
                    const std::unordered_map<int, std::vector<DimCompare>>& /* all_input_cmp_rets */,
-                   const std::unordered_map<int, ReshapeInfo>& /* new_reshape_infos */) {
-    return true;
-  }
+                   const std::unordered_map<int, ReshapeInfo>& /* new_reshape_infos */) = 0;
 };
 
 // The inputs are broad-cast-able. The outputs should have the same shape (fully broadcasted shape)
@@ -133,6 +131,14 @@ class SimplePointwiseReshapeActor : public UpStreamReshapeOperatorActorBase {
                 std::vector<int>& propagate_input_indices,
                 std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                 std::function<void(Node& node)>& shape_update_func) override;
+
+  bool PostProcess(Graph& /* graph */, Node& /* current_node */, const ReshapeInfo& /* info_without_node */,
+                   const logging::Logger& /* logger */,
+                   std::vector<int>& /* propagate_input_indices */,
+                   const std::unordered_map<int, std::vector<DimCompare>>& /* all_input_cmp_rets */,
+                   const std::unordered_map<int, ReshapeInfo>& /* new_reshape_infos */) override {
+    return true;
+  }
 };
 
 class MatMulReshapeActor : public UpStreamReshapeOperatorActorBase {
@@ -145,6 +151,14 @@ class MatMulReshapeActor : public UpStreamReshapeOperatorActorBase {
                 std::vector<int>& propagate_input_indices,
                 std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                 std::function<void(Node& node)>& shape_update_func) override;
+
+  bool PostProcess(Graph& /* graph */, Node& /* current_node */, const ReshapeInfo& /* info_without_node */,
+                   const logging::Logger& /* logger */,
+                   std::vector<int>& /* propagate_input_indices */,
+                   const std::unordered_map<int, std::vector<DimCompare>>& /* all_input_cmp_rets */,
+                   const std::unordered_map<int, ReshapeInfo>& /* new_reshape_infos */) override {
+    return true;
+  }
 };
 
 class LayerNormalizationReshapeActor : public UpStreamReshapeOperatorActorBase {
@@ -157,6 +171,12 @@ class LayerNormalizationReshapeActor : public UpStreamReshapeOperatorActorBase {
                 std::vector<int>& propagate_input_indices,
                 std::unordered_map<int, std::vector<DimCompare>>& all_input_cmp_rets,
                 std::function<void(Node& node)>& shape_update_func) override;
+
+  bool PostProcess(Graph& /* graph */, Node& current_node, const ReshapeInfo& /* info_without_node */,
+                   const logging::Logger& /* logger */,
+                   std::vector<int>& /* propagate_input_indices */,
+                   const std::unordered_map<int, std::vector<DimCompare>>& /* all_input_cmp_rets */,
+                   const std::unordered_map<int, ReshapeInfo>& /* new_reshape_infos */) override;
 };
 
 /**
