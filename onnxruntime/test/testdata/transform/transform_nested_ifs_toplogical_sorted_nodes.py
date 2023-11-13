@@ -1,7 +1,6 @@
 import google.protobuf.text_format
-import numpy as np
 import onnx
-from numpy import array, float16, float32, float64, int32, int64
+from numpy import array, float16
 
 import onnxruntime as ort
 
