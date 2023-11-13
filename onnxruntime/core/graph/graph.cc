@@ -4184,7 +4184,7 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
 
   auto map_defs = [](Node& node, ArgNameToNodeMap& map, bool input) {
     const auto defs = (input) ? node.InputDefs() : node.OutputDefs();
-    map.reserve(defs.size());
+    map.reserve(map.size() + defs.size());
     int arg_pos = -1;
     for (auto* node_arg : defs) {
       ++arg_pos;
@@ -4263,16 +4263,8 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
                              node->Domain());
 
     if (!is_this_main_graph) {
-      int arg_pos = -1;
-      for (auto* input_def : new_node_input_defs) {
-        ++arg_pos;
-        input_args.insert_or_assign(input_def->Name(), std::make_pair(&new_node, arg_pos));
-      }
-      arg_pos = -1;
-      for (auto* output_def : new_node_output_defs) {
-        ++arg_pos;
-        output_args.insert_or_assign(output_def->Name(), std::make_pair(&new_node, arg_pos));
-      }
+      map_defs(new_node, input_args, true);
+      map_defs(new_node, output_args, false);
       new_nodes.push_back(&new_node);
     }
 
