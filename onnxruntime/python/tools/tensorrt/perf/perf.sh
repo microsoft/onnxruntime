@@ -30,7 +30,7 @@ fi
 # metadata
 FAIL_MODEL_FILE=".fail_model_map"
 LATENCY_FILE=".latency_map"
-METRICS_FILE=".metrics_map"
+OP_METRICS_FILE=".op_metrics_map"
 SESSION_FILE=".session_map"
 
 # files to download info
@@ -40,7 +40,7 @@ FLOAT_16_LINK="https://raw.githubusercontent.com/microsoft/onnxconverter-common/
 cleanup_files() {
     rm -f $FAIL_MODEL_FILE
     rm -f $LATENCY_FILE
-    rm -f $METRICS_FILE
+    rm -f OP_METRICS_FILE
     rm -f $SESSION_FILE
     rm -f $FLOAT_16
     rm -rf result/$OPTION
