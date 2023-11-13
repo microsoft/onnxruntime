@@ -12,7 +12,6 @@ LearningModelSessionOptions::LearningModelSessionOptions()
   intra_op_num_threads_override_ = HardwareCoreEnumerator::DefaultIntraOpNumThreads();
 }
 
-
 LearningModelSessionOptions::LearningModelSessionOptions(const LearningModelSessionOptions& options)
   : batch_size_override_(options.batch_size_override_),
     close_model_on_session_creation_(options.close_model_on_session_creation_),

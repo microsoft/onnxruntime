@@ -130,7 +130,6 @@ LearningModelDevice::CacheThreadPool(_winml::IThreading* thread_pool) {
   return S_OK;
 }
 
-
 uint32_t LearningModelDevice::NumberOfIntraOpThreads() {
   if (IsCpuDevice()) {
     return HardwareCoreEnumerator::DefaultIntraOpNumThreads();

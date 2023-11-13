@@ -34,39 +34,12 @@ static LogicalProcessorInformation GetLogicalProcessorInfos(LOGICAL_PROCESSOR_RE
   return {std::move(processorInformationBytes), length};
 }
 
-static long long GetNumberOfSoCDieCores() {
-  DWORD dwLevel2GroupMask = 0;
-  DWORD dwLevel3GroupMask = 0;
-  DWORD dwSoCGroupMask = 0;
-
-  auto logicalProcessorInformation = GetLogicalProcessorInfos(RelationAll);
-  auto processorInformation = (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)logicalProcessorInformation.Buffer.get();
-
-  size_t read = 0;
-  while (read <= logicalProcessorInformation.Length) {
-    switch (processorInformation->Relationship) {
-      case RelationCache:
-        if (processorInformation->Cache.Level == 2) {
-          dwLevel2GroupMask |= processorInformation->Cache.GroupMask.Mask;
-        } else if (processorInformation->Cache.Level == 3) {
-          dwLevel3GroupMask |= processorInformation->Cache.GroupMask.Mask;
-        }
-        break;
-    }
-
-    read += sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX);
-    processorInformation++;
-  }
-
-  dwSoCGroupMask = (dwLevel2GroupMask & ~dwLevel3GroupMask);
-
-  return __popcnt(dwSoCGroupMask);
-}
-
 static CoreCounter GetNumberOPhysicalAndEngineeringCores() {
-  auto logicalProcessorInformation = GetLogicalProcessorInfos(RelationProcessorCore);
+  auto logicalProcessorInformation = GetLogicalProcessorInfos(RelationAll);
 
   CoreCounter cores;
+  DWORD dwLevel2GroupMask = 0;
+  DWORD dwLevel3GroupMask = 0;
   size_t read = 0;
   PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX currentProcessorInfo = NULL;
 
@@ -80,12 +53,19 @@ static CoreCounter GetNumberOPhysicalAndEngineeringCores() {
       case RelationProcessorCore:
         cores.PhysicalCores++;
         break;
+      case RelationCache:
+        if (currentProcessorInfo->Cache.Level == 2) {
+          dwLevel2GroupMask |= currentProcessorInfo->Cache.GroupMask.Mask;
+        } else if (currentProcessorInfo->Cache.Level == 3) {
+          dwLevel3GroupMask |= currentProcessorInfo->Cache.GroupMask.Mask;
+        }
+        break;
     }
 
     read += currentProcessorInfo->Size;
   }
 
-  cores.SocDieCores = GetNumberOfSoCDieCores();
+  cores.SocDieCores = __popcnt(dwLevel2GroupMask & ~dwLevel3GroupMask);
   return cores;
 }
 
@@ -93,6 +73,7 @@ uint32_t HardwareCoreEnumerator::DefaultIntraOpNumThreads() {
   // # of physical cores = # of P cores + # of E Cores + # of Soc Cores.
   // # of logical cores = # of P cores x 2 (if hyper threading is enabled) + # of E cores + # of Soc Cores.
   auto cores = GetNumberOPhysicalAndEngineeringCores();
+  // We want to use the number of pysical cores, but exclude soc cores
   return static_cast<uint32_t>(cores.PhysicalCores - cores.SocDieCores);
 }
 
