@@ -126,8 +126,8 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
   for (size_t output_i = 0; output_i < output_count; ++output_i) {
     const auto& output_name = outputs[output_i].node_arg.Name();
 
-    OnnxInputInfo output_info = {};
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(outputs[output_i], output_info));
+    TensorInfo output_info = {};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(outputs[output_i], output_info));
 
     if (output_info.quant_param.encodingDefinition == QNN_DEFINITION_DEFINED) {
       ORT_RETURN_IF_ERROR(OverrideOutputQuantParam(qnn_model_wrapper, node_unit, logger, input_names,
