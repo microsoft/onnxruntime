@@ -84,8 +84,8 @@ template <typename Mma_,                 ///! Threadblock-scoped matrix multiply
           typename Epilogue_,            ///! Epilogue
           typename ThreadblockSwizzle_,  ///! Threadblock swizzling function
           typename KernelArch,           ///! The Architecture this kernel is compiled for. Used since SIMT kernels lose
-                                         ///top-level
-                                         /// arch.
+                                         /// top-level
+                                /// arch.
           GroupScheduleMode GroupScheduleMode_  ///! Type of scheduling to perform
           >
 struct MoeFCGemm {

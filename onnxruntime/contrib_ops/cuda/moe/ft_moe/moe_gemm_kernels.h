@@ -21,7 +21,14 @@
 
 namespace ort_fastertransformer {
 
-enum class ActivationType { Gelu, Relu, Silu, GeGLU, ReGLU, SiGLU, Identity, InvalidType };
+enum class ActivationType { Gelu,
+                            Relu,
+                            Silu,
+                            GeGLU,
+                            ReGLU,
+                            SiGLU,
+                            Identity,
+                            InvalidType };
 
 template <typename T, /*The type used for activations/scales/compute*/
           typename WeightType /* The type for the MoE weights */>
