@@ -2,16 +2,11 @@
 // Licensed under the MIT License.
 
 import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor';
+import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {inputVariable, outputVariable, ShaderHelper} from './common';
-
-export const tileProgramMetadata = {
-  name: 'Tile',
-  inputTypes: [GpuDataType.default]
-};
 
 const getRepeats = (repeatsTensorView: TensorView): readonly number[] =>
     Array.from(repeatsTensorView.getBigInt64Array(), Number);
@@ -52,18 +47,17 @@ const getOutputShape = (inputShape: readonly number[], repeats: readonly number[
   return outputShape;
 };
 
-export const createTileProgramInfo =
-    (tileProgramMetadata: ProgramMetadata, inputs: readonly TensorView[]): ProgramInfo => {
-      const inputShape = inputs[0].dims;
-      const repeats: readonly number[] = getRepeats(inputs[1]);
-      const outputShape = getOutputShape(inputShape, repeats);
-      const outputSize = ShapeUtil.size(outputShape);
+export const createTileProgramInfo = (inputs: readonly TensorView[]): ProgramInfo => {
+  const inputShape = inputs[0].dims;
+  const repeats: readonly number[] = getRepeats(inputs[1]);
+  const outputShape = getOutputShape(inputShape, repeats);
+  const outputSize = ShapeUtil.size(outputShape);
 
-      const dataType = inputs[0].dataType;
-      const input = inputVariable('input', dataType, inputShape);
-      const output = outputVariable('output', dataType, outputShape);
+  const dataType = inputs[0].dataType;
+  const input = inputVariable('input', dataType, inputShape);
+  const output = outputVariable('output', dataType, outputShape);
 
-      const getShaderSource = (shaderHelper: ShaderHelper) => `
+  const getShaderSource = (shaderHelper: ShaderHelper) => `
       const inputShape = ${input.indices(...inputShape)};
       ${shaderHelper.declareVariables(input, output)}
       ${shaderHelper.mainStart()}
@@ -78,19 +72,18 @@ export const createTileProgramInfo =
       ${output.setByOffset('global_idx', input.getByIndices('inputIndices'))}
     }`;
 
-      return {
-        ...tileProgramMetadata,
-        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
-        getShaderSource,
-        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
-      };
-    };
+  return {
+    name: 'Tile',
+    shaderCache: {hint: `${repeats}`},
+    getRunData: () => ({
+      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+      dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
+    }),
+    getShaderSource,
+  };
+};
 
 export const tile = (context: ComputeContext): void => {
   validateInputs(context.inputs);
-  const repeats: readonly number[] = getRepeats(context.inputs[1]);
-  const cacheHint = repeats.toString();
-  context.compute(
-      {...tileProgramMetadata, cacheHint, get: () => createTileProgramInfo(tileProgramMetadata, context.inputs)},
-      {inputs: [0]});
+  context.compute(createTileProgramInfo(context.inputs), {inputs: [0]});
 };

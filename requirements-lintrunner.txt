@@ -1,11 +1,9 @@
 # This file is auto updated by dependabot
-lintrunner-adapters>=0.8.0
-# RUFF, RUFF-FIX
-ruff==0.0.278
+lintrunner-adapters>=0.11.0
+# RUFF
+ruff==0.1.4
 # BLACK-ISORT
-black==23.7.0
+black==23.10.1
 isort==5.12.0
-# PYLINT
-pylint==2.17.2
 # CLANGFORMAT
-clang-format==16.0.6
+clang-format==17.0.4

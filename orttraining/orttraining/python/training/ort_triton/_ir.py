@@ -5,7 +5,7 @@
 
 from abc import abstractmethod
 from collections import defaultdict
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import numpy as np
 import sympy
@@ -88,13 +88,15 @@ class OffsetCalculator:
                 self.r_strides.insert(0, self.r_strides[0] * self.r_dims[i + 1])
         self.r_compute_dims: Set[int] = set()
         self.input_strides: Dict[str, List[sympy.Expr]] = dict()
-        # Support concrete shape only for now.
-        assert self.x_numel.is_integer and self.r_numel.is_integer
         self.autotune_configs: AutotuneConfigs = AutotuneConfigs(
-            int(self.x_numel), int(self.r_numel), not self.is_reduction or self.reduce_axes[-1] == self.rank - 1
+            self.x_numel, self.r_numel, not self.is_reduction or self.reduce_axes[-1] == self.rank - 1
         )
-        self.requires_x_mask: bool = any(int(self.x_numel) % config[0] != 0 for config in self.autotune_configs.configs)
-        self.requires_r_mask: bool = any(int(self.r_numel) % config[1] != 0 for config in self.autotune_configs.configs)
+        self.requires_x_mask: bool = not self.x_numel.is_number or any(
+            int(self.x_numel) % config[0] != 0 for config in self.autotune_configs.configs
+        )
+        self.requires_r_mask: bool = not self.r_numel.is_number or any(
+            int(self.r_numel) % config[1] != 0 for config in self.autotune_configs.configs
+        )
         self.reduced_args: Set[str] = set()
 
     def get_input_strides(self, name: str) -> List[sympy.Expr]:
@@ -184,13 +186,24 @@ class ComputeNode(IRNode):
     Each operator is represented as a ComputeNode.
     """
 
-    def __init__(self, op_type: str, inputs: List[TensorArg], outputs: List[TensorArg]):
+    def __init__(
+        self,
+        op_type: str,
+        inputs: List[TensorArg],
+        outputs: List[TensorArg],
+        attributes: Dict[str, Any] = {},  # noqa: B006
+    ):
         super().__init__(inputs, outputs)
         self._op_type: str = op_type
+        self._attributes: Dict[str, Any] = attributes
 
     @property
     def op_type(self):
         return self._op_type
+
+    @property
+    def attributes(self):
+        return self._attributes
 
 
 class ReduceNode(ComputeNode):
@@ -289,17 +302,20 @@ class KernelNode(IRNode):
             self.var_map[name] = "t_" + name
         for name in self.internal_args:
             self.var_map[name] = gen_variable_name(name, "t", existing_names)
-        for constant_name in self.constants:
-            self.var_map[constant_name] = gen_variable_name(constant_name, "c", existing_names)
-            if self.constants[constant_name].data is not None:
-                value = self.constants[constant_name].data
+        for name, tensor_arg in self.constants.items():
+            self.var_map[name] = gen_variable_name(name, "c", existing_names)
+            if tensor_arg.data is not None:
+                value = tensor_arg.data
                 if value is not None:
                     assert value.size == 1, f"unsupported constant array {value}"
-                    variable_name = self.var_map[constant_name]
+                    variable_name = self.var_map[name]
                     assert variable_name not in self.var_map
                     self.var_map[variable_name] = str(np.array(value.item(), value.dtype))
-
-        self.symbolic_shape_variables = [str(dim) for dim in self.target_shape if dim.is_symbol]
+        seen = set()
+        for dim in self.target_shape:
+            if dim.is_symbol and dim not in seen:
+                seen.add(dim)
+                self.symbolic_shape_variables.append(str(dim))
 
 
 class ElementwiseKernelNode(KernelNode):

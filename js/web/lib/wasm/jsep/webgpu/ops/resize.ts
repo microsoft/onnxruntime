@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 
-import {TensorView} from '../../tensor';
+import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -435,8 +435,8 @@ const bicubicInterpolation =
     };
 
 const createResizeProgramInfo =
-    (metadata: ProgramMetadata, inputTensor: TensorView, attributes: ResizeAttributes, opsetVersion: number,
-     scalesInput: readonly number[], sizes: readonly number[], roiInput: readonly number[]): ProgramInfo => {
+    (inputTensor: TensorView, attributes: ResizeAttributes, opsetVersion: number, scalesInput: readonly number[],
+     sizes: readonly number[], roiInput: readonly number[]): ProgramInfo => {
       const inputShape = inputTensor.dims;
       const roi = updateRoI(roiInput, attributes.axes, inputShape.length);
 
@@ -454,6 +454,7 @@ const createResizeProgramInfo =
       const noScale = inputShape.length === outputShape.length && inputShape.every((d, i) => d === outputShape[i]);
       const useExtrapolation = attributes.coordinateTransformMode === 'tf_crop_and_resize';
       const getShaderSource = (shaderHelper: ShaderHelper) => `
+      ${noScale ? '' : `
       ${getOriginalCoordinateFromResizedCoordinate(attributes.coordinateTransformMode)};
       ${(() => {
         switch (attributes.mode) {
@@ -483,23 +484,22 @@ const createResizeProgramInfo =
             throw Error('Invalid resize mode');
         }
       })()};
+      `}
       ${shaderHelper.declareVariables(input, output)}
       ${shaderHelper.mainStart()}
         ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-        if (${noScale}) {
-          output[global_idx] = input[global_idx];
-        } else {
-          let outputIndices = ${output.offsetToIndices('global_idx')};
-          var inputIndices: ${input.type.indices};
-          ${(() => {
+        ${noScale ? 'output[global_idx] = input[global_idx];' : `
+        let outputIndices = ${output.offsetToIndices('global_idx')};
+        var inputIndices: ${input.type.indices};
+        ${(() => {
         switch (attributes.mode) {
           case 'nearest':
             return `inputIndices = calculateInputIndicesFromOutputIndices(outputIndices);
-                  if (checkInputIndices(inputIndices)) {
-                    output[global_idx] = input[${input.indicesToOffset('inputIndices')}];
-                  } else {
-                    output[global_idx] = ${attributes.extrapolationValue};
-                  }`;
+                if (checkInputIndices(inputIndices)) {
+                  output[global_idx] = input[${input.indicesToOffset('inputIndices')}];
+                } else {
+                  output[global_idx] = ${attributes.extrapolationValue};
+                }`;
           case 'linear':
             return 'output[global_idx] = bilinearInterpolation(outputIndices);';
           case 'cubic':
@@ -508,30 +508,20 @@ const createResizeProgramInfo =
             throw Error(`Unsupported resize mode: ${attributes.mode}`);
         }
       })()};
-        }
+        `}
       }`;
 
       return {
-        ...metadata,
-        getShaderSource,
-        outputs: [{dims: outputShape, dataType: inputTensor.dataType, gpuDataType: GpuDataType.default}],
-        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
-      };
-    };
-
-export const createResizeProgramInfoLoader =
-    (input: TensorView, attributes: ResizeAttributes, opsetVersion: number, scales: readonly number[],
-     sizes: readonly number[], roi: readonly number[]): ProgramInfoLoader => {
-      const metadata: ProgramMetadata = {
         name: 'Resize',
-        inputTypes: [GpuDataType.default],
-        cacheHint: attributes.cacheKey + opsetVersion.toString() +
-            (scales.length > 0 ? '_scales_' + scales.toString() : '') +
-            (sizes.length > 0 ? '_sizes_' + sizes.toString() : ''),
-      };
-      return {
-        ...metadata,
-        get: () => createResizeProgramInfo(metadata, input, attributes, opsetVersion, scales, sizes, roi)
+        shaderCache: {
+          hint: `${attributes.cacheKey}|${opsetVersion}|${scales.length > 0 ? scales : ''}|${
+              sizes.length > 0 ? sizes : ''}|${noScale}`
+        },
+        getShaderSource,
+        getRunData: () => ({
+          outputs: [{dims: outputShape, dataType: inputTensor.dataType}],
+          dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
+        })
       };
     };
 
@@ -549,7 +539,7 @@ export const resize = (context: ComputeContext, attributes: ResizeAttributes): v
   const opsetVersion = getOpsetVersionFromCustomDataBuffer(context);
   validateInputs(context.inputs, attributes, opsetVersion, scales, sizes, roi);
   context.compute(
-      createResizeProgramInfoLoader(context.inputs[0], attributes, opsetVersion, scales, sizes, roi), {inputs: [0]});
+      createResizeProgramInfo(context.inputs[0], attributes, opsetVersion, scales, sizes, roi), {inputs: [0]});
 };
 
 export const parseResizeAttributes = (attributes: Record<string, unknown>): ResizeAttributes => {

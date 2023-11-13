@@ -1,12 +1,11 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
-    "module": "CommonJS",
     "downlevelIteration": true,
     "declaration": true,
-    "declarationDir": "./types",
+    "noUnusedParameters": false,
     "typeRoots": ["./node_modules/@webgpu/types", "./node_modules/@types", "../node_modules/@types"]
   },
-  "include": ["lib", "script", "test"],
+  "include": ["lib", "test"],
   "exclude": ["lib/wasm/proxy-worker"]
 }

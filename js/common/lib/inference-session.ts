@@ -67,6 +67,13 @@ export declare namespace InferenceSession {
     interOpNumThreads?: number;
 
     /**
+     * The free dimension override.
+     *
+     * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
+     */
+    freeDimensionOverrides?: {readonly [dimensionName: string]: number};
+
+    /**
      * The optimization level.
      *
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
@@ -185,6 +192,7 @@ export declare namespace InferenceSession {
     wasm: WebAssemblyExecutionProviderOption;
     webgl: WebGLExecutionProviderOption;
     xnnpack: XnnpackExecutionProviderOption;
+    webgpu: WebGpuExecutionProviderOption;
     webnn: WebNNExecutionProviderOption;
     nnapi: NnapiExecutionProviderOption;
   }
@@ -226,9 +234,14 @@ export declare namespace InferenceSession {
   export interface XnnpackExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'xnnpack';
   }
+  export interface WebGpuExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'webgpu';
+    preferredLayout?: 'NCHW'|'NHWC';
+  }
   export interface WebNNExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'webnn';
     deviceType?: 'cpu'|'gpu';
+    numThreads?: number;
     powerPreference?: 'default'|'low-power'|'high-performance';
   }
   export interface CoreMLExecutionProviderOption extends ExecutionProviderOption {

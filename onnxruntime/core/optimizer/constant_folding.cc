@@ -185,19 +185,24 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         fetch_mlvalue_idxs.push_back(info.GetMLValueIndex(node_out->Name()));
       }
 
-      auto& ep_type = node->GetExecutionProviderType();
-      const bool node_on_cpu_ep = ep_type == kCpuExecutionProvider;
+      const bool node_on_cpu_ep = node->GetExecutionProviderType() == kCpuExecutionProvider;
 
-      // override the EP assigned to the node so that it will use the CPU kernel for Compute.
+      std::unique_ptr<const OpKernel> kernel;
+
       if (!node_on_cpu_ep) {
+        // We need to copy the string here instead of taking a reference to it since node->SetExecutionProviderType
+        // will change the value of the reference
+        auto ep_type = node->GetExecutionProviderType();
+
+        // override the EP assigned to the node so that it will use the CPU kernel for Compute.
         node->SetExecutionProviderType(kCpuExecutionProvider);
-      }
 
-      auto kernel = info.CreateKernel(node);
+        kernel = info.CreateKernel(node);
 
-      // undo the EP change to the value that was assigned at graph partitioning time
-      if (!node_on_cpu_ep) {
+        // undo the EP change to the value that was assigned at graph partitioning time
         node->SetExecutionProviderType(ep_type);
+      } else {
+        kernel = info.CreateKernel(node);
       }
 
       // We currently constant fold using the CPU EP only.
