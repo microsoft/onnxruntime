@@ -849,7 +849,7 @@ onnx_model = onnx.ModelProto()
 google.protobuf.text_format.Parse(onnx_model_text, onnx_model)
 
 # Uncomment this line to save the model to a file for examination
-# onnx.save_model(onnx_model, "test_output_match_opinfo__linalg_vector_norm_cpu_float16.onnx")
+# onnx.save_model(onnx_model, "transform_nested_ifs_toplogical_sorted_nodes.onnx")
 
 onnx.checker.check_model(onnx_model)
 session = ort.InferenceSession(onnx_model.SerializeToString(), session_options, providers=("CPUExecutionProvider",))

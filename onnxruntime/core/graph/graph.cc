@@ -4176,7 +4176,7 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
   // Look up nodes that would be providing input to our nodes (implicit and explicit)
   // and any nodes that take the output of our nodes (used to be If output)
   // Map of NodeArg name to pair of Node* and input index in the destination node
-  using NodeAndIndex = std::pair<Node*, int>;
+  using NodeAndIndex = std::pair<gsl::not_null<Node*>, int>;
   using ArgNameToNodeMap = InlinedHashMap<std::string_view, NodeAndIndex>;
   ArgNameToNodeMap input_args;
   // Map of NodeArg name to pair of Node* and output index in the source node.
@@ -4324,8 +4324,7 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
         if (hit != output_args.cend()) {
           // The input to this node is an output from a previous node in this graph.
           // Create relationship between this node (node), and the node providing the output (output_node).
-          const auto& producer = hit->second.first;
-          const auto src_idx = hit->second.second;
+          const auto& [producer, src_idx] = hit->second;
           AddEdge(producer->Index(), node->Index(), src_idx, arg_pos);
         }
       }
@@ -4339,8 +4338,7 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
         if (hit != input_args.cend()) {
           // The output of this node is an input to another node in this graph.
           // Create relationship between this node (node), and the node using the input (input_node).
-          const auto& consumer = hit->second.first;
-          const auto dst_idx = hit->second.second;
+          const auto& [consumer, dst_idx] = hit->second;
           AddEdge(node->Index(), consumer->Index(), arg_pos, dst_idx);
         }
       }
