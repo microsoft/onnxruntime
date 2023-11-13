@@ -15,7 +15,7 @@ parameters:
   EnvSetupScript: 'setup_env.bat'
   AgentPool: 'onnxruntime-Win-CPU-2022'
   AgentDemands: []
-  OrtPackageId: Microsoft.ML.OnnxRuntime
+  OrtPackageId: Microsoft.ML.OnnxRuntime.DirectML
   BuildConfigurations: ['RelWithDebInfo'] # Options: Debug, RelWithDebInfo
   RunTests : 'true'
   EnableLto: true
@@ -141,14 +141,6 @@ stages:
           platform: 'Any CPU'
           configuration: '$(BuildConfig)'
           msbuildArguments: '-t:restore -p:OrtPackageId=${{ parameters.OrtPackageId }}'
-          workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-      - task: PowerShell@2
-        displayName: Install workloads
-        inputs:
-          targetType: 'inline'
-          script: |
-            dotnet workload install macos
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
       - task: MSBuild@1
