@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
+#include <optional>
 
 #include "core/common/common.h"
 #include "core/common/gsl.h"
@@ -22,8 +23,6 @@
 #include "core/providers/coreml/coreml_provider_factory.h"
 #include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/coreml/shape_utils.h"
-
-#define HAS_GET_BYTES_WITH_HANDLER_API @available(macOS 12.3, iOS 15.4, *)
 
 // force the linker to create a dependency on the CoreML framework so that in MAUI usage we don't need
 // to manually do this
@@ -180,10 +179,10 @@ bool IsArrayContiguous(MLMultiArray* array) {
   return batch_stride == batch_elems;
 }
 
-onnxruntime::common::Status copyMLMultiArrayBuffer(const void* mlmultiarray_buffer, void* tensor_buffer,
-                                                   MLMultiArray* array_info, const OnnxTensorInfo& tensor_info,
-                                                   bool skip_buffer_size_check = true,
-                                                   const unsigned long mlmultiarray_buffer_size = 0) {
+Status CopyMLMultiArrayBuffer(const void* mlmultiarray_buffer, void* tensor_buffer,
+                              const MLMultiArray* array_info,
+                              const OnnxTensorInfo& tensor_info,
+                              const std::optional<unsigned long> mlmultiarray_buffer_size) {
   if (mlmultiarray_buffer == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "mlmultiarray_buffer has no data");
   }
@@ -193,14 +192,14 @@ onnxruntime::common::Status copyMLMultiArrayBuffer(const void* mlmultiarray_buff
   switch (onnx_data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
       const auto output_data_byte_size = num_elements * sizeof(float);
-      ORT_RETURN_IF_NOT(skip_buffer_size_check || mlmultiarray_buffer_size == output_data_byte_size,
+      ORT_RETURN_IF_NOT(!mlmultiarray_buffer_size || mlmultiarray_buffer_size == output_data_byte_size,
                         "CoreML output buffer size and expected output size differ");
       memcpy(tensor_buffer, mlmultiarray_buffer, output_data_byte_size);
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
       const auto output_data_byte_size = num_elements * sizeof(int32_t);
-      ORT_RETURN_IF_NOT(skip_buffer_size_check || mlmultiarray_buffer_size == output_data_byte_size,
+      ORT_RETURN_IF_NOT(!mlmultiarray_buffer_size || mlmultiarray_buffer_size == output_data_byte_size,
                         "CoreML output buffer size and expected output size differ");
       memcpy(tensor_buffer, mlmultiarray_buffer, output_data_byte_size);
       break;
@@ -211,7 +210,7 @@ onnxruntime::common::Status copyMLMultiArrayBuffer(const void* mlmultiarray_buff
     case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
       ORT_RETURN_IF_NOT(array_info.dataType == MLMultiArrayDataTypeInt32,
                         "CoreML output data type is not MLMultiArrayDataTypeInt32");
-      ORT_RETURN_IF_NOT(skip_buffer_size_check || mlmultiarray_buffer_size == num_elements * sizeof(int32_t),
+      ORT_RETURN_IF_NOT(!mlmultiarray_buffer_size || mlmultiarray_buffer_size == num_elements * sizeof(int32_t),
                         "CoreML output buffer size and expected output size differ");
       const auto model_output_span = gsl::span{static_cast<const int32_t*>(mlmultiarray_buffer), num_elements};
       const auto output_span = gsl::span{static_cast<int64_t*>(tensor_buffer), num_elements};
@@ -223,7 +222,7 @@ onnxruntime::common::Status copyMLMultiArrayBuffer(const void* mlmultiarray_buff
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                              "Output data type is not supported, actual type: ", onnx_data_type);
   }
-  return onnxruntime::common::Status::OK();
+  return Status::OK();
 }
 }  // namespace
 
@@ -354,9 +353,9 @@ NS_ASSUME_NONNULL_BEGIN
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "output_features has no value for ", output_name);
       }
 
-      __block MLMultiArray* data = [output_value multiArrayValue];
+      MLMultiArray* data = [output_value multiArrayValue];
 
-      const auto coreml_static_output_shape = [](MLMultiArray* data) {
+      const auto coreml_static_output_shape = [&data]() {
         InlinedVector<int64_t> result;
         result.reserve(data.shape.count);
         for (NSNumber* dim in data.shape) {
@@ -364,7 +363,7 @@ NS_ASSUME_NONNULL_BEGIN
           result.push_back(dim_value);
         }
         return result;
-      }(data);
+      }();
 
       const auto static_output_shape = GetStaticOutputShape(output_tensor_info.shape, coreml_static_output_shape,
                                                             *logger_);
@@ -382,18 +381,19 @@ NS_ASSUME_NONNULL_BEGIN
 
         ORT_RETURN_IF_NOT(IsArrayContiguous(data),
                           "Non-contiguous output MLMultiArray is not currently supported");
-        __block Status output_status;
-        __block const auto tensor_info = output_tensor_info;
-        if (HAS_GET_BYTES_WITH_HANDLER_API) {
+        __block Status copy_status;
+        const auto tensor_info = output_tensor_info;
+        // `getBytesWithHandler` replaces deprecated `.dataPointer` on new versions
+        if (@available(macOS 12.3, iOS 15.4, *)) {
           [data getBytesWithHandler:^(const void* bytes, NSInteger size) {
-            output_status = copyMLMultiArrayBuffer(bytes, output_buffer, data, tensor_info, true, size);
+            copy_status = CopyMLMultiArrayBuffer(bytes, output_buffer, data, tensor_info, size);
           }];
         } else {
           // disable size check as old API does not return buffer length
-          output_status = copyMLMultiArrayBuffer(data.dataPointer, output_buffer, data, tensor_info, false);
+          copy_status = CopyMLMultiArrayBuffer(data.dataPointer, output_buffer, data, tensor_info, std::nullopt);
         }
-        if (!output_status.IsOK())
-          return output_status;
+        if (!copy_status.IsOK())
+          return copy_status;
       }
     }
   }
