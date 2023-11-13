@@ -9,7 +9,8 @@
 
 namespace onnxruntime {
 
-bool GatherToSplitFusion::IsSupportedGather(const Graph& graph, const Node& node, int64_t& index, int64_t& axis, int64_t& indices_n_dims) const {
+bool GatherToSplitFusion::IsSupportedGather(const Graph& graph, const Node& node, int64_t& index, int64_t& axis,
+                                            int64_t& indices_n_dims) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gather", {1, 11, 13}) ||
       !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
     return false;
@@ -53,6 +54,19 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
+  InlinedVector<const NodeArg*> node_args;
+  for (auto node_arg : graph.GetInputs()) {
+    if (graph.GetConsumerNodes(node_arg->Name()).size() > 1) {
+      node_args.push_back(node_arg);
+    }
+  }
+
+  for (auto entry : graph.GetAllInitializedTensors()) {
+    if (graph.GetConsumerNodes(entry.first).size() > 1) {
+      node_args.push_back(&graph.GetOrCreateNodeArg(entry.first, nullptr));
+    }
+  }
+
   for (auto node_index : node_topology_list) {
     auto* p_node = graph.GetNode(node_index);
     if (p_node == nullptr) continue;  // we removed the node as part of an earlier fusion
@@ -73,7 +87,11 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     size_t output_count = node.GetOutputEdgesCount();
     if (output_count <= 1) continue;
 
-    auto shape = node.MutableOutputDefs()[0]->Shape();
+    node_args.push_back(node.OutputDefs()[0]);
+  }
+
+  for (const NodeArg* node_arg : node_args) {
+    auto shape = node_arg->Shape();
     if (!shape) continue;
     int64_t rank = static_cast<int64_t>(shape->dim_size());
 
@@ -81,11 +99,13 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     bool first_edge = true;
     int64_t split_axis = 0;
     int64_t indices_n_dims = -1;
-    InlinedVector<NodeArg*> gather_outputs(output_count, nullptr);
+    auto consumers = graph.GetConsumerNodes(node_arg->Name());
+    size_t consumer_count = consumers.size();
+    InlinedVector<NodeArg*> gather_outputs(consumer_count, nullptr);
     InlinedVector<std::reference_wrapper<Node>> nodes_to_fuse;
-    for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
+    for (auto consumer : consumers) {
       int64_t index, axis, dims;
-      if (!IsSupportedGather(graph, *it, index, axis, dims)) {
+      if (!IsSupportedGather(graph, *consumer, index, axis, dims)) {
         can_fuse = false;
         break;
       }
@@ -99,7 +119,7 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       if (axis < 0) axis += rank;
       if (first_edge) {
         auto dim = shape->dim(static_cast<int>(axis));
-        if (!utils::HasDimValue(dim) || dim.dim_value() != static_cast<int64_t>(output_count)) {
+        if (!utils::HasDimValue(dim) || dim.dim_value() != static_cast<int64_t>(consumer_count)) {
           can_fuse = false;
           break;
         }
@@ -109,12 +129,12 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
         can_fuse = false;
         break;
       }
-      if (index < 0) index += static_cast<int64_t>(output_count);
-      if (index < 0 || index >= static_cast<int64_t>(output_count) || gather_outputs[static_cast<size_t>(index)]) {
+      if (index < 0) index += static_cast<int64_t>(consumer_count);
+      if (index < 0 || index >= static_cast<int64_t>(consumer_count) || gather_outputs[static_cast<size_t>(index)]) {
         can_fuse = false;
         break;
       }
-      Node& gather_node = *graph.GetNode(it->Index());
+      Node& gather_node = *graph.GetNode(consumer->Index());
       nodes_to_fuse.emplace_back(gather_node);
       gather_outputs[static_cast<size_t>(index)] = gather_node.MutableOutputDefs()[0];
     }
@@ -122,8 +142,8 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     if (!can_fuse) continue;
 
     ONNX_NAMESPACE::TypeProto split_output_type;
-    const ONNX_NAMESPACE::TensorProto_DataType element_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(
-        node.MutableOutputDefs()[0]->TypeAsProto()->tensor_type().elem_type());
+    const ONNX_NAMESPACE::TensorProto_DataType element_type =
+        static_cast<ONNX_NAMESPACE::TensorProto_DataType>(node_arg->TypeAsProto()->tensor_type().elem_type());
     split_output_type.mutable_tensor_type()->set_elem_type(element_type);
     for (int64_t i = 0; i < rank; ++i) {
       if (i == split_axis) {
@@ -136,16 +156,17 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     InlinedVector<NodeArg*> split_outputs;
     bool add_squeeze_node = indices_n_dims == 0;
     if (add_squeeze_node) {
-      for (size_t i = 0; i < output_count; ++i) {
+      for (size_t i = 0; i < consumer_count; ++i) {
         split_outputs.emplace_back(
             &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("split" + std::to_string(i)), &split_output_type));
       }
     }
 
     Node& split_node = graph.AddNode(graph.GenerateNodeName("Split"), "Split", "Split for Fused Gather nodes",
-                                     {node.MutableOutputDefs()[0]}, add_squeeze_node ? split_outputs : gather_outputs);
+                                     {&graph.GetOrCreateNodeArg(node_arg->Name(), nullptr)},
+                                     add_squeeze_node ? split_outputs : gather_outputs);
     split_node.AddAttribute("axis", split_axis);
-    split_node.SetExecutionProviderType(node.GetExecutionProviderType());
+    split_node.SetExecutionProviderType(nodes_to_fuse[0].get().GetExecutionProviderType());
 
     // Squeeze-11, Squeee-13, Split-13, Split-18 have different schemas.
     int onnx_opset_version = -1;
@@ -155,16 +176,16 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
     if (onnx_opset_version < 13) {
       if (add_squeeze_node) {
-        for (size_t i = 0; i < output_count; ++i) {
+        for (size_t i = 0; i < consumer_count; ++i) {
           Node& squeeze_node = graph.AddNode(graph.GenerateNodeName("Squeeze" + std::to_string(i)), "Squeeze",
                                              "Squeeze for Fused Gather nodes", {split_outputs[i]}, {gather_outputs[i]});
           squeeze_node.AddAttribute("axes", std::vector<int64_t>{split_axis});
-          squeeze_node.SetExecutionProviderType(node.GetExecutionProviderType());
+          squeeze_node.SetExecutionProviderType(nodes_to_fuse[0].get().GetExecutionProviderType());
         }
       }
     } else {
       if (onnx_opset_version >= 18) {
-        split_node.AddAttribute("num_outputs", static_cast<int64_t>(output_count));
+        split_node.AddAttribute("num_outputs", static_cast<int64_t>(consumer_count));
       }
 
       if (add_squeeze_node) {
@@ -176,11 +197,11 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
         axes_initializer_proto.set_raw_data(axes_value.data(), axes_value.size() * sizeof(int64_t));
         NodeArg* axes_arg = &graph_utils::AddInitializer(graph, axes_initializer_proto);
 
-        for (size_t i = 0; i < output_count; ++i) {
+        for (size_t i = 0; i < consumer_count; ++i) {
           Node& squeeze_node =
               graph.AddNode(graph.GenerateNodeName("Squeeze" + std::to_string(i)), "Squeeze",
                             "Squeeze for Fused Gather nodes", {split_outputs[i], axes_arg}, {gather_outputs[i]});
-          squeeze_node.SetExecutionProviderType(node.GetExecutionProviderType());
+          squeeze_node.SetExecutionProviderType(nodes_to_fuse[0].get().GetExecutionProviderType());
         }
       }
     }
