@@ -2,7 +2,9 @@
 # Licensed under the MIT License.
 
 # This file is used by Zip-Nuget Packaging NoContribOps Pipeline,Zip-Nuget-Java Packaging Pipeline
-FROM nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+
+FROM $BASEIMAGE
 
 ENV PATH /usr/lib/jvm/msopenjdk-11/bin:/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ENV LANG=en_US.UTF-8
