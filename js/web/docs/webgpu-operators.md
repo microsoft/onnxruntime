@@ -21,6 +21,7 @@ Do not modify directly.*
 | Atan | ai.onnx(7+) |  |
 | Atanh | ai.onnx(9+) |  |
 | AveragePool | ai.onnx(7-9,10,11+); com.ms.internal.nhwc(7-9,10,11+) | need perf optimization; need implementing activation |
+| BatchNormalization | ai.onnx(7-8,9-13,14,15+); com.ms.internal.nhwc(9-13,14,15+) |  |
 | BiasAdd | com.microsoft(1+) |  |
 | BiasSplitGelu | com.microsoft(1+) |  |
 | Cast | ai.onnx(6-8,9-12,13-18,19+) |  |
