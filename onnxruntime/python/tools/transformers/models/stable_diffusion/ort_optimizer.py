@@ -91,7 +91,10 @@ class OrtStableDiffusionOptimizer:
         if keep_outputs:
             m.prune_graph(outputs=keep_outputs)
 
-        use_external_data_format = m.model.ByteSize() >= onnx.checker.MAXIMUM_PROTOBUF
+        model_size = m.model.ByteSize()
+
+        # model size might be negative (overflow?) in Windows.
+        use_external_data_format = model_size <= 0 or model_size >= onnx.checker.MAXIMUM_PROTOBUF
 
         # Note that ORT < 1.16 could not save model larger than 2GB.
         # This step is is optional since it has no impact on inference latency.

@@ -46,11 +46,18 @@ def load_pipelines(args, batch_size):
     if batch_size > max_batch_size:
         raise ValueError(f"Batch size {batch_size} is larger than allowed {max_batch_size}.")
 
+    # For TensorRT,  performance of engine built with dynamic shape is very sensitive to the range of image size.
+    # Here, we reduce the range of image size for TensorRT to trade-off flexibility and performance.
+    min_image_size = 832 if args.engine != "ORT_CUDA" else 512
+    max_image_size = 1216 if args.engine != "ORT_CUDA" else 2048
+
     # No VAE decoder in base when it outputs latent instead of image.
-    base_info = PipelineInfo(args.version, use_vae=False, min_image_size=640, max_image_size=1536)
+    base_info = PipelineInfo(args.version, use_vae=False, min_image_size=min_image_size, max_image_size=max_image_size)
     base = init_pipeline(Txt2ImgXLPipeline, base_info, engine_type, args, max_batch_size, batch_size)
 
-    refiner_info = PipelineInfo(args.version, is_refiner=True, min_image_size=640, max_image_size=1536)
+    refiner_info = PipelineInfo(
+        args.version, is_refiner=True, min_image_size=min_image_size, max_image_size=max_image_size
+    )
     refiner = init_pipeline(Img2ImgXLPipeline, refiner_info, engine_type, args, max_batch_size, batch_size)
 
     if engine_type == EngineType.TRT:
@@ -139,52 +146,57 @@ def run_demo(args):
 
 
 def run_dynamic_shape_demo(args):
-    """Run demo of generating images with different size with list of prompts with ORT CUDA provider."""
+    """Run demo of generating images with different settings with ORT CUDA provider."""
     args.engine = "ORT_CUDA"
-    args.scheduler = "UniPC"
-    args.denoising_steps = 8
     args.disable_cuda_graph = True
+    base, refiner = load_pipelines(args, 1)
 
-    batch_size = args.repeat_prompt
-    base, refiner = load_pipelines(args, batch_size)
-
-    image_sizes = [
-        (1024, 1024),
-        (1152, 896),
-        (896, 1152),
-        (1216, 832),
-        (832, 1216),
-        (1344, 768),
-        (768, 1344),
-        (1536, 640),
-        (640, 1536),
+    prompts = [
+        "starry night over Golden Gate Bridge by van gogh",
+        "beautiful photograph of Mt. Fuji during cherry blossom",
+        "little cute gremlin sitting on a bed, cinematic",
+        "cute grey cat with blue eyes, wearing a bowtie, acrylic painting",
+        "beautiful Renaissance Revival Estate, Hobbit-House, detailed painting, warm colors, 8k, trending on Artstation",
+        "blue owl, big green eyes, portrait, intricate metal design, unreal engine, octane render, realistic",
     ]
 
-    # Warm up the pipelines. This only need once before serving.
+    # batch size, height, width, scheduler, steps, prompt
+    configs = [
+        (1, 832, 1216, "UniPC", 8, prompts[0]),
+        (1, 1024, 1024, "DDIM", 24, prompts[1]),
+        (1, 1216, 832, "EulerA", 18, prompts[2]),
+        (2, 1344, 768, "DDIM", 30, prompts[3]),
+        (2, 640, 1536, "UniPC", 18, prompts[4]),
+        (2, 1152, 896, "EulerA", 30, prompts[5]),
+    ]
+
+    # Warm up (for cudnn convolution algo search) once before serving.
     args.prompt = ["warm up"]
-    args.num_warmup_runs = 3
-    prompt, negative_prompt = repeat_prompt(args)
-    for height, width in image_sizes:
+    args.num_warmup_runs = 1
+    for batch_size, height, width, _, _, _ in configs:
+        args.batch_size = batch_size
         args.height = height
         args.width = width
-        print(f"\nWarm up pipelines for Batch_size={batch_size}, Height={height}, Width={width}")
+        print(f"\nWarm up batch_size={batch_size}, height={height}, width={width}")
+        prompt, negative_prompt = repeat_prompt(args)
         run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=True)
 
     # Run pipeline on a list of prompts.
-    prompts = [
-        "starry night over Golden Gate Bridge by van gogh",
-        "little cute gremlin sitting on a bed, cinematic",
-    ]
     args.num_warmup_runs = 0
-    for example_prompt in prompts:
+    for batch_size, height, width, scheduler, steps, example_prompt in configs:
         args.prompt = [example_prompt]
+        args.batch_size = batch_size
+        args.height = height
+        args.width = width
+        args.scheduler = scheduler
+        args.denoising_steps = steps
+        base.set_scheduler(scheduler)
+        refiner.set_scheduler(scheduler)
+        print(
+            f"\nbatch_size={batch_size}, height={height}, width={width}, scheduler={scheduler}, steps={steps}, prompt={example_prompt}"
+        )
         prompt, negative_prompt = repeat_prompt(args)
-
-        for height, width in image_sizes:
-            args.height = height
-            args.width = width
-            print(f"\nBatch_size={batch_size}, Height={height}, Width={width}, Prompt={example_prompt}")
-            run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False)
+        run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False)
 
     base.teardown()
     refiner.teardown()

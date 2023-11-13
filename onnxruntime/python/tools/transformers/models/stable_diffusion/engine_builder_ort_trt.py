@@ -13,6 +13,7 @@ from cuda import cudart
 from diffusion_models import PipelineInfo
 from engine_builder import EngineBuilder, EngineType
 from ort_utils import CudaSession
+from packaging import version
 
 import onnxruntime as ort
 
@@ -20,7 +21,17 @@ logger = logging.getLogger(__name__)
 
 
 class OrtTensorrtEngine(CudaSession):
-    def __init__(self, engine_path, device_id, onnx_path, fp16, input_profile, workspace_size, enable_cuda_graph):
+    def __init__(
+        self,
+        engine_path,
+        device_id,
+        onnx_path,
+        fp16,
+        input_profile,
+        workspace_size,
+        enable_cuda_graph,
+        timing_cache_path=None,
+    ):
         self.engine_path = engine_path
         self.ort_trt_provider_options = self.get_tensorrt_provider_options(
             input_profile,
@@ -28,6 +39,7 @@ class OrtTensorrtEngine(CudaSession):
             fp16,
             device_id,
             enable_cuda_graph,
+            timing_cache_path=timing_cache_path,
         )
 
         session_options = ort.SessionOptions()
@@ -45,7 +57,9 @@ class OrtTensorrtEngine(CudaSession):
         device = torch.device("cuda", device_id)
         super().__init__(ort_session, device, enable_cuda_graph)
 
-    def get_tensorrt_provider_options(self, input_profile, workspace_size, fp16, device_id, enable_cuda_graph):
+    def get_tensorrt_provider_options(
+        self, input_profile, workspace_size, fp16, device_id, enable_cuda_graph, timing_cache_path=None
+    ):
         trt_ep_options = {
             "device_id": device_id,
             "trt_fp16_enable": fp16,
@@ -54,6 +68,9 @@ class OrtTensorrtEngine(CudaSession):
             "trt_detailed_build_log": True,
             "trt_engine_cache_path": self.engine_path,
         }
+
+        if version.parse(ort.__version__) > version.parse("1.16.2") and timing_cache_path is not None:
+            trt_ep_options["trt_timing_cache_path"] = timing_cache_path
 
         if enable_cuda_graph:
             trt_ep_options["trt_cuda_graph_enable"] = True
@@ -153,6 +170,7 @@ class OrtTensorrtEngineBuilder(EngineBuilder):
         static_image_shape=True,
         max_workspace_size=0,
         device_id=0,
+        timing_cache=None,
     ):
         self.torch_device = torch.device("cuda", device_id)
         self.load_models(framework_model_dir)
@@ -224,7 +242,6 @@ class OrtTensorrtEngineBuilder(EngineBuilder):
 
             engine_path = self.get_engine_path(engine_dir, model_name, profile_id)
             onnx_opt_path = self.get_onnx_path(model_name, onnx_dir, opt=True)
-
             if not self.has_engine_file(engine_path):
                 logger.info(
                     "Building TensorRT engine for %s from %s to %s. It can take a while to complete...",
@@ -251,6 +268,7 @@ class OrtTensorrtEngineBuilder(EngineBuilder):
                 input_profile=input_profile,
                 workspace_size=self.get_work_space_size(model_name, max_workspace_size),
                 enable_cuda_graph=self.use_cuda_graph,
+                timing_cache_path=timing_cache,
             )
 
             built_engines[model_name] = engine
