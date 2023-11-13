@@ -53,7 +53,9 @@ if __name__ == "__main__":
             f"Batch size {len(prompt)} is larger than allowed {max_batch_size}. If dynamic shape is used, then maximum batch size is 4"
         )
 
-    pipeline_info = PipelineInfo(args.version)
+    min_image_size = 512
+    max_image_size = 1024 if args.version in ["2.0", "2.1"] else 768
+    pipeline_info = PipelineInfo(args.version, min_image_size=min_image_size, max_image_size=max_image_size)
     pipeline = init_pipeline(Txt2ImgPipeline, pipeline_info, engine_type, args, max_batch_size, batch_size)
 
     if engine_type == EngineType.TRT:
