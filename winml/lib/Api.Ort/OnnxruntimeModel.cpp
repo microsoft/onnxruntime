@@ -81,7 +81,8 @@ HRESULT ModelInfo::RuntimeClassInitialize(_In_ OnnxruntimeEngineFactory* engine_
     winml_adapter_api->ModelGetInputCount,
     winml_adapter_api->ModelGetInputName,
     winml_adapter_api->ModelGetInputDescription,
-    winml_adapter_api->ModelGetInputTypeInfo};
+    winml_adapter_api->ModelGetInputTypeInfo
+  };
 
   // Create inputs
   std::vector<OnnxruntimeValueInfoWrapper> inputs;
@@ -93,7 +94,8 @@ HRESULT ModelInfo::RuntimeClassInitialize(_In_ OnnxruntimeEngineFactory* engine_
     winml_adapter_api->ModelGetOutputCount,
     winml_adapter_api->ModelGetOutputName,
     winml_adapter_api->ModelGetOutputDescription,
-    winml_adapter_api->ModelGetOutputTypeInfo};
+    winml_adapter_api->ModelGetOutputTypeInfo
+  };
 
   std::vector<OnnxruntimeValueInfoWrapper> outputs;
   RETURN_IF_FAILED(CreateFeatureDescriptors(engine_factory, &output_helpers, ort_model, outputs));
