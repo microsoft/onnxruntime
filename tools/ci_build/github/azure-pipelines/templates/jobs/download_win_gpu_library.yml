@@ -35,7 +35,7 @@ steps:
 
     - ${{ if eq(parameters.CUDA_Version, '12.2') }}:
       - powershell: |
-          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/TensorRT-.6.1.6.Windows10.x86_64.cuda-12.0 $(Agent.TempDirectory)
+          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0 $(Agent.TempDirectory)
         displayName: 'Download TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0'
       - powershell: |
           Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0\lib"
