@@ -7,10 +7,42 @@
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
 #include "matmul_bnb4.cuh"
+#include "dequantize_blockwise_bnb4.cuh"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+template <class T>
+__device__ inline float ScalarMulFloatOut(T a, T b);
+
+template <>
+__device__ inline float ScalarMulFloatOut(float a, float b) {
+  return a * b;
+}
+
+template <>
+__device__ inline float ScalarMulFloatOut(half a, half b) {
+  #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
+    return static_cast<float>(a * b);
+  #else
+    // half multiplication not supported
+    return static_cast<float>(a) * static_cast<float>(b);
+  #endif
+}
+
+template <>
+__device__ inline float ScalarMulFloatOut(BFloat16 a, BFloat16 b) {
+  return a * b;
+}
+
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+// will use the native bfloat16 multiply instruction on sm_80+
+template <>
+__device__ inline float ScalarMulFloatOut(nv_bfloat16 a, nv_bfloat16 b) {
+  return static_cast<float>(a * b);
+}
+#endif
 
 #define num_values_4bit 32
 template <class T, int THREADS, int BITS>
@@ -55,7 +87,7 @@ __global__ void kgemm_4bit_inference_naive(
     int inner_idx_halved = inner_idx / 2;
     int offset_B = ldb * row_B;
     int absidx = ((2 * offset_B) + inner_idx) / block_size;
-    local_absmax = __ldg(&(absmax[absidx]));
+    local_absmax = absmax[absidx];
 
     if (row_B < N) {
       if ((inner_idx_halved + num_values_8bit) < (K / 2)) {
@@ -78,18 +110,8 @@ __global__ void kgemm_4bit_inference_naive(
     for (int i = 0; i < 4; i++) {
       #pragma unroll
       for (int k = 0; k < num_values_8bit / 4; k++) {
-        #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
-          local_B[k * 2] = quant_map[local_B_4bit[(i * num_values_8bit / 4) + k] >> 4] * local_absmax;
-          local_B[k * 2 + 1] = quant_map[local_B_4bit[(i * num_values_8bit / 4) + k] & 0x0F] * local_absmax;
-        #else
-          // half multiplication not supported
-          local_B[k * 2] =
-              static_cast<T>(static_cast<float>(quant_map[local_B_4bit[(i * num_values_8bit / 4) + k] >> 4]) *
-                            static_cast<float>(local_absmax));
-          local_B[k * 2 + 1] =
-              static_cast<T>(static_cast<float>(quant_map[local_B_4bit[(i * num_values_8bit / 4) + k] & 0x0F]) *
-                            static_cast<float>(local_absmax));
-        #endif
+        local_B[k * 2] = ScalarMul(quant_map[local_B_4bit[(i * num_values_8bit / 4) + k] >> 4], local_absmax);
+        local_B[k * 2 + 1] = ScalarMul(quant_map[local_B_4bit[(i * num_values_8bit / 4) + k] & 0x0F], local_absmax);
       }
 
       if (inner_idx + (num_values_4bit / 4) + (i * num_values_4bit / 4) < K) {
@@ -116,12 +138,7 @@ __global__ void kgemm_4bit_inference_naive(
       // accumulate in float; small performance hit for Ampere, but lower error for outputs
       #pragma unroll
       for (int k = 0; k < num_values_4bit / 4; k++) {
-        #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
-          local_C += static_cast<float>(local_A[k] * local_B[k]);
-        #else
-          // half multiplication not supported
-          local_C += static_cast<float>(local_A[k]) * static_cast<float>(local_B[k]);
-        #endif
+        local_C += ScalarMulFloatOut(local_A[k], local_B[k]);
       }
     }
   }
@@ -129,6 +146,39 @@ __global__ void kgemm_4bit_inference_naive(
   local_C = WarpReduce(temp_storage[warp_idx]).Sum(local_C);
 
   if (row_B < N && warp_lane == 0) out[row_B] = T(local_C);
+}
+
+bool CheckDims(int m, int k, int block_size) {
+  if (k % block_size != 0 || m > 1) {
+    return false;
+  }
+  // supported block_sizes are [4096, 2048, 1024, 512, 256, 128, 64, 32]
+  if (block_size % 32 != 0 || block_size > 4096) {
+    return false;
+  }
+  return true;
+}
+
+template <class T>
+void Callkgemm_4bit_inference_naive(
+    const T* quant_map,
+    T* output,
+    const T* a_data,
+    const uint8_t* b_data_quant,
+    const T* absmax,
+    int m,
+    int n,
+    int k,
+    int block_size,
+    cudaStream_t stream) {
+  int lda = k;
+  int ldb = (k + 1) / 2;
+  int ldc = n;
+  int num_blocks = (n + 3) / 4;
+
+  constexpr int bits = std::is_same_v<T, float> ? 32 : 16;
+  kgemm_4bit_inference_naive<T, 128, bits><<<num_blocks, 128, 0, stream>>>(
+      m, n, k, a_data, b_data_quant, absmax, quant_map, output, lda, ldb, ldc, block_size);
 }
 
 template <class T>
@@ -143,22 +193,12 @@ bool TryMatMulBnb4(
     int k,
     int block_size,
     cudaStream_t stream) {
-  if (k % block_size != 0 || m > 1) {
-    return false;
-  }
-  // supported block_sizes are [4096, 2048, 1024, 512, 256, 128, 64, 32]
-  if (block_size % 32 != 0 || block_size > 4096) {
+  if (!CheckDims(m, k, block_size)) {
     return false;
   }
 
-  int lda = k;
-  int ldb = (k + 1) / 2;
-  int ldc = n;
-  int num_blocks = (n + 3) / 4;
-
-  constexpr int bits = std::is_same_v<T, half> ? 16 : 32;
-  kgemm_4bit_inference_naive<T, 128, bits><<<num_blocks, 128, 0, stream>>>(
-      m, n, k, a_data, b_data_quant, absmax, quant_map, output, lda, ldb, ldc, block_size);
+  Callkgemm_4bit_inference_naive<T>(
+      quant_map, output, a_data, b_data_quant, absmax, m, n, k, block_size, stream);
 
   return true;
 }
@@ -186,6 +226,42 @@ template bool TryMatMulBnb4<half>(
     int k,
     int block_size,
     cudaStream_t stream);
+
+template <>
+bool TryMatMulBnb4<BFloat16>(
+    const BFloat16* quant_map,
+    BFloat16* output,
+    const BFloat16* a_data,
+    const uint8_t* b_data_quant,
+    const BFloat16* absmax,
+    int m,
+    int n,
+    int k,
+    int block_size,
+    cudaStream_t stream) {
+  if (!CheckDims(m, k, block_size)) {
+    return false;
+  }
+
+  #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 800
+    Callkgemm_4bit_inference_naive<nv_bfloat16>(
+        reinterpret_cast<const nv_bfloat16*>(quant_map),
+        reinterpret_cast<nv_bfloat16*>(output),
+        reinterpret_cast<const nv_bfloat16*>(a_data),
+        b_data_quant,
+        reinterpret_cast<const nv_bfloat16*>(absmax),
+        m,
+        n,
+        k,
+        block_size,
+        stream);
+  #else
+    Callkgemm_4bit_inference_naive<BFloat16>(
+        quant_map, output, a_data, b_data_quant, absmax, m, n, k, block_size, stream);
+  #endif
+
+  return true;
+}
 
 }  // namespace cuda
 }  // namespace contrib
