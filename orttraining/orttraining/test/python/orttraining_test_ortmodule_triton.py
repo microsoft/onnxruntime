@@ -5,6 +5,7 @@ import copy
 import json
 import os
 import random
+import uuid
 
 import _test_helpers
 import onnx
@@ -200,7 +201,8 @@ def _run_op_test(op_type, onnx_dtype, create_model_func, gen_inputs_func, **kwar
         _, op_type = op_type.split("::")
     pt_outputs = TorchFuncExecutor.run(op_type, *pt_inputs, **kwargs)
     model_str = create_model_func(op_type, onnx_dtype, **kwargs).SerializeToString()
-    ort_outputs = call_triton_by_onnx(hash(model_str), model_str, *[to_dlpack(tensor) for tensor in ort_inputs])
+    unique_id = uuid.uuid1().int >> 64
+    ort_outputs = call_triton_by_onnx(unique_id, model_str, *[to_dlpack(tensor) for tensor in ort_inputs])
     if isinstance(pt_outputs, tuple):
         assert isinstance(ort_outputs, tuple)
         assert len(pt_outputs) == len(ort_outputs)
@@ -229,9 +231,9 @@ def _run_module_test(module_cls, dtype, gen_inputs_func, triton_op_count, **kwar
         ort_output = _run_step(ort_model, *ort_inputs)
         _test_helpers.assert_values_are_close(pt_output, ort_output, rtol=rtol, atol=atol)
         _test_helpers.assert_gradients_match_and_reset_gradient(pt_model, ort_model, rtol=rtol, atol=atol)
-        for i in range(len(pt_inputs)):
-            if pt_inputs[i].requires_grad:
-                _test_helpers.assert_values_are_close(pt_inputs[i].grad, ort_inputs[i].grad, rtol=rtol, atol=atol)
+        for idx, pt_input in enumerate(pt_inputs):
+            if pt_input.requires_grad:
+                _test_helpers.assert_values_are_close(pt_input.grad, ort_inputs[idx].grad, rtol=rtol, atol=atol)
 
     assert os.path.exists(os.path.join(os.getcwd(), "triton_model_torch_exported_training.onnx"))
     assert os.path.exists(os.path.join(os.getcwd(), "triton_model_optimized_training.onnx"))
@@ -250,12 +252,12 @@ def _run_module_test(module_cls, dtype, gen_inputs_func, triton_op_count, **kwar
 
 
 def _run_tunable_op_test(module_cls, dtype, gen_inputs_func, tunable_op, impl_count, **kwargs):
+    os.environ["ORTMODULE_ENABLE_TUNING"] = "1"
+    os.environ["ORTMODULE_TUNING_RESULTS_PATH"] = "./"
     pt_model = module_cls().to(DEVICE).to(dtype)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     rtol = kwargs.get("rtol", 1e-03 if dtype == torch.float16 else 1e-04)
     atol = kwargs.get("atol", 1e-03 if dtype == torch.float16 else 1e-05)
-    os.environ["ORTMODULE_ENABLE_TUNING"] = "1"
-    os.environ["ORTMODULE_TUNING_RESULTS_PATH"] = "./"
     for _ in range(5):
         pt_inputs = gen_inputs_func(dtype)
         ort_inputs = copy.deepcopy(pt_inputs)
@@ -265,7 +267,7 @@ def _run_tunable_op_test(module_cls, dtype, gen_inputs_func, tunable_op, impl_co
         _test_helpers.assert_gradients_match_and_reset_gradient(pt_model, ort_model, rtol=rtol, atol=atol)
     tunable_results_file = os.path.join(os.getcwd(), "tuning_results_training.json")
     assert os.path.exists(tunable_results_file)
-    with open(tunable_results_file) as f:
+    with open(tunable_results_file, encoding="UTF-8") as f:
         tunable_results = json.load(f)
     assert tunable_op in str(tunable_results)
     del os.environ["ORTMODULE_ENABLE_TUNING"]
@@ -275,7 +277,7 @@ def _run_tunable_op_test(module_cls, dtype, gen_inputs_func, tunable_op, impl_co
             if tunable_op in k:
                 for param, impl in v.items():
                     v[param] = (impl + 1 + i) % impl_count
-        with open(tunable_results_file, "w") as f:
+        with open(tunable_results_file, "w", encoding="UTF-8") as f:
             json.dump(new_tunable_results, f)
         ort_model = ORTModule(copy.deepcopy(pt_model))
         for _ in range(5):
@@ -779,6 +781,43 @@ def test_layer_norm_module(dtype, input_shapes_and_axis):
         ]
 
     _run_module_test(NeuralNetLayerNorm, dtype, _gen_inputs, 2)
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_dynamic_shapes_elementwise_module(dtype):
+    class NeuralNetSymbolicShapesElementwise(torch.nn.Module):
+        def forward(self, x, y, u, v):
+            return x * y - (u + v)
+
+    def _gen_inputs(dtype):
+        dim1 = 64 * random.randint(2, 4)
+        dim2 = 64 * random.randint(2, 4)
+        return [
+            torch.rand(16, dim1, dim2, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(16, 1, dim2, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(dim1, 1, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(16, dim1, dim2, dtype=dtype, device=DEVICE, requires_grad=True),
+        ]
+
+    _run_module_test(NeuralNetSymbolicShapesElementwise, dtype, _gen_inputs, 1)
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_dynamic_shapes_reduction_module(dtype):
+    class NeuralNetSymbolicShapesReduction(torch.nn.Module):
+        def forward(self, x, y, z):
+            return torch.softmax(x * y + z, dim=-1)
+
+    def _gen_inputs(dtype):
+        dim1 = 64 * random.randint(2, 4)
+        dim2 = 64 * random.randint(2, 4)
+        return [
+            torch.rand(16, dim1, dim2, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(16, 1, dim2, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(dim1, 1, dtype=dtype, device=DEVICE, requires_grad=True),
+        ]
+
+    _run_module_test(NeuralNetSymbolicShapesReduction, dtype, _gen_inputs, 2)
 
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
