@@ -80,12 +80,12 @@ CUTLASS_DEVICE static void run_mma(Mma mma, int gemm_k_iterations, typename Mma:
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
-template <typename Mma_,                 ///! Threadblock-scoped matrix multiply-accumulate
-          typename Epilogue_,            ///! Epilogue
-          typename ThreadblockSwizzle_,  ///! Threadblock swizzling function
-          typename KernelArch,           ///! The Architecture this kernel is compiled for. Used since SIMT kernels lose
-                                         /// top-level
-                                /// arch.
+template <typename Mma_,                        ///! Threadblock-scoped matrix multiply-accumulate
+          typename Epilogue_,                   ///! Epilogue
+          typename ThreadblockSwizzle_,         ///! Threadblock swizzling function
+          typename KernelArch,                  ///! The Architecture this kernel is compiled for. Used since SIMT kernels lose
+                                                /// top-level
+                                                /// arch.
           GroupScheduleMode GroupScheduleMode_  ///! Type of scheduling to perform
           >
 struct MoeFCGemm {
