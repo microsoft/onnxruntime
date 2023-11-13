@@ -106,14 +106,14 @@ __launch_bounds__(TPB) __global__
 
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
 template <typename T, int TPB>
-__launch_bounds__(TPB) __global__ void moe_top_k(const T*, const bool*, T*, int*, int*, const int, const int) {
+__launch_bounds__(TPB) __global__ void moe_top_k(const T*, const bool*, T*, int*, int*, int, const int) {
   // Does not support pre-Kepler architectures
   ;
 }
 #else
 template <typename T, int TPB>
 __launch_bounds__(TPB) __global__ void moe_top_k(const T* inputs_after_softmax, const bool* finished, T* output,
-                                                 int* indices, int* source_rows, const int num_experts, const int k) {
+                                                 int* indices, int* source_rows, int num_experts, int k) {
   using cub_kvp = cub::KeyValuePair<int, T>;
   using BlockReduce = cub::BlockReduce<cub_kvp, TPB>;
   __shared__ typename BlockReduce::TempStorage tmpStorage;
@@ -121,7 +121,7 @@ __launch_bounds__(TPB) __global__ void moe_top_k(const T* inputs_after_softmax, 
   cub_kvp thread_kvp;
   cub::ArgMax arg_max;
 
-  const int num_rows = gridDim.x;
+  int num_rows = gridDim.x;
   const int block_row = blockIdx.x;
 
   const bool should_process_row = finished ? !finished[block_row] : true;
@@ -175,8 +175,8 @@ __launch_bounds__(TPB) __global__ void moe_top_k(const T* inputs_after_softmax, 
 
 template <typename T, int VPT, int NUM_EXPERTS, int WARPS_PER_CTA, int BYTES_PER_LDG>
 __launch_bounds__(WARPS_PER_CTA* WARP_SIZE) __global__
-    void topk_gating_softmax(const T* input, const bool* finished, T* output, const int num_rows, int* indices,
-                             int* source_rows, const int k) {
+    void topk_gating_softmax(const T* input, const bool* finished, T* output, int num_rows, int* indices,
+                             int* source_rows, int k) {
   // We begin by enforcing compile time assertions and setting up compile time constants.
   static_assert(VPT == (VPT & -VPT), "VPT must be power of 2");
   static_assert(NUM_EXPERTS == (NUM_EXPERTS & -NUM_EXPERTS), "NUM_EXPERTS must be power of 2");
@@ -368,7 +368,7 @@ struct TopkConstants {
 
 template <typename T, int EXPERTS, int WARPS_PER_TB>
 void topk_gating_softmax_launcher_helper(const T* input, const bool* finished, T* output, int* indices, int* source_row,
-                                         const int num_rows, const int num_experts, const int k, cudaStream_t stream) {
+                                         int num_rows, int num_experts, int k, cudaStream_t stream) {
   static constexpr unsigned long MAX_BYTES_PER_LDG = 16;
 
   static constexpr int BYTES_PER_LDG = std::min((int)MAX_BYTES_PER_LDG, (int)sizeof(T) * EXPERTS);
@@ -385,8 +385,8 @@ void topk_gating_softmax_launcher_helper(const T* input, const bool* finished, T
 
 template <typename T>
 void topk_gating_softmax_kernelLauncher(const T* input, const bool* finished, T* output, T* softmax_temp_output,
-                                        int* indices, int* source_row, const int num_rows, const int num_experts,
-                                        const int k, cudaStream_t stream) {
+                                        int* indices, int* source_row, int num_rows, int num_experts,
+                                        int k, cudaStream_t stream) {
   static constexpr int WARPS_PER_TB = 4;
 
   switch (num_experts) {
@@ -442,10 +442,10 @@ void topk_gating_softmax_kernelLauncher(const T* input, const bool* finished, T*
 // ========================== CUB Sorting things ====================================
 CubKeyValueSorter::CubKeyValueSorter() : num_experts_(0), num_bits_(sizeof(int) * 8) {}
 
-CubKeyValueSorter::CubKeyValueSorter(const int num_experts)
+CubKeyValueSorter::CubKeyValueSorter(int num_experts)
     : num_experts_(num_experts), num_bits_((int)log2(num_experts) + 1) {}
 
-void CubKeyValueSorter::update_num_experts(const int num_experts) {
+void CubKeyValueSorter::update_num_experts(int num_experts) {
   num_experts_ = num_experts;
   num_bits_ = (int)log2(num_experts) + 1;
 }
@@ -507,9 +507,9 @@ CutlassMoeFCRunner<T, WeightType, Enable>::CutlassMoeFCRunner(int sm_version) {
 }
 
 template <typename T, typename WeightType, typename Enable>
-size_t CutlassMoeFCRunner<T, WeightType, Enable>::getWorkspaceSize(const int num_rows, const int hidden_size,
-                                                                   const int inter_size, const int num_experts,
-                                                                   const int k) {
+size_t CutlassMoeFCRunner<T, WeightType, Enable>::getWorkspaceSize(int num_rows, const int hidden_size,
+                                                                   const int inter_size, int num_experts,
+                                                                   int k) {
   const int buf_size = static_cast<int>(pad_to_multiple_of_16(k * num_rows * hidden_size));
   const int interbuf_size = static_cast<int>(pad_to_multiple_of_16(k * num_rows * inter_size));
   const int padded_experts = static_cast<int>(pad_to_multiple_of_16(num_experts));
@@ -542,9 +542,9 @@ size_t CutlassMoeFCRunner<T, WeightType, Enable>::getWorkspaceSize(const int num
 }
 
 template <typename T, typename WeightType, typename Enable>
-void CutlassMoeFCRunner<T, WeightType, Enable>::configure_ws_ptrs(char* ws_ptr, const int num_rows,
+void CutlassMoeFCRunner<T, WeightType, Enable>::configure_ws_ptrs(char* ws_ptr, int num_rows,
                                                                   const int hidden_size, const int inter_size,
-                                                                  const int num_experts, const int k) {
+                                                                  int num_experts, int k) {
   const int buf_size = static_cast<int>(pad_to_multiple_of_16(k * num_rows * hidden_size));
   const int interbuf_size = static_cast<int>(pad_to_multiple_of_16(k * num_rows * inter_size));
   const int padded_experts = static_cast<int>(pad_to_multiple_of_16(num_experts));
@@ -572,8 +572,8 @@ template <typename T, typename WeightType, typename Enable>
 void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
     const T* input_activations, const T* gating_output, const WeightType* fc1_expert_weights, const T* fc1_scales,
     const T* fc1_expert_biases, ActivationType fc1_activation_type, const WeightType* fc2_expert_weights,
-    const T* fc2_scales, const int num_rows, const int hidden_size, const int inter_size, const int num_experts,
-    const int k, char* workspace_ptr, T* fc2_result, const bool* finished, const int active_rows, T* expert_scales,
+    const T* fc2_scales, int num_rows, const int hidden_size, const int inter_size, int num_experts,
+    int k, char* workspace_ptr, T* fc2_result, const bool* finished, int active_rows, T* expert_scales,
     int* expanded_source_row_to_expanded_dest_row, int* expert_for_source_row, cudaStream_t stream) {
   static constexpr bool scales_required =
       std::is_same<WeightType, uint8_t>::value || std::is_same<WeightType, cutlass::uint4b_t>::value;
@@ -620,8 +620,8 @@ template <typename T, typename WeightType, typename Enable>
 void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
     const T* input_activations, const T* gating_output, const WeightType* fc1_expert_weights, const T* fc1_scales,
     const T* fc1_expert_biases, ActivationType fc1_activation_type, const WeightType* fc2_expert_weights,
-    const T* fc2_scales, const int num_rows, const int hidden_size, const int inter_size, const int num_experts,
-    const int k, char* workspace_ptr, T* fc2_result, T* expert_scales, int* expanded_source_row_to_expanded_dest_row,
+    const T* fc2_scales, int num_rows, const int hidden_size, const int inter_size, int num_experts,
+    int k, char* workspace_ptr, T* fc2_result, T* expert_scales, int* expanded_source_row_to_expanded_dest_row,
     int* expert_for_source_row, cudaStream_t stream) {
   run_moe_fc(input_activations, gating_output, fc1_expert_weights, fc1_scales, fc1_expert_biases, fc1_activation_type,
              fc2_expert_weights, fc2_scales, num_rows, hidden_size, inter_size, num_experts, k, workspace_ptr,
@@ -632,7 +632,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
 template <typename T, typename WeightType, typename Enable>
 void CutlassMoeFCRunner<T, WeightType, Enable>::compute_total_rows_before_expert(const int* sorted_indices,
                                                                                  const int total_indices,
-                                                                                 const int num_experts,
+                                                                                 int num_experts,
                                                                                  int64_t* total_rows_before_expert,
                                                                                  cudaStream_t stream) {
   const int threads = std::min(1024, num_experts);
@@ -658,8 +658,8 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::compute_total_rows_before_expert
 template <typename T>
 __global__ void initialize_moe_routing_kernel(const T* unpermuted_input, T* permuted_output,
                                               const int* expanded_dest_row_to_expanded_source_row,
-                                              int* expanded_source_row_to_expanded_dest_row, const int num_rows,
-                                              const int active_rows, const int cols) {
+                                              int* expanded_source_row_to_expanded_dest_row, int num_rows,
+                                              int active_rows, int cols) {
   // Reverse permutation map.
   // I do this so that later, we can use the source -> dest map to do the k-way reduction and unpermuting. I need the
   // reverse map for that reduction to allow each threadblock to do 1 k-way reduce without atomics later in MoE. 1
@@ -686,8 +686,8 @@ __global__ void initialize_moe_routing_kernel(const T* unpermuted_input, T* perm
 template <typename T>
 void initialize_moe_routing_kernelLauncher(const T* unpermuted_input, T* permuted_output,
                                            const int* expanded_dest_row_to_expanded_source_row,
-                                           int* expanded_source_row_to_expanded_dest_row, const int num_rows,
-                                           const int active_rows, const int cols, const int k, cudaStream_t stream) {
+                                           int* expanded_source_row_to_expanded_dest_row, int num_rows,
+                                           int active_rows, int cols, int k, cudaStream_t stream) {
   const int blocks = num_rows * k;
   const int threads = std::min(cols, 1024);
   initialize_moe_routing_kernel<T>
@@ -700,7 +700,7 @@ void initialize_moe_routing_kernelLauncher(const T* unpermuted_input, T* permute
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
 template <typename T, int RESIDUAL_NUM>
 __global__ void finalize_moe_routing_kernel(const T*, T*, const T*, const T*, const T*, const T*, const int*,
-                                            const int*, const int, const int) {
+                                            const int*, int, const int) {
   // Does not support pre-Kepler architectures
   ;
 }
@@ -709,9 +709,9 @@ template <typename T, int RESIDUAL_NUM>
 __global__ void finalize_moe_routing_kernel(const T* expanded_permuted_rows, T* reduced_unpermuted_output,
                                             const T* skip_1, const T* skip_2, const T* bias, const T* scales,
                                             const int* expanded_source_row_to_expanded_dest_row,
-                                            const int* expert_for_source_row, const int cols, const int k) {
+                                            const int* expert_for_source_row, int cols, int k) {
   const int original_row = blockIdx.x;
-  const int num_rows = gridDim.x;
+  int num_rows = gridDim.x;
   T* reduced_row_ptr = reduced_unpermuted_output + original_row * cols;
 
   const T* skip_1_row_ptr = nullptr;
@@ -753,8 +753,8 @@ __global__ void finalize_moe_routing_kernel(const T* expanded_permuted_rows, T* 
 template <typename T>
 void finalize_moe_routing_kernelLauncher(const T* expanded_permuted_rows, T* reduced_unpermuted_output, const T* bias,
                                          const T* scales, const int* expanded_source_row_to_expanded_dest_row,
-                                         const int* expert_for_source_row, const int num_rows, const int cols,
-                                         const int k, cudaStream_t stream) {
+                                         const int* expert_for_source_row, int num_rows, int cols,
+                                         int k, cudaStream_t stream) {
   const int blocks = num_rows;
   const int threads = std::min(cols, 1024);
   finalize_moe_routing_kernel<T, 0><<<blocks, threads, 0, stream>>>(
@@ -766,8 +766,8 @@ template <typename T>
 void finalize_moe_routing_kernelLauncher(const T* expanded_permuted_rows, T* reduced_unpermuted_output, const T* skip,
                                          const T* bias, const T* scales,
                                          const int* expanded_source_row_to_expanded_dest_row,
-                                         const int* expert_for_source_row, const int num_rows, const int cols,
-                                         const int k, cudaStream_t stream) {
+                                         const int* expert_for_source_row, int num_rows, int cols,
+                                         int k, cudaStream_t stream) {
   const int blocks = num_rows;
   const int threads = std::min(cols, 1024);
   finalize_moe_routing_kernel<T, 1>
@@ -779,8 +779,8 @@ template <typename T>
 void finalize_moe_routing_kernelLauncher(const T* expanded_permuted_rows, T* reduced_unpermuted_output, const T* skip_1,
                                          const T* skip_2, const T* bias, const T* scales,
                                          const int* expanded_source_row_to_expanded_dest_row,
-                                         const int* expert_for_source_row, const int num_rows, const int cols,
-                                         const int k, cudaStream_t stream) {
+                                         const int* expert_for_source_row, int num_rows, int cols,
+                                         int k, cudaStream_t stream) {
   const int blocks = num_rows;
   const int threads = std::min(cols, 1024);
   if (skip_2 == nullptr) {
@@ -795,36 +795,36 @@ void finalize_moe_routing_kernelLauncher(const T* expanded_permuted_rows, T* red
 }
 
 // ========================= TopK Softmax specializations ===========================
-template void topk_gating_softmax_kernelLauncher(const float*, const bool*, float*, float*, int*, int*, const int,
-                                                 const int, const int, cudaStream_t);
-template void topk_gating_softmax_kernelLauncher(const half*, const bool*, half*, half*, int*, int*, const int,
-                                                 const int, const int, cudaStream_t);
+template void topk_gating_softmax_kernelLauncher(const float*, const bool*, float*, float*, int*, int*, int,
+                                                 int, int, cudaStream_t);
+template void topk_gating_softmax_kernelLauncher(const half*, const bool*, half*, half*, int*, int*, int,
+                                                 int, int, cudaStream_t);
 
 // ==================== Variable batched GEMM specializations ==================================
 template class CutlassMoeFCRunner<float, float>;
 template class CutlassMoeFCRunner<half, half>;
 
 // ===================== Specializations for init routing =========================
-template void initialize_moe_routing_kernelLauncher(const float*, float*, const int*, int*, const int, const int,
-                                                    const int, const int, cudaStream_t);
-template void initialize_moe_routing_kernelLauncher(const half*, half*, const int*, int*, const int, const int,
-                                                    const int, const int, cudaStream_t);
+template void initialize_moe_routing_kernelLauncher(const float*, float*, const int*, int*, int, int,
+                                                    int, int, cudaStream_t);
+template void initialize_moe_routing_kernelLauncher(const half*, half*, const int*, int*, int, int,
+                                                    int, int, cudaStream_t);
 
 // ==================== Specializations for final routing ===================================
 template void finalize_moe_routing_kernelLauncher(const float*, float*, const float*, const float*, const int*,
-                                                  const int*, const int, const int, const int, cudaStream_t);
+                                                  const int*, int, int, int, cudaStream_t);
 template void finalize_moe_routing_kernelLauncher(const half*, half*, const half*, const half*, const int*, const int*,
-                                                  const int, const int, const int, cudaStream_t);
+                                                  int, int, int, cudaStream_t);
 template void finalize_moe_routing_kernelLauncher(const float*, float*, const float*, const float*, const float*,
-                                                  const int*, const int*, const int, const int, const int,
+                                                  const int*, const int*, int, int, int,
                                                   cudaStream_t);
 template void finalize_moe_routing_kernelLauncher(const half*, half*, const half*, const half*, const half*, const int*,
-                                                  const int*, const int, const int, const int, cudaStream_t);
+                                                  const int*, int, int, int, cudaStream_t);
 template void finalize_moe_routing_kernelLauncher(const float*, float*, const float*, const float*, const float*,
-                                                  const float*, const int*, const int*, const int, const int, const int,
+                                                  const float*, const int*, const int*, int, int, int,
                                                   cudaStream_t);
 template void finalize_moe_routing_kernelLauncher(const half*, half*, const half*, const half*, const half*,
-                                                  const half*, const int*, const int*, const int, const int, const int,
+                                                  const half*, const int*, const int*, int, int, int,
                                                   cudaStream_t);
 
 }  // namespace ort_fastertransformer
