@@ -90,6 +90,7 @@ class PipelineInfo:
         use_vae=False,
         min_image_size=256,
         max_image_size=1024,
+        use_fp16_vae=True,
     ):
         self.version = version
         self._is_inpaint = is_inpaint
@@ -97,6 +98,7 @@ class PipelineInfo:
         self._use_vae = use_vae
         self._min_image_size = min_image_size
         self._max_image_size = max_image_size
+        self._use_fp16_vae = use_fp16_vae
         if is_refiner:
             assert self.is_xl()
 
@@ -126,6 +128,13 @@ class PipelineInfo:
 
     def vae_scaling_factor(self) -> float:
         return 0.13025 if self.is_xl() else 0.18215
+
+    def vae_torch_fallback(self) -> bool:
+        return self.is_xl() and not self._use_fp16_vae
+
+    def custom_fp16_vae(self) -> Optional[str]:
+        # For SD XL, use a VAE that fine-tuned to run in fp16 precision without generating NaNs
+        return "madebyollin/sdxl-vae-fp16-fix" if self._use_fp16_vae and self.is_xl() else None
 
     @staticmethod
     def supported_versions(is_xl: bool):
