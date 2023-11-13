@@ -12,6 +12,11 @@ struct LogicalProcessorInformation {
   size_t Length;
 };
 
+struct CoreCounter {
+  long long PhysicalCores = 0;
+  long long SocDieCores = 0;
+};
+
 static LogicalProcessorInformation GetLogicalProcessorInfos(LOGICAL_PROCESSOR_RELATIONSHIP relationship) {
   DWORD length = 0;
   DWORD rc = GetLogicalProcessorInformationEx(relationship, nullptr, &length);
@@ -29,8 +34,7 @@ static LogicalProcessorInformation GetLogicalProcessorInfos(LOGICAL_PROCESSOR_RE
   return {std::move(processorInformationBytes), length};
 }
 
-static long long GetNumberOfSoCDieAtoms() {
-  // while (Size > (ULONG)FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Processor)) {
+static long long GetNumberOfSoCDieCores() {
   DWORD dwLevel2GroupMask = 0;
   DWORD dwLevel3GroupMask = 0;
   DWORD dwSoCGroupMask = 0;
@@ -59,32 +63,37 @@ static long long GetNumberOfSoCDieAtoms() {
   return __popcnt(dwSoCGroupMask);
 }
 
-static long long GetNumberOfCores() {
+static CoreCounter GetNumberOPhysicalAndEngineeringCores() {
   auto logicalProcessorInformation = GetLogicalProcessorInfos(RelationProcessorCore);
-  auto processorInformation = (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)logicalProcessorInformation.Buffer.get();
 
-  KAFFINITY coreMask = 0;
+  CoreCounter cores;
   size_t read = 0;
-  while (read <= logicalProcessorInformation.Length) {
-    switch (processorInformation->Relationship) {
+  PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX currentProcessorInfo = NULL;
+
+  while ((read + FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Processor)) < logicalProcessorInformation.Length) {
+    currentProcessorInfo = (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)(logicalProcessorInformation.Buffer.get() + read);
+    if ((read + currentProcessorInfo->Size) > logicalProcessorInformation.Length) {
+      break;
+    }
+
+    switch (currentProcessorInfo->Relationship) {
       case RelationProcessorCore:
-        coreMask |= processorInformation->Processor.GroupMask->Mask;
+        cores.PhysicalCores++;
         break;
     }
 
-    read += sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX);
-    processorInformation++;
+    read += currentProcessorInfo->Size;
   }
-  return __popcnt64(coreMask);
+
+  cores.SocDieCores = GetNumberOfSoCDieCores();
+  return cores;
 }
 
 uint32_t HardwareCoreEnumerator::DefaultIntraOpNumThreads() {
-  auto get_number_of_cores = static_cast<uint32_t>(GetNumberOfCores());
-  auto get_number_of_soc_die_atoms = static_cast<uint32_t>(GetNumberOfSoCDieAtoms());
-  auto num_p_and_e_cores = get_number_of_cores - get_number_of_soc_die_atoms;
-  printf("num_cores = %d, get_number_of_cores = %d, get_number_of_soc_die_atoms = %d\n", num_cores, get_number_of_cores,
-get_number_of_soc_die_atoms);
-  return num_p_and_e_cores;
+  // # of physical cores = # of P cores + # of E Cores + # of Soc Cores.
+  // # of logical cores = # of P cores x 2 (if hyper threading is enabled) + # of E cores + # of Soc Cores.
+  auto cores = GetNumberOPhysicalAndEngineeringCores();
+  return static_cast<uint32_t>(cores.PhysicalCores - cores.SocDieCores);
 }
 
 }  // namespace WINMLP
