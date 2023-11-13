@@ -241,6 +241,7 @@ export declare namespace InferenceSession {
   export interface WebNNExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'webnn';
     deviceType?: 'cpu'|'gpu';
+    numThreads?: number;
     powerPreference?: 'default'|'low-power'|'high-performance';
   }
   export interface CoreMLExecutionProviderOption extends ExecutionProviderOption {
