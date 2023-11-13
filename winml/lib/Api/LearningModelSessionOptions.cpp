@@ -3,11 +3,22 @@
 
 #include "lib/Api/pch/pch.h"
 #include "LearningModelSessionOptions.h"
+#include "HardwareCoreEnumerator.h"
 
 namespace WINMLP {
+
+LearningModelSessionOptions::LearningModelSessionOptions()
+{
+  intra_op_num_threads_override_ = HardwareCoreEnumerator::DefaultIntraOpNumThreads();
+}
+
+
 LearningModelSessionOptions::LearningModelSessionOptions(const LearningModelSessionOptions& options)
   : batch_size_override_(options.batch_size_override_),
-    close_model_on_session_creation_(options.close_model_on_session_creation_) {
+    close_model_on_session_creation_(options.close_model_on_session_creation_),
+    named_dim_overrides_(options.named_dim_overrides_),
+    intra_op_num_threads_override_(options.intra_op_num_threads_override_),
+    custom_ops_lib_paths_(options.custom_ops_lib_paths_) {
 }
 
 uint32_t LearningModelSessionOptions::BatchSizeOverride() {
