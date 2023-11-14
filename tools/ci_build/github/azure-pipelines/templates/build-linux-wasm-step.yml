@@ -38,6 +38,7 @@ steps:
 
   - ${{if eq(parameters.WithCache, true)}}:
     - script: |
+        set -e -x
         pushd '$(Build.SourcesDirectory)/cmake/external/emsdk'
         source ./emsdk_env.sh
         export PATH=$(Build.SourcesDirectory)/cmake/external/emsdk/:$PATH
