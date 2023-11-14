@@ -81,9 +81,6 @@ jobs:
       versionSpec: '3.8'
       addToPath: true
       architecture: $(buildArch)
-  - task: NodeTool@0
-    inputs:
-      versionSpec: '18.x'
   - template: download-deps.yml
 
   - task: PythonScript@0
