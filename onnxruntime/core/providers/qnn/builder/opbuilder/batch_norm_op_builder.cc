@@ -251,7 +251,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     return Status::OK();
   }
 
-  Status PreprocessMean(const OnnxInputInfo& mean_info,
+  Status PreprocessMean(const TensorInfo& mean_info,
                         const bool is_npu_backend,
                         const uint8_t* mean_raw_ptr,
                         const size_t mean_raw_ptr_length,
@@ -273,7 +273,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     return Status::OK();
   }
 
-  Status PreprocessStd(const OnnxInputInfo& var_info,
+  Status PreprocessStd(const TensorInfo& var_info,
                        const bool is_npu_backend,
                        const uint8_t* var_raw_ptr,
                        const size_t var_raw_ptr_length,
@@ -297,7 +297,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     return Status::OK();
   }
 
-  Status PreprocessScale(const OnnxInputInfo& scale_info,
+  Status PreprocessScale(const TensorInfo& scale_info,
                          const bool is_npu_backend,
                          const uint8_t* scale_raw_ptr,
                          const size_t scale_raw_ptr_length,
@@ -325,7 +325,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     return Status::OK();
   }
 
-  Status PreprocessBias(const OnnxInputInfo& bias_info,
+  Status PreprocessBias(const TensorInfo& bias_info,
                         const bool is_npu_backend,
                         const uint8_t* bias_raw_ptr,
                         const size_t bias_raw_ptr_length,
@@ -354,7 +354,7 @@ class BatchNormOpBuilder : public BaseOpBuilder {
     return Status::OK();
   }
 
-  Status Postprocess(const OnnxInputInfo& info,
+  Status Postprocess(const TensorInfo& info,
                      const bool is_npu_backend,
                      const std::vector<double>& double_tensor,
                      const double rmax,
@@ -476,14 +476,14 @@ Status BatchNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   {
     const std::string& scale_name = inputs[1].node_arg.Name();
     const std::string& bias_name = inputs[2].node_arg.Name();
-    OnnxInputInfo var_info = {};
-    OnnxInputInfo mean_info = {};
-    OnnxInputInfo scale_info = {};
-    OnnxInputInfo bias_info = {};
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[1], scale_info));
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[2], bias_info));
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[3], mean_info));
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[4], var_info));
+    TensorInfo var_info = {};
+    TensorInfo mean_info = {};
+    TensorInfo scale_info = {};
+    TensorInfo bias_info = {};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[1], scale_info));
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[2], bias_info));
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[3], mean_info));
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[4], var_info));
 
     // scale, bias, mean, and var must be initializers
     ORT_RETURN_IF_NOT(scale_info.is_initializer, "scale must be initializers");
