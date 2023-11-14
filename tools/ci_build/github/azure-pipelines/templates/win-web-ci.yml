@@ -158,7 +158,7 @@ jobs:
     displayName: 'Pack NPM packages'
   - task: PowerShell@2
     inputs:
-      scriptType: 'inline'
+      targetType: 'inline'
       script: Get-WmiObject Win32_Process -Filter "name = 'msedge.exe'" | Select-Object CommandLine | Format-List
       workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Dump active Edge processes (before tests 0)'
@@ -174,7 +174,7 @@ jobs:
     condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
   - task: PowerShell@2
     inputs:
-      scriptType: 'inline'
+      targetType: 'inline'
       script: Get-WmiObject Win32_Process -Filter "name = 'msedge.exe'" | Select-Object CommandLine | Format-List
       workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Dump active Edge processes (before tests 1)'
@@ -189,7 +189,7 @@ jobs:
     continueOnError: true
   - task: PowerShell@2
     inputs:
-      scriptType: 'inline'
+      targetType: 'inline'
       script: Get-WmiObject Win32_Process -Filter "name = 'msedge.exe'" | Select-Object CommandLine | Format-List
       workingDirectory: '$(Build.SourcesDirectory)\js\web'
     condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
@@ -201,7 +201,7 @@ jobs:
     condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
   - task: PowerShell@2
     inputs:
-      scriptType: 'inline'
+      targetType: 'inline'
       script: Get-WmiObject Win32_Process -Filter "name = 'msedge.exe'" | Select-Object CommandLine | Format-List
       workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Dump active Edge processes (before tests 3)'
@@ -211,7 +211,7 @@ jobs:
     displayName: 'Run ort-web tests - WebGL: packed mode'
   - task: PowerShell@2
     inputs:
-      scriptType: 'inline'
+      targetType: 'inline'
       script: Get-WmiObject Win32_Process -Filter "name = 'msedge.exe'" | Select-Object CommandLine | Format-List
       workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Dump active Edge processes (before tests 4)'
@@ -222,13 +222,13 @@ jobs:
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
   - task: PowerShell@2
     inputs:
-      scriptType: 'inline'
+      targetType: 'inline'
       script: Get-WmiObject Win32_Process -Filter "name = 'msedge.exe'" | Select-Object CommandLine | Format-List
       workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Dump active Edge processes (before E2E tests)'
   - task: PowerShell@2
     inputs:
-      scriptType: 'inline'
+      targetType: 'inline'
       script: dir -r $(Build.SourcesDirectory)\build\js\e2e
       workingDirectory: '$(Build.SourcesDirectory)\js\web'
       errorActionPreference: continue
