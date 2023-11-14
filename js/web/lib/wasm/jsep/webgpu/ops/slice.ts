@@ -161,12 +161,12 @@ const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: Slice
     nameToTypeMap.set('starts', starts.length > 1 ? `vec${starts.length}<u32>` : 'u32');
     nameToTypeMap.set('signs', signs.length > 1 ? `vec${signs.length}<i32>` : 'i32');
     nameToTypeMap.set('steps', steps.length > 1 ? `vec${steps.length}<u32>` : 'u32');
-    programUniforms.push({type: 'uint32', data: starts})
-    programUniforms.push({type: 'uint32', data: signs})
-    programUniforms.push({type: 'uint32', data: steps})
+    programUniforms.push({type: 'uint32', data: starts});
+    programUniforms.push({type: 'uint32', data: signs});
+    programUniforms.push({type: 'uint32', data: steps});
   }
   nameToTypeMap.set('outputSize', 'u32');
-  programUniforms.push({type: 'uint32', data: outputSize})
+  programUniforms.push({type: 'uint32', data: outputSize});
   if (enableInputShapeUniforms) {
     programUniforms.push(...createTensorShapeVariables(inputs[0].dims));
   }

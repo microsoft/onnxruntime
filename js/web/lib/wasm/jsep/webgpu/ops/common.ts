@@ -757,7 +757,9 @@ class ShaderHelperImpl implements ShaderHelper {
   }
 
   registerUniforms(nameToTypeMap: Map<string, string>): ShaderHelper {
-    nameToTypeMap.forEach((type: string, name: string) => {this.registerUniform(name, type)});
+    nameToTypeMap.forEach((type: string, name: string) => {
+      this.registerUniform(name, type);
+    });
     return this;
   }
 
