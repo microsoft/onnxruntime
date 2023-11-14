@@ -502,22 +502,22 @@
 			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
 
 		'linux,Python,X64,MIGraphX':
-			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
+			"pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-rocm<br/>Build from source by following build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
 
 		'linux,C-API,X64,MIGraphX':
-			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
+			"pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-rocm<br/>Build from source by following build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
 
 		'linux,C++,X64,MIGraphX':
-			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
+			"pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-rocm<br/>Build from source by following build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
 
 		'linux,Python,X64,ROCm':
-			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
+			"pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-rocm<br/>Build from source by following build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
 
 		'linux,C-API,X64,ROCm':
-			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
+			"pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-rocm<br/>Build from source by following build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
 
 		'linux,C++,X64,ROCm':
-			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
+			"pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-rocm<br/>Build from source by following build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
 
 		'linux,Python,ARM64,ACL':
 			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
@@ -691,10 +691,10 @@
 			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training<br/>pip install torch-ort<br/>python -m torch_ort.configure',
 
 		'ot_linux,ot_large_model,ot_python,ot_X64,ot_ROCm,ot_stable':
-			"pip install onnxruntime-training -f https://download.onnxruntime.ai/onnxruntime_stable_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a class='text-blue-500' href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+			"pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-rocm<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a class='text-blue-500' href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
 
 		'ot_linux,ot_large_model,ot_python,ot_X64,ot_ROCm,ot_nightly':
-			"pip install onnxruntime-training -f https://download.onnxruntime.ai/onnxruntime_nightly_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a class='text-blue-500' href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+			"pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-training-rocm<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a class='text-blue-500' href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
 
 		'ot_linux,ot_on_device,ot_python,ot_X64,ot_CPU,ot_stable':
 			'python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0<br/>pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu',
