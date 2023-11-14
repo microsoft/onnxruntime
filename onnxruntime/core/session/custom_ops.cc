@@ -790,8 +790,14 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
     }
     std::string input_name = "Input" + std::to_string(i);
     schema.Input(gsl::narrow_cast<int>(i), input_name, "", input_name, option, is_homogeneous, min_arity);
-    // support all types as input here in schema, and handle the type inference in TypeShapeInference func
-    schema.TypeConstraint(input_name, DataTypeImpl::ToString(SUPPORTED_TENSOR_TYPES), "all types");
+
+    const auto input_type = op->GetInputType(op, i);
+    if (input_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
+      const ONNX_NAMESPACE::TypeProto* type_proto = DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(input_type))->GetTypeProto();
+      schema.TypeConstraint(input_name, {*ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto)}, "one type");
+    } else {
+      schema.TypeConstraint(input_name, DataTypeImpl::ToString(SUPPORTED_TENSOR_TYPES), "all types");
+    }
   }
 
   for (size_t i = 0; i < output_count; i++) {
@@ -828,8 +834,14 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
     }
     std::string output_name = "Output" + std::to_string(i);
     schema.Output(gsl::narrow_cast<int>(i), output_name, "", output_name, option, is_homogeneous, min_arity);
-    // support all types as input here in schema, and handle the type inference in TypeShapeInference func
-    schema.TypeConstraint(output_name, DataTypeImpl::ToString(SUPPORTED_TENSOR_TYPES), "all types");
+
+    const auto output_type = op->GetOutputType(op, i);
+    if (output_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
+      const ONNX_NAMESPACE::TypeProto* type_proto = DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(output_type))->GetTypeProto();
+      schema.TypeConstraint(output_name, {*ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto)}, "one type");
+    } else {
+      schema.TypeConstraint(output_name, DataTypeImpl::ToString(SUPPORTED_TENSOR_TYPES), "all types");
+    }
   }
   schema.SetDomain(domain);
   if (op->version >= min_ort_version_with_custom_version && op->GetStartVersion) {
