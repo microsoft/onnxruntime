@@ -321,7 +321,7 @@ static std::optional<OrtDmlPerformancePreference> ParsePerformancePreference(con
 }
 
 static std::optional<OrtDmlDeviceFilter> ParseFilter(const ProviderOptions& provider_options) {
-  static const std::string Filter = "filter";
+  static const std::string Filter = "device_filter";
   static const std::string Any = "any";
   static const std::string Gpu = "gpu";
   static const std::string Npu = "npu";

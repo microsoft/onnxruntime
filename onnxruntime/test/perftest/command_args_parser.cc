@@ -58,6 +58,10 @@ namespace perftest {
       "\t-q [CUDA only] use separate stream for copy. \n"
       "\t-z: Set denormal as zero. When turning on this option reduces latency dramatically, a model may have denormals.\n"
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
+      "\t    [DML only] [performance_preference]: DML device performance preference, options: 'default', 'minimum_power', 'high_performance', \n"
+      "\t    [DML only] [device_filter]: DML device filter, options: 'any', 'gpu', 'npu', \n"
+      "\t    [DML only] [disable_metacommands]: Options: 'true', 'false', \n"
+      "\t    [DML only] [enable_dynamic_graph_fusion]: Options: 'true', 'false', \n"
       "\t    [OpenVINO only] [device_type]: Overrides the accelerator hardware type and precision with these values at runtime.\n"
       "\t    [OpenVINO only] [device_id]: Selects a particular hardware device for inference.\n"
       "\t    [OpenVINO only] [enable_npu_fast_compile]: Optionally enabled to speeds up the model's compilation on NPU device targets.\n"
@@ -143,7 +147,7 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:AMPIDZvhsqz"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("k:b:m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:AMPIDZvhsqz"))) != -1) {
     switch (ch) {
       case 'f': {
         std::basic_string<ORTCHAR_T> dim_name;
@@ -293,6 +297,13 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
         }
         break;
       }
+      case 'k':
+        if (!CompareCString(optarg, ORT_TSTR("cpu"))) {
+          test_config.run_config.native_bindings = false;
+        } else if (!CompareCString(optarg, ORT_TSTR("native"))) {
+          test_config.run_config.native_bindings = true;
+        }
+        break;
       case 'u':
         test_config.run_config.optimized_model_path = optarg;
         break;
