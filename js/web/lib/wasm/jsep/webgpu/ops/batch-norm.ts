@@ -4,9 +4,9 @@
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata, TensorInfo} from '../types';
+import {ComputeContext, GpuDataType, ProgramInfo, TensorInfo} from '../types';
 
-import {IndicesHelper, inputVariable, outputVariable, ShaderHelper, WORKGROUP_SIZE} from './common';
+import {inputVariable, outputVariable, ShaderHelper, WORKGROUP_SIZE} from './common';
 
 export interface BatchNormAttributes extends AttributeWithCacheKey {
   readonly epsilon: number;
@@ -67,101 +67,94 @@ const validateInputs = (inputs: readonly TensorView[], attributes: BatchNormAttr
   }
 };
 
-const createBatchNormProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: BatchNormAttributes): ProgramInfo => {
-      const {epsilon, momentum, spatial, trainingMode, format, outputCount} = attributes;
-      const shape = inputs[0].dims;
+const createBatchNormProgramInfo = (inputs: readonly TensorView[], attributes: BatchNormAttributes): ProgramInfo => {
+  const {epsilon, momentum, spatial, trainingMode, format, outputCount} = attributes;
+  const shape = inputs[0].dims;
 
-      const outputs = Object.seal<Record<typeof format, TensorInfo[]>>({
-        nhwc: [
-          [inputs[0].dataType, shape, GpuDataType.default],
-          [(inputs[3] ?? inputs[0]).dataType, shape.length > 1 ? shape.slice(-1) : [1], GpuDataType.default],
-          [(inputs[4] ?? inputs[0]).dataType, shape.length > 1 ? shape.slice(-1) : [1], GpuDataType.default],
-          [(inputs[3] ?? inputs[0]).dataType, shape.length > 1 ? shape.slice(-1) : [1], GpuDataType.default],
-          [(inputs[4] ?? inputs[0]).dataType, shape.length > 1 ? shape.slice(-1) : [1], GpuDataType.default],
-        ].map(([dataType, dims, gpuDataType]: [number, number[], GpuDataType]) => ({dataType, dims, gpuDataType})),
+  const outputs = Object.seal<Record<typeof format, TensorInfo[]>>({
+    nhwc: [
+      [inputs[0].dataType, shape, GpuDataType.default],
+      [(inputs[3] ?? inputs[0]).dataType, shape.length > 1 ? shape.slice(-1) : [1], GpuDataType.default],
+      [(inputs[4] ?? inputs[0]).dataType, shape.length > 1 ? shape.slice(-1) : [1], GpuDataType.default],
+      [(inputs[3] ?? inputs[0]).dataType, shape.length > 1 ? shape.slice(-1) : [1], GpuDataType.default],
+      [(inputs[4] ?? inputs[0]).dataType, shape.length > 1 ? shape.slice(-1) : [1], GpuDataType.default],
+    ].map(([dataType, dims, gpuDataType]: [number, number[], GpuDataType]) => ({dataType, dims, gpuDataType})),
 
-        nchw: [
-          [
-            inputs[0].dataType,
-            shape,
-            GpuDataType.default,
-          ],
-          [
-            (inputs[3] ?? inputs[0]).dataType,
-            shape.length > 1 ? shape.slice(1, spatial ? 2 : undefined) : [1],
-            GpuDataType.default,
-          ],
-          [
-            (inputs[4] ?? inputs[0]).dataType,
-            shape.length > 1 ? shape.slice(1, spatial ? 2 : undefined) : [1],
-            GpuDataType.default,
-          ],
-          [
-            (inputs[3] ?? inputs[0]).dataType,
-            shape.length > 1 ? shape.slice(1, spatial ? 2 : undefined) : [1],
-            GpuDataType.default,
-          ],
-          [
-            (inputs[4] ?? inputs[0]).dataType,
-            shape.length > 1 ? shape.slice(1, spatial ? 2 : undefined) : [1],
-            GpuDataType.default,
-          ],
-        ].map(([dataType, dims, gpuDataType]: [number, number[], GpuDataType]) => ({dataType, dims, gpuDataType})),
-      })[format];
+    nchw: [
+      [
+        inputs[0].dataType,
+        shape,
+        GpuDataType.default,
+      ],
+      [
+        (inputs[3] ?? inputs[0]).dataType,
+        shape.length > 1 ? shape.slice(1, spatial ? 2 : undefined) : [1],
+        GpuDataType.default,
+      ],
+      [
+        (inputs[4] ?? inputs[0]).dataType,
+        shape.length > 1 ? shape.slice(1, spatial ? 2 : undefined) : [1],
+        GpuDataType.default,
+      ],
+      [
+        (inputs[3] ?? inputs[0]).dataType,
+        shape.length > 1 ? shape.slice(1, spatial ? 2 : undefined) : [1],
+        GpuDataType.default,
+      ],
+      [
+        (inputs[4] ?? inputs[0]).dataType,
+        shape.length > 1 ? shape.slice(1, spatial ? 2 : undefined) : [1],
+        GpuDataType.default,
+      ],
+    ].map(([dataType, dims, gpuDataType]: [number, number[], GpuDataType]) => ({dataType, dims, gpuDataType})),
+  })[format];
 
-      const x = Object.seal<Record<typeof format, IndicesHelper>>({
-        nhwc: inputVariable(
-                  'x', inputs[0].dataType,
-                  [
-                    ShapeUtil.size(shape.slice(0, Math.max(1, shape.length - 1))),
-                    ShapeUtil.size(shape.slice(Math.max(1, shape.length - 1))),
-                    1,
-                  ]),
+  const xShape = Object.seal<Record<typeof format, number[]>>({
+    nhwc: [
+      ShapeUtil.size(shape.slice(0, Math.max(1, shape.length - 1))),
+      ShapeUtil.size(shape.slice(Math.max(1, shape.length - 1))),
+      1,
+    ],
 
-        nchw: spatial ?
-                  inputVariable(
-                      'x', inputs[0].dataType,
-                      [
-                        ShapeUtil.size(shape.slice(0, 1)),
-                        ShapeUtil.size(shape.slice(1, 2)),
-                        ShapeUtil.size(shape.slice(2)),
-                      ]) :
-                  inputVariable(
-                      'x', inputs[0].dataType,
-                      [
-                        ShapeUtil.size(shape.slice(0, 1)),
-                        ShapeUtil.size(shape.slice(1)),
-                        1,
-                      ]),
-      })[format];
-      const scale = inputVariable('scale', inputs[1].dataType, [ShapeUtil.size(inputs[1].dims)]);
-      const bias = inputVariable('bias', inputs[2].dataType, [ShapeUtil.size(inputs[2].dims)]);
-      const inputMean = outputCount <= 3 ?
-          inputVariable('inputMean', inputs[3].dataType, [ShapeUtil.size(inputs[3].dims)]) :
-          inputVariable('_inputMean', inputs[0].dataType, [0]);
-      const inputVar = outputCount <= 3 ?
-          inputVariable('inputVar', inputs[4].dataType, [ShapeUtil.size(inputs[4].dims)]) :
-          inputVariable('_inputVar', inputs[0].dataType, [0]);
-      const y = outputVariable('y', outputs[0].dataType, x.shape);
-      const runningMean = outputVariable('runningMean', outputs[1].dataType, [ShapeUtil.size(outputs[1].dims)]);
-      const runningVar = outputVariable('runningVar', outputs[2].dataType, [ShapeUtil.size(outputs[2].dims)]);
-      const savedMean = outputCount <= 3 ?
-          outputVariable('_savedMean', outputs[3].dataType, [0]) :
-          outputVariable('savedMean', outputs[3].dataType, [ShapeUtil.size(outputs[3].dims)]);
-      const savedVar = outputCount <= 3 ?
-          outputVariable('_savedVar', outputs[4].dataType, [0]) :
-          outputVariable('savedVar', outputs[4].dataType, [ShapeUtil.size(outputs[4].dims)]);
-      const workgroupSizeAlongAxis = (axis: number) =>
-          x.shape.indexOf(Math.max(...x.shape)) === axis ? WORKGROUP_SIZE : 1;
-      const workgroupSize = [workgroupSizeAlongAxis(0), workgroupSizeAlongAxis(1), workgroupSizeAlongAxis(2)] as const;
+    nchw: spatial ?
 
-      const getInferenceModeShaderSource = (helper: ShaderHelper) => `
+        [
+          ShapeUtil.size(shape.slice(0, 1)),
+          ShapeUtil.size(shape.slice(1, 2)),
+          ShapeUtil.size(shape.slice(2)),
+        ] :
+        [
+          ShapeUtil.size(shape.slice(0, 1)),
+          ShapeUtil.size(shape.slice(1)),
+          1,
+        ],
+  })[format];
+  const x = inputVariable('x', inputs[0].dataType, xShape);
+  const scale = inputVariable('scale', inputs[1].dataType, [ShapeUtil.size(inputs[1].dims)]);
+  const bias = inputVariable('bias', inputs[2].dataType, [ShapeUtil.size(inputs[2].dims)]);
+  const inputMean = outputCount <= 3 ?
+      inputVariable('inputMean', inputs[3].dataType, [ShapeUtil.size(inputs[3].dims)]) :
+      inputVariable('_inputMean', inputs[0].dataType, [0]);
+  const inputVar = outputCount <= 3 ? inputVariable('inputVar', inputs[4].dataType, [ShapeUtil.size(inputs[4].dims)]) :
+                                      inputVariable('_inputVar', inputs[0].dataType, [0]);
+  const y = outputVariable('y', outputs[0].dataType, xShape);
+  const runningMean = outputVariable('runningMean', outputs[1].dataType, [ShapeUtil.size(outputs[1].dims)]);
+  const runningVar = outputVariable('runningVar', outputs[2].dataType, [ShapeUtil.size(outputs[2].dims)]);
+  const savedMean = outputCount <= 3 ?
+      outputVariable('_savedMean', outputs[3].dataType, [0]) :
+      outputVariable('savedMean', outputs[3].dataType, [ShapeUtil.size(outputs[3].dims)]);
+  const savedVar = outputCount <= 3 ?
+      outputVariable('_savedVar', outputs[4].dataType, [0]) :
+      outputVariable('savedVar', outputs[4].dataType, [ShapeUtil.size(outputs[4].dims)]);
+  const workgroupSizeAlongAxis = (axis: number) => xShape.indexOf(Math.max(...xShape)) === axis ? WORKGROUP_SIZE : 1;
+  const workgroupSize = [workgroupSizeAlongAxis(0), workgroupSizeAlongAxis(1), workgroupSizeAlongAxis(2)] as const;
+
+  const getInferenceModeShaderSource = (helper: ShaderHelper) => `
       alias T = ${x.type.value};
 
       const epsilon = ${epsilon};
-      const inputShape = ${x.indices(...x.shape)};
-      const outputShape = ${y.indices(...y.shape)};
+      const inputShape = ${x.indices(...xShape)};
+      const outputShape = ${y.indices(...xShape)};
       const workgroupSize = vec3<u32>(${workgroupSize});
 
       const local_id = vec3(0);
@@ -224,13 +217,13 @@ const createBatchNormProgramInfo =
         }
       }`;
 
-      const getTrainingModeShaderSource = (helper: ShaderHelper) => `
+  const getTrainingModeShaderSource = (helper: ShaderHelper) => `
       alias T = ${x.type.value};
 
       const epsilon = ${epsilon};
       const momentum = ${momentum};
-      const inputShape = ${x.indices(...x.shape)};
-      const outputShape = ${y.indices(...y.shape)};
+      const inputShape = ${x.indices(...xShape)};
+      const outputShape = ${y.indices(...xShape)};
       const workgroupSize = vec3<u32>(${workgroupSize});
 
       const local_id = vec3(0);
@@ -364,50 +357,43 @@ const createBatchNormProgramInfo =
         }
       }`;
 
-      if (trainingMode) {
-        return {
-          ...metadata,
-          outputs: outputs.slice(0, outputCount),
-          getShaderSource: getTrainingModeShaderSource,
-          dispatchGroup: () => ({
-            x: 1,
-            y: Math.ceil(x.shape[1] / workgroupSize[1]),
-            z: 1,
-          }),
-        };
-      } else {
-        return {
-          ...metadata,
-          outputs: outputs.slice(0, outputCount),
-          getShaderSource: getInferenceModeShaderSource,
-          dispatchGroup: () => ({
-            x: Math.ceil(x.shape[0] / workgroupSize[0]),
-            y: Math.ceil(x.shape[1] / workgroupSize[1]),
-            z: Math.ceil(x.shape[2] / workgroupSize[2]),
-          }),
-        };
-      }
+  if (trainingMode) {
+    return {
+      name: 'BatchNormalization',
+      shaderCache: {hint: attributes.cacheKey},
+      getShaderSource: getTrainingModeShaderSource,
+      getRunData: () => ({
+        outputs: outputs.slice(0, outputCount),
+        dispatchGroup: {
+          x: 1,
+          y: Math.ceil(xShape[1] / workgroupSize[1]),
+          z: 1,
+        },
+      }),
     };
-
-const createBatchNormProgramInfoLoader =
-    (inputs: readonly TensorView[], attributes: BatchNormAttributes): ProgramInfoLoader => {
-      const metadata: ProgramMetadata = {
-        name: 'BatchNormalization',
-        inputTypes: Array(inputs.length).fill(GpuDataType.default),
-        cacheHint: attributes.cacheKey,
-      };
-
-      return {
-        ...metadata,
-        get: () => createBatchNormProgramInfo(metadata, inputs, attributes),
-      };
+  } else {
+    return {
+      name: 'BatchNormalization',
+      shaderCache: {hint: attributes.cacheKey},
+      getShaderSource: getInferenceModeShaderSource,
+      getRunData: () => ({
+        outputs: outputs.slice(0, outputCount),
+        dispatchGroup: {
+          x: Math.ceil(xShape[0] / workgroupSize[0]),
+          y: Math.ceil(xShape[1] / workgroupSize[1]),
+          z: Math.ceil(xShape[2] / workgroupSize[2]),
+        },
+      }),
     };
+  }
+};
 
 const createPostBatchNormProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: BatchNormAttributes): ProgramInfo => {
+    (inputs: readonly TensorView[], attributes: BatchNormAttributes): ProgramInfo => {
       const {momentum} = attributes;
 
-      const input = inputVariable('input', inputs[0].dataType, [Math.ceil(ShapeUtil.size(inputs[0].dims) / 4)], 4);
+      const inputShape = [Math.ceil(ShapeUtil.size(inputs[0].dims) / 4)];
+      const input = inputVariable('input', inputs[0].dataType, inputShape, 4);
       const running = outputVariable('running', inputs[1].dataType, [Math.ceil(ShapeUtil.size(inputs[1].dims) / 4)], 4);
 
       const getShaderSource = (helper: ShaderHelper) => `
@@ -422,24 +408,13 @@ const createPostBatchNormProgramInfo =
       }`;
 
       return {
-        ...metadata,
-        outputs: [],
-        getShaderSource,
-        dispatchGroup: () => ({x: Math.ceil(input.shape[0] / WORKGROUP_SIZE)}),
-      };
-    };
-
-const createPostBatchNormProgramInfoLoader =
-    (inputs: readonly TensorView[], attributes: BatchNormAttributes): ProgramInfoLoader => {
-      const metadata: ProgramMetadata = {
         name: 'PostBatchNormalization',
-        inputTypes: [GpuDataType.default, GpuDataType.default],
-        cacheHint: attributes.cacheKey,
-      };
-
-      return {
-        ...metadata,
-        get: () => createPostBatchNormProgramInfo(metadata, inputs, attributes),
+        getShaderSource,
+        shaderCache: {hint: attributes.cacheKey},
+        getRunData: () => ({
+          outputs: [],
+          dispatchGroup: {x: Math.ceil(inputShape[0] / WORKGROUP_SIZE)},
+        }),
       };
     };
 
@@ -451,17 +426,17 @@ export const batchNorm = (context: ComputeContext, attributes: Record<string, un
   const updatedAttributes = parseBatchNormAttributes({...attributes, outputCount});
   validateInputs(inputs, updatedAttributes);
   if (outputCount <= 3) {
-    context.compute(createBatchNormProgramInfoLoader(inputs, updatedAttributes));
+    context.compute(createBatchNormProgramInfo(inputs, updatedAttributes));
   } else {
     const [x, scale, bias, inputMean, inputVar] = inputs;
     const [, runningMean, runningVar] =
-        context.compute(createBatchNormProgramInfoLoader([x, scale, bias], updatedAttributes), {
+        context.compute(createBatchNormProgramInfo([x, scale, bias], updatedAttributes), {
           inputs: [x, scale, bias],
         });
-    context.compute(createPostBatchNormProgramInfoLoader([inputMean, runningMean], updatedAttributes), {
+    context.compute(createPostBatchNormProgramInfo([inputMean, runningMean], updatedAttributes), {
       inputs: [inputMean, runningMean],
     });
-    context.compute(createPostBatchNormProgramInfoLoader([inputVar, runningVar], updatedAttributes), {
+    context.compute(createPostBatchNormProgramInfo([inputVar, runningVar], updatedAttributes), {
       inputs: [inputVar, runningVar],
     });
   }
