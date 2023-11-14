@@ -1,20 +1,10 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-import unittest
 import os
 import sys
+import unittest
+
 import numpy as np
-from onnx import load, AttributeProto, FunctionProto, TensorProto
-from onnx.helper import (
-    make_node,
-    make_function,
-    make_tensor,
-    make_opsetid,
-)
-from onnx.reference import ReferenceEvaluator
-from onnx.reference.ops.op_cast import Cast_19 as Cast
-from onnx.reference.ops.op_dequantize_linear import DequantizeLinear
-from onnx.reference.op_run import to_array_extended
 
 from onnxruntime import InferenceSession, SessionOptions
 

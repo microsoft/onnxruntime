@@ -2362,7 +2362,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
       }
       Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                     "Node (" + node_name + ") Op (" + node.OpType() + ") output arg (" +
-                    output_def->Name() + ") type inference failed, inferred types: " + ss.str());
+                        output_def->Name() + ") type inference failed, inferred types: " + ss.str());
       return status;
     }
 
