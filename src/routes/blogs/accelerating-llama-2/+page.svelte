@@ -3,6 +3,10 @@
 	import Footer from '../../components/footer.svelte';
     import figure1 from '../../../images/blogs/accelerating-llama-2/Figure1-LLaMA-2-7B-E2E-Throughput.png'
     import figure1b from '../../../images/blogs/accelerating-llama-2/Figure1-LLaMA-2-13B-E2E-Throughput.png'
+    import figure2 from '../../../images/blogs/accelerating-llama-2/Figure2-LLaMA-2-7B-Prompt-Latency 1.png'
+    import figure2b from '../../../images/blogs/accelerating-llama-2/Figure2-LLaMA-2-13B-Prompt-Latency.png'
+    import figure3 from '../../../images/blogs/accelerating-llama-2/Figure3-LLaMA-2-7B-Tokens-Generated-Throughput.png'
+    import figure3b from '../../../images/blogs/accelerating-llama-2/Figure3-LLaMA-2-13B-Tokens-Generated-Throughput.png'
     import figure4 from '../../../images/blogs/accelerating-llama-2/Figure4-LLaMA-2-70B-Model-Throughput.png'
 	import figure5 from '../../../images/blogs/accelerating-llama-2/LLaMA-2OptimizationDiagram-5.png';
 	import figure6 from '../../../images/blogs/accelerating-llama-2/LLaMAWindowsExportRotaryEmbeddingSubgraph-6.jpg';
@@ -70,10 +74,10 @@
 		</p>
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <figure class="px-10 pt-4">
-                <img src={figure1} alt="E2E Throughput Comparisons" />
+                <img src={figure1} alt="E2E Throughput Comparisons - Llama 2 7b" />
             </figure>
             <figure class="px-10 pt-4 my-auto">
-                <img src={figure1b} alt="E2E Throughput Comparisons" />
+                <img src={figure1b} alt="E2E Throughput Comparisons - Llama 2 13b" />
             </figure>
         </div>
         <div class="mt-2 mb-4 text-center">
@@ -87,8 +91,18 @@
 			7B model on CUDA FP16. Latency here is defined as the time it takes to complete one pass
 			through the model to produce the logits and synchronize the outputs.
 		</p>
-
-		<h2 class="text-yellow-500 mb-4">Figure 2: Prompt Latency Comparisons</h2>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <figure class="px-10 pt-4">
+                <img src={figure2} alt="Prompt Latency Comparisons - Llama 2 7b" />
+            </figure>
+            <figure class="px-10 pt-4 my-auto">
+                <img src={figure2b} alt="Prompt Latency Comparisons - Llama 2 13b" />
+            </figure>
+        </div>
+        <div class="mt-2 mb-4 text-center">
+            Figure 2: Prompt Latency Comparisons
+        </div>
 
 		<p class="mb-4">
 			Token generation throughput below is the average throughput of the first 128 tokens generated.
@@ -97,7 +111,17 @@
 			faster with ONNX Runtime as compared to PyTorch versions of the model.
 		</p>
 
-		<h2 class="text-yellow-500 mb-4">Figure 3: Tokens Generated Throughput Comparisons</h2>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <figure class="px-10 pt-4">
+                <img src={figure3} alt="Tokens Generated Throughput Comparisons - Llama 2 7b" />
+            </figure>
+            <figure class="px-10 pt-4 my-auto">
+                <img src={figure3b} alt="Tokens Generated Throughput Comparisons - Llama 2 13b" />
+            </figure>
+        </div>
+        <div class="mt-2 mb-4 text-center">
+            Figure 3: Tokens Generated Throughput Comparisons
+        </div>
 
 		<p class="mb-4">More details on these metrics can be found here.</p>
 
@@ -120,7 +144,7 @@
 		</p>
         
         <figure class="px-10 pt-4">
-			<img src={figure4} alt="Example of Rotary Embedding Function in Parent Graph" />
+			<img src={figure4} alt="70B Llama2 Model Throughput" />
 			<figcaption class="mt-2 mb-4 text-center">
 				Figure 4: 70B Llama2 Model Throughput
 			</figcaption>
