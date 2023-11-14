@@ -14,9 +14,6 @@
 #include <dxcore.h>
 #include <vector>
 
-interface IDMLDevice;
-struct OrtDmlDeviceOptions;
-
 namespace onnxruntime {
 
 struct DMLProviderFactoryCreator {
