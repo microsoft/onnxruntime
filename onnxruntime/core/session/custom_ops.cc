@@ -840,6 +840,7 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
       const ONNX_NAMESPACE::TypeProto* type_proto = DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(output_type))->GetTypeProto();
       schema.TypeConstraint(output_name, {*ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto)}, "one type");
     } else {
+      // Type inference fails if the schema does not return one unique option when IsHomogeneous is false.
       schema.TypeConstraint(output_name, DataTypeImpl::ToString(SUPPORTED_TENSOR_TYPES), "all types");
     }
   }
