@@ -63,7 +63,8 @@ std::function<void(ModelTestBuilder&)> GetGraphBuilder(const GraphConfig& config
         return graph.ToGraphProto();
       };
 
-      auto* if_input = builder.MakeInitializerBool({}, {true});
+      // Make this an input to prevent If constant folding affecting this test
+      auto* if_input = builder.MakeInput<bool>({1}, {true});
       auto* if_output = builder.MakeOutput();
       Node& if_node = builder.AddNode("If", {if_input}, {if_output});
       if_node.AddAttribute("then_branch", create_if_subgraph(true));

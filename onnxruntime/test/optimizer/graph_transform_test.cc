@@ -10,6 +10,8 @@
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include "onnx/defs/parser.h"
+#include "onnx/defs/printer.h"
 
 #include "asserts.h"
 #include "core/common/span_utils.h"
@@ -1020,6 +1022,158 @@ TEST_F(GraphTransformationTests, ConstantFoldingStringInitializer) {
   op_to_count = CountOpsInGraph(graph);
 
   ASSERT_EQ(op_to_count.size(), 0U) << "Identity node should have been removed";
+}
+
+TEST_F(GraphTransformationTests, ConstantFoldingIfConstantInlining) {
+  // This test covers the following necessary cases:
+  // The input refers to the explicit or implicit inputs of If node.
+  // The output of the node is the output of the subgraph being inlined.
+  // Constant nodes and initializers are promoted to the outer graph.
+  // The initializer or a constant node is the output of the subgraph being inlined.
+  // Nested subgraphs names are renamed as appropriate.
+  // In all If node is constant folded twice. The last If node is not constant
+  // folded because the input is indirectly dependent on the size of the input.
+  // XXX: Can we constant fold Size() if the graph input shape is fixed?
+
+  const char* code = R"(
+  <
+  ir_version: 8,
+  opset_import: [ "" : 16, "local" : 1 ]
+  >
+  agraph (float[128] x, float[128] x1) => (float[N] y)
+  {
+      y = local.aten_gather <dim: int = 1, sparse_grad: int = 0> (x, x1)
+  }
+  <
+    opset_import: [ "" : 16, "local" : 1],
+    domain: "local"
+  >
+  aten_gather <dim>(self, index) => (result_16)
+  {
+     tmp = Shape (index)
+     tmp_0 = Size (tmp)
+     int64_0 = Constant <value: tensor = int64 int64_0 {0}> ()
+     int64_0_cast = CastLike (int64_0, tmp_0)
+     cond = Equal (tmp_0, int64_0_cast)
+     result_16 = If (cond) <then_branch: graph = thenGraph_10 () => ( result) {
+        result = Identity (self)
+     }, else_branch: graph = elseGraph_10 () => ( result_15) {
+        tmp_1 = Shape (self)
+        tmp_2 = Size (tmp_1)
+        int64_0_3 = Constant <value: tensor = int64 int64_0_3 {0}> ()
+        int64_0_3_cast = CastLike (int64_0_3, tmp_2)
+        cond_4 = Equal (tmp_2, int64_0_3_cast)
+        self_8 = If (cond_4) <then_branch: graph = thenGraph_13 () => ( self_6) {
+           tmp_5 = Constant <value_ints: ints = [-1]> ()
+           self_6 = Reshape (self, tmp_5)
+        }, else_branch: graph = elseGraph_13 () => ( self_7) {
+           self_7 = Identity (self)
+        }>
+        tmp_9 = Size (index)
+        int64_0_10 = Constant <value: tensor = int64 int64_0_10 {0}> ()
+        int64_0_10_cast = CastLike (int64_0_10, tmp_9)
+        cond_11 = Equal (tmp_9, int64_0_10_cast)
+        result_15 = If (cond_11) <then_branch: graph = thenGraph_15 () => ( result_12) {
+           result_12 = CastLike (index, self_8)
+        }, else_branch: graph = elseGraph_15 () => ( result_14) {
+           index_13 = Cast <to: int = 7> (index)
+           result_14 = GatherElements <axis: int = @dim> (self_8, index_13)
+        }>
+     }>
+  }
+)";
+
+  ONNX_NAMESPACE::OnnxParser parser(code);
+  ONNX_NAMESPACE::ModelProto model_proto;
+  auto parse_status = parser.Parse(model_proto);
+  ASSERT_TRUE(parse_status.IsOK()) << parse_status.ErrorMessage();
+  ASSERT_TRUE(parser.EndOfInput()) << "Extra unparsed input unexpected.";
+
+  {
+    // Test that the model is loadable and check the function call node.
+    std::shared_ptr<Model> p_model;
+    ASSERT_STATUS_OK(Model::Load(std::move(model_proto), p_model, nullptr, *logger_));
+    Graph& graph = p_model->MainGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["local.aten_gather"], 1);
+    model_proto = p_model->ToProto();
+  }
+
+  std::string serialized_model;
+  const bool serialization_status = model_proto.SerializeToString(&serialized_model);
+  ASSERT_TRUE(serialization_status) << "Failed to serialize proto to string";
+
+  // AOT inlining is necessary in this case, so the If nodes within the function
+  // are brought out to the outer scope. So we load this into a session object.
+
+  SessionOptions session_options;
+  InferenceSessionWrapper session_object{session_options, GetEnvironment()};
+
+  std::stringstream sstr(serialized_model);
+  ASSERT_STATUS_OK(session_object.Load(sstr));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // const auto resulting_model_proto = session_object.GetModel().ToProto();
+  // std::string printed_model = ONNX_NAMESPACE::ProtoToString(resulting_model_proto);
+  // ASSERT_FALSE(printed_model.empty());
+  // std::cout << printed_model << std::endl;
+
+  // This is the resulting model proto.
+  // The remaining If node is not constant foldable because Size() does not constant fold
+  // although the shape is fixed.
+  /*
+    <
+       ir_version: 8,
+       opset_import: ["" : 16, "local" : 1,
+         "com.microsoft.nchwc" : 1,
+          "ai.onnx.ml" : 4,
+          "com.ms.internal.nhwc" : 20,
+          "ai.onnx.training" : 1,
+          "ai.onnx.preview.training" : 1,
+          "com.microsoft" : 1,
+          "com.microsoft.experimental" : 1,
+          "org.pytorch.aten" : 1]
+    >
+    agraph (float[128] x, float[128] x1) => (float[128] y) {
+       _if_elseGraph_10__inlfunc_aten_gather_tmp_9 = Size (x1)
+       _if_elseGraph_10__inlfunc_aten_gather_cond_11 =
+                                  Equal (_if_elseGraph_10__inlfunc_aten_gather_tmp_9, ortshared_7_0_1_0_token_10)
+       y = If (_if_elseGraph_10__inlfunc_aten_gather_cond_11) <then_branch: graph = thenGraph_15 () => (float[128] _inlfunc_aten_gather_result_12) {
+          _inlfunc_aten_gather_result_12 = Cast <to: int = 1> (x1)
+       }, else_branch: graph = elseGraph_15 () => (float[128] _inlfunc_aten_gather_result_14) {
+          _inlfunc_aten_gather_index_13 = Cast <to: int = 7> (x1)
+          _inlfunc_aten_gather_result_14 = GatherElements <axis: int = 1> (x, _inlfunc_aten_gather_index_13)
+       }>
+    }
+  */
+
+  auto& graph = session_object.GetModel().MainGraph();
+  auto op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["local.aten_gather"], 0);
+  ASSERT_EQ(op_to_count["If"], 1);
+}
+
+TEST_F(GraphTransformationTests, ConstantFoldingIfConstantInliningRebuildEdges) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "transform_nested_ifs_toplogical_sorted_nodes.onnx";
+
+  SessionOptions so;
+  so.session_logid = "GraphTransformationTests.ConstantFoldingIfConstantInliningRebuildEdges";
+
+  SessionOptions session_options;
+  InferenceSessionWrapper session_object{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  auto& graph = session_object.GetModel().MainGraph();
+  auto op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["pkg.onnxscript.torch_lib._aten_linalg_vector_norm_no_dim_onnx"], 0);
+  ASSERT_EQ(op_to_count["If"], 0);
+  ASSERT_EQ(op_to_count["Reshape"], 1);
+  ASSERT_EQ(op_to_count["Abs"], 1);
+  ASSERT_EQ(op_to_count["Mul"], 1);
+  ASSERT_EQ(op_to_count["ReduceSum"], 1);
+  ASSERT_EQ(op_to_count["Sqrt"], 1);
+  ASSERT_EQ(op_to_count["Cast"], 2);
 }
 
 // Check transformations in the case of a subgraph with constant inputs.

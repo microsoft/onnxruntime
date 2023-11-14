@@ -4,6 +4,7 @@
 #include <limits>
 
 #include "core/optimizer/constant_folding.h"
+#include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/optimizer_execution_frame.h"
@@ -90,6 +91,45 @@ static bool ConstantFoldShapeNode(Graph& graph, Node& node) {
   return is_concrete_shape;  // convert to constant if this is true
 }
 
+// This function inlines the appropriate subgraph. It does not literally fold it.
+static Status ConstantFoldIfNode(Graph& graph, Node& if_node, const logging::Logger& logger, bool& folded) {
+  folded = false;
+  // First, find out which subgraph to inline
+  // We need to fetch the constant argument.
+  assert(if_node.InputDefs().size() == 1);
+  const auto* condition_def = if_node.InputDefs()[0];
+
+  // We need to check if the condition is a constant.
+  constexpr bool check_outer_scope_true = true;
+  const ONNX_NAMESPACE::TensorProto* initializer =
+      graph.GetConstantInitializer(condition_def->Name(), check_outer_scope_true);
+  if (initializer == nullptr) {
+    return Status::OK();
+  }
+
+  // This is a boolean initializer with a single element.
+  Initializer condition{*initializer};
+  ORT_RETURN_IF_NOT(condition.size() == 1, "If node condition initializer: `", condition_def->Name(),
+                    "' is expected to have a single boolean element");
+
+  const bool condition_value = *condition.data<bool>();
+
+  auto status = graph.InlineIfSubgraph(condition_value, if_node, logger);
+
+  if (!status.IsOK()) {
+    LOGS(logger, WARNING) << "Unable to constant fold. InlineIfSubgraph failed "
+                          << " node '" << if_node.Name() << "': "
+                          << status.ErrorMessage();
+    return status;
+  }
+
+  graph_utils::RemoveNodeOutputEdges(graph, if_node);
+  graph.RemoveNode(if_node.Index());
+
+  folded = true;
+  return status;
+}
+
 Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   bool have_updated_nodes = false;
   GraphViewer graph_viewer(graph);
@@ -118,7 +158,20 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
 
     bool converted_to_constant = false;
-    if (node->OpType().compare("Shape") == 0) {
+    if (node->OpType().compare("If") == 0) {
+      // This process constant folds the If node only,
+      // but inlines the nodes of the corresponding branch graph.
+      // It does not convert the node to a constant in a common sense.
+      // We call it constant folding because the `If` node constant condition
+      // may enable us to inline the corresponding branch graph.
+      bool folded = false;
+      ORT_RETURN_IF_ERROR(ConstantFoldIfNode(graph, *node, logger, folded));
+      if (folded) {
+        // Node removal is done within ConstantFoldIfNode()
+        modified = true;
+        have_updated_nodes = true;
+      }
+    } else if (node->OpType().compare("Shape") == 0) {
       converted_to_constant = ConstantFoldShapeNode(graph, *node);
     } else {
       InitializedTensorSet constant_inputs;

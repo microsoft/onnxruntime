@@ -397,6 +397,10 @@ class Node {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /** Remove the specified attribute from this Node */
   bool ClearAttribute(const std::string& attr_name);
+
+  /** Gets the Node's mutable attributes. */
+  NodeAttributes& GetMutableAttributes() noexcept { return attributes_; }
+
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   /**
@@ -406,8 +410,6 @@ class Node {
   int PruneRemovableAttributes(gsl::span<const std::string> removable_attributes);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  /** Gets the Node's mutable attributes. */
-  NodeAttributes& GetMutableAttributes() noexcept { return attributes_; }
 
   /** Gets the Graph instance that is instantiated from a GraphProto attribute during Graph::Resolve.
   @param attr_name Attribute name for the GraphProto attribute.
@@ -438,6 +440,13 @@ class Node {
            nullptr if the Node has no subgraphs.
   */
   const std::unordered_map<std::string, gsl::not_null<Graph*>>& GetAttributeNameToMutableSubgraphMap() {
+    return attr_to_subgraph_map_;
+  }
+
+  /** Gets a map of attribute name to the mutable Graph instances for all subgraphs of the Node.
+   * @returns a mutable map of mutable subgraphs.
+   */
+  std::unordered_map<std::string, gsl::not_null<Graph*>>& GetMutableMapOfAttributeNameToSubgraph() {
     return attr_to_subgraph_map_;
   }
 
@@ -586,7 +595,7 @@ class Node {
   // create a Graph instance for an attribute that contains a GraphProto
   void CreateSubgraph(const std::string& attr_name);
 
-  const std::vector<std::unique_ptr<Graph>>& MutableSubgraphs() noexcept { return subgraphs_; }
+  std::vector<std::unique_ptr<Graph>>& MutableSubgraphs() noexcept { return subgraphs_; }
 
   // validate and update the input arg count
   common::Status UpdateInputArgCount();
@@ -1133,6 +1142,26 @@ class Graph {
   @returns Function based Node with fused subgraph. The Node body will contain a Function instance.
   */
   Node& FuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
+
+  /**
+    Directly insert one of the If node branches into this Graph.
+    `If` node condition must be a constant. The function would
+    rename the nodes of the corresponding subgraph to make sure there is no conflict.
+
+    Explicit and implicit inputs references stay the same.
+
+    All of the outputs of the subgraph being inlined should be renamed
+    to the outputs of the If node.
+
+    The function will process any subgraphs in each of the nodes being inlined,
+    and will rename any references to the new names introduced.
+
+    @param condition_value If condition value
+    @param if_node - the node that contains the graph_to_inline. This node is going
+    to be deleted and replaced by the corresponding graph (either then or else)
+    @param logger
+  */
+  Status InlineIfSubgraph(bool condition_value, Node& if_node, const logging::Logger& logger);
 
   /**
   Directly insert the nodes in the function Node provided into this Graph.
