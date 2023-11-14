@@ -11,6 +11,8 @@ import numpy as np
 import onnx
 import psutil
 import torch
+from benchmark_helper import measure_memory, setup_logger
+from dist_settings import get_rank, get_size
 from llama_inputs import (
     add_io_bindings,
     get_merged_sample_with_past_kv_inputs,
@@ -21,10 +23,9 @@ from llama_inputs import (
 from optimum.onnxruntime import ORTModelForCausalLM
 from torch.profiler import ProfilerActivity, profile, record_function
 from tqdm import trange
-from transformers import LlamaConfig, LlamaForCausalLM, LlamaTokenizer
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 import onnxruntime as ort
-from onnxruntime.transformers.benchmark_helper import measure_memory, setup_logger
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
                 past_seq_len=0,
                 max_seq_len=max_seq_len,
                 use_fp16=args.use_fp16,
+                use_gqa=args.use_gqa,
                 engine="pt",
                 return_dict=True,
             )
@@ -117,6 +119,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
                 past_seq_len=args.sequence_length,
                 max_seq_len=max_seq_len,
                 use_fp16=args.use_fp16,
+                use_gqa=args.use_gqa,
                 engine="pt",
                 return_dict=True,
             )
@@ -131,8 +134,10 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             past_seq_len=0,
             max_seq_len=max_seq_len,
             use_fp16=args.use_fp16,
+            use_gqa=args.use_gqa,
             engine="ort",
             return_dict=True,
+            world_size=args.world_size,
         )
         iter_inputs = get_merged_sample_with_past_kv_inputs(
             args.config,
@@ -142,8 +147,10 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             past_seq_len=args.sequence_length,
             max_seq_len=max_seq_len,
             use_fp16=args.use_fp16,
+            use_gqa=args.use_gqa,
             engine="ort",
             return_dict=True,
+            world_size=args.world_size,
         )
 
     elif args.benchmark_type == "ort-msft":
@@ -157,6 +164,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             seq_len=args.sequence_length,
             max_seq_len=max_seq_len,
             use_fp16=args.use_fp16,
+            use_gqa=args.use_gqa,
             split_kv=split_kv,
         )
         iter_inputs = get_msft_sample_inputs(
@@ -166,6 +174,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             seq_len=1,
             max_seq_len=max_seq_len,
             use_fp16=args.use_fp16,
+            use_gqa=args.use_gqa,
             split_kv=split_kv,
         )
 
@@ -189,7 +198,7 @@ def get_model(args: argparse.Namespace):
     if args.benchmark_type in {"hf-pt-eager", "hf-pt-compile"}:
         source = args.hf_pt_dir_path if args.hf_pt_dir_path else args.model_name
         start_time = time.time()
-        model = LlamaForCausalLM.from_pretrained(
+        model = AutoModelForCausalLM.from_pretrained(
             source,
             torch_dtype=torch.float16 if args.use_fp16 else torch.float32,
             use_auth_token=args.auth,
@@ -244,10 +253,10 @@ def get_model(args: argparse.Namespace):
 
     if args.benchmark_type in {"ort-msft", "ort-convert-to-onnx"}:
         # Ex: Microsoft export from https://github.com/microsoft/Llama-2-Onnx
-        logger.info(f"Loading model from {args.ort_model_path}")
+        logger.info(f"Loading model from {args.ort_model_path.format(args.rank)}")
         start_time = time.time()
         model = ort.InferenceSession(
-            args.ort_model_path,
+            args.ort_model_path.format(args.rank),
             sess_options,
             providers=[args.execution_provider],
         )
@@ -315,10 +324,11 @@ def time_fn(args, fn, inputs):
     latency = total_time / args.num_runs
     throughput = args.batch_size / latency
 
-    logger.info(f"Batch Size: {args.batch_size}")
-    logger.info(f"Sequence Length: {args.sequence_length}")
-    logger.info(f"Latency: {latency} s")
-    logger.info(f"Throughput: {throughput} tps")
+    if args.rank == 0:
+        logger.info(f"Batch Size: {args.batch_size}")
+        logger.info(f"Sequence Length: {args.sequence_length}")
+        logger.info(f"Latency: {latency} s")
+        logger.info(f"Throughput: {throughput} tps")
     return
 
 
@@ -358,7 +368,8 @@ def measure_fn(args, fn, inputs):
     process.cpu_percent(interval=0.1)
 
     fn(inputs)
-    logger.info(f"CPU usage: {process.cpu_percent(interval=None)}%")
+    if args.rank == 0:
+        logger.info(f"CPU usage: {process.cpu_percent(interval=None) / psutil.cpu_count(logical=False)}%")
 
     # Measure memory usage
     gc.collect()
@@ -451,7 +462,7 @@ def run_ort_inference(args, init_inputs, iter_inputs, model):
         # Add IO bindings for non-CPU execution providers
         if args.device != "cpu":
             io_binding, kv_cache_ortvalues = add_io_bindings(
-                model, inputs, args.device, int(args.device_id), kv_cache_ortvalues
+                model, inputs, args.device, int(args.rank), args.use_gqa, kv_cache_ortvalues
             )
             setattr(args, "io_binding", io_binding)  # noqa: B010
             return io_binding, kv_cache_ortvalues
@@ -511,7 +522,7 @@ def run_inference(args, init_inputs, iter_inputs, model):
         raise Exception(f"Cannot recognize {args.benchmark_type}")
 
 
-def get_args():
+def get_args(rank=0):
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-bt",
@@ -569,7 +580,7 @@ def get_args():
     parser.add_argument(
         "-s",
         "--sequence-lengths",
-        default="8 16 32 64 128 256 512",
+        default="32 64 128 256 512",
     )
     parser.add_argument(
         "-d",
@@ -606,9 +617,9 @@ def get_args():
     if "ort" in args.benchmark_type:
         setattr(args, "execution_provider", f"{args.device.upper()}ExecutionProvider")  # noqa: B010
         if args.execution_provider == "CUDAExecutionProvider":
-            args.execution_provider = (args.execution_provider, {"device_id": args.device_id})
+            args.execution_provider = (args.execution_provider, {"device_id": rank})
         elif args.execution_provider == "ROCMExecutionProvider":
-            args.execution_provider = (args.execution_provider, {"device_id": args.device_id})
+            args.execution_provider = (args.execution_provider, {"device_id": rank})
             args.device = "cuda"
 
     # Check that paths have been specified for any benchmarking with ORT
@@ -635,14 +646,19 @@ def get_args():
 
 
 def main():
-    args = get_args()
+    rank = get_rank()
+    world_size = get_size()
+
+    args = get_args(rank)
     setup_logger(args.verbose)
     logger.info(args.__dict__)
     torch.backends.cudnn.benchmark = True
 
-    tokenizer = LlamaTokenizer.from_pretrained(args.model_name)
-    config = LlamaConfig.from_pretrained(args.model_name)
-    target_device = f"cuda:{args.device_id}" if args.device != "cpu" else args.device
+    args.rank = rank
+    args.world_size = world_size
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+    config = AutoConfig.from_pretrained(args.model_name)
+    target_device = f"cuda:{args.rank}" if args.device != "cpu" else args.device
     use_fp16 = args.precision == "fp16"
 
     setattr(args, "tokenizer", tokenizer)  # noqa: B010
@@ -656,17 +672,18 @@ def main():
 
     # Check if past_present_share_buffer can be enabled (only for FP16 models with GQA)
     if args.benchmark_type in {"ort-convert-to-onnx", "ort-msft"}:
-        onnx_model = onnx.load_model(args.ort_model_path, load_external_data=False)
+        onnx_model = onnx.load_model(args.ort_model_path.format(args.rank), load_external_data=False)
         gqa_nodes = list(filter(lambda node: node.op_type == "GroupQueryAttention", onnx_model.graph.node))
 
         use_buffer_share = use_fp16 and len(gqa_nodes) > 0 and args.device != "cpu"
-        setattr(args, "past_present_share_buffer", use_buffer_share)  # noqa: B010
+        setattr(args, "use_gqa", use_buffer_share)  # noqa: B010
     else:
-        setattr(args, "past_present_share_buffer", False)  # noqa: B010
+        setattr(args, "use_gqa", False)  # noqa: B010
 
     # Measure prompt cost (init_inputs) and generated token cost (iter_inputs)
     for batch_size, sequence_length in itertools.product(args.batch_sizes, args.sequence_lengths):
-        logger.info(f"\nBatch size = {batch_size} and sequence length = {sequence_length}...")
+        if args.rank == 0:
+            logger.info(f"\nBatch size = {batch_size} and sequence length = {sequence_length}...")
         setattr(args, "batch_size", int(batch_size))  # noqa: B010
         setattr(args, "sequence_length", int(sequence_length))  # noqa: B010
 
