@@ -529,8 +529,8 @@ stages:
               --docker-build-args "--network=host --build-arg BASEIMAGE=${{ variables.docker_base_image }} --build-arg TRT_VERSION=${{ variables.linux_trt_version }} --build-arg BUILD_UID=$( id -u )" \
               --container-registry onnxruntimebuildcache \
               --multiple_repos \
-              --repository onnxruntimecuda${{ parameters.CudaVersion }}x${{ variables.linux_trt_version }}build
-          displayName: "Get onnxruntimecuda${{ parameters.CudaVersion }}x${{ variables.linux_trt_version }}build image for tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda"
+              --repository onnxruntimecuda${{ replace(parameters.CudaVersion, ',' ,'') }}xtrt86build
+          displayName: "Get onnxruntimecuda${{ replace(parameters.CudaVersion, ',' ,'') }}xtrt86build image for tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda"
           workingDirectory: $(Build.SourcesDirectory)/onnxruntime
         ContainerRegistry: onnxruntimebuildcache
 
@@ -582,7 +582,7 @@ stages:
       inputs:
         script: |
           docker run --gpus all -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/src_dir \
-          --volume $(Build.ArtifactStagingDirectory):/artifact_src -e NIGHTLY_BUILD onnxruntimecuda${{ parameters.CudaVersion }}x${{ variables.linux_trt_version }}build \
+          --volume $(Build.ArtifactStagingDirectory):/artifact_src -e NIGHTLY_BUILD onnxruntimecuda${{ replace(parameters.CudaVersion, ',' ,'') }}xtrt86build \
           /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet/run_capi_application.sh -o /src_dir/onnxruntime -p /artifact_src/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz -w /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
 

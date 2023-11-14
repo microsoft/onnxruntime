@@ -73,7 +73,7 @@ stages:
           --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
           --build-arg BUILD_UID=$( id -u )
           "
-          Repository: onnxruntimecuda118xtrt86build
+          Repository: onnxruntimecuda${{ replace(parameters.CudaVersion, ',' ,'') }}xtrt86build
       - template: set-version-number-variables-step.yml
 
       - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_tensorrt_c_api_package.sh
