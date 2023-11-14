@@ -66,7 +66,7 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
             model_builder.GetUniqueName(MakeString(node.Name(), "_Softmax_expand"));
         auto expand_layer = CreateNNLayer(softmax_expand_layer_name);
         for (uint64_t i = 0; i < 3 - num_elements_from_axis; i++) {
-          expand_layer->mutable_expanddims()->add_axes(-1-i);
+          expand_layer->mutable_expanddims()->add_axes(-1 - i);
         }
         *expand_layer->mutable_input()->Add() = input_name;
         *expand_layer->mutable_output()->Add() = expand_output_name;
@@ -105,10 +105,14 @@ bool SoftmaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
 
   NodeAttrHelper helper(node);
   int32_t axis_default_value = (node.SinceVersion() < 13) ? 1 : -1;
-  const auto axis = helper.Get("axis", axis_default_value);
-  if (node.SinceVersion() < 13 && !(input_shape.size() == 2 && axis == 1)) {
+  const auto axis = HandleNegativeAxis(helper.Get("axis", axis_default_value), input_shape.size());
+  if (node.SinceVersion() < 13) {
+    if (axis != static_cast<int32_t>(input_shape.size() - 1)) {
+      LOGS(logger, VERBOSE) << "Currently CoreML Softmax only supports an `axis` attribute equal to input_rank-1 (or -1) for ONNX opset < 13.";
+      return false;
+    }
     if (input_shape.size() >= 4) {
-      LOGS(logger, VERBOSE) << "Cases that Softmax with version 13- with > 4d input and is not supported. Current input rank: "
+      LOGS(logger, VERBOSE) << "Cases that CoreML Softmax 13- with input >=4d is not supported. input shape: "
                             << input_shape.size();
       return false;
     }
