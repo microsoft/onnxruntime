@@ -1,7 +1,7 @@
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 #include "vaip/node_attrs.h"
-#include "./vai_assert.h"
+#include "vaip/vai_assert.h"
 
 namespace vaip {
 static onnx::AttributeProto make_attribute(const std::string& name,

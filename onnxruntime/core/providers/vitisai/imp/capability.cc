@@ -1,7 +1,7 @@
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 #include "vaip/capability.h"
-#include "./vai_assert.h"
+#include "vaip/vai_assert.h"
 
 #include "core/graph/basic_types.h"
 
@@ -45,32 +45,22 @@ std::unique_ptr<ComputeCapability> XirSubgraphToComputeCapability1(const onnxrun
 std::vector<std::unique_ptr<ComputeCapability>>
 GetComputeCapabilityOps(const onnxruntime::GraphViewer& graph,
                         vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>>* eps,
-                        const std::set<std::string>& all_not_support_optypes) {
-  std::set<std::string> all_compute_capability_nodes;
+                        const std::set<std::string>& all_support_optypes_by_eps) {
+  std::set<NodeIndex> all_nodes_included_eps;
   for (auto& ep : **eps) {
-    auto nodes = *ep->get_meta_def_nodes();
-    for (auto n : nodes)
-      all_compute_capability_nodes.insert(n);
+    auto nodes = node_names_to_nodes(graph, *ep->get_meta_def_nodes());
+    all_nodes_included_eps.insert(nodes.begin(), nodes.end());
   }
+
+  std::vector<NodeIndex> node_indexs = graph.GetNodesInTopologicalOrder();
+  node_indexs.erase(std::remove_if(node_indexs.begin(), node_indexs.end(), [&](NodeIndex index) { return all_nodes_included_eps.count(index) > 0; }), node_indexs.end());
+  node_indexs.erase(std::remove_if(node_indexs.begin(), node_indexs.end(), [&](NodeIndex index) { return all_support_optypes_by_eps.count(graph.GetNode(index)->OpType()) == 0; }), node_indexs.end());
+
   std::vector<std::unique_ptr<ComputeCapability>> result;
-  for (auto& n : graph.Nodes()) {
-    if ((!all_compute_capability_nodes.count(n.Name())) && all_not_support_optypes.count(n.OpType())) {
-      auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
-      meta_def->name = n.OpType();
-      meta_def->domain = n.Domain();
-      meta_def->since_version = 1;
-      meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
-      auto indexed_subgraph = std::make_unique<IndexedSubGraph>();
-      indexed_subgraph->nodes.push_back(n.Index());
-      for (auto i : n.InputDefs()) {
-        meta_def->inputs.push_back(i->Name());
-      }
-      for (auto i : n.OutputDefs()) {
-        meta_def->outputs.push_back(i->Name());
-      }
-      indexed_subgraph->SetMetaDef(std::move(meta_def));
-      result.emplace_back(std::make_unique<ComputeCapability>(std::move(indexed_subgraph)));
-    }
+  for (auto& n : node_indexs) {
+    auto indexed_subgraph = std::make_unique<IndexedSubGraph>();
+    indexed_subgraph->nodes = {n};
+    result.emplace_back(std::make_unique<ComputeCapability>(std::move(indexed_subgraph)));
   }
   return result;
 }

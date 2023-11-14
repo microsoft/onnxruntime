@@ -1,7 +1,7 @@
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 #include "./tensor_proto.h"
-#include "./vai_assert.h"
+#include "vaip/vai_assert.h"
 #include "core/framework/tensorprotoutils.h"
 
 #include <cstdint>

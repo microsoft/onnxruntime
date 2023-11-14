@@ -4,7 +4,8 @@
 
 #include <core/graph/graph_viewer.h>
 
-#include "./vai_assert.h"
+#include "vaip/vai_assert.h"
+
 #include <codecvt>
 #include <fstream>
 #include <filesystem>

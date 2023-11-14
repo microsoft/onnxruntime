@@ -1,19 +1,17 @@
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 #pragma once
-#include "./_sanity_check.h"
 #include "./dll_safe.h"
 #include "./my_ort.h"
-#include "./vaip_gsl.h"
+#include <gsl/gsl>
 #include <cassert>
 #include <functional>
 #include <vector>
-struct OrtApi;
 
 namespace vaip_core {
 
 struct OrtApiForVaip {
-  const OrtApi* ort_api_;
+  ProviderHost* host_;
   // model
   Model* (*model_load)(const std::string& file);  // [0]
   void (*model_delete)(Model* model);             // [1]
@@ -194,5 +192,4 @@ VAIP_DLL_SPEC const OrtApiForVaip* api();
        ? ::vaip_core::api()->name      \
        : (assert(false && #name " is not set"), nullptr))
 #endif
-VAIP_DLL_SPEC void initialize_ort();
 }  // namespace vaip_core

@@ -59,9 +59,6 @@ function(add_op_reduction_include_dirs target)
 endfunction()
 
 
-if(onnxruntime_USE_VITISAI)
-  set(PROVIDERS_VITISAI onnxruntime_providers_vitisai)
-endif()
 if(onnxruntime_USE_CUDA)
   set(PROVIDERS_CUDA onnxruntime_providers_cuda)
 endif()

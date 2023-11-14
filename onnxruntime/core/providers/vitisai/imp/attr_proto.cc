@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #include "./attr_proto.h"
 
-#include "./vai_assert.h"
+#include "vaip/vai_assert.h"
 
 #include <cmath>
 #include <functional>

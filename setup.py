@@ -294,6 +294,7 @@ if platform.system() == "Linux":
     libs.extend(["libonnxruntime_providers_shared.so"])
     libs.extend(["libonnxruntime_providers_dnnl.so"])
     libs.extend(["libonnxruntime_providers_openvino.so"])
+    libs.extend(["libonnxruntime_providers_vitisai.so"])
     libs.append(providers_cuda_or_rocm)
     libs.append(providers_tensorrt_or_migraphx)
     libs.append(providers_cann)
@@ -306,6 +307,7 @@ elif platform.system() == "Darwin":
     libs.extend(["libonnxruntime_providers_dnnl.dylib"])
     libs.extend(["libonnxruntime_providers_tensorrt.dylib"])
     libs.extend(["libonnxruntime_providers_cuda.dylib"])
+    libs.extend(["libonnxruntime_providers_vitisai.dylib"])
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.dylib"])
 else:
@@ -316,6 +318,7 @@ else:
     libs.extend(["onnxruntime_providers_tensorrt.dll"])
     libs.extend(["onnxruntime_providers_openvino.dll"])
     libs.extend(["onnxruntime_providers_cuda.dll"])
+    libs.extend(["onnxruntime_providers_vitisai.dll"])
     # DirectML Libs
     libs.extend(["DirectML.dll"])
     if nightly_build:

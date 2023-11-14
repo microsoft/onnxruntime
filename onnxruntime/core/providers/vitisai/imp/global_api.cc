@@ -1,38 +1,72 @@
 
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
-#include "vaip/global_api.h"
-#include "./vai_assert.h"
+#include <atomic>
+#include <filesystem>
+#include <fstream>
+#include <google/protobuf/io/zero_copy_stream_impl.h>
+
 #include "core/common/exceptions.h"
-#include "core/common/logging/logging.h"
-
-#include "core/framework/error_code_helper.h"
-
+#include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
+#include "core/providers/shared/common.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/ort_env.h"
 
-#include <atomic>
-
-#include "core/session/onnxruntime_cxx_api.h"
+#include "vaip/custom_op.h"
+#include "vaip/global_api.h"
 #include "vaip/dll_safe.h"
 #include "vaip/vaip_ort_api.h"
+#include "vaip/vai_assert.h"
 #include "vaip/graph.h"
 #include "vaip/node.h"
 #include "vaip/node_arg.h"
-
 #include "./tensor_proto.h"
 #include "./attr_proto.h"
-#include "./register_xir_ops.h"
-
-#include "onnxruntime_vitisai_ep/onnxruntime_vitisai_ep.h"
-
 #include "onnxruntime_config.h"
 #include "version_info.h"  // version_info.hpp.in
 
 using namespace onnxruntime;
+using namespace onnx;
+
+// The filename extension for a shared library is different per platform
+#ifdef _WIN32
+#define LIBRARY_PREFIX
+#define LIBRARY_EXTENSION ORT_TSTR(".dll")
+#elif defined(__APPLE__)
+#define LIBRARY_PREFIX "lib"
+#define LIBRARY_EXTENSION ".dylib"
+#else
+#define LIBRARY_PREFIX "lib"
+#define LIBRARY_EXTENSION ".so"
+#endif
+
 vaip_core::OrtApiForVaip* create_org_api_hook();
+struct OrtVitisAIEpAPI {
+  void (*initialize_onnxruntime_vitisai_ep)(vaip_core::OrtApiForVaip* api, std::vector<OrtCustomOpDomain*>& ret_domain);
+  std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_with_options)(const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options);
+  void Ensure() {
+    if (handle_)
+      return;
+    auto full_path = Env::Default().GetRuntimePath() + PathString(LIBRARY_PREFIX ORT_TSTR("onnxruntime_vitisai_ep") LIBRARY_EXTENSION);
+    ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, true, &handle_));
+    ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "initialize_onnxruntime_vitisai_ep", (void**)&initialize_onnxruntime_vitisai_ep));
+    ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "compile_onnx_model_vitisai_ep_with_options", (void**)&compile_onnx_model_with_options));
+  }
+
+ private:
+  void* handle_{};
+};
+
+static OrtVitisAIEpAPI s_library_vitisaiep;
+
+vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>> compile_onnx_model_with_options(const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options) {
+  return vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_with_options(model_path, graph, options));
+}
 
 std::vector<OrtCustomOpDomain*> initialize_vitisai_ep() {
+  s_library_vitisaiep.Ensure();
   Status status = Status::OK();
   try {
     OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, ORT_LOGGING_LEVEL_WARNING, "onnxruntime-vitisai-ep"};
@@ -41,21 +75,14 @@ std::vector<OrtCustomOpDomain*> initialize_vitisai_ep() {
   }
   auto domains = std::vector<OrtCustomOpDomain*>();
   domains.reserve(100);
-  onnxruntime_vitisai_ep::initialize_onnxruntime_vitisai_ep(create_org_api_hook(), domains);
-  auto& domainToVersionRangeInstance =
-      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
-  if (domainToVersionRangeInstance.Map().find("com.xilinx") ==
-      domainToVersionRangeInstance.Map().end()) {
-    vaip::register_xir_ops(domains);
-  }
+  s_library_vitisaiep.initialize_onnxruntime_vitisai_ep(create_org_api_hook(), domains);
 
   return domains;
 }
 
 static vaip_core::OrtApiForVaip the_global_api;
 vaip_core::OrtApiForVaip* create_org_api_hook() {
-  assert(Ort::Global<void>::api_ != nullptr);
-  the_global_api.ort_api_ = Ort::Global<void>::api_;
+  the_global_api.host_ = Provider_GetHost();
   the_global_api.model_load = [](const std::string& filename) -> Model* {
     ONNX_NAMESPACE::ModelProto model_proto;
     auto& logger = logging::LoggingManager::DefaultLogger();

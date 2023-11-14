@@ -5,15 +5,18 @@
 #include "./my_ort.h"
 
 struct OrtApi;
-typedef struct OrtApi OrtApi;
-typedef struct OrtKernelContext OrtKernelContext;
-struct OrtCustomOpDomain;
-typedef struct OrtCustomOpDomain OrtCustomOpDomain;
+struct OrtKernelContext;
 
 namespace vaip_core {
-class PassContext;
-class MetaDefProto;
-class CustomOp;
+class CustomOp {
+ public:
+  VAIP_DLL_SPEC CustomOp();
+  VAIP_DLL_SPEC virtual ~CustomOp();
+
+ public:
+  virtual void Compute(const OrtApi* api, OrtKernelContext* context) const = 0;
+};
+
 class ExecutionProvider {
  public:
   VAIP_DLL_SPEC ExecutionProvider();
@@ -26,15 +29,6 @@ class ExecutionProvider {
   virtual DllSafe<std::vector<std::string>>
   get_meta_def_constant_initializer() const = 0;
   virtual std::unique_ptr<CustomOp> compile() const = 0;
-};
-
-class CustomOp {
- public:
-  VAIP_DLL_SPEC CustomOp();
-  VAIP_DLL_SPEC virtual ~CustomOp();
-
- public:
-  virtual void Compute(const OrtApi* api, OrtKernelContext* context) const = 0;
 };
 
 }  // namespace vaip_core
