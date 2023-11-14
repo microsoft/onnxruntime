@@ -168,20 +168,34 @@ JblasQ4GemmCompF32(const int M,
                    int8_t* WorkSpace,
                    jblas::parallel::IThreading* th)
 {
-    using Parallel = jblas::parallel::gemm::SchedulerKBlock<GemmCore_T>;
-    using Launcher = JBLAS_FP32_S4_F32F32<GemmCore_T>;
-    static Launcher kernel;
-    auto reduceA = kernel.mProA.createStorage(M, K, B->mBlockSize);
-    if (B->mIsAsym) {
-        reduceA.assign(WorkSpace);
-        kernel.mProA.reduce({A, K}, &reduceA, M, K, th);
-    }
-    typename Launcher::BEpiParam blkargs{
-        B->template SPtr<int8_t>(),    B->mScaT,   B->mCStep, B->template ZPtr<int8_t>(),
-        reduceA.template get<float>(), reduceA.lda};
+    if (M <= 32) {
+        using Parallel = jblas::parallel::gemm::SchedulerKBlock<GemmCore_T>;
+        using Launcher = JBLAS_FP32_S4_F32F32<GemmCore_T>;
+        static Launcher kernel;
+        auto reduceA = kernel.mProA.createStorage(M, K, B->mBlockSize);
+        if (B->mIsAsym) {
+            reduceA.assign(WorkSpace);
+            ORTThreading single(nullptr);
+            kernel.mProA.reduce({A, K}, &reduceA, M, K, &single);
+        }
+        typename Launcher::BEpiParam blkargs{
+            B->template SPtr<int8_t>(),    B->mScaT,   B->mCStep, B->template ZPtr<int8_t>(),
+            reduceA.template get<float>(), reduceA.lda};
 
-    typename Launcher::Param args{M, N, K, B->mBlockSize, {A, K}, {B}, blkargs, {C, N}};
-    jblas::parallel::GemmKBlockRun<Parallel>(kernel, args, th);
+        typename Launcher::Param args{M, N, K, B->mBlockSize, {A, K}, {B}, blkargs, {C, N}};
+        jblas::parallel::GemmKBlockRun<Parallel>(kernel, args, th);
+    } else {
+        using Parallel = jblas::parallel::gemm::SchedulerBase<GemmCore_T>;
+        using Launcher =
+            jblas::wrapper::gemm::LauncherBase<GemmCore_T::ISA, GemmCore_T,
+                                               jblas::prologue_a::gemm::ActivationBase,
+                                               jblas::prologue_b::gemm::WeightKBlockS4,
+                                               jblas::epilogue::gemm::AccumulatorWriteBackFp32>;
+        static Launcher kernel;
+
+        typename Launcher::Param args{M, N, K, {A, K}, {B}, {C, N}};
+        jblas::parallel::GemmBaseRun<Parallel>(kernel, args, th);
+    }
 }
 
 template <class GemmCore_T>
@@ -203,7 +217,12 @@ JblasQ4GemmCompInt8(const int M,
     static Launcher kernel;
     auto quanA = kernel.mProA.createStorage(M, K, B->mBlockSize, B->mIsAsym);
     quanA.assign(WorkSpace);
-    kernel.mProA.quantize({A, K, &quanA}, M, K, th);
+    if (M <= 32) {
+        ORTThreading single(nullptr);
+        kernel.mProA.quantize({A, K, &quanA}, M, K, &single);
+    } else {
+        kernel.mProA.quantize({A, K, &quanA}, M, K, th);
+    }
     typename Launcher::Param args{
         M,
         N,

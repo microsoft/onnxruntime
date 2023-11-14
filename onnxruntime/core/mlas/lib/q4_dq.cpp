@@ -99,13 +99,28 @@ MlasJblasQ4GemmPackB(void* PackedBuf,
                      MLAS_COMPUTE_TYPE CompType,
                      MLAS_THREADPOOL* ThreadPool)
 {
+    GetCPUDevice();
     switch (CompType) {
         case CompInt8:
-            return JblaQ4GemmPackB(JblasAvxVnniS4Fp32Fp32, int(BlkSize), PackedBuf, FpData, int(N),
-                                   int(K), isAsym, int(ldb), ThreadPool);
+            if (_cd->AVX512_VNNI()) {
+                return JblaQ4GemmPackB(JblasAvxVnniS4Fp32Fp32, int(BlkSize), PackedBuf, FpData,
+                                       int(N), int(K), isAsym, int(ldb), ThreadPool);
+            }
+            if (_cd->AVX_VNNI()) {
+                return JblaQ4GemmPackB(JblasAvxVnniS4Fp32Fp32, int(BlkSize), PackedBuf, FpData,
+                                       int(N), int(K), isAsym, int(ldb), ThreadPool);
+            }
+            break;
         case CompFp32:
-            return JblaQ4GemmPackB(JblasAvx512fS4Fp32Fp32, int(BlkSize), PackedBuf, FpData, int(N),
-                                   int(K), isAsym, int(ldb), ThreadPool);
+            if (_cd->AVX512F()) {
+                return JblaQ4GemmPackB(JblasAvx512fS4Fp32Fp32, int(BlkSize), PackedBuf, FpData,
+                                       int(N), int(K), isAsym, int(ldb), ThreadPool);
+            }
+            if (_cd->AVX2()) {
+                return JblaQ4GemmPackB(JblasAvx2S4Fp32Fp32, int(BlkSize), PackedBuf, FpData,
+                                       int(N), int(K), isAsym, int(ldb), ThreadPool);
+            }
+            break;
         case CompBf16:
         case CompFp16:
         default:
