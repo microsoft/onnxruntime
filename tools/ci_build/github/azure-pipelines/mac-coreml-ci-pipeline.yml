@@ -34,7 +34,7 @@ jobs:
   pool:
     vmImage: 'macOS-13'
   variables:
-    MACOSX_DEPLOYMENT_TARGET: '10.14'
+    MACOSX_DEPLOYMENT_TARGET: '11.0'
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
     CCACHE_DIR: '$(Pipeline.Workspace)/ccache'
   timeoutInMinutes: 120
