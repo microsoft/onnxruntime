@@ -15,7 +15,7 @@ parameters:
   EnvSetupScript: 'setup_env.bat'
   AgentPool: 'onnxruntime-Win-CPU-2022'
   AgentDemands: []
-  OrtPackageId: Microsoft.ML.OnnxRuntime
+  OrtPackageId: Microsoft.ML.OnnxRuntime.DirectML
   BuildConfigurations: ['RelWithDebInfo'] # Options: Debug, RelWithDebInfo
   RunTests : 'true'
   EnableLto: true
