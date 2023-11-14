@@ -122,7 +122,7 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
         buildArch: x64
-        additionalBuildFlags: --use_winml --enable_wcos --disable_rtti --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.22000.0
+        additionalBuildFlags: --use_winml --enable_wcos --disable_rtti
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_release_winml
