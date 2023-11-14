@@ -175,6 +175,11 @@ jobs:
       msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
+  - script: |
+      python3 tools\ValidateNativeDelegateAttributes.py
+    displayName: 'Validate C# native delegates'
+    workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
   - task: MSBuild@1
     displayName: 'Build C#'
     inputs:
