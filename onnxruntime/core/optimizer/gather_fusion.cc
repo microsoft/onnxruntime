@@ -56,14 +56,17 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
   InlinedVector<const NodeArg*> node_args;
   for (auto node_arg : graph.GetInputs()) {
-    if (graph.GetConsumerNodes(node_arg->Name()).size() > 1) {
+    if (node_arg && graph.GetConsumerNodes(node_arg->Name()).size() > 1) {
       node_args.push_back(node_arg);
     }
   }
 
   for (auto entry : graph.GetAllInitializedTensors()) {
     if (graph.GetConsumerNodes(entry.first).size() > 1) {
-      node_args.push_back(&graph.GetOrCreateNodeArg(entry.first, nullptr));
+      auto node_arg = graph.GetNodeArg(entry.first);
+      if (node_arg) {
+        node_args.push_back(node_arg);
+      }
     }
   }
 
@@ -105,7 +108,7 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     InlinedVector<std::reference_wrapper<Node>> nodes_to_fuse;
     for (auto consumer : consumers) {
       int64_t index, axis, dims;
-      if (!IsSupportedGather(graph, *consumer, index, axis, dims)) {
+      if (!consumer || !IsSupportedGather(graph, *consumer, index, axis, dims)) {
         can_fuse = false;
         break;
       }
@@ -162,9 +165,9 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       }
     }
 
-    Node& split_node = graph.AddNode(graph.GenerateNodeName("Split"), "Split", "Split for Fused Gather nodes",
-                                     {&graph.GetOrCreateNodeArg(node_arg->Name(), nullptr)},
-                                     add_squeeze_node ? split_outputs : gather_outputs);
+    Node& split_node =
+        graph.AddNode(graph.GenerateNodeName("Split"), "Split", "Split for Fused Gather nodes",
+                      {graph.GetNodeArg(node_arg->Name())}, add_squeeze_node ? split_outputs : gather_outputs);
     split_node.AddAttribute("axis", split_axis);
     split_node.SetExecutionProviderType(nodes_to_fuse[0].get().GetExecutionProviderType());
 
