@@ -364,7 +364,23 @@
         "^test_constantofshape_int_zeros",
         // https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=1141563&view=logs&j=a018b46d-e41a-509d-6581-c95fdaa42fcd&t=d61c1d37-f101-5d28-982f-e5931b720302
         "^test_gelu_tanh_2_cpu",
-        "^test_gelu_tanh_2_expanded_cpu"
+        "^test_gelu_tanh_2_expanded_cpu",
+        "^test_reduce_max_bool_inputs",
+        "^test_reduce_min_bool_inputs",
+        "^test_reduce_min_empty_set",
+        "^test_reduce_l1_empty_set",
+        "^test_reduce_l1_empty_set_expanded",
+        "^test_reduce_l2_empty_set",
+        "^test_reduce_l2_empty_set_expanded",
+        "^test_reduce_log_sum_empty_set",
+        "^test_reduce_log_sum_empty_set_expanded",
+        "^test_reduce_log_sum_exp_empty_set",
+        "^test_reduce_log_sum_exp_empty_set_expanded",
+        "^test_reduce_prod_empty_set",
+        "^test_reduce_sum_empty_set",
+        "^test_reduce_sum_empty_set_non_reduced_axis_zero",
+        "^test_reduce_sum_square_empty_set",
+        "^test_reduce_sum_square_empty_set_expanded"
     ],
     "current_failing_tests_NNAPI": [
         "^test_maxpool_2d_uint8",

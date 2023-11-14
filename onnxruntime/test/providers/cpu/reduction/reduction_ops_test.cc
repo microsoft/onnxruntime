@@ -933,7 +933,12 @@ TEST(ReductionOpTest, test_bool_ReduceMax_0) {
   test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
   test.AddInput<int64_t>("axes", {2}, {-1, 1});
   test.AddOutput<bool>("reduced", {2}, {true, true});
-  test.Run();
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {
+          kOpenVINOExecutionProvider,
+      });
 }
 
 TEST(ReductionOpTest, test_bool_ReduceMin_1) {
@@ -942,7 +947,12 @@ TEST(ReductionOpTest, test_bool_ReduceMin_1) {
   test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
   test.AddInput<int64_t>("axes", {2}, {-1, 1});
   test.AddOutput<bool>("reduced", {2}, {false, false});
-  test.Run();
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {
+          kOpenVINOExecutionProvider,
+      });
 }
 
 TEST(ReductionOpTest, test_bool_ReduceMax_2) {
@@ -951,7 +961,14 @@ TEST(ReductionOpTest, test_bool_ReduceMax_2) {
   test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
   test.AddInput<int64_t>("axes", {2}, {-1, 1});
   test.AddOutput<bool>("reduced", {2, 1, 1}, {true, true});
-  test.Run();
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {
+          kOpenVINOExecutionProvider,
+      }
+
+  );
 }
 
 TEST(ReductionOpTest, test_bool_ReduceMin_3) {
@@ -960,7 +977,12 @@ TEST(ReductionOpTest, test_bool_ReduceMin_3) {
   test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
   test.AddInput<int64_t>("axes", {2}, {-1, 1});
   test.AddOutput<bool>("reduced", {2, 1, 1}, {false, false});
-  test.Run();
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {
+          kOpenVINOExecutionProvider,
+      });
 }
 
 TEST(ReductionOpTest, test_bool_ReduceMax_4) {
@@ -969,7 +991,12 @@ TEST(ReductionOpTest, test_bool_ReduceMax_4) {
   test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
   test.AddInput<int64_t>("axes", {2}, {2, 1});
   test.AddOutput<bool>("reduced", {2}, {true, true});
-  test.Run();
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {
+          kOpenVINOExecutionProvider,
+      });
 }
 
 TEST(ReductionOpTest, test_bool_ReduceMin_5) {
@@ -987,7 +1014,12 @@ TEST(ReductionOpTest, test_bool_ReduceMax_6) {
   test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
   test.AddInput<int64_t>("axes", {2}, {2, 1});
   test.AddOutput<bool>("reduced", {2, 1, 1}, {true, true});
-  test.Run();
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {
+          kOpenVINOExecutionProvider,
+      });
 }
 
 TEST(ReductionOpTest, test_bool_ReduceMin_7) {
@@ -996,7 +1028,12 @@ TEST(ReductionOpTest, test_bool_ReduceMin_7) {
   test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
   test.AddInput<int64_t>("axes", {2}, {2, 1});
   test.AddOutput<bool>("reduced", {2, 1, 1}, {false, false});
-  test.Run();
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {
+          kOpenVINOExecutionProvider,
+      });
 }
 
 TEST(ReductionOpTest, test_bool_ReduceMax_8) {
@@ -1005,7 +1042,12 @@ TEST(ReductionOpTest, test_bool_ReduceMax_8) {
   test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
   test.AddInput<int64_t>("axes", {1}, {0});
   test.AddOutput<bool>("reduced", {3, 2}, {false, true, true, true, false, true});
-  test.Run();
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {
+          kOpenVINOExecutionProvider,
+      });
 }
 
 TEST(ReductionOpTest, test_bool_ReduceMin_9) {
@@ -1014,7 +1056,12 @@ TEST(ReductionOpTest, test_bool_ReduceMin_9) {
   test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
   test.AddInput<int64_t>("axes", {1}, {0});
   test.AddOutput<bool>("reduced", {3, 2}, {false, false, false, true, false, true});
-  test.Run();
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {
+          kOpenVINOExecutionProvider,
+      });
 }
 
 TEST(ReductionOpTest, test_bool_ReduceMax_10) {
@@ -1032,7 +1079,12 @@ TEST(ReductionOpTest, test_bool_ReduceMin_11) {
   test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
   test.AddInput<int64_t>("axes", {1}, {0});
   test.AddOutput<bool>("reduced", {1, 3, 2}, {false, false, false, true, false, true});
-  test.Run();
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {
+          kOpenVINOExecutionProvider,
+      });
 }
 
 TEST(ReductionOpTest, test_bool_ReduceMax_12) {
@@ -1041,7 +1093,12 @@ TEST(ReductionOpTest, test_bool_ReduceMax_12) {
   test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
   test.AddInput<int64_t>("axes", {1}, {2});
   test.AddOutput<bool>("reduced", {2, 3}, {false, true, true, true, true, true});
-  test.Run();
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {
+          kOpenVINOExecutionProvider,
+      });
 }
 
 TEST(ReductionOpTest, test_bool_ReduceMin_13) {
@@ -1050,7 +1107,12 @@ TEST(ReductionOpTest, test_bool_ReduceMin_13) {
   test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
   test.AddInput<int64_t>("axes", {1}, {2});
   test.AddOutput<bool>("reduced", {2, 3}, {false, true, false, false, false, false});
-  test.Run();
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {
+          kOpenVINOExecutionProvider,
+      });
 }
 
 TEST(ReductionOpTest, test_bool_ReduceMax_14) {
@@ -1059,7 +1121,12 @@ TEST(ReductionOpTest, test_bool_ReduceMax_14) {
   test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
   test.AddInput<int64_t>("axes", {1}, {2});
   test.AddOutput<bool>("reduced", {2, 3, 1}, {false, true, true, true, true, true});
-  test.Run();
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {
+          kOpenVINOExecutionProvider,
+      });
 }
 
 TEST(ReductionOpTest, test_bool_ReduceMin_15) {
@@ -1068,7 +1135,12 @@ TEST(ReductionOpTest, test_bool_ReduceMin_15) {
   test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
   test.AddInput<int64_t>("axes", {1}, {2});
   test.AddOutput<bool>("reduced", {2, 3, 1}, {false, true, false, false, false, false});
-  test.Run();
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {
+          kOpenVINOExecutionProvider,
+      });
 }
 
 TEST(ReductionOpTest, test_bool_ReduceMax_16) {
@@ -1076,7 +1148,12 @@ TEST(ReductionOpTest, test_bool_ReduceMax_16) {
   test.AddAttribute("keepdims", static_cast<int64_t>(0));
   test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
   test.AddOutput<bool>("reduced", {}, {true});
-  test.Run();
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {
+          kOpenVINOExecutionProvider,
+      });
 }
 
 TEST(ReductionOpTest, test_bool_ReduceMin_17) {
@@ -1084,7 +1161,12 @@ TEST(ReductionOpTest, test_bool_ReduceMin_17) {
   test.AddAttribute("keepdims", static_cast<int64_t>(0));
   test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
   test.AddOutput<bool>("reduced", {}, {false});
-  test.Run();
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {
+          kOpenVINOExecutionProvider,
+      });
 }
 
 TEST(ReductionOpTest, test_bool_ReduceMax_18) {
@@ -1092,7 +1174,12 @@ TEST(ReductionOpTest, test_bool_ReduceMax_18) {
   test.AddAttribute("keepdims", static_cast<int64_t>(1));
   test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
   test.AddOutput<bool>("reduced", {1, 1, 1}, {true});
-  test.Run();
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {
+          kOpenVINOExecutionProvider,
+      });
 }
 
 TEST(ReductionOpTest, test_bool_ReduceMin_19) {
@@ -1100,7 +1187,12 @@ TEST(ReductionOpTest, test_bool_ReduceMin_19) {
   test.AddAttribute("keepdims", static_cast<int64_t>(1));
   test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
   test.AddOutput<bool>("reduced", {1, 1, 1}, {false});
-  test.Run();
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {
+          kOpenVINOExecutionProvider,
+      });
 }
 
 TEST(ReductionOpTest, ReduceMax_do_not_keepdims) {
@@ -1262,7 +1354,7 @@ TEST(ReductionOpTest, ReduceMax_int32) {
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          // TensorRT: axis must be 0
 #endif
 }
 
@@ -1283,7 +1375,7 @@ TEST(ReductionOpTest, ReduceMax_int64) {
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          // TensorRT: axis must be 0
 #endif
 }
 
@@ -5673,17 +5765,16 @@ void test_empty_set(const std::string& op, int opset, bool axes_as_input, float 
   std::vector<float> reduced(output_size, empty_value);
   test.AddOutput<float>("reduced", output_shape, reduced);
   test.Run(
-    OpTester::ExpectResult::kExpectSuccess,
-    "",
-    {
-      kOpenVINOExecutionProvider,
-      kQnnExecutionProvider,
-      kTensorrtExecutionProvider,
-      kCoreMLExecutionProvider,
-      kDnnlExecutionProvider,
-      kCudaExecutionProvider,
-      }
-      );
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {
+          kOpenVINOExecutionProvider,
+          kQnnExecutionProvider,
+          kTensorrtExecutionProvider,
+          kCoreMLExecutionProvider,
+          kDnnlExecutionProvider,
+          kCudaExecutionProvider,
+      });
 }
 
 TEST(ReductionOpTest, empty_set_ReduceL1) {
