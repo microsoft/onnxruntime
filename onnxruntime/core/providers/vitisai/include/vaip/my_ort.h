@@ -8,17 +8,42 @@
 #include <unordered_map>
 #include <vector>
 
+#ifdef USE_VITISAI
 namespace onnxruntime {
 class Model;
 class Graph;
 class GraphViewer;
 class Node;
 class NodeArg;
+class Path;
+struct IndexedSubGraph;
+struct ProviderHost;
+using NodeIndex = size_t;
+using ModelMetaData = std::unordered_map<std::string, std::string>;
 }  // namespace onnxruntime
 namespace ONNX_NAMESPACE {
 class AttributeProto;
 class TensorProto;
-#ifndef USE_VITISAI
+class GraphProto;
+}  // namespace ONNX_NAMESPACE
+#else
+namespace onnxruntime {
+struct Model;
+struct Graph;
+struct GraphViewer;
+struct Node;
+struct NodeArg;
+struct Path;
+struct IndexedSubGraph;
+struct ProviderHost;
+using NodeIndex = size_t;
+using ModelMetaData = std::unordered_map<std::string, std::string>;
+}  // namespace onnxruntime
+namespace ONNX_NAMESPACE {
+struct AttributeProto;
+struct TensorProto;
+struct GraphProto;
+#ifndef USE_PROVIDER_API
 enum TensorProto_DataType : int {
   TensorProto_DataType_UNDEFINED = 0,
   TensorProto_DataType_FLOAT = 1,
@@ -56,8 +81,8 @@ enum AttributeProto_AttributeType : int {
   AttributeProto_AttributeType_TYPE_PROTOS = 14
 };
 #endif
-
 }  // namespace ONNX_NAMESPACE
+#endif
 
 namespace vaip_core {
 class GraphHolder;

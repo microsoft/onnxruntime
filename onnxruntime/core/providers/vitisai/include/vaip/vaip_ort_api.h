@@ -13,6 +13,7 @@ struct OrtApi;
 namespace vaip_core {
 
 struct OrtApiForVaip {
+  onnxruntime::ProviderHost* host_;
   const OrtApi* ort_api_;
   // model
   Model* (*model_load)(const std::string& file);  // [0]
@@ -194,5 +195,4 @@ VAIP_DLL_SPEC const OrtApiForVaip* api();
        ? ::vaip_core::api()->name      \
        : (assert(false && #name " is not set"), nullptr))
 #endif
-VAIP_DLL_SPEC void initialize_ort();
 }  // namespace vaip_core
