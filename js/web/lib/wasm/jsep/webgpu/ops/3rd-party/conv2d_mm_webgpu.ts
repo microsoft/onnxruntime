@@ -21,9 +21,8 @@
 
 import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor-view';
-import {ShapeUtil} from '../../../util';
-import {ProgramInfo} from '../../types';
-import {tensorTypeToWsglStorageType} from '../common';
+import {ProgramInfo, ProgramUniform} from '../../types';
+import {createTensorShapeVariables, enableShapesUniforms, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from '../common';
 import {ConvAttributes} from '../conv';
 import {getActivationSnippet} from '../fuse-utils';
 
@@ -32,9 +31,9 @@ import {utilFunctions} from './conv_util';
 import {makeMatMulPackedSource, makeMatMulPackedVec4Source} from './matmul_packed_webgpu';
 
 const conv2dCommonSnippet =
-    (isChannelsLast: boolean, fitAOuter: boolean, fitBOuter: boolean, fitInner: boolean, addBias = false,
-     attributes: ConvAttributes, innerElementSizeX = 4, innerElementSizeW = 4, innerElementSize = 4,
-     dataType = 'f32'): string => {
+    (xShapeStr: string, wShapeStr: string, outputShapeStr: string, isChannelsLast: boolean, fitAOuter: boolean,
+     fitBOuter: boolean, fitInner: boolean, addBias = false, attributes: ConvAttributes, innerElementSizeX = 4,
+     innerElementSizeW = 4, innerElementSize = 4, dataType = 'f32'): string => {
       const getXSnippet = (innerElementSize: number) => {
         switch (innerElementSize) {
           case 1:
@@ -50,9 +49,9 @@ const conv2dCommonSnippet =
       const getWSnippet = (innerElementSize: number) => {
         switch (innerElementSize) {
           case 1:
-            return 'return w[row * wShape[3] + colIn];';
+            return `return w[row * i32(${wShapeStr}[3]) + colIn];`;
           case 4:
-            return 'return w[row * wShape[3] / 4 + colIn];';
+            return `return w[row * i32(${wShapeStr}[3]) / 4 + colIn];`;
           default:
             throw new Error(`innerElementSize ${innerElementSize} is not supported.`);
         }
@@ -79,13 +78,13 @@ const conv2dCommonSnippet =
       col % outWidth);
     `;
 
-      const xHeight = isChannelsLast ? 'xShape[1]' : 'xShape[2]';
-      const xWidth = isChannelsLast ? 'xShape[2]' : 'xShape[3]';
+      const xHeight = isChannelsLast ? `i32(${xShapeStr}[1])` : `i32(${xShapeStr}[2])`;
+      const xWidth = isChannelsLast ? `i32(${xShapeStr}[2])` : `i32(${xShapeStr}[3])`;
       const row = isChannelsLast ? 'row' : 'col';
       const col = isChannelsLast ? 'col' : 'row';
       const readXSnippet = `
-    let inChannels = wShape[2];
-    let outWidth = ${isChannelsLast ? 'outShape[2]' : 'outShape[3]'};
+    let inChannels = i32(${wShapeStr}[2]);
+    let outWidth = ${isChannelsLast ? `i32(${outputShapeStr}[2])` : `i32(${outputShapeStr}[3])`};
     let outRow = ${row} / outWidth;
     let outCol = ${row} % outWidth;
 
@@ -99,7 +98,7 @@ const conv2dCommonSnippet =
     // the 'same' padding type.
     if (xRow >= 0 && xRow < ${xHeight} && xCol >= 0 && xCol < ${xWidth}) {
       ${coordASnippet}
-      let xIndex = getIndexFromCoords4D(coord, xShape);
+      let xIndex = getIndexFromCoords4D(coord, vec4<i32>(${xShapeStr}));
       ${getXSnippet(innerElementSizeX)}
     }
     return resData;`;
@@ -109,7 +108,7 @@ const conv2dCommonSnippet =
     ${readXSnippet}` :
                                                                 `
     let col = colIn * ${innerElementSizeX};
-    if (row < dimAOuter && col < dimInner) {
+    if (row < uniforms.dimAOuter && col < uniforms.dimInner) {
       ${readXSnippet}
     }
     return ${typeSnippet(innerElementSizeX, dataType)}(0.0);`) :
@@ -118,7 +117,7 @@ const conv2dCommonSnippet =
     ${readXSnippet}` :
                                                                 `
     let col = colIn * ${innerElementSizeX};
-    if (row < dimInner && col < dimBOuter) {
+    if (row < uniforms.dimInner && col < uniforms.dimBOuter) {
       ${readXSnippet}
     }
     return ${typeSnippet(innerElementSizeX, dataType)}(0.0);`);
@@ -143,10 +142,10 @@ const conv2dCommonSnippet =
 
     fn mm_write(batch: i32, row : i32, colIn : i32, valueIn : ${resType}) {
       let col = colIn * ${innerElementSize};
-      if (row < dimAOuter && col < dimBOuter)
+      if (row < uniforms.dimAOuter && col < uniforms.dimBOuter)
       {
       var value = valueIn;
-      let outWidth = ${isChannelsLast ? 'outShape[2]' : 'outShape[3]'};
+      let outWidth = ${isChannelsLast ? `i32(${outputShapeStr}[2])` : `i32(${outputShapeStr}[3])`};
       ${coordResSnippet}
       ${biasSnippet(addBias)}
       ${applyActivation}
@@ -194,10 +193,30 @@ export const createConv2DMatMulProgramInfo =
       const elementsSize = isVec4 ? [innerElementSize, 4, 4] : [1, 1, 1];
       const t = tensorTypeToWsglStorageType(inputs[0].dataType);
 
-      const declareInputs = [
-        `@group(0) @binding(0) var<storage, read> x: array<${isVec4 && innerElementSize === 4 ? `vec4<${t}>` : t}>;`,
-        `@group(0) @binding(1) var<storage, read> w: array<${isVec4 ? `vec4<${t}>` : t}>;`
-      ];
+      // TODO: support component 2, 3.
+      const components = isVec4 ? 4 : 1;
+      const enableXShapesUniforms = enableShapesUniforms(inputs[0].dims.length);
+      const xShapeOrRank = enableXShapesUniforms ? inputs[0].dims.length : inputs[0].dims;
+
+      const enableWShapesUniforms = enableShapesUniforms(inputs[1].dims.length);
+      const wShapeOrRank = enableWShapesUniforms ? inputs[1].dims.length : inputs[1].dims;
+
+      const enableOutputShapesUniforms = enableShapesUniforms(outputShape.length);
+      const outputShapeOrRank = enableOutputShapesUniforms ? outputShape.length : outputShape;
+
+      const programUniforms: ProgramUniform[] =
+          [{type: 'int32', data: dimAOuter}, {type: 'int32', data: dimBOuter}, {type: 'int32', data: dimInner}];
+      const x = inputVariable('x', inputs[0].dataType, xShapeOrRank, components);
+      const w = inputVariable('w', inputs[1].dataType, wShapeOrRank, components);
+      const inputVariables = [x, w];
+
+      if (enableXShapesUniforms) {
+        programUniforms.push(...createTensorShapeVariables(inputs[0].dims));
+      }
+      if (enableWShapesUniforms) {
+        programUniforms.push(...createTensorShapeVariables(inputs[1].dims));
+      }
+
       let declareFunctions = `
       fn setOutputAtIndex(flatIndex : i32, value : ${isVec4 ? `vec4<${t}>` : t}) {
         result[flatIndex] = ${isVec4 ? `vec4<${t}>` : t}(value);
@@ -207,46 +226,52 @@ export const createConv2DMatMulProgramInfo =
         setOutputAtIndex(flatIndex ${isVec4 ? '/ 4' : ''}, value);
       }`;
       if (hasBias) {
-        declareInputs.push(`@group(0) @binding(2) var<storage, read> bias: array<${isVec4 ? `vec4<${t}>` : t}>;`);
+        const enableBiasShapesUniforms = enableShapesUniforms(inputs[2].dims.length);
+        const biasShapeOrRank = enableBiasShapesUniforms ? inputs[2].dims.length : inputs[2].dims;
+        const bias = inputVariable('bias', inputs[2].dataType, biasShapeOrRank, components);
+        inputVariables.push(bias);
+        if (enableBiasShapesUniforms) {
+          programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
+        }
         declareFunctions += `
         fn getBiasByOutputCoords(coords : vec4<i32>) -> ${isVec4 ? `vec4<${t}>` : t} {
           return bias[coords.${isChannelsLast ? 'w' : 'y'}${isVec4 ? '/ 4' : ''}];
         }`;
       }
-
+      const xShapeStr = enableXShapesUniforms ? 'uniforms.x_shape' : 'x_shape';
+      const wShapeStr = enableWShapesUniforms ? 'uniforms.w_shape' : 'w_shape';
+      const outputShapeStr = enableOutputShapesUniforms ? 'uniforms.result_shape' : 'result_shape';
+      const output = outputVariable('result', inputs[0].dataType, outputShapeOrRank, components);
+      if (enableOutputShapesUniforms) {
+        programUniforms.push(...createTensorShapeVariables(outputShape));
+      }
       return {
         name: 'Conv2DMatMul',
         shaderCache: {hint: attributes.cacheKey},
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
           dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]},
+          programUniforms,
         }),
-        getShaderSource: () => `
-        ${utilFunctions}
+        getShaderSource: (shaderHelper: ShaderHelper) => `
+        ${utilFunctions(enableOutputShapesUniforms ? 'uniforms.result_strides' : 'result_strides')}
         //struct Uniforms { xShape : vec4<i32>, wShape : vec4<i32>, outShape : vec4<i32>,
         //  outShapeStrides: vec3<i32>, filterDims : vec2<i32>, pad : vec2<i32>, stride : vec2<i32>,
         //  dilation : vec2<i32>, dimAOuter : i32, dimBOuter : i32, dimInner : i32 };
-        ${declareInputs.join('')}
-        @group(0) @binding(${declareInputs.length}) var<storage, read_write> result: array<${
-            isVec4 ? `vec4<${t}>` : t}>;
-        //@group(0) @binding(${declareInputs.length + 1}) var<uniform> uniforms: Uniforms;
-
-        const xShape : vec4<i32> = vec4<i32>(${inputs[0].dims.join(',')});
-        const wShape : vec4<i32> = vec4<i32>(${inputs[1].dims.join(',')});
-        const outShape : vec4<i32> = vec4<i32>(${outputShape.join(',')});
-        const outShapeStrides : vec3<i32> = vec3<i32>(${ShapeUtil.computeStrides(outputShape).slice(0, 3).join(',')});
+        ${
+            shaderHelper.registerUniform('dimAOuter', 'i32')
+                .registerUniform('dimBOuter', 'i32')
+                .registerUniform('dimInner', 'i32')
+                .declareVariables(...inputVariables, output)}
         const filterDims : vec2<i32> = vec2<i32>(${attributes.kernelShape[0]}, ${attributes.kernelShape[1]});
         const pad : vec2<i32> = vec2<i32>(${attributes.pads[0]}, ${attributes.pads[1]});
         const stride : vec2<i32> = vec2<i32>(${attributes.strides[0]}, ${attributes.strides[1]});
         const dilation : vec2<i32> = vec2<i32>(${attributes.dilations[0]}, ${attributes.dilations[1]});
-        const dimAOuter : i32 = ${dimAOuter};
-        const dimBOuter : i32 = ${dimBOuter};
-        const dimInner : i32 = ${dimInner};
         ${declareFunctions}
         ${
             conv2dCommonSnippet(
-                isChannelsLast, fitAOuter, fitBOuter, fitInner, hasBias, attributes, elementsSize[0], elementsSize[1],
-                elementsSize[2], t)}
+                xShapeStr, wShapeStr, outputShapeStr, isChannelsLast, fitAOuter, fitBOuter, fitInner, hasBias,
+                attributes, elementsSize[0], elementsSize[1], elementsSize[2], t)}
             ${
             isVec4 ?
                 makeMatMulPackedVec4Source(elementsPerThread, workGroupSize, t, undefined, !isChannelsLast, tileInner) :
