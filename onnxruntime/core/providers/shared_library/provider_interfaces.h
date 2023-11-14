@@ -50,6 +50,14 @@ namespace training {
 class DistributedRunContext;
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+namespace distributed {
+class DeviceMesh;
+class AxisPartitionSpec;
+class TensorPartitionSpec;
+}  // namespace distributed
+#endif
+
 template <typename T, typename TResult>
 struct IteratorHolder {
   IteratorHolder(std::unique_ptr<T>&& p) : p_{std::move(p)} {}
@@ -241,6 +249,41 @@ struct ProviderHost {
   virtual int64_t TensorShape__SizeToDimension(const TensorShape* p, size_t dimension) = 0;
   virtual int64_t TensorShape__SizeFromDimension(const TensorShape* p, size_t dimension) = 0;
   virtual std::ostream& operator_left_shift(std::ostream& out, const TensorShape& shape) = 0;
+
+  // Tensor sharding information
+#if !defined(ORT_MINIMAL_BUILD)
+  virtual void distributed__ValidateAxisIndex(const int64_t axis, const int64_t rank) = 0;
+  virtual std::vector<distributed::AxisPartitionSpec> distributed__ParseStringAsAxisPartitionVector(const std::string& spec_string) = 0;
+
+  virtual std::vector<int64_t> distributed__ParseStringAsInt64Vector(const std::string& str) = 0;
+
+  virtual distributed::DeviceMesh distributed__CreateDeviceMesh(
+      std::vector<int64_t> device_mesh_shape,
+      std::vector<int64_t> device_mesh_elements) = 0;
+
+  virtual distributed::TensorPartitionSpec distributed__CreateTensorPartitionSpec(
+      std::string spec_string,
+      std::vector<int64_t> device_mesh_shape,
+      std::vector<int64_t> device_mesh_elements) = 0;
+
+  virtual distributed::TensorPartitionSpec distributed__CreateTensorShardSpec(
+      const distributed::DeviceMesh& device_mesh,
+      int64_t device_mesh_axis,
+      int64_t shard_axis,
+      int64_t tensor_rank) = 0;
+
+  virtual TensorShape distributed__ComputeOriginShape(const TensorShape& shard_shape, const distributed::TensorPartitionSpec& spec) = 0;
+
+  virtual TensorShape distributed__ComputeShardShape(const TensorShape& shape, const distributed::TensorPartitionSpec& spec) = 0;
+  virtual TensorShape distributed__ComputeShardShape(const TensorShape source_shape, int64_t shard_axis, int64_t shard_count) = 0;
+
+  virtual std::tuple<TensorShape, TensorShape> distributed__NormalizeShapes(const TensorShape& left, const TensorShape& right) = 0;
+
+  virtual std::tuple<distributed::TensorPartitionSpec, distributed::TensorPartitionSpec> distributed__NormalizeTensorPartitionSpecs(
+      const distributed::TensorPartitionSpec& left, const distributed::TensorPartitionSpec& right) = 0;
+
+  virtual bool distributed__CanShard(const TensorShape& shape, const distributed::TensorPartitionSpec& spec) = 0;
+#endif
 
   // CPUIDInfo
   virtual const CPUIDInfo& CPUIDInfo__GetCPUIDInfo() = 0;

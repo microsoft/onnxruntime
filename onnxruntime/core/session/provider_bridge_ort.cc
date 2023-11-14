@@ -1099,6 +1099,61 @@ struct ProviderHostImpl : ProviderHost {
   }
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD)
+  void distributed__ValidateAxisIndex(const int64_t axis, const int64_t rank) override {
+    return distributed::ValidateAxisIndex(axis, rank);
+  };
+
+  std::vector<distributed::AxisPartitionSpec> distributed__ParseStringAsAxisPartitionVector(const std::string& spec_string) override {
+    return distributed::ParseStringAsAxisPartitionVector(spec_string);
+  }
+
+  std::vector<int64_t> distributed__ParseStringAsInt64Vector(const std::string& str) override {
+    return distributed::ParseStringAsInt64Vector(str);
+  }
+
+  distributed::DeviceMesh distributed__CreateDeviceMesh(
+      std::vector<int64_t> device_mesh_shape,
+      std::vector<int64_t> device_mesh_elements) override {
+    return distributed::CreateDeviceMesh(device_mesh_shape, device_mesh_elements);
+  }
+
+  distributed::TensorPartitionSpec distributed__CreateTensorPartitionSpec(
+      std::string spec_string,
+      std::vector<int64_t> device_mesh_shape,
+      std::vector<int64_t> device_mesh_elements) override {
+    return distributed::CreateTensorPartitionSpec(spec_string, device_mesh_shape, device_mesh_elements);
+  }
+
+  distributed::TensorPartitionSpec distributed__CreateTensorShardSpec(
+      const distributed::DeviceMesh& device_mesh,
+      int64_t device_mesh_axis,
+      int64_t shard_axis,
+      int64_t tensor_rank) override {
+    return distributed::CreateTensorShardSpec(device_mesh, device_mesh_axis, shard_axis, tensor_rank);
+  }
+
+  TensorShape distributed__ComputeOriginShape(const TensorShape& shard_shape, const distributed::TensorPartitionSpec& spec) override {
+    return distributed::ComputeOriginShape(shard_shape, spec);
+  }
+  TensorShape distributed__ComputeShardShape(const TensorShape& shape, const distributed::TensorPartitionSpec& spec) override {
+    return distributed::ComputeShardShape(shape, spec);
+  }
+  TensorShape distributed__ComputeShardShape(const TensorShape source_shape, int64_t shard_axis, int64_t shard_count) override {
+    return distributed::ComputeShardShape(source_shape, shard_axis, shard_count);
+  }
+  std::tuple<TensorShape, TensorShape> distributed__NormalizeShapes(const TensorShape& left, const TensorShape& right) override {
+    return distributed::NormalizeShapes(left, right);
+  };
+  std::tuple<distributed::TensorPartitionSpec, distributed::TensorPartitionSpec> distributed__NormalizeTensorPartitionSpecs(
+      const distributed::TensorPartitionSpec& left, const distributed::TensorPartitionSpec& right) {
+    return distributed::NormalizeTensorPartitionSpecs(left, right);
+  }
+  bool distributed__CanShard(const TensorShape& shape, const distributed::TensorPartitionSpec& spec) {
+    return distributed::CanShard(shape, spec);
+  }
+#endif
+
 #if defined(USE_CANN)
   RandomGenerator& RandomGenerator__Default() override { return RandomGenerator::Default(); }
 

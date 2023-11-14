@@ -63,6 +63,10 @@
 #include "orttraining/training_ops/cpu/triton/triton_op.h"
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/sharding_spec.h"
+#endif
+
 #ifndef _Ret_notnull_
 #define _Ret_notnull_
 #endif
@@ -758,6 +762,68 @@ void MurmurHash3::x86_128(const void* key, int len, uint32_t seed, void* out) {
 Status LoadDynamicLibrary(onnxruntime::PathString library_name) {
   return g_host->LoadDynamicLibrary(library_name);
 }
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD)
+namespace distributed {
+void ValidateAxisIndex(const int64_t axis, const int64_t rank) {
+  return g_host->distributed__ValidateAxisIndex(axis, rank);
+};
+
+std::vector<AxisPartitionSpec> ParseStringAsAxisPartitionVector(const std::string& spec_string) {
+  return g_host->distributed__ParseStringAsAxisPartitionVector(spec_string);
+}
+
+std::vector<int64_t> ParseStringAsInt64Vector(const std::string& str) {
+  return g_host->distributed__ParseStringAsInt64Vector(str);
+}
+
+distributed::DeviceMesh CreateDeviceMesh(
+    std::vector<int64_t> device_mesh_shape,
+    std::vector<int64_t> device_mesh_elements) {
+  return g_host->distributed__CreateDeviceMesh(device_mesh_shape, device_mesh_elements);
+}
+
+TensorPartitionSpec CreateTensorPartitionSpec(
+    std::string spec_string,
+    std::vector<int64_t> device_mesh_shape,
+    std::vector<int64_t> device_mesh_elements) {
+  return g_host->distributed__CreateTensorPartitionSpec(spec_string, device_mesh_shape, device_mesh_elements);
+}
+
+TensorPartitionSpec CreateTensorShardSpec(
+    const DeviceMesh& device_mesh,
+    int64_t device_mesh_axis,
+    int64_t shard_axis,
+    int64_t tensor_rank) {
+  return g_host->distributed__CreateTensorShardSpec(device_mesh, device_mesh_axis, shard_axis, tensor_rank);
+}
+
+TensorShape ComputeOriginShape(const TensorShape& shard_shape, const TensorPartitionSpec& spec) {
+  return g_host->distributed__ComputeOriginShape(shard_shape, spec);
+}
+
+TensorShape ComputeShardShape(const TensorShape& shape, const TensorPartitionSpec& spec) {
+  return g_host->distributed__ComputeShardShape(shape, spec);
+}
+
+TensorShape ComputeShardShape(const TensorShape source_shape, int64_t shard_axis, int64_t shard_count) {
+  return g_host->distributed__ComputeShardShape(source_shape, shard_axis, shard_count);
+}
+
+std::tuple<TensorShape, TensorShape> NormalizeShapes(const TensorShape& left, const TensorShape& right) {
+  return g_host->distributed__NormalizeShapes(left, right);
+}
+
+std::tuple<TensorPartitionSpec, TensorPartitionSpec> NormalizeTensorPartitionSpecs(
+    const TensorPartitionSpec& left, const TensorPartitionSpec& right) {
+  return g_host->distributed__NormalizeTensorPartitionSpecs(left, right);
+}
+
+bool CanShard(const TensorShape& shape, const TensorPartitionSpec& spec) {
+  return g_host->distributed__CanShard(shape, spec);
+}
+}  // namespace distributed
 #endif
 
 #ifdef _WIN32

@@ -199,15 +199,15 @@ bool IExecutionFrame::TryGetInferredShape(int /*index*/, TensorShape& /*shape*/)
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  bool IExecutionFrame::TryGetPropagatedTensorPartitionSpec(const std::string& /*name*/, distributed::TensorPartitionSpec& /*spec*/) const {
-    return false;
-  }
-  void IExecutionFrame::SetPropagatedTensorPartitionSpec(const std::string& /*name*/, const distributed::TensorPartitionSpec& /*spec*/) {
-    return;
-  }
-  bool IExecutionFrame::TryGetPlannedTensorPartitionSpec(const std::string& /*name*/, distributed::TensorPartitionSpec& /*spec*/) const {
-    return false;
-  }
+bool IExecutionFrame::TryGetPropagatedTensorPartitionSpec(const std::string& /*name*/, distributed::TensorPartitionSpec& /*spec*/) const {
+  return false;
+}
+void IExecutionFrame::SetPropagatedTensorPartitionSpec(const std::string& /*name*/, const distributed::TensorPartitionSpec& /*spec*/) {
+  return;
+}
+bool IExecutionFrame::TryGetPlannedTensorPartitionSpec(const std::string& /*name*/, distributed::TensorPartitionSpec& /*spec*/) const {
+  return false;
+}
 #endif
 
 AllocatorPtr IExecutionFrame::GetAllocator(const OrtDevice& info) const {

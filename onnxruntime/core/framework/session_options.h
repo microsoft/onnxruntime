@@ -140,11 +140,10 @@ struct SessionOptions {
   // TODO: use InlinedHashMap<std::string, TensorPartitionSpec> tensor_partition_specs;
   std::unordered_map<std::string, distributed::TensorPartitionSpec> tensor_partition_specs;
   Status AddTensorPartitionSpec(
-    const std::string& name,
-    const std::string& spec,
-    const std::vector<int64_t>& device_mesh_shape,
-    const std::vector<int64_t>& device_mesh_elements
-  );
+      const std::string& name,
+      const std::string& spec,
+      const std::vector<int64_t>& device_mesh_shape,
+      const std::vector<int64_t>& device_mesh_elements);
 #endif
 
   // custom function callback to create a thread

@@ -68,7 +68,6 @@ std::unique_ptr<Tensor> ReshardTensor(
     const int64_t device_id,
     const Tensor* src);
 
-
 class DistributedKernel : public NcclKernel {
  public:
   explicit DistributedKernel(const OpKernelInfo& info);
