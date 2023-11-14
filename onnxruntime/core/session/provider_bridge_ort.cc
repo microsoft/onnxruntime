@@ -906,6 +906,28 @@ struct ProviderHostImpl : ProviderHost {
   bool OpKernelContext__GetUseDeterministicCompute(const OpKernelContext* p) override { return p->GetUseDeterministicCompute(); }
   bool OpKernelContext__TryGetInferredOutputShape(const OpKernelContext* p, int index, TensorShape& shape) override { return p->TryGetInferredOutputShape(index, shape); }
   bool OpKernelContext__TryGetInferredInputShape(const OpKernelContext* p, int index, TensorShape& shape) override { return p->TryGetInferredInputShape(index, shape); }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  bool OpKernelContext__TryGetPropagatedTensorPartitionSpec(
+      const OpKernelContext* p,
+      const std::string& name,
+      distributed::TensorPartitionSpec& spec) override {
+        return p->TryGetPropagatedTensorPartitionSpec(name, spec);
+  }
+  void OpKernelContext__SetPropagatedTensorPartitionSpec(
+      OpKernelContext* p,
+      const std::string& name,
+      const distributed::TensorPartitionSpec& spec) override {
+        return p->SetPropagatedTensorPartitionSpec(name, spec);
+  }
+  bool OpKernelContext__TryGetPlannedTensorPartitionSpec(
+      const OpKernelContext* p,
+      const std::string& name,
+      distributed::TensorPartitionSpec& spec) override {
+        return p->TryGetPlannedTensorPartitionSpec(name, spec);
+  }
+#endif // !defined(ORT_MINIMAL_BUILD)
+
   Stream* OpKernelContext__GetComputeStream(const OpKernelContext* p) override { return p->GetComputeStream(); }
 
   // OpKernelInfo (wrapped)

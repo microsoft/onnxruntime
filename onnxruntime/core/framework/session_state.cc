@@ -84,6 +84,10 @@ SessionState::SessionState(Graph& graph,
       ,
       stream_handles_registry_(std::make_unique<StreamCommandHandleRegistryImpl>())
 #endif
+#if !defined(ORT_MINIMAL_BUILD)
+      ,
+      planned_tensor_partition_specs_(sess_options.tensor_partition_specs)
+#endif
 {
   enable_mem_pattern_ = sess_options_.enable_mem_pattern &&
                         sess_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;

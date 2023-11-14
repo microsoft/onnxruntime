@@ -825,7 +825,21 @@ struct ProviderHost {
   virtual bool OpKernelContext__GetUseDeterministicCompute(const OpKernelContext* p) = 0;
   virtual bool OpKernelContext__TryGetInferredOutputShape(const OpKernelContext* p, int index, TensorShape& shape) = 0;
   virtual bool OpKernelContext__TryGetInferredInputShape(const OpKernelContext* p, int index, TensorShape& shape) = 0;
+#if !defined(ORT_MINIMAL_BUILD)
+  virtual bool OpKernelContext__TryGetPropagatedTensorPartitionSpec(
+      const OpKernelContext* p,
+      const std::string& name,
+      distributed::TensorPartitionSpec& spec) = 0;
+  virtual void OpKernelContext__SetPropagatedTensorPartitionSpec(
+      OpKernelContext* p,
+      const std::string& name,
+      const distributed::TensorPartitionSpec& spec) = 0;
+  virtual bool OpKernelContext__TryGetPlannedTensorPartitionSpec(
+      const OpKernelContext* p,
+      const std::string& name,
+      distributed::TensorPartitionSpec& spec) = 0;
   virtual Stream* OpKernelContext__GetComputeStream(const OpKernelContext* p) = 0;
+#endif // !defined(ORT_MINIMAL_BUILD)
 
   // OpKernelInfo
   virtual std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) = 0;

@@ -97,6 +97,7 @@ class OpKernelContext {
   }
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD)
   // Retrieve indexed shape obtained from memory planning before actual
   // computation. If the indexed shape cannot be inferred, this function returns
   // false.
@@ -136,6 +137,7 @@ class OpKernelContext {
   const logging::Logger& Logger() const {
     return *logger_;
   }
+#endif // !defined(ORT_MINIMAL_BUILD)
 
   // always >= 0
   virtual int InputCount() const {

@@ -813,6 +813,21 @@ struct OpKernelContext final {
 
   bool TryGetInferredOutputShape(int index, TensorShape& shape) const { return g_host->OpKernelContext__TryGetInferredOutputShape(this, index, shape); }
   bool TryGetInferredInputShape(int index, TensorShape& shape) const { return g_host->OpKernelContext__TryGetInferredInputShape(this, index, shape); }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  bool TryGetPropagatedTensorPartitionSpec(const std::string& name, distributed::TensorPartitionSpec& spec) const {
+    return g_host->OpKernelContext__TryGetPropagatedTensorPartitionSpec(this, name, spec);
+  }
+
+  void SetPropagatedTensorPartitionSpec(const std::string& name, const distributed::TensorPartitionSpec& spec) {
+    g_host->OpKernelContext__SetPropagatedTensorPartitionSpec(this, name, spec);
+  }
+
+  bool TryGetPlannedTensorPartitionSpec(const std::string& name, distributed::TensorPartitionSpec& spec) const {
+    return g_host->OpKernelContext__TryGetPlannedTensorPartitionSpec(this, name, spec);
+  }
+#endif // !defined(ORT_MINIMAL_BUILD)
+
   Stream* GetComputeStream() const { return g_host->OpKernelContext__GetComputeStream(this); }
 
   PROVIDER_DISALLOW_ALL(OpKernelContext)
