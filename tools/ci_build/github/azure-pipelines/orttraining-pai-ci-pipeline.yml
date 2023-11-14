@@ -108,6 +108,7 @@ jobs:
                 FETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER \
               --use_cache \
               --use_rocm \
+              --use_migraphx \
               --rocm_version=$(RocmVersion) \
               --rocm_home ${ROCM_HOME} \
               --nccl_home ${ROCM_HOME}\

@@ -219,6 +219,10 @@ try:
                     "librocm_smi64.so.5",
                     "libroctracer64.so.4",
                     "libtinfo.so.6",
+                    "libmigraphx_c.so.3",
+                    "libmigraphx.so.2",
+                    "libmigraphx_onnx.so.2",
+                    "libmigraphx_tf.so.2",
                 ]
 
                 tensorrt_dependencies = ["libnvinfer.so.8", "libnvinfer_plugin.so.8", "libnvonnxparser.so.8"]
