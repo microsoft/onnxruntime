@@ -591,5 +591,30 @@ TEST(FunctionTest, TestInlinedLocalFunctionNotRemoved) {
 #endif
 }
 
+TEST(FunctionTest, TestInlinedFunctionDoesNotReserrectNonExistingArgs) {
+  // Verify this runs
+  constexpr const ORTCHAR_T* model_uri = ORT_TSTR("testdata/transform/gh_issue_18338.onnx");
+
+  SessionOptions session_options;
+  InferenceSessionWrapper session_object{session_options, GetEnvironment()};
+
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // Scalar shape for input_0 and output
+  const std::string input_names[] = {"input_0"};
+  const std::string output_names[] = {"_val_3"};
+  TensorShape input_shape;
+  MLFloat16 input_0_data{684.f};
+
+  OrtValue input_0;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(), input_shape, &input_0_data, OrtMemoryInfo(), input_0);
+
+  std::vector<OrtValue> fetches(1);
+  RunOptions run_options;
+  ASSERT_STATUS_OK(session_object.Run(run_options, AsSpan(input_names), AsSpan({input_0}),
+                                      AsSpan(output_names), &fetches, 0));
+}
+
 }  // namespace test
 }  // namespace onnxruntime
