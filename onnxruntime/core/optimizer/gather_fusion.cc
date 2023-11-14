@@ -108,7 +108,8 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     InlinedVector<std::reference_wrapper<Node>> nodes_to_fuse;
     for (auto consumer : consumers) {
       int64_t index, axis, dims;
-      if (!consumer || !IsSupportedGather(graph, *consumer, index, axis, dims)) {
+      if (!consumer || consumer->InputDefs()[0] != node_arg ||
+          !IsSupportedGather(graph, *consumer, index, axis, dims)) {
         can_fuse = false;
         break;
       }
