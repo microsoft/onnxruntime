@@ -1279,17 +1279,19 @@ def generate_build_tree(
                 "iOS/MacOS framework build on MacOS canceled due to missing arguments: "
                 + ", ".join(val for val, cond in zip(arg_names, needed_args) if not cond)
             )
-        cmake_system_name = "Darwin" if args.osx_sysroot == "macosx" else "iOS"
         cmake_args += [
-            "-DCMAKE_SYSTEM_NAME=" + cmake_system_name,
             "-Donnxruntime_BUILD_SHARED_LIB=ON",
             "-DCMAKE_OSX_SYSROOT=" + args.osx_sysroot,
             "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
             # we do not need protoc binary for ios cross build
-            "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
+            "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF"
+        ]
+        if args.ios:
+            cmake_args += [
+            "-DCMAKE_SYSTEM_NAME=iOS" ,
             "-DCMAKE_TOOLCHAIN_FILE="
             + (args.ios_toolchain_file if args.ios_toolchain_file else "../cmake/onnxruntime_ios.toolchain.cmake"),
-        ]
+            ]
 
     if args.build_wasm:
         emsdk_dir = os.path.join(cmake_dir, "external", "emsdk")
