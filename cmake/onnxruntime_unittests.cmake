@@ -1665,14 +1665,14 @@ endif()
 
 if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
 
-  file(GLOB_RECURSE custom_op_get_const_input_test_library_src
+  file(GLOB_RECURSE custom_op_local_function_test_library_src
         "${TEST_SRC_DIR}/testdata/custom_op_local_function/custom_op_local_function.cc"
         "${TEST_SRC_DIR}/testdata/custom_op_local_function/custom_op_local_function.h"
         "${TEST_SRC_DIR}/testdata/custom_op_local_function/custom_gemm.cc"
         "${TEST_SRC_DIR}/testdata/custom_op_local_function/custom_gemm.h"
   )
 
-  onnxruntime_add_shared_library_module(custom_op_local_function ${custom_op_get_const_input_test_library_src})
+  onnxruntime_add_shared_library_module(custom_op_local_function ${custom_op_local_function_test_library_src})
 
   onnxruntime_add_include_to_target(custom_op_local_function onnxruntime_common GTest::gtest GTest::gmock)
   target_include_directories(custom_op_local_function PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session
@@ -1680,19 +1680,19 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND (NOT onnxruntime_MINIMAL_BUI
 
   if(UNIX)
     if (APPLE)
-      set(ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG "-Xlinker -dead_strip")
+      set(ONNXRUNTIME_CUSTOM_OP_lOCAL_FUNCTION_TEST_LIB_LINK_FLAG "-Xlinker -dead_strip")
     else()
-      string(CONCAT ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG
+      string(CONCAT ONNXRUNTIME_CUSTOM_OP_lOCAL_FUNCTION_TEST_LIB_LINK_FLAG
              "-Xlinker --version-script=${TEST_SRC_DIR}/testdata/custom_op_local_function/custom_op_local_function.lds "
              "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
     endif()
   else()
-    set(ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG
+    set(ONNXRUNTIME_CUSTOM_OP_lOCAL_FUNCTION_TEST_LIB_LINK_FLAG
         "-DEF:${TEST_SRC_DIR}/testdata/custom_op_local_function/custom_op_local_function.def")
   endif()
 
   set_property(TARGET custom_op_local_function APPEND_STRING PROPERTY LINK_FLAGS
-               ${ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG})
+               ${ONNXRUNTIME_CUSTOM_OP_lOCAL_FUNCTION_TEST_LIB_LINK_FLAG})
 endif()
 
 if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)

@@ -5,7 +5,6 @@ import sys
 import unittest
 
 import numpy as np
-
 import onnx
 
 from onnxruntime import InferenceSession, SessionOptions

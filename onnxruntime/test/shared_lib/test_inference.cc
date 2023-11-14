@@ -1274,8 +1274,8 @@ TEST(CApiTest, test_custom_op_local_function) {
 
   // input 0 (float type)
   input_names.emplace_back("input1");
-  std::vector<float> input_0_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
-  std::vector<int64_t> input_0_dims = {2, 2, 2};
+  std::vector<float> input_0_data = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<int64_t> input_0_dims = {2, 2};
   ort_inputs.emplace_back(
       Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_0_data.data()),
                                       input_0_data.size(), input_0_dims.data(), input_0_dims.size()));
@@ -1283,11 +1283,11 @@ TEST(CApiTest, test_custom_op_local_function) {
 
   const ORTCHAR_T* lib_name;
 #if defined(_WIN32)
-  lib_name = ORT_TSTR("custom_op_local_library.dll");
+  lib_name = ORT_TSTR("libcustom_op_local_function.dll");
 #elif defined(__APPLE__)
-  lib_name = ORT_TSTR("libcustom_op_local_library.dylib");
+  lib_name = ORT_TSTR("libcustom_op_local_function.dylib");
 #else
-  lib_name = ORT_TSTR("./libcustom_op_local_library.so");
+  lib_name = ORT_TSTR("./libcustom_op_local_function.so");
 #endif
 
   Ort::SessionOptions session_opts;

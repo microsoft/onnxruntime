@@ -445,33 +445,33 @@ void CustomGemmKernel::set(const std::vector<int64_t>& shape_A,
   constexpr int ir = 0;
   constexpr int ic = 1 - ir;
   if (transA_ && !transB_) {  // TN
-    M = shape_A[ic];
-    N = shape_B[ic];
-    K = shape_A[ir];
-    lda = shape_A[row_major ? ic : ir];
-    ldb = shape_B[row_major ? ic : ir];
-    ldd = shape_B[row_major ? ic : ir];
+    M = static_cast<int>(shape_A[ic]);
+    N = static_cast<int>(shape_B[ic]);
+    K = static_cast<int>(shape_A[ir]);
+    lda = static_cast<int>(shape_A[row_major ? ic : ir]);
+    ldb = static_cast<int>(shape_B[row_major ? ic : ir]);
+    ldd = static_cast<int>(shape_B[row_major ? ic : ir]);
   } else if (!transA_ && !transB_) {  // NN
-    M = shape_A[ir];
-    N = shape_B[ic];
-    K = shape_A[ic];
-    lda = shape_A[row_major ? ic : ir];
-    ldb = shape_B[row_major ? ic : ir];
-    ldd = shape_B[row_major ? ic : ir];
+    M = static_cast<int>(shape_A[ir]);
+    N = static_cast<int>(shape_B[ic]);
+    K = static_cast<int>(shape_A[ic]);
+    lda = static_cast<int>(shape_A[row_major ? ic : ir]);
+    ldb = static_cast<int>(shape_B[row_major ? ic : ir]);
+    ldd = static_cast<int>(shape_B[row_major ? ic : ir]);
   } else if (!transA_ && transB_) {  // NT
-    M = shape_A[ir];
-    N = shape_B[ir];
-    K = shape_A[ic];
-    lda = shape_A[row_major ? ic : ir];
-    ldb = shape_B[row_major ? ic : ir];
-    ldd = shape_B[row_major ? ir : ic];
+    M = static_cast<int>(shape_A[ir]);
+    N = static_cast<int>(shape_B[ir]);
+    K = static_cast<int>(shape_A[ic]);
+    lda = static_cast<int>(shape_A[row_major ? ic : ir]);
+    ldb = static_cast<int>(shape_B[row_major ? ic : ir]);
+    ldd = static_cast<int>(shape_B[row_major ? ir : ic]);
   } else {  // TT
-    M = shape_A[ic];
-    N = shape_B[ir];
-    K = shape_A[ir];
-    lda = shape_A[row_major ? ic : ir];
-    ldb = shape_B[row_major ? ic : ir];
-    ldd = shape_B[row_major ? ir : ic];
+    M = static_cast<int>(shape_A[ic]);
+    N = static_cast<int>(shape_B[ir]);
+    K = static_cast<int>(shape_A[ir]);
+    lda = static_cast<int>(shape_A[row_major ? ic : ir]);
+    ldb = static_cast<int>(shape_B[row_major ? ic : ir]);
+    ldd = static_cast<int>(shape_B[row_major ? ir : ic]);
   }
 }
 
