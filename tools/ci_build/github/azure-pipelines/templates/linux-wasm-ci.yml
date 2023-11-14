@@ -95,6 +95,17 @@ jobs:
       DisplayName: 'Build and test (browser) (threads)'
       WithCache: ${{ parameters.WithCache }}
 
+  - script: |
+      npm test -- "--wasm-threads" "--entry=onnxruntime_test_all" "--gtest_output=xml:onnxruntime_test_all.js.Debug2.results.xml" "--gtest_filter=EMPTY"
+      npm test -- "--wasm-threads" "--entry=onnxruntime_test_all" "--gtest_output=xml:onnxruntime_test_all.js.Debug3.results.xml" "--gtest_filter=EMPTY"
+      npm test -- "--wasm-threads" "--entry=onnxruntime_test_all" "--gtest_output=xml:onnxruntime_test_all.js.Debug4.results.xml" "--gtest_filter=EMPTY"
+      npm test -- "--wasm-threads" "--entry=onnxruntime_test_all" "--gtest_output=xml:onnxruntime_test_all.js.Debug5.results.xml" "--gtest_filter=EMPTY"
+      npm test -- "--wasm-threads" "--entry=onnxruntime_test_all" "--gtest_output=xml:onnxruntime_test_all.js.Debug6.results.xml" "--gtest_filter=EMPTY"
+      npm test -- "--wasm-threads" "--entry=onnxruntime_test_all" "--gtest_output=xml:onnxruntime_test_all.js.Debug7.results.xml" "--gtest_filter=EMPTY"
+      npm test -- "--wasm-threads" "--entry=onnxruntime_test_all" "--gtest_output=xml:onnxruntime_test_all.js.Debug8.results.xml" "--gtest_filter=EMPTY"
+      npm test -- "--wasm-threads" "--entry=onnxruntime_test_all" "--gtest_output=xml:onnxruntime_test_all.js.Debug9.results.xml" "--gtest_filter=EMPTY"
+    workingDirectory: $(Build.BinariesDirectory)/wasm_threads/Debug
+
   - template: build-linux-wasm-step.yml
     parameters:
       Today: $(Today)
