@@ -92,14 +92,14 @@ LoadDataAndZeroPad(const float* data, size_t count)
     // handle remaining values
     if (count > 0) {
         dst[vi] = vsetq_lane_f32(data[0], dst[vi], 0);
-    }
 
-    if (count > 1) {
-        dst[vi] = vsetq_lane_f32(data[1], dst[vi], 1);
-    }
+        if (count > 1) {
+            dst[vi] = vsetq_lane_f32(data[1], dst[vi], 1);
 
-    if (count > 2) {
-        dst[vi] = vsetq_lane_f32(data[2], dst[vi], 2);
+            if (count > 2) {
+                dst[vi] = vsetq_lane_f32(data[2], dst[vi], 2);
+            }
+        }
     }
 
     return dst;
@@ -154,7 +154,7 @@ ComputeDotProducts(
             });
         } else {
             UnrolledLoop<NCols>([&](size_t i) {
-                constexpr uint8_t zp = 8;
+                constexpr float zp = 8.0f;
                 offset[i] = 16.0f + zp;
             });
         }
@@ -294,79 +294,75 @@ MlasSQNBitGemmKernelNeon(
     const float* Bias
 )
 {
-    auto impl1 = [&]() {
-        constexpr size_t NCols = 4;
+    constexpr size_t NCols = 4;
 
-        const float* ARowPtr = A;
-        float* CRowPtr = C;
+    const float* ARowPtr = A;
+    float* CRowPtr = C;
 
-        const size_t BlockCountK = BlockStrideQuantB;
+    const size_t BlockCountK = BlockStrideQuantB;
 
-        const size_t StrideQuantBData = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-        const size_t StrideQuantBScale = BlockCountK;
-        const size_t StrideQuantBZeroPoint = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockCountK);
+    const size_t StrideQuantBData = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const size_t StrideQuantBScale = BlockCountK;
+    const size_t StrideQuantBZeroPoint = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockCountK);
 
-        for (size_t m = 0; m < CountM; ++m) {
-            const float* BiasPtr = Bias;
+    for (size_t m = 0; m < CountM; ++m) {
+        const float* BiasPtr = Bias;
 
-            const uint8_t* QuantBDataColPtr = QuantBData;
-            const float* QuantBScaleColPtr = QuantBScale;
-            const uint8_t* QuantBZeroPointColPtr = QuantBZeroPoint;
+        const uint8_t* QuantBDataColPtr = QuantBData;
+        const float* QuantBScaleColPtr = QuantBScale;
+        const uint8_t* QuantBZeroPointColPtr = QuantBZeroPoint;
 
-            float* SumPtr = CRowPtr;
+        float* SumPtr = CRowPtr;
 
-            int64_t nblk = static_cast<int64_t>(CountN) - NCols;
+        int64_t nblk = static_cast<int64_t>(CountN) - NCols;
 
-            while (nblk >= 0) {
-                ComputeDotProducts<BlkBitWidth, BlkLen, NCols>(
-                    ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
-                    StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
-                    BiasPtr
-                );
+        while (nblk >= 0) {
+            ComputeDotProducts<BlkBitWidth, BlkLen, NCols>(
+                ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
+                StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
+                BiasPtr
+            );
 
-                // move to next `NCols` columns
+            // move to next `NCols` columns
 
-                QuantBDataColPtr += NCols * StrideQuantBData;
-                QuantBScaleColPtr += NCols * StrideQuantBScale;
-                if (QuantBZeroPointColPtr != nullptr) {
-                    QuantBZeroPointColPtr += NCols * StrideQuantBZeroPoint;
-                }
-
-                BiasPtr += BiasPtr != nullptr ? NCols : 0;
-                SumPtr += NCols;
-
-                nblk -= NCols;
+            QuantBDataColPtr += NCols * StrideQuantBData;
+            QuantBScaleColPtr += NCols * StrideQuantBScale;
+            if (QuantBZeroPointColPtr != nullptr) {
+                QuantBZeroPointColPtr += NCols * StrideQuantBZeroPoint;
             }
 
-            // left over columns less than `NCols`?
-            nblk += NCols;
-            for (int64_t n = 0; n < nblk; ++n) {
-                ComputeDotProducts<BlkBitWidth, BlkLen, 1>(
-                    ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
-                    StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
-                    BiasPtr
-                );
+            BiasPtr += BiasPtr != nullptr ? NCols : 0;
+            SumPtr += NCols;
 
-                // move to next column
-
-                QuantBDataColPtr += StrideQuantBData;
-                QuantBScaleColPtr += StrideQuantBScale;
-                if (QuantBZeroPointColPtr != nullptr) {
-                    QuantBZeroPointColPtr += StrideQuantBZeroPoint;
-                }
-
-                BiasPtr += BiasPtr != nullptr ? 1 : 0;
-                SumPtr += 1;
-            }
-
-            ARowPtr += lda;
-            CRowPtr += ldc;
+            nblk -= NCols;
         }
 
-        return CountM;
-    };
+        // left over columns less than `NCols`?
+        nblk += NCols;
+        for (int64_t n = 0; n < nblk; ++n) {
+            ComputeDotProducts<BlkBitWidth, BlkLen, 1>(
+                ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
+                StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
+                BiasPtr
+            );
 
-    return impl1();
+            // move to next column
+
+            QuantBDataColPtr += StrideQuantBData;
+            QuantBScaleColPtr += StrideQuantBScale;
+            if (QuantBZeroPointColPtr != nullptr) {
+                QuantBZeroPointColPtr += StrideQuantBZeroPoint;
+            }
+
+            BiasPtr += BiasPtr != nullptr ? 1 : 0;
+            SumPtr += 1;
+        }
+
+        ARowPtr += lda;
+        CRowPtr += ldc;
+    }
+
+    return CountM;
 }
 
 #define SPECIALIZE_SQNBIT_GEMM_KERNEL(BlkBitWidth, BlkLen)                               \
