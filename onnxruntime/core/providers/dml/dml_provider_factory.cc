@@ -493,7 +493,10 @@ static D3D12_COMMAND_LIST_TYPE CalculateCommandListType(ID3D12Device* d3d12_devi
   return D3D12_COMMAND_LIST_TYPE_DIRECT;
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateDMLDeviceAndProviderFactory(ID3D12Device* d3d12_device) {
+std::shared_ptr<IExecutionProviderFactory> CreateDMLDeviceAndProviderFactory(
+  ID3D12Device* d3d12_device,
+  bool disable_metacommands,
+  bool enable_dynamic_graph_fusion) {
   D3D12_COMMAND_QUEUE_DESC cmd_queue_desc = {};
   cmd_queue_desc.Type = CalculateCommandListType(d3d12_device);
   cmd_queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
@@ -515,7 +518,7 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(
 }
 
 std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFromAdapterList(
-    std::vector<ComPtr<IDXCoreAdapter>>&& dxcore_devices,
+    std::vector<ComPtr<IDXCoreAdapter>>&& adapters,
     bool disable_metacommands,
     bool enable_dynamic_graph_fusion) {
   // Choose the first device from the list since it's the highest priority
@@ -539,7 +542,7 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::CreateFrom
 // The OrtSessionOptionsAppendExecutionProvider_DML export on the OrtDmlApi should be used instead.
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessionOptions* options, int device_id) {
 API_IMPL_BEGIN
-  options->provider_factories.push_back(onnxruntime::DMLProviderFactoryCreator::Create(device_id, false, false));
+  options->provider_factories.push_back(onnxruntime::DMLProviderFactoryCreator::Create(device_id, false, false, false));
 API_IMPL_END
   return nullptr;
 }
