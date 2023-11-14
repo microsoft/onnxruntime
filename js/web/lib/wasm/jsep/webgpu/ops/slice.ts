@@ -85,12 +85,18 @@ const calculateInputIndicesImpl =
           for (var i = ${inputShape.length}; i >= 0; i--) {
             let input_shape_i = ${
             enableInputShapeUniforms ? `uniforms.input_shape${inputShape.length > 1 ? '[i]' : ''}` : 'inputShape[i]'};
-                        var outputIndex = ${outputShape.length === 1 ? 'outputIndices' : 'outputIndices[i]'};
-            var inputIndex = outputIndex * steps[i] + starts[i] + carry;
+            let steps_i  = ${
+            enableInputShapeUniforms ? `uniforms.steps${inputShape.length > 1 ? '[i]' : ''}` : 'steps[i]'};
+            let signs_i  = ${
+            enableInputShapeUniforms ? `uniforms.signs${inputShape.length > 1 ? '[i]' : ''}` : 'signs[i]'};
+            let starts_i  = ${
+            enableInputShapeUniforms ? `uniforms.starts${inputShape.length > 1 ? '[i]' : ''}` : 'sarts[i]'};
+            var outputIndex = ${outputShape.length === 1 ? 'outputIndices' : 'outputIndices[i]'};
+            var inputIndex = outputIndex * steps_i + starts_i + carry;
             carry = inputIndex / input_shape_i;
             inputIndex = inputIndex % input_shape_i;
-            if (signs[i] < 0) {
-              inputIndex = input_shape_i - inputIndex - 1u + starts[i];
+            if (signs_i < 0) {
+              inputIndex = input_shape_i - inputIndex - 1u + starts_i;
             }
             ${inputShape.length === 1 ? 'inputIndices' : 'inputIndices[i]'} = inputIndex;
           }
@@ -149,7 +155,18 @@ const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: Slice
   const output = outputVariable('output', inputs[0].dataType, outputShapeOrRank);
   const input = inputVariable('input', inputs[0].dataType, inputShapeOrRank);
   const outputSize = ShapeUtil.size(outputShape);
-  const programUniforms: ProgramUniform[] = [{type: 'uint32', data: outputSize}];
+  const programUniforms: ProgramUniform[] = [];
+  const names_to_types: Map<string, string> = new Map();
+  if (enableInputShapeUniforms) {
+    names_to_types.set('starts', starts.length > 1 ? `vec${starts.length}<u32>` : 'u32');
+    names_to_types.set('signs', signs.length > 1 ? `vec${signs.length}<i32>` : 'i32');
+    names_to_types.set('steps', steps.length > 1 ? `vec${steps.length}<u32>` : 'i32');
+    programUniforms.push({type: 'uint32', data: starts})
+    programUniforms.push({type: 'uint32', data: signs})
+    programUniforms.push({type: 'uint32', data: steps})
+  }
+  names_to_types.set('outputSize', 'u32');
+  programUniforms.push({type: 'uint32', data: outputSize})
   if (enableInputShapeUniforms) {
     programUniforms.push(...createTensorShapeVariables(inputs[0].dims));
   }
@@ -158,13 +175,14 @@ const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: Slice
   }
 
   const getShaderSource = (shaderHelper: ShaderHelper) => `
-      ${shaderHelper.registerUniform('outputSize', 'u32').declareVariables(input, output)}
-      const signs = array<i32, ${signs.length}>(${signs.map(i => `${i}i`).join(',')});
-      const starts = array<u32, ${starts.length}>(${starts.map(i => `${i}u`).join(',')});
-      const ends = array<u32, ${ends.length}>(${ends.map(i => `${i}u`).join(',')});
-      const steps = array<u32, ${steps.length}>(${steps.map(i => `${i}u`).join(',')});
+      ${shaderHelper.registerUniforms(names_to_types).declareVariables(input, output)}
+        ${enableInputShapeUniforms ? '' : [
+    `const signs = array<i32, ${signs.length}>(${signs.map(i => `${i}i`).join(',')});`,
+    `const starts = array<u32, ${starts.length}>(${starts.map(i => `${i}u`).join(',')});`,
+    `const steps = array<u32, ${steps.length}>(${steps.map(i => `${i}u`).join(',')});`
+  ].join('\n')}
 
-      ${calculateInputIndicesImpl(input, output, inputShape, outputShape, enableInputShapeUniforms)}
+        ${calculateInputIndicesImpl(input, output, inputShape, outputShape, enableInputShapeUniforms)}
         ${shaderHelper.mainStart()}
           ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
           let outputIndices = ${output.offsetToIndices('global_idx')};
