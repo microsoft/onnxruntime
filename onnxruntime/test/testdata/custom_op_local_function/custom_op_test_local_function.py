@@ -18,7 +18,6 @@ class TestOnnxToolsGraph(unittest.TestCase):
             shared_library = "libcustom_op_local_function.dylib"
         else:
             shared_library = "./libcustom_op_local_function.so"
-        shared_library = "/home/xadupre/github/onnxruntime/build/linux_cuda/Release/libcustom_op_local_function.so"
         if not os.path.exists(shared_library):
             raise FileNotFoundError(f"Unable to find '{shared_library}'")
 
