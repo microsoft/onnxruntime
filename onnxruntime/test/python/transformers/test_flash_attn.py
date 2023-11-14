@@ -1621,7 +1621,6 @@ class TestGQA(unittest.TestCase):
         if not torch.cuda.is_available():
             return
         major, minor = torch.cuda.get_device_capability()
-        torch.manual_seed(69)
         print("-------- TEST GQA NO PAST (PROMPT CASE) ---------")
         batches = [3] if pipeline_mode else [1, 3, 5]
         seqs = (
@@ -1697,7 +1696,6 @@ class TestGQA(unittest.TestCase):
         )
         num_h = [(32, 32), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
         h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
-        random.seed(69)
         for b in batches:
             for s, s2 in seqs:
                 for n, n2 in num_h:
@@ -1744,5 +1742,3 @@ class TestGQA(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-    # test_gqa = TestGQA()
-    # test_gqa.test_gqa_past()
