@@ -869,6 +869,14 @@ template void LaunchTranspose<half>(
     const int32_t* token_offset, int32_t token_count,
     cudaStream_t stream);
 
+template void LaunchTranspose<float>(
+    const float* query, const float* key, const float* value, const float* bias, float* output,
+    const int batch_size, const int sequence_length,
+    const int num_heads, const int qk_head_size, const int v_head_size,
+    AttentionQkvFormat source_format, AttentionQkvFormat target_format,
+    const int32_t* token_offset, int32_t token_count,
+    cudaStream_t stream);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
