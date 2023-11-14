@@ -826,7 +826,7 @@ struct OpKernelContext final {
   bool TryGetPlannedTensorPartitionSpec(const std::string& name, distributed::TensorPartitionSpec& spec) const {
     return g_host->OpKernelContext__TryGetPlannedTensorPartitionSpec(this, name, spec);
   }
-#endif // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   Stream* GetComputeStream() const { return g_host->OpKernelContext__GetComputeStream(this); }
 

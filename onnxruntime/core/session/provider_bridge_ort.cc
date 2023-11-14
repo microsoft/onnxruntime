@@ -912,21 +912,21 @@ struct ProviderHostImpl : ProviderHost {
       const OpKernelContext* p,
       const std::string& name,
       distributed::TensorPartitionSpec& spec) override {
-        return p->TryGetPropagatedTensorPartitionSpec(name, spec);
+    return p->TryGetPropagatedTensorPartitionSpec(name, spec);
   }
   void OpKernelContext__SetPropagatedTensorPartitionSpec(
       OpKernelContext* p,
       const std::string& name,
       const distributed::TensorPartitionSpec& spec) override {
-        return p->SetPropagatedTensorPartitionSpec(name, spec);
+    return p->SetPropagatedTensorPartitionSpec(name, spec);
   }
   bool OpKernelContext__TryGetPlannedTensorPartitionSpec(
       const OpKernelContext* p,
       const std::string& name,
       distributed::TensorPartitionSpec& spec) override {
-        return p->TryGetPlannedTensorPartitionSpec(name, spec);
+    return p->TryGetPlannedTensorPartitionSpec(name, spec);
   }
-#endif // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   Stream* OpKernelContext__GetComputeStream(const OpKernelContext* p) override { return p->GetComputeStream(); }
 

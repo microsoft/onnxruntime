@@ -83,7 +83,7 @@ bool OpKernelContext::TryGetPlannedTensorPartitionSpec(const std::string& name, 
   //  SessionOptions -> ExecutionFrame -> OpKernelContext
   return execution_frame_->TryGetPlannedTensorPartitionSpec(name, spec);
 }
-#endif // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 OrtValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape) {
   if (index < 0 || index >= OutputCount())

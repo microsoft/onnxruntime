@@ -137,7 +137,7 @@ class OpKernelContext {
   const logging::Logger& Logger() const {
     return *logger_;
   }
-#endif // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   // always >= 0
   virtual int InputCount() const {

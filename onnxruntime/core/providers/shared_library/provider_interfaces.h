@@ -839,7 +839,7 @@ struct ProviderHost {
       const std::string& name,
       distributed::TensorPartitionSpec& spec) = 0;
   virtual Stream* OpKernelContext__GetComputeStream(const OpKernelContext* p) = 0;
-#endif // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   // OpKernelInfo
   virtual std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) = 0;
