@@ -24,7 +24,7 @@ class MatMulNBits final : public OpKernel {
         nbits_{narrow<size_t>(info.GetAttr<int64_t>("bits"))} {
     ORT_ENFORCE(nbits_ == 4,
                 "Only 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
-    info.GetAttrOrDefault<int64_t>("accuracy_level", &comp_type_, 0);
+    info.GetAttrOrDefault<int64_t>("accuracy_level", &accuracy_level_, 0);
     is_asym_ = info.GetInputCount() >= 4;
   }
 
@@ -46,7 +46,7 @@ class MatMulNBits final : public OpKernel {
   IAllocatorUniquePtr<void> packed_b_;
   size_t packed_b_size_;
   bool is_asym_;
-  int64_t comp_type_;
+  int64_t accuracy_level_;
 };
 
 Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
@@ -54,7 +54,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
                             /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
-  if (comp_type_ != -1 && nbits_ == 4) {
+  if (accuracy_level_ > 0 && nbits_ == 4) {
     // TODO use threadpool here
     MLAS_THREADPOOL* pool = NULL;
     if (input_idx == 1) {
