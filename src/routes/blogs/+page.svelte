@@ -30,13 +30,23 @@
 			image: 'https://onnxruntime.ai/_app/immutable/assets/pytorch-on-the-edge-with-ort.cdaa9c84.png'
 		},
 		{
+			title: 'Accelerating over 130,000 Hugging Face models with ONNX Runtime',
+			date: 'October 4th, 2023',
+			blurb:
+				'Learn more on how ONNX Runtime helps users accelerate open source machine learning models from Hugging Face.',
+			link: 'https://cloudblogs.microsoft.com/opensource/2023/10/04/accelerating-over-130000-hugging-face-models-with-onnx-runtime/',
+			image: 'https://cloudblogs.microsoft.com/opensource/wp-content/uploads/sites/37/2023/09/Open-Source-Pic-1.webp'
+		},
+		{
 			title: 'On-Device Training with ONNX Runtime: A deep dive',
 			date: 'July 5th, 2023',
 			blurb:
 				'This blog presents technical details of On-Device training with ONNX Runtime. It explains how On-Device Training works and what are the different steps and artifacts involved in the training process. This information will help you train your models on edge devices.',
 			link: 'https://cloudblogs.microsoft.com/opensource/2023/07/05/on-device-training-with-onnx-runtime-a-deep-dive/',
 			image: 'https://cloudblogs.microsoft.com/opensource/wp-content/uploads/sites/37/2023/06/Open-Source-1.webp'
-		},
+		}
+	];
+	let blogs = [
 		{
 			title:
 				'Build and deploy fast and portable speech recognition applications with ONNX Runtime and Whisper',
@@ -45,9 +55,7 @@
 				'Learn how ONNX Runtime accelerates Whisper and makes it easy to deploy on desktop, mobile, in the cloud, and even in the browser.',
 			link: 'https://medium.com/microsoftazure/build-and-deploy-fast-and-portable-speech-recognition-applications-with-onnx-runtime-and-whisper-5bf0969dd56b',
 			image: 'https://miro.medium.com/v2/resize:fit:1100/format:webp/1*DJH8_6GS06-N32tkVhdTOw.png'
-		}
-	];
-	let blogs = [
+		},
 		{
 			title: 'On-Device Training: Efficient training on the edge with ONNX Runtime',
 			date: 'May 31st, 2023',
