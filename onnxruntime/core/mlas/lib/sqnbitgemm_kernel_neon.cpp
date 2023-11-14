@@ -20,7 +20,7 @@ Abstract:
 #include <arm_neon.h>
 
 #include <algorithm>
-#include <array>
+#include <cassert>
 #include <utility>
 
 //
@@ -69,40 +69,36 @@ FoldAccumulators(float32x4_t a0, float32x4_t a1, float32x4_t a2, float32x4_t a3)
 }
 
 template <size_t Capacity>
-MLAS_FORCEINLINE std::array<float32x4_t, Capacity / 4>
-LoadDataAndZeroPad(const float* data, size_t count)
+MLAS_FORCEINLINE void
+LoadData(const float* src, size_t count, float32x4_t (& dst)[Capacity / 4])
 {
     static_assert(Capacity % 4 == 0, "Capacity must be divisible by 4.");
 
-    count = std::min(count, Capacity);
-
-    std::array<float32x4_t, Capacity / 4> dst{};
+    assert(count <= Capacity);
 
     size_t vi = 0;  // vector index
 
     // handle 4 values at a time
     while (count > 3) {
-        dst[vi] = vld1q_f32(data);
+        dst[vi] = vld1q_f32(src);
 
         vi += 1;
-        data += 4;
+        src += 4;
         count -= 4;
     }
 
     // handle remaining values
     if (count > 0) {
-        dst[vi] = vsetq_lane_f32(data[0], dst[vi], 0);
+        dst[vi] = vsetq_lane_f32(src[0], dst[vi], 0);
 
         if (count > 1) {
-            dst[vi] = vsetq_lane_f32(data[1], dst[vi], 1);
+            dst[vi] = vsetq_lane_f32(src[1], dst[vi], 1);
 
             if (count > 2) {
-                dst[vi] = vsetq_lane_f32(data[2], dst[vi], 2);
+                dst[vi] = vsetq_lane_f32(src[2], dst[vi], 2);
             }
         }
     }
-
-    return dst;
 }
 
 template <size_t BlkBitWidth, size_t BlkLen, size_t NCols>
@@ -159,9 +155,10 @@ ComputeDotProducts(
         for (size_t k_idx_in_blk = 0; k_idx_in_blk < k_blk_len; k_idx_in_blk += SubBlkLen) {
             // load A row vector elements
 
-            // load `SubBlkLen` elements from A padding with 0's if there aren't enough
+            // load `SubBlkLen` elements from A, padded with 0's if there aren't enough
             const size_t k_subblk_len = std::min(k_blk_len - k_idx_in_blk, SubBlkLen);
-            const auto av = LoadDataAndZeroPad<SubBlkLen>(ARowPtr + k + k_idx_in_blk, k_subblk_len);
+            float32x4_t av[4]{};
+            LoadData<SubBlkLen>(ARowPtr + k + k_idx_in_blk, k_subblk_len, av);
 
             // load B column vectors
             uint8x8_t bv_packed[NCols];
