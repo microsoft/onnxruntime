@@ -386,45 +386,45 @@ class TestMoE(unittest.TestCase):
         )
         rt.parity_check()
 
-    # @pytest.mark.slow
-    # def test_moe_large(self):
-    #     for batch_size in [1, 8]:
-    #         for num_rows in [16, 64]:
-    #             for num_experts in [16, 64]:
-    #                 for in_features in [256]:
-    #                     for hidden_features in [512]:
-    #                         print(
-    #                             f"batch_size={batch_size}, num_rows={num_rows}, num_experts={num_experts}, in_features={in_features}, hidden_features={hidden_features}"
-    #                         )
-    #                         rt = MoE(
-    #                             batch_size=batch_size,
-    #                             num_rows=num_rows,
-    #                             num_experts=num_experts,
-    #                             in_features=in_features,
-    #                             hidden_features=hidden_features,
-    #                             out_features=in_features,
-    #                         )
-    #                         rt.parity_check()
+    @pytest.mark.slow
+    def test_moe_large(self):
+        for batch_size in [1, 8]:
+            for num_rows in [16, 64]:
+                for num_experts in [16, 64]:
+                    for in_features in [256]:
+                        for hidden_features in [512]:
+                            print(
+                                f"batch_size={batch_size}, num_rows={num_rows}, num_experts={num_experts}, in_features={in_features}, hidden_features={hidden_features}"
+                            )
+                            rt = MoE(
+                                batch_size=batch_size,
+                                num_rows=num_rows,
+                                num_experts=num_experts,
+                                in_features=in_features,
+                                hidden_features=hidden_features,
+                                out_features=in_features,
+                            )
+                            rt.parity_check()
 
-    # @pytest.mark.slow
-    # def test_moe_benchmark(self):
-    #     for batch_size in [32, 64]:
-    #         for num_rows in [128, 512]:
-    #             for num_experts in [64, 128]:
-    #                 for in_features in [256, 512]:
-    #                     for hidden_features in [1024, 2048]:
-    #                         print(
-    #                             f"batch_size={batch_size}, num_rows={num_rows}, num_experts={num_experts}, in_features={in_features}, hidden_features={hidden_features}"
-    #                         )
-    #                         rt = MoE(
-    #                             batch_size=batch_size,
-    #                             num_rows=num_rows,
-    #                             num_experts=num_experts,
-    #                             in_features=in_features,
-    #                             hidden_features=hidden_features,
-    #                             out_features=in_features,
-    #                         )
-    #                         rt.benchmark()
+    @pytest.mark.slow
+    def test_moe_benchmark(self):
+        for batch_size in [32, 64, 128]:
+            for num_rows in [128, 512, 1024]:
+                for num_experts in [64, 128, 256, 512]:
+                    for in_features in [256, 512]:
+                        for hidden_features in [1024, 2048]:
+                            print(
+                                f"batch_size={batch_size}, num_rows={num_rows}, num_experts={num_experts}, in_features={in_features}, hidden_features={hidden_features}"
+                            )
+                            rt = MoE(
+                                batch_size=batch_size,
+                                num_rows=num_rows,
+                                num_experts=num_experts,
+                                in_features=in_features,
+                                hidden_features=hidden_features,
+                                out_features=in_features,
+                            )
+                            rt.benchmark()
 
 
 if __name__ == "__main__":
