@@ -16,7 +16,9 @@
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/tensor.h"
+#if !defined(ORT_MINIMAL_BUILD)
 #include "core/framework/sharding_spec.h"
+#endif
 #include "core/graph/graph_viewer.h"
 
 namespace onnxruntime {

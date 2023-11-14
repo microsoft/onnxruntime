@@ -38,6 +38,9 @@
 #include "core/platform/threadpool.h"
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 #include "core/framework/memory_info.h"
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD)
 #include "core/framework/sharding_spec.h"
 #endif
 

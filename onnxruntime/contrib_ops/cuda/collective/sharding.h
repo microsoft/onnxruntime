@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 #pragma once
 
+#if !defined(ORT_MINIMAL_BUILD)
 #include "core/framework/sharding_spec.h"
+#endif
 #include "nccl_kernels.h"
 
 using namespace onnxruntime::distributed;
