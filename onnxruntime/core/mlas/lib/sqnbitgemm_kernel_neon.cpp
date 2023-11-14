@@ -133,11 +133,6 @@ ComputeDotProducts(
     for (size_t k = 0; k < CountK; k += BlkLen) {
         const size_t k_blk_len = std::min(CountK - k, BlkLen);
 
-        const uint8_t* b_data[NCols];
-        UnrolledLoop<NCols>(
-            [&](size_t i) { b_data[i] = QuantBData + i * StrideQuantBData; }
-        );
-
         float scale[NCols];
         UnrolledLoop<NCols>(
             [&](size_t i) { scale[i] = QuantBScale[i * StrideQuantBScale]; }
@@ -170,7 +165,10 @@ ComputeDotProducts(
 
             // load B column vectors
             uint8x8_t bv_packed[NCols];
-            UnrolledLoop<NCols>([&](size_t i) { bv_packed[i] = vld1_u8(b_data[i]); });
+            UnrolledLoop<NCols>([&](size_t i) {
+                const size_t b_data_block_offset = k_idx_in_blk * BlkBitWidth / 8;
+                bv_packed[i] = vld1_u8(QuantBData + i * StrideQuantBData + b_data_block_offset);
+            });
 
             uint8x8_t bv_u8_unzipped[NCols][2];
             UnrolledLoop<NCols>([&](size_t i) {
@@ -242,9 +240,6 @@ ComputeDotProducts(
             UnrolledLoop<4>([&](size_t j) {
                 UnrolledLoop<NCols>([&](size_t i) { acc[i] = vfmaq_f32(acc[i], av[j], bv[i][j]); });
             });
-
-            // increment b data pointers to next `SubBlkLen` elements
-            UnrolledLoop<NCols>([&](size_t i) { b_data[i] += 8; });
         }
 
         // increment pointers to next block
