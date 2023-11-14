@@ -965,12 +965,13 @@ static inline JBLAS_CODE quant_s8_row_reduce_sum(const int8_t* srcptr, int ldsrc
 }
 
 template <typename _RT>
-static inline JBLAS_CODE row_reduce_sum(const _RT* srcptr, int ldsrc, int row, int col, _RT* reduce) {
-  std::memset(reduce, 0, sizeof(reduce[0]) * col);
-  for (int i = 0; i < row; i++) {
-    for (int j = 0; j < col; j++) {
-      reduce[j] += srcptr[i * ldsrc + j];
+static inline JBLAS_CODE row_reduce_sum(const float* srcptr, int ldsrc, int row, int col, _RT* reduce) {
+  for (int j = 0; j < col; j++) {
+    float tmp = 0.f;
+    for (int i = 0; i < row; i++) {
+      tmp += srcptr[i * ldsrc + j];
     }
+    reduce[j] = _RT(tmp);
   }
   return JblasSuccess;
 }

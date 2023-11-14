@@ -29,10 +29,10 @@ using JBLAS_INT8_S4_F32F32 = jblas::wrapper::gemm::LauncherKBlock<
     jblas::prologue_b::gemm::WeightKBlockS4, jblas::epilogue::gemm::CompInt8BlockEpilogue,
     jblas::epilogue::gemm::AccumulatorWriteBackFp32>;
 
-using Jblas_Fp32_AVX512F_F32F32 = JBLAS_FP32_S4_F32F32<jblas::gemm::GemmCore_Row_NN_8x48_AVX512F>;
-using Jblas_Fp32_AVX2_F32F32 = JBLAS_FP32_S4_F32F32<jblas::gemm::GemmCore_Row_NN_2x48_AVX2>;
-using Jblas_Int8_AVX512F_F32F32 = JBLAS_INT8_S4_F32F32<jblas::gemm::GemmCore_Row_NN_8x48_AVX512_VNNI>;
-using Jblas_Int8_AVX2_F32F32 = JBLAS_INT8_S4_F32F32<jblas::gemm::GemmCore_Row_NN_2x48_AVX_VNNI>;
+using Jblas_Fp32_AVX512F_F32F32 = JBLAS_FP32_S4_F32F32<jblas::gemm::SCoreRowNAvx512f<48, 8>>;
+using Jblas_Fp32_AVX2_F32F32 = JBLAS_FP32_S4_F32F32<jblas::gemm::SCoreRowNAvx2<24, 4>>;
+using Jblas_Int8_AVX512F_F32F32 = JBLAS_INT8_S4_F32F32<jblas::gemm::ICoreRowNAvx512vnni<48, 8>>;
+using Jblas_Int8_AVX2_F32F32 = JBLAS_INT8_S4_F32F32<jblas::gemm::ICoreRowNAvxvnni<24, 4>>;
 static Jblas_Fp32_AVX512F_F32F32 JblasAvx512fS4Fp32Fp32;
 static Jblas_Fp32_AVX2_F32F32 JblasAvx2S4Fp32Fp32;
 static Jblas_Int8_AVX512F_F32F32 JblasAvx512VnniS4Fp32Fp32;

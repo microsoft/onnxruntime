@@ -19,7 +19,10 @@
 namespace jblas {
 namespace kernel {
 namespace avx512_bf16 {
-
+#if CompileBF16()
+#pragma GCC push_options
+#pragma GCC target("avx512bf16", "avx512vl", "avx512bw")
+#endif
 static inline JBLAS_CODE bf16_cvt_fp32_2D_write_back(const utils::bf16* src_ptr, float* dst_ptr, int row, int col,
                                                      int src_step, int dst_step, bool zeropadding) {
 #if CompileBF16()
@@ -33,10 +36,13 @@ static inline JBLAS_CODE bf16_cvt_fp32_2D_write_back(const utils::bf16* src_ptr,
     auto dst = dst_ptr + i * dst_step;
     int j = 0;
     for (; j < col_body; j += simd_proc_elt)
-      _mm512_storeu_ps(dst + j, _mm512_cvtpbh_ps((__m256bh)_mm256_loadu_ps(reinterpret_cast<float*>(src + j))));
+      _mm512_storeu_ps(
+          dst + j,  //
+          reinterpret_cast<__m512>(_mm512_bslli_epi128(_mm512_cvtepu16_epi32(_mm256_loadu_epi16(src + j)), 2)));
     if (col_tail > 0)
-      _mm512_mask_storeu_ps(dst + j, tail_mask,
-                            _mm512_cvtpbh_ps((__m256bh)_mm256_loadu_ps(reinterpret_cast<float*>(src + j))));
+      _mm512_mask_storeu_ps(
+          dst + j, tail_mask,
+          reinterpret_cast<__m512>(_mm512_bslli_epi128(_mm512_cvtepu16_epi32(_mm256_loadu_epi16(src + j)), 2)));
     if (zeropadding && npadding) std::memset(dst + col, 0, npadding);
   }
   return JblasSuccess;
@@ -78,7 +84,9 @@ static inline JBLAS_CODE fp32_cvt_bf16_2D_write_back(const void* raw_srcptr, voi
 #endif
   return avx512f::fp32_cvt_bf16_2D_write_back(raw_srcptr, raw_dstptr, row, col, srcstride, dststride, zeropadding);
 }
-
+#if CompileBF16()
+#pragma GCC pop_options
+#endif
 }  // namespace avx512_bf16
 }  // namespace kernel
 }  // namespace jblas

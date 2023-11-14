@@ -49,6 +49,21 @@ class JitBase : protected Xbyak::CodeGenerator {
 #endif
   }
 
+  void padto_le(const Xbyak::Reg64& _src, int padding) {
+    // _src=_src/padding*padding
+    if (padding == 1) {
+      return;
+    }
+    for (int i = 1; i < 16; i++) {
+      if ((1 << i) == padding) {
+        shr(_src, i);
+        shl(_src, i);
+        return;
+      }
+    }
+    assert(0);
+  }
+
   void generate_Nbitsmask(const Xbyak::Opmask& _msk, const Xbyak::Reg64& _pos, const Xbyak::Address& _total,
                           const Xbyak::Reg64& _tmp, const Xbyak::Reg64& _tmp1, int N) {
     inLocalLabel();
@@ -86,6 +101,8 @@ class JitBase : protected Xbyak::CodeGenerator {
 class JitAvx : protected JitBase {
  protected:
   static int constexpr VBits = 256;
+  static int constexpr VecBytes = VBits / 8;
+  static int constexpr RegCount = 16;
   typedef Xbyak::Ymm vreg_t;
 };
 
@@ -93,6 +110,7 @@ class JitAvx2 : protected JitAvx {
  protected:
   static int constexpr VBits = 256;
   typedef Xbyak::Ymm vreg_t;
+  void vxor(const vreg_t& x1, const vreg_t& x2, const Xbyak::Operand& op) { vpxor(x1, x2, op); }
 
   void loadbf16_f32(const Xbyak::Ymm& dst, const Xbyak::Address& addr) {
     vpmovzxwd(dst, addr);
@@ -103,7 +121,11 @@ class JitAvx2 : protected JitAvx {
 class JitAvx512f : protected JitAvx2 {
  protected:
   static int constexpr VBits = 512;
+  static int constexpr VecBytes = VBits / 8;
+  static int constexpr RegCount = 32;
   typedef Xbyak::Zmm vreg_t;
+
+  void vxor(const vreg_t& x1, const vreg_t& x2, const Xbyak::Operand& op) { vpxorq(x1, x2, op); }
 
   void interleave_2rows_4regs(Xbyak::Zmm* src_2regs, Xbyak::Zmm* tmp_2reg) {
     vpunpcklwd(tmp_2reg[0], src_2regs[0], src_2regs[1]);
@@ -191,18 +213,20 @@ class JitAvx512f : protected JitAvx2 {
   }
 };
 
+class JitAvx512_bf16 : protected JitAvx512f {};
+
 class JitAvx512_fp16 : protected JitAvx512f {};
 
 class JitAvx512vnni : protected JitAvx512f {
  protected:
-  void vpdpbusds_evex(const Xbyak::Xmm& x1, const Xbyak::Xmm& x2, const Xbyak::Operand& op) {
+  void vpdpbusds_(const Xbyak::Xmm& x1, const Xbyak::Xmm& x2, const Xbyak::Operand& op) {
     vpdpbusds(x1, x2, op, Xbyak::EvexEncoding);
   }
 };
 
 class JitAvxvnni : protected JitAvx2 {
  protected:
-  void vpdpbusds_vex(const Xbyak::Xmm& x1, const Xbyak::Xmm& x2, const Xbyak::Operand& op) {
+  void vpdpbusds_(const Xbyak::Xmm& x1, const Xbyak::Xmm& x2, const Xbyak::Operand& op) {
     vpdpbusds(x1, x2, op, Xbyak::VexEncoding);
   }
 };
@@ -215,6 +239,15 @@ class JitAmxtile : protected JitAvx512f {
     uint16_t colb[16];
     uint8_t rows[16];
   };
+  static int constexpr TileCount = 8;
+
+  typedef long long (*configure_t)(void*);
+
+  static void generate_config(Xbyak::CodeGenerator* g) {
+    Xbyak::util::StackFrame st(g, 1, 0, 0);
+    auto& parambase = st.p[0];
+    g->ldtilecfg(g->ptr[parambase]);
+  }
 
   static void configure_tiles(tileconfig_t& tc, int TILE_M, int TILE_N, int TILE_K, int elesize, int ANum, int BNum,
                               int CNum) {

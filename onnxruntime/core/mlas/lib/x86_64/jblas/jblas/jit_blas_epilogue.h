@@ -79,6 +79,8 @@ class CustomAccumulatorWriteBackWithEltop {
 template <JBLAS_ISA ISA_T>
 using AccumulatorWriteBackFp32 = AccumulatorWriteBack<ISA_T, float, float>;
 template <JBLAS_ISA ISA_T>
+using AccumulatorWriteBackInt32 = AccumulatorWriteBack<ISA_T, int, int>;
+template <JBLAS_ISA ISA_T>
 using AccumulatorWriteBackBf16 = AccumulatorWriteBack<ISA_T, utils::bf16, utils::bf16>;
 template <JBLAS_ISA ISA_T>
 using AccumulatorWriteBackFp16 = AccumulatorWriteBack<ISA_T, utils::fp16, utils::fp16>;
@@ -133,7 +135,7 @@ class CompFp32BlockEpilogue {
           (float*)_param.scales + K_offset * _param.ldsb + N_offset, srcptr, cachestep, dstptr, cachestep, M, N);
       assert(ret == JblasSuccess);
       if (_param.zps != nullptr) {
-        ret = kernel::wrapper::RemoveZeroPointBias::forward<ISA_T>(
+        ret = kernel::wrapper::RemoveZeroPointBias::forward_wei<ISA_T>(
             dstptr, cachestep, M, N, _param.zps + K_offset * _param.ldsb + N_offset,
             (float*)_param.scales + K_offset * _param.ldsb + N_offset, _param.ldra,
             _param.reduce + M_offset * _param.ldra + K_offset);
@@ -184,7 +186,8 @@ class CompInt8BlockEpilogue {
     int ldsa;
     // optional if A asym
     uint8_t* zpA = nullptr;
-    float* reduceB = nullptr;
+    void* reduceB = nullptr;
+    JBLAS_DTYPE reduceBdtype = JBLAS_DTYPE::F32;
     // optional if B asym
     int8_t* zpB = nullptr;
     float* reduceA = nullptr;
@@ -194,46 +197,56 @@ class CompInt8BlockEpilogue {
                      const int K_offset, const int M, const int N, const Param& _param, void* tmpcache,
                      size_t cachesize) {
     JBLAS_CODE ret = JblasNotSupport;
-    if (_param.scaleBdtype == JBLAS_DTYPE::F32) {
-      ret = kernel::wrapper::DequanS32Fp32::template forward<ISA_T>(
-          srcptr, cachestep, (float*)srcptr, cachestep, M, N, _param.scalesA + M_offset * _param.ldsa + K_offset,
-          _param.ldsa, (float*)_param.scalesB + N_offset + K_offset * _param.ldsb);
+    float* scab = nullptr;
+    size_t ScaleBTmpSize = N * sizeof(float);
+    size_t ReduceBTmpSize = N * sizeof(float);
+    assert(cachesize >= (ScaleBTmpSize + ReduceBTmpSize));
+    if (_param.scaleBdtype == JBLAS_DTYPE::BF16) {
+      auto scache = (float*)tmpcache;
+      ret = kernel::wrapper::Memcpy2DBf16CvtFp32::template forward<ISA_T>(
+          (utils::bf16*)_param.scalesB + N_offset + K_offset * _param.ldsb, scache, 1, N, N, N, false);
       assert(ret == JblasSuccess);
-    } else if (_param.scaleBdtype == JBLAS_DTYPE::BF16) {
-      ret = kernel::wrapper::DequanS32Fp32::template forward<ISA_T>(
-          srcptr, cachestep, (float*)srcptr, cachestep, M, N, _param.scalesA + M_offset * _param.ldsa + K_offset,
-          _param.ldsa, (utils::bf16*)_param.scalesB + N_offset + K_offset * _param.ldsb);
-      assert(ret == JblasSuccess);
+      scab = scache;
+    } else if (_param.scaleBdtype == JBLAS_DTYPE::F32) {
+      scab = (float*)_param.scalesB + N_offset + K_offset * _param.ldsb;
     }
+    float* redb = nullptr;
+    if (_param.reduceB) {
+      if (_param.reduceBdtype == JBLAS_DTYPE::BF16) {
+        auto rcache = (float*)((char*)tmpcache + ScaleBTmpSize);
+        ret = kernel::wrapper::Memcpy2DBf16CvtFp32::template forward<ISA_T>(
+            (utils::bf16*)_param.reduceB + N_offset + K_offset * _param.ldsb, rcache, 1, N, N, N, false);
+        assert(ret == JblasSuccess);
+        redb = rcache;
+      } else if (_param.reduceBdtype == JBLAS_DTYPE::F32) {
+        redb = (float*)_param.reduceB + N_offset + K_offset * _param.ldsb;
+      }
+    }
+    ret = kernel::wrapper::DequanS32Fp32::template forward<ISA_T>(srcptr, cachestep, (float*)srcptr, cachestep, M, N,
+                                                                  _param.scalesA + M_offset * _param.ldsa + K_offset,
+                                                                  _param.ldsa, scab);
+    assert(ret == JblasSuccess);
     ret = kernel::wrapper::AccumulateFp32::template forward<ISA_T>((float*)srcptr, cachestep, dstptr, cachestep, M, N);
-    if (ret != JblasSuccess) {
-      assert(0);
-      return ret;
-    }
+    assert(ret == JblasSuccess);
 
-    if (_param.zpA == nullptr && _param.zpB == nullptr) {
-      return ret;
-    } else if (_param.zpA != nullptr && _param.zpB == nullptr) {
-      ret = kernel::wrapper::RemoveZeroPointBias::template forward<ISA_T>(
-          dstptr, cachestep, M, N, _param.zpA + M_offset * _param.ldsa + K_offset,
-          _param.scalesA + M_offset * _param.ldsa + K_offset, _param.ldsa,
-          _param.reduceB + N_offset + K_offset * _param.ldsb);
-
-    } else if (_param.zpA == nullptr && _param.zpB != nullptr) {
-      if (_param.scaleBdtype == JBLAS_DTYPE::F32) {
-        ret = kernel::wrapper::RemoveZeroPointBias::template forward<ISA_T>(
-            dstptr, cachestep, M, N, _param.zpB + N_offset + K_offset * _param.ldsb,
-            (float*)_param.scalesB + N_offset + K_offset * _param.ldsb, _param.ldsa,
+    if (_param.zpA == nullptr) {
+      if (_param.zpB == nullptr) {
+        return ret;
+      } else {
+        ret = kernel::wrapper::RemoveZeroPointBias::template forward_wei<ISA_T>(
+            dstptr, cachestep, M, N, _param.zpB + N_offset + K_offset * _param.ldsb, scab, _param.ldsa,
             _param.reduceA + M_offset * _param.ldsa + K_offset);
       }
-
     } else {
-      if (_param.scaleBdtype == JBLAS_DTYPE::F32) {
-        ret = kernel::wrapper::RemoveZeroPointBias::template forward<ISA_T>(
+      if (_param.zpB == nullptr) {
+        ret = kernel::wrapper::RemoveZeroPointBias::template forward_act<ISA_T>(
             dstptr, cachestep, M, N, _param.zpA + M_offset * _param.ldsa + K_offset,
-            _param.zpB + N_offset + K_offset * _param.ldsb, _param.scalesA + M_offset * _param.ldsa + K_offset,
-            (float*)_param.scalesB + N_offset + K_offset * _param.ldsb, _param.ldsa, _param.K,
-            _param.reduceA + M_offset * _param.ldsa + K_offset, _param.reduceB + N_offset + K_offset * _param.ldsb);
+            _param.scalesA + M_offset * _param.ldsa + K_offset, _param.ldsa, redb);
+      } else {
+        ret = kernel::wrapper::RemoveZeroPointBias::template forward_both<ISA_T>(
+            dstptr, cachestep, M, N, _param.zpA + M_offset * _param.ldsa + K_offset,
+            _param.zpB + N_offset + K_offset * _param.ldsb, _param.scalesA + M_offset * _param.ldsa + K_offset, scab,
+            _param.ldsa, _param.K, _param.reduceA + M_offset * _param.ldsa + K_offset, redb);
       }
     }
     return ret;
@@ -271,15 +284,15 @@ class ZpDequantInt32ToFp32 {
     if (_param.zpA == nullptr && _param.zpB == nullptr) {
       return ret;
     } else if (_param.zpA != nullptr && _param.zpB == nullptr) {
-      ret = kernel::wrapper::RemoveZeroPointBias::template forward<ISA_T>(
+      ret = kernel::wrapper::RemoveZeroPointBias::template forward_act<ISA_T>(
           cptr, _param.ldc, M, N, _param.zpA + M_offset * _param.ldsa, _param.scalesA + M_offset * _param.ldsa,
           _param.ldsa, _param.reduceB + N_offset);
     } else if (_param.zpA == nullptr && _param.zpB != nullptr) {
-      ret = kernel::wrapper::RemoveZeroPointBias::template forward<ISA_T>(cptr, _param.ldc, M, N, _param.zpB + N_offset,
-                                                                          _param.scalesB + N_offset, _param.ldsa,
-                                                                          _param.reduceA + M_offset * _param.ldsa);
+      ret = kernel::wrapper::RemoveZeroPointBias::template forward_wei<ISA_T>(
+          cptr, _param.ldc, M, N, _param.zpB + N_offset, _param.scalesB + N_offset, _param.ldsa,
+          _param.reduceA + M_offset * _param.ldsa);
     } else {
-      ret = kernel::wrapper::RemoveZeroPointBias::template forward<ISA_T>(
+      ret = kernel::wrapper::RemoveZeroPointBias::template forward_both<ISA_T>(
           cptr, _param.ldc, M, N, _param.zpA + M_offset * _param.ldsa, _param.zpB + N_offset,
           _param.scalesA + M_offset * _param.ldsa, _param.scalesB + N_offset, _param.ldsa, _param.K,
           _param.reduceA + M_offset * _param.ldsa, _param.reduceB + N_offset);

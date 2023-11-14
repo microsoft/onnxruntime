@@ -89,11 +89,6 @@ inline uint32_t bitand_u32(const T& src, const T& src1) {
   return uint32_t(src) & uint32_t(src1);
 }
 
-template <JBLAS_GEMM_CORE SRC, JBLAS_GEMM_CORE Mask, JBLAS_GEMM_CORE Shift, typename DST_T>
-inline constexpr DST_T gemm_core_mask() {
-  return static_cast<DST_T>((uint32_t(SRC) & uint32_t(Mask)) >> uint32_t(Shift));
-}
-
 struct bf16 {
   uint16_t x;
   union bf16f32 {
@@ -104,15 +99,32 @@ struct bf16 {
   bf16() : x(0) {}
 
 #if CompileBF16()
+#pragma GCC push_options
 #pragma GCC target("avx512vl", "avx512bf16")
-  explicit bf16(float vf32) : x(bit_cast<uint16_t>(_mm_cvtness_sbh(vf32))) {}
+  static uint16_t f32_to_bf16(float v) {
+    auto mm = _mm_load_ss(&v);
+    auto mm2 = _mm_cvtneps_pbh(mm);
+    uint16_t dst;
+    _mm_storeu_si16(reinterpret_cast<uint16_t*>(&dst), reinterpret_cast<__m128i>(mm2));
+    return dst;
+  }
+#pragma GCC pop_options
+  explicit bf16(float vf32) : x(bit_cast<uint16_t>(f32_to_bf16(vf32))) {}
 #else
   explicit bf16(float vf32) { fromfloat(vf32); }
 #endif
 
 #if CompileBF16()
+#pragma GCC push_options
 #pragma GCC target("avx512vl", "avx512bf16")
-  float tofloat() const { return static_cast<float>(bit_cast<__bf16>(this->x)); }
+  float tofloat() const {
+    auto mm = _mm_loadu_si16(&(this->x));
+    auto mm2 = _mm_bslli_si128(mm, 2);
+    float dst;
+    _mm_store_ss(&dst, reinterpret_cast<__m128>(mm2));
+    return dst;
+  }
+#pragma GCC pop_options
 #else
   float tofloat() const {
     bf16f32 tmp = {0.f};
@@ -120,6 +132,12 @@ struct bf16 {
     return tmp.f32;
   }
 #endif
+
+  float tofloat_nosimd() const {
+    bf16f32 tmp = {0.f};
+    tmp.bf16[1] = x;
+    return tmp.f32;
+  }
 
   operator float() const { return tofloat(); }
 
@@ -131,7 +149,7 @@ struct bf16 {
 
   void fromfloat(float _v) {
 #if CompileBF16()
-    x = bit_cast<uint16_t>(_mm_cvtness_sbh(_v));
+    x = bit_cast<uint16_t>(f32_to_bf16(_v));
 #else
     bf16f32 tmp = {0.f};
     tmp.f32 = _v;
@@ -140,6 +158,16 @@ struct bf16 {
     tmp.u += 0x7fff + lsb;
     x = tmp.bf16[1];
 #endif
+  }
+
+  void fromfloat_nosimd(float _v) {
+    bf16f32 tmp = {0.f};
+    tmp.f32 = _v;
+    // See document of VCVTNEPS2BF16 in Intel® 64 and IA-32 Architectures
+    // Software Developer’s Manual Volume 2
+    const auto lsb = tmp.bf16[1] & 1;
+    tmp.u += 0x7fff + lsb;
+    x = tmp.bf16[1];
   }
 };
 
@@ -295,65 +323,12 @@ inline constexpr const char* dtype_str() {
   return dtype2str(DT);
 }
 
-inline const char* gemmcore2str(JBLAS_GEMM_CORE GC) {
-  switch (GC) {
-    case JBLAS_GEMM_CORE::AVX2_4X24:
-      return "AVX2_4X24";
-    case JBLAS_GEMM_CORE::AVX2_2X48:
-      return "AVX2_2X48";
-    case JBLAS_GEMM_CORE::AVX512F_8x48:
-      return "AVX512F_8x48";
-    case JBLAS_GEMM_CORE::AMX_BF16_16x64:
-      return "AMX_BF16_16x64";
-    case JBLAS_GEMM_CORE::AMX_BF16_16x48:
-      return "AMX_BF16_16x48";
-    case JBLAS_GEMM_CORE::AVX512_FP16_8x64:
-      return "AVX512_FP16_8x64";
-    case JBLAS_GEMM_CORE::AVX512_FP16_8x96:
-      return "AVX512_FP16_8x96";
-    case JBLAS_GEMM_CORE::AVX_VNNI_2x48:
-      return "AVX_VNNI_2x48";
-    case JBLAS_GEMM_CORE::AVX_VNNI_4x24:
-      return "AVX_VNNI_4x24";
-    case JBLAS_GEMM_CORE::AVX512_VNNI_8x48:
-      return "AVX512_VNNI_8x48";
-    case JBLAS_GEMM_CORE::AMX_INT8_16x64_US:
-      return "AMX_INT8_16x64_US";
-    case JBLAS_GEMM_CORE::AMX_INT8_16x64_SS:
-      return "AMX_INT8_16x64_SS";
-    case JBLAS_GEMM_CORE::AMX_INT8_16x48_US:
-      return "AMX_INT8_16x48_US";
-    case JBLAS_GEMM_CORE::AMX_INT8_16x48_SS:
-      return "AMX_INT8_16x48_SS";
-    default:
-      return "Err_Type";
-  }
-}
-
-template <JBLAS_GEMM_CORE GC>
-inline constexpr const char* gemmcore_str() {
-  return gemmcore2str(GC);
-}
 
 inline constexpr size_t jblas_dtype_size(const JBLAS_DTYPE t) {
   auto bits = (uint32_t)t & 0xff;
   return bits >> 3;  // bits to bytes
 }
 
-static inline int jblas_gemm_weight_element_size(JBLAS_GEMM_CORE _gemm) {
-  auto PACKROW = (JBLAS_GEMM_CORE)((uint32_t)_gemm & 0xff00);
-  switch (PACKROW) {
-    case JBLAS_GEMM_CORE::PACKROW_1:
-      return 4;
-    case JBLAS_GEMM_CORE::PACKROW_4:
-      return 1;
-    case JBLAS_GEMM_CORE::PACKROW_2:
-      return 2;
-    case JBLAS_GEMM_CORE::Undef:
-    default:
-      return 0;
-  }
-}
 
 #ifndef _WIN32
 static void request_perm_xtile_data() {
@@ -449,6 +424,12 @@ _T deserialize(int8_t*& buf) {
 
 static inline int padto(int a, int b) { return updiv(a, b) * b; }
 static inline size_t padto(size_t a, int b) { return updiv(a, b) * b; }
+
+template <int _Alignment, typename _T>
+static inline _T* pointer_align(_T* src) {
+  auto uptr = reinterpret_cast<uint64_t>(src);
+  return reinterpret_cast<_T*>((uptr + _Alignment - 1) / _Alignment * _Alignment);
+}
 
 template <typename _T>
 static inline _T* amalloc(size_t _size, size_t _alignment = 64) {

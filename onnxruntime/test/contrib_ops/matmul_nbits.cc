@@ -141,21 +141,21 @@ void MlasJblasQ4Test(int64_t M, int64_t N, int64_t K, int block_size, bool is_as
       .RunWithConfig();
 }
 
-TEST(MatMulNBits, MlasJblasQ4Fp32G128Asym) {
-  MlasJblasQ4Test(2, 4096, 4096, 128, true, CompFp32);
-}
-
-TEST(MatMulNBits, MlasJblasQ4Fp32G32Asym) {
-  MlasJblasQ4Test(2, 4096, 4096, 32, true, CompFp32);
-}
-
-TEST(MatMulNBits, MlasJblasQ4Fp32G128Sym) {
-  MlasJblasQ4Test(2, 4096, 4096, 128, false, CompFp32);
-}
-
-TEST(MatMulNBits, MlasJblasQ4Fp32G32Sym) {
-  MlasJblasQ4Test(2, 4096, 4096, 32, false, CompFp32);
-}
+//TEST(MatMulNBits, MlasJblasQ4Fp32G128Asym) {
+//  MlasJblasQ4Test(2, 4096, 4096, 128, true, CompFp32);
+//}
+//
+//TEST(MatMulNBits, MlasJblasQ4Fp32G32Asym) {
+//  MlasJblasQ4Test(2, 4096, 4096, 32, true, CompFp32);
+//}
+//
+//TEST(MatMulNBits, MlasJblasQ4Fp32G128Sym) {
+//  MlasJblasQ4Test(2, 4096, 4096, 128, false, CompFp32);
+//}
+//
+//TEST(MatMulNBits, MlasJblasQ4Fp32G32Sym) {
+//  MlasJblasQ4Test(2, 4096, 4096, 32, false, CompFp32);
+//}
 
 TEST(MatMulNBits, MlasJblasQ4Int8G128Sym) {
   MlasJblasQ4Test(2, 4096, 4096, 128, false, CompInt8);

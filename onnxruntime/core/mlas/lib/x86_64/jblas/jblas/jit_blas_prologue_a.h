@@ -40,7 +40,7 @@ class ActivationBase {
   JBLAS_CODE getActivation(AType** dstptr, int* dststep, const Param& _param, int m_size, int k_size, int m_offset,
                            int k_offset, void* tmpcache, size_t cachesize) {
     auto aptr = const_cast<AType*>(_param.A);
-    if (k_size % _GemmCore_T::KTILE == 0) {
+    if (k_size % _GemmCore_T::KTILE == 0 && m_size >= _GemmCore_T::MTILE) {
       *dstptr = aptr + m_offset * _param.lda + k_offset;
       *dststep = _param.lda;
       return JblasSuccess;
@@ -156,8 +156,8 @@ class ActivationKBlockQuantize {
     (void)k_size;
     auto quan = _param.quan;
     auto aptr = quan->template APtr<AType>();
-    *dstptr = aptr + m_offset * _param.lda + k_offset;
-    *dststep = _param.lda;
+    *dstptr = aptr + m_offset * quan->lda + k_offset;
+    *dststep = quan->lda;
     return JblasSuccess;
   }
 };

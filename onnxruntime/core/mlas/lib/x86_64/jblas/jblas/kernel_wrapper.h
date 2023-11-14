@@ -78,7 +78,6 @@ class Memcpy2D {
   static JBLAS_CODE forward(const _SRC_T* srcptr, _DST_T* dstptr, int row, int col, int srcstep, int dststep,
                             void* const_elt_v = nullptr, Eltops... ops) {
     auto ret = JblasNotSupport;
-#if CompileAVX512F()
     if constexpr (utils::isa_base<ISA_T>::avx512f) {
       ret = kernel::jit::JitMemcpy2DAvx512f::forward<_SRC_T, _DST_T>(srcptr, dstptr, row, col, srcstep, dststep,
                                                                      const_elt_v, ops...);
@@ -86,7 +85,6 @@ class Memcpy2D {
         return ret;
       }
     }
-#endif
 #if CompileAVX2()
     if constexpr (utils::isa_base<ISA_T>::avx2) {
       ret = kernel::jit::JitMemcpy2DAvx2::forward<_SRC_T, _DST_T>(srcptr, dstptr, row, col, srcstep, dststep,
@@ -621,7 +619,7 @@ template <typename _RT>
 class RowReduceSum {
  public:
   template <JBLAS_ISA ISA_T>
-  static inline JBLAS_CODE forward(const _RT* srcptr, int ldsrc, int row, int col, _RT* reduce) {
+  static inline JBLAS_CODE forward(const float* srcptr, int ldsrc, int row, int col, _RT* reduce) {
     return ref::row_reduce_sum<_RT>(srcptr, ldsrc, row, col, reduce);
   }
 };
@@ -644,7 +642,7 @@ class ColBlockReduceSum {
 class RemoveZeroPointBias {
  public:
   template <JBLAS_ISA ISA_T>
-  static inline JBLAS_CODE forward(float* accptr, int ldacc, int row, int col, int8_t* zps, float* scales, int lds,
+  static inline JBLAS_CODE forward_wei(float* accptr, int ldacc, int row, int col, int8_t* zps, float* scales, int lds,
                                    const float* reduce) {
 #if CompileAVX512F()
     if constexpr (utils::isa_base<ISA_T>::avx512f) {
@@ -659,7 +657,7 @@ class RemoveZeroPointBias {
     return ref::remove_wei_zeropoint_bias(accptr, ldacc, row, col, zps, scales, lds, reduce);
   }
   template <JBLAS_ISA ISA_T>
-  static inline JBLAS_CODE forward(float* accptr, int ldacc, int row, int col, uint8_t* zps, float* scales, int lds,
+  static inline JBLAS_CODE forward_act(float* accptr, int ldacc, int row, int col, uint8_t* zps, float* scales, int lds,
                                    const float* reduce) {
 #if CompileAVX512F()
     if constexpr (utils::isa_base<ISA_T>::avx512f) {
@@ -674,7 +672,7 @@ class RemoveZeroPointBias {
     return ref::remove_act_zeropoint_bias(accptr, ldacc, row, col, zps, scales, lds, reduce);
   }
   template <JBLAS_ISA ISA_T>
-  static inline JBLAS_CODE forward(float* accptr, int ldacc, int row, int col, uint8_t* zpa, int8_t* zpb, float* scalea,
+  static inline JBLAS_CODE forward_both(float* accptr, int ldacc, int row, int col, uint8_t* zpa, int8_t* zpb, float* scalea,
                                    float* scaleb, int lds, int k, const float* reducea, const float* reduceb) {
 #if CompileAVX512F()
     if constexpr (utils::isa_base<ISA_T>::avx512f) {

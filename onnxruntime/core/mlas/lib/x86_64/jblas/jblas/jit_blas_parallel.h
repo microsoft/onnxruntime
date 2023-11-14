@@ -117,8 +117,9 @@ namespace gemm {
 
 struct ConfigGemmBase {
   int threads;
-  size_t l2cache;
   int size[3];
+  size_t l2cache = 1024ULL * 1024;
+  size_t l1cache = 32ULL * 1024;
 };
 
 struct ThreadProblemBase : ThreadProblem2D {
@@ -134,8 +135,8 @@ class SchedulerBase : public Scheduler2D {
   SchedulerBase() = default;
   SchedulerBase(const ConfigGemmBase& config) { update(config); }
   virtual void getIndex(ThreadProblem& problem) {
-    problem.l2cachesize = mL2Size;
     problem.tmpcachesize = mL2Size - mL2Use;
+    problem.l2cachesize = mL2Size;
     problem.block[0] = mBlock[0];
     problem.block[1] = mBlock[1];
     problem.block[2] = mBlock[2];
@@ -149,6 +150,7 @@ class SchedulerBase : public Scheduler2D {
     }
     mThdCount = config.threads;
     mL2Size = config.l2cache;
+    mL1Size = config.l1cache;
     if (mSize[0] <= 0 || mSize[1] <= 0 || mSize[2] <= 0) {
       return;
     }
@@ -190,17 +192,17 @@ class SchedulerBase : public Scheduler2D {
     update_cache_blocking();
     Scheduler2D::set(mThdSize, mSize, mStep);
     mL2Use = size_t(mBlock[0]) * mBlock[1] * mEleSize[2];
-    mL2Use += size_t(mBlock[0]) * mBlock[2] * mEleSize[0];
-    mL2Use += size_t(mBlock[1]) * mBlock[2] * mEleSize[0];
+    mL2Use += size_t(mBlock[1]) * mBlock[2] * mEleSize[1];
+    mL2Use += size_t(mStep[0]) * mBlock[2] * mEleSize[0];
   }
+  const float DensityThres = 32;
 
   float calculate_score() {
     int tmpnstep = mThdSize[1] < _GemmCore_T::PREFERED_N ? mThdSize[1] : _GemmCore_T::PREFERED_N;
     float threadratio = float(mThdValid) / mThdCount;
     float density = float(tmpnstep) * mThdSize[0] / (tmpnstep + mThdSize[0]);
-    const float Thres = 64;
-    if (mDensity < Thres) {
-      return (threadratio * 1.f + density * 0.0016f) * density / mDensity;
+    if (mDensity < DensityThres) {
+      return threadratio;
     }
     return (threadratio * 1.f + density * 0.0016f);
   }
@@ -218,6 +220,14 @@ class SchedulerBase : public Scheduler2D {
   // B Access = M/mMStep
   // A Access = N/mNStep
   void update_cache_blocking() {
+    if (mDensity <= DensityThres) {
+      return cache_block_memory();
+    } else {
+      return cache_blocking_compute();
+    }
+  }
+
+  void cache_blocking_compute() {
     int constexpr KRef = 256;
     size_t csize_total = mL2Size - _GemmCore_T::PREFERED_N * KRef * mEleSize[1];
     int maxM = static_cast<int>(csize_total / _GemmCore_T::PREFERED_N / mEleSize[2]);
@@ -238,27 +248,30 @@ class SchedulerBase : public Scheduler2D {
     } else {
       mBlock[1] = mThdSize[1];
     }
-    update_kstep();
-  }
-  void update_kstep() {
-    auto rawk = static_cast<int>((mL2Size / mBlock[1] - mBlock[0] * mEleSize[2]) / mEleSize[1]);
+    auto rawk = static_cast<int>((mL2Size - mBlock[0] * mBlock[1] * mEleSize[2]) /
+                                 (mBlock[0] * mEleSize[0] + mBlock[1] * mEleSize[1]));
     rawk = std::min(rawk, mSizePadded[2]);
     mBlock[2] = utils::padto_le(rawk, mStep[2]);
-
-    int const NStage = 16;
-    int const K_Split = utils::padto(utils::updiv(mSize[2], NStage), mStep[2]);
-    if (mBlock[2] > K_Split) {
-      mBlock[2] = K_Split;
-    }
   }
 
-  size_t mL2Size = 0, mL2Use = 0;
+  void cache_block_memory() {
+    mBlock[0] = mThdSize[0];
+    mBlock[1] = mStep[1];
+    size_t reservsize = (size_t)mBlock[0] * mBlock[1] * mEleSize[2];
+    size_t maxK = (mL1Size - reservsize) / (mBlock[1] * mEleSize[1] + mBlock[0] * mEleSize[0]);
+    size_t Bsize = maxK * mBlock[1] * mEleSize[1];
+    size_t Bsize_1K = utils::padto_le(Bsize, 1024);
+    mBlock[2] = int(Bsize_1K / mEleSize[1] / mBlock[1]);
+    mBlock[2] = utils::padto_le(mBlock[2], mStep[2]);
+  }
+
+  size_t mL2Size = 0, mL1Size = 0, mL2Use = 0;
   float mDensity = 0.f;
 
  private:
   int mSize[3] = {0, 0, 0};
   int mThdSize[3] = {0, 0, 0};
-  static constexpr int mStep[3] = {1, _GemmCore_T::NTILE, _GemmCore_T::KTILE};
+  static constexpr int mStep[3] = {_GemmCore_T::MTILE, _GemmCore_T::NTILE, _GemmCore_T::KTILE};
   static constexpr int mEleSize[3] = {sizeof(typename _GemmCore_T::AType), sizeof(typename _GemmCore_T::BType),
                                       sizeof(typename _GemmCore_T::CType)};
   int mSizePadded[3] = {0, 0, 0};
@@ -293,6 +306,7 @@ class SchedulerKBlock : public Scheduler2D {
     }
     mThdCount = config.threads;
     mL2Size = config.l2cache;
+    mL1Size = config.l1cache;
     mKBlock = config.kblock;
     if (mSize[0] <= 0 || mSize[1] <= 0 || mSize[2] <= 0) {
       return;
@@ -335,17 +349,17 @@ class SchedulerKBlock : public Scheduler2D {
     update_cache_blocking();
     Scheduler2D::set(mThdSize, mSize, mStep);
     mL2Use = size_t(mBlock[0]) * mBlock[1] * mEleSize[2] * 2;
-    mL2Use += size_t(mBlock[0]) * mBlock[2] * mEleSize[0];
-    mL2Use += size_t(mBlock[1]) * mBlock[2] * mEleSize[0];
+    mL2Use += size_t(mBlock[1]) * mBlock[2] * mEleSize[1];
+    mL2Use += size_t(mStep[0]) * mBlock[2] * mEleSize[0];
   }
+  const float DensityThres = 32;
 
   float calculate_score() {
     int tmpnstep = mThdSize[1] < _GemmCore_T::PREFERED_N ? mThdSize[1] : _GemmCore_T::PREFERED_N;
     float threadratio = float(mThdValid) / mThdCount;
     float density = float(tmpnstep) * mThdSize[0] / (tmpnstep + mThdSize[0]);
-    const float Thres = 64;
-    if (mDensity < Thres) {
-      return (threadratio * 1.f + density * 0.0016f) * density / mDensity;
+    if (mDensity < DensityThres) {
+      return threadratio * 1.f;
     }
     return (threadratio * 1.f + density * 0.0016f);
   }
@@ -362,6 +376,14 @@ class SchedulerKBlock : public Scheduler2D {
   // B=MBlock*KBlock
   // A=MTILE*KBlock
   void update_cache_blocking() {
+    if (mDensity <= DensityThres) {
+      return cache_block_memory();
+    } else {
+      return cache_blocking_compute();
+    }
+  }
+
+  void cache_blocking_compute() {
     int constexpr KRef = 256;
     int constexpr NRef = _GemmCore_T::PREFERED_N;
     int constexpr MTile = _GemmCore_T::MTILE;
@@ -393,14 +415,34 @@ class SchedulerKBlock : public Scheduler2D {
     }
   }
 
-  size_t mL2Size = 0, mL2Use = 0;
+  void cache_block_memory() {
+    mBlock[0] = _GemmCore_T::MTILE;
+    size_t startK = std::max(16, _GemmCore_T::KTILE);
+    auto getMaxN = [&](size_t refk) {
+      size_t sizeA = refk * mEleSize[0] * mBlock[0];
+      size_t maxN = (mL1Size - sizeA) / (mBlock[0] * mEleSize[2] * 2 + refk * mEleSize[1]);
+      return maxN;
+    };
+    auto maxN = getMaxN(startK);
+    if (maxN <= mThdSize[1]) {
+      mBlock[1] = int(maxN);
+      mBlock[1] = utils::padto_le(mBlock[1], mStep[1]);
+      mBlock[2] = int(startK);
+    } else {
+      mBlock[2] = int(startK * 2);
+      mBlock[1] = int(getMaxN(mBlock[2]));
+      mBlock[1] = utils::padto_le(mBlock[1], mStep[1]);
+      mBlock[1] = std::min(mBlock[1], mThdSize[1]);
+    }
+  }
+  size_t mL2Size = 0, mL1Size = 0, mL2Use = 0;
   float mDensity = 0.f;
   int mKBlock = 0;
 
  private:
   int mSize[3] = {0, 0, 0};
   int mThdSize[3] = {0, 0, 0};
-  static constexpr int mStep[3] = {1, _GemmCore_T::NTILE, _GemmCore_T::KTILE};
+  static constexpr int mStep[3] = {_GemmCore_T::MTILE, _GemmCore_T::NTILE, _GemmCore_T::KTILE};
   static constexpr int mEleSize[3] = {sizeof(typename _GemmCore_T::AType), sizeof(typename _GemmCore_T::BType),
                                       sizeof(typename _GemmCore_T::CType)};
   int mSizePadded[3] = {0, 0, 0};
@@ -458,5 +500,44 @@ class StdThreading : public IThreading {
  private:
   std::vector<std::thread> thdset;
 };
+
+template <class Parallel_T, class Launch_T>
+void GemmBaseRun(Launch_T& launcher, const typename Launch_T::Param& args, parallel::IThreading* th) {
+  device::CpuBase cb;
+  Parallel_T para({th->num_threads(), args.M, args.N, args.K, cb.mL2Cache, cb.mL1Cache});
+  static bool flag = false;
+  if (flag) {
+    printf("%s\n", __FUNCTION__);
+    para.print();
+    flag = false;
+  }
+  th->parallel_for([&](int tidx) {
+    typename Parallel_T::ThreadProblem thdp{tidx};
+    para.getIndex(thdp);
+    if (thdp.valid) {
+      launcher.run(args, thdp);
+    }
+  });
+}
+
+template <class Parallel_T, class Launch_T>
+void GemmKBlockRun(Launch_T& launcher, const typename Launch_T::Param& args, parallel::IThreading* th) {
+  device::CpuBase cb;
+  Parallel_T para({th->num_threads(), args.M, args.N, args.K, cb.mL2Cache, cb.mL1Cache, args.KBlock});
+  static bool flag = false;
+  if (flag) {
+    printf("%s\n", __FUNCTION__);
+    para.print();
+    flag = false;
+  }
+  th->parallel_for([&](int tidx) {
+    typename Parallel_T::ThreadProblem thdp{tidx};
+    para.getIndex(thdp);
+    if (thdp.valid) {
+      launcher.run(args, thdp);
+    }
+  });
+}
+
 }  // namespace parallel
 }  // namespace jblas

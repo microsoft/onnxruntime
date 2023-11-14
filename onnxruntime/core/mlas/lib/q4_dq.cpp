@@ -152,13 +152,32 @@ MlasJblasNBitsGemmPackB(void* PackedBuf,
                         MLAS_COMPUTE_TYPE CompType,
                         MLAS_THREADPOOL* ThreadPool)
 {
+    GetCPUDevice();
     switch (CompType) {
         case CompInt8:
-            return JblaNBitsGemmPackB(JblasAvxVnniS4Fp32Fp32, PackedBuf, int(BlkSize), QData, Scale,
-                                      Zp, int(N), int(K), isAsym, lastCall, int(ldb), ThreadPool);
+            if (_cd->AVX512_VNNI()) {
+                return JblaNBitsGemmPackB(JblasAvx512VnniS4Fp32Fp32, PackedBuf, int(BlkSize), QData,
+                                          Scale, Zp, int(N), int(K), isAsym, lastCall, int(ldb),
+                                          ThreadPool);
+            }
+            if (_cd->AVX_VNNI()) {
+                return JblaNBitsGemmPackB(JblasAvxVnniS4Fp32Fp32, PackedBuf, int(BlkSize), QData,
+                                          Scale, Zp, int(N), int(K), isAsym, lastCall, int(ldb),
+                                          ThreadPool);
+            }
+            break;
         case CompFp32:
-            return JblaNBitsGemmPackB(JblasAvx512fS4Fp32Fp32, PackedBuf, int(BlkSize), QData, Scale,
-                                      Zp, int(N), int(K), isAsym, lastCall, int(ldb), ThreadPool);
+            if (_cd->AVX512F()) {
+                return JblaNBitsGemmPackB(JblasAvx512fS4Fp32Fp32, PackedBuf, int(BlkSize), QData,
+                                          Scale, Zp, int(N), int(K), isAsym, lastCall, int(ldb),
+                                          ThreadPool);
+            }
+            if (_cd->AVX2()) {
+                return JblaNBitsGemmPackB(JblasAvx2S4Fp32Fp32, PackedBuf, int(BlkSize), QData,
+                                          Scale, Zp, int(N), int(K), isAsym, lastCall, int(ldb),
+                                          ThreadPool);
+            }
+            break;
         case CompBf16:
         case CompFp16:
         default:
@@ -177,18 +196,37 @@ MlasJblasQ4GemmUnPackB(float* FpData,
     auto ptr =
         jblas::storage::gemm::PackedWeightParser::deserialBuffer(const_cast<void*>(PackedBuf));
     ORTThreading orth(ThreadPool);
+    GetCPUDevice();
     if (ptr) {
         if (ptr->mPrologueID == JBLAS_PROLOGUEB_IDS::WeightKBlockS4) {
-            auto coretype = ptr->mCoreType;
-            auto NTile = uint32_t(coretype) & uint32_t(JBLAS_GEMM_CORE::NTILE_MASK);
-            auto CType = uint32_t(coretype) & uint32_t(JBLAS_GEMM_CORE::COMP_MASK);
-            if (NTile == 48 && CType == uint32_t(JBLAS_GEMM_CORE::COMP_FP32)) {
-                JblasAvx512fS4Fp32Fp32.mProB.unpackWeight(int(N), int(K), ptr, FpData, int(ldb),
-                                                          &orth);
+            auto NTile =
+                jblas::gemm::CoreAttr::get_mask_val(ptr->mCoreId, jblas::gemm::CoreAttr::NTILE_MASK,
+                                                    jblas::gemm::CoreAttr::NTILE_SHIFT);
+            auto CType = jblas::gemm::CoreAttr::get_mask_val(
+                ptr->mCoreId, jblas::gemm::CoreAttr::COMP_MASK, jblas::gemm::CoreAttr::COMP_SHIFT);
+            if (CType == uint32_t(jblas::gemm::CompType::COMP_FP32)) {
+                if (NTile == 48 && _cd->AVX512F()) {
+                    JblasAvx512fS4Fp32Fp32.mProB.unpackWeight(int(N), int(K), ptr, FpData, int(ldb),
+                                                              &orth);
+                    return;
+                }
+                if (NTile == 24 && _cd->AVX2()) {
+                    JblasAvx2S4Fp32Fp32.mProB.unpackWeight(int(N), int(K), ptr, FpData, int(ldb),
+                                                           &orth);
+                    return;
+                }
             }
-            if (NTile == 48 && CType == uint32_t(JBLAS_GEMM_CORE::COMP_INT8_US)) {
-                JblasAvx512VnniS4Fp32Fp32.mProB.unpackWeight(int(N), int(K), ptr, FpData, int(ldb),
-                                                             &orth);
+            if (CType == uint32_t(jblas::gemm::CompType::COMP_INT8_US_INT32)) {
+                if (NTile == 48 && _cd->AVX512_VNNI()) {
+                    JblasAvx512VnniS4Fp32Fp32.mProB.unpackWeight(int(N), int(K), ptr, FpData,
+                                                                 int(ldb), &orth);
+                    return;
+                }
+                if (NTile == 24 && _cd->AVX_VNNI()) {
+                    JblasAvxVnniS4Fp32Fp32.mProB.unpackWeight(int(N), int(K), ptr, FpData, int(ldb),
+                                                              &orth);
+                    return;
+                }
             }
         }
         delete ptr;

@@ -155,30 +155,6 @@ jblas::ORTThreading::parallel_for(const jblas::parallel::thread_func& func)
                           [&](ptrdiff_t tid) { func(int(tid)); });
 }
 
-template <class Parallel_T, class Launch_T>
-void
-GemmKBlockRun(Launch_T& launcher,
-              const typename Launch_T::Param& args,
-              parallel::IThreading* threading)
-{
-    device::CpuBase cb;
-    Parallel_T para({
-        threading->num_threads(),
-        cb.mL2Cache,
-        args.M,
-        args.N,
-        args.K,
-        args.KBlock,
-    });
-    threading->parallel_for([&](int tidx) {
-        typename Parallel_T::ThreadProblem thdp{tidx};
-        para.getIndex(thdp);
-        if (thdp.valid) {
-            launcher.run(args, thdp);
-        }
-    });
-}
-
 template <class GemmCore_T>
 void
 JblasQ4GemmCompF32(const int M,
@@ -205,7 +181,7 @@ JblasQ4GemmCompF32(const int M,
         reduceA.template get<float>(), reduceA.lda};
 
     typename Launcher::Param args{M, N, K, B->mBlockSize, {A, K}, {B}, blkargs, {C, N}};
-    GemmKBlockRun<Parallel>(kernel, args, th);
+    jblas::parallel::GemmKBlockRun<Parallel>(kernel, args, th);
 }
 
 template <class GemmCore_T>
@@ -236,10 +212,10 @@ JblasQ4GemmCompInt8(const int M,
         {A, K, &quanA},
         {B},
         {B->template SPtr<int8_t>(), B->mScaT, B->mCStep, quanA.template SPtr<float>(),
-         quanA.mCStep, quanA.template ZPtr<uint8_t>(), B->template RPtr<float>(),
+         quanA.mCStep, quanA.template ZPtr<uint8_t>(), B->template RPtr<float>(), B->mRedT,
          B->template ZPtr<int8_t>(), quanA.template RPtr<float>(), B->mBlockSize},
         {C, N}};
-    GemmKBlockRun<Parallel>(kernel, args, th);
+    jblas::parallel::GemmKBlockRun<Parallel>(kernel, args, th);
 }
 
 void
@@ -259,35 +235,39 @@ JblasQ4GemmBatchDriver(const size_t M,
         if (ptr) {
             if (ptr->mPrologueID == JBLAS_PROLOGUEB_IDS::WeightKBlockS4) {
                 auto kptr = (jblas::storage::gemm::StorageWeightKBlockS4*)ptr;
-                auto coretype = ptr->mCoreType;
-                auto NTile = uint32_t(coretype) & uint32_t(JBLAS_GEMM_CORE::NTILE_MASK);
-                auto CType = uint32_t(coretype) & uint32_t(JBLAS_GEMM_CORE::COMP_MASK);
-                if (NTile == 48 && CType == uint32_t(JBLAS_GEMM_CORE::COMP_FP32)) {
-                    if (_cd->AVX512F()) {
-                        JblasQ4GemmCompF32<gemm::GemmCore_Row_NN_8x48_AVX512F>(
+                auto coretype = ptr->mCoreId;
+                auto NTile = jblas::gemm::CoreAttr::get_mask_val(
+                    ptr->mCoreId, jblas::gemm::CoreAttr::NTILE_MASK,
+                    jblas::gemm::CoreAttr::NTILE_SHIFT);
+                auto CType = jblas::gemm::CoreAttr::get_mask_val(ptr->mCoreId,
+                                                                 jblas::gemm::CoreAttr::COMP_MASK,
+                                                                 jblas::gemm::CoreAttr::COMP_SHIFT);
+                if (CType == uint32_t(gemm::CompType::COMP_FP32)) {
+                    if (NTile == 48 && _cd->AVX512F()) {
+                        JblasQ4GemmCompF32<gemm::SCoreRowNAvx512f<48, 8>>(
                             M, N, K, DataParams[i].A, DataParams[i].lda,
                             (jblas::storage::gemm::StorageWeightKBlockS4*)ptr, DataParams[i].C,
                             DataParams[i].ldc, WorkSpace, &orth);
                         return;
                     }
-                    if (_cd->AVX2()) {
-                        JblasQ4GemmCompF32<gemm::GemmCore_Row_NN_2x48_AVX2>(
+                    if (NTile == 24 && _cd->AVX2()) {
+                        JblasQ4GemmCompF32<gemm::SCoreRowNAvx2<24, 4>>(
                             M, N, K, DataParams[i].A, DataParams[i].lda,
                             (jblas::storage::gemm::StorageWeightKBlockS4*)ptr, DataParams[i].C,
                             DataParams[i].ldc, WorkSpace, &orth);
                         return;
                     }
                 }
-                if (NTile == 48 && CType == uint32_t(JBLAS_GEMM_CORE::COMP_INT8_US)) {
-                    if (_cd->AVX512_VNNI()) {
-                        JblasQ4GemmCompInt8<gemm::GemmCore_Row_NN_8x48_AVX512_VNNI>(
+                if (CType == uint32_t(gemm::CompType::COMP_INT8_US_INT32)) {
+                    if (NTile == 48 && _cd->AVX512_VNNI()) {
+                        JblasQ4GemmCompInt8<gemm::ICoreRowNAvx512vnni<48, 8>>(
                             M, N, K, DataParams[i].A, DataParams[i].lda,
                             (jblas::storage::gemm::StorageWeightKBlockS4*)ptr, DataParams[i].C,
                             DataParams[i].ldc, WorkSpace, &orth);
                         return;
                     }
-                    if (_cd->AVX_VNNI()) {
-                        JblasQ4GemmCompInt8<gemm::GemmCore_Row_NN_2x48_AVX_VNNI>(
+                    if (NTile == 24 && _cd->AVX_VNNI()) {
+                        JblasQ4GemmCompInt8<gemm::ICoreRowNAvxvnni<24, 4>>(
                             M, N, K, DataParams[i].A, DataParams[i].lda,
                             (jblas::storage::gemm::StorageWeightKBlockS4*)ptr, DataParams[i].C,
                             DataParams[i].ldc, WorkSpace, &orth);

@@ -1275,23 +1275,42 @@ static inline JBLAS_CODE dequant_s32_fp32(const int32_t* srcptr, const int srcst
                                           const int row, const int col, const float* scaleA, const int ldsa,
                                           const SCAB_T* scaleB) {
   int col16 = utils::padto_le(col, 16);
+  int col64 = utils::padto_le(col, 64);
   for (int irow = 0; irow < row; irow++) {
     auto scale = scaleA[irow * ldsa];
     auto valpha = _mm512_set1_ps(scale);
     int icol = 0;
-    for (; icol < col16; icol += 16) {
-      __m512 vwscale;
-      if constexpr (std::is_same_v<SCAB_T, float>) {
-        vwscale = _mm512_loadu_ps(scaleB + icol);
-      } else if constexpr (std::is_same_v<SCAB_T, utils::bf16>) {
-        auto tmp = _mm256_loadu_si256((const __m256i*)(scaleB + icol));
-        vwscale = zmm_cvt_bf16_fp32(tmp);
+    for (; icol < col64; icol += 64) {
+      for (int ic = 0; ic < 4; ic++) {
+        __m512 vwscale;
+        if constexpr (std::is_same_v<SCAB_T, float>) {
+          vwscale = _mm512_loadu_ps(scaleB + icol + ic * 16);
+        } else if constexpr (std::is_same_v<SCAB_T, utils::bf16>) {
+          auto tmp = _mm256_loadu_si256((const __m256i*)(scaleB + icol + ic * 16));
+          vwscale = zmm_cvt_bf16_fp32(tmp);
+        }
+        auto vscale = _mm512_mul_ps(valpha, vwscale);
+        auto vsrcd = _mm512_loadu_si512(srcptr + irow * srcstep + icol + ic * 16);
+        auto vsrc = _mm512_cvtepi32_ps(vsrcd);
+        vsrc = _mm512_mul_ps(vsrc, vscale);
+        _mm512_storeu_ps(dstptr + irow * dststep + icol + ic * 16, vsrc);
       }
-      auto vscale = _mm512_mul_ps(valpha, vwscale);
-      auto vsrcd = _mm512_loadu_si512(srcptr + irow * srcstep + icol);
-      auto vsrc = _mm512_cvtepi32_ps(vsrcd);
-      vsrc = _mm512_mul_ps(vsrc, vscale);
-      _mm512_storeu_ps(dstptr + irow * dststep + icol, vsrc);
+    }
+    if (icol + 16 <= col16) {
+      for (; icol < col16; icol += 16) {
+        __m512 vwscale;
+        if constexpr (std::is_same_v<SCAB_T, float>) {
+          vwscale = _mm512_loadu_ps(scaleB + icol);
+        } else if constexpr (std::is_same_v<SCAB_T, utils::bf16>) {
+          auto tmp = _mm256_loadu_si256((const __m256i*)(scaleB + icol));
+          vwscale = zmm_cvt_bf16_fp32(tmp);
+        }
+        auto vscale = _mm512_mul_ps(valpha, vwscale);
+        auto vsrcd = _mm512_loadu_si512(srcptr + irow * srcstep + icol);
+        auto vsrc = _mm512_cvtepi32_ps(vsrcd);
+        vsrc = _mm512_mul_ps(vsrc, vscale);
+        _mm512_storeu_ps(dstptr + irow * dststep + icol, vsrc);
+      }
     }
     for (; icol < col; icol += 1) {
       dstptr[irow * dststep + icol] = scale * scaleB[icol] * srcptr[irow * srcstep + icol];

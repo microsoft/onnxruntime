@@ -209,6 +209,7 @@ class CpuDevice {
     }
   }
   inline int getThreads() { return numthreads; }
+  inline int getCores() { return numcores; }
   inline uint32_t getL2CacheSize() { return L2Cache; }
   inline uint32_t getL1CacheSize() { return L1Cache; }
   inline bool AVX() { return mHasAVX; }
@@ -261,15 +262,15 @@ class CpuDevice {
 
 #define GetCPUDevice() auto _cd = jblas::device::CpuDevice::getInstance();
 
-
 class CpuBase {
  public:
   CpuBase() {
     GetCPUDevice();
     mL2Cache = _cd->getL2CacheSize();
+    mL1Cache = _cd->getL1CacheSize();
     mNumThreads = _cd->getThreads();
   }
-  size_t mL2Cache;
+  size_t mL2Cache, mL1Cache;
   int mNumThreads;
 };
 }  // namespace device

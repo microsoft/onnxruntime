@@ -51,7 +51,7 @@ class WeightPack {
   StorageType createStorage(int n, int k) {
     int KPad = utils::padto(k, _GemmCore_T::KTILE);
     int NPad = utils::padto(n, _GemmCore_T::NTILE);
-    StorageType tmp(_GemmCore_T::TYPE);
+    StorageType tmp(_GemmCore_T::ID);
     tmp.resize(NPad, KPad, n, k, utils::jblas_dtype<WType>);
     return tmp;
   }
@@ -113,7 +113,7 @@ class WeightKBlockS8 {
   StorageWeight createStorage(int n, int k, int blocksize, JBLAS_DTYPE scat, JBLAS_DTYPE redt, bool is_asym) {
     int KPad = utils::padto(k, _GemmCore_T::KTILE);
     int NPad = utils::padto(n, _GemmCore_T::NTILE);
-    StorageWeight tmp(_GemmCore_T::TYPE);
+    StorageWeight tmp(_GemmCore_T::ID);
     tmp.resize(NPad, KPad, blocksize <= 0 ? KPad : blocksize, n, k, scat, redt, is_asym);
     return tmp;
   }
@@ -306,12 +306,17 @@ class WeightKBlockS8 {
       if (stor->mRedT == JBLAS_DTYPE::F32) {
         reduce(stor->mN, stor->mK, stor->mBlockSize, deq, stor->mN, stor->template RPtr<float>(), stor->mCStep,
                threading);
+      } else if (stor->mRedT == JBLAS_DTYPE::BF16) {
+        reduce(stor->mN, stor->mK, stor->mBlockSize, deq, stor->mN, stor->template RPtr<utils::bf16>(), stor->mCStep,
+               threading);
+      } else {
+        assert(0);
       }
       utils::afree(deq);
     }
   }
-
-  void reduce(const int N, const int K, const int KBlock, const float* B, const int ldb, float* rptr, const int ldr,
+  template<typename RED_T>
+  void reduce(const int N, const int K, const int KBlock, const float* B, const int ldb, RED_T* rptr, const int ldr,
               parallel::IThreading* threading) {
     parallel::Scheduler2D _para({threading->num_threads(), K, N, KBlock, 16});
     threading->parallel_for([&](int tidx) {
@@ -320,7 +325,7 @@ class WeightKBlockS8 {
       if (thdp.valid) {
         const auto src = B + thdp.loc[0] * ldb + thdp.loc[1];
         const auto dst = rptr + thdp.loc[1] + thdp.loc[0] / KBlock * ldr;
-        using RowReduceSum = kernel::wrapper::RowReduceSum<float>;
+        using RowReduceSum = kernel::wrapper::RowReduceSum<RED_T>;
         for (int i = 0; i < thdp.size[0]; i += KBlock) {
           int rowremain = utils::remainsize(thdp.loc[0] + i, K, KBlock);
           auto ret = RowReduceSum::template forward<ISA_T>(  //
@@ -479,7 +484,7 @@ class WeightKBlockS4 : public WeightKBlockS8<_GemmCore_T, ISA_T> {
                               JBLAS_DTYPE redT, bool is_asym = false) {
     int KPad = utils::padto(K, _GemmCore_T::KTILE);
     int NPad = utils::padto(N, _GemmCore_T::NTILE);
-    StorageWeight tmp(_GemmCore_T::TYPE);
+    StorageWeight tmp(_GemmCore_T::ID);
     tmp.resize(NPad, KPad, blocksize <= 0 ? KPad : blocksize, N, K, weiT, scaT, redT, is_asym);
     return tmp;
   }
@@ -718,7 +723,7 @@ class WeightKBlockF4 : public WeightKBlockS4<_GemmCore_T, ISA_T> {
   StorageWeight createStorage(const int N, const int K, int blocksize, JBLAS_DTYPE f4T, JBLAS_DTYPE scaT) {
     int KPad = utils::padto(K, _GemmCore_T::KTILE);
     int NPad = utils::padto(N, _GemmCore_T::NTILE);
-    StorageWeight tmp(_GemmCore_T::TYPE);
+    StorageWeight tmp(_GemmCore_T::ID);
     tmp.resize(NPad, KPad, blocksize <= 0 ? KPad : blocksize, N, K, f4T, scaT);
     return tmp;
   }

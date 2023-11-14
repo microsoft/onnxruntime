@@ -54,11 +54,16 @@ class LauncherBase {
   Epilogue mEpilogue;
 
   void run(const Param& _param, const parallel::gemm::ThreadProblemBase& _config) {
+    mGemmCore.configure();
     auto StackTmp = alloca(_config.l2cachesize);
     auto tmpB = (BType*)(StackTmp);
+    tmpB = utils::pointer_align<64>(tmpB);
     auto tmpA = (AType*)(tmpB + (size_t)_config.block[1] * _config.block[2]);
+    tmpA = utils::pointer_align<64>(tmpA);
     auto tmpC = (CType*)(tmpA + (size_t)GemmCore::MTILE * _config.block[2]);
+    tmpC = utils::pointer_align<64>(tmpC);
     auto tmpCache = (void*)(tmpC + (size_t)_config.block[0] * _config.block[1]);
+    tmpCache = utils::pointer_align<64>(tmpCache);
     for (int itern = 0; itern < _config.size[1]; itern += _config.block[1]) {
       int n_remain = utils::remainsize(itern, _config.size[1], _config.block[1]);
       for (int iterm = 0; iterm < _config.size[0]; iterm += _config.block[0]) {
@@ -144,12 +149,18 @@ class LauncherKBlock {
   Epilogue mEpilogue;
 
   void run(const Param& _param, const parallel::gemm::ThreadProblemBase& _config) {
+    mGemmCore.configure();
     auto StackTmp = alloca(_config.l2cachesize);
     auto tmpB = (BType*)(StackTmp);
+    tmpB = utils::pointer_align<64>(tmpB);
     auto tmpA = (AType*)(tmpB + (size_t)_config.block[1] * _config.block[2]);
+    tmpA = utils::pointer_align<64>(tmpA);
     auto tmpC = (AccType*)(tmpA + (size_t)GemmCore::MTILE * _config.block[2]);
+    tmpC = utils::pointer_align<64>(tmpC);
     auto tmpBlk = (CType*)(tmpC + (size_t)_config.block[0] * _config.block[1]);
+    tmpBlk = utils::pointer_align<64>(tmpBlk);
     auto tmpCache = (void*)(tmpBlk + (size_t)_config.block[0] * _config.block[1]);
+    tmpCache = utils::pointer_align<64>(tmpCache);
     for (int itern = 0; itern < _config.size[1]; itern += _config.block[1]) {
       int n_remain = utils::remainsize(itern, _config.size[1], _config.block[1]);
       for (int iterm = 0; iterm < _config.size[0]; iterm += _config.block[0]) {
@@ -168,42 +179,47 @@ class LauncherKBlock {
   void run_block(const Param& _param, const parallel::gemm::ThreadProblemBase& _config, int blk_m, int blk_n,
                  int blk_msize, int blk_nsize, AType* tmpA, BType* tmpB, CType* tmpBlk, AccType* tmpC, void* tmpcache) {
     int n_padded = utils::padto(blk_nsize, GemmCore::NTILE);
-    assert(_config.block[2] == _param.KBlock);
     for (int iterk = 0; iterk < _param.K; iterk += _config.block[2]) {
       int k_remain = utils::remainsize(iterk, _param.K, _config.block[2]);
       int k_padded = utils::padto(k_remain, GemmCore::KTILE);
-      int k_paddedle = utils::padto_le(k_remain, GemmCore::KTILE);
       auto bptr_cache = tmpB;
       int bcache_step = 0;
       mProB.getKBlockWeight(&bptr_cache, &bcache_step, k_padded, n_padded, iterk, _config.loc[1] + blk_n, _param.paramB,
                             tmpcache, _config.tmpcachesize);
       int bcache_stride = bcache_step * sizeof(BType);
-      for (int i = 0; i < blk_msize; i += GemmCore::MTILE) {
-        int m_remain = utils::remainsize(i, blk_msize, GemmCore::MTILE);
-        auto cptr_cache = tmpBlk + i * _config.block[1];
-        int ccache_stride = _config.block[1] * sizeof(CType);
-        if (k_paddedle) {
-          AType* aptr_cache = tmpA;
-          int acache_step = 0;
-          mProA.getActivation(&aptr_cache, &acache_step, _param.paramA, m_remain, k_paddedle,
-                              (blk_m + i + _config.loc[0]), iterk, tmpcache, _config.tmpcachesize);
-          mGemmCore.forward(aptr_cache, bptr_cache, cptr_cache, m_remain, n_padded, k_paddedle,
-                            acache_step * sizeof(AType), bcache_stride, ccache_stride, 0, tmpcache,
-                            _config.tmpcachesize);
+
+      for (int ikk = 0; ikk < k_remain; ikk += _param.KBlock) {
+        int k_remain1 = utils::remainsize(iterk + ikk, _param.K, _param.KBlock);
+        int k_paddedle1 = utils::padto_le(k_remain1, GemmCore::KTILE);
+        for (int i = 0; i < blk_msize; i += GemmCore::MTILE) {
+          int m_remain = utils::remainsize(i, blk_msize, GemmCore::MTILE);
+          auto cptr_cache = tmpBlk + i * _config.block[1];
+          int ccache_stride = _config.block[1] * sizeof(CType);
+          if (k_paddedle1) {
+            AType* aptr_cache = tmpA;
+            int acache_step = 0;
+            mProA.getActivation(&aptr_cache, &acache_step, _param.paramA, m_remain, k_paddedle1,
+                                (blk_m + i + _config.loc[0]), iterk + ikk, tmpcache, _config.tmpcachesize);
+            mGemmCore.forward(aptr_cache, bptr_cache + ikk * GemmCore::NTILE, cptr_cache, m_remain, n_padded,
+                              k_paddedle1, acache_step * sizeof(AType), bcache_stride, ccache_stride, 0, tmpcache,
+                              _config.tmpcachesize);
+          }
+          int k_tail = k_remain1 - k_paddedle1;
+          if (k_tail) {
+            AType* aptr_cache = tmpA;
+            int acache_step = 0;
+            mProA.getActivation(&aptr_cache, &acache_step, _param.paramA, m_remain, k_tail,
+                                (blk_m + i + _config.loc[0]), iterk + ikk + k_paddedle1, tmpcache,
+                                _config.tmpcachesize);
+            mGemmCore.forward(aptr_cache, bptr_cache + (ikk + k_paddedle1) * GemmCore::NTILE, cptr_cache, m_remain,
+                              n_padded, k_tail, acache_step * sizeof(AType), bcache_stride, ccache_stride,
+                              0 + k_paddedle1, tmpcache, _config.tmpcachesize);
+          }
         }
-        int k_tail = k_remain - k_paddedle;
-        if (k_tail) {
-          AType* aptr_cache = tmpA;
-          int acache_step = 0;
-          mProA.getActivation(&aptr_cache, &acache_step, _param.paramA, m_remain, k_tail, (blk_m + i + _config.loc[0]),
-                              iterk + k_paddedle, tmpcache, _config.tmpcachesize);
-          mGemmCore.forward(aptr_cache, bptr_cache + k_paddedle * GemmCore::NTILE, cptr_cache, m_remain, n_padded,
-                            k_tail, acache_step * sizeof(AType), bcache_stride, ccache_stride, 0 + k_paddedle, tmpcache,
-                            _config.tmpcachesize);
-        }
+        mBlockEpi.forward(tmpBlk, tmpC, _config.block[1], (_config.loc[0] + blk_m), _config.loc[1] + blk_n,
+                          (iterk + ikk) / _param.KBlock, blk_msize, blk_nsize, _param.paramBlk, tmpcache,
+                          _config.tmpcachesize);
       }
-      mBlockEpi.forward(tmpBlk, tmpC, _config.block[1], (_config.loc[0] + blk_m), _config.loc[1] + blk_n,
-                        iterk / _param.KBlock, blk_msize, blk_nsize, _param.paramBlk, tmpcache, _config.tmpcachesize);
     }
     auto cachewithblk = _config.tmpcachesize + (size_t)_config.block[0] * _config.block[1] * sizeof(CType);
     mEpilogue.forward(tmpC, _config.block[1], (_config.loc[0] + blk_m), _config.loc[1] + blk_n, blk_msize, blk_nsize,
@@ -215,6 +231,7 @@ class LauncherKBlock {
                        void* tmpcache) {
     int n_padded = utils::padto(blk_nsize, GemmCore::NTILE);
     for (int iterk = 0; iterk < _param.K; iterk += _param.KBlock) {
+      memset(tmpBlk, 0, sizeof(CType) * blk_msize * _config.block[1]);
       for (int iblkk = 0; iblkk < _param.KBlock; iblkk += _config.block[2]) {
         int k_remain = utils::remainsize(iterk + iblkk, _param.K, _config.block[2]);
         int k_padded = utils::padto(k_remain, GemmCore::KTILE);

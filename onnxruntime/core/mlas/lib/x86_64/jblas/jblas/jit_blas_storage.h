@@ -14,10 +14,13 @@
 #pragma once
 #include "jit_base.h"
 #include "jit_blas.h"
+#include "jit_blas_gemm.h"
 #include "jit_blas_utils.h"
 
 namespace jblas {
 namespace storage {
+
+constexpr size_t Alignment = 64;
 class ISerialObject {
  protected:
   virtual size_t getSerializedSize() = 0;
@@ -71,11 +74,12 @@ class ISerialBuffer : public ISerialObject {
   virtual size_t getSerializedSize() override {
     size_t totalsize = 0;
     totalsize += sizeof(mBufSize);
-    totalsize += mBufSize;
+    totalsize += mBufSize + Alignment;
     return totalsize;
   }
   virtual void serializeToBuffer(int8_t*& wptr) override {
     utils::serialize(wptr, mBufSize);
+    wptr = utils::pointer_align<Alignment>(wptr);
     if (wptr != (int8_t*)mBufPtr) {
       std::memcpy(wptr, mBufPtr, mBufSize);
     }
@@ -87,6 +91,7 @@ class ISerialBuffer : public ISerialObject {
     } else {
       utils::serialize<size_t>(rptr, mBufSize);
     }
+    rptr = utils::pointer_align<Alignment>(rptr);
     mBufPtr = (int8_t*)rptr;
     rptr += mBufSize;
   }
@@ -102,12 +107,12 @@ namespace gemm {
 class WeightBase : public storage::ISerializable {
  public:
   JBLAS_PROLOGUEB_IDS mPrologueID = JBLAS_PROLOGUEB_IDS::Undef;
-  JBLAS_GEMM_CORE mCoreType = JBLAS_GEMM_CORE::Undef;
+  uint32_t mCoreId = 0;
   JBLAS_DTYPE mDType = JBLAS_DTYPE::F32;
   int mNPad = 0, mKPad = 0;
   int mN = 0, mK = 0;
 
-  WeightBase(JBLAS_GEMM_CORE _type) { mCoreType = _type; }
+  WeightBase(uint32_t _id) { mCoreId = _id; }
 
   // bytes offset to mPrologueID
   static constexpr inline size_t offset() { return sizeof(mSize); }
@@ -126,7 +131,7 @@ class WeightBase : public storage::ISerializable {
   virtual void serializeToBuffer(int8_t*& wptr) {
     ISerializable::serializeToBuffer(wptr);
     utils::serialize(wptr, mPrologueID);
-    utils::serialize(wptr, mCoreType);
+    utils::serialize(wptr, mCoreId);
     utils::serialize(wptr, mNPad);
     utils::serialize(wptr, mKPad);
     utils::serialize(wptr, mN);
@@ -138,7 +143,7 @@ class WeightBase : public storage::ISerializable {
     ISerializable::deserializeBuffer(rptr, map_buf);
     if (!map_buf) {
       mPrologueID = utils::deserialize<JBLAS_PROLOGUEB_IDS>(rptr);
-      mCoreType = utils::deserialize<JBLAS_GEMM_CORE>(rptr);
+      mCoreId = utils::deserialize<uint32_t>(rptr);
       mNPad = utils::deserialize<int>(rptr);
       mKPad = utils::deserialize<int>(rptr);
       mN = utils::deserialize<int>(rptr);
@@ -146,7 +151,7 @@ class WeightBase : public storage::ISerializable {
       mDType = utils::deserialize<JBLAS_DTYPE>(rptr);
     } else {
       utils::serialize<JBLAS_PROLOGUEB_IDS>(rptr, mPrologueID);
-      utils::serialize<JBLAS_GEMM_CORE>(rptr, mCoreType);
+      utils::serialize<uint32_t>(rptr, mCoreId);
       utils::serialize<int>(rptr, mNPad);
       utils::serialize<int>(rptr, mKPad);
       utils::serialize<int>(rptr, mN);
@@ -158,7 +163,7 @@ class WeightBase : public storage::ISerializable {
   inline constexpr size_t getMiscSize() {
     size_t totalsize = 0;
     totalsize += sizeof(mPrologueID);
-    totalsize += sizeof(mCoreType);
+    totalsize += sizeof(mCoreId);
     totalsize += sizeof(mNPad);
     totalsize += sizeof(mKPad);
     totalsize += sizeof(mN);
@@ -171,7 +176,7 @@ class WeightBase : public storage::ISerializable {
 class WeightKBlockBase : public WeightBase {
  public:
   int mBlockSize = 1;
-  WeightKBlockBase(JBLAS_GEMM_CORE _type) : WeightBase(_type) {}
+  WeightKBlockBase(uint32_t _id) : WeightBase(_id) {}
   void resize(int NPad, int KPad, int Block, int N, int K, JBLAS_DTYPE dtype) {
     WeightBase::resize(NPad, KPad, N, K, dtype);
     mBlockSize = Block;
@@ -270,9 +275,9 @@ class StorageQuantCorrection : public ISerialObject {
   }
   virtual size_t getSerializedSize() override {
     size_t totalsize = getMiscSize();
-    totalsize += mCSize * mScaEleSize;
-    if (mIsAsym) totalsize += mCSize * mZpEleSize;
-    if (mHasReduce) totalsize += mCSize * mRedEleSize;
+    totalsize += mCSize * mScaEleSize + Alignment;
+    if (mIsAsym) totalsize += mCSize * mZpEleSize + Alignment;
+    if (mHasReduce) totalsize += mCSize * mRedEleSize + Alignment;
     return totalsize;
   }
   virtual void serializeToBuffer(int8_t*& wptr) override {
@@ -283,17 +288,20 @@ class StorageQuantCorrection : public ISerialObject {
     utils::serialize(wptr, mHasReduce);
     utils::serialize(wptr, mCStep);
     utils::serialize(wptr, mCSize);
+    wptr = utils::pointer_align<Alignment>(wptr);
     if (wptr != mSPtr) {
       std::memcpy(wptr, mSPtr, mScaEleSize);
     }
     wptr += mCSize * mScaEleSize;
     if (mIsAsym) {
+      wptr = utils::pointer_align<Alignment>(wptr);
       if (wptr != mZPtr) {
         std::memcpy(wptr, mZPtr, mZpEleSize);
       }
       wptr += mCSize * mZpEleSize;
     }
     if (mHasReduce) {
+      wptr = utils::pointer_align<Alignment>(wptr);
       if (wptr != mRPtr) {
         std::memcpy(wptr, mRPtr, mCSize * mRedEleSize);
       }
@@ -319,13 +327,16 @@ class StorageQuantCorrection : public ISerialObject {
       utils::serialize<int>(rptr, mCStep);
       utils::serialize<size_t>(rptr, mCSize);
     }
+    rptr = utils::pointer_align<Alignment>(rptr);
     mSPtr = rptr;
     rptr += mCSize * mScaEleSize;
     if (mIsAsym) {
+      rptr = utils::pointer_align<Alignment>(rptr);
       mZPtr = rptr;
       rptr += mCSize * mZpEleSize;
     }
     if (mHasReduce) {
+      rptr = utils::pointer_align<Alignment>(rptr);
       mRPtr = rptr;
       rptr += mCSize * mRedEleSize;
     }
@@ -480,11 +491,11 @@ class StorageQuantActivation : public ISerializable, public ISerialBuffer, publi
 
 class StoragePackedWeight : public WeightBase, public ISerialBuffer {
  public:
-  StoragePackedWeight(JBLAS_GEMM_CORE _type) : WeightBase(_type) { mPrologueID = JBLAS_PROLOGUEB_IDS::WeightPack; }
+  StoragePackedWeight(uint32_t _id) : WeightBase(_id) { mPrologueID = JBLAS_PROLOGUEB_IDS::WeightPack; }
 
   size_t resize(int NPad, int KPad, int N, int K, JBLAS_DTYPE dtype) {
     WeightBase::resize(NPad, KPad, N, K, dtype);
-    auto bsize = (size_t)NPad * KPad * utils::jblas_gemm_weight_element_size(mCoreType);
+    auto bsize = (size_t)NPad * KPad * jblas::utils::jblas_dtype_size(dtype);
     ISerialBuffer::resize(bsize);
     mSize = WeightBase::getSerializedSize() + ISerialBuffer::getSerializedSize();
     return mSize;
@@ -523,18 +534,17 @@ class StorageWeightKBlockS8 : public WeightKBlockBase, public Buffer8Bit, public
   using InfoType = WeightKBlockBase;
   using QWeightType = Buffer8Bit;
   using CorrectionType = StorageQuantCorrection;
-  StorageWeightKBlockS8(JBLAS_GEMM_CORE _type) : WeightKBlockBase(_type) {
-    mPrologueID = JBLAS_PROLOGUEB_IDS::WeightKBlockS8;
-  }
+  StorageWeightKBlockS8(uint32_t _type) : WeightKBlockBase(_type) { mPrologueID = JBLAS_PROLOGUEB_IDS::WeightKBlockS8; }
 
   size_t resize(int NPad, int KPad, int Block, int N, int K, JBLAS_DTYPE scalet, JBLAS_DTYPE redt, bool IsAsym) {
     JBLAS_DTYPE zpt = JBLAS_DTYPE::S8;
     InfoType::resize(NPad, KPad, Block, N, K, JBLAS_DTYPE::S8);
     QWeightType::resize((size_t)NPad * KPad);
     int nk_scale = utils::updiv(KPad, Block);
-    auto gemm_comp = utils::bitand_u32(mCoreType, JBLAS_GEMM_CORE::COMP_MASK);
+    auto gemm_comp = jblas::gemm::CoreAttr::get_mask_val(mCoreId, jblas::gemm::CoreAttr::COMP_MASK,
+                                                         jblas::gemm::CoreAttr::COMP_SHIFT);
     CorrectionType::resize(nk_scale, NPad, scalet, zpt, redt, IsAsym,
-                           gemm_comp >= (uint32_t)JBLAS_GEMM_CORE::COMP_INT_START);
+                           gemm_comp >= (uint32_t)jblas::gemm::CompType::COMP_INT_START);
     mSize = InfoType::getSerializedSize() + QWeightType::getSerializedSize() + CorrectionType::getSerializedSize();
     return mSize;
   }
@@ -563,9 +573,7 @@ class StorageWeightKBlockS4 : public WeightKBlockBase, public Buffer4Bit, public
   using InfoType = WeightKBlockBase;
   using QWeightType = Buffer4Bit;
   using CorrectionType = StorageQuantCorrection;
-  StorageWeightKBlockS4(JBLAS_GEMM_CORE _type) : WeightKBlockBase(_type) {
-    mPrologueID = JBLAS_PROLOGUEB_IDS::WeightKBlockS4;
-  }
+  StorageWeightKBlockS4(uint32_t _type) : WeightKBlockBase(_type) { mPrologueID = JBLAS_PROLOGUEB_IDS::WeightKBlockS4; }
 
   size_t resize(int NPad, int KPad, int Block, int N, int K, JBLAS_DTYPE s4t, JBLAS_DTYPE scalet, JBLAS_DTYPE redt,
                 bool IsAsym) {
@@ -573,9 +581,10 @@ class StorageWeightKBlockS4 : public WeightKBlockBase, public Buffer4Bit, public
     InfoType::resize(NPad, KPad, Block, N, K, s4t);
     QWeightType::resize((size_t)NPad * KPad);
     int nk_scale = utils::updiv(KPad, Block);
-    auto gemm_comp = utils::bitand_u32(mCoreType, JBLAS_GEMM_CORE::COMP_MASK);
+    auto gemm_comp = jblas::gemm::CoreAttr::get_mask_val(mCoreId, jblas::gemm::CoreAttr::COMP_MASK,
+                                                         jblas::gemm::CoreAttr::COMP_SHIFT);
     CorrectionType::resize(nk_scale, NPad, scalet, zpt, redt, IsAsym,
-                           gemm_comp >= (uint32_t)JBLAS_GEMM_CORE::COMP_INT_START);
+                           gemm_comp >= (uint32_t)jblas::gemm::CompType::COMP_INT_START);
     mSize = InfoType::getSerializedSize() + QWeightType::getSerializedSize() + CorrectionType::getSerializedSize();
     return mSize;
   }
@@ -601,7 +610,7 @@ class StorageWeightKBlockS4 : public WeightKBlockBase, public Buffer4Bit, public
 
 class StorageWeightKBlockF4 : public StorageWeightKBlockS4 {
  public:
-  StorageWeightKBlockF4(JBLAS_GEMM_CORE _type) : StorageWeightKBlockS4(_type) {
+  StorageWeightKBlockF4(uint32_t _type) : StorageWeightKBlockS4(_type) {
     mPrologueID = JBLAS_PROLOGUEB_IDS::WeightKBlockF4;
   }
 
@@ -630,16 +639,16 @@ class PackedWeightParser {
       auto type = static_cast<JBLAS_PROLOGUEB_IDS>(mProID);
       switch (type) {
         case JBLAS_PROLOGUEB_IDS::WeightPack:
-          ptr = new gemm::StoragePackedWeight(JBLAS_GEMM_CORE::Undef);
+          ptr = new gemm::StoragePackedWeight(0);
           break;
         case JBLAS_PROLOGUEB_IDS::WeightKBlockS8:
-          ptr = new gemm::StorageWeightKBlockS8(JBLAS_GEMM_CORE::Undef);
+          ptr = new gemm::StorageWeightKBlockS8(0);
           break;
         case JBLAS_PROLOGUEB_IDS::WeightKBlockS4:
-          ptr = new gemm::StorageWeightKBlockS4(JBLAS_GEMM_CORE::Undef);
+          ptr = new gemm::StorageWeightKBlockS4(0);
           break;
         case JBLAS_PROLOGUEB_IDS::WeightKBlockF4:
-          ptr = new gemm::StorageWeightKBlockF4(JBLAS_GEMM_CORE::Undef);
+          ptr = new gemm::StorageWeightKBlockF4(0);
           break;
         default:
           break;

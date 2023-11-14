@@ -245,7 +245,7 @@ class JitMemcpy2DAvx2 : protected jblas::xbyak::JitAvx2 {
 
   template <typename _SRC_T, typename _DST_T, typename... Eltops>
   static JBLAS_CODE forward(const _SRC_T* srcptr, _DST_T* dstptr, int row, int col, int srcstep, int dststep,
-                            void* elt_const_v = nullptr, Eltops... ops) {
+                            void* elt_const_v = nullptr, const Eltops&... ops) {
     if (col * sizeof(_SRC_T) % 4 != 0) {
       return JblasNotSupport;
     }
@@ -279,7 +279,7 @@ class JitMemcpy2DAvx2 : protected jblas::xbyak::JitAvx2 {
 
   template <typename _SRC_T, typename _DST_T, JBLAS_ELTWISEOP Op>
   static JBLAS_CODE forward1(const _SRC_T* srcptr, _DST_T* dstptr, int row, int col, int srcstep, int dststep,
-                            void* elt_const_v = nullptr) {
+                             void* elt_const_v = nullptr) {
     if (col * sizeof(_SRC_T) % 4 != 0) {
       return JblasNotSupport;
     }
@@ -475,7 +475,7 @@ class JitMemcpy2DAvx512f : protected jblas::xbyak::JitAvx512f {
 
   template <typename _SRC_T, typename _DST_T, typename... Eltops>
   static JBLAS_CODE forward(const _SRC_T* srcptr, _DST_T* dstptr, int row, int col, int srcstep, int dststep,
-                            void* elt_const_v = nullptr, Eltops... ops) {
+                            void* elt_const_v = nullptr, const Eltops&... ops) {
     static std::vector<kernel::jit_injector::eltwise_injector> p = {static_cast<JBLAS_ELTWISEOP>(ops)...};
     if constexpr (sizeof...(ops) != 0)
       static_assert(std::is_same<_SRC_T, float>::value && std::is_same<_DST_T, float>::value);
@@ -1202,6 +1202,168 @@ class PaddingTransInterleaveCvt : protected xbyak::JitAvx512f {
           for (int jj = 0; jj < ColPack; ++jj)
             dst[j * MTile + i * dst_step + jj + ii * ColPack] =
                 static_cast<T_DST>((j + jj < col && i + ii < row) ? src[(i + ii) * src_step + j + jj] : 0);
+  }
+};
+
+// Complex number matrix(interleaved) - vector(as diagonal matrix) multiplication; Typically used for
+// shift-RoPE
+//
+// vector: fp16 values; view every adjacent 2 values on colunm as a complex num
+// src: bf16 ⌈row/row_pack⌉ x n_tile x row_pack; view every adjacent 2 values on colunm as a complex num
+// dst: same as src
+class CScaleInterleavedBF16FP16 : protected xbyak::JitAvx512_fp16 {
+ public:
+  struct params {
+    void* srcptr;
+    const void* scaleptr;
+    int row;
+  };
+  typedef void (*func_t)(params* p);
+  void operator()(params* p) const { mKernel(p); }
+
+ private:
+  explicit CScaleInterleavedBF16FP16(int n_tile, int n_off, int row_pack = 2, int unroll = 2)
+      : xbyak::JitAvx512_fp16() {
+    inLocalLabel();  // use local label for multiple instance
+    assert(("n_tile must be a multiple of 16", n_tile % 16 == 0));
+    assert(row_pack > 0 && row_pack < 3);  // TODO(yi): int8 interleave not implemented
+    int SF_TmpSize = 64;
+    std::shared_ptr<void> epilogue{// generate code at the very end
+                                   nullptr, [&](void*) {
+                                     outLocalLabel();  // end of local label
+                                     this->ready();
+                                     this->mKernel = this->getCode<func_t>();
+                                   }};
+    Xbyak::util::StackFrame st(this, 1, 4, 16 * 10 + SF_TmpSize);
+    const Xbyak::Reg64& parambase = st.p[0];
+    const Xbyak::Reg64& reg_src = st.t[0];
+    const Xbyak::Reg64& reg_scale = st.t[1];
+    const Xbyak::Reg64& reg_rowsize = st.t[2];
+    const Xbyak::Reg64& reg_iterrow = st.t[3];
+    const Xbyak::Zmm& vreg_scale = zmm31;
+    const auto& mask = k1;
+    const auto masked_off = n_off % 16;
+    if (masked_off != 0) {
+      mov(reg_src, ((1ULL << (16 - masked_off)) - 1) << masked_off);
+      kmovw(mask, reg_src.cvt32());
+    }
+
+    vreg_push(rsp);
+    mov(reg_rowsize.cvt32(), ptr[parambase + OFFSET(row)]);
+    mov(reg_src, qword[parambase + OFFSET(srcptr)]);
+    mov(reg_scale, qword[parambase + OFFSET(scaleptr)]);
+
+    std::vector<Xbyak::Zmm> vreg_src(4 * n_tile / 16);
+    const int ZIDX_TranSrc = 0;
+    for (int i = 0; i < 4 * n_tile / 16; i++) vreg_src[i] = Xbyak::Zmm(ZIDX_TranSrc + i);
+
+    xor_(reg_iterrow, reg_iterrow);
+    Xbyak::Label rowloop;
+    L(rowloop);
+    {
+      assert(("only implement for pack2 bf16", row_pack == 2));
+      for (int i = 0; i < unroll * row_pack; i += row_pack) {
+        vpbroadcastd(vreg_scale, dword[reg_scale + reg_iterrow * sizeof(utils::fp16) + i * sizeof(utils::fp16)]);
+
+        if (masked_off != 0) {
+          int j = utils::padto_le(n_off, 16);
+
+          const auto& vreg0 = vreg_src[j / 16 * 4 + 0];
+          const auto& vreg1 = vreg_src[j / 16 * 4 + 1];
+          const auto& vreg2 = vreg_src[j / 16 * 4 + 2];
+          const auto& vreg3 = vreg_src[j / 16 * 4 + 3];
+          vpmovzxwd(vreg0, yword[reg_src + (i * n_tile + j * row_pack) * sizeof(utils::bf16) + 0]);
+          vpmovzxwd(vreg1, yword[reg_src + (i * n_tile + j * row_pack) * sizeof(utils::bf16) + 32]);
+          vpslldq(vreg0, vreg0, 2);
+          vpslldq(vreg1, vreg1, 2);
+          vcvtps2phx(Ymm(vreg0.getIdx()), vreg0);
+          vcvtps2phx(Ymm(vreg1.getIdx()), vreg1);
+          // #UD If (dest_reg == src1_reg) or (dest_reg == src2_reg)
+          vfmulcph(Ymm(vreg2.getIdx()), Ymm(vreg0.getIdx()), Ymm(vreg_scale.getIdx()));
+          vfmulcph(Ymm(vreg3.getIdx()), Ymm(vreg1.getIdx()), Ymm(vreg_scale.getIdx()));
+          vcvtph2psx(vreg0, Ymm(vreg2.getIdx()));
+          vcvtph2psx(vreg1, Ymm(vreg3.getIdx()));
+          vcvtne2ps2bf16(vreg0, vreg1, vreg0);
+          vmovups(zword[reg_src + (i * n_tile + j * row_pack) * sizeof(utils::bf16)] | mask, vreg0);
+        }
+
+        for (int j = utils::padto(n_off, 16); j < n_tile; j += 16) {
+          const auto& vreg0 = vreg_src[j / 16 * 4 + 0];
+          const auto& vreg1 = vreg_src[j / 16 * 4 + 1];
+          const auto& vreg2 = vreg_src[j / 16 * 4 + 2];
+          const auto& vreg3 = vreg_src[j / 16 * 4 + 3];
+          vpmovzxwd(vreg0, yword[reg_src + (i * n_tile + j * row_pack) * sizeof(utils::bf16) + 0]);
+          vpmovzxwd(vreg1, yword[reg_src + (i * n_tile + j * row_pack) * sizeof(utils::bf16) + 32]);
+          vpslldq(vreg0, vreg0, 2);
+          vpslldq(vreg1, vreg1, 2);
+          vcvtps2phx(Ymm(vreg0.getIdx()), vreg0);
+          vcvtps2phx(Ymm(vreg1.getIdx()), vreg1);
+          // #UD If (dest_reg == src1_reg) or (dest_reg == src2_reg)
+          vfmulcph(Ymm(vreg2.getIdx()), Ymm(vreg0.getIdx()), Ymm(vreg_scale.getIdx()));
+          vfmulcph(Ymm(vreg3.getIdx()), Ymm(vreg1.getIdx()), Ymm(vreg_scale.getIdx()));
+          vcvtph2psx(vreg0, Ymm(vreg2.getIdx()));
+          vcvtph2psx(vreg1, Ymm(vreg3.getIdx()));
+          vcvtne2ps2bf16(vreg0, vreg1, vreg0);
+          vmovups(zword[reg_src + (i * n_tile + j * row_pack) * sizeof(utils::bf16)], vreg0);
+        }
+      }
+    }
+    lea(reg_iterrow, ptr[reg_iterrow + unroll * row_pack]);
+    lea(reg_src, ptr[reg_src + unroll * row_pack * n_tile * sizeof(utils::bf16)]);
+    cmp(reg_iterrow, reg_rowsize);
+    jb(rowloop);
+
+    vreg_pop(rsp);
+  }
+
+  func_t mKernel = nullptr;
+
+ public:
+  template <int NTile, int RowPack = 2>
+  static void forward(utils::bf16* src, const utils::fp16* scale, int row, int col, int src_step, int n_offset) {
+    static_assert(RowPack == 2, "Only implement rowpack2 bf16");
+    static_assert(NTile % 16 == 0, "NTile must be a multiple of 16");
+    constexpr auto unroll = 2;
+    assert(("row should be paded", row % (RowPack * unroll) == 0));
+    assert(("cow should be paded", col % NTile == 0));
+    assert(("can not skip more than col", n_offset < col));
+    int j = utils::padto_le(n_offset, NTile);
+    if (n_offset % NTile != 0) {
+      static const CScaleInterleavedBF16FP16 kern_off(NTile, n_offset % NTile, RowPack, unroll);
+      params param = {src + j * src_step, scale, row};
+      kern_off(&param);
+      j += NTile;
+    }
+
+    for (; j < col; j += NTile) {
+      static const CScaleInterleavedBF16FP16 kern(NTile, 0, RowPack, unroll);
+      params param = {src + j * src_step, scale, row};
+      kern(&param);
+    }
+  }
+
+  template <int NTile, int RowPack = 2>
+  static void reference(utils::bf16* src, const utils::fp16* scale, int row, int col, int src_step, int n_offset) {
+    static_assert(RowPack == 2, "Only implement rowpack2 bf16");
+    static_assert(NTile % 16 == 0, "NTile must be a multiple of 16");
+    assert(("row should be paded", row % RowPack == 0));
+    assert(("cow should be paded", col % NTile == 0));
+    assert(("can not skip more than col", n_offset < col));
+    for (int j = 0; j < col; j += NTile) {
+      for (int i = 0; i < row; i += RowPack) {
+        for (int jj = 0; jj < NTile; ++jj) {
+          if (j + jj < n_offset) continue;
+          auto& rel = (src + j * src_step)[i * NTile + jj * RowPack + 0];
+          auto& img = (src + j * src_step)[i * NTile + jj * RowPack + 1];
+          const auto rel_f32 = static_cast<float>(rel);
+          const auto img_f32 = static_cast<float>(img);
+          const auto rel_scale = static_cast<float>(scale[i + 0]);
+          const auto img_scale = static_cast<float>(scale[i + 1]);
+          rel = static_cast<utils::bf16>(rel_f32 * rel_scale - img_f32 * img_scale);
+          img = static_cast<utils::bf16>(rel_f32 * img_scale + img_f32 * rel_scale);
+        }
+      }
+    }
   }
 };
 
