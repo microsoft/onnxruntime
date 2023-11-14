@@ -23,7 +23,11 @@ private:
 
   /**
    * [sync] create the session.
-   * @param arg0 either a string (file path) or a Uint8Array
+   * @param arg0 either a string (file path) or an ArrayBuffer.
+   * @param arg1 either SessionOptions (if arg0 is string) or byte offset (if
+   *             arg0 is ArrayBuffer.)
+   * @param arg2 byte length (if arg0 is ArrayBuffer.)
+   * @param arg3 SessionOptions (if arg0 is ArrayBuffer.)
    * @returns nothing
    * @throw error if status code != 0
    */

@@ -4,6 +4,8 @@
 import {InferenceSession as InferenceSessionImpl} from './inference-session-impl.js';
 import {OnnxValue, OnnxValueDataLocation} from './onnx-value.js';
 
+export type MaybePromise<T> = T|Promise<T>;
+
 /* eslint-disable @typescript-eslint/no-redeclare */
 
 export declare namespace InferenceSession {
@@ -424,7 +426,7 @@ export interface InferenceSessionFactory {
    * @param options - specify configuration for creating a new inference session.
    * @returns A promise that resolves to an InferenceSession object.
    */
-  create(buffer: ArrayBufferLike, options?: InferenceSession.SessionOptions): Promise<InferenceSession>;
+  create(buffer: MaybePromise<ArrayBufferLike>, options?: InferenceSession.SessionOptions): Promise<InferenceSession>;
 
   /**
    * Create a new inference session and load model asynchronously from segment of an array bufer.
@@ -435,8 +437,9 @@ export interface InferenceSessionFactory {
    * @param options - specify configuration for creating a new inference session.
    * @returns A promise that resolves to an InferenceSession object.
    */
-  create(buffer: ArrayBufferLike, byteOffset: number, byteLength?: number, options?: InferenceSession.SessionOptions):
-      Promise<InferenceSession>;
+  create(
+      buffer: MaybePromise<ArrayBufferLike>, byteOffset: number, byteLength?: number,
+      options?: InferenceSession.SessionOptions): Promise<InferenceSession>;
 
   /**
    * Create a new inference session and load model asynchronously from a Uint8Array.
@@ -445,7 +448,7 @@ export interface InferenceSessionFactory {
    * @param options - specify configuration for creating a new inference session.
    * @returns A promise that resolves to an InferenceSession object.
    */
-  create(buffer: Uint8Array, options?: InferenceSession.SessionOptions): Promise<InferenceSession>;
+  create(buffer: MaybePromise<Uint8Array>, options?: InferenceSession.SessionOptions): Promise<InferenceSession>;
 
   // #endregion
 }

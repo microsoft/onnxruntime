@@ -52,6 +52,11 @@ describe('UnitTests - InferenceSession.create()', () => {
       await createAny(modelBuffer, 'cpu');
     }, {name: 'TypeError', message: /'options'/});
   });
+  it('BAD CALL - options type mismatch (Promise<Uint8Array>, string)', async () => {
+    await assert.rejects(async () => {
+      await createAny(Promise.resolve(modelBuffer), 'cpu');
+    }, {name: 'TypeError', message: /'options'/});
+  });
   it('BAD CALL - options type mismatch (ArrayBuffer, number, number, string)', async () => {
     await assert.rejects(async () => {
       await createAny(modelBuffer.buffer, modelBuffer.byteOffset, modelBuffer.byteLength, 'cpu');
@@ -66,6 +71,11 @@ describe('UnitTests - InferenceSession.create()', () => {
   it('EXPECTED FAILURE - empty buffer', async () => {
     await assert.rejects(async () => {
       await InferenceSession.create(new Uint8Array(0));
+    }, {name: 'Error', message: /No graph was found in the protobuf/});
+  });
+  it('EXPECTED FAILURE - empty buffer promise', async () => {
+    await assert.rejects(async () => {
+      await InferenceSession.create(Promise.resolve(new Uint8Array(0)));
     }, {name: 'Error', message: /No graph was found in the protobuf/});
   });
   // #endregion

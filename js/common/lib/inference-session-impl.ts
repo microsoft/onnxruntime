@@ -3,7 +3,7 @@
 
 import {resolveBackend} from './backend-impl.js';
 import {InferenceSessionHandler} from './backend.js';
-import {InferenceSession as InferenceSessionInterface} from './inference-session.js';
+import type {InferenceSession as InferenceSessionInterface, MaybePromise} from './inference-session.js';
 import {OnnxValue} from './onnx-value.js';
 import {Tensor} from './tensor.js';
 
@@ -125,77 +125,85 @@ export class InferenceSession implements InferenceSessionInterface {
   }
 
   static create(path: string, options?: SessionOptions): Promise<InferenceSessionInterface>;
-  static create(buffer: ArrayBufferLike, options?: SessionOptions): Promise<InferenceSessionInterface>;
-  static create(buffer: ArrayBufferLike, byteOffset: number, byteLength?: number, options?: SessionOptions):
-      Promise<InferenceSessionInterface>;
-  static create(buffer: Uint8Array, options?: SessionOptions): Promise<InferenceSessionInterface>;
+  static create(buffer: MaybePromise<ArrayBufferLike>, options?: SessionOptions): Promise<InferenceSessionInterface>;
+  static create(
+      buffer: MaybePromise<ArrayBufferLike>, byteOffset: number, byteLength?: number,
+      options?: SessionOptions): Promise<InferenceSessionInterface>;
+  static create(buffer: MaybePromise<Uint8Array>, options?: SessionOptions): Promise<InferenceSessionInterface>;
   static async create(
-      arg0: string|ArrayBufferLike|Uint8Array, arg1?: SessionOptions|number, arg2?: number,
+      arg0: string|MaybePromise<ArrayBufferLike|Uint8Array>, arg1?: SessionOptions|number, arg2?: number,
       arg3?: SessionOptions): Promise<InferenceSessionInterface> {
-    // either load from a file or buffer
-    let filePathOrUint8Array: string|Uint8Array;
-    let options: SessionOptions = {};
+    let byteOffset: number|undefined;
+    let byteLength: number|undefined;
+    let options: SessionOptions|undefined;
+    if (typeof arg1 === 'number') {
+      byteOffset = arg1;
+      byteLength = arg2;
+      options = arg3;
+    } else {
+      options = arg1;
+      byteOffset = byteLength = undefined;
+    }
+    if (typeof options === 'undefined') {
+      options = {};
+    }
+    if (typeof options !== 'object' || options === null) {
+      throw new TypeError('\'options\' must be an object.');
+    }
 
+    // either load from a file path (Node) / URL (web), or a buffer
+    let stringOrUint8ArrayPromise: string|Promise<Uint8Array>;
     if (typeof arg0 === 'string') {
-      filePathOrUint8Array = arg0;
-      if (typeof arg1 === 'object' && arg1 !== null) {
-        options = arg1;
-      } else if (typeof arg1 !== 'undefined') {
+      stringOrUint8ArrayPromise = arg0;
+      if (typeof arg1 === 'number') {
         throw new TypeError('\'options\' must be an object.');
       }
-    } else if (arg0 instanceof Uint8Array) {
-      filePathOrUint8Array = arg0;
-      if (typeof arg1 === 'object' && arg1 !== null) {
-        options = arg1;
-      } else if (typeof arg1 !== 'undefined') {
-        throw new TypeError('\'options\' must be an object.');
-      }
-    } else if (
-        arg0 instanceof ArrayBuffer ||
-        (typeof SharedArrayBuffer !== 'undefined' && arg0 instanceof SharedArrayBuffer)) {
-      const buffer = arg0;
-      let byteOffset = 0;
-      let byteLength = arg0.byteLength;
-      if (typeof arg1 === 'object' && arg1 !== null) {
-        options = arg1;
-      } else if (typeof arg1 === 'number') {
-        byteOffset = arg1;
+    } else {
+      stringOrUint8ArrayPromise = Promise.resolve(arg0).then(buffer => {
+        if (buffer instanceof Uint8Array) {
+          if (typeof arg1 === 'number') {
+            throw new TypeError('\'options\' must be an object.');
+          }
+          return buffer;
+        }
+        if (!(buffer instanceof ArrayBuffer ||
+              (typeof SharedArrayBuffer !== 'undefined' && buffer instanceof SharedArrayBuffer))) {
+          throw new TypeError('Unexpected argument[0]: must be \'path\' or \'buffer\'.');
+        }
+        if (typeof byteOffset === 'undefined') {
+          byteOffset = 0;
+        }
+        if (typeof byteOffset !== 'number') {
+          throw new TypeError('\'byteOffset\' must be a number.');
+        }
         if (!Number.isSafeInteger(byteOffset)) {
           throw new RangeError('\'byteOffset\' must be an integer.');
         }
         if (byteOffset < 0 || byteOffset >= buffer.byteLength) {
           throw new RangeError(`'byteOffset' is out of range [0, ${buffer.byteLength}).`);
         }
-        byteLength = arg0.byteLength - byteOffset;
-        if (typeof arg2 === 'number') {
-          byteLength = arg2;
-          if (!Number.isSafeInteger(byteLength)) {
-            throw new RangeError('\'byteLength\' must be an integer.');
-          }
-          if (byteLength <= 0 || byteOffset + byteLength > buffer.byteLength) {
-            throw new RangeError(`'byteLength' is out of range (0, ${buffer.byteLength - byteOffset}].`);
-          }
-          if (typeof arg3 === 'object' && arg3 !== null) {
-            options = arg3;
-          } else if (typeof arg3 !== 'undefined') {
-            throw new TypeError('\'options\' must be an object.');
-          }
-        } else if (typeof arg2 !== 'undefined') {
+        if (typeof byteLength === 'undefined') {
+          byteLength = buffer.byteLength - byteOffset;
+        }
+        if (typeof byteLength !== 'number') {
           throw new TypeError('\'byteLength\' must be a number.');
         }
-      } else if (typeof arg1 !== 'undefined') {
-        throw new TypeError('\'options\' must be an object.');
-      }
-      filePathOrUint8Array = new Uint8Array(buffer, byteOffset, byteLength);
-    } else {
-      throw new TypeError('Unexpected argument[0]: must be \'path\' or \'buffer\'.');
+        if (!Number.isSafeInteger(byteLength)) {
+          throw new RangeError('\'byteLength\' must be an integer.');
+        }
+        if (byteLength <= 0 || byteOffset + byteLength > buffer.byteLength) {
+          throw new RangeError(`'byteLength' is out of range (0, ${buffer.byteLength - byteOffset}].`);
+        }
+        return new Uint8Array(buffer, byteOffset, byteLength);
+      });
     }
 
     // get backend hints
     const eps = options.executionProviders || [];
     const backendHints = eps.map(i => typeof i === 'string' ? i : i.name);
     const backend = await resolveBackend(backendHints);
-    const handler = await backend.createInferenceSessionHandler(filePathOrUint8Array, options);
+    const stringOrUint8Array = await Promise.resolve(stringOrUint8ArrayPromise);
+    const handler = await backend.createInferenceSessionHandler(stringOrUint8Array, options);
     return new InferenceSession(handler);
   }
 
