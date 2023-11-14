@@ -827,7 +827,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     int64_t,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>())
         .InputMemoryType(OrtMemTypeCPUInput, 1),
     DistributedReshape<int64_t>);
@@ -839,7 +838,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     float,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
         .InputMemoryType(OrtMemTypeCPUInput, 1),
     DistributedReshape<float>);
@@ -851,7 +849,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     MLFloat16,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>())
         .InputMemoryType(OrtMemTypeCPUInput, 1),
     DistributedReshape<MLFloat16>);

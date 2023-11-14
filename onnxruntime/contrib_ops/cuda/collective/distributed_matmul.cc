@@ -271,7 +271,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     float,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     DistributedMatMul<float>);
 
@@ -282,7 +281,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     MLFloat16,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
     DistributedMatMul<MLFloat16>);
 
