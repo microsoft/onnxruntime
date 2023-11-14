@@ -13,10 +13,17 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                                                                     \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(MoE, kMSDomain, 1, T, kCudaExecutionProvider,                                        \
-                                (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-                                MoE<T>);
+#define REGISTER_KERNEL_TYPED(T)                                     \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                     \
+      MoE,                                                           \
+      kMSDomain,                                                     \
+      1,                                                             \
+      T,                                                             \
+      kCudaExecutionProvider,                                        \
+      (*KernelDefBuilder::Create())                                  \
+          .MayInplace(0, 0)                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),    \
+      MoE<T>);
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
