@@ -8,6 +8,7 @@ parameters:
   # the parent pipeline.
   TestDataArtifactSuffix: ''
   Skipx86Tests: 'false'
+  CudaVersion: '11.8'
 
 stages:
 - stage: NuGet_Test_Win_${{ parameters.StageSuffix }}
@@ -46,6 +47,12 @@ stages:
         filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_gpu.bat'
         modifyEnvironment: true
         workingFolder: '$(Build.BinariesDirectory)'
+
+    - template: ../../templates/jobs/download_win_gpu_library.yml
+      parameters:
+        DownloadCUDA: true
+        DownloadTRT: true
+        CUDA_Version: ${{ parameters.CudaVersion }}
 
     - task: BatchScript@1
       displayName: 'Setup Visual Studio env vars'
