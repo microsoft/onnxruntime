@@ -156,16 +156,16 @@ const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: Slice
   const input = inputVariable('input', inputs[0].dataType, inputShapeOrRank);
   const outputSize = ShapeUtil.size(outputShape);
   const programUniforms: ProgramUniform[] = [];
-  const names_to_types: Map<string, string> = new Map();
+  const nameToTypeMap: Map<string, string> = new Map();
   if (enableInputShapeUniforms) {
-    names_to_types.set('starts', starts.length > 1 ? `vec${starts.length}<u32>` : 'u32');
-    names_to_types.set('signs', signs.length > 1 ? `vec${signs.length}<i32>` : 'i32');
-    names_to_types.set('steps', steps.length > 1 ? `vec${steps.length}<u32>` : 'u32');
+    nameToTypeMap.set('starts', starts.length > 1 ? `vec${starts.length}<u32>` : 'u32');
+    nameToTypeMap.set('signs', signs.length > 1 ? `vec${signs.length}<i32>` : 'i32');
+    nameToTypeMap.set('steps', steps.length > 1 ? `vec${steps.length}<u32>` : 'u32');
     programUniforms.push({type: 'uint32', data: starts})
     programUniforms.push({type: 'uint32', data: signs})
     programUniforms.push({type: 'uint32', data: steps})
   }
-  names_to_types.set('outputSize', 'u32');
+  nameToTypeMap.set('outputSize', 'u32');
   programUniforms.push({type: 'uint32', data: outputSize})
   if (enableInputShapeUniforms) {
     programUniforms.push(...createTensorShapeVariables(inputs[0].dims));
@@ -175,7 +175,7 @@ const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: Slice
   }
 
   const getShaderSource = (shaderHelper: ShaderHelper) => `
-      ${shaderHelper.registerUniforms(names_to_types).declareVariables(input, output)}
+      ${shaderHelper.registerUniforms(nameToTypeMap).declareVariables(input, output)}
         ${enableInputShapeUniforms ? '' : [
     `const signs = array<i32, ${signs.length}>(${signs.map(i => `${i}i`).join(',')});`,
     `const starts = array<u32, ${starts.length}>(${starts.map(i => `${i}u`).join(',')});`,
