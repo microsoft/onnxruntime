@@ -6,6 +6,8 @@ import unittest
 
 import numpy as np
 
+import onnx
+
 from onnxruntime import InferenceSession, SessionOptions
 
 
@@ -24,7 +26,7 @@ class TestOnnxToolsGraph(unittest.TestCase):
         filename = "custom_ops_type_inference_fails_0.onnx"
 
         with open(os.path.join(os.path.dirname(__file__), filename), "rb") as f:
-            onxo = load(f)
+            onxo = onnx.load(f)
         d = onxo.opset_import.add()
         d.domain = "ai.onnx.ml"
         d.version = 2
