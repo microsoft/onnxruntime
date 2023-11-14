@@ -19,13 +19,16 @@ class OnnxRuntimeTestSession : public TestSession {
       test_inputs_.resize(test_data_id + 1);
     }
     if (test_inputs_.at(test_data_id).size() == 0) {
-      for (int i = 0; i < input_length_; i++)
+      for (int i = 0; i < input_length_; i++) {
         test_inputs_[test_data_id].emplace_back(nullptr);
+      }
     }
     test_inputs_[test_data_id][input_id] = std::move(value);
   }
 
-  bool PopulateGeneratedInputTestData(int32_t seed);
+  bool PopulateGeneratedInputTestData(int32_t seed, bool use_native_bindings);
+
+  bool PopulateOutputs(bool use_native_bindings);
 
   ~OnnxRuntimeTestSession() = default;
 
@@ -33,11 +36,16 @@ class OnnxRuntimeTestSession : public TestSession {
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxRuntimeTestSession);
 
+ public:
+  using UniqueNativePtr = std::unique_ptr<void, void (*)(void*)>;
+
  private:
   Ort::Session session_{nullptr};
   std::mt19937 rand_engine_;
   std::uniform_int_distribution<int> dist_;
   std::vector<std::vector<Ort::Value>> test_inputs_;
+  std::vector<Ort::Value> test_outputs_;
+  std::vector<UniqueNativePtr> native_test_bindings_;
   std::vector<std::string> output_names_;
   // The same size with output_names_.
   // TODO: implement a customized allocator, then we can remove output_names_ to simplify this code
@@ -45,6 +53,7 @@ class OnnxRuntimeTestSession : public TestSession {
   std::vector<const char*> input_names_;
   std::vector<std::string> input_names_str_;
   const int input_length_;
+  std::string provider_name_;
 };
 
 }  // namespace perftest
