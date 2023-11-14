@@ -61,24 +61,14 @@ def _build_for_osx_sysroot(
         subprocess.run(build_command, shell=False, check=True, cwd=REPO_DIR)
 
         # get the compiled lib path
-        framework_dir = pathlib.Path("")
-        if sysroot == "macosx":
-            framework_dir = os.path.join(
-                build_dir_current_arch,
-                build_config,
-                "onnxruntime.framework"
-                if build_dynamic_framework
-                else os.path.join("static_framework", "onnxruntime.framework"),
-            )
-        else:
-            framework_dir = os.path.join(
-                build_dir_current_arch,
-                build_config,
-                build_config + "-" + sysroot,
-                "onnxruntime.framework"
-                if build_dynamic_framework
-                else os.path.join("static_framework", "onnxruntime.framework"),
-            )
+        framework_dir = os.path.join(
+            build_dir_current_arch,
+            build_config,
+            build_config + "-" + sysroot,
+            "onnxruntime.framework"
+            if build_dynamic_framework
+            else os.path.join("static_framework", "onnxruntime.framework"),
+        )
         ort_libs.append(os.path.join(framework_dir, "onnxruntime"))
 
         # We only need to copy Info.plist, framework_info.json, and headers once since they are the same
