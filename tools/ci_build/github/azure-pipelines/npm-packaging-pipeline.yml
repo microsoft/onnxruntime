@@ -41,9 +41,14 @@ stages:
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     IsReleasePipeline: true
-    PoolName: 'Azure-Pipelines-EO-Windows2022-aiinfra'
+    PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
     PackageName: 'onnxruntime-web'
     ExtraBuildArgs: ''
+    UseWebPoolName: true
+    RunWebGpuTestsForDebugBuild: false
+    RunWebGpuTestsForReleaseBuild: true
+    WebGpuPoolName: 'onnxruntime-Win2022-webgpu-A10'
+    WebCpuPoolName: 'Azure-Pipelines-EO-Windows2022-aiinfra'
 
 - template: templates/react-native-ci.yml
   parameters:

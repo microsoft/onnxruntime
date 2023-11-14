@@ -26,7 +26,7 @@ parameters:
 
 - name: WASMTemplate
   type: string
-  default: win-wasm-ci.yml
+  default: linux-wasm-ci.yml
 # parameter couldn't be compared by string, so add one boolean parameter.
 - name: UseWebPoolName
   type: boolean
@@ -39,10 +39,10 @@ parameters:
   default: false
 - name: WebGpuPoolName
   type: string
-  default: ''
+  default: 'onnxruntime-Win2022-webgpu-A10'
 - name: WebCpuPoolName
   type: string
-  default: ''
+  default: 'onnxruntime-Win-CPU-2022-web'
 
 - name: ExtraBuildArgs
   displayName: 'Extra build command line arguments'
