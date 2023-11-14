@@ -89,5 +89,9 @@ namespace Dml
         }
     }
 
+    HRESULT CommandQueue::GetCommandQueue(ID3D12CommandQueue** queue)
+    {
+        return m_queue.CopyTo(queue);
+    }
 
 } // namespace Dml
