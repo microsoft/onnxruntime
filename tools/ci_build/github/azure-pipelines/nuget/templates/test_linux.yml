@@ -57,10 +57,12 @@ stages:
       - template: ../../templates/get-docker-image-steps.yml
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_cuda11_8_tensorrt8_6
-          BASEIMAGE: ${{ parameters.DockerBaseImage }}
-          TRT_VERSION: ${{ parameters.TRT_VERSION }}
           Context: tools/ci_build/github/linux/docker/
-          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+          DockerBuildArgs: "
+          --build-arg BASEIMAGE=${{ parameters.DockerBaseImage }} 
+          --build-arg TRT_VERSION=${{ parameters.TRT_VERSION }} 
+          --build-arg BUILD_UID=$( id -u )
+          "
           Repository: onnxruntimepackagestest
       - bash: |
           docker run --rm \
