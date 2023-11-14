@@ -97,8 +97,8 @@ Status SoftmaxOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
   ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, axis));
 
-  OnnxInputInfo input_info = {};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[0], input_info));
+  TensorInfo input_info = {};
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[0], input_info));
   const size_t input_rank = input_info.shape.size();
 
   // If the axis attribute refers to the last dimension, then process the input as normal.
@@ -161,8 +161,8 @@ Status SoftmaxOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_
   Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
   ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, axis));
 
-  OnnxInputInfo output_info = {};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(outputs[0], output_info));
+  TensorInfo output_info = {};
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(outputs[0], output_info));
   const size_t output_rank = output_info.shape.size();
   const bool axis_is_last_dim = static_cast<size_t>(axis) == output_rank - 1;
 

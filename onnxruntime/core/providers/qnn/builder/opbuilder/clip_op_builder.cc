@@ -84,8 +84,8 @@ Status ClipOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     std::vector<uint8_t> min_val_bytes;
 
     if (num_inputs > 1 && !inputs[1].node_arg.Name().empty()) {
-      OnnxInputInfo min_input_info = {};
-      ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[1], min_input_info));
+      TensorInfo min_input_info = {};
+      ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[1], min_input_info));
       ORT_RETURN_IF_NOT(min_input_info.qnn_data_type == qnn_data_type,
                         "QNN EP: The 'min' input of the Clip operator must be of type float32.");
       assert(min_input_info.is_initializer);  // Checked by ExplicitOpCheck().
@@ -106,8 +106,8 @@ Status ClipOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     std::vector<uint8_t> max_val_bytes;
 
     if (num_inputs > 2 && !inputs[2].node_arg.Name().empty()) {
-      OnnxInputInfo max_input_info = {};
-      ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[2], max_input_info));
+      TensorInfo max_input_info = {};
+      ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[2], max_input_info));
       ORT_RETURN_IF_NOT(max_input_info.qnn_data_type == qnn_data_type,
                         "QNN EP: The 'max' input of the Clip operator must of type float32.");
       assert(max_input_info.is_initializer);  // Checked by ExplicitOpCheck().
