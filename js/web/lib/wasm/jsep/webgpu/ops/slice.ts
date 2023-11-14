@@ -160,7 +160,7 @@ const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: Slice
   if (enableInputShapeUniforms) {
     names_to_types.set('starts', starts.length > 1 ? `vec${starts.length}<u32>` : 'u32');
     names_to_types.set('signs', signs.length > 1 ? `vec${signs.length}<i32>` : 'i32');
-    names_to_types.set('steps', steps.length > 1 ? `vec${steps.length}<u32>` : 'i32');
+    names_to_types.set('steps', steps.length > 1 ? `vec${steps.length}<u32>` : 'u32');
     programUniforms.push({type: 'uint32', data: starts})
     programUniforms.push({type: 'uint32', data: signs})
     programUniforms.push({type: 'uint32', data: steps})
