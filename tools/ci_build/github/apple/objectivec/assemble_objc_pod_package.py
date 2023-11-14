@@ -153,7 +153,7 @@ def assemble_objc_pod_package(
         "C_POD_NAME": c_pod_config["name"],
         "DESCRIPTION": pod_config["description"],
         "INCLUDE_DIR_LIST": path_patterns_as_variable_value(include_dirs),
-        "IOS_DEPLOYMENT_TARGET": framework_info["IOS_DEPLOYMENT_TARGET"],
+        "IOS_DEPLOYMENT_TARGET": framework_info["iphoneos"]["APPLE_DEPLOYMENT_TARGET"],
         "LICENSE_FILE": license_file,
         "NAME": pod_name,
         "PUBLIC_HEADER_FILE_LIST": path_patterns_as_variable_value(pod_files["public_header_files"]),
