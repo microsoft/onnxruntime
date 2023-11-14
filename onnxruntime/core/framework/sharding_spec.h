@@ -12,7 +12,9 @@
 namespace onnxruntime {
 namespace distributed {
 
-#if defined(ORT_USE_NCCL)
+// Tensor partition spec is a concept shared by all EPs,
+// if distributed ops are implemented.
+#if !defined(ORT_MINIMAL_BUILD)
 
 class DeviceMesh {
  public:
@@ -487,7 +489,6 @@ std::tuple<TensorPartitionSpec, TensorPartitionSpec> NormalizeTensorPartitionSpe
 // the dimension of the axis is divisible by the number of devices along the device mesh axis.
 bool CanShard(const TensorShape& shape, const TensorPartitionSpec& spec);
 
-#endif
-
+#endif // !defined(ORT_MINIMAL_BUILD)
 }  // namespace distributed
 }  // namespace onnxruntime

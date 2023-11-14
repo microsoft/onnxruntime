@@ -14,7 +14,7 @@
 namespace onnxruntime {
 namespace distributed {
 
-#if defined(ORT_USE_NCCL)
+#if !defined(ORT_MINIMAL_BUILD)
 
 void ValidateAxisIndex(const int64_t axis, const int64_t rank) {
   int64_t adjusted_axis = axis;
@@ -219,7 +219,7 @@ bool CanShard(const TensorShape& shape, const TensorPartitionSpec& spec) {
   return true;
 }
 
-#endif
+#endif // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace distributed
 }  // namespace onnxruntime
