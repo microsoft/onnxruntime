@@ -5928,17 +5928,6 @@ onetime@^5.1.0, onetime@^5.1.2:
   dependencies:
     mimic-fn "^2.1.0"
 
-"onnxruntime-common@file:./onnxruntime-common.tgz":
-  version "1.17.0"
-  resolved "file:./onnxruntime-common.tgz#ba8b6253ae7b5f3d8ba2c9671c81e1204aab24d1"
-
-"onnxruntime-react-native@file:./onnxruntime-react-native.tgz":
-  version "1.17.0"
-  resolved "file:./onnxruntime-react-native.tgz#e295f7314e2d837cafeca71667acb45bd9c89e37"
-  dependencies:
-    "@expo/config-plugins" "^7.2.4"
-    buffer "^6.0.3"
-
 open@^6.2.0:
   version "6.4.0"
   resolved "https://registry.npmjs.org/open/-/open-6.4.0.tgz"
