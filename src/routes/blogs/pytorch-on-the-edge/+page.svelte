@@ -9,11 +9,11 @@
 	import swift from 'svelte-highlight/languages/swift';
 	import kotlin from 'svelte-highlight/languages/kotlin';
 
-	import ORT from '../../../images/blogs/pytorch-on-the-edge-with-ort.png';
-	import Puppies from '../../../images/blogs/pytorch-on-the-edge-puppies.png';
-	import Speech from '../../../images/blogs/pytorch-on-the-edge-speechrec.png';
-	import Training from '../../../images/blogs/pytorch-on-the-edge-training.png';
-	import TextGen from '../../../images/blogs/pytorch-on-the-edge-textgen.png';
+	import ORT from '../../../images/blogs/pytorch-on-the-edge/pytorch-on-the-edge-with-ort.png';
+	import Puppies from '../../../images/blogs/pytorch-on-the-edge/pytorch-on-the-edge-puppies.png';
+	import Speech from '../../../images/blogs/pytorch-on-the-edge/pytorch-on-the-edge-speechrec.png';
+	import Training from '../../../images/blogs/pytorch-on-the-edge/pytorch-on-the-edge-training.png';
+	import TextGen from '../../../images/blogs/pytorch-on-the-edge/pytorch-on-the-edge-textgen.png';
 	import { androidstudio } from 'svelte-highlight/styles';
 	import Header from '../../components/header.svelte';
 	import Footer from '../../components/footer.svelte';
@@ -155,7 +155,7 @@ fun run(audioTensor: OnnxTensor): Result {
 <div class="container mx-auto px-4 md:px-8 lg:px-48 pt-8">
 	<h1 class="text-5xl pb-2">Run PyTorch models on the edge</h1>
 	<p class="text-neutral">12TH OCTOBER, 2023</p>
-	<div class="p-4">
+	<div class="py-4">
 		<div class="col-span-12 md:col-span-9">
 			<p class="mb-4">
 				Most modern ML models are developed with PyTorch. The agility and flexibility that PyTorch
