@@ -60,15 +60,8 @@ class EngineBuilder:
         self.torch_device = torch.device(device, torch.cuda.current_device())
         self.stages = pipeline_info.stages()
 
-        # TODO: use custom fp16 for ORT_TRT, and no need to fallback to torch.
-        self.vae_torch_fallback = self.pipeline_info.is_xl() and engine_type != EngineType.ORT_CUDA
-
-        # For SD XL, use an VAE that modified to run in fp16 precision without generating NaNs.
-        self.custom_fp16_vae = (
-            "madebyollin/sdxl-vae-fp16-fix"
-            if self.pipeline_info.is_xl() and self.engine_type == EngineType.ORT_CUDA
-            else None
-        )
+        self.vae_torch_fallback = self.pipeline_info.vae_torch_fallback()
+        self.custom_fp16_vae = self.pipeline_info.custom_fp16_vae()
 
         self.models = {}
         self.engines = {}
