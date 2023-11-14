@@ -697,6 +697,7 @@ export interface ShaderHelper {
    * A helper function to register one uniform. Can be called multiple times to register multiple uniforms.
    */
   registerUniform(name: string, type: string): ShaderHelper;
+  registerUniforms(names_to_types: Map<string, string>): ShaderHelper;
 }
 
 class ShaderHelperImpl implements ShaderHelper {
@@ -752,6 +753,11 @@ class ShaderHelperImpl implements ShaderHelper {
 
   registerUniform(name: string, type: string): ShaderHelper {
     this.uniforms.push({name, type});
+    return this;
+  }
+
+  registerUniforms(names_to_types: Map<string, string>): ShaderHelper {
+    names_to_types.forEach((type: string, name: string) => {this.registerUniform(name, type)});
     return this;
   }
 
