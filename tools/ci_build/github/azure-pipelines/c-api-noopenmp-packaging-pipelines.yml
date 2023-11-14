@@ -107,6 +107,8 @@ stages:
 - stage: Setup
   jobs:
   - job: Set_Variables
+    pool:
+      vmImage: ubuntu-latest
     steps:
     - checkout: none
     - bash: |
@@ -1129,7 +1131,6 @@ stages:
     DoNugetPack : 'true'
     DoCompliance: 'false'
     DoEsrp: ${{ parameters.DoEsrp }}
-    OrtPackageId: 'Microsoft.ML.OnnxRuntime.DirectML'
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
