@@ -18,8 +18,8 @@ done
 mkdir -p $HOME/.onnx
 DOCKER_SCRIPT_OPTIONS="-d $DEVICE -c $BUILD_CONFIG -x $BUILD_EXTR_PAR"
 
-if [ "$CUDA_VERSION" == "" ]
-DOCKER_SCRIPT_OPTIONS+=" -u $CUDA_VERSION"
+if [ "$CUDA_VERSION" != "" ] ; then
+    DOCKER_SCRIPT_OPTIONS+=" -u $CUDA_VERSION"
 fi
 
 docker run --rm \
