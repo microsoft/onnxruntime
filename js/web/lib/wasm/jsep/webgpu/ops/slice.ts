@@ -119,8 +119,8 @@ const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: Slice
 
   const ends = attributes.ends.map((end, i) => fixStartEndValues(end, i, inputShape, axes, steps));
 
-  if (axes.length != starts.length || axes.length != ends.length) {
-    throw new Error('start, ends and axes should have the same number of elements')
+  if (axes.length !== starts.length || axes.length !== ends.length) {
+    throw new Error('start, ends and axes should have the same number of elements');
   }
 
   if (axes.length !== inputShape.length) {
