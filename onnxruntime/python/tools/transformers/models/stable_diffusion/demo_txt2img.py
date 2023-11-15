@@ -53,13 +53,18 @@ if __name__ == "__main__":
             f"Batch size {len(prompt)} is larger than allowed {max_batch_size}. If dynamic shape is used, then maximum batch size is 4"
         )
 
-    pipeline_info = PipelineInfo(args.version)
+    min_image_size = 512
+    max_image_size = 1024 if args.version in ["2.0", "2.1"] else 768
+    pipeline_info = PipelineInfo(args.version, min_image_size=min_image_size, max_image_size=max_image_size)
     pipeline = init_pipeline(Txt2ImgPipeline, pipeline_info, engine_type, args, max_batch_size, batch_size)
 
     if engine_type == EngineType.TRT:
         max_device_memory = max(pipeline.backend.max_device_memory(), pipeline.backend.max_device_memory())
         _, shared_device_memory = cudart.cudaMalloc(max_device_memory)
         pipeline.backend.activate_engines(shared_device_memory)
+
+    if engine_type == EngineType.ORT_CUDA and args.enable_vae_slicing:
+        pipeline.backend.enable_vae_slicing()
 
     pipeline.load_resources(image_height, image_width, batch_size)
 

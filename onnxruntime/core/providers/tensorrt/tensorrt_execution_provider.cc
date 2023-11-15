@@ -365,6 +365,46 @@ std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetApiLock() const {
   return std::unique_lock<OrtMutex>(singleton);
 }
 
+Status GetShapeOfShapeTensor(Ort::ConstValue& input_tensor,
+                             std::vector<int32_t>& shape_values,
+                             nvinfer1::ICudaEngine* trt_engine,
+                             int binding_index,
+                             cudaStream_t stream) {
+  auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
+  const auto tensor_shapes = tensor_info.GetShape();
+  const auto tensor_type = tensor_info.GetElementType();
+  nvinfer1::Dims dims = trt_engine->getBindingDimensions(static_cast<int>(binding_index));
+  int nb_dims = dims.nbDims;
+  int shape_size = nb_dims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);  // The shape of the "shape tensor" is either zero dimension (scalar) or 1-dimension
+  shape_values.resize(shape_size, 1);
+
+  switch (tensor_type) {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
+      auto input = std::make_unique<int32_t[]>(shape_size);
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input.get(), input_tensor.GetTensorData<int32_t>(), shape_size * sizeof(int32_t), cudaMemcpyDeviceToHost, stream));
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+      for (int j = 0; j < shape_size; ++j) {
+        shape_values[j] = input[j];
+      }
+      break;
+    }
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
+      auto input = std::make_unique<int64_t[]>(shape_size);
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input.get(), input_tensor.GetTensorData<int64_t>(), shape_size * sizeof(int64_t), cudaMemcpyDeviceToHost, stream));
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+      for (int j = 0; j < shape_size; ++j) {
+        shape_values[j] = static_cast<int32_t>(input[j]);
+      }
+      break;
+    }
+    default: {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "TensorRT shape tensor data type: " + std::to_string(tensor_type) + " not supported.");
+    }
+  }
+  return Status::OK();
+}
+
 /*
  * Apply TensorRT optimization profile shapes from provider options.
  *
@@ -404,7 +444,7 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
 
     // Shape tensor
     if (input->isShapeTensor()) {
-      auto shape_size = nb_dims;
+      int shape_size = nb_dims == 0 ? 1 : static_cast<int>(profile_min_shapes[input_name][i].size());
       std::vector<int32_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
 
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] shape size of this shape tensor is " << shape_size;
@@ -1522,7 +1562,9 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           }
         }
 
-        if (has_control_flow_op) {
+        // Only if the newly built graph has control flow op as well as it has parent node,
+        // it needs to handle outer scope values before calling graph.Resolve().
+        if (has_control_flow_op && graph.ParentNode()) {
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Handle outer scope values for the subgraph " << graph_build.Name();
           BuildSubGraphContext(graph_build);
           SetGraphOuterScopeValuesAndInputs(graph_build, graph.GetGraph());
@@ -2758,7 +2800,17 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         int nb_dims = dimensions.nbDims;
         if (input_names.count(input_name) == 1) {
           if (trt_engine->isShapeBinding(binding_index)) {
-            trt_context->setInputShapeBinding(binding_index, &tensor_shape_values[input_name][0]);
+            // Get shape of the shape tensor
+            std::vector<int32_t> shape_values;
+            if (!tensor_shape_values[input_name].empty()) {
+              shape_values = tensor_shape_values[input_name];
+            } else {
+              auto status = GetShapeOfShapeTensor(input_tensor, shape_values, trt_engine, binding_index, stream);
+              if (status != Status::OK()) {
+                return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
+              }
+            }
+            trt_context->setInputShapeBinding(binding_index, &shape_values[0]);
           } else {
             for (int j = 0, end = nb_dims; j < end; ++j) {
               dimensions.d[j] = static_cast<int32_t>(tensor_shapes[j]);

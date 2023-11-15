@@ -78,13 +78,13 @@ def parse_arguments(is_xl: bool, description: str):
         help="Root Directory to store torch or ONNX models, built engines and output images etc.",
     )
 
-    parser.add_argument("prompt", nargs="+", help="Text prompt(s) to guide image generation.")
+    parser.add_argument("prompt", nargs="*", default=[""], help="Text prompt(s) to guide image generation.")
 
     parser.add_argument(
         "--negative-prompt", nargs="*", default=[""], help="Optional negative prompt(s) to guide the image generation."
     )
     parser.add_argument(
-        "--repeat-prompt",
+        "--batch-size",
         type=int,
         default=1,
         choices=[1, 2, 4, 8, 16],
@@ -145,6 +145,9 @@ def parse_arguments(is_xl: bool, description: str):
     parser.add_argument("--seed", type=int, default=None, help="Seed for random generator to get consistent results.")
     parser.add_argument("--disable-cuda-graph", action="store_true", help="Disable cuda graph.")
 
+    group = parser.add_argument_group("Options for ORT_CUDA engine only")
+    group.add_argument("--enable-vae-slicing", action="store_true", help="True will feed only one image to VAE once.")
+
     # TensorRT only options
     group = parser.add_argument_group("Options for TensorRT (--engine=TRT) only")
     group.add_argument("--onnx-refit-dir", help="ONNX models to load the weights from.")
@@ -191,7 +194,7 @@ def parse_arguments(is_xl: bool, description: str):
 def repeat_prompt(args):
     if not isinstance(args.prompt, list):
         raise ValueError(f"`prompt` must be of type `str` or `str` list, but is {type(args.prompt)}")
-    prompt = args.prompt * args.repeat_prompt
+    prompt = args.prompt * args.batch_size
 
     if not isinstance(args.negative_prompt, list):
         raise ValueError(
@@ -252,6 +255,7 @@ def init_pipeline(pipeline_class, pipeline_info, engine_type, args, max_batch_si
             static_image_shape=not args.build_dynamic_shape,
             max_workspace_size=0,
             device_id=torch.cuda.current_device(),
+            timing_cache=timing_cache,
         )
     elif engine_type == EngineType.TRT:
         # Load TensorRT engines and pytorch modules
