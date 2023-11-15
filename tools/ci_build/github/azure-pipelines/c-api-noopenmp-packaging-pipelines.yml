@@ -60,14 +60,6 @@ parameters:
   type: string
   default: '--use_azure'
 
-- name: CudaVersion
-  displayName: CUDA version
-  type: string
-  default: '11.8'
-  values:
-    - 11.8
-    - 12.2
-
 resources:
   repositories:
   - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
@@ -83,26 +75,7 @@ resources:
 variables:
 - name: ReleaseVersionSuffix
   value: ''
-- name: docker_base_image
-  ${{ if eq(parameters.CudaVersion, '11.8') }}:
-    value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
-  ${{ if eq(parameters.CudaVersion, '12.2') }}:
-    value: nvidia/cuda:12.2.2-cudnn8-devel-ubi8
-- name: linux_trt_version
-  ${{ if eq(parameters.CudaVersion, '11.8') }}:
-    value: 8.6.1.6-1.cuda11.8
-  ${{ if eq(parameters.CudaVersion, '12.2') }}:
-    value: 8.6.1.6-1.cuda12.0
-- name: win_trt_home
-  ${{ if eq(parameters.CudaVersion, '11.8') }}:
-    value: $(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8
-  ${{ if eq(parameters.CudaVersion, '12.2') }}:
-    value: $(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0
-- name: win_cuda_home
-  ${{ if eq(parameters.CudaVersion, '11.8') }}:
-    value: $(Agent.TempDirectory)\v11.8
-  ${{ if eq(parameters.CudaVersion, '12.2') }}:
-    value: $(Agent.TempDirectory)\v12.2
+
 stages:
 - stage: Setup
   jobs:
@@ -173,18 +146,15 @@ stages:
     timeoutInMinutes: 120
     pool: 'Onnxruntime-Linux-GPU'
     variables:
-      CUDA_VERSION: ${{ parameters.CudaVersion }}
+      CUDA_VERSION: '11.8'
     steps:
     - template: templates/set-version-number-variables-step.yml
     - template: templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/x64/default/gpu/Dockerfile
         Context: tools/ci_build/github/linux/docker/inference/x64/default/gpu
-        DockerBuildArgs: "
-          --build-arg BUILD_UID=$( id -u )
-          --build-arg BASEIMAGE=${{ variables.docker_base_image }}
-        "
-        Repository: onnxruntimecuda${{ parameters.CudaVersion }}build
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimecuda11centosbuild
 
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
       workingDirectory: $(Build.SourcesDirectory)
@@ -221,7 +191,7 @@ stages:
       buildNodejsOption: '--build_nodejs'
 
 #CUDA without tensorrt
-- template: templates/win-ci-new.yml
+- template: templates/win-ci.yml
   parameters:
     ort_build_pool_name: 'onnxruntime-Win2022-GPU-T4'
     DoCompliance: ${{ parameters.DoCompliance }}
@@ -230,14 +200,13 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-cuda
-    buildparameter: --use_cuda --cuda_home=${{ variables.win_cuda_home }} --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80" ${{parameters.AdditionalBuildFlag}}
+    buildparameter: --use_cuda --cuda_home=$(Agent.TempDirectory)\v11.8 --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80" ${{parameters.AdditionalBuildFlag}}
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
-    CudaVersion: ${{ parameters.CudaVersion }}
 
 # CUDA with Tensorrt
-- template: templates/win-ci-new.yml
+- template: templates/win-ci.yml
   parameters:
     ort_build_pool_name: 'onnxruntime-Win2022-GPU-T4'
     DoCompliance: ${{ parameters.DoCompliance }}
@@ -246,12 +215,11 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-tensorrt
-    buildparameter: --use_tensorrt --tensorrt_home=${{ variables.win_trt_home }} --cuda_home=${{ variables.win_cuda_home }}   --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
+    buildparameter: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8"  --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8"  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
     UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
-    CudaVersion: ${{ parameters.CudaVersion }}
 
 # ROCm
 - stage: Linux_C_API_Packaging_ROCm_x64
@@ -471,11 +439,7 @@ stages:
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda11_8_tensorrt8_6
         Context: tools/ci_build/github/linux/docker/
-        DockerBuildArgs: "
-        --build-arg BASEIMAGE=${{ variables.docker_base_image }}
-        --build-arg TRT_VERSION=${{ variables.linux_trt_version }} 
-        --build-arg BUILD_UID=$( id -u )
-        "
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
         Repository: onnxruntimeubi8packagestest
         UpdateDepsTxt: false
 
@@ -528,11 +492,11 @@ stages:
             tools/ci_build/get_docker_image.py \
               --dockerfile tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda \
               --context tools/ci_build/github/linux/docker \
-              --docker-build-args "--network=host --build-arg BASEIMAGE=${{ variables.docker_base_image }} --build-arg TRT_VERSION=${{ variables.linux_trt_version }} --build-arg BUILD_UID=$( id -u )" \
+              --docker-build-args "--network=host --build-arg BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8 --build-arg TRT_VERSION=8.6.1.6-1.cuda11.8 --build-arg BUILD_UID=$( id -u )" \
               --container-registry onnxruntimebuildcache \
               --multiple_repos \
-              --repository onnxruntimecuda${{ replace(parameters.CudaVersion, '.', '') }}xtrt86build
-          displayName: "Get onnxruntimecuda${{ replace(parameters.CudaVersion, '.', '') }}xtrt86build image for tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda"
+              --repository onnxruntimecuda118xtrt86build
+          displayName: "Get onnxruntimecuda118xtrt86build image for tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda"
           workingDirectory: $(Build.SourcesDirectory)/onnxruntime
         ContainerRegistry: onnxruntimebuildcache
 
@@ -584,7 +548,7 @@ stages:
       inputs:
         script: |
           docker run --gpus all -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/src_dir \
-          --volume $(Build.ArtifactStagingDirectory):/artifact_src -e NIGHTLY_BUILD onnxruntimecuda${{ replace(parameters.CudaVersion, '.', '') }}xtrt86build \
+          --volume $(Build.ArtifactStagingDirectory):/artifact_src -e NIGHTLY_BUILD onnxruntimecuda118xtrt86build \
           /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet/run_capi_application.sh -o /src_dir/onnxruntime -p /artifact_src/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz -w /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
@@ -609,11 +573,12 @@ stages:
     - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
       submodules: false
     - script: dir $(Build.SourcesDirectory)
-    - template: templates/jobs/download_win_gpu_library.yml
-      parameters:
-        DownloadCUDA: true
-        DownloadTRT: true
-        CudaVersion: ${{ parameters.CudaVersion }}
+    - task: BatchScript@1
+      displayName: 'setup env'
+      inputs:
+        filename: '$(Build.SourcesDirectory)\onnxruntime\tools\ci_build\github\windows\setup_env_gpu.bat'
+        modifyEnvironment: true
+        workingFolder: '$(Build.BinariesDirectory)'
     - template: templates/set-version-number-variables-step.yml
       parameters:
         versionFileDirectory: '$(Build.SourcesDirectory)\onnxruntime'
@@ -701,31 +666,31 @@ stages:
     - checkout: self
       submodules: true
     - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - onnxruntime-win-x64-cuda'
+      displayName: 'Download Pipeline Artifact - NuGet'
       inputs:
         artifactName: 'onnxruntime-win-x64-cuda'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
     - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - onnxruntime-win-x64-tensorrt'
+      displayName: 'Download Pipeline Artifact - NuGet'
       inputs:
         artifactName: 'onnxruntime-win-x64-tensorrt'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
     - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - onnxruntime-linux-x64-cuda'
+      displayName: 'Download Pipeline Artifact - NuGet'
       inputs:
         artifactName: 'onnxruntime-linux-x64-cuda'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
     - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - onnxruntime-linux-x64-tensorrt'
+      displayName: 'Download Pipeline Artifact - NuGet'
       inputs:
         artifactName: 'onnxruntime-linux-x64-tensorrt'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
     - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - drop-extra'
+      displayName: 'Download Pipeline Artifact - NuGet'
       inputs:
         artifactName: 'drop-extra'
         targetPath: '$(Build.BinariesDirectory)/extra-artifact'
@@ -1092,17 +1057,13 @@ stages:
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     Skipx86Tests: 'true'
-    CudaVersion: ${{ parameters.CudaVersion }}
 
 - template: nuget/templates/test_linux.yml
   parameters:
     AgentPool : Onnxruntime-Linux-GPU
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
-    TRT_VERSION: ${{ variables.linux_trt_version }}
-    DockerBaseImage: ${{ variables.docker_base_image }}
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
-    CustomOpArtifactName: onnxruntime-linux-x64-gpu
     SpecificArtifact: ${{ parameters.specificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 

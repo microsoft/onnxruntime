@@ -9,9 +9,6 @@ parameters:
   type: boolean
   default: false
 
-- name: EnvSetupScript
-  type: string
-
 - name: buildArch
   type: string
 
@@ -63,6 +60,11 @@ parameters:
   type: boolean
   default: false
 
+- name: PublishProtoc
+  type: boolean
+  default: false
+
+
 stages:
 - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}
   dependsOn: []
@@ -91,14 +93,15 @@ stages:
           addToPath: true
           architecture: ${{ parameters.buildArch }}
 
-      - template: jobs/set-winenv.yml
+      - template: jobs/download_win_gpu_library.yml
         parameters:
-          EnvSetupScript: ${{ parameters.EnvSetupScript }}
+          CudaVersion: ${{ parameters.CudaVersion }}
+          ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
+            DownloadCUDA: true
           ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
             DownloadCUDA: true
             DownloadTRT: true
-          ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
-            DownloadCUDA: true
+
 
       - template: download-deps.yml
 
@@ -173,7 +176,7 @@ stages:
       # TODO: We need to make this step independent of the packageName, so that it can be used in test_win.yml
       - task: PublishPipelineArtifact@1
         displayName: Publish protoc as drop-extra
-        condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64-cuda'))
+        condition: and(succeeded(), or(eq('${{ parameters.packageName}}', 'x64'), eq('${{ parameters.PublishProtoc}}', true)))
         inputs:
           targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe'
           artifactName: 'drop-extra${{ parameters.artifact_name_suffix }}'
@@ -187,9 +190,10 @@ stages:
           Contents: 'custom_op_library.dll'
           TargetFolder: '$(Build.ArtifactStagingDirectory)/testdata'
 
-      #To be used in test_win.yml
+      #To be used in test_win.
+      # TODO: Do we need to publish protoc twice?
       - task: PublishPipelineArtifact@1
-        condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64-cuda'))
+        condition: and(succeeded(), or(eq('${{ parameters.packageName}}', 'x64'), eq('${{ parameters.PublishProtoc}}', true)))
         inputs:
           targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe'
           artifactName: 'drop-nuget${{ parameters.artifact_name_suffix }}'

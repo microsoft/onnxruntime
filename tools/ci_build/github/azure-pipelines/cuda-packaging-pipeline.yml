@@ -180,7 +180,6 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: gpu
-    EnvSetupScript: setup_env_cuda.bat
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-cuda
@@ -188,6 +187,7 @@ stages:
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: false
     java_artifact_id: onnxruntime_gpu
+    PublishProtoc: true
 # Windows CUDA with TensorRT Packaging
 - template: templates/win-ci.yml
   parameters:
@@ -195,7 +195,6 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: tensorrt
-    EnvSetupScript: setup_env_gpu.bat
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-tensorrt
