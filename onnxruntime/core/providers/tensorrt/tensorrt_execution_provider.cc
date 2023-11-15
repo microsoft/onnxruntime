@@ -1274,7 +1274,7 @@ Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream) {
 
 // Get the pointer to the IBuilder instance.
 // Note: This function is not thread safe. Calls to this function from different threads must be serialized
-// even though it doesn't make sense to have multiple threads initializing/accessing the same inference session.
+// even though it doesn't make sense to have multiple threads initializing the same inference session.
 nvinfer1::IBuilder* TensorrtExecutionProvider::GetBuilder() const {
   if (!builder_) {
     TensorrtLogger& trt_logger = GetTensorrtLogger();
