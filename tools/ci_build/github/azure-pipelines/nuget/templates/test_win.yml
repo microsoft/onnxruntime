@@ -28,8 +28,10 @@ stages:
       value: 'ON'
     - name: runCodesignValidationInjection
       value: false
-    CUDA_MODULE_LOADINGL: 'LAZY'
-    GRADLE_OPTS: '-Dorg.gradle.daemon=false'
+    - name: CUDA_MODULE_LOADINGL
+      value: 'LAZY'
+    - name: GRADLE_OPTS
+      value: '-Dorg.gradle.daemon=false'
 
     steps:
     - task: UsePythonVersion@0
