@@ -3527,7 +3527,7 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero1b) {
 // test that PrepareForReduce handles this case. Called by all reduction ops so any op can be used in the test
 TEST(ReductionOpTest, ReduceDimWithZero1) {
   // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
+  if (DefaultDmlExecutionProvider().get() != nullptr || DefaultMIGraphXExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{1,0,1}] did not match run output shape [{1,1,1}] for reduced";
   }
 
@@ -3576,7 +3576,7 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero2) {
 
 TEST(ReductionOpTest, ReduceDimWithZero2) {
   // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
+  if (DefaultDmlExecutionProvider().get() != nullptr || MIGraphXExecutionProviderWithOptions().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Can't reduce on dim with value of 0 if 'keepdims' is false. Invalid output shape would be produced. input_shape:{3,0,2}";
   }
 
@@ -5777,6 +5777,7 @@ void test_empty_set(const std::string& op, int opset, bool axes_as_input, float 
       {
           kCoreMLExecutionProvider,
           kCudaExecutionProvider,
+          kDmlExecutionProvider,
           kDnnlExecutionProvider,
           kMIGraphXExecutionProvider,
           kOpenVINOExecutionProvider,

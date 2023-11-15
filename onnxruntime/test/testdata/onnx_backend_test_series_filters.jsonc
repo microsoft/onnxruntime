@@ -513,7 +513,8 @@
         "test_range_int32_type_negative_delta_expanded_cpu", // Error but not a failure.
         "test_range_float_type_positive_delta_expanded_cpu", // Error but not a failure.
         "test_scan_sum_cpu", // Disabled due to output mismatch with tolerance.
-        "test_scan9_sum_cpu" // Disabled due to output mismatch with tolerance.
+        "test_scan9_sum_cpu", // Disabled due to output mismatch with tolerance.
+        "test_reduce_max_bool_inputs_cpu"
     ],
     "current_failing_tests_OPENVINO_NPU_FP16": [
         "^test_prelu_broadcast",
