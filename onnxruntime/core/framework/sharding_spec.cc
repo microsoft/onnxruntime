@@ -28,28 +28,30 @@ void ValidateAxisIndex(const int64_t axis, const int64_t rank) {
 
 std::vector<AxisPartitionSpec> ParseStringAsAxisPartitionVector(const std::string& spec_string) {
   std::vector<AxisPartitionSpec> axis_specs;
-  size_t dim_index = 0;
+  // The index of the token to be parsed.
+  // Now it points to the first token.
   size_t token_index = 0;
+  // Sequentially parse 'R' and 'S' in `spec_string` tokens into axis_specs.
+  // The i-th encountered token defines the partition spec for the i-th axis.
   while (token_index < spec_string.size()) {
     char token = spec_string.at(token_index);
     if (token == 'R') {
       AxisPartitionSpec axis_spec = AxisPartitionSpec::CreateReplica();
       axis_specs.push_back(axis_spec);
       ++token_index;
-      ++dim_index;
     } else if (token == 'S') {
       std::stringstream ss;
       // Next should be "[".
       ++token_index;
       char left_bracket = spec_string.at(token_index);
-      ORT_ENFORCE(left_bracket == '[', "Invalid partition token: ", left_bracket, " in ", spec_string);
+      ORT_ENFORCE(left_bracket == '[', "Expected left square bracket but got ", left_bracket, " in ", spec_string);
       // Move to digit part.
       ++token_index;
       while (spec_string.at(token_index) != ']') {
         // Now token_index should points to the first digit of
         // axis index.
         char digit = spec_string.at(token_index);
-        ORT_ENFORCE(std::isdigit(digit), "Invalid partition token: ", token, " in ", spec_string);
+        ORT_ENFORCE(std::isdigit(digit), "Invalid digit token: ", token, " in ", spec_string);
         ss << digit;
         // Loaded a digit. Go to next token.
         ++token_index;
@@ -60,10 +62,10 @@ std::vector<AxisPartitionSpec> ParseStringAsAxisPartitionVector(const std::strin
       axis_specs.push_back(axis_spec);
       // Skip "]".
       char right_bracket = spec_string.at(token_index);
-      ORT_ENFORCE(right_bracket == ']', "Invalid partition token: ", token, " in ", spec_string);
+      ORT_ENFORCE(right_bracket == ']', "Expected right square bracket but got ", token, " in ", spec_string);
       ++token_index;
     } else {
-      throw std::invalid_argument("Invalid partition token: " + token);
+      ORT_THROW("Invalid partition token: ", token, " in ", spec_string);
     }
   }
   return axis_specs;
@@ -71,7 +73,7 @@ std::vector<AxisPartitionSpec> ParseStringAsAxisPartitionVector(const std::strin
 
 std::vector<int64_t> ParseStringAsInt64Vector(const std::string& str) {
   if (str.empty() || str.front() != '[' || str.back() != ']') {
-    throw std::invalid_argument("Invalid input string format");
+    ORT_THROW("Invalid input string format: ", str);
   }
   // Parsed vector.
   // If input is "[0, 1, 2]", result should be {0, 1, 2}.
@@ -117,7 +119,7 @@ TensorPartitionSpec CreateTensorShardSpec(
   std::vector<AxisPartitionSpec> axis_specs;
   for (int64_t i = 0; i < tensor_rank; ++i) {
     if (i == shard_axis) {
-      axis_specs.push_back(AxisPartitionSpec::CreateShard(device_mesh_axis));
+      axis_specs.push_back(AxisPartitionSpec::CreateShard(static_cast<int>(device_mesh_axis)));
     } else {
       axis_specs.push_back(AxisPartitionSpec::CreateReplica());
     }
