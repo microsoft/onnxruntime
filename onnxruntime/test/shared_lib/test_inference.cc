@@ -1283,7 +1283,7 @@ TEST(CApiTest, test_custom_op_local_function) {
 
   const ORTCHAR_T* lib_name;
 #if defined(_WIN32)
-  lib_name = ORT_TSTR("libcustom_op_local_function.dll");
+  lib_name = ORT_TSTR("custom_op_local_function.dll");
 #elif defined(__APPLE__)
   lib_name = ORT_TSTR("libcustom_op_local_function.dylib");
 #else
