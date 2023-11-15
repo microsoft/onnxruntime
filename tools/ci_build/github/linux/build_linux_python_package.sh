@@ -15,8 +15,8 @@ do case "${parameter_Option}"
 in
 #GPU or CPU.
 d) BUILD_DEVICE=${OPTARG};;
-p) PYTHON_EXES=("${OPTARG}");;
-x) EXTRA_ARG=("${OPTARG}");;
+p) PYTHON_EXES=${OPTARG};;
+x) EXTRA_ARG=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
 u) CUDA_VERSION=${OPTARG};;
 *) echo "Usage: $0 -d <GPU|CPU> [-p <python_exe_path>] [-x <extra_build_arg>] [-c <build_config>] [-u <cuda_version>]"
