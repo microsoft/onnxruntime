@@ -22,7 +22,7 @@
 <Header pathvar="" />
 <div class="container mx-auto px-4 md:px-8 lg:px-48 pt-8">
 	<h1 class="text-5xl pb-2">Accelerating LLaMA-2 Inference with ONNX Runtime</h1>
-	<p class="text-neutral">By: Parinita Rahi and Kunal Vaishnavi</p>
+	<p class="text-neutral">By: <a href="https://www.linkedin.com/in/kunal-v-16315b94" class="text-blue-500">Kunal Vaishnavi</a> and <a href="https://www.linkedin.com/in/parinitaparinita/" class="text-blue-500">Parinita Rahi</a> </p>
 	<p class="text-neutral">14TH NOVEMBER, 2023</p>
 	<div class="py-4">
 		<p class="mb-4">
@@ -142,7 +142,7 @@
 		</p>
         
         <figure class="px-10 pt-4">
-			<img src={figure4} alt="70B Llama2 Model Throughput" />
+			<center> <img src={figure4} alt="70B Llama2 Model Throughput" width="65%" height="65%"/> </center>
 			<figcaption class="mt-2 mb-4 text-center">
 				Figure 4: 70B Llama2 Model Throughput
 			</figcaption>
@@ -208,15 +208,15 @@
 			to decide which approach is best for them.
 		</p>
 
-		<p class="mb-4>
+		<p class="mb-4">
 			In addition to these fusions and kernel optimizations, ONNX Runtime reduces the model’s memory usage. 
 			Besides quantization improvements (which will be covered in a future post), ONNX Runtime compresses the 
 			size of the cosine and sine caches used in each of the rotary embeddings by 50%. The compute kernels in 
 			ONNX Runtime that run the rotary embedding computations can then recognize this format and use their 
 			parallelized implementations to calculate the rotary embeddings more efficiently with less memory usage. 
 			The rotary embedding compute kernels also support interleaved and non-interleaved formats to support both 
-			the <a href="https://github.com/microsoft/Llama-2-Onnx" class="text-blue-500">Microsoft version of LLaMA-2</a> and the Hugging Face version of LLaMA-2 respectively while sharing the 
-			same calculations.
+			the <a href="https://github.com/microsoft/Llama-2-Onnx" class="text-blue-500">Microsoft version of LLaMA-2</a>
+			and the Hugging Face version of LLaMA-2 respectively while sharing the same calculations.
 		</p>
 
 		<p class="mb-4">
