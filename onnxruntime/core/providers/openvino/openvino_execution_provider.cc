@@ -1,7 +1,6 @@
 // Copyright (C) 2019-2022 Intel Corporation
 // Licensed under the MIT License
 
-#include "core/providers/shared_library/provider_api.h"
 #include "openvino_execution_provider.h"
 #include "contexts.h"
 #include "backend_manager.h"
@@ -11,10 +10,7 @@
 
 namespace onnxruntime {
 
-OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider} {
-  InitProviderOrtApi();
-
+OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProviderInfo& info) {
   openvino_ep::BackendManager::GetGlobalContext().device_type = info.device_type_;
   openvino_ep::BackendManager::GetGlobalContext().precision_str = info.precision_;
   openvino_ep::BackendManager::GetGlobalContext().enable_vpu_fast_compile = info.enable_vpu_fast_compile_;
@@ -79,8 +75,8 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
       for (auto device : available_devices) {
         if (device.rfind(info.device_id_, 0) == 0) {
           if (info.device_id_ == "CPU" || info.device_id_ == "GPU") {
-            LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
-                               << "Switching to Device ID: " << info.device_id_;
+            //LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
+            //                   << "Switching to Device ID: " << info.device_id_;
             device_id_found = true;
             break;
           }
@@ -98,41 +94,39 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   openvino_ep::BackendManager::GetGlobalContext().device_id = info.device_id_;
 }
 
-std::vector<std::unique_ptr<ComputeCapability>>
-OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
-                                         const IKernelLookup& /*kernel_lookup*/) const {
-  std::vector<std::unique_ptr<ComputeCapability>> result;
+std::vector<std::unique_ptr<SubGraphDef>> OpenVINOExecutionProvider::GetCapability(interface::GraphViewRef* graph_viewer) {
+  std::vector<std::unique_ptr<SubGraphDef>> result;
   // Enable CI Logs
-  if (!(GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG").empty())) {
-    std::cout << "In the OpenVINO EP" << std::endl;
-  }
-  openvino_ep::BackendManager::GetGlobalContext().onnx_model_name = graph_viewer.Name();
+//  if (!(GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG").empty())) {
+//    std::cout << "In the OpenVINO EP" << std::endl;
+//  }
+  openvino_ep::BackendManager::GetGlobalContext().onnx_model_name = graph_viewer->Name();
 #ifdef _WIN32
-  std::wstring onnx_path = graph_viewer.ModelPath().ToPathString();
+  std::wstring onnx_path = graph_viewer->ModelPath();
   openvino_ep::BackendManager::GetGlobalContext().onnx_model_path_name = std::string(onnx_path.begin(), onnx_path.end());
 #else
-  openvino_ep::BackendManager::GetGlobalContext().onnx_model_path_name = graph_viewer.ModelPath().ToPathString();
+  openvino_ep::BackendManager::GetGlobalContext().onnx_model_path_name = graph_viewer->ModelPath();
 #endif
-  openvino_ep::BackendManager::GetGlobalContext().onnx_opset_version = graph_viewer.DomainToVersionMap().at(kOnnxDomain);
+  openvino_ep::BackendManager::GetGlobalContext().onnx_opset_version = *graph_viewer->Opset("");
 
 #if defined(OPENVINO_2022_1)
-  openvino_ep::GetCapability obj(graph_viewer,
+  openvino_ep::GetCapability obj(*graph_viewer,
                                  openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2022_1");
   result = obj.Execute();
 #elif defined(OPENVINO_2022_2)
-  openvino_ep::GetCapability obj(graph_viewer,
+  openvino_ep::GetCapability obj(*graph_viewer,
                                  openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2022_2");
   result = obj.Execute();
 #elif defined(OPENVINO_2022_3)
-  openvino_ep::GetCapability obj(graph_viewer,
+  openvino_ep::GetCapability obj(*graph_viewer,
                                  openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2022_3");
   result = obj.Execute();
 #elif defined(OPENVINO_2023_0)
-  openvino_ep::GetCapability obj(graph_viewer,
+  openvino_ep::GetCapability obj(*graph_viewer,
                                  openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2023_0");
   result = obj.Execute();
 #elif defined(OPENVINO_2023_1)
-  openvino_ep::GetCapability obj(graph_viewer,
+  openvino_ep::GetCapability obj(*graph_viewer,
                                  openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2023_1");
   result = obj.Execute();
 #endif
@@ -141,17 +135,18 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
 }
 
 common::Status OpenVINOExecutionProvider::Compile(
-    const std::vector<FusedNodeAndGraph>& fused_nodes,
+    std::vector<std::unique_ptr<interface::GraphViewRef>>& partial_graph,
+    std::vector<std::unique_ptr<interface::NodeViewRef>>& fused_nodes,
     std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (const auto& fused_node_graph : fused_nodes) {
-    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
-    const Node& fused_node = fused_node_graph.fused_node;
+  for (size_t i = 0; i < partial_graph.size(); i++) {
+    const interface::GraphViewRef& graph_body_viewer = *partial_graph[i];
+    const interface::NodeViewRef& fused_node = *fused_nodes[i];
 
     NodeComputeInfo compute_info;
 
     openvino_ep::BackendManager::GetGlobalContext().use_api_2 = true;
 
-    std::shared_ptr<openvino_ep::BackendManager> backend_manager = std::make_shared<openvino_ep::BackendManager>(fused_node, graph_body_viewer, *GetLogger());
+    std::shared_ptr<openvino_ep::BackendManager> backend_manager = std::make_shared<openvino_ep::BackendManager>(fused_node, graph_body_viewer);
 
     compute_info.create_state_func =
         [backend_manager](ComputeContext* context, FunctionState* state) {

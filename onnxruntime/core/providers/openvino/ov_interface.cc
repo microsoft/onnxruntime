@@ -5,7 +5,7 @@
 #include <fstream>
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/providers/shared_library/provider_api.h"
+#include "core/common/common.h"
 
 #if defined(OV_API_20)
 using Exception = ov::Exception;

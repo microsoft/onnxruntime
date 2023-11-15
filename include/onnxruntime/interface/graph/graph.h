@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -85,6 +86,8 @@ class NodeViewRef {
  public:
   virtual size_t Index() const = 0;
 
+  virtual std::string_view Name() const = 0;
+
   /// <returns>Op computed by the node</returns>
   virtual std::string_view OpType() const = 0;
 
@@ -115,6 +118,8 @@ class NodeViewRef {
   /// </returns>
   virtual std::optional<std::vector<int64_t>> GetAttributeInts(std::string_view name) const = 0;
 
+  virtual std::optional<std::vector<float>> GetAttributeFloats(std::string_view name) const = 0;
+
   /// <summary>
   /// Convenience method. Returns whether node is of the specified op type and domain
   /// </summary>
@@ -140,6 +145,8 @@ class NodeViewRef {
     return GetAttributeInt(name).value_or(default_value);
   }
 
+  virtual void ForEachDef(std::function<void(const ValueInfoViewRef&, bool is_input)> func, bool include_missing_optional_defs) const = 0;
+
   /// <summary>
   /// Returns the schema since version for the op_type of this node. Value of -1 means it is not set.
   /// </summary>
@@ -154,6 +161,10 @@ class NodeViewRef {
 
 class GraphViewRef {
  public:
+  virtual std::string_view Name() const = 0;
+
+  virtual std::string_view ModelPath() const = 0;
+
   /// <param name="domain">Domain name to find in model opset_import</param>
   /// <returns>Opset of domain declared in model, or nullopt if domain is not present</returns>
   virtual std::optional<int64_t> Opset(std::string_view domain) const = 0;
@@ -169,6 +180,20 @@ class GraphViewRef {
   /// <returns>Tensor corresponding to the constant initializer or nullptr</returns>
   virtual std::unique_ptr<TensorRef> GetConstant(std::string_view name) const = 0;
 
+  virtual std::unique_ptr<NodeViewRef> GetNode(size_t node_index) const = 0;
+
+  virtual std::vector<std::string_view> GetInputsIncludingInitializers() const = 0;
+
+  virtual std::vector<std::string_view> GetInputs() const = 0;
+
+  virtual std::vector<std::string_view> GetOutputs() const = 0;
+
+  virtual bool HasInitializerName(std::string_view name) const = 0;
+
+  virtual bool IsConstantInitializer(std::string_view name, bool check_outer_scope) const = 0;
+
+  virtual std::vector<size_t> GetNodesInTopologicalOrder() const = 0;
+
   /// <summary>
   /// Returns a ValueInfo instance for querying info about the value with the given name. Behavior is undefined if
   /// the name does not refer to a value in the graph.
@@ -178,10 +203,12 @@ class GraphViewRef {
 
   virtual std::unique_ptr<NodeViewRef> GetNodeViewProducingOutput(std::string_view name) const = 0;
 
+  virtual std::vector<std::unique_ptr<NodeViewRef>> GetNodeViewsConsumingOutput(std::string_view name) const = 0;
+
   virtual bool IsSubGraph() const = 0;
 
 #ifdef INTREE_EP
-  virtual onnx::ModelProto ToModelProto() = 0;
+  virtual onnx::ModelProto ToModelProto() const = 0;
 #endif
   virtual ~GraphViewRef(){};
 };

@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#pragma once
-
 #ifdef _WIN32
 #define EXPORT_API __declspec(dllexport)
 #else

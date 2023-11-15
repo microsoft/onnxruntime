@@ -109,8 +109,8 @@ std::vector<std::unique_ptr<SubGraphDef>> CustomEp2::GetCapability(interface::Gr
         subgraph->nodes.push_back(node->Index());
         std::unique_ptr<SubGraphDef::MetaDef> meta_data = std::make_unique<SubGraphDef::MetaDef>();
         meta_data->name = "Identity_Celu";
-        for (std::string_view& input : producer->Inputs()) meta_data->inputs.emplace_back(std::string(input));
-        for (std::string_view& output : node->Outputs())   meta_data->outputs.emplace_back(std::string(output));
+        for (std::string_view input : producer->Inputs()) meta_data->inputs.emplace_back(std::string(input));
+        for (std::string_view output : node->Outputs())   meta_data->outputs.emplace_back(std::string(output));
         subgraph->SetMetaDef(std::move(meta_data));
         ret.emplace_back(std::move(subgraph));
       }

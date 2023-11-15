@@ -16,7 +16,6 @@ target_link_libraries(customep2 PUBLIC onnxruntime)
 ELSE()
 
 target_include_directories(customep2 PUBLIC "../../include/onnxruntime")
-#target_include_directories(customep PUBLIC "/bert_ort/leca/code/onnxruntime2/onnxruntime")
-target_link_libraries(customep2 PUBLIC "/home/leca/code/onnxruntime/build/Linux/Debug/libonnxruntime.so")
+target_link_libraries(customep2 PUBLIC "/bert_ort/leca/code/onnxruntime/build/Linux/Debug/libonnxruntime.so") # seems relative path does not work
 
 ENDIF()

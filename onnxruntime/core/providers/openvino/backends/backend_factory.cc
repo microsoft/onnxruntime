@@ -2,7 +2,6 @@
 // Licensed under the MIT License
 
 #include <memory>
-#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/contexts.h"
 #include "core/providers/openvino/ibackend.h"
 #include "basic_backend.h"

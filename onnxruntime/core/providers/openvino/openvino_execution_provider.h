@@ -7,6 +7,7 @@
 #include <map>
 #include <algorithm>
 #include <iostream>
+#include "interface/provider/provider.h"
 
 namespace onnxruntime {
 
@@ -68,8 +69,8 @@ struct OpenVINOExecutionProviderInfo {
                                          bool enable_dynamic_shapes)
       : enable_vpu_fast_compile_(enable_vpu_fast_compile), device_id_(dev_id), num_of_threads_(num_of_threads), cache_dir_(cache_dir), num_streams_(num_streams), context_(context), enable_opencl_throttling_(enable_opencl_throttling), enable_dynamic_shapes_(enable_dynamic_shapes) {
     if (dev_type == "") {
-      LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
-                         << "No runtime device selection option provided.";
+      //LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
+      //                   << "No runtime device selection option provided.";
 #if defined OPENVINO_CONFIG_CPU_FP32
       device_type_ = "CPU";
       precision_ = "FP32";
@@ -146,8 +147,8 @@ struct OpenVINOExecutionProviderInfo {
     } else {
       ORT_THROW("Invalid device string: " + dev_type);
     }
-    LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
-                       << "Choosing Device: " << device_type_ << " , Precision: " << precision_;
+    //LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
+    //                   << "Choosing Device: " << device_type_ << " , Precision: " << precision_;
   }
   OpenVINOExecutionProviderInfo() {
     OpenVINOExecutionProviderInfo("", false, "", 0, "", 1, NULL, false, false);
@@ -162,21 +163,14 @@ struct OpenVINOEPFunctionState {
 };
 
 // Logical device representation.
-class OpenVINOExecutionProvider : public IExecutionProvider {
+class OpenVINOExecutionProvider : public interface::ExecutionProvider {
  public:
   explicit OpenVINOExecutionProvider(const OpenVINOExecutionProviderInfo& info);
   ~OpenVINOExecutionProvider() = default;
 
-  std::vector<std::unique_ptr<ComputeCapability>>
-  GetCapability(const GraphViewer& graph_viewer,
-                const IKernelLookup& /*kernel_lookup*/) const override;
+  std::vector<std::unique_ptr<SubGraphDef>> GetCapability(interface::GraphViewRef*) override;
 
-  Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
-                 std::vector<NodeComputeInfo>& node_compute_funcs) override;
-
-  const void* GetExecutionHandle() const noexcept override {
-    return nullptr;
-  }
+  Status Compile(std::vector<std::unique_ptr<interface::GraphViewRef>>&, std::vector<std::unique_ptr<interface::NodeViewRef>>&, std::vector<NodeComputeInfo>&) override;
 };
 
 }  // namespace onnxruntime

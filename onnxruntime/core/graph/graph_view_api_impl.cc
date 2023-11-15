@@ -2,6 +2,8 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/graph/model.h"
+#include "core/graph/graph_proto_serializer.h"
 
 namespace onnxruntime {
 const onnx::TensorShapeProto* GetNodeArgShape(const NodeArg* node_arg) {
@@ -145,6 +147,43 @@ std::optional<std::vector<int64_t>> ApiNodeView::GetAttributeInts(std::string_vi
   return value;
 }
 
+std::optional<std::vector<float>> ApiNodeView::GetAttributeFloats(std::string_view name) const {
+  const onnx::AttributeProto* attr = graph_utils::GetNodeAttribute(node_, std::string(name));
+  if (attr == nullptr || attr->type() != onnx::AttributeProto_AttributeType_FLOATS) {
+    return std::nullopt;
+  }
+
+  std::vector<float> value;
+  const auto& floats = attr->floats();
+  value.reserve(floats.size());
+  for (float x : floats) {
+    value.push_back(x);
+  }
+
+  return value;
+}
+
+void ApiNodeView::ForEachDef(std::function<void(const interface::ValueInfoViewRef&, bool is_input)> func, bool include_missing_optional_defs) const {
+   for (const NodeArg* arg : node_.InputDefs()) {
+    if (include_missing_optional_defs || arg->Exists()) {
+      ApiValueInfoView value_view(*arg);
+      func(value_view, true);
+    }
+   }
+   for (const NodeArg* arg : node_.ImplicitInputDefs()) {
+    if (include_missing_optional_defs || arg->Exists()) {
+      ApiValueInfoView value_view(*arg);
+      func(value_view, true);
+    }
+   }
+   for (const NodeArg* arg : node_.OutputDefs()) {
+    if (include_missing_optional_defs || arg->Exists()) {
+      ApiValueInfoView value_view(*arg);
+      func(value_view, false);
+    }
+   }
+}
+
 int ApiNodeView::SinceVersion() const {
   return node_.SinceVersion();
 }
@@ -167,6 +206,15 @@ std::unique_ptr<interface::TensorRef> CreateApiTensor(const onnx::TensorProto* t
 
 
 // <ApiGraphView>
+std::string_view ApiGraphView::Name() const {
+  if (isg_) return isg_->GetMetaDef()->name;
+  return graph_.Name();
+}
+
+std::string_view ApiGraphView::ModelPath() const {
+  return graph_.ModelPath().ToPathString();
+}
+
 std::optional<int64_t> ApiGraphView::Opset(std::string_view domain) const {
   const auto& version_map = graph_.DomainToVersionMap();
   auto match = version_map.find(std::string(domain));
@@ -194,6 +242,61 @@ std::unique_ptr<interface::TensorRef> ApiGraphView::GetConstant(std::string_view
   return CreateApiTensor(graph_.GetConstantInitializer(std::string(name), /*check_outer_scope*/ true), graph_.ModelPath(), cpu_allocator_);
 }
 
+std::unique_ptr<interface::NodeViewRef> ApiGraphView::GetNode(size_t node_index) const {
+  GraphViewer graph_viewer(graph_, isg_);
+  return std::make_unique<ApiNodeView>(*graph_viewer.GetNode(node_index));
+}
+
+std::vector<std::string_view> ApiGraphView::GetInputsIncludingInitializers() const {
+  GraphViewer graph_viewer(graph_, isg_);
+  const std::vector<const NodeArg*>& inputs_including_initializers = graph_viewer.GetInputsIncludingInitializers();
+  std::vector<std::string_view> ret;
+  ret.reserve(inputs_including_initializers.size());
+  for (const NodeArg* input : inputs_including_initializers)
+    ret.push_back(input->Name());
+  return ret;
+}
+
+std::vector<std::string_view> ApiGraphView::GetInputs() const {
+  GraphViewer graph_viewer(graph_, isg_);
+  const std::vector<const NodeArg*>& node_args = graph_viewer.GetInputs();
+  std::vector<std::string_view> ret;
+  ret.reserve(node_args.size());
+  for (const auto* arg : node_args) {
+    ret.push_back(arg->Name());
+  }
+
+  return ret;
+}
+
+std::vector<std::string_view> ApiGraphView::GetOutputs() const {
+  GraphViewer graph_viewer(graph_, isg_);
+  const std::vector<const NodeArg*>& node_args = graph_viewer.GetOutputs();
+  std::vector<std::string_view> ret;
+  ret.reserve(node_args.size());
+  for (const auto* arg : node_args) {
+    ret.push_back(arg->Name());
+  }
+
+  return ret;
+}
+
+bool ApiGraphView::HasInitializerName(std::string_view name) const {
+  GraphViewer graph_viewer(graph_, isg_); // TODO: make GraphViewer member variable
+  return graph_viewer.GetAllInitializedTensors().count(std::string(name)) == 1;
+}
+
+bool ApiGraphView::IsConstantInitializer(std::string_view name, bool check_outer_scope) const {
+  GraphViewer graph_viewer(graph_, isg_);
+  return graph_viewer.IsConstantInitializer(std::string(name), check_outer_scope);
+}
+
+// TODO: return reference or value?
+std::vector<size_t> ApiGraphView::GetNodesInTopologicalOrder() const {
+  GraphViewer graph_viewer(graph_, isg_);
+  return graph_viewer.GetNodesInTopologicalOrder();
+}
+
 std::unique_ptr<interface::ValueInfoViewRef> ApiGraphView::GetValueInfoView(std::string_view name) const {
   const NodeArg* node_arg_ = graph_.GetNodeArg(std::string(name));
   ORT_ENFORCE(node_arg_ != nullptr, "No NodeArg found for name ", name);
@@ -206,18 +309,29 @@ std::unique_ptr<interface::NodeViewRef> ApiGraphView::GetNodeViewProducingOutput
   return std::make_unique<ApiNodeView>(*producer);
 }
 
+std::vector<std::unique_ptr<interface::NodeViewRef>> ApiGraphView::GetNodeViewsConsumingOutput(std::string_view name) const {
+  std::vector<const Node*> consumers = graph_.GetConsumerNodes(std::string(name));
+  std::vector<std::unique_ptr<interface::NodeViewRef>> ret;
+  ret.reserve(consumers.size());
+  for (const Node* node : consumers) {
+    ret.push_back(std::make_unique<ApiNodeView>(*node));
+  }
+  return ret;
+}
+
 #ifdef INTREE_EP
-onnx::ModelProto ApiGraphView::ToModelProto() {
-  Model model(graph_.Name(), true, ModelMetaData(), PathString(),
+onnx::ModelProto ApiGraphView::ToModelProto() const {
+  GraphViewer graph_viewer(graph_, isg_);
+  Model model(graph_viewer.Name(), true, ModelMetaData(), PathString(),
 #if defined(ORT_MINIMAL_BUILD)
     IOnnxRuntimeOpSchemaRegistryList(),
 #else
-    IOnnxRuntimeOpSchemaRegistryList({graph_.GetSchemaRegistry()}),
+    IOnnxRuntimeOpSchemaRegistryList({graph_viewer.GetSchemaRegistry()}),
 #endif
-    graph_.DomainToVersionMap(), std::vector<onnx::FunctionProto>(), graph_.GetGraph().GetLogger()
+    graph_viewer.DomainToVersionMap(), std::vector<onnx::FunctionProto>(), graph_viewer.GetGraph().GetLogger()
   );
   onnx::ModelProto ret = model.ToProto();
-  GraphViewerToProto(graph_, *ret.mutable_graph(), true, true);
+  GraphViewerToProto(graph_viewer, *ret.mutable_graph(), true, true);
   return ret;
 }
 #endif

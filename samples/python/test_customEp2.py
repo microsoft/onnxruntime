@@ -35,7 +35,7 @@ print(y)
 model_path = './identity.onnx'
 shared_lib_path = '/onnxruntime/samples/customEP2/build/Debug/customep2.dll'
 if platform == 'linux' or platform == 'linux2':
-    shared_lib_path = '/home/leca/code/onnxruntime/samples/customEP2/build/libcustomep2.so'
+    shared_lib_path = '../customEP2/build/libcustomep2.so'
 
 onnxruntime.load_execution_provider_info('customEp2', shared_lib_path)
 _ = input(os.getpid())
