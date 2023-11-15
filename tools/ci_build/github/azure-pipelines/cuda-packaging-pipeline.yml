@@ -118,6 +118,15 @@ stages:
 
 # Packaging
 - template: stages/cuda-packaging-stage.yml
+  variables:
+    - name: docker_base_image
+      value: ${{ variables.docker_base_image }}
+    - name: linux_trt_version
+      value: ${{ variables.linux_trt_version }}
+    - name: win_trt_home
+      value: ${{ variables.win_trt_home }}
+    - name: win_cuda_home
+      value: ${{ variables.win_cuda_home }}
   parameters:
     RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
     UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
@@ -130,11 +139,14 @@ stages:
 # Testing
 ## Windows GPU Testing
 - template: stages/cuda-testing-stage.yml
+  variables:
+    - name: docker_base_image
+      value: ${{ variables.docker_base_image }}
+    - name: linux_trt_version
+      value: ${{ variables.linux_trt_version }}
   parameters:
     CudaVersion: ${{ parameters.CudaVersion }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
-    docker_base_image: ${{ variables.docker_base_image }}
-    linux_trt_version: ${{ variables.linux_trt_version }}
 ## Win/Linux GPU Combined Publishing
 #- template: templates/publish-nuget.yml
