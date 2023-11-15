@@ -68,7 +68,7 @@ export class ProgramManager {
           this.backend.querySetCount * 8, GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST);
 
       this.backend.endComputePass();
-      this.backend.getCommandEncoder().resolveQuerySet(this.backend.querySet, 0, 2, this.backend.queryData.buffer, 0);
+      this.backend.getCommandEncoder().resolveQuerySet(this.backend.querySet!, 0, 2, this.backend.queryData.buffer, 0);
       this.backend.getCommandEncoder().copyBufferToBuffer(
           this.backend.queryData.buffer, 0, syncData.buffer, 0, this.backend.querySetCount * 8);
       this.backend.flush();
@@ -77,7 +77,7 @@ export class ProgramManager {
       const kernelInfo = this.backend.kernels.get(kernelId)!;
       const kernelName = `[${kernelInfo[0]}] ${kernelInfo[1]}`;
 
-      syncData.buffer.mapAsync(GPUMapMode.READ).then(() => {
+      void syncData.buffer.mapAsync(GPUMapMode.READ).then(() => {
         const mappedData = new BigUint64Array(syncData.buffer.getMappedRange());
         const startTimeU64 = mappedData[0];
         const endTimeU64 = mappedData[1];
@@ -127,7 +127,7 @@ export class ProgramManager {
     const userCode = programInfo.getShaderSource(shaderHelper);
     const code = `${extensions.join('\n')}\n${shaderHelper.additionalImplementations}\n${userCode}`;
     const shaderModule = device.createShaderModule({code, label: programInfo.name});
-    LOG_DEBUG('verbose', () => `[WebGPU] shader code: ${code}`);
+    LOG_DEBUG('verbose', () => `[WebGPU] ${programInfo.name} shader code: ${code}`);
 
     const computePipeline = device.createComputePipeline(
         {compute: {module: shaderModule, entryPoint: 'main'}, layout: 'auto', label: programInfo.name});

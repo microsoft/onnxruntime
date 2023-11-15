@@ -791,13 +791,16 @@ IMPLEMENT_GRADIENT_BUILDER(GetGatherGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetPadAndUnflattenGradient) {
   return std::vector<NodeDef>{
-      NodeDef(OpDef("Reshape"),
-              {GO(0), O(1)},
-              {IA("GO_reshaped")}),
-      NodeDef(OpDef{"Gather", kOnnxDomain, 1},
-              {IA("GO_reshaped"), I(1)},
-              {GI(0)},
-              SrcNodeAttributes())};
+      NodeDef(OpDef{"FlattenAndUnpad", kMSDomain, 1},
+              {GO(0), I(1)},
+              {GI(0), IA("Unflatten_dims")})};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetFlattenAndUnpadGradient) {
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"PadAndUnflatten", kMSDomain, 1},
+              {GO(0), I(1), O(1)},
+              {GI(0)})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetShrunkenGatherGradient) {
