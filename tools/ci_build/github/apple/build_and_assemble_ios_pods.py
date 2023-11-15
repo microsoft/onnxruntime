@@ -32,7 +32,7 @@ def parse_args():
     parser.add_argument(
         "--build-dir",
         type=pathlib.Path,
-        default=REPO_DIR / "build" / "ios_framework",
+        default=REPO_DIR / "build" / "apple_framework",
         help="The build directory. This will contain the iOS framework build output.",
     )
     parser.add_argument(

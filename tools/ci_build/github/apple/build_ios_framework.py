@@ -171,7 +171,7 @@ def parse_args():
     parser.add_argument(
         "--build_dir",
         type=pathlib.Path,
-        default=os.path.join(REPO_DIR, "build/iOS_framework"),
+        default=os.path.join(REPO_DIR, "build/apple_framework"),
         help="Provide the root directory for build output",
     )
 
