@@ -98,7 +98,7 @@ def get_config() -> str:
 
     config_file = os.getenv("ORTMODULE_TRITON_CONFIG_FILE", "")
     if config_file and os.path.exists(config_file):
-        with open(config_file, "r", encoding="UTF-8") as f:
+        with open(config_file, encoding="UTF-8") as f:
             return f.read()
 
     config = {"ops": get_supported_ops(), "initializer": "scalar", "min_nodes": 2}
