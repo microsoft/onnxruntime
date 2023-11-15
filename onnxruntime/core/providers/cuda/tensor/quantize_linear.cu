@@ -38,7 +38,9 @@ struct RoundStd<float, uint8_t> {
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
+#if CUDA_VERSION < 11080
+#error Float 8 types are defined with CUDA>=11.8. Set flag DISABLE_FLOAT8_TYPES to disable them.
+#endif
 
 // Conversion from float 8 to float or float16 does not need zero_point argument as defined by onnx standard.
 
@@ -101,8 +103,6 @@ struct RoundSat<half, Float8E5M2> {
     return Float8E5M2(__half2float(v / scale), saturate);
   }
 };
-
-#endif
 
 #endif
 

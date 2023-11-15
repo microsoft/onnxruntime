@@ -23,7 +23,9 @@ struct CastNoSat;
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
+#if CUDA_VERSION < 11080
+#error Float 8 types are defined with CUDA>=11.8. Set flag DISABLE_FLOAT8_TYPES to disable them.
+#endif
 
 template <>
 struct CastStd<float, Float8E4M3FN> {
@@ -138,8 +140,6 @@ struct CastSat<Float8E5M2, half> {
     return Float8E5M2(__half2float(v), saturate);
   }
 };
-
-#endif
 
 #endif
 

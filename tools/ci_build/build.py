@@ -1097,7 +1097,7 @@ def generate_build_tree(
             if version_to_tuple(args.cuda_version) < (11, 8):
                 raise BuildError(
                     f"Float 8 types require CUDA>=11.8. They must be disabled on CUDA=={args.cuda_version}. "
-                    f"See option disable_types."
+                    f"Add '--disable_types float8' to your command line. See option disable_types."
                 )
     if args.use_rocm:
         cmake_args.append("-Donnxruntime_ROCM_HOME=" + rocm_home)
