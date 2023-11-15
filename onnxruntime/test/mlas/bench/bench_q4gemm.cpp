@@ -4,7 +4,6 @@
 #include "mlas_q4.h"
 #include "bench_util.h"
 #include "core/util/thread_utils.h"
-
 #include <stdexcept>
 #include <numeric>
 
@@ -52,6 +51,7 @@ void Q4GEMM(benchmark::State& state, MLAS_BLK_QUANT_TYPE qtype) {
   }
 }
 
+#ifdef MLAS_JBLAS
 void Q4GEMM_Jblas(benchmark::State& state, int block_size, bool is_asym, MLAS_COMPUTE_TYPE cmp_type) {
   if (state.range(0) <= 0) throw std::invalid_argument("M must greater than 0!");
   if (state.range(1) <= 0) throw std::invalid_argument("N must greater than 0!");
@@ -90,13 +90,14 @@ void Q4GEMM_Jblas(benchmark::State& state, int block_size, bool is_asym, MLAS_CO
   params1.ldc = N;
   params1.B = B1_packed.data();
   params1.OutputProcessor = nullptr;
-  std::vector<int8_t> workspace(size_t(M) * K * 4);
+  std::vector<int8_t> workspace(size_t(M <= 32 ? 32 : M) * K * 4);
   MlasNBitsGemmBatch(M, N, K, 1, &params1, workspace.data(), tp.get());
 
   for (auto _ : state) {
     MlasNBitsGemmBatch(M, N, K, 1, &params1, workspace.data(), tp.get());
   }
 }
+#endif
 
 void Q8Q4GEMM(benchmark::State& state, MLAS_BLK_QUANT_TYPE qtype) {
   if (state.range(0) <= 0) throw std::invalid_argument("M must greater than 0!");

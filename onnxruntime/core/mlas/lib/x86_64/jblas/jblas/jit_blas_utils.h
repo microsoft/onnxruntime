@@ -323,12 +323,10 @@ inline constexpr const char* dtype_str() {
   return dtype2str(DT);
 }
 
-
 inline constexpr size_t jblas_dtype_size(const JBLAS_DTYPE t) {
   auto bits = (uint32_t)t & 0xff;
   return bits >> 3;  // bits to bytes
 }
-
 
 #ifndef _WIN32
 static void request_perm_xtile_data() {
@@ -340,8 +338,9 @@ static void request_perm_xtile_data() {
 
   rc = syscall(SYS_arch_prctl, ARCH_GET_XCOMP_PERM, &bitmask);
   if (rc) fatal_error("prctl(ARCH_GET_XCOMP_PERM) error: %ld", rc);
-
+#ifndef NDEBUG
   if (bitmask & XFEATURE_MASK_XTILE) printf("ARCH_REQ_XCOMP_PERM XTILE_DATA successful.\n");
+#endif
 }
 #else
 static void request_perm_xtile_data() {}

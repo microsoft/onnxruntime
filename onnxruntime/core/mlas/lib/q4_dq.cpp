@@ -1016,6 +1016,7 @@ JblasQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, MLAS_COMPU
     switch (CompType) {
         case CompInt8:
             if (_cd->AMX_INT8() && BlkSize % tAMX_INT8_SS::KTILE == 0) {
+                utils::request_perm_xtile_data();//TODO benchmark won't configure AMX automatically
                 return JblasQ4BuSize<tLauncher_Int8_S4_F32F32<tAMX_INT8_SS>>(int(BlkSize), N, K,
                                                                              isAsym);
             }
@@ -1086,19 +1087,19 @@ JblasQ4GemmPackB(void* PackedBuf,
     GetCPUDevice();
     switch (CompType) {
         case CompInt8:
-            if (_cd->AMX_INT8()) {
+            if (_cd->AMX_INT8() && BlkSize % tAMX_INT8_SS::KTILE == 0) {
                 JblaNBitsGemmPackB<tLauncher_Int8_S4_F32F32<tAMX_INT8_SS>>(
                     PackedBuf, int(BlkSize), QData, Scale, Zp, int(N), int(K), isAsym, lastCall,
                     int(ldb), ThreadPool);
                 return true;
             }
-            if (_cd->AVX512_VNNI()) {
+            if (_cd->AVX512_VNNI() && BlkSize % tAVX512_VNNI::KTILE == 0) {
                 JblaNBitsGemmPackB<tLauncher_Int8_S4_F32F32<tAVX512_VNNI>>(
                     PackedBuf, int(BlkSize), QData, Scale, Zp, int(N), int(K), isAsym, lastCall,
                     int(ldb), ThreadPool);
                 return true;
             }
-            if (_cd->AVX_VNNI()) {
+            if (_cd->AVX_VNNI() && BlkSize % tAVX_VNNI::KTILE == 0) {
                 JblaNBitsGemmPackB<tLauncher_Int8_S4_F32F32<tAVX_VNNI>>(
                     PackedBuf, int(BlkSize), QData, Scale, Zp, int(N), int(K), isAsym, lastCall,
                     int(ldb), ThreadPool);
@@ -1106,13 +1107,13 @@ JblasQ4GemmPackB(void* PackedBuf,
             }
             break;
         case CompFp32:
-            if (_cd->AVX512F()) {
+            if (_cd->AVX512F() && BlkSize % tAVX512F::KTILE == 0) {
                 JblaNBitsGemmPackB<tLauncher_Fp32_S4_F32F32<tAVX512F>>(
                     PackedBuf, int(BlkSize), QData, Scale, Zp, int(N), int(K), isAsym, lastCall,
                     int(ldb), ThreadPool);
                 return true;
             }
-            if (_cd->AVX2()) {
+            if (_cd->AVX2() && BlkSize % tAVX2::KTILE == 0) {
                 JblaNBitsGemmPackB<tLauncher_Fp32_S4_F32F32<tAVX2>>(
                     PackedBuf, int(BlkSize), QData, Scale, Zp, int(N), int(K), isAsym, lastCall,
                     int(ldb), ThreadPool);
