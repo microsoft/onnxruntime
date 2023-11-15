@@ -24,14 +24,14 @@ import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
 import {ProgramInfo} from '../../types';
 import {ConvTransposeAttributes} from '../conv-transpose';
+import {getActivationSnippet} from '../fuse-utils';
 
-import {Activation, activationFnSnippet, biasActivationSnippet, typeSnippet} from './activation_util';
+import {biasSnippet, typeSnippet} from './activation_util';
 import {utilFunctions} from './conv_util';
 import {makeMatMulPackedSource, makeMatMulPackedVec4Source} from './matmul_packed_webgpu';
 
 const conv2dTransposeCommonSnippet =
-    (isChannelsLast: boolean, addBias = false, activation?: Activation, hasPreluActivationWeights = false,
-     innerElementSize = 4): string => {
+    (isChannelsLast: boolean, addBias = false, attributes: ConvTransposeAttributes, innerElementSize = 4): string => {
       const type = typeSnippet(innerElementSize, 'f32');
       const getWSnippet = (innerElementSize: number) => {
         switch (innerElementSize) {
@@ -129,9 +129,9 @@ const conv2dTransposeCommonSnippet =
       return ${type}(0.0);
       `;
 
-
+      const {activationFunction, applyActivation} = getActivationSnippet(attributes, type);
       const userCode = `
-  ${activationFnSnippet(activation, hasPreluActivationWeights, innerElementSize === 4, 4)}
+      ${activationFunction}
   fn mm_readA(batch: i32, row : i32, colIn : i32) -> ${type} {
     ${isChannelsLast ? sampleA : sampleW}
   }
@@ -146,7 +146,8 @@ const conv2dTransposeCommonSnippet =
       var value = valueInput;
       let outWidth = ${isChannelsLast ? 'outShape[2]' : 'outShape[3]'};
       ${coordResSnippet}
-      ${biasActivationSnippet(addBias, activation)}
+      ${biasSnippet(addBias)}
+      ${applyActivation}
       result[getIndexFromCoords4D(coords, outShape)/${innerElementSize}] = value;
     }
   }`;
@@ -236,7 +237,7 @@ export const createConv2DTransposeMatMulProgramInfo =
         const dimBOuter : i32 = ${dimBOuter};
         const dimInner : i32 = ${dimInner};
         ${declareFunctions}
-        ${conv2dTransposeCommonSnippet(isChannelsLast, hasBias, undefined, false, innerElementSize)}
+        ${conv2dTransposeCommonSnippet(isChannelsLast, hasBias, attributes, innerElementSize)}
         ${
             isVec4 ? makeMatMulPackedVec4Source(
                          elementsPerThread, workGroupSize, 'f32', undefined, !isChannelsLast, tileInner) :

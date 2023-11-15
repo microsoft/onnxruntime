@@ -526,7 +526,21 @@ if(NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
   find_package(Iconv REQUIRED)
   set(ICONV_LIB Iconv::Iconv)
 endif()
+
 find_package(Patch)
+if (WIN32 AND NOT Patch_FOUND)
+    # work around CI machines missing patch from the git install by falling back to the binary in this repo.
+    # replicate what happens in https://github.com/Kitware/CMake/blob/master/Modules/FindPatch.cmake but without
+    # the hardcoded suffixes in the path to the patch binary.
+    find_program(Patch_EXECUTABLE NAMES patch PATHS ${PROJECT_SOURCE_DIR}/external/git.Win32.2.41.03.patch)
+    if(Patch_EXECUTABLE)
+      set(Patch_FOUND 1)
+      if (NOT TARGET Patch::patch)
+        add_executable(Patch::patch IMPORTED)
+        set_property(TARGET Patch::patch PROPERTY IMPORTED_LOCATION ${Patch_EXECUTABLE})
+      endif()
+    endif()
+endif()
 if(Patch_FOUND)
   message("Patch found: ${Patch_EXECUTABLE}")
 endif()
@@ -1282,14 +1296,6 @@ if (onnxruntime_USE_OPENVINO)
     add_definitions(-DOPENVINO_CONFIG_CPU_FP16=1)
   endif()
 
-  if (onnxruntime_USE_OPENVINO_VPUX_FP16)
-    add_definitions(-DOPENVINO_CONFIG_VPUX_FP16=1)
-  endif()
-
-  if (onnxruntime_USE_OPENVINO_VPUX_U8)
-    add_definitions(-DOPENVINO_CONFIG_VPUX_U8=1)
-  endif()
-
   if (onnxruntime_USE_OPENVINO_GPU_FP32_NP)
     add_definitions(-DOPENVINO_CONFIG_GPU_FP32=1)
     add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
@@ -1307,16 +1313,6 @@ if (onnxruntime_USE_OPENVINO)
 
   if (onnxruntime_USE_OPENVINO_CPU_FP16_NP)
     add_definitions(-DOPENVINO_CONFIG_CPU_FP16=1)
-    add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
-  endif()
-
-  if (onnxruntime_USE_OPENVINO_VPUX_FP32_NP)
-    add_definitions(-DOPENVINO_CONFIG_VPUX_FP32=1)
-    add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
-  endif()
-
-  if (onnxruntime_USE_OPENVINO_VPUX_FP16_NP)
-    add_definitions(-DOPENVINO_CONFIG_VPUX_FP16=1)
     add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
   endif()
 

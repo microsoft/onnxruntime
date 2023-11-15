@@ -25,15 +25,16 @@ import {ShapeUtil} from '../../../util';
 import {ProgramInfo} from '../../types';
 import {tensorTypeToWsglStorageType} from '../common';
 import {ConvAttributes} from '../conv';
+import {getActivationSnippet} from '../fuse-utils';
 
-import {Activation, activationFnSnippet, biasActivationSnippet, typeSnippet} from './activation_util';
+import {biasSnippet, typeSnippet} from './activation_util';
 import {utilFunctions} from './conv_util';
 import {makeMatMulPackedSource, makeMatMulPackedVec4Source} from './matmul_packed_webgpu';
 
 const conv2dCommonSnippet =
     (isChannelsLast: boolean, fitAOuter: boolean, fitBOuter: boolean, fitInner: boolean, addBias = false,
-     activation?: Activation, hasPreluActivationWeights = false, innerElementSizeX = 4, innerElementSizeW = 4,
-     innerElementSize = 4, dataType = 'f32'): string => {
+     attributes: ConvAttributes, innerElementSizeX = 4, innerElementSizeW = 4, innerElementSize = 4,
+     dataType = 'f32'): string => {
       const getXSnippet = (innerElementSize: number) => {
         switch (innerElementSize) {
           case 1:
@@ -129,8 +130,9 @@ const conv2dCommonSnippet =
           isChannelsLast ? typeSnippet(innerElementSizeX, dataType) : typeSnippet(innerElementSizeW, dataType);
       const bType =
           isChannelsLast ? typeSnippet(innerElementSizeW, dataType) : typeSnippet(innerElementSizeX, dataType);
+      const {activationFunction, applyActivation} = getActivationSnippet(attributes, resType);
       const userCode = `
-    ${activationFnSnippet(activation, hasPreluActivationWeights, innerElementSize === 4, 4)}
+    ${activationFunction}
     fn mm_readA(batch: i32, row : i32, colIn : i32) -> ${aType} {
       ${isChannelsLast ? sampleX : sampleW}
     }
@@ -146,7 +148,8 @@ const conv2dCommonSnippet =
       var value = valueIn;
       let outWidth = ${isChannelsLast ? 'outShape[2]' : 'outShape[3]'};
       ${coordResSnippet}
-      ${biasActivationSnippet(addBias, activation)}
+      ${biasSnippet(addBias)}
+      ${applyActivation}
       setOutputAtCoords(coords[0], coords[1], coords[2], coords[3], value);
       }
     }`;
@@ -242,8 +245,8 @@ export const createConv2DMatMulProgramInfo =
         ${declareFunctions}
         ${
             conv2dCommonSnippet(
-                isChannelsLast, fitAOuter, fitBOuter, fitInner, hasBias, undefined, false, elementsSize[0],
-                elementsSize[1], elementsSize[2], t)}
+                isChannelsLast, fitAOuter, fitBOuter, fitInner, hasBias, attributes, elementsSize[0], elementsSize[1],
+                elementsSize[2], t)}
             ${
             isVec4 ?
                 makeMatMulPackedVec4Source(elementsPerThread, workGroupSize, t, undefined, !isChannelsLast, tileInner) :
