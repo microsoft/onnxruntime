@@ -55,7 +55,7 @@ stages:
         --build-arg BUILD_UID=$( id -u )
         --build-arg BASEIMAGE=${{ variables.docker_base_image }}
         "
-        Repository: onnxruntimecuda$(CUDA_VERSION)build
+        Repository: onnxruntimecuda$(CUDA_VERSION_MAJOR)build
 
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
       workingDirectory: $(Build.SourcesDirectory)
