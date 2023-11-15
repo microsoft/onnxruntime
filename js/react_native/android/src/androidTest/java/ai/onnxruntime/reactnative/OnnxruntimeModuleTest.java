@@ -274,7 +274,7 @@ public class OnnxruntimeModuleTest {
 
       JavaOnlyMap options = new JavaOnlyMap();
       try (InputStream modelStream =
-               reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float)){
+               reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float)) {
         byte[] modelBuffer = getInputModelBuffer(modelStream);
         ReadableMap loadMap = ortModule.loadModel(modelBuffer, options);
         sessionKey = loadMap.getString("key");
