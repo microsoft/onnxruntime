@@ -21,7 +21,12 @@ parameters:
     Extra parameters to pass to build.py. Don't put newlines in here.
   type: string
   default: ''
-
+- name: CudaVersion
+  type: string
+  default: '11.8'
+  values:
+    - 11.8
+    - 12.2
 jobs:
 - job: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}
   timeoutInMinutes: 240
