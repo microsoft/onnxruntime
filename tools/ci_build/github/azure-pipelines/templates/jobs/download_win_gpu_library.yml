@@ -14,6 +14,7 @@ parameters:
 
 steps:
 
+
   - ${{ if eq(parameters.DownloadCUDA, true) }}:
     - powershell: |
         azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.CudaVersion }} $(Agent.TempDirectory)

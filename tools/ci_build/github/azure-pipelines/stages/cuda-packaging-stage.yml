@@ -235,7 +235,9 @@ stages:
       workspace:
         clean: all
       pool: 'onnxruntime-Win2022-GPU-T4'
-
+      variables:
+        CUDA_MODULE_LOADINGL: 'LAZY'
+        GRADLE_OPTS: '-Dorg.gradle.daemon=false'
       steps:
         - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
         - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
