@@ -141,6 +141,7 @@ void MlasJblasQ4Test(int64_t M, int64_t N, int64_t K, int block_size, bool is_as
       .RunWithConfig();
 }
 
+#ifdef MLAS_JBLAS
 TEST(MatMulNBits, MlasJblasQ4Fp32G128Sym) {
   MlasJblasQ4Test(2, 4096, 4096, 128, false, CompFp32);
 }
@@ -164,6 +165,7 @@ TEST(MatMulNBits, MlasJblasQ4Int8G1024) {
 TEST(MatMulNBits, MlasJblasQ4Int8GPerN) {
   MlasJblasQ4Test(2, 4096, 4096, 4096, false, CompInt8);
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

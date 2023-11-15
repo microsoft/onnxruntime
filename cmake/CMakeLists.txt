@@ -1167,6 +1167,10 @@ if (onnxruntime_USE_DNNL)
   add_compile_definitions(DNNL_OPENMP)
 endif()
 
+if (onnxruntime_USE_JBLAS)
+  add_compile_definitions(MLAS_JBLAS)
+endif()
+
 # TVM EP
 if (onnxruntime_USE_TVM)
   if (NOT TARGET tvm)
