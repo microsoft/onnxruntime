@@ -16,7 +16,11 @@ esac
 done
 
 mkdir -p "${HOME}/.onnx"
-DOCKER_SCRIPT_OPTIONS="-d ${DEVICE} -c ${BUILD_CONFIG} -x ${BUILD_EXTR_PAR}"
+DOCKER_SCRIPT_OPTIONS="-d ${DEVICE} -c ${BUILD_CONFIG}"
+
+if [ "${BUILD_EXTR_PAR}" != "" ] ; then
+    DOCKER_SCRIPT_OPTIONS+=" -x ${BUILD_EXTR_PAR}"
+fi
 
 if [ "${CUDA_VERSION}" != "" ] ; then
     DOCKER_SCRIPT_OPTIONS+=" -u ${CUDA_VERSION}"
@@ -31,8 +35,8 @@ docker run --rm \
     -w /onnxruntime_src \
     -e NIGHTLY_BUILD \
     -e BUILD_BUILDNUMBER \
-    "${ADDITIONAL_DOCKER_PARAMETER}" \
-    "${DOCKER_IMAGE} tools/ci_build/github/linux/build_linux_python_package.sh ${DOCKER_SCRIPT_OPTIONS}"
+    $ADDITIONAL_DOCKER_PARAMETER \
+    $DOCKER_IMAGE tools/ci_build/github/linux/build_linux_python_package.sh $DOCKER_SCRIPT_OPTIONS
 
 sudo rm -rf "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/onnxruntime" "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/pybind11" \
     "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/models" "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/_deps" \
