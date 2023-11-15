@@ -83,7 +83,7 @@ For example:
 
 If you do not provide prompt, the script will generate different image sizes for a list of prompts for demonstration.
 
-## Optimize Stable Diffusion ONNX models for Huggingface Diffusers or Optimum
+## Optimize Stable Diffusion ONNX models for Hugging Face Diffusers or Optimum
 
 If you are able to run the above demo with docker, you can use the docker and skip the following setup and fast forward to [Export ONNX pipeline](#export-onnx-pipeline).
 
