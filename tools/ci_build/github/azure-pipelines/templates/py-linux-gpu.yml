@@ -49,7 +49,7 @@ jobs:
       ${{ if ne(parameters.extra_build_arg, '') }}:
         value: -x ${{ parameters.extra_build_arg }}
       ${{ if eq(parameters.extra_build_arg, '') }}:
-        vale: ''
+        value: ''
   steps:
     - checkout: self
       clean: true
