@@ -13,7 +13,8 @@ parameters:
   type: string
 
 - name: ENV_SETUP_SCRIPT
-  type: string
+  type:
+  default: ''
 
 - name: BUILD_PY_PARAMETERS
   displayName: >
@@ -26,9 +27,14 @@ jobs:
   timeoutInMinutes: 240
   workspace:
     clean: all
-  pool: ${{ parameters.MACHINE_POOL }}
+  pool:
+    name: ${{ parameters.MACHINE_POOL }}
+    demands:
+      - ImageVersionOverride -equals 1.0.367516
   variables:
+    GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
+    CUDA_MODULE_LOADING: 'LAZY'
   steps:
       - checkout: self
         clean: true
@@ -61,11 +67,20 @@ jobs:
 
       - template: download-deps.yml
 
-      - template: jobs/set-winenv.yml
-        parameters:
-          EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
-          DownloadCUDA: true
-
+      - ${{ if ne(parameters.ENV_SETUP_SCRIPT, '') }}:
+        - template: jobs/set-winenv.yml
+          parameters:
+            EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
+            DownloadCUDA: true
+      - ${{ if eq(parameters.ENV_SETUP_SCRIPT, '') }}:
+        - template: jobs/download_win_gpu_library.yml
+          parameters:
+            CudaVersion: ${{ parameters.CudaVersion }}
+            ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
+              DownloadCUDA: true
+            ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
+              DownloadCUDA: true
+            DownloadTRT: true
       - task: PythonScript@0
         displayName: 'Update deps.txt'
         inputs:

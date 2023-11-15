@@ -60,36 +60,32 @@ stages:
       value: $(Agent.TempDirectory)\v12.2
   jobs:
   - ${{ if eq(parameters.enable_windows_gpu, true) }}:
-      - template: py-win-gpu-cuda12.yml
+      - template: py-win-gpu.yml
         parameters:
           MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
           PYTHON_VERSION: '3.8'
           EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home=${{ variables.win_trt_home }} --cuda_home=${{ variables.win_cuda_home }}  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
-          ENV_SETUP_SCRIPT: setup_env_gpu.bat
           EP_NAME: gpu
 
-      - template: py-win-gpu-cuda12.yml
+      - template: py-win-gpu.yml
         parameters:
           MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
           PYTHON_VERSION: '3.9'
           EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home=${{ variables.win_trt_home }} --cuda_home=${{ variables.win_cuda_home }}  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
-          ENV_SETUP_SCRIPT: setup_env_gpu.bat
           EP_NAME: gpu
 
-      - template: py-win-gpu-cuda12.yml
+      - template: py-win-gpu.yml
         parameters:
           MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
           PYTHON_VERSION: '3.10'
           EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home=${{ variables.win_trt_home }} --cuda_home=${{ variables.win_cuda_home }}  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
-          ENV_SETUP_SCRIPT: setup_env_gpu.bat
           EP_NAME: gpu
 
-      - template: py-win-gpu-cuda12.yml
+      - template: py-win-gpu.yml
         parameters:
           MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
           PYTHON_VERSION: '3.11'
           EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home=${{ variables.win_trt_home }} --cuda_home=${{ variables.win_cuda_home }}  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
-          ENV_SETUP_SCRIPT: setup_env_gpu.bat
           EP_NAME: gpu
 
 
