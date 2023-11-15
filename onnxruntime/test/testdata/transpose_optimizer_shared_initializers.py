@@ -52,7 +52,8 @@ def create_model(broadcast_weights: bool):
     onnx.checker.check_model(model, full_check=True)
     return model
 
-def create_model_with_Where():
+
+def create_model_with_Where():  # noqa 'Where' is the operator name
     """
     Create a model to validate the logic to cancel out the Transpose -> Squeeze -> DQ between an updated shared
     initializer and other usage. We need to use Where as we require more than 2 inputs.

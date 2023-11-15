@@ -23,10 +23,6 @@ static constexpr bool IsOnnxDomain(std::string_view domain) {
   return (domain == onnxruntime::kOnnxDomain) || (domain == onnxruntime::kOnnxDomainAlias);
 }
 
-static constexpr bool IsMSDomain(std::string_view domain) {
-  return domain == onnxruntime::kMSDomain;
-}
-
 static std::vector<int64_t> DataInt64(api::TensorRef& tensor) {
   std::vector<uint8_t> raw_data = tensor.Data();
   int64_t* data_int = reinterpret_cast<int64_t*>(raw_data.data());
