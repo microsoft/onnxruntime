@@ -405,8 +405,9 @@ class ModelProtoWithShapeInfo:
         self._tmp_model_path = None
         if len(model.graph.node) > 0 and len(self.model_with_shape_info.graph.node) == 0:
             self._tmp_model_path = pathlib.Path(model_path).with_suffix(".temp_with_shapeinf.onnx")
-            onnx.shape_inference.infer_shapes_path(str(model_path), str(self._tmp_model_path))
+            onnx.shape_inference.infer_shapes_path(str(model_path), str(self._tmp_model_path), strict_mode=True)
             self.model_with_shape_info = onnx.load(str(self._tmp_model_path))
 
     def __del__(self):
-        self._tmp_model_path.unlink(missing_ok=True)
+        if self._tmp_model_path:
+            self._tmp_model_path.unlink(missing_ok=True)
