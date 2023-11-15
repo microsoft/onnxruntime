@@ -73,7 +73,7 @@ stages:
         condition: 'succeeded'
     - template: ../templates/clean-agent-build-directory-step.yml
 # Linux CUDA with TensorRT Packaging
-- template: ../../templates/linux-gpu-tensorrt-packaging-pipeline.yml
+- template: ../templates/linux-gpu-tensorrt-packaging-pipeline.yml
   parameters:
     artifactName: 'onnxruntime-linux-x64-tensorrt-$(OnnxRuntimeVersion)'
     artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt'
