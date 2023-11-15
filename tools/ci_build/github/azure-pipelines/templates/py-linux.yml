@@ -46,9 +46,17 @@ jobs:
   pool: ${{ parameters.machine_pool }}
   variables:
     # The build machine pool doesn't have dotnet, so it can't run CG.
-    skipComponentGovernanceDetection: true
-    ORT_CACHE_DIR: $(Agent.TempDirectory)/ort_ccache
-    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+    - name: skipComponentGovernanceDetection
+      value: true
+    - name: ORT_CACHE_DIR
+      value: $(Agent.TempDirectory)/ort_ccache
+    - name: TODAY
+      value: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+    - name: extra_build_args
+      ${{ if ne(parameters.extra_build_arg, '') }}:
+        value: -x ${{ parameters.extra_build_arg }}
+      ${{ if eq(parameters.extra_build_arg, '') }}:
+        vale: ''
   steps:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
@@ -82,7 +90,7 @@ jobs:
             inputs:
               targetType: filePath
               filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
-              arguments: -i onnxruntimecpubuildpython${{ parameters.arch }} -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} -x "${{ parameters.extra_build_arg }}"
+              arguments: -i onnxruntimecpubuildpython${{ parameters.arch }} -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} $(extra_build_args)
             ${{ if eq(parameters.with_cache, 'true') }}:
               env:
                 ADDITIONAL_DOCKER_PARAMETER: "--volume $(ORT_CACHE_DIR):/cache -e CCACHE_DIR=/cache -e ORT_BUILD_WITH_CACHE=1"
