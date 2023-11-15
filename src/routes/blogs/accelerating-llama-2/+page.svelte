@@ -142,7 +142,7 @@
 		</p>
         
         <figure class="px-10 pt-4">
-			<center> <img src={figure4} alt="70B Llama2 Model Throughput" width="65%" height="65%"/> </center>
+			<img src={figure4} alt="70B Llama2 Model Throughput" class="w-3/5 mx-auto"/>
 			<figcaption class="mt-2 mb-4 text-center">
 				Figure 4: 70B Llama2 Model Throughput
 			</figcaption>
