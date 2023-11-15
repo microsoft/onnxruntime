@@ -3011,7 +3011,6 @@ TEST(GradientCheckerTest, PadAndUnflattenGrad) {
   std::vector<std::vector<float>> x_datas = {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, {3, 5, 0, 1}, {5, 2}};
 
   TensorInfo padded_out_info({5, 2, 3}, true);
-  TensorInfo out_shape_info({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
@@ -3021,7 +3020,7 @@ TEST(GradientCheckerTest, PadAndUnflattenGrad) {
 #endif
 
   ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, indices_info, shape_info},
-                                                         {padded_out_info, out_shape_info}, &max_error,
+                                                         {padded_out_info}, &max_error,
                                                          x_datas, {}, true, false, &execution_providers));
   EXPECT_IS_TINY(max_error);
 }
