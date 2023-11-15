@@ -90,7 +90,7 @@ const calculateInputIndicesImpl =
             let signs_i  = ${
             enableInputShapeUniforms ? `uniforms.signs${inputShape.length > 1 ? '[i]' : ''}` : 'signs[i]'};
             let starts_i  = ${
-            enableInputShapeUniforms ? `uniforms.starts${inputShape.length > 1 ? '[i]' : ''}` : 'sarts[i]'};
+            enableInputShapeUniforms ? `uniforms.starts${inputShape.length > 1 ? '[i]' : ''}` : 'starts[i]'};
             var outputIndex = ${outputShape.length === 1 ? 'outputIndices' : 'outputIndices[i]'};
             var inputIndex = outputIndex * steps_i + starts_i + carry;
             carry = inputIndex / input_shape_i;
