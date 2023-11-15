@@ -8,9 +8,9 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <unordered_map>
 #include <vector>
-#include <optional>
 
 #include "core/common/common.h"
 #include "core/common/gsl.h"
@@ -171,7 +171,7 @@ Status CreateInputFeatureProvider(const std::unordered_map<std::string, OnnxTens
   return Status::OK();
 }
 
-bool IsArrayContiguous(MLMultiArray* array) {
+bool IsArrayContiguous(const MLMultiArray* array) {
   int64_t batch_stride = [array.strides[0] longLongValue];
   const auto* shape = array.shape;
   int64_t batch_elems = 1;
@@ -355,7 +355,7 @@ NS_ASSUME_NONNULL_BEGIN
 
       MLMultiArray* data = [output_value multiArrayValue];
 
-      const auto coreml_static_output_shape = [&data]() {
+      const auto coreml_static_output_shape = [data]() {
         InlinedVector<int64_t> result;
         result.reserve(data.shape.count);
         for (NSNumber* dim in data.shape) {
@@ -368,8 +368,8 @@ NS_ASSUME_NONNULL_BEGIN
       const auto static_output_shape = GetStaticOutputShape(output_tensor_info.shape, coreml_static_output_shape,
                                                             *logger_);
 
-      __block void* output_buffer = get_output_tensor_mutable_raw_data_fn(output_name, output_tensor_info.data_type,
-                                                                          static_output_shape);
+      void* output_buffer = get_output_tensor_mutable_raw_data_fn(output_name, output_tensor_info.data_type,
+                                                                  static_output_shape);
 
       if (const size_t num_elements = data.count; num_elements > 0) {
         if (const auto shape_size = ShapeSize(static_output_shape);
