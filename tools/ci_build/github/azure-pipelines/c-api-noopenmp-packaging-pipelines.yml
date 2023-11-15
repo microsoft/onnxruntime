@@ -210,8 +210,8 @@ stages:
     ort_build_pool_name: 'onnxruntime-Win2022-GPU-T4'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    EnvSetupScript: setup_env_cuda.bat
     stage_name_suffix: gpu
+    EnvSetupScript: setup_env_cuda.bat
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-cuda
