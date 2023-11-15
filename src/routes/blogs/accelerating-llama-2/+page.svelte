@@ -127,7 +127,7 @@
 
 		<p class="mb-4">
 			ONNX Runtime supports multi-GPU inference to enable serving large models. Even in FP16 precision,
-			the LLaMA-2 70B model in FP16 precision requires 140GB. Loading the model requires multiple GPUs 
+			the LLaMA-2 70B model requires 140GB. Loading the model requires multiple GPUs 
 			for inference, even with a powerful NVIDIA A100 80GB GPU.
 		</p>
 
