@@ -52,9 +52,64 @@ def create_model(broadcast_weights: bool):
     onnx.checker.check_model(model, full_check=True)
     return model
 
+def create_model_with_Where():
+    """
+    Create a model to validate the logic to cancel out the Transpose -> Squeeze -> DQ between an updated shared
+    initializer and other usage. We need to use Where as we require more than 2 inputs.
+    The `condition` input will be having a Transpose pushed through it will have a negative cost.
+    The `X` input will have a positive cost which cancels out the negative value.
+    The `Y` input will be a shared initializer that is braodcast. If we don't find the Transpose to make the cost of it
+    negative we will not push the Transpose though.
+
+    If we only have 2 inputs, the broadcast initializer will always cost less due to its smaller rank, meaning we don't
+    actually need to look for the Squeeze in that case.
+    """
+    cond_0_shape = [3, 2]  # transpose to 2, 3
+    cond_1_shape = [2, 3]
+    x_0_shape = [3]  # broadcast so Transpose goes through Where0
+    x_1_shape = [3]  # also broadcast
+    y_shape = [3]  # should be transposed and broadcast to [3, 1] if we push the transpose through the Where
+    y_values = np.random.randn(3)
+
+    graph = helper.make_graph(
+        name="graph",
+        inputs=[
+            helper.make_tensor_value_info("cond_in_0", TensorProto.BOOL, cond_0_shape),
+            helper.make_tensor_value_info("cond_in_1", TensorProto.BOOL, cond_1_shape),
+            helper.make_tensor_value_info("x_in_0", TensorProto.FLOAT, x_0_shape),
+            helper.make_tensor_value_info("x_in_1", TensorProto.FLOAT, x_1_shape),
+        ],
+        initializer=[
+            helper.make_tensor("y_quant", TensorProto.UINT8, y_shape, y_values.astype(np.uint8)),
+            helper.make_tensor("dq_scale0", TensorProto.FLOAT, [], [1.5]),
+            helper.make_tensor("dq_scale1", TensorProto.FLOAT, [], [0.5]),
+        ],
+        nodes=[
+            # Transpose the cond input
+            helper.make_node("Transpose", ["cond_in_0"], ["cond_in_T"], perm=[1, 0]),
+            helper.make_node("DequantizeLinear", ["y_quant", "dq_scale0"], ["DQ0"], "DQ0"),
+            # first usage of shared initializer. simple so we know the Transpose can push through it
+            helper.make_node("Where", ["cond_in_T", "x_in_0", "DQ0"], ["Where0"], "Where0"),
+            helper.make_node("DequantizeLinear", ["y_quant", "dq_scale1"], ["DQ1"], "DQ1"),
+            helper.make_node("Add", ["x_in_1", "Where0"], ["Add0"], "Add0"),
+            # second usage of shared initializer. requires looking past the Squeeze to push the transpose through
+            helper.make_node("Where", ["cond_in_1", "Add0", "DQ1"], ["Where1"], "Where1"),
+            helper.make_node("Transpose", ["Where1"], ["output0"], perm=[1, 0]),
+        ],
+        outputs=[
+            helper.make_tensor_value_info("output0", TensorProto.FLOAT, [3, 2]),
+        ],
+    )
+
+    model = helper.make_model(graph)
+    onnx.checker.check_model(model, full_check=True)
+    return model
+
 
 if __name__ == "__main__":
     model = create_model(broadcast_weights=False)
     onnx.save(model, "transpose_optimizer_shared_initializers.onnx")
     model = create_model(broadcast_weights=True)
     onnx.save(model, "transpose_optimizer_shared_initializers_broadcast.onnx")
+    model = create_model_with_Where()
+    onnx.save(model, "transpose_optimizer_shared_initializers_broadcast2.onnx")
