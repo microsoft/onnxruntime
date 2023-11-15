@@ -22,6 +22,9 @@ parameters:
 - name: CudaVersion
   type: string
   default: '11.8'
+- name: ReleaseVersionSuffix
+  type: string
+  default: ''
 
 stages:
   ######## Building ########
