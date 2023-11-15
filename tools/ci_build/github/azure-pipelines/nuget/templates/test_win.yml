@@ -41,12 +41,11 @@ stages:
       inputs:
         versionSpec: 5.7.0
 
-    - task: BatchScript@1
-      displayName: 'setup env'
-      inputs:
-        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_gpu.bat'
-        modifyEnvironment: true
-        workingFolder: '$(Build.BinariesDirectory)'
+    - template: ../../templates/jobs/download_win_gpu_library.yml
+      parameters:
+        DownloadCUDA: true
+        DownloadTRT: true
+        CudaVersion: ${{ parameters.CudaVersion }}
 
     - template: ../../templates/jobs/download_win_gpu_library.yml
       parameters:

@@ -5,18 +5,21 @@ parameters:
   - name: DownloadTRT
     type: boolean
     default: false
-  - name: CUDA_Version
+  - name: CudaVersion
     type: string
-    default: '12.2'
+    default: '11.8'
+    values:
+      - 11.8
+      - 12.2
 
 steps:
 
   - ${{ if eq(parameters.DownloadCUDA, true) }}:
     - powershell: |
-        azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.CUDA_Version }} $(Agent.TempDirectory)
-      displayName: 'Download CUDA SDK v${{ parameters.CUDA_Version }}'
+        azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.CudaVersion }} $(Agent.TempDirectory)
+      displayName: 'Download CUDA SDK v${{ parameters.CudaVersion }}'
     - powershell: |
-        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.CUDA_Version }}\bin;$(Agent.TempDirectory)\v${{ parameters.CUDA_Version }}\extras\CUPTI\lib64"
+        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}\bin;$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}\extras\CUPTI\lib64"
       displayName: 'Append CUDA SDK Directory to PATH'
     - task: CmdLine@2
       inputs:
@@ -25,7 +28,7 @@ steps:
       displayName: 'Print PATH'
 
   - ${{ if eq(parameters.DownloadTRT, true) }}:
-    - ${{ if eq(parameters.CUDA_Version, '11.8') }}:
+    - ${{ if eq(parameters.CudaVersion, '11.8') }}:
       - powershell: |
           azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8 $(Agent.TempDirectory)
         displayName: 'Download TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8'
@@ -33,7 +36,7 @@ steps:
           Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8\lib"
         displayName: 'Append CUDA SDK Directory to PATH'
 
-    - ${{ if eq(parameters.CUDA_Version, '12.2') }}:
+    - ${{ if eq(parameters.CudaVersion, '12.2') }}:
       - powershell: |
           azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0 $(Agent.TempDirectory)
         displayName: 'Download TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0'

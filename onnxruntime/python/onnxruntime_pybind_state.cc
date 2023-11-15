@@ -730,33 +730,115 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         }
       }
     }
-    LOGS_DEFAULT(WARNING) << "Failed to create " << type << ". Please reference https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements to ensure all dependencies are met.";
+    LOGS_DEFAULT(WARNING) << "Failed to create "
+                          << type
+                          << ". Please reference "
+                          << "https://onnxruntime.ai/docs/execution-providers/"
+                          << "TensorRT-ExecutionProvider.html#requirements to ensure all dependencies are met.";
 #endif
   } else if (type == kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
-    return onnxruntime::MIGraphXProviderFactoryCreator::Create(0)->CreateProvider();
+    std::string calibration_table;
+    auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      OrtMIGraphXProviderOptions params{
+          0,
+          0,
+          0,
+          0,
+          nullptr};
+      for (auto option : it->second) {
+        if (option.first == "device_id") {
+          if (!option.second.empty()) {
+            params.device_id = std::stoi(option.second);
+          } else {
+            ORT_THROW("[ERROR] [MIGraphX] The value for the key 'device_id' should be a number i.e. '0'.\n");
+          }
+        } else if (option.first == "migraphx_fp16_enable") {
+          if (option.second == "True" || option.second == "true") {
+            params.migraphx_fp16_enable = true;
+          } else if (option.second == "False" || option.second == "false") {
+            params.migraphx_fp16_enable = false;
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'trt_fp16_enable' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else if (option.first == "migraphx_int8_enable") {
+          if (option.second == "True" || option.second == "true") {
+            params.migraphx_int8_enable = true;
+          } else if (option.second == "False" || option.second == "false") {
+            params.migraphx_int8_enable = false;
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_int8_enable' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else if (option.first == "migraphx_int8_calibration_table_name") {
+          if (!option.second.empty()) {
+            calibration_table = option.second;
+            params.migraphx_int8_calibration_table_name = calibration_table.c_str();
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_int8_calibration_table_name' should be a "
+                "file name i.e. 'cal_table'.\n");
+          }
+        } else if (option.first == "migraphx_use_native_calibration_table") {
+          if (option.second == "True" || option.second == "true") {
+            params.migraphx_use_native_calibration_table = true;
+          } else if (option.second == "False" || option.second == "false") {
+            params.migraphx_use_native_calibration_table = false;
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_int8_use_native_calibration_table' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else {
+          ORT_THROW("Invalid MIGraphX EP option: ", option.first);
+        }
+      }
+      if (std::shared_ptr<IExecutionProviderFactory> migraphx_provider_factory =
+              onnxruntime::MIGraphXProviderFactoryCreator::Create(&params)) {
+        return migraphx_provider_factory->CreateProvider();
+      }
+    } else {
+      if (std::shared_ptr<IExecutionProviderFactory> migraphx_provider_factory =
+              onnxruntime::MIGraphXProviderFactoryCreator::Create(cuda_device_id)) {
+        return migraphx_provider_factory->CreateProvider();
+      }
+    }
 #endif
   } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-    // If the environment variable 'CUDA_UNAVAILABLE' exists, then we do not load cuda. This is set by _ld_preload for the manylinux case
-    // as in that case, trying to load the library itself will result in a crash due to the way that auditwheel strips dependencies.
+    // If the environment variable 'CUDA_UNAVAILABLE' exists, then we do not load cuda.
+    // This is set by _ld_preload for the manylinux case as in that case,
+    // trying to load the library itself will result in a crash due to the way that auditwheel strips dependencies.
     if (Env::Default().GetEnvironmentVar("ORT_CUDA_UNAVAILABLE").empty()) {
       if (auto* cuda_provider_info = TryGetProviderInfo_CUDA()) {
         const CUDAExecutionProviderInfo info = GetCudaExecutionProviderInfo(cuda_provider_info,
                                                                             provider_options_map);
 
-        // This variable is never initialized because the APIs by which it should be initialized are deprecated, however they still
-        // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
-        // since FromProviderOptions might contain external CUDA allocator.
+        // This variable is never initialized because the APIs by which it should be initialized are deprecated,
+        // however they still exist are are in-use. Neverthless, it is used to return CUDAAllocator,
+        // hence we must try to initialize it here if we can since FromProviderOptions might contain
+        // external CUDA allocator.
         external_allocator_info = info.external_allocator_info;
         return cuda_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
       } else {
         if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
-          ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded. Please install the correct version of CUDA and cuDNN as mentioned in the GPU requirements page (https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements), make sure they're in the PATH, and that your GPU is supported.");
+          ORT_THROW(
+              "CUDA_PATH is set but CUDA wasnt able to be loaded. Please install the correct version of CUDA and"
+              "cuDNN as mentioned in the GPU requirements page "
+              " (https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements), "
+              " make sure they're in the PATH, and that your GPU is supported.");
         }
       }
     }
-    LOGS_DEFAULT(WARNING) << "Failed to create " << type << ". Please reference https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements to ensure all dependencies are met.";
+    LOGS_DEFAULT(WARNING) << "Failed to create "
+                          << type
+                          << ". Please reference "
+                          << "https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements"
+                          << "to ensure all dependencies are met.";
 #endif
   } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM

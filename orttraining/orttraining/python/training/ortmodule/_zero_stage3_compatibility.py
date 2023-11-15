@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 
+from contextlib import contextmanager
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
@@ -359,3 +360,54 @@ def _update_python_op_input_related_attributes(
     node.attribute.remove(dtype_attr)
     node.attribute.append(helper.make_attribute("input_tensor_ranks", input_tensor_ranks))
     node.attribute.append(helper.make_attribute("input_tensor_types", input_tensor_dtypes))
+
+
+@contextmanager
+def stage3_export_context(enable: bool, graph_execution_manager):
+    """Context manager for stage3 specific model export.
+    Some export functions are overridden when entering the context; the original functions are restored when
+    exiting the context.
+
+    Also collect the zero stage3 parameter maps for graph execution manager.
+    """
+    if not enable:
+        yield
+
+    else:
+        original_func = torch.onnx.symbolic_helper._get_tensor_rank
+        from onnxruntime.training.utils.hooks._zero_offload_subscriber import _get_all_zero_stage3_params
+
+        # Delay collecting stage3 parameters here instead of in the graph execution manager,
+        # to make sure DeepSpeed initialization is done, so that the parameters ds_status are correct.
+        graph_execution_manager._zero_stage3_param_map = _get_all_zero_stage3_params(
+            graph_execution_manager._flattened_module
+        )
+
+        try:
+            from torch.onnx._internal import _beartype
+
+            @_beartype.beartype
+            def _get_tensor_rank(x) -> Optional[int]:
+                ### Adapted from https://github.com/pytorch/pytorch/blob/185515368bcd7d94ac06ab1634f22b747b03c6d9/torch/onnx/symbolic_helper.py#L561
+                # Retrieve the real rank for the stage3 weights, because stage3 weights are all (0).
+                from typing import cast as typing_cast
+
+                from torch import _C
+                from torch.onnx.symbolic_helper import _is_tensor
+
+                input_name = x.debugName()
+                if input_name in graph_execution_manager._zero_stage3_param_map:
+                    rank = len(graph_execution_manager._zero_stage3_param_map[input_name].ds_shape)
+                    return rank
+
+                if not _is_tensor(x) or x.type() is None:
+                    return None
+                x_type = x.type()
+                x_type = typing_cast(_C.TensorType, x_type)
+                return x_type.dim()
+
+            torch.onnx.symbolic_helper._get_tensor_rank = _get_tensor_rank
+
+            yield
+        finally:
+            torch.onnx.symbolic_helper._get_tensor_rank = original_func

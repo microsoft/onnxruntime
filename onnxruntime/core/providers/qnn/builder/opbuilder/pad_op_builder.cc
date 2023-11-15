@@ -10,6 +10,7 @@
 #include "core/common/safeint.h"
 
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -62,17 +63,12 @@ Status PadOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   return Status::OK();
 }
 
-template <typename T>
-float DequantizeValue(T value, int32_t offset, float scale) {
-  return static_cast<float>(static_cast<int32_t>(value) - offset) * scale;
-}
-
 Status ProcessConstantValue(QnnModelWrapper& qnn_model_wrapper,
                             std::vector<std::string>& param_tensor_names,
                             const NodeUnit& node_unit,
                             const NodeUnitIODef& input) {
-  OnnxInputInfo input_info = {};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(input, input_info));
+  TensorInfo input_info = {};
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input, input_info));
   std::vector<uint8_t> unpacked_tensor;
   // Already confirmed constant_value input is initializer in ProcessInputs()
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_info.initializer_tensor, unpacked_tensor));
@@ -86,43 +82,43 @@ Status ProcessConstantValue(QnnModelWrapper& qnn_model_wrapper,
     switch (input_info.qnn_data_type) {
       case QNN_DATATYPE_SFIXED_POINT_8: {
         auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(unpacked_tensor));
-        constant_value = DequantizeValue(int8_span.data()[0],
-                                         input_info.quant_param.scaleOffsetEncoding.offset,
-                                         input_info.quant_param.scaleOffsetEncoding.scale);
+        constant_value = static_cast<float>(utils::Dequantize(input_info.quant_param.scaleOffsetEncoding.offset,
+                                                              input_info.quant_param.scaleOffsetEncoding.scale,
+                                                              static_cast<double>(int8_span.data()[0])));
         break;
       }
       case QNN_DATATYPE_SFIXED_POINT_16: {
         auto int16_span = ReinterpretAsSpan<const int16_t>(gsl::make_span(unpacked_tensor));
-        constant_value = DequantizeValue(int16_span.data()[0],
-                                         input_info.quant_param.scaleOffsetEncoding.offset,
-                                         input_info.quant_param.scaleOffsetEncoding.scale);
+        constant_value = static_cast<float>(utils::Dequantize(input_info.quant_param.scaleOffsetEncoding.offset,
+                                                              input_info.quant_param.scaleOffsetEncoding.scale,
+                                                              static_cast<double>(int16_span.data()[0])));
         break;
       }
       case QNN_DATATYPE_SFIXED_POINT_32: {
         auto int32_span = ReinterpretAsSpan<const int32_t>(gsl::make_span(unpacked_tensor));
-        constant_value = DequantizeValue(int32_span.data()[0],
-                                         input_info.quant_param.scaleOffsetEncoding.offset,
-                                         input_info.quant_param.scaleOffsetEncoding.scale);
+        constant_value = static_cast<float>(utils::Dequantize(input_info.quant_param.scaleOffsetEncoding.offset,
+                                                              input_info.quant_param.scaleOffsetEncoding.scale,
+                                                              static_cast<double>(int32_span.data()[0])));
         break;
       }
       case QNN_DATATYPE_UFIXED_POINT_8: {
-        constant_value = DequantizeValue(unpacked_tensor.data()[0],
-                                         input_info.quant_param.scaleOffsetEncoding.offset,
-                                         input_info.quant_param.scaleOffsetEncoding.scale);
+        constant_value = static_cast<float>(utils::Dequantize(input_info.quant_param.scaleOffsetEncoding.offset,
+                                                              input_info.quant_param.scaleOffsetEncoding.scale,
+                                                              static_cast<double>(unpacked_tensor.data()[0])));
         break;
       }
       case QNN_DATATYPE_UFIXED_POINT_16: {
         auto uint16_span = ReinterpretAsSpan<const uint16_t>(gsl::make_span(unpacked_tensor));
-        constant_value = DequantizeValue(uint16_span.data()[0],
-                                         input_info.quant_param.scaleOffsetEncoding.offset,
-                                         input_info.quant_param.scaleOffsetEncoding.scale);
+        constant_value = static_cast<float>(utils::Dequantize(input_info.quant_param.scaleOffsetEncoding.offset,
+                                                              input_info.quant_param.scaleOffsetEncoding.scale,
+                                                              static_cast<double>(uint16_span.data()[0])));
         break;
       }
       case QNN_DATATYPE_UFIXED_POINT_32: {
         auto uint32_span = ReinterpretAsSpan<const uint32_t>(gsl::make_span(unpacked_tensor));
-        constant_value = DequantizeValue(uint32_span.data()[0],
-                                         input_info.quant_param.scaleOffsetEncoding.offset,
-                                         input_info.quant_param.scaleOffsetEncoding.scale);
+        constant_value = static_cast<float>(utils::Dequantize(input_info.quant_param.scaleOffsetEncoding.offset,
+                                                              input_info.quant_param.scaleOffsetEncoding.scale,
+                                                              static_cast<double>(uint32_span.data()[0])));
         break;
       }
       default:

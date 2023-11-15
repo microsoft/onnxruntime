@@ -26,7 +26,14 @@ pr:
     - 'js/web'
     - 'onnxruntime/core/providers/js'
 #### end trigger ####
-
+parameters:
+  - name: CudaVersion
+    displayName: CUDA version
+    type: string
+    default: '12.2'
+    values:
+      - 11.8
+      - 12.2
 resources:
   repositories:
   - repository: manylinux
@@ -37,6 +44,19 @@ resources:
 
 variables:
   - template: templates/common-variables.yml
+  - name: docker_base_image
+    default: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+    ${{ if eq(parameters.CudaVersion, '11.8') }}:
+      value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+    ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      value: nvidia/cuda:12.2.2-cudnn8-devel-ubi8
+
+  - name: linux_trt_version
+    default: 8.6.1.6-1.cuda11.8
+    ${{ if eq(parameters.CudaVersion, '11.8') }}:
+      value: 8.6.1.6-1.cuda11.8
+    ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      value: 8.6.1.6-1.cuda12.0
 
 jobs:
 - job: Linux_Build
@@ -61,8 +81,8 @@ jobs:
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "
       --network=host 
-      --build-arg BASEIMAGE=nvidia/cuda:12.2.2-cudnn8-devel-ubi8 
-      --build-arg TRT_VERSION=8.6.1.6-1.cuda12.0 
+      --build-arg BASEIMAGE=$(docker_base_image)
+      --build-arg TRT_VERSION=$(linux_trt_version) 
       --build-arg BUILD_UID=$( id -u )
       "
       Repository: onnxruntimecuda11build
@@ -162,8 +182,8 @@ jobs:
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "
       --network=host 
-      --build-arg BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8
-      --build-arg TRT_VERSION=8.6.1.6-1.cuda11.8 
+      --build-arg BASEIMAGE=$(docker_base_image)
+      --build-arg TRT_VERSION=$(linux_trt_version)
       --build-arg BUILD_UID=$( id -u )
       "
       Repository: onnxruntimecuda11build
