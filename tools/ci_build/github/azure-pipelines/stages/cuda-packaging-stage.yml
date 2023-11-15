@@ -46,8 +46,8 @@ stages:
       - name: CUDA_VERSION
         value: ${{ parameters.CudaVersion }}
     steps:
-    - template: templates/set-version-number-variables-step.yml
-    - template: templates/get-docker-image-steps.yml
+    - template: ../templates/set-version-number-variables-step.yml
+    - template: ../templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/x64/default/gpu/Dockerfile
         Context: tools/ci_build/github/linux/docker/inference/x64/default/gpu
@@ -61,19 +61,19 @@ stages:
       workingDirectory: $(Build.SourcesDirectory)
       displayName: 'Build and Test'
 
-    - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
+    - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
         buildConfig: 'Release'
         artifactName: 'onnxruntime-linux-x64-cuda-$(OnnxRuntimeVersion)'
         artifactNameNoVersionString: 'onnxruntime-linux-x64-cuda'
         libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
 
-    - template: templates/component-governance-component-detection-steps.yml
+    - template: ../templates/component-governance-component-detection-steps.yml
       parameters:
         condition: 'succeeded'
-    - template: templates/clean-agent-build-directory-step.yml
+    - template: ../templates/clean-agent-build-directory-step.yml
 # Linux CUDA with TensorRT Packaging
-- template: ../templates/linux-gpu-tensorrt-packaging-pipeline.yml
+- template: ../../templates/linux-gpu-tensorrt-packaging-pipeline.yml
   parameters:
     artifactName: 'onnxruntime-linux-x64-tensorrt-$(OnnxRuntimeVersion)'
     artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt'
@@ -139,7 +139,7 @@ stages:
             mv manylinux onnxruntime
             ls
 
-        - template: templates/with-container-registry-steps.yml
+        - template: ../templates/with-container-registry-steps.yml
           parameters:
             Steps:
               - script: |
@@ -154,7 +154,7 @@ stages:
                 workingDirectory: $(Build.SourcesDirectory)/onnxruntime
             ContainerRegistry: onnxruntimebuildcache
 
-        - template: templates/set-version-number-variables-step.yml
+        - template: ../templates/set-version-number-variables-step.yml
           parameters:
             versionFileDirectory: '$(Build.SourcesDirectory)/onnxruntime'
             workingDirectory: '$(Build.SourcesDirectory)/onnxruntime'
@@ -186,7 +186,7 @@ stages:
             archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
             replaceExistingArchive: true
 
-        - template: templates/validate-package.yml
+        - template: ../templates/validate-package.yml
           parameters:
             PackageType: 'tarball'
             PackagePath: '$(Build.ArtifactStagingDirectory)'
@@ -231,7 +231,7 @@ stages:
         - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
           submodules: false
         - script: dir $(Build.SourcesDirectory)
-        - template: templates/jobs/download_win_gpu_library.yml
+        - template: ../templates/jobs/download_win_gpu_library.yml
           parameters:
             DownloadCUDA: true
             DownloadTRT: true
@@ -244,7 +244,7 @@ stages:
         #        filename: '$(Build.SourcesDirectory)\onnxruntime\tools\ci_build\github\windows\setup_env_gpu.bat'
         #        modifyEnvironment: true
         #        workingFolder: '$(Build.BinariesDirectory)'
-        - template: templates/set-version-number-variables-step.yml
+        - template: ../templates/set-version-number-variables-step.yml
           parameters:
             versionFileDirectory: '$(Build.SourcesDirectory)\onnxruntime'
             workingDirectory: '$(Build.SourcesDirectory)\onnxruntime'
@@ -284,7 +284,7 @@ stages:
             Contents: 'onnxruntime-win-x64-gpu-*.zip'
             TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-        - template: templates/validate-package.yml
+        - template: ../templates/validate-package.yml
           parameters:
             PackageType: 'zip'
             PackagePath: '$(Build.ArtifactStagingDirectory)'
@@ -423,7 +423,7 @@ stages:
             msbuildArguments: '-p:SelectedTargets=PreNet6 -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=${{ parameters.ReleaseVersionSuffix }}'
             workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-        - template: templates/win-esrp-dll.yml
+        - template: ../templates/win-esrp-dll.yml
           parameters:
             FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
             DisplayName: 'ESRP - Sign C# dlls'
@@ -474,13 +474,13 @@ stages:
             Contents: '*.nupkg'
             TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-        - template: templates/esrp_nuget.yml
+        - template: ../templates/esrp_nuget.yml
           parameters:
             DisplayName: 'ESRP - sign NuGet package'
             FolderPath: '$(Build.ArtifactStagingDirectory)'
             DoEsrp: ${{ parameters.DoEsrp }}
 
-        - template: templates/validate-package.yml
+        - template: ../templates/validate-package.yml
           parameters:
             PackageType: 'nuget'
             PackagePath: '$(Build.ArtifactStagingDirectory)'
@@ -512,7 +512,7 @@ stages:
             msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\msbuild.exe" $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln -p:configuration="RelWithDebInfo" -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
           condition: and(succeeded(), eq('${{ parameters.DoCompliance }}', true))
 
-        - template: templates/component-governance-component-detection-steps.yml
+        - template: ../templates/component-governance-component-detection-steps.yml
           parameters:
             condition: 'succeeded'
 
