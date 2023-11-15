@@ -489,6 +489,6 @@ std::tuple<TensorPartitionSpec, TensorPartitionSpec> NormalizeTensorPartitionSpe
 // the dimension of the axis is divisible by the number of devices along the device mesh axis.
 bool CanShard(const TensorShape& shape, const TensorPartitionSpec& spec);
 
-#endif // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD)
 }  // namespace distributed
 }  // namespace onnxruntime

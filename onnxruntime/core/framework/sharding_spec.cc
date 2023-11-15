@@ -219,7 +219,7 @@ bool CanShard(const TensorShape& shape, const TensorPartitionSpec& spec) {
   return true;
 }
 
-#endif // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace distributed
 }  // namespace onnxruntime
