@@ -60,6 +60,14 @@ parameters:
   type: string
   default: '--use_azure'
 
+- name: CudaVersion
+  displayName: CUDA version
+  type: string
+  default: '11.8'
+  values:
+    - 11.8
+    - 12.2
+
 resources:
   repositories:
   - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
@@ -146,7 +154,13 @@ stages:
     timeoutInMinutes: 120
     pool: 'Onnxruntime-Linux-GPU'
     variables:
-      CUDA_VERSION: '11.8'
+      - name: CUDA_VERSION_MAJOR
+        ${{ if eq(parameters.CudaVersion, '11.8') }}:
+          value: '11'
+        ${{ if eq(parameters.CudaVersion, '12.2') }}:
+          value: '12'
+      - name: CUDA_VERSION
+        value: ${{ parameters.CudaVersion }}
     steps:
     - template: templates/set-version-number-variables-step.yml
     - template: templates/get-docker-image-steps.yml
@@ -154,7 +168,7 @@ stages:
         Dockerfile: tools/ci_build/github/linux/docker/inference/x64/default/gpu/Dockerfile
         Context: tools/ci_build/github/linux/docker/inference/x64/default/gpu
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-        Repository: onnxruntimecuda11centosbuild
+        Repository: onnxruntimecuda$(CUDA_VERSION)build
 
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
       workingDirectory: $(Build.SourcesDirectory)

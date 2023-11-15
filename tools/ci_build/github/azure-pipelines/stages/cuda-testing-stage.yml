@@ -14,18 +14,7 @@ parameters:
   - name: linux_trt_version
     type: string
 stages:
-  variables:
-  - name: docker_base_image
-    ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
-    ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: nvidia/cuda:12.2.2-cudnn8-devel-ubi8
-  - name: linux_trt_version
-    ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: 8.6.1.6-1.cuda11.8
-    ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: 8.6.1.6-1.cuda12.0
-  stage:
+  - stage:
     - template: ../nuget/templates/test_win.yml
       parameters:
         AgentPool: 'onnxruntime-Win2022-GPU-T4'
