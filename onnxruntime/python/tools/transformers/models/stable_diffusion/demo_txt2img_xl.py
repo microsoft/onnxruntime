@@ -77,8 +77,6 @@ def load_pipelines(args, batch_size):
     refiner_info = PipelineInfo(
         args.version, is_refiner=True, min_image_size=min_image_size, max_image_size=max_image_size
     )
-    opt_image_height = refiner_info.default_image_size() if args.build_dynamic_shape else args.height
-    opt_image_width = refiner_info.default_image_size() if args.build_dynamic_shape else args.width
     refiner = init_pipeline(
         Img2ImgXLPipeline,
         refiner_info,
