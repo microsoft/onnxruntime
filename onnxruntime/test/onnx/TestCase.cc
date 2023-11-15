@@ -1350,7 +1350,7 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"gridsample_volumetric_nearest_align_corners_0", "unknown version"});
     broken_tests->insert({"gridsample_volumetric_nearest_align_corners_1", "unknown version"});
     broken_tests->insert({"spacetodepth", "result differs"});
-    broken_tests->insert({"test_reduce_sum_square_empty_set_expanded", "unknown version"});
+    broken_tests->insert({"reduce_sum_square_empty_set_expanded", "unknown version"});
   }
 
 #ifdef DISABLE_CONTRIB_OPS

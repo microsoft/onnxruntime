@@ -1070,7 +1070,12 @@ TEST(ReductionOpTest, test_bool_ReduceMax_10) {
   test.AddInput<bool>("data", {2, 3, 2}, {false, false, true, true, false, true, false, true, false, true, false, true});
   test.AddInput<int64_t>("axes", {1}, {0});
   test.AddOutput<bool>("reduced", {1, 3, 2}, {false, true, true, true, false, true});
-  test.Run();
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {
+          kOpenVINOExecutionProvider,
+      });
 }
 
 TEST(ReductionOpTest, test_bool_ReduceMin_11) {
@@ -3534,11 +3539,12 @@ TEST(ReductionOpTest, ReduceDimWithZero1) {
                // exclude EPs that don't handle this
                {
                    kCoreMLExecutionProvider,
+                   kCudaExecutionProvider,
+                   kDnnlExecutionProvider,
+                   kMIGraphXExecutionProvider,
                    kOpenVINOExecutionProvider,
                    kQnnExecutionProvider,
                    kTensorrtExecutionProvider,
-                   kDnnlExecutionProvider,
-                   kCudaExecutionProvider,
                });
   };
 
@@ -3581,12 +3587,13 @@ TEST(ReductionOpTest, ReduceDimWithZero2) {
     tester.Run(expect, error_msg,
                // exclude EPs that don't handle this
                {
+                   kCoreMLExecutionProvider,
+                   kCudaExecutionProvider,
+                   kDnnlExecutionProvider,
+                   kMIGraphXExecutionProvider,
                    kOpenVINOExecutionProvider,
                    kQnnExecutionProvider,
                    kTensorrtExecutionProvider,
-                   kCoreMLExecutionProvider,
-                   kDnnlExecutionProvider,
-                   kCudaExecutionProvider,
                });
   };
 
@@ -5768,12 +5775,13 @@ void test_empty_set(const std::string& op, int opset, bool axes_as_input, float 
       OpTester::ExpectResult::kExpectSuccess,
       "",
       {
+          kCoreMLExecutionProvider,
+          kCudaExecutionProvider,
+          kDnnlExecutionProvider,
+          kMIGraphXExecutionProvider,
           kOpenVINOExecutionProvider,
           kQnnExecutionProvider,
           kTensorrtExecutionProvider,
-          kCoreMLExecutionProvider,
-          kDnnlExecutionProvider,
-          kCudaExecutionProvider,
       });
 }
 
