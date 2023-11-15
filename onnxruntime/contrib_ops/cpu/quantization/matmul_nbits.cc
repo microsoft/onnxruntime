@@ -92,7 +92,6 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   auto* y_data = y->MutableData<float>();
 
   const size_t max_len = helper.OutputOffsets().size();
-  //std::cout << "max_len: " << max_len << std::endl;
   const size_t M = static_cast<size_t>(helper.M());
   const size_t N = static_cast<size_t>(helper.N());
   const size_t K = static_cast<size_t>(helper.K());

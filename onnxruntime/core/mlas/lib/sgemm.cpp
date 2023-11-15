@@ -22,8 +22,6 @@ Abstract:
 
 #include <smmintrin.h>
 
-#include <mutex>
-
 //
 // Define the number of rows from matrix A to transpose to a local buffer.
 //
@@ -477,55 +475,11 @@ Return Value:
     const int64_t blob_size = G_block_size_ / 8 * G_nbits_;
 
     for (unsigned n = 0; n < N / 4; n++) {
-#if 0
         const float scale0 = scales[0];
         const float scale1 = scales[n_blocks_per_col];
         const float scale2 = scales[n_blocks_per_col * 2];
         const float scale3 = scales[n_blocks_per_col * 3];
 
-        bufferB[0] = scale0 * ((B[0] & 0x0F) - 8);
-        bufferB[1] = scale0 * ((B[0] >> 4) - 8);
-        bufferB[2] = scale0 * ((B[1] & 0x0F) - 8);
-        bufferB[3] = scale0 * ((B[1] >> 4) - 8);
-
-        bufferB[4] = scale1 * ((B[n_blocks_per_col * blob_size] & 0x0F) - 8);
-        bufferB[5] = scale1 * ((B[n_blocks_per_col * blob_size] >> 4) - 8);
-        bufferB[6] = scale1 * ((B[n_blocks_per_col * blob_size + 1] & 0x0F) - 8);
-        bufferB[7] = scale1 * ((B[n_blocks_per_col * blob_size + 1] >> 4) - 8);
-        bufferB[8] = scale2 * ((B[n_blocks_per_col * blob_size * 2] & 0x0F) - 8);
-        bufferB[9] = scale2 * ((B[n_blocks_per_col * blob_size * 2] >> 4) - 8);
-        bufferB[10] = scale2 * ((B[n_blocks_per_col * blob_size * 2 + 1] & 0x0F) - 8);
-        bufferB[11] = scale2 * ((B[n_blocks_per_col * blob_size * 2 + 1] >> 4) - 8);
-        bufferB[12] = scale3 * ((B[n_blocks_per_col * blob_size * 3] & 0x0F) - 8);
-        bufferB[13] = scale3 * ((B[n_blocks_per_col * blob_size * 3] >> 4) - 8);
-        bufferB[14] = scale3 * ((B[n_blocks_per_col * blob_size * 3 + 1] & 0x0F) - 8);
-        bufferB[15] = scale3 * ((B[n_blocks_per_col * blob_size * 3 + 1] >> 4) - 8);
-#else
-        const float scale0 = scales[0];
-        const float scale1 = scales[n_blocks_per_col];
-        const float scale2 = scales[n_blocks_per_col * 2];
-        const float scale3 = scales[n_blocks_per_col * 3];
-
-#if 0
-        __m128 value = _mm_set_epi8(
-            (B[0] & 0x0F),
-            (B[0] >> 4),
-            (B[1] & 0x0F),
-            (B[1] >> 4),
-            (B[n_blocks_per_col * blob_size] & 0x0F),
-            (B[n_blocks_per_col * blob_size] >> 4),
-            (B[n_blocks_per_col * blob_size + 1] & 0x0F),
-            (B[n_blocks_per_col * blob_size + 1] >> 4),
-            (B[n_blocks_per_col * blob_size * 2] & 0x0F),
-            (B[n_blocks_per_col * blob_size * 2] >> 4),
-            (B[n_blocks_per_col * blob_size * 2 + 1] & 0x0F),
-            (B[n_blocks_per_col * blob_size * 2 + 1] >> 4),
-            (B[n_blocks_per_col * blob_size * 3] & 0x0F),
-            (B[n_blocks_per_col * blob_size * 3] >> 4),
-            (B[n_blocks_per_col * blob_size * 3 + 1] & 0x0F),
-            (B[n_blocks_per_col * blob_size * 3 + 1] >> 4)
-            );
-#endif
         __m128i zero_point = _mm_set1_epi32(8);
 
         __m128i value0 = _mm_set_epi32(
@@ -564,8 +518,6 @@ Return Value:
         __m128i sub3 = _mm_sub_epi32(value3, zero_point);
         MLAS_FLOAT32X4 t3 = _mm_mul_ps(_mm_cvtepi32_ps(sub3), _mm_set1_ps(scale3));
 
-#endif
-
 #if 0
         MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&bufferB[0]);
         MLAS_FLOAT32X4 t1 = MlasLoadFloat32x4(&bufferB[4]);
@@ -603,8 +555,6 @@ Return Value:
         scales += n_blocks_per_col * 4;
     }
 }
-
-std::mutex mtx; // Create a mutex
 
 void
 MlasSgemmTransposePackB(
@@ -646,69 +596,6 @@ Return Value:
 {
     const int64_t n_blocks_per_col = (G_K + G_block_size_ - 1) / G_block_size_;
     const int64_t blob_size = G_block_size_ / 8 * G_nbits_;
-#if 0
-    //std::cerr << "MlasSgemmTransposePackB invoked\n";
-    //
-    // Transpose elements from matrix B into the packed buffer 16 rows at a
-    // time.
-    //
-    MLAS_DECLSPEC_ALIGN(float bufferB[MLAS_SGEMM_STRIDEN * MLAS_SGEMM_STRIDEK], 16 * sizeof(float));
-
-#if 0
-    onnxruntime::contrib::DequantizeBlockwise<float>(bufferB,
-                                                    srcB,
-                                                    scales,
-                                                    nullptr,
-                                                    static_cast<int32_t>(G_block_size_),
-                                                    static_cast<int32_t>(G_nbits_),
-                                                    static_cast<int32_t>(CountY),
-                                                    static_cast<int32_t>(CountX),
-                                                    nullptr);
-#else
-    for (size_t n = 0; n < CountY; ++n) {
-        for (size_t k = 0; k < CountX; k += G_block_size_) {
-            const float scale = scales[n * n_blocks_per_col + k / G_block_size_];
-            #if 0
-            bufferB[n * CountX + k + 0] = scale * ((srcB[n * n_blocks_per_col * blob_size + k / 2] & 0x0F) - 8);
-            bufferB[n * CountX + k + 1] = scale * ((srcB[n * n_blocks_per_col * blob_size + k / 2] >> 4) - 8);
-            bufferB[n * CountX + k + 2] = scale * ((srcB[n * n_blocks_per_col * blob_size + k / 2 + 1] & 0x0F) - 8);
-            bufferB[n * CountX + k + 3] = scale * ((srcB[n * n_blocks_per_col * blob_size + k / 2 + 1] >> 4) - 8);
-            bufferB[n * CountX + k + 4] = scale * ((srcB[n * n_blocks_per_col * blob_size + k / 2 + 2] & 0x0F) - 8);
-            bufferB[n * CountX + k + 5] = scale * ((srcB[n * n_blocks_per_col * blob_size + k / 2 + 2] >> 4) - 8);
-            bufferB[n * CountX + k + 6] = scale * ((srcB[n * n_blocks_per_col * blob_size + k / 2 + 3] & 0x0F) - 8);
-            bufferB[n * CountX + k + 7] = scale * ((srcB[n * n_blocks_per_col * blob_size + k / 2 + 3] >> 4) - 8);
-            bufferB[n * CountX + k + 8] = scale * ((srcB[n * n_blocks_per_col * blob_size + k / 2 + 4] & 0x0F) - 8);
-            bufferB[n * CountX + k + 9] = scale * ((srcB[n * n_blocks_per_col * blob_size + k / 2 + 4] >> 4) - 8);
-            bufferB[n * CountX + k + 10] = scale * ((srcB[n * n_blocks_per_col * blob_size + k / 2 + 5] & 0x0F) - 8);
-            bufferB[n * CountX + k + 11] = scale * ((srcB[n * n_blocks_per_col * blob_size + k / 2 + 5] >> 4) - 8);
-            bufferB[n * CountX + k + 12] = scale * ((srcB[n * n_blocks_per_col * blob_size + k / 2 + 6] & 0x0F) - 8);
-            bufferB[n * CountX + k + 13] = scale * ((srcB[n * n_blocks_per_col * blob_size + k / 2 + 6] >> 4) - 8);
-            bufferB[n * CountX + k + 14] = scale * ((srcB[n * n_blocks_per_col * blob_size + k / 2 + 7] & 0x0F) - 8);
-            bufferB[n * CountX + k + 15] = scale * ((srcB[n * n_blocks_per_col * blob_size + k / 2 + 7] >> 4) - 8);
-            #endif
-            for (size_t blk = 0; blk < G_block_size_; ++blk) {
-                bufferB[n * CountX + k + blk] = scale * (((srcB[n * n_blocks_per_col * blob_size + k / 2 + blk / 2] >> (4 * (blk % 2))) & 0x0F) - 8);
-            }
-        }
-    }
-#endif
-
-    const float* B = bufferB;
-#endif
-
-#if 0
-{
-    std::lock_guard<std::mutex> guard(mtx); // Lock the mutex
-    std::cerr << "srcB: " << (void*)srcB << ", scales: " << (void*)scales << ", CountX: " << CountX << ", CountY: " << CountY << ", ldb: " << ldb << "\n";
-}
-#endif
-#if 0
-    for (int y = 0; y < CountY; ++y) {
-        for (int x = 0; x < CountX; ++x) {
-            std::cerr << "B[" << y << "][" << x << "]" << B[y * CountX + x] << "\n";
-        }
-    }
-#endif
 
     while (CountY >= 16) {
 
@@ -1539,21 +1426,7 @@ Return Value:
                 const int64_t n_blocks_per_col = (K + G_block_size_ - 1) / G_block_size_;
                 const int64_t blob_size = G_block_size_ / 8 * G_nbits_;
 
-                //std::cerr << "PanelB: " << (void*)PanelB << ", B: " << (void*)B << ", k: " << k << ", n: " << n << ", ldb: " << ldb << ", CountN: " << CountN << ", CountK: " << CountK << std::endl;
                 MlasSgemmTransposePackB(PanelB, B + k / G_block_size_ * blob_size + n * n_blocks_per_col * blob_size, CountK, scales + k / G_block_size_ + n * n_blocks_per_col, CountN, CountK);
-                //MlasSgemmTransposePackB(PanelB, B + (k + G_block_size_ - 1)/ G_block_size_ * blob_size + n * n_blocks_per_col * blob_size, MLAS_SGEMM_STRIDEK, scales + (k + G_block_size_ - 1)/ G_block_size_ + n * n_blocks_per_col, CountN, CountK);
-                //std::cerr << "k / block_size_ * blob_size: " << k / block_size_ * blob_size << std::endl;
-                //std::cerr << "k / block_size_: " << k / block_size_ << std::endl;
-                //MlasSgemmTransposePackB(PanelB, B + k / 2 + n * ldb, /*CountK*//*ldfb*/MLAS_SGEMM_STRIDEK, scales + k / block_size_ + n * n_blocks_per_col, CountN, CountK);
-#if 0
-                for (size_t n = 0; n < MLAS_SGEMM_STRIDEN; n++)
-                {
-                    for (size_t k = 0; k < MLAS_SGEMM_STRIDEK; k++)
-                    {
-                        std::cerr << "PanelB[" << n << "][" << k << "]" << PanelB[n * MLAS_SGEMM_STRIDEK + k] << "\n";
-                    }
-                }
-#endif
             }
 
             //
@@ -1829,7 +1702,6 @@ Return Value:
         const int64_t blob_size = G_block_size_ / 8 * G_nbits_;
 #if 0
         //const float* B = (const float*)DataParams->B + RangeStartN * ((TransB == CblasNoTrans) ? 1 : ldb);
-        const uint8_t* B = (const uint8_t*)DataParams->B + RangeStartN * ((TransB == CblasNoTrans) ? 1 : ldb);
 #else
         const uint8_t* B = (const uint8_t*)DataParams->B + RangeStartN * n_blocks_per_col * blob_size;
 #endif
