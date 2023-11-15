@@ -119,7 +119,7 @@ stages:
       - ${{ if ne(parameters.EnvSetupScript, '') }}:
         - template: jobs/set-winenv.yml
           parameters:
-          EnvSetupScript: ${{ parameters.EnvSetupScript }}
+            EnvSetupScript: ${{ parameters.EnvSetupScript }}
 
       - ${{ if eq(parameters.EnvSetupScript, '') }}:
         - template: jobs/download_win_gpu_library.yml
