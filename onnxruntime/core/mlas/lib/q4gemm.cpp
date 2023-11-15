@@ -361,4 +361,11 @@ MlasNBitsGemmBatch(const size_t M,
         return;
     }
 #endif
+    (void)(M);
+    (void)(N);
+    (void)(K);
+    (void)(BatchN);
+    (void)(DataParams);
+    (void)(WorkSpace);
+    (void)(ThreadPool);
 }

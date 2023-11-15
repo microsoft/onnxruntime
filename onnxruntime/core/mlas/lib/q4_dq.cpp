@@ -45,6 +45,7 @@ MlasQ4GemmPackBSize(MLAS_BLK_QUANT_TYPE QType, size_t N, size_t K)
             return BlkQ4BufSize<MLAS_Q4TYPE_BLK2>(N, K);
         case BlkQ4Sym128:
             return BlkQ4BufSize<MLAS_Q4TYPE_BLK4>(N, K);
+        default:
             return BlkQ4BufSize<MLAS_Q4TYPE_BLK1>(N, K);
     }
 }
@@ -1213,6 +1214,12 @@ MlasNBitsGemmPackBSize(
         }
     }
 #endif
+    (void)(N);
+    (void)(K);
+    (void)(BlkSize);
+    (void)(nbits);
+    (void)(isAsym);
+    (void)(CompType);
     return 0;
 }
 
@@ -1246,6 +1253,19 @@ MlasNBitsGemmPackB(void* PackedBuf,
         }
     }
 #endif
+    (void)(PackedBuf);
+    (void)(QData);
+    (void)(Scale);
+    (void)(Zp);
+    (void)(N);
+    (void)(K);
+    (void)(ldb);
+    (void)(BlkSize);
+    (void)(nbits);
+    (void)(isAsym);
+    (void)(lastCall);
+    (void)(CompType);
+    (void)(ThreadPool);
 }
 
 void MLASCALL
@@ -1261,4 +1281,10 @@ MlasNBitsGemmUnPackB(float* FpData,
         return;
     }
 #endif
+    (void)(FpData);
+    (void)(PackedBuf);
+    (void)(N);
+    (void)(K);
+    (void)(ldb);
+    (void)(ThreadPool);
 }
