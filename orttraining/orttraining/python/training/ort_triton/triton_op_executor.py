@@ -87,13 +87,19 @@ def _gen_module(onnx_key: int, onnx_str: bytes, shapes: List[List[Union[int, str
 def get_config() -> str:
     """
     Get the supported ops and other configs in JSON format to control the Triton fusion on backend side.
-    All supported ops are from _op_config.py. The Triton fusion will try to fuse subgraphs with connected supported ops.
+    All supported ops are from user config specified by env ORTMODULE_TRITON_CONFIG_FILE or from _op_config.py.
+    The Triton fusion will try to fuse subgraphs with connected supported ops.
     The initializer value can be "none", "scalar", and "all".
         "none": no initializer will be added to subgraphs.
         "scalar": only related scalar initializers will be added to subgraphs.
         "all": all related initializers will be added to subgraphs.
     The min_nodes is used to control the minimum number of non-no-op nodes in a subgraph.
     """
+
+    config_file = os.getenv("ORTMODULE_TRITON_CONFIG_FILE", "")
+    if config_file and os.path.exists(config_file):
+        with open(config_file, "r", encoding="UTF-8") as f:
+            return f.read()
 
     config = {"ops": get_supported_ops(), "initializer": "scalar", "min_nodes": 2}
     return json.dumps(config)
