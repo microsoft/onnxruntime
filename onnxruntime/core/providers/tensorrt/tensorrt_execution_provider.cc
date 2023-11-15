@@ -1808,6 +1808,10 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
       if (sub_graphs.size() != 0) {
         bool all_subgraphs_are_supported = true;
         for (auto sub_graph : sub_graphs) {
+          // TRT EP should consider the empty subgraph is fully supported by TRT.
+          if (sub_graph->CreateGraphViewer()->NumberOfNodes() == 0) {
+            continue;
+          }
           if (!AllNodesAssignedToSpecificEP(*(sub_graph->CreateGraphViewer()), kTensorrtExecutionProvider)) {
             all_subgraphs_are_supported = false;
             break;
@@ -1882,8 +1886,14 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
           SubGraphCollection_t parser_subgraph_nodes_vector = {{subgraph_nodes_vector, false}};
           bool subgraph_early_termination = false;
 
-          // Another subgraph of "If" control flow has been parsed by GetCapability before and all subgraph's nodes assigned to TRT EP.
-          if (AllNodesAssignedToSpecificEP(*sub_graph_veiwer, kTensorrtExecutionProvider)) {
+          // Another subgraph of "If" control flow op has no nodes.
+          // In this case, TRT EP should consider this empty subgraph is fully supported by TRT.
+          if (sub_graph_veiwer->NumberOfNodes() == 0) {
+            all_subgraphs_are_supported = true;
+            break;
+          }
+          // Another subgraph of "If" control flow op has been parsed by GetCapability before and all subgraph's nodes assigned to TRT EP.
+          else if (AllNodesAssignedToSpecificEP(*sub_graph_veiwer, kTensorrtExecutionProvider)) {
             all_subgraphs_are_supported = true;
             break;
           }
