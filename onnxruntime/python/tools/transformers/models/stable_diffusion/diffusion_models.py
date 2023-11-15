@@ -138,7 +138,7 @@ class PipelineInfo:
 
     @staticmethod
     def supported_versions(is_xl: bool):
-        return ["xl-1.0"] if is_xl else ["1.4", "1.5", "2.0-base", "2.0", "2.1", "2.1-base"]
+        return ["xl-td", "xl-1.0"] if is_xl else ["1.4", "1.5", "2.0-base", "2.0", "2.1", "2.1-base"]
 
     def name(self) -> str:
         if self.version == "1.4":
@@ -170,11 +170,13 @@ class PipelineInfo:
                 return "stabilityai/stable-diffusion-xl-refiner-1.0"
             else:
                 return "stabilityai/stable-diffusion-xl-base-1.0"
+        elif self.version == "xl-td":
+            return "ThinkDiffusion/ThinkDiffusionXL"
 
         raise ValueError(f"Incorrect version {self.version}")
 
     def short_name(self) -> str:
-        return self.name().split("/")[-1].replace("stable-diffusion", "sd")
+        return self.name().split("/")[-1].replace("stable-diffusion", "sd").replace("ThinkDiffusion", "TD")
 
     def clip_embedding_dim(self):
         # TODO: can we read from config instead
@@ -182,13 +184,13 @@ class PipelineInfo:
             return 768
         elif self.version in ("2.0", "2.0-base", "2.1", "2.1-base"):
             return 1024
-        elif self.version in ("xl-1.0") and self.is_xl_base():
+        elif self.version in ("xl-1.0", "xl-td") and self.is_xl_base():
             return 768
         else:
             raise ValueError(f"Invalid version {self.version}")
 
     def clipwithproj_embedding_dim(self):
-        if self.version in ("xl-1.0"):
+        if self.version in ("xl-1.0", "xl-td"):
             return 1280
         else:
             raise ValueError(f"Invalid version {self.version}")
@@ -198,7 +200,7 @@ class PipelineInfo:
             return 768
         elif self.version in ("2.0", "2.0-base", "2.1", "2.1-base"):
             return 1024
-        elif self.version in ("xl-1.0") and self.is_xl_base():
+        elif self.version in ("xl-1.0", "xl-td") and self.is_xl_base():
             return 2048
         elif self.version in ("xl-1.0") and self.is_xl_refiner():
             return 1280
@@ -909,6 +911,7 @@ class VAE(BaseModel):
 
 def get_tokenizer(pipeline_info: PipelineInfo, framework_model_dir, hf_token, subfolder="tokenizer"):
     tokenizer_dir = os.path.join(framework_model_dir, pipeline_info.name(), subfolder)
+    print(pipeline_info.name(), tokenizer_dir)
 
     if not os.path.exists(tokenizer_dir):
         model = CLIPTokenizer.from_pretrained(

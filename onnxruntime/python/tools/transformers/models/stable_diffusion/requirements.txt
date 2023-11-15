@@ -1,5 +1,5 @@
-diffusers==0.19.3
-transformers==4.31.0
+diffusers==0.23.0
+transformers==4.35.1
 numpy>=1.24.1
 accelerate
 onnx==1.14.0
