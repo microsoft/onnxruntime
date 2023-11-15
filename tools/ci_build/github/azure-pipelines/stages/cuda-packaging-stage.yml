@@ -237,7 +237,7 @@ stages:
           parameters:
             DownloadCUDA: true
             DownloadTRT: true
-            CUDA_Version: 12.2
+            CudaVersion: ${{ parameters.CudaVersion }}
 
         #    # TODO: set env variables for CUDA and TRT in download_win_gpu_library.yml
         #    - task: BatchScript@1
