@@ -78,9 +78,11 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       coreml_splitnd->add_splitsizes(SafeInt<uint64_t>(split_span[i]));
     }
   } else if (node.SinceVersion() < 18) {
+    num_outputs = node.OutputDefs().size();
     coreml_splitnd->set_numsplits(num_outputs);
   } else {
     num_outputs = SafeInt<uint64_t>(helper.Get("num_outputs", -1));
+
     auto split_dim_size = data_shape[HandleNegativeAxis(axis, data_shape.size())];
     uint64_t chunk_size = narrow<uint64_t>(std::ceil(float(split_dim_size) / num_outputs));
     uint64_t remainder = split_dim_size % chunk_size;
@@ -93,6 +95,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       }
     } else {
       // even
+      num_outputs = node.OutputDefs().size();
       coreml_splitnd->set_numsplits(num_outputs);
     }
   }
@@ -115,6 +118,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                        const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
+  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
 
   NodeAttrHelper helper(node);
   const auto axis = helper.Get("axis", 0);
@@ -124,6 +128,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
   if (!GetStaticShape(*input_defs[0], input_shape, logger))
     return false;
 
+  const auto split_dims_at_axis = input_shape[HandleNegativeAxis(axis, input_shape.size())];
   if (input_defs.size() > 1 && input_defs[1]->Exists()) {
     if (!CheckIsConstantInitializer(*input_defs[1], input_params.graph_viewer, logger, "'split'")) {
       return false;
@@ -133,6 +138,22 @@ bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
       LOGS(logger, VERBOSE) << "CoreML SplitND requires to produce at least 2 outputs.";
       return false;
     }
+    const auto& splits_tensor = *initializers.at(input_defs[1]->Name());
+    Initializer unpacked_tensor(splits_tensor);
+    auto splits_span = unpacked_tensor.DataAsSpan<int64_t>();
+    int sum_of_splits = std::accumulate(splits_span.begin(), splits_span.end(), 0);
+    if (sum_of_splits != split_dims_at_axis) {
+      LOGS(logger, VERBOSE) << "Mismatch between the sum of 'split'. Expected: "
+                            << split_dims_at_axis
+                            << "Actual: "
+                            << sum_of_splits;
+      return false;
+    }
+    auto it = std::find(splits_span.begin(), splits_span.end(), 0);
+    if (it != splits_span.end()) {
+      LOGS(logger, VERBOSE) << "Invalid value in 'splits' input.";
+      return false;
+    }
   } else {
     if (node.SinceVersion() >= 18) {
       if (num_outputs < 2) {
@@ -140,9 +161,9 @@ bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
                               << "CoreML SplitND requires at least 2 outputs. num_outputs: " << num_outputs;
         return false;
       }
-      if (num_outputs != input_shape[HandleNegativeAxis(axis, input_shape.size())]) {
+      if (num_outputs != static_cast<int32_t>(node.OutputDefs().size()) || num_outputs > split_dims_at_axis) {
         LOGS(logger, VERBOSE) << "Invalid num_outputs provided.\n."
-                              << "The value should equal to the size of dimension being split. num_outputs: "
+                              << "The value should be smaller or equal to the size of dimension being split. num_outputs: "
                               << num_outputs;
         return false;
       }
