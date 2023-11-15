@@ -457,9 +457,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   void IncrementRegularRunCountBeforeGraphCapture();
 
   /**
-   * Get the IBuilder instance.
-   * This function only creates the instance on the first time it's being called."
+   * Get the pointer to the IBuilder instance.
+   * This function only creates the instance at the first time it's being called."
    */
-  nvinfer1::IBuilder& GetBuilder() const;
+  nvinfer1::IBuilder* GetBuilder() const;
 };
 }  // namespace onnxruntime
