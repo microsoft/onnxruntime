@@ -120,6 +120,8 @@ stages:
         - template: jobs/set-winenv.yml
           parameters:
             EnvSetupScript: ${{ parameters.EnvSetupScript }}
+            ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
+              DownloadCUDA: true
 
       - ${{ if eq(parameters.EnvSetupScript, '') }}:
         - template: jobs/download_win_gpu_library.yml
@@ -129,7 +131,7 @@ stages:
               DownloadCUDA: true
             ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
               DownloadCUDA: true
-            DownloadTRT: true
+              DownloadTRT: true
       - powershell: |
           Write-Host "##vso[task.prependpath]C:\Program Files (x86)\dotnet"
         displayName: 'Append CUDA SDK Directory to PATH'
