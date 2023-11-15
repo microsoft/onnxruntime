@@ -116,19 +116,19 @@ stages:
         condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
         inputs:
           versionSpec: '18.x'
-      - template: jobs/set-winenv.yml
-        parameters:
+      - ${{ if ne(parameters.EnvSetupScript, '') }}:
+        - template: jobs/set-winenv.yml
+          parameters:
           EnvSetupScript: ${{ parameters.EnvSetupScript }}
-        condition: and(succeeded(), ne('${{ parameters.EnvSetupScript }}', ''))
 
-      - template: jobs/download_win_gpu_library.yml
-        condition: and(succeeded(), eq('${{ parameters.EnvSetupScript }}', ''))
-        parameters:
-          CudaVersion: ${{ parameters.CudaVersion }}
-          ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
-            DownloadCUDA: true
-          ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
-            DownloadCUDA: true
+      - ${{ if eq(parameters.EnvSetupScript, '') }}:
+        - template: jobs/download_win_gpu_library.yml
+          parameters:
+            CudaVersion: ${{ parameters.CudaVersion }}
+            ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
+              DownloadCUDA: true
+            ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
+              DownloadCUDA: true
             DownloadTRT: true
       - powershell: |
           Write-Host "##vso[task.prependpath]C:\Program Files (x86)\dotnet"
