@@ -119,6 +119,10 @@ const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: Slice
 
   const ends = attributes.ends.map((end, i) => fixStartEndValues(end, i, inputShape, axes, steps));
 
+  if (axes.length != starts.length || axes.length != ends.length) {
+    throw new Error('start, ends and axes should have the same number of elements')
+  }
+
   if (axes.length !== inputShape.length) {
     for (let i = 0; i < inputShape.length; ++i) {
       if (!axes.includes(i)) {
@@ -179,7 +183,8 @@ const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: Slice
         ${enableInputShapeUniforms ? '' : [
     `const signs = array<i32, ${signs.length}>(${signs.map(i => `${i}i`).join(',')});`,
     `const starts = array<u32, ${starts.length}>(${starts.map(i => `${i}u`).join(',')});`,
-    `const steps = array<u32, ${steps.length}>(${steps.map(i => `${i}u`).join(',')});`
+    `const steps = array<u32, ${steps.length}>(${steps.map(i => `${i}u`).join(',')});`,
+    `const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});`
   ].join('\n')}
 
         ${calculateInputIndicesImpl(input, output, inputShape, outputShape, enableInputShapeUniforms)}
