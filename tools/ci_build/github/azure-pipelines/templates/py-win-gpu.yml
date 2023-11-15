@@ -71,16 +71,16 @@ jobs:
         - template: jobs/set-winenv.yml
           parameters:
             EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
-            ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
+            ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_cuda') }}:
               DownloadCUDA: true
 
       - ${{ if eq(parameters.ENV_SETUP_SCRIPT, '') }}:
         - template: jobs/download_win_gpu_library.yml
           parameters:
             CudaVersion: ${{ parameters.CudaVersion }}
-            ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
+            ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_cuda') }}:
               DownloadCUDA: true
-            ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
+            ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt') }}:
               DownloadCUDA: true
               DownloadTRT: true
       - task: PythonScript@0
