@@ -120,6 +120,19 @@ ComputeDotProducts(
 
     const uint8x8_t LowMask = vdup_n_u8(0x0F);
 
+    // Manual conversion to float takes place in two steps:
+    // 1. Map 4-bit values from [0, 15] to float values from [16.0f, 31.0f].
+    //    This target float range is convenient because the 4-bit source values can be placed directly into the
+    //    target float bits.
+    // 2. Subtract the conversion offset of 16 from the float result.
+
+    // The high 16 bits of an IEEE 754 32-bit float used as a template for creating float values.
+    constexpr uint16_t float_high_half_template = 0b0'10000011'0000000;
+    //                                           sign|exponent|partial mantissa
+    //                                              +|131: 2^4|~~~~ <- 4 bits go here
+
+    const uint16x8_t float_high_half_template_v = vdupq_n_u16(float_high_half_template);
+
     float32x4_t acc[NCols]{};
 
     const uint8_t* QuantBData = QuantBDataColPtr;
@@ -135,7 +148,6 @@ ComputeDotProducts(
         );
 
         float offset[NCols];  // Includes zero point and float conversion offset of 16.
-                              // More details on the float conversion below.
         if (QuantBZeroPointColPtr != nullptr) {
             UnrolledLoop<NCols>([&](size_t i) {
                 const uint8_t zp_packed =
@@ -180,19 +192,6 @@ ComputeDotProducts(
             });
 
             // dequantize B
-
-            // Manual conversion to float takes place in two steps:
-            // 1. Map 4-bit values from [0, 15] to float values from [16.0f, 31.0f].
-            //    This target float range is convenient because the 4-bit source values can be placed directly into the
-            //    target float bits.
-            // 2. Subtract the conversion offset of 16 from the float result.
-
-            // The high 16 bits of an IEEE 754 32-bit float used as a template for creating float values.
-            constexpr uint16_t float_high_half_template = 0b0'10000011'0000000;
-            //                                           sign|exponent|partial mantissa
-            //                                              +|131: 2^4|~~~~ <- 4 bits go here
-
-            const uint16x8_t float_high_half_template_v = vdupq_n_u16(float_high_half_template);
 
             // shift left 3 and widen to 16 bits
             uint16x8_t bv_u16[NCols][2];
@@ -270,19 +269,16 @@ ComputeDotProducts(
 //
 
 template <size_t BlkBitWidth, size_t BlkLen>
-MLAS_FORCEINLINE size_t
-MlasSQNBitGemmKernelNeon(
+MLAS_FORCEINLINE void
+MlasSQNBitGemmM1KernelNeon(
     const float* A,
     const uint8_t* QuantBData,
     const float* QuantBScale,
     const uint8_t* QuantBZeroPoint,
     float* C,
-    size_t CountM,
     size_t CountN,
     size_t CountK,
-    size_t lda,
     size_t BlockStrideQuantB,
-    size_t ldc,
     const float* Bias
 )
 {
@@ -297,97 +293,87 @@ MlasSQNBitGemmKernelNeon(
     const size_t StrideQuantBScale = BlockCountK;
     const size_t StrideQuantBZeroPoint = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockCountK);
 
-    for (size_t m = 0; m < CountM; ++m) {
-        const float* BiasPtr = Bias;
+    const float* BiasPtr = Bias;
 
-        const uint8_t* QuantBDataColPtr = QuantBData;
-        const float* QuantBScaleColPtr = QuantBScale;
-        const uint8_t* QuantBZeroPointColPtr = QuantBZeroPoint;
+    const uint8_t* QuantBDataColPtr = QuantBData;
+    const float* QuantBScaleColPtr = QuantBScale;
+    const uint8_t* QuantBZeroPointColPtr = QuantBZeroPoint;
 
-        float* SumPtr = CRowPtr;
+    float* SumPtr = CRowPtr;
 
-        int64_t nblk = static_cast<int64_t>(CountN) - NCols;
+    int64_t nblk = static_cast<int64_t>(CountN) - NCols;
 
-        while (nblk >= 0) {
-            ComputeDotProducts<BlkBitWidth, BlkLen, NCols>(
-                ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
-                StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
-                BiasPtr
-            );
+    while (nblk >= 0) {
+        ComputeDotProducts<BlkBitWidth, BlkLen, NCols>(
+            ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
+            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
+            BiasPtr
+        );
 
-            // move to next `NCols` columns
+        // move to next `NCols` columns
 
-            QuantBDataColPtr += NCols * StrideQuantBData;
-            QuantBScaleColPtr += NCols * StrideQuantBScale;
-            if (QuantBZeroPointColPtr != nullptr) {
-                QuantBZeroPointColPtr += NCols * StrideQuantBZeroPoint;
-            }
-
-            BiasPtr += BiasPtr != nullptr ? NCols : 0;
-            SumPtr += NCols;
-
-            nblk -= NCols;
+        QuantBDataColPtr += NCols * StrideQuantBData;
+        QuantBScaleColPtr += NCols * StrideQuantBScale;
+        if (QuantBZeroPointColPtr != nullptr) {
+            QuantBZeroPointColPtr += NCols * StrideQuantBZeroPoint;
         }
 
-        // left over columns less than `NCols`?
-        nblk += NCols;
-        for (int64_t n = 0; n < nblk; ++n) {
-            ComputeDotProducts<BlkBitWidth, BlkLen, 1>(
-                ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
-                StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
-                BiasPtr
-            );
+        BiasPtr += BiasPtr != nullptr ? NCols : 0;
+        SumPtr += NCols;
 
-            // move to next column
-
-            QuantBDataColPtr += StrideQuantBData;
-            QuantBScaleColPtr += StrideQuantBScale;
-            if (QuantBZeroPointColPtr != nullptr) {
-                QuantBZeroPointColPtr += StrideQuantBZeroPoint;
-            }
-
-            BiasPtr += BiasPtr != nullptr ? 1 : 0;
-            SumPtr += 1;
-        }
-
-        ARowPtr += lda;
-        CRowPtr += ldc;
+        nblk -= NCols;
     }
 
-    return CountM;
+    // left over columns less than `NCols`?
+    nblk += NCols;
+    for (int64_t n = 0; n < nblk; ++n) {
+        ComputeDotProducts<BlkBitWidth, BlkLen, 1>(
+            ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
+            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
+            BiasPtr
+        );
+
+        // move to next column
+
+        QuantBDataColPtr += StrideQuantBData;
+        QuantBScaleColPtr += StrideQuantBScale;
+        if (QuantBZeroPointColPtr != nullptr) {
+            QuantBZeroPointColPtr += StrideQuantBZeroPoint;
+        }
+
+        BiasPtr += BiasPtr != nullptr ? 1 : 0;
+        SumPtr += 1;
+    }
 }
 
-#define SPECIALIZE_SQNBIT_GEMM_KERNEL(BlkBitWidth, BlkLen)                               \
-    template <>                                                                          \
-    MLAS_FORCEINLINE size_t                                                              \
-    MlasSQNBitGemmKernel<BlkBitWidth, BlkLen, MLAS_SQNBIT_GEMM_KERNEL_NEON>(             \
-        const float* A,                                                                  \
-        const uint8_t* QuantBData,                                                       \
-        const float* QuantBScale,                                                        \
-        const uint8_t* QuantBZeroPoint,                                                  \
-        float* C,                                                                        \
-        size_t CountM,                                                                   \
-        size_t CountN,                                                                   \
-        size_t CountK,                                                                   \
-        size_t lda,                                                                      \
-        size_t BlockStrideQuantB,                                                        \
-        size_t ldc,                                                                      \
-        const float* Bias                                                                \
-    )                                                                                    \
-    {                                                                                    \
-        return MlasSQNBitGemmKernelNeon<BlkBitWidth, BlkLen>(                            \
-            A, QuantBData, QuantBScale, QuantBZeroPoint, C, CountM, CountN, CountK, lda, \
-            BlockStrideQuantB, ldc, Bias                                                 \
-        );                                                                               \
+#define SPECIALIZE_SQNBIT_GEMM_M1_KERNEL(BlkBitWidth, BlkLen)                  \
+    template <>                                                                \
+    MLAS_FORCEINLINE void                                                      \
+    MlasSQNBitGemmM1Kernel<BlkBitWidth, BlkLen, MLAS_SQNBIT_GEMM_KERNEL_NEON>( \
+        const float* A,                                                        \
+        const uint8_t* QuantBData,                                             \
+        const float* QuantBScale,                                              \
+        const uint8_t* QuantBZeroPoint,                                        \
+        float* C,                                                              \
+        size_t CountN,                                                         \
+        size_t CountK,                                                         \
+        size_t BlockStrideQuantB,                                              \
+        const float* Bias                                                      \
+    )                                                                          \
+    {                                                                          \
+        return MlasSQNBitGemmM1KernelNeon<BlkBitWidth, BlkLen>(                \
+            A, QuantBData, QuantBScale, QuantBZeroPoint, C, CountN, CountK,    \
+            BlockStrideQuantB, Bias                                            \
+        );                                                                     \
     }
 
-SPECIALIZE_SQNBIT_GEMM_KERNEL(4, 16)
-SPECIALIZE_SQNBIT_GEMM_KERNEL(4, 32)
-SPECIALIZE_SQNBIT_GEMM_KERNEL(4, 64)
-SPECIALIZE_SQNBIT_GEMM_KERNEL(4, 128)
-SPECIALIZE_SQNBIT_GEMM_KERNEL(4, 256)
+SPECIALIZE_SQNBIT_GEMM_M1_KERNEL(4, 16)
+SPECIALIZE_SQNBIT_GEMM_M1_KERNEL(4, 32)
+SPECIALIZE_SQNBIT_GEMM_M1_KERNEL(4, 64)
+SPECIALIZE_SQNBIT_GEMM_M1_KERNEL(4, 128)
+SPECIALIZE_SQNBIT_GEMM_M1_KERNEL(4, 256)
 
-#undef SPECIALIZE_SQNBIT_GEMM_KERNEL
+#undef SPECIALIZE_SQNBIT_GEMM_M1_KERNEL
 
 //
 // MlasQNBitBlkDequantBForSgemm and helpers.

@@ -38,6 +38,7 @@ Abstract:
 /**
  * @brief Multiply float matrix A with quantized n-bit integer matrix B.
  *        B is block quantized and column major.
+ *        This kernel handles the special case where M, the number of rows of A and C, is 1.
  *
  * @tparam BlkBitWidth  Bit width of each value in a block.
  * @tparam BlkLen       Number of values in a block.
@@ -48,30 +49,22 @@ Abstract:
  * @param       QuantBScale         Supplies the quantized B matrix block scale values.
  * @param       QuantBZeroPoint     Supplies the quantized B matrix block zero point values. Optional.
  * @param[out]  C                   Supplies the output C matrix.
- * @param       CountM              Number of rows of A and C.
  * @param       CountN              Number of columns of B and C.
  * @param       CountK              Number of columns of A and rows of B.
- * @param       lda                 Leading dimension of A.
  * @param       BlockStrideQuantB   Number of blocks between adjacent columns of the quantized B matrix.
- * @param       ldc                 Leading dimension of C.
  * @param       Bias                Bias vector of length N.
- *
- * @return  Number of rows of A handled.
  */
 template <size_t BlkBitWidth, size_t BlkLen, typename KernelType>
-MLAS_FORCEINLINE size_t
-MlasSQNBitGemmKernel(
+MLAS_FORCEINLINE void
+MlasSQNBitGemmM1Kernel(
     const float* A,
     const uint8_t* QuantBData,
     const float* QuantBScale,
     const uint8_t* QuantBZeroPoint,
     float* C,
-    size_t CountM,
     size_t CountN,
     size_t CountK,
-    size_t lda,
     size_t BlockStrideQuantB,
-    size_t ldc,
     const float* Bias
 );
 
@@ -188,9 +181,6 @@ MlasSQNBitGemmOperation(
         for (size_t n = 0; n < RangeCountN; n += CountN) {
             CountN = std::min(RangeCountN - n, size_t{128});
 
-            //
-            // Step through each slice of matrix A along the M dimension.
-            //
             const float* a_row = A;
             const uint8_t* b_col = QuantBData + n * ldb;
             const float* b_col_scale = QuantBScale + n * k_blks;
@@ -199,22 +189,15 @@ MlasSQNBitGemmOperation(
             float* c_blk = C + n;
             const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
 
-            size_t RowsRemaining = RangeCountM;
-            while (RowsRemaining > 0) {
-                auto RowsHandled = MlasSQNBitGemmKernel<BlkBitWidth, BlkLen, KernelType>(
-                    a_row, b_col, b_col_scale, b_col_zp, c_blk, RowsRemaining, CountN, K, lda, k_blks, ldc, bias
+            MlasSQNBitGemmM1Kernel<BlkBitWidth, BlkLen, KernelType>(
+                a_row, b_col, b_col_scale, b_col_zp, c_blk, CountN, K, k_blks, bias
+            );
+
+            if (DataParams->PostProcessor != nullptr) {
+                DataParams->PostProcessor->Process(
+                    DataParams->C, RangeStartM, RangeStartN + n,
+                    RangeCountM, CountN, ldc
                 );
-
-                if (DataParams->PostProcessor != nullptr) {
-                    DataParams->PostProcessor->Process(
-                        DataParams->C, RangeStartM + RangeCountM - RowsRemaining, RangeStartN,
-                        RowsHandled, CountN, ldc
-                    );
-                }
-
-                c_blk += ldc * RowsHandled;
-                a_row += lda * RowsHandled;
-                RowsRemaining -= RowsHandled;
             }
         }
         return;
