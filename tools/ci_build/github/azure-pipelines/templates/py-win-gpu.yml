@@ -67,14 +67,14 @@ jobs:
 
       - template: download-deps.yml
 
-      - ${{ if ne(parameters.EnvSetupScript, '') }}:
+      - ${{ if ne(parameters.ENV_SETUP_SCRIPT, '') }}:
         - template: jobs/set-winenv.yml
           parameters:
-            EnvSetupScript: ${{ parameters.EnvSetupScript }}
+            EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
             ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
               DownloadCUDA: true
 
-      - ${{ if eq(parameters.EnvSetupScript, '') }}:
+      - ${{ if eq(parameters.ENV_SETUP_SCRIPT, '') }}:
         - template: jobs/download_win_gpu_library.yml
           parameters:
             CudaVersion: ${{ parameters.CudaVersion }}
