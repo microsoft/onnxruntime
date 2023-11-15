@@ -2,36 +2,35 @@ parameters:
   - name: CudaVersion
     type: string
     default: '11.8'
-# these 2 parameters are used for debugging.
+  # these 2 parameters are used for debugging.
   - name: SpecificArtifact
     type: boolean
     default: false
   - name: BuildId
     type: string
     default: '0'
-  - name : docker_base_image
+  - name: docker_base_image
     type: string
   - name: linux_trt_version
     type: string
 stages:
-  - stage:
-    - template: ../nuget/templates/test_win.yml
-      parameters:
-        AgentPool: 'onnxruntime-Win2022-GPU-T4'
-        NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
-        ArtifactSuffix: 'GPU'
-        StageSuffix: 'GPU'
-        Skipx86Tests: 'true'
-        CudaVersion: ${{ parameters.CudaVersion }}
-    ## Linux GPU Testing
-    - template: ../nuget/templates/test_linux.yml
-      parameters:
-        AgentPool: Onnxruntime-Linux-GPU
-        ArtifactSuffix: 'GPU'
-        StageSuffix: 'GPU'
-        TRT_VERSION: ${{ variables.linux_trt_version }}
-        DockerBaseImage: ${{ variables.docker_base_image }}
-        CustomOpArtifactName: onnxruntime-linux-x64-gpu
-        NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
-        SpecificArtifact: ${{ parameters.specificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
+  - template: ../nuget/templates/test_win.yml
+    parameters:
+      AgentPool: 'onnxruntime-Win2022-GPU-T4'
+      NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
+      ArtifactSuffix: 'GPU'
+      StageSuffix: 'GPU'
+      Skipx86Tests: 'true'
+      CudaVersion: ${{ parameters.CudaVersion }}
+  ## Linux GPU Testing
+  - template: ../nuget/templates/test_linux.yml
+    parameters:
+      AgentPool: Onnxruntime-Linux-GPU
+      ArtifactSuffix: 'GPU'
+      StageSuffix: 'GPU'
+      TRT_VERSION: ${{ variables.linux_trt_version }}
+      DockerBaseImage: ${{ variables.docker_base_image }}
+      CustomOpArtifactName: onnxruntime-linux-x64-gpu
+      NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
+      SpecificArtifact: ${{ parameters.specificArtifact }}
+      BuildId: ${{ parameters.BuildId }}
