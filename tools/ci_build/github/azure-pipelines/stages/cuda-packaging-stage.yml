@@ -22,13 +22,6 @@ parameters:
 - name: CudaVersion
   type: string
   default: '11.8'
-- name : docker_base_image
-  type: string
-- name: linux_trt_version
-  type: string
-- name: ReleaseVersionSuffix
-  type: string
-  default: ''
 
 stages:
   ######## Building ########
