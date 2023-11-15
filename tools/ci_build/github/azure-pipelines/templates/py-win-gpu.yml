@@ -13,7 +13,7 @@ parameters:
   type: string
 
 - name: ENV_SETUP_SCRIPT
-  type:
+  type: string
   default: ''
 
 - name: BUILD_PY_PARAMETERS
