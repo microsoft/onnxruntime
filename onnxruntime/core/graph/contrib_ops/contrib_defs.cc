@@ -2030,7 +2030,6 @@ no offset
                                 }));
 #endif
 
-
 constexpr const char* TransposeMatMul_doc = R"DOC(
 Duplicate of FusedMatMul. Going forward FusedMatMul should be used. This OP will be supported for backward compatibility.
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
