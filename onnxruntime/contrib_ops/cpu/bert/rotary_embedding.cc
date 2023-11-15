@@ -63,6 +63,12 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
   const int head_size = parameters.head_size;
   const int position_ids_format = parameters.position_ids_format;
   const int half_head_size = head_size / 2;
+  int seq_stride = num_heads;
+  int head_stride = 1;
+  if (parameters.transposed) {
+    seq_stride = 1;
+    head_stride = sequence_length;
+  }
 
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
@@ -76,7 +82,7 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
       const int s = static_cast<int>((ptr / num_heads) % sequence_length);
       const int n = static_cast<int>(ptr % num_heads);
 
-      const int block_offset = b * sequence_length * num_heads + s * num_heads + n;
+      const int block_offset = b * sequence_length * num_heads + s * seq_stride + n * head_stride;
       const int data_offset = block_offset * head_size;
 
       const T* input_data = input_src + data_offset;
