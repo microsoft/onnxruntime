@@ -43,7 +43,13 @@ jobs:
   pool: ${{ parameters.machine_pool }}
   variables:
     # The build machine pool doesn't have dotnet, so it can't run CG.
-    skipComponentGovernanceDetection: true
+    - name: skipComponentGovernanceDetection
+      value: true
+    - name: extra_build_args
+      ${{ if ne(parameters.extra_build_arg, '') }}:
+        value: -x ${{ parameters.extra_build_arg }}
+      ${{ if eq(parameters.extra_build_arg, '') }}:
+        vale: ''
   steps:
     - checkout: self
       clean: true
@@ -71,7 +77,8 @@ jobs:
         targetType: filePath
         filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
         # please check ONNXRUNTIME_CUDA_VERSION in tools/ci_build/github/linux/build_linux_python_package.sh
-        arguments: -i onnxruntimecuda${{ parameters.cuda_version }}xtrt86build${{ parameters.arch }} -d "GPU" -c ${{ parameters.cmake_build_type }} -u ${{ parameters.cuda_version }} -x ${{ parameters.extra_build_arg }}
+
+        arguments: -i onnxruntimecuda${{ parameters.cuda_version }}xtrt86build${{ parameters.arch }} -d "GPU" -c ${{ parameters.cmake_build_type }} -u ${{ parameters.cuda_version }} $(extra_build_args)
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
