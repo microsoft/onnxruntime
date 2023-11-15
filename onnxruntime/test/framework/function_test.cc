@@ -543,14 +543,12 @@ TEST(FunctionTest, TestInlinedLocalFunctionRemoved) {
   InferenceSessionWrapper session_object{session_options, GetEnvironment()};
 
   std::stringstream sstr(serialized_model);
-  auto status = session_object.Load(sstr);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(session_object.Load(sstr));
 
   auto model_proto = session_object.GetModel().ToProto();
   ASSERT_EQ(1, model_proto.functions_size());
 
-  status = session_object.Initialize();
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   // All functions removed
   model_proto = session_object.GetModel().ToProto();
