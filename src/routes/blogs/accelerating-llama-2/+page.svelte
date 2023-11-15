@@ -22,10 +22,9 @@
 <Header pathvar="" />
 <div class="container mx-auto px-4 md:px-8 lg:px-48 pt-8">
 	<h1 class="text-5xl pb-2">Accelerating LLaMA-2 Inference with ONNX Runtime</h1>
+	<p class="text-neutral">By: Parinita Rahi and Kunal Vaishnavi</p>
 	<p class="text-neutral">14TH NOVEMBER, 2023</p>
 	<div class="py-4">
-		<h2 class="text-blue-500 text-3xl mb-4">Llama2 with ONNX Runtime: Part 1</h2>
-
 		<p class="mb-4">
 			Interested in running Llama2 faster? Let us explore how ONNX Runtime can propel your Llama2
 			variants for faster inference!
@@ -45,7 +44,7 @@
 
 		<p class="mb-4">
 			Llama2 is a state-of-the-art open source LLM from Meta ranging in scale from 7B to 70B
-			parameters (7B, 13B, 70B). Microsoft and Meta announced their AI on Azure and Windows
+			parameters (7B, 13B, 70B). Microsoft and Meta <a href="https://blogs.microsoft.com/blog/2023/07/18/microsoft-and-meta-expand-their-ai-partnership-with-llama-2-on-azure-and-windows/" class="text-blue-500">announced</a> their AI on Azure and Windows
 			collaboration in July 2023. As part of the announcement, Llama2 was added to the Azure AI
 			model catalog, which serves as a hub of foundation models that empower developers and machine
 			learning (ML) professionals to easily discover, evaluate, customize, and deploy pre-built
@@ -59,7 +58,7 @@
 		</p>
 
 		<h2 class="text-blue-500 text-3xl mb-4">
-			Faster Inferencing with new ONNX Runtime Optimizations
+			Faster Inferencing with New ONNX Runtime Optimizations
 		</h2>
 
 		<p class="mb-4">
@@ -67,17 +66,17 @@
 			Llama2, including graph fusions and kernel optimizations. The inference speedups, when
 			compared to Hugging Face (HF) variants of Llama2 in PyTorch compile mode for prompt latency of
 			CUDA FP16, are mentioned below. We see ~3X gains in end-to-end throughput comparisons for both
-			7B, and 13B models. The end-to-end throughput or wall-clock throughput shown below is defined
-			as batch size * (prompt length + token generation length) / wall-clock latency) where
+			7B and 13B models. The end-to-end throughput or wall-clock throughput shown below is defined
+			as <i>batch size * (prompt length + token generation length) / wall-clock latency</i> where
 			wall-clock latency = the latency from running end-to-end and token generation length = 256
-			generated tokens. The E2E throughput is up to 4.5X faster when compared to PyTorch Compile.
+			generated tokens. The E2E throughput is up to 4.5X more when compared to PyTorch compile.
 		</p>
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <figure class="px-10 pt-4">
-                <img src={figure1} alt="E2E Throughput Comparisons - Llama 2 7b" />
+                <img src={figure1} alt="E2E Throughput Comparisons - Llama-2-7b" />
             </figure>
             <figure class="px-10 pt-4 my-auto">
-                <img src={figure1b} alt="E2E Throughput Comparisons - Llama 2 13b" />
+                <img src={figure1b} alt="E2E Throughput Comparisons - Llama-2-13b" />
             </figure>
         </div>
         <div class="mt-2 mb-4 text-center">
@@ -87,17 +86,17 @@
 		<h2 class="text-blue-500 text-3xl mb-4">Latency and Throughput</h2>
 
 		<p class="mb-4">
-			The graphs below show latency comparisons between the ORT and PyTorch variants of the Llama2
+			The graphs below show latency comparisons between the ONNX Runtime and PyTorch variants of the Llama2
 			7B model on CUDA FP16. Latency here is defined as the time it takes to complete one pass
 			through the model to produce the logits and synchronize the outputs.
 		</p>
         
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <figure class="px-10 pt-4">
-                <img src={figure2} alt="Prompt Latency Comparisons - Llama 2 7b" />
+                <img src={figure2} alt="Prompt Latency Comparisons - Llama-2-7b" />
             </figure>
             <figure class="px-10 pt-4 my-auto">
-                <img src={figure2b} alt="Prompt Latency Comparisons - Llama 2 13b" />
+                <img src={figure2b} alt="Prompt Latency Comparisons - Llama-2-13b" />
             </figure>
         </div>
         <div class="mt-2 mb-4 text-center">
@@ -106,41 +105,40 @@
 
 		<p class="mb-4">
 			Token generation throughput below is the average throughput of the first 128 tokens generated.
-			We see up to 3.5X gains in token generation throughput when compared to PyTorch Eager and
-			Compile modes. The token generated throughput measured in Tokens per Second (TPS) is 3.5X
-			faster with ONNX Runtime as compared to PyTorch versions of the model.
+			We see up to 3.5X gains in token generation throughput when compared to PyTorch eager and
+			compile modes.
 		</p>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <figure class="px-10 pt-4">
-                <img src={figure3} alt="Tokens Generated Throughput Comparisons - Llama 2 7b" />
+                <img src={figure3} alt="Tokens Generated Throughput Comparisons - Llama-2-7b" />
             </figure>
             <figure class="px-10 pt-4 my-auto">
-                <img src={figure3b} alt="Tokens Generated Throughput Comparisons - Llama 2 13b" />
+                <img src={figure3b} alt="Tokens Generated Throughput Comparisons - Llama-2-13b" />
             </figure>
         </div>
         <div class="mt-2 mb-4 text-center">
             Figure 3: Tokens Generated Throughput Comparisons
         </div>
 
-		<p class="mb-4">More details on these metrics can be found here.</p>
+		<p class="mb-4">More details on these metrics can be found <a href="https://github.com/microsoft/onnxruntime-inference-examples/blob/main/python/models/llama2/README.md" class="text-blue-500">here</a>.</p>
 
 		<h2 class="text-blue-500 text-3xl mb-4">ONNX Runtime with Multi-GPU Inference</h2>
 
 		<p class="mb-4">
-			ONNX Runtime supports multi-GPU inference to enable serving large models. The LLaMA-2 70B
-			model has 70 billion parameters, and even in FP16 precision, the model requires 140GB. Loading
-			the model requires multiple GPUs for inference, even with a powerful NVIDIA A100 80GB GPU.
+			ONNX Runtime supports multi-GPU inference to enable serving large models. Even in FP16 precision,
+			the LLaMA-2 70B model in FP16 precision requires 140GB. Loading the model requires multiple GPUs 
+			for inference, even with a powerful NVIDIA A100 80GB GPU.
 		</p>
 
 		<p class="mb-4">
-			ONNX Runtime applied Megatron-LM Tensor Parallelism on meta-llama/Llama-2-70b-hf to split the
-			original model weight onto different GPUs. Megatron shard on meta-llama/Llama-2-70b-hf model
-			shards the PyTorch model with FP16 into 4 partitions, converts each partition into ONNX
+			ONNX Runtime applied <a href="https://arxiv.org/pdf/1909.08053.pdf" class="text-blue-500">Megatron-LM</a> Tensor Parallelism on the 70B model to split the
+			original model weight onto different GPUs. Megatron sharding on the 70B model
+			shards the PyTorch model with FP16 precision into 4 partitions, converts each partition into ONNX
 			format, and then applies a new ONNX Runtime graph fusion on the converted ONNX model. The 70B
 			model has ~30 tokens per second throughput for token generation at batch size 1, and
 			end-to-end throughput starts at 30 ms for smaller sequence lengths with these optimizations.
-			You can find additional example scripts here.
+			You can find additional example scripts <a href="https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/models/llama/" class="text-blue-500">here</a>.
 		</p>
         
         <figure class="px-10 pt-4">
@@ -189,7 +187,7 @@
 		</figure>
 
 		<p class="mb-4">
-			This approach makes it easier to maintain and support future versions of the rotary embeddings
+			This approach makes it easier to maintain and support future versions of the rotary embedding
 			computations because the pattern matching is only dependent on the operator's inputs and
 			outputs instead of its internal semantic representation. It also allows other existing
 			implementations of rotary embeddings in similar models such as GPT-NeoX, Falcon, Mistral,
@@ -197,7 +195,7 @@
 		</p>
 
 		<p class="mb-4">
-			ONNX Runtime also adds support for GroupQueryAttention (GQA) operator, which leverages the new
+			ONNX Runtime also adds support for the GroupQueryAttention (GQA) operator, which leverages the new
 			Flash Attention V2 algorithm and its optimized kernels to efficiently compute attention. The
 			GQA operator supports past-present buffer sharing between the past key/value cache (past KV
 			cache) and the present key/value cache (present KV cache). By binding the present KV caches to
@@ -210,9 +208,20 @@
 			to decide which approach is best for them.
 		</p>
 
+		<p class="mb-4>
+			In addition to these fusions and kernel optimizations, ONNX Runtime reduces the model’s memory usage. 
+			Besides quantization improvements (which will be covered in a future post), ONNX Runtime compresses the 
+			size of the cosine and sine caches used in each of the rotary embeddings by 50%. The compute kernels in 
+			ONNX Runtime that run the rotary embedding computations can then recognize this format and use their 
+			parallelized implementations to calculate the rotary embeddings more efficiently with less memory usage. 
+			The rotary embedding compute kernels also support interleaved and non-interleaved formats to support both 
+			the <a href="https://github.com/microsoft/Llama-2-Onnx" class="text-blue-500">Microsoft version of LLaMA-2</a> and the Hugging Face version of LLaMA-2 respectively while sharing the 
+			same calculations.
+		</p>
+
 		<p class="mb-4">
-			The optimizations work for the Hugging Face versions (models ending with -hf). You can
-			download the optimized HF versions from Microsoft's LLaMA-2 ONNX repository. Stay tuned for
+			The optimizations work for the <a href="https://huggingface.co/meta-llama" class="text-blue-500">Hugging Face versions</a> (models ending with <i>-hf</i>) and the Microsoft versions. 
+			You can download the optimized HF versions from <a href="https://github.com/microsoft/Llama-2-Onnx/tree/main-CUDA_CPU" class="text-blue-500">Microsoft's LLaMA-2 ONNX repository</a>. Stay tuned for
 			newer Microsoft versions coming soon!
 		</p>
 
@@ -226,7 +235,7 @@
 		</p>
 
 		<p class="mb-4">
-			Here is the example of Llama2 optimization with Olive, which harnesses ONNX Runtime
+			Here is an example of <a href="https://github.com/microsoft/Olive/tree/main/examples/llama2" class="text-blue-500">Llama2 optimization with Olive</a>, which harnesses ONNX Runtime
 			optimizations highlighted in this blog. Distinct optimization flows cater to various
 			requirements. For instance, you have the flexibility to choose different data types for
 			quantization in CPU and GPU inference, based on your accuracy tolerance. Additionally, you can
@@ -237,8 +246,8 @@
 		<h2 class="text-blue-500 text-3xl mb-4">Usage Example</h2>
 
 		<p class="mb-4">
-			Here is a sample notebook that shows you an end-to-end example of how you can use the above
-			ONNX Runtime Optimizations in your application.
+			Here is a <a href="https://github.com/microsoft/onnxruntime-inference-examples/blob/main/python/models/llama2/LLaMA-2%20E2E%20Notebook.ipynb" class="text-blue-500">sample notebook</a> that shows you an end-to-end example of how you can use the above
+			ONNX Runtime optimizations in your application.
 		</p>
 
 		<h2 class="text-blue-500 text-3xl mb-4">Conclusion</h2>
