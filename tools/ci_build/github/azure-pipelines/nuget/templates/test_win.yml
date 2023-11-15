@@ -51,7 +51,7 @@ stages:
       parameters:
         DownloadCUDA: true
         DownloadTRT: true
-        CUDA_Version: ${{ parameters.CudaVersion }}
+        CudaVersion: ${{ parameters.CudaVersion }}
 
     - task: BatchScript@1
       displayName: 'Setup Visual Studio env vars'
