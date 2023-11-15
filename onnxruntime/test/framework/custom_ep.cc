@@ -7,12 +7,12 @@
 
 #include "custom_ep.h"
 #include "interface/framework/kernel.h"
-#include "core/framework/ortdevice.h"
-#include "core/framework/ortmemoryinfo.h"
 
 using namespace onnxruntime;
 
 namespace onnxruntime {
+
+using namespace interface;
 
 namespace test {
 
@@ -47,7 +47,7 @@ struct Celu {
 
     for (size_t i = 0; i < number_of_elements; ++i) {
       if (input_data[i] < 0) {
-        output_data[i] = 1.f; // deliberately set to 1.f for testing
+        output_data[i] = 1.f;  // deliberately set to 1.f for testing
       }
     }
 
@@ -56,43 +56,26 @@ struct Celu {
   float alpha = 0.f;
 };
 
-struct CustomCPUAllocator : public OrtAllocator {
-  CustomCPUAllocator() {
-    mem_info = new OrtMemoryInfo("", OrtDeviceAllocator, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0));
-    OrtAllocator::version = ORT_API_VERSION;
-    OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) { return static_cast<CustomCPUAllocator*>(this_)->Alloc(size); };
-    OrtAllocator::Free = [](OrtAllocator* this_, void* p) { static_cast<CustomCPUAllocator*>(this_)->Free(p); };
-    OrtAllocator::Info = [](const OrtAllocator* this_) { return static_cast<const CustomCPUAllocator*>(this_)->Info(); };
-  }
-
-  virtual ~CustomCPUAllocator() { Ort::GetApi().ReleaseMemoryInfo(mem_info); }
-
-  void* Alloc(size_t size) {
-    void* device_address = new (std::nothrow) uint8_t[size];
-    return device_address;
+struct CustomCPUAllocator : public Allocator {
+  void* Alloc(size_t size) override {
+    return new (std::nothrow) uint8_t[size];
   }
   void Free(void* p) {
     delete[] reinterpret_cast<uint8_t*>(p);
-  }
-  const OrtMemoryInfo* Info() const {
-    return mem_info;
-  }
-
- private:
-  OrtMemoryInfo* mem_info;
+  };
 };
 
 CustomEp::CustomEp(const CustomEpInfo& info) : info_{info} {
   type_ = "CustomEp";
-  allocators_.push_back(std::make_unique<CustomCPUAllocator>().release());  // TODO: release resource
+  allocators_.emplace_back(std::make_unique<CustomCPUAllocator>().release());
 }
 
 bool CustomEp::CanCopy(const OrtDevice& /*src*/, const OrtDevice& /*dst*/) {
   return true;
 }
 
-void CustomEp::MemoryCpy(Ort::UnownedValue& /*src*/, Ort::ConstValue const& /*dst*/) {
-}
+//void CustomEp::MemoryCpy(Ort::UnownedValue& /*src*/, Ort::ConstValue const& /*dst*/) {
+//}
 
 std::vector<std::unique_ptr<SubGraphDef>> CustomEp::GetCapability(interface::GraphViewRef* graph) {
   std::vector<std::unique_ptr<SubGraphDef>> ret;
@@ -128,23 +111,26 @@ common::Status CustomEp::Compile(std::vector<std::unique_ptr<interface::GraphVie
     };
     compute_info.release_state_func = [](FunctionState) {
     };
-    compute_info.compute_func = [](void* /*state*/, const OrtApi*, OrtKernelContext* context) {
-      Ort::KernelContext ctx(context);
-      assert(ctx.GetInputCount() == 1);
-      assert(ctx.GetOutputCount() == 1);
-      Ort::ConstValue input = ctx.GetInput(0);
-      const float* X = input.GetTensorData<float>();
-      size_t len = 1;
-      for (int64_t& elem : input.GetTensorTypeAndShapeInfo().GetShape()) len *= elem;
-      Ort::UnownedValue output = ctx.GetOutput(0, input.GetTensorTypeAndShapeInfo().GetShape());
-      float* Y = output.GetTensorMutableData<float>();
-
-      float alpha = 1.0;
-      for (size_t j = 0; j < len; j++) {
-        Y[j] = std::max(0.f, X[j]) + std::min<float>(0.f, alpha * (exp(X[j] / alpha) - 1));
-      }
+    compute_info.compute_func = [](void* /*state*/, const OrtApi*, OrtKernelContext*) {
       return Status::OK();
     };
+    //compute_info.compute_func = [](void* /*state*/, const OrtApi*, OrtKernelContext* context) {
+    //  Ort::KernelContext ctx(context);
+    //  assert(ctx.GetInputCount() == 1);
+    //  assert(ctx.GetOutputCount() == 1);
+    //  Ort::ConstValue input = ctx.GetInput(0);
+    //  const float* X = input.GetTensorData<float>();
+    //  size_t len = 1;
+    //  for (int64_t& elem : input.GetTensorTypeAndShapeInfo().GetShape()) len *= elem;
+    //  Ort::UnownedValue output = ctx.GetOutput(0, input.GetTensorTypeAndShapeInfo().GetShape());
+    //  float* Y = output.GetTensorMutableData<float>();
+
+    //  float alpha = 1.0;
+    //  for (size_t j = 0; j < len; j++) {
+    //    Y[j] = std::max(0.f, X[j]) + std::min<float>(0.f, alpha * (exp(X[j] / alpha) - 1));
+    //  }
+    //  return Status::OK();
+    //};
     node_compute_funcs.push_back(compute_info);
   }
   return common::Status::OK();
