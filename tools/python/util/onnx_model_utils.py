@@ -115,7 +115,7 @@ def optimize_model(
     # save using external initializers so models > 2 GB are handled
     if use_external_initializers:
         major, minor, rest = ort.__version__.split(".", 3)
-        if int(major) > 1 or (int(major) == 1 and int(minor) >= 17):
+        if (int(major), int(minor)) >= (1, 17):
             so.add_session_config_entry("session.optimized_model_external_initializers_file_name", "external_data.pb")
         else:
             raise ValueError(
@@ -387,7 +387,7 @@ class ModelProtoWithShapeInfo:
     Class to load an ONNX model and run shape inferencing on it to populate the ValueInfo.
     The model_with_shape_info property will contain the updated model.
     If the model is > 2GB and uses external data a temporary file is required to run shape inferencing successfully.
-    This helper class handle automatic removal of the temporary file.
+    This helper class handles automatic removal of the temporary file.
     """
 
     def __init__(self, model_path: pathlib.Path):
