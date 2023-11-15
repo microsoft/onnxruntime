@@ -455,11 +455,10 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
   // utils::CopyOneInputAcrossDevices is happy.
 
   auto& input_map = session_state.GetInputNodeInfoMap();
-  auto end_map = input_map.cend();
 
   for (const auto& graph_input : graph_inputs) {
     const auto& name = graph_input->Name();
-    if (input_map.find(name) == end_map) {
+    if (input_map.find(name) == input_map.cend()) {
       // dummy entry for an input that we didn't find a use of in the graph. log it in case that's a bug.
       // utils::CopyOneInputAcrossDevices will use the input OrtValue as is given we don't believe it's used anywhere.
       LOGS(session_state.Logger(), INFO) << (graph.IsSubgraph() ? "Subgraph" : "Graph") << " input with name "
