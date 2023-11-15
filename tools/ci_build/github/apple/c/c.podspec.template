@@ -9,7 +9,7 @@ Pod::Spec.new do |spec|
     spec.ios.deployment_target  = "@IOS_DEPLOYMENT_TARGET@"
 
     macosx_deployment_target =  "@MACOSX_DEPLOYMENT_TARGET@"
-    if !macosx_deployment_target.nil?
+    if macosx_deployment_target != ""
         spec.osx.deployment_target = macosx_deployment_target
     end
 
