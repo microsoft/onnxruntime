@@ -4068,20 +4068,12 @@ Status Graph::InlineFunctionProto(const ONNX_NAMESPACE::FunctionProto& func_to_i
   }
 
   for (const auto* inlined_node : non_constant_nodes) {
-    // We want to make sure to remove trailing only no-existing arguments
     InlinedVector<onnxruntime::NodeArg*> inputs;
-    auto last_present = std::find_if(inlined_node->input().rbegin(), inlined_node->input().rend(),
-                                     [](const std::string& input) { return !input.empty(); });
-    inputs.reserve(std::distance(last_present, inlined_node->input().rend()));
-    for (auto beg = inlined_node->input().cbegin(), end = last_present.base();
-         beg != end; ++beg) {
-      if (!beg->empty()) {
-        inputs.push_back(to_node_arg(*beg));
-      }
-    }
-
     InlinedVector<onnxruntime::NodeArg*> outputs;
-    outputs.reserve(inlined_node->output_size());
+
+    for (const auto& tensor_name : inlined_node->input())
+      inputs.push_back(to_node_arg(tensor_name));
+
     for (const auto& tensor_name : inlined_node->output())
       outputs.push_back(to_node_arg(tensor_name));
 
