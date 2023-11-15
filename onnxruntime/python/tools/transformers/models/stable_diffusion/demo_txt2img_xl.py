@@ -93,7 +93,7 @@ def load_pipelines(args, batch_size):
         )
 
     if engine_type == EngineType.TRT:
-        max_device_memory = (base.backend.max_device_memory(), (refiner or base).backend.max_device_memory())
+        max_device_memory = max(base.backend.max_device_memory(), (refiner or base).backend.max_device_memory())
         _, shared_device_memory = cudart.cudaMalloc(max_device_memory)
         base.backend.activate_engines(shared_device_memory)
         if refiner:
