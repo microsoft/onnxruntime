@@ -26,10 +26,10 @@
 		{
 			title: 'Accelerating LLaMA-2 Inference with ONNX Runtime',
 			date: 'November 14th, 2023',
-			blurb:
-				'Learn how ONNX Runtime can speed up LLaMA-2 inference by up to 4.5X',
+			blurb: 'Learn how ONNX Runtime can speed up LLaMA-2 inference by up to 4.5X',
 			link: 'blogs/accelerating-llama-2',
-			image: LlamaImage
+			image: LlamaImage,
+			imgalt: 'LLaMA-2 e2e throughput'
 		},
 		{
 			title: 'Run PyTorch models on the edge',
@@ -37,16 +37,19 @@
 			blurb:
 				'Everything you need to know about running PyTorch models on the edge with ONNX Runtime.',
 			link: 'blogs/pytorch-on-the-edge',
-			image: 'https://onnxruntime.ai/_app/immutable/assets/pytorch-on-the-edge-with-ort.cdaa9c84.png'
+			image:
+				'https://onnxruntime.ai/_app/immutable/assets/pytorch-on-the-edge-with-ort.cdaa9c84.png',
+				imgalt: 'Run PyTorch models on the edge'
 		},
 		{
-	        title: 'Accelerating over 130,000 Hugging Face models with ONNX Runtime',
-		    date: 'October 4th, 2023',
-		    blurb:
-		        'Learn more on how ONNX Runtime helps users accelerate open source machine learning models from Hugging Face.',
-		    link: 'https://cloudblogs.microsoft.com/opensource/2023/10/04/accelerating-over-130000-hugging-face-models-with-onnx-runtime/',
-		    image: HFImage
-	    },
+			title: 'Accelerating over 130,000 Hugging Face models with ONNX Runtime',
+			date: 'October 4th, 2023',
+			blurb:
+				'Learn more on how ONNX Runtime helps users accelerate open source machine learning models from Hugging Face.',
+			link: 'https://cloudblogs.microsoft.com/opensource/2023/10/04/accelerating-over-130000-hugging-face-models-with-onnx-runtime/',
+			image: HFImage,
+			imgalt: 'Hugging Face models with ONNX Runtime'
+		}
 	];
 	let blogs = [
 		{
@@ -55,7 +58,8 @@
 			blurb:
 				'This blog presents technical details of On-Device training with ONNX Runtime. It explains how On-Device Training works and what are the different steps and artifacts involved in the training process. This information will help you train your models on edge devices.',
 			link: 'https://cloudblogs.microsoft.com/opensource/2023/07/05/on-device-training-with-onnx-runtime-a-deep-dive/',
-			image: 'https://cloudblogs.microsoft.com/opensource/wp-content/uploads/sites/37/2023/06/Open-Source-1.webp'
+			image:
+				'https://cloudblogs.microsoft.com/opensource/wp-content/uploads/sites/37/2023/06/Open-Source-1.webp'
 		},
 		{
 			title:
