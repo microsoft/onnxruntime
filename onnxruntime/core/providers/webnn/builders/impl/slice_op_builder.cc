@@ -116,12 +116,12 @@ bool SliceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   }
 
   if (input_defs.size() < 3) {
-    LOGS(logger, VERBOSE) << op_type << " [" << name << "] requires at least 3 inputs (data starts and ends) but got "
+    LOGS(logger, VERBOSE) << op_type << " [" << name << "] requires at least 3 inputs (data, starts, ends) but got "
                           << input_defs.size();
     return false;
   }
 
-  // Inputs: starts, ends, axes and steps if present must be constant initializers.
+  // Inputs: starts, ends, axes, and steps must be constant initializers if present.
   for (size_t i = 1; i < input_defs.size(); i++) {
     if (!Contains(initializers, input_defs[i]->Name())) {
       LOGS(logger, VERBOSE) << "Input [" << input_defs[i]->Name() << "] of " << op_type
