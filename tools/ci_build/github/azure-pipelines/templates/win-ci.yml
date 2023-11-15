@@ -63,7 +63,12 @@ parameters:
 - name: PublishProtoc
   type: boolean
   default: false
-
+- name: CudaVersion
+  type: string
+  default: '11.8'
+  values:
+      - 11.8
+      - 12.2
 
 stages:
 - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}

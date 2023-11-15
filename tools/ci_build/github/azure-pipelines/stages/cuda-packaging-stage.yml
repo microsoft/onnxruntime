@@ -91,6 +91,7 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-cuda
+    CudaVersion: ${{ parameters.CudaVersion }}
     buildparameter: --use_cuda --cuda_home=${{ variables.win_cuda_home }} --enable_onnx_tests --enable_wcos --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: false
@@ -105,6 +106,7 @@ stages:
     stage_name_suffix: tensorrt
     buildArch: x64
     msbuildPlatform: x64
+    CudaVersion: ${{ parameters.CudaVersion }}
     packageName: x64-tensorrt
     buildparameter: --use_tensorrt --tensorrt_home=${{ variables.win_trt_home }} --cuda_home=${{ variables.win_cuda_home }}  --enable_onnx_tests --enable_wcos --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
