@@ -5,6 +5,7 @@
 	export let date: string;
 	export let link: string;
 	export let image: string;
+	export let imgalt: string;
 	let handleEnter = (e: any) => {
 		anime({
 			targets: e.target,
@@ -31,7 +32,7 @@
 			<div class="card-body">
 				<h2 class="card-title">{title}</h2>
 				<p>{description}</p>
-				<img src={image}/>
+				<img src={image} alt={imgalt}/>
 				<div class="text-right text-blue-500">
 					{date}
 				</div>
