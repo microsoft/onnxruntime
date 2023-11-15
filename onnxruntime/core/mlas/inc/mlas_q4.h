@@ -37,18 +37,17 @@ typedef enum {
     BlkQ4Zp8 = 1,     /*!< int4 Block Quantization, zero_point is int8 type */
     BlkQ4Sym64 = 2,   /*!< int4 Symmetric Block Quantization, 64 values per block*/
     BlkQ4Sym128 = 4,  /*!< int4 Symmetric Block Quantization, 128 values per block*/
-    BlkQ4SymPerN = 8, /*!< int4 Symmetric Block Quantization, per channel, block size equals K*/
 } MLAS_BLK_QUANT_TYPE;
 
 /**
  * @brief Define compute types of block quantization
  */
 typedef enum {
-    CompUndef = -1, /*!< input fp32, accumulator fp32 */
-    CompFp32 = 0,   /*!< input fp32, accumulator fp32 */
-    CompInt8 = 1,   /*!< input int8, accumulator int32 */
-    CompBf16 = 2,   /*!< input bf16, accumulator fp32 */
-    CompFp16 = 3,   /*!< input fp16, accumulator fp16 */
+    CompUndef = 0, /*!< undef */
+    CompFp32 = 1,  /*!< input fp32, accumulator fp32 */
+    CompInt8 = 2,  /*!< input int8, accumulator int32 */
+    CompBf16 = 3,  /*!< input bf16, accumulator fp32 */
+    CompFp16 = 4,  /*!< input fp16, accumulator fp16 */
 } MLAS_COMPUTE_TYPE;
 
 /**
@@ -202,16 +201,13 @@ struct MLAS_Q8Q4_GEMM_DATA_PARAMS {
  * @return
  */
 void MLASCALL
-MlasQ8Q4GemmBatch(
-    MLAS_BLK_QUANT_TYPE QType,
-    const size_t M,
-    const size_t N,
-    const size_t K,
-    const size_t BatchN,
-    const MLAS_Q8Q4_GEMM_DATA_PARAMS* DataParams,
-    MLAS_THREADPOOL* ThreadPool
-    );
-
+MlasQ8Q4GemmBatch(MLAS_BLK_QUANT_TYPE QType,
+                  const size_t M,
+                  const size_t N,
+                  const size_t K,
+                  const size_t BatchN,
+                  const MLAS_Q8Q4_GEMM_DATA_PARAMS* DataParams,
+                  MLAS_THREADPOOL* ThreadPool);
 
 ////////////////////////////////////////////////////////////
 // Blockwise quantization and dequantization where quantization
@@ -226,13 +222,7 @@ MlasQ8Q4GemmBatch(
 template <typename T, int qbits>
 void
 MlasBlockwiseQuantMetaShape(
-    int block_size,
-    bool columnwise,
-    int rows,
-    int columns,
-    int& meta_rows,
-    int& meta_cols
-    );
+    int block_size, bool columnwise, int rows, int columns, int& meta_rows, int& meta_cols);
 
 /**
  * @brief For quantization type <T, block_size, columnwise>, and
@@ -252,13 +242,7 @@ MlasBlockwiseQuantMetaShape(
 template <typename T, int qbits>
 void
 MlasBlockwiseQuantizedShape(
-    int block_size,
-    bool columnwise,
-    int rows,
-    int columns,
-    int& q_rows,
-    int& q_cols
-    );
+    int block_size, bool columnwise, int rows, int columns, int& q_rows, int& q_cols);
 
 /**
  * @brief Compute the sizes of the quantized data and quantization parameter buffers.
@@ -299,29 +283,29 @@ MlasBlockwiseQuantizedBufferSizes(
  * @param dst                   points to the quantized matrix, shape [rows, columns] column major
  * @param scales                points to the scales matrix, column major
  * @param zero_points           points to the zero_points matrix, column major
- * @param src                   points to the floating point matrix, to be quantized, row major shape [rows, columns]
- * @param block_size            size of the block to quantize, elements from the same block share the same scale and zero point
- * @param columnwise            true when elements in a block are from the same column, false when elements in a block are from the same row
+ * @param src                   points to the floating point matrix, to be quantized, row major
+ * shape [rows, columns]
+ * @param block_size            size of the block to quantize, elements from the same block share
+ * the same scale and zero point
+ * @param columnwise            true when elements in a block are from the same column, false when
+ * elements in a block are from the same row
  * @param rows
  * @param columns
  * @param leading_dimension
  * @param thread_pool
-*/
+ */
 template <typename ElementT, int qbits>
 void
-MlasQuantizeBlockwise(
-    uint8_t* dst,
-    ElementT* scales,
-    uint8_t* zero_points,
-    const ElementT* src,
-    int block_size,
-    bool columnwise,
-    int rows,
-    int columns,
-    int leading_dimension,
-    MLAS_THREADPOOL* thread_pool
-    );
-
+MlasQuantizeBlockwise(uint8_t* dst,
+                      ElementT* scales,
+                      uint8_t* zero_points,
+                      const ElementT* src,
+                      int block_size,
+                      bool columnwise,
+                      int rows,
+                      int columns,
+                      int leading_dimension,
+                      MLAS_THREADPOOL* thread_pool);
 
 /**
  * @brief Blockwise 4 bits dequantization, quantized elements and quantization
@@ -336,25 +320,25 @@ MlasQuantizeBlockwise(
  * @param src           points to quantized matrix, column major
  * @param scales        points to quantization scales, column major
  * @param zero_points   points to quantization zero points, column major
- * @param block_size    size of the block to quantize, elements from the same block share the same scale and zero point
- * @param columnwise    true when elements in a block are from the same column, false when elements in a block are from the same row
+ * @param block_size    size of the block to quantize, elements from the same block share the same
+ * scale and zero point
+ * @param columnwise    true when elements in a block are from the same column, false when elements
+ * in a block are from the same row
  * @param rows
  * @param columns
  * @param thread_pool
-*/
+ */
 template <typename ElementT, int qbits>
 void
-MlasDequantizeBlockwise(
-    ElementT* dst,
-    const uint8_t* src,
-    const ElementT* scales,
-    const uint8_t* zero_points,
-    int block_size,
-    bool columnwise,
-    int rows,
-    int columns,
-    MLAS_THREADPOOL* thread_pool
-    );
+MlasDequantizeBlockwise(ElementT* dst,
+                        const uint8_t* src,
+                        const ElementT* scales,
+                        const uint8_t* zero_points,
+                        int block_size,
+                        bool columnwise,
+                        int rows,
+                        int columns,
+                        MLAS_THREADPOOL* thread_pool);
 
 #ifdef MLAS_JBLAS
 /**
@@ -365,9 +349,9 @@ MlasDequantizeBlockwise(
  * @param K      the number of rows of matrix B.
  * @return size of the packing buffer, 0 if the operation is not yet supported.
  */
-size_t MLASCALL MlasJblasQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize,
-                                         bool isAsym,
-                                         MLAS_COMPUTE_TYPE CompType);
+size_t MLASCALL
+MlasJblasQ4GemmPackBSize(
+    size_t N, size_t K, size_t BlkSize, bool isAsym, MLAS_COMPUTE_TYPE CompType);
 
 /**
  * @brief Prepack and Quantize fp32 weight tensor to int4 blocks
@@ -379,11 +363,16 @@ size_t MLASCALL MlasJblasQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize,
  * @param K          the number of rows of matrix B.
  * @param ldb        leading dimension of B
  */
-void MLASCALL MlasJblasQ4GemmPackB(void* PackedBuf, const float* FpData,
-                                   size_t N, size_t K, size_t ldb,
-                                   size_t BlkSize, bool isAsym,
-                                   MLAS_COMPUTE_TYPE CompType,
-                                   MLAS_THREADPOOL* ThreadPool);
+void MLASCALL
+MlasJblasQ4GemmPackB(void* PackedBuf,
+                     const float* FpData,
+                     size_t N,
+                     size_t K,
+                     size_t ldb,
+                     size_t BlkSize,
+                     bool isAsym,
+                     MLAS_COMPUTE_TYPE CompType,
+                     MLAS_THREADPOOL* ThreadPool);
 
 /**
  * @brief Prepack and Quantize fp32 weight tensor to int4 blocks
@@ -419,9 +408,13 @@ MlasJblasNBitsGemmPackB(void* PackedBuf,
  * @param K          the number of rows of matrix B.
  * @param ldb        leading dimension of B
  */
-void MLASCALL MlasJblasQ4GemmUnPackB(float* FpData, const void* PackedBuf,
-                                     size_t N, size_t K, size_t ldb,
-                                     MLAS_THREADPOOL* ThreadPool);
+void MLASCALL
+MlasJblasQ4GemmUnPackB(float* FpData,
+                       const void* PackedBuf,
+                       size_t N,
+                       size_t K,
+                       size_t ldb,
+                       MLAS_THREADPOOL* ThreadPool);
 
 /**
  * @brief Calculate the buffer size needed for int8 block quantize

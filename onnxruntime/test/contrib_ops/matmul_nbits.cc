@@ -23,11 +23,11 @@
 namespace onnxruntime {
 namespace test {
 
-void MlasJblasQ4Test(int64_t M, int64_t N, int64_t K, int block_size, bool is_asym, MLAS_COMPUTE_TYPE comp_type, float err = 0.1f) {
+void MlasJblasQ4Test(int64_t M, int64_t N, int64_t K, int block_size, bool is_asym, MLAS_COMPUTE_TYPE acc_lvl, float err = 0.1f) {
   // (M x K) X (K x N)
 
   OpTester test("MatMulNBits", 1, kMSDomain);
-  test.AddAttribute<int64_t>("compute_type", int64_t(comp_type));
+  test.AddAttribute<int64_t>("accuracy_level", int64_t(acc_lvl));
   test.AddAttribute<int64_t>("block_size", int64_t(block_size));
   test.AddAttribute<int64_t>("bits", 4);
   test.AddAttribute<int64_t>("N", N);
@@ -141,28 +141,28 @@ void MlasJblasQ4Test(int64_t M, int64_t N, int64_t K, int block_size, bool is_as
       .RunWithConfig();
 }
 
-//TEST(MatMulNBits, MlasJblasQ4Fp32G128Asym) {
-//  MlasJblasQ4Test(2, 4096, 4096, 128, true, CompFp32);
-//}
-//
-//TEST(MatMulNBits, MlasJblasQ4Fp32G32Asym) {
-//  MlasJblasQ4Test(2, 4096, 4096, 32, true, CompFp32);
-//}
-//
-//TEST(MatMulNBits, MlasJblasQ4Fp32G128Sym) {
-//  MlasJblasQ4Test(2, 4096, 4096, 128, false, CompFp32);
-//}
-//
-//TEST(MatMulNBits, MlasJblasQ4Fp32G32Sym) {
-//  MlasJblasQ4Test(2, 4096, 4096, 32, false, CompFp32);
-//}
+TEST(MatMulNBits, MlasJblasQ4Fp32G128Sym) {
+  MlasJblasQ4Test(2, 4096, 4096, 128, false, CompFp32);
+}
+
+TEST(MatMulNBits, MlasJblasQ4Fp32G32Sym) {
+  MlasJblasQ4Test(2, 4096, 4096, 32, false, CompFp32);
+}
+
+TEST(MatMulNBits, MlasJblasQ4Fp32G32Asym) {
+  MlasJblasQ4Test(2, 4096, 4096, 32, true, CompFp32);
+}
 
 TEST(MatMulNBits, MlasJblasQ4Int8G128Sym) {
   MlasJblasQ4Test(2, 4096, 4096, 128, false, CompInt8);
 }
 
-TEST(MatMulNBits, MlasJblasQ4Int8G128Asym) {
-  MlasJblasQ4Test(2, 4096, 4096, 128, true, CompInt8);
+TEST(MatMulNBits, MlasJblasQ4Int8G1024) {
+  MlasJblasQ4Test(2, 4096, 4096, 1024, false, CompInt8);
+}
+
+TEST(MatMulNBits, MlasJblasQ4Int8GPerN) {
+  MlasJblasQ4Test(2, 4096, 4096, 4096, false, CompInt8);
 }
 
 }  // namespace test

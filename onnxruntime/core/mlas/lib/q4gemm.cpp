@@ -36,7 +36,6 @@ MlasQ80BlkQuantSize(MLAS_BLK_QUANT_TYPE QType, size_t M, size_t K)
             return MlasQ80BlkQuantSizeImpl<MLAS_Q4TYPE_BLK2>(M, K);
         case BlkQ4Sym128:
             return MlasQ80BlkQuantSizeImpl<MLAS_Q4TYPE_BLK4>(M, K);
-        case BlkQ4SymPerN:
         default:
             return MlasQ80BlkQuantSizeImpl<MLAS_Q4TYPE_BLK0>(M, K);
     }

@@ -39,7 +39,7 @@ static size_t
 JblasQ4BuSize(T& launcher, int block_size, size_t N, size_t K, bool isAsym)
 {
     auto stor = launcher.mProB.createStorage(N, K, block_size, JBLAS_DTYPE::S4_CLIP,
-                                             JBLAS_DTYPE::BF16, JBLAS_DTYPE::BF16, isAsym);
+                                             JBLAS_DTYPE::F32, JBLAS_DTYPE::BF16, isAsym);
     // TODO(Yu) support more S4 quant type, scale dtype
     return stor.mSize;
 }
@@ -86,7 +86,7 @@ JblaQ4GemmPackB(T& JblasKernel,
                 MLAS_THREADPOOL* ThreadPool)
 {
     auto stor = JblasKernel.mProB.createStorage(N, K, BlkSize, JBLAS_DTYPE::S4_CLIP,
-                                                JBLAS_DTYPE::BF16, JBLAS_DTYPE::BF16, IsAsym);
+                                                JBLAS_DTYPE::F32, JBLAS_DTYPE::BF16, IsAsym);
     stor.assign((int8_t*)PackedBuf);
     ORTThreading orth(ThreadPool);
     JblasKernel.mProB.packWeight(N, K, FpData, ldb, &stor, &orth);
@@ -148,7 +148,7 @@ JblaNBitsGemmPackB(T& JblasKernel,
                    MLAS_THREADPOOL* ThreadPool)
 {
     auto stor = JblasKernel.mProB.createStorage(N, K, BlkSize, JBLAS_DTYPE::S4_CLIP,
-                                                JBLAS_DTYPE::BF16, JBLAS_DTYPE::BF16, IsAsym);
+                                                JBLAS_DTYPE::F32, JBLAS_DTYPE::BF16, IsAsym);
     stor.assign((int8_t*)PackedBuf);
     ORTThreading orth(ThreadPool);
     JblasKernel.mProB.packNbitsWeight(N, K, IsAsym, QData, ldb, Scale, Zp, &stor, &orth);
@@ -268,8 +268,6 @@ MlasQ4GemmPackBSize(MLAS_BLK_QUANT_TYPE QType, size_t N, size_t K)
             return BlkQ4BufSize<MLAS_Q4TYPE_BLK2>(N, K);
         case BlkQ4Sym128:
             return BlkQ4BufSize<MLAS_Q4TYPE_BLK4>(N, K);
-        case BlkQ4SymPerN:
-        default:
             return BlkQ4BufSize<MLAS_Q4TYPE_BLK1>(N, K);
     }
 }
@@ -402,7 +400,6 @@ MlasQ4GemmPackB(
             return MlasQ4GemmPackBImpl<MLAS_Q4TYPE_BLK2>(PackedBuf, FpData, N, K, ldb);
         case BlkQ4Sym128:
             return MlasQ4GemmPackBImpl<MLAS_Q4TYPE_BLK4>(PackedBuf, FpData, N, K, ldb);
-        case BlkQ4SymPerN:
         default:
             return MlasQ4GemmPackBImpl<MLAS_Q4TYPE_BLK1>(PackedBuf, FpData, N, K, ldb);
     }
@@ -497,7 +494,6 @@ MlasQ4GemmUnPackB(
             return MlasQ4GemmUnPackBImpl<MLAS_Q4TYPE_BLK2>(FpData, PackedBuf, N, K, ldb);
         case BlkQ4Sym128:
             return MlasQ4GemmUnPackBImpl<MLAS_Q4TYPE_BLK4>(FpData, PackedBuf, N, K, ldb);
-        case BlkQ4SymPerN:
         default:
             return MlasQ4GemmUnPackBImpl<MLAS_Q4TYPE_BLK1>(FpData, PackedBuf, N, K, ldb);
     }

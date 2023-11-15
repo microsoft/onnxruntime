@@ -59,23 +59,23 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     MLAS_THREADPOOL* pool = NULL;
     if (input_idx == 1) {
       auto qptr = tensor.Data<uint8_t>();
-      packed_b_size_ = MlasJblasQ4GemmPackBSize(N_, K_, block_size_, is_asym_, static_cast<MLAS_COMPUTE_TYPE>(comp_type_));
+      packed_b_size_ = MlasJblasQ4GemmPackBSize(N_, K_, block_size_, is_asym_, static_cast<MLAS_COMPUTE_TYPE>(accuracy_level_));
       packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
-      MlasJblasNBitsGemmPackB(packed_b_.get(), qptr, nullptr, nullptr, N_, K_, K_, block_size_, is_asym_, false, static_cast<MLAS_COMPUTE_TYPE>(comp_type_), pool);
+      MlasJblasNBitsGemmPackB(packed_b_.get(), qptr, nullptr, nullptr, N_, K_, K_, block_size_, is_asym_, false, static_cast<MLAS_COMPUTE_TYPE>(accuracy_level_), pool);
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
       is_packed = true;
     }
     if (input_idx == 2) {
       auto sptr = tensor.Data<float>();
-      MlasJblasNBitsGemmPackB(packed_b_.get(), nullptr, sptr, nullptr, N_, K_, K_, block_size_, is_asym_, !is_asym_, static_cast<MLAS_COMPUTE_TYPE>(comp_type_), pool);
+      MlasJblasNBitsGemmPackB(packed_b_.get(), nullptr, sptr, nullptr, N_, K_, K_, block_size_, is_asym_, !is_asym_, static_cast<MLAS_COMPUTE_TYPE>(accuracy_level_), pool);
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
       is_packed = true;
     }
     if (input_idx == 3) {
       auto zptr = tensor.Data<uint8_t>();
-      MlasJblasNBitsGemmPackB(packed_b_.get(), nullptr, nullptr, zptr, N_, K_, K_, block_size_, is_asym_, is_asym_, static_cast<MLAS_COMPUTE_TYPE>(comp_type_), pool);
+      MlasJblasNBitsGemmPackB(packed_b_.get(), nullptr, nullptr, zptr, N_, K_, K_, block_size_, is_asym_, is_asym_, static_cast<MLAS_COMPUTE_TYPE>(accuracy_level_), pool);
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
       is_packed = true;
