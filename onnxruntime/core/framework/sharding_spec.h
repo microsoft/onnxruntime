@@ -254,7 +254,7 @@ class TensorPartitionSpec {
   static TensorPartitionSpec CreateOneTensorAxisOneDeviceMeshAxisSharding(
       const size_t rank, const DeviceMesh& device_mesh, const size_t tensor_axis, const size_t device_mesh_axis) {
     std::vector<AxisPartitionSpec> axis_specs(rank, AxisPartitionSpec::CreateReplica());
-    axis_specs[tensor_axis] = AxisPartitionSpec::CreateShard(device_mesh_axis);
+    axis_specs[tensor_axis] = AxisPartitionSpec::CreateShard(static_cast<int>(device_mesh_axis));
     return TensorPartitionSpec::Create(axis_specs, device_mesh);
   }
 
