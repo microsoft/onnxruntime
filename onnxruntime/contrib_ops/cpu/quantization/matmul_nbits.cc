@@ -136,7 +136,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
 #endif
 
   MlasGemmBatch(CblasNoTrans, CblasTrans,
-                M, N, K, data.data(), max_len, thread_pool);
+                M, N, K, data.data(), max_len, env_s ? nullptr : thread_pool);
 
   return Status::OK();
 }
