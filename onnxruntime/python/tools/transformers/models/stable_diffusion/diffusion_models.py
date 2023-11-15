@@ -211,6 +211,13 @@ class PipelineInfo:
     def max_image_size(self):
         return self._max_image_size
 
+    def default_image_size(self):
+        if self.is_xl():
+            return 1024
+        if self.version in ("2.0", "2.1"):
+            return 768
+        return 512
+
 
 class BaseModel:
     def __init__(

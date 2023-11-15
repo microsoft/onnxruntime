@@ -109,7 +109,7 @@ class StableDiffusionPipeline:
         self.tokenizer = None
         self.tokenizer2 = None
 
-        self.generator = None
+        self.generator = torch.Generator(device="cuda")
         self.actual_steps = None
 
         self.current_scheduler = None
@@ -181,8 +181,13 @@ class StableDiffusionPipeline:
         self.backend.load_resources(image_height, image_width, batch_size)
 
     def set_random_seed(self, seed):
-        # Initialize noise generator. Usually, it is done before a batch of inference.
-        self.generator = torch.Generator(device="cuda").manual_seed(seed) if isinstance(seed, int) else None
+        if isinstance(seed, int):
+            self.generator.manual_seed(seed)
+        else:
+            self.generator.seed()
+
+    def get_current_seed(self):
+        return self.generator.initial_seed()
 
     def teardown(self):
         for e in self.events.values():
@@ -452,8 +457,18 @@ class StableDiffusionPipeline:
         images = self.to_pil_image(images)
         random_session_id = str(random.randint(1000, 9999))
         for i, image in enumerate(images):
+            seed = str(self.get_current_seed())
             image_path = os.path.join(
-                self.output_dir, image_name_prefix + str(i + 1) + "-" + random_session_id + ".png"
+                self.output_dir, image_name_prefix + str(i + 1) + "-" + random_session_id + "-" + seed + ".png"
             )
             print(f"Saving image {i+1} / {len(images)} to: {image_path}")
-            image.save(image_path)
+
+            from PIL import PngImagePlugin
+
+            metadata = PngImagePlugin.PngInfo()
+            metadata.add_text("prompt", prompt[i])
+            metadata.add_text("batch_size", str(len(images)))
+            metadata.add_text("denoising_steps", str(self.denoising_steps))
+            metadata.add_text("actual_steps", str(self.actual_steps))
+            metadata.add_text("seed", seed)
+            image.save(image_path, "PNG", pnginfo=metadata)
