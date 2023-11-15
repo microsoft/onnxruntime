@@ -34,8 +34,8 @@ jobs:
     clean: all
   pool:
     name: ${{ parameters.MACHINE_POOL }}
-    demands:
-      - ImageVersionOverride -equals 1.0.367516
+#    demands:
+#      - ImageVersionOverride -equals 1.0.367516
   variables:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
