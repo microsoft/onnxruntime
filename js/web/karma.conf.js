@@ -74,6 +74,7 @@ module.exports = function(config) {
       {pattern: 'dist/*.wasm', included: false, watched: false},
     ],
     plugins: karmaPlugins,
+    logLevel: config.LOG_DEBUG,
     client: {captureConsole: true, mocha: {expose: ['body'], timeout: timeoutMocha}},
     reporters: ['mocha', 'BrowserStack'],
     browsers: [],
