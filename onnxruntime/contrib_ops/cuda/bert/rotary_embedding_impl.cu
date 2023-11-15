@@ -28,9 +28,9 @@ __global__ void RotaryEmbeddingBSNH(T* output,                   // BxSxNxH
                                     const int head_size,
                                     const int position_ids_format,
                                     const bool interleaved,
-				    const int batch_stride,
-				    const int seq_stride,
-				    const int head_stride) {
+                                    const int batch_stride,
+                                    const int seq_stride,
+                                    const int head_stride) {
   // B = batch size, S = sequence length, N = num heads, H = head size, M = max sequence length
   // Use .x in innermost loop to access global memory efficiently
   
@@ -112,7 +112,8 @@ Status LaunchRotaryEmbeddingKernel(
   assert(head_size <= max_threads_per_block);
   RotaryEmbeddingBSNH<<<grid, block, smem_size, stream>>>(
     output, input, cos_cache, sin_cache, position_ids,
-    sequence_length, num_heads, head_size, position_ids_format, interleaved
+    sequence_length, num_heads, head_size, position_ids_format, interleaved,
+    batch_stride, seq_stride, head_stride
   );
 
   return CUDA_CALL(cudaGetLastError());
