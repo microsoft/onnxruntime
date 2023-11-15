@@ -72,21 +72,17 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
   MlasTranspose(input1_f_vals.data(), input1_f_vals_trans.data(), K, N);
 #endif
 
-  int meta_rows;
-  int meta_cols;
-  MlasBlockwiseQuantMetaShape<float>((int)block_size, true, (int)K, (int)N, meta_rows, meta_cols);
+  int q_rows, q_cols;
+  MlasBlockwiseQuantizedShape<float, 4>((int)block_size, true, (int)K, (int)N, q_rows, q_cols);
 
-  int q_rows;
-  int q_cols;
-  MlasBlockwiseQuantizedShape<float>((int)block_size, true, (int)K, (int)N, q_rows, q_cols);
+  size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
+  MlasBlockwiseQuantizedBufferSizes(4, static_cast<int>(block_size), /* columnwise */ true,
+                                    static_cast<int>(K), static_cast<int>(N),
+                                    q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 
-  std::vector<uint8_t> input1_vals(q_rows * q_cols);
-  std::vector<float> scales(meta_rows * meta_cols);
-
-  // TODO!! THIS SHOULD BE PROVIDED BY MLAS
-  // sub 8b packing always happen on the column dimension
-  const int packed_meta_rows = (meta_rows * QBits + 7) / 8;
-  std::vector<uint8_t> zp(packed_meta_rows * meta_cols);
+  std::vector<uint8_t> input1_vals(q_data_size_in_bytes);
+  std::vector<float> scales(q_scale_size);
+  std::vector<uint8_t> zp(q_zp_size_in_bytes);
 
   QuantizeDequantize(input1_f_vals,
                      input1_vals,
@@ -115,9 +111,9 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
   if (use_float16) {
     test.AddInput<MLFloat16>("A", {M, K}, ToFloat16(input0_vals), false);
     test.AddInput<uint8_t>("B", {q_cols, q_rows}, input1_vals, true);
-    test.AddInput<MLFloat16>("scales", {meta_cols * meta_rows}, ToFloat16(scales), true);
+    test.AddInput<MLFloat16>("scales", {static_cast<int64_t>(q_scale_size)}, ToFloat16(scales), true);
     if (has_zeropoint) {
-      test.AddInput<uint8_t>("zero_points", {meta_cols * packed_meta_rows}, zp, true);
+      test.AddInput<uint8_t>("zero_points", {static_cast<int64_t>(q_zp_size_in_bytes)}, zp, true);
     }
 
     test.AddOutput<MLFloat16>("Y", {M, N}, ToFloat16(expected_vals));
@@ -129,9 +125,9 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
   } else {
     test.AddInput<float>("A", {M, K}, input0_vals, false);
     test.AddInput<uint8_t>("B", {q_cols, q_rows}, input1_vals, true);
-    test.AddInput<float>("scales", {meta_cols * meta_rows}, scales, true);
+    test.AddInput<float>("scales", {static_cast<int64_t>(q_scale_size)}, scales, true);
     if (has_zeropoint) {
-      test.AddInput<uint8_t>("zero_points", {meta_cols * packed_meta_rows}, zp, true);
+      test.AddInput<uint8_t>("zero_points", {static_cast<int64_t>(q_zp_size_in_bytes)}, zp, true);
     }
 
     test.AddOutput<float>("Y", {M, N}, expected_vals);

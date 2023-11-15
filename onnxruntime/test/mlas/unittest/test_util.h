@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <memory.h>
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <random>
@@ -252,4 +253,17 @@ inline void ReorderInputNchw(const int64_t* input_shape, const float* S, float* 
     S += spatial_count * channel_count;
     D += spatial_count * nchwc_channel_count;
   }
+}
+
+inline bool CloseEnough(float actual, float expected) {
+  if (std::isnan(actual)) {
+    return std::isnan(expected);
+  }
+  float diff = std::abs(actual - expected);
+  float top = std::max(std::abs(actual), std::abs(expected));
+  float ratio = 0;
+  if (top > 0.0001) {
+    ratio = diff / top;
+  }
+  return ratio < 0.005;
 }

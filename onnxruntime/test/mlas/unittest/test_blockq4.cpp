@@ -38,13 +38,17 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
 
     int meta_rows;
     int meta_cols;
-    MlasBlockwiseQuantMetaShape<float>(block_size, columnwise, rows, columns, meta_rows, meta_cols);
+    MlasBlockwiseQuantMetaShape<float, 4>(block_size, columnwise, rows, columns, meta_rows, meta_cols);
 
     int q_rows;
     int q_cols;
-    MlasBlockwiseQuantizedShape<float>(block_size, columnwise, rows, columns, q_rows, q_cols);
+    MlasBlockwiseQuantizedShape<float, 4>(block_size, columnwise, rows, columns, q_rows, q_cols);
 
-    uint8_t* elements = InputElements.GetBuffer(q_rows * q_cols, true);
+    size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
+    MlasBlockwiseQuantizedBufferSizes(4, block_size, columnwise, rows, columns,
+                                      q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
+
+    uint8_t* elements = InputElements.GetBuffer(q_data_size_in_bytes, true);
 
     int v = 7;
     for (int c = 0; c < columns; c++) {
@@ -70,8 +74,8 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
       }
     }
 
-    float* scales = InputScales.GetBuffer(meta_rows * meta_cols);
-    uint8_t* zp = symmetric ? nullptr : InputOffsets.GetBuffer(((meta_rows + 1) / 2) * meta_cols, true);
+    float* scales = InputScales.GetBuffer(q_scale_size);
+    uint8_t* zp = symmetric ? nullptr : InputOffsets.GetBuffer(q_zp_size_in_bytes, true);
     if (zp) {
       for (int c = 0; c < meta_cols; c++) {
         for (int r = 0; r < meta_rows; r += 2) {
