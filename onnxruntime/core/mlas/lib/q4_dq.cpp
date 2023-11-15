@@ -1016,7 +1016,6 @@ JblasQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, MLAS_COMPU
     switch (CompType) {
         case CompInt8:
             if (_cd->AMX_INT8() && BlkSize % tAMX_INT8_SS::KTILE == 0) {
-                utils::request_perm_xtile_data();//TODO benchmark won't configure AMX automatically
                 return JblasQ4BuSize<tLauncher_Int8_S4_F32F32<tAMX_INT8_SS>>(int(BlkSize), N, K,
                                                                              isAsym);
             }
@@ -1207,6 +1206,7 @@ size_t MLASCALL
 MlasNBitsGemmPackBSize(
     size_t N, size_t K, size_t BlkSize, int nbits, bool isAsym, MLAS_COMPUTE_TYPE CompType)
 {
+    GetMlasPlatform();
 #ifdef MLAS_JBLAS
     if (nbits == 4) {
         auto jsize = JblasQ4GemmPackBSize(N, K, BlkSize, isAsym, CompType);
