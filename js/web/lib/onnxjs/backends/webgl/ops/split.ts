@@ -49,13 +49,13 @@ export const parseSplitAttributes: OperatorInitialization<SplitAttributes> = (no
 };
 
 const getProgramCount =
-    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], axis: number, attributes: SplitAttributes): number => {
+    (_inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], axis: number, attributes: SplitAttributes): number => {
       const [, offsets] = SplitUtil.splitShape(inputs[0].dims, axis, attributes.split, attributes.numOutputs);
       return offsets.length;
     };
 
 const createSplitProgramInfo =
-    (inferenceHandler: WebGLInferenceHandler, input: Tensor, attributes: SplitAttributes, axis: number, index: number):
+    (_inferenceHandler: WebGLInferenceHandler, input: Tensor, attributes: SplitAttributes, axis: number, index: number):
         ProgramInfo => {
           const [shapes, offsets] = SplitUtil.splitShape(input.dims, axis, attributes.split, attributes.numOutputs);
           const offset = offsets[index];

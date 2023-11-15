@@ -14,7 +14,7 @@ import {conv2d} from './test-conv-utils';
 function createRandomArray(size: number): Float32Array {
   const randomTable = [0, 3, 6, 9, 2, 5, 8, 1, 4, 7];
   return new Float32Array(
-      Array.from({length: size}, (v, k) => randomTable[k % 10] * 0.1 + randomTable[Math.trunc(k / 10) % 10] * 0.01));
+      Array.from({length: size}, (_v, k) => randomTable[k % 10] * 0.1 + randomTable[Math.trunc(k / 10) % 10] * 0.01));
 }
 interface TestData {
   inputShape: number[];

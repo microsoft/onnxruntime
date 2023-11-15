@@ -27,11 +27,6 @@ export interface ArgMinMaxAttributes extends AttributeWithCacheKey {
   selectLastIndex: number;
 }
 
-const createArgMinMaxAttributesFromInputs =
-    (inputs: readonly TensorView[], attributes: ArgMinMaxAttributes): ArgMinMaxAttributes =>
-        createAttributeWithCacheKey(
-            {axis: attributes.axis, keepDims: attributes.keepDims, selectLastIndex: attributes.selectLastIndex});
-
 export const argMin = (context: ComputeContext, attributes: ArgMinMaxAttributes): void => {
   validateInputs(context.inputs);
   const argMinMaxOp: ReduceOp = (input, output, axes) => {
@@ -51,12 +46,10 @@ export const argMin = (context: ComputeContext, attributes: ArgMinMaxAttributes)
     ];
   };
 
-  const updatedAttributes: ArgMinMaxAttributes =
-      context.inputs.length === 1 ? attributes : createArgMinMaxAttributesFromInputs(context.inputs, attributes);
   context.compute(
       createReduceProgramInfo(
-          'ArgMin', {hint: updatedAttributes.cacheKey}, [context.inputs[0]], argMinMaxOp, [updatedAttributes.axis],
-          DataType.int64, updatedAttributes.keepDims),
+          'ArgMin', {hint: attributes.cacheKey}, [context.inputs[0]], argMinMaxOp, [attributes.axis], DataType.int64,
+          attributes.keepDims),
       {inputs: [0]});
 };
 
@@ -79,12 +72,10 @@ export const argMax = (context: ComputeContext, attributes: ArgMinMaxAttributes)
     ];
   };
 
-  const updatedAttributes: ArgMinMaxAttributes =
-      context.inputs.length === 1 ? attributes : createArgMinMaxAttributesFromInputs(context.inputs, attributes);
   context.compute(
       createReduceProgramInfo(
-          'argMax', {hint: updatedAttributes.cacheKey}, [context.inputs[0]], argMinMaxOp, [updatedAttributes.axis],
-          DataType.int64, updatedAttributes.keepDims),
+          'argMax', {hint: attributes.cacheKey}, [context.inputs[0]], argMinMaxOp, [attributes.axis], DataType.int64,
+          attributes.keepDims),
       {inputs: [0]});
 };
 

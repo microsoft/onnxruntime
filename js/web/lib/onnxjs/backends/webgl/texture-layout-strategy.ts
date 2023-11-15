@@ -105,7 +105,7 @@ export class PreferLogicalStrategy implements TextureLayoutStrategy {
       // tensor has 3 rows, we pretend it has 4 rows in order to account for the
       // fact that the texels containing the third row are half empty.
       logShape = logShape.map(
-          (d, i) => i >= logShape.length - 2 ? (logShape[i] % 2 === 0 ? logShape[i] : logShape[i] + 1) : logShape[i]);
+          (_d, i) => i >= logShape.length - 2 ? (logShape[i] % 2 === 0 ? logShape[i] : logShape[i] + 1) : logShape[i]);
 
       // Packed texture height is at least 2 (the channel height of a single
       // texel).
@@ -182,7 +182,7 @@ export function parseAxisParam(axis: number|number[], shape: number[]): number[]
   const rank = shape.length;
 
   // Normalize input
-  axis = axis == null ? shape.map((s, i) => i) : ([] as number[]).concat(axis);
+  axis = axis == null ? shape.map((_s, i) => i) : ([] as number[]).concat(axis);
 
   // Check for valid range
   assert(

@@ -967,7 +967,7 @@ export class ReduceUtil {
     const dims = a.dims.slice(0);
     // if axes is not set, perform reduce on all axes
     if (axes.length === 0) {
-      dims.forEach((d, ind) => axes.push(ind));
+      dims.forEach((_d, ind) => axes.push(ind));
     }
     // get a temporary broadcastable output shape
     const outputDims = ReduceUtil.calcReduceShape(dims, axes, true);

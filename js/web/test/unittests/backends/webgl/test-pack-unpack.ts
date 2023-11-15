@@ -291,7 +291,7 @@ describe('#UnitTest# - unpack - Tensor unpack', () => {
       webglInferenceHandler.session.textureManager.glContext.checkError();
       const webglTexture = createTextureFromArray(
           webglInferenceHandler.session.textureManager.glContext, testData.rawData ? testData.rawData : inputData,
-          gl.RGBA, inputTextureShape[0], inputTextureShape[1]);
+          inputTextureShape[0], inputTextureShape[1]);
       webglInferenceHandler.session.textureManager.glContext.checkError();
       const packedShape = inputTextureShape;
       const textureData = {

@@ -176,7 +176,7 @@ function createCategorizedLogger(category: string): Logger.CategorizedLogger {
 // NOTE: argument 'category' is put the last parameter beacause typescript
 // doesn't allow optional argument put in front of required argument. This
 // order is different from a usual logging API.
-function logInternal(severity: Logger.Severity, content: string, stack: number, category?: string) {
+function logInternal(severity: Logger.Severity, content: string, _stack: number, category?: string) {
   const config = LOGGER_CONFIG_MAP[category || ''] || LOGGER_CONFIG_MAP[''];
   if (SEVERITY_VALUE[severity] < SEVERITY_VALUE[config.minimalSeverity]) {
     return;

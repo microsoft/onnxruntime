@@ -254,7 +254,7 @@ const createEinsumProgramInfo = (inputs: readonly TensorView[], einsumEquation: 
       ${shaderHelper.mainStart()}
         ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
         var outputIndices = ${output.offsetToIndices('global_idx')};
-        ${inputVars.map((inputVar, i) => `var input${i}Indices: ${inputVars[i].type.indices};`).join('\n')}
+        ${inputVars.map((_var, i) => `var input${i}Indices: ${inputVars[i].type.indices};`).join('\n')}
         ${reduceOps.join('\n')};
         ${output.setByOffset('global_idx', 'sum')};
       }`;

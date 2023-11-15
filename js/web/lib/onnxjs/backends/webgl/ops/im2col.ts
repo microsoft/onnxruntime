@@ -15,7 +15,7 @@ const createIm2ColProgramMetadata = (cacheHint: string) => ({
 });
 
 const createIm2ColProgramInfo =
-    (inferenceHandler: WebGLInferenceHandler, metadata: ProgramMetadata, x: Tensor, w: Tensor,
+    (_inferenceHandler: WebGLInferenceHandler, metadata: ProgramMetadata, x: Tensor, w: Tensor,
      outputShape: readonly number[], attributes: ConvAttributes): ProgramInfo => {
       const xshape = x.dims;
       const wshape = w.dims;
