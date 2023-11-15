@@ -33,10 +33,10 @@ Abstract:
  * @brief Define types of block quantization
  */
 typedef enum {
-    BlkQ4Sym = 0,     /*!< int4 Symmetric Block Quantization, zero_point = 0 */
-    BlkQ4Zp8 = 1,     /*!< int4 Block Quantization, zero_point is int8 type */
-    BlkQ4Sym64 = 2,   /*!< int4 Symmetric Block Quantization, 64 values per block*/
-    BlkQ4Sym128 = 4,  /*!< int4 Symmetric Block Quantization, 128 values per block*/
+    BlkQ4Sym = 0,    /*!< int4 Symmetric Block Quantization, zero_point = 0 */
+    BlkQ4Zp8 = 1,    /*!< int4 Block Quantization, zero_point is int8 type */
+    BlkQ4Sym64 = 2,  /*!< int4 Symmetric Block Quantization, 64 values per block*/
+    BlkQ4Sym128 = 4, /*!< int4 Symmetric Block Quantization, 128 values per block*/
 } MLAS_BLK_QUANT_TYPE;
 
 /**
@@ -340,7 +340,10 @@ MlasDequantizeBlockwise(ElementT* dst,
                         int columns,
                         MLAS_THREADPOOL* thread_pool);
 
-#ifdef MLAS_JBLAS
+bool MLASCALL
+MlasNBitsGemmPackBSupport(
+    size_t N, size_t K, size_t BlkSize, int nbits, bool isAsym, MLAS_COMPUTE_TYPE CompType);
+
 /**
  * @brief Computes the number of bytes required to pack and int4-quantize
  *        a weight matrix
@@ -350,8 +353,8 @@ MlasDequantizeBlockwise(ElementT* dst,
  * @return size of the packing buffer, 0 if the operation is not yet supported.
  */
 size_t MLASCALL
-MlasJblasQ4GemmPackBSize(
-    size_t N, size_t K, size_t BlkSize, bool isAsym, MLAS_COMPUTE_TYPE CompType);
+MlasNBitsGemmPackBSize(
+    size_t N, size_t K, size_t BlkSize, int nbits, bool isAsym, MLAS_COMPUTE_TYPE CompType);
 
 /**
  * @brief Prepack and Quantize fp32 weight tensor to int4 blocks
@@ -364,40 +367,19 @@ MlasJblasQ4GemmPackBSize(
  * @param ldb        leading dimension of B
  */
 void MLASCALL
-MlasJblasQ4GemmPackB(void* PackedBuf,
-                     const float* FpData,
-                     size_t N,
-                     size_t K,
-                     size_t ldb,
-                     size_t BlkSize,
-                     bool isAsym,
-                     MLAS_COMPUTE_TYPE CompType,
-                     MLAS_THREADPOOL* ThreadPool);
-
-/**
- * @brief Prepack and Quantize fp32 weight tensor to int4 blocks
- *
- * @param QType      type of block quantization
- * @param PackedBuf  destination buffer
- * @param FpData     the pointer to fp32 matrix
- * @param N          the number of columns of matrix B.
- * @param K          the number of rows of matrix B.
- * @param ldb        leading dimension of B
- */
-void MLASCALL
-MlasJblasNBitsGemmPackB(void* PackedBuf,
-                        const uint8_t* QData,
-                        const float* Scale,
-                        const uint8_t* Zp,
-                        size_t N,
-                        size_t K,
-                        size_t ldb,
-                        size_t BlkSize,
-                        bool isAsym,
-                        bool lastCall,
-                        MLAS_COMPUTE_TYPE CompType,
-                        MLAS_THREADPOOL* ThreadPool);
-
+MlasNBitsGemmPackB(void* PackedBuf,
+                   const uint8_t* QData,
+                   const float* Scale,
+                   const uint8_t* Zp,
+                   size_t N,
+                   size_t K,
+                   size_t ldb,
+                   size_t BlkSize,
+                   int nbits,
+                   bool isAsym,
+                   bool lastCall,
+                   MLAS_COMPUTE_TYPE CompType,
+                   MLAS_THREADPOOL* ThreadPool);
 /**
  * @brief Unpack and dequantize from int4 to fp32, reverse operation of
  *        MlasQ4GemmPackB
@@ -409,12 +391,12 @@ MlasJblasNBitsGemmPackB(void* PackedBuf,
  * @param ldb        leading dimension of B
  */
 void MLASCALL
-MlasJblasQ4GemmUnPackB(float* FpData,
-                       const void* PackedBuf,
-                       size_t N,
-                       size_t K,
-                       size_t ldb,
-                       MLAS_THREADPOOL* ThreadPool);
+MlasNBitsGemmUnPackB(float* FpData,
+                     const void* PackedBuf,
+                     size_t N,
+                     size_t K,
+                     size_t ldb,
+                     MLAS_THREADPOOL* ThreadPool);
 
 /**
  * @brief Calculate the buffer size needed for int8 block quantize
@@ -424,13 +406,11 @@ MlasJblasQ4GemmUnPackB(float* FpData,
  * @return    buffer size (in bytes) needed, 0 if not yet supported on current
  * hardware
  */
-
 void MLASCALL
-MlasJblasQ4GemmBatch(const size_t M,
-                     const size_t N,
-                     const size_t K,
-                     const size_t BatchN,
-                     const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
-                     int8_t* WorkSpace,
-                     MLAS_THREADPOOL* ThreadPool = nullptr);
-#endif
+MlasNBitsGemmBatch(const size_t M,
+                   const size_t N,
+                   const size_t K,
+                   const size_t BatchN,
+                   const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
+                   int8_t* WorkSpace,
+                   MLAS_THREADPOOL* ThreadPool = nullptr);

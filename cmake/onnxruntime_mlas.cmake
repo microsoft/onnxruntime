@@ -2,7 +2,6 @@
 # Licensed under the MIT License.
 
 set(MLAS_SRC_DIR ${ONNXRUNTIME_ROOT}/core/mlas/lib)
-set(MLAS_WITH_JBLAS ON)
 #
 # All hardware agnostic source files here
 # hardware specific files would cause trouble in
@@ -48,7 +47,7 @@ set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)
 function(add_jblas)
     add_subdirectory(${MLAS_SRC_DIR}/x86_64/jblas jblas) 
     target_link_libraries(onnxruntime_mlas PRIVATE jblas::jblas)
-    target_compile_definitions(onnxruntime_mlas PUBLIC MLAS_JBLAS)
+    target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_JBLAS)
     set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR OFF)
 endfunction()
 
@@ -206,7 +205,7 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/q4gemm_avx512.cpp
       )
     endif()
-    if(MLAS_WITH_JBLAS)
+    if(onnxruntime_USE_JLAS)
         add_jblas()
     endif()
   else()
@@ -572,7 +571,7 @@ else()
             )
           set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
           set_source_files_properties(${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
-	      if(MLAS_WITH_JBLAS)
+	      if(onnxruntime_USE_JLAS)
             add_jblas()
           endif()
         endif()

@@ -111,7 +111,8 @@ class ActivationKBlockQuantize {
   inline QParam createStorage(int m, int k, int kblock, bool hasreduce) {
     QParam tmp;
     int kpad = utils::padto(k, _GemmCore_T::KTILE);
-    tmp.resize(m, kpad, kblock == -1 ? kpad : kblock, JBLAS_DTYPE::U8, JBLAS_DTYPE::F32, JBLAS_DTYPE::U8,
+    int mpad = utils::padto(m, _GemmCore_T::MTILE);
+    tmp.resize(mpad, kpad, kblock == -1 ? kpad : kblock, JBLAS_DTYPE::U8, JBLAS_DTYPE::F32, JBLAS_DTYPE::U8,
                JBLAS_DTYPE::F32, std::is_same_v<AType, uint8_t>, hasreduce);
     return tmp;
   }

@@ -423,16 +423,21 @@ class SchedulerKBlock : public Scheduler2D {
       size_t maxN = (mL1Size - sizeA) / (mBlock[0] * mEleSize[2] * 2 + refk * mEleSize[1]);
       return maxN;
     };
+    auto getMaxK = [&](size_t refN) {
+      size_t sizeC = refN * mEleSize[2] * mBlock[0] * 2;
+      size_t maxK = (mL1Size - sizeC) / (mBlock[0] * mEleSize[0] + refN * mEleSize[1]);
+      return maxK;
+    };
     auto maxN = getMaxN(startK);
     if (maxN <= mThdSize[1]) {
       mBlock[1] = int(maxN);
       mBlock[1] = utils::padto_le(mBlock[1], mStep[1]);
       mBlock[2] = int(startK);
     } else {
-      mBlock[2] = int(startK * 2);
-      mBlock[1] = int(getMaxN(mBlock[2]));
-      mBlock[1] = utils::padto_le(mBlock[1], mStep[1]);
-      mBlock[1] = std::min(mBlock[1], mThdSize[1]);
+      mBlock[1] = mThdSize[1];
+      mBlock[2] = getMaxK(mBlock[1]);
+      mBlock[2] = utils::padto_le(mBlock[2], mStep[2]);
+      mBlock[2] = std::min(mKBlock, mBlock[2]);
     }
   }
   size_t mL2Size = 0, mL1Size = 0, mL2Use = 0;

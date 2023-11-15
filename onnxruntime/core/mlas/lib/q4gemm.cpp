@@ -140,6 +140,30 @@ MlasQ4GemmBatchDriver(MLAS_BLK_QUANT_TYPE QType,
     });
 }
 
+void MLASCALL
+MlasQ4GemmBatch(MLAS_BLK_QUANT_TYPE QType,
+                const size_t M,
+                const size_t N,
+                const size_t K,
+                const size_t BatchN,
+                const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
+                MLAS_THREADPOOL* ThreadPool)
+{
+    MlasQ4GemmBatchDriver(QType, M, N, K, BatchN, DataParams, ThreadPool);
+}
+
+void MLASCALL
+MlasQ8Q4GemmBatch(MLAS_BLK_QUANT_TYPE QType,
+                  const size_t M,
+                  const size_t N,
+                  const size_t K,
+                  const size_t BatchN,
+                  const MLAS_Q8Q4_GEMM_DATA_PARAMS* DataParams,
+                  MLAS_THREADPOOL* ThreadPool)
+{
+    MlasQ4GemmBatchDriver(QType, M, N, K, BatchN, DataParams, ThreadPool);
+}
+
 #ifdef MLAS_JBLAS
 
 jblas::ORTThreading::ORTThreading(void* tp)
@@ -169,7 +193,7 @@ JblasQ4GemmCompF32(const int M,
 {
     if (M <= 32) {
         using Parallel = jblas::parallel::gemm::SchedulerKBlock<GemmCore_T>;
-        using Launcher = JBLAS_FP32_S4_F32F32<GemmCore_T>;
+        using Launcher = tLauncher_Fp32_S4_F32F32<GemmCore_T>;
         static Launcher kernel;
         auto reduceA = kernel.mProA.createStorage(M, K, B->mBlockSize);
         if (B->mIsAsym) {
@@ -211,7 +235,7 @@ JblasQ4GemmCompInt8(const int M,
                     jblas::parallel::IThreading* th)
 {
     using Parallel = jblas::parallel::gemm::SchedulerKBlock<GemmCore_T>;
-    using Launcher = JBLAS_INT8_S4_F32F32<GemmCore_T>;
+    using Launcher = tLauncher_Int8_S4_F32F32<GemmCore_T>;
 
     static Launcher kernel;
     auto quanA = kernel.mProA.createStorage(M, K, B->mBlockSize, B->mIsAsym);
@@ -236,7 +260,7 @@ JblasQ4GemmCompInt8(const int M,
     jblas::parallel::GemmKBlockRun<Parallel>(kernel, args, th);
 }
 
-void
+static bool
 JblasQ4GemmBatchDriver(const size_t M,
                        const size_t N,
                        const size_t K,
@@ -247,6 +271,7 @@ JblasQ4GemmBatchDriver(const size_t M,
 {
     GetCPUDevice();
     ORTThreading orth(ThreadPool);
+    bool processed = true;
     for (size_t i = 0; i < BatchN; i++) {
         auto ptr = jblas::storage::gemm::PackedWeightParser::deserialBuffer(
             const_cast<void*>(DataParams[i].B));
@@ -261,76 +286,79 @@ JblasQ4GemmBatchDriver(const size_t M,
                                                                  jblas::gemm::CoreAttr::COMP_MASK,
                                                                  jblas::gemm::CoreAttr::COMP_SHIFT);
                 if (CType == uint32_t(gemm::CompType::COMP_FP32)) {
-                    if (NTile == 48 && _cd->AVX512F()) {
-                        JblasQ4GemmCompF32<gemm::SCoreRowNAvx512f<48, 8>>(
+                    if (NTile == tAVX512F::NTILE && _cd->AVX512F()) {
+                        JblasQ4GemmCompF32<tAVX512F>(
                             M, N, K, DataParams[i].A, DataParams[i].lda,
                             (jblas::storage::gemm::StorageWeightKBlockS4*)ptr, DataParams[i].C,
                             DataParams[i].ldc, WorkSpace, &orth);
-                        return;
+                        goto __END;
                     }
-                    if (NTile == 24 && _cd->AVX2()) {
-                        JblasQ4GemmCompF32<gemm::SCoreRowNAvx2<24, 4>>(
-                            M, N, K, DataParams[i].A, DataParams[i].lda,
-                            (jblas::storage::gemm::StorageWeightKBlockS4*)ptr, DataParams[i].C,
-                            DataParams[i].ldc, WorkSpace, &orth);
-                        return;
+                    if (NTile == tAVX2::NTILE && _cd->AVX2()) {
+                        JblasQ4GemmCompF32<tAVX2>(M, N, K, DataParams[i].A, DataParams[i].lda,
+                                                  (jblas::storage::gemm::StorageWeightKBlockS4*)ptr,
+                                                  DataParams[i].C, DataParams[i].ldc, WorkSpace,
+                                                  &orth);
+                        goto __END;
                     }
                 }
                 if (CType == uint32_t(gemm::CompType::COMP_INT8_US_INT32)) {
-                    if (NTile == 48 && _cd->AVX512_VNNI()) {
-                        JblasQ4GemmCompInt8<gemm::ICoreRowNAvx512vnni<48, 8>>(
+                    if (NTile == tAMX_INT8_US::NTILE && _cd->AMX_INT8()) {
+                        JblasQ4GemmCompInt8<tAMX_INT8_US>(
                             M, N, K, DataParams[i].A, DataParams[i].lda,
                             (jblas::storage::gemm::StorageWeightKBlockS4*)ptr, DataParams[i].C,
                             DataParams[i].ldc, WorkSpace, &orth);
-                        return;
+                        goto __END;
                     }
-                    if (NTile == 24 && _cd->AVX_VNNI()) {
-                        JblasQ4GemmCompInt8<gemm::ICoreRowNAvxvnni<24, 4>>(
+                    if (NTile == tAVX512_VNNI::NTILE && _cd->AVX512_VNNI()) {
+                        JblasQ4GemmCompInt8<tAVX512_VNNI>(
                             M, N, K, DataParams[i].A, DataParams[i].lda,
                             (jblas::storage::gemm::StorageWeightKBlockS4*)ptr, DataParams[i].C,
                             DataParams[i].ldc, WorkSpace, &orth);
-                        return;
+                        goto __END;
+                    }
+                    if (NTile == tAVX_VNNI::NTILE && _cd->AVX_VNNI()) {
+                        JblasQ4GemmCompInt8<tAVX_VNNI>(
+                            M, N, K, DataParams[i].A, DataParams[i].lda,
+                            (jblas::storage::gemm::StorageWeightKBlockS4*)ptr, DataParams[i].C,
+                            DataParams[i].ldc, WorkSpace, &orth);
+                        goto __END;
+                    }
+                }
+                if (CType == uint32_t(gemm::CompType::COMP_INT8_SS_INT32)) {
+                    if (NTile == tAMX_INT8_SS::NTILE && _cd->AMX_INT8()) {
+                        JblasQ4GemmCompInt8<tAMX_INT8_SS>(
+                            M, N, K, DataParams[i].A, DataParams[i].lda,
+                            (jblas::storage::gemm::StorageWeightKBlockS4*)ptr, DataParams[i].C,
+                            DataParams[i].ldc, WorkSpace, &orth);
+                        goto __END;
                     }
                 }
             }
+        __END:
             delete ptr;
+        } else {
+            processed = false;
+            break;
         }
     }
+    return processed;
 }
 
-void MLASCALL
-MlasJblasQ4GemmBatch(const size_t M,
-                     const size_t N,
-                     const size_t K,
-                     const size_t BatchN,
-                     const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
-                     int8_t* WorkSpace,
-                     MLAS_THREADPOOL* ThreadPool)
-{
-    JblasQ4GemmBatchDriver(M, N, K, BatchN, DataParams, WorkSpace, ThreadPool);
-}
 #endif
 
 void MLASCALL
-MlasQ4GemmBatch(MLAS_BLK_QUANT_TYPE QType,
-                const size_t M,
-                const size_t N,
-                const size_t K,
-                const size_t BatchN,
-                const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
-                MLAS_THREADPOOL* ThreadPool)
+MlasNBitsGemmBatch(const size_t M,
+                   const size_t N,
+                   const size_t K,
+                   const size_t BatchN,
+                   const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
+                   int8_t* WorkSpace,
+                   MLAS_THREADPOOL* ThreadPool)
 {
-    MlasQ4GemmBatchDriver(QType, M, N, K, BatchN, DataParams, ThreadPool);
-}
-
-void MLASCALL
-MlasQ8Q4GemmBatch(MLAS_BLK_QUANT_TYPE QType,
-                  const size_t M,
-                  const size_t N,
-                  const size_t K,
-                  const size_t BatchN,
-                  const MLAS_Q8Q4_GEMM_DATA_PARAMS* DataParams,
-                  MLAS_THREADPOOL* ThreadPool)
-{
-    MlasQ4GemmBatchDriver(QType, M, N, K, BatchN, DataParams, ThreadPool);
+#ifdef MLAS_JBLAS
+    if (JblasQ4GemmBatchDriver(M, N, K, BatchN, DataParams, WorkSpace, ThreadPool)) {
+        // PackedWeight is created by jblas
+        return;
+    }
+#endif
 }

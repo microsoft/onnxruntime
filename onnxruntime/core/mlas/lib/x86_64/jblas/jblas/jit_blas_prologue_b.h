@@ -274,20 +274,43 @@ class WeightKBlockS8 {
               }
             }
           }
-          if (stor->mIsAsym && zero_points) {
+        }
+      });
+    } else if (stor->mScaT == JBLAS_DTYPE::BF16) {
+      threading->parallel_for([&](int tidx) {
+        parallel::ThreadProblem2D thdp{tidx};
+        _para.getIndex(thdp);
+        if (thdp.valid) {
+          if (scales) {
             for (int i = thdp.loc[1]; i < thdp.loc[1] + thdp.size[1]; i++) {
               if (i < rawnk_scale) {
                 for (size_t j = 0; j < N; j++) {
-                  stor->template ZPtr<int8_t>()[i * stor->mNPad + j] = zero_points[j * rawnk_scale + i];
+                  stor->template SPtr<utils::bf16>()[i * stor->mNPad + j] = utils::bf16(scales[j * rawnk_scale + i]);
                 }
               } else {
-                std::memset(stor->template ZPtr<int8_t>() + i * stor->mNPad, 0, stor->mNPad * sizeof(zero_points[0]));
+                std::memset(stor->template SPtr<utils::bf16>() + i * stor->mNPad, 0, stor->mNPad * sizeof(utils::bf16));
               }
             }
           }
         }
       });
     }
+    if (stor->mIsAsym && zero_points)
+      threading->parallel_for([&](int tidx) {
+        parallel::ThreadProblem2D thdp{tidx};
+        _para.getIndex(thdp);
+        if (thdp.valid) {
+          for (int i = thdp.loc[1]; i < thdp.loc[1] + thdp.size[1]; i++) {
+            if (i < rawnk_scale) {
+              for (size_t j = 0; j < N; j++) {
+                stor->template ZPtr<int8_t>()[i * stor->mNPad + j] = zero_points[j * rawnk_scale + i];
+              }
+            } else {
+              std::memset(stor->template ZPtr<int8_t>() + i * stor->mNPad, 0, stor->mNPad * sizeof(zero_points[0]));
+            }
+          }
+        }
+      });
   }
 
   virtual void packQWeight(const int N, const int K, const int8_t* B, const int ldb, const float* scales,
@@ -315,7 +338,7 @@ class WeightKBlockS8 {
       utils::afree(deq);
     }
   }
-  template<typename RED_T>
+  template <typename RED_T>
   void reduce(const int N, const int K, const int KBlock, const float* B, const int ldb, RED_T* rptr, const int ldr,
               parallel::IThreading* threading) {
     parallel::Scheduler2D _para({threading->num_threads(), K, N, KBlock, 16});

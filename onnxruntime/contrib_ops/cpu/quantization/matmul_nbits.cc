@@ -53,29 +53,29 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
                             /*out*/ bool& is_packed,
                             /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
-
-  if (accuracy_level_ > 0 && nbits_ == 4) {
+  auto compt_type = static_cast<MLAS_COMPUTE_TYPE>(accuracy_level_);
+  if (MlasNBitsGemmPackBSupport(N_, K_, block_size_, nbits_, is_asym_, compt_type)) {
     // TODO use threadpool here
     MLAS_THREADPOOL* pool = NULL;
     if (input_idx == 1) {
       auto qptr = tensor.Data<uint8_t>();
-      packed_b_size_ = MlasJblasQ4GemmPackBSize(N_, K_, block_size_, is_asym_, static_cast<MLAS_COMPUTE_TYPE>(accuracy_level_));
+      packed_b_size_ = MlasNBitsGemmPackBSize(N_, K_, block_size_, nbits_, is_asym_, compt_type);
       packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
-      MlasJblasNBitsGemmPackB(packed_b_.get(), qptr, nullptr, nullptr, N_, K_, K_, block_size_, is_asym_, false, static_cast<MLAS_COMPUTE_TYPE>(accuracy_level_), pool);
+      MlasNBitsGemmPackB(packed_b_.get(), qptr, nullptr, nullptr, N_, K_, K_, block_size_, nbits_, is_asym_, false, compt_type, pool);
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
       is_packed = true;
     }
     if (input_idx == 2) {
       auto sptr = tensor.Data<float>();
-      MlasJblasNBitsGemmPackB(packed_b_.get(), nullptr, sptr, nullptr, N_, K_, K_, block_size_, is_asym_, !is_asym_, static_cast<MLAS_COMPUTE_TYPE>(accuracy_level_), pool);
+      MlasNBitsGemmPackB(packed_b_.get(), nullptr, sptr, nullptr, N_, K_, K_, block_size_, nbits_, is_asym_, !is_asym_, compt_type, pool);
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
       is_packed = true;
     }
     if (input_idx == 3) {
       auto zptr = tensor.Data<uint8_t>();
-      MlasJblasNBitsGemmPackB(packed_b_.get(), nullptr, nullptr, zptr, N_, K_, K_, block_size_, is_asym_, is_asym_, static_cast<MLAS_COMPUTE_TYPE>(accuracy_level_), pool);
+      MlasNBitsGemmPackB(packed_b_.get(), nullptr, nullptr, zptr, N_, K_, K_, block_size_, nbits_, is_asym_, is_asym_, compt_type, pool);
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
       is_packed = true;
@@ -89,7 +89,7 @@ Status MatMulNBits::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prep
                                               int input_idx,
                                               /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
-
+  // Pack three tensors into one buffer
   if (input_idx == 1) {
     used_shared_buffers = true;
     packed_b_ = std::move(prepacked_buffers[0]);
@@ -142,7 +142,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
       gemm_params[i].C = y_data + helper.OutputOffsets()[i];
       gemm_params[i].ldc = N;
     }
-    MlasJblasQ4GemmBatch(M, N, K, max_len, gemm_params.data(), (int8_t*)ws_ptr.get(), thread_pool);
+    MlasNBitsGemmBatch(M, N, K, max_len, gemm_params.data(), (int8_t*)ws_ptr.get(), thread_pool);
     return Status::OK();
   }
 

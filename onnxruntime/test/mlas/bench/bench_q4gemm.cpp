@@ -62,7 +62,7 @@ void Q4GEMM_Jblas(benchmark::State& state, int block_size, bool is_asym, MLAS_CO
   const size_t N = static_cast<size_t>(state.range(1));
   const size_t K = static_cast<size_t>(state.range(2));
   const size_t threads = static_cast<size_t>(state.range(3));
-  const size_t pack_b_size = MlasJblasQ4GemmPackBSize(N, K, block_size, is_asym, cmp_type);
+  const size_t pack_b_size = MlasNBitsGemmPackBSize(N, K, block_size, 4, is_asym, cmp_type);
 
   OrtThreadPoolParams tpo;
   tpo.thread_pool_size = int(threads);
@@ -72,11 +72,14 @@ void Q4GEMM_Jblas(benchmark::State& state, int block_size, bool is_asym, MLAS_CO
                                                  tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
 
   auto A1 = RandomVectorUniform(static_cast<size_t>(M * K), -1.0f, 1.0f);
-  auto B1 = RandomVectorUniform(static_cast<size_t>(N * K), -1.0f, 1.0f);
+  auto B1 = RandomVectorUniform<uint8_t>(static_cast<size_t>(N * K / 2), 0, 255);
+  auto blk_num = (K + block_size - 1) / block_size;
+  auto B_scale = RandomVectorUniform(static_cast<size_t>(N * blk_num), 0.003f, 0.005f);
   std::vector<float> C1(static_cast<size_t>(M * N));
+  auto B_zp = RandomVectorUniform<uint8_t>(static_cast<size_t>(N * blk_num / 2), 0, 255);
 
   std::vector<int8_t> B1_packed(pack_b_size);
-  MlasJblasQ4GemmPackB(B1_packed.data(), B1.data(), N, K, N, block_size, is_asym, cmp_type, tp.get());
+  MlasNBitsGemmPackB(B1_packed.data(), B1.data(), B_scale.data(), is_asym ? B_zp.data() : nullptr, N, K, N, block_size, 4, is_asym, true, cmp_type, tp.get());
 
   MLAS_Q4_GEMM_DATA_PARAMS params1;
   params1.A = A1.data();
@@ -87,10 +90,10 @@ void Q4GEMM_Jblas(benchmark::State& state, int block_size, bool is_asym, MLAS_CO
   params1.B = B1_packed.data();
   params1.OutputProcessor = nullptr;
   std::vector<int8_t> workspace(size_t(M) * K * 4);
-  MlasJblasQ4GemmBatch(M, N, K, 1, &params1, workspace.data(), tp.get());
+  MlasNBitsGemmBatch(M, N, K, 1, &params1, workspace.data(), tp.get());
 
   for (auto _ : state) {
-    MlasJblasQ4GemmBatch(M, N, K, 1, &params1, workspace.data(), tp.get());
+    MlasNBitsGemmBatch(M, N, K, 1, &params1, workspace.data(), tp.get());
   }
 }
 
