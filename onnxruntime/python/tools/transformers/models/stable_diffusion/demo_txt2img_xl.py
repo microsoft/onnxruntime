@@ -135,9 +135,6 @@ def run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False
         # Use same seed in base and refiner.
         seed = base.get_current_seed()
 
-        # Use same seed in base and refiner.
-        seed = base.get_current_seed()
-
         images, time_refiner = refiner.run(
             prompt,
             negative_prompt,
