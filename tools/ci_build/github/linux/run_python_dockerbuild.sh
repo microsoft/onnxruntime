@@ -15,27 +15,27 @@ u) CUDA_VERSION=${OPTARG};;
 esac
 done
 
-mkdir -p $HOME/.onnx
-DOCKER_SCRIPT_OPTIONS="-d $DEVICE -c $BUILD_CONFIG -x $BUILD_EXTR_PAR"
+mkdir -p "${HOME}/.onnx"
+DOCKER_SCRIPT_OPTIONS="-d ${DEVICE} -c ${BUILD_CONFIG} -x ${BUILD_EXTR_PAR}"
 
-if [ "$CUDA_VERSION" != "" ] ; then
-    DOCKER_SCRIPT_OPTIONS+=" -u $CUDA_VERSION"
+if [ "${CUDA_VERSION}" != "" ] ; then
+    DOCKER_SCRIPT_OPTIONS+=" -u ${CUDA_VERSION}"
 fi
 
 docker run --rm \
     --volume /data/onnx:/data/onnx:ro \
-    --volume $BUILD_SOURCESDIRECTORY:/onnxruntime_src \
-    --volume $BUILD_BINARIESDIRECTORY:/build \
+    --volume "${BUILD_SOURCESDIRECTORY}:/onnxruntime_src" \
+    --volume "${BUILD_BINARIESDIRECTORY}:/build" \
     --volume /data/models:/build/models:ro \
-    --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+    --volume "${HOME}/.onnx:/home/onnxruntimedev/.onnx" \
     -w /onnxruntime_src \
     -e NIGHTLY_BUILD \
     -e BUILD_BUILDNUMBER \
-    $ADDITIONAL_DOCKER_PARAMETER \
-    $DOCKER_IMAGE tools/ci_build/github/linux/build_linux_python_package.sh $DOCKER_SCRIPT_OPTIONS
+    "${ADDITIONAL_DOCKER_PARAMETER}" \
+    "${DOCKER_IMAGE} tools/ci_build/github/linux/build_linux_python_package.sh ${DOCKER_SCRIPT_OPTIONS}"
 
-sudo rm -rf $BUILD_BINARIESDIRECTORY/$BUILD_CONFIG/onnxruntime $BUILD_BINARIESDIRECTORY/$BUILD_CONFIG/pybind11 \
-    $BUILD_BINARIESDIRECTORY/$BUILD_CONFIG/models $BUILD_BINARIESDIRECTORY/$BUILD_CONFIG/_deps \
-    $BUILD_BINARIESDIRECTORY/$BUILD_CONFIG/CMakeFiles
-cd $BUILD_BINARIESDIRECTORY/$BUILD_CONFIG
-find -executable -type f > $BUILD_BINARIESDIRECTORY/$BUILD_CONFIG/perms.txt
+sudo rm -rf "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/onnxruntime" "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/pybind11" \
+    "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/models" "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/_deps" \
+    "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/CMakeFiles"
+cd "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}"
+find -executable -type f > "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/perms.txt"
