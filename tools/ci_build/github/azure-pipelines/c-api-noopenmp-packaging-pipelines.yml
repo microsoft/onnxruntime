@@ -206,6 +206,9 @@ stages:
 
 #CUDA without tensorrt
 - template: templates/win-ci.yml
+  variables:
+    - name: GRADLE_OPTS=-Dorg.gradle.daemon
+      value: 'false'
   parameters:
     ort_build_pool_name: 'onnxruntime-Win2022-GPU-T4'
     DoCompliance: ${{ parameters.DoCompliance }}
@@ -221,6 +224,11 @@ stages:
 
 # CUDA with Tensorrt
 - template: templates/win-ci.yml
+  variables:
+    - name: GRADLE_OPTS=-Dorg.gradle.daemon
+      value: 'false'
+    - name: CUDA_MODULE_LOADING
+      value: 'LAZY'
   parameters:
     ort_build_pool_name: 'onnxruntime-Win2022-GPU-T4'
     DoCompliance: ${{ parameters.DoCompliance }}
