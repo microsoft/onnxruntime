@@ -4216,74 +4216,105 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
     auto* node = graph_to_inline.GetNode(node_idx);
     assert(node->OpType() != kConstant);
 
-    InlinedVector<NodeArg*> new_node_input_defs;
-    for (const auto* input_def : node->InputDefs()) {
+    // Inputs
+    // Chop off trailing non-existing defs
+    auto& input_defs = node->MutableInputDefs();
+    auto last_existing = std::find_if(input_defs.rbegin(), input_defs.rend(),
+                                      [](const NodeArg* node_arg) { return node_arg->Exists(); });
+
+    input_defs.resize(std::distance(input_defs.begin(), last_existing.base()));
+    InlinedVector<NodeArg*> new_input_defs;
+    InlinedVector<int> input_positions;
+    int arg_pos = -1;
+    for (auto* input_def : node->InputDefs()) {
+      ++arg_pos;
       if (input_def->Exists()) {
         // Check if this is one of the implicit graph inputs
-        // then leave the name as is and re-use the NodeArg
+        // then re-assign the def to the outer scope value.
         const auto& input_name = input_def->Name();
         auto outer_hit = outer_scope_values.find(input_name);
         if (outer_hit != outer_scope_values.cend()) {
-          new_node_input_defs.push_back(outer_hit->second);
+          new_input_defs.push_back(outer_hit->second);
         } else {
           auto hit = name_to_nodearg.find(input_name);
           if (hit != name_to_nodearg.cend()) {
             // This is other node output, constant node or initializer that was renamed.
-            new_node_input_defs.push_back(hit->second);
+            new_input_defs.push_back(hit->second);
           } else {
             ORT_THROW("Node's: ", node->Name(), " input: ", input_name,
                       " is not If node's input or previous node output in this subgraph");
           }
         }
+        if (!is_this_main_graph)
+          input_positions.push_back(arg_pos);
       }
     }
 
-    InlinedVector<NodeArg*> new_node_output_defs;
-    for (const auto* output_def : node->OutputDefs()) {
-      const auto& output_name = output_def->Name();
-      auto hit = name_to_nodearg.find(output_name);
-      if (hit != name_to_nodearg.cend()) {
-        // This is one of the graph outputs, we rename it to
-        // If node output.
-        new_node_output_defs.push_back(hit->second);
-      } else {
-        // We generate an output to downstream nodes.
-        auto new_name = GenerateNodeArgName(make_unique(output_name));
-        NodeArg& new_arg = GetOrCreateNodeArg(new_name, output_def->TypeAsProto());
-        new_node_output_defs.push_back(&new_arg);
-        ORT_IGNORE_RETURN_VALUE(name_to_nodearg.emplace(output_name, &new_arg));
+    // Outputs
+    // Chop off trailing non-existing defs
+    auto& output_defs = node->MutableOutputDefs();
+    last_existing = std::find_if(output_defs.rbegin(), output_defs.rend(),
+                                 [](const NodeArg* node_arg) { return node_arg->Exists(); });
+    output_defs.resize(std::distance(output_defs.begin(), last_existing.base()));
+
+    InlinedVector<NodeArg*> new_output_defs;
+    InlinedVector<int> output_positions;
+    arg_pos = -1;
+    for (auto* output_def : node->OutputDefs()) {
+      ++arg_pos;
+      if (output_def->Exists()) {
+        const auto& output_name = output_def->Name();
+        auto hit = name_to_nodearg.find(output_name);
+        if (hit != name_to_nodearg.cend()) {
+          // This is one of the If node outputs, reassign the def.
+          new_output_defs.push_back(hit->second);
+        } else {
+          // We generate an output to downstream nodes.
+          auto new_name = GenerateNodeArgName(make_unique(output_name));
+          NodeArg& new_arg = GetOrCreateNodeArg(new_name, output_def->TypeAsProto());
+          new_output_defs.push_back(&new_arg);
+          ORT_IGNORE_RETURN_VALUE(name_to_nodearg.emplace(output_name, &new_arg));
+        }
+
+        if (!is_this_main_graph)
+          output_positions.push_back(arg_pos);
       }
     }
 
     const auto new_node_name = GenerateNodeName(make_unique(node->OpType()));
     Node& new_node = AddNode(new_node_name, node->OpType(), node->Description(),
-                             new_node_input_defs,
-                             new_node_output_defs,
+                             new_input_defs,
+                             new_output_defs,
                              nullptr,
                              node->Domain());
 
-    if (!is_this_main_graph) {
-      map_defs(new_node, input_args, true);
-      map_defs(new_node, output_args, false);
-      new_nodes.push_back(&new_node);
-    }
-
     new_node.SetSinceVersion(node->SinceVersion());
     new_node.op_ = node->op_;
+
+    if (!is_this_main_graph) {
+      for (size_t idx = 0, lim = new_input_defs.size(); idx < lim; ++idx) {
+        input_args.emplace(new_input_defs[idx]->Name(), std::make_pair(&new_node, input_positions[idx]));
+      }
+      for (size_t idx = 0, lim = new_output_defs.size(); idx < lim; ++idx) {
+        output_args.emplace(new_output_defs[idx]->Name(), std::make_pair(&new_node, output_positions[idx]));
+      }
+      new_nodes.push_back(&new_node);
+    }
 
     if (node->ContainsSubgraph()) {
       auto& subgraphs = node->MutableSubgraphs();
 
       // Check if any of this node implicit inputs of this graph is in the renaming map
       int renames_subgraph_names = 0;
-      auto& new_implicit_defs = node->MutableImplicitInputDefs();
-      for (auto& input_def : new_implicit_defs) {
+      auto& implicit_defs = node->MutableImplicitInputDefs();
+      for (auto& input_def : implicit_defs) {
         auto hit = name_to_nodearg.find(input_def->Name());
         if (hit != name_to_nodearg.cend()) {
           input_def = hit->second;
           ++renames_subgraph_names;
         }
       }
+      new_node.MutableImplicitInputDefs() = std::move(implicit_defs);
 
       for (auto& subgraph : subgraphs) {
         if (renames_subgraph_names > 0) {
@@ -4298,7 +4329,6 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
 
       new_node.MutableSubgraphs() = std::move(subgraphs);
       new_node.GetMutableMapOfAttributeNameToSubgraph() = std::move(node->GetMutableMapOfAttributeNameToSubgraph());
-      new_node.MutableImplicitInputDefs() = std::move(new_implicit_defs);
     }
 
     new_node.GetMutableAttributes() = std::move(node->GetMutableAttributes());
