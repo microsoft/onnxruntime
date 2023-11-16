@@ -26,9 +26,19 @@
 #include "test/test_environment.h"
 
 std::unique_ptr<Ort::Env> ort_env;
+
 void ortenv_setup() {
   OrtThreadingOptions tpo;
+#if defined(__wasm__)
+  OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_WARNING;
+  OrtThreadingOptions tp_options;
+  OrtEnv *env;
+  // use the global thread pool
+  (void)Ort::GetApi().CreateEnvWithGlobalThreadPools(logging_level, "Default", &tp_options, &env);
+  ort_env.reset(new Ort::Env(env));
+#else
   ort_env.reset(new Ort::Env(&tpo, ORT_LOGGING_LEVEL_WARNING, "Default"));
+#endif
 }
 
 #ifdef USE_TENSORRT
