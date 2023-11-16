@@ -41,10 +41,9 @@ __global__ void RotaryEmbeddingBSNH(T* output,                   // BxSxNxH
   const int i = threadIdx.x;
 
   const int block_offset = b * batch_stride + s * seq_stride + n * head_stride;
-  const int data_offset = block_offset * head_size;
 
-  const T* input_data = input + data_offset;
-  T* output_data = output + data_offset;
+  const T* input_data = input + block_offset;
+  T* output_data = output + block_offset;
 
   // Cache is (M, H/2)
   const int half_head_size = head_size / 2;
@@ -98,13 +97,13 @@ Status LaunchRotaryEmbeddingKernel(
   // and num_heads values, we can create a block as `block(num_heads, head_size, 1)`
   // instead. This will require kernel changes to support.
 
-  // Default input tensor shape is [batch, seq, num_heads, head_size]
-  int head_stride = 1;
+  // Default input tensor shape is [batch, seq, hidden_size]
+  int head_stride = head_size;
   int seq_stride = num_heads * head_stride;
   int batch_stride = sequence_length * seq_stride;
   if (transposed) {
     // When transposed, input tensor shape is [batch, num_heads, seq, head_size]
-    seq_stride = 1;
+    seq_stride = head_size;
     head_stride = sequence_length * seq_stride;
     batch_stride = num_heads * head_stride;
   }
