@@ -15,8 +15,6 @@
 #include "core/session/custom_ops.h"
 #include "core/session/inference_session.h"
 
-#include "onnxruntime_vitisai_ep/onnxruntime_vitisai_ep.h"
-
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
@@ -25,7 +23,7 @@ constexpr const char* VITISAI = "VITISAI";
 
 static vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>> compile_onnx_model(
     const onnxruntime::GraphViewer& graph_viewer,
-    const logging::Logger& logger, const char* json_config) {
+    const logging::Logger& logger, const ProviderOptions& options) {
 #ifndef _WIN32
   auto model_path = graph_viewer.ModelPath().ToPathString();
 #else
@@ -33,8 +31,9 @@ static vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvid
   std::wstring_convert<convert_t, wchar_t> strconverter;
   auto model_path = strconverter.to_bytes(graph_viewer.ModelPath().ToPathString());
 #endif
-  return onnxruntime_vitisai_ep::compile_onnx_model_3(model_path, graph_viewer.GetGraph(), json_config);
+  return compile_onnx_model_with_options(model_path, graph_viewer.GetGraph(), options);
 }
+
 struct MyCustomOpKernel : OpKernel {
   MyCustomOpKernel(const OpKernelInfo& info, const OrtCustomOp& op) : OpKernel(info), op_(op) {
     op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version),
@@ -56,7 +55,7 @@ struct MyCustomOpKernel : OpKernel {
 };
 
 VitisAIExecutionProvider::VitisAIExecutionProvider(
-    const VitisAIExecutionProviderInfo& info)
+    const ProviderOptions& info)
     : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider}, info_(info) {
   custom_op_domains_ = initialize_vitisai_ep();
   registry_ = std::make_shared<KernelRegistry>();
@@ -100,9 +99,8 @@ VitisAIExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     // Only compiling a model once is currently supported
     return {};
   }
-  auto opt_str = info_.get_json_config_str();  // String
   execution_providers_ =
-      std::make_unique<my_ep_t>(compile_onnx_model(graph, *GetLogger(), opt_str));
+      std::make_unique<my_ep_t>(compile_onnx_model(graph, *GetLogger(), info_));
   auto result = vaip::GetComputeCapabilityOps(graph, execution_providers_.get(), vitisai_optypes_);
   size_t index = 0u;
   for (auto& ep : **execution_providers_) {
