@@ -55,7 +55,7 @@ def get_qnn_qdq_config(
 
     extra_options = {
         "MinimumRealRange": 0.0001,
-        "DedicatedQDQPair": True,
+        "DedicatedQDQPair": False,  # Let ORT optimizer duplicate DQ nodes
         "TensorQuantOverrides": tensor_quant_overrides,
     }
 
