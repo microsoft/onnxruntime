@@ -5,9 +5,8 @@ import torch
 from numpy.testing import assert_allclose
 
 from onnxruntime.training.ortmodule import ORTModule
-from onnxruntime.training.ortmodule._graph_execution_manager_factory import (  # noqa: F401
-    GraphExecutionManagerFactory,
-)
+from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory  # noqa: F401
+
 
 def is_all_or_nothing_fallback_enabled(model, policy=None):
     from onnxruntime.training.ortmodule import ORTMODULE_FALLBACK_POLICY
