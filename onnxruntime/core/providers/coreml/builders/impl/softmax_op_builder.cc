@@ -49,7 +49,7 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto axis = helper.Get("axis", axis_default_value);
   const auto axis_nonnegative = HandleNegativeAxis(axis, data_shape.size());
 
-  if (node.SinceVersion() >= 13 || (data_shape.size() == 2 && axis == 1)) {
+  if (node.SinceVersion() >= 13 || (data_shape.size() == 2)) {
     auto* coreml_softmaxnd = layer->mutable_softmaxnd();
     coreml_softmaxnd->set_axis(axis);
     *layer->mutable_input()->Add() = input_name;
@@ -58,31 +58,44 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   } else {
     // note: if opsets < 13, onnx Softmax coerces the input shape to be 2D based on axis.
     // we need to manually reshape to make sure the rank is >=3 and get the right number of dims.
-    const auto num_elements_from_axis = data_shape.size() - axis_nonnegative;
-    if (num_elements_from_axis < 3) {
-      const auto expand_output_name = model_builder.GetUniqueName(MakeString(node.Name(), "expand_output"));
-      {  // Add expand layer
-        const auto softmax_expand_layer_name =
-            model_builder.GetUniqueName(MakeString(node.Name(), "_Softmax_expand"));
-        auto expand_layer = CreateNNLayer(softmax_expand_layer_name);
-        for (uint64_t i = 0; i < 3 - num_elements_from_axis; i++) {
-          expand_layer->mutable_expanddims()->add_axes(-1 - i);
-        }
-        *expand_layer->mutable_input()->Add() = input_name;
-        *expand_layer->mutable_output()->Add() = expand_output_name;
-        model_builder.AddLayer(std::move(expand_layer));
-      }
+    TensorShape input_shape(data_shape);
+    const auto size_to_dimension = input_shape.SizeToDimension(axis_nonnegative);
+    const auto size_from_dimension = input_shape.SizeFromDimension(axis_nonnegative);
+
+    std::vector<int64_t> target_shape;
+    target_shape.push_back(size_to_dimension);
+    target_shape.push_back(1);
+    target_shape.push_back(size_from_dimension);
+
+    const auto reshape1_output_name = model_builder.GetUniqueName(MakeString(node.Name(), "reshape1_output"));
+    {  // Add reshape layer
+      const auto softmax_reshape1_layer_name =
+          model_builder.GetUniqueName(MakeString(node.Name(), "_Softmax_reshape1"));
+      auto reshape_layer = CreateNNLayer(softmax_reshape1_layer_name);
+      *reshape_layer->mutable_reshapestatic()->mutable_targetshape() = {target_shape.cbegin(), target_shape.cend()};
+      *reshape_layer->mutable_input()->Add() = input_name;
+      *reshape_layer->mutable_output()->Add() = reshape1_output_name;
+      model_builder.AddLayer(std::move(reshape_layer));
+    }
+    const auto softmax_output_name = model_builder.GetUniqueName(MakeString(node.Name(), "softmax_output"));
+    {
       layer->mutable_softmax();
-      *layer->mutable_input()->Add() = expand_output_name;
-      *layer->mutable_output()->Add() = output_name;
-      model_builder.AddLayer(std::move(layer));
-    } else {
-      layer->mutable_softmax();
-      *layer->mutable_input()->Add() = input_name;
-      *layer->mutable_output()->Add() = output_name;
+      *layer->mutable_input()->Add() = reshape1_output_name;
+      *layer->mutable_output()->Add() = softmax_output_name;
       model_builder.AddLayer(std::move(layer));
     }
+    {
+      // Add reshape back layer
+      const auto softmax_reshape2_layer_name =
+          model_builder.GetUniqueName(MakeString(node.Name(), "_Softmax_reshape2"));
+      auto reshape_layer = CreateNNLayer(softmax_reshape2_layer_name);
+      *reshape_layer->mutable_reshapestatic()->mutable_targetshape() = {data_shape.cbegin(), data_shape.cend()};
+      *reshape_layer->mutable_input()->Add() = softmax_output_name;
+      *reshape_layer->mutable_output()->Add() = output_name;
+      model_builder.AddLayer(std::move(reshape_layer));
+    }
   }
+
   return Status::OK();
 }
 
@@ -101,21 +114,6 @@ bool SoftmaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   if (shape.Size() == 0) {
     LOGS(logger, VERBOSE) << "Cases that input data being empty due to a dimension with value of 0 is not supported";
     return false;
-  }
-
-  NodeAttrHelper helper(node);
-  int32_t axis_default_value = (node.SinceVersion() < 13) ? 1 : -1;
-  const auto axis = HandleNegativeAxis(helper.Get("axis", axis_default_value), input_shape.size());
-  if (node.SinceVersion() < 13) {
-    if (axis != static_cast<int32_t>(input_shape.size() - 1)) {
-      LOGS(logger, VERBOSE) << "Currently CoreML Softmax only supports an `axis` attribute equal to input_rank-1 (or -1) for ONNX opset < 13.";
-      return false;
-    }
-    if (input_shape.size() >= 4) {
-      LOGS(logger, VERBOSE) << "Cases that CoreML Softmax 13- with input >=4d is not supported. input shape: "
-                            << input_shape.size();
-      return false;
-    }
   }
 
   return true;
