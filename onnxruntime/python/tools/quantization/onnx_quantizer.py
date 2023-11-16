@@ -598,9 +598,9 @@ class ONNXQuantizer:
             params = self.quantization_params[param_name]
             if not isinstance(params, QuantizationParams):
                 raise TypeError(f"Unexpected type {type(params)} for {param_name!r}.")
-            if params is None or len(params) != 2:
+            if params is None or len(params) != 3:
                 raise ValueError(
-                    "Quantization parameters should contain zero point and scale. "
+                    "Quantization parameters should contain zero point, scale, quant type. "
                     f"Specified values for output {param_name}: {params}"
                 )
 
