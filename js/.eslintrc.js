@@ -144,9 +144,15 @@ module.exports = {
       'no-unused-expressions': 'off',
     }
   }, {
-    files: ['web/lib/**/*.ts'], rules: {
+    files: ['web/lib/**/*.ts'],
+    excludedFiles: 'web/lib/wasm/proxy-worker/**/*',
+    parserOptions: { 'project': 'web/tsconfig.json' },
+    rules: {
       'no-underscore-dangle': 'off',
     }
+  }, {
+    files: ['web/lib/wasm/proxy-worker/**/*.ts'],
+    parserOptions: { 'project': 'web/lib/wasm/proxy-worker/tsconfig.json' },
   }, {
     files: ['web/lib/onnxjs/**/*.ts'], rules: {
       // TODO: those rules are useful. should turn on them in future (webgl refactor)
