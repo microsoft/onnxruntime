@@ -909,7 +909,7 @@ struct OrtLiteCustomFunc : public OrtLiteCustomOp {
                     ShapeInferFn shape_infer_fn = {},
                     int start_ver = 1,
                     int end_ver = MAX_CUSTOM_OP_END_VER) : OrtLiteCustomOp(op_name, execution_provider, shape_infer_fn, start_ver, end_ver) {
-    compute_fn_ = compute_fn;
+    compute_fn_ = reinterpret_cast<void*>(compute_fn);
     ParseArgs<Args...>(input_types_, output_types_);
 
     OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) {
@@ -949,7 +949,7 @@ struct OrtLiteCustomFunc : public OrtLiteCustomOp {
                     ShapeInferFn shape_infer_fn = {},
                     int start_ver = 1,
                     int end_ver = MAX_CUSTOM_OP_END_VER) : OrtLiteCustomOp(op_name, execution_provider, shape_infer_fn, start_ver, end_ver) {
-    compute_fn_return_status_ = compute_fn_return_status;
+    compute_fn_return_status_ = reinterpret_cast<void*>(compute_fn_return_status);
     ParseArgs<Args...>(input_types_, output_types_);
 
     OrtCustomOp::KernelComputeV2 = [](void* op_kernel, OrtKernelContext* context) -> OrtStatusPtr {
