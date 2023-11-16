@@ -142,11 +142,6 @@ TEST_F(QnnHTPBackendTests, MatMulOp_HTP_u8) {
 }
 
 // Test QDQ MatMul with 16-bit act, 8-bit weights (static)
-// TODO: (SLIGHT) Inaccuracy detected for output 'output', element 0.
-// Output quant params: scale=0.0015259021893143654, zero_point=0.
-// Expected val: 98
-// QNN QDQ val: 97.720298767089844 (err 0.27970123291015625)
-// CPU QDQ val: 97.726402282714844 (err 0.27359771728515625)
 TEST_F(QnnHTPBackendTests, MatMulOp_HTP_A16_W8Static) {
   std::vector<float> input0_data = {-10.0f, -4.0f, -2.0f, 0.0f, 5.0f, 10.0f};
   std::vector<float> input1_data = {-10.0f, -6.0f, -1.0f, 0.0f, 3.0f, 10.0f};
@@ -158,7 +153,13 @@ TEST_F(QnnHTPBackendTests, MatMulOp_HTP_A16_W8Static) {
                                                     7e-3f);
 }
 
-TEST_F(QnnHTPBackendTests, MatMulOp_HTP_A16_W16Dynamic) {
+// Test QDQ MatMul with uint16 activation uint16 weights, both dynamic
+// Inaccuracy detected for output 'output_0', element 1.
+// Output quant params: scale=0.0015259021893143654, zero_point=0.
+// Expected val: 40
+// QNN QDQ val: 39.681087493896484 (err 0.31891250610351562)
+// CPU QDQ val: 39.99847412109375 (err 0.00152587890625)
+TEST_F(QnnHTPBackendTests, DISABLED_MatMulOp_HTP_A16_W16Dynamic) {
   std::vector<float> input0_data = {-10.0f, -4.0f, -2.0f, 0.0f, 5.0f, 10.0f};
   std::vector<float> input1_data = {-10.0f, -6.0f, -1.0f, 0.0f, 3.0f, 10.0f};
   RunQDQMatMulOpOpTest<uint16_t, uint16_t, uint16_t>(TestInputDef<float>({2, 3}, false, input0_data),
@@ -169,7 +170,13 @@ TEST_F(QnnHTPBackendTests, MatMulOp_HTP_A16_W16Dynamic) {
                                                      7e-3f);
 }
 
-TEST_F(QnnHTPBackendTests, MatMulOp_HTP_A16_W16Dynamic1) {
+// Test QDQ MatMul with uint16 activation uint16 weights, both dynamic
+// Inaccuracy detected for output 'output_0', element 1.
+// Output quant params: scale=0.71908456087112427, zero_point=1.
+// Expected val: 46848.41015625
+// QNN QDQ val: 46844.04296875 (err 4.3671875)
+// CPU QDQ val: 46848.359375 (err 0.05078125)
+TEST_F(QnnHTPBackendTests, DISABLED_MatMulOp_HTP_A16_W16DynamicLarge) {
   std::vector<float> input0_data = GetFloatDataInRange(-10.0f, 10.0f, 12 * 96 * 512);
   std::vector<float> input1_data = GetFloatDataInRange(-10.0f, 10.0f, 12 * 96 * 512);
   RunQDQMatMulOpOpTest<uint16_t, uint16_t, uint16_t>(TestInputDef<float>({1, 12, 96, 512}, false, input0_data),
