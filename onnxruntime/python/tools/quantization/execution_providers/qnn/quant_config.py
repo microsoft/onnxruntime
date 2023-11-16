@@ -31,11 +31,15 @@ def get_qnn_qdq_config(
     name_to_initializer = {initializer.name: initializer for initializer in model.graph.initializer}
 
     for node in model.graph.node:
-        if (node.op_type == "MatMul" or node.op_type == "LayerNormalization") and (
-            activation_type in Q16_TYPES and weight_type in Q8_TYPES
-        ):
+        if node.op_type == "MatMul" and activation_type in Q16_TYPES and weight_type in Q8_TYPES:
             # Override initializers to use the weight_type
             for input_name in node.input:
+                if input_name in name_to_initializer:
+                    tensor_quant_overrides[input_name] = {"quant_type": weight_type}
+        elif node.op_type == "LayerNormalization" and activation_type in Q16_TYPES and weight_type in Q8_TYPES:
+            # Override initializers to use the weight_type. Don't override the bias input.
+            for i in range(2):
+                input_name = node.input[i]
                 if input_name in name_to_initializer:
                     tensor_quant_overrides[input_name] = {"quant_type": weight_type}
         elif node.op_type == "Sigmoid":
