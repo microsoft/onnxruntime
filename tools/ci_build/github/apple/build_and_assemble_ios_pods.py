@@ -38,7 +38,7 @@ def parse_args():
     parser.add_argument(
         "--staging-dir",
         type=pathlib.Path,
-        default=REPO_DIR / "build" / "ios_pod_staging",
+        default=REPO_DIR / "build" / "apple_pod_staging",
         help="The staging directory. This will contain the iOS pod package files. "
         "The pod package files do not have dependencies on files in the build directory.",
     )
