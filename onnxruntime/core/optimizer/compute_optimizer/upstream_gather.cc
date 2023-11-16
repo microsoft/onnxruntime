@@ -338,8 +338,8 @@ std::optional<SliceInfo> IsSupportedGather(Graph& graph, Node& node,
   auto axis = static_cast<int>(node.GetAttributes().at("axis").i());
   axis = axis < 0 ? axis + data_rank : axis;
   size_t dim_size = static_cast<size_t>(indices_shape->dim_size());
-  bool is_single_value_1d_tensor = dim_size != 0 && (dim_size == 1 && utils::HasDimValue(indices_shape->dim(0)) &&
-                                                     indices_shape->dim(0).dim_value() == 1);
+  bool is_single_value_1d_tensor = dim_size == 1 && utils::HasDimValue(indices_shape->dim(0)) &&
+                                   indices_shape->dim(0).dim_value() == 1;
   if (dim_size != 0 && !is_single_value_1d_tensor) {
     if (dim_size == 1 && utils::HasDimValue(data_shape->dim(axis)) &&
         data_shape->dim(axis).dim_value() > indices_shape->dim(0).dim_value()) {
