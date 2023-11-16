@@ -40,8 +40,6 @@ steps:
     - script: |
         set -e -x
         pushd '$(Build.SourcesDirectory)/cmake/external/emsdk'
-        ./emsdk install 3.1.44
-        ./emsdk activate 3.1.44
         source ./emsdk_env.sh
         export PATH=$(Build.SourcesDirectory)/cmake/external/emsdk/:$PATH
         export PATH=$(Build.SourcesDirectory)/cmake/external/emsdk/ccache/git-emscripten_64bit/bin:$PATH
@@ -71,16 +69,7 @@ steps:
   - ${{if eq(parameters.WithCache, false)}}:
     - script: |
         set -e -x
-        pushd '$(Build.SourcesDirectory)/cmake/external/emsdk'
-        ./emsdk install 3.1.44
-        ./emsdk activate 3.1.44
-        source ./emsdk_env.sh
+        source $(Build.SourcesDirectory)/cmake/external/emsdk/emsdk_env.sh
         cd '$(Build.BinariesDirectory)'
         python3 '$(Build.SourcesDirectory)/tools/ci_build/build.py' ${{parameters.Arguments}}
       displayName: ${{parameters.DisplayName}}
-      env:
-        CCACHE_SLOPPINESS: include_file_ctime,include_file_mtime,time_macros
-        CCACHE_DIR: ${{parameters.CacheDir}}
-        _EMCC_CCACHE: 1
-        EM_COMPILER_WRAPPER: ccache
-        EM_DIR: '$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten'
