@@ -991,7 +991,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* GroupQueryAttention_ver1_doc = R"DOC(
 Group Query Self/Cross Attention.
 
-Supports different number of heads for q and kv.
+Supports different number of heads for q and kv. Only supports causal or local attention.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1008,10 +1008,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "left_window_size for local attention (like Mistral). Default value is -1 meaning unused.",
               AttributeProto::INT,
               static_cast<int64_t>(-1))
-        // .Attr("left_padding_last_token",
-        //       "Copy last token to last index of buffer. Default is 0; 1 when true.",
-        //       AttributeProto::INT,
-        //       OPTIONAL_VALUE)
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size)",

@@ -104,26 +104,21 @@ void set_params_fprop(Flash_fwd_params& params,
   params.scale_softmax = softmax_scale;
   params.scale_softmax_log2 = softmax_scale * M_LOG2E;
 
-  // In our API, causal/unidirectional determines if we only look at prior tokens. We can also set a left local window size
-  if (is_causal) {
-    // Within flash kernel, causal and local are mutually exclusive and cannot be true at the same time.
-    if (window_size_left >= 0 || window_size_right != 0) {
-      params.is_causal = false;
-    } else {
-      params.is_causal = true;
-    }
-    if (window_size_left < 0 && window_size_right >= 0) {
-      window_size_left = seqlen_k;
-    }
-    if (window_size_left >= 0 && window_size_right < 0) {
-      window_size_right = seqlen_k;
-    }
-    params.window_size_left = window_size_left;
-    params.window_size_right = window_size_right;
-  } else {
-    params.window_size_left = -1;
-    params.window_size_right = -1;
+  // In our API, causal/unidirectional determines if we only look at prior tokens. However, the flash API seperates
+  // local and causal, meaning when we have local window size
+  params.is_causal = is_causal;
+  if (is_causal && (window_size_left >= 0 || window_size_right != 0)) {
+    params.is_causal = false;
   }
+  if (window_size_left < 0 && window_size_right >= 0) {
+    window_size_left = seqlen_k;
+  }
+  if (window_size_left >= 0 && window_size_right < 0) {
+    window_size_right = seqlen_k;
+  }
+  params.window_size_left = window_size_left;
+  params.window_size_right = window_size_right;
+
   params.is_seqlens_k_cumulative = true;
 }
 
@@ -330,7 +325,10 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                    nullptr,
                    softmax_lse,
                    softmax_scale,
-                   is_causal);
+                   is_causal,
+                   true,
+                   -1,
+                   is_causal ? 0 : -1);
   params.dprops = &dprops;
   params.num_splits = 0;
   params.softmax_lseaccum_ptr = nullptr;
