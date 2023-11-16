@@ -154,6 +154,7 @@ fun run(audioTensor: OnnxTensor): Result {
 <Header pathvar="" />
 <div class="container mx-auto px-4 md:px-8 lg:px-48 pt-8">
 	<h1 class="text-5xl pb-2">Run PyTorch models on the edge</h1>
+	<p class="text-neutral">By: <a href="https://www.linkedin.com/in/natkershaw/" class="text-blue-500">Natalie Kershaw</a> and <a href="https://www.linkedin.com/in/prasanthpulavarthi/" class="text-blue-500">Prasanth Pulavarthi</a> </p>
 	<p class="text-neutral">12TH OCTOBER, 2023</p>
 	<div class="py-4">
 		<div class="col-span-12 md:col-span-9">
