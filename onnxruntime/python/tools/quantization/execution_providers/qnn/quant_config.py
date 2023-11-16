@@ -39,6 +39,16 @@ def get_qnn_qdq_config(
             elif activation_type == QuantType.QInt16:
                 tensor_quant_overrides[node.output[0]] = {"scale": 1.0 / 32768.0, "zero_point": 0}
 
+    extra_options = {
+        "MinimumRealRange": 0.0001,
+        "DedicatedQDQPair": True,
+        "TensorQuantOverrides": tensor_quant_overrides,
+    }
+
+    q16_types = [QuantType.QInt16, QuantType.QUInt16]
+    if activation_type in q16_types or weight_type in q16_types:
+        extra_options["UseQDQContribOps"] = True
+
     return StaticQuantConfig(
         calibration_data_reader,
         calibrate_method=calibrate_method,
@@ -46,9 +56,5 @@ def get_qnn_qdq_config(
         weight_type=weight_type,
         # TODO: Get these from the model itself (and as arg to this function)
         op_types_to_quantize=op_types_to_quantize,
-        extra_options={
-            "MinimumRealRange": 0.0001,
-            "DedicatedQDQPair": True,
-            "TensorQuantOverrides": tensor_quant_overrides,
-        },
+        extra_options=extra_options,
     )
