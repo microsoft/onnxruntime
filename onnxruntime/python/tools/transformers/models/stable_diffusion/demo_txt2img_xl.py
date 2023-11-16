@@ -48,23 +48,56 @@ def load_pipelines(args, batch_size):
 
     # For TensorRT,  performance of engine built with dynamic shape is very sensitive to the range of image size.
     # Here, we reduce the range of image size for TensorRT to trade-off flexibility and performance.
+    # This range can cover most frequent shape of landscape (832x1216), portrait (1216x832) or square (1024x1024).
     min_image_size = 832 if args.engine != "ORT_CUDA" else 512
     max_image_size = 1216 if args.engine != "ORT_CUDA" else 2048
 
     # No VAE decoder in base when it outputs latent instead of image.
-    base_info = PipelineInfo(args.version, use_vae=False, min_image_size=min_image_size, max_image_size=max_image_size)
-    base = init_pipeline(Txt2ImgXLPipeline, base_info, engine_type, args, max_batch_size, batch_size)
-
-    refiner_info = PipelineInfo(
-        args.version, is_refiner=True, min_image_size=min_image_size, max_image_size=max_image_size
+    base_info = PipelineInfo(
+        args.version, use_vae=args.disable_refiner, min_image_size=min_image_size, max_image_size=max_image_size
     )
-    refiner = init_pipeline(Img2ImgXLPipeline, refiner_info, engine_type, args, max_batch_size, batch_size)
+
+    # Ideally, the optimized batch size and image size for TRT engine shall align with user's preference. That is to
+    # optimize the shape used most frequently. We can let user config it when we develop a UI plugin.
+    # In this demo, we optimize batch size 1 and image size 1024x1024 for SD XL dynamic engine.
+    # This is mainly for benchmark purpose to simulate the case that we have no knowledge of user's preference.
+    opt_batch_size = 1 if args.build_dynamic_batch else batch_size
+    opt_image_height = base_info.default_image_size() if args.build_dynamic_shape else args.height
+    opt_image_width = base_info.default_image_size() if args.build_dynamic_shape else args.width
+
+    base = init_pipeline(
+        Txt2ImgXLPipeline,
+        base_info,
+        engine_type,
+        args,
+        max_batch_size,
+        opt_batch_size,
+        opt_image_height,
+        opt_image_width,
+    )
+
+    refiner = None
+    if not args.disable_refiner:
+        refiner_info = PipelineInfo(
+            args.version, is_refiner=True, min_image_size=min_image_size, max_image_size=max_image_size
+        )
+        refiner = init_pipeline(
+            Img2ImgXLPipeline,
+            refiner_info,
+            engine_type,
+            args,
+            max_batch_size,
+            opt_batch_size,
+            opt_image_height,
+            opt_image_width,
+        )
 
     if engine_type == EngineType.TRT:
-        max_device_memory = max(base.backend.max_device_memory(), refiner.backend.max_device_memory())
+        max_device_memory = max(base.backend.max_device_memory(), (refiner or base).backend.max_device_memory())
         _, shared_device_memory = cudart.cudaMalloc(max_device_memory)
         base.backend.activate_engines(shared_device_memory)
-        refiner.backend.activate_engines(shared_device_memory)
+        if refiner:
+            refiner.backend.activate_engines(shared_device_memory)
 
     if engine_type == EngineType.ORT_CUDA:
         enable_vae_slicing = args.enable_vae_slicing
@@ -72,7 +105,7 @@ def load_pipelines(args, batch_size):
             print("Updating enable_vae_slicing to be True to avoid cuDNN error for batch size > 4.")
             enable_vae_slicing = True
         if enable_vae_slicing:
-            refiner.backend.enable_vae_slicing()
+            (refiner or base).backend.enable_vae_slicing()
     return base, refiner
 
 
@@ -81,7 +114,8 @@ def run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False
     image_width = args.width
     batch_size = len(prompt)
     base.load_resources(image_height, image_width, batch_size)
-    refiner.load_resources(image_height, image_width, batch_size)
+    if refiner:
+        refiner.load_resources(image_height, image_width, batch_size)
 
     def run_base_and_refiner(warmup=False):
         images, time_base = base.run(
@@ -93,8 +127,13 @@ def run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False
             denoising_steps=args.denoising_steps,
             guidance=args.guidance,
             seed=args.seed,
-            return_type="latent",
+            return_type="latent" if refiner else "image",
         )
+        if refiner is None:
+            return images, time_base
+
+        # Use same seed in base and refiner.
+        seed = base.get_current_seed()
 
         images, time_refiner = refiner.run(
             prompt,
@@ -105,7 +144,7 @@ def run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False
             warmup=warmup,
             denoising_steps=args.denoising_steps,
             guidance=args.guidance,
-            seed=args.seed,
+            seed=seed,
         )
 
         return images, time_base + time_refiner
@@ -142,7 +181,8 @@ def run_demo(args):
     base, refiner = load_pipelines(args, batch_size)
     run_pipelines(args, base, refiner, prompt, negative_prompt)
     base.teardown()
-    refiner.teardown()
+    if refiner:
+        refiner.teardown()
 
 
 def run_dynamic_shape_demo(args):
@@ -160,20 +200,20 @@ def run_dynamic_shape_demo(args):
         "blue owl, big green eyes, portrait, intricate metal design, unreal engine, octane render, realistic",
     ]
 
-    # batch size, height, width, scheduler, steps, prompt
+    # batch size, height, width, scheduler, steps, prompt, seed
     configs = [
-        (1, 832, 1216, "UniPC", 8, prompts[0]),
-        (1, 1024, 1024, "DDIM", 24, prompts[1]),
-        (1, 1216, 832, "EulerA", 18, prompts[2]),
-        (2, 1344, 768, "DDIM", 30, prompts[3]),
-        (2, 640, 1536, "UniPC", 18, prompts[4]),
-        (2, 1152, 896, "EulerA", 30, prompts[5]),
+        (1, 832, 1216, "UniPC", 8, prompts[0], None),
+        (1, 1024, 1024, "DDIM", 24, prompts[1], None),
+        (1, 1216, 832, "UniPC", 16, prompts[2], None),
+        (1, 1344, 768, "DDIM", 24, prompts[3], None),
+        (2, 640, 1536, "UniPC", 16, prompts[4], 4312973633252712),
+        (2, 1152, 896, "DDIM", 24, prompts[5], 1964684802882906),
     ]
 
-    # Warm up (for cudnn convolution algo search) once before serving.
+    # Warm up each combination of (batch size, height, width) once before serving.
     args.prompt = ["warm up"]
     args.num_warmup_runs = 1
-    for batch_size, height, width, _, _, _ in configs:
+    for batch_size, height, width, _, _, _, _ in configs:
         args.batch_size = batch_size
         args.height = height
         args.width = width
@@ -183,23 +223,26 @@ def run_dynamic_shape_demo(args):
 
     # Run pipeline on a list of prompts.
     args.num_warmup_runs = 0
-    for batch_size, height, width, scheduler, steps, example_prompt in configs:
+    for batch_size, height, width, scheduler, steps, example_prompt, seed in configs:
         args.prompt = [example_prompt]
         args.batch_size = batch_size
         args.height = height
         args.width = width
         args.scheduler = scheduler
         args.denoising_steps = steps
+        args.seed = seed
         base.set_scheduler(scheduler)
-        refiner.set_scheduler(scheduler)
+        if refiner:
+            refiner.set_scheduler(scheduler)
         print(
-            f"\nbatch_size={batch_size}, height={height}, width={width}, scheduler={scheduler}, steps={steps}, prompt={example_prompt}"
+            f"\nbatch_size={batch_size}, height={height}, width={width}, scheduler={scheduler}, steps={steps}, prompt={example_prompt}, seed={seed}"
         )
         prompt, negative_prompt = repeat_prompt(args)
         run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False)
 
     base.teardown()
-    refiner.teardown()
+    if refiner:
+        refiner.teardown()
 
 
 if __name__ == "__main__":
