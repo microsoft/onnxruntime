@@ -112,7 +112,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   const auto* a_data = a->Data<float>();
 
   if (packed_b_.get()) {
-    TensorShape b_shape({N_, K_});
+    TensorShape b_shape({static_cast<int64_t>(N_), static_cast<int64_t>(K_)});
 
     MatMulComputeHelper helper;
     ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
