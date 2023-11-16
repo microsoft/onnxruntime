@@ -134,7 +134,7 @@ stages:
               DownloadTRT: true
       - powershell: |
           Write-Host "##vso[task.prependpath]C:\Program Files (x86)\dotnet"
-        displayName: 'Append CUDA SDK Directory to PATH'
+        displayName: 'Append dotnet x86  Directory to PATH'
         condition: and(succeeded(), eq('${{ parameters.buildArch}}', 'x86'))
 
       - template: download-deps.yml

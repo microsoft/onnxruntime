@@ -8,7 +8,7 @@ parameters:
   # the parent pipeline.
   TestDataArtifactSuffix: ''
   Skipx86Tests: 'false'
-  CudaVersion: '11.8'
+  CudaVersion: ''
 
 stages:
 - stage: NuGet_Test_Win_${{ parameters.StageSuffix }}
@@ -44,12 +44,12 @@ stages:
       displayName: Use Nuget 5.7.0
       inputs:
         versionSpec: 5.7.0
-
-    - template: ../../templates/jobs/download_win_gpu_library.yml
-      parameters:
-        DownloadCUDA: true
-        DownloadTRT: true
-        CudaVersion: ${{ parameters.CudaVersion }}
+    - ${{ if ne( parameters.CudaVersion, '') }}:
+      - template: ../../templates/jobs/download_win_gpu_library.yml
+        parameters:
+          DownloadCUDA: true
+          DownloadTRT: true
+          CudaVersion: ${{ parameters.CudaVersion }}
 
     - task: BatchScript@1
       displayName: 'Setup Visual Studio env vars'
