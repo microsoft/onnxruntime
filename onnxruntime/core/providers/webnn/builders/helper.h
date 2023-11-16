@@ -28,6 +28,7 @@ namespace webnn {
 enum class WebnnDeviceType {
   CPU,
   GPU,
+  NPU,
 };
 
 typedef struct {
