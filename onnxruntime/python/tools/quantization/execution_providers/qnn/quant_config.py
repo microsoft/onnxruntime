@@ -13,6 +13,7 @@ from ...quantize import StaticQuantConfig
 
 Q16_TYPES = {QuantType.QInt16, QuantType.QUInt16}
 Q8_TYPES = {QuantType.QInt8, QuantType.QUInt8}
+OP_TYPES_TO_EXCLUDE = {"Cast", "Transpose"}
 
 
 def get_qnn_qdq_config(
@@ -21,16 +22,18 @@ def get_qnn_qdq_config(
     calibrate_method=CalibrationMethod.MinMax,
     activation_type=QuantType.QUInt8,
     weight_type=QuantType.QUInt8,
-    op_types_to_quantize=None,
 ):
     # Parse model nodes to setup overrides.
     model = onnx.load_model(model_input)
 
+    op_types = set()
     tensor_quant_overrides = {}
 
     name_to_initializer = {initializer.name: initializer for initializer in model.graph.initializer}
 
     for node in model.graph.node:
+        op_types.add(node.op_type)
+
         if node.op_type == "MatMul" and activation_type in Q16_TYPES and weight_type in Q8_TYPES:
             weight_symmetric = weight_type == QuantType.QInt8
 
@@ -71,7 +74,6 @@ def get_qnn_qdq_config(
         calibrate_method=calibrate_method,
         activation_type=activation_type,
         weight_type=weight_type,
-        # TODO: Get these from the model itself (and as arg to this function)
-        op_types_to_quantize=op_types_to_quantize,
+        op_types_to_quantize=list(op_types.difference(OP_TYPES_TO_EXCLUDE)),
         extra_options=extra_options,
     )
