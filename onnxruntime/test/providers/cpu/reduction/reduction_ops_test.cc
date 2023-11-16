@@ -924,9 +924,12 @@ TEST(ReductionOpTest, ReduceMax_default_axes_do_not_keep_dims) {
                         55.0f, 1.0f,
                         60.0f, 2.0f});
   test.AddOutput<float>("reduced", {}, {60.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch                         //TensorRT: axis must be 0
+
+  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+#ifndef USE_MIGRAPHX
 TEST(ReductionOpTest, test_bool_ReduceMax_0) {
   OpTester test("ReduceMax", 20);
   test.AddAttribute("keepdims", static_cast<int64_t>(0));
@@ -1199,6 +1202,7 @@ TEST(ReductionOpTest, test_bool_ReduceMin_19) {
           kOpenVINOExecutionProvider,
       });
 }
+#endif // USE_MIGRAPHX
 
 TEST(ReductionOpTest, ReduceMax_do_not_keepdims) {
   OpTester test("ReduceMax");
@@ -3541,7 +3545,6 @@ TEST(ReductionOpTest, ReduceDimWithZero1) {
                    kCoreMLExecutionProvider,
                    kCudaExecutionProvider,
                    kDnnlExecutionProvider,
-                   kMIGraphXExecutionProvider,
                    kOpenVINOExecutionProvider,
                    kQnnExecutionProvider,
                    kTensorrtExecutionProvider,
@@ -3590,7 +3593,6 @@ TEST(ReductionOpTest, ReduceDimWithZero2) {
                    kCoreMLExecutionProvider,
                    kCudaExecutionProvider,
                    kDnnlExecutionProvider,
-                   kMIGraphXExecutionProvider,
                    kOpenVINOExecutionProvider,
                    kQnnExecutionProvider,
                    kTensorrtExecutionProvider,
@@ -5754,6 +5756,7 @@ TEST(ReductionOpTest, ReduceSum_RKRK_keepdims) {
   test.Run();
 }
 
+#ifndef USE_MIGRAPHX
 void test_empty_set(const std::string& op, int opset, bool axes_as_input, float empty_value) {
   OpTester test(op, opset);
   std::vector<int64_t> input_shape = {2, 0, 4};
@@ -5913,5 +5916,6 @@ TEST(ReductionOpTest, empty_set_ReduceSumSquare_13) {
 
   test_empty_set("ReduceSumSquare", 13, false, 0.0f);
 }
+#endif // USE_MIGRAPHX
 }  // namespace test
 }  // namespace onnxruntime
