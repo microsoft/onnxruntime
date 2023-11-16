@@ -39,30 +39,6 @@ jobs:
     displayName: 'Clean Agent Directories'
     condition: always()
   - checkout: self
-    submodules: false
-  - task: DownloadPipelineArtifact@2
-    inputs:
-      artifact: '__commit'
-      path: $(Pipeline.Workspace)
-    displayName: 'Get commit SHA'
-    condition: eq('${{ parameters.CommitOverride }}', 'true')
-  - script: |
-     set /p __commit__=<$(Pipeline.Workspace)\__commit.txt
-     git fetch origin +%__commit__%:refs/remotes/origin/%__commit__%
-     git checkout --force %__commit__%
-    workingDirectory: '$(Build.SourcesDirectory)'
-    displayName: 'Read commit SHA and checkout'
-    condition: eq('${{ parameters.CommitOverride }}', 'true')
-  - script: |
-     echo.$(Build.SourceVersion)>$(Pipeline.Workspace)\__commit.txt
-    workingDirectory: '$(Build.SourcesDirectory)'
-    displayName: 'Write commit SHA to __commit.txt'
-    condition: ne('${{ parameters.CommitOverride }}', 'true')
-  - script: |
-     git submodule sync -- cmake\external\onnx
-     git submodule update --init -- cmake\external\onnx
-    workingDirectory: '$(Build.SourcesDirectory)'
-    displayName: 'Checkout submodule onnx'
   - script: |
      echo.>>.gitattributes
      echo /js/** text=auto eol=lf>>.gitattributes
@@ -74,27 +50,6 @@ jobs:
   - task: NodeTool@0
     inputs:
       versionSpec: '18.x'
-  - task: DownloadPipelineArtifact@2
-    inputs:
-      patterns: '${{ parameters.BuildConfig }}_*/**/*'
-      path: $(Pipeline.Workspace)\artifacts
-    displayName: 'Download WebAssembly artifacts'
-  - task: CopyFiles@2
-    inputs:
-      sourceFolder: $(Pipeline.Workspace)\artifacts
-      contents: |
-        **\*.wasm
-      targetFolder: $(Build.SourcesDirectory)\js\web\dist
-      flattenFolders: true
-    displayName: 'Binplace dist files'
-  - task: CopyFiles@2
-    inputs:
-      sourceFolder: $(Pipeline.Workspace)\artifacts
-      contents: |
-        **\*.js
-      targetFolder: $(Build.SourcesDirectory)\js\web\lib\wasm\binding
-      flattenFolders: true
-    displayName: 'Binplace js files'
   - script: |
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js'
@@ -111,6 +66,10 @@ jobs:
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm ci /js/web/'
+  - script: |
+     npm run pull:wasm
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'npm run pull:wasm  in /js/web/'
   - script: |
      npm run prebuild
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
