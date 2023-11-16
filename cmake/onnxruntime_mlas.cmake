@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 set(MLAS_SRC_DIR ${ONNXRUNTIME_ROOT}/core/mlas/lib)
+
 #
 # All hardware agnostic source files here
 # hardware specific files would cause trouble in
@@ -144,6 +145,7 @@ function(setup_mlas_source_for_windows)
       add_compile_options("-d2SSAOptimizer-")
     endif()
   elseif(onnxruntime_target_platform STREQUAL "x64")
+
     file(GLOB_RECURSE mlas_platform_srcs_avx CONFIGURE_DEPENDS
       "${MLAS_SRC_DIR}/intrinsics/avx/*.cpp"
     )

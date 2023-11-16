@@ -4,6 +4,7 @@
 #include "mlas_q4.h"
 #include "bench_util.h"
 #include "core/util/thread_utils.h"
+
 #include <stdexcept>
 #include <numeric>
 

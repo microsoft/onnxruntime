@@ -33,10 +33,10 @@ Abstract:
  * @brief Define types of block quantization
  */
 typedef enum {
-    BlkQ4Sym = 0,    /*!< int4 Symmetric Block Quantization, zero_point = 0 */
-    BlkQ4Zp8 = 1,    /*!< int4 Block Quantization, zero_point is int8 type */
-    BlkQ4Sym64 = 2,  /*!< int4 Symmetric Block Quantization, 64 values per block*/
-    BlkQ4Sym128 = 4, /*!< int4 Symmetric Block Quantization, 128 values per block*/
+    BlkQ4Sym = 0,   /*!< int4 Symmetric Block Quantization, zero_point = 0 */
+    BlkQ4Zp8 = 1,   /*!< int4 Block Quantization, zero_point is int8 type */
+    BlkQ4Sym64 = 2, /*!< int4 Symmetric Block Quantization, 64 values per block*/
+    BlkQ4Sym128 = 4 /*!< int4 Symmetric Block Quantization, 128 values per block*/
 } MLAS_BLK_QUANT_TYPE;
 
 /**
@@ -47,7 +47,7 @@ typedef enum {
     CompFp32 = 1,  /*!< input fp32, accumulator fp32 */
     CompInt8 = 2,  /*!< input int8, accumulator int32 */
     CompBf16 = 3,  /*!< input bf16, accumulator fp32 */
-    CompFp16 = 4,  /*!< input fp16, accumulator fp16 */
+    CompFp16 = 4   /*!< input fp16, accumulator fp16 */
 } MLAS_COMPUTE_TYPE;
 
 /**
@@ -140,7 +140,6 @@ MlasQ4GemmBatch(MLAS_BLK_QUANT_TYPE QType,
 
 /**
  * @brief Calculate the buffer size needed for int8 block quantize
- * @param[in]  CType   Type of computation used
  * @param[in]  QType   Type of block quantization used
  * @param[in]  M       Number of rows of the input matrix
  * @param[in]  K       Number of columns of the input matrix
