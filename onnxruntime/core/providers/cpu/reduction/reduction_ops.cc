@@ -710,7 +710,7 @@ FastReduceKind OptimizeShapeForFastReduce(gsl::span<const int64_t> input_shape,
   return FastReduceKind::kNone;
 }
 
-void ValidateCommonFastReduce(const Tensor* axes_tensor) {
+static void ValidateCommonFastReduce(const Tensor* axes_tensor) {
   ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
   ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
               "An axes tensor must be a vector tensor.");
