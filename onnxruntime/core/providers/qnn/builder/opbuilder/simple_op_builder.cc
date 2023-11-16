@@ -22,6 +22,11 @@ class SimpleOpBuilder : public BaseOpBuilder {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SimpleOpBuilder);
 
  protected:
+  Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                       const NodeUnit& node_unit,
+                       const logging::Logger& logger,
+                       std::vector<std::string>& input_names,
+                       bool do_op_validation) const override ORT_MUST_USE_RESULT;
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
@@ -48,7 +53,72 @@ class SimpleOpBuilder : public BaseOpBuilder {
   static constexpr std::array<std::string_view, 3> gridsample_supported_padding_modes = {"zeros", "border", "reflection"};
 };
 
-Status SimpleOpBuilder::ExplicitOpCheck(const NodeUnit& node_unit) const {
+Status SimpleOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                                      const NodeUnit& node_unit,
+                                      const logging::Logger& logger,
+                                      std::vector<std::string>& input_names,
+                                      bool do_op_validation) const {
+  const std::string& op_type = node_unit.OpType();
+  ORT_RETURN_IF_ERROR(BaseOpBuilder::ProcessInputs(qnn_model_wrapper, node_unit, logger, input_names, do_op_validation));
+
+  if (op_type == "MatMul") {
+    const auto& inputs = node_unit.Inputs();
+    TensorInfo input0_info = {};
+    TensorInfo input1_info = {};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[0], input0_info));
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[1], input1_info));
+    // Need to insert convert op if both inputs are dynamic inputs and are ufixed_16
+    if (!input0_info.is_initializer && !input1_info.is_initializer &&
+        input0_info.qnn_data_type == input1_info.qnn_data_type &&
+        input0_info.qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16) {
+        // insert Convert op after input1
+      float qmin = 0.0f;
+      float qmax = 255.0f;
+      ORT_RETURN_IF_ERROR(qnn::utils::GetQminQmax(input1_info.qnn_data_type, qmin, qmax));
+      double value_min = qnn::utils::Dequantize(input1_info.quant_param.scaleOffsetEncoding.offset,
+                                                input1_info.quant_param.scaleOffsetEncoding.scale,
+                                                qmin);
+      double value_max = qnn::utils::Dequantize(input1_info.quant_param.scaleOffsetEncoding.offset,
+                                                input1_info.quant_param.scaleOffsetEncoding.scale,
+                                                qmax);
+
+      Qnn_QuantizeParams_t convert_output_quant_param = QNN_QUANTIZE_PARAMS_INIT;
+      convert_output_quant_param.encodingDefinition = QNN_DEFINITION_DEFINED;
+      convert_output_quant_param.quantizationEncoding =  QNN_QUANTIZATION_ENCODING_SCALE_OFFSET;
+      ORT_RETURN_IF_ERROR(qnn::utils::GetQuantParams(static_cast<float>(value_min),
+                                                     static_cast<float>(value_max),
+                                                     QNN_DATATYPE_UFIXED_POINT_8,
+                                                     convert_output_quant_param.scaleOffsetEncoding.scale,
+                                                     convert_output_quant_param.scaleOffsetEncoding.offset));
+      std::string convert_input_name = input_names.back();
+      input_names.pop_back();
+      const std::string& matmul_output_name = node_unit.Outputs()[0].node_arg.Name();
+      std::string convert_output_name = convert_input_name + "_convert_" + matmul_output_name;
+
+      std::vector<uint32_t> output_shape_copy = input1_info.shape;
+      QnnTensorWrapper convert_output_tensorwrapper(convert_output_name,
+                                            QNN_TENSOR_TYPE_NATIVE,
+                                            QNN_DATATYPE_UFIXED_POINT_8,
+                                            convert_output_quant_param,
+                                            std::move(output_shape_copy));
+      ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(convert_output_tensorwrapper)), "Failed to add tensor.");
+
+      ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(convert_output_name,
+                                                        QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                        "Convert",
+                                                        {convert_input_name},
+                                                        {convert_output_name},
+                                                        {},
+                                                        do_op_validation),
+                        "Failed to add node.");
+      input_names.push_back(convert_output_name);
+    }
+  }
+
+  return Status::OK();
+}
+
+  Status SimpleOpBuilder::ExplicitOpCheck(const NodeUnit& node_unit) const {
   const std::string& op_type = node_unit.OpType();
 
   if (op_type == "GridSample") {
