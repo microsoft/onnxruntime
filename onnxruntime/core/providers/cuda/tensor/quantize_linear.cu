@@ -38,9 +38,7 @@ struct RoundStd<float, uint8_t> {
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
-#if CUDA_VERSION < 11080
-#error Float 8 types are defined with CUDA>=11.8. Set flag DISABLE_FLOAT8_TYPES to disable them.
-#endif
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 
 // Conversion from float 8 to float or float16 does not need zero_point argument as defined by onnx standard.
 
@@ -190,6 +188,8 @@ __global__ void QuantizeLinearKernelAxisSat(const InT* input, OutT* output, cons
 }
 
 #endif
+
+#endif  // DISABLE_FLOAT8_TYPES 
 
 template <class OutT, class InT>
 Status CudaQuantizeLinearStd(cudaStream_t stream, const InT* input, OutT* output, const InT* scale, const OutT* zero_point, size_t num_of_element) {

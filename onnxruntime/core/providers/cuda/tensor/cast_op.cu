@@ -23,9 +23,7 @@ struct CastNoSat;
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
-#if CUDA_VERSION < 11080
-#error Float 8 types are defined with CUDA>=11.8. Set flag DISABLE_FLOAT8_TYPES to disable them.
-#endif
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 
 template <>
 struct CastStd<float, Float8E4M3FN> {
@@ -142,6 +140,8 @@ struct CastSat<Float8E5M2, half> {
 };
 
 #endif
+
+#endif  // DISABLE_FLOAT8_TYPES
 
 template <int NumThreadsPerBlock, int NumElementsPerThread, typename OutT, typename InT>
 __global__ void CastKernelStd(const InT* input, OutT* output, CUDA_LONG N, CastStd<OutT, InT> cast) {
