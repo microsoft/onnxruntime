@@ -374,7 +374,7 @@ def parse_arguments():
     parser.add_argument("--ios", action="store_true", help="build for ios")
 
     parser.add_argument(
-        "--osx_sysroot", default="", help="Specify the location name of the macOS platform SDK to be used"
+        "--apple_sysroot", default="", help="Specify the location name of the macOS platform SDK to be used"
     )
     parser.add_argument(
         "--ios_toolchain_file",
@@ -1267,11 +1267,11 @@ def generate_build_tree(
             raise BuildError("MacOS/iOS build requires use of the Xcode CMake generator ('--cmake_generator Xcode').")
 
         needed_args = [
-            args.osx_sysroot,
+            args.apple_sysroot,
             args.apple_deploy_target,
         ]
         arg_names = [
-            "--osx_sysroot          " + "<the location or name of the macOS platform SDK>",
+            "--apple_sysroot          " + "<the location or name of the macOS platform SDK>",
             "--apple_deploy_target  " + "<the minimum version of the target platform>",
         ]
         if not all(needed_args):
@@ -1281,7 +1281,7 @@ def generate_build_tree(
             )
         cmake_args += [
             "-Donnxruntime_BUILD_SHARED_LIB=ON",
-            "-DCMAKE_OSX_SYSROOT=" + args.osx_sysroot,
+            "-DCMAKE_OSX_SYSROOT=" + args.apple_sysroot,
             "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
             # we do not need protoc binary for ios cross build
             "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF"
@@ -1755,8 +1755,8 @@ def run_ios_tests(args, source_dir, config, cwd):
     if args.build_apple_framework:
         package_test_py = os.path.join(source_dir, "tools", "ci_build", "github", "apple", "test_ios_packages.py")
         framework_info_file = os.path.join(cwd, "framework_info.json")
-        dynamic_framework_dir = os.path.join(cwd, config + "-" + args.osx_sysroot)
-        static_framework_dir = os.path.join(cwd, config + "-" + args.osx_sysroot, "static_framework")
+        dynamic_framework_dir = os.path.join(cwd, config + "-" + args.apple_sysroot)
+        static_framework_dir = os.path.join(cwd, config + "-" + args.apple_sysroot, "static_framework")
         # test dynamic framework
         run_subprocess(
             [
