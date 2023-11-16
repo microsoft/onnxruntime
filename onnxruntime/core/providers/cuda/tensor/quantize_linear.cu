@@ -104,6 +104,8 @@ struct RoundSat<half, Float8E5M2> {
 
 #endif
 
+#endif  // DISABLE_FLOAT8_TYPES 
+
 template <>
 struct RoundStd<half, int8_t> {
   __device__ __forceinline__ int8_t operator()(half v, half scale, int8_t zero_point) const {
@@ -187,9 +189,7 @@ __global__ void QuantizeLinearKernelAxisSat(const InT* input, OutT* output, cons
   }
 }
 
-#endif
-
-#endif  // DISABLE_FLOAT8_TYPES 
+#endif  // DISABLE_FLOAT8_TYPES
 
 template <class OutT, class InT>
 Status CudaQuantizeLinearStd(cudaStream_t stream, const InT* input, OutT* output, const InT* scale, const OutT* zero_point, size_t num_of_element) {
