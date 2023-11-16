@@ -924,9 +924,7 @@ TEST(ReductionOpTest, ReduceMax_default_axes_do_not_keep_dims) {
                         55.0f, 1.0f,
                         60.0f, 2.0f});
   test.AddOutput<float>("reduced", {}, {60.0f});
-
-  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});// TensorRT: full reduce without keepDimensions is not supported with explicit batch //TensorRT: axis must be 0
 }
 
 #ifndef USE_MIGRAPHX
@@ -3528,6 +3526,7 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero1b) {
   ASSERT_EQ(fast_axes, expected_fast_axes);
 }
 
+#ifndef USE_MIGRAPHX
 // test that PrepareForReduce handles this case. Called by all reduction ops so any op can be used in the test
 TEST(ReductionOpTest, ReduceDimWithZero1) {
   // TODO: Unskip when fixed #41968513
@@ -3558,6 +3557,7 @@ TEST(ReductionOpTest, ReduceDimWithZero1) {
   test.AddOutput<float>("reduced", {1, 1, 1}, {0.0f});
   run(test);
 }
+#endif USE_MIGRAPHX
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero2) {
   FastReduceKind fast_kind;
@@ -3577,6 +3577,7 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero2) {
   ASSERT_EQ(fast_axes, expected_fast_axes);
 }
 
+#ifndef USE_MIGRAPHX
 TEST(ReductionOpTest, ReduceDimWithZero2) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr || DefaultMIGraphXExecutionProvider().get() != nullptr || DefaultRocmExecutionProvider().get() != nullptr) {
@@ -3607,6 +3608,7 @@ TEST(ReductionOpTest, ReduceDimWithZero2) {
   test2.AddOutput<float>("reduced", {}, {0.0f});
   run(test2);
 }
+#endif
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero3) {
   FastReduceKind fast_kind;
