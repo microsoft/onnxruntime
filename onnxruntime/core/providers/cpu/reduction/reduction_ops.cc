@@ -694,16 +694,17 @@ bool CommonFastReduceCopy(OpKernelContext* ctx, TensorShapeVector& input_axes, b
     // second input holds the axes.
     // the argument is optional
     const Tensor* axes_tensor = ctx->Input<Tensor>(1);
-    if (axes_tensor == nullptr) {
-      return false;
+
+    if (axes_tensor != nullptr) {
+      ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
+                  "An axes tensor must be a vector tensor.");
+
+      const auto data_span = axes_tensor->DataAsSpan<int64_t>();
+      input_axes.assign(data_span.begin(), data_span.end());
+    } else {
+      input_axes.clear();
     }
 
-    ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
-                "An axes tensor must be a vector tensor.");
-
-    auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
-    const auto* data = axes_tensor->Data<int64_t>();
-    input_axes.insert(input_axes.begin(), data, data + nDims);
     if (input_axes.empty() && noop_with_empty_axes) {
       const Tensor* input = ctx->Input<Tensor>(0);
       auto* output = ctx->Output(0, input->Shape());
