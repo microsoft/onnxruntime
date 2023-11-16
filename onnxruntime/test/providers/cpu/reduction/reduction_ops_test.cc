@@ -3557,7 +3557,7 @@ TEST(ReductionOpTest, ReduceDimWithZero1) {
   test.AddOutput<float>("reduced", {1, 1, 1}, {0.0f});
   run(test);
 }
-#endif USE_MIGRAPHX
+#endif // USE_MIGRAPHX
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero2) {
   FastReduceKind fast_kind;
