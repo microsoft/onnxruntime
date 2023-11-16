@@ -1224,8 +1224,8 @@ class ONNXQuantizer:
 
             if "scale" in quant_overrides and "zero_point" in quant_overrides:
                 zero, scale = quant_overrides["zero_point"], quant_overrides["scale"]
-            elif self.activation_qType == onnx.TensorProto.FLOAT8E4M3FN:
-                zero, scale = compute_scale_zp_float8(self.activation_qType, td.avg_std[1])
+            elif quant_type == onnx.TensorProto.FLOAT8E4M3FN:
+                zero, scale = compute_scale_zp_float8(quant_type, td.avg_std[1])
             else:
                 rmin, rmax = td.range_value
                 if "rmin" in quant_overrides:
