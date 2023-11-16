@@ -6,7 +6,6 @@
 #include <vector>
 #include <cmath>
 #include <mutex>
-#include <system_error>
 
 #include "core/common/common.h"
 #include "core/framework/ortdevice.h"
