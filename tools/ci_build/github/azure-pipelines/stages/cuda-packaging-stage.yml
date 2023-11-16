@@ -30,9 +30,6 @@ parameters:
   type: string
 - name: win_trt_home
   type: string
-- name: ReleaseVersionSuffix
-  type: string
-  default: ''
 
 stages:
   ######## Building ########
@@ -338,7 +335,7 @@ stages:
       pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
       variables:
         breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
-        ReleaseVersionSuffix: ${{ parameters.ReleaseVersionSuffix }}
+        ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
 
       steps:
         - checkout: self

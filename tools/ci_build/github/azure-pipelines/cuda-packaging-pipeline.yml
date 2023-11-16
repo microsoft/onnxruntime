@@ -97,6 +97,8 @@ stages:
 - stage: Setup
   jobs:
   - job: Set_Variables
+    pool:
+      vmImage: ubuntu-latest
     steps:
     - checkout: none
     - bash: |
@@ -112,7 +114,7 @@ stages:
           echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]"
         fi
       name: Set_Release_Version_Suffix
-    - bash: echo $(ReleaseVersionSuffix)
+    - bash: echo $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
       name: Debug_Release_Version_Suffix
 
 
@@ -125,7 +127,6 @@ stages:
     DoEsrp: ${{ parameters.DoEsrp }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     CudaVersion: ${{ parameters.CudaVersion }}
-    ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
     win_trt_home: ${{ variables.win_trt_home }}
     win_cuda_home: ${{ variables.win_cuda_home }}
     docker_base_image: ${{ variables.docker_base_image }}
