@@ -1738,7 +1738,8 @@ endif()
 include(onnxruntime_fuzz_test.cmake)
 
 ####################################################################################################
-add_library(custom_ep SHARED ${TEST_SRC_DIR}/testdata/custom_ep/custom_ep_lib.cc ${TEST_SRC_DIR}/framework/custom_ep.cc)
+onnxruntime_add_shared_library(custom_ep ${TEST_SRC_DIR}/testdata/custom_ep/custom_ep_lib.cc ${TEST_SRC_DIR}/framework/custom_ep.cc)
+target_compile_definitions(custom_ep PRIVATE "OUT_TREE")
 target_include_directories(custom_ep PRIVATE ${TEST_SRC_DIR})
 target_link_directories(custom_ep PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 add_dependencies(onnxruntime_shared_lib_test custom_ep)

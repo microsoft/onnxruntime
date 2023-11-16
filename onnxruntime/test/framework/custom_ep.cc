@@ -79,28 +79,29 @@ bool CustomEp::CanCopy(const OrtDevice& /*src*/, const OrtDevice& /*dst*/) {
 //void CustomEp::MemoryCpy(Ort::UnownedValue& /*src*/, Ort::ConstValue const& /*dst*/) {
 //}
 
-std::vector<std::unique_ptr<SubGraphDef>> CustomEp::GetCapability(interface::GraphViewRef* graph) {
-  std::vector<std::unique_ptr<SubGraphDef>> ret;
-  for (std::unique_ptr<interface::NodeViewRef>& node : graph->NodeViews()) {
-    if (node->IsOp("Celu")) {
-      std::vector<std::string_view> inputs = node->Inputs();
-      assert(inputs.size() == 1);
-      std::unique_ptr<interface::NodeViewRef> producer = graph->GetNodeViewProducingOutput(inputs[0]);
-      if (producer != nullptr && producer->IsOp("Identity")) {
-        std::unique_ptr<SubGraphDef> subgraph = std::make_unique<SubGraphDef>();
-        subgraph->nodes.push_back(producer->Index());
-        subgraph->nodes.push_back(node->Index());
-        std::unique_ptr<SubGraphDef::MetaDef> meta_data = std::make_unique<SubGraphDef::MetaDef>();
-        meta_data->name = "Identity_Celu";
-        for (std::string_view& input : producer->Inputs()) meta_data->inputs.emplace_back(std::string(input));
-        for (std::string_view& output : node->Outputs()) meta_data->outputs.emplace_back(std::string(output));
-        subgraph->SetMetaDef(std::move(meta_data));
-        ret.emplace_back(std::move(subgraph));
-      }
-    }
-  }
-  std::cout << "CustomEp::GetCapability() has " << ret.size() << " subgraphs\n";
-  return ret;
+std::vector<std::unique_ptr<SubGraphDef>> CustomEp::GetCapability(interface::GraphViewRef* /*graph*/) {
+  // std::vector<std::unique_ptr<SubGraphDef>> ret;
+  // for (std::unique_ptr<interface::NodeViewRef>& node : graph->NodeViews()) {
+  //   if (node->IsOp("Celu")) {
+  //     std::vector<std::string_view> inputs = node->Inputs();
+  //     assert(inputs.size() == 1);
+  //     std::unique_ptr<interface::NodeViewRef> producer = graph->GetNodeViewProducingOutput(inputs[0]);
+  //     if (producer != nullptr && producer->IsOp("Identity")) {
+  //       std::unique_ptr<SubGraphDef> subgraph = std::make_unique<SubGraphDef>();
+  //       subgraph->nodes.push_back(producer->Index());
+  //       subgraph->nodes.push_back(node->Index());
+  //       std::unique_ptr<SubGraphDef::MetaDef> meta_data = std::make_unique<SubGraphDef::MetaDef>();
+  //       meta_data->name = "Identity_Celu";
+  //       for (std::string_view& input : producer->Inputs()) meta_data->inputs.emplace_back(std::string(input));
+  //       for (std::string_view& output : node->Outputs()) meta_data->outputs.emplace_back(std::string(output));
+  //       subgraph->SetMetaDef(std::move(meta_data));
+  //       ret.emplace_back(std::move(subgraph));
+  //     }
+  //   }
+  // }
+  // std::cout << "CustomEp::GetCapability() has " << ret.size() << " subgraphs\n";
+  // return ret;
+  return {};
 }
 
 common::Status CustomEp::Compile(std::vector<std::unique_ptr<interface::GraphViewRef>>& partial_graph,
