@@ -399,6 +399,15 @@ struct TensorArray : public ArgBase {
 
 using Variadic = TensorArray;
 
+/*
+Note:
+OrtLiteCustomOp inherits from OrtCustomOp to bridge tween a custom func/struct and ort core.
+The lifetime of an OrtLiteCustomOp instance is managed by customer code, not ort, so:
+1. DO NOT cast OrtLiteCustomOp to OrtCustomOp and release since there is no virtual destructor in the hierachy.
+2. OrtLiteCustomFunc and OrtLiteCustomStruct, as two sub-structs, can be released in form of OrtLiteCustomOp since all members are kept in the OrtLiteCustomOp,
+   memory could be recycled propertly.
+Finally, OrtCustomOp is a c struct bears no v-table, so offspring structs are by design to bear no virtual functions to maintain cast integrity.
+*/
 struct OrtLiteCustomOp : public OrtCustomOp {
   using ConstOptionalFloatTensor = std::optional<const Custom::Tensor<float>&>;
   using OptionalFloatTensor = std::optional<Custom::Tensor<float>>;
@@ -774,10 +783,13 @@ struct OrtLiteCustomOp : public OrtCustomOp {
 
   OrtLiteCustomOp(const char* op_name,
                   const char* execution_provider,
-                  int start_ver = 1, int end_ver = MAX_CUSTOM_OP_END_VER) : op_name_(op_name),
-                                                                            execution_provider_(execution_provider),
-                                                                            start_ver_(start_ver),
-                                                                            end_ver_(end_ver) {
+                  ShapeInferFn shape_infer_fn,
+                  int start_ver = 1,
+                  int end_ver = MAX_CUSTOM_OP_END_VER) : op_name_(op_name),
+                                                         execution_provider_(execution_provider),
+                                                         shape_infer_fn_(shape_infer_fn),
+                                                         start_ver_(start_ver),
+                                                         end_ver_(end_ver) {
     OrtCustomOp::version = ORT_API_VERSION;
 
     OrtCustomOp::GetName = [](const OrtCustomOp* op) { return static_cast<const OrtLiteCustomOp*>(op)->op_name_.c_str(); };
@@ -858,8 +870,13 @@ struct OrtLiteCustomOp : public OrtCustomOp {
   std::vector<ONNXTensorElementDataType> input_types_;
   std::vector<ONNXTensorElementDataType> output_types_;
 
+  ShapeInferFn shape_infer_fn_ = {};
+
   int start_ver_ = 1;
   int end_ver_ = MAX_CUSTOM_OP_END_VER;
+
+  void* compute_fn_ = {};
+  void* compute_fn_return_status_ = {};
 };
 
 //////////////////////////// OrtLiteCustomFunc ////////////////////////////////
@@ -891,9 +908,8 @@ struct OrtLiteCustomFunc : public OrtLiteCustomOp {
                     ComputeFn compute_fn,
                     ShapeInferFn shape_infer_fn = {},
                     int start_ver = 1,
-                    int end_ver = MAX_CUSTOM_OP_END_VER) : OrtLiteCustomOp(op_name, execution_provider, start_ver, end_ver),
-                                                           compute_fn_(compute_fn),
-                                                           shape_infer_fn_(shape_infer_fn) {
+                    int end_ver = MAX_CUSTOM_OP_END_VER) : OrtLiteCustomOp(op_name, execution_provider, shape_infer_fn, start_ver, end_ver) {
+    compute_fn_ = compute_fn;
     ParseArgs<Args...>(input_types_, output_types_);
 
     OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) {
@@ -905,7 +921,8 @@ struct OrtLiteCustomFunc : public OrtLiteCustomOp {
 
     OrtCustomOp::CreateKernel = [](const OrtCustomOp* this_, const OrtApi* ort_api, const OrtKernelInfo* info) {
       auto kernel = std::make_unique<Kernel>();
-      kernel->compute_fn_ = static_cast<const MyType*>(this_)->compute_fn_;
+      auto me = static_cast<const MyType*>(this_);
+      kernel->compute_fn_ = reinterpret_cast<ComputeFn>(me->compute_fn_);
       Ort::ThrowOnError(ort_api->KernelInfo_GetInputCount(info, &kernel->num_input_));
       Ort::ThrowOnError(ort_api->KernelInfo_GetOutputCount(info, &kernel->num_output_));
       auto self = static_cast<const OrtLiteCustomFunc*>(this_);
@@ -931,9 +948,8 @@ struct OrtLiteCustomFunc : public OrtLiteCustomOp {
                     ComputeFnReturnStatus compute_fn_return_status,
                     ShapeInferFn shape_infer_fn = {},
                     int start_ver = 1,
-                    int end_ver = MAX_CUSTOM_OP_END_VER) : OrtLiteCustomOp(op_name, execution_provider, start_ver, end_ver),
-                                                           compute_fn_return_status_(compute_fn_return_status),
-                                                           shape_infer_fn_(shape_infer_fn) {
+                    int end_ver = MAX_CUSTOM_OP_END_VER) : OrtLiteCustomOp(op_name, execution_provider, shape_infer_fn, start_ver, end_ver) {
+    compute_fn_return_status_ = compute_fn_return_status;
     ParseArgs<Args...>(input_types_, output_types_);
 
     OrtCustomOp::KernelComputeV2 = [](void* op_kernel, OrtKernelContext* context) -> OrtStatusPtr {
@@ -945,7 +961,8 @@ struct OrtLiteCustomFunc : public OrtLiteCustomOp {
 
     OrtCustomOp::CreateKernel = [](const OrtCustomOp* this_, const OrtApi* ort_api, const OrtKernelInfo* info) {
       auto kernel = std::make_unique<Kernel>();
-      kernel->compute_fn_return_status_ = static_cast<const MyType*>(this_)->compute_fn_return_status_;
+      auto me = static_cast<const MyType*>(this_);
+      kernel->compute_fn_return_status_ = reinterpret_cast<ComputeFnReturnStatus>(me->compute_fn_return_status_);
       Ort::ThrowOnError(ort_api->KernelInfo_GetInputCount(info, &kernel->num_input_));
       Ort::ThrowOnError(ort_api->KernelInfo_GetOutputCount(info, &kernel->num_output_));
       auto self = static_cast<const OrtLiteCustomFunc*>(this_);
@@ -965,10 +982,6 @@ struct OrtLiteCustomFunc : public OrtLiteCustomOp {
       };
     }
   }
-
-  ComputeFn compute_fn_ = {};
-  ComputeFnReturnStatus compute_fn_return_status_ = {};
-  ShapeInferFn shape_infer_fn_ = {};
 };  // struct OrtLiteCustomFunc
 
 /////////////////////////// OrtLiteCustomStruct ///////////////////////////
@@ -1007,7 +1020,7 @@ struct OrtLiteCustomStruct : public OrtLiteCustomOp {
   OrtLiteCustomStruct(const char* op_name,
                       const char* execution_provider,
                       int start_ver = 1,
-                      int end_ver = MAX_CUSTOM_OP_END_VER) : OrtLiteCustomOp(op_name, execution_provider, start_ver, end_ver) {
+                      int end_ver = MAX_CUSTOM_OP_END_VER) : OrtLiteCustomOp(op_name, execution_provider, {}, start_ver, end_ver) {
     SetCompute(&CustomOp::Compute);
 
     OrtCustomOp::CreateKernel = [](const OrtCustomOp* this_, const OrtApi* ort_api, const OrtKernelInfo* info) {
