@@ -199,7 +199,7 @@ const reduceCommon =
 
       let updatedAxes = updatedAttributes.axes;
       if (updatedAxes.length === 0 && !updatedAttributes.noopWithEmptyAxes) {
-        updatedAxes = context.inputs[0].dims.map((s, i) => i);
+        updatedAxes = context.inputs[0].dims.map((_dim, i) => i);
       }
       const normalizeAxes = ShapeUtil.normalizeAxes(updatedAxes, context.inputs[0].dims.length);
 
