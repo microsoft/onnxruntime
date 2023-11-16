@@ -484,5 +484,6 @@ class TestLlamaRotaryEmbedding(unittest.TestCase):
         # Set tranposed=True to compare outputs as BxSxNxH
         self.run_ort_ep_tests(onnx_graph, inputs_ort, output_hf.detach().cpu().numpy(), transposed=True)
 
+
 if __name__ == "__main__":
     unittest.main()
