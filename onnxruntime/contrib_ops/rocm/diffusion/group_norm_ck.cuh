@@ -69,6 +69,8 @@ auto GetCKGroupNormNHWCTypeStringAndOps() {
                                            gamma_beta_strides,  // gammaStrides
                                            gamma_beta_strides,  // betaStrides
                                            in_out_strides,      // yStrides
+                                           {0, 0},              // saveMeanStrides
+                                           {0, 0},              // saveInvStdStrides
                                            reduce_dims,         // reduceDims
                                            params->epsilon,
                                            params->src,
