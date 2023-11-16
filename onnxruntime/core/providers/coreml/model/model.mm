@@ -181,14 +181,14 @@ bool IsArrayContiguous(const MLMultiArray* array) {
 
 Status CopyMLMultiArrayBuffer(const void* mlmultiarray_buffer, void* tensor_buffer,
                               const MLMultiArray* array_info,
-                              const OnnxTensorInfo& tensor_info,
+                              const OnnxTensorInfo* tensor_info,
                               const std::optional<unsigned long> mlmultiarray_buffer_size) {
   if (mlmultiarray_buffer == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "mlmultiarray_buffer has no data");
   }
 
   const size_t num_elements = array_info.count;
-  const auto onnx_data_type = tensor_info.data_type;
+  const auto onnx_data_type = tensor_info->data_type;
   switch (onnx_data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
       const auto output_data_byte_size = num_elements * sizeof(float);
@@ -382,7 +382,7 @@ NS_ASSUME_NONNULL_BEGIN
         ORT_RETURN_IF_NOT(IsArrayContiguous(data),
                           "Non-contiguous output MLMultiArray is not currently supported");
         __block Status copy_status;
-        const auto tensor_info = output_tensor_info;
+        const auto *tensor_info = &output_tensor_info;
         // `getBytesWithHandler` replaces deprecated `.dataPointer` on new versions
         if (@available(macOS 12.3, iOS 15.4, *)) {
           [data getBytesWithHandler:^(const void* bytes, NSInteger size) {
