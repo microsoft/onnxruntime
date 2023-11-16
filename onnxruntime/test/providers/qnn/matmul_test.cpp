@@ -180,11 +180,11 @@ TEST_F(QnnHTPBackendTests, DISABLED_MatMulOp_HTP_A16_W16DynamicLarge) {
   std::vector<float> input0_data = GetFloatDataInRange(-10.0f, 10.0f, 12 * 96 * 512);
   std::vector<float> input1_data = GetFloatDataInRange(-10.0f, 10.0f, 12 * 96 * 512);
   RunQDQMatMulOpOpTest<uint16_t, uint16_t, uint16_t>(TestInputDef<float>({1, 12, 96, 512}, false, input0_data),
-                                                    TestInputDef<float>({1, 12, 512, 96}, false, input1_data),
-                                                    ExpectedEPNodeAssignment::All,
-                                                    18,
-                                                    true,  // Use com.microsoft Q/DQ ops
-                                                    7e-3f);
+                                                     TestInputDef<float>({1, 12, 512, 96}, false, input1_data),
+                                                     ExpectedEPNodeAssignment::All,
+                                                     18,
+                                                     true,  // Use com.microsoft Q/DQ ops
+                                                     7e-3f);
 }
 
 // Test 16-bit QDQ MatMul with static weights

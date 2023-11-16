@@ -116,7 +116,7 @@ Status SimpleOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     if (!input0_info.is_initializer && !input1_info.is_initializer &&
         input0_info.qnn_data_type == input1_info.qnn_data_type &&
         input0_info.qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16) {
-        // insert Convert op after input1
+      // insert Convert op after input1
       std::string convert_input_name = input_names.back();
       input_names.pop_back();
       const std::string& matmul_output_name = node_unit.Outputs()[0].node_arg.Name();
@@ -137,7 +137,7 @@ Status SimpleOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   return Status::OK();
 }
 
-  Status SimpleOpBuilder::ExplicitOpCheck(const NodeUnit& node_unit) const {
+Status SimpleOpBuilder::ExplicitOpCheck(const NodeUnit& node_unit) const {
   const std::string& op_type = node_unit.OpType();
 
   if (op_type == "GridSample") {
