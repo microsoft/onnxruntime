@@ -148,7 +148,9 @@ const createBatchNormProgramInfo = (inputs: readonly TensorView[], attributes: B
       outputVariable('savedVar', outputs[4].dataType, [ShapeUtil.size(outputs[4].dims)]);
   const workgroupSizeAlongAxis = (axis: number) => xShape.indexOf(Math.max(...xShape)) === axis ? WORKGROUP_SIZE : 1;
   const workgroupSize = [workgroupSizeAlongAxis(0), workgroupSizeAlongAxis(1), workgroupSizeAlongAxis(2)] as const;
-
+  const inputVariables = inputs.length > 3 ? [x, scale, bias, inputMean, inputVar] : [x, scale, bias];
+  const outputVariables =
+      outputCount > 3 ? [y, runningMean, runningVar, savedMean, savedVar] : [y, runningMean, runningVar];
   const getInferenceModeShaderSource = (helper: ShaderHelper) => `
       alias T = ${x.type.value};
 
@@ -170,7 +172,7 @@ const createBatchNormProgramInfo = (inputs: readonly TensorView[], attributes: B
 
       var<workgroup> sharedMem: SharedMem;
 
-      ${helper.declareVariables(x, scale, bias, inputMean, inputVar, y)}
+      ${helper.declareVariables(...inputVariables, y)}
 
       ${helper.mainStart([...workgroupSize])}
         let is1DimensionDispatch =
@@ -241,7 +243,7 @@ const createBatchNormProgramInfo = (inputs: readonly TensorView[], attributes: B
 
       var<workgroup> sharedMem: SharedMem;
 
-      ${helper.declareVariables(x, scale, bias, inputMean, inputVar, y, runningMean, runningVar, savedMean, savedVar)}
+      ${helper.declareVariables(...inputVariables, ...outputVariables)}
 
       fn prevPowOf2(n: u32) -> u32 {
         return u32(1 << (32 - countLeadingZeros(n >> 1)));
@@ -327,21 +329,19 @@ const createBatchNormProgramInfo = (inputs: readonly TensorView[], attributes: B
               sharedMem.squareSum[0][localIndex][0] / T(inputShape.x * inputShape.z) - currentMean * currentMean;
           sharedMem.scale[localIndex] = scale * inverseSqrt(currentVar + epsilon);
           sharedMem.bias[localIndex] = fma(-currentMean, scale * inverseSqrt(currentVar + epsilon), bias);
-          if (${outputCount} > 3) {
-            var _savedMean = array<${savedMean.type.storage}, 1>();
-            var _savedVar = array<${savedVar.type.storage}, 1>();
-            ${runningMean.getByOffset(runningMean.indicesToOffset('i'))} = mix(currentMean, 0, momentum);
-            ${runningVar.getByOffset(runningVar.indicesToOffset('i'))} = mix(currentVar, 0, momentum);
-            ${savedMean.getByOffset(savedMean.indicesToOffset('i'))} = currentMean;
-            ${savedVar.getByOffset(savedVar.indicesToOffset('i'))} = inverseSqrt(currentVar + epsilon);
-          } else {
-            var _inputMean = array<${inputMean.type.storage}, 1>();
-            var _inputVar = array<${inputVar.type.storage}, 1>();
-            let inputMean = ${inputMean.getByIndices('i')};
-            let inputVar = ${inputVar.getByIndices('i')};
-            ${runningMean.getByOffset(runningMean.indicesToOffset('i'))} = mix(currentMean, inputMean, momentum);
-            ${runningVar.getByOffset(runningVar.indicesToOffset('i'))} = mix(currentVar, inputVar, momentum);
-          }
+          ${
+      outputCount > 3 ? `
+          ${runningMean.getByOffset(runningMean.indicesToOffset('i'))} = mix(currentMean, 0, momentum);
+          ${runningVar.getByOffset(runningVar.indicesToOffset('i'))} = mix(currentVar, 0, momentum);
+          ${savedMean.getByOffset(savedMean.indicesToOffset('i'))} = currentMean;
+          ${savedVar.getByOffset(savedVar.indicesToOffset('i'))} = inverseSqrt(currentVar + epsilon);
+          ` :
+                        `
+          let inputMean = ${inputMean.getByIndices('i')};
+          let inputVar = ${inputVar.getByIndices('i')};
+          ${runningMean.getByOffset(runningMean.indicesToOffset('i'))} = mix(currentMean, inputMean, momentum);
+          ${runningVar.getByOffset(runningVar.indicesToOffset('i'))} = mix(currentVar, inputVar, momentum);
+          `}
         }
         workgroupBarrier();
 
@@ -404,7 +404,8 @@ const createPostBatchNormProgramInfo =
       ${helper.mainStart()}
         let size = arrayLength(&${input.name});
         ${helper.guardAgainstOutOfBoundsWorkgroupSizes('size')}
-        ${running.getByOffset(running.indicesToOffset('global_idx'))} += ${input.getByIndices('global_idx')} * momentum;
+        ${running.getByOffset(running.indicesToOffset('global_idx'))} += ${
+          input.getByIndices('global_idx')} * momentum;
       }`;
 
       return {
