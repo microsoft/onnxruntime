@@ -68,7 +68,7 @@ jobs:
         --build-arg BUILD_UID=$( id -u )
         --build-arg PLATFORM=${{ parameters.arch }}
         "
-        Repository: onnxruntimecuda${{ parameters.cuda_version }}xtrt86build${{ parameters.arch }}
+        Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
 
 
     - task: Bash@3
@@ -78,7 +78,7 @@ jobs:
         filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
         # please check ONNXRUNTIME_CUDA_VERSION in tools/ci_build/github/linux/build_linux_python_package.sh
 
-        arguments: -i onnxruntimecuda${{ parameters.cuda_version }}xtrt86build${{ parameters.arch }} -d "GPU" -c ${{ parameters.cmake_build_type }} -u ${{ parameters.cuda_version }} $(extra_build_args)
+        arguments: -i onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }} -d "GPU" -c ${{ parameters.cmake_build_type }} -u ${{ parameters.cuda_version }} $(extra_build_args)
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
