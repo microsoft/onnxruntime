@@ -60,6 +60,7 @@ class QnnCacheModelHandler {
   }
 
   bool IsContextCacheFileExists(const std::string& customer_context_cache_path,
+                                const std::string& model_name,
                                 const std::string& model_description,
                                 const onnxruntime::PathString& model_pathstring);
 

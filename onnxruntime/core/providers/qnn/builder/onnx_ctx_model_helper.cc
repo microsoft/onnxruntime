@@ -118,44 +118,34 @@ Status QnnCacheModelHandler::GetMetadataFromEpContextModel(const std::string& ct
                                                            std::string& graph_partition_name,
                                                            std::string& cache_source,
                                                            const logging::Logger& logger) {
-  if (!is_metadata_ready_) {
-    using namespace onnxruntime;
-    std::shared_ptr<Model> model;
-    ORT_RETURN_IF_ERROR(Model::Load(ToPathString(ctx_onnx_model_path), model, {}, logger));
-    const auto& graph = GraphViewer(model->MainGraph());
-    const auto& node = graph.Nodes().begin();
-    NodeAttrHelper node_helper(*node);
-    model_name_ = graph.Name();
-    model_description_ = graph.Description();
-    graph_partition_name_ = node_helper.Get(PARTITION_NAME, "");
-    cache_source_ = node_helper.Get(SOURCE, "");
-    is_metadata_ready_ = true;
-  }
-  model_name = model_name_;
-  model_description = model_description_;
-  graph_partition_name = graph_partition_name_;
-  cache_source = cache_source_;
+  using namespace onnxruntime;
+  std::shared_ptr<Model> model;
+  ORT_RETURN_IF_ERROR(Model::Load(ToPathString(ctx_onnx_model_path), model, {}, logger));
+  const auto& graph = GraphViewer(model->MainGraph());
+  const auto& node = graph.Nodes().begin();
+  NodeAttrHelper node_helper(*node);
+  model_name = graph.Name();
+  model_description = graph.Description();
+  graph_partition_name = node_helper.Get(PARTITION_NAME, "");
+  cache_source = node_helper.Get(SOURCE, "");
 
   return Status::OK();
 }
 
 bool QnnCacheModelHandler::IsContextCacheFileExists(const std::string& customer_context_cache_path,
+                                                    const std::string& model_name,
                                                     const std::string& model_description,
                                                     const onnxruntime::PathString& model_pathstring) {
-  // Avoid duplicate work
-  if (ctx_file_exists_) {
-    return ctx_file_exists_;
-  }
+  model_name_ = model_name;
   model_description_ = model_description;
   // Use user provided context cache file path if exist, otherwise try model_file.onnx_ctx.onnx by default
-  if (customer_context_cache_path.empty()) {
-    context_cache_path_ = PathToUTF8String(model_pathstring) + "_qnn_ctx.onnx";
-  } else {
+  if (!customer_context_cache_path.empty()) {
     context_cache_path_ = customer_context_cache_path;
+  } else if (!model_pathstring.empty()) {
+    context_cache_path_ = PathToUTF8String(model_pathstring) + "_qnn_ctx.onnx";
   }
 
   ctx_file_exists_ = std::filesystem::is_regular_file(context_cache_path_) && std::filesystem::exists(context_cache_path_);
-
   return ctx_file_exists_;
 }
 
@@ -216,10 +206,7 @@ Status QnnCacheModelHandler::GenerateCtxCacheOnnxModel(unsigned char* buffer,
   // Still need more work to support multiple partition, it's out of EP's scope.
   // Already have code to make sure it's single partition before this method get invoked.
   for (const auto& fused_node_graph : fused_nodes_and_graphs) {
-    const onnxruntime::GraphViewer& graph_viewer(fused_node_graph.filtered_graph);
     Node& fused_node = fused_node_graph.fused_node;
-    // graph_viewer.Name() is generated in GetCapability, e.g QNN_[hash_id]_[id]
-    // dump graph_viewer.Name() as metadata in context cache binary file, so that we can validate it in GetCapability
     auto qnn_model_kv = qnn_models.find(fused_node.Name());
     ORT_RETURN_IF(qnn_model_kv == qnn_models.end(), fused_node.Name(), " not exist in QnnModel table.");
 
@@ -229,7 +216,7 @@ Status QnnCacheModelHandler::GenerateCtxCacheOnnxModel(unsigned char* buffer,
     ORT_RETURN_IF_ERROR(CreateNodeArgs(qnn_model->GetInputNames(), qnn_model->GetInputsInfo(), inputs, graph));
     ORT_RETURN_IF_ERROR(CreateNodeArgs(qnn_model->GetOutputNames(), qnn_model->GetOutputsInfo(), outputs, graph));
 
-    const std::string& graph_name = graph_viewer.Name();
+    const std::string& graph_name = fused_node.Name();
     auto& ep_node = graph.AddNode(graph_name,
                                   EPCONTEXT_OP,
                                   "Onnx Qnn context binary cache for graph partition: " + graph_name,
