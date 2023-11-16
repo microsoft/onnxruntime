@@ -114,7 +114,7 @@ stages:
           echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]"
         fi
       name: Set_Release_Version_Suffix
-    - bash: echo $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
+    - bash: echo $(ReleaseVersionSuffix)
       name: Debug_Release_Version_Suffix
 
 
