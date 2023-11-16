@@ -5776,6 +5776,7 @@ def test_ops_for_padding_elimination(test_cases):
 
     vocab_size, hidden_size = 50265, 768
     batch_size, max_seq_length = 8, 128
+
     class ToyModel(torch.nn.Module):
         def __init__(self, vocab_size, hidden_size, pad_token_id):
             super().__init__()

@@ -2861,7 +2861,7 @@ TEST(ComputeOptimizerTests, ReshapeLayerNormalization) {
 
     const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
     auto pre_graph_checker = [](Graph& graph) -> Status {
-    auto op_count_pre = CountOpsInGraph(graph);
+      auto op_count_pre = CountOpsInGraph(graph);
       TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
       TEST_RETURN_IF_NOT(op_count_pre["LayerNormalization"] == 1);
       TEST_RETURN_IF_NOT(op_count_pre["Reshape"] == 1);
