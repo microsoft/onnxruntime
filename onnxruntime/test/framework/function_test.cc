@@ -6,15 +6,19 @@
 #include "onnx/defs/parser.h"
 
 #include "core/common/span_utils.h"
-#include "core/framework/float8.h"
+#include "core/framework/customregistry.h"
+#include "core/framework/op_kernel.h"
 #include "core/graph/model.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 
 #include "test/test_environment.h"
 #include "test/framework/test_utils.h"
+#include "inference_session_wrapper.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/util/include/asserts.h"
+
+#include "test/providers/internal_testing/internal_testing_execution_provider.h"
 
 // Unit tests to check the implementation of functions, model-local functions,
 // function-inlining etc.
@@ -22,20 +26,27 @@
 namespace onnxruntime {
 namespace test {
 
-static void Check(const char* source,
-                  const char* input_name, std::vector<float> input_values,
-                  const char* output_name, std::vector<float> output_values) {
-  // Convert source-representation of model to ModelProto:
+// Convert source-representation of model to ModelProto:
+static void ParseOnnxSource(const char* source, std::string& result) {
   ONNX_NAMESPACE::OnnxParser parser(source);
   ONNX_NAMESPACE::ModelProto model;
   auto parse_status = parser.Parse(model);
   ASSERT_TRUE(parse_status.IsOK()) << parse_status.ErrorMessage();
   ASSERT_TRUE(parser.EndOfInput()) << "Extra unparsed input unexpected.";
 
-  // Serialize and then load model:
+  // Serialize
   std::string serialized_model;
   const bool serialization_status = model.SerializeToString(&serialized_model);
   ASSERT_TRUE(serialization_status) << "Failed to serialize proto to string";
+  result = std::move(serialized_model);
+}
+
+static void Check(const char* source,
+                  const char* input_name, std::vector<float> input_values,
+                  const char* output_name, std::vector<float> output_values) {
+  // Serialize and then load model:
+  std::string serialized_model;
+  ParseOnnxSource(source, serialized_model);
 
   SessionOptions session_options;
   InferenceSession session_object{session_options, GetEnvironment()};
@@ -76,8 +87,8 @@ static void Check(const char* source,
   }
 }
 
-TEST(FunctionTest, Basic) {
-  const char* code = R"(
+namespace {
+const char* basic_code = R"(
         <
         ir_version: 8,
         opset_import: [ "" : 16, "local" : 1 ]
@@ -96,8 +107,10 @@ TEST(FunctionTest, Basic) {
             ly = Mul (lx, two)
         }
         )";
+}
 
-  Check(code, "x", {1.0, 2.0, 3.0}, "y", {2.0, 4.0, 6.0});
+TEST(FunctionTest, Basic) {
+  Check(basic_code, "x", {1.0, 2.0, 3.0}, "y", {2.0, 4.0, 6.0});
 }
 
 // Check that variables are renamed to avoid conflicts when multiple
@@ -519,6 +532,86 @@ TEST(FunctionTest, ConstantFoldingInSubGraph) {
   )";
 
   Check(code, "X", {1.0, 2.0, 3.0}, "Y", {3.0, 4.0, 5.0, 3.0, 4.0, 5.0, 3.0, 4.0, 5.0});
+}
+
+TEST(FunctionTest, TestInlinedLocalFunctionRemoved) {
+  std::string serialized_model;
+  ParseOnnxSource(basic_code, serialized_model);
+
+  // Default is to do AOT Function inlining
+  SessionOptions session_options;
+  InferenceSessionWrapper session_object{session_options, GetEnvironment()};
+
+  std::stringstream sstr(serialized_model);
+  ASSERT_STATUS_OK(session_object.Load(sstr));
+
+  auto model_proto = session_object.GetModel().ToProto();
+  ASSERT_EQ(1, model_proto.functions_size());
+
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // All functions removed
+  model_proto = session_object.GetModel().ToProto();
+  ASSERT_EQ(0, model_proto.functions_size());
+}
+
+TEST(FunctionTest, TestInlinedLocalFunctionNotRemoved) {
+  std::string serialized_model;
+  ParseOnnxSource(basic_code, serialized_model);
+
+  // Default is to do AOT Function inlining
+  SessionOptions session_options;
+  InferenceSessionWrapper session_object{session_options, GetEnvironment()};
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+  const std::unordered_set<std::string> empty_set;
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NCHW);
+  internal_testing_ep->EnableStaticKernels().TakeAllNodes();
+
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(internal_testing_ep)));
+
+  std::stringstream sstr(serialized_model);
+  ASSERT_STATUS_OK(session_object.Load(sstr));
+
+  auto model_proto = session_object.GetModel().ToProto();
+  ASSERT_EQ(1, model_proto.functions_size());
+
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // myfun is not removed because it was claimed by InternalTestingEP
+  model_proto = session_object.GetModel().ToProto();
+#ifdef USE_TVM
+  // TVM EP takes the whole graph and optimizes it within its own framework.
+  // It does not retain the original graph.
+  ASSERT_EQ(0, model_proto.functions_size());
+#else
+  ASSERT_EQ(1, model_proto.functions_size());
+#endif
+}
+
+TEST(FunctionTest, TestInlinedFunctionDoesNotReserrectNonExistingArgs) {
+  // Verify this runs
+  constexpr const ORTCHAR_T* model_uri = ORT_TSTR("testdata/transform/gh_issue_18338.onnx");
+
+  SessionOptions session_options;
+  InferenceSessionWrapper session_object{session_options, GetEnvironment()};
+
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // Scalar shape for input_0 and output
+  const std::string input_names[] = {"input_0"};
+  const std::string output_names[] = {"_val_3"};
+  TensorShape input_shape;
+  MLFloat16 input_0_data{684.f};
+
+  OrtValue input_0;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(), input_shape, &input_0_data, OrtMemoryInfo(), input_0);
+
+  std::vector<OrtValue> fetches(1);
+  RunOptions run_options;
+  ASSERT_STATUS_OK(session_object.Run(run_options, AsSpan(input_names), AsSpan({input_0}),
+                                      AsSpan(output_names), &fetches, 0));
 }
 
 }  // namespace test

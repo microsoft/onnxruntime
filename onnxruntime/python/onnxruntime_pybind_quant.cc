@@ -5,7 +5,8 @@
 #include <pybind11/numpy.h>
 #include <pybind11/functional.h>
 
-#include "contrib_ops/cpu/quantization/dequantize_blockwise.h"
+#include "core/mlas/inc/mlas_q4.h"
+#include "contrib_ops/cpu/quantization/dequantize_blockwise_bnb4.h"
 #include "core/util/thread_utils.h"
 
 namespace pybind11 {
@@ -52,13 +53,42 @@ void QuantizeMatMul4BitsBlockwise(
   py::buffer_info scale_buf = scale.request();
   py::buffer_info zp_buf = zero_points.request();
 
-  contrib::QuantizeBlockwise<T>(
+  MlasQuantizeBlockwise<T, 4>(
+      reinterpret_cast<uint8_t*>(dst_buf.ptr),
+      reinterpret_cast<T*>(scale_buf.ptr),
+      is_symmetric ? nullptr : reinterpret_cast<uint8_t*>(zp_buf.ptr),
+      reinterpret_cast<const T*>(src_buf.ptr),
+      block_size,
+      true,
+      K,
+      N,
+      N,
+      tp.get());
+}
+
+template <typename T>
+void QuantizeMatMulBnb4Blockwise(
+    py::array_t<uint8_t> dst,
+    py::array_t<T> src,
+    py::array_t<T> absmax,
+    int32_t block_size,
+    int32_t quant_type,
+    int32_t N,
+    int32_t K) {
+  OrtThreadPoolParams to;
+  auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to,
+                                          concurrency::ThreadPoolType::INTRA_OP);
+
+  py::buffer_info dst_buf = dst.request();
+  py::buffer_info src_buf = src.request();
+  py::buffer_info absmax_buf = absmax.request();
+
+  contrib::QuantizeBlockwiseBnb4<T>(
       static_cast<uint8_t*>(dst_buf.ptr),
       static_cast<const T*>(src_buf.ptr),
-      static_cast<T*>(scale_buf.ptr),
-      is_symmetric ? nullptr : static_cast<uint8_t*>(zp_buf.ptr),
+      static_cast<T*>(absmax_buf.ptr),
       block_size,
-      4,
+      quant_type,
       N,
       K,
       tp.get());
@@ -67,6 +97,8 @@ void QuantizeMatMul4BitsBlockwise(
 void CreateQuantPybindModule(py::module& m) {
   m.def("quantize_matmul_4bits", &QuantizeMatMul4BitsBlockwise<float>);
   m.def("quantize_matmul_4bits", &QuantizeMatMul4BitsBlockwise<MLFloat16>);
+  m.def("quantize_matmul_bnb4", &QuantizeMatMulBnb4Blockwise<float>);
+  m.def("quantize_matmul_bnb4", &QuantizeMatMulBnb4Blockwise<MLFloat16>);
 }
 
 }  // namespace python

@@ -69,7 +69,9 @@ std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
   OrtMIGraphXProviderOptions params{
       0,
       0,
-      0};
+      0,
+      0,
+      nullptr};
   return MIGraphXProviderFactoryCreator::Create(&params)->CreateProvider();
 #else
   return nullptr;
@@ -268,7 +270,7 @@ std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider() {
 #ifdef USE_DML
-  if (auto factory = DMLProviderFactoryCreator::Create(0))
+  if (auto factory = DMLProviderFactoryCreator::Create(0, false, false, false))
     return factory->CreateProvider();
 #endif
   return nullptr;

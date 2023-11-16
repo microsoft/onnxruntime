@@ -54,20 +54,22 @@ const getProgramInputTensorInfoDependencyKey =
  * program. if the key is the same, the program shader source should be the same, so we can reuse the program.
  *
  */
-const getProgramInfoUniqueKey = (programInfo: ProgramInfo, inputTensors: readonly TensorView[]): string => {
-  // final key format:
-  // <PROGRAM_NAME>[<PROGRAM_CUSTOM_CACHE_HINT>]:<INPUTS_INFO_0>|<INPUTS_INFO_1>|...
-  let key = programInfo.name;
-  if (programInfo.shaderCache?.hint) {
-    key += '[' + programInfo.shaderCache.hint + ']';
-  }
-  key += `:${
-      getProgramInputTensorInfoDependencyKey(
-          inputTensors,
-          programInfo.shaderCache?.inputDependencies ??
-              new Array<ProgramInputTensorInfoDependency>(inputTensors.length).fill('dims'))}`;
-  return key;
-};
+const getProgramInfoUniqueKey =
+    (programInfo: ProgramInfo, inputTensors: readonly TensorView[], is1DimensionDispatch: boolean): string => {
+      // final key format:
+      // <PROGRAM_NAME>[<PROGRAM_CUSTOM_CACHE_HINT>]:is1DimensionDispatch:<INPUTS_INFO_0>|<INPUTS_INFO_1>|...
+      let key = programInfo.name;
+      if (programInfo.shaderCache?.hint) {
+        key += '[' + programInfo.shaderCache.hint + ']';
+      }
+      key += ':' + is1DimensionDispatch +
+          `:${
+                 getProgramInputTensorInfoDependencyKey(
+                     inputTensors,
+                     programInfo.shaderCache?.inputDependencies ??
+                         new Array<ProgramInputTensorInfoDependency>(inputTensors.length).fill('dims'))}`;
+      return key;
+    };
 
 /**
  * this class is designed to store status and being used as a singleton for JSEP. It will be passed to jsepInit() as
@@ -126,14 +128,14 @@ export class WebGpuBackend {
    */
   kernels: Map<number, [string, string, RunFunction, [((attribute: unknown) => unknown) | undefined, unknown]]>;
 
-  commandEncoder: GPUCommandEncoder|null = null;
-  computePassEncoder: GPUComputePassEncoder|null = null;
+  private commandEncoder: GPUCommandEncoder|null = null;
+  private computePassEncoder: GPUComputePassEncoder|null = null;
   pendingDispatchNumber = 0;
 
-  supportTimestampQuery = false;
-  profilingQuerySet: GPUQuerySet;
-  profilingQueryData: GpuData;
-  profilingTimeBase?: bigint;
+  queryData?: GpuData;
+  querySet?: GPUQuerySet;
+  querySetCount = 2;
+  queryTimeBase?: bigint;
 
   env: Env;
 
@@ -168,11 +170,9 @@ export class WebGpuBackend {
       },
       requiredFeatures,
     };
-    // WebGPU Spec: Timestamp Queries Inside Passes
-    // https://github.com/gpuweb/gpuweb/blob/main/proposals/timestamp-query-inside-passes.md
-    if (adapter.features.has('timestamp-query-inside-passes')) {
-      this.supportTimestampQuery = true;
-      requiredFeatures.push('timestamp-query-inside-passes' as GPUFeatureName);
+
+    if (adapter.features.has('timestamp-query')) {
+      requiredFeatures.push('timestamp-query');
     }
     if (adapter.features.has('shader-f16')) {
       requiredFeatures.push('shader-f16');
@@ -197,21 +197,14 @@ export class WebGpuBackend {
       }
     };
 
-    if (this.supportTimestampQuery) {
-      this.profilingQuerySet = this.device.createQuerySet({
-        type: 'timestamp',
-        count: 2,
-      });
-    }
-
     Object.defineProperty(this.env.webgpu, 'device', {value: this.device});
   }
 
   dispose(): void {
-    // currently, we do not do anything in this function. In all known use cases, we don't have the requirement to
-    // actually dispose the WebGpuBackend instance, because it's always used as a singleton.
-    //
-    // revisit this place if we get real requirement to dispose the instance.
+    if (typeof this.querySet !== 'undefined') {
+      this.querySet.destroy();
+    }
+    this.gpuDataManager.dispose();
   }
 
   getCommandEncoder(): GPUCommandEncoder {
@@ -223,7 +216,22 @@ export class WebGpuBackend {
 
   getComputePassEncoder(): GPUComputePassEncoder {
     if (!this.computePassEncoder) {
-      this.computePassEncoder = this.getCommandEncoder().beginComputePass();
+      const computePassDescriptor: GPUComputePassDescriptor = {};
+      if (this.isQueryEnabled()) {
+        if (typeof this.querySet === 'undefined') {
+          this.querySet = this.device.createQuerySet({
+            type: 'timestamp',
+            count: this.querySetCount,
+          });
+        }
+        computePassDescriptor.timestampWrites = {
+          querySet: this.querySet,
+          beginningOfPassWriteIndex: 0,
+          endOfPassWriteIndex: 1,
+        };
+      }
+
+      this.computePassEncoder = this.getCommandEncoder().beginComputePass(computePassDescriptor);
     }
     return this.computePassEncoder;
   }
@@ -242,6 +250,14 @@ export class WebGpuBackend {
       this.gpuDataManager.refreshPendingBuffers();
       this.commandEncoder = null;
       this.pendingDispatchNumber = 0;
+    }
+  }
+
+  isQueryEnabled(): boolean {
+    if (this.device.features.has('timestamp-query') && this.env.webgpu.profilingMode === 'default') {
+      return true;
+    } else {
+      return false;
     }
   }
 
@@ -268,10 +284,6 @@ export class WebGpuBackend {
       }
       inputDatas[i] = gpuData;
     }
-
-    // get program info
-    const key = getProgramInfoUniqueKey(program, inputTensorViews);
-    let artifact = this.programManager.getArtifact(key);
 
     const {outputs, dispatchGroup, programUniforms} = program.getRunData(inputTensorViews);
 
@@ -331,6 +343,9 @@ export class WebGpuBackend {
       let maxAlignmentOfField = 1;
       programUniforms.forEach(v => {
         const data = typeof v.data === 'number' ? [v.data] : v.data;
+        if (data.length === 0) {
+          return;
+        }
         // https://www.w3.org/TR/WGSL/#alignof
         let baseAlignment: number;
         switch (data.length) {
@@ -390,9 +405,11 @@ export class WebGpuBackend {
       uniformBufferBinding = {offset: 0, size: currentOffset, buffer: uniformBufferData.buffer};
     }
 
-
     const normalizedDispatchGroup = this.programManager.normalizeDispatchGroupSize(dispatchGroup);
-
+    const is1DimensionDispatch = normalizedDispatchGroup[1] === 1 && normalizedDispatchGroup[2] === 1;
+    // get program info
+    const key = getProgramInfoUniqueKey(program, inputTensorViews, is1DimensionDispatch);
+    let artifact = this.programManager.getArtifact(key);
     if (!artifact) {
       artifact = this.programManager.build(program, normalizedDispatchGroup);
       this.programManager.setArtifact(key, artifact);

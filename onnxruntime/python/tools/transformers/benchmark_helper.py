@@ -33,6 +33,7 @@ class Precision(Enum):
     FLOAT32 = "fp32"
     FLOAT16 = "fp16"
     INT8 = "int8"
+    INT4 = "int4"
 
     def __str__(self):
         return self.value
@@ -610,7 +611,7 @@ def measure_memory(is_gpu, func, monitor_type="cuda", start_memory=None):
         return memory_before_test
 
     with ThreadPoolExecutor() as executor:
-        monitor = MemoryMonitor()
+        monitor = memory_monitor_type()
         mem_thread = executor.submit(monitor.measure_cpu_usage)
         try:
             fn_thread = executor.submit(func)

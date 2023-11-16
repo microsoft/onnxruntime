@@ -38,6 +38,37 @@ class BaseOpBuilder : public IOpBuilder {
     return qnn_data_type;
   }
 
+  /**
+   * Allows operator builders that override this function to override output quantization parameters.
+   * Called by BaseOpBuilder::ProcessOutputs().
+   *
+   * \param qnn_model_wrapper The QNN model that is being built.
+   * \param node_unit The node unit for which to return output information.
+   * \param logger The logger.
+   * \param input_names Names of all inputs consumed by this QNN node.
+   * \param output_index The index in node_unit.Outputs() of the output for which to return information.
+   * \param qnn_data_type The output's data type.
+   * \param quant_param The quantization parameter object that is overridden.
+   * \return An onnxruntime::Status object indicating failure or success.
+   */
+  virtual Status OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                          const NodeUnit& node_unit,
+                                          const logging::Logger& logger,
+                                          const std::vector<std::string>& input_names,
+                                          size_t output_index,
+                                          Qnn_DataType_t qnn_data_type,
+                                          Qnn_QuantizeParams_t& quant_param) const ORT_MUST_USE_RESULT {
+    // Do nothing by default. Op builders like Split implement this function to override output quant params.
+    ORT_UNUSED_PARAMETER(qnn_model_wrapper);
+    ORT_UNUSED_PARAMETER(node_unit);
+    ORT_UNUSED_PARAMETER(logger);
+    ORT_UNUSED_PARAMETER(input_names);
+    ORT_UNUSED_PARAMETER(output_index);
+    ORT_UNUSED_PARAMETER(qnn_data_type);
+    ORT_UNUSED_PARAMETER(quant_param);
+    return Status::OK();
+  }
+
   virtual Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                const NodeUnit& node_unit,
                                const logging::Logger& logger,
@@ -71,6 +102,15 @@ class BaseOpBuilder : public IOpBuilder {
 
     return node_name;
   }
+
+  Status SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& qnn_model_wrapper,
+                                                  const NodeUnit& node_unit,
+                                                  const logging::Logger& logger,
+                                                  const std::vector<std::string>& input_names,
+                                                  size_t input_index,
+                                                  size_t output_index,
+                                                  Qnn_DataType_t qnn_data_type,
+                                                  Qnn_QuantizeParams_t& quant_param) const ORT_MUST_USE_RESULT;
 
   static const std::string& GetQnnOpType(const std::string& onnx_op_type) {
     // TODO: Use QNN operator names defined in "QnnOpDef.h"
@@ -164,7 +204,9 @@ class BaseOpBuilder : public IOpBuilder {
 
         {"LRN", QNN_OP_LRN},
 
-        {"Pad", QNN_OP_PAD}};
+        {"Pad", QNN_OP_PAD},
+
+        {"Expand", QNN_OP_ELEMENT_WISE_MULTIPLY}};
     auto it = onnx_op_type_to_qnn_op_type.find(onnx_op_type);
     ORT_ENFORCE(it != onnx_op_type_to_qnn_op_type.end());
     return it->second;
