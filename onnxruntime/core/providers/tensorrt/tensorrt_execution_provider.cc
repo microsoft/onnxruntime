@@ -1194,6 +1194,11 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
     }
   }
 
+  if (external_stream_) {
+    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasDestroy(external_cublas_handle_)));
+    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(external_cudnn_handle_)));
+  }
+
   if (!external_stream_ && stream_) {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
@@ -1270,6 +1275,20 @@ Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
   }
   return Status::OK();
+}
+
+// Get the pointer to the IBuilder instance.
+// Note: This function is not thread safe. Calls to this function from different threads must be serialized
+// even though it doesn't make sense to have multiple threads initializing the same inference session.
+nvinfer1::IBuilder* TensorrtExecutionProvider::GetBuilder() const {
+  if (!builder_) {
+    TensorrtLogger& trt_logger = GetTensorrtLogger();
+    {
+      auto lock = GetApiLock();
+      builder_ = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+    }
+  }
+  return builder_.get();
 }
 
 void TensorrtExecutionProvider::GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const {
@@ -1633,7 +1652,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         // Get supported node list recursively
         SubGraphCollection_t parser_nodes_list;
         TensorrtLogger& trt_logger = GetTensorrtLogger();
-        auto trt_builder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+        auto trt_builder = GetBuilder();
         const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
         auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
 
@@ -1985,7 +2004,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     }
 
     TensorrtLogger& trt_logger = GetTensorrtLogger();
-    auto trt_builder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+    auto trt_builder = GetBuilder();
     const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
     auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
     auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
@@ -2438,7 +2457,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     parsers_.emplace(fused_node.Name(), std::move(trt_parser));
     engines_.emplace(fused_node.Name(), std::move(trt_engine));
     contexts_.emplace(fused_node.Name(), std::move(trt_context));
-    builders_.emplace(fused_node.Name(), std::move(trt_builder));
     networks_.emplace(fused_node.Name(), std::move(trt_network));
     input_info_[fused_node.Name()].push_back(input_indexes);
     output_info_[fused_node.Name()].push_back(output_indexes);
@@ -2456,8 +2474,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       if (!tactic_sources_.empty()) {
         tactics = GetTacticSourceFromString(tactic_sources_);
       }
-      *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name,
-            &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
+      *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name, builder_.get(),
+            &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
             input_shape_ranges_[context->node_name], sync_stream_after_enqueue_, &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
@@ -2490,7 +2508,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       bool sync_stream_after_enqueue = trt_state->sync_stream_after_enqueue;
       auto fused_node_name = trt_state->fused_node_name;
       auto& shape_ranges = trt_state->input_shape_ranges;
-      auto trt_builder = trt_state->builder->get();
+      auto trt_builder = trt_state->builder;
       auto trt_engine = trt_state->engine->get();
       auto trt_context = trt_state->context->get();
       auto trt_profiles = trt_state->profiles;
