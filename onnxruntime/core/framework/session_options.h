@@ -129,7 +129,11 @@ struct SessionOptions {
 
   // By default the session uses its own set of threadpools, unless this is set to false.
   // Use this in conjunction with the CreateEnvWithGlobalThreadPools API.
+#if defined(__wasm__)
+  bool use_per_session_threads = false;
+#else
   bool use_per_session_threads = true;
+#endif
   bool thread_pool_allow_spinning = true;
 
   // Deterministic compute is likely not as performant. This option is default to false.
