@@ -379,13 +379,17 @@ def quantize_static(
                 TensorQuantOverrides = dictionary :
                     Default is {}. Set tensor quantization overrides. The key is a tensor name and the value is a
                     dictionary of optional overrides with the following keys and value types.
-                        'quant_type' = QuantType|None : The tensor's quantization data type
-                        'scale' =  Float|None : The scale value to use
-                        'zero_point' = Int|None : The zero-point value to use
-                        'symmetric' = Bool|None : If the tensor should use symmetric quantization
-                        'reduce_range' = Bool|None : If the quantization range should be reduced
-                        'rmax' = Float|None : Override the maximum real tensor value in calibration data
-                        'rmin' = Float|None : Override the minimum real tensor value in calibration data
+                        'quant_type' = QuantType : The tensor's quantization data type.
+                        'scale' =  Float         : The scale value to use. Must also specify `zero_point` if set.
+                        'zero_point' = Int       : The zero-point value to use. Must also specify `scale` is set.
+                        'symmetric' = Bool       : If the tensor should use symmetric quantization. Invalid if also
+                                                   set `scale` or `zero_point`.
+                        'reduce_range' = Bool    : If the quantization range should be reduced. Invalid if also
+                                                   set `scale` or `zero_point`.
+                        'rmax' = Float           : Override the maximum real tensor value in calibration data.
+                                                   Invalid if also set `scale` or `zero_point`.
+                        'rmin' = Float           : Override the minimum real tensor value in calibration data.
+                                                   Invalid if also set `scale` or `zero_point`.
     """
     if activation_type == QuantType.QFLOAT8E4M3FN or weight_type == QuantType.QFLOAT8E4M3FN:
         if calibrate_method != CalibrationMethod.Distribution:
