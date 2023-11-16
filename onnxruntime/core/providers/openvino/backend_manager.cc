@@ -6,11 +6,12 @@
 #include <string>
 #include <memory>
 
-#include "core/providers/shared_library/provider_api.h"
 #include "contexts.h"
 #include "backend_manager.h"
 #include "ibackend.h"
 #include "backend_utils.h"
+#include "interface/graph/graph.h"
+#include "core/common/common.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -28,9 +29,8 @@ void BackendManager::ReleaseGlobalContext() {
   g_global_context.reset();
 }
 
-BackendManager::BackendManager(const onnxruntime::Node& fused_node,
-                               const onnxruntime::GraphViewer& subgraph,
-                               const logging::Logger& logger) {
+BackendManager::BackendManager(const onnxruntime::interface::NodeViewRef& fused_node,
+                               const onnxruntime::interface::GraphViewRef& subgraph) {
   auto prec_str = GetGlobalContext().precision_str;
   if (prec_str == "FP32") {
     subgraph_context_.precision = "FP32";
@@ -44,16 +44,14 @@ BackendManager::BackendManager(const onnxruntime::Node& fused_node,
 
   // Save the indexes of graph inputs among fused_node's inputDefs
   // (which also contains initializers).
-  auto node_input_defs = fused_node.InputDefs();
   int i = 0;
-  for (auto idef : node_input_defs) {
-    subgraph_context_.input_names.insert({idef->Name(), i});
-    i++;
+  for (std::string_view& input : fused_node.Inputs()) {
+    subgraph_context_.input_names.insert({std::string(input), i++});
   }
 
   auto graph_inputs = subgraph.GetInputs();
   for (auto input : graph_inputs) {
-    auto it = subgraph_context_.input_names.find(input->Name());
+    auto it = subgraph_context_.input_names.find(std::string(input));
     if (it == subgraph_context_.input_names.end()) {
       throw std::string("Input not found in the input defs list");
     }
@@ -61,22 +59,20 @@ BackendManager::BackendManager(const onnxruntime::Node& fused_node,
     subgraph_context_.input_indexes.push_back(index);
   }
 
-  auto graph_outputs_defs = fused_node.OutputDefs();
   i = 0;
-  for (auto output_def : graph_outputs_defs) {
-    subgraph_context_.output_names.insert({output_def->Name(), i});
-    i++;
+  for (std::string_view& output : fused_node.Outputs()) {
+    subgraph_context_.output_names.insert({std::string(output), i++});
   }
   subgraph_context_.subgraph_name = fused_node.Name();
-  model_proto_ = GetModelProtoFromFusedNode(fused_node, subgraph, logger);
+  model_proto_ = GetModelProtoFromFusedNode(fused_node, subgraph);
 
   if (ModelHasSymbolicInputDims(subgraph)) {
     subgraph_context_.has_dynamic_input_shape = true;
-    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
+    //LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
     if (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
         GetGlobalContext().device_type.find("GPU") != std::string::npos) {
-      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Starting backend initialization. "
-                         << "Creating backend Dynamic Shapes";
+      //LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Starting backend initialization. "
+      //                   << "Creating backend Dynamic Shapes";
       try {
         concrete_backend_ = BackendFactory::MakeBackend(*model_proto_,
                                                         GetGlobalContext(),
@@ -84,11 +80,11 @@ BackendManager::BackendManager(const onnxruntime::Node& fused_node,
       } catch (std::string const& msg) {
         throw msg;
       }
-      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
-                         << "Backend created for graph " << subgraph_context_.subgraph_name;
+      //LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
+      //                   << "Backend created for graph " << subgraph_context_.subgraph_name;
     }
   } else {
-    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has concrete input dims. Initializing backend for graph " << subgraph_context_.subgraph_name;
+    //LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has concrete input dims. Initializing backend for graph " << subgraph_context_.subgraph_name;
 
     subgraph_context_.has_dynamic_input_shape = false;
     try {
@@ -132,16 +128,17 @@ bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& mod
   return has_batched_inputs;
 }
 
-bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& subgraph) const {
+bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::interface::GraphViewRef& subgraph) const {
   bool has_sym_dims = false;
-  auto graph_inputs = subgraph.GetInputs();
-  for (auto input : graph_inputs) {
-    if (input->Shape() == nullptr) {
+  for (std::string_view input_name : subgraph.GetInputs()) {
+    std::unique_ptr<interface::ValueInfoViewRef> input = subgraph.GetValueInfoView(input_name);
+    std::optional<std::vector<int64_t>> shape = input->Shape();
+    if (!shape) {
       has_sym_dims = true;
       break;
     }
-    for (auto& dim : input->Shape()->dim()) {
-      if (dim.value_case() != dim.kDimValue) {
+    for (int64_t& dim : *shape) {
+      if (dim == -1) {
         has_sym_dims = true;
         break;
       }
@@ -154,26 +151,24 @@ bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& s
 }
 
 std::unique_ptr<ONNX_NAMESPACE::ModelProto>
-BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
-                                           const onnxruntime::GraphViewer& subgraph,
-                                           const logging::Logger& logger) const {
-  auto model = subgraph.CreateModel(logger);
-
-  auto model_proto = model->ToProto();
-  model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-  subgraph.ToProto(*model_proto->mutable_graph(), true, true);
-
+BackendManager::GetModelProtoFromFusedNode(const onnxruntime::interface::NodeViewRef& fused_node,
+                                           const onnxruntime::interface::GraphViewRef& subgraph) const {
+#ifdef INTREE_EP
+  // TODO: raw pointer should work, or ApiGraphView::ToModelProto() should return unique_ptr<ModelProto>
+  std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto = std::make_unique<ONNX_NAMESPACE::ModelProto>(subgraph.ToModelProto());
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
-    const std::string& name = fused_node.Name();
+    const std::string name{fused_node.Name()};
     std::fstream dump(name + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
-    model_proto->SerializeToOstream(dump);
+    model_proto->SerializeToOstream(&dump);
   }
+#endif
+  return model_proto;
 #else
   ORT_UNUSED_PARAMETER(fused_node);
+  ORT_UNUSED_PARAMETER(subgraph);
+  return nullptr;
 #endif
-
-  return model_proto;
 }
 
 std::vector<std::vector<int64_t>> GetInputTensorShapes(Ort::KernelContext& context) {
@@ -208,9 +203,9 @@ std::string MakeMapKeyString(const std::vector<std::vector<int64_t>>& shapes,
 std::shared_ptr<ONNX_NAMESPACE::ModelProto>
 BackendManager::ReWriteInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_proto,
                                       const std::vector<std::vector<int64_t>>& input_shapes) {
-  auto model_copy = std::shared_ptr<ONNX_NAMESPACE::ModelProto>(ONNX_NAMESPACE::ModelProto::Create());
+  auto model_copy = std::make_shared<ONNX_NAMESPACE::ModelProto>();
   std::string proto_str;
-  model_proto.SerializeToString(proto_str);
+  model_proto.SerializeToString(&proto_str);
   model_copy->ParseFromString(proto_str);
   auto graph_proto = model_copy->mutable_graph();
 
@@ -227,9 +222,9 @@ BackendManager::ReWriteInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_pr
 
 std::shared_ptr<ONNX_NAMESPACE::ModelProto>
 BackendManager::ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_proto) {
-  auto model_copy = std::shared_ptr<ONNX_NAMESPACE::ModelProto>(ONNX_NAMESPACE::ModelProto::Create());
+  auto model_copy = std::make_shared<ONNX_NAMESPACE::ModelProto>();
   std::string proto_str;
-  model_proto.SerializeToString(proto_str);
+  model_proto.SerializeToString(&proto_str);
   model_copy->ParseFromString(proto_str);
   auto graph_proto = model_copy->mutable_graph();
 
@@ -248,7 +243,7 @@ void BackendManager::Compute(OrtKernelContext* context) {
   static bool fil_enabled = true;
   if (fil_enabled) {
     start_compute = std::chrono::high_resolution_clock::now();
-    LOGS_DEFAULT(INFO) << "Start Compute";
+    //LOGS_DEFAULT(INFO) << "Start Compute";
   }
 #endif
   bool use_dynamic_backend = true;
@@ -264,10 +259,10 @@ void BackendManager::Compute(OrtKernelContext* context) {
     std::shared_ptr<IBackend> dynamic_backend;
     auto search = backend_map_.find(key);
     if (search == backend_map_.end()) {
-      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
-                         << "Creating concrete backend for key: " << key;
-      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
-                         << "Backend created for graph " << subgraph_context_.subgraph_name;
+      //LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
+      //                   << "Creating concrete backend for key: " << key;
+      //LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
+      //                   << "Backend created for graph " << subgraph_context_.subgraph_name;
       auto modelproto_with_concrete_shapes = ReWriteInputShapeInfo(*model_proto_, tensor_shapes);
       try {
         dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes,
@@ -288,7 +283,7 @@ void BackendManager::Compute(OrtKernelContext* context) {
 #ifdef OPENVINO_FIL_ENABLED
   if (fil_enabled) {
     end_compute = std::chrono::high_resolution_clock::now();
-    LOGS_DEFAULT(INFO) << "End Compute";
+    //LOGS_DEFAULT(INFO) << "End Compute";
     std::chrono::duration<double> compute_time = end_compute - start_compute;
     std::cout << "Compute Time: " << compute_time.count() << " s" << std::endl;
     fil_enabled = false;  // calculating compute time for first run only

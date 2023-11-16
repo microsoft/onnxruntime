@@ -3,7 +3,7 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/openvino_provider_factory.h"
-#include "core/providers/openvino/openvino_execution_provider.h"
+//#include "core/providers/openvino/openvino_execution_provider.h"
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
 
 namespace onnxruntime {
@@ -35,10 +35,11 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
-  OpenVINOExecutionProviderInfo info(device_type_, enable_vpu_fast_compile_, device_id_, num_of_threads_,
-                                     cache_dir_, num_streams_, context_, enable_opencl_throttling_,
-                                     enable_dynamic_shapes_);
-  return std::make_unique<OpenVINOExecutionProvider>(info);
+//  OpenVINOExecutionProviderInfo info(device_type_, enable_vpu_fast_compile_, device_id_, num_of_threads_,
+//                                     cache_dir_, num_streams_, context_, enable_opencl_throttling_,
+//                                     enable_dynamic_shapes_);
+//  return std::make_unique<OpenVINOExecutionProvider>(info);
+  return nullptr;
 }
 
 }  // namespace onnxruntime
@@ -46,8 +47,9 @@ std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
 namespace onnxruntime {
 struct ProviderInfo_OpenVINO_Impl : ProviderInfo_OpenVINO {
   std::vector<std::string> GetAvailableDevices() const override {
-    openvino_ep::OVCore ie_core;
-    return ie_core.GetAvailableDevices();
+//    openvino_ep::OVCore ie_core;
+//    return ie_core.GetAvailableDevices();
+    return std::vector<std::string>{};
   }
 } g_info;
 
@@ -155,7 +157,7 @@ struct OpenVINO_Provider : Provider {
   }
 
   void Shutdown() override {
-    openvino_ep::BackendManager::ReleaseGlobalContext();
+//    openvino_ep::BackendManager::ReleaseGlobalContext();
   }
 
 } g_provider;

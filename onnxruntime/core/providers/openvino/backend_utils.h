@@ -8,6 +8,7 @@
 #include "contexts.h"
 #include <iomanip>
 #include "ov_interface.h"
+#include "onnx/onnx_pb.h"
 #ifdef _WIN32
 #include <direct.h>
 #define GetCurrentDir _getcwd

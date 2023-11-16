@@ -7,7 +7,6 @@
 #include <sstream>
 #include <fstream>
 
-#include "core/providers/shared_library/provider_api.h"
 #include "../backend_utils.h"
 // #include <ngraph/pass/constant_folding.hpp>
 #include "basic_backend.h"
@@ -44,7 +43,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   if (IsDebugEnabled()) {
     std::string file_name = subgraph_context.subgraph_name + "_static.onnx";
     std::fstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
-    model_proto.SerializeToOstream(outfile);
+    model_proto.SerializeToOstream(&outfile);
   }
 #endif
   try {
@@ -53,38 +52,38 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
 #if defined(IO_BUFFER_ENABLED)
       if ((global_context.device_type.find("GPU") != std::string::npos) &&
           (global_context_.context != nullptr)) {
-        LOGS_DEFAULT(INFO) << log_tag << "IO Buffering Enabled";
+        //LOGS_DEFAULT(INFO) << log_tag << "IO Buffering Enabled";
         cl_context ctx = static_cast<cl_context>(global_context_.context);
         remote_context_ = new ov::intel_gpu::ocl::ClContext(global_context_.ie_core.Get(), ctx);
         ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
         exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, remote_context_, subgraph_context_.subgraph_name);
-        LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+        //LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
       } else {
         ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
         exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
-        LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+        //LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
       }
 #else
 #if defined(OPENVINO_2023_0) || (OPENVINO_2023_1)
       if (!subgraph_context_.has_dynamic_input_shape && dev_prec != "CPU_FP16") {
         const std::string model = model_proto.SerializeAsString();
         exe_network_ = global_context_.ie_core.LoadNetwork(model, hw_target, device_config, subgraph_context_.subgraph_name);
-        LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+        //LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
       } else {
         ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
         exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
-        LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+        //LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
       }
 #else
       ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
       exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
-      LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+      //LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
 #endif
 #endif
     } else {
       ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
       exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
-      LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+      //LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
     }
   } catch (const char* msg) {
     throw(msg);
@@ -93,7 +92,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   // The infer_requests_ pool will be intialized with a default value of 8 infer_request's
   // The nireq value can also be configured to any num_of_threads during runtime
   size_t nireq = global_context_.num_of_threads;
-  LOGS_DEFAULT(INFO) << log_tag << "The value of nireq being used is: " << nireq;
+  //LOGS_DEFAULT(INFO) << log_tag << "The value of nireq being used is: " << nireq;
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     std::cout << "The value of nireq being used is: " << nireq << std::endl;
@@ -106,7 +105,7 @@ bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::No
   if (const_outputs_map.size() == subgraph_context_.output_names.size())
     subgraph_context_.is_constant = true;
   if (subgraph_context_.is_constant) {
-    LOGS_DEFAULT(INFO) << log_tag << "The subgraph is a const. Directly moving to Infer stage.";
+    //LOGS_DEFAULT(INFO) << log_tag << "The subgraph is a const. Directly moving to Infer stage.";
     return true;
   }
   return false;
@@ -146,14 +145,14 @@ void BasicBackend::EnableCaching() {
 #endif
 #endif
     }
-    LOGS_DEFAULT(INFO) << log_tag << "Enables Caching";
+    //LOGS_DEFAULT(INFO) << log_tag << "Enables Caching";
     global_context_.ie_core.SetCache(global_context_.cache_dir);
   }
 }
 
 void BasicBackend::EnableGPUThrottling(ov::AnyMap& device_config) {
   if (global_context_.enable_opencl_throttling == true && global_context_.device_type.find("GPU") != std::string::npos) {
-    LOGS_DEFAULT(INFO) << log_tag << "Enabled OpenCL queue throttling for GPU device";
+    //LOGS_DEFAULT(INFO) << log_tag << "Enabled OpenCL queue throttling for GPU device";
     std::pair<std::string, ov::Any> device_property;
     device_property = std::make_pair("PLUGIN_THROTTLE", "1");
     device_config.emplace(ov::device::properties("GPU_CONFIG_KEY", device_property));
@@ -258,7 +257,7 @@ void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInfe
       const auto tensor = context.GetInput(subgraph_context_.input_names.at(input_name));
       // If the ORTValue wraps a device pointer
       auto mem_info = tensor.GetTensorMemoryInfo();
-      if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
+      if (mem_info.GetAllocatorName() == "OpenVINO_GPU") {
         // Get the shared buffer pointer
         const void* tensor_data = tensor.GetTensorRawData();
         const cl::Buffer* shared_buffer_const = static_cast<const cl::Buffer*>(tensor_data);
@@ -302,7 +301,7 @@ void BasicBackend::StartRemoteAsyncInference(Ort::KernelContext& context, OVInfe
       auto tensor = GetOutputTensor(context, batch_size, infer_request, output_name, subgraph_context_.output_names);
       auto mem_info = tensor.GetTensorMemoryInfo();
       // Check if ORT Value wraps a device pointer
-      if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
+      if (mem_info.GetAllocatorName() == "OpenVINO_GPU") {
         const void* tensor_data = tensor.GetTensorRawData();
         const cl::Buffer* shared_buffer_const = static_cast<const cl::Buffer*>(tensor_data);
         // Create a shared Blob, set the Infer Request Output Blob
@@ -366,7 +365,7 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
       size_t batch_size = 1;
       auto output_tensor = GetOutputTensor(context, batch_size, infer_request, output_name, subgraph_context_.output_names);
       auto mem_info = output_tensor.GetTensorMemoryInfo();
-      if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
+      if (mem_info.GetAllocatorName() == "OpenVINO_GPU") {
         return;
       } else {
         size_t batch_slice = 0;
@@ -380,7 +379,7 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
         auto node = item.second;
         auto output_tensor = GetOutputTensor(context, out_name, subgraph_context_.output_names, node);
         auto mem_info = output_tensor.GetTensorMemoryInfo();
-        if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
+        if (mem_info.GetAllocatorName() == "OpenVINO_GPU") {
           throw(log_tag + "IO Buffering is not supported for constant subgraphs");
         } else {
           FillOutputsWithConstantData(node, output_tensor);
@@ -397,8 +396,8 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
   // currently allows a maximum of 8 Infer request's to parallel execute at the same time
   Ort::KernelContext context(ctx);
 
-  LOGS_DEFAULT(INFO) << log_tag << "Running graph " << subgraph_context_.subgraph_name;
-  LOGS_DEFAULT(INFO) << log_tag << "In Infer";
+  //LOGS_DEFAULT(INFO) << log_tag << "Running graph " << subgraph_context_.subgraph_name;
+  //LOGS_DEFAULT(INFO) << log_tag << "In Infer";
 
   if (subgraph_context_.is_constant) {
     for (auto item : const_outputs_map_) {
@@ -412,7 +411,7 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
       }
     }
     // Get Output tensors
-    LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
+    //LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
     // Enable CI Logs
     if (IsCILogEnabled()) {
       std::cout << "Inference successful" << std::endl;
@@ -453,7 +452,7 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
     }
 
     // Get Output tensors
-    LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
+    //LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
     // Enable CI Logs
     if (IsCILogEnabled()) {
       std::cout << "Inference successful" << std::endl;

@@ -10,7 +10,6 @@
 #include "ov_interface.h"
 #include "openvino/pass/convert_fp32_to_fp16.hpp"
 #include "openvino/pass/constant_folding.hpp"
-#include "core/providers/shared_library/provider_api.h"
 #include "backend_utils.h"
 
 #if defined(OV_API_20)
@@ -26,19 +25,19 @@ namespace backend_utils {
 
 #ifndef NDEBUG
 bool IsDebugEnabled() {
-  const std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_DEBUG");
-  if (!env_name.empty()) {
-    return true;
-  }
+//  const std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_DEBUG");
+//  if (!env_name.empty()) {
+//    return true;
+//  }
   return false;
 }
 #endif
 
 bool IsCILogEnabled() {
-  const std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG");
-  if (!env_name.empty()) {
-    return true;
-  }
+//  const std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG");
+//  if (!env_name.empty()) {
+//    return true;
+//  }
   return false;
 }
 
@@ -234,7 +233,7 @@ void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
   auto input_data = inputBlob->data();
   auto tensor = context.GetInput(subgraph_context.input_names.at(input_name));
   auto mem_info = tensor.GetTensorMemoryInfo();
-  if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
+  if (mem_info.GetAllocatorName() == "OpenVINO_GPU") {  // TODO: or include allocator.h
     throw std::string(log_tag + "IO Buffering is not enabled, Please enable Input on CPU");
   }
   // Copy input data into OpenVINO's input buffer
