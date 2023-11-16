@@ -623,6 +623,7 @@ class FusionAttention(Fusion):
         present_k: str = "",
         present_v: str = "",
         packed_qkv: bool = False,
+        kv_cache_name_match: bool = True,
     ) -> Union[NodeProto, None]:
         """Create a MultiHeadAttention node.
 
@@ -645,6 +646,9 @@ class FusionAttention(Fusion):
             packed_qkv (bool): whether to combine MatMuls from Q, K, V paths
                                Note: This is for the scenario where an Attention node should be created but cannot be created
                                because past_key and past_value are separate inputs and not one concatenated input.
+            kv_cache_name_match (bool): whether past_k, past_v, present_k, present_v names matches the names in graph input and output names
+                                Mark this as False if the kv_cache input shape is (num_layers, batch_size, num_heads, past_sequence_length, head_size) instead of
+                                the original shape mentioned above. In this case we separate the keys and values as pass the output of gather to attention
 
         Returns:
             Union[NodeProto, None]: the node created or None if failed.
@@ -692,13 +696,27 @@ class FusionAttention(Fusion):
         else:
             mha_inputs.append("")
 
+        if (
+            past_k in graph_input_names
+            and past_v in graph_input_names
+            and present_k in graph_output_names
+            and present_v in graph_output_names
+        ):
+            kv_cache_name_match = True
+        else:
+            kv_cache_name_match = False
+
         # Add optional inputs for MHA
-        if past_k and past_v and past_k in graph_input_names and past_v in graph_input_names:
+        if past_k and past_v and kv_cache_name_match:
+            mha_inputs.extend([key_padding_mask, add_qk, past_k, past_v])
+        elif past_k and past_v and not kv_cache_name_match:
             mha_inputs.extend([key_padding_mask, add_qk, past_k, past_v])
 
         # Add outputs for MHA
         mha_outputs = [output]
-        if present_k and present_v and present_k in graph_output_names and present_v in graph_output_names:
+        if present_k and present_v and kv_cache_name_match:
+            mha_outputs.extend([present_k, present_v])
+        elif present_k and present_v and not kv_cache_name_match:
             mha_outputs.extend([present_k, present_v])
 
         mha_node = helper.make_node(

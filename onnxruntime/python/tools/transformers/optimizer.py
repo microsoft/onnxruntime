@@ -32,6 +32,7 @@ from onnx_model_bert import BertOnnxModel
 from onnx_model_bert_keras import BertOnnxModelKeras
 from onnx_model_bert_tf import BertOnnxModelTF
 from onnx_model_clip import ClipOnnxModel
+from onnx_model_ct import TransducerOnnxModel
 from onnx_model_gpt2 import Gpt2OnnxModel
 from onnx_model_t5 import T5OnnxModel
 from onnx_model_tnlr import TnlrOnnxModel
@@ -56,6 +57,7 @@ MODEL_TYPES = {
     "unet": (UnetOnnxModel, "pytorch", 1),  # UNet in Stable Diffusion
     "vae": (VaeOnnxModel, "pytorch", 1),  # UAE in Stable Diffusion
     "vit": (BertOnnxModel, "pytorch", 1),
+    "ct": (TransducerOnnxModel, "pytorch", 1),
 }
 
 
