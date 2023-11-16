@@ -44,9 +44,8 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   ORT_ENFORCE(info.GetAttr("kv_num_heads", &kv_num_heads).IsOK() && kv_num_heads > 0 && num_heads % kv_num_heads == 0);
   num_heads_ = static_cast<int>(num_heads);
   kv_num_heads_ = static_cast<int>(kv_num_heads);
-  is_unidirectional_ = true;
-  // left_padding_ = info.GetAttrOrDefault<int64_t>("left_padding_last_token", 0) == 1;
   is_past_bsnh_ = false;  // info.GetAttrOrDefault<int64_t>("is_past_bsnh", 1) == 1;
+  local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
 #if USE_FLASH_ATTENTION
@@ -92,8 +91,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                 is_past_bsnh_,
                                                                 scale_,
                                                                 device_prop.maxThreadsPerBlock));
-  parameters.is_unidirectional = is_unidirectional_;
-  // parameters.left_padding = left_padding_;
+  parameters.local_window_size = local_window_size_;
   int sequence_length = parameters.sequence_length;
 
   TensorShapeVector output_shape(3);
@@ -139,6 +137,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   bool use_memory_efficient_attention =
       !use_flash_attention &&
       !disable_memory_efficient_attention_ &&
+      local_window_size_ == -1 &&
       (parameters.head_size & 7) == 0 &&
       parameters.sequence_length <= parameters.seqlen_past_kv_cache + parameters.sequence_length &&
       (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32) &&
@@ -221,6 +220,13 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (k_buffer != nullptr) {
     data.k = reinterpret_cast<CudaT*>(k_buffer.get());
     data.v = reinterpret_cast<CudaT*>(v_buffer.get());
+  }
+  if (k_buffer != nullptr) {
+    data.k = reinterpret_cast<CudaT*>(k_buffer.get());
+    data.v = reinterpret_cast<CudaT*>(v_buffer.get());
+  }
+  if (fmha_buffer != nullptr) {
+    data.fmha_buffer = reinterpret_cast<CudaT*>(fmha_buffer.get());
   }
 
   cublasHandle_t cublas = GetCublasHandle(context);

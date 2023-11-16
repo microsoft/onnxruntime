@@ -54,7 +54,8 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                int num_splits = 0,
                void* softmax_lse_accum = nullptr,  // num_splits x batch_size x seqlen_q x num_heads
                void* out_accum = nullptr,          // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
-               bool kv_bsnh = true);
+               bool kv_bsnh = true,
+               int local_window_size = -1);
 
 Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       cudaStream_t stream,
@@ -96,8 +97,8 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        bool past_bsnh,  // otherwise bnsh
                        int num_splits = 0,
                        void* softmax_lse_accum = nullptr,  // num_splits x batch_size x seqlen_q x num_heads
-                       void* out_accum = nullptr           // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
-);
+                       void* out_accum = nullptr,          // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
+                       int local_window_size = -1);
 
 size_t get_softmax_lse_size(int max_seqlen_q, int batch_size, int num_heads);
 
