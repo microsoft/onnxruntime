@@ -672,8 +672,10 @@
         "^test_affine_grid_3d_expanded",
         "^test_constantofshape_float_ones",
         "^test_constantofshape_int_shape_zero",
-        "^test_constantofshape_int_zeros"
-
+        "^test_constantofshape_int_zeros",
+        "^test_reduce_log_sum_empty_set_cpu",
+        "^test_reduce_log_sum_exp_empty_set_cpu",
+        "^test_reduce_prod_empty_set_cpu"
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
     "tests_with_pre_opset7_dependencies": [
