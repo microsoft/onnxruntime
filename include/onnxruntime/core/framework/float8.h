@@ -219,8 +219,10 @@ struct Float8E4M3FNUZ {
     } else {
       uint8_t e = static_cast<uint8_t>((b & 0x7F800000) >> 23);  // exponent
       uint32_t m = static_cast<uint32_t>(b & 0x007FFFFF);        // mantissa
-      if (e != 0) {
+
         if (e < 116) {
+          // all near-zero numbers round to positive zero:
+          val = 0;
         } else if (e < 120) {
           // denormalized number
           auto d = 119 - e;
@@ -229,6 +231,9 @@ struct Float8E4M3FNUZ {
             val |= m >> (21 + d);
           } else if (m > 0) {
             val |= 1;
+          } else {
+            // round to positive zero:
+            val = 0;
           }
           auto mask = 1 << (20 + d);
           if ((m & mask) && ((val & 1) || ((m & (mask - 1)) > 0) || ((m & mask) && (m & (mask << 1)) && ((m & (mask - 1)) == 0)))) {
@@ -258,10 +263,6 @@ struct Float8E4M3FNUZ {
         } else {
           val = 0x80;
         }
-      } else if (m == 0) {
-        // -0
-        val = 0;
-      }
     }
   }
 
@@ -531,8 +532,9 @@ struct Float8E5M2FNUZ {
       uint32_t e = (b & 0x7F800000) >> 23;  // exponent
       uint32_t m = b & 0x007FFFFF;          // mantissa
 
-      if (e != 0) {
         if (e < 109) {
+          // all near-zero numbers round to positive zero:
+          val = 0;
         } else if (e < 112) {
           // denormalized number
           auto d = 111 - e;
@@ -541,6 +543,9 @@ struct Float8E5M2FNUZ {
             val |= m >> (22 + d);
           } else if (m > 0) {
             val |= 1;
+          } else {
+            // round to positive zero:
+            val = 0;
           }
           auto mask = 1 << (21 + d);
           if ((m & mask) && ((val & 1) || ((m & (mask - 1)) > 0) || ((m & mask) && (m & (mask << 1)) && ((m & (mask - 1)) == 0)))) {
@@ -567,10 +572,6 @@ struct Float8E5M2FNUZ {
         } else {
           val = 0x80;
         }
-      } else if (m == 0) {
-        // -0
-        val = 0;
-      }
     }
   }
 
