@@ -1215,7 +1215,10 @@ class ONNXQuantizer:
                 raise TypeError(f"Unexpected type {type(td)} for {tensor_name!r}.")
 
             quant_overrides = self.tensor_quant_overrides.get(tensor_name, {})
-            quant_type = quant_overrides.get("quant_type", self.activation_qType)
+
+            quant_type = self.activation_qType
+            if "quant_type" in quant_overrides:
+                quant_type = quant_overrides["quant_type"].tensor_type
 
             if "scale" in quant_overrides and "zero_point" in quant_overrides:
                 zero, scale = quant_overrides["zero_point"], quant_overrides["scale"]

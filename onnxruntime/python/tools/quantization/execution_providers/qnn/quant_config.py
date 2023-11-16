@@ -18,7 +18,7 @@ def get_qnn_qdq_config(
     calibrate_method=CalibrationMethod.MinMax,
     activation_type=QuantType.QUInt8,
     weight_type=QuantType.QUInt8,
-    op_types_to_quantize=None
+    op_types_to_quantize=None,
 ):
     # Parse model nodes to setup overrides.
     model = onnx.load_model(model_input)
