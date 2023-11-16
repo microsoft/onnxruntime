@@ -1,14 +1,39 @@
 ARG BASEIMAGE=registry.access.redhat.com/ubi8/ubi
+ARG POLICY=manylinux_2_28
+ARG PLATFORM=x86_64
 
 ARG BUILD_LORT=false
 ARG BUILD_ATEN=false
 
+ARG DEVTOOLSET_ROOTPATH=/opt/rh/gcc-toolset-12/root
+ARG LD_LIBRARY_PATH_ARG=${DEVTOOLSET_ROOTPATH}/usr/lib64:${DEVTOOLSET_ROOTPATH}/usr/lib:${DEVTOOLSET_ROOTPATH}/usr/lib64/dyninst:${DEVTOOLSET_ROOTPATH}/usr/lib/dyninst:/usr/local/lib64
+ARG PREPEND_PATH=/usr/lib/jvm/msopenjdk-11/bin:${DEVTOOLSET_ROOTPATH}/usr/bin:
+
 FROM $BASEIMAGE AS runtime_base
+
+ARG BUILD_LORT
+ARG BUILD_ATEN
+
+ARG POLICY
+ARG PLATFORM
+ARG DEVTOOLSET_ROOTPATH
+ARG LD_LIBRARY_PATH_ARG
+ARG PREPEND_PATH
+LABEL maintainer="The ManyLinux project"
+
+ENV AUDITWHEEL_POLICY=${POLICY} AUDITWHEEL_ARCH=${PLATFORM} AUDITWHEEL_PLAT=${POLICY}_${PLATFORM}
+ENV LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 LANGUAGE=en_US.UTF-8
+ENV DEVTOOLSET_ROOTPATH=${DEVTOOLSET_ROOTPATH}
+ENV LD_LIBRARY_PATH=${LD_LIBRARY_PATH_ARG}
+ENV PATH=${PREPEND_PATH}${PATH}
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
+
+
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh
-RUN if [ $BUILD_LORT = true ]; then \
+RUN if [[ $BUILD_LORT = true ]]; then \
     cd /tmp/scripts && /tmp/scripts/manylinux/install_deps_lort.sh ; \
-    elif [ $BUILD_ATEN = true ]; then  \
+    elif [[ $BUILD_ATEN = true ]]; then  \
     cd /tmp/scripts && /tmp/scripts/manylinux/install_deps_aten.sh ; \
     fi
 RUN rm -rf /tmp/scripts
