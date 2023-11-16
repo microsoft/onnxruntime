@@ -1273,7 +1273,7 @@ TEST(CApiTest, test_custom_op_local_function) {
   std::vector<const char*> input_names;
 
   // input 0 (float type)
-  input_names.emplace_back("input1");
+  input_names.emplace_back("X");
   std::vector<float> input_0_data = {1.0f, 2.0f, 3.0f, 4.0f};
   std::vector<int64_t> input_0_dims = {2, 2};
   ort_inputs.emplace_back(
