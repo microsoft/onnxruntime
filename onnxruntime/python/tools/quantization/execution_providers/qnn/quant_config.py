@@ -23,7 +23,7 @@ def get_qnn_qdq_config(
     activation_type=QuantType.QUInt8,
     weight_type=QuantType.QUInt8,
 ):
-    # Parse model nodes to setup overrides.
+    # Process model nodes to setup overrides.
     model = onnx.load_model(model_input)
 
     op_types = set()
@@ -66,6 +66,7 @@ def get_qnn_qdq_config(
         "TensorQuantOverrides": tensor_quant_overrides,
     }
 
+    # TODO: Remove this extra option once ORT uses an ONNX version that supports 16-bit Q/DQ ops.
     if activation_type in Q16_TYPES or weight_type in Q16_TYPES:
         extra_options["UseQDQContribOps"] = True
 
