@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from ..quant_utils import find_by_name
 from .qdq_base_operator import QDQOperatorBase
 
 
@@ -35,4 +36,3 @@ class QDQNormalization(QDQOperatorBase):
         if not self.disable_qdq_for_node_output:
             for output_name in node.output:
                 self.quantizer.quantize_activation_tensor(output_name)
-

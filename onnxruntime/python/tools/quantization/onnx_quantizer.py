@@ -918,15 +918,14 @@ class ONNXQuantizer:
                     )
                 else:
                     quant_overrides = self.tensor_quant_overrides.get(initializer.name, {})
-                    quant_type = quant_overrides.get("quant_type", self.weight_qType if initializer_use_weight_qType else self.activation_qType)
+                    quant_type = quant_overrides.get(
+                        "quant_type", self.weight_qType if initializer_use_weight_qType else self.activation_qType
+                    )
                     symmetric = quant_overrides.get("symmetric", self.is_weight_symmetric)
                     reduce_range = quant_overrides.get("reduce_range", reduce_range)
 
                     q_weight_name, zp_name, scale_name = self.quantize_initializer(
-                        initializer,
-                        quant_type,
-                        reduce_range=reduce_range,
-                        symmetric=symmetric
+                        initializer, quant_type, reduce_range=reduce_range, symmetric=symmetric
                     )
 
                 quantized_input_names.append(q_weight_name)
@@ -1234,9 +1233,7 @@ class ONNXQuantizer:
 
                 qmin, qmax = get_qmin_qmax_for_qType(quant_type, reduce_range=reduce_range, symmetric=symmetric)
 
-                zero, scale = compute_scale_zp(
-                    rmin, rmax, qmin, qmax, is_symmetric, self.min_real_range
-                )
+                zero, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric, self.min_real_range)
             quantization_params[tensor_name] = QuantizationParams(zero_point=zero, scale=scale, quant_type=quant_type)
 
         return quantization_params
