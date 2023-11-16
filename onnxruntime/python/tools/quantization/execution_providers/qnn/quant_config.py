@@ -11,6 +11,9 @@ from ...calibrate import CalibrationDataReader, CalibrationMethod
 from ...quant_utils import QuantType
 from ...quantize import StaticQuantConfig
 
+Q16_TYPES = {QuantType.QInt16, QuantType.QUInt16}
+Q8_TYPES = {QuantType.QInt8, QuantType.QUInt8}
+
 
 def get_qnn_qdq_config(
     model_input: Path,
@@ -25,9 +28,16 @@ def get_qnn_qdq_config(
 
     tensor_quant_overrides = {}
 
+    name_to_initializer = {initializer.name: initializer for initializer in model.graph.initializer}
+
     for node in model.graph.node:
-        if node.op_type == "MatMul" and activation_type == QuantType.QUInt16:
-            tensor_quant_overrides[node.input[1]] = {"quant_type": QuantType.QUInt8}
+        if (node.op_type == "MatMul" or node.op_type == "LayerNormalization") and (
+            activation_type in Q16_TYPES and weight_type in Q8_TYPES
+        ):
+            # Override initializers to use the weight_type
+            for input_name in node.input:
+                if input_name in name_to_initializer:
+                    tensor_quant_overrides[input_name] = {"quant_type": weight_type}
         elif node.op_type == "Sigmoid":
             if activation_type == QuantType.QUInt16:
                 tensor_quant_overrides[node.output[0]] = {"scale": 1.0 / 65536.0, "zero_point": 0}
@@ -45,8 +55,7 @@ def get_qnn_qdq_config(
         "TensorQuantOverrides": tensor_quant_overrides,
     }
 
-    q16_types = [QuantType.QInt16, QuantType.QUInt16]
-    if activation_type in q16_types or weight_type in q16_types:
+    if activation_type in Q16_TYPES or weight_type in Q16_TYPES:
         extra_options["UseQDQContribOps"] = True
 
     return StaticQuantConfig(

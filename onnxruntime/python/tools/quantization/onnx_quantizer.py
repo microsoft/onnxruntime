@@ -918,9 +918,11 @@ class ONNXQuantizer:
                     )
                 else:
                     quant_overrides = self.tensor_quant_overrides.get(initializer.name, {})
-                    quant_type = quant_overrides.get(
-                        "quant_type", self.weight_qType if initializer_use_weight_qType else self.activation_qType
-                    )
+
+                    quant_type = self.weight_qType if initializer_use_weight_qType else self.activation_qType
+                    if "quant_type" in quant_overrides:
+                        quant_type = quant_overrides["quant_type"].tensor_type
+
                     symmetric = quant_overrides.get("symmetric", self.is_weight_symmetric)
                     reduce_range = quant_overrides.get("reduce_range", reduce_range)
 
