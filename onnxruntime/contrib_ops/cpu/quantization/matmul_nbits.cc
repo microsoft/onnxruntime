@@ -79,6 +79,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     }
     if (input_idx == 3) {
       auto zptr = tensor.Data<uint8_t>();
+      MlasNBitsGemmPackB(packed_b_.get(), nullptr, nullptr, zptr, N_, K_, K_, block_size_, nbits_, is_asym_, is_asym_, compt_type, pool);
       if (prepacked_weights) {
         prepacked_weights->buffers_.push_back(std::move(packed_b_));
         prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
