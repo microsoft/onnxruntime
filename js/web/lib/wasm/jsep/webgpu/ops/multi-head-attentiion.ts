@@ -280,7 +280,7 @@ const maybeTransposeToBNSHAndAddBias =
           reshapedInput = input.reshape([batchSize, sequenceLength, numHeads, headSize]);
         }
         return context.compute(
-          createTransposeProgramInfo(input.dataType, reshapedInput.dims.length, weightTransposeAttribute.perm),
+            createTransposeProgramInfo(reshapedInput, weightTransposeAttribute.perm),
             {inputs: [reshapedInput], outputs: [-1]})[0];
       } else {
         if (sequenceLength === 1) {
@@ -290,7 +290,7 @@ const maybeTransposeToBNSHAndAddBias =
               addBiasTranspose(context, input, bias, batchSize, sequenceLength, numHeads * headSize, biasOffset!);
           reshapedInput = reshapedInput.reshape([batchSize, sequenceLength, numHeads, headSize]);
           return context.compute(
-              createTransposeProgramInfo(input.dataType, reshapedInput.dims.length, weightTransposeAttribute.perm),
+              createTransposeProgramInfo(reshapedInput, weightTransposeAttribute.perm),
               {inputs: [reshapedInput], outputs: [-1]})[0];
         }
       }

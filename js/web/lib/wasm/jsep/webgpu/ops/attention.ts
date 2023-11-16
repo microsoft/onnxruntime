@@ -317,7 +317,7 @@ export const computeInPlaceSoftmax = (context: ComputeContext, input: TensorView
 };
 
 const computeAttentionProbs =
-    (context: ComputeContext, q: TensorView, key: TensorView, bias: TensorView|undefined,
+    (context: ComputeContext, q: TensorView, key: TensorView, _bias: TensorView|undefined,
      parameters: AttentionParameters, attributes: AttentionAttrs) => {
       const probsShape = [
         parameters.batchSize, parameters.numHeads, parameters.sequenceLength,
@@ -443,7 +443,7 @@ const computeVxAttentionScore =
   const K: u32 = ${params.totalSequenceLength}u;
   const numHeads: u32 = ${params.numHeads}u;
   const TILE_SIZE = ${TILE_SIZE}u;
-  
+
   var<workgroup> tileQ: array<${probsHelper.type.storage}, ${TILE_SIZE * TILE_SIZE}>;
   var<workgroup> tileK: array<${probsHelper.type.storage}, ${TILE_SIZE * TILE_SIZE}>;
 
@@ -482,7 +482,7 @@ const computeVxAttentionScore =
    let currentBatchHeadNumber = workgroup_id.z % ${params.numHeads};
    let headOffset = (batchIdx * M * ${params.numHeads} + currentBatchHeadNumber) * ${params.vHeadSize};
    if (m < M && n < N) {
-     let outputIdx = batchIdx * ${params.sequenceLength * params.vHiddenSize} + m * ${params.vHiddenSize} 
+     let outputIdx = batchIdx * ${params.sequenceLength * params.vHiddenSize} + m * ${params.vHiddenSize}
        + currentBatchHeadNumber * ${params.vHeadSize} + n;
      output[outputIdx] = value;
    }
@@ -502,8 +502,8 @@ const computeVxAttentionScore =
     };
 
 export const applyAttention =
-    (context: ComputeContext, q: TensorView, k: TensorView, v: TensorView, maskIndex: TensorView|undefined,
-     past: TensorView|undefined, pastKey: TensorView|undefined, pastValue: TensorView|undefined,
+    (context: ComputeContext, q: TensorView, k: TensorView, v: TensorView, _maskIndex: TensorView|undefined,
+     _past: TensorView|undefined, _pastKey: TensorView|undefined, _pastValue: TensorView|undefined,
      relativePositionBias: TensorView|undefined, parameters: AttentionParameters, attributes: AttentionAttrs) => {
       const probs = computeAttentionProbs(context, q, k, relativePositionBias, parameters, attributes);
 
@@ -538,7 +538,7 @@ const prepare = (context: ComputeContext, parameters: AttentionParameters) => {
   const numHeads: u32 = ${parameters.numHeads};
   const ldb = ${parameters.hiddenSize + parameters.hiddenSize + parameters.vHiddenSize}u;
   const TILE_SIZE = ${TILE_SIZE}u;
-  
+
   var<workgroup> tileInput: array<${dataType}, ${TILE_SIZE * TILE_SIZE}>;
   var<workgroup> tileWeightQ: array<${dataType}, ${TILE_SIZE * TILE_SIZE}>;
   var<workgroup> tileWeightK: array<${dataType}, ${TILE_SIZE * TILE_SIZE}>;
