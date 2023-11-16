@@ -669,7 +669,7 @@
 			"Follow build instructions from <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
 
 		'linux,Python,X64,CANN':
-			"pip install onnxruntime-cann <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/community-maintained/CANN-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+			"pip install onnxruntime-cann <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
 		'linux,C-API,X64,CANN':
 			"Follow build instructions from <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
