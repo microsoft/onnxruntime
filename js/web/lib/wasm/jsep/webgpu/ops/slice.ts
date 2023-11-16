@@ -144,15 +144,15 @@ const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: Slice
       array[i] = -step;
     }
   });
-  const enableInputShapeUniforms = enableShapesUniforms(inputs[0].dims.length);
-  const inputShapeOrRank = enableInputShapeUniforms ? inputs[0].dims.length : inputs[0].dims;
+  // Output rank is expected to be less than or equal to the input rank.
+  const enableShapeUniforms = enableShapesUniforms(inputs[0].dims.length);
+  const inputShapeOrRank = enableShapeUniforms ? inputs[0].dims.length : inputs[0].dims;
 
   const outputShape = inputShape.slice(0);
   axes.forEach((axis, _) => {
     outputShape[axis] = Math.ceil((ends[axis] - starts[axis]) / steps[axis]);
   });
-  const enableOutputShapeUniforms = enableShapesUniforms(outputShape.length);
-  const outputShapeOrRank = enableOutputShapeUniforms ? outputShape.length : outputShape;
+  const outputShapeOrRank = enableShapeUniforms ? outputShape.length : outputShape;
 
   const outputTensorInfo: TensorInfo = {dims: outputShape, dataType: inputs[0].dataType};
 
@@ -161,7 +161,7 @@ const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: Slice
   const outputSize = ShapeUtil.size(outputShape);
   const programUniforms: ProgramUniform[] = [];
   const uniforms: UniformsArrayType = [];
-  if (enableInputShapeUniforms) {
+  if (enableShapeUniforms) {
     uniforms.push({name: 'starts', type: starts.length > 1 ? `vec${starts.length}<u32>` : 'u32'});
     uniforms.push({name: 'signs', type: signs.length > 1 ? `vec${signs.length}<i32>` : 'i32'});
     uniforms.push({name: 'steps', type: steps.length > 1 ? `vec${steps.length}<u32>` : 'u32'});
@@ -171,23 +171,21 @@ const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: Slice
   }
   uniforms.push({name: 'outputSize', type: 'u32'});
   programUniforms.push({type: 'uint32', data: outputSize});
-  if (enableInputShapeUniforms) {
+  if (enableShapeUniforms) {
     programUniforms.push(...createTensorShapeVariables(inputs[0].dims));
-  }
-  if (enableOutputShapeUniforms) {
     programUniforms.push(...createTensorShapeVariables(outputShape));
   }
 
   const getShaderSource = (shaderHelper: ShaderHelper) => `
       ${shaderHelper.registerUniforms(uniforms).declareVariables(input, output)}
-        ${enableInputShapeUniforms ? '' : [
+        ${enableShapeUniforms ? '' : [
     `const signs = array<i32, ${signs.length}>(${signs.map(i => `${i}i`).join(',')});`,
     `const starts = array<u32, ${starts.length}>(${starts.map(i => `${i}u`).join(',')});`,
     `const steps = array<u32, ${steps.length}>(${steps.map(i => `${i}u`).join(',')});`,
     `const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});`
   ].join('\n')}
 
-        ${calculateInputIndicesImpl(input, output, inputShape, outputShape, enableInputShapeUniforms)}
+        ${calculateInputIndicesImpl(input, output, inputShape, outputShape, enableShapeUniforms)}
         ${shaderHelper.mainStart()}
           ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
           let outputIndices = ${output.offsetToIndices('global_idx')};
@@ -197,8 +195,9 @@ const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: Slice
   return {
     name: 'Slice',
     shaderCache: {
-      hint: `${attributes.cacheKey}|${inputs[4]?.dims ?? ''}`,
-      inputDependencies: [enableInputShapeUniforms ? 'rank' : 'dims']
+      hint: enableShapeUniforms ? `${signs.length}_${starts.length}_${steps.length}` :
+                                  `${attributes.cacheKey} | ${inputs[4]?.dims ?? ''}`,
+      inputDependencies: [enableShapeUniforms ? 'rank' : 'dims']
     },
     getShaderSource,
     getRunData: () => ({
