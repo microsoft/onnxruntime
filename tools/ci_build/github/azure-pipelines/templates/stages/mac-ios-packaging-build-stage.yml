@@ -38,7 +38,7 @@ stages:
         cPodName: onnxruntime-training-c
         objcPodName: onnxruntime-training-objc
 
-    timeoutInMinutes: 120
+    timeoutInMinutes: 240
 
     steps:
     - script: |
