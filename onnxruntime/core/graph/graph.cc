@@ -4062,7 +4062,9 @@ static void ReassignSubgraphDependentNodeArgs(const InlinedHashMap<std::string, 
       if (input_def->Exists()) {
         auto hit = name_to_nodearg.find(input_def->Name());
         if (hit != name_to_nodearg.cend()) {
-          input_def = hit->second;
+          // Make sure we create a local to this subgraph definition
+          const auto* new_name_arg = hit->second;
+          input_def = &graph.GetOrCreateNodeArg(new_name_arg->Name(), input_def->TypeAsProto());
         }
       }
     }
@@ -4088,7 +4090,7 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
 
   Graph& graph_to_inline = *sub_graph;
 
-  std::string unique_id{if_node.Name()};
+  std::string unique_id{"_if_"};
   if (condition_value) {
     unique_id.append(then_branch);
   } else {
@@ -4107,7 +4109,7 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
   // Reason: there are no explicit inputs to the subgraphs, and the subgraph's
   // implicit inputs must be covered by the implicit inputs of the If node.
   InlinedHashMap<std::string_view, NodeArg*> outer_scope_values;
-  const auto if_implicit_inputs = if_node.MutableImplicitInputDefs();
+  const auto& if_implicit_inputs = if_node.MutableImplicitInputDefs();
   outer_scope_values.reserve(if_implicit_inputs.size());
 
   for (auto* input : if_implicit_inputs) {
@@ -4121,8 +4123,8 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
 
   // We are going to map the outputs of the graph to inline to the outputs of the If node.
   // They are assumed to be in the same order.
-  const auto node_output_defs = if_node.MutableOutputDefs();
-  const auto graph_output_defs = graph_to_inline.GetOutputs();
+  const auto& node_output_defs = if_node.MutableOutputDefs();
+  const auto& graph_output_defs = graph_to_inline.GetOutputs();
   for (size_t i = 0; i < graph_output_defs.size(); ++i) {
     name_to_nodearg.emplace(graph_output_defs[i]->Name(), node_output_defs[i]);
   }
@@ -4206,6 +4208,7 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
     }
   }
 
+  auto* non_existing_arg = &GetOrCreateNodeArg(std::string(), nullptr);
   // We want to make sure we get nodes in topological order
   // because Constant folding may cause the nodes appear in
   // a different order.
@@ -4217,36 +4220,37 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
     assert(node->OpType() != kConstant);
 
     // Inputs
-    // Chop off trailing non-existing defs
+    // Chop off trailing non-existing defs, but preserve non-existing in the middle
     auto& input_defs = node->MutableInputDefs();
     auto last_existing = std::find_if(input_defs.rbegin(), input_defs.rend(),
                                       [](const NodeArg* node_arg) { return node_arg->Exists(); });
-
     input_defs.resize(std::distance(input_defs.begin(), last_existing.base()));
+
     InlinedVector<NodeArg*> new_input_defs;
-    InlinedVector<int> input_positions;
-    int arg_pos = -1;
     for (auto* input_def : node->InputDefs()) {
-      ++arg_pos;
       if (input_def->Exists()) {
         // Check if this is one of the implicit graph inputs
         // then re-assign the def to the outer scope value.
         const auto& input_name = input_def->Name();
         auto outer_hit = outer_scope_values.find(input_name);
         if (outer_hit != outer_scope_values.cend()) {
-          new_input_defs.push_back(outer_hit->second);
+          // get/create local definition
+          NodeArg* outer_arg = outer_hit->second;
+          auto& this_scope_arg = GetOrCreateNodeArg(outer_arg->Name(), input_def->TypeAsProto());
+          new_input_defs.push_back(&this_scope_arg);
         } else {
           auto hit = name_to_nodearg.find(input_name);
           if (hit != name_to_nodearg.cend()) {
-            // This is other node output, constant node or initializer that was renamed.
+            // This is other node output in the dest graph,
+            // constant node or initializer that was renamed.
             new_input_defs.push_back(hit->second);
           } else {
             ORT_THROW("Node's: ", node->Name(), " input: ", input_name,
                       " is not If node's input or previous node output in this subgraph");
           }
         }
-        if (!is_this_main_graph)
-          input_positions.push_back(arg_pos);
+      } else {
+        new_input_defs.push_back(non_existing_arg);
       }
     }
 
@@ -4258,15 +4262,13 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
     output_defs.resize(std::distance(output_defs.begin(), last_existing.base()));
 
     InlinedVector<NodeArg*> new_output_defs;
-    InlinedVector<int> output_positions;
-    arg_pos = -1;
     for (auto* output_def : node->OutputDefs()) {
-      ++arg_pos;
       if (output_def->Exists()) {
         const auto& output_name = output_def->Name();
         auto hit = name_to_nodearg.find(output_name);
         if (hit != name_to_nodearg.cend()) {
-          // This is one of the If node outputs, reassign the def.
+          // This is one of the If node outputs, simply reassign the def.
+          // If node defs are already in the destination graph
           new_output_defs.push_back(hit->second);
         } else {
           // We generate an output to downstream nodes.
@@ -4275,9 +4277,8 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
           new_output_defs.push_back(&new_arg);
           ORT_IGNORE_RETURN_VALUE(name_to_nodearg.emplace(output_name, &new_arg));
         }
-
-        if (!is_this_main_graph)
-          output_positions.push_back(arg_pos);
+      } else {
+        new_output_defs.push_back(non_existing_arg);
       }
     }
 
@@ -4292,12 +4293,8 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
     new_node.op_ = node->op_;
 
     if (!is_this_main_graph) {
-      for (size_t idx = 0, lim = new_input_defs.size(); idx < lim; ++idx) {
-        input_args.emplace(new_input_defs[idx]->Name(), std::make_pair(&new_node, input_positions[idx]));
-      }
-      for (size_t idx = 0, lim = new_output_defs.size(); idx < lim; ++idx) {
-        output_args.emplace(new_output_defs[idx]->Name(), std::make_pair(&new_node, output_positions[idx]));
-      }
+      map_defs(new_node, input_args, true);
+      map_defs(new_node, output_args, false);
       new_nodes.push_back(&new_node);
     }
 
@@ -4305,6 +4302,8 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
       auto& subgraphs = node->MutableSubgraphs();
 
       // Check if any of this node implicit inputs of this graph is in the renaming map
+      // that would mean they come from the destination graph, not from the parent
+      // of the destination graph.
       int renames_subgraph_names = 0;
       auto& implicit_defs = node->MutableImplicitInputDefs();
       for (auto& input_def : implicit_defs) {
@@ -4314,7 +4313,6 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
           ++renames_subgraph_names;
         }
       }
-      new_node.MutableImplicitInputDefs() = std::move(implicit_defs);
 
       for (auto& subgraph : subgraphs) {
         if (renames_subgraph_names > 0) {
@@ -4329,6 +4327,7 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
 
       new_node.MutableSubgraphs() = std::move(subgraphs);
       new_node.GetMutableMapOfAttributeNameToSubgraph() = std::move(node->GetMutableMapOfAttributeNameToSubgraph());
+      new_node.MutableImplicitInputDefs() = std::move(implicit_defs);
     }
 
     new_node.GetMutableAttributes() = std::move(node->GetMutableAttributes());
