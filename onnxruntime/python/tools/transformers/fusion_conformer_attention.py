@@ -152,7 +152,6 @@ class FusionConformerAttention(FusionAttention):
             past_v=past_v,
             present_k=present_k,
             present_v=present_v,
-            kv_cache_name_match=False,
         )
 
         if new_node is None:

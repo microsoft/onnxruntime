@@ -645,9 +645,6 @@ class FusionAttention(Fusion):
             packed_qkv (bool): whether to combine MatMuls from Q, K, V paths
                                Note: This is for the scenario where an Attention node should be created but cannot be created
                                because past_key and past_value are separate inputs and not one concatenated input.
-            kv_cache_name_match (bool): whether past_k, past_v, present_k, present_v names matches the names in graph input and output names
-                                Mark this as False if the kv_cache input shape is (num_layers, batch_size, num_heads, past_sequence_length, head_size) instead of
-                                the original shape mentioned above. In this case we separate the keys and values as pass the output of gather to attention
 
         Returns:
             Union[NodeProto, None]: the node created or None if failed.

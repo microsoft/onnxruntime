@@ -408,19 +408,19 @@ def create_conformer_attention(
     q_bias, q_bias_data = get_tensor_and_weight("q_bias", [hidden_size])
     k_weight, k_weight_data = get_tensor_and_weight("k_weight", [hidden_size, hidden_size])
     k_bias, k_bias_data = get_tensor_and_weight("k_bias", [hidden_size])
-    Matmul_q_weight = helper.make_tensor(
+    matmul_q_weight = helper.make_tensor(
         "MatMul_q_weight",
         TensorProto.FLOAT,
         [hidden_size, hidden_size],
         q_weight_data,
     )
-    Matmul_k_weight = helper.make_tensor(
+    matmul_k_weight = helper.make_tensor(
         "MatMul_k_weight",
         TensorProto.FLOAT,
         [hidden_size, hidden_size],
         k_weight_data,
     )
-    Matmul_v_weight = helper.make_tensor(
+    matmul_v_weight = helper.make_tensor(
         "MatMul_v_weight",
         TensorProto.FLOAT,
         [hidden_size, hidden_size],
@@ -442,7 +442,7 @@ def create_conformer_attention(
 
     # Add Q/K/V weight tensors as initializers
     if fused:
-        initializers.extend([Matmul_q_weight, Matmul_k_weight, Matmul_v_weight])
+        initializers.extend([matmul_q_weight, matmul_k_weight, matmul_v_weight])
         initializers.append(qkv_bias)
     else:
         initializers.extend([q_weight, k_weight, v_weight])
