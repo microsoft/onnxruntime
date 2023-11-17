@@ -67,15 +67,15 @@ const validateInputs = (inputs: readonly TensorView[], attributes: BatchNormAttr
   }
 };
 
-const createBatchNormInferenceProgramInfo = (inputs: readonly TensorView[], attributes: BatchNormAttributes):
-    ProgramInfo => {
+const createBatchNormInferenceProgramInfo =
+    (inputs: readonly TensorView[], attributes: BatchNormAttributes): ProgramInfo => {
       const {epsilon, spatial, format} = attributes;
       const yShape = inputs[0].dims;
       const outputSize = ShapeUtil.size(yShape);
       const x = inputVariable('x', inputs[0].dataType, inputs[0].dims);
       const scale = inputVariable('scale', inputs[1].dataType, [ShapeUtil.size(inputs[1].dims)]);
       const bias = inputVariable('bias', inputs[2].dataType, [ShapeUtil.size(inputs[2].dims)]);
-      const inputMean = inputVariable('inputMean', inputs[3].dataType, [ShapeUtil.size(inputs[3].dims)])
+      const inputMean = inputVariable('inputMean', inputs[3].dataType, [ShapeUtil.size(inputs[3].dims)]);
       const inputVar = inputVariable('inputVar', inputs[4].dataType, [ShapeUtil.size(inputs[4].dims)]);
       const y = outputVariable('y', inputs[0].dataType, yShape);
 
@@ -85,7 +85,7 @@ const createBatchNormInferenceProgramInfo = (inputs: readonly TensorView[], attr
           cOffset = `let cOffset = ${
               yShape.length === 1   ? '0u' :
                   format === 'nhwc' ? `outputIndices[${yShape.length - 1}]` :
-                                      `outputIndices[1]`};`;
+                                      'outputIndices[1]'};`;
         } else {
           if (format === 'nchw') {
             cOffset = `
@@ -128,7 +128,7 @@ const createBatchNormInferenceProgramInfo = (inputs: readonly TensorView[], attr
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
         }),
       };
-    }
+    };
 
 export const parseBatchNormAttributes = (attributes: Record<string, unknown>): BatchNormAttributes =>
     createAttributeWithCacheKey(attributes as Omit<BatchNormAttributes, keyof AttributeWithCacheKey>);
