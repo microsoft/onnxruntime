@@ -1,5 +1,8 @@
 {
     "build_osx_archs": {
+        "iphoneos": [
+            "arm64"
+        ],
         "macosx": [
             "arm64",
             "x86_64"
