@@ -750,11 +750,11 @@ class ShaderHelperImpl implements ShaderHelper {
         this.uniforms.push({name: variable.strides.replace('uniforms.', ''), type: variable.type.indices});
       }
     }
-    const access = variable.usage === 'input' ? 'read' : 'read_write';
-    const storageType = variable.type.storage;
     if (variable.uniformOnly) {
       return '';
     }
+    const access = variable.usage === 'input' ? 'read' : 'read_write';
+    const storageType = variable.type.storage;
     return `@group(0) @binding(${bindingIndex}) var<storage, ${access}> ${variable.name}: array<${storageType}>;`;
   }
 
