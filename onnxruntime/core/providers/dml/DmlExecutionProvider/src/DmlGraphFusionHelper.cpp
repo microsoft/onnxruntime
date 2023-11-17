@@ -287,25 +287,13 @@ namespace DmlGraphFusionHelper
         return initializerPartitionMap;
     }
 
-    enum DML_PREVIEW_OPERATOR_TYPE
-    {
-        DML_PREVIEW_OPERATOR_FIRST = 0xC0000000,
-    };
-
-    struct DML_CONSTANT_DATA_GRAPH_NODE_DESC_PREVIEW 
-    { 
-        const BYTE* data;
-        UINT64 dataSize;
-        _Field_z_ _Maybenull_ const char* Name; 
-    };
-
     void ConvertGraphDesc(
         const Dml::GraphDescBuilder::GraphDesc& graphDesc,
         _Out_ DML_GRAPH_DESC& dmlGraphDesc,
         const uint32_t inputCount,
         const uint32_t outputCount,
         _Inout_ std::vector<DML_OPERATOR_GRAPH_NODE_DESC>& dmlOperatorGraphNodes,
-        _Inout_ std::vector<DML_CONSTANT_DATA_GRAPH_NODE_DESC_PREVIEW>& dmlConstantGraphNodes,
+        _Inout_ std::vector<DML_CONSTANT_DATA_GRAPH_NODE_DESC>& dmlConstantGraphNodes,
         _Inout_ std::vector<DML_GRAPH_NODE_DESC>& dmlGraphNodes,
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
@@ -323,7 +311,7 @@ namespace DmlGraphFusionHelper
             else
             {
                 auto& nodeDefinitionData = std::get<std::vector<uint8_t>>(nodeInfo.nodeDef);
-	                dmlConstantGraphNodes[i] = DML_CONSTANT_DATA_GRAPH_NODE_DESC_PREVIEW{
+	                dmlConstantGraphNodes[i] = DML_CONSTANT_DATA_GRAPH_NODE_DESC{
 	                    nodeDefinitionData.data(),
 	                    nodeDefinitionData.size(),
 	                    nodeInfo.name.data()
@@ -420,7 +408,7 @@ namespace DmlGraphFusionHelper
         // convert DML EP GraphDesc into DML_GRAPH_DESC and create IDMLCompiledOperator
         DML_GRAPH_DESC dmlGraphDesc = {};
         std::vector<DML_OPERATOR_GRAPH_NODE_DESC> dmlOperatorGraphNodes(graphDesc.nodes.size());
-        std::vector<DML_CONSTANT_DATA_GRAPH_NODE_DESC_PREVIEW> dmlConstantGraphNodes(graphDesc.nodes.size());
+        std::vector<DML_CONSTANT_DATA_GRAPH_NODE_DESC> dmlConstantGraphNodes(graphDesc.nodes.size());
 
         std::vector<DML_GRAPH_NODE_DESC> dmlGraphNodes(graphDesc.nodes.size());
         std::vector<DML_GRAPH_EDGE_DESC> dmlInputEdges(graphDesc.inputEdges.size());
