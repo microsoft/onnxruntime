@@ -40,33 +40,33 @@ Status CreateNodeArgs(const std::vector<std::string>& names,
 
 bool IsContextCacheFileExists(const std::string& customer_context_cache_path,
                               const onnxruntime::PathString& model_pathstring,
-                              std::string& context_cache_path);
+                              onnxruntime::PathString& context_cache_path);
 
-Status GetEpContextFromModel(const std::string& ctx_onnx_model_path,
+Status GetEpContextFromModel(const onnxruntime::PathString& ctx_onnx_model_path,
                              QnnBackendManager* qnn_backend_manager,
                              QnnModel& qnn_model,
                              const logging::Logger& logger);
 
 Status GetEpContextFromGraph(const onnxruntime::GraphViewer& graph_viewer,
-                             const std::string& ctx_onnx_model_path,
+                             const onnxruntime::PathString& ctx_onnx_model_path,
                              QnnBackendManager* qnn_backend_manager,
                              QnnModel& qnn_model);
 
 Status LoadQnnCtxFromOnnxModel(const onnxruntime::GraphViewer& graph_viewer,
-                               const std::string& ctx_onnx_model_path,
+                               const onnxruntime::PathString& ctx_onnx_model_path,
                                bool is_qnn_ctx_model,
                                bool is_ctx_cache_file_exist,
                                QnnBackendManager* qnn_backend_manager,
                                QnnModel& qnn_model,
                                const logging::Logger& logger);
 
-Status ValidateWithContextFile(const std::string& context_cache_path,
+Status ValidateWithContextFile(const onnxruntime::PathString& context_cache_path,
                                const std::string& model_name,
                                const std::string& model_description,
                                const std::string& graph_partition_name,
                                const logging::Logger& logger);
 
-Status GetMetadataFromEpContextModel(const std::string& ctx_onnx_model_path,
+Status GetMetadataFromEpContextModel(const onnxruntime::PathString& ctx_onnx_model_path,
                                      std::string& model_name,
                                      std::string& model_description,
                                      std::string& graph_partition_name,
@@ -80,7 +80,7 @@ Status GenerateCtxCacheOnnxModel(const std::string model_name,
                                  const std::string& sdk_build_version,
                                  const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
                                  const std::unordered_map<std::string, std::unique_ptr<QnnModel>>& qnn_models,
-                                 const std::string& context_cache_path,
+                                 const onnxruntime::PathString& context_cache_path,
                                  bool qnn_context_embed_mode,
                                  const logging::Logger& logger);
 }  // namespace qnn

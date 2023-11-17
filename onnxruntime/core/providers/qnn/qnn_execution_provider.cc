@@ -22,15 +22,6 @@ namespace onnxruntime {
 
 constexpr const char* QNN = "QNN";
 
-std::string GetFileNameFromModelPath(onnxruntime::Path model_path) {
-  auto model_path_components = model_path.GetComponents();
-  // There's no model path if model loaded from buffer stead of file
-  if (model_path_components.empty()) {
-    return "";
-  }
-  return PathToUTF8String(model_path_components.back());
-}
-
 void QNNExecutionProvider::ParseProfilingLevel(std::string profiling_level_string) {
   std::transform(profiling_level_string.begin(),
                  profiling_level_string.end(),
@@ -342,7 +333,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   // This is for case: QDQ model + Onnx Qnn context cache model
   if (context_cache_enabled_ && !is_qnn_ctx_model) {
-    std::string context_cache_path;
+    onnxruntime::PathString context_cache_path;
     load_from_cached_context = qnn::IsContextCacheFileExists(context_cache_path_cfg_,
                                                              graph_viewer.ModelPath().ToPathString(),
                                                              context_cache_path);
@@ -536,7 +527,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
   bool is_qnn_ctx_model = false;
   ORT_RETURN_IF_ERROR(qnn::IsFusedGraphHasCtxNode(fused_nodes_and_graphs, is_qnn_ctx_model));
 
-  std::string context_cache_path;
+  onnxruntime::PathString context_cache_path;
   bool is_ctx_file_exist = qnn::IsContextCacheFileExists(context_cache_path_cfg_,
                                                          graph_viewer.ModelPath().ToPathString(),
                                                          context_cache_path);
@@ -556,7 +547,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger, qnn_backend_manager_.get());
     // Load and execute from cached context if exist
     ORT_RETURN_IF_ERROR(qnn::LoadQnnCtxFromOnnxModel(graph_viewer,
-                                                     context_cache_path_cfg_,
+                                                     context_cache_path,
                                                      is_qnn_ctx_model,
                                                      is_ctx_file_exist,
                                                      qnn_backend_manager_.get(),
