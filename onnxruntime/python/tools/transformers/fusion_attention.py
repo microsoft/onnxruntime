@@ -693,14 +693,8 @@ class FusionAttention(Fusion):
 
         # Add optional inputs for MHA
 
-        # Append key_padding_mask input
-        mha_inputs.append(key_padding_mask)
-
-        # Append node after QK Matmul
-        mha_inputs.append(add_qk)
-
         if past_k and past_v:
-            mha_inputs.extend([past_k, past_v])
+            mha_inputs.extend([key_padding_mask, add_qk, past_k, past_v])
 
         # Add outputs for MHA
         mha_outputs = [output]

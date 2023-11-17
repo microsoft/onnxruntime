@@ -474,5 +474,8 @@ if __name__ == "__main__":
     num_heads = 8
     hidden_size = 512
 
+    model = create_conformer_attention(num_heads=num_heads, hidden_size=hidden_size)
+    onnx.save(model, "conformer_self_mha.onnx")
+
     model = create_conformer_attention(num_heads=num_heads, hidden_size=hidden_size, fused=True)
     onnx.save(model, "./test_data/models/conformer/conformer_self_mha_fused.onnx")
