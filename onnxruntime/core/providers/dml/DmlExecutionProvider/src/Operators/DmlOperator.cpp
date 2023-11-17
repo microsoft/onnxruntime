@@ -862,7 +862,7 @@ namespace Dml
         {
             return;
         }
-        else if (constExpTensor->IsDataInterface())
+        else if (!IsCpuData())
         {
             return;
         }
