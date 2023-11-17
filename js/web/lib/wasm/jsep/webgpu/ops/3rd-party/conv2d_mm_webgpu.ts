@@ -22,7 +22,7 @@
 import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor-view';
 import {ProgramInfo, ProgramUniform} from '../../types';
-import {createTensorShapeVariables, enableShapesUniforms, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from '../common';
+import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from '../common';
 import {ConvAttributes} from '../conv';
 import {getActivationSnippet} from '../fuse-utils';
 
