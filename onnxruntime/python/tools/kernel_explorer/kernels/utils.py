@@ -8,10 +8,15 @@ from itertools import product
 
 import numpy as np
 import scipy.special
+from ml_dtypes import float8_e4m3fnuz
 
 
 def dtype_to_bytes(dtype):
     type_map = {
+        "float8_e4m3fn": 1,
+        "float8_e4m3fnuz": 1,
+        "float8_e5m2": 1,
+        "float8_e5m2fnuz": 1,
         "float16": 2,
         "float32": 4,
         "float64": 8,
@@ -32,6 +37,8 @@ def dtype_to_suffix(dtype):
     return {
         "float32": "float",
         "float16": "half",
+        "float8_e4m3fn": "fp8e4m3fn",
+        "float8_e4m3fnuz": "fp8e4m3fnuz",
     }[dtype]
 
 

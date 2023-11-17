@@ -32,6 +32,7 @@ PYBIND11_PLUGIN_IMPL(_kernel_explorer) {
 KE_REGISTER(m) {
   py::class_<DeviceArray>(m, "DeviceArray")
       .def(py::init<py::array>())
+      .def(py::init<size_t, ssize_t, ssize_t>())
       .def("UpdateHostNumpyArray", &DeviceArray::UpdateHostNumpyArray)
       .def("UpdateDeviceArray", &DeviceArray::UpdateDeviceArray);
 
