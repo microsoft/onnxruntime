@@ -1288,7 +1288,7 @@ def generate_build_tree(
             "-DCMAKE_SYSTEM_NAME=iOS" ,
             "-DCMAKE_TOOLCHAIN_FILE="
             + (args.ios_toolchain_file if args.ios_toolchain_file else "../cmake/onnxruntime_ios.toolchain.cmake"),
-            ]
+        ]
 
     if args.build_wasm:
         emsdk_dir = os.path.join(cmake_dir, "external", "emsdk")
