@@ -35,8 +35,8 @@ docker run --rm \
     -w /onnxruntime_src \
     -e NIGHTLY_BUILD \
     -e BUILD_BUILDNUMBER \
-    "$ADDITIONAL_DOCKER_PARAMETER" \
-    "$DOCKER_IMAGE" tools/ci_build/github/linux/build_linux_python_package.sh "$DOCKER_SCRIPT_OPTIONS"
+    $ADDITIONAL_DOCKER_PARAMETER \
+    $DOCKER_IMAGE tools/ci_build/github/linux/build_linux_python_package.sh $DOCKER_SCRIPT_OPTIONS
 
 sudo rm -rf "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/onnxruntime" "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/pybind11" \
     "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/models" "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/_deps" \
