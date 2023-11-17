@@ -18,7 +18,9 @@ Abstract:
 
 #include "q4gemm.h"
 
-size_t MLASCALL
+
+size_t
+MLASCALL
 MlasQ80BlkQuantSize(MLAS_BLK_QUANT_TYPE QType, size_t M, size_t K)
 {
     if (GetMlasPlatform().Q8Q4GemmDispatch == nullptr) {
@@ -36,17 +38,27 @@ MlasQ80BlkQuantSize(MLAS_BLK_QUANT_TYPE QType, size_t M, size_t K)
     }
 }
 
-void MLASCALL
+
+void
+MLASCALL
 MlasQ80BlkQuant(
-    MLAS_BLK_QUANT_TYPE QType, void* Qblob, const float* A, size_t M, size_t K, size_t lda, MLAS_THREADPOOL* ThreadPool
-)
+    MLAS_BLK_QUANT_TYPE QType,
+    void* Qblob,
+    const float* A,
+    size_t M,
+    size_t K,
+    size_t lda,
+    MLAS_THREADPOOL* ThreadPool
+    )
 {
     auto* dispatch = GetMlasPlatform().Q8Q4GemmDispatch;
     dispatch->Quants[QType](Qblob, A, M, K, lda, ThreadPool);
 }
 
-template <typename ParamBlockType>
-MLAS_FORCEINLINE void
+
+template<typename ParamBlockType>
+MLAS_FORCEINLINE
+void
 MlasQ4GemmBatchDriver(
     MLAS_BLK_QUANT_TYPE QType,
     const size_t M,
@@ -55,16 +67,18 @@ MlasQ4GemmBatchDriver(
     const size_t BatchN,
     const ParamBlockType* DataParams,
     MLAS_THREADPOOL* ThreadPool
-)
+    )
 {
-    // const MLAS_Q4GEMM_DISPATCH* dispatch = MlasQ4GemmGetDispatch();
-    // MLAS_Q4GEMM_OPERATION* operation = dispatch->Operation;
-    void (*operation)(const size_t, const ParamBlockType*, const size_t, const size_t, const size_t, const size_t) =
-        nullptr;
+    //const MLAS_Q4GEMM_DISPATCH* dispatch = MlasQ4GemmGetDispatch();
+    //MLAS_Q4GEMM_OPERATION* operation = dispatch->Operation;
+    void (*operation)(const size_t, const ParamBlockType*, const size_t, const size_t, const size_t,
+                      const size_t) = nullptr;
 
-    if constexpr (std::is_same_v<ParamBlockType, MLAS_Q4_GEMM_DATA_PARAMS>) {
+    if constexpr (std::is_same_v<ParamBlockType, MLAS_Q4_GEMM_DATA_PARAMS>)
+    {
         operation = GetMlasPlatform().FpQ4GemmDispatch->Operations[QType];
-    } else {
+    }
+    else {
         operation = GetMlasPlatform().Q8Q4GemmDispatch->Operations[QType];
     }
 
@@ -105,8 +119,8 @@ MlasQ4GemmBatchDriver(
         const size_t BlockedM = MlasDivRoundup(M, StrideM);
         const size_t max_nc = MlasDivRoundup(N * BlockedM, ThreadsPerGemm);
         if (max_nc < nc) {
-            nc =
-                std::min(nc, MlasDivRoundup(max_nc, MLAS_QGEMM_STRIDEN_THREAD_ALIGN) * MLAS_QGEMM_STRIDEN_THREAD_ALIGN);
+            nc = std::min(nc, MlasDivRoundup(max_nc, MLAS_QGEMM_STRIDEN_THREAD_ALIGN) *
+                                  MLAS_QGEMM_STRIDEN_THREAD_ALIGN);
         }
     }
     const size_t StrideN = nc;
@@ -133,7 +147,9 @@ MlasQ4GemmBatchDriver(
     });
 }
 
-void MLASCALL
+
+void
+MLASCALL
 MlasQ4GemmBatch(
     MLAS_BLK_QUANT_TYPE QType,
     const size_t M,
@@ -142,12 +158,13 @@ MlasQ4GemmBatch(
     const size_t BatchN,
     const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
     MLAS_THREADPOOL* ThreadPool
-)
+    )
 {
     MlasQ4GemmBatchDriver(QType, M, N, K, BatchN, DataParams, ThreadPool);
 }
 
-void MLASCALL
+void
+MLASCALL
 MlasQ8Q4GemmBatch(
     MLAS_BLK_QUANT_TYPE QType,
     const size_t M,
@@ -156,7 +173,7 @@ MlasQ8Q4GemmBatch(
     const size_t BatchN,
     const MLAS_Q8Q4_GEMM_DATA_PARAMS* DataParams,
     MLAS_THREADPOOL* ThreadPool
-)
+    )
 {
     MlasQ4GemmBatchDriver(QType, M, N, K, BatchN, DataParams, ThreadPool);
 }
