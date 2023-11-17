@@ -60,7 +60,6 @@ jobs:
 - job: build_${{ parameters.job_name_suffix }}
 
   variables:
-    GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
