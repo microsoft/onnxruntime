@@ -31,10 +31,10 @@ ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
 
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh
-RUN if [[ $BUILD_LORT = true ]]; then \
-    cd /tmp/scripts && /tmp/scripts/manylinux/install_deps_lort.sh ; \
-    elif [[ $BUILD_ATEN = true ]]; then  \
-    cd /tmp/scripts && /tmp/scripts/manylinux/install_deps_aten.sh ; \
+RUN if [ "$BUILD_LORT" = true ];\
+    then cd /tmp/scripts && /tmp/scripts/manylinux/install_deps_lort.sh ; \
+    elif [ "$BUILD_ATEN" = true ];\
+    then cd /tmp/scripts && /tmp/scripts/manylinux/install_deps_aten.sh ; \
     fi
 RUN rm -rf /tmp/scripts
 
