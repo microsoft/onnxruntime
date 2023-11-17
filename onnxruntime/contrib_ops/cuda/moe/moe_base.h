@@ -11,11 +11,18 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+enum class MoEParallelType {
+  None = 0,
+  ExpertSlicing = 1,
+};
+
 struct MoEParameters {
   int64_t num_rows;
   int64_t num_experts;
+  int64_t local_num_experts;
   int64_t hidden_size;
   int64_t inter_size;
+  MoEParallelType parallel_type;
 };
 
 class MoEBase {

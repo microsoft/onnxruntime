@@ -91,6 +91,10 @@ void RegisterCollectiveOps() {
             "Number of top experts to select from expert pool",
             AttributeProto::INT,
             static_cast<int64_t>(1))
+      .Attr("local_experts_start_index",
+            "The start index of local experts",
+            AttributeProto::INT,
+            static_cast<int64_t>(-1))
       .Input(0,
              "input",
              "2D input tensor with shape (num_rows, hidden_size) or "
@@ -102,20 +106,20 @@ void RegisterCollectiveOps() {
              "T")
       .Input(2,
              "fc1_experts_weights",
-             "3D input tensor with shape (num_experts, hidden_size, inter_size)",
+             "3D input tensor with shape (local_num_experts, hidden_size, inter_size)",
              "T")
       .Input(3,
              "fc2_experts_weights",
-             "3D input tensor with shape (num_experts, inter_size, hidden_size)",
+             "3D input tensor with shape (local_num_experts, inter_size, hidden_size)",
              "T")
       .Input(4,
              "fc1_experts_bias",
-             "2D optional input tensor with shape (num_experts, inter_size)",
+             "2D optional input tensor with shape (local_num_experts, inter_size)",
              "T",
              OpSchema::Optional)
       .Input(5,
              "fc2_experts_bias",
-             "2D optional input tensor with shape (num_experts, hidden_size)",
+             "2D optional input tensor with shape (local_num_experts, hidden_size)",
              "T",
              OpSchema::Optional)
       .Output(0,

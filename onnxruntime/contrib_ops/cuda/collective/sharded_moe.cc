@@ -34,6 +34,7 @@ using namespace ONNX_NAMESPACE;
 
 template <typename T>
 ShardedMoE<T>::ShardedMoE(const OpKernelInfo& op_kernel_info) : NcclKernel(op_kernel_info), MoEBase(op_kernel_info) {
+  ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("local_experts_start_index", &local_experts_start_index_).IsOK());
 }
 
 template <typename T>

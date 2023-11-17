@@ -21,6 +21,9 @@ class ShardedMoE final : public NcclKernel, public MoEBase {
  public:
   explicit ShardedMoE(const OpKernelInfo& op_kernel_info);
   Status ComputeInternal(OpKernelContext* ctx) const override;
+
+ private:
+  int64_t local_experts_start_index_;
 };
 
 #endif
