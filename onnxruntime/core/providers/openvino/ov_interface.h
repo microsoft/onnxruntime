@@ -6,7 +6,7 @@
 #include <vector>
 #include <memory>
 
-#if defined(OPENVINO_2022_1) || (OPENVINO_2022_2) || (OPENVINO_2022_3) || (OPENVINO_2023_0) || (OPENVINO_2023_1)
+#if defined(OPENVINO_2022_3) || (OPENVINO_2023_0) || (OPENVINO_2023_1) || (OPENVINO_2023_2)
 #define OV_API_20
 #include "openvino/openvino.hpp"
 #include "openvino/pass/convert_fp32_to_fp16.hpp"
@@ -48,7 +48,7 @@ class OVCore {
                            std::string& hw_target,
                            ov::AnyMap& device_config,
                            std::string name);
-#if defined(OPENVINO_2023_0) || (OPENVINO_2023_1)
+#if defined(OPENVINO_2023_0) || (OPENVINO_2023_1) || (OPENVINO_2023_2)
   OVExeNetwork LoadNetwork(const std::string& model_stream,
                            std::string& hw_target,
                            ov::AnyMap& device_config,

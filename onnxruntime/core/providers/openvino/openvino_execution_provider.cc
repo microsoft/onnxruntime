@@ -120,15 +120,7 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   openvino_ep::BackendManager::GetGlobalContext().onnx_opset_version =
       graph_viewer.DomainToVersionMap().at(kOnnxDomain);
 
-#if defined(OPENVINO_2022_1)
-  openvino_ep::GetCapability obj(graph_viewer,
-                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2022_1");
-  result = obj.Execute();
-#elif defined(OPENVINO_2022_2)
-  openvino_ep::GetCapability obj(graph_viewer,
-                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2022_2");
-  result = obj.Execute();
-#elif defined(OPENVINO_2022_3)
+#if defined(OPENVINO_2022_3)
   openvino_ep::GetCapability obj(graph_viewer,
                                  openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2022_3");
   result = obj.Execute();
@@ -139,6 +131,10 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
 #elif defined(OPENVINO_2023_1)
   openvino_ep::GetCapability obj(graph_viewer,
                                  openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2023_1");
+  result = obj.Execute();
+#elif defined(OPENVINO_2023_2)
+  openvino_ep::GetCapability obj(graph_viewer,
+                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2023_2");
   result = obj.Execute();
 #endif
 
