@@ -541,13 +541,13 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                          graph_viewer.ModelPath().ToPathString(),
                                                          context_cache_path);
   const std::string& model_name = graph_viewer.GetGraph().Name();
-  LOGS(logger, VERBOSE) << "graph_viewer.GetGraph().Name(): " << model_name;
-  LOGS(logger, VERBOSE) << "graph_viewer.GetGraph().Description(): " << graph_viewer.GetGraph().Description();
+  const std::string& model_description = graph_viewer.GetGraph().Description();
+  const std::string& graph_meta_id = fused_node.Name();
   if (fused_nodes_and_graphs.size() == 1 && !is_qnn_ctx_model && is_ctx_file_exist) {
     ORT_RETURN_IF_ERROR(qnn::ValidateWithContextFile(context_cache_path,
                                                      model_name,
-                                                     graph_viewer.GetGraph().Description(),
-                                                     graph_viewer.Name(),
+                                                     model_description,
+                                                     graph_meta_id,
                                                      logger));
   }
 
@@ -567,8 +567,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
 
     // fused node name is QNNExecutionProvider_QNN_[hash_id]_[id]
     // the name here should be same with context->node_name in compute_info
-    LOGS(logger, VERBOSE) << "fused node name: " << fused_node.Name();
-    qnn_models_.emplace(fused_node.Name(), std::move(qnn_model));
+    qnn_models_.emplace(graph_meta_id, std::move(qnn_model));
 
     ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
     return Status::OK();
@@ -580,7 +579,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     uint64_t buffer_size(0);
     auto context_buffer = qnn_backend_manager_->GetContextBinaryBuffer(buffer_size);
     ORT_RETURN_IF_ERROR(qnn::GenerateCtxCacheOnnxModel(model_name,
-                                                       graph_viewer.GetGraph().Description(),
+                                                       model_description,
                                                        context_buffer.get(),
                                                        buffer_size,
                                                        qnn_backend_manager_->GetSdkVersion(),
