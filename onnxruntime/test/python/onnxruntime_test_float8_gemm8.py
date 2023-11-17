@@ -89,7 +89,10 @@ class TestFloat8Gemm8(unittest.TestCase):
         ]
         nodes = [n for n in nodes if n is not None]
         graph = make_graph(nodes, "gemm", inputs, [d], inits)
-        onnx_model = make_model(graph, opset_imports=[make_opsetid("", 19)], ir_version=9)
+        opset_imports = [make_opsetid("", 19)]
+        if domain == "com.microsoft":
+            opset_imports.append(make_opsetid("com.microsoft", 1))
+        onnx_model = make_model(graph, opset_imports=opset_imports, ir_version=9)
         if domain != "com.microsoft":
             check_model(onnx_model)
         return onnx_model
@@ -256,7 +259,8 @@ class TestFloat8Gemm8(unittest.TestCase):
                     make_tensor_value_info("B", TensorProto.FLOAT, [None, None]),
                 ],
                 [make_tensor_value_info("Y", TensorProto.FLOAT, [None, None])],
-            )
+            ),
+            opset_imports=[make_opsetid("", 19), make_opsetid("com.microsoft", 1)],
         )
 
         sess = InferenceSession(model.SerializeToString(), providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
