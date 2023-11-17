@@ -26,23 +26,23 @@ parameters:
 
 - name: WASMTemplate
   type: string
-  default: win-wasm-ci.yml
-- name: WebTemplate
-  type: string
-  default: win-web-ci.yml
+  default: linux-wasm-ci.yml
 # parameter couldn't be compared by string, so add one boolean parameter.
 - name: UseWebPoolName
   type: boolean
   default: false
-- name: RunWebGpuTests
+- name: RunWebGpuTestsForReleaseBuild
+  type: boolean
+  default: false
+- name: RunWebGpuTestsForDebugBuild
   type: boolean
   default: false
 - name: WebGpuPoolName
   type: string
-  default: ''
+  default: 'onnxruntime-Win2022-webgpu-A10'
 - name: WebCpuPoolName
   type: string
-  default: ''
+  default: 'onnxruntime-Win-CPU-2022-web'
 
 - name: ExtraBuildArgs
   displayName: 'Extra build command line arguments'
@@ -74,7 +74,7 @@ stages:
       displayName: 'Checkout submodule onnx'
     - task: NodeTool@0
       inputs:
-        versionSpec: '16.x'
+        versionSpec: '18.x'
     - template: linux-web-init-and-check.yml
     - task: Bash@3
       displayName: 'Extract commit SHA and save to __commit.txt'
@@ -104,16 +104,20 @@ stages:
 - stage: Build_web_Debug
   dependsOn: Build_wasm_Debug
   jobs:
-  - template: ${{ parameters.WebTemplate }}
+  - template: win-web-ci.yml
     parameters:
       CommitOverride: true
       BuildConfig: 'Debug'
       NpmPackagingMode: ${{ parameters.NpmPackagingMode }}
       ${{ if eq(parameters.UseWebPoolName, true)}}:
-        PoolName: ${{ parameters.WebCpuPoolName }}
+        ${{ if eq(parameters.RunWebGpuTestsForDebugBuild, true)}}:
+          PoolName: ${{ parameters.WebGpuPoolName }}
+        ${{ else }}:
+          PoolName: ${{ parameters.WebCpuPoolName }}
       ${{ else }}:
         PoolName: ${{ parameters.PoolName }}
       PackageName: ${{ parameters.PackageName }}
+      RunWebGpuTests: ${{ parameters.RunWebGpuTestsForDebugBuild }}
 
 - stage: Build_wasm_Release
   dependsOn: Precheck_and_extract_commit
@@ -145,20 +149,20 @@ stages:
 - stage: Build_web_Release
   dependsOn: Build_wasm_Release
   jobs:
-  - template: ${{ parameters.WebTemplate }}
+  - template: win-web-ci.yml
     parameters:
       CommitOverride: true
       BuildConfig: 'Release'
       NpmPackagingMode: ${{ parameters.NpmPackagingMode }}
       ${{ if eq(parameters.UseWebPoolName, true)}}:
-        ${{ if eq(parameters.RunWebGpuTests, true)}}:
+        ${{ if eq(parameters.RunWebGpuTestsForReleaseBuild, true)}}:
           PoolName: ${{ parameters.WebGpuPoolName }}
         ${{ else }}:
           PoolName: ${{ parameters.WebCpuPoolName }}
       ${{ else }}:
         PoolName: ${{ parameters.PoolName }}
       PackageName: ${{ parameters.PackageName }}
-      RunWebGpuTests: ${{ parameters.RunWebGpuTests }}
+      RunWebGpuTests: ${{ parameters.RunWebGpuTestsForReleaseBuild }}
 
 # Disable BrowserStack test
 # TODO: fix and re-enable in PostMerge test

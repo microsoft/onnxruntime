@@ -19,11 +19,10 @@ endforeach()
 
 message("Loading Dependencies ...")
 # ABSL should be included before protobuf because protobuf may use absl
-if(NOT onnxruntime_DISABLE_ABSEIL)
-  include(external/abseil-cpp.cmake)
-endif()
+include(external/abseil-cpp.cmake)
 
 set(RE2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+
 FetchContent_Declare(
     re2
     URL ${DEP_URL_re2}
@@ -38,16 +37,18 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     set(gtest_disable_pthreads ON)
   endif()
   set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-  if(NOT onnxruntime_DISABLE_ABSEIL)
-    # It uses both ABSL and re2
+  if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    # Needs to update onnxruntime/test/xctest/xcgtest.mm
     set(GTEST_HAS_ABSL OFF CACHE BOOL "" FORCE)
+  else()
+    set(GTEST_HAS_ABSL ON CACHE BOOL "" FORCE)
   endif()
   # gtest and gmock
   FetchContent_Declare(
     googletest
     URL ${DEP_URL_googletest}
+    FIND_PACKAGE_ARGS 1.14.0...<2.0.0 NAMES GTest
     URL_HASH SHA1=${DEP_SHA1_googletest}
-    OVERRIDE_FIND_PACKAGE
   )
 endif()
 
@@ -161,6 +162,19 @@ if(Patch_FOUND)
 else()
  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND "")
 endif()
+
+FetchContent_Declare(
+    utf8_range
+    URL ${DEP_URL_utf8_range}
+    URL_HASH SHA1=${DEP_SHA1_utf8_range}
+    FIND_PACKAGE_ARGS NAMES utf8_range
+)
+
+set(utf8_range_ENABLE_TESTS OFF CACHE BOOL "Build test suite" FORCE)
+set(utf8_range_ENABLE_INSTALL OFF CACHE BOOL "Configure installation" FORCE)
+
+
+#Protobuf depends on absl and utf8_range
 FetchContent_Declare(
   Protobuf
   URL ${DEP_URL_protobuf}
@@ -168,7 +182,15 @@ FetchContent_Declare(
   PATCH_COMMAND ${ONNXRUNTIME_PROTOBUF_PATCH_COMMAND}
   FIND_PACKAGE_ARGS 3.21.12 NAMES Protobuf
 )
+
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
+#TODO: we'd better to turn the following option off. However, it will cause 
+# ".\build.bat --config Debug --parallel --skip_submodule_sync --update" fail with an error message:
+# install(EXPORT "ONNXTargets" ...) includes target "onnx_proto" which requires target "libprotobuf-lite" that is 
+# not in any export set.
+#set(protobuf_INSTALL OFF CACHE BOOL "Install protobuf binaries and files" FORCE)
+set(protobuf_USE_EXTERNAL_GTEST ON CACHE BOOL "" FORCE)
+
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   set(protobuf_BUILD_PROTOC_BINARIES OFF CACHE BOOL "Build protobuf tests" FORCE)
   set(protobuf_WITH_ZLIB OFF CACHE BOOL "Build with zlib support" FORCE)
@@ -184,13 +206,12 @@ set(ENABLE_DATE_TESTING  OFF CACHE BOOL "" FORCE)
 set(USE_SYSTEM_TZ_DB  ON CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
-      date
-      URL ${DEP_URL_date}
-      URL_HASH SHA1=${DEP_SHA1_date}
-    )
+  date
+  URL ${DEP_URL_date}
+  URL_HASH SHA1=${DEP_SHA1_date}
+  FIND_PACKAGE_ARGS 3...<4 NAMES date
+)
 onnxruntime_fetchcontent_makeavailable(date)
-
-
 
 FetchContent_Declare(
   mp11
@@ -252,6 +273,20 @@ else()
   set(CPUINFO_SUPPORTED FALSE)
 endif()
 
+# xnnpack depends on clog
+# Android build should use the system's log library instead of clog
+if ((CPUINFO_SUPPORTED OR onnxruntime_USE_XNNPACK) AND NOT ANDROID)
+  set(CLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  FetchContent_Declare(
+    pytorch_clog
+    URL ${DEP_URL_pytorch_cpuinfo}
+    URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+	SOURCE_SUBDIR deps/clog
+  )
+  set(ONNXRUNTIME_CLOG_PROJ pytorch_clog)
+  set(ONNXRUNTIME_CLOG_TARGET_NAME clog)
+endif()
+
 if (CPUINFO_SUPPORTED)
   if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set(IOS ON CACHE INTERNAL "")
@@ -276,7 +311,7 @@ if (CPUINFO_SUPPORTED)
     URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
     FIND_PACKAGE_ARGS NAMES cpuinfo
   )
-
+  set(ONNXRUNTIME_CPUINFO_PROJ pytorch_cpuinfo)
 endif()
 
 
@@ -300,6 +335,7 @@ if(onnxruntime_USE_CUDA)
     URL ${DEP_URL_microsoft_gsl}
     URL_HASH SHA1=${DEP_SHA1_microsoft_gsl}
     PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/gsl/1064.patch
+    FIND_PACKAGE_ARGS 4.0 NAMES Microsoft.GSL
   )
 else()
   FetchContent_Declare(
@@ -316,8 +352,14 @@ FetchContent_Declare(
     URL_HASH SHA1=${DEP_SHA1_safeint}
 )
 
+# use fetch content rather than makeavailable because safeint only includes unconditional test targets
+FetchContent_Populate(safeint)
 # The next line will generate an error message "fatal: not a git repository", but it is ok. It is from flatbuffers
-onnxruntime_fetchcontent_makeavailable(Protobuf nlohmann_json mp11 re2 safeint GSL flatbuffers)
+onnxruntime_fetchcontent_makeavailable(utf8_range)
+# protobuf's cmake/utf8_range.cmake has the following line
+include_directories(${utf8_range_SOURCE_DIR})
+
+onnxruntime_fetchcontent_makeavailable(Protobuf nlohmann_json mp11 re2 GSL flatbuffers ${ONNXRUNTIME_CPUINFO_PROJ} ${ONNXRUNTIME_CLOG_PROJ})
 if(NOT flatbuffers_FOUND)
   if(NOT TARGET flatbuffers::flatbuffers)
     add_library(flatbuffers::flatbuffers ALIAS flatbuffers)
@@ -413,15 +455,7 @@ FetchContent_Declare(
 )
 
 
-if (CPUINFO_SUPPORTED)
-  onnxruntime_fetchcontent_makeavailable(pytorch_cpuinfo)
-  if (pytorch_cpuinfo_SOURCE_DIR)
-    # shouldn't need to define these aliases after we use a version of cpuinfo with this commit:
-    # https://github.com/pytorch/cpuinfo/commit/082deffc80ce517f81dc2f3aebe6ba671fcd09c9
-    add_library(cpuinfo::cpuinfo ALIAS cpuinfo)
-    add_library(cpuinfo::clog ALIAS clog)
-  endif()
-endif()
+
 
 
 
@@ -462,7 +496,7 @@ endif()
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn,
 # dnnl/mklml, onnxruntime_codegen_tvm, tvm and pthread
 # pthread is always at the last
-set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} ${WIL_TARGET} nlohmann_json::nlohmann_json onnx onnx_proto ${PROTOBUF_LIB} re2::re2 Boost::mp11 safeint_interface flatbuffers::flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS} date_interface)
+set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} ${WIL_TARGET} nlohmann_json::nlohmann_json onnx onnx_proto ${PROTOBUF_LIB} re2::re2 Boost::mp11 safeint_interface flatbuffers::flatbuffers ${GSL_TARGET} ${ABSEIL_LIBS} date::date ${ONNXRUNTIME_CLOG_TARGET_NAME})
 # The source code of onnx_proto is generated, we must build this lib first before starting to compile the other source code that uses ONNX protobuf types.
 # The other libs do not have the problem. All the sources are already there. We can compile them in any order.
 set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto flatbuffers::flatbuffers)

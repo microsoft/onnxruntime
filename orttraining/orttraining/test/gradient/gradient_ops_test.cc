@@ -3011,7 +3011,6 @@ TEST(GradientCheckerTest, PadAndUnflattenGrad) {
   std::vector<std::vector<float>> x_datas = {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, {3, 5, 0, 1}, {5, 2}};
 
   TensorInfo padded_out_info({5, 2, 3}, true);
-  TensorInfo out_shape_info({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
@@ -3021,9 +3020,72 @@ TEST(GradientCheckerTest, PadAndUnflattenGrad) {
 #endif
 
   ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, indices_info, shape_info},
-                                                         {padded_out_info, out_shape_info}, &max_error,
+                                                         {padded_out_info}, &max_error,
                                                          x_datas, {}, true, false, &execution_providers));
   EXPECT_IS_TINY(max_error);
+}
+
+TEST(GradientCheckerTest, ScaledSumGrad) {
+  // Two inputs.
+  {
+    float max_error;
+    GradientChecker<float, float, float> gradient_checker;
+    OpDef op_def{"ScaledSum", kMSDomain, 1};
+    TensorInfo x_info({4, 3});
+    TensorInfo y_info({4, 3});
+    std::vector<std::vector<float>> x_datas = {
+        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+        {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f, 1.1f, 1.2f},
+    };
+
+    TensorInfo output0_info({4, 3}, true);
+    std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
+    attributes.push_back(MakeAttribute("scale_0", static_cast<float>(0.5)));
+    attributes.push_back(MakeAttribute("scale_1", static_cast<float>(0.3)));
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+    execution_providers.emplace_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+    execution_providers.emplace_back(DefaultRocmExecutionProvider());
+#endif
+
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, y_info},
+                                                           {output0_info}, &max_error,
+                                                           x_datas, attributes, true, false, &execution_providers));
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // Three inputs.
+  {
+    float max_error;
+    GradientChecker<float, float, float> gradient_checker;
+    OpDef op_def{"ScaledSum", kMSDomain, 1};
+    TensorInfo x_info({4, 3});
+    TensorInfo y_info({4, 3});
+    TensorInfo z_info({4, 3});
+    std::vector<std::vector<float>> x_datas = {
+        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+        {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f, 1.1f, 1.2f},
+        {0.01f, 0.02f, 0.03f, 0.04f, 0.05f, 0.06f, -0.07f, -0.08f, -0.09f, -0.10f, -0.11f, -0.12f},
+    };
+
+    TensorInfo output0_info({4, 3}, true);
+    std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
+    attributes.push_back(MakeAttribute("scale_0", static_cast<float>(0.2)));
+    attributes.push_back(MakeAttribute("scale_1", static_cast<float>(0.3)));
+    attributes.push_back(MakeAttribute("scale_2", static_cast<float>(0.5)));
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+    execution_providers.emplace_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+    execution_providers.emplace_back(DefaultRocmExecutionProvider());
+#endif
+
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, y_info, z_info},
+                                                           {output0_info}, &max_error,
+                                                           x_datas, attributes, true, false, &execution_providers));
+    EXPECT_IS_TINY(max_error);
+  }
 }
 #endif
 
@@ -3235,6 +3297,41 @@ TEST(GradientCheckerTest, ConvTransposeGrad) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
   ConvTransposeGradientCheckerTest(&execution_providers);
 }
+
+// TODO: Enable test for ROCM
+TEST(GradientCheckerTest, ResizeGrad) {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {
+      MakeAttribute("coordinate_transformation_mode", "half_pixel"),
+      MakeAttribute("cubic_coeff_a", -0.75f),
+      MakeAttribute("exclude_outside", static_cast<int64_t>(0)),
+      MakeAttribute("extrapolation_value", 0.0f),
+      MakeAttribute("mode", "linear"),
+      MakeAttribute("nearest_mode", "floor")};
+
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"Resize", kOnnxDomain, 18};
+
+  TensorInfo x_info({1, 2, 4, 4}, true);
+  TensorInfo roi_info({4}, false, nullptr, DataTypeImpl::GetTensorType<float>());
+  TensorInfo scales_info({4}, false, nullptr, DataTypeImpl::GetTensorType<float>());
+
+  TensorInfo y_info({1, 2, 8, 8}, true);
+
+  std::vector<std::vector<float>> x_datas = {{0.2f, 0.4f, 0.6f, 0.8f, 0.2f, 0.4f, 0.6f, 0.8f,
+                                              0.2f, 0.4f, 0.6f, 0.8f, 0.2f, 0.4f, 0.6f, 0.8f,
+                                              0.2f, 0.4f, 0.6f, 0.8f, 0.2f, 0.4f, 0.6f, 0.8f,
+                                              0.2f, 0.4f, 0.6f, 0.8f, 0.2f, 0.4f, 0.6f, 0.8f},
+                                             {1.0f, 1.0f, 1.0f, 1.0f},
+                                             {1.0f, 1.0f, 2.0f, 2.0f}};
+
+  ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, roi_info, scales_info},
+                                                         {y_info}, &max_error, x_datas, attributes, true, false, &execution_providers));
+  EXPECT_IS_TINY(max_error);
+}
+
 #endif  // USE_CUDA
 
 }  // namespace test

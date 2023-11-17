@@ -40,14 +40,13 @@ stages:
     - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
-        EnvSetupScript: setup_env_cuda_11.bat
+        EnvSetupScript: setup_env_cuda.bat
         buildArch: x64
         additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
         WITH_CACHE: true
         MachinePool: onnxruntime-Win2022-GPU-A10
@@ -58,17 +57,16 @@ stages:
     - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
-        EnvSetupScript: setup_env_cuda_11.bat
+        EnvSetupScript: setup_env_cuda.bat
         buildArch: x64
         additionalBuildFlags: --enable_pybind --enable_training --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --skip_onnx_tests --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
         WITH_CACHE: true
-        # Some unit tests crash on A10 GPUs. So this job still needs to use A10.
+        # Some unit tests crash on A10 GPUs. So this job still needs to use T4.
         MachinePool: onnxruntime-Win2022-GPU-T4
         isTraining: true
 
@@ -85,9 +83,8 @@ stages:
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        RunStaticCodeAnalysis: false
         ORT_EP_NAME: DML
-        WITH_CACHE: true
+        WITH_CACHE: false
         MachinePool: onnxruntime-Win2022-GPU-dml-A10
 
 - stage: kernelDocumentation
@@ -96,7 +93,7 @@ stages:
     - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
-        EnvSetupScript: setup_env_cuda_11.bat
+        EnvSetupScript: setup_env_cuda.bat
         buildArch: x64
         # note: need to specify `--gen_doc` when creating the build config so it has to be in additionalBuildFlags
         additionalBuildFlags: --gen_doc validate --skip_tests --enable_pybind --use_dml --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
@@ -104,7 +101,6 @@ stages:
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
         RunOnnxRuntimeTests: false
-        RunStaticCodeAnalysis: false
         GenerateDocumentation: true
         ORT_EP_NAME: CUDA # It doesn't really matter which EP is selected here since this stage is for documentation.
         WITH_CACHE: true

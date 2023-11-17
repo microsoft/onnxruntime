@@ -167,11 +167,6 @@ class DebugOptions:
     @property
     def onnxruntime_log_filter(self):
         """Accessor for the filter onnxruntime logs configuration."""
-        if self.log_level >= LogLevel.INFO:
-            return [
-                "CleanUnusedInitializersAndNodeArgs] Removing initializer",
-                "Serializing optimized model with Graph Optimization level greater than ORT_ENABLE_EXTENDED",
-            ]
         return None
 
 
@@ -366,7 +361,7 @@ class _RuntimeOptions:
 
         # Cache exported model
         if "ORTMODULE_CACHE_DIR" in os.environ:
-            self._logger.info("ORTModule cache optimization is ON.")
+            self._logger.warning("ORTModule optimization for caching exported model is ON.")
             self.ortmodule_cache_dir = os.getenv("ORTMODULE_CACHE_DIR")
 
         # Experimental features.

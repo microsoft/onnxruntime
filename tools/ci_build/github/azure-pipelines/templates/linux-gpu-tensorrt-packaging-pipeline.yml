@@ -44,21 +44,20 @@ stages:
         submodules: recursive
       - template: get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_8_tensorrt8_6
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
           Context: tools/ci_build/github/linux/docker
-          DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
+          DockerBuildArgs: "
+          --network=host
+          --build-arg BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+          --build-arg TRT_VERSION=8.6.1.6-1.cuda11.8
+          --build-arg BUILD_UID=$( id -u )
+          "
           Repository: onnxruntimecuda118xtrt86build
       - template: set-version-number-variables-step.yml
 
-      - task: CmdLine@2
-        inputs:
-          script: |
-            mkdir -p $HOME/.onnx
-            docker run --gpus all -e CC=/opt/rh/devtoolset-11/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-11/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
-            --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecuda118xtrt86build \
-            /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release \
-            --skip_submodule_sync --parallel --build_shared_lib ${{ parameters.buildJavaOption }} ${{ parameters.buildNodejsOption }} --use_tensorrt --cuda_version=$(CUDA_VERSION) --cuda_home=/usr/local/cuda-$(CUDA_VERSION) --cudnn_home=/usr --tensorrt_home=/usr --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80'
-          workingDirectory: $(Build.SourcesDirectory)
+      - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_tensorrt_c_api_package.sh
+        workingDirectory: $(Build.SourcesDirectory)
+        displayName: 'Build and Test'
 
       - ${{ if eq(parameters.buildJava, true) }}:
           - template: java-api-artifacts-package-and-publish-steps-posix.yml

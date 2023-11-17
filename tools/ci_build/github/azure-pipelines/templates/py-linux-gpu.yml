@@ -36,9 +36,15 @@ jobs:
 
     - template: get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_8_tensorrt8_6
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
         Context: tools/ci_build/github/linux/docker
-        DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u ) --build-arg PLATFORM=${{ parameters.arch }}"
+        DockerBuildArgs: "
+        --network=host 
+        --build-arg BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8 
+        --build-arg TRT_VERSION=8.6.1.6-1.cuda11.8 
+        --build-arg BUILD_UID=$( id -u )
+        --build-arg PLATFORM=${{ parameters.arch }}
+        "
         Repository: onnxruntimecuda118xtrt86build${{ parameters.arch }}
 
 

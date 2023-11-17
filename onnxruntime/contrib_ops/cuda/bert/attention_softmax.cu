@@ -18,7 +18,6 @@ limitations under the License.
 */
 
 #include <cub/cub.cuh>
-#include <cuda_fp16.h>
 #include <math_constants.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"

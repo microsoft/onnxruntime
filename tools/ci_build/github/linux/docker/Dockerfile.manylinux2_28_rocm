@@ -8,16 +8,9 @@ ARG PREPEND_PATH=${DEVTOOLSET_ROOTPATH}/usr/bin:
 FROM $BASEIMAGE AS base_image
 ARG ROCM_VERSION=5.5
 
-# Enable epel-release repositories
-RUN yum --enablerepo=extras install -y epel-release
-
-# Install the ROCm rpms
-RUN yum clean all
-RUN echo -e "[ROCm]\nname=ROCm\nbaseurl=https://repo.radeon.com/rocm/yum/$ROCM_VERSION/main\nenabled=1\ngpgcheck=0" >> /etc/yum.repos.d/rocm.repo
-
-RUN echo -e "[amdgpu]\nname=amdgpu\nbaseurl=https://repo.radeon.com/amdgpu/$ROCM_VERSION/rhel/7.9/main/x86_64\nenabled=1\ngpgcheck=0" >> /etc/yum.repos.d/amdgpu.repo
-
-RUN yum install -y rocm-dev
+#Add our own dependencies
+ADD scripts /tmp/scripts
+RUN /tmp/scripts/setup_rocm_yum_repo.sh -r ${ROCM_VERSION}
 
 # Set ENV
 ENV PATH=/opt/rocm/hcc/bin:/opt/rocm/hip/bin:/opt/rocm/bin${PATH:+:${PATH}}
@@ -38,7 +31,7 @@ RUN yum install -y hipify-clang
 RUN yum -y install wget
 
 # rocm lib
-RUN yum install -y miopen-hip-devel rocblas-devel rocrand-devel rccl-devel hipsparse-devel hipfft-devel hipcub-devel hipblas-devel rocthrust-devel
+RUN yum install -y miopen-hip-devel rocblas-devel rocrand-devel rccl-devel hipsparse-devel hipfft-devel hipcub-devel hipblas-devel rocthrust-devel migraphx-devel
 
 ENV AUDITWHEEL_POLICY=${POLICY} AUDITWHEEL_ARCH=${PLATFORM} AUDITWHEEL_PLAT=${POLICY}_${PLATFORM}
 ENV LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 LANGUAGE=en_US.UTF-8
@@ -52,7 +45,6 @@ COPY build_scripts/fixup-mirrors.sh /usr/local/sbin/fixup-mirrors
 
 # setup entrypoint, this will wrap commands with `linux32` with i686 images
 COPY build_scripts/install-entrypoint.sh \
-     build_scripts/update-system-packages.sh \
      build_scripts/build_utils.sh \
      /build_scripts/
 
@@ -61,7 +53,6 @@ COPY manylinux-entrypoint /usr/local/bin/manylinux-entrypoint
 ENTRYPOINT ["manylinux-entrypoint"]
 
 COPY build_scripts/install-runtime-packages.sh \
-     build_scripts/update-system-packages.sh \
      build_scripts/build_utils.sh \
      /build_scripts/
 RUN manylinux-entrypoint /build_scripts/install-runtime-packages.sh && rm -rf /build_scripts/
@@ -164,7 +155,6 @@ COPY --from=build_git /manylinux-rootfs /
 COPY --from=build_cpython /manylinux-rootfs /
 COPY --from=all_python /opt/_internal /opt/_internal/
 COPY build_scripts/finalize.sh \
-     build_scripts/update-system-packages.sh \
      build_scripts/python-tag-abi-tag.py \
      build_scripts/requirements3.8.txt \
      build_scripts/requirements3.9.txt \
@@ -185,8 +175,7 @@ ARG PYTHON_VERSION=3.8
 ARG OPSET_VERSION=15
 ARG INSTALL_DEPS_EXTRA_ARGS
 
-#Add our own dependencies
-ADD scripts /tmp/scripts
+
 RUN cd /tmp/scripts && \
     /tmp/scripts/manylinux/install_centos.sh && \
     /tmp/scripts/install_os_deps.sh -d gpu $INSTALL_DEPS_EXTRA_ARGS && \
@@ -195,6 +184,13 @@ RUN cd /tmp/scripts && \
     /tmp/scripts/install_python_deps.sh -d gpu -p 3.10 $INSTALL_DEPS_EXTRA_ARGS && \
      rm -rf /tmp/scripts
 
+
+# Install ccache to reuse this dockerfile for CI
+RUN mkdir -p /tmp/ccache && \
+    cd /tmp/ccache && \
+    wget -q -O - https://github.com/ccache/ccache/releases/download/v4.7.4/ccache-4.7.4-linux-x86_64.tar.xz | tar --strip 1 -J -xf - && \
+    cp /tmp/ccache/ccache /usr/bin && \
+    rm -rf /tmp/ccache
 
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev

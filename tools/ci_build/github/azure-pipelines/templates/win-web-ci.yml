@@ -29,6 +29,7 @@ jobs:
   pool: ${{ parameters.PoolName }}
 
   variables:
+    webgpuCommandlineExtraFlags: '--chromium-flags=--ignore-gpu-blocklist --chromium-flags=--gpu-vendor-id=0x10de'
     runCodesignValidationInjection: false
   timeoutInMinutes: 60
   workspace:
@@ -72,7 +73,7 @@ jobs:
     displayName: 'Testing: force EOL to lf on windows for /js/**'
   - task: NodeTool@0
     inputs:
-      versionSpec: '16.x'
+      versionSpec: '18.x'
   - task: DownloadPipelineArtifact@2
     inputs:
       patterns: '${{ parameters.BuildConfig }}_*/**/*'
@@ -99,10 +100,6 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js'
     displayName: 'npm ci /js/'
   - script: |
-     npm run lint
-    workingDirectory: '$(Build.SourcesDirectory)\js'
-    displayName: 'run ESLint without TS type populated'
-  - script: |
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js\common'
     displayName: 'npm ci /js/common/'
@@ -114,6 +111,10 @@ jobs:
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm ci /js/web/'
+  - script: |
+     npm run prebuild
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'run TypeScript type check in /js/web/'
   - script: |
      npm run lint
     workingDirectory: '$(Build.SourcesDirectory)\js'
@@ -155,25 +156,83 @@ jobs:
       workingDirectory: $(Build.BinariesDirectory)
       errorActionPreference: stop
     displayName: 'Pack NPM packages'
+  - task: PowerShell@2
+    inputs:
+      targetType: 'inline'
+      script: Get-WmiObject Win32_Process -Filter "name = 'msedge.exe'" | Select-Object CommandLine | Format-List
+      workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Dump active Edge processes (before tests 0)'
   - script: |
      npm test -- -e=edge -b=webgl,wasm,xnnpack
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (wasm,webgl,xnnpack backend)'
-    condition: ne('${{ parameters.RunWebGpuTests }}', 'true')
+    condition: eq('${{ parameters.RunWebGpuTests }}', 'false')
   - script: |
-     npm test -- -e=edge -b=webgl,wasm,xnnpack,webgpu
+     npm test -- -e=edge -b=webgl,wasm,xnnpack,webgpu $(webgpuCommandlineExtraFlags)
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (ALL backends)'
-    condition: ne('${{ parameters.RunWebGpuTests }}', 'false')
+    condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
+  - task: PowerShell@2
+    inputs:
+      targetType: 'inline'
+      script: Get-WmiObject Win32_Process -Filter "name = 'msedge.exe'" | Select-Object CommandLine | Format-List
+      workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Dump active Edge processes (before tests 1)'
+  - script: |
+     npm test -- suite1 -e=edge -b=webgpu --io-binding=gpu-tensor $(webgpuCommandlineExtraFlags)
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-tensor)'
+    condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
+    # temporarily allow this test to fail, so that people are not blocked.
+    # investigation is ongoing for the root cause of the random failure (Edge crash).
+    # TODO: remove this line once the root cause is found and fixed.
+    continueOnError: true
+  - task: PowerShell@2
+    inputs:
+      targetType: 'inline'
+      script: Get-WmiObject Win32_Process -Filter "name = 'msedge.exe'" | Select-Object CommandLine | Format-List
+      workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
+    displayName: 'Dump active Edge processes (before tests 2)'
+  - script: |
+     npm test -- suite1 -e=edge -b=webgpu --io-binding=gpu-location $(webgpuCommandlineExtraFlags)
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-location)'
+    condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
+  - task: PowerShell@2
+    inputs:
+      targetType: 'inline'
+      script: Get-WmiObject Win32_Process -Filter "name = 'msedge.exe'" | Select-Object CommandLine | Format-List
+      workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Dump active Edge processes (before tests 3)'
   - script: |
      npm test -- --webgl-texture-pack-mode -b=webgl -e=edge
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebGL: packed mode'
+  - task: PowerShell@2
+    inputs:
+      targetType: 'inline'
+      script: Get-WmiObject Win32_Process -Filter "name = 'msedge.exe'" | Select-Object CommandLine | Format-List
+      workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Dump active Edge processes (before tests 4)'
   - script: |
      npm test -- --wasm-enable-proxy -b=wasm -e=edge
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebAssembly: proxy'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
+  - task: PowerShell@2
+    inputs:
+      targetType: 'inline'
+      script: Get-WmiObject Win32_Process -Filter "name = 'msedge.exe'" | Select-Object CommandLine | Format-List
+      workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Dump active Edge processes (before E2E tests)'
+  - task: PowerShell@2
+    inputs:
+      targetType: 'inline'
+      script: dir -r $(Build.SourcesDirectory)\build\js\e2e
+      workingDirectory: '$(Build.SourcesDirectory)\js\web'
+      errorActionPreference: continue
+    displayName: 'Dump E2E test folder (before E2E tests)'
   - script: |
       npm run test:e2e -- --browser=Edge_default
     workingDirectory: '$(Build.SourcesDirectory)\js\web'

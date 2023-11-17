@@ -1,0 +1,26 @@
+[
+  {
+    "name": "neg with no attributes",
+    "operator": "Neg",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "T[2,4] (int32)",
+        "inputs": [
+          {
+            "data": [1, 2, -1, -2, 0, 1, -1, 0],
+            "dims": [2, 4],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [-1, -2, 1, 2, 0, -1, 1, 0],
+            "dims": [2, 4],
+            "type": "int32"
+          }
+        ]
+      }
+    ]
+  }
+]

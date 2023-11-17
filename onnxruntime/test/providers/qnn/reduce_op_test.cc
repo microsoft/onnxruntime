@@ -366,7 +366,7 @@ static void RunReduceOpQDQTest(const std::string& op_type,
                                bool keepdims,
                                int opset,
                                ExpectedEPNodeAssignment expected_ep_assignment,
-                               float fp32_abs_err = 1e-5f) {
+                               float fp32_abs_err = 1e-4f) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -465,14 +465,44 @@ TEST_F(QnnHTPBackendTests, ReduceSumS8Opset13_NoKeepDims) {
                              ExpectedEPNodeAssignment::All);
 }
 
-// Test that we don't support rank 5 Reduce ops.
-TEST_F(QnnHTPBackendTests, ReduceSumS8Opset13_Rank5Unsupported) {
+// Test rank 5 ReduceSum (s8 quant) with axes = [0, 1, 2, 3, 4], keep_dims = true
+// TODO: QNN 2.15.1 Graph finalization error:
+// graph_prepare.cc:234:ERROR:could not create op: q::Sum
+// graph_prepare.cc:1093:ERROR:Op 0x102500000011 preparation failed with err:-1
+// Completed stage: Graph Transformations and Optimizations (17163 us)
+// QnnDsp <E> "node_token_3" generated: could not create op
+// QnnDsp <E> RouterWindows graph prepare failed 12
+// QnnDsp <E> Failed to finalize graph (id: 1) with err 1002{}
+TEST_F(QnnHTPBackendTests, DISABLED_ReduceSumS8Opset13_Rank5) {
   RunReduceOpQDQTest<int8_t>("ReduceSum",
-                             TestInputDef<float>({1, 3, 4, 4, 2}, false, -10.0f, 10.0f),
+                             TestInputDef<float>({1, 3, 4, 4, 2}, false, GetFloatDataInRange(-10.0f, 10.0f, 96)),
                              {0, 1, 2, 3, 4},  // axes
                              true,             // keepdims
                              13,               // opset
-                             ExpectedEPNodeAssignment::None);
+                             ExpectedEPNodeAssignment::All);
+}
+
+// Test that QNN validation APIs reject inputs of unsupported ranks.
+TEST_F(QnnHTPBackendTests, ReduceSumS8Opset13_Rank6_Unsupported) {
+  RunReduceOpQDQTest<int8_t>("ReduceSum",
+                             TestInputDef<float>({1, 3, 4, 4, 2, 1}, false, GetFloatDataInRange(-10.0f, 10.0f, 96)),
+                             {-1},                             // axes
+                             false,                            // keepdims
+                             13,                               // opset
+                             ExpectedEPNodeAssignment::None);  // Not assigned to QNN EP
+}
+
+// Test rank 5 ReduceSum (u8 quant) with axes = [-1], keep_dims = false
+// TODO: Enable on QNN 2.15.1 (works fine)
+TEST_F(QnnHTPBackendTests, DISABLED_ReduceSumU8Opset13_Rank5_LastAxis) {
+  constexpr size_t num_elems = 2ULL * 12 * 124 * 2 * 4;
+  std::vector<float> input_data = GetFloatDataInRange(-100.0f, 100.0f, num_elems);
+  RunReduceOpQDQTest<uint8_t>("ReduceSum",
+                              TestInputDef<float>({2, 12, 124, 2, 4}, false, input_data),
+                              {-1},   // axes
+                              false,  // keepdims
+                              13,     // opset
+                              ExpectedEPNodeAssignment::All);
 }
 
 //

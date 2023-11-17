@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 import logging
 
+import numpy as np
 from fusion_attention import AttentionMask, FusionAttention
 from onnx import TensorProto, helper
 from onnx_model import OnnxModel
@@ -259,8 +260,12 @@ class FusionBartAttention(FusionAttention):
             empty_bias_name = "empty_bias"
             empty_tensor = self.model.get_initializer(empty_bias_name)
             if empty_tensor is None:
-                empty_tensor = helper.make_tensor(empty_bias_name, TensorProto.FLOAT, [bias_dim], [0.0] * bias_dim)
-                self.model.add_initializer(empty_tensor, self.this_graph_name)
+                self.add_initializer(
+                    empty_bias_name,
+                    TensorProto.FLOAT,
+                    dims=[bias_dim],
+                    vals=np.array([0.0] * bias_dim, dtype=np.float32),
+                )
 
             add_name = self.model.create_node_name("Add")
             add_k = helper.make_node("Add", [empty_bias_name, matmul_k.output[0]], [reshape_k_1.name], add_name)

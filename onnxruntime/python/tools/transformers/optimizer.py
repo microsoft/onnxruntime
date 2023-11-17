@@ -69,6 +69,8 @@ def optimize_by_onnxruntime(
     save_as_external_data: bool = False,
     external_data_filename: str = "",
     external_data_file_threshold: int = 1024,
+    *,
+    provider: Optional[str] = None,
 ) -> str:
     """
     Use onnxruntime to optimize model.
@@ -82,6 +84,7 @@ def optimize_by_onnxruntime(
         save_as_external_data (bool): whether to save external data outside of ONNX model
         external_data_filename (str): name of external data file. If not provided, name is automatically created from ONNX model.
         external_data_file_threshold (int): threshold to decide whether to save tensor in ONNX model or in external data file
+        provider (str or None): execution provider to use if use_gpu
     Returns:
         optimized_model_path (str): the path of optimized model
     """
@@ -90,13 +93,17 @@ def optimize_by_onnxruntime(
 
     import onnxruntime
 
-    if use_gpu and set(onnxruntime.get_available_providers()).isdisjoint(
-        ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
+    if (
+        use_gpu
+        and provider is None
+        and set(onnxruntime.get_available_providers()).isdisjoint(
+            ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
+        )
     ):
         logger.error("There is no gpu for onnxruntime to do optimization.")
         return onnx_model_path
 
-    model = OnnxModel(load_model(onnx_model_path, format=None, load_external_data=False))
+    model = OnnxModel(load_model(onnx_model_path, load_external_data=False))
     if model.use_float16() and not use_gpu:
         logger.warning(
             "This model uses float16 in the graph, use_gpu=False might cause extra Cast nodes. "
@@ -138,17 +145,32 @@ def optimize_by_onnxruntime(
         kwargs["disabled_optimizers"] = disabled_optimizers
 
     if not use_gpu:
-        onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=["CPUExecutionProvider"], **kwargs)
+        providers = ["CPUExecutionProvider"]
+    elif provider is not None:
+        if provider == "dml":
+            providers = ["DmlExecutionProvider"]
+        elif provider == "rocm":
+            providers = ["ROCMExecutionProvider"]
+        elif provider == "migraphx":
+            providers = ["MIGraphXExecutionProvider", "ROCMExecutionProvider"]
+        elif provider == "cuda":
+            providers = ["CUDAExecutionProvider"]
+        elif provider == "tensorrt":
+            providers = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
+        else:
+            providers = ["CUDAExecutionProvider"]
+
+        providers.append("CPUExecutionProvider")
     else:
-        gpu_ep = []
+        providers = []
 
         if torch_version.hip:
-            gpu_ep.append("MIGraphXExecutionProvider")
-            gpu_ep.append("ROCMExecutionProvider")
+            providers.append("MIGraphXExecutionProvider")
+            providers.append("ROCMExecutionProvider")
         else:
-            gpu_ep.append("CUDAExecutionProvider")
+            providers.append("CUDAExecutionProvider")
 
-        onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=gpu_ep, **kwargs)
+    onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=providers, **kwargs)
 
     assert os.path.exists(optimized_model_path) and os.path.isfile(optimized_model_path)
     logger.debug("Save optimized model by onnxruntime to %s", optimized_model_path)
@@ -220,6 +242,8 @@ def optimize_model(
     use_gpu: bool = False,
     only_onnxruntime: bool = False,
     verbose: bool = False,
+    *,
+    provider: Optional[str] = None,
 ):
     """Optimize Model by OnnxRuntime and/or python fusion logic.
 
@@ -257,6 +281,7 @@ def optimize_model(
         use_gpu (bool, optional): use gpu or not for onnxruntime. Defaults to False.
         only_onnxruntime (bool, optional): only use onnxruntime to optimize model, and no python fusion.
             Defaults to False.
+        provider (str, optional): execution provider to use if use_gpu. Defaults to None.
 
      Returns:
         object of an optimizer class.
@@ -302,6 +327,7 @@ def optimize_model(
         temp_model_path = optimize_by_onnxruntime(
             input,
             use_gpu=use_gpu,
+            provider=provider,
             optimized_model_path=optimized_model_path,
             opt_level=opt_level,
             disabled_optimizers=disabled_optimizers,
@@ -316,6 +342,7 @@ def optimize_model(
         temp_model_path = optimize_by_onnxruntime(
             input,
             use_gpu=use_gpu,
+            provider=provider,
             optimized_model_path=optimized_model_path,
             opt_level=1,
             disabled_optimizers=disabled_optimizers,
@@ -424,6 +451,14 @@ def _parse_arguments():
     parser.set_defaults(use_gpu=False)
 
     parser.add_argument(
+        "--provider",
+        required=False,
+        type=str,
+        default=None,
+        help="Execution provider to use if use_gpu",
+    )
+
+    parser.add_argument(
         "--only_onnxruntime",
         required=False,
         action="store_true",
@@ -501,6 +536,7 @@ def main():
         opt_level=args.opt_level,
         optimization_options=optimization_options,
         use_gpu=args.use_gpu,
+        provider=args.provider,
         only_onnxruntime=args.only_onnxruntime,
     )
 
@@ -510,11 +546,14 @@ def main():
     if args.input_int32:
         optimizer.change_graph_inputs_to_int32()
 
-    if args.model_type in ["bert", "gpt2"]:
-        if optimizer.is_fully_optimized():
-            logger.info("The model has been fully optimized.")
-        else:
-            logger.info("The model has been optimized.")
+    # Print the operator statistics might help end user.
+    optimizer.get_operator_statistics()
+
+    fused_op_count = optimizer.get_fused_operator_statistics()
+    if "bert" in args.model_type and optimizer.is_fully_optimized(fused_op_count):
+        logger.info("The model has been fully optimized.")
+    else:
+        logger.info("The model has been optimized.")
 
     if args.convert_to_packing_mode:
         if args.model_type == "bert":

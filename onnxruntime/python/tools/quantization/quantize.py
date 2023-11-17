@@ -240,6 +240,11 @@ def check_static_quant_arguments(quant_format: QuantFormat, activation_type: Qua
             f"weight_type={weight_type}!=QuantType.QFLOAT8E4M3FN"
         )
 
+    q16_types = [QuantType.QInt16, QuantType.QUInt16]
+
+    if (activation_type in q16_types or weight_type in q16_types) and quant_format != QuantFormat.QDQ:
+        raise ValueError("Only QuantFormat.QDQ supports 16-bit quantization types.")
+
     if activation_type == QuantType.QInt8 and weight_type == QuantType.QInt8 and quant_format != QuantFormat.QDQ:
         logging.warning(
             "Please use QuantFormat.QDQ for activation type QInt8 and weight type QInt8. "
@@ -346,6 +351,10 @@ def quantize_static(
                     Default is 0.01. Constant smoothing factor to use when computing the moving average of the
                     minimum and maximum values. Effective only when the calibration method selected is MinMax and
                     when CalibMovingAverage is set to True.
+                CalibMaxIntermediateOutputs = Optional[int] :
+                    Default is None. If set to an integer, during calculation of the min-max range of the tensors
+                    it will load at max value number of outputs before computing and merging the range. This will
+                    produce the same result as all computing with None, but is more memory efficient.
                 SmoothQuant = True/False :
                     Default is False. If enabled, SmoothQuant algorithm will be applied before quantization to do
                     fake input channel quantization.
@@ -356,6 +365,17 @@ def quantize_static(
                 SmoothQuantFolding = True/False :
                     Default is True. It only works if SmoothQuant is True. If enabled, inserted Mul ops during
                     SmoothQuant will be folded into the previous op if the previous op is foldable.
+                UseQDQContribOps = True/False :
+                    Default is False. If enabled, the inserted QuantizeLinear and DequantizeLinear ops will have the
+                    `com.microsoft` domain, which forces use of ONNX Runtime's QuantizeLinear and DequantizeLinear
+                    contrib op implementations. The contrib op implementations may support features not standardized
+                    into the ONNX specification (e.g., 16-bit quantization types).
+                MinimumRealRange = float|None :
+                    Default is None. If set to a floating-point value, the calculation of the quantization parameters
+                    (i.e., scale and zero point) will enforce a minimum range between rmin and rmax. If (rmax - rmin)
+                    is less than the specified minimum range, rmax will be set to rmin + MinimumRealRange. This is
+                    necessary for EPs like QNN that require a minimum floating-point range when determining
+                    quantization parameters.
     """
     if activation_type == QuantType.QFLOAT8E4M3FN or weight_type == QuantType.QFLOAT8E4M3FN:
         if calibrate_method != CalibrationMethod.Distribution:
@@ -386,6 +406,7 @@ def quantize_static(
         ("CalibTensorRangeSymmetric", "symmetric"),
         ("CalibMovingAverage", "moving_average"),
         ("CalibMovingAverageConstant", "averaging_constant"),
+        ("CalibMaxIntermediateOutputs", "max_intermediate_outputs"),
     ]
     calib_extra_options = {
         key: extra_options.get(name) for (name, key) in calib_extra_options_keys if name in extra_options

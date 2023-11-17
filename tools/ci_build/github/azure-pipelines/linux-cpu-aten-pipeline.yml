@@ -53,10 +53,6 @@ jobs:
     clean: true
     submodules: recursive
 
-  - task: NodeTool@0
-    inputs:
-      versionSpec: '16.x'
-
   - template: templates/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_aten_cpu

@@ -114,15 +114,15 @@ GetTestQDQModelFn<InputQType> BuildQDQBatchNormTestCase(const TestInputDef<float
     const int64_t num_channels = input_shape[1];
 
     NodeArg* input = MakeTestInput(builder, input_def);
-    QuantParams<InputQType> input_qparams = GetTestInputQuantParams(input_def);
+    QuantParams<InputQType> input_qparams = GetTestInputQuantParams<InputQType>(input_def);
     NodeArg* input_qdq = AddQDQNodePair<InputQType>(builder, input, input_qparams.scale, input_qparams.zero_point);
 
     NodeArg* scale = MakeTestInput(builder, scale_def);
-    QuantParams<ScaleQType> scale_qparams = GetTestInputQuantParams(scale_def);
+    QuantParams<ScaleQType> scale_qparams = GetTestInputQuantParams<ScaleQType>(scale_def);
     NodeArg* scale_qdq = AddQDQNodePair<ScaleQType>(builder, scale, scale_qparams.scale, scale_qparams.zero_point);
 
     NodeArg* bias = MakeTestInput(builder, bias_def);
-    QuantParams<BiasQType> bias_qparams = GetTestInputQuantParams(bias_def);
+    QuantParams<BiasQType> bias_qparams = GetTestInputQuantParams<BiasQType>(bias_def);
     NodeArg* bias_qdq = AddQDQNodePair<BiasQType>(builder, bias, bias_qparams.scale, bias_qparams.zero_point);
 
     std::vector<float> mean_vals(num_channels);
@@ -175,13 +175,7 @@ static void RunBatchNormQDQTest(const TestInputDef<float>& input_def,
 // TODO: FIX TRANSLATION!!!
 // Check that QNN compiles DQ -> BatchNormalization -> Q as a single unit.
 // Use an input of rank 3.
-// QNN v2.13
-// Inaccuracy detected for output 'output', element 4.
-// Output quant params: scale=0.019084848463535309, zero_point=9.
-// Expected val: 1.7755576372146606
-// QNN QDQ val: 2.9963212013244629 (err 1.2207635641098022)
-// CPU QDQ val: 0.82064849138259888 (err 0.95490914583206177)
-TEST_F(QnnHTPBackendTests, DISABLED_BatchNorm1D) {
+TEST_F(QnnHTPBackendTests, BatchNorm1D) {
   constexpr int64_t num_channels = 2;
 
   RunBatchNormQDQTest(TestInputDef<float>({1, num_channels, 3}, false, {-5.0f, -4.0f, -3.0f, 0.0f, 2.0f, 5.0f}),  // Input data
@@ -193,13 +187,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_BatchNorm1D) {
 // TODO: FIX TRANSLATION!!!
 // Check that QNN compiles DQ -> BatchNormalization -> Q as a single unit.
 // Use an input of rank 4.
-// QNN v2.13
-// Inaccuracy detected for output 'output', element 14.
-// Output quant params: scale=0.023071292787790298, zero_point=19.
-// Expected val: 2.8554618358612061
-// QNN QDQ val: 5.3294687271118164 (err 2.4740068912506104)
-// CPU QDQ val: 1.6611330509185791 (err 1.194328784942627)
-TEST_F(QnnHTPBackendTests, DISABLED_BatchNorm2D) {
+TEST_F(QnnHTPBackendTests, BatchNorm2D) {
   constexpr int64_t num_channels = 2;
   std::vector<float> input_data = {-8.0f, -6.0f, -4.0f, -2.0f, 0.0f, 1.1f, 3.3f, 8.0f,
                                    -7.0f, -5.0f, -3.0f, -1.0f, 0.0f, 2.1f, 4.3f, 7.0f};

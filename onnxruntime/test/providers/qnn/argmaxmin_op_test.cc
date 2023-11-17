@@ -43,7 +43,7 @@ static GetTestQDQModelFn<QType> BuildQDQArgMxxTestCase(const std::string& op_typ
   return [op_type, input_def, attrs](ModelTestBuilder& builder,
                                      std::vector<QuantParams<QType>>& output_qparams) {
     ORT_UNUSED_PARAMETER(output_qparams);
-    QuantParams<QType> input_qparams = GetTestInputQuantParams(input_def);
+    QuantParams<QType> input_qparams = GetTestInputQuantParams<QType>(input_def);
 
     auto* input = MakeTestInput(builder, input_def);
 
@@ -205,7 +205,7 @@ TEST_F(QnnHTPBackendTests, ArgMaxMin_AsGraphOutputUnsupported) {
   auto model_builder_func = [](const std::string& op_type, const TestInputDef<float>& input_def,
                                const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs) -> GetTestModelFn {
     return [op_type, input_def, attrs](ModelTestBuilder& builder) {
-      QuantParams<uint8_t> input_qparams = GetTestInputQuantParams(input_def);
+      QuantParams<uint8_t> input_qparams = GetTestInputQuantParams<uint8_t>(input_def);
 
       auto* input = MakeTestInput(builder, input_def);
       auto* output = builder.MakeOutput();

@@ -42,12 +42,12 @@ static GetTestQDQModelFn<QuantType> BuildQDQWhereTestCase(const TestInputDef<boo
 
     // x => Q => DQ =>
     NodeArg* x = MakeTestInput(builder, x_def);
-    QuantParams<QuantType> x_qparams = GetTestInputQuantParams(x_def);
+    QuantParams<QuantType> x_qparams = GetTestInputQuantParams<QuantType>(x_def);
     NodeArg* x_qdq = AddQDQNodePair(builder, x, x_qparams.scale, x_qparams.zero_point);
 
     // y => Q => DQ =>
     NodeArg* y = MakeTestInput(builder, y_def);
-    QuantParams<QuantType> y_qparams = GetTestInputQuantParams(y_def);
+    QuantParams<QuantType> y_qparams = GetTestInputQuantParams<QuantType>(y_def);
     NodeArg* y_qdq = AddQDQNodePair(builder, y, y_qparams.scale, y_qparams.zero_point);
 
     // Where operator.
@@ -126,10 +126,22 @@ TEST_F(QnnHTPBackendTests, WhereLargeDataU8) {
 // QnnDsp <E> graph prepare failed 13
 // QnnDsp <E> Failed to finalize graph QNN_4851394333842096633_1 with err: 1002
 // QnnDsp <E> Failed to finalize graph (id: 1) with err 1002
+// Worked with QNN v2.16
 TEST_F(QnnHTPBackendTests, DISABLED_WhereLargeDataBroadcastU8) {
   RunWhereQDQTest(TestInputDef<bool>({5120}, false, false, true),
                   TestInputDef<float>({1, 16, 64, 5120}, true, 0.0f, 1.0f),
                   TestInputDef<float>({1}, true, {3.0f}),
+                  ExpectedEPNodeAssignment::All);
+}
+
+// .\hexagon\prepare\seq\initial_sequencer_dp.cc:149:ERROR:A single op,
+// "q::Broadcast" (Op ID: 19a200000012), requires 0xb40000 bytes of TCM, which is greater than the TCM size of 0x400000!
+// .\hexagon\prepare\seq\initial_sequencer_dp.cc : 156 : ERROR :
+// The name of the failing op before optimization is : "q::QNN_ElementWiseSelect"(Op ID : 12).
+TEST_F(QnnHTPBackendTests, DISABLED_WhereLargeDataBroadcastTransformedU8) {
+  RunWhereQDQTest(TestInputDef<bool>({1, 1, 5120, 1}, false, false, true),
+                  TestInputDef<float>({1, 64, 5120, 16}, true, 0.0f, 1.0f),
+                  TestInputDef<float>({1, 1, 1, 1}, true, {3.0f}),
                   ExpectedEPNodeAssignment::All);
 }
 

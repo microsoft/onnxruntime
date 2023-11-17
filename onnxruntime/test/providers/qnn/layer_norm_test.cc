@@ -5,6 +5,7 @@
 
 #include <string>
 #include "core/graph/graph.h"
+#include "core/graph/node_attr_utils.h"
 
 #include "test/optimizer/qdq_test_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
@@ -15,7 +16,12 @@ namespace onnxruntime {
 namespace test {
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
-static void RunLayerNormCpuTest(const std::vector<int64_t>& shape) {
+// Runs an LayerNorm model on the QNN CPU backend. Checks the graph node assignment and that inference
+// outputs for QNN and CPU match.
+static void RunLayerNormCpuTest(const TestInputDef<float>& input_def,
+                                const TestInputDef<float>& scale_def,
+                                const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                                ExpectedEPNodeAssignment expected_ep_assignment) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnCpu.dll";
@@ -23,88 +29,84 @@ static void RunLayerNormCpuTest(const std::vector<int64_t>& shape) {
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  auto BuildLayerNormTestCase = [](const std::vector<int64_t>& shape) -> GetTestModelFn {
-    return [shape](ModelTestBuilder& builder) {
-      // Random input data
-      auto input = builder.MakeInput<float>(shape, 0.0f, 10.0f);
-      auto scale = builder.MakeInput<float>(shape, 0.0f, 10.0f);
-
-      auto* output = builder.MakeOutput();
-      Node& layer_norm_node = builder.AddNode("LayerNormalization", {input, scale}, {output});
-
-      layer_norm_node.AddAttribute("axis", static_cast<int64_t>(0));
-    };
-  };
-
-  constexpr int expected_nodes_in_partition = 1;
-  RunQnnModelTest(BuildLayerNormTestCase(shape),
+  RunQnnModelTest(BuildOpTestCase<float>("LayerNormalization", {input_def, scale_def}, {}, attrs),
                   provider_options,
-                  13,
-                  ExpectedEPNodeAssignment::All,
-                  expected_nodes_in_partition);
+                  17,
+                  expected_ep_assignment);
 }
 
-TEST_F(QnnCPUBackendTests, TestLayerNorm) {
-  RunLayerNormCpuTest({2, 3});
+TEST_F(QnnCPUBackendTests, LayerNorm) {
+  RunLayerNormCpuTest(TestInputDef<float>({2, 3}, false, GetFloatDataInRange(0.0f, 10.0f, 6)),
+                      TestInputDef<float>({2, 3}, false, GetFloatDataInRange(0.0f, 10.0f, 6)),
+                      {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
+                      ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnCPUBackendTests, TestLayerNorm1D) {
-  RunLayerNormCpuTest({1, 2, 3});
+TEST_F(QnnCPUBackendTests, LayerNorm1D_Axis0) {
+  RunLayerNormCpuTest(TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRange(0.0f, 10.0f, 6)),
+                      TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRange(0.0f, 10.0f, 6)),
+                      {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
+                      ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnCPUBackendTests, TestLayerNorm2D) {
-  RunLayerNormCpuTest({1, 2, 3, 3});
+TEST_F(QnnCPUBackendTests, LayerNorm1D_AxisLast) {
+  RunLayerNormCpuTest(TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRange(0.0f, 10.0f, 6)),
+                      TestInputDef<float>({3}, false, GetFloatDataInRange(0.0f, 10.0f, 3)),
+                      {utils::MakeAttribute("axis", static_cast<int64_t>(-1))},
+                      ExpectedEPNodeAssignment::All);
 }
 
-TEST_F(QnnCPUBackendTests, TestLayerNorm3D) {
-  RunLayerNormCpuTest({1, 2, 3, 3, 4});
+TEST_F(QnnCPUBackendTests, LayerNorm2D) {
+  RunLayerNormCpuTest(TestInputDef<float>({1, 2, 3, 3}, false, GetFloatDataInRange(0.0f, 10.0f, 18)),
+                      TestInputDef<float>({1, 2, 3, 3}, false, GetFloatDataInRange(0.0f, 10.0f, 18)),
+                      {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
+                      ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnCPUBackendTests, LayerNorm3D) {
+  RunLayerNormCpuTest(TestInputDef<float>({1, 2, 3, 3, 4}, false, GetFloatDataInRange(0.0f, 10.0f, 72)),
+                      TestInputDef<float>({1, 2, 3, 3, 4}, false, GetFloatDataInRange(0.0f, 10.0f, 72)),
+                      {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
+                      ExpectedEPNodeAssignment::All);
 }
 
 template <typename InputQType, typename ScaleQType>
-GetQDQTestCaseFn BuildQDQLayerNormTestCase(const std::vector<int64_t>& input_shape,
-                                           const std::vector<int64_t>& scale_shape,
-                                           int64_t axis_value = 0) {
-  return [input_shape, scale_shape, axis_value](ModelTestBuilder& builder) {
-    const InputQType quant_zero_point = 0;
-    // const float quant_scale = 1.0f;
+GetTestQDQModelFn<InputQType> BuildQDQLayerNormTestCase(const TestInputDef<float>& input_def,
+                                                        const TestInputDef<float>& scale_def,
+                                                        const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs) {
+  return [input_def, scale_def, attrs](ModelTestBuilder& builder,
+                                       std::vector<QuantParams<InputQType>>& output_qparams) {
+    // input -> Q -> DQ ->
+    NodeArg* input = MakeTestInput(builder, input_def);
+    QuantParams<InputQType> input_qparams = GetTestInputQuantParams<InputQType>(input_def);
+    NodeArg* input_qdq = AddQDQNodePair<InputQType>(builder, input, input_qparams.scale, input_qparams.zero_point);
 
-    auto* input = builder.MakeInput<InputQType>(input_shape, std::numeric_limits<InputQType>::min(),
-                                                std::numeric_limits<InputQType>::max());
-    auto* dq_input = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<InputQType>(input, 0.0039f, quant_zero_point, dq_input);
+    // scale input -> Q -> DQ ->
+    NodeArg* scale = MakeTestInput(builder, scale_def);
+    QuantParams<ScaleQType> scale_qparams = GetTestInputQuantParams<ScaleQType>(scale_def);
+    NodeArg* scale_qdq = AddQDQNodePair<ScaleQType>(builder, scale, scale_qparams.scale, scale_qparams.zero_point);
 
-    auto* dq_scale_output = builder.MakeIntermediate();
-    auto* scale = builder.MakeInitializer<ScaleQType>(scale_shape, static_cast<ScaleQType>(1), static_cast<ScaleQType>(127));
-    builder.AddDequantizeLinearNode<ScaleQType>(scale, 0.0028f, quant_zero_point, dq_scale_output);
+    // LayerNormalization
+    NodeArg* layer_norm_output = builder.MakeIntermediate();
+    Node& layer_norm_node = builder.AddNode("LayerNormalization", {input_qdq, scale_qdq}, {layer_norm_output});
 
-    auto* layernorm_output = builder.MakeIntermediate();
-    Node& layer_norm_node = builder.AddNode("LayerNormalization", {dq_input, dq_scale_output}, {layernorm_output});
-    layer_norm_node.AddAttribute("axis", axis_value);
+    for (const auto& attr : attrs) {
+      layer_norm_node.AddAttributeProto(attr);
+    }
 
-    auto* q_output = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<InputQType>(layernorm_output, 0.00377f, quant_zero_point, q_output);
-
-    auto* final_output = builder.MakeOutput();
-    builder.AddDequantizeLinearNode<InputQType>(q_output, 0.00377f,
-                                                quant_zero_point,
-                                                final_output);
+    // layer_norm_output -> Q -> DQ -> output
+    AddQDQNodePairWithOutputAsGraphOutput<InputQType>(builder, layer_norm_output, output_qparams[0].scale,
+                                                      output_qparams[0].zero_point);
   };
 }
 
-/**
- * Runs an LayerNormalization model on the QNN HTP backend. Checks the graph node assignment, and that inference
- * outputs for QNN and CPU match.
- *
- * \param input_shape The input's shape.
- * \param scale_shape The scale's shape.
- * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None).
- * \param num_modes_in_graph The number of expected nodes in the graph.
- * \param axis_value The axis value.
- */
-static void RunLayerNormQDQTest(const std::vector<int64_t>& input_shape,
-                                const std::vector<int64_t>& scale_shape,
-                                ExpectedEPNodeAssignment expected_ep_assignment,
-                                int64_t axis_value = 0) {
+// Runs a QDQ LayerNorm model on the QNN HTP backend. Checks the graph node assignment and that inference
+// outputs for QNN are as accurate as CPU EP (compares against f32 model and QDQ model).
+template <typename InputQType, typename ScaleQType>
+static void RunLayerNormQDQTest(const TestInputDef<float>& input_def,
+                                const TestInputDef<float>& scale_def,
+                                const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                                ExpectedEPNodeAssignment expected_ep_assignment) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -112,27 +114,40 @@ static void RunLayerNormQDQTest(const std::vector<int64_t>& input_shape,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  // Runs model with DQ-> InstanceNorm -> Q and compares the outputs of the CPU and QNN EPs.
-  // TODO: Use new QDQ accuracy testing approach (see TestQDQModelAccuracy)
-  RunQnnModelTest(BuildQDQLayerNormTestCase<uint8_t, uint8_t>(input_shape, scale_shape, axis_value),
-                  provider_options,
-                  11,
-                  expected_ep_assignment);
+  TestQDQModelAccuracy(BuildOpTestCase<float>("LayerNormalization", {input_def, scale_def}, {}, attrs),
+                       BuildQDQLayerNormTestCase<InputQType, ScaleQType>(input_def, scale_def, attrs),
+                       provider_options,
+                       17,  // opset
+                       expected_ep_assignment);
 }
 
-// Check that QNN compiles DQ -> LayerNormalization -> Q as a single unit.
-// Use an input of rank 3.
-// QNN HTP only supports axis = -1
-// TODO: Use new QDQ accuracy testing approach (see TestQDQModelAccuracy)
-TEST_F(QnnHTPBackendTests, TestQDQLayerNorm1DAxis0) {
-  RunLayerNormQDQTest({1, 2, 3}, {1, 2, 3}, ExpectedEPNodeAssignment::None);
+// Test that QNN HTP only supports axis = -1 (i.e., last dimension).
+TEST_F(QnnHTPBackendTests, LayerNorm1D_Axis0_Unsupported) {
+  RunLayerNormQDQTest<uint8_t, uint8_t>(TestInputDef<float>({1, 2, 3}, false, 0.0f, 10.0f),
+                                        TestInputDef<float>({1, 2, 3}, true, 0.0f, 10.0f),
+                                        {utils::MakeAttribute("axis", static_cast<int64_t>(0))},  // Unsupported axis
+                                        ExpectedEPNodeAssignment::None);
 }
 
-// QNN v2.13: Failed QNN FinalizeGraphs: QnnDsp <E> Failed to finalize graph (id: 1) with err 1002
-//
-// TODO: Use new QDQ accuracy testing approach (see TestQDQModelAccuracy)
-TEST_F(QnnHTPBackendTests, DISABLED_TestQDQLayerNorm1DAxis2) {
-  RunLayerNormQDQTest({1, 2, 3}, {3}, ExpectedEPNodeAssignment::All, -1);
+// Test accuracy of 8-bit QDQ LayerNorm with a static scale input. This used to fail on QNN DK 2.13,
+// but was fixed in QNN SDK 2.14.
+TEST_F(QnnHTPBackendTests, LayerNorm1D_LastAxis_StaticScale) {
+  RunLayerNormQDQTest<uint8_t, uint8_t>(TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRange(0.0f, 10.0f, 6)),
+                                        TestInputDef<float>({3}, true, GetFloatDataInRange(0.0f, 1.0f, 3)),  // Static
+                                        {utils::MakeAttribute("axis", static_cast<int64_t>(-1))},            // Last axis
+                                        ExpectedEPNodeAssignment::All);
+}
+
+// Test accuracy of 8-bit QDQ LayerNorm with a dynamic scale input.
+// TODO(adrianlizarraga): Investigate graph finalization error in QNN SDK 2.14.1
+// Failed QNN FinalizeGraphs: QnnDsp <E> Failed to finalize graph (id: 1) with err 1002
+// C:\qnn_src\QNN\HTP\HTP\src\hexagon\prepare\graph_prepare.cc:232:ERROR:could not create op: q::flat_from_vtcm
+// C:\qnn_src\QNN\HTP\HTP\src\hexagon\prepare\graph_prepare.cc:1021:ERROR:Op 0x103d00000002 preparation failed with err:-1
+TEST_F(QnnHTPBackendTests, DISABLED_LayerNorm1D_LastAxis_DynamicScale) {
+  RunLayerNormQDQTest<uint8_t, uint8_t>(TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRange(0.0f, 10.0f, 6)),
+                                        TestInputDef<float>({3}, false, GetFloatDataInRange(0.0f, 1.0f, 3)),  // Dynamic
+                                        {utils::MakeAttribute("axis", static_cast<int64_t>(-1))},             // Last axis
+                                        ExpectedEPNodeAssignment::All);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

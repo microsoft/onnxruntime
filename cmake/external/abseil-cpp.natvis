@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
-  <Type Name="absl::lts_20220623::InlinedVector&lt;*&gt;">
+  <Type Name="absl::lts_20230802::InlinedVector&lt;*&gt;">
     <Intrinsic Name="_size" Expression="storage_.metadata_.value >> 1"/>
     <Intrinsic Name="_is_allocated" Expression="(storage_.metadata_.value &amp; 1) == 1"/>
     <Intrinsic Name="_inlined_data" Expression="($T1*)storage_.data_.inlined.inlined_data"/>
@@ -24,31 +24,57 @@
     </Expand>
   </Type>
   <!-- Should handle both flat hash_set and hash_map -->
-  <Type Name="absl::lts_20220623::container_internal::raw_hash_set&lt;*&gt;">
-    <DisplayString Condition="size_ == 0">empty</DisplayString>
-    <DisplayString>{{ size={size_} }}</DisplayString>
+  <Type Name="absl::lts_20230802::container_internal::raw_hash_set&lt;*&gt;">
+    <Intrinsic Name="_commonfields" Expression="settings_.value"/>
+    <Intrinsic Name="_size" Expression="settings_.value.compressed_tuple_.value"/>
+    <Intrinsic Name="_capacity" Expression="_commonfields().capacity_"/>
+    <Intrinsic Name="_control" Expression="_commonfields().control_"/>
+    <Intrinsic Name="_slots" Expression="(slot_type*)(_commonfields().slots_)"/>
+    <DisplayString Condition="_size() == 0">empty</DisplayString>
+    <DisplayString IncludeView="noparens">size={ _size() }</DisplayString>
+    <DisplayString ExcludeView="noparens">size=({_size()})</DisplayString>
     <Expand>
-      <Item Name="[size]" ExcludeView="simple">size_</Item>
-      <Item Name="[capacity]" ExcludeView="simple">capacity_</Item>
-      <CustomListItems MaxItemsPerView="5000">
+      <Item Name="[Size]">_size()</Item>
+      <Item Name="[Capacity]" ExcludeView="noparens">_capacity()</Item>
+      <CustomListItems MaxItemsPerView="100">
         <Variable Name="nslot" InitialValue="0" />
-        <Size>size_</Size>
+        <Size>_size()</Size>
         <Loop>
           <!-- bool IsFull(ctrl_t c) const { return c >= 0; } -->
-          <If Condition="ctrl_[nslot] &gt;= 0">
-            <Item>slots_[nslot]</Item>
+          <If Condition="_control()[nslot] &gt;= 0">
+            <Item>_slots()[nslot]</Item>
           </If>
           <Exec>nslot++</Exec>
-          <Break Condition="nslot == capacity_" />
+          <Break Condition="nslot == _capacity()" />
         </Loop>
       </CustomListItems>
     </Expand>
   </Type>
-  <Type Name="absl::lts_20220623::container_internal::map_slot_type&lt;*&gt;">
-    <DisplayString>{{ {value.first}:{value.second} }}</DisplayString>
+
+  <!-- Primitive types stored as a value -->
+  <Type Name="absl::lts_20230802::container_internal::Storage&lt;*,*,0&gt;">
+    <DisplayString IncludeView="noparens">*($T1 *){value}</DisplayString>
+    <DisplayString ExcludeView="noparens">(*($T1 *){value})</DisplayString>
     <Expand>
-      <Item Name="[key]" ExcludeView="simple">value.first</Item>
-      <Item Name="[value]" ExcludeView="simple">value.second</Item>
+      <ExpandedItem>*($T1 *){value}</ExpandedItem>
+    </Expand>
+  </Type>
+
+  <!-- For storage inherited from the type -->
+  <Type Name="absl::lts_20230802::container_internal::Storage&lt;*,*,1&gt;">
+    <DisplayString IncludeView="noparens">*($T1 *)this</DisplayString>
+    <DisplayString ExcludeView="noparens">(*($T1 *)this)</DisplayString>
+    <Expand>
+      <ExpandedItem>*($T1 *)this</ExpandedItem>
+    </Expand>
+  </Type>
+
+  <Type Name="absl::lts_20230802::container_internal::map_slot_type&lt;*&gt;">
+    <DisplayString IncludeView="noparens">{value.first}, {value.second}</DisplayString>
+    <DisplayString ExcludeView="noparens">({value.first}, {value.second})</DisplayString>
+    <Expand>
+      <Item Name="first" ExcludeView="simple">value.first</Item>
+      <Item Name="second" ExcludeView="simple">value.second</Item>
     </Expand>
   </Type>
 </AutoVisualizer>

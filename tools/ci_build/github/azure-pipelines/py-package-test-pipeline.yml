@@ -3,24 +3,38 @@ resources:
   - pipeline: build
     source: 'Python packaging pipeline'
     trigger: true
+    branch: main # branch to pick the artifact, Used only for manual triggered pipeline runs for testing the pipeline itself
+  #TODO: Remove the following dependency. Running python tests should not need to use manylinux.
+  repositories:
+  - repository: manylinux # The name used to reference this repository in the checkout step
+    type: Github
+    endpoint: Microsoft
+    name: pypa/manylinux
+    ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 stages:
 - stage: Linux_Test_CPU_x86_64_stage
   jobs:
-  - template: templates/py-packaging-linux-test.yml
+  - template: templates/py-packaging-linux-test-cpu.yml
     parameters:
       arch: 'x86_64'
       machine_pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
-      device: 'CPU'
+      base_image: 'registry.access.redhat.com/ubi8/ubi'
+      devtoolset_rootpath: /opt/rh/gcc-toolset-12/root
+      ld_library_path_arg: /opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64
+      prepend_path: '/opt/rh/gcc-toolset-12/root/usr/bin:'
 
 - stage: Linux_Test_CPU_aarch64_stage
   dependsOn: []
   jobs:
-  - template: templates/py-packaging-linux-test.yml
+  - template: templates/py-packaging-linux-test-cpu.yml
     parameters:
       arch: 'aarch64'
-      machine_pool: 'aiinfra-linux-ARM64-CPU-2019'
-      device: 'CPU'
+      machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
+      base_image: 'arm64v8/almalinux:8'
+      devtoolset_rootpath: /opt/rh/gcc-toolset-12/root
+      ld_library_path_arg: /opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64
+      prepend_path: '/opt/rh/gcc-toolset-12/root/usr/bin:'
 
 - stage: Packages_Somking_Test
   dependsOn: []
@@ -31,19 +45,6 @@ stages:
         machine_pool:
           vmImage: 'macOS-13'
         itemPattern: '*/*mac*x86_64.whl'
-    - template: templates/py-package-smoking-test.yml
-      parameters:
-        job_name: Test_WIN_64_Wheels
-        itemPattern: '*/*win_amd64.whl'
-        machine_pool:
-          vmImage: 'windows-2022'
-    - template: templates/py-package-smoking-test.yml
-      parameters:
-        job_name: Test_WIN_32_Wheels
-        itemPattern: '*/*win32.whl'
-        python_arch: 'x86'
-        machine_pool:
-          vmImage: 'windows-2022'
     - template: templates/py-package-smoking-test.yml
       parameters:
         job_name: Test_LINUX_x86_64_Wheels
@@ -61,7 +62,7 @@ stages:
     - Linux_Test_CPU_aarch64_stage
     - Packages_Somking_Test
   jobs:
-  - template: templates/py-packaging-linux-test.yml
+  - template: templates/py-packaging-linux-test-cuda.yml
     parameters:
       arch: 'x86_64'
       machine_pool: 'Onnxruntime-Linux-GPU'

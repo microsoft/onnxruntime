@@ -6,14 +6,13 @@
 namespace onnxruntime {
 namespace js {
 
-#define REG_ELEMENTWISE_KERNEL(OP_TYPE, VERSION, KERNEL_CLASS)                          \
-  ONNX_OPERATOR_KERNEL_EX(                                                              \
-      OP_TYPE,                                                                          \
-      kOnnxDomain,                                                                      \
-      VERSION,                                                                          \
-      kJsExecutionProvider,                                                             \
-      KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),     \
-                                              DataTypeImpl::GetTensorType<int32_t>()}), \
+#define REG_ELEMENTWISE_KERNEL(OP_TYPE, VERSION, KERNEL_CLASS)          \
+  ONNX_OPERATOR_KERNEL_EX(                                              \
+      OP_TYPE,                                                          \
+      kOnnxDomain,                                                      \
+      VERSION,                                                          \
+      kJsExecutionProvider,                                             \
+      KernelDefBuilder().TypeConstraint("T", JsepSupportedDataTypes()), \
       KERNEL_CLASS);
 
 #define REG_ELEMENTWISE_VERSIONED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS) \
@@ -22,8 +21,7 @@ namespace js {
       kOnnxDomain,                                                                        \
       VERSION_FROM, VERSION_TO,                                                           \
       kJsExecutionProvider,                                                               \
-      KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),       \
-                                              DataTypeImpl::GetTensorType<int32_t>()}),   \
+      KernelDefBuilder().TypeConstraint("T", JsepSupportedDataTypes()),                   \
       KERNEL_CLASS);
 
 JSEP_KERNEL_IMPL(Add, Add)
@@ -63,10 +61,18 @@ REG_ELEMENTWISE_VERSIONED_KERNEL(Greater, 7, 8, Greater);
 REG_ELEMENTWISE_VERSIONED_KERNEL(Greater, 9, 12, Greater);
 REG_ELEMENTWISE_KERNEL(Greater, 13, Greater);
 
+JSEP_KERNEL_IMPL(GreaterOrEqual, GreaterOrEqual)
+REG_ELEMENTWISE_VERSIONED_KERNEL(GreaterOrEqual, 12, 15, GreaterOrEqual);
+REG_ELEMENTWISE_KERNEL(GreaterOrEqual, 16, GreaterOrEqual);
+
 JSEP_KERNEL_IMPL(Less, Less)
 REG_ELEMENTWISE_VERSIONED_KERNEL(Less, 7, 8, Less);
 REG_ELEMENTWISE_VERSIONED_KERNEL(Less, 9, 12, Less);
 REG_ELEMENTWISE_KERNEL(Less, 13, Less);
+
+JSEP_KERNEL_IMPL(LessOrEqual, LessOrEqual)
+REG_ELEMENTWISE_VERSIONED_KERNEL(LessOrEqual, 12, 15, LessOrEqual);
+REG_ELEMENTWISE_KERNEL(LessOrEqual, 16, LessOrEqual);
 
 }  // namespace js
 }  // namespace onnxruntime

@@ -398,44 +398,29 @@ stages:
         versionSpec: 6.2.1
 
     - task: PowerShell@2
-      displayName: Install .NET 6 workloads
+      displayName: Install mobile workloads
       inputs:
         targetType: 'inline'
         script: |
-          dotnet workload install android ios macos
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-    - task: PowerShell@2
-      displayName: Build Microsoft.ML.OnnxRuntime .NET 6 targets using dotnet
-      inputs:
-        targetType: 'inline'
-        # we don't specify 'Any CPU' as the platform here because if we do it gets added to the output path
-        #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\Any CPU\RelWithDebInfo\net6.0-ios\
-        # which is inconsistent with the msbuild output path for the pre-.net6 targets
-        #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\monoandroid11.0
-        # and makes it harder to do the packing
-        #
-        # 'Any CPU' is the default (first 'mixed' platform specified in the csproj) so this should be fine.
-        script: |
-          dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:SelectedTargets=Net6  -p:Configuration=RelWithDebInfo -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
+          dotnet workload install android ios
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
-      displayName: 'Restore NuGet Packages and create project.assets.json for pre-.net6 targets'
+      displayName: 'Restore NuGet Packages and create project.assets.json'
       inputs:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
         platform: 'Any CPU'
         configuration: RelWithDebInfo
-        msbuildArguments: '-t:restore -p:SelectedTargets=PreNet6 -p:OrtPackageId=$(OrtPackageId)'
+        msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
-      displayName: 'Build C# for pre-.net6 targets'
+      displayName: 'Build C# bindings'
       inputs:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
         platform: 'Any CPU'
         configuration: RelWithDebInfo
-        msbuildArguments: '-p:SelectedTargets=PreNet6 -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
+        msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - ${{ if eq(parameters.DoEsrp, true) }}:
@@ -444,15 +429,6 @@ stages:
           FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
           DisplayName: 'ESRP - Sign C# dlls'
           DoEsrp: ${{ parameters.DoEsrp }}
-
-    - task: MSBuild@1
-      displayName: Update projects.assets.json with combined list of all target frameworks
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj'
-        platform: 'Any CPU'
-        configuration: RelWithDebInfo
-        msbuildArguments: '-t:restore -p:SelectedTargets=All -p:OrtPackageId=$(OrtPackageId)'
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
       displayName: 'Build Nuget Packages'
@@ -532,10 +508,9 @@ stages:
 - stage: Nodejs_Packaging_CPU
   dependsOn:
   - Linux_C_API_Packaging_CPU
-  - Linux_C_API_Packaging_GPU_TensorRT_x64
   - MacOS_C_API_Package_Publish
-  - Windows_CI_GPU_DML_Dev
-  - Windows_CI_GPU_DML_Dev_arm64
+  - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
+  - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
   condition: succeeded()
   jobs:
   - job:
@@ -565,13 +540,13 @@ stages:
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - NuGet (Win x64)'
       inputs:
-        artifactName: 'drop-nuget-dml'
+        artifactName: 'onnxruntime-win-x64'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - NuGet (Win ARM64)'
       inputs:
-        artifactName: 'drop-win-dml-arm64-zip'
+        artifactName: 'onnxruntime-win-arm64'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
     - task: DownloadPipelineArtifact@0
@@ -595,14 +570,14 @@ stages:
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Nodejs (Win x64)'
       inputs:
-        artifactName: 'drop-onnxruntime-nodejs-win-x64-dml'
-        targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/'
+        artifactName: 'drop-onnxruntime-nodejs-win-x64'
+        targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/x64/'
 
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Nodejs (Win ARM64)'
       inputs:
-        artifactName: 'drop-onnxruntime-nodejs-win-arm64-dml'
-        targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/'
+        artifactName: 'drop-onnxruntime-nodejs-win-arm64'
+        targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/arm64/'
 
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Nodejs (macOS x86_64)'
@@ -619,7 +594,7 @@ stages:
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Nodejs (Linux x64)'
       inputs:
-        artifactName: 'drop-onnxruntime-nodejs-linux-x64-tensorrt'
+        artifactName: 'drop-onnxruntime-nodejs-linux-x64'
         targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/linux/x64/'
 
     - task: DownloadPipelineArtifact@0
@@ -805,7 +780,7 @@ stages:
 
 - template: ../nodejs/templates/test_linux.yml
   parameters:
-    AgentPool : 'onnxruntime-Ubuntu2004-AMD-CPU'
+    AgentPool : 'Azure-Pipelines-EO-Ubuntu-2004-aiinfra'
     StageSuffix : 'Linux_CPU_x64'
 
 - template: ../nodejs/templates/test_macos.yml

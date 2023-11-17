@@ -18,10 +18,10 @@ from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPo
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
 from ._io import _FlattenedModule, _InputInfo, unflatten_user_output
-from ._logger import ORTModuleInitPhase, SuppressLogs, TrackTime
+from ._logger import ORTModuleInitPhase, TrackTime
 from ._runtime_inspector import Phase
 from ._utils import save_tuning_results, set_tuning_results
-from .graph_transformer_registry import GraphTransformerRegistry
+from .graph_optimizer_registry import GraphOptimizerRegistry
 from .options import DebugOptions, _SkipCheck
 
 
@@ -311,6 +311,9 @@ class TrainingManager(GraphExecutionManager):
 
             self._gradient_accumulation_manager.maybe_update_cache_before_run()
 
+            if self._runtime_options.enable_zero_stage3_support:
+                self._append_pull_weight_trigger_as_input(kwargs, self._device)
+
             prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
                 self._graph_initializers,
                 self._graph_info.user_input_names,
@@ -320,6 +323,7 @@ class TrainingManager(GraphExecutionManager):
                 kwargs,
                 self._device,
                 self._runtime_inspector,
+                self._zero_stage3_param_map,
             )
 
             outputs = unflatten_user_output(
@@ -354,7 +358,6 @@ class TrainingManager(GraphExecutionManager):
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
     @TrackTime(ORTModuleInitPhase.BUILD_GRAPH)
-    @SuppressLogs(ORTModuleInitPhase.BUILD_GRAPH)
     def _build_graph(self, graph_transformer_config):
         """Build an optimized gradient graph using the module_graph_builder"""
 
@@ -365,7 +368,7 @@ class TrainingManager(GraphExecutionManager):
         device_type = self._device.type
         if device_type == "cuda" and self.is_rocm_pytorch:
             device_type = "rocm"
-        GraphTransformerRegistry.transform_all(
+        GraphOptimizerRegistry.optimize_all(
             type(self._flattened_module._original_module).__name__, device_type, self._onnx_models.optimized_model.graph
         )
 
@@ -397,13 +400,12 @@ class TrainingManager(GraphExecutionManager):
                 self._gradient_map.append(-1)
 
     @TrackTime(ORTModuleInitPhase.CREATE_SESSION)
-    @SuppressLogs(ORTModuleInitPhase.CREATE_SESSION)
     def _create_execution_agent(self):
         """Creates a TrainingAgent that can run the forward and backward graph on the training model"""
 
         session_options, providers, provider_options = self._get_session_config()
         fw_feed_names = [input.name for input in self._onnx_models.optimized_model.graph.input]
-        device_type = self._device if type(self._device) is str else self._device.type.lower()
+        device_type = self._device if type(self._device) is str else self._device.type.lower()  # noqa: E721
         if device_type == "ort":
             fw_outputs_device_info = [C.get_ort_device(self._device.index)] * (
                 len(self._graph_info.user_output_names) + len(self._graph_info.frontier_node_arg_map)

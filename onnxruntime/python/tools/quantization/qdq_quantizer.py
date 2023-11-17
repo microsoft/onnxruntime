@@ -25,6 +25,7 @@ from .quant_utils import (
     add_quant_output_suffix,
     add_quant_suffix,
     find_by_name,
+    ms_domain,
 )
 from .registry import CreateQDQQuantizer
 
@@ -118,6 +119,20 @@ class QDQQuantizer(ONNXQuantizer):
             if "QDQOpTypePerChannelSupportToAxis" not in extra_options
             else extra_options["QDQOpTypePerChannelSupportToAxis"]
         )
+
+        self.qdq_op_domain = ms_domain if extra_options.get("UseQDQContribOps", False) else None
+
+        # The ONNX spec does not yet support 16-bit Q/DQ ops. So, must override the Q/DQ op domain to 'com.microsoft'
+        # if the activation or weight types are 16-bit integers.
+        # TODO: Remove this override (and use only the 'UseQDQContribOps' option) if/when ONNX adds 16-bit support.
+        int16_types = (TensorProto.UINT16, TensorProto.INT16)
+        if not self.qdq_op_domain and (self.activation_qType in int16_types or self.weight_qType in int16_types):
+            logging.warning(
+                "ONNX QuantizeLinear and DequantizeLinear operators do not support 16-bit integer quantization types. "
+                f"The domain of QuantizeLinear and DequantizeLinear operators will be set to '{ms_domain}' to "
+                "enable support."
+            )
+            self.qdq_op_domain = ms_domain
 
     def _is_tensor_quantizable(self, tensor_name):
         """
@@ -249,6 +264,7 @@ class QDQQuantizer(ONNXQuantizer):
             [q_output],
             quant_node_name,
             axis=axis,
+            domain=self.qdq_op_domain,
         )
         dequant_node = onnx.helper.make_node(
             DEQUANT_OP_NAME,
@@ -256,6 +272,7 @@ class QDQQuantizer(ONNXQuantizer):
             [dq_output],
             dequant_node_name,
             axis=axis,
+            domain=self.qdq_op_domain,
         )
         self.model.add_nodes([qlinear_node, dequant_node])
 
@@ -266,7 +283,13 @@ class QDQQuantizer(ONNXQuantizer):
                 raise ValueError("Per-Channel support with QDQ format requires onnx opset version 13 or above.")
             q_weight_name, zp_name, scale_name = self.quantize_weight_per_channel(
                 weight_name,
-                self.weight_qType if tensor_type is QDQQuantTensorType.WEIGHT else self.activation_qType,
+                # Quantization type is forced to be TensorProto.INT8.
+                # when the expected value would be (see below)
+                # self.weight_qType if tensor_type is QDQQuantTensorType.WEIGHT else self.activation_qType.
+                # QLinearConv expects to have a unique value for all channels.
+                # This code does not enforce that but it is necessarily the case when the
+                # quantization is symmetric (as for INT8).
+                onnx_proto.TensorProto.INT8,
                 axis,
                 keep_float_weight=self.add_qdq_pair_to_weight,
             )
@@ -300,6 +323,7 @@ class QDQQuantizer(ONNXQuantizer):
                 [weight_dequant_output],
                 add_dequant_suffix(weight_name),
                 axis=axis,
+                domain=self.qdq_op_domain,
             )
             self.model.add_node(dequant_node)
 
@@ -443,6 +467,7 @@ class QDQQuantizer(ONNXQuantizer):
                         [bias_name],
                         node_name,
                         axis=quant_value.axis,
+                        domain=self.qdq_op_domain,
                     )
                 else:
                     dequant_node = onnx.helper.make_node(
@@ -450,6 +475,7 @@ class QDQQuantizer(ONNXQuantizer):
                         inputs,
                         [bias_name],
                         node_name,
+                        domain=self.qdq_op_domain,
                     )
             else:
                 raise RuntimeError(f"Unexpected operator type {quant_value.node_type!r}.")

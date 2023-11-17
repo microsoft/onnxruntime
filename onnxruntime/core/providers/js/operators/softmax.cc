@@ -7,27 +7,25 @@ namespace onnxruntime {
 namespace js {
 
 #define REGISTER_SOFTMAX_ELEMENTWISE_VERSIONED_KERNEL(SoftmaxOp, sinceVersion, endVersion) \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                       \
       SoftmaxOp,                                                                           \
       kOnnxDomain,                                                                         \
       sinceVersion, endVersion,                                                            \
-      float,                                                                               \
       kJsExecutionProvider,                                                                \
       (*KernelDefBuilder::Create())                                                        \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),                      \
-      SoftmaxOp<float>);
+          .TypeConstraint("T", JsepSupportedFloatTypes()),                                 \
+      SoftmaxOp);
 
 #define REGISTER_SOFTMAX_ELEMENTWISE_KERNEL(SoftmaxOp, sinceVersion) \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                     \
+  ONNX_OPERATOR_KERNEL_EX(                                           \
       SoftmaxOp,                                                     \
       kOnnxDomain,                                                   \
       sinceVersion,                                                  \
-      float,                                                         \
       kJsExecutionProvider,                                          \
       (*KernelDefBuilder::Create())                                  \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()) \
+          .TypeConstraint("T", JsepSupportedFloatTypes())            \
           .InputMemoryType(OrtMemTypeCPU, 1),                        \
-      SoftmaxOp<float>);
+      SoftmaxOp);
 
 REGISTER_SOFTMAX_ELEMENTWISE_VERSIONED_KERNEL(Softmax, 1, 10);
 REGISTER_SOFTMAX_ELEMENTWISE_VERSIONED_KERNEL(Softmax, 11, 12);

@@ -99,7 +99,9 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   {  // Logical
     CreateLogicalOpBuilder("Equal", op_registrations);
     CreateLogicalOpBuilder("Greater", op_registrations);
+    CreateLogicalOpBuilder("GreaterOrEqual", op_registrations);
     CreateLogicalOpBuilder("Less", op_registrations);
+    CreateLogicalOpBuilder("LessOrEqual", op_registrations);
   }
 
   {  // Max/Min

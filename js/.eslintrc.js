@@ -5,7 +5,7 @@
 
 module.exports = {
   root: true,
-  ignorePatterns: ['**/*.js', 'ort-schema/', 'common/test/type-tests/', 'node_modules/', 'types/', 'dist/'],
+  ignorePatterns: ['**/*.js', 'ort-schema/', 'common/test/type-tests/', 'test/data/', 'node_modules/', 'dist/'],
   env: { 'es6': true },
   parser: '@typescript-eslint/parser',
   parserOptions: { 'project': 'tsconfig.json', 'sourceType': 'module' },
@@ -119,7 +119,6 @@ module.exports = {
     rules: {
       'jsdoc/check-alignment': 'error',
       'jsdoc/check-indentation': 'error',
-      'jsdoc/newline-after-description': 'error',
     }
   }, {
     files: ['common/test/**/*.ts'],
@@ -145,9 +144,15 @@ module.exports = {
       'no-unused-expressions': 'off',
     }
   }, {
-    files: ['web/lib/**/*.ts'], rules: {
+    files: ['web/lib/**/*.ts'],
+    excludedFiles: 'web/lib/wasm/proxy-worker/**/*',
+    parserOptions: { 'project': 'web/tsconfig.json' },
+    rules: {
       'no-underscore-dangle': 'off',
     }
+  }, {
+    files: ['web/lib/wasm/proxy-worker/**/*.ts'],
+    parserOptions: { 'project': 'web/lib/wasm/proxy-worker/tsconfig.json' },
   }, {
     files: ['web/lib/onnxjs/**/*.ts'], rules: {
       // TODO: those rules are useful. should turn on them in future (webgl refactor)

@@ -10,7 +10,7 @@ FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04 AS base
 # The local directory into which to build and install CMAKE
 ARG ONNXRUNTIME_LOCAL_CODE_DIR=/code
 
-ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${ONNXRUNTIME_LOCAL_CODE_DIR}/cmake-3.26.3-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${ONNXRUNTIME_LOCAL_CODE_DIR}/cmake-3.27.3-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update &&\
@@ -28,7 +28,7 @@ RUN apt-get install -y --no-install-recommends \
     ln -s /usr/bin/pip3 pip;
 
 RUN pip install --upgrade pip 
-RUN pip install setuptools>=41.0.0
+RUN pip install setuptools>=68.2.2
 
 # Install TensorRT
 RUN v="8.5.1-1+cuda11.8" &&\

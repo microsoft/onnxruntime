@@ -14,20 +14,20 @@ function GetFile {
       echo "File '$path' already exists. Skipping download"
       return 0
     else
-      rm -rf $path
+      rm -rf "$path"
     fi
   fi
 
   if [[ -f $uri ]]; then
     echo "'$uri' is a file path, copying file to '$path'"
-    cp $uri $path
+    cp "$uri" "$path"
     return $?
   fi
 
   echo "Downloading $uri"
   # Use aria2c if available, otherwise use curl
   if command -v aria2c > /dev/null; then
-    aria2c -q -d $(dirname $path) -o $(basename $path) "$uri"
+    aria2c -q -d "$(dirname $path)" -o "$(basename $path)" "$uri"
   else
     curl "$uri" -sSL --retry $download_retries --retry-delay $retry_wait_time_seconds --create-dirs -o "$path" --fail
   fi
@@ -38,9 +38,10 @@ mkdir -p /tmp/src
 
 cd /tmp/src
 
+CPU_ARCH=$(uname -m)
 echo "Installing cmake"
-GetFile https://github.com/Kitware/CMake/releases/download/v3.26.3/cmake-3.26.3-linux-`uname -m`.tar.gz /tmp/src/cmake-3.26.3-linux-`uname -m`.tar.gz
-tar -zxf /tmp/src/cmake-3.26.3-linux-`uname -m`.tar.gz --strip=1 -C /usr
+GetFile "https://github.com/Kitware/CMake/releases/download/v3.27.3/cmake-3.27.3-linux-$CPU_ARCH.tar.gz" "/tmp/src/cmake.tar.gz"
+tar -zxf /tmp/src/cmake.tar.gz --strip=1 -C /usr
 
 echo "Installing Ninja"
 GetFile https://github.com/ninja-build/ninja/archive/v1.10.0.tar.gz /tmp/src/ninja-linux.tar.gz
@@ -52,7 +53,7 @@ mv ./build-cmake/ninja /usr/bin
 popd
 
 echo "Installing Node.js"
-CPU_ARCH=`uname -m`
+
 if [[ "$CPU_ARCH" = "x86_64" ]]; then
   NODEJS_ARCH=x64
 elif [[ "$CPU_ARCH" = "aarch64" ]]; then
@@ -63,17 +64,6 @@ fi
 # The EOL for nodejs v18.17.1 LTS is April 2025
 GetFile https://nodejs.org/dist/v18.17.1/node-v18.17.1-linux-${NODEJS_ARCH}.tar.gz /tmp/src/node-v18.17.1-linux-${NODEJS_ARCH}.tar.gz
 tar --strip 1 -xf /tmp/src/node-v18.17.1-linux-${NODEJS_ARCH}.tar.gz -C /usr
-
-# The Python version in CentOS 7's python3 package is no longer supported (3.6) so we will build Python from source.
-echo "Installing Python"
-PYTHON_VERSION="3.8.17"
-GetFile https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz /tmp/src/Python-${PYTHON_VERSION}.tgz
-tar -zxf Python-${PYTHON_VERSION}.tgz
-pushd Python-${PYTHON_VERSION}
-./configure
-make
-make install
-popd
 
 cd /
 rm -rf /tmp/src

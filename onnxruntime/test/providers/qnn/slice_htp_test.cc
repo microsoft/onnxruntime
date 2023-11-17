@@ -14,52 +14,49 @@
 
 namespace onnxruntime {
 namespace test {
+
+// Test for "index-out-of-bounds" bug that occurred when a Slice operator
+// shared one of its initializer inputs with another op that was processed by QNN EP first.
+TEST_F(QnnCPUBackendTests, Slice_SharedInitializersBugFix) {
+  // Model with an Add that processes a shared initializer before Slice is processed.
+  GetTestModelFn model_fn = [](ModelTestBuilder& builder) {
+    NodeArg* input0 = builder.MakeInput<int32_t>({2, 2}, {1, 2, 3, 4});
+
+    // Initializers
+    NodeArg* starts_input = builder.Make1DInitializer<int32_t>({1, 0});  // Shared by Add
+    NodeArg* ends_input = builder.Make1DInitializer<int32_t>({2, 2});
+    NodeArg* axes_input = builder.Make1DInitializer<int32_t>({0, 1});
+    NodeArg* steps_input = builder.Make1DInitializer<int32_t>({1, 1});
+
+    // Add input0 with a shared initializer.
+    NodeArg* add_output = builder.MakeIntermediate();
+    builder.AddNode("Add", {input0, starts_input}, {add_output});
+
+    // Cast Add's output to float.
+    NodeArg* cast_output = builder.MakeIntermediate();
+    Node& cast_node = builder.AddNode("Cast", {add_output}, {cast_output});
+    cast_node.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT));
+
+    // Slice Cast's output
+    NodeArg* slice0_out = builder.MakeOutput();
+    builder.AddNode("Slice", {cast_output, starts_input, ends_input, axes_input, steps_input}, {slice0_out});
+  };
+
+  ProviderOptions provider_options;
+
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnCpu.dll";
+#else
+  provider_options["backend_path"] = "libQnnCpu.so";
+#endif
+
+  RunQnnModelTest(model_fn,
+                  provider_options,
+                  13,  // opset
+                  ExpectedEPNodeAssignment::All);
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
-
-// Function that builds a model with a Slice operator.
-template <typename DataType>
-GetTestModelFn BuildSliceTestCase(const TestInputDef<DataType>& data_def,
-                                  const TestInputDef<int64_t>& starts_def,
-                                  const TestInputDef<int64_t>& ends_def,
-                                  const TestInputDef<int64_t>& axes_def,
-                                  const TestInputDef<int64_t>& steps_def) {
-  return [data_def, starts_def, ends_def, axes_def, steps_def](ModelTestBuilder& builder) {
-    NodeArg* data = MakeTestInput(builder, data_def);
-    NodeArg* starts = MakeTestInput(builder, starts_def);
-    NodeArg* ends = MakeTestInput(builder, ends_def);
-    NodeArg* axes = MakeTestInput(builder, axes_def);
-    NodeArg* steps = MakeTestInput(builder, steps_def);
-
-    NodeArg* output = builder.MakeOutput();
-    builder.AddNode("Slice", {data, starts, ends, axes, steps}, {output});
-  };
-}
-
-// Function that builds a QDQ model with a Slice operator.
-template <typename QuantType>
-static GetTestQDQModelFn<QuantType> BuildQDQSliceTestCase(const TestInputDef<float>& data_def,
-                                                          const TestInputDef<int64_t>& starts_def,
-                                                          const TestInputDef<int64_t>& ends_def,
-                                                          const TestInputDef<int64_t>& axes_def,
-                                                          const TestInputDef<int64_t>& steps_def) {
-  return [data_def, starts_def, ends_def, axes_def, steps_def](ModelTestBuilder& builder,
-                                                               std::vector<QuantParams<QuantType>>& output_qparams) {
-    NodeArg* data = MakeTestInput(builder, data_def);
-    QuantParams<QuantType> data_qparams = GetTestInputQuantParams(data_def);
-    NodeArg* data_qdq = AddQDQNodePair(builder, data, data_qparams.scale, data_qparams.zero_point);
-
-    NodeArg* starts = MakeTestInput(builder, starts_def);
-    NodeArg* ends = MakeTestInput(builder, ends_def);
-    NodeArg* axes = MakeTestInput(builder, axes_def);
-    NodeArg* steps = MakeTestInput(builder, steps_def);
-
-    auto* slice_output = builder.MakeIntermediate();
-    builder.AddNode("Slice", {data_qdq, starts, ends, axes, steps}, {slice_output});
-
-    // Add output -> Q -> output_u8
-    AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, slice_output, output_qparams[0].scale, output_qparams[0].zero_point);
-  };
-}
 
 /**
  * Runs an Slice model on the QNN HTP backend. Checks the graph node assignment, and that inference
@@ -71,6 +68,7 @@ static GetTestQDQModelFn<QuantType> BuildQDQSliceTestCase(const TestInputDef<flo
  * \param axes_def The axes input's definition.
  * \param steps_def The steps input's definition.
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None).
+ * \param use_contrib_qdq Force Q/DQ ops to use the com.microsoft domain (enable 16-bit).
  */
 template <typename QuantType = uint8_t>
 static void RunSliceQDQTest(const TestInputDef<float>& data_def,
@@ -78,7 +76,8 @@ static void RunSliceQDQTest(const TestInputDef<float>& data_def,
                             const TestInputDef<int64_t>& ends_def,
                             const TestInputDef<int64_t>& axes_def,
                             const TestInputDef<int64_t>& steps_def,
-                            ExpectedEPNodeAssignment expected_ep_assignment) {
+                            ExpectedEPNodeAssignment expected_ep_assignment,
+                            bool use_contrib_qdq = false) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -86,13 +85,15 @@ static void RunSliceQDQTest(const TestInputDef<float>& data_def,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  // Runs model with DQ-> Slice -> Q and compares the outputs of the CPU and QNN EPs.
-  TestQDQModelAccuracy(BuildSliceTestCase<float>(data_def, starts_def, ends_def, axes_def, steps_def),
-                       BuildQDQSliceTestCase<QuantType>(data_def, starts_def, ends_def, axes_def, steps_def),
+  const std::vector<TestInputDef<float>> f32_inputs = {data_def};
+  const std::vector<TestInputDef<int64_t>> int64_inputs = {starts_def, ends_def, axes_def, steps_def};
+
+  TestQDQModelAccuracy(BuildOpTestCase<float, int64_t>("Slice", f32_inputs, int64_inputs, {}),
+                       BuildQDQOpTestCase<QuantType, int64_t>("Slice", f32_inputs, int64_inputs, {}, kOnnxDomain,
+                                                              use_contrib_qdq),
                        provider_options,
                        18,
-                       expected_ep_assignment,
-                       1e-5f);
+                       expected_ep_assignment);
 }
 
 /**
@@ -119,12 +120,12 @@ static void RunSliceNonQDQOnHTP(const TestInputDef<DataType>& data_def,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
-
-  RunQnnModelTest(BuildSliceTestCase<DataType>(data_def, starts_def, ends_def, axes_def, steps_def),
+  auto f32_model_builder = BuildOpTestCase<DataType, int64_t>("Slice", {data_def},
+                                                              {starts_def, ends_def, axes_def, steps_def}, {});
+  RunQnnModelTest(f32_model_builder,
                   provider_options,
                   13,
-                  expected_ep_assignment,
-                  1e-5f);
+                  expected_ep_assignment);
 }
 
 // Check that QNN compiles DQ -> Slice -> Q as a single unit.
@@ -167,6 +168,39 @@ TEST_F(QnnHTPBackendTests, SliceInt32OnHTP) {
                                ExpectedEPNodeAssignment::All);
 }
 
+// Test 8-bit QDQ Slice with more than 1 axis.
+TEST_F(QnnHTPBackendTests, SliceU8_MultAxes) {
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
+  RunSliceQDQTest<uint8_t>(TestInputDef<float>({2, 4}, false, input_data),
+                           TestInputDef<int64_t>({2}, true, {1, 0}),  // starts
+                           TestInputDef<int64_t>({2}, true, {2, 3}),  // ends
+                           TestInputDef<int64_t>({2}, true, {0, 1}),  // axes
+                           TestInputDef<int64_t>({2}, true, {1, 2}),  // steps
+                           ExpectedEPNodeAssignment::All);
+}
+
+// Test 16-bit QDQ Slice with more than 1 axis.
+TEST_F(QnnHTPBackendTests, SliceU16_MultAxes) {
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
+  RunSliceQDQTest<uint16_t>(TestInputDef<float>({2, 4}, false, input_data),
+                            TestInputDef<int64_t>({2}, true, {1, 0}),  // starts
+                            TestInputDef<int64_t>({2}, true, {2, 3}),  // ends
+                            TestInputDef<int64_t>({2}, true, {0, 1}),  // axes
+                            TestInputDef<int64_t>({2}, true, {1, 2}),  // steps
+                            ExpectedEPNodeAssignment::All,
+                            true);  // Use com.microsoft Q/DQ ops for 16-bit
+}
+
+// Test 8-bit QDQ Slice with more than 1 axis and an end value that exceeds the associated dimension size.
+TEST_F(QnnHTPBackendTests, SliceU8_MultAxes_LargeEnd) {
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
+  RunSliceQDQTest<uint8_t>(TestInputDef<float>({2, 4}, false, input_data),
+                           TestInputDef<int64_t>({2}, true, {0, 1}),      // starts
+                           TestInputDef<int64_t>({2}, true, {-1, 1000}),  // ends
+                           TestInputDef<int64_t>({2}, true, {0, 1}),      // axes
+                           TestInputDef<int64_t>({2}, true, {1, 1}),      // steps
+                           ExpectedEPNodeAssignment::All);
+}
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test

@@ -48,13 +48,10 @@ jobs:
 
   - template: install-appcenter.yml
 
-  - script: |
-      python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
-        --android-sdk-root ${ANDROID_SDK_ROOT} \
-        --create-avd --system-image "system-images;android-31;default;x86_64" \
-        --start --emulator-extra-args="-partition-size 4096" \
-        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-    displayName: Start Android emulator
+  - template: use-android-emulator.yml
+    parameters:
+      create: true
+      start: true
 
   - script: |
       set -e -x
@@ -67,6 +64,10 @@ jobs:
       $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest --stacktrace
     displayName: Run E2E test using Emulator
     workingDirectory: $(Build.BinariesDirectory)
+
+  - template: use-android-emulator.yml
+    parameters:
+      stop: true
 
   - script: |
       set -e -x
@@ -81,14 +82,6 @@ jobs:
         --token $(app_center_api_token)
     displayName: Run E2E tests using App Center
     workingDirectory: $(Build.BinariesDirectory)
-
-  - script: |
-      python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
-        --android-sdk-root ${ANDROID_SDK_ROOT} \
-        --stop \
-        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-    displayName: Stop Android emulator
-    condition: always()
 
   - template: component-governance-component-detection-steps.yml
     parameters :

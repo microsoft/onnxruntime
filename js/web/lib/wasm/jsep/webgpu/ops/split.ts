@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {TensorView} from '../../tensor';
+import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata, TensorInfo} from '../types';
+import {ComputeContext, ProgramInfo, TensorInfo} from '../types';
 
 import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -61,31 +61,30 @@ const writeBufferDataImpl = (outputs: readonly IndicesHelper[]) => {
       }`;
 };
 
-const createSplitProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: SplitAttributes): ProgramInfo => {
-      const inputShape = inputs[0].dims;
-      const inputSize = ShapeUtil.size(inputShape);
-      const dataType = inputs[0].dataType;
-      const rank = inputShape.length;
-      const axis = attributes.axis;
-      const adjustedAxis = (axis < 0) ? inputShape.length + axis : axis;
-      const outputs = new Array<IndicesHelper>(attributes.numOutputs);
-      const input = inputVariable('input', dataType, inputShape);
-      const sizeInConcatAxis = new Array<number>(attributes.numOutputs);
-      const outputsTensorInfo: TensorInfo[] = [];
-      const outputShapes: number[][] = [];
-      let previousSum = 0;
-      for (let i = 0; i < attributes.numOutputs; i++) {
-        previousSum += attributes.splitSizes[i];
-        sizeInConcatAxis[i] = previousSum;
-        const outputShape = inputShape.slice();
-        outputShape[attributes.axis] = attributes.splitSizes[i];
-        outputShapes.push(outputShape);
-        outputs[i] = outputVariable(`output${i}`, dataType, outputShapes[i]);
-        outputsTensorInfo.push({dims: outputShapes[i], dataType: inputs[0].dataType, gpuDataType: GpuDataType.default});
-      }
-      const indicesAxis = rank < 2 ? 'indices' : `indices[${adjustedAxis}]`;
-      const getShaderSource = (shaderHelper: ShaderHelper) => `
+const createSplitProgramInfo = (inputs: readonly TensorView[], attributes: SplitAttributes): ProgramInfo => {
+  const inputShape = inputs[0].dims;
+  const inputSize = ShapeUtil.size(inputShape);
+  const dataType = inputs[0].dataType;
+  const rank = inputShape.length;
+  const axis = attributes.axis;
+  const adjustedAxis = (axis < 0) ? inputShape.length + axis : axis;
+  const outputs = new Array<IndicesHelper>(attributes.numOutputs);
+  const input = inputVariable('input', dataType, inputShape);
+  const sizeInConcatAxis = new Array<number>(attributes.numOutputs);
+  const outputsTensorInfo: TensorInfo[] = [];
+  const outputShapes: number[][] = [];
+  let previousSum = 0;
+  for (let i = 0; i < attributes.numOutputs; i++) {
+    previousSum += attributes.splitSizes[i];
+    sizeInConcatAxis[i] = previousSum;
+    const outputShape = inputShape.slice();
+    outputShape[attributes.axis] = attributes.splitSizes[i];
+    outputShapes.push(outputShape);
+    outputs[i] = outputVariable(`output${i}`, dataType, outputShapes[i]);
+    outputsTensorInfo.push({dims: outputShapes[i], dataType: inputs[0].dataType});
+  }
+  const indicesAxis = rank < 2 ? 'indices' : `indices[${adjustedAxis}]`;
+  const getShaderSource = (shaderHelper: ShaderHelper) => `
   ${shaderHelper.declareVariables(input, ...outputs)}
   const sizeInConcatAxis = array<u32, ${sizeInConcatAxis.length}>(${sizeInConcatAxis.map(i => `${i}u`).join(',')});
   ${calculateOutputIndexImpl(sizeInConcatAxis.length)}
@@ -101,25 +100,22 @@ const createSplitProgramInfo =
     }
     writeBufferData(outputNumber, indices, global_idx);
   }`;
-      return {
-        ...metadata,
-        getShaderSource,
-        outputs: outputsTensorInfo,
-        dispatchGroup: () => ({x: Math.ceil(inputSize / 64 /* workgroup size */)})
-      };
-    };
-
-const createSplitProgramInfoLoader =
-    (inputs: readonly TensorView[], attributes: SplitAttributes): ProgramInfoLoader => {
-      const updatedAttributes = inputs.length === 1 ? attributes : createSplitAttributesFromInputs(inputs, attributes);
-      const metadata:
-          ProgramMetadata = {name: 'Split', inputTypes: [GpuDataType.default], cacheHint: updatedAttributes.cacheKey};
-      return {...metadata, get: () => createSplitProgramInfo(metadata, [inputs[0]], updatedAttributes)};
-    };
+  return {
+    name: 'Split',
+    shaderCache: {hint: attributes.cacheKey},
+    getShaderSource,
+    getRunData: () => ({
+      outputs: outputsTensorInfo,
+      dispatchGroup: {x: Math.ceil(inputSize / 64 /* workgroup size */)},
+    })
+  };
+};
 
 export const split = (context: ComputeContext, attributes: SplitAttributes): void => {
   validateInputs(context.inputs);
-  context.compute(createSplitProgramInfoLoader(context.inputs, attributes), {inputs: [0]});
+  const updatedAttributes =
+      context.inputs.length === 1 ? attributes : createSplitAttributesFromInputs(context.inputs, attributes);
+  context.compute(createSplitProgramInfo(context.inputs, updatedAttributes), {inputs: [0]});
 };
 
 export const parseSplitAttributes = (attributes: Record<string, unknown>): SplitAttributes => {
