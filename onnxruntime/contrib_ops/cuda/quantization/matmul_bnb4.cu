@@ -6,8 +6,8 @@
 #include <cub/cub.cuh>
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
+#include "contrib_ops/cuda/quantization/dequantize_blockwise_bnb4.cuh"
 #include "matmul_bnb4.cuh"
-#include "dequantize_blockwise_bnb4.cuh"
 
 namespace onnxruntime {
 namespace contrib {
