@@ -92,7 +92,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
                         std::move(fc2_scales_ptr), static_cast<int>(moe_params.num_rows),
                         static_cast<int>(moe_params.hidden_size), static_cast<int>(moe_params.inter_size),
                         static_cast<int>(moe_params.num_experts), static_cast<int>(moe_params.local_num_experts),
-                        -1 /*local_experts_start_index_ used in sharded MoE*/, static_cast<int>(k_),
+                        0 /*local_experts_start_index_ used in sharded MoE*/, static_cast<int>(k_),
                         reinterpret_cast<char*>(work_space.get()), reinterpret_cast<CudaT*>(fc2_output.get()),
                         reinterpret_cast<CudaT*>(expert_scales.get()),
                         reinterpret_cast<int*>(expanded_source_row_to_expanded_dest_row.get()),

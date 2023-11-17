@@ -502,6 +502,22 @@ __global__ void compute_total_rows_before_expert_kernel(const int* sorted_expert
   total_rows_before_expert[expert] = find_total_elts_leq_target(sorted_experts, sorted_experts_len, expert);
 }
 
+__global__ void dispatch_activations_kernel(int64_t*& total_rows_before_expert, int num_experts,
+                                            int local_num_experts, int local_experts_start_index,
+                                            int& total_past_rows) {
+  // permuted_experts_ : 0, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 6,
+  // total_rows_before_expert_ : 1, 5, 12, 19, 25, 31, 32, 32,
+  const int expert = blockIdx.x * blockDim.x + threadIdx.x;
+  const int local_experts_end_index = local_experts_start_index + local_num_experts - 1;
+
+  total_past_rows = local_experts_start_index == 0 ?
+                    0 : total_rows_before_expert[local_experts_start_index - 1];
+
+  if (expert < local_experts_start_index || expert > local_experts_end_index) return;
+
+  total_rows_before_expert[expert] -= total_past_rows;
+}
+
 template <typename T, typename WeightType, typename Enable>
 CutlassMoeFCRunner<T, WeightType, Enable>::CutlassMoeFCRunner(int sm_version) {
   moe_gemm_runner_.initialize(sm_version);
@@ -618,12 +634,24 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
                                    total_rows_before_expert_, stream);
   // total_rows_before_expert_ : 1, 5, 12, 19, 25, 31, 32, 32,
 
+  int total_past_rows = 0;
+  if (local_num_experts < num_experts) {
+    dispatch_activations(total_rows_before_expert_, num_experts, local_num_experts, local_experts_start_index,
+                         total_past_rows, stream);
+  }
+
   // expanded_active_expert_rows is not used
-  moe_gemm_runner_.moe_gemm_bias_act(permuted_data_, fc1_expert_weights, fc1_scales, fc1_expert_biases, fc1_result_,
-                                     total_rows_before_expert_, expanded_active_expert_rows, inter_size, hidden_size,
+  moe_gemm_runner_.moe_gemm_bias_act(permuted_data_ + total_past_rows * hidden_size,
+                                     fc1_expert_weights, fc1_scales, fc1_expert_biases,
+                                     fc1_result_ + total_past_rows * inter_size,
+                                     total_rows_before_expert_ + local_experts_start_index,
+                                     expanded_active_expert_rows, inter_size, hidden_size,
                                      local_num_experts, fc1_activation_type, stream);
 
-  moe_gemm_runner_.moe_gemm(fc1_result_, fc2_expert_weights, fc2_scales, fc2_result, total_rows_before_expert_,
+  moe_gemm_runner_.moe_gemm(fc1_result_ + total_past_rows * inter_size,
+                            fc2_expert_weights, fc2_scales,
+                            fc2_result + total_past_rows * hidden_size,
+                            total_rows_before_expert_ + local_experts_start_index,
                             expanded_active_expert_rows, hidden_size, inter_size, local_num_experts, stream);
 }
 
@@ -651,6 +679,18 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::compute_total_rows_before_expert
 
   compute_total_rows_before_expert_kernel<<<blocks, threads, 0, stream>>>(sorted_indices, total_indices, num_experts,
                                                                           total_rows_before_expert);
+}
+
+template <typename T, typename WeightType, typename Enable>
+void CutlassMoeFCRunner<T, WeightType, Enable>::dispatch_activations(int64_t*& total_rows_before_expert,
+                                                                     int num_experts, int local_num_experts,
+                                                                     int local_experts_start_index,
+                                                                     int& total_past_rows, cudaStream_t stream) {
+  const int threads = std::min(1024, num_experts);
+  const int blocks = (num_experts + threads - 1) / threads;
+
+  dispatch_activations_kernel<<<blocks, threads, 0, stream>>>(total_rows_before_expert, num_experts, local_num_experts,
+                                                              local_experts_start_index, total_past_rows);
 }
 
 // ========================== Permutation things =======================================
