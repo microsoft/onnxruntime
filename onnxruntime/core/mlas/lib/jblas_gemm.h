@@ -10,13 +10,11 @@ Module Name:
 
 Abstract:
 
-    int4 block quantization gemm kernel template declarations.
-
-    Int4 block quantization is used to compress weight tensors of large
-    language models. It takes a number (must be multiple of 32) of floating
-    point values, calculates their quantization parameters, and saves
-    the parameters and the quantized data in a blob.
+    Currently only support Q4 gemm.
 --*/
+
+#pragma once
+
 #include "mlas_qnbit.h"
 
 size_t

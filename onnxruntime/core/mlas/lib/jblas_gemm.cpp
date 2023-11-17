@@ -10,10 +10,7 @@ Module Name:
 
 Abstract:
 
-    This module implements the fp32 matrix multiplication with compressed
-    weight tensor (right hand side). The assumption is the right hand side
-    tensor can be pre-packed and compressed using int-4 quantization to save
-    memory.
+    Currently only support Q4 gemm. 
 --*/
 
 #include "jblas_gemm.h"
