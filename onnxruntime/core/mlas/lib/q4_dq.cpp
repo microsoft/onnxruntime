@@ -17,10 +17,6 @@ Abstract:
     language models.
 
 --*/
-#ifdef MLAS_JBLAS
-#include "mlas_jblas_defs.h"
-using namespace jblas;
-#endif
 #include "q4common.h"
 
 template <typename T>
@@ -103,8 +99,7 @@ MlasQ4GemmPackBImpl(void* PackedBuf, const float* FpData, size_t N, size_t K, si
 
 template <>
 MLAS_FORCEINLINE void
-MlasQ4GemmPackBImpl<MLAS_Q4TYPE_BLK1>(
-    void* PackedBuf, const float* FpData, size_t N, size_t K, size_t ldb)
+MlasQ4GemmPackBImpl<MLAS_Q4TYPE_BLK1>(void* PackedBuf, const float* FpData, size_t N, size_t K, size_t ldb)
 {
     auto* dst_ptr = reinterpret_cast<uint8_t*>(PackedBuf);
 
@@ -147,13 +142,11 @@ MlasQ4GemmPackBImpl<MLAS_Q4TYPE_BLK1>(
                 size_t kklen = std::min((size_t)32, klen - kk);
                 for (size_t l = 0; l < 16; l++) {
                     const float v0 = l < kklen ? src[ldb * (kk + l)] : 0;
-                    const uint8_t vi0 = (uint8_t)std::min(
-                        15.0f, std::max(0.0f, roundf(v0 * reciprocal_scale + zp)));
+                    const uint8_t vi0 = (uint8_t)std::min(15.0f, std::max(0.0f, roundf(v0 * reciprocal_scale + zp)));
 
                     const size_t l1 = l + 16;
                     const float v1 = (l1 < kklen) ? src[ldb * (kk + l1)] : 0;
-                    const uint8_t vi1 = (uint8_t)std::min(
-                        15.0f, std::max(0.0f, roundf(v1 * reciprocal_scale + zp)));
+                    const uint8_t vi1 = (uint8_t)std::min(15.0f, std::max(0.0f, roundf(v1 * reciprocal_scale + zp)));
 
                     data[l] = vi0 | (vi1 << 4);
                 }
@@ -168,8 +161,7 @@ MlasQ4GemmPackBImpl<MLAS_Q4TYPE_BLK1>(
 }
 
 void MLASCALL
-MlasQ4GemmPackB(
-    MLAS_BLK_QUANT_TYPE QType, void* PackedBuf, const float* FpData, size_t N, size_t K, size_t ldb)
+MlasQ4GemmPackB(MLAS_BLK_QUANT_TYPE QType, void* PackedBuf, const float* FpData, size_t N, size_t K, size_t ldb)
 {
     switch (QType) {
         case BlkQ4Sym:
@@ -223,8 +215,7 @@ MlasQ4GemmUnPackBImpl(float* FpData, const void* PackedBuf, size_t N, size_t K, 
 
 template <>
 MLAS_FORCEINLINE void
-MlasQ4GemmUnPackBImpl<MLAS_Q4TYPE_BLK1>(
-    float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb)
+MlasQ4GemmUnPackBImpl<MLAS_Q4TYPE_BLK1>(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb)
 {
     const auto* src = reinterpret_cast<const uint8_t*>(PackedBuf);
     for (size_t n = 0; n < N; n++) {
@@ -262,8 +253,7 @@ MlasQ4GemmUnPackBImpl<MLAS_Q4TYPE_BLK1>(
 }
 
 void MLASCALL
-MlasQ4GemmUnPackB(
-    MLAS_BLK_QUANT_TYPE QType, float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb)
+MlasQ4GemmUnPackB(MLAS_BLK_QUANT_TYPE QType, float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb)
 {
     switch (QType) {
         case BlkQ4Sym:
@@ -282,9 +272,10 @@ MlasQ4GemmUnPackB(
  * parameters into separate buffers.
  */
 
-template <int Row_,    ///< rows of a matrix
-          int Column_  ///< columns of a matrix
-          >
+template <
+    int Row_,    ///< rows of a matrix
+    int Column_  ///< columns of a matrix
+    >
 struct Shape2D {
     static int const kRow = Row_;              ///< rows of a matrix
     static int const kColumn = Column_;        ///< columns of a matrix
@@ -371,10 +362,7 @@ struct BlockwiseQuantizer {
     using QuantBlk = std::conditional_t<Columnwise, Shape2D<block_size, 1>, Shape2D<1, block_size>>;
     using ThreadBlk = Shape2D<QuantBlk::kRow * BitsTraits<qbits>::kPackSize, QuantBlk::kColumn>;
 
-    static MLAS_FORCEINLINE void quantizeMetaShape(int rows,
-                                                   int columns,
-                                                   int& meta_rows,
-                                                   int& meta_cols)
+    static MLAS_FORCEINLINE void quantizeMetaShape(int rows, int columns, int& meta_rows, int& meta_cols)
     {
         meta_rows = (rows + QuantBlk::kRow - 1) / QuantBlk::kRow;
         meta_cols = (columns + QuantBlk::kColumn - 1) / QuantBlk::kColumn;
@@ -421,14 +409,16 @@ struct BlockwiseQuantizer {
      * @param columns
      * @param leadingDimension   stride of the source matrix, i.e. distance from one row to the next
      */
-    static void quantizeAndTranspose(uint8_t* dst,
-                                     ElementT* scales,
-                                     uint8_t* zero_points,
-                                     const ElementT* src,
-                                     int32_t rows,
-                                     int32_t columns,
-                                     int32_t leadingDimension,
-                                     MLAS_THREADPOOL* thread_pool)
+    static void quantizeAndTranspose(
+        uint8_t* dst,
+        ElementT* scales,
+        uint8_t* zero_points,
+        const ElementT* src,
+        int32_t rows,
+        int32_t columns,
+        int32_t leadingDimension,
+        MLAS_THREADPOOL* thread_pool
+    )
     {
         // Thread partitioning
         const auto thrd_row_blks = (rows + ThreadBlk::kRow - 1) / ThreadBlk::kRow;
@@ -498,20 +488,19 @@ struct BlockwiseQuantizer {
                     const int8_t zp1 = zp_bytes[((i + 1) / QuantBlk::kRow) & 1];
 
                     const float v0 = static_cast<float>(src[i * leadingDimension + j]);
-                    const uint8_t vi0 = (uint8_t)std::clamp(roundf(v0 * reciprocal_scale + zp),
-                                                            0.0f, BitsTraits<qbits>::kMaxFp);
+                    const uint8_t vi0 =
+                        (uint8_t)std::clamp(roundf(v0 * reciprocal_scale + zp), 0.0f, BitsTraits<qbits>::kMaxFp);
 
                     uint8_t vi1 = (uint8_t)zp;
                     if (i + 1 < r_end) {
                         float reciprocal_scale1 = reciprocal_scale;
                         if constexpr (QuantBlk::kRow == 1) {
-                            const float scale1 =
-                                static_cast<float>(scales[meta_c * row_blks + meta_r + 1]);
+                            const float scale1 = static_cast<float>(scales[meta_c * row_blks + meta_r + 1]);
                             reciprocal_scale1 = scale1 ? 1.0f / scale1 : 0.0f;
                         }
                         const float v1 = static_cast<float>(src[(i + 1) * leadingDimension + j]);
-                        vi1 = (uint8_t)std::clamp(roundf(v1 * reciprocal_scale1 + zp1), 0.0f,
-                                                  BitsTraits<qbits>::kMaxFp);
+                        vi1 =
+                            (uint8_t)std::clamp(roundf(v1 * reciprocal_scale1 + zp1), 0.0f, BitsTraits<qbits>::kMaxFp);
                     }
 
                     // !! 4b specific code
@@ -532,13 +521,15 @@ struct BlockwiseQuantizer {
      * @param[in]  rows
      * @param[in]  columns
      */
-    static void dequantize(ElementT* dst,
-                           const uint8_t* weights,
-                           const ElementT* scales,
-                           const uint8_t* zero_points,
-                           int32_t rows,
-                           int32_t columns,
-                           MLAS_THREADPOOL* thread_pool)
+    static void dequantize(
+        ElementT* dst,
+        const uint8_t* weights,
+        const ElementT* scales,
+        const uint8_t* zero_points,
+        int32_t rows,
+        int32_t columns,
+        MLAS_THREADPOOL* thread_pool
+    )
     {
         // Thread partitioning
         const auto thrd_row_blks = (rows + ThreadBlk::kRow - 1) / ThreadBlk::kRow;
@@ -573,9 +564,7 @@ struct BlockwiseQuantizer {
                     const float scale0 = static_cast<float>(scales[meta_col * row_blks + meta_row]);
 
                     const int zp_pair =
-                        (zero_points == nullptr)
-                            ? 0x88
-                            : zero_points[meta_col * ((row_blks + 1) / 2) + meta_row / 2];
+                        (zero_points == nullptr) ? 0x88 : zero_points[meta_col * ((row_blks + 1) / 2) + meta_row / 2];
                     const int zp0 = (meta_row & 1) ? (zp_pair >> 4) : (zp_pair & 0xf);
 
                     const uint8_t vi0 = weights[j * q_rows + i / 2] & 0xf;
@@ -599,11 +588,9 @@ struct BlockwiseQuantizer {
     }
 };
 
-
 template <typename T, int qbits>
 void
-MlasBlockwiseQuantMetaShape(
-    int block_size, bool columnwise, int rows, int columns, int& meta_rows, int& meta_cols)
+MlasBlockwiseQuantMetaShape(int block_size, bool columnwise, int rows, int columns, int& meta_rows, int& meta_cols)
 {
     switch (block_size) {
         case 16: {
@@ -618,38 +605,31 @@ MlasBlockwiseQuantMetaShape(
             if (columnwise) {
                 BlockwiseQuantizer<T, 32, qbits, true>::quantizeMetaShape(rows, columns, meta_rows, meta_cols);
             } else {
-                BlockwiseQuantizer<T, 32, qbits, false>::quantizeMetaShape(
-                                    rows, columns, meta_rows, meta_cols);
+                BlockwiseQuantizer<T, 32, qbits, false>::quantizeMetaShape(rows, columns, meta_rows, meta_cols);
             }
             break;
         }
         case 64: {
             if (columnwise) {
-                BlockwiseQuantizer<T, 64, qbits, true>::quantizeMetaShape(rows, columns, meta_rows,
-                                                                      meta_cols);
+                BlockwiseQuantizer<T, 64, qbits, true>::quantizeMetaShape(rows, columns, meta_rows, meta_cols);
             } else {
-                BlockwiseQuantizer<T, 64, qbits, false>::quantizeMetaShape(rows, columns, meta_rows,
-                                                                       meta_cols);
+                BlockwiseQuantizer<T, 64, qbits, false>::quantizeMetaShape(rows, columns, meta_rows, meta_cols);
             }
             break;
         }
         case 128: {
             if (columnwise) {
-                BlockwiseQuantizer<T, 128, qbits, true>::quantizeMetaShape(rows, columns, meta_rows,
-                                                                      meta_cols);
+                BlockwiseQuantizer<T, 128, qbits, true>::quantizeMetaShape(rows, columns, meta_rows, meta_cols);
             } else {
-                BlockwiseQuantizer<T, 128, qbits, false>::quantizeMetaShape(rows, columns, meta_rows,
-                                                                       meta_cols);
+                BlockwiseQuantizer<T, 128, qbits, false>::quantizeMetaShape(rows, columns, meta_rows, meta_cols);
             }
             break;
         }
         case 256: {
             if (columnwise) {
-                BlockwiseQuantizer<T, 256, qbits, true>::quantizeMetaShape(rows, columns, meta_rows,
-                                                                      meta_cols);
+                BlockwiseQuantizer<T, 256, qbits, true>::quantizeMetaShape(rows, columns, meta_rows, meta_cols);
             } else {
-                BlockwiseQuantizer<T, 256, qbits, false>::quantizeMetaShape(rows, columns, meta_rows,
-                                                                       meta_cols);
+                BlockwiseQuantizer<T, 256, qbits, false>::quantizeMetaShape(rows, columns, meta_rows, meta_cols);
             }
             break;
         }
@@ -660,12 +640,9 @@ MlasBlockwiseQuantMetaShape(
     }
 }
 
-
-
 template <typename T, int qbits>
 void
-MlasBlockwiseQuantizedShape(
-    int block_size, bool columnwise, int rows, int columns, int& q_rows, int& q_cols)
+MlasBlockwiseQuantizedShape(int block_size, bool columnwise, int rows, int columns, int& q_rows, int& q_cols)
 {
     switch (block_size) {
         case 16: {
@@ -680,8 +657,7 @@ MlasBlockwiseQuantizedShape(
             if (columnwise) {
                 BlockwiseQuantizer<T, 32, qbits, true>::quantizedShape(rows, columns, q_rows, q_cols);
             } else {
-                BlockwiseQuantizer<T, 32, qbits, false>::quantizedShape(
-                                    rows, columns, q_rows, q_cols);
+                BlockwiseQuantizer<T, 32, qbits, false>::quantizedShape(rows, columns, q_rows, q_cols);
             }
             break;
         }
@@ -716,29 +692,13 @@ MlasBlockwiseQuantizedShape(
     }
 }
 
-
-template
-void
+template void
 MlasBlockwiseQuantMetaShape<float, 4>(
-    int block_size,
-    bool columnwise,
-    int rows,
-    int columns,
-    int& meta_rows,
-    int& meta_cols
-    );
+    int block_size, bool columnwise, int rows, int columns, int& meta_rows, int& meta_cols
+);
 
-template
-void
-MlasBlockwiseQuantizedShape<float, 4>(
-    int block_size,
-    bool columnwise,
-    int rows,
-    int columns,
-    int& q_rows,
-    int& q_cols
-    );
-
+template void
+MlasBlockwiseQuantizedShape<float, 4>(int block_size, bool columnwise, int rows, int columns, int& q_rows, int& q_cols);
 
 void MLASCALL
 MlasBlockwiseQuantizedBufferSizes(
@@ -826,68 +786,79 @@ MlasBlockwiseQuantizedBufferSizes(
     }
 }
 
-
 template <typename T, int qbits>
 void
-MlasQuantizeBlockwise(uint8_t* dst,
-                      T* scales,
-                      uint8_t* zero_points,
-                      const T* src,
-                      int block_size,
-                      bool columnwise,
-                      int rows,
-                      int columns,
-                      int leading_dimension,
-                      MLAS_THREADPOOL* thread_pool)
+MlasQuantizeBlockwise(
+    uint8_t* dst,
+    T* scales,
+    uint8_t* zero_points,
+    const T* src,
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    int leading_dimension,
+    MLAS_THREADPOOL* thread_pool
+)
 {
     switch (block_size) {
         case 16:
             if (columnwise) {
                 BlockwiseQuantizer<T, 16, qbits, true>::quantizeAndTranspose(
-                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
+                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool
+                );
             } else {
                 BlockwiseQuantizer<T, 16, qbits, false>::quantizeAndTranspose(
-                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
+                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool
+                );
             }
             break;
 
         case 32:
             if (columnwise) {
                 BlockwiseQuantizer<T, 32, qbits, true>::quantizeAndTranspose(
-                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
+                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool
+                );
             } else {
                 BlockwiseQuantizer<T, 32, qbits, false>::quantizeAndTranspose(
-                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
+                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool
+                );
             }
             break;
 
         case 64:
             if (columnwise) {
                 BlockwiseQuantizer<T, 64, qbits, true>::quantizeAndTranspose(
-                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
+                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool
+                );
             } else {
                 BlockwiseQuantizer<T, 64, qbits, false>::quantizeAndTranspose(
-                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
+                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool
+                );
             }
             break;
 
         case 128:
             if (columnwise) {
                 BlockwiseQuantizer<T, 128, qbits, true>::quantizeAndTranspose(
-                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
+                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool
+                );
             } else {
                 BlockwiseQuantizer<T, 128, qbits, false>::quantizeAndTranspose(
-                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
+                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool
+                );
             }
             break;
 
         case 256:
             if (columnwise) {
                 BlockwiseQuantizer<T, 256, qbits, true>::quantizeAndTranspose(
-                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
+                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool
+                );
             } else {
                 BlockwiseQuantizer<T, 256, qbits, false>::quantizeAndTranspose(
-                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
+                    dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool
+                );
             }
             break;
 
@@ -898,85 +869,101 @@ MlasQuantizeBlockwise(uint8_t* dst,
 }
 
 template void
-MlasQuantizeBlockwise<float, 4>(uint8_t* dst,
-                                float* scales,
-                                uint8_t* zero_points,
-                                const float* src,
-                                int block_size,
-                                bool columnwise,
-                                int rows,
-                                int columns,
-                                int leading_dimension,
-                                MLAS_THREADPOOL* thread_pool);
+MlasQuantizeBlockwise<float, 4>(
+    uint8_t* dst,
+    float* scales,
+    uint8_t* zero_points,
+    const float* src,
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    int leading_dimension,
+    MLAS_THREADPOOL* thread_pool
+);
 
 template void
-MlasQuantizeBlockwise<MLAS_FP16, 4>(uint8_t* dst,
-                                    MLAS_FP16* scales,
-                                    uint8_t* zero_points,
-                                    const MLAS_FP16* src,
-                                    int block_size,
-                                    bool columnwise,
-                                    int rows,
-                                    int columns,
-                                    int leading_dimension,
-                                    MLAS_THREADPOOL* thread_pool);
+MlasQuantizeBlockwise<MLAS_FP16, 4>(
+    uint8_t* dst,
+    MLAS_FP16* scales,
+    uint8_t* zero_points,
+    const MLAS_FP16* src,
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    int leading_dimension,
+    MLAS_THREADPOOL* thread_pool
+);
 
 template <typename T, int qbits>
 void
-MlasDequantizeBlockwise(T* dst,
-                        const uint8_t* src,
-                        const T* scales,
-                        const uint8_t* zero_points,
-                        int block_size,
-                        bool columnwise,
-                        int rows,
-                        int columns,
-                        MLAS_THREADPOOL* thread_pool)
+MlasDequantizeBlockwise(
+    T* dst,
+    const uint8_t* src,
+    const T* scales,
+    const uint8_t* zero_points,
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    MLAS_THREADPOOL* thread_pool
+)
 {
     switch (block_size) {
         case 16:
             if (columnwise) {
-                BlockwiseQuantizer<T, 16, qbits, true>::dequantize(dst, src, scales, zero_points,
-                                                                   rows, columns, thread_pool);
+                BlockwiseQuantizer<T, 16, qbits, true>::dequantize(
+                    dst, src, scales, zero_points, rows, columns, thread_pool
+                );
             } else {
-                BlockwiseQuantizer<T, 16, qbits, false>::dequantize(dst, src, scales, zero_points,
-                                                                    rows, columns, thread_pool);
+                BlockwiseQuantizer<T, 16, qbits, false>::dequantize(
+                    dst, src, scales, zero_points, rows, columns, thread_pool
+                );
             }
             break;
         case 32:
             if (columnwise) {
-                BlockwiseQuantizer<T, 32, qbits, true>::dequantize(dst, src, scales, zero_points,
-                                                                   rows, columns, thread_pool);
+                BlockwiseQuantizer<T, 32, qbits, true>::dequantize(
+                    dst, src, scales, zero_points, rows, columns, thread_pool
+                );
             } else {
-                BlockwiseQuantizer<T, 32, qbits, false>::dequantize(dst, src, scales, zero_points,
-                                                                    rows, columns, thread_pool);
+                BlockwiseQuantizer<T, 32, qbits, false>::dequantize(
+                    dst, src, scales, zero_points, rows, columns, thread_pool
+                );
             }
             break;
         case 64:
             if (columnwise) {
-                BlockwiseQuantizer<T, 64, qbits, true>::dequantize(dst, src, scales, zero_points,
-                                                                   rows, columns, thread_pool);
+                BlockwiseQuantizer<T, 64, qbits, true>::dequantize(
+                    dst, src, scales, zero_points, rows, columns, thread_pool
+                );
             } else {
-                BlockwiseQuantizer<T, 64, qbits, false>::dequantize(dst, src, scales, zero_points,
-                                                                    rows, columns, thread_pool);
+                BlockwiseQuantizer<T, 64, qbits, false>::dequantize(
+                    dst, src, scales, zero_points, rows, columns, thread_pool
+                );
             }
             break;
         case 128:
             if (columnwise) {
-                BlockwiseQuantizer<T, 128, qbits, true>::dequantize(dst, src, scales, zero_points,
-                                                                    rows, columns, thread_pool);
+                BlockwiseQuantizer<T, 128, qbits, true>::dequantize(
+                    dst, src, scales, zero_points, rows, columns, thread_pool
+                );
             } else {
-                BlockwiseQuantizer<T, 128, qbits, false>::dequantize(dst, src, scales, zero_points,
-                                                                     rows, columns, thread_pool);
+                BlockwiseQuantizer<T, 128, qbits, false>::dequantize(
+                    dst, src, scales, zero_points, rows, columns, thread_pool
+                );
             }
             break;
         case 256:
             if (columnwise) {
-                BlockwiseQuantizer<T, 256, qbits, true>::dequantize(dst, src, scales, zero_points,
-                                                                    rows, columns, thread_pool);
+                BlockwiseQuantizer<T, 256, qbits, true>::dequantize(
+                    dst, src, scales, zero_points, rows, columns, thread_pool
+                );
             } else {
-                BlockwiseQuantizer<T, 256, qbits, false>::dequantize(dst, src, scales, zero_points,
-                                                                     rows, columns, thread_pool);
+                BlockwiseQuantizer<T, 256, qbits, false>::dequantize(
+                    dst, src, scales, zero_points, rows, columns, thread_pool
+                );
             }
             break;
         default:
@@ -986,306 +973,14 @@ MlasDequantizeBlockwise(T* dst,
 }
 
 template void
-MlasDequantizeBlockwise<float, 4>(float* dst,
-                                  const uint8_t* src,
-                                  const float* scales,
-                                  const uint8_t* zero_points,
-                                  int block_size,
-                                  bool columnwise,
-                                  int rows,
-                                  int columns,
-                                  MLAS_THREADPOOL* thread_pool);
-
-#ifdef MLAS_JBLAS
-
-template <typename T>
-static size_t
-JblasQ4BuSize(int block_size, size_t N, size_t K, bool isAsym)
-{
-    static T launcher;
-    auto stor = launcher.mProB.createStorage(N, K, block_size, JBLAS_DTYPE::S4_CLIP,
-                                             JBLAS_DTYPE::F32, JBLAS_DTYPE::BF16, isAsym);
-    // TODO(Yu) support more S4 quant type, scale dtype
-    return stor.mSize;
-}
-
-static size_t
-JblasQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, MLAS_COMPUTE_TYPE CompType)
-{
-    GetCPUDevice();
-    switch (CompType) {
-        case CompInt8:
-            if (_cd->AMX_INT8() && BlkSize % tAMX_INT8_SS::KTILE == 0) {
-                return JblasQ4BuSize<tLauncher_Int8_S4_F32F32<tAMX_INT8_SS>>(int(BlkSize), N, K,
-                                                                             isAsym);
-            }
-            if (_cd->AVX512_VNNI() && BlkSize % tAVX512_VNNI::KTILE == 0) {
-                return JblasQ4BuSize<tLauncher_Int8_S4_F32F32<tAVX512_VNNI>>(int(BlkSize), N, K,
-                                                                             isAsym);
-            }
-            if (_cd->AVX_VNNI() && BlkSize % tAVX_VNNI::KTILE == 0) {
-                return JblasQ4BuSize<tLauncher_Int8_S4_F32F32<tAVX_VNNI>>(int(BlkSize), N, K,
-                                                                          isAsym);
-            }
-            break;
-        case CompFp32:
-            if (_cd->AVX512F() && BlkSize % tAVX512F::KTILE == 0) {
-                return JblasQ4BuSize<tLauncher_Int8_S4_F32F32<tAVX512F>>(int(BlkSize), N, K,
-                                                                         isAsym);
-            }
-            if (_cd->AVX2() && BlkSize % tAVX2::KTILE == 0) {
-                return JblasQ4BuSize<tLauncher_Int8_S4_F32F32<tAVX2>>(int(BlkSize), N, K, isAsym);
-            }
-            break;
-        case CompBf16:
-        case CompFp16:
-        default:
-            return 0;
-    }
-}
-
-template <typename T>
-void
-JblaNBitsGemmPackB(void* PackedBuf,
-                   int BlkSize,
-                   const uint8_t* QData,
-                   const float* Scale,
-                   const uint8_t* Zp,
-                   int N,
-                   int K,
-                   bool IsAsym,
-                   bool lastCall,
-                   int ldb,
-                   MLAS_THREADPOOL* ThreadPool)
-{
-    static T JblasKernel;
-    auto stor = JblasKernel.mProB.createStorage(N, K, BlkSize, JBLAS_DTYPE::S4_CLIP,
-                                                JBLAS_DTYPE::F32, JBLAS_DTYPE::BF16, IsAsym);
-    stor.assign((int8_t*)PackedBuf);
-    ORTThreading orth(ThreadPool);
-    JblasKernel.mProB.packNbitsWeight(N, K, IsAsym, QData, ldb, Scale, Zp, &stor, &orth);
-    if (lastCall) {
-        JblasKernel.mProB.reduceWeight(&stor, &orth);
-    }
-}
-
-static bool
-JblasQ4GemmPackB(void* PackedBuf,
-                 const uint8_t* QData,
-                 const float* Scale,
-                 const uint8_t* Zp,
-                 size_t N,
-                 size_t K,
-                 size_t ldb,
-                 size_t BlkSize,
-                 bool isAsym,
-                 bool lastCall,
-                 MLAS_COMPUTE_TYPE CompType,
-                 MLAS_THREADPOOL* ThreadPool)
-{
-    GetCPUDevice();
-    switch (CompType) {
-        case CompInt8:
-            if (_cd->AMX_INT8() && BlkSize % tAMX_INT8_SS::KTILE == 0) {
-                JblaNBitsGemmPackB<tLauncher_Int8_S4_F32F32<tAMX_INT8_SS>>(
-                    PackedBuf, int(BlkSize), QData, Scale, Zp, int(N), int(K), isAsym, lastCall,
-                    int(ldb), ThreadPool);
-                return true;
-            }
-            if (_cd->AVX512_VNNI() && BlkSize % tAVX512_VNNI::KTILE == 0) {
-                JblaNBitsGemmPackB<tLauncher_Int8_S4_F32F32<tAVX512_VNNI>>(
-                    PackedBuf, int(BlkSize), QData, Scale, Zp, int(N), int(K), isAsym, lastCall,
-                    int(ldb), ThreadPool);
-                return true;
-            }
-            if (_cd->AVX_VNNI() && BlkSize % tAVX_VNNI::KTILE == 0) {
-                JblaNBitsGemmPackB<tLauncher_Int8_S4_F32F32<tAVX_VNNI>>(
-                    PackedBuf, int(BlkSize), QData, Scale, Zp, int(N), int(K), isAsym, lastCall,
-                    int(ldb), ThreadPool);
-                return true;
-            }
-            break;
-        case CompFp32:
-            if (_cd->AVX512F() && BlkSize % tAVX512F::KTILE == 0) {
-                JblaNBitsGemmPackB<tLauncher_Fp32_S4_F32F32<tAVX512F>>(
-                    PackedBuf, int(BlkSize), QData, Scale, Zp, int(N), int(K), isAsym, lastCall,
-                    int(ldb), ThreadPool);
-                return true;
-            }
-            if (_cd->AVX2() && BlkSize % tAVX2::KTILE == 0) {
-                JblaNBitsGemmPackB<tLauncher_Fp32_S4_F32F32<tAVX2>>(
-                    PackedBuf, int(BlkSize), QData, Scale, Zp, int(N), int(K), isAsym, lastCall,
-                    int(ldb), ThreadPool);
-                return true;
-            }
-            break;
-        case CompBf16:
-        case CompFp16:
-        default:
-            return false;
-    }
-}
-
-static bool
-JblasQ4GemmUnPackB(float* FpData,
-                   const void* PackedBuf,
-                   size_t N,
-                   size_t K,
-                   size_t ldb,
-                   MLAS_THREADPOOL* ThreadPool)
-{
-    auto ptr =
-        jblas::storage::gemm::PackedWeightParser::deserialBuffer(const_cast<void*>(PackedBuf));
-    ORTThreading orth(ThreadPool);
-    GetCPUDevice();
-    if (ptr) {
-        if (ptr->mPrologueID == JBLAS_PROLOGUEB_IDS::WeightKBlockS4) {
-            auto NTile =
-                jblas::gemm::CoreAttr::get_mask_val(ptr->mCoreId, jblas::gemm::CoreAttr::NTILE_MASK,
-                                                    jblas::gemm::CoreAttr::NTILE_SHIFT);
-            auto CType = jblas::gemm::CoreAttr::get_mask_val(
-                ptr->mCoreId, jblas::gemm::CoreAttr::COMP_MASK, jblas::gemm::CoreAttr::COMP_SHIFT);
-            if (CType == uint32_t(jblas::gemm::CompType::COMP_FP32)) {
-                if (NTile == tAVX512F::NTILE && _cd->AVX512F()) {
-                    static jblas::prologue_b::gemm::WeightKBlockS4<tAVX512F, tAVX512F::ISA> proB;
-                    proB.unpackWeight(int(N), int(K), ptr, FpData, int(ldb), &orth);
-                    goto __END;
-                }
-                if (NTile == tAVX2::NTILE && _cd->AVX2()) {
-                    static jblas::prologue_b::gemm::WeightKBlockS4<tAVX2, tAVX2::ISA> proB;
-                    proB.unpackWeight(int(N), int(K), ptr, FpData, int(ldb), &orth);
-                    goto __END;
-                }
-            }
-            if (CType == uint32_t(jblas::gemm::CompType::COMP_INT8_US_INT32)) {
-                if (NTile == tAMX_INT8_US::NTILE && _cd->AMX_INT8()) {
-                    static jblas::prologue_b::gemm::WeightKBlockS4<tAMX_INT8_US, tAMX_INT8_US::ISA>
-                        proB;
-                    proB.unpackWeight(int(N), int(K), ptr, FpData, int(ldb), &orth);
-                    goto __END;
-                }
-                if (NTile == tAVX512_VNNI::NTILE && _cd->AVX512_VNNI()) {
-                    static jblas::prologue_b::gemm::WeightKBlockS4<tAVX512_VNNI, tAVX512_VNNI::ISA>
-                        proB;
-                    proB.unpackWeight(int(N), int(K), ptr, FpData, int(ldb), &orth);
-                    goto __END;
-                }
-                if (NTile == tAVX_VNNI::NTILE && _cd->AVX_VNNI()) {
-                    static jblas::prologue_b::gemm::WeightKBlockS4<tAVX_VNNI, tAVX_VNNI::ISA> proB;
-                    proB.unpackWeight(int(N), int(K), ptr, FpData, int(ldb), &orth);
-                    goto __END;
-                }
-            }
-            if (CType == uint32_t(jblas::gemm::CompType::COMP_INT8_SS_INT32)) {
-                if (NTile == tAMX_INT8_SS::NTILE && _cd->AMX_INT8()) {
-                    static jblas::prologue_b::gemm::WeightKBlockS4<tAMX_INT8_SS, tAMX_INT8_SS::ISA>
-                        proB;
-                    proB.unpackWeight(int(N), int(K), ptr, FpData, int(ldb), &orth);
-                    goto __END;
-                }
-            }
-        }
-    __END:
-        delete ptr;
-        return true;
-    }
-    return false;
-}
-
-#endif
-
-/**
- * @brief Computes the number of bytes required to pack and int4-quantize
- *        a weight matrix
- * @param QType  type of block quantization
- * @param N      the number of columns of matrix B.
- * @param K      the number of rows of matrix B.
- * @return size of the packing buffer, 0 if the operation is not yet supported.
- */
-size_t MLASCALL
-MlasNBitsGemmPackBSize(
-    size_t N, size_t K, size_t BlkSize, int nbits, bool isAsym, MLAS_COMPUTE_TYPE CompType)
-{
-    GetMlasPlatform();
-#ifdef MLAS_JBLAS
-    if (nbits == 4) {
-        auto jsize = JblasQ4GemmPackBSize(N, K, BlkSize, isAsym, CompType);
-        if (jsize) {
-            return jsize;
-        }
-    }
-#endif
-    (void)(N);
-    (void)(K);
-    (void)(BlkSize);
-    (void)(nbits);
-    (void)(isAsym);
-    (void)(CompType);
-    return 0;
-}
-
-bool MLASCALL
-MlasNBitsGemmPackBSupport(
-    size_t N, size_t K, size_t BlkSize, int nbits, bool isAsym, MLAS_COMPUTE_TYPE CompType)
-{
-    return MlasNBitsGemmPackBSize(N, K, BlkSize, nbits, isAsym, CompType) > 0;
-}
-
-void MLASCALL
-MlasNBitsGemmPackB(void* PackedBuf,
-                   const uint8_t* QData,
-                   const float* Scale,
-                   const uint8_t* Zp,
-                   size_t N,
-                   size_t K,
-                   size_t ldb,
-                   size_t BlkSize,
-                   int nbits,
-                   bool isAsym,
-                   bool lastCall,
-                   MLAS_COMPUTE_TYPE CompType,
-                   MLAS_THREADPOOL* ThreadPool)
-{
-#ifdef MLAS_JBLAS
-    if (nbits == 4) {
-        if (JblasQ4GemmPackB(PackedBuf, QData, Scale, Zp, N, K, ldb, BlkSize, isAsym, lastCall,
-                             CompType, ThreadPool)) {
-            return;
-        }
-    }
-#endif
-    (void)(PackedBuf);
-    (void)(QData);
-    (void)(Scale);
-    (void)(Zp);
-    (void)(N);
-    (void)(K);
-    (void)(ldb);
-    (void)(BlkSize);
-    (void)(nbits);
-    (void)(isAsym);
-    (void)(lastCall);
-    (void)(CompType);
-    (void)(ThreadPool);
-}
-
-void MLASCALL
-MlasNBitsGemmUnPackB(float* FpData,
-                     const void* PackedBuf,
-                     size_t N,
-                     size_t K,
-                     size_t ldb,
-                     MLAS_THREADPOOL* ThreadPool)
-{
-#ifdef MLAS_JBLAS
-    if (JblasQ4GemmUnPackB(FpData, PackedBuf, N, K, ldb, ThreadPool)) {
-        return;
-    }
-#endif
-    (void)(FpData);
-    (void)(PackedBuf);
-    (void)(N);
-    (void)(K);
-    (void)(ldb);
-    (void)(ThreadPool);
-}
+MlasDequantizeBlockwise<float, 4>(
+    float* dst,
+    const uint8_t* src,
+    const float* scales,
+    const uint8_t* zero_points,
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    MLAS_THREADPOOL* thread_pool
+);

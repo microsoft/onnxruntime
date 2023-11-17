@@ -28,10 +28,11 @@ class MatMulNBits final : public OpKernel {
     const Tensor* tensor_B = nullptr;
     const Tensor* tensor_scale = nullptr;
     const Tensor* tensor_zero_point = nullptr;
-    bool get_B = info.TryGetConstantInput(0, &tensor_B);
-    bool get_scale = info.TryGetConstantInput(1, &tensor_scale);
-    bool get_zero_point = info.TryGetConstantInput(2, &tensor_zero_point);
-    all_constant_ = get_B && get_scale && get_zero_point;
+    bool get_B = info.TryGetConstantInput(1, &tensor_B);
+    bool get_scale = info.TryGetConstantInput(2, &tensor_scale);
+    bool get_zero_point = info.TryGetConstantInput(3, &tensor_zero_point);
+    all_constant_ = get_B && get_scale;
+    all_constant_ = is_asym_ ? all_constant_ && get_zero_point : all_constant_;
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -61,10 +62,10 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
                             /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
   if (!all_constant_) {
-    return;
+    return Status::OK();
   }
-  if (MlasNBitsGemmPackBSupport(N_, K_, block_size_, static_cast<int>(nbits_), is_asym_, compt_type)) {
-    auto compt_type = static_cast<MLAS_COMPUTE_TYPE>(accuracy_level_);
+  auto compt_type = static_cast<MLAS_COMPUTE_TYPE>(accuracy_level_);
+  if (MlasIsNBitGemmAvailable(N_, K_, block_size_, static_cast<int>(nbits_), is_asym_, compt_type)) {
     // better to use threadpool here, LLM weight will consume a lot of time
     MLAS_THREADPOOL* pool = NULL;
     if (input_idx == 1) {
@@ -72,7 +73,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
       packed_b_size_ = MlasNBitsGemmPackBSize(N_, K_, block_size_, static_cast<int>(nbits_), is_asym_, compt_type);
       packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
       if (packed_b_ == nullptr) {
-        return;
+        return Status::OK();
       }
       MlasNBitsGemmPackB(packed_b_.get(), qptr, nullptr, nullptr, N_, K_, K_, block_size_, static_cast<int>(nbits_),
                          is_asym_, false, compt_type, pool);
@@ -85,7 +86,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     if (input_idx == 2) {
       auto sptr = tensor.Data<float>();
       if (packed_b_ == nullptr) {
-        return;
+        return Status::OK();
       }
       MlasNBitsGemmPackB(packed_b_.get(), nullptr, sptr, nullptr, N_, K_, K_, block_size_, static_cast<int>(nbits_),
                          is_asym_, !is_asym_, compt_type, pool);
@@ -98,7 +99,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     if (input_idx == 3) {
       auto zptr = tensor.Data<uint8_t>();
       if (packed_b_ == nullptr) {
-        return;
+        return Status::OK();
       }
       MlasNBitsGemmPackB(packed_b_.get(), nullptr, nullptr, zptr, N_, K_, K_, block_size_, static_cast<int>(nbits_),
                          is_asym_, is_asym_, compt_type, pool);
@@ -158,12 +159,12 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
     const size_t N = static_cast<size_t>(helper.N());
     const size_t K = static_cast<size_t>(helper.K());
     const size_t lda = helper.Lda(false);
-    std::vector<MLAS_Q4_GEMM_DATA_PARAMS> gemm_params(max_len);
+    std::vector<MLAS_NBITS_GEMM_DATA_SIMPLE_PARAMS> gemm_params(max_len);
     AllocatorPtr allocator;
     auto status = ctx->GetTempSpaceAllocator(&allocator);
     ORT_RETURN_IF_ERROR(status);
     // workspace for activation process(dynamic quantization and others)
-    auto ws_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K) * std::max(M, 32));
+    auto ws_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K) * std::max(M, 32UL));
     for (size_t i = 0; i < max_len; i++) {
       gemm_params[i].A = a_data + helper.LeftOffsets()[i];
       gemm_params[i].lda = lda;
@@ -171,7 +172,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
       gemm_params[i].C = y_data + helper.OutputOffsets()[i];
       gemm_params[i].ldc = N;
     }
-    MlasNBitsGemmBatch(M, N, K, max_len, gemm_params.data(), (int8_t*)ws_ptr.get(), thread_pool);
+    MlasNBitsGemmBatchPackedB(M, N, K, max_len, gemm_params.data(), (int8_t*)ws_ptr.get(), thread_pool);
     return Status::OK();
   }
 

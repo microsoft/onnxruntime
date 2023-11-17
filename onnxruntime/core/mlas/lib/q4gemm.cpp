@@ -18,11 +18,6 @@ Abstract:
 
 #include "q4gemm.h"
 
-#ifdef MLAS_JBLAS
-#include "mlas_jblas_defs.h"
-using namespace jblas;
-#endif
-
 size_t MLASCALL
 MlasQ80BlkQuantSize(MLAS_BLK_QUANT_TYPE QType, size_t M, size_t K)
 {
@@ -42,13 +37,9 @@ MlasQ80BlkQuantSize(MLAS_BLK_QUANT_TYPE QType, size_t M, size_t K)
 }
 
 void MLASCALL
-MlasQ80BlkQuant(MLAS_BLK_QUANT_TYPE QType,
-                void* Qblob,
-                const float* A,
-                size_t M,
-                size_t K,
-                size_t lda,
-                MLAS_THREADPOOL* ThreadPool)
+MlasQ80BlkQuant(
+    MLAS_BLK_QUANT_TYPE QType, void* Qblob, const float* A, size_t M, size_t K, size_t lda, MLAS_THREADPOOL* ThreadPool
+)
 {
     auto* dispatch = GetMlasPlatform().Q8Q4GemmDispatch;
     dispatch->Quants[QType](Qblob, A, M, K, lda, ThreadPool);
@@ -56,18 +47,20 @@ MlasQ80BlkQuant(MLAS_BLK_QUANT_TYPE QType,
 
 template <typename ParamBlockType>
 MLAS_FORCEINLINE void
-MlasQ4GemmBatchDriver(MLAS_BLK_QUANT_TYPE QType,
-                      const size_t M,
-                      const size_t N,
-                      const size_t K,
-                      const size_t BatchN,
-                      const ParamBlockType* DataParams,
-                      MLAS_THREADPOOL* ThreadPool)
+MlasQ4GemmBatchDriver(
+    MLAS_BLK_QUANT_TYPE QType,
+    const size_t M,
+    const size_t N,
+    const size_t K,
+    const size_t BatchN,
+    const ParamBlockType* DataParams,
+    MLAS_THREADPOOL* ThreadPool
+)
 {
     // const MLAS_Q4GEMM_DISPATCH* dispatch = MlasQ4GemmGetDispatch();
     // MLAS_Q4GEMM_OPERATION* operation = dispatch->Operation;
-    void (*operation)(const size_t, const ParamBlockType*, const size_t, const size_t, const size_t,
-                      const size_t) = nullptr;
+    void (*operation)(const size_t, const ParamBlockType*, const size_t, const size_t, const size_t, const size_t) =
+        nullptr;
 
     if constexpr (std::is_same_v<ParamBlockType, MLAS_Q4_GEMM_DATA_PARAMS>) {
         operation = GetMlasPlatform().FpQ4GemmDispatch->Operations[QType];
@@ -112,8 +105,8 @@ MlasQ4GemmBatchDriver(MLAS_BLK_QUANT_TYPE QType,
         const size_t BlockedM = MlasDivRoundup(M, StrideM);
         const size_t max_nc = MlasDivRoundup(N * BlockedM, ThreadsPerGemm);
         if (max_nc < nc) {
-            nc = std::min(nc, MlasDivRoundup(max_nc, MLAS_QGEMM_STRIDEN_THREAD_ALIGN) *
-                                  MLAS_QGEMM_STRIDEN_THREAD_ALIGN);
+            nc =
+                std::min(nc, MlasDivRoundup(max_nc, MLAS_QGEMM_STRIDEN_THREAD_ALIGN) * MLAS_QGEMM_STRIDEN_THREAD_ALIGN);
         }
     }
     const size_t StrideN = nc;
@@ -141,231 +134,29 @@ MlasQ4GemmBatchDriver(MLAS_BLK_QUANT_TYPE QType,
 }
 
 void MLASCALL
-MlasQ4GemmBatch(MLAS_BLK_QUANT_TYPE QType,
-                const size_t M,
-                const size_t N,
-                const size_t K,
-                const size_t BatchN,
-                const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
-                MLAS_THREADPOOL* ThreadPool)
+MlasQ4GemmBatch(
+    MLAS_BLK_QUANT_TYPE QType,
+    const size_t M,
+    const size_t N,
+    const size_t K,
+    const size_t BatchN,
+    const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
+    MLAS_THREADPOOL* ThreadPool
+)
 {
     MlasQ4GemmBatchDriver(QType, M, N, K, BatchN, DataParams, ThreadPool);
 }
 
 void MLASCALL
-MlasQ8Q4GemmBatch(MLAS_BLK_QUANT_TYPE QType,
-                  const size_t M,
-                  const size_t N,
-                  const size_t K,
-                  const size_t BatchN,
-                  const MLAS_Q8Q4_GEMM_DATA_PARAMS* DataParams,
-                  MLAS_THREADPOOL* ThreadPool)
+MlasQ8Q4GemmBatch(
+    MLAS_BLK_QUANT_TYPE QType,
+    const size_t M,
+    const size_t N,
+    const size_t K,
+    const size_t BatchN,
+    const MLAS_Q8Q4_GEMM_DATA_PARAMS* DataParams,
+    MLAS_THREADPOOL* ThreadPool
+)
 {
     MlasQ4GemmBatchDriver(QType, M, N, K, BatchN, DataParams, ThreadPool);
-}
-
-#ifdef MLAS_JBLAS
-
-jblas::ORTThreading::ORTThreading(void* tp)
-    : IThreading(MLAS_THREADPOOL::DegreeOfParallelism((MLAS_THREADPOOL*)tp)), mTp(tp)
-{
-}
-
-void
-jblas::ORTThreading::parallel_for(const jblas::parallel::thread_func& func)
-{
-    MlasTrySimpleParallel((MLAS_THREADPOOL*)mTp, mThreadNum,
-                          [&](ptrdiff_t tid) { func(int(tid)); });
-}
-
-template <class GemmCore_T>
-void
-JblasQ4GemmCompF32(const int M,
-                   const int N,
-                   const int K,
-                   const float* A,
-                   const int lda,
-                   jblas::storage::gemm::StorageWeightKBlockS4* B,
-                   float* C,
-                   const int ldc,
-                   int8_t* WorkSpace,
-                   jblas::parallel::IThreading* th)
-{
-    if (M <= 32) {
-        using Parallel = jblas::parallel::gemm::SchedulerKBlock<GemmCore_T>;
-        using Launcher = tLauncher_Fp32_S4_F32F32<GemmCore_T>;
-        static Launcher kernel;
-        auto reduceA = kernel.mProA.createStorage(M, K, B->mBlockSize);
-        if (B->mIsAsym) {
-            reduceA.assign(WorkSpace);
-            ORTThreading single(nullptr);
-            kernel.mProA.reduce({A, K}, &reduceA, M, K, &single);
-        }
-        typename Launcher::BEpiParam blkargs{
-            B->template SPtr<int8_t>(),    B->mScaT,   B->mCStep, B->template ZPtr<int8_t>(),
-            reduceA.template get<float>(), reduceA.lda};
-
-        typename Launcher::Param args{M, N, K, B->mBlockSize, {A, K}, {B}, blkargs, {C, N}};
-        jblas::parallel::GemmKBlockRun<Parallel>(kernel, args, th);
-    } else {
-        using Parallel = jblas::parallel::gemm::SchedulerBase<GemmCore_T>;
-        using Launcher =
-            jblas::wrapper::gemm::LauncherBase<GemmCore_T::ISA, GemmCore_T,
-                                               jblas::prologue_a::gemm::ActivationBase,
-                                               jblas::prologue_b::gemm::WeightKBlockS4,
-                                               jblas::epilogue::gemm::AccumulatorWriteBackFp32>;
-        static Launcher kernel;
-
-        typename Launcher::Param args{M, N, K, {A, K}, {B}, {C, N}};
-        jblas::parallel::GemmBaseRun<Parallel>(kernel, args, th);
-    }
-}
-
-template <class GemmCore_T>
-void
-JblasQ4GemmCompInt8(const int M,
-                    const int N,
-                    const int K,
-                    const float* A,
-                    const int lda,
-                    jblas::storage::gemm::StorageWeightKBlockS4* B,
-                    float* C,
-                    const int ldc,
-                    int8_t* WorkSpace,
-                    jblas::parallel::IThreading* th)
-{
-    using Parallel = jblas::parallel::gemm::SchedulerKBlock<GemmCore_T>;
-    using Launcher = tLauncher_Int8_S4_F32F32<GemmCore_T>;
-
-    static Launcher kernel;
-    auto quanA = kernel.mProA.createStorage(M, K, B->mBlockSize, B->mIsAsym);
-    quanA.assign(WorkSpace);
-    if (M <= 32) {
-        ORTThreading single(nullptr);
-        kernel.mProA.quantize({A, K, &quanA}, M, K, &single);
-    } else {
-        kernel.mProA.quantize({A, K, &quanA}, M, K, th);
-    }
-    typename Launcher::Param args{
-        M,
-        N,
-        K,
-        B->mBlockSize,
-        {A, K, &quanA},
-        {B},
-        {B->template SPtr<int8_t>(), B->mScaT, B->mCStep, quanA.template SPtr<float>(),
-         quanA.mCStep, quanA.template ZPtr<uint8_t>(), B->template RPtr<float>(), B->mRedT,
-         B->template ZPtr<int8_t>(), quanA.template RPtr<float>(), B->mBlockSize},
-        {C, N}};
-    jblas::parallel::GemmKBlockRun<Parallel>(kernel, args, th);
-}
-
-static bool
-JblasQ4GemmBatchDriver(const size_t M,
-                       const size_t N,
-                       const size_t K,
-                       const size_t BatchN,
-                       const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
-                       int8_t* WorkSpace,
-                       MLAS_THREADPOOL* ThreadPool)
-{
-    GetCPUDevice();
-    ORTThreading orth(ThreadPool);
-    bool processed = true;
-    for (size_t i = 0; i < BatchN; i++) {
-        auto ptr = jblas::storage::gemm::PackedWeightParser::deserialBuffer(
-            const_cast<void*>(DataParams[i].B));
-        if (ptr) {
-            if (ptr->mPrologueID == JBLAS_PROLOGUEB_IDS::WeightKBlockS4) {
-                auto kptr = (jblas::storage::gemm::StorageWeightKBlockS4*)ptr;
-                auto coretype = ptr->mCoreId;
-                auto NTile = jblas::gemm::CoreAttr::get_mask_val(
-                    ptr->mCoreId, jblas::gemm::CoreAttr::NTILE_MASK,
-                    jblas::gemm::CoreAttr::NTILE_SHIFT);
-                auto CType = jblas::gemm::CoreAttr::get_mask_val(ptr->mCoreId,
-                                                                 jblas::gemm::CoreAttr::COMP_MASK,
-                                                                 jblas::gemm::CoreAttr::COMP_SHIFT);
-                if (CType == uint32_t(gemm::CompType::COMP_FP32)) {
-                    if (NTile == tAVX512F::NTILE && _cd->AVX512F()) {
-                        JblasQ4GemmCompF32<tAVX512F>(
-                            M, N, K, DataParams[i].A, DataParams[i].lda,
-                            (jblas::storage::gemm::StorageWeightKBlockS4*)ptr, DataParams[i].C,
-                            DataParams[i].ldc, WorkSpace, &orth);
-                        goto __END;
-                    }
-                    if (NTile == tAVX2::NTILE && _cd->AVX2()) {
-                        JblasQ4GemmCompF32<tAVX2>(M, N, K, DataParams[i].A, DataParams[i].lda,
-                                                  (jblas::storage::gemm::StorageWeightKBlockS4*)ptr,
-                                                  DataParams[i].C, DataParams[i].ldc, WorkSpace,
-                                                  &orth);
-                        goto __END;
-                    }
-                }
-                if (CType == uint32_t(gemm::CompType::COMP_INT8_US_INT32)) {
-                    if (NTile == tAMX_INT8_US::NTILE && _cd->AMX_INT8()) {
-                        JblasQ4GemmCompInt8<tAMX_INT8_US>(
-                            M, N, K, DataParams[i].A, DataParams[i].lda,
-                            (jblas::storage::gemm::StorageWeightKBlockS4*)ptr, DataParams[i].C,
-                            DataParams[i].ldc, WorkSpace, &orth);
-                        goto __END;
-                    }
-                    if (NTile == tAVX512_VNNI::NTILE && _cd->AVX512_VNNI()) {
-                        JblasQ4GemmCompInt8<tAVX512_VNNI>(
-                            M, N, K, DataParams[i].A, DataParams[i].lda,
-                            (jblas::storage::gemm::StorageWeightKBlockS4*)ptr, DataParams[i].C,
-                            DataParams[i].ldc, WorkSpace, &orth);
-                        goto __END;
-                    }
-                    if (NTile == tAVX_VNNI::NTILE && _cd->AVX_VNNI()) {
-                        JblasQ4GemmCompInt8<tAVX_VNNI>(
-                            M, N, K, DataParams[i].A, DataParams[i].lda,
-                            (jblas::storage::gemm::StorageWeightKBlockS4*)ptr, DataParams[i].C,
-                            DataParams[i].ldc, WorkSpace, &orth);
-                        goto __END;
-                    }
-                }
-                if (CType == uint32_t(gemm::CompType::COMP_INT8_SS_INT32)) {
-                    if (NTile == tAMX_INT8_SS::NTILE && _cd->AMX_INT8()) {
-                        JblasQ4GemmCompInt8<tAMX_INT8_SS>(
-                            M, N, K, DataParams[i].A, DataParams[i].lda,
-                            (jblas::storage::gemm::StorageWeightKBlockS4*)ptr, DataParams[i].C,
-                            DataParams[i].ldc, WorkSpace, &orth);
-                        goto __END;
-                    }
-                }
-            }
-        __END:
-            delete ptr;
-        } else {
-            processed = false;
-            break;
-        }
-    }
-    return processed;
-}
-
-#endif
-
-void MLASCALL
-MlasNBitsGemmBatch(const size_t M,
-                   const size_t N,
-                   const size_t K,
-                   const size_t BatchN,
-                   const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
-                   int8_t* WorkSpace,
-                   MLAS_THREADPOOL* ThreadPool)
-{
-#ifdef MLAS_JBLAS
-    if (JblasQ4GemmBatchDriver(M, N, K, BatchN, DataParams, WorkSpace, ThreadPool)) {
-        // PackedWeight is created by jblas
-        return;
-    }
-#endif
-    (void)(M);
-    (void)(N);
-    (void)(K);
-    (void)(BatchN);
-    (void)(DataParams);
-    (void)(WorkSpace);
-    (void)(ThreadPool);
 }

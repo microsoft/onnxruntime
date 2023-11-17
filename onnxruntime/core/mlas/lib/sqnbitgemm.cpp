@@ -15,6 +15,9 @@ Abstract:
 --*/
 
 #include "sqnbitgemm.h"
+#ifdef MLAS_JBLAS
+#include "jblas_gemm.h"
+#endif
 
 namespace
 {
@@ -141,4 +144,112 @@ MlasIsSQNBitGemmAvailable(
     }
 
     return true;
+}
+
+size_t MLASCALL
+MlasNBitsGemmPackBSize(size_t N, size_t K, size_t BlkSize, int nbits, bool isAsym, MLAS_COMPUTE_TYPE CompType)
+{
+#ifdef MLAS_JBLAS
+    if (nbits == 4) {
+        auto jsize = JblasQ4GemmPackBSize(N, K, BlkSize, isAsym, CompType);
+        if (jsize) {
+            return jsize;
+        }
+    }
+#endif
+    (void)(N);
+    (void)(K);
+    (void)(BlkSize);
+    (void)(nbits);
+    (void)(isAsym);
+    (void)(CompType);
+    return 0;
+}
+
+bool MLASCALL
+MlasIsNBitGemmAvailable(size_t N, size_t K, size_t BlkSize, int nbits, bool isAsym, MLAS_COMPUTE_TYPE CompType)
+{
+    return MlasNBitsGemmPackBSize(N, K, BlkSize, nbits, isAsym, CompType) > 0;
+}
+
+void MLASCALL
+MlasNBitsGemmPackB(
+    void* PackedBuf,
+    const uint8_t* QData,
+    const float* Scale,
+    const uint8_t* Zp,
+    size_t N,
+    size_t K,
+    size_t ldb,
+    size_t BlkSize,
+    int nbits,
+    bool isAsym,
+    bool lastCall,
+    MLAS_COMPUTE_TYPE CompType,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+#ifdef MLAS_JBLAS
+    if (nbits == 4) {
+        if (JblasQ4GemmPackB(PackedBuf, QData, Scale, Zp, N, K, ldb, BlkSize, isAsym, lastCall, CompType, ThreadPool)) {
+            return;
+        }
+    }
+#endif
+    (void)(PackedBuf);
+    (void)(QData);
+    (void)(Scale);
+    (void)(Zp);
+    (void)(N);
+    (void)(K);
+    (void)(ldb);
+    (void)(BlkSize);
+    (void)(nbits);
+    (void)(isAsym);
+    (void)(lastCall);
+    (void)(CompType);
+    (void)(ThreadPool);
+}
+
+void MLASCALL
+MlasNBitsGemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb, MLAS_THREADPOOL* ThreadPool)
+{
+#ifdef MLAS_JBLAS
+    if (JblasQ4GemmUnPackB(FpData, PackedBuf, N, K, ldb, ThreadPool)) {
+        return;
+    }
+#endif
+    (void)(FpData);
+    (void)(PackedBuf);
+    (void)(N);
+    (void)(K);
+    (void)(ldb);
+    (void)(ThreadPool);
+}
+
+void MLASCALL
+MlasNBitsGemmBatchPackedB(
+    const size_t M,
+    const size_t N,
+    const size_t K,
+    const size_t BatchN,
+    const MLAS_NBITS_GEMM_DATA_SIMPLE_PARAMS* DataParams,
+    int8_t* WorkSpace,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    GetMlasPlatform();
+#ifdef MLAS_JBLAS
+    if (JblasQ4GemmBatchDriver(M, N, K, BatchN, DataParams, WorkSpace, ThreadPool)) {
+        // PackedWeight is created by jblas
+        return;
+    }
+#endif
+    (void)(M);
+    (void)(N);
+    (void)(K);
+    (void)(BatchN);
+    (void)(DataParams);
+    (void)(WorkSpace);
+    (void)(ThreadPool);
 }
