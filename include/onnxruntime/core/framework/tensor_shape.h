@@ -9,6 +9,7 @@
 #include <cstring>
 #include "core/common/gsl.h"
 #include "onnxruntime_config.h"
+#include "interface/framework/tensor.h"
 
 #ifndef DISABLE_ABSEIL
 // Need to include abseil inlined_vector.h header directly here
@@ -65,7 +66,7 @@ inline gsl::span<const int64_t> ToConstSpan(const TensorShapeVector& vec) {
   return gsl::make_span(vec);
 }
 
-class TensorShape {
+class TensorShape: public interface::ITensorShape {
   // We use negative numbers for unknown symbolic dimension. Each negative
   // number represents a unique symbolic dimension.
  public:
@@ -126,6 +127,12 @@ class TensorShape {
   */
   gsl::span<const int64_t> GetDims() const { return values_; }
 
+  const int64_t* GetDimensions(size_t& num_dims) const override {
+    auto dims = GetDims();
+    num_dims = dims.size();
+    return dims.data();
+  }
+
   TensorShapeVector AsShapeVector() const {
     return ToShapeVector(values_);
   }
@@ -137,6 +144,9 @@ class TensorShape {
    */
   int64_t Size() const;
 
+  int64_t NumberOfElements() const override {
+    return Size();
+  }
   /**
      Return the total number of elements up to the specified dimension.
      If the dimension interval is empty (dimension == 0), return 1.
