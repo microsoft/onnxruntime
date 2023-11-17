@@ -112,13 +112,21 @@ jobs:
       script: find "$(Build.SourcesDirectory)/js/test/" -type f
     condition: and(not(canceled()), eq(variables.CACHE_RESTORED, 'true'))
     displayName: 'List ONNX node test data'
-  - task: PowerShell@2
-    inputs:
-      filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\js\pack-npm-packages.ps1'
-      arguments: '$(NpmPackagingMode) $(Build.SourcesDirectory) web'
-      workingDirectory: $(Build.BinariesDirectory)
-      errorActionPreference: stop
-    displayName: 'Pack NPM packages'
+  # - task: PowerShell@2
+  #   inputs:
+  #     filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\js\pack-npm-packages.ps1'
+  #     arguments: '$(NpmPackagingMode) $(Build.SourcesDirectory) web'
+  #     workingDirectory: $(Build.BinariesDirectory)
+  #     errorActionPreference: stop
+  #   displayName: 'Pack NPM packages'
+  - script: |
+      npm i -g puppeteer
+  - script: |
+      FOR /F "tokens=* USEBACKQ" %%F IN (`where /r %HOMEDRIVE%%HOMEPATH%\.cache\puppeteer chrome.exe`) DO (
+        SET var=%%F
+      )
+      ECHO ##vso[task.setvariable variable=CHROME_BIN;]%var%
+
   - task: PowerShell@2
     inputs:
       targetType: 'inline'
@@ -126,12 +134,12 @@ jobs:
       workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Dump active Edge processes (before tests 0)'
   - script: |
-     npm test -- -e=edge -b=webgl,wasm,xnnpack
+     npm test -- -e=chrome -b=webgl,wasm,xnnpack
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (wasm,webgl,xnnpack backend)'
     condition: eq('${{ parameters.RunWebGpuTests }}', 'false')
   - script: |
-     npm test -- -e=edge -b=webgl,wasm,xnnpack,webgpu $(webgpuCommandlineExtraFlags)
+     npm test -- -e=chrome -b=webgl,wasm,xnnpack,webgpu $(webgpuCommandlineExtraFlags)
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (ALL backends)'
     condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
@@ -142,7 +150,7 @@ jobs:
       workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Dump active Edge processes (before tests 1)'
   - script: |
-     npm test -- suite1 -e=edge -b=webgpu --io-binding=gpu-tensor $(webgpuCommandlineExtraFlags)
+     npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-tensor $(webgpuCommandlineExtraFlags)
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-tensor)'
     condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
@@ -158,7 +166,7 @@ jobs:
     condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
     displayName: 'Dump active Edge processes (before tests 2)'
   - script: |
-     npm test -- suite1 -e=edge -b=webgpu --io-binding=gpu-location $(webgpuCommandlineExtraFlags)
+     npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-location $(webgpuCommandlineExtraFlags)
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-location)'
     condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
@@ -169,7 +177,7 @@ jobs:
       workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Dump active Edge processes (before tests 3)'
   - script: |
-     npm test -- --webgl-texture-pack-mode -b=webgl -e=edge
+     npm test -- --webgl-texture-pack-mode -b=webgl -e=chrome
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebGL: packed mode'
   - task: PowerShell@2
@@ -179,7 +187,7 @@ jobs:
       workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Dump active Edge processes (before tests 4)'
   - script: |
-     npm test -- --wasm-enable-proxy -b=wasm -e=edge
+     npm test -- --wasm-enable-proxy -b=wasm -e=chrome
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebAssembly: proxy'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
