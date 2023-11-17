@@ -162,9 +162,11 @@ class NodeViewRef {
 class GraphViewRef {
  public:
   virtual std::string_view Name() const = 0;
-
+#ifdef _WIN32
+  virtual std::wstring_view ModelPath() const = 0;
+#else
   virtual std::string_view ModelPath() const = 0;
-
+#endif
   /// <param name="domain">Domain name to find in model opset_import</param>
   /// <returns>Opset of domain declared in model, or nullopt if domain is not present</returns>
   virtual std::optional<int64_t> Opset(std::string_view domain) const = 0;

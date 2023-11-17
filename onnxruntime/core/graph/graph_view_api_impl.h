@@ -93,7 +93,7 @@ class ApiGraphView : virtual public interface::GraphViewRef {
   explicit ApiGraphView(const Graph& graph, AllocatorPtr cpu_allocator, const IndexedSubGraph* isg = nullptr) : graph_(graph), isg_(isg), cpu_allocator_(std::move(cpu_allocator)) {}
 
   std::string_view Name() const override;
-  std::string_view ModelPath() const override;
+  std::basic_string_view<ORTCHAR_T> ModelPath() const override;
   std::optional<int64_t> Opset(std::string_view domain = "") const override;
   std::vector<std::unique_ptr<interface::NodeViewRef>> NodeViews() const override;
   std::unique_ptr<interface::TensorRef> GetConstant(std::string_view name) const override;

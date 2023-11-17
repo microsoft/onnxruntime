@@ -211,7 +211,7 @@ std::string_view ApiGraphView::Name() const {
   return graph_.Name();
 }
 
-std::string_view ApiGraphView::ModelPath() const {
+std::basic_string_view<ORTCHAR_T> ApiGraphView::ModelPath() const {
   return graph_.ModelPath().ToPathString();
 }
 
