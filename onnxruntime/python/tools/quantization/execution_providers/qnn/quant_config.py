@@ -13,7 +13,7 @@ from ...quantize import StaticQuantConfig
 
 Q16_TYPES = {QuantType.QInt16, QuantType.QUInt16}
 Q8_TYPES = {QuantType.QInt8, QuantType.QUInt8}
-OP_TYPES_TO_EXCLUDE = {"Cast", "Transpose"}
+OP_TYPES_TO_EXCLUDE = {"Cast"}
 
 
 def get_qnn_qdq_config(
