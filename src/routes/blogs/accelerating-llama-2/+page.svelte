@@ -137,7 +137,7 @@
 			shards the PyTorch model with FP16 precision into 4 partitions, converts each partition into ONNX
 			format, and then applies a new ONNX Runtime graph fusion on the converted ONNX model. The 70B
 			model has ~30 tokens per second throughput for token generation at batch size 1, and
-			end-to-end throughput starts at 30 ms for smaller sequence lengths with these optimizations.
+			end-to-end throughput starts at 30 tps for smaller sequence lengths with these optimizations.
 			You can find additional example scripts <a href="https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/models/llama/" class="text-blue-500">here</a>.
 		</p>
         
