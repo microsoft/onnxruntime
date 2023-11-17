@@ -127,7 +127,7 @@ def _build_package(args):
     framework_info_files_to_merge = []
     public_headers_path = ""
     for sysroot in build_settings["build_osx_archs"]:
-        base_build_command = [sys.executable, BUILD_PY] + build_settings["build_params"][sysroot] + ["--config=" + build_config]
+        base_build_command = [sys.executable, BUILD_PY] + build_settings["build_params"]["base"] + build_settings["build_params"][sysroot] + ["--config=" + build_config]
 
         if args.include_ops_by_config is not None:
             base_build_command += ["--include_ops_by_config=" + str(args.include_ops_by_config.resolve())]

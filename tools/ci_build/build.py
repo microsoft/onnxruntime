@@ -368,9 +368,6 @@ def parse_arguments():
     )
     parser.add_argument("--gdk_platform", default="Scarlett", help="Sets the GDK target platform.")
 
-    # Note: This arg is for specifying if this build includes macosx platform support in the apple xcframework.
-    # Different from helper function is_macOS() that's for verifying system platform info that we are building on.(i.e. windows/linux/macos)
-    parser.add_argument("--macosx", action="store_true", help="build for macosx")
     parser.add_argument("--ios", action="store_true", help="build for ios")
 
     parser.add_argument(
@@ -1262,7 +1259,7 @@ def generate_build_tree(
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
-    if args.macosx or args.ios:
+    if (args.build_apple_framework and not args.ios) or args.ios:
         if not args.cmake_generator == "Xcode":
             raise BuildError("MacOS/iOS build requires use of the Xcode CMake generator ('--cmake_generator Xcode').")
 

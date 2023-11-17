@@ -5,13 +5,15 @@
         ]
     },
     "build_params": {
-        "iphonesimulator": [
-            "--ios",
+        "base": [
             "--parallel",
             "--use_xcode",
             "--build_apple_framework",
             "--use_coreml",
-            "--skip_tests",
+            "--skip_tests"
+        ],
+        "iphonesimulator": [
+            "--ios",
             "--apple_deploy_target=12.0"
         ]
     }
