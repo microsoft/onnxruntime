@@ -828,8 +828,8 @@ namespace Dml
     }
 
     /*static*/ void DmlOperator::TryConvertTensorToBroadcastScalar(
-        const MLOperatorKernelCreationContext& kernelInfo, 
-        const DML_TENSOR_DESC* tensor, 
+        const MLOperatorKernelCreationContext& kernelInfo,
+        const DML_TENSOR_DESC* tensor,
         uint32_t kernelInputIndex)
     {
         if (!tensor)
@@ -842,13 +842,17 @@ namespace Dml
         {
             return;
         }
-        
+        else if (!IsCpuData())
+        {
+            return;
+        }
+
         uint32_t totalKernelInputElementCount = constExpTensor->GetTotalElementCount();
         if (totalKernelInputElementCount <= 1)
         {
             return;
-        }        
-        
+        }
+
         uint32_t elementSize = 0;
 
         switch (constExpTensor->GetTensorDataType())
@@ -863,7 +867,7 @@ namespace Dml
         case MLOperatorTensorDataType::Int16:
             elementSize = 2;
             break;
-            
+
         case MLOperatorTensorDataType::/*Float32*/Float:
         case MLOperatorTensorDataType::UInt32:
         case MLOperatorTensorDataType::Int32:
