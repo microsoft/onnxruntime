@@ -53,6 +53,8 @@ jobs:
     inputs:
       versionSpec: '18.x'
   - script: |
+     nvidia-smi
+  - script: |
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js'
     displayName: 'npm ci /js/'
