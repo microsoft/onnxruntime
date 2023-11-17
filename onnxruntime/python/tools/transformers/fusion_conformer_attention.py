@@ -10,9 +10,9 @@ from onnx_model import OnnxModel
 logger = logging.getLogger(__name__)
 
 
-class FusionTransducerAttention(FusionAttention):
+class FusionConformerAttention(FusionAttention):
     """
-    Fuse Transducer Attention subgraph into one Attention node.
+    Fuse Conformer Attention subgraph into one Attention node.
     """
 
     def __init__(

@@ -623,7 +623,6 @@ class FusionAttention(Fusion):
         present_k: str = "",
         present_v: str = "",
         packed_qkv: bool = False,
-        kv_cache_name_match: bool = True,
     ) -> Union[NodeProto, None]:
         """Create a MultiHeadAttention node.
 
@@ -661,7 +660,6 @@ class FusionAttention(Fusion):
             return None
 
         graph_input_names = set([node.name for node in self.model.graph().input])
-        graph_output_names = set([node.name for node in self.model.graph().output])
         mha_node_name = self.model.create_node_name("Attention")
 
         # Add initial Q/K/V inputs for MHA
@@ -696,27 +694,20 @@ class FusionAttention(Fusion):
         else:
             mha_inputs.append("")
 
-        if (
-            past_k in graph_input_names
-            and past_v in graph_input_names
-            and present_k in graph_output_names
-            and present_v in graph_output_names
-        ):
-            kv_cache_name_match = True
-        else:
-            kv_cache_name_match = False
-
         # Add optional inputs for MHA
-        if past_k and past_v and kv_cache_name_match:
-            mha_inputs.extend([key_padding_mask, add_qk, past_k, past_v])
-        elif past_k and past_v and not kv_cache_name_match:
-            mha_inputs.extend([key_padding_mask, add_qk, past_k, past_v])
+
+        # Append key_padding_mask input
+        mha_inputs.append(key_padding_mask)
+
+        # Append node after QK Matmul
+        mha_inputs.append(add_qk)
+
+        if past_k and past_v:
+            mha_inputs.extend([past_k, past_v])
 
         # Add outputs for MHA
         mha_outputs = [output]
-        if present_k and present_v and kv_cache_name_match:
-            mha_outputs.extend([present_k, present_v])
-        elif present_k and present_v and not kv_cache_name_match:
+        if present_k and present_v:
             mha_outputs.extend([present_k, present_v])
 
         mha_node = helper.make_node(
