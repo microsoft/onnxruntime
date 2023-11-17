@@ -85,6 +85,7 @@ jobs:
 
   - template: win-ci-prebuild-steps.yml
     parameters:
+      EnvSetupScript: ${{parameters.EnvSetupScript}}
       ${{ if contains(parameters.additionalBuildFlags, 'use_cuda') }}:
         DownloadCUDA: true
       ${{ else }}:
