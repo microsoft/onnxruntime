@@ -382,7 +382,7 @@ NS_ASSUME_NONNULL_BEGIN
         ORT_RETURN_IF_NOT(IsArrayContiguous(data),
                           "Non-contiguous output MLMultiArray is not currently supported");
         __block Status copy_status;
-        const auto *tensor_info = &output_tensor_info;
+        const auto* tensor_info = &output_tensor_info;
         // `getBytesWithHandler` replaces deprecated `.dataPointer` on new versions
         if (@available(macOS 12.3, iOS 15.4, *)) {
           [data getBytesWithHandler:^(const void* bytes, NSInteger size) {
