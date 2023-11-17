@@ -824,4 +824,84 @@ namespace Dml
         graphDesc.IntermediateEdges = dmlIntermediateEdges.data();
     }
 
+    /*static*/ void DmlOperator::TryConvertTensorToBroadcastScalar(
+        const MLOperatorKernelCreationContext& kernelInfo, 
+        const DML_TENSOR_DESC* tensor, 
+        uint32_t kernelInputIndex)
+    {
+        if (!tensor)
+        {
+            return;
+        }
+
+        auto constExpTensor = kernelInfo.TryGetConstantInputTensor(kernelInputIndex);
+        if (!constExpTensor)
+        {
+            return;
+        }
+        else if (!IsCpuData())
+        {
+            return;
+        }
+
+        uint32_t totalKernelInputElementCount = constExpTensor->GetTotalElementCount();
+        if (totalKernelInputElementCount <= 1)
+        {
+            return;
+        }        
+        
+        uint32_t elementSize = 0;
+
+        switch (constExpTensor->GetTensorDataType())
+        {
+        case MLOperatorTensorDataType::UInt8:
+        case MLOperatorTensorDataType::Int8:
+            elementSize = 1;
+            break;
+
+        case MLOperatorTensorDataType::Float16:
+        case MLOperatorTensorDataType::UInt16:
+        case MLOperatorTensorDataType::Int16:
+            elementSize = 2;
+            break;
+            
+        case MLOperatorTensorDataType::/*Float32*/Float:
+        case MLOperatorTensorDataType::UInt32:
+        case MLOperatorTensorDataType::Int32:
+            elementSize = 4;
+            break;
+
+        case MLOperatorTensorDataType::/*Float64*/Double:
+        case MLOperatorTensorDataType::UInt64:
+        case MLOperatorTensorDataType::Int64:
+            elementSize = 8;
+            break;
+
+        default:
+            return;
+        }
+
+        const std::uint8_t* byteData = static_cast<const std::uint8_t*>(constExpTensor->GetByteData());
+
+        assert(tensor->Type == DML_TENSOR_TYPE_BUFFER);
+        auto *bufferTensorDesc = const_cast<DML_BUFFER_TENSOR_DESC*>(static_cast<const DML_BUFFER_TENSOR_DESC*>(tensor->Desc));
+
+        for (size_t i = 1; i < totalKernelInputElementCount; ++i)
+        {
+            if (memcmp(byteData, byteData + i * elementSize, elementSize))
+            {
+                return;
+            }
+        }
+
+        if (bufferTensorDesc->DimensionCount > sizeof(zeroArray) / sizeof(zeroArray[0]))
+        {
+            assert(false);
+            return;
+        }
+
+        bufferTensorDesc->Strides = zeroArray;
+        bufferTensorDesc->TotalTensorSizeInBytes = (elementSize + 3) & ~3;
+    }
+
 } // namespace Dml
