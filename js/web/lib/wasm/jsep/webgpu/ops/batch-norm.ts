@@ -6,7 +6,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo} from '../types';
 
-import {inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, enableShapesUniforms, inputVariable, outputVariable, ShaderHelper} from './common';
 
 export interface BatchNormAttributes extends AttributeWithCacheKey {
   readonly epsilon: number;
@@ -71,14 +71,18 @@ const createBatchNormInferenceProgramInfo = (inputs: readonly TensorView[], attr
     ProgramInfo => {
       const {epsilon, spatial, format} = attributes;
       const yShape = inputs[0].dims;
-      const outputSize = ShapeUtil.size(yShape);
-      const x = inputVariable('x', inputs[0].dataType, inputs[0].dims);
-      const scale = inputVariable('scale', inputs[1].dataType, [ShapeUtil.size(inputs[1].dims)]);
-      const bias = inputVariable('bias', inputs[2].dataType, [ShapeUtil.size(inputs[2].dims)]);
-      const inputMean = inputVariable('inputMean', inputs[3].dataType, [ShapeUtil.size(inputs[3].dims)])
-      const inputVar = inputVariable('inputVar', inputs[4].dataType, [ShapeUtil.size(inputs[4].dims)]);
-      const y = outputVariable('y', inputs[0].dataType, yShape);
+      const useShapesUniforms = enableShapesUniforms(yShape.length);
+      const xYShapeOrRank = useShapesUniforms ? yShape.length : yShape;
+      const cShape = [ShapeUtil.size(inputs[1].dims)];
+      const cShapeOrRank = useShapesUniforms ? cShape.length : cShape;
 
+      const outputSize = ShapeUtil.size(yShape);
+      const x = inputVariable('x', inputs[0].dataType, xYShapeOrRank);
+      const scale = inputVariable('scale', inputs[1].dataType, cShapeOrRank);
+      const bias = inputVariable('bias', inputs[2].dataType, cShapeOrRank);
+      const inputMean = inputVariable('inputMean', inputs[3].dataType, cShapeOrRank)
+      const inputVar = inputVariable('inputVar', inputs[4].dataType, cShapeOrRank);
+      const y = outputVariable('y', inputs[0].dataType, xYShapeOrRank);
       const calcCOffset = (): string => {
         let cOffset = '';
         if (spatial) {
@@ -106,9 +110,9 @@ const createBatchNormInferenceProgramInfo = (inputs: readonly TensorView[], attr
       };
       const getInferenceModeShaderSource = (helper: ShaderHelper) => `
   const epsilon = ${epsilon};
-  ${helper.declareVariables(x, scale, bias, inputMean, inputVar, y)}
+  ${helper.registerUniform('outputSize', 'u32').declareVariables(x, scale, bias, inputMean, inputVar, y)}
   ${helper.mainStart()}
-  ${helper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
+  ${helper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
     var outputIndices = ${y.offsetToIndices('global_idx')};
     ${calcCOffset()}
     let scale = ${scale.getByOffset('cOffset')};
@@ -121,11 +125,28 @@ const createBatchNormInferenceProgramInfo = (inputs: readonly TensorView[], attr
   }`;
       return {
         name: 'BatchNormalization',
-        shaderCache: {hint: `${attributes.epsilon}_${attributes.format}_${spatial}`},
+        shaderCache: {
+          hint: `${attributes.epsilon}_${attributes.format}_${spatial}`,
+          inputDependencies: useShapesUniforms ? ['rank', 'rank', 'rank', 'rank', 'rank'] :
+                                                 ['dims', 'dims', 'dims', 'dims', 'dims'],
+        },
         getShaderSource: getInferenceModeShaderSource,
         getRunData: () => ({
           outputs: [{dims: inputs[0].dims, dataType: inputs[0].dataType}],
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
+          programUniforms: useShapesUniforms ?
+              [
+                {type: 'uint32', data: outputSize},
+                ...createTensorShapeVariables(inputs[0].dims),
+                ...createTensorShapeVariables(inputs[1].dims),
+                ...createTensorShapeVariables(inputs[2].dims),
+                ...createTensorShapeVariables(inputs[3].dims),
+                ...createTensorShapeVariables(inputs[4].dims),
+                ...createTensorShapeVariables(yShape),
+              ] :
+              [
+                {type: 'uint32', data: outputSize},
+              ],
         }),
       };
     }
