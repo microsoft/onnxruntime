@@ -31,9 +31,9 @@ import {utilFunctions} from './conv_util';
 import {makeMatMulPackedSource, makeMatMulPackedVec4Source} from './matmul_packed_webgpu';
 
 const conv2dCommonSnippet =
-    (xShapeStr: string, wShapeStr: string, outputShapeStr: string, isChannelsLast: boolean, fitAOuter: boolean,
-     fitBOuter: boolean, fitInner: boolean, addBias = false, attributes: ConvAttributes, innerElementSizeX = 4,
-     innerElementSizeW = 4, innerElementSize = 4, dataType = 'f32'): string => {
+    (isChannelsLast: boolean, fitAOuter: boolean, fitBOuter: boolean, fitInner: boolean, addBias = false,
+     attributes: ConvAttributes, innerElementSizeX = 4, innerElementSizeW = 4, innerElementSize = 4,
+     dataType = 'f32'): string => {
       const getXSnippet = (innerElementSize: number) => {
         switch (innerElementSize) {
           case 1:
@@ -49,9 +49,9 @@ const conv2dCommonSnippet =
       const getWSnippet = (innerElementSize: number) => {
         switch (innerElementSize) {
           case 1:
-            return `return w[row * i32(${wShapeStr}[3]) + colIn];`;
+            return `return w[row * i32(uniforms.w_shape[3]) + colIn];`;
           case 4:
-            return `return w[row * i32(${wShapeStr}[3]) / 4 + colIn];`;
+            return `return w[row * i32(uniforms.w_shape[3]) / 4 + colIn];`;
           default:
             throw new Error(`innerElementSize ${innerElementSize} is not supported.`);
         }
@@ -78,13 +78,13 @@ const conv2dCommonSnippet =
       col % outWidth);
     `;
 
-      const xHeight = isChannelsLast ? `i32(${xShapeStr}[1])` : `i32(${xShapeStr}[2])`;
-      const xWidth = isChannelsLast ? `i32(${xShapeStr}[2])` : `i32(${xShapeStr}[3])`;
+      const xHeight = isChannelsLast ? `i32(uniforms.x_shape[1])` : `i32(uniforms.x_shape[2])`;
+      const xWidth = isChannelsLast ? `i32(uniforms.x_shape[2])` : `i32(uniforms.x_shape[3])`;
       const row = isChannelsLast ? 'row' : 'col';
       const col = isChannelsLast ? 'col' : 'row';
       const readXSnippet = `
-    let inChannels = i32(${wShapeStr}[2]);
-    let outWidth = ${isChannelsLast ? `i32(${outputShapeStr}[2])` : `i32(${outputShapeStr}[3])`};
+    let inChannels = i32(uniforms.w_shape[2]);
+    let outWidth = ${isChannelsLast ? `i32(uniforms.result_shape[2])` : `i32(uniforms.result_shape[3])`};
     let outRow = ${row} / outWidth;
     let outCol = ${row} % outWidth;
 
@@ -98,7 +98,7 @@ const conv2dCommonSnippet =
     // the 'same' padding type.
     if (xRow >= 0 && xRow < ${xHeight} && xCol >= 0 && xCol < ${xWidth}) {
       ${coordASnippet}
-      let xIndex = getIndexFromCoords4D(coord, vec4<i32>(${xShapeStr}));
+      let xIndex = getIndexFromCoords4D(coord, vec4<i32>(uniforms.x_shape));
       ${getXSnippet(innerElementSizeX)}
     }
     return resData;`;
@@ -145,7 +145,7 @@ const conv2dCommonSnippet =
       if (row < uniforms.dimAOuter && col < uniforms.dimBOuter)
       {
       var value = valueIn;
-      let outWidth = ${isChannelsLast ? `i32(${outputShapeStr}[2])` : `i32(${outputShapeStr}[3])`};
+      let outWidth = ${isChannelsLast ? `i32(uniforms.result_shape[2])` : `i32(uniforms.result_shape[3])`};
       ${coordResSnippet}
       ${biasSnippet(addBias)}
       ${applyActivation}
@@ -195,27 +195,14 @@ export const createConv2DMatMulProgramInfo =
 
       // TODO: support component 2, 3.
       const components = isVec4 ? 4 : 1;
-      const enableXShapesUniforms = enableShapesUniforms(inputs[0].dims.length);
-      const xShapeOrRank = enableXShapesUniforms ? inputs[0].dims.length : inputs[0].dims;
-
-      const enableWShapesUniforms = enableShapesUniforms(inputs[1].dims.length);
-      const wShapeOrRank = enableWShapesUniforms ? inputs[1].dims.length : inputs[1].dims;
-
-      const enableOutputShapesUniforms = enableShapesUniforms(outputShape.length);
-      const outputShapeOrRank = enableOutputShapesUniforms ? outputShape.length : outputShape;
-
       const programUniforms: ProgramUniform[] =
           [{type: 'int32', data: dimAOuter}, {type: 'int32', data: dimBOuter}, {type: 'int32', data: dimInner}];
-      const x = inputVariable('x', inputs[0].dataType, xShapeOrRank, components);
-      const w = inputVariable('w', inputs[1].dataType, wShapeOrRank, components);
+      const x = inputVariable('x', inputs[0].dataType, inputs[0].dims.length, components);
+      const w = inputVariable('w', inputs[1].dataType, inputs[1].dims.length, components);
       const inputVariables = [x, w];
 
-      if (enableXShapesUniforms) {
-        programUniforms.push(...createTensorShapeVariables(inputs[0].dims));
-      }
-      if (enableWShapesUniforms) {
-        programUniforms.push(...createTensorShapeVariables(inputs[1].dims));
-      }
+      programUniforms.push(...createTensorShapeVariables(inputs[0].dims));
+      programUniforms.push(...createTensorShapeVariables(inputs[1].dims));
 
       let declareFunctions = `
       fn setOutputAtIndex(flatIndex : i32, value : ${isVec4 ? `vec4<${t}>` : t}) {
@@ -226,25 +213,18 @@ export const createConv2DMatMulProgramInfo =
         setOutputAtIndex(flatIndex ${isVec4 ? '/ 4' : ''}, value);
       }`;
       if (hasBias) {
-        const enableBiasShapesUniforms = enableShapesUniforms(inputs[2].dims.length);
-        const biasShapeOrRank = enableBiasShapesUniforms ? inputs[2].dims.length : inputs[2].dims;
-        const bias = inputVariable('bias', inputs[2].dataType, biasShapeOrRank, components);
+        const bias = inputVariable('bias', inputs[2].dataType, inputs[2].dims.length, components);
         inputVariables.push(bias);
-        if (enableBiasShapesUniforms) {
-          programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
-        }
+
+        programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
+
         declareFunctions += `
         fn getBiasByOutputCoords(coords : vec4<i32>) -> ${isVec4 ? `vec4<${t}>` : t} {
           return bias[coords.${isChannelsLast ? 'w' : 'y'}${isVec4 ? '/ 4' : ''}];
         }`;
       }
-      const xShapeStr = enableXShapesUniforms ? 'uniforms.x_shape' : 'x_shape';
-      const wShapeStr = enableWShapesUniforms ? 'uniforms.w_shape' : 'w_shape';
-      const outputShapeStr = enableOutputShapesUniforms ? 'uniforms.result_shape' : 'result_shape';
-      const output = outputVariable('result', inputs[0].dataType, outputShapeOrRank, components);
-      if (enableOutputShapesUniforms) {
-        programUniforms.push(...createTensorShapeVariables(outputShape));
-      }
+      const output = outputVariable('result', inputs[0].dataType, outputShape.length, components);
+      programUniforms.push(...createTensorShapeVariables(outputShape));
       return {
         name: 'Conv2DMatMul',
         shaderCache: {hint: attributes.cacheKey},
@@ -254,7 +234,7 @@ export const createConv2DMatMulProgramInfo =
           programUniforms,
         }),
         getShaderSource: (shaderHelper: ShaderHelper) => `
-        ${utilFunctions(enableOutputShapesUniforms ? 'uniforms.result_strides' : 'result_strides')}
+        ${utilFunctions('uniforms.result_strides')}
         //struct Uniforms { xShape : vec4<i32>, wShape : vec4<i32>, outShape : vec4<i32>,
         //  outShapeStrides: vec3<i32>, filterDims : vec2<i32>, pad : vec2<i32>, stride : vec2<i32>,
         //  dilation : vec2<i32>, dimAOuter : i32, dimBOuter : i32, dimInner : i32 };
@@ -270,8 +250,8 @@ export const createConv2DMatMulProgramInfo =
         ${declareFunctions}
         ${
             conv2dCommonSnippet(
-                xShapeStr, wShapeStr, outputShapeStr, isChannelsLast, fitAOuter, fitBOuter, fitInner, hasBias,
-                attributes, elementsSize[0], elementsSize[1], elementsSize[2], t)}
+                isChannelsLast, fitAOuter, fitBOuter, fitInner, hasBias, attributes, elementsSize[0], elementsSize[1],
+                elementsSize[2], t)}
             ${
             isVec4 ?
                 makeMatMulPackedVec4Source(elementsPerThread, workGroupSize, t, undefined, !isChannelsLast, tileInner) :

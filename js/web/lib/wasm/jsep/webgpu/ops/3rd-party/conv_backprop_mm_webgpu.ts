@@ -22,7 +22,7 @@
 import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor-view';
 import {ProgramInfo, ProgramUniform} from '../../types';
-import {createTensorShapeVariables, enableShapesUniforms, inputVariable, outputVariable, ShaderHelper} from '../common';
+import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper} from '../common';
 import {ConvTransposeAttributes} from '../conv-transpose';
 import {getActivationSnippet} from '../fuse-utils';
 
@@ -31,22 +31,21 @@ import {utilFunctions} from './conv_util';
 import {makeMatMulPackedSource, makeMatMulPackedVec4Source} from './matmul_packed_webgpu';
 
 const conv2dTransposeCommonSnippet =
-    (xShapeStr: string, wShapeStr: string, outputShapeStr: string, isChannelsLast: boolean, addBias = false,
-     attributes: ConvTransposeAttributes, innerElementSize = 4): string => {
+    (isChannelsLast: boolean, addBias = false, attributes: ConvTransposeAttributes, innerElementSize = 4): string => {
       const type = typeSnippet(innerElementSize, 'f32');
       const getWSnippet = (innerElementSize: number) => {
         switch (innerElementSize) {
           case 1:
-            return `return w[getIndexFromCoords4D(coord, vec4<i32>(${wShapeStr}))];`;
+            return `return w[getIndexFromCoords4D(coord, vec4<i32>(uniforms.w_shape))];`;
           case 4:
             return `
             let coord1 = vec4<i32>(coordX, coordY, col + 1, rowInner);
             let coord2 = vec4<i32>(coordX, coordY, col + 2, rowInner);
             let coord3 = vec4<i32>(coordX, coordY, col + 3, rowInner);
-            let v0 = w[getIndexFromCoords4D(coord, vec4<i32>(${wShapeStr}))];
-            let v1 = w[getIndexFromCoords4D(coord1, vec4<i32>(${wShapeStr}))];
-            let v2 = w[getIndexFromCoords4D(coord2, vec4<i32>(${wShapeStr}))];
-            let v3 = w[getIndexFromCoords4D(coord3, vec4<i32>(${wShapeStr}))];
+            let v0 = w[getIndexFromCoords4D(coord, vec4<i32>(uniforms.w_shape))];
+            let v1 = w[getIndexFromCoords4D(coord1, vec4<i32>(uniforms.w_shape))];
+            let v2 = w[getIndexFromCoords4D(coord2, vec4<i32>(uniforms.w_shape))];
+            let v3 = w[getIndexFromCoords4D(coord3, vec4<i32>(uniforms.w_shape))];
             return vec4<f32>(v0, v1, v2, v3);
             `;
           default:
@@ -82,7 +81,7 @@ const conv2dTransposeCommonSnippet =
 
       const readASnippet = `
       let inChannels = ${isChannelsLast ? 'outBackprop[3]' : 'outBackprop[1]'};
-      let outWidth = ${isChannelsLast ? `i32(${outputShapeStr}[2])` : `i32(${outputShapeStr}[3])`};
+      let outWidth = ${isChannelsLast ? `i32(uniforms.result_shape[2])` : `i32(uniforms.result_shape[3])`};
       let outRow = ${row} / outWidth;
       let outCol = ${row} % outWidth;
 
@@ -100,7 +99,7 @@ const conv2dTransposeCommonSnippet =
       let iXC = i32(xC);
       let xCh = ${col} % inChannels;
       ${coordASnippet}
-      return x[getIndexFromCoords4D(coord, vec4<i32>(${xShapeStr}))/${innerElementSize}];`;
+      return x[getIndexFromCoords4D(coord, vec4<i32>(uniforms.x_shape))/${innerElementSize}];`;
 
       const sampleA = isChannelsLast ? `
       let col = colIn * ${innerElementSize};
@@ -145,11 +144,11 @@ const conv2dTransposeCommonSnippet =
     let col = colIn * ${innerElementSize};
     if (row < uniforms.dimAOuter && col < uniforms.dimBOuter) {
       var value = valueInput;
-      let outWidth = ${isChannelsLast ? `i32(${outputShapeStr}[2])` : `i32(${outputShapeStr}[3])`};
+      let outWidth = ${isChannelsLast ? `i32(uniforms.result_shape[2])` : `i32(uniforms.result_shape[3])`};
       ${coordResSnippet}
       ${biasSnippet(addBias)}
       ${applyActivation}
-      result[getIndexFromCoords4D(coords, vec4<i32>(${outputShapeStr}))/${innerElementSize}] = value;
+      result[getIndexFromCoords4D(coords, vec4<i32>(uniforms.result_shape))/${innerElementSize}] = value;
     }
   }`;
       return userCode;
@@ -189,45 +188,26 @@ export const createConv2DTransposeMatMulProgramInfo =
       const components = isVec4 ? 4 : 1;
       const programUniforms: ProgramUniform[] =
           [{type: 'int32', data: dimAOuter}, {type: 'int32', data: dimBOuter}, {type: 'int32', data: dimInner}];
-      const enableXShapesUniforms = enableShapesUniforms(inputs[0].dims.length);
-      const xShapeOrRank = enableXShapesUniforms ? inputs[0].dims.length : inputs[0].dims;
-      const enableWShapesUniforms = enableShapesUniforms(inputs[1].dims.length);
-      const wShapeOrRank = enableWShapesUniforms ? inputs[1].dims.length : inputs[1].dims;
-      const x = inputVariable('x', inputs[0].dataType, xShapeOrRank, components);
-      const w = inputVariable('w', inputs[1].dataType, wShapeOrRank, 1);
-      const enableOutputShapesUniforms = enableShapesUniforms(outputShape.length);
-      const outputShapeOrRank = enableOutputShapesUniforms ? outputShape.length : outputShape;
-      const output = outputVariable('result', inputs[0].dataType, outputShapeOrRank, components);
+      const x = inputVariable('x', inputs[0].dataType, inputs[0].dims.length, components);
+      const w = inputVariable('w', inputs[1].dataType, inputs[1].dims.length, 1);
+      const output = outputVariable('result', inputs[0].dataType, outputShape.length, components);
       const inputVariables = [x, w];
-      if (enableXShapesUniforms) {
-        programUniforms.push(...createTensorShapeVariables(inputs[0].dims));
-      }
-      if (enableWShapesUniforms) {
-        programUniforms.push(...createTensorShapeVariables(inputs[1].dims));
-      }
+      programUniforms.push(...createTensorShapeVariables(inputs[0].dims));
+      programUniforms.push(...createTensorShapeVariables(inputs[1].dims));
 
       let declareFunctions = '';
       if (hasBias) {
-        const enableBiasShapesUniforms = enableShapesUniforms(inputs[2].dims.length);
-        const biasShapeOrRank = enableBiasShapesUniforms ? inputs[2].dims.length : inputs[2].dims;
-        const bias = inputVariable('bias', inputs[2].dataType, biasShapeOrRank, components);
+        const bias = inputVariable('bias', inputs[2].dataType, inputs[2].dims.length, components);
         inputVariables.push(bias);
-        if (enableBiasShapesUniforms) {
-          programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
-        }
+        programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
+
         declareFunctions += `
         fn getBiasByOutputCoords(coords : vec4<i32>) -> ${isVec4 ? 'vec4<f32>' : 'f32'} {
           return bias[coords.${isChannelsLast ? 'w' : 'y'}${isVec4 ? '/ 4' : ''}];
         }`;
       }
 
-      if (enableOutputShapesUniforms) {
-        programUniforms.push(...createTensorShapeVariables(outputShape));
-      }
-
-      const xShapeStr = enableXShapesUniforms ? 'uniforms.x_shape' : 'x_shape';
-      const wShapeStr = enableWShapesUniforms ? 'uniforms.w_shape' : 'w_shape';
-      const outputShapeStr = enableOutputShapesUniforms ? 'uniforms.result_shape' : 'result_shape';
+      programUniforms.push(...createTensorShapeVariables(outputShape));
 
       return {
         name: 'Conv2DTransposeMatMul',
@@ -238,7 +218,7 @@ export const createConv2DTransposeMatMulProgramInfo =
           programUniforms
         }),
         getShaderSource: (shaderHelper: ShaderHelper) => `
-        ${utilFunctions(enableOutputShapesUniforms ? 'uniforms.result_strides' : 'result_strides')}
+        ${utilFunctions('uniforms.result_strides')}
         ${
             shaderHelper.registerUniform('dimAOuter', 'i32')
                 .registerUniform('dimBOuter', 'i32')
@@ -266,9 +246,7 @@ export const createConv2DTransposeMatMulProgramInfo =
         const dimBOuter : i32 = ${dimBOuter};
         const dimInner : i32 = ${dimInner};
         ${declareFunctions}
-        ${
-            conv2dTransposeCommonSnippet(
-                xShapeStr, wShapeStr, outputShapeStr, isChannelsLast, hasBias, attributes, innerElementSize)}
+        ${conv2dTransposeCommonSnippet(isChannelsLast, hasBias, attributes, innerElementSize)}
         ${
             isVec4 ? makeMatMulPackedVec4Source(
                          elementsPerThread, workGroupSize, 'f32', undefined, !isChannelsLast, tileInner) :

@@ -465,12 +465,10 @@ export const createMatmulProgramInfo =
       const bShapeOrRank = enableBShapesUniforms ? bShapeTemp.length : bShapeTemp;
 
       const outputShapeTemp = [batchSize, dimAOuter, dimBOuter / components];
-      const enableOutputShapesUniforms = enableShapesUniforms(outputShapeTemp.length);
-      const outputShapeOrRank = enableOutputShapesUniforms ? outputShapeTemp.length : outputShapeTemp;
 
       const A = inputVariable('a', inputs[0].dataType, aShapeOrRank, components);
       const B = inputVariable('b', inputs[1].dataType, bShapeOrRank, components);
-      const output = outputVariable('result', inputs[0].dataType, outputShapeOrRank, components);
+      const output = outputVariable('result', inputs[0].dataType, outputShapeTemp.length, components);
       variables.push(A);
       variables.push(B);
       variables.push(output);
@@ -495,19 +493,13 @@ export const createMatmulProgramInfo =
       const declareFunctions =
           matMulReadWriteFnSource(components, hasBias, applyActivation, variables, batchShapes, isChannelsLast);
       if (hasBias) {
-        const enableBiasShapesUniforms = enableShapesUniforms(inputs[2].dims.length);
-        const biasShapeOrRank = enableBShapesUniforms ? inputs[2].dims.length : inputs[2].dims;
-
         const biasComponents = isChannelsLast ? components : 1;
-        inputVariables.push(inputVariable('bias', inputs[2].dataType, biasShapeOrRank, biasComponents));
-        if (enableBiasShapesUniforms) {
-          programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
-        }
-        inputDependencies.push(enableBiasShapesUniforms ? 'rank' : 'dims');
+        inputVariables.push(inputVariable('bias', inputs[2].dataType, inputs[2].dims.length, biasComponents));
+        programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
+
+        inputDependencies.push('rank');
       }
-      if (enableOutputShapesUniforms) {
-        programUniforms.push(...createTensorShapeVariables(outputShapeTemp));
-      }
+      programUniforms.push(...createTensorShapeVariables(outputShapeTemp));
 
       const getShaderSource = (shaderHelper: ShaderHelper) => `
   ${
