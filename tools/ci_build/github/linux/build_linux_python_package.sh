@@ -10,7 +10,7 @@ EXTRA_ARG=""
 # Put 3.8 at the last because Ubuntu 20.04 use python 3.8 and we will upload the intermediate build files of this 
 # config to Azure DevOps Artifacts and download them to a Ubuntu 20.04 machine to run the tests.
 PYTHON_EXES=("/opt/python/cp39-cp39/bin/python3.9" "/opt/python/cp310-cp310/bin/python3.10" "/opt/python/cp311-cp311/bin/python3.11" "/opt/python/cp38-cp38/bin/python3.8")
-while getopts "d:p:x:c:u" parameter_Option
+while getopts "d:p:x:c:u:" parameter_Option
 do case "${parameter_Option}"
 in
 #GPU or CPU.
@@ -71,10 +71,10 @@ export CFLAGS
 export CXXFLAGS
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
-  rm -rf /build/$BUILD_CONFIG
+  rm -rf /build/"$BUILD_CONFIG"
   ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}"
 
-  cp /build/$BUILD_CONFIG/dist/*.whl /build/dist
+  cp /build/"$BUILD_CONFIG"/dist/*.whl /build/dist
 done
 
 which ccache && ccache -sv && ccache -z
