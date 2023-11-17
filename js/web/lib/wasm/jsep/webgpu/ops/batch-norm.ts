@@ -67,6 +67,57 @@ const validateInputs = (inputs: readonly TensorView[], attributes: BatchNormAttr
   }
 };
 
+const createBatchNormInferenceProgramInfo = (inputs: readonly TensorView[], attributes: BatchNormAttributes):
+    ProgramInfo => {
+      const {epsilon, spatial, format} = attributes;
+      const yShape = inputs[0].dims;
+      const outputSize = ShapeUtil.size(yShape);
+      const x = inputVariable('x', inputs[0].dataType, inputs[0].dims);
+      const scale = inputVariable('scale', inputs[1].dataType, [ShapeUtil.size(inputs[1].dims)]);
+      const bias = inputVariable('bias', inputs[2].dataType, [ShapeUtil.size(inputs[2].dims)]);
+      const inputMean = inputVariable('inputMean', inputs[3].dataType, [ShapeUtil.size(inputs[3].dims)])
+      const inputVar = inputVariable('inputVar', inputs[4].dataType, [ShapeUtil.size(inputs[4].dims)]);
+      const y = outputVariable('y', inputs[0].dataType, yShape);
+
+      const calcCOffset = (): string => {
+        let cOffset = '';
+        if (spatial) {
+          cOffset = `let cOffset = ${
+              yShape.length === 1   ? '0u' :
+                  format === 'nhwc' ? `outputIndices[${yShape.length - 1}]` :
+                                      `outputIndices[1]`};`;
+        } else {
+          cOffset = `
+       ${y.indicesSet('outputIndices', '0', '0')}
+       let cOffset = ${y.indicesToOffset('outputIndices')};`;
+        }
+        return cOffset;
+      } const getInferenceModeShaderSource = (helper: ShaderHelper) => `
+  const epsilon = ${epsilon};
+  ${helper.declareVariables(x, scale, bias, inputMean, inputVar, y)}
+  ${helper.mainStart()}
+  ${helper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
+    var outputIndices = ${y.offsetToIndices('global_idx')};
+    ${calcCOffset()}
+    let scale = ${scale.getByOffset('cOffset')};
+    let bias = ${bias.getByOffset('cOffset')};
+    let inputMean = ${inputMean.getByOffset('cOffset')};
+    let inputVar = ${inputVar.getByOffset('cOffset')};
+    let x = ${x.getByOffset('global_idx')};
+    let value = (x - inputMean) / sqrt(inputVar + epsilon) * scale + bias;
+    ${y.setByOffset('global_idx', 'value')}
+  }`;
+      return {
+        name: 'BatchNormalization',
+        shaderCache: {hint: `${attributes.epsilon}_${attributes.format}_${spatial}`},
+        getShaderSource: getInferenceModeShaderSource,
+        getRunData: () => ({
+          outputs: [{dims: inputs[0].dims, dataType: inputs[0].dataType}],
+          dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
+        }),
+      };
+    }
+
 const createBatchNormProgramInfo = (inputs: readonly TensorView[], attributes: BatchNormAttributes): ProgramInfo => {
   const {epsilon, momentum, spatial, trainingMode, format, outputCount} = attributes;
   const shape = inputs[0].dims;
@@ -426,19 +477,23 @@ export const batchNorm = (context: ComputeContext, attributes: Record<string, un
   const {inputs, outputCount} = context;
   const updatedAttributes = parseBatchNormAttributes({...attributes, outputCount});
   validateInputs(inputs, updatedAttributes);
-  if (outputCount <= 3) {
-    context.compute(createBatchNormProgramInfo(inputs, updatedAttributes));
+  if (attributes.trainingMode) {
+    if (outputCount <= 3) {
+      context.compute(createBatchNormProgramInfo(inputs, updatedAttributes));
+    } else {
+      const [x, scale, bias, inputMean, inputVar] = inputs;
+      const [, runningMean, runningVar] =
+          context.compute(createBatchNormProgramInfo([x, scale, bias], updatedAttributes), {
+            inputs: [x, scale, bias],
+          });
+      context.compute(createPostBatchNormProgramInfo([inputMean, runningMean], updatedAttributes), {
+        inputs: [inputMean, runningMean],
+      });
+      context.compute(createPostBatchNormProgramInfo([inputVar, runningVar], updatedAttributes), {
+        inputs: [inputVar, runningVar],
+      });
+    }
   } else {
-    const [x, scale, bias, inputMean, inputVar] = inputs;
-    const [, runningMean, runningVar] =
-        context.compute(createBatchNormProgramInfo([x, scale, bias], updatedAttributes), {
-          inputs: [x, scale, bias],
-        });
-    context.compute(createPostBatchNormProgramInfo([inputMean, runningMean], updatedAttributes), {
-      inputs: [inputMean, runningMean],
-    });
-    context.compute(createPostBatchNormProgramInfo([inputVar, runningVar], updatedAttributes), {
-      inputs: [inputVar, runningVar],
-    });
+    context.compute(createBatchNormInferenceProgramInfo(inputs, updatedAttributes));
   }
 };
