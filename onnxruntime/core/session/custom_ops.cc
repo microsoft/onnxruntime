@@ -755,7 +755,10 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
   return KernelCreateInfo(def_builder.Build(), kernel_create_fn);
 }
 
-ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustomOp* op) {
+ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vector<const OrtCustomOp*>& ops) {
+  // The function registers the first schema assuming all the other one are the same except the types constraints.
+  ORT_ENFORCE(ops.size() > 0, "No kernels to registers.");
+  auto op = *ops.begin();
   const size_t input_count = op->GetInputTypeCount(op);
   const size_t output_count = op->GetOutputTypeCount(op);
   int undefined = 0;
@@ -784,19 +787,30 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
       }
     }
 
-    const auto type = op->GetInputType(op, i);
-    if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
-      undefined++;
+    std::unordered_set<ONNXTensorElementDataType> all_types;
+    for (auto o : ops) {
+      ORT_ENFORCE(i < o->GetInputTypeCount(o), "Another version of operator '", schema.Name(), "'has less inputs.");
+      const auto type = o->GetInputType(o, i);
+      if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
+        all_types.clear();
+        break;
+      }
+      all_types.insert(type);
     }
+
     std::string input_name = "Input" + std::to_string(i);
     schema.Input(gsl::narrow_cast<int>(i), input_name, "", input_name, option, is_homogeneous, min_arity);
 
-    const auto input_type = op->GetInputType(op, i);
-    if (input_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
-      const ONNX_NAMESPACE::TypeProto* type_proto = DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(input_type))->GetTypeProto();
-      schema.TypeConstraint(input_name, {*ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto)}, "one type");
+    if (!all_types.empty()) {
+      std::vector<std::string> input_types;
+      for (auto type : all_types) {
+        const ONNX_NAMESPACE::TypeProto* type_proto = DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(type))->GetTypeProto();
+        input_types.push_back(*ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto));
+      }
+      schema.TypeConstraint(input_name, input_types, "defined list of types");
     } else {
       schema.TypeConstraint(input_name, DataTypeImpl::ToString(SUPPORTED_TENSOR_TYPES), "all types");
+      undefined++;
     }
   }
 
@@ -832,18 +846,34 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
                     "cannot be inferred without which model loading cannot proceed.");
       }
     }
+
+    std::unordered_set<ONNXTensorElementDataType> all_types;
+    for (auto o : ops) {
+      ORT_ENFORCE(i < o->GetOutputTypeCount(o), "Another version of operator '", schema.Name(), "'has less outputs.");
+      const auto otype = o->GetOutputType(o, i);
+      if (otype == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
+        all_types.clear();
+        break;
+      }
+      all_types.insert(otype);
+    }
+
     std::string output_name = "Output" + std::to_string(i);
     schema.Output(gsl::narrow_cast<int>(i), output_name, "", output_name, option, is_homogeneous, min_arity);
 
-    const auto output_type = op->GetOutputType(op, i);
-    if (output_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
-      const ONNX_NAMESPACE::TypeProto* type_proto = DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(output_type))->GetTypeProto();
-      schema.TypeConstraint(output_name, {*ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto)}, "one type");
+    if (!all_types.empty()) {
+      std::vector<std::string> output_types;
+      for (auto otype : all_types) {
+        const ONNX_NAMESPACE::TypeProto* type_proto = DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(otype))->GetTypeProto();
+        output_types.push_back(*ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto));
+      }
+      schema.TypeConstraint(output_name, output_types, "defined list of types");
     } else {
-      // Type inference fails if the schema does not return one unique option when IsHomogeneous is false.
       schema.TypeConstraint(output_name, DataTypeImpl::ToString(SUPPORTED_TENSOR_TYPES), "all types");
+      undefined++;
     }
   }
+
   schema.SetDomain(domain);
   if (op->version >= min_ort_version_with_custom_version && op->GetStartVersion) {
     schema.SinceVersion(op->GetStartVersion(op));
@@ -860,6 +890,7 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
   }
   return schema;
 }
+
 
 Status IsCompatible(const ONNX_NAMESPACE::OpSchema& schema, const OrtCustomOp* op) {
   const size_t input_count = op->GetInputTypeCount(op);
@@ -1007,6 +1038,22 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       }
     }
 
+    std::unordered_map<std::string, std::vector<const OrtCustomOp*>> domain_kernels;
+    for (const auto* op : domain->custom_ops_) {
+      // define kernel
+      auto it = domain_kernels.find(op->GetName(op));
+      if (it == domain_kernels.end()) {
+        domain_kernels[op->GetName(op)] = {op};
+      } else {
+        domain_kernels[op->GetName(op)].push_back(op);
+      }
+    }
+
+    for (auto name_op : domain_kernels) {
+      auto schema = CreateSchema(domain->domain_, name_op.second);
+      schema_map.emplace(schema.Name(), schema);
+    }
+
     for (const auto* op : domain->custom_ops_) {
       // define kernel
       auto kernel_create_info = CreateKernelCreateInfo(domain->domain_, op);
@@ -1014,12 +1061,8 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       ORT_RETURN_IF_ERROR(output->RegisterCustomKernel(kernel_create_info));
       // define schema
       auto schema_map_iter = schema_map.find(op->GetName(op));
-      if (schema_map_iter == schema_map.end()) {
-        auto schema = CreateSchema(domain->domain_, op);
-        schema_map.emplace(schema.Name(), schema);
-      } else {
-        ORT_RETURN_IF_ERROR(IsCompatible(schema_map_iter->second, op));
-      }
+      ORT_ENFORCE(schema_map_iter != schema_map.end());
+      ORT_RETURN_IF_ERROR(IsCompatible(schema_map_iter->second, op));
     }
 
     std::vector<ONNX_NAMESPACE::OpSchema> schemas;
