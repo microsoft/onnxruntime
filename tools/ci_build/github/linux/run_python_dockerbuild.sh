@@ -2,15 +2,14 @@
 set -e -x
 BUILD_CONFIG="Release"
 
-while getopts "i:d:x:c:u:" parameter_Option
+while getopts "i:d:x:c:" parameter_Option
 do case "${parameter_Option}"
 in
 i) DOCKER_IMAGE=${OPTARG};;
 d) DEVICE=${OPTARG};;
 x) BUILD_EXTR_PAR=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
-u) CUDA_VERSION=${OPTARG};;
-*) echo "Usage: $0 -i <docker_image> -d <GPU|CPU> [-x <extra_build_arg>] [-c <build_config>] [-u <cuda_version>]"
+*) echo "Usage: $0 -i <docker_image> -d <GPU|CPU> [-x <extra_build_arg>] [-c <build_config>]"
    exit 1;;
 esac
 done
@@ -20,10 +19,6 @@ DOCKER_SCRIPT_OPTIONS="-d ${DEVICE} -c ${BUILD_CONFIG}"
 
 if [ "${BUILD_EXTR_PAR}" != "" ] ; then
     DOCKER_SCRIPT_OPTIONS+=" -x ${BUILD_EXTR_PAR}"
-fi
-
-if [ "${CUDA_VERSION}" != "" ] ; then
-    DOCKER_SCRIPT_OPTIONS+=" -u ${CUDA_VERSION}"
 fi
 
 docker run --rm \
