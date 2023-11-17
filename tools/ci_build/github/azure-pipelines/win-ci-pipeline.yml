@@ -40,7 +40,6 @@ stages:
     - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'Debug'
-        EnvSetupScript: setup_env.bat
         buildArch: x64
         additionalBuildFlags: --build_java --build_nodejs --build_wheel --disable_memleak_checker
         msbuildPlatform: x64
@@ -59,7 +58,6 @@ stages:
     - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
-        EnvSetupScript: setup_env.bat
         buildArch: x64
         # Compare to our Nuget packaging pipeline, this job has "--build_wheel" but doesn't have "--enable_lto --disable_rtti --use_telemetry  --enable_wcos"
         # Python bindings use typeid so I can't disable RTTI here. If it causes a problem, we will need to split this job to two jobs.
@@ -80,7 +78,6 @@ stages:
     - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
-        EnvSetupScript: setup_env.bat
         buildArch: x64
         additionalBuildFlags: --build_wheel --use_dnnl --build_java
         msbuildPlatform: x64
@@ -101,7 +98,6 @@ stages:
     - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
-        EnvSetupScript: setup_env.bat
         buildArch: x64
         additionalBuildFlags: --build_wheel --use_xnnpack
         msbuildPlatform: x64
@@ -120,7 +116,6 @@ stages:
     - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
-        EnvSetupScript: setup_env.bat
         buildArch: x64
         additionalBuildFlags: --use_winml --enable_wcos --disable_rtti --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.22000.0
         msbuildPlatform: x64
@@ -160,7 +155,6 @@ stages:
     - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'Debug'
-        EnvSetupScript: setup_env.bat
         buildArch: x64
         additionalBuildFlags: --enable_training --build_wheel --disable_memleak_checker
         msbuildPlatform: x64
@@ -179,7 +173,6 @@ stages:
     - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
-        EnvSetupScript: setup_env.bat
         buildArch: x64
         additionalBuildFlags: --enable_training --build_wheel
         msbuildPlatform: x64
@@ -198,7 +191,6 @@ stages:
     - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
-        EnvSetupScript: setup_env.bat
         buildArch: x64
         additionalBuildFlags: --enable_training_apis
         msbuildPlatform: x64
@@ -215,10 +207,15 @@ stages:
 - stage: x64_release_azure
   dependsOn: []
   jobs:
+    - powershell: |
+        Write-Host "##vso[task.prependpath]$(Build.BinariesDirectory)\RelWithDebInfo\_deps\vcpkg-src\installed\x86-windows\bin"
+        $env:PATH
+        Write-Host "##vso[task.prependpath]$(Build.BinariesDirectory)\RelWithDebInfo\_deps\vcpkg-src\installed\x64-windows\bin"
+        $env:PATH
+      displayName: 'Append x64-windows and x86-windows to PATH'
     - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
-        EnvSetupScript: setup_env_azure.bat
         buildArch: x64
         additionalBuildFlags: --use_azure --use_lock_free_queue
         msbuildPlatform: x64
@@ -231,3 +228,5 @@ stages:
         GenerateDocumentation: false
         WITH_CACHE: true
         MachinePool: 'onnxruntime-Win-CPU-2022'
+
+
