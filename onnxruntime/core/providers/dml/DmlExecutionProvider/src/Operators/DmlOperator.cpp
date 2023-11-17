@@ -862,7 +862,11 @@ namespace Dml
         {
             return;
         }
-        
+        else if (constExpTensor->IsDataInterface())
+        {
+            return;
+        }
+
         uint32_t totalKernelInputElementCount = constExpTensor->GetTotalElementCount();
         if (totalKernelInputElementCount <= 1)
         {
