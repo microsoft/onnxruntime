@@ -862,7 +862,11 @@ namespace Dml
         {
             return;
         }
-        
+        else if (!IsCpuData())
+        {
+            return;
+        }
+
         uint32_t totalKernelInputElementCount = constExpTensor->GetTotalElementCount();
         if (totalKernelInputElementCount <= 1)
         {
