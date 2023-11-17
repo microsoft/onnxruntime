@@ -57,14 +57,13 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     model_builder.AddLayer(std::move(layer));
   } else {
     // note: if opsets < 13, onnx Softmax coerces the input shape to be 2D based on axis.
-    // we need to manually reshape to make sure the rank is >=3 and get the right number of dims.
+    // we need to manually reshape to 2D and apply SoftmaxND to axis -1 to  make sure to achieve equivalent results for CoreML.
     TensorShape input_shape(data_shape);
     const auto size_to_dimension = input_shape.SizeToDimension(axis_nonnegative);
     const auto size_from_dimension = input_shape.SizeFromDimension(axis_nonnegative);
 
     std::vector<int64_t> target_shape;
     target_shape.push_back(size_to_dimension);
-    target_shape.push_back(1);
     target_shape.push_back(size_from_dimension);
 
     const auto reshape1_output_name = model_builder.GetUniqueName(MakeString(node.Name(), "reshape1_output"));
@@ -79,7 +78,8 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     }
     const auto softmax_output_name = model_builder.GetUniqueName(MakeString(node.Name(), "softmax_output"));
     {
-      layer->mutable_softmax();
+      auto* coreml_softmaxnd = layer->mutable_softmaxnd();
+      coreml_softmaxnd->set_axis(-1);
       *layer->mutable_input()->Add() = reshape1_output_name;
       *layer->mutable_output()->Add() = softmax_output_name;
       model_builder.AddLayer(std::move(layer));
