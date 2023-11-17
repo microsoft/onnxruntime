@@ -2,6 +2,10 @@ parameters:
 - name: BuildConfig
   type: string
 
+- name: EnvSetupScript
+  type: string
+  default: setup_env.bat
+
 - name: job_name_suffix
   type: string
 
