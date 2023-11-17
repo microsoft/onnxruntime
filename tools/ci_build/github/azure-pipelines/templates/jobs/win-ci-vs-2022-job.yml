@@ -58,7 +58,6 @@ parameters:
 
 jobs:
 - job: build_${{ parameters.job_name_suffix }}
-
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
