@@ -574,8 +574,9 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
     const T* input_activations, const T* gating_output, const WeightType* fc1_expert_weights, const T* fc1_scales,
     const T* fc1_expert_biases, ActivationType fc1_activation_type, const WeightType* fc2_expert_weights,
     const T* fc2_scales, int num_rows, const int hidden_size, const int inter_size, int num_experts,
-    int k, char* workspace_ptr, T* fc2_result, const bool* finished, int active_rows, T* expert_scales,
-    int* expanded_source_row_to_expanded_dest_row, int* expert_for_source_row, cudaStream_t stream) {
+    int local_num_experts, int local_experts_start_index, int k, char* workspace_ptr, T* fc2_result,
+    const bool* finished, int active_rows, T* expert_scales, int* expanded_source_row_to_expanded_dest_row,
+    int* expert_for_source_row, cudaStream_t stream) {
   static constexpr bool scales_required =
       std::is_same<WeightType, uint8_t>::value || std::is_same<WeightType, cutlass::uint4b_t>::value;
 
@@ -617,12 +618,13 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
                                    total_rows_before_expert_, stream);
   // total_rows_before_expert_ : 1, 5, 12, 19, 25, 31, 32, 32,
 
+  // expanded_active_expert_rows is not used
   moe_gemm_runner_.moe_gemm_bias_act(permuted_data_, fc1_expert_weights, fc1_scales, fc1_expert_biases, fc1_result_,
                                      total_rows_before_expert_, expanded_active_expert_rows, inter_size, hidden_size,
-                                     num_experts, fc1_activation_type, stream);
+                                     local_num_experts, fc1_activation_type, stream);
 
   moe_gemm_runner_.moe_gemm(fc1_result_, fc2_expert_weights, fc2_scales, fc2_result, total_rows_before_expert_,
-                            expanded_active_expert_rows, hidden_size, inter_size, num_experts, stream);
+                            expanded_active_expert_rows, hidden_size, inter_size, local_num_experts, stream);
 }
 
 template <typename T, typename WeightType, typename Enable>
@@ -630,12 +632,12 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
     const T* input_activations, const T* gating_output, const WeightType* fc1_expert_weights, const T* fc1_scales,
     const T* fc1_expert_biases, ActivationType fc1_activation_type, const WeightType* fc2_expert_weights,
     const T* fc2_scales, int num_rows, const int hidden_size, const int inter_size, int num_experts,
-    int k, char* workspace_ptr, T* fc2_result, T* expert_scales, int* expanded_source_row_to_expanded_dest_row,
-    int* expert_for_source_row, cudaStream_t stream) {
+    int local_num_experts, int local_experts_start_index, int k, char* workspace_ptr, T* fc2_result, T* expert_scales,
+    int* expanded_source_row_to_expanded_dest_row, int* expert_for_source_row, cudaStream_t stream) {
   run_moe_fc(input_activations, gating_output, fc1_expert_weights, fc1_scales, fc1_expert_biases, fc1_activation_type,
-             fc2_expert_weights, fc2_scales, num_rows, hidden_size, inter_size, num_experts, k, workspace_ptr,
-             fc2_result, nullptr, num_rows, expert_scales, expanded_source_row_to_expanded_dest_row,
-             expert_for_source_row, stream);
+             fc2_expert_weights, fc2_scales, num_rows, hidden_size, inter_size, num_experts, local_num_experts,
+             local_experts_start_index, k, workspace_ptr, fc2_result, nullptr, num_rows, expert_scales,
+             expanded_source_row_to_expanded_dest_row, expert_for_source_row, stream);
 }
 
 template <typename T, typename WeightType, typename Enable>

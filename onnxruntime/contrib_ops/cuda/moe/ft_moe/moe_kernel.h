@@ -111,19 +111,24 @@ class CutlassMoeFCRunner {
   void run_moe_fc(const T* input_activations, const T* gating_output, const WeightType* fc1_expert_weights,
                   const T* fc1_scales, const T* fc1_expert_biases, ActivationType fc1_activation_type,
                   const WeightType* fc2_expert_weights, const T* fc2_scales, int num_rows, int hidden_size,
-                  int inter_size, int num_experts, int k, char* workspace_ptr, T* fc2_result,
-                  T* expert_scales, int* expanded_source_row_to_expanded_dest_row, int* expert_for_source_row,
-                  cudaStream_t stream);
+                  int inter_size, int num_experts, int local_num_experts, int local_experts_start_index, int k,
+                  char* workspace_ptr, T* fc2_result, T* expert_scales, int* expanded_source_row_to_expanded_dest_row,
+                  int* expert_for_source_row, cudaStream_t stream);
 
   void run_moe_fc(const T* input_activations, const T* gating_output, const WeightType* fc1_expert_weights,
                   const T* fc1_scales, const T* fc1_expert_biases, ActivationType fc1_activation_type,
                   const WeightType* fc2_expert_weights, const T* fc2_scales, int num_rows, int hidden_size,
-                  int inter_size, int num_experts, int k, char* workspace_ptr, T* fc2_result,
-                  const bool* finished, int active_rows, T* expert_scales,
+                  int inter_size, int num_experts, int local_num_experts, int local_experts_start_index, int k,
+                  char* workspace_ptr, T* fc2_result, const bool* finished, int active_rows, T* expert_scales,
                   int* expanded_source_row_to_expanded_dest_row, int* expert_for_source_row, cudaStream_t stream);
 
   void compute_total_rows_before_expert(const int* sorted_indices, int total_indices, int num_experts,
                                         int64_t* total_rows_before_expert, cudaStream_t stream);
+
+  void dispatch_activations_to_local_experts(T*& permutated_data, T*& fc1_result, T*& fc2_result,
+                                             int64_t*& total_rows_before_expert, int local_num_experts,
+                                             int local_experts_start_index, int hidden_size, int inter_size,
+                                             cudaStream_t stream);
 
  private:
   void configure_ws_ptrs(char* ws_ptr, int num_rows, int hidden_size, int inter_size, int num_experts, int k);
