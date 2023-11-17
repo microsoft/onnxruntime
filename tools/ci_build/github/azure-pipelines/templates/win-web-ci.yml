@@ -26,7 +26,9 @@ parameters:
 
 jobs:
 - job: build_onnxruntime_web
-  pool: ${{ parameters.PoolName }}
+  pool:
+    name: ${{ parameters.PoolName }}
+    demands: HoldMachine -equals true
 
   variables:
     webgpuCommandlineExtraFlags: '--chromium-flags=--ignore-gpu-blocklist --chromium-flags=--gpu-vendor-id=0x10de'
