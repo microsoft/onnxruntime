@@ -6,6 +6,7 @@
 #endif
 
 #include <type_traits>
+#include <unordered_set>
 
 #include "core/common/gsl.h"
 #include "core/framework/data_types.h"
@@ -804,7 +805,8 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vect
     if (!all_types.empty()) {
       std::vector<std::string> input_types;
       for (auto type : all_types) {
-        const ONNX_NAMESPACE::TypeProto* type_proto = DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(type))->GetTypeProto();
+        const ONNX_NAMESPACE::TypeProto* type_proto =
+            DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(type))->GetTypeProto();
         input_types.push_back(*ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto));
       }
       schema.TypeConstraint(input_name, input_types, "defined list of types");
@@ -864,7 +866,8 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vect
     if (!all_types.empty()) {
       std::vector<std::string> output_types;
       for (auto otype : all_types) {
-        const ONNX_NAMESPACE::TypeProto* type_proto = DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(otype))->GetTypeProto();
+        const ONNX_NAMESPACE::TypeProto* type_proto =
+            DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(otype))->GetTypeProto();
         output_types.push_back(*ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto));
       }
       schema.TypeConstraint(output_name, output_types, "defined list of types");
@@ -890,7 +893,6 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vect
   }
   return schema;
 }
-
 
 Status IsCompatible(const ONNX_NAMESPACE::OpSchema& schema, const OrtCustomOp* op) {
   const size_t input_count = op->GetInputTypeCount(op);
@@ -949,7 +951,7 @@ Status IsCompatible(const ONNX_NAMESPACE::OpSchema& schema, const OrtCustomOp* o
                         "custom op schemas mismatch, expecting ", i + 1,
                         i == 0 ? "st" : (i == 1 ? "nd" : "th"),
                         " output to keep same homogeneity");
-      ORT_RETURN_IF_NOT(formal_parameter.GetMinArity() == op->GetVariadicInputMinArity(op),
+      ORT_RETURN_IF_NOT(formal_parameter.GetMinArity() == op->GetVariadicOutputMinArity(op),
                         "custom op schemas mismatch, expecting ", i + 1,
                         i == 0 ? "st" : (i == 1 ? "nd" : "th"),
                         " output to keep same arity");

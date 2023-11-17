@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <string>
+#include <utility>
+
 #include "custom_gemm.h"
 
 #ifndef ORT_ENFORCE
@@ -328,7 +331,7 @@ const char* CustomGemmOp::GetExecutionProviderType() const {
   return "CPUExecutionProvider";
 }
 
-size_t CustomGemmOp::GetInputTypeCount() const { return 6; };
+size_t CustomGemmOp::GetInputTypeCount() const { return 6; }
 
 ONNXTensorElementDataType CustomGemmOp::GetInputType(size_t index) const {
   switch (index) {
