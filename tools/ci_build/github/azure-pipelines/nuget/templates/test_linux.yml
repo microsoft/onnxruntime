@@ -7,8 +7,7 @@ parameters:
   SpecificArtifact: false
   CustomOpArtifactName: 'onnxruntime-linux-x64'
   BuildId: '0'
-  DockerBaseImage: 'nvidia/cuda:11.8.0-cudnn8-devel-ubi8'
-  TRT_VERSION: 8.6.1.6-1.cuda11.8
+  CudaVersion: '11.8'
 stages:
 - stage: NuGet_Test_Linux_${{ parameters.StageSuffix }}
   dependsOn:
@@ -55,13 +54,18 @@ stages:
     - ${{if contains(parameters.StageSuffix , 'GPU') }}:
       - template: ../../templates/get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_cuda11_8_tensorrt8_6
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_2004_gpu
           Context: tools/ci_build/github/linux/docker/
-          DockerBuildArgs: "
-          --build-arg BASEIMAGE=${{ parameters.DockerBaseImage }} 
-          --build-arg TRT_VERSION=${{ parameters.TRT_VERSION }} 
-          --build-arg BUILD_UID=$( id -u )
-          "
+          ${{if contains(parameters.CudaVersion , '12.2') }}:
+            DockerBuildArgs: "
+            --build-arg BASEIMAGE=nvidia/12.2.2-cudnn8-devel-ubuntu20.04
+            --build-arg TRT_VERSION=8.6.1.6-1+cuda12.0
+            --build-arg BUILD_UID=$( id -u )
+            "
+          ${{ else }}:
+            DockerBuildArgs: "
+            --build-arg BUILD_UID=$( id -u )
+            "
           Repository: onnxruntimepackagestest
       - bash: |
           docker run --rm \

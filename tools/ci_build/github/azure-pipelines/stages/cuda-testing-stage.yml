@@ -2,10 +2,6 @@ parameters:
   - name: CudaVersion
     type: string
     default: '11.8'
-  - name: docker_base_image
-    type: string
-  - name: linux_trt_version
-    type: string
   # these 2 parameters are used for debugging.
   - name: SpecificArtifact
     type: boolean
@@ -28,9 +24,8 @@ stages:
       AgentPool: Onnxruntime-Linux-GPU
       ArtifactSuffix: 'GPU'
       StageSuffix: 'GPU'
-      TRT_VERSION: ${{ parameters.linux_trt_version }}
-      DockerBaseImage: ${{ parameters.docker_base_image }}
       CustomOpArtifactName: onnxruntime-linux-x64-gpu
       NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
       SpecificArtifact: ${{ parameters.specificArtifact }}
+      CudaVersion: ${{ parameters.CudaVersion }}
       BuildId: ${{ parameters.BuildId }}

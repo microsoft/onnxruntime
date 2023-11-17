@@ -5,8 +5,10 @@
 # Dockerfile to run ONNXRuntime with TensorRT integration
 
 # Build base image with required system packages
-FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04 AS base
-
+ARG BASE_IMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
+ARG TRT_VERSION=8.6.1.6-1+cuda11.8
+FROM $BASE_IMAGE AS base
+ARG TRT_VERSION
 ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${PATH}
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -24,12 +26,11 @@ RUN apt-get install -y --no-install-recommends \
 RUN pip install --upgrade pip
 
 # Install TensorRT
-RUN v="8.6.1.6-1+cuda11.8" &&\
-    apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub &&\
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub &&\
     apt-get update &&\
-    apt-get install -y libnvinfer8=${v} libnvonnxparsers8=${v} libnvparsers8=${v} libnvinfer-plugin8=${v} libnvinfer-lean8=${v} libnvinfer-vc-plugin8=${v} libnvinfer-dispatch8=${v}\
-        libnvinfer-headers-dev=${v} libnvinfer-headers-plugin-dev=${v} libnvinfer-dev=${v} libnvonnxparsers-dev=${v} libnvparsers-dev=${v} libnvinfer-plugin-dev=${v} libnvinfer-lean-dev=${v} libnvinfer-vc-plugin-dev=${v}  libnvinfer-dispatch-dev=${v}\
-        python3-libnvinfer=${v} libnvinfer-samples=${v} tensorrt-dev=${v} tensorrt-libs=${v}
+    apt-get install -y libnvinfer8=${TRT_VERSION} libnvonnxparsers8=${TRT_VERSION} libnvparsers8=${TRT_VERSION} libnvinfer-plugin8=${TRT_VERSION} libnvinfer-lean8=${TRT_VERSION} libnvinfer-vc-plugin8=${TRT_VERSION} libnvinfer-dispatch8=${TRT_VERSION}\
+        libnvinfer-headers-dev=${TRT_VERSION} libnvinfer-headers-plugin-dev=${TRT_VERSION} libnvinfer-dev=${TRT_VERSION} libnvonnxparsers-dev=${TRT_VERSION} libnvparsers-dev=${TRT_VERSION} libnvinfer-plugin-dev=${TRT_VERSION} libnvinfer-lean-dev=${TRT_VERSION} libnvinfer-vc-plugin-dev=${TRT_VERSION}  libnvinfer-dispatch-dev=${TRT_VERSION}\
+        python3-libnvinfer=${TRT_VERSION} libnvinfer-samples=${TRT_VERSION} tensorrt-dev=${TRT_VERSION} tensorrt-libs=${TRT_VERSION}
 
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/install_dotnet.sh && rm -rf /tmp/scripts
