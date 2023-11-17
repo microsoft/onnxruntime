@@ -8,6 +8,9 @@ namespace js {
 
 #define REGISTER_BATCHNORM_KERNEL(OP_TYPE, DOMAIN, TYPE, KERNEL_CLASS)                                    \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                \
+      OP_TYPE, DOMAIN, 7, 8, TYPE, kJsExecutionProvider,                                                  \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), KERNEL_CLASS);        \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                \
       OP_TYPE, DOMAIN, 9, 13, TYPE, kJsExecutionProvider,                                                 \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), KERNEL_CLASS);        \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(OP_TYPE, DOMAIN, 14, 14, TYPE, kJsExecutionProvider,            \
@@ -27,11 +30,7 @@ T declval();
 
 #define REGISTER_KERNEL_TYPED(T)                                                                                    \
   REGISTER_BATCHNORM_KERNEL(BatchNormalization, kMSInternalNHWCDomain, T, decltype(declval<BatchNorm<T, true>>())); \
-  REGISTER_BATCHNORM_KERNEL(BatchNormalization, kOnnxDomain, T, decltype(declval<BatchNorm<T, false>>()));          \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                          \
-      BatchNormalization, kOnnxDomain, 7, 8, T, kJsExecutionProvider,                                               \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),                                 \
-      decltype(declval<BatchNorm<T, false>>()));
+  REGISTER_BATCHNORM_KERNEL(BatchNormalization, kOnnxDomain, T, decltype(declval<BatchNorm<T, false>>()));
 
 REGISTER_KERNEL_TYPED(float);
 

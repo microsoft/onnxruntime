@@ -87,9 +87,20 @@ const createBatchNormInferenceProgramInfo = (inputs: readonly TensorView[], attr
                   format === 'nhwc' ? `outputIndices[${yShape.length - 1}]` :
                                       `outputIndices[1]`};`;
         } else {
-          cOffset = `
-       ${y.indicesSet('outputIndices', '0', '0')}
-       let cOffset = ${y.indicesToOffset('outputIndices')};`;
+          if (format === 'nchw') {
+            cOffset = `
+            ${y.indicesSet('outputIndices', '0', '0')}
+            let cOffset = ${y.indicesToOffset('outputIndices')};`;
+          } else {
+            // update C channel.
+            cOffset = `var cIndices = ${scale.type.indices}('0');
+                       cIndices[0] = outputIndices[${yShape.length - 1}];`;
+            // update D1 x ... x Dn channels.
+            for (let i = 1; i < scale.rank; i++) {
+              cOffset += `cIndices[${i}] = outputIndices[${i + 1}];`;
+            }
+            cOffset += `let cOffset = ${scale.indicesToOffset('cIndices')};`;
+          }
         }
         return cOffset;
       };
