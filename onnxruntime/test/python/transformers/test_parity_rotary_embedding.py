@@ -261,14 +261,15 @@ class TestLlamaRotaryEmbedding(unittest.TestCase):
         eps = ["CPUExecutionProvider", "CUDAExecutionProvider"]
         return list(filter(lambda ep: ep in ort.get_available_providers(), eps))
 
-    def run_ort_ep_tests(self, onnx_graph, inputs_ort, expected_output_bsnh):
+    def run_ort_ep_tests(self, onnx_graph, inputs_ort, expected_output_bsnh, transposed=False):
         eps = self.get_eps()
         for ep in eps:
             sess = ort.InferenceSession(onnx_graph, providers=[ep])
             output_ort = sess.run(None, inputs_ort)[0]
-            output_ort = output_ort.reshape(
-                (self.config.batch_size, inputs_ort["input"].shape[1], self.config.num_heads, self.config.head_size)
-            )
+            if not transposed:
+                output_ort = output_ort.reshape(
+                    (self.config.batch_size, inputs_ort["input"].shape[1], self.config.num_heads, self.config.head_size)
+                )
 
             # Compare outputs as BxSxNxH
             self.assertTrue(np.allclose(expected_output_bsnh, output_ort))
@@ -444,6 +445,44 @@ class TestLlamaRotaryEmbedding(unittest.TestCase):
 
         # Compare outputs as BxSxNxH
         self.run_ort_ep_tests(onnx_graph, inputs_ort, output_hf.transpose(1, 2).detach().cpu().numpy())
+
+    # Bonus test: Prompt step, interleaved = false, pos ids shape = (1), transposed
+    def test_hf_prompt_rotary_one_pos_id_transposed(self):
+        x_bnsh = torch.randn(
+            self.config.batch_size, self.config.num_heads, self.config.sequence_length, self.config.head_size
+        )
+        cos_hf, sin_hf = self.llama_hf.get_cos_sin_cache(self.config.sequence_length)
+        pos_hf = torch.stack([torch.arange(0, self.config.sequence_length) for _ in range(self.config.batch_size)])
+        output_hf = self.llama_hf(x_bnsh, cos_hf, sin_hf, pos_hf)  # output is BxNxSxH
+
+        cos_ms, sin_ms = self.llama_ms.get_cos_sin_cache()
+        pos_ms = torch.tensor([0])
+        onnx_graph = self.create_onnx_graph(x_bnsh.shape, pos_ms.shape, cos_ms, sin_ms, interleaved=False)
+        inputs_ort = {
+            "input": x_bnsh.detach().cpu().numpy(),
+            "position_ids": pos_ms.detach().cpu().numpy(),
+        }
+
+        # Compare outputs as BxNxSxH
+        self.run_ort_ep_tests(onnx_graph, inputs_ort, output_hf.detach().cpu().numpy(), transposed=True)
+
+    # Bonus test: Token generation step, interleaved = false, pos ids shape = (1), transposed
+    def test_hf_token_rotary_one_pos_id_transposed(self):
+        x_bnsh = torch.randn(self.config.batch_size, self.config.num_heads, 1, self.config.head_size)
+        cos_hf, sin_hf = self.llama_hf.get_cos_sin_cache(self.config.sequence_length)
+        pos_ids = torch.stack([torch.tensor([2]) for _ in range(self.config.batch_size)])
+        output_hf = self.llama_hf(x_bnsh, cos_hf, sin_hf, pos_ids)  # output is BxSxNxH
+
+        cos_ms, sin_ms = self.llama_ms.get_cos_sin_cache()
+        pos_ms = torch.tensor([2])
+        onnx_graph = self.create_onnx_graph(x_bnsh.shape, pos_ms.shape, cos_ms, sin_ms, interleaved=False)
+        inputs_ort = {
+            "input": x_bnsh.detach().cpu().numpy(),
+            "position_ids": pos_ms.detach().cpu().numpy(),
+        }
+
+        # Set tranposed=True to compare outputs as BxSxNxH
+        self.run_ort_ep_tests(onnx_graph, inputs_ort, output_hf.detach().cpu().numpy(), transposed=True)
 
 
 if __name__ == "__main__":

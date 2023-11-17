@@ -74,7 +74,8 @@ Status RotaryEmbedding<T>::ComputeInternal(OpKernelContext* context) const {
       parameters.max_sequence_length,
       parameters.position_ids_format,
       interleaved,
-      device_prop.maxThreadsPerBlock);
+      device_prop.maxThreadsPerBlock,
+      parameters.transposed);
 
   return Status::OK();
 }
