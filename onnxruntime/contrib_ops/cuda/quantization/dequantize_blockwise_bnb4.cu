@@ -3,7 +3,7 @@
 
 #include <cub/cub.cuh>
 #include <cuda_fp16.h>
-#include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cpu/quantization/blockwise_quant_block_bnb4.h"
 #include "dequantize_blockwise_bnb4.cuh"
 
@@ -71,8 +71,8 @@ __global__ void kDequantizeBlockwise(
 
     #pragma unroll NUM_PER_TH
     for (int j = 0; j < NUM_PER_TH; j++) {
-      vals[j * 2] = quant_map[qvals[j] >> 4] * local_abs_max;
-      vals[j * 2 + 1] = quant_map[qvals[j] & 0x0F] * local_abs_max;
+      vals[j * 2] = ScalarMul(quant_map[qvals[j] >> 4], local_abs_max);
+      vals[j * 2 + 1] = ScalarMul(quant_map[qvals[j] & 0x0F], local_abs_max);
     }
 
     __syncthreads();

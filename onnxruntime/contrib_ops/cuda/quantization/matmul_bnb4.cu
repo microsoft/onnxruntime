@@ -6,12 +6,43 @@
 #include <cub/cub.cuh>
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
-#include "core/providers/cuda/cu_inc/common.cuh"
+#include "contrib_ops/cuda/quantization/dequantize_blockwise_bnb4.cuh"
 #include "matmul_bnb4.cuh"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+template <class T>
+__device__ inline float ScalarMulFloatOut(T a, T b);
+
+template <>
+__device__ inline float ScalarMulFloatOut(float a, float b) {
+  return a * b;
+}
+
+template <>
+__device__ inline float ScalarMulFloatOut(half a, half b) {
+  #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
+    return static_cast<float>(a * b);
+  #else
+    // half multiplication not supported
+    return static_cast<float>(a) * static_cast<float>(b);
+  #endif
+}
+
+template <>
+__device__ inline float ScalarMulFloatOut(BFloat16 a, BFloat16 b) {
+  return a * b;
+}
+
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+// will use the native bfloat16 multiply instruction on sm_80+
+template <>
+__device__ inline float ScalarMulFloatOut(nv_bfloat16 a, nv_bfloat16 b) {
+  return static_cast<float>(a * b);
+}
+#endif
 
 #define num_values_4bit 32
 template <class T, int THREADS, int BITS>
@@ -79,8 +110,8 @@ __global__ void kgemm_4bit_inference_naive(
     for (int i = 0; i < 4; i++) {
       #pragma unroll
       for (int k = 0; k < num_values_8bit / 4; k++) {
-        local_B[k * 2] = quant_map[local_B_4bit[(i * num_values_8bit / 4) + k] >> 4] * local_absmax;
-        local_B[k * 2 + 1] = quant_map[local_B_4bit[(i * num_values_8bit / 4) + k] & 0x0F] * local_absmax;
+        local_B[k * 2] = ScalarMul(quant_map[local_B_4bit[(i * num_values_8bit / 4) + k] >> 4], local_absmax);
+        local_B[k * 2 + 1] = ScalarMul(quant_map[local_B_4bit[(i * num_values_8bit / 4) + k] & 0x0F], local_absmax);
       }
 
       if (inner_idx + (num_values_4bit / 4) + (i * num_values_4bit / 4) < K) {
@@ -107,7 +138,7 @@ __global__ void kgemm_4bit_inference_naive(
       // accumulate in float; small performance hit for Ampere, but lower error for outputs
       #pragma unroll
       for (int k = 0; k < num_values_4bit / 4; k++) {
-        local_C += static_cast<float>(local_A[k] * local_B[k]);
+        local_C += ScalarMulFloatOut(local_A[k], local_B[k]);
       }
     }
   }
