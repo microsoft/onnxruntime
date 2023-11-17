@@ -695,6 +695,8 @@ class FusionAttention(Fusion):
 
         if past_k and past_v:
             mha_inputs.extend([key_padding_mask, add_qk, past_k, past_v])
+        elif key_padding_mask or add_qk:
+            mha_inputs.extend([key_padding_mask, add_qk])
 
         # Add outputs for MHA
         mha_outputs = [output]

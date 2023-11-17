@@ -464,7 +464,7 @@ def create_conformer_attention(
         )
 
     # Construct graph
-    graph = helper.make_graph(nodes, "ct_self_mha_graph", inputs, outputs, initializers, doc_string="ct")
+    graph = helper.make_graph(nodes, "ct_self_mha_graph", inputs, outputs, initializers, doc_string="conformer")
     opsetid = helper.make_opsetid("ai.onnx", min(onnx.defs.onnx_opset_version(), 16))
     return helper.make_model(graph, opset_imports=(opsetid,))
 

@@ -42,45 +42,6 @@ class FusionConformerAttention(FusionAttention):
         else:
             return
 
-        other_inputs = []
-        for input in normalize_node.input:
-            if input not in output_name_to_node:
-                continue
-            if input == qkv_nodes[0].output[0]:
-                continue
-            other_inputs.append(input)
-        if len(other_inputs) != 1:
-            return
-        root_input = other_inputs[0]
-
-        # Sometimes the input name to the attention MatMul nodes does not match the input name to the end
-        # SkipLayerNormalization node (name saved in root_input). We find the true input name to the MatMul
-        # nodes by getting the initial SkipLayerNormalization node and checking how many MatMul nodes are
-        # children nodes for each of its output names.
-        """
-                                        root_input
-                    +---------------------------------------------------+
-                    |                                                   |
-                    |                                                   |
-        SkipLayerNormalization --> Attention --> MatMul --> SkipLayerNormalization
-        """
-        skip_layernorm = output_name_to_node[root_input]
-        # For some attention blocks, the end SkipLayerNormalization node may point to an Add node whose
-        # child is the LayerNormalization node.
-        if skip_layernorm.op_type == "Add":
-            skip_layernorm = self.model.get_children(skip_layernorm)[0]
-        for output in skip_layernorm.output:
-            if not output:
-                continue
-            children = input_name_to_nodes[output]
-            children_types = [child.op_type for child in children]
-            if children_types.count("MatMul") >= 1:
-                root_input = output
-                break
-
-        # graph_input_names = set([node.name for node in self.model.graph().input])
-        # graph_output_names = set([node.name for node in self.model.graph().output])
-
         v_nodes = self.model.match_parent_path(
             matmul_qkv,
             ["Concat", "Transpose", "Reshape", "Add", "MatMul"],
