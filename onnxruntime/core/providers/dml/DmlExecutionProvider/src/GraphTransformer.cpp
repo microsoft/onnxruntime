@@ -19,7 +19,7 @@ namespace Dml
 {
     GraphTransformer::GraphTransformer(
         const std::string& name,
-		const onnxruntime::IExecutionProvider* provider
+        const onnxruntime::IExecutionProvider* provider
     ) : onnxruntime::GraphTransformer(name),
         m_providerImpl(static_cast<const ExecutionProvider*>(provider)->GetImpl())
     {
