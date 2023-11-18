@@ -7,7 +7,7 @@ import {jsonc} from 'jsonc';
 import {InferenceSession, Tensor} from 'onnxruntime-common';
 import * as path from 'path';
 
-import * as onnx_proto from './protobuf/onnx';
+import * as onnx_proto from './ort-schema/protobuf/onnx';
 
 export const TEST_ROOT = __dirname;
 export const TEST_DATA_ROOT = path.join(TEST_ROOT, 'testdata');
