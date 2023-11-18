@@ -61,7 +61,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto axis = helper.Get("axis", 0);
 
   // attribute introduced since opset 18
-  uint64_t num_outputs = 2;
+  uint64_t num_outputs;
 
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
   auto* coreml_splitnd = layer->mutable_splitnd();
@@ -94,7 +94,6 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       }
     } else {
       // even
-      num_outputs = node.OutputDefs().size();
       coreml_splitnd->set_numsplits(num_outputs);
     }
   }
