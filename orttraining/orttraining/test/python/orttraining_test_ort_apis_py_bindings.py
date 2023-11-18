@@ -11,7 +11,7 @@ import numpy as np
 import onnx
 import pytest
 import torch
-from orttraining_test_onnxblock import _get_models
+from orttraining_test_ort_apis_onnxblock import _get_models
 
 import onnxruntime.training.onnxblock as onnxblock
 from onnxruntime import OrtValue, SessionOptions

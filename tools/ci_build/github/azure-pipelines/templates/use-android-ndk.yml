@@ -3,7 +3,7 @@
   parameters:
   - name: AndroidNdkVersion
     type: string
-    default: "26.0.10792818"  # LTS version
+    default: "26.1.10909125"  # LTS version
 
   steps:
   - bash: |
