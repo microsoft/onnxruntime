@@ -358,7 +358,7 @@ namespace Dml::GraphDescBuilder
                             if (constantInput && constantInput->GetTensorByteSize() < c_maxConstNodeDataSize)
                             {
                                 auto data = static_cast<const uint8_t*>(constantInput->GetData());
-	                            std::vector<uint8_t> tensorData(data, data + constantInput->GetTensorByteSize());
+                                std::vector<uint8_t> tensorData(data, data + constantInput->GetTensorByteSize());
                                     
                                 NodeInfo nodeInfo = {};
                                 nodeInfo.nodeDef = std::move(tensorData);
@@ -436,7 +436,7 @@ namespace Dml::GraphDescBuilder
 
             if (isNodeAsOpDesc)
             {
-                for (uint32_t i = 0; i < graphNodeCreateInfo.nodesAsOperatorDesc.size(); ++i)
+                for (size_t i = 0; i < graphNodeCreateInfo.nodesAsOperatorDesc.size(); ++i)
                 {
                     auto& opDesc = graphNodeCreateInfo.nodesAsOperatorDesc[i];
 

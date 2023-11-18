@@ -6,14 +6,13 @@
 #include "core/providers/dml/DmlExecutionProvider/inc/MLOperatorAuthor.h"
 #include "MLOperatorAuthorPrivate.h"
 #include "core/common/gsl.h"
+#include <optional>
 
 #ifdef ORT_NO_EXCEPTIONS
 #define ML_CHECK_BOOL(x) ORT_THROW_HR_IF(E_INVALIDARG, !(x))
 #else
 #define ML_CHECK_BOOL(x) THROW_HR_IF(E_INVALIDARG, !(x))
 #endif
-
-#include <optional>
 
 namespace onnxruntime
 {

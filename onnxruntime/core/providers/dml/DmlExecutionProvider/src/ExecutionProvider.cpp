@@ -184,7 +184,8 @@ namespace Dml
         m_isMcdmDevice = (featureLevels.MaxSupportedFeatureLevel == D3D_FEATURE_LEVEL_1_0_CORE_PRIVATE);
         m_areCustomHeapsSupported = !m_isMcdmDevice;
 
-        if (m_isMcdmDevice) {
+        if (m_isMcdmDevice)
+        {
 
             // TODO: Ingest updated header file
             typedef struct D3D12_FEATURE_DATA_D3D12_OPTIONS19
@@ -204,7 +205,7 @@ namespace Dml
             D3D12_FEATURE_DATA_D3D12_OPTIONS19 options19 = {};
 
             // The call may fail in which case the default value is false
-            d3d12Device->CheckFeatureSupport((D3D12_FEATURE) 48 /*D3D12_FEATURE_D3D12_OPTIONS19*/, &options19, sizeof(options19));    
+            d3d12Device->CheckFeatureSupport(static_cast<D3D12_FEATURE>(48) /*D3D12_FEATURE_D3D12_OPTIONS19*/, &options19, sizeof(options19));    
             m_areCustomHeapsSupported = options19.ComputeOnlyCustomHeapSupported;
         }
 
