@@ -405,8 +405,8 @@ OrtLiteCustomOp inherits from OrtCustomOp to bridge tween a custom func/struct a
 The lifetime of an OrtLiteCustomOp instance is managed by customer code, not ort, so:
 1. DO NOT cast OrtLiteCustomOp to OrtCustomOp and release since there is no virtual destructor in the hierachy.
 2. OrtLiteCustomFunc and OrtLiteCustomStruct, as two sub-structs, can be released in form of OrtLiteCustomOp since all members are kept in the OrtLiteCustomOp,
-   memory could still be recycled properly.
-Finally, OrtCustomOp is a c struct bearing no v-table, so offspring structs are by design to be of zero virtual functions to maintain cast safety.
+   hence memory could still be recycled properly.
+Further, OrtCustomOp is a c struct bearing no v-table, so offspring structs are by design to be of zero virtual functions to maintain cast safety.
 */
 struct OrtLiteCustomOp : public OrtCustomOp {
   using ConstOptionalFloatTensor = std::optional<const Custom::Tensor<float>&>;
