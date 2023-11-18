@@ -339,9 +339,6 @@ configure_file(${ONNXRUNTIME_ROOT}/python/_pybind_state.py.in
                ${CMAKE_BINARY_DIR}/onnxruntime/capi/_pybind_state.py)
 
 if (onnxruntime_ENABLE_TRAINING)
-  file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/deprecated/*.py"
-  )
   file(GLOB onnxruntime_python_root_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/*.py"
   )
@@ -419,10 +416,6 @@ if (onnxruntime_ENABLE_TRAINING)
     "${ORTTRAINING_SOURCE_DIR}/python/training/onnxblock/optim/*"
     )
   endif()
-else()
-  file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/python/training/*.py"
-  )
 endif()
 
 if (onnxruntime_BUILD_UNIT_TESTS)
@@ -577,9 +570,6 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
       ${CMAKE_BINARY_DIR}/onnxruntime/capi/_pybind_state.py
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_capi_training_srcs}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
   COMMAND ${CMAKE_COMMAND} -E copy
       $<TARGET_FILE:onnxruntime_pybind11_state>
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
@@ -750,9 +740,6 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/data/
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/hooks/
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_capi_training_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_root_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/
