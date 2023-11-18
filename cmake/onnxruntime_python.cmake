@@ -443,6 +443,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   file(GLOB onnxruntime_python_transformers_testdata_whisper CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/test/python/transformers/test_data/models/whisper/*.onnx"
   )
+  file(GLOB onnxruntime_python_transformers_testdata_conformer CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/test/python/transformers/test_data/models/conformer/*.onnx"
+  )
 endif()
 
 file(GLOB onnxruntime_python_tools_srcs CONFIGURE_DEPENDS
@@ -556,6 +559,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/whisper
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/eager_test
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/conformer
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
@@ -711,6 +715,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_transformers_testdata_whisper}
         $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/whisper/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_transformers_testdata_conformer}
+        $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/conformer/
   )
 endif()
 

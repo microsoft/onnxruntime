@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class FusionConformerAttention(FusionAttention):
     """
-    Fuse Conformer Attention subgraph into one Attention node.
+    Fuse Conformer Attention subgraph into one MultiHeadAttention node.
     """
 
     def __init__(
@@ -40,6 +40,7 @@ class FusionConformerAttention(FusionAttention):
                 matmul_qkv,
             ) = qkv_nodes
         else:
+            logger.debug("fuse_conformer_attention: failed to match qkv path")
             return
 
         v_nodes = self.model.match_parent_path(
@@ -55,7 +56,7 @@ class FusionConformerAttention(FusionAttention):
             present_v = concat_v.output[0]
             past_v = concat_parent.output[0]
         else:
-            logger.debug("fuse_attention: failed to match v path")
+            logger.debug("fuse_conformer_attention: failed to match v path")
             return
 
         qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "Add", "MatMul"], [0, 0, 0])
@@ -63,6 +64,7 @@ class FusionConformerAttention(FusionAttention):
         if qk_nodes is not None:
             _, add_qk, matmul_qk = qk_nodes
         else:
+            logger.debug("fuse_conformer_attention: failed to match qk path")
             return
 
         q_nodes = self.model.match_parent_path(
@@ -73,6 +75,7 @@ class FusionConformerAttention(FusionAttention):
         if q_nodes is not None:
             _, _, reshape_q, add_q, matmul_q = q_nodes
         else:
+            logger.debug("fuse_conformer_attention: failed to match q path")
             return
 
         k_nodes = self.model.match_parent_path(
@@ -88,16 +91,16 @@ class FusionConformerAttention(FusionAttention):
             past_k = concat_parent.output[0]
             present_k = concat_k.output[0]
         else:
+            logger.debug("fuse_conformer_attention: failed to match k path")
             return
 
         attention_last_node = reshape_qkv
         num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
 
         if num_heads <= 0 or hidden_size <= 0 or (hidden_size % num_heads) != 0:
-            logger.debug("fuse_attention: failed to detect num_heads or hidden_size")
+            logger.debug("fuse_conformer_attention: failed to detect num_heads or hidden_size")
             return
 
-        new_node = None
         new_node = self.create_multihead_attention_node(
             matmul_q,
             matmul_k,
@@ -116,6 +119,7 @@ class FusionConformerAttention(FusionAttention):
         )
 
         if new_node is None:
+            logger.debug("fuse_conformer_attention: MultiHeadAttention node creation failed")
             return
 
         self.nodes_to_add.append(new_node)
