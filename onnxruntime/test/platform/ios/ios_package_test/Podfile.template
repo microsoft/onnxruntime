@@ -6,7 +6,7 @@ target 'ios_package_test' do
 
   target 'ios_package_testUITests' do
     inherit! :search_paths
-    pod '@C_POD_NAME', :podspec  => '@C_POD_PODSPEC'
+    pod '@C_POD_NAME@', :podspec  => '@C_POD_PODSPEC@'
   end
 end
 
@@ -18,7 +18,7 @@ target 'macos_package_test' do
 
     target 'macos_package_testUITests' do
       inherit! :search_paths
-      pod '@C_POD_NAME', :podspec  => '@C_POD_PODSPEC'
+      pod '@C_POD_NAME@', :podspec  => '@C_POD_PODSPEC@'
     end
 end
 
