@@ -1,14 +1,25 @@
-platform :ios, '13.0'
-
 target 'ios_package_test' do
   # Comment the next line if you don't want to use dynamic frameworks
   use_frameworks!
 
+  platform :ios, '13.0'
+
   target 'ios_package_testUITests' do
     inherit! :search_paths
-    pod '@C_POD_NAME@', :podspec  => '@C_POD_PODSPEC@'
+    pod '@C_POD_NAME', :podspec  => '@C_POD_PODSPEC'
   end
+end
 
+target 'macos_package_test' do
+    # Comment the next line if you don't want to use dynamic frameworks
+    use_frameworks!
+
+    platform :osx, '11.0'
+
+    target 'macos_package_testUITests' do
+      inherit! :search_paths
+      pod '@C_POD_NAME', :podspec  => '@C_POD_PODSPEC'
+    end
 end
 
 # This is to prevent the pods to be code signed if enabled
