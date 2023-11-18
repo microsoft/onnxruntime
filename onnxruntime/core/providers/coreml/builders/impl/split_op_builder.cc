@@ -81,9 +81,9 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     num_outputs = node.OutputDefs().size();
     coreml_splitnd->set_numsplits(num_outputs);
   } else {
-    num_outputs = SafeInt<uint64_t>(helper.Get("num_outputs", -1));
+    num_outputs = SafeInt<uint64_t>(helper.Get("num_outputs", 2));
     auto split_dim_size = data_shape[HandleNegativeAxis(axis, data_shape.size())];
-    uint64_t chunk_size = narrow<uint64_t>(std::ceil(float(split_dim_size) / num_outputs));
+    uint64_t chunk_size = SafeInt<uint64_t>((split_dim_size + num_outputs - 1) / num_outputs);
     uint64_t remainder = split_dim_size % chunk_size;
     if (remainder) {
       // uneven
