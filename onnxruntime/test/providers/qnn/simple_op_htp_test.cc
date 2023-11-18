@@ -806,6 +806,62 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCacheNonEmbedModeTest) {
                        context_binary_file);
 }
 
+// Run QDQ model on HTP 2 times
+// 1st run will generate the Onnx skeleton file + Qnn context cache binary file
+// Then delete the context bin file to make the 2nd sesssion.Initialize() return the status with code INVALID_GRAPH
+TEST_F(QnnHTPBackendTests, ContextBinaryCache_InvalidGraph) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["qnn_context_cache_enable"] = "1";
+  const std::string context_binary_file = "./qnn_context_cache_non_embed.onnx";
+  provider_options["qnn_context_cache_path"] = context_binary_file;
+  provider_options["qnn_context_embed_mode"] = "0";
+
+  const TestInputDef<float> input_def({1, 2, 3}, false, -10.0f, 10.0f);
+  const std::string op_type = "Atan";
+
+  // Runs model with DQ-> Atan-> Q and compares the outputs of the CPU and QNN EPs.
+  // 1st run will generate the Onnx skeleton file + Qnn context cache binary file
+  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
+                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
+                       provider_options,
+                       14,
+                       ExpectedEPNodeAssignment::All);
+
+  // Check the Onnx skeleton file is generated
+  EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
+  // Check the Qnn context cache binary file is generated
+  std::filesystem::path context_bin = "qnn_context_cache_non_embed.onnx_QNNExecutionProvider_QNN_8283143575221199085_1_0.bin";
+  EXPECT_TRUE(std::filesystem::exists(context_bin));
+  // Delete the Qnn context cache binary file
+  EXPECT_TRUE(std::filesystem::remove(context_bin));
+
+  // loads and run from Onnx skeleton file + Qnn context cache binary file
+  onnx::ModelProto model_proto;
+  onnxruntime::Model qnn_ctx_model;
+  // Load the QNN context cache model from path specified
+  ASSERT_STATUS_OK(qnn_ctx_model.Load(ToPathString(context_binary_file), model_proto));
+  std::string qnn_ctx_model_data;
+  model_proto.SerializeToString(&qnn_ctx_model_data);
+
+  SessionOptions so;
+  so.session_logid = "qnn_ctx_model_logger";
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+
+  std::string provider_type = kCpuExecutionProvider;
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options)));
+  ASSERT_STATUS_OK(session_object.Load(qnn_ctx_model_data.data(), static_cast<int>(qnn_ctx_model_data.size())));
+  // Verify the return status with code INVALID_GRAPH
+  ASSERT_TRUE(session_object.Initialize().Code() == common::StatusCode::INVALID_GRAPH);
+}
+
 // Run QDQ model on HTP with 2 inputs
 // 1st run will generate the Qnn context cache onnx file
 // 2nd run will load and run from QDQ model + Qnn context cache model

@@ -92,8 +92,6 @@ Status GetEpContextFromGraph(const onnxruntime::GraphViewer& graph_viewer,
   std::filesystem::path folder_path = std::filesystem::path(ctx_onnx_model_path).parent_path();
   std::filesystem::path context_binary_path = folder_path.append(external_qnn_context_binary_file_name);
 
-  //std::string context_binary_path(std::filesystem::path(ctx_onnx_model_path).parent_path().string() +
-  //                                "/" + external_qnn_context_binary_file_name);
   size_t buffer_size{0};
   std::ifstream cache_file(context_binary_path.string().c_str(), std::ifstream::binary);
   ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to open cache file.");
