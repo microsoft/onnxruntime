@@ -103,6 +103,26 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
 
   Tensor* output = context->Output(0, input->Shape());
 
+  const ncclComm_t comm = nccl_->Comm();
+  int total_past_rows = 0;
+  int total_covered_rows = 0;
+  moe_runner.get_local_rows_info(total_past_rows, total_covered_rows);
+
+  CheckIfMemoryOnCurrentGpuDevice(fc2_output.get());
+
+  NCCL_RETURN_IF_ERROR(ncclGroupStart());
+  size_t fc2_output_offset = total_past_rows * hidden_size_ * sizeof(CudaT);
+  char* fc2_output_ptr = reinterpret_cast<char*>(fc2_output.get()) + fc2_output_offset;
+  ncclDataType_t dtype = GetNcclDataType<T>();
+  NCCL_RETURN_IF_ERROR(ncclBroadcast(fc2_output_ptr,
+                                     fc2_output_ptr,
+                                     total_covered_rows * sizeof(CudaT),
+                                     dtype,
+                                     nccl_->Rank(),
+                                     comm,
+                                     Stream(context)));
+  NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+
   ort_fastertransformer::finalize_moe_routing_kernelLauncher(
       reinterpret_cast<CudaT*>(fc2_output.get()), reinterpret_cast<CudaT*>(output->template MutableData<T>()),
       fc2_experts_bias_optional == nullptr

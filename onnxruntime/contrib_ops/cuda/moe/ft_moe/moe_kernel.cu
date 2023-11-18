@@ -504,14 +504,16 @@ __global__ void compute_total_rows_before_expert_kernel(const int* sorted_expert
 
 __global__ void dispatch_activations_kernel(int64_t*& total_rows_before_expert, int num_experts,
                                             int local_num_experts, int local_experts_start_index,
-                                            int& total_past_rows) {
+                                            int& total_past_rows, int& total_covered_rows) {
   // permuted_experts_ : 0, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 6,
   // total_rows_before_expert_ : 1, 5, 12, 19, 25, 31, 32, 32,
   const int expert = blockIdx.x * blockDim.x + threadIdx.x;
   const int local_experts_end_index = local_experts_start_index + local_num_experts - 1;
 
-  total_past_rows = local_experts_start_index == 0 ?
-                    0 : total_rows_before_expert[local_experts_start_index - 1];
+  if (expert == 0) {
+    total_past_rows = local_experts_start_index == 0 ? 0 : total_rows_before_expert[local_experts_start_index - 1];
+    total_covered_rows = total_rows_before_expert[local_experts_end_index] - total_past_rows;
+  }
 
   if (expert < local_experts_start_index || expert > local_experts_end_index) return;
 
@@ -634,10 +636,11 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
                                    total_rows_before_expert_, stream);
   // total_rows_before_expert_ : 1, 5, 12, 19, 25, 31, 32, 32,
 
-  int total_past_rows = 0;
   if (local_num_experts < num_experts) {
     dispatch_activations(total_rows_before_expert_, num_experts, local_num_experts, local_experts_start_index,
-                         total_past_rows, stream);
+                         total_past_rows_, total_covered_rows_, stream);
+    // bugbug: use cuda event
+    cudaDeviceSynchronize();
   }
 
   // expanded_active_expert_rows is not used
@@ -685,12 +688,14 @@ template <typename T, typename WeightType, typename Enable>
 void CutlassMoeFCRunner<T, WeightType, Enable>::dispatch_activations(int64_t*& total_rows_before_expert,
                                                                      int num_experts, int local_num_experts,
                                                                      int local_experts_start_index,
-                                                                     int& total_past_rows, cudaStream_t stream) {
+                                                                     int& total_past_rows, int& total_covered_rows,
+                                                                     cudaStream_t stream) {
   const int threads = std::min(1024, num_experts);
   const int blocks = (num_experts + threads - 1) / threads;
 
-  dispatch_activations_kernel<<<blocks, threads, 0, stream>>>(total_rows_before_expert, num_experts, local_num_experts,
-                                                              local_experts_start_index, total_past_rows);
+  dispatch_activations_kernel<<<blocks, threads, 0, stream>>>(total_rows_before_expert, num_experts,
+                                                              local_num_experts, local_experts_start_index,
+                                                              total_past_rows, total_covered_rows);
 }
 
 // ========================== Permutation things =======================================

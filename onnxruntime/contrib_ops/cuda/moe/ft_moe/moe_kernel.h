@@ -128,6 +128,12 @@ class CutlassMoeFCRunner {
   void dispatch_activations(int64_t*& total_rows_before_expert, int num_experts, int local_num_experts,
                             int local_experts_start_index, int& total_past_rows, cudaStream_t stream);
 
+  void get_local_rows_info(int& total_past_rows, int& total_covered_rows) {
+    // cudaDeviceSynchronize();
+    total_past_rows = total_past_rows_;
+    total_covered_rows = total_covered_rows_;
+  }
+
  private:
   void configure_ws_ptrs(char* ws_ptr, int num_rows, int hidden_size, int inter_size, int num_experts, int k);
 
@@ -146,6 +152,10 @@ class CutlassMoeFCRunner {
   int64_t* total_rows_before_expert_;
 
   T* fc1_result_;
+
+  // Host primitives
+  int total_past_rows_;
+  int total_covered_rows_;
 };
 
 template <typename WeightType>
