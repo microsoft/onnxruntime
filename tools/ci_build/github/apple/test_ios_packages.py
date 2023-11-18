@@ -144,6 +144,23 @@ def _test_ios_packages(args):
                 cwd=target_proj_path,
             )
 
+            if PackageVariant[args.variant] == PackageVariant.Full:
+                subprocess.run(
+                    [
+                        "xcrun",
+                        "xcodebuild",
+                        "test",
+                        "-workspace",
+                        "./ios_package_test.xcworkspace",
+                        "-scheme",
+                        "macos_package_test",
+                        "-destination",
+                        f"platform=macos",
+                    ],
+                    shell=False,
+                    check=True,
+                    cwd=target_proj_path,
+                )
 
 def parse_args():
     parser = argparse.ArgumentParser(
