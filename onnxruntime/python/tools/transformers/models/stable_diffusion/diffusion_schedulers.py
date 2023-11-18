@@ -44,7 +44,6 @@ class DDIMScheduler:
 
         alphas = 1.0 - betas
         self.alphas_cumprod = torch.cumprod(alphas, dim=0)
-
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
 
@@ -71,7 +70,7 @@ class DDIMScheduler:
         self.variance = torch.from_numpy(variance).to(self.device)
 
         timesteps = self.timesteps.long().cpu()
-        self.alphas_cumprod = self.alphas_cumprod[timesteps].to(self.device)
+        self.filtered_alphas_cumprod = self.alphas_cumprod[timesteps].to(self.device)
         self.final_alpha_cumprod = self.final_alpha_cumprod.to(self.device)
 
     def scale_model_input(self, sample: torch.FloatTensor, idx, *args, **kwargs) -> torch.FloatTensor:
@@ -124,9 +123,9 @@ class DDIMScheduler:
         # - pred_prev_sample -> "x_t-1"
 
         prev_idx = idx + 1
-        alpha_prod_t = self.alphas_cumprod[idx]
+        alpha_prod_t = self.filtered_alphas_cumprod[idx]
         alpha_prod_t_prev = (
-            self.alphas_cumprod[prev_idx] if prev_idx < self.num_inference_steps else self.final_alpha_cumprod
+            self.filtered_alphas_cumprod[prev_idx] if prev_idx < self.num_inference_steps else self.final_alpha_cumprod
         )
 
         beta_prod_t = 1 - alpha_prod_t
@@ -179,15 +178,15 @@ class DDIMScheduler:
                 variance_noise = torch.randn(
                     model_output.shape, generator=generator, device=device, dtype=model_output.dtype
                 )
-            variance = variance ** (0.5) * eta * variance_noise
+            variance = std_dev_t * variance_noise
 
             prev_sample = prev_sample + variance
 
         return prev_sample
 
     def add_noise(self, init_latents, noise, idx, latent_timestep):
-        sqrt_alpha_prod = self.alphas_cumprod[idx] ** 0.5
-        sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[idx]) ** 0.5
+        sqrt_alpha_prod = self.filtered_alphas_cumprod[idx] ** 0.5
+        sqrt_one_minus_alpha_prod = (1 - self.filtered_alphas_cumprod[idx]) ** 0.5
         noisy_latents = sqrt_alpha_prod * init_latents + sqrt_one_minus_alpha_prod * noise
 
         return noisy_latents
