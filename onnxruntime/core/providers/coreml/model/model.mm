@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -169,6 +170,60 @@ Status CreateInputFeatureProvider(const std::unordered_map<std::string, OnnxTens
   conversion_buffers_out = std::move(conversion_buffers);
   return Status::OK();
 }
+
+bool IsArrayContiguous(const MLMultiArray* array) {
+  int64_t batch_stride = [array.strides[0] longLongValue];
+  const auto* shape = array.shape;
+  int64_t batch_elems = 1;
+  for (unsigned long i = 1; i < shape.count; i++) batch_elems *= [shape[i] longLongValue];
+  return batch_stride == batch_elems;
+}
+
+Status CopyMLMultiArrayBuffer(const void* mlmultiarray_buffer, void* tensor_buffer,
+                              const MLMultiArray* array_info,
+                              const OnnxTensorInfo* tensor_info,
+                              const std::optional<unsigned long> mlmultiarray_buffer_size) {
+  if (mlmultiarray_buffer == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "mlmultiarray_buffer has no data");
+  }
+
+  const size_t num_elements = array_info.count;
+  const auto onnx_data_type = tensor_info->data_type;
+  switch (onnx_data_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
+      const auto output_data_byte_size = num_elements * sizeof(float);
+      ORT_RETURN_IF_NOT(!mlmultiarray_buffer_size || mlmultiarray_buffer_size == output_data_byte_size,
+                        "CoreML output buffer size and expected output size differ");
+      memcpy(tensor_buffer, mlmultiarray_buffer, output_data_byte_size);
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+      const auto output_data_byte_size = num_elements * sizeof(int32_t);
+      ORT_RETURN_IF_NOT(!mlmultiarray_buffer_size || mlmultiarray_buffer_size == output_data_byte_size,
+                        "CoreML output buffer size and expected output size differ");
+      memcpy(tensor_buffer, mlmultiarray_buffer, output_data_byte_size);
+      break;
+    }
+    // For this case, since Coreml Spec only uses int32 for model output while onnx provides
+    // int64 for model output data type. We are doing a type casting (int32 -> int64) here
+    // when copying the model to ORT
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+      ORT_RETURN_IF_NOT(array_info.dataType == MLMultiArrayDataTypeInt32,
+                        "CoreML output data type is not MLMultiArrayDataTypeInt32");
+      ORT_RETURN_IF_NOT(!mlmultiarray_buffer_size || mlmultiarray_buffer_size == num_elements * sizeof(int32_t),
+                        "CoreML output buffer size and expected output size differ");
+      const auto model_output_span = gsl::span{static_cast<const int32_t*>(mlmultiarray_buffer), num_elements};
+      const auto output_span = gsl::span{static_cast<int64_t*>(tensor_buffer), num_elements};
+      std::transform(model_output_span.begin(), model_output_span.end(), output_span.begin(),
+                     [](int32_t v) { return static_cast<int64_t>(v); });
+      break;
+    }
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Output data type is not supported, actual type: ", onnx_data_type);
+  }
+  return Status::OK();
+}
 }  // namespace
 
 NS_ASSUME_NONNULL_BEGIN
@@ -298,9 +353,9 @@ NS_ASSUME_NONNULL_BEGIN
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "output_features has no value for ", output_name);
       }
 
-      auto* data = [output_value multiArrayValue];
+      MLMultiArray* data = [output_value multiArrayValue];
 
-      const auto coreml_static_output_shape = [&]() {
+      const auto coreml_static_output_shape = [data]() {
         InlinedVector<int64_t> result;
         result.reserve(data.shape.count);
         for (NSNumber* dim in data.shape) {
@@ -324,41 +379,21 @@ NS_ASSUME_NONNULL_BEGIN
                                  ") do not match");
         }
 
-        const void* model_output_buffer = data.dataPointer;
-
-        if (model_output_buffer == nullptr) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model_output_buffer has no data for ", output_name);
+        ORT_RETURN_IF_NOT(IsArrayContiguous(data),
+                          "Non-contiguous output MLMultiArray is not currently supported");
+        __block Status copy_status;
+        const auto* tensor_info = &output_tensor_info;
+        // `getBytesWithHandler` replaces deprecated `.dataPointer` on new versions
+        if (@available(macOS 12.3, iOS 15.4, *)) {
+          [data getBytesWithHandler:^(const void* bytes, NSInteger size) {
+            copy_status = CopyMLMultiArrayBuffer(bytes, output_buffer, data, tensor_info, size);
+          }];
+        } else {
+          // disable size check as old API does not return buffer length
+          copy_status = CopyMLMultiArrayBuffer(data.dataPointer, output_buffer, data, tensor_info, std::nullopt);
         }
-
-        const auto onnx_data_type = output_tensor_info.data_type;
-        switch (onnx_data_type) {
-          case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
-            const auto output_data_byte_size = num_elements * sizeof(float);
-            memcpy(output_buffer, model_output_buffer, output_data_byte_size);
-            break;
-          }
-          case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
-            const auto output_data_byte_size = num_elements * sizeof(int32_t);
-            memcpy(output_buffer, model_output_buffer, output_data_byte_size);
-            break;
-          }
-          // For this case, since Coreml Spec only uses int32 for model output while onnx provides
-          // int64 for model output data type. We are doing a type casting (int32 -> int64) here
-          // when copying the model to ORT
-          case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
-            ORT_RETURN_IF_NOT(data.dataType == MLMultiArrayDataTypeInt32,
-                              "CoreML output data type is not MLMultiArrayDataTypeInt32");
-
-            const auto model_output_span = gsl::span{static_cast<const int32_t*>(model_output_buffer), num_elements};
-            const auto output_span = gsl::span{static_cast<int64_t*>(output_buffer), num_elements};
-            std::transform(model_output_span.begin(), model_output_span.end(), output_span.begin(),
-                           [](int32_t v) { return static_cast<int64_t>(v); });
-            break;
-          }
-          default:
-            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                   "Output data type is not supported, actual type: ", onnx_data_type);
-        }
+        if (!copy_status.IsOK())
+          return copy_status;
       }
     }
   }
