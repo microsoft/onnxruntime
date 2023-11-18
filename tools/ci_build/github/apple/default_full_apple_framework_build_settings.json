@@ -4,8 +4,8 @@
             "arm64"
         ],
         "iphonesimulator": [
-            "x86_64",
-            "arm_64"
+            "arm64",
+            "x86_64"
         ],
         "macosx": [
             "arm64",
