@@ -21,6 +21,7 @@ Abstract:
 #pragma once
 
 #include "mlas.h"
+#include "mlas_gemm_postprocessor.h"
 
 #include <math.h>
 #include <algorithm>
@@ -93,22 +94,6 @@ MlasQ4GemmUnPackB(
     size_t K,
     size_t ldb
     );
-
-
-template<typename T>
-class MLAS_GEMM_POSTPROCESSOR
-{
-   public:
-    virtual void Process(T*,         /**< the address of matrix to process */
-                         size_t,     /**< the start row index of matrix */
-                         size_t,     /**< the start col index of matrix */
-                         size_t,     /**< the element count per row to process */
-                         size_t,     /**< the element count per col to process */
-                         size_t      /**< the leading dimension of matrix */
-    ) const = 0;
-
-    virtual ~MLAS_GEMM_POSTPROCESSOR() {}
-};
 
 
 /**
@@ -241,7 +226,7 @@ MlasQ8Q4GemmBatch(
  *        matrix shape [rows, columns], compute the shape of the
  *        quantization parameter matrix [meta_rows, meta_cols]
 */
-template <typename T>
+template <typename T, int qbits>
 void
 MlasBlockwiseQuantMetaShape(
     int block_size,
@@ -259,6 +244,7 @@ MlasBlockwiseQuantMetaShape(
  * is in column major layout, with bits packed on the column.
  *
  * @tparam T
+ * @tparam qbits
  * @param block_size
  * @param columnwise
  * @param rows
@@ -266,7 +252,7 @@ MlasBlockwiseQuantMetaShape(
  * @param q_rows
  * @param q_cols
 */
-template <typename T>
+template <typename T, int qbits>
 void
 MlasBlockwiseQuantizedShape(
     int block_size,
@@ -276,6 +262,32 @@ MlasBlockwiseQuantizedShape(
     int& q_rows,
     int& q_cols
     );
+
+/**
+ * @brief Compute the sizes of the quantized data and quantization parameter buffers.
+ *
+ * @param qbits                             The bit width of each quantized value.
+ * @param block_size                        The number of quantized values in a block.
+ * @param columnwise                        Whether a block contains values from a matrix column (true) or row (false).
+ * @param rows                              Number of matrix rows.
+ * @param columns                           Number of matrix columns.
+ * @param[out] q_data_size_in_bytes         The size in bytes of the quantized data.
+ * @param[out] q_scale_num_elements         The size in elements of the scale quantization parameters.
+ * @param[out] q_zero_point_size_in_bytes   The size in bytes of the zero point quantization parameters. Optional.
+ *
+ * If the qbits or block_size values are unsupported the output sizes will be zero.
+ */
+void MLASCALL
+MlasBlockwiseQuantizedBufferSizes(
+    int qbits,
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    size_t& q_data_size_in_bytes,
+    size_t& q_scale_num_elements,
+    size_t* q_zero_point_size_in_bytes
+);
 
 
 /**

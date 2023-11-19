@@ -68,7 +68,7 @@ def parse_arguments(is_xl: bool, description: str):
         "--scheduler",
         type=str,
         default="DDIM",
-        choices=["DDIM", "EulerA", "UniPC"],
+        choices=["DDIM", "UniPC"] if is_xl else ["DDIM", "EulerA", "UniPC"],
         help="Scheduler for diffusion process",
     )
 
@@ -145,6 +145,10 @@ def parse_arguments(is_xl: bool, description: str):
     parser.add_argument("--seed", type=int, default=None, help="Seed for random generator to get consistent results.")
     parser.add_argument("--disable-cuda-graph", action="store_true", help="Disable cuda graph.")
 
+    parser.add_argument(
+        "--disable-refiner", action="store_true", help="Disable refiner and only run base for XL pipeline."
+    )
+
     group = parser.add_argument_group("Options for ORT_CUDA engine only")
     group.add_argument("--enable-vae-slicing", action="store_true", help="True will feed only one image to VAE once.")
 
@@ -174,9 +178,9 @@ def parse_arguments(is_xl: bool, description: str):
         )
 
     # Validate image dimensions
-    if args.height % 8 != 0 or args.width % 8 != 0:
+    if args.height % 64 != 0 or args.width % 64 != 0:
         raise ValueError(
-            f"Image height and width have to be divisible by 8 but specified as: {args.height} and {args.width}."
+            f"Image height and width have to be divisible by 64 but specified as: {args.height} and {args.width}."
         )
 
     if (args.build_dynamic_batch or args.build_dynamic_shape) and not args.disable_cuda_graph:
@@ -209,7 +213,9 @@ def repeat_prompt(args):
     return prompt, negative_prompt
 
 
-def init_pipeline(pipeline_class, pipeline_info, engine_type, args, max_batch_size, batch_size):
+def init_pipeline(
+    pipeline_class, pipeline_info, engine_type, args, max_batch_size, opt_batch_size, opt_image_height, opt_image_width
+):
     onnx_dir, engine_dir, output_dir, framework_model_dir, timing_cache = get_engine_paths(
         work_dir=args.work_dir, pipeline_info=pipeline_info, engine_type=engine_type
     )
@@ -234,9 +240,6 @@ def init_pipeline(pipeline_class, pipeline_info, engine_type, args, max_batch_si
             engine_dir=engine_dir,
             framework_model_dir=framework_model_dir,
             onnx_dir=onnx_dir,
-            opt_image_height=args.height,
-            opt_image_width=args.height,
-            opt_batch_size=batch_size,
             force_engine_rebuild=args.force_engine_build,
             device_id=torch.cuda.current_device(),
         )
@@ -247,9 +250,9 @@ def init_pipeline(pipeline_class, pipeline_info, engine_type, args, max_batch_si
             framework_model_dir,
             onnx_dir,
             args.onnx_opset,
-            opt_image_height=args.height,
-            opt_image_width=args.height,
-            opt_batch_size=batch_size,
+            opt_image_height=opt_image_height,
+            opt_image_width=opt_image_width,
+            opt_batch_size=opt_batch_size,
             force_engine_rebuild=args.force_engine_build,
             static_batch=not args.build_dynamic_batch,
             static_image_shape=not args.build_dynamic_shape,
@@ -264,9 +267,9 @@ def init_pipeline(pipeline_class, pipeline_info, engine_type, args, max_batch_si
             framework_model_dir,
             onnx_dir,
             args.onnx_opset,
-            opt_batch_size=batch_size,
-            opt_image_height=args.height,
-            opt_image_width=args.height,
+            opt_batch_size=opt_batch_size,
+            opt_image_height=opt_image_height,
+            opt_image_width=opt_image_width,
             force_export=args.force_onnx_export,
             force_optimize=args.force_onnx_optimize,
             force_build=args.force_engine_build,
