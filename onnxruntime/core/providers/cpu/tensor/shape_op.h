@@ -36,6 +36,8 @@ class Shape final : public OpKernel {
     const TensorShape& input_shape = input->Shape();
 
     int64_t rank = gsl::narrow_cast<int64_t>(input_shape.NumDimensions());
+    // ONNX shape inferencing doesn't work with a scalar. Spec does not say it's unsupported.
+    ORT_ENFORCE(rank != 0, "Shape of a scalar is not supported");
 
     if (!needs_slicing_) {  // vanilla use of Shape (no slicing)
       Tensor* output = context->Output(0, {rank});
