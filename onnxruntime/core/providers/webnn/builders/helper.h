@@ -32,7 +32,7 @@ enum class WebnnDeviceType {
 
 typedef struct {
   std::string opName;
-  bool isCpuSupported; // The WebNN CPU backend XNNPack supports it (not about the CPU EP).
+  bool isCpuSupported;  // The WebNN CPU backend XNNPack supports it (not about the CPU EP).
 } WebnnOpInfo;
 
 bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger);
