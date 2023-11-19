@@ -60,19 +60,16 @@ class EngineBuilder:
         self.torch_device = torch.device(device, torch.cuda.current_device())
         self.stages = pipeline_info.stages()
 
-        # TODO: use custom fp16 for ORT_TRT, and no need to fallback to torch.
-        self.vae_torch_fallback = self.pipeline_info.is_xl() and engine_type != EngineType.ORT_CUDA
-
-        # For SD XL, use an VAE that modified to run in fp16 precision without generating NaNs.
-        self.custom_fp16_vae = (
-            "madebyollin/sdxl-vae-fp16-fix"
-            if self.pipeline_info.is_xl() and self.engine_type == EngineType.ORT_CUDA
-            else None
-        )
+        self.vae_torch_fallback = self.pipeline_info.vae_torch_fallback()
+        self.custom_fp16_vae = self.pipeline_info.custom_fp16_vae()
 
         self.models = {}
         self.engines = {}
         self.torch_models = {}
+        self.use_vae_slicing = False
+
+    def enable_vae_slicing(self):
+        self.use_vae_slicing = True
 
     def teardown(self):
         for engine in self.engines.values():
@@ -84,9 +81,9 @@ class EngineBuilder:
             model_name += "_inpaint"
         return model_name
 
-    def get_onnx_path(self, model_name, onnx_dir, opt=True):
+    def get_onnx_path(self, model_name, onnx_dir, opt=True, suffix=""):
         engine_name = self.engine_type.name.lower()
-        directory_name = self.get_cached_model_name(model_name) + (f".{engine_name}" if opt else "")
+        directory_name = self.get_cached_model_name(model_name) + (f".{engine_name}" if opt else "") + suffix
         onnx_model_dir = os.path.join(onnx_dir, directory_name)
         os.makedirs(onnx_model_dir, exist_ok=True)
         return os.path.join(onnx_model_dir, "model.onnx")
@@ -160,11 +157,12 @@ class EngineBuilder:
         for model_name, obj in self.models.items():
             if model_name == "vae" and self.vae_torch_fallback:
                 continue
+            slice_size = 1 if (model_name == "vae" and self.use_vae_slicing) else batch_size
             self.engines[model_name].allocate_buffers(
-                shape_dict=obj.get_shape_dict(batch_size, image_height, image_width), device=self.torch_device
+                shape_dict=obj.get_shape_dict(slice_size, image_height, image_width), device=self.torch_device
             )
 
-    def vae_decode(self, latents):
+    def _vae_decode(self, latents):
         if self.vae_torch_fallback:
             if not self.custom_fp16_vae:
                 latents = latents.to(dtype=torch.float32)
@@ -174,6 +172,14 @@ class EngineBuilder:
             images = self.run_engine("vae", {"latent": latents})["images"]
 
         return images
+
+    def vae_decode(self, latents):
+        if self.use_vae_slicing:
+            # The output tensor points to same buffer. Need clone it to avoid overwritten.
+            decoded_slices = [self._vae_decode(z_slice).clone() for z_slice in latents.split(1)]
+            return torch.cat(decoded_slices)
+
+        return self._vae_decode(latents)
 
 
 def get_engine_paths(work_dir: str, pipeline_info: PipelineInfo, engine_type: EngineType):

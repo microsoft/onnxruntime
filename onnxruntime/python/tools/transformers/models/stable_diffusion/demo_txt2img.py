@@ -53,13 +53,39 @@ if __name__ == "__main__":
             f"Batch size {len(prompt)} is larger than allowed {max_batch_size}. If dynamic shape is used, then maximum batch size is 4"
         )
 
-    pipeline_info = PipelineInfo(args.version)
-    pipeline = init_pipeline(Txt2ImgPipeline, pipeline_info, engine_type, args, max_batch_size, batch_size)
+    # For TensorRT,  performance of engine built with dynamic shape is very sensitive to the range of image size.
+    # Here, we reduce the range of image size for TensorRT to trade-off flexibility and performance.
+    # This range can cover common used shape of landscape 512x768, portrait 768x512, or square 512x512 and 768x768.
+    min_image_size = 512 if args.engine != "ORT_CUDA" else 256
+    max_image_size = 768 if args.engine != "ORT_CUDA" else 1024
+    pipeline_info = PipelineInfo(args.version, min_image_size=min_image_size, max_image_size=max_image_size)
+
+    # Ideally, the optimized batch size and image size for TRT engine shall align with user's preference. That is to
+    # optimize the shape used most frequently. We can let user config it when we develop a UI plugin.
+    # In this demo, we optimize batch size 1 and image size 512x512 (or 768x768 for SD 2.0/2.1) for dynamic engine.
+    # This is mainly for benchmark purpose to simulate the case that we have no knowledge of user's preference.
+    opt_batch_size = 1 if args.build_dynamic_batch else batch_size
+    opt_image_height = pipeline_info.default_image_size() if args.build_dynamic_shape else args.height
+    opt_image_width = pipeline_info.default_image_size() if args.build_dynamic_shape else args.width
+
+    pipeline = init_pipeline(
+        Txt2ImgPipeline,
+        pipeline_info,
+        engine_type,
+        args,
+        max_batch_size,
+        opt_batch_size,
+        opt_image_height,
+        opt_image_width,
+    )
 
     if engine_type == EngineType.TRT:
         max_device_memory = max(pipeline.backend.max_device_memory(), pipeline.backend.max_device_memory())
         _, shared_device_memory = cudart.cudaMalloc(max_device_memory)
         pipeline.backend.activate_engines(shared_device_memory)
+
+    if engine_type == EngineType.ORT_CUDA and args.enable_vae_slicing:
+        pipeline.backend.enable_vae_slicing()
 
     pipeline.load_resources(image_height, image_width, batch_size)
 

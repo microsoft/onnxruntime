@@ -37,7 +37,6 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                       const logging::Logger& logger,
                                       std::vector<std::string>& input_names,
                                       bool do_op_validation) const {
-  ORT_UNUSED_PARAMETER(do_op_validation);
   const auto& inputs = node_unit.Inputs();
   ORT_RETURN_IF(inputs.size() != 2, "Gather should has 2 inputs at least!");
   ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names));
@@ -169,6 +168,13 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                                                                    quantize_param.scaleOffsetEncoding.scale,
                                                                    quantize_param.scaleOffsetEncoding.offset),
                     "Cannot get quantization parameter");
+  if (is_quantized_tensor) {
+    // Make sure the output quantization parameters are equal to the input.
+    ORT_RETURN_IF_ERROR(SetOutputQParamEqualToInputIfNearlyEqual(qnn_model_wrapper, node_unit, logger, input_names,
+                                                                 0 /*input_index*/, 0 /*output_index*/, qnn_data_type,
+                                                                 quantize_param));
+  }
+
   std::vector<uint32_t> target_output_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(gather_output.node_arg, target_output_shape),
                     "Cannot get shape");

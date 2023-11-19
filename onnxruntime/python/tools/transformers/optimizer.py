@@ -32,6 +32,7 @@ from onnx_model_bert import BertOnnxModel
 from onnx_model_bert_keras import BertOnnxModelKeras
 from onnx_model_bert_tf import BertOnnxModelTF
 from onnx_model_clip import ClipOnnxModel
+from onnx_model_conformer import ConformerOnnxModel
 from onnx_model_gpt2 import Gpt2OnnxModel
 from onnx_model_t5 import T5OnnxModel
 from onnx_model_tnlr import TnlrOnnxModel
@@ -56,6 +57,7 @@ MODEL_TYPES = {
     "unet": (UnetOnnxModel, "pytorch", 1),  # UNet in Stable Diffusion
     "vae": (VaeOnnxModel, "pytorch", 1),  # UAE in Stable Diffusion
     "vit": (BertOnnxModel, "pytorch", 1),
+    "conformer": (ConformerOnnxModel, "pytorch", 1),
 }
 
 
@@ -546,11 +548,14 @@ def main():
     if args.input_int32:
         optimizer.change_graph_inputs_to_int32()
 
-    if args.model_type in set(MODEL_TYPES.keys()):
-        if optimizer.is_fully_optimized():
-            logger.info("The model has been fully optimized.")
-        else:
-            logger.info("The model has been optimized.")
+    # Print the operator statistics might help end user.
+    optimizer.get_operator_statistics()
+
+    fused_op_count = optimizer.get_fused_operator_statistics()
+    if "bert" in args.model_type and optimizer.is_fully_optimized(fused_op_count):
+        logger.info("The model has been fully optimized.")
+    else:
+        logger.info("The model has been optimized.")
 
     if args.convert_to_packing_mode:
         if args.model_type == "bert":
