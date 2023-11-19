@@ -387,21 +387,32 @@ public class OnnxTensor extends OnnxTensorLike {
               info);
         }
       } else {
+        Buffer buf;
         if (info.shape.length == 0) {
-          data = OrtUtil.convertBoxedPrimitiveToArray(info.type, data);
-          if (data == null) {
+          buf = OrtUtil.convertBoxedPrimitiveToBuffer(info.type, data);
+          if (buf == null) {
             throw new OrtException(
                 "Failed to convert a boxed primitive to an array, this is an error with the ORT Java API, please report this message & stack trace. JavaType = "
                     + info.type
                     + ", object = "
                     + data);
           }
+        } else {
+          buf = OrtUtil.convertArrayToBuffer(info, data);
         }
         return new OnnxTensor(
-            createTensor(
-                OnnxRuntime.ortApiHandle, allocator.handle, data, info.shape, info.onnxType.value),
-            allocator.handle,
-            info);
+                createTensorFromBuffer(
+                        OnnxRuntime.ortApiHandle,
+                        allocator.handle,
+                        buf,
+                        0,
+                        info.type.size * info.numElements,
+                        info.shape,
+                        info.onnxType.value),
+                allocator.handle,
+                info,
+                buf,
+                true);
       }
     } else {
       throw new IllegalStateException("Trying to create an OnnxTensor with a closed OrtAllocator.");

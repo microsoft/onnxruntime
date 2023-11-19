@@ -461,6 +461,58 @@ public final class OrtUtil {
   }
 
   /**
+   * Stores a boxed primitive in a single element buffer of the unboxed type.
+   *
+   * <p>If it's not a boxed primitive then it returns null.
+   *
+   * @param javaType The type of the boxed primitive.
+   * @param data The boxed primitive.
+   * @return The primitive in a direct buffer.
+   */
+  static Buffer convertBoxedPrimitiveToBuffer(OnnxJavaType javaType, Object data) {
+    switch (javaType) {
+      case FLOAT: {
+        FloatBuffer buf = ByteBuffer.allocateDirect(javaType.size).order(ByteOrder.nativeOrder()).asFloatBuffer();
+        buf.put(0, (Float) data);
+        return buf;
+      }
+      case DOUBLE: {
+        DoubleBuffer buf = ByteBuffer.allocateDirect(javaType.size).order(ByteOrder.nativeOrder()).asDoubleBuffer();
+        buf.put(0, (Double) data);
+        return buf;
+      }
+      case BOOL:
+      case UINT8:
+      case INT8: {
+        ByteBuffer buf = ByteBuffer.allocateDirect(javaType.size).order(ByteOrder.nativeOrder());
+        buf.put(0, (Byte) data);
+        return buf;
+      }
+      case FLOAT16:
+      case BFLOAT16:
+      case INT16: {
+        ShortBuffer buf = ByteBuffer.allocateDirect(javaType.size).order(ByteOrder.nativeOrder()).asShortBuffer();
+        buf.put(0, (Short) data);
+        return buf;
+      }
+      case INT32: {
+        IntBuffer buf = ByteBuffer.allocateDirect(javaType.size).order(ByteOrder.nativeOrder()).asIntBuffer();
+        buf.put(0, (Integer) data);
+        return buf;
+      }
+      case INT64: {
+        LongBuffer buf = ByteBuffer.allocateDirect(javaType.size).order(ByteOrder.nativeOrder()).asLongBuffer();
+        buf.put(0, (Long) data);
+        return buf;
+      }
+      case STRING:
+      case UNKNOWN:
+      default:
+        return null;
+    }
+  }
+
+  /**
    * Returns expected JDK map capacity for a given size, this factors in the default JDK load factor
    *
    * @param size The expected map size
