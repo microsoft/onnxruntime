@@ -657,7 +657,6 @@ class FusionAttention(Fusion):
             return None
 
         graph_input_names = set([node.name for node in self.model.graph().input])
-        graph_output_names = set([node.name for node in self.model.graph().output])
         mha_node_name = self.model.create_node_name("Attention")
 
         # Add initial Q/K/V inputs for MHA
@@ -693,12 +692,15 @@ class FusionAttention(Fusion):
             mha_inputs.append("")
 
         # Add optional inputs for MHA
-        if past_k and past_v and past_k in graph_input_names and past_v in graph_input_names:
+
+        if past_k and past_v:
             mha_inputs.extend([key_padding_mask, add_qk, past_k, past_v])
+        elif key_padding_mask or add_qk:
+            mha_inputs.extend([key_padding_mask, add_qk])
 
         # Add outputs for MHA
         mha_outputs = [output]
-        if present_k and present_v and present_k in graph_output_names and present_v in graph_output_names:
+        if present_k and present_v:
             mha_outputs.extend([present_k, present_v])
 
         mha_node = helper.make_node(
