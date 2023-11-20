@@ -50,6 +50,15 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(CheckInputs(moe_params, input, router_probs, fc1_experts_weights, fc2_experts_weights,
                                   fc1_experts_bias_optional, fc2_experts_bias_optional));
 
+  // print out parameters for each rank
+  std::cout << "nccl rank:" << nccl_->Rank() << " " << "local_experts_start_index: " << local_experts_start_index_ << std::endl;
+  std::cout << "nccl rank:" << nccl_->Rank() << " " << "num_rows: " << moe_params.num_rows << std::endl;
+  std::cout << "nccl rank:" << nccl_->Rank() << " " << "hidden_size: " << moe_params.hidden_size << std::endl;
+  std::cout << "nccl rank:" << nccl_->Rank() << " " << "inter_size: " << moe_params.inter_size << std::endl;
+  std::cout << "nccl rank:" << nccl_->Rank() << " " << "num_experts: " << moe_params.num_experts << std::endl;
+  std::cout << "nccl rank:" << nccl_->Rank() << " " << "local_num_experts: " << moe_params.local_num_experts << std::endl;
+  std::cout << "nccl rank:" << nccl_->Rank() << " " << "k: " << k_ << std::endl;
+
   typedef typename ToCudaType<T>::MappedType CudaT;
   auto stream = context->GetComputeStream();
 
