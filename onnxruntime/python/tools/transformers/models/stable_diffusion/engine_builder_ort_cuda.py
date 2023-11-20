@@ -159,9 +159,6 @@ class OrtCudaEngineBuilder(EngineBuilder):
         framework_model_dir: str,
         onnx_dir: str,
         onnx_opset_version: int = 17,
-        opt_image_height: int = 512,
-        opt_image_width: int = 512,
-        opt_batch_size: int = 1,
         force_engine_rebuild: bool = False,
         device_id: int = 0,
         save_fp32_intermediate_model=False,
@@ -209,7 +206,8 @@ class OrtCudaEngineBuilder(EngineBuilder):
 
                     with torch.inference_mode():
                         # For CUDA EP, export FP32 onnx since some graph fusion only supports fp32 graph pattern.
-                        inputs = model_obj.get_sample_input(opt_batch_size, opt_image_height, opt_image_width)
+                        # Export model with sample of batch size 1, image size 512 x 512
+                        inputs = model_obj.get_sample_input(1, 512, 512)
 
                         torch.onnx.export(
                             model,
