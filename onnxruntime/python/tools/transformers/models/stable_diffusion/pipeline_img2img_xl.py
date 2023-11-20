@@ -68,6 +68,7 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
         image_height,
         image_width,
         denoising_steps=30,
+        strength=0.3,
         guidance=5.0,
         seed=None,
         warmup=False,
@@ -79,7 +80,6 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
         crops_coords_top_left = (0, 0)
         target_size = (image_height, image_width)
 
-        strength = 0.3
         aesthetic_score = 6.0
         negative_aesthetic_score = 2.5
 
@@ -171,6 +171,7 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
         image_width,
         denoising_steps=30,
         guidance=5.0,
+        strength=0.3,
         seed=None,
         warmup=False,
         return_type="image",
@@ -213,6 +214,7 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
                     image_height,
                     image_width,
                     denoising_steps=denoising_steps,
+                    strength=strength,
                     guidance=guidance,
                     seed=seed,
                     warmup=warmup,
@@ -226,6 +228,7 @@ class Img2ImgXLPipeline(StableDiffusionPipeline):
                 image_height,
                 image_width,
                 denoising_steps=denoising_steps,
+                strength=strength,
                 guidance=guidance,
                 seed=seed,
                 warmup=warmup,

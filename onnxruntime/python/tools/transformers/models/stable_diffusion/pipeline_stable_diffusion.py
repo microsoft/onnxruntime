@@ -28,7 +28,7 @@ import nvtx
 import torch
 from cuda import cudart
 from diffusion_models import PipelineInfo, get_tokenizer
-from diffusion_schedulers import DDIMScheduler, EulerAncestralDiscreteScheduler, UniPCMultistepScheduler
+from diffusion_schedulers import DDIMScheduler, EulerAncestralDiscreteScheduler, LCMScheduler, UniPCMultistepScheduler
 from engine_builder import EngineType
 from engine_builder_ort_cuda import OrtCudaEngineBuilder
 from engine_builder_ort_trt import OrtTensorrtEngineBuilder
@@ -63,7 +63,7 @@ class StableDiffusionPipeline:
             max_batch_size (int):
                 Maximum batch size for dynamic batch engine.
             scheduler (str):
-                The scheduler to guide the denoising process. Must be one of [DDIM, EulerA, UniPC].
+                The scheduler to guide the denoising process. Must be one of [DDIM, EulerA, UniPC, LCM].
             device (str):
                 PyTorch device to run inference. Default: 'cuda'
             output_dir (str):
@@ -162,9 +162,11 @@ class StableDiffusionPipeline:
         elif scheduler == "EulerA":
             self.scheduler = EulerAncestralDiscreteScheduler(device=self.device, **sched_opts)
         elif scheduler == "UniPC":
-            self.scheduler = UniPCMultistepScheduler(device=self.device)
+            self.scheduler = UniPCMultistepScheduler(device=self.device, **sched_opts)
+        elif scheduler == "LCM":
+            self.scheduler = LCMScheduler(device=self.device, **sched_opts)
         else:
-            raise ValueError("Scheduler should be either DDIM, EulerA or UniPC")
+            raise ValueError("Scheduler should be either DDIM, EulerA, UniPC or LCM")
 
         self.current_scheduler = scheduler
         self.denoising_steps = None
@@ -238,6 +240,7 @@ class StableDiffusionPipeline:
         pooled_outputs=False,
         output_hidden_states=False,
         force_zeros_for_empty_prompt=False,
+        do_classifier_free_guidance=True,
     ):
         if tokenizer is None:
             tokenizer = self.tokenizer
@@ -265,41 +268,44 @@ class StableDiffusionPipeline:
         if output_hidden_states:
             hidden_states = outputs["hidden_states"].clone()
 
-        # Note: negative prompt embedding is not needed for SD XL when guidance < 1
-
-        # For SD XL base, handle force_zeros_for_empty_prompt
-        is_empty_negative_prompt = all([not i for i in negative_prompt])
-        if force_zeros_for_empty_prompt and is_empty_negative_prompt:
-            uncond_embeddings = torch.zeros_like(text_embeddings)
-            if output_hidden_states:
-                uncond_hidden_states = torch.zeros_like(hidden_states)
-        else:
-            # Tokenize negative prompt
-            uncond_input_ids = (
-                tokenizer(
-                    negative_prompt,
-                    padding="max_length",
-                    max_length=tokenizer.model_max_length,
-                    truncation=True,
-                    return_tensors="pt",
+        # Note: negative prompt embedding is not needed for SD XL when guidance <= 1
+        if do_classifier_free_guidance:
+            # For SD XL base, handle force_zeros_for_empty_prompt
+            is_empty_negative_prompt = all([not i for i in negative_prompt])
+            if force_zeros_for_empty_prompt and is_empty_negative_prompt:
+                uncond_embeddings = torch.zeros_like(text_embeddings)
+                if output_hidden_states:
+                    uncond_hidden_states = torch.zeros_like(hidden_states)
+            else:
+                # Tokenize negative prompt
+                uncond_input_ids = (
+                    tokenizer(
+                        negative_prompt,
+                        padding="max_length",
+                        max_length=tokenizer.model_max_length,
+                        truncation=True,
+                        return_tensors="pt",
+                    )
+                    .input_ids.type(torch.int32)
+                    .to(self.device)
                 )
-                .input_ids.type(torch.int32)
-                .to(self.device)
-            )
 
-            outputs = self.run_engine(encoder, {"input_ids": uncond_input_ids})
-            uncond_embeddings = outputs["text_embeddings"]
-            if output_hidden_states:
-                uncond_hidden_states = outputs["hidden_states"]
+                outputs = self.run_engine(encoder, {"input_ids": uncond_input_ids})
+                uncond_embeddings = outputs["text_embeddings"]
+                if output_hidden_states:
+                    uncond_hidden_states = outputs["hidden_states"]
 
-        # Concatenate the unconditional and text embeddings into a single batch to avoid doing two forward passes for classifier free guidance
-        text_embeddings = torch.cat([uncond_embeddings, text_embeddings]).to(dtype=torch.float16)
+            # Concatenate the unconditional and text embeddings into a single batch to avoid doing two forward passes for classifier free guidance
+            text_embeddings = torch.cat([uncond_embeddings, text_embeddings]).to(dtype=torch.float16)
 
         if pooled_outputs:
             pooled_output = text_embeddings
 
         if output_hidden_states:
-            text_embeddings = torch.cat([uncond_hidden_states, hidden_states]).to(dtype=torch.float16)
+            if do_classifier_free_guidance:
+                text_embeddings = torch.cat([uncond_hidden_states, hidden_states]).to(dtype=torch.float16)
+            else:
+                text_embeddings = hidden_states.to(dtype=torch.float16)
 
         cudart.cudaEventRecord(self.events["clip-stop"], 0)
         if self.nvtx_profile:
@@ -321,7 +327,7 @@ class StableDiffusionPipeline:
         guidance=7.5,
         add_kwargs=None,
     ):
-        assert guidance > 1.0, "Guidance has to be > 1.0"  # TODO: remove this constraint
+        do_classifier_free_guidance = guidance > 1.0
 
         cudart.cudaEventRecord(self.events["denoise-start"], 0)
         if not isinstance(timesteps, torch.Tensor):
@@ -332,7 +338,7 @@ class StableDiffusionPipeline:
                 nvtx_latent_scale = nvtx.start_range(message="latent_scale", color="pink")
 
             # Expand the latents if we are doing classifier free guidance
-            latent_model_input = torch.cat([latents] * 2)
+            latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
             latent_model_input = self.scheduler.scale_model_input(
                 latent_model_input, step_offset + step_index, timestep
@@ -366,11 +372,14 @@ class StableDiffusionPipeline:
                 nvtx_latent_step = nvtx.start_range(message="latent_step", color="pink")
 
             # perform guidance
-            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-            noise_pred = noise_pred_uncond + guidance * (noise_pred_text - noise_pred_uncond)
+            if do_classifier_free_guidance:
+                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                noise_pred = noise_pred_uncond + guidance * (noise_pred_text - noise_pred_uncond)
 
             if type(self.scheduler) == UniPCMultistepScheduler:
                 latents = self.scheduler.step(noise_pred, timestep, latents, return_dict=False)[0]
+            elif type(self.scheduler) == LCMScheduler:
+                latents = self.scheduler.step(noise_pred, timestep, latents, generator=self.generator)[0]
             else:
                 latents = self.scheduler.step(noise_pred, latents, step_offset + step_index, timestep)
 
@@ -465,10 +474,12 @@ class StableDiffusionPipeline:
 
             from PIL import PngImagePlugin
 
+            # TODO: This only saves info of the last pipeline. Save info of both base and refiner pipelines.
             metadata = PngImagePlugin.PngInfo()
             metadata.add_text("prompt", prompt[i])
             metadata.add_text("batch_size", str(len(images)))
             metadata.add_text("denoising_steps", str(self.denoising_steps))
             metadata.add_text("actual_steps", str(self.actual_steps))
             metadata.add_text("seed", seed)
+            metadata.add_text("scheduler", self.current_scheduler)
             image.save(image_path, "PNG", pnginfo=metadata)

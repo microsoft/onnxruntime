@@ -68,8 +68,8 @@ def parse_arguments(is_xl: bool, description: str):
         "--scheduler",
         type=str,
         default="DDIM",
-        choices=["DDIM", "UniPC"] if is_xl else ["DDIM", "EulerA", "UniPC"],
-        help="Scheduler for diffusion process",
+        choices=["DDIM", "UniPC", "LCM"] if is_xl else ["DDIM", "EulerA", "UniPC"],
+        help="Scheduler for diffusion process" + " of base" if is_xl else "",
     )
 
     parser.add_argument(
@@ -104,6 +104,42 @@ def parse_arguments(is_xl: bool, description: str):
         default=5.0 if is_xl else 7.5,
         help="Higher guidance scale encourages to generate images that are closely linked to the text prompt.",
     )
+
+    if is_xl:
+        parser.add_argument(
+            "--lcm",
+            action="store_true",
+            help="Use fine-tuned latent consistency model to replace the UNet in base.",
+        )
+
+        parser.add_argument(
+            "--refiner-scheduler",
+            type=str,
+            default="DDIM",
+            choices=["DDIM", "UniPC"],
+            help="Scheduler for diffusion process of refiner.",
+        )
+
+        parser.add_argument(
+            "--refiner-guidance",
+            type=float,
+            default=5.0,
+            help="Guidance scale used in refiner.",
+        )
+
+        parser.add_argument(
+            "--refiner-steps",
+            type=int,
+            default=30,
+            help="Number of denoising steps in refiner. Note that actual steps is also impacted by --strength.",
+        )
+
+        parser.add_argument(
+            "--strength",
+            type=float,
+            default=0.3,
+            help="Between 0 and 1. The higher the value less the final image similar to the seed image.",
+        )
 
     # ONNX export
     parser.add_argument(
@@ -190,6 +226,17 @@ def parse_arguments(is_xl: bool, description: str):
     if args.onnx_opset is None:
         args.onnx_opset = 14 if args.engine == "ORT_CUDA" else 17
 
+    if args.lcm:
+        if args.guidance > 1.0:
+            print("[I] Use --guidance=1.0 for base since LCM is used.")
+            args.guidance = 1.0
+        if args.scheduler != "LCM":
+            print("[I] Use --scheduler=LCM for base since LCM is used.")
+            args.scheduler = "LCM"
+        if args.denoising_steps > 16:
+            print("[I] Use --denoising_steps=8 (no more than 16) for base since LCM is used.")
+            args.denoising_steps = 8
+
     print(args)
 
     return args
@@ -223,7 +270,7 @@ def init_pipeline(
     # Initialize demo
     pipeline = pipeline_class(
         pipeline_info,
-        scheduler=args.scheduler,
+        scheduler=args.refiner_scheduler if pipeline_info.is_xl_refiner() else args.scheduler,
         output_dir=output_dir,
         hf_token=args.hf_token,
         verbose=False,
