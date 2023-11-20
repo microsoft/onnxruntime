@@ -27,7 +27,7 @@ def run_training_apis_python_api_tests(cwd, log):
 
     log.debug("Running: ort training api tests")
 
-    command = [sys.executable, "-m", "pytest", "-sv", "orttraining_test_python_bindings.py"]
+    command = [sys.executable, "-m", "pytest", "-sv", "orttraining_test_ort_apis_py_bindings.py"]
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
@@ -37,7 +37,7 @@ def run_onnxblock_tests(cwd, log):
 
     log.debug("Running: onnxblock tests")
 
-    command = [sys.executable, "-m", "pytest", "-sv", "orttraining_test_onnxblock.py"]
+    command = [sys.executable, "-m", "pytest", "-sv", "orttraining_test_ort_apis_onnxblock.py"]
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
