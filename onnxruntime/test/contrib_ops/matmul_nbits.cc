@@ -45,7 +45,7 @@ void MlasJblasQ4Test(int64_t M, int64_t N, int64_t K, int block_size, bool is_as
 
   size_t kblks = K / block_size;
   std::vector<uint8_t> input1_vals(N * K / 2);
-  for (size_t i = 0; i < N * K / 2; i++) {
+  for (size_t i = 0; i < input1_vals.size(); i++) {
     input1_vals[i] = uint8_t(i);
   }
   std::vector<float> input2_vals(N * kblks, 0.002f);
@@ -59,8 +59,8 @@ void MlasJblasQ4Test(int64_t M, int64_t N, int64_t K, int block_size, bool is_as
     for (size_t i = 0; i < N * kblks; i += 2) {
       input3_vals[i / 2] = uint8_t(i + 1);
     }
-    for (size_t i = 0; i < K; i += 2) {
-      for (size_t j = 0; j < N; j++) {
+    for (int64_t i = 0; i < K; i += 2) {
+      for (int64_t j = 0; j < N; j++) {
         auto srcv = input1_vals[j * K / 2 + i / 2];
         auto koff = i % (block_size * 2);
         auto zpv = input3_vals[j * kblks / 2 + i / block_size / 2];
@@ -74,8 +74,8 @@ void MlasJblasQ4Test(int64_t M, int64_t N, int64_t K, int block_size, bool is_as
       }
     }
   } else {
-    for (size_t i = 0; i < K; i += 2) {
-      for (size_t j = 0; j < N; j++) {
+    for (int64_t i = 0; i < K; i += 2) {
+      for (int64_t j = 0; j < N; j++) {
         auto srcv = input1_vals[j * K / 2 + i / 2];
         auto src0 = (srcv & 0xf) - 8;
         auto src1 = ((srcv & 0xf0) >> 4) - 8;
