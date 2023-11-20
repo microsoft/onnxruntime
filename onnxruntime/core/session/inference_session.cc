@@ -2025,9 +2025,10 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
                                                 expected_element_type, "tensor", input_output_moniker));
 
       // check for shape
-      if (iter->second.tensor_shape.has_value()) {
+      const auto& opt_shape = iter->second.tensor_shape;
+      if (opt_shape.has_value() && !opt_shape->GetDims().empty()) {
         ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(name, input_output_tensor.Shape(),
-                                                   *iter->second.tensor_shape, input_output_moniker));
+                                                   *opt_shape, input_output_moniker));
       }
     } else if (input_output_ml_value.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -2038,9 +2039,10 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
         ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(sparse_tensor.DataType(), expected_element_type,
                                                   "sparse_tensor", input_output_moniker));
         // Check shape
-        if (iter->second.tensor_shape.has_value()) {
+        const auto& opt_shape = iter->second.tensor_shape;
+        if (opt_shape.has_value() && !opt_shape->GetDims().empty()) {
           ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(name, sparse_tensor.DenseShape(),
-                                                     *iter->second.tensor_shape, input_output_moniker));
+                                                     *opt_shape, input_output_moniker));
         }
       } else if (is_sparse_initializer(name) &&
                  expected_type->IsTensorType()) {
@@ -2049,9 +2051,10 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
         ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(sparse_tensor.DataType(), expected_element_type,
                                                   "sparse_tensor", input_output_moniker));
         // Check shape
-        if (iter->second.tensor_shape.has_value()) {
+        const auto& opt_shape = iter->second.tensor_shape;
+        if (opt_shape.has_value() && !opt_shape->GetDims().empty()) {
           ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(name, sparse_tensor.DenseShape(),
-                                                     *iter->second.tensor_shape, input_output_moniker));
+                                                     *opt_shape, input_output_moniker));
         }
       } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, input_output_moniker, " with name: '", name,
@@ -2061,7 +2064,6 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, input_output_moniker, " with name ", name,
                              " is a sparse tensor, which is not supported in this build.");
 #endif
-
     } else if (input_output_ml_value.IsTensorSequence()) {
       if (!expected_type->IsTensorSequenceType()
 #if !defined(DISABLE_OPTIONAL_TYPE)
