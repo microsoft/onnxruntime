@@ -14,6 +14,7 @@ import parameterized
 from numpy.testing import assert_allclose
 from onnx import TensorProto
 from onnx.checker import check_model
+from onnx.defs import onnx_opset_version
 from onnx.helper import make_graph, make_model, make_node, make_opsetid, make_tensor_value_info
 from onnx.numpy_helper import from_array
 
@@ -89,7 +90,7 @@ class TestFloat8Gemm8(unittest.TestCase):
         ]
         nodes = [n for n in nodes if n is not None]
         graph = make_graph(nodes, "gemm", inputs, [d], inits)
-        opset_imports = [make_opsetid("", 19)]
+        opset_imports = [make_opsetid("", onnx_opset_version() - 1)]
         if domain == "com.microsoft":
             opset_imports.append(make_opsetid("com.microsoft", 1))
         onnx_model = make_model(graph, opset_imports=opset_imports, ir_version=9)
