@@ -897,7 +897,7 @@ Status QnnBackendManager::ExtractProfilingSubEvents(
 
 Status QnnBackendManager::ExtractProfilingEvent(
     QnnProfile_EventId_t profile_event_id,
-    std::string eventLevel,
+    const std::string& eventLevel,
     std::ofstream& outfile,
     bool useExtendedEventData) {
   if (useExtendedEventData) {
@@ -909,7 +909,7 @@ Status QnnBackendManager::ExtractProfilingEvent(
 
 Status QnnBackendManager::ExtractProfilingEventBasic(
     QnnProfile_EventId_t profile_event_id,
-    std::string eventLevel,
+    const std::string& eventLevel,
     std::ofstream& outfile) {
   QnnProfile_EventData_t event_data;
   auto result = qnn_interface_.profileGetEventData(profile_event_id, &event_data);
@@ -934,7 +934,7 @@ Status QnnBackendManager::ExtractProfilingEventBasic(
 
 Status QnnBackendManager::ExtractProfilingEventExtended(
     QnnProfile_EventId_t profile_event_id,
-    std::string eventLevel,
+    const std::string& eventLevel,
     std::ofstream& outfile) {
   QnnProfile_ExtendedEventData_t event_data_extended;
   auto resultGetExtendedEventData = qnn_interface_.profileGetExtendedEventData(profile_event_id, &event_data_extended);
@@ -958,27 +958,29 @@ Status QnnBackendManager::ExtractProfilingEventExtended(
   return Status::OK();
 }
 
-std::string QnnBackendManager::GetUnitString(QnnProfile_EventUnit_t unitType) {
-  // Interpret the unit of measurement using the macros
-  switch (unitType) {
-    case QNN_PROFILE_EVENTUNIT_MICROSEC:
-      return "US";
-    case QNN_PROFILE_EVENTUNIT_BYTES:
-      return "BYTES";
-    case QNN_PROFILE_EVENTUNIT_CYCLES:
-      return "CYCLES";
-    case QNN_PROFILE_EVENTUNIT_COUNT:
-      return "COUNT";
-    case QNN_PROFILE_EVENTUNIT_OBJECT:
-      return "OBJECT";
-    case QNN_PROFILE_EVENTUNIT_BACKEND:
-      return "BACKEND";
-    default:
-      return "UNKNOWN";
-  }
+const std::string& QnnBackendManager::GetUnitString(QnnProfile_EventUnit_t unitType) {
+    const auto& unitStringMap = GetUnitStringMap();
+    auto it = unitStringMap.find(unitType);
+    if (it != unitStringMap.end()) {
+        return it->second;
+    }
+    static const std::string unknown = "UNKNOWN";
+    return unknown;
 }
 
-std::string QnnBackendManager::GetEventTypeString(QnnProfile_EventType_t eventType) {
+const std::unordered_map<QnnProfile_EventUnit_t, std::string>& QnnBackendManager::GetUnitStringMap() {
+    static const std::unordered_map<QnnProfile_EventUnit_t, std::string> unitStringMap = {
+        {QNN_PROFILE_EVENTUNIT_MICROSEC, "US"},
+        {QNN_PROFILE_EVENTUNIT_BYTES, "BYTES"},
+        {QNN_PROFILE_EVENTUNIT_CYCLES, "CYCLES"},
+        {QNN_PROFILE_EVENTUNIT_COUNT, "COUNT"},
+        {QNN_PROFILE_EVENTUNIT_OBJECT, "OBJECT"},
+        {QNN_PROFILE_EVENTUNIT_BACKEND, "BACKEND"}
+    };
+    return unitStringMap;
+}
+
+const std::string QnnBackendManager::GetEventTypeString(QnnProfile_EventType_t eventType) {
   // Interpret the event type
   switch (eventType) {
     case QNN_PROFILE_EVENTTYPE_INIT:
@@ -1030,7 +1032,7 @@ const char* QnnBackendManager::QnnProfileErrorToString(QnnProfile_Error_t error)
   }
 }
 
-std::string QnnBackendManager::ExtractQnnScalarValue(const Qnn_Scalar_t& scalar) {
+const std::string QnnBackendManager::ExtractQnnScalarValue(const Qnn_Scalar_t& scalar) {
   switch (scalar.dataType) {
     case QNN_DATATYPE_INT_8:
       return std::to_string(static_cast<int>(scalar.int8Value));
