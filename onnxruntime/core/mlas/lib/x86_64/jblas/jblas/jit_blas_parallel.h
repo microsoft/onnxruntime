@@ -438,6 +438,9 @@ class SchedulerKBlock : public Scheduler2D {
       mBlock[2] = getMaxK(mBlock[1]);
       mBlock[2] = utils::padto_le(mBlock[2], mStep[2]);
       mBlock[2] = std::min(mKBlock, mBlock[2]);
+	  auto tmp = utils::updiv(mKBlock, mBlock[2]);
+      while (mKBlock % tmp != 0) tmp++;  // TODO(Yu) optimize
+      mBlock[2] = utils::downdiv(mKBlock, tmp);
     }
   }
   size_t mL2Size = 0, mL1Size = 0, mL2Use = 0;
