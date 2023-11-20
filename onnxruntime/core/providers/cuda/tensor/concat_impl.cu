@@ -24,11 +24,11 @@ template <typename T, typename InputDataArray>
 __global__ void _ConcatKernelSameConcatDim(const fast_divmod block_size_including_axis_dim_div,
                                            const fast_divmod block_size_inside_axis_dim_div,
                                            const fast_divmod concat_dim_size, T* output_data, InputDataArray input_data,
-                                           const int64_t N) {
-  int64_t start = kNumElementsPerThread * kNumThreadsPerBlock * blockIdx.x + threadIdx.x;
+                                           const CUDA_LONG N) {
+  CUDA_LONG start = kNumElementsPerThread * kNumThreadsPerBlock * blockIdx.x + threadIdx.x;
   T value[kNumElementsPerThread];
 
-  int64_t id = start;
+  CUDA_LONG id = start;
 #pragma unroll
   for (int i = 0; i < kNumElementsPerThread; ++i) {
     if (id < N) {
@@ -36,7 +36,7 @@ __global__ void _ConcatKernelSameConcatDim(const fast_divmod block_size_includin
       block_size_including_axis_dim_div.divmod(id, outer_block_index, offset);
       block_size_inside_axis_dim_div.divmod(offset, block_index, offset);
       concat_dim_size.divmod(block_index, input_index, block_offset);
-      int64_t input_pos =
+      CUDA_LONG input_pos =
           (outer_block_index * concat_dim_size.d_ + block_offset) * block_size_inside_axis_dim_div.d_ + offset;
       value[i] = reinterpret_cast<const T*>(input_data[input_index])[input_pos];
       id += kNumThreadsPerBlock;
@@ -57,7 +57,7 @@ template <typename InputDataArray>
 Status ConcatSameConcatDimImpl(cudaStream_t stream, const size_t element_bytes, const int block_size_including_axis_dim,
                                const int block_size_inside_axis_dim, const int64_t concat_size, void* output_data,
                                const InputDataArray input_data, const size_t output_size) {
-  int64_t N = static_cast<int64_t>(output_size);
+  CUDA_LONG N = static_cast<CUDA_LONG>(output_size);
   int blocksPerGrid = CeilDiv(N, kNumElementsPerThread * kNumThreadsPerBlock);
   fast_divmod block_size_including_axis_dim_div = fast_divmod(block_size_including_axis_dim);
   fast_divmod block_size_inside_axis_dim_div = fast_divmod(block_size_inside_axis_dim);
