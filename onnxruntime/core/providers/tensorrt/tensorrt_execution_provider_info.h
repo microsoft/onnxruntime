@@ -51,6 +51,7 @@ struct TensorrtExecutionProviderInfo {
   std::string profile_max_shapes{""};
   std::string profile_opt_shapes{""};
   bool cuda_graph_enable{false};
+  std::string engine_cache_prefix{""};
 
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);

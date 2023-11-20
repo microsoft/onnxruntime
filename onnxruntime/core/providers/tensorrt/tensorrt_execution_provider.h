@@ -46,6 +46,7 @@ static const std::string kProfilesMinShapes = "ORT_TENSORRT_PROFILE_MIN_SHAPES";
 static const std::string kProfilesMaxShapes = "ORT_TENSORRT_PROFILE_MAX_SHAPES";
 static const std::string kProfilesOptShapes = "ORT_TENSORRT_PROFILE_OPT_SHAPES";
 static const std::string kCudaGraphEnable = "ORT_TENSORRT_CUDA_GRAPH_ENABLE";
+static const std::string kEngineCachePrefix = "ORT_TENSORRT_CACHE_PREFIX";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 }  // namespace tensorrt_env_vars
@@ -143,6 +144,7 @@ struct TensorrtFuncState {
   bool filter_tactic_sources = false;
   nvinfer1::TacticSources tactic_sources;
   bool cuda_graph_enable = 0;
+  std::string engine_cache_prefix;
 };
 
 // Holds important information for building valid ORT graph.
@@ -237,6 +239,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool force_timing_cache_match_ = false;
   bool detailed_build_log_ = false;
   bool cuda_graph_enable_ = false;
+  std::string cache_prefix_;
 
   // The OrtAllocator object will be get during ep compute time
   // and should be kept for the lifetime of TRT EP object.

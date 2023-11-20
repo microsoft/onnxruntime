@@ -479,7 +479,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       // So we need these std::string variables defined here as they will be kept alive for the lifetime of TRT EP and we can still access them from OrtTensorRTProviderOptionsV2 instance.
       // (The reason is string copy is involved, for example params.trt_engine_cache_path = cache_path.c_str() and those std::string variable is referenced by OrtTensorRTProviderOptionsV2 instance
       // and TRT EP instance, so it won't be released.)
-      std::string calibration_table, cache_path, timing_cache_path, lib_path, trt_tactic_sources, trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile;
+      std::string calibration_table, cache_path, cache_prefix, timing_cache_path, lib_path, trt_tactic_sources, trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         OrtTensorRTProviderOptionsV2 params;
@@ -575,6 +575,13 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               params.trt_engine_cache_path = cache_path.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_path' should be a path string i.e. 'engine_cache'.\n");
+            }
+          } else if (option.first == "trt_engine_cache_prefix") {
+            if (!option.second.empty()) {
+              cache_prefix = option.second;
+              params.trt_engine_cache_prefix = cache_prefix.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_prefix' should be a string to name engine cache prefix i.e. 'TRT_cache_'.\n");
             }
           } else if (option.first == "trt_engine_decryption_enable") {
             if (option.second == "True" || option.second == "true") {

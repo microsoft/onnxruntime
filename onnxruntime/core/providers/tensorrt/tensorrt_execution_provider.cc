@@ -863,6 +863,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     detailed_build_log_ = info.detailed_build_log;
     if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
       cache_path_ = info.engine_cache_path;
+      cache_prefix_ = info.engine_cache_prefix;
     }
     // use a more global cache if given
     if (timing_cache_enable_) {
@@ -971,6 +972,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
         const std::string engine_cache_path = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCachePath);
         cache_path_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kCachePath);
+        cache_prefix_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCachePrefix);
         if (!engine_cache_path.empty() && cache_path_.empty()) {
           cache_path_ = engine_cache_path;
           LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_ENGINE_CACHE_PATH is deprecated! Please use ORT_TENSORRT_CACHE_PATH to specify engine cache path";
@@ -1180,7 +1182,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_profile_min_shapes: " << profile_min_shapes
                         << ", trt_profile_max_shapes: " << profile_max_shapes
                         << ", trt_profile_opt_shapes: " << profile_opt_shapes
-                        << ", trt_cuda_graph_enable: " << cuda_graph_enable_;
+                        << ", trt_cuda_graph_enable: " << cuda_graph_enable_
+                        << ", trt_cache_prefix: " << cache_prefix_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -1517,7 +1520,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         bool has_control_flow_op = false;
 
         // Add node and node args
-        // If node output is also parent graph output, the  output will be added to the
+        // If node output is also parent graph output, the output will be added to the
         // subgraph's output list
         std::vector<std::string> subgraph_output_names;
         for (const auto& index : group.first) {
@@ -2492,7 +2495,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             runtime_.get(), profiles_[context->node_name], context_memory_sharing_enable_, &max_ctx_mem_size_,
             dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
             global_cache_path_, force_timing_cache_match_, detailed_build_log_, build_heuristics_enable_, sparsity_enable_,
-            builder_optimization_level_, auxiliary_streams_, !tactic_sources_.empty(), tactics};
+            builder_optimization_level_, auxiliary_streams_, !tactic_sources_.empty(), tactics, cache_prefix_};
       *state = p.release();
       return 0;
     };

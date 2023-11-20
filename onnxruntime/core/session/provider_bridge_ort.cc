@@ -1409,6 +1409,7 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_profile_max_shapes = "";
   trt_options_converted.trt_profile_opt_shapes = "";
   trt_options_converted.trt_cuda_graph_enable = 0;
+  trt_options_converted.trt_engine_cache_prefix = "";
 
   return trt_options_converted;
 }
@@ -1931,6 +1932,7 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
   if (ptr != nullptr) {
     delete[] ptr->trt_int8_calibration_table_name;
     delete[] ptr->trt_engine_cache_path;
+    delete[] ptr->trt_engine_cache_prefix;
     delete[] ptr->trt_timing_cache_path;
     delete[] ptr->trt_engine_decryption_lib_path;
     delete[] ptr->trt_tactic_sources;
