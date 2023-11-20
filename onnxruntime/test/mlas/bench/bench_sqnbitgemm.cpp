@@ -114,7 +114,7 @@ void Q4GEMM_Jblas(benchmark::State& state, int block_size, bool is_asym, MLAS_CO
   auto B_zp = RandomVectorUniform<uint8_t>(static_cast<size_t>(N * blk_num / 2), 0, 255);
 
   std::vector<int8_t> B1_packed(pack_b_size);
-  MlasNBitsGemmPackB(B1_packed.data(), B1.data(), B_scale.data(), is_asym ? B_zp.data() : nullptr, N, K, N, block_size, 4, is_asym, true, cmp_type, tp.get());
+  MlasNBitsGemmPackB(B1_packed.data(), B1.data(), B_scale.data(), is_asym ? B_zp.data() : nullptr, N, K, K, block_size, 4, is_asym, true, cmp_type, tp.get());
 
   MLAS_NBITS_GEMM_DATA_SIMPLE_PARAMS params1;
   params1.A = A1.data();
