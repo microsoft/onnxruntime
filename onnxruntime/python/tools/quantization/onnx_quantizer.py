@@ -924,7 +924,7 @@ class ONNXQuantizer:
                         quant_type = quant_overrides["quant_type"].tensor_type
 
                     symmetric = quant_overrides.get("symmetric", self.is_weight_symmetric)
-                    reduce_range = quant_overrides.get("reduce_range", reduce_range)
+                    reduce_range = quant_overrides.get("reduce_range", reduce_range and self.reduce_range)
 
                     q_weight_name, zp_name, scale_name = self.quantize_initializer(
                         initializer, quant_type, reduce_range=reduce_range, symmetric=symmetric
@@ -1008,7 +1008,7 @@ class ONNXQuantizer:
             w_data,
             qType,
             symmetric,
-            self.reduce_range and reduce_range,
+            reduce_range,
             self.min_real_range,
         )
 
