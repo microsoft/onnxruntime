@@ -20,6 +20,7 @@ Do not modify directly.*
 | Asinh | ai.onnx(9+) |  |
 | Atan | ai.onnx(7+) |  |
 | Atanh | ai.onnx(9+) |  |
+| Attention | com.microsoft(1+) | need implementing mask and past/present |
 | AveragePool | ai.onnx(7-9,10,11+); com.ms.internal.nhwc(7-9,10,11+) | need perf optimization; need implementing activation |
 | BiasAdd | com.microsoft(1+) |  |
 | BiasSplitGelu | com.microsoft(1+) |  |
@@ -61,6 +62,7 @@ Do not modify directly.*
 | MemcpyFromHost | ai.onnx(1+) |  |
 | MemcpyToHost | ai.onnx(1+) |  |
 | Mul | ai.onnx(7-12,13,14+) |  |
+| MultiHeadAttention | com.microsoft(1+) | need implementing mask and past/present |
 | Neg | ai.onnx(6-12,13+) |  |
 | Not | ai.onnx(1+) |  |
 | Pad | ai.onnx(2-10,11-12,13-17,18,19+) |  |
