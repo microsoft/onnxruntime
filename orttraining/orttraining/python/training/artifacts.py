@@ -53,7 +53,7 @@ def generate_artifacts(
         3. Checkpoint (directory): Contains the model parameters.
         4. Optimizer model (onnx.ModelProto): Model containing the optimizer graph.
 
-    All generated ModelProto are using the same opsets defined by *model*.
+    All generated ModelProtos will use the same opsets defined by *model*.
 
     Args:
         model: The base model to be used for gradient graph generation.
@@ -211,7 +211,7 @@ def generate_artifacts(
 
     opset_version = None
     for domain in model.opset_import:
-        if domain.domain == "":
+        if domain.domain == "" or domain.domain == "ai.onnx":
             opset_version = domain.version
             break
 
