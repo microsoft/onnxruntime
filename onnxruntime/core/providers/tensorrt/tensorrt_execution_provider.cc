@@ -3180,8 +3180,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromGraph(const GraphViewer& 
     if (!tactic_sources_.empty()) {
       tactics = GetTacticSourceFromString(tactic_sources_);
     }
-    *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name,
-          &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name], builder_.get(),
+    *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name, builder_.get(),
+          &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name],
           &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
           input_shape_ranges_[context->node_name], sync_stream_after_enqueue_, dds_output_allocator_map_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
           dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
