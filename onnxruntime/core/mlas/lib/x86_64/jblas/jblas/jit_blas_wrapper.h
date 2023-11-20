@@ -230,10 +230,11 @@ class LauncherKBlock {
                        int blk_msize, int blk_nsize, AType* tmpA, BType* tmpB, CType* tmpBlk, AccType* tmpC,
                        void* tmpcache) {
     int n_padded = utils::padto(blk_nsize, GemmCore::NTILE);
+    assert(_param.K % _param.KBlock == 0);
     for (int iterk = 0; iterk < _param.K; iterk += _param.KBlock) {
       memset(tmpBlk, 0, sizeof(CType) * blk_msize * _config.block[1]);
       for (int iblkk = 0; iblkk < _param.KBlock; iblkk += _config.block[2]) {
-        int k_remain = utils::remainsize(iterk + iblkk, _param.K, _config.block[2]);
+        int k_remain = utils::remainsize(iterk + iblkk, iterk + _param.KBlock, _config.block[2]);
         int k_padded = utils::padto(k_remain, GemmCore::KTILE);
         int k_paddedle = utils::padto_le(k_remain, GemmCore::KTILE);
         auto bptr_cache = tmpB;
