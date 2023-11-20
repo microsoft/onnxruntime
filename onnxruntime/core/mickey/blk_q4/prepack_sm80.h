@@ -114,10 +114,12 @@ struct BlockwiseQuantization {
     ORT_ENFORCE(weights_prepacked.size() == weights.size(),
                 "Prepacked Weight tensor buffer should be the same size!");
 
-    const MatrixRef<uint8_t const, ColumnMajorLayout, ExtraBoundsCheck> tensor_weight(weights, make_Position(rows / 2, columns));
-    const MatrixRef<uint8_t, LayoutWPack, ExtraBoundsCheck> tensor_weight_prepacked(weights_prepacked, make_Position(rows, columns / 2));
+    const MatrixRef<uint8_t const, ColumnMajorLayout, ExtraBoundsCheck>
+        tensor_weight(weights, make_Position(rows / 2, columns));
+    const MatrixRef<uint8_t, LayoutWPack, ExtraBoundsCheck>
+        tensor_weight_prepacked(weights_prepacked, make_Position(rows, columns / 2));
 
-    // TODO!! parallized this.
+    // TODO(fuchen)!! parallized this.
     auto t0_base = make_Position(0, 0);
     auto t1_base = make_Position(4, 0);
     auto t2_base = make_Position(0, 8);
@@ -155,8 +157,6 @@ struct BlockwiseQuantization {
    * @brief We rearrange the values of the quantization scale and offset tensors
    * to facilitate faster loading to tensor core, only 16b gemm, and (1,n)
    * block quantization.
-   *
-   * TODO!! also only in sm80 the mma tile is 16x8x16.
    */
   static constexpr bool ShouldRearrangeMeta = sizeof(ElementT) == 2 && QuantBlocking::kRow == 1;
 
@@ -245,7 +245,8 @@ struct BlockwiseQuantization {
     ORT_ENFORCE(offsets.size() == size_t(((meta_shape[0] + 1) / 2) * meta_shape[1]),
                 "Quantization offset tensor shape mismatch!");
 
-    MatrixRef<uint8_t const, ColumnMajorLayout, ExtraBoundsCheck> tensor_offset(offsets, make_Position((meta_shape[0] + 1) / 2, meta_shape[1]));
+    MatrixRef<uint8_t const, ColumnMajorLayout, ExtraBoundsCheck>
+        tensor_offset(offsets, make_Position((meta_shape[0] + 1) / 2, meta_shape[1]));
     MatrixRef<uint8_t, LayoutQmeta, ExtraBoundsCheck> tensor_offset_prepacked(offsets_prepacked, meta_shape);
 
     // Only prepacking scale and offset tensors for a often used special case:

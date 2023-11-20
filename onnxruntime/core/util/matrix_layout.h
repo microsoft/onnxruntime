@@ -402,7 +402,7 @@ class MatrixRef {
   }
 
   __forceinline__
-  gsl::span<Element> const& data() const { return data_;}
+  gsl::span<Element> const& data() const { return data_; }
 
   __forceinline__
   MatCoord const& shape() const { return shape_; }
