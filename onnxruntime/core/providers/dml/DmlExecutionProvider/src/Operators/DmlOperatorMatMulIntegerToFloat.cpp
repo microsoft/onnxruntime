@@ -103,6 +103,12 @@ public:
         matMulDesc.BiasTensor = inputDescs[DmlInputIndex::dmlBias].Desc != nullptr ? &inputDescs[DmlInputIndex::dmlBias] : nullptr;
         matMulDesc.OutputTensor = &outputDescs[0];
 
+        TryConvertTensorToBroadcastScalar(kernelInfo, matMulDesc.AScaleTensor,           DmlInputIndex::dmlAScale);
+        TryConvertTensorToBroadcastScalar(kernelInfo, matMulDesc.AZeroPointTensor,           DmlInputIndex::dmlAZeroPoint);
+
+        TryConvertTensorToBroadcastScalar(kernelInfo, matMulDesc.BScaleTensor,           DmlInputIndex::dmlBScale);
+        TryConvertTensorToBroadcastScalar(kernelInfo, matMulDesc.BZeroPointTensor,           DmlInputIndex::dmlBZeroPoint);
+
         DML_OPERATOR_DESC opDesc = { (DML_OPERATOR_TYPE) DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT, &matMulDesc };
         SetDmlOperatorDesc(opDesc, kernelInfo);
     }
