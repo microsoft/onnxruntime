@@ -13,11 +13,10 @@ namespace onnxruntime {
 namespace test {
 
 void prepack_weights_ref(
-  int rows,
-  int columns,
-  const MatrixRef<uint8_t const, ColumnMajorLayout, true>& tensor_weight,
-  const MatrixRef<uint8_t, ColumnMajorLayout, true>& tensor_weight_prepacked) {
-
+    int rows,
+    int columns,
+    const MatrixRef<uint8_t const, ColumnMajorLayout, true>& tensor_weight,
+    const MatrixRef<uint8_t, ColumnMajorLayout, true>& tensor_weight_prepacked) {
   EXPECT_TRUE(tensor_weight.shape()[0] == rows / 2 && tensor_weight.shape()[1] == columns);
   EXPECT_TRUE(tensor_weight_prepacked.shape()[0] == rows && tensor_weight_prepacked.shape()[1] == columns / 2);
 
@@ -33,7 +32,7 @@ void prepack_weights_ref(
       for (int col = 0; col < 8; ++col) {
         for (int row = 0; row < 4; ++row) {
           auto cord = make_Position(row, col);
-          auto packed_cord = packed_tile_base + make_Position(row * 4, col); // packed tile is 16x8
+          auto packed_cord = packed_tile_base + make_Position(row * 4, col);  // packed tile is 16x8
           uint8_t buf[4];
           buf[0] = tensor_weight.at(dtile_base + t0_base + cord);
           buf[1] = tensor_weight.at(dtile_base + t1_base + cord);
@@ -54,7 +53,6 @@ void prepack_weights_ref(
   }
 }
 
-
 template <
     typename ScaleElementT,
     typename Layout,
@@ -71,52 +69,51 @@ void prepack_quant_scales_ref(
   //    16b gemm (2 elements per 32b register, operand tile shape 8x8)
   //    2 B operand tiles per mma instruction stacked on k dimension
   //    (1,n) quantization blocking
-  if constexpr(sizeof(ScaleElementT) == 2 &&  QuantBlocking::kRow == 1){
-      // In Ampere tensor op, each operand B tile is 8 x 8, in a warp of 32 threads, each thread
-      // holds a fragement of the tile containing 2 elements in the k dimension. Most often we use
-      // mma instruction shape of 16x8x16, which means 2 B tiles are stacked in the k dimension,
-      // as shown below (T stands for thread):
-      // T0, T4, T8, T12
-      // T1, T5, T9, T13
-      // T2, T6, T10, T14
-      // T3, T7, T11, T15
-      // T0, T4, T8, T12
-      // T1, T5, T9, T13
-      // T2, T6, T10, T14
-      // T3, T7, T11, T15
-      //
-      // We need to deliver quantization scale and offset elements to the corresponding threads,
-      // so we can perform dequantization efficiently. With a column major layout, each thread
-      // needs two seperate loads for a mma instruction, due to the tile fragement layout shown
-      // above. To reduce the number of loads, we rearrange each column as below, so we can use
-      // a single load to load fragements for two tiles:
-      // T0        T0
-      // T1        T0
-      // T2        T1
-      // T3   =>   T1
-      // T0        T2
-      // T1        T2
-      // T2        T3
-      // T3        T3
+  if constexpr (sizeof(ScaleElementT) == 2 && QuantBlocking::kRow == 1) {
+    // In Ampere tensor op, each operand B tile is 8 x 8, in a warp of 32 threads, each thread
+    // holds a fragement of the tile containing 2 elements in the k dimension. Most often we use
+    // mma instruction shape of 16x8x16, which means 2 B tiles are stacked in the k dimension,
+    // as shown below (T stands for thread):
+    // T0, T4, T8, T12
+    // T1, T5, T9, T13
+    // T2, T6, T10, T14
+    // T3, T7, T11, T15
+    // T0, T4, T8, T12
+    // T1, T5, T9, T13
+    // T2, T6, T10, T14
+    // T3, T7, T11, T15
+    //
+    // We need to deliver quantization scale and offset elements to the corresponding threads,
+    // so we can perform dequantization efficiently. With a column major layout, each thread
+    // needs two seperate loads for a mma instruction, due to the tile fragement layout shown
+    // above. To reduce the number of loads, we rearrange each column as below, so we can use
+    // a single load to load fragements for two tiles:
+    // T0        T0
+    // T1        T0
+    // T2        T1
+    // T3   =>   T1
+    // T0        T2
+    // T1        T2
+    // T2        T3
+    // T3        T3
 
-      for (int col = 0; col < tensor_scale.shape()[1]; ++col){
-        for (int row_blk = 0; row_blk < tensor_scale.shape()[0]; row_blk += 16){
-          for (int thread_id = 0; thread_id < 4; thread_id++){
-            const int dst_idx = row_blk + thread_id * 4;
-            const int src_idx = row_blk + thread_id * 2;
-            tensor_scale_prepacked.at(dst_idx + 0, col) = tensor_scale.at(src_idx + 0, col);
-            tensor_scale_prepacked.at(dst_idx + 1, col) = tensor_scale.at(src_idx + 1, col);
-            tensor_scale_prepacked.at(dst_idx + 2, col) = tensor_scale.at(src_idx + 8, col);
-            tensor_scale_prepacked.at(dst_idx + 3, col) = tensor_scale.at(src_idx + 9, col);
-          }
+    for (int col = 0; col < tensor_scale.shape()[1]; ++col) {
+      for (int row_blk = 0; row_blk < tensor_scale.shape()[0]; row_blk += 16) {
+        for (int thread_id = 0; thread_id < 4; thread_id++) {
+          const int dst_idx = row_blk + thread_id * 4;
+          const int src_idx = row_blk + thread_id * 2;
+          tensor_scale_prepacked.at(dst_idx + 0, col) = tensor_scale.at(src_idx + 0, col);
+          tensor_scale_prepacked.at(dst_idx + 1, col) = tensor_scale.at(src_idx + 1, col);
+          tensor_scale_prepacked.at(dst_idx + 2, col) = tensor_scale.at(src_idx + 8, col);
+          tensor_scale_prepacked.at(dst_idx + 3, col) = tensor_scale.at(src_idx + 9, col);
         }
       }
+    }
   } else {
     // In all other cases, we don't prepack scale or offset
     FAIL() << "Scale prepack only supported for 16b gemm with (1,n) quantization blocking";
   }
 }
-
 
 template <typename Layout, typename QuantBlocking>
 void prepack_quant_offsets_ref(
@@ -131,7 +128,7 @@ void prepack_quant_offsets_ref(
   //    16b gemm (2 elements per 32b register, operand tile shape 8x8)
   //    2 B operand tiles per mma instruction stacked on k dimension
   //    (1,n) quantization blocking
-  if constexpr(QuantBlocking::kRow != 1){
+  if constexpr (QuantBlocking::kRow != 1) {
     FAIL() << "Offsets prepack only supported for 16b gemm with (1,n) quantization blocking";
   }
   // In Ampere tensor op, each operand B tile is 8 x 8, in a warp of 32 threads, each thread
@@ -160,10 +157,10 @@ void prepack_quant_offsets_ref(
   // T1        T2
   // T2        T3
   // T3        T3
-  if (tensor_offset_prepacked.good()){
-    for (int col = 0; col < tensor_offset.shape()[1]; ++col){
-      for (int row_blk = 0; row_blk < tensor_offset.shape()[0]; row_blk += 16){
-        for (int thread_id = 0; thread_id < 4; thread_id++){
+  if (tensor_offset_prepacked.good()) {
+    for (int col = 0; col < tensor_offset.shape()[1]; ++col) {
+      for (int row_blk = 0; row_blk < tensor_offset.shape()[0]; row_blk += 16) {
+        for (int thread_id = 0; thread_id < 4; thread_id++) {
           const int dst_idx = row_blk + thread_id * 4;
           const int src_idx = row_blk + thread_id * 2;
           // [a, b, c, d] => [a, c, b, d] so that adjacent weights are in their own
@@ -179,9 +176,8 @@ void prepack_quant_offsets_ref(
   }
 }
 
-
-template<bool ColumnMajorQuantBlocking>
-void testPrepack(int rows, int columns, bool has_offset = true){
+template <bool ColumnMajorQuantBlocking>
+void testPrepack(int rows, int columns, bool has_offset = true) {
   using ElementT = MLFloat16;
   constexpr int block_size = 32;
   using Base = onnxruntime::cuda::BlockwiseQuantization<
@@ -196,7 +192,7 @@ void testPrepack(int rows, int columns, bool has_offset = true){
   using ElementQOffset = typename Base::ElementQOffset;
   using LayoutQmeta = typename Base::LayoutQmeta;
 
-  unsigned int seed = 28571; // Replace with desired seed value
+  unsigned int seed = 28571;  // Replace with desired seed value
   std::seed_seq seq{seed};
   std::mt19937 gen(seq);
   std::uniform_int_distribution<> dis(0, 8192);
@@ -315,9 +311,9 @@ void testPrepack(int rows, int columns, bool has_offset = true){
   MatrixRef<ElementT, RowMajorLayout> tensor_dequant(dequants, make_Position(rows, columns));
 
   // Dequantize weights and save into matrix B for reference
-  for (int col = 0; col < tensor_dequant.shape()[1]; ++col){
+  for (int col = 0; col < tensor_dequant.shape()[1]; ++col) {
     for (int row = 0; row < tensor_dequant.shape()[0]; ++row) {
-      auto weight_cord = make_Position(row/2, col);
+      auto weight_cord = make_Position(row / 2, col);
       auto scale_cord = make_Position(row / QuantBlocking::kRow, col / QuantBlocking::kColumn);
       const uint8_t offset = has_offset ? tensor_offset.at(scale_cord) : 8;
       int w = 0;
@@ -336,7 +332,7 @@ void testPrepack(int rows, int columns, bool has_offset = true){
 
   int q_rows, q_cols;
   MlasBlockwiseQuantizedShape<ElementT>(
-    block_size, ColumnMajorQuantBlocking, rows, columns, q_rows, q_cols);
+      block_size, ColumnMajorQuantBlocking, rows, columns, q_rows, q_cols);
   // to be exact, q_rows are padded to multiple of block_size, deal with it when we care about strange shapes
   EXPECT_EQ(q_rows, q_weight_shape[0]);
   EXPECT_EQ(q_cols, q_weight_shape[1]);
@@ -352,7 +348,7 @@ void testPrepack(int rows, int columns, bool has_offset = true){
 
   std::vector<uint8_t> o_zp(((meta_shape[0] + 1) / 2) * meta_shape[1], true);
   MatrixRef<uint8_t, ColumnMajorLayout, true> tensor_o_zp(
-    o_zp, make_Position((meta_shape[0] + 1) / 2, meta_shape[1]));
+      o_zp, make_Position((meta_shape[0] + 1) / 2, meta_shape[1]));
 
   MlasQuantizeBlockwise<MLFloat16, 4>(o_elements.data(), o_scales.data(), has_offset ? o_zp.data() : nullptr,
                                       tensor_dequant.data().data(), block_size,
@@ -360,42 +356,42 @@ void testPrepack(int rows, int columns, bool has_offset = true){
   for (int col = 0; col < tensor_q_weight.shape()[1]; ++col) {
     for (int row = 0; row < tensor_q_weight.shape()[0]; ++row) {
       EXPECT_EQ(tensor_o_elements.at(row, col), tensor_q_weight.at(row, col))
-        << "quantized value mismatch at [" << row << "," << col << "]"
-        << " shape[" << rows << "," << columns << "]"
-        << (ColumnMajorQuantBlocking ? "Column-wise-block" : "Row-wise-block")
-        << std::endl;
-    }
-  }
-
-  for (int col = 0; col < meta_shape[1]; ++col){
-    for (int row = 0; row < meta_shape[0]; row += 2){
-      if (has_offset){
-        uint8_t pair01 = tensor_o_zp.at(row / 2, col);
-        EXPECT_EQ(tensor_offset.at(row + 0, col), pair01 & 0xf)
-          << "quantized offset mismatch at [" << row << "," << col << "]"
+          << "quantized value mismatch at [" << row << "," << col << "]"
           << " shape[" << rows << "," << columns << "]"
           << (ColumnMajorQuantBlocking ? "Column-wise-block" : "Row-wise-block")
           << std::endl;
-        if (row + 1 < meta_shape[0]){
-          EXPECT_EQ(tensor_offset.at(row + 1, col), pair01 >> 4)
-            << "quantized offset mismatch at [" << row + 1 << "," << col << "]"
+    }
+  }
+
+  for (int col = 0; col < meta_shape[1]; ++col) {
+    for (int row = 0; row < meta_shape[0]; row += 2) {
+      if (has_offset) {
+        uint8_t pair01 = tensor_o_zp.at(row / 2, col);
+        EXPECT_EQ(tensor_offset.at(row + 0, col), pair01 & 0xf)
+            << "quantized offset mismatch at [" << row << "," << col << "]"
             << " shape[" << rows << "," << columns << "]"
             << (ColumnMajorQuantBlocking ? "Column-wise-block" : "Row-wise-block")
             << std::endl;
+        if (row + 1 < meta_shape[0]) {
+          EXPECT_EQ(tensor_offset.at(row + 1, col), pair01 >> 4)
+              << "quantized offset mismatch at [" << row + 1 << "," << col << "]"
+              << " shape[" << rows << "," << columns << "]"
+              << (ColumnMajorQuantBlocking ? "Column-wise-block" : "Row-wise-block")
+              << std::endl;
         }
       }
 
       EXPECT_EQ(tensor_scale.at(row + 0, col), tensor_o_scales.at(row + 0, col))
-        << "quantized scale mismatch at [" << row << "," << col << "]"
-        << " shape[" << rows << "," << columns << "]"
-        << (ColumnMajorQuantBlocking ? "Column-wise-block" : "Row-wise-block")
-        << std::endl;
-      if (row + 1 < meta_shape[0]){
-        EXPECT_EQ(tensor_scale.at(row + 1, col), tensor_o_scales.at(row + 1, col))
-          << "quantized scale mismatch at [" << row + 1 << "," << col << "]"
+          << "quantized scale mismatch at [" << row << "," << col << "]"
           << " shape[" << rows << "," << columns << "]"
           << (ColumnMajorQuantBlocking ? "Column-wise-block" : "Row-wise-block")
           << std::endl;
+      if (row + 1 < meta_shape[0]) {
+        EXPECT_EQ(tensor_scale.at(row + 1, col), tensor_o_scales.at(row + 1, col))
+            << "quantized scale mismatch at [" << row + 1 << "," << col << "]"
+            << " shape[" << rows << "," << columns << "]"
+            << (ColumnMajorQuantBlocking ? "Column-wise-block" : "Row-wise-block")
+            << std::endl;
       }
     }
   }
@@ -421,22 +417,20 @@ void testPrepack(int rows, int columns, bool has_offset = true){
   for (int col = 0; col < tensor_packed_w.shape()[1]; ++col) {
     for (int row = 0; row < tensor_packed_w.shape()[0]; ++row) {
       EXPECT_EQ(tensor_packed_w_ref.at(row, col), tensor_packed_w.at(row, col))
-        << "prepacked weights mismatch at [" << row << "," << col << "]"
-        << " shape[" << rows << "," << columns << "]"
-        << (ColumnMajorQuantBlocking ? "Column-wise-block" : "Row-wise-block")
-        << std::endl;
-
+          << "prepacked weights mismatch at [" << row << "," << col << "]"
+          << " shape[" << rows << "," << columns << "]"
+          << (ColumnMajorQuantBlocking ? "Column-wise-block" : "Row-wise-block")
+          << std::endl;
     }
   }
 
   std::vector<ElementT> packed_scales_ref(meta_shape.product());
   MatrixRef<ElementT, LayoutQmeta, true> tensor_packed_s_ref =
-    Base::ShouldRearrangeMeta ?
-      make_MatrixRef<ElementT, LayoutQmeta, true>(packed_scales_ref, meta_shape)
-      : tensor_scale;
-  if (Base::ShouldRearrangeMeta){
+      Base::ShouldRearrangeMeta ? make_MatrixRef<ElementT, LayoutQmeta, true>(packed_scales_ref, meta_shape)
+                                : tensor_scale;
+  if (Base::ShouldRearrangeMeta) {
     prepack_quant_scales_ref<ElementT, LayoutQmeta, QuantBlocking>(
-      rows, columns, tensor_scale.const_ref(), tensor_packed_s_ref);
+        rows, columns, tensor_scale.const_ref(), tensor_packed_s_ref);
   }
 
   std::vector<ElementT> packed_scales(meta_shape.product());
@@ -447,22 +441,21 @@ void testPrepack(int rows, int columns, bool has_offset = true){
   for (int col = 0; col < tensor_packed_s.shape()[1]; ++col) {
     for (int row = 0; row < tensor_packed_s.shape()[0]; ++row) {
       EXPECT_EQ(tensor_packed_s_ref.at(row, col), tensor_packed_s.at(row, col))
-        << "prepacked scales mismatch at [" << row << "," << col << "]"
-        << " shape[" << rows << "," << columns << "]"
-        << (ColumnMajorQuantBlocking ? "Column-wise-block" : "Row-wise-block")
-        << std::endl;
+          << "prepacked scales mismatch at [" << row << "," << col << "]"
+          << " shape[" << rows << "," << columns << "]"
+          << (ColumnMajorQuantBlocking ? "Column-wise-block" : "Row-wise-block")
+          << std::endl;
     }
   }
 
   if (has_offset) {
     std::vector<ElementQOffset> packed_zp_ref(meta_shape.product());
     MatrixRef<ElementQOffset, LayoutQmeta, true> tensor_packed_zp_ref =
-      Base::ShouldRearrangeMeta ?
-        make_MatrixRef<ElementQOffset, LayoutQmeta, true>(packed_zp_ref, meta_shape)
-        : tensor_offset;
-    if (Base::ShouldRearrangeMeta){
+        Base::ShouldRearrangeMeta ? make_MatrixRef<ElementQOffset, LayoutQmeta, true>(packed_zp_ref, meta_shape)
+                                  : tensor_offset;
+    if (Base::ShouldRearrangeMeta) {
       prepack_quant_offsets_ref<LayoutQmeta, QuantBlocking>(
-        rows, columns, tensor_offset.const_ref(), tensor_packed_zp_ref);
+          rows, columns, tensor_offset.const_ref(), tensor_packed_zp_ref);
     }
 
     std::vector<ElementQOffset> packed_zp(meta_shape.product());
@@ -473,16 +466,14 @@ void testPrepack(int rows, int columns, bool has_offset = true){
     for (int col = 0; col < tensor_packed_zp.shape()[1]; ++col) {
       for (int row = 0; row < tensor_packed_zp.shape()[0]; ++row) {
         EXPECT_EQ(tensor_packed_zp_ref.at(row, col), tensor_packed_zp.at(row, col))
-          << "prepacked offsets mismatch at [" << row << "," << col << "]"
-          << " shape[" << rows << "," << columns << "]"
-          << (ColumnMajorQuantBlocking ? "Column-wise-block" : "Row-wise-block")
-          << std::endl;
+            << "prepacked offsets mismatch at [" << row << "," << col << "]"
+            << " shape[" << rows << "," << columns << "]"
+            << (ColumnMajorQuantBlocking ? "Column-wise-block" : "Row-wise-block")
+            << std::endl;
       }
     }
   }
 }
-
-
 
 // TODO: code runs on CPU, but this is for sm80 only, maybe enable only when test on sm80
 TEST(BlkQ4_GEMM, PrepackSm80Test) {
