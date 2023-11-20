@@ -1267,11 +1267,10 @@ TEST(CApiTest, test_custom_op_get_const_input) {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #if defined(__ANDROID__)
 // Disable on android because custom op libraries are not copied to the emulator.
-TEST(CApiTest, DISABLED_test_custom_op_library_registration_error) {
+TEST(CApiTest, DISABLED_test_custom_op_local_function) {
 #else
-TEST(CApiTest, test_custom_op_library_registration_error) {
-#endif  // defined(__ANDROID__)
 TEST(CApiTest, test_custom_op_local_function) {
+#endif  // defined(__ANDROID__)
   const auto* model_path = TSTR("testdata/custom_op_local_function/custom_ops_type_inference_fails_0.onnx");
 
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
