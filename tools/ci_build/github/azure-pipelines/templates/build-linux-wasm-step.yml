@@ -67,9 +67,9 @@ steps:
         EM_DIR: '$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten'
 
   - ${{if eq(parameters.WithCache, false)}}:
-    - task: PythonScript@0
-      displayName: '${{parameters.DisplayName}}'
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)/tools/ci_build/build.py'
-        arguments: ${{parameters.Arguments}}
-        workingDirectory: '$(Build.BinariesDirectory)'
+    - script: |
+        set -e -x
+        source $(Build.SourcesDirectory)/cmake/external/emsdk/emsdk_env.sh
+        cd '$(Build.BinariesDirectory)'
+        python3 '$(Build.SourcesDirectory)/tools/ci_build/build.py' ${{parameters.Arguments}}
+      displayName: ${{parameters.DisplayName}}
