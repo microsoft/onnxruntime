@@ -164,7 +164,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
     auto status = ctx->GetTempSpaceAllocator(&allocator);
     ORT_RETURN_IF_ERROR(status);
     // workspace for activation process(dynamic quantization and others)
-    auto ws_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K) * std::max(M, 32UL));
+    auto ws_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K) * std::max(M, size_t(16)));
     for (size_t i = 0; i < max_len; i++) {
       gemm_params[i].A = a_data + helper.LeftOffsets()[i];
       gemm_params[i].lda = lda;

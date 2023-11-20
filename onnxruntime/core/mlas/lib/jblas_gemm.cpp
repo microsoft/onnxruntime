@@ -10,7 +10,7 @@ Module Name:
 
 Abstract:
 
-    Currently only support Q4 gemm. 
+    Currently only support Q4 gemm.
 --*/
 
 #include "jblas_gemm.h"
@@ -247,6 +247,7 @@ JblasQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, MLAS_COMPU
         default:
             return 0;
     }
+    return 0;
 }
 
 template <typename T>
@@ -334,6 +335,7 @@ JblasQ4GemmPackB(
         default:
             return false;
     }
+    return false;
 }
 
 bool
