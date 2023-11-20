@@ -100,6 +100,8 @@ set(contrib_ops_excluded_files
   "bert/group_query_attention.cc"
   "bert/group_query_attention_impl.h"
   "bert/group_query_attention_impl.cu"
+  "collective/sharding*"
+  "collective/distributed_*"
 )
 
 if (NOT onnxruntime_ENABLE_ATEN)
