@@ -117,13 +117,70 @@ $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output l
 $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp32-cpu --precision fp32 --execution_provider cpu
 ```
 
-Export for FP16 CUDA
+Export for FP16 CUDA (with MultiHeadAttention)
 ```
 # From source:
 $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16 --execution_provider cuda
 
 # From wheel:
 $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16 --execution_provider cuda
+```
+
+Export for FP16 CUDA (with GroupQueryAttention)
+```
+# From source:
+$ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --use_gqa
+
+# From wheel:
+$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --use_gqa
+```
+
+Note: GroupQueryAttention currently works with the FP16 CUDA and INT4 CUDA models, and it can provide faster inference than MultiHeadAttention, especially for large sequence lengths (e.g. 1024 or larger). For the best performance, you should pre-allocate the KV cache buffers to have size `(batch_size, num_heads, max_sequence_length, head_size)` so that the past KV and present KV caches share the same memory. You also need to bind them with ONNX Runtime's [IO binding](https://onnxruntime.ai/docs/api/python/api_summary.html#iobinding).
+
+Here is an example of how you can bind directly to `torch.tensor` objects:
+```
+# Assumes all inputs and outputs to the model are pre-allocated with the correct shapes in GPU memory
+
+# Bind inputs
+for k, v in inputs.items():
+    io_binding.bind_input(
+        name=k,
+        device_type="cuda",
+        device_id=0,
+        element_type=np.float16,
+        shape=tuple(v.shape),
+        buffer_ptr=v.data_ptr()
+    )
+
+# Bind outputs
+for output in model.get_outputs():
+    name = output.name
+    if "present" in name:
+        # Bind KV cache outputs to KV cache inputs
+        v = inputs[name.replace("present", "past_key_values")]
+        io_binding.bind_output(
+            name=name,
+            device_type="cuda",
+            device_id=0,
+            element_type=np.float16,
+            shape=tuple(v.shape),
+            buffer_ptr=v.data_ptr()
+        )
+    else:
+        # Bind other outputs as actual outputs
+        v = outputs[name]
+        io_binding.bind_output(
+            name=name,
+            device_type="cuda",
+            device_id=0,
+            element_type=np.float16,
+            shape=tuple(v.shape),
+            buffer_ptr=v.data_ptr()
+        )
+
+io_binding.synchronize_inputs()
+sess.run_with_iobinding(io_binding)
+io_binding.synchronize_outputs()
 ```
 
 Export for INT8 CPU (SmoothQuant)
@@ -149,11 +206,13 @@ $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama
 Export for INT4 CUDA
 ```
 # From source:
-$ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int4-gpu --precision int4 --quantization_method blockwise --execution_provider cuda
+$ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int4-gpu --precision int4 --quantization_method blockwise --execution_provider cuda --use_gqa
 
 # From wheel:
-$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int4-gpu --precision int4 --quantization_method blockwise --execution_provider cuda
+$ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-int4-gpu --precision int4 --quantization_method blockwise --execution_provider cuda --use_gqa
 ```
+
+Note: See the FP16 CUDA notes about GroupQueryAttention. The `--use_gqa` flag is optional.
 
 Export for INT4 CPU
 ```
@@ -168,13 +227,13 @@ Export LLaMA-2 70B sharded model into 4 partitions
 ```
 # From source:
 # 1. Install necessary packages from requirements-70b-model.txt
+$ pip install -r requirements-70b-model.txt
 
 # 2. Build ONNX Runtime from source with NCCL enabled. Here is a sample command:
-$ ./build.sh --config RelWithDebInfo --use_cuda --cuda_home /usr/local/cuda-12.2 --cudnn_home /usr/local/cuda-12.2 --build_wheel --cuda_version=12.2 --parallel --skip_tests --enable_nccl --nccl_home /usr/local/cuda-12.2 --use_mpi --mpi_home=/usr/lib/x86_64-linux-gnu/
+$ ./build.sh --config Release --use_cuda --cuda_home /usr/local/cuda-12.2 --cudnn_home /usr/local/cuda-12.2 --build_wheel --cuda_version=12.2 --parallel --skip_tests --enable_nccl --nccl_home /usr/local/cuda-12.2 --use_mpi --mpi_home=/usr/lib/x86_64-linux-gnu/
 
 # 3. Shard and export the LLaMA-2 70B model. With FP16, you will need at least 140GB of GPU memory to load the model. Therefore, you will need at least 4 40GB A100 GPUs or 2 80GB A100 GPUs to shard the PyTorch model and export each shard to ONNX. Here is an example command:
-$ CUDA_VISIBLE_DEVICES=0,1,2,3 bash convert_70b_model.sh 4 -m meta-llama/Llama-2-70b-hf --output llama2-70b-dis --precision fp16 --execution_provider cuda
-
+$ CUDA_VISIBLE_DEVICES=0,1,2,3 bash convert_70b_model.sh 4 -m meta-llama/Llama-2-70b-hf --output llama2-70b-distributed --precision fp16 --execution_provider cuda --use_gqa
 ```
 
 ## Benchmark LLaMA-2
@@ -220,7 +279,20 @@ python3 -m models.llama.benchmark \
     --auth
 ```
 
-4. ONNX Runtime, FP32, Microsoft custom export
+4. Optimum + ONNX Runtime, FP16, export via Optimum or convert_to_onnx
+```
+python3 -m models.llama.benchmark \
+    --benchmark-type hf-ort \
+    --hf-ort-dir-path ./Llama-2-7b-hf-onnx/ \
+    --model-name meta-llama/Llama-2-7b-hf \
+    --precision fp16 \
+    --batch-sizes "1 2" \
+    --sequence-lengths "8 16" \
+    --device cuda \
+    --auth
+```
+
+5. ONNX Runtime, FP32, Microsoft custom export
 ```
 python3 -m models.llama.benchmark \
     --benchmark-type ort-msft \
@@ -232,7 +304,7 @@ python3 -m models.llama.benchmark \
     --device cpu
 ```
 
-5. ONNX Runtime, FP16, Microsoft custom export
+6. ONNX Runtime, FP16, Microsoft custom export
 ```
 python3 -m models.llama.benchmark \
     --benchmark-type ort-msft \
@@ -244,7 +316,7 @@ python3 -m models.llama.benchmark \
     --device cuda
 ```
 
-6. ONNX Runtime, FP32, convert_to_onnx, use 2nd GPU
+7. ONNX Runtime, FP32, convert_to_onnx, use 2nd GPU
 ```
 CUDA_VISIBLE_DEVICES=1 python3 -m models.llama.benchmark \
     --benchmark-type ort-convert-to-onnx \
@@ -256,7 +328,7 @@ CUDA_VISIBLE_DEVICES=1 python3 -m models.llama.benchmark \
     --device cpu
 ```
 
-7. ONNX Runtime, FP16, convert_to_onnx, use 5th GPU
+8. ONNX Runtime, FP16, convert_to_onnx, use 5th GPU
 ```
 CUDA_VISIBLE_DEVICES=4 python3 -m models.llama.benchmark \
     --benchmark-type ort-convert-to-onnx \
@@ -266,6 +338,18 @@ CUDA_VISIBLE_DEVICES=4 python3 -m models.llama.benchmark \
     --batch-sizes "1 2" \
     --sequence-lengths "8 16" \
     --device cuda
+```
+
+9. ONNX Runtime, FP16, convert_to_onnx, LLaMA-2 70B shard to 4 GPUs
+```
+CUDA_VISIBLE_DEVICES=4,5,6,7 bash benchmark_70b_model.sh 4 \
+    --benchmark-type ort-convert-to-onnx \
+    --ort-model-path ./llama2-70b-dis/rank_{}_Llama-2-70b-hf_decoder_merged_model_fp16.onnx \
+    --model-name meta-llama/Llama-2-70b-hf \
+    --precision fp16 \
+    --device cuda \
+    --warmup-runs 5 \
+    --num-runs 100
 ```
 
 You can profile a variant by adding the `--profile` flag and providing one batch size and sequence length combination.
@@ -283,7 +367,10 @@ python3 -m models.llama.benchmark_all \
     --precision fp16 \
     --batch-sizes "1 2" \
     --sequence-lengths "8 16" \
-    --device cuda
+    --device cuda \
+    --warmup-runs 5 \
+    --num-runs 1000 \
+    --timeout 60  # number of minutes before moving to the next benchmark
 ```
 
 # Mistral

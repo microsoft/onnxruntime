@@ -82,12 +82,23 @@ class TrtOptimizer:
 
 
 class PipelineInfo:
-    def __init__(self, version: str, is_inpaint: bool = False, is_refiner: bool = False, use_vae=False):
+    def __init__(
+        self,
+        version: str,
+        is_inpaint: bool = False,
+        is_refiner: bool = False,
+        use_vae=False,
+        min_image_size=256,
+        max_image_size=1024,
+        use_fp16_vae=True,
+    ):
         self.version = version
         self._is_inpaint = is_inpaint
         self._is_refiner = is_refiner
         self._use_vae = use_vae
-
+        self._min_image_size = min_image_size
+        self._max_image_size = max_image_size
+        self._use_fp16_vae = use_fp16_vae
         if is_refiner:
             assert self.is_xl()
 
@@ -117,6 +128,13 @@ class PipelineInfo:
 
     def vae_scaling_factor(self) -> float:
         return 0.13025 if self.is_xl() else 0.18215
+
+    def vae_torch_fallback(self) -> bool:
+        return self.is_xl() and not self._use_fp16_vae
+
+    def custom_fp16_vae(self) -> Optional[str]:
+        # For SD XL, use a VAE that fine-tuned to run in fp16 precision without generating NaNs
+        return "madebyollin/sdxl-vae-fp16-fix" if self._use_fp16_vae and self.is_xl() else None
 
     @staticmethod
     def supported_versions(is_xl: bool):
@@ -187,6 +205,19 @@ class PipelineInfo:
         else:
             raise ValueError(f"Invalid version {self.version}")
 
+    def min_image_size(self):
+        return self._min_image_size
+
+    def max_image_size(self):
+        return self._max_image_size
+
+    def default_image_size(self):
+        if self.is_xl():
+            return 1024
+        if self.version in ("2.0", "2.1"):
+            return 768
+        return 512
+
 
 class BaseModel:
     def __init__(
@@ -209,8 +240,8 @@ class BaseModel:
 
         self.min_batch = 1
         self.max_batch = max_batch_size
-        self.min_image_shape = 256  # min image resolution: 256x256
-        self.max_image_shape = 1024  # max image resolution: 1024x1024
+        self.min_image_shape = pipeline_info.min_image_size()
+        self.max_image_shape = pipeline_info.max_image_size()
         self.min_latent_shape = self.min_image_shape // 8
         self.max_latent_shape = self.max_image_shape // 8
 
@@ -448,7 +479,7 @@ class CLIP(BaseModel):
 
         assert self.clip_skip >= 0 and self.clip_skip < hidden_layers
 
-        node_output_name = "/text_model/encoder/layers.{}/Add_1_output_0".format(hidden_layers - 1 - self.clip_skip)
+        node_output_name = f"/text_model/encoder/layers.{hidden_layers - 1 - self.clip_skip}/Add_1_output_0"
 
         # search the name in outputs of all node
         found = False
