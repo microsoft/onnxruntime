@@ -1,180 +1,28 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
+/**
+ * Copyright (c) Microsoft Corporation. All rights reserved.
+ * Licensed under the MIT License.
+ *
+ * Module Name:
+ *    blkq4_fp16_gemm_sm80_test.cc
+ *
+ * Abstract:
+ *   Test code for block-wise quantized 4b GEMM kernels.
+ *   This part requires gtest header files, which do not play
+ *   well with CUTLASS headers.
+ */
 
 #include <random>
 
 #include "core/framework/float16.h"
-#include "core/mickey/blk_q4/prepack_sm80.h"
+#include "core/mickey/blk_q4/f16_prepack_sm80.h"
 #include "core/mlas/inc/mlas_q4.h"
+
+#include "blkq4_fp16_gemm_sm80.h"
 
 #include "gtest/gtest.h"
 
 namespace onnxruntime {
 namespace test {
-
-void prepack_weights_ref(
-    int rows,
-    int columns,
-    const MatrixRef<uint8_t const, ColumnMajorLayout, true>& tensor_weight,
-    const MatrixRef<uint8_t, ColumnMajorLayout, true>& tensor_weight_prepacked) {
-  EXPECT_TRUE(tensor_weight.shape()[0] == rows / 2 && tensor_weight.shape()[1] == columns);
-  EXPECT_TRUE(tensor_weight_prepacked.shape()[0] == rows && tensor_weight_prepacked.shape()[1] == columns / 2);
-
-  auto t0_base = make_Position(0, 0);
-  auto t1_base = make_Position(4, 0);
-  auto t2_base = make_Position(0, 8);
-  auto t3_base = make_Position(4, 8);
-  for (int col_dtile = 0; col_dtile < columns / 16; ++col_dtile) {
-    for (int row_dtile = 0; row_dtile < rows / 16; ++row_dtile) {
-      // Packing from a 8x16 tile to a 16x8 tile
-      auto dtile_base = make_Position(row_dtile * 8, col_dtile * 16);
-      auto packed_tile_base = make_Position(row_dtile * 16, col_dtile * 8);
-      for (int col = 0; col < 8; ++col) {
-        for (int row = 0; row < 4; ++row) {
-          auto cord = make_Position(row, col);
-          auto packed_cord = packed_tile_base + make_Position(row * 4, col);  // packed tile is 16x8
-          uint8_t buf[4];
-          buf[0] = tensor_weight.at(dtile_base + t0_base + cord);
-          buf[1] = tensor_weight.at(dtile_base + t1_base + cord);
-          buf[2] = tensor_weight.at(dtile_base + t2_base + cord);
-          buf[3] = tensor_weight.at(dtile_base + t3_base + cord);
-
-          // [0, 1, 2, 3, 4, 5, 6, 7] => [0, 2, 4, 6, 1, 3, 5, 7] so that each pair of adjacent weights
-          // are in different b16 register at the same positions. This makes it easier to convert to
-          // fp16x2 format in a b32 register
-
-          tensor_weight_prepacked.at(packed_cord) = (buf[0] & 0x0f) | ((buf[1] & 0x0f) << 4);
-          tensor_weight_prepacked.at(packed_cord + make_Position(1, 0)) = (buf[2] & 0x0f) | ((buf[3] & 0x0f) << 4);
-          tensor_weight_prepacked.at(packed_cord + make_Position(2, 0)) = ((buf[0] & 0xf0) >> 4) | (buf[1] & 0xf0);
-          tensor_weight_prepacked.at(packed_cord + make_Position(3, 0)) = ((buf[2] & 0xf0) >> 4) | (buf[3] & 0xf0);
-        }
-      }
-    }
-  }
-}
-
-template <
-    typename ScaleElementT,
-    typename Layout,
-    typename QuantBlocking>
-void prepack_quant_scales_ref(
-    int rows,
-    int columns,
-    const MatrixRef<ScaleElementT const, Layout, true>& tensor_scale,
-    const MatrixRef<ScaleElementT, Layout, true>& tensor_scale_prepacked) {
-  EXPECT_TRUE(tensor_scale.shape()[0] == (rows / QuantBlocking::kRow) && tensor_scale.shape()[1] == (columns / QuantBlocking::kColumn));
-  EXPECT_TRUE(tensor_scale_prepacked.shape() == tensor_scale.shape());
-
-  // Only prepacking scale and offset tensors for a often used special case:
-  //    16b gemm (2 elements per 32b register, operand tile shape 8x8)
-  //    2 B operand tiles per mma instruction stacked on k dimension
-  //    (1,n) quantization blocking
-  if constexpr (sizeof(ScaleElementT) == 2 && QuantBlocking::kRow == 1) {
-    // In Ampere tensor op, each operand B tile is 8 x 8, in a warp of 32 threads, each thread
-    // holds a fragment of the tile containing 2 elements in the k dimension. Most often we use
-    // mma instruction shape of 16x8x16, which means 2 B tiles are stacked in the k dimension,
-    // as shown below (T stands for thread):
-    // T0, T4, T8, T12
-    // T1, T5, T9, T13
-    // T2, T6, T10, T14
-    // T3, T7, T11, T15
-    // T0, T4, T8, T12
-    // T1, T5, T9, T13
-    // T2, T6, T10, T14
-    // T3, T7, T11, T15
-    //
-    // We need to deliver quantization scale and offset elements to the corresponding threads,
-    // so we can perform dequantization efficiently. With a column major layout, each thread
-    // needs two separate loads for a mma instruction, due to the tile fragment layout shown
-    // above. To reduce the number of loads, we rearrange each column as below, so we can use
-    // a single load to load fragments for two tiles:
-    // T0        T0
-    // T1        T0
-    // T2        T1
-    // T3   =>   T1
-    // T0        T2
-    // T1        T2
-    // T2        T3
-    // T3        T3
-
-    for (int col = 0; col < tensor_scale.shape()[1]; ++col) {
-      for (int row_blk = 0; row_blk < tensor_scale.shape()[0]; row_blk += 16) {
-        for (int thread_id = 0; thread_id < 4; thread_id++) {
-          const int dst_idx = row_blk + thread_id * 4;
-          const int src_idx = row_blk + thread_id * 2;
-          tensor_scale_prepacked.at(dst_idx + 0, col) = tensor_scale.at(src_idx + 0, col);
-          tensor_scale_prepacked.at(dst_idx + 1, col) = tensor_scale.at(src_idx + 1, col);
-          tensor_scale_prepacked.at(dst_idx + 2, col) = tensor_scale.at(src_idx + 8, col);
-          tensor_scale_prepacked.at(dst_idx + 3, col) = tensor_scale.at(src_idx + 9, col);
-        }
-      }
-    }
-  } else {
-    // In all other cases, we don't prepack scale or offset
-    FAIL() << "Scale prepack only supported for 16b gemm with (1,n) quantization blocking";
-  }
-}
-
-template <typename Layout, typename QuantBlocking>
-void prepack_quant_offsets_ref(
-    size_t rows,
-    size_t columns,
-    MatrixRef<uint8_t const, Layout, true> tensor_offset,
-    MatrixRef<uint8_t, Layout, true> tensor_offset_prepacked) {
-  // EXPECT_TRUE(tensor_offset.shape()[0] == (rows / QuantBlocking::kRow) && tensor_offset.shape()[1] == (columns / QuantBlocking::kColumn));
-  EXPECT_TRUE(tensor_offset_prepacked.shape() == tensor_offset.shape());
-
-  // Only prepacking scale and offset tensors for a often used special case:
-  //    16b gemm (2 elements per 32b register, operand tile shape 8x8)
-  //    2 B operand tiles per mma instruction stacked on k dimension
-  //    (1,n) quantization blocking
-  if constexpr (QuantBlocking::kRow != 1) {
-    FAIL() << "Offsets prepack only supported for 16b gemm with (1,n) quantization blocking";
-  }
-  // In Ampere tensor op, each operand B tile is 8 x 8, in a warp of 32 threads, each thread
-  // holds a fragment of the tile containing 2 elements in the k dimension. Most often we use
-  // mma instruction shape of 16x8x16, which means 2 B tiles are stacked in the k dimension,
-  // as shown below (T stands for thread):
-  // T0, T4, T8, T12
-  // T1, T5, T9, T13
-  // T2, T6, T10, T14
-  // T3, T7, T11, T15
-  // T0, T4, T8, T12
-  // T1, T5, T9, T13
-  // T2, T6, T10, T14
-  // T3, T7, T11, T15
-  //
-  // We need to deliver quantization scale and offset elements to the corresponding threads,
-  // so we can perform dequantization efficiently. With a column major layout, each thread
-  // needs two separate loads for a mma instruction, due to the tile fragment layout shown
-  // above. To reduce the number of loads, we rearrange each column as below, so we can use
-  // a single load to load fragments for two tiles:
-  // T0        T0
-  // T1        T0
-  // T2        T1
-  // T3   =>   T1
-  // T0        T2
-  // T1        T2
-  // T2        T3
-  // T3        T3
-  if (tensor_offset_prepacked.good()) {
-    for (int col = 0; col < tensor_offset.shape()[1]; ++col) {
-      for (int row_blk = 0; row_blk < tensor_offset.shape()[0]; row_blk += 16) {
-        for (int thread_id = 0; thread_id < 4; thread_id++) {
-          const int dst_idx = row_blk + thread_id * 4;
-          const int src_idx = row_blk + thread_id * 2;
-          // [a, b, c, d] => [a, c, b, d] so that adjacent weights are in their own
-          // 16b element: [a, x, b, x] and [x, c, x, d], which makes it easier to
-          // convert to fp16x2 format in a b32 register
-          tensor_offset_prepacked.at(dst_idx + 0, col) = tensor_offset.at(src_idx + 0, col);
-          tensor_offset_prepacked.at(dst_idx + 1, col) = tensor_offset.at(src_idx + 8, col);
-          tensor_offset_prepacked.at(dst_idx + 2, col) = tensor_offset.at(src_idx + 1, col);
-          tensor_offset_prepacked.at(dst_idx + 3, col) = tensor_offset.at(src_idx + 9, col);
-        }
-      }
-    }
-  }
-}
 
 template <bool ColumnMajorQuantBlocking>
 void testPrepack(int rows, int columns, bool has_offset = true) {
@@ -407,7 +255,7 @@ void testPrepack(int rows, int columns, bool has_offset = true) {
   std::vector<ElementW> packed_w_ref(q_weight_shape.product());
   MatrixRef<ElementW, LayoutWPack, true> tensor_packed_w_ref(
       packed_w_ref, make_Position(rows, columns / 2));
-  prepack_weights_ref(rows, columns, tensor_q_weight, tensor_packed_w_ref);
+  onnxruntime::cuda::test::prepack_weights_ref(rows, columns, tensor_q_weight, tensor_packed_w_ref);
 
   std::vector<ElementW> packed_w(q_weight_shape.product());
   MatrixRef<ElementW, LayoutWPack, true> tensor_packed_w(
@@ -429,7 +277,7 @@ void testPrepack(int rows, int columns, bool has_offset = true) {
       Base::ShouldRearrangeMeta ? make_MatrixRef<ElementT, LayoutQmeta, true>(packed_scales_ref, meta_shape)
                                 : tensor_scale;
   if (Base::ShouldRearrangeMeta) {
-    prepack_quant_scales_ref<ElementT, LayoutQmeta, QuantBlocking>(
+    onnxruntime::cuda::test::prepack_quant_scales_ref<ElementT, LayoutQmeta, QuantBlocking>(
         rows, columns, tensor_scale.const_ref(), tensor_packed_s_ref);
   }
 
@@ -454,7 +302,7 @@ void testPrepack(int rows, int columns, bool has_offset = true) {
         Base::ShouldRearrangeMeta ? make_MatrixRef<ElementQOffset, LayoutQmeta, true>(packed_zp_ref, meta_shape)
                                   : tensor_offset;
     if (Base::ShouldRearrangeMeta) {
-      prepack_quant_offsets_ref<LayoutQmeta, QuantBlocking>(
+      onnxruntime::cuda::test::prepack_quant_offsets_ref<LayoutQmeta, QuantBlocking>(
           rows, columns, tensor_offset.const_ref(), tensor_packed_zp_ref);
     }
 
@@ -477,6 +325,12 @@ void testPrepack(int rows, int columns, bool has_offset = true) {
 
 // TODO: code runs on CPU, but this is for sm80 only, maybe enable only when test on sm80
 TEST(BlkQ4_GEMM, PrepackSm80Test) {
+  Status status = onnxruntime::cuda::test::sm80_supported();
+  if (!status.IsOK()) {
+    // skip the test if sm80 is not supported
+    return;
+  }
+
   testPrepack<false>(32, 32);
   testPrepack<false>(32, 32, false);
   testPrepack<true>(32, 32);
@@ -501,6 +355,54 @@ TEST(BlkQ4_GEMM, PrepackSm80Test) {
   testPrepack<true>(32, 128, false);
   testPrepack<true>(128, 32, false);
   testPrepack<true>(256, 256, false);
+}
+
+TEST(BlkQ4_GEMM, Sm80Test) {
+  Status status = onnxruntime::cuda::test::sm80_supported();
+  if (!status.IsOK()) {
+    // skip the test if sm80 is not supported
+    return;
+  }
+
+  onnxruntime::cuda::test::run_blkq4_gemm<32, false, false, false>(32, 32, 64);
+  onnxruntime::cuda::test::run_blkq4_gemm<32, false, false, true>(32, 32, 64);
+
+  onnxruntime::cuda::test::run_blkq4_gemm<32, false, false, false>(32, 96, 64);
+  onnxruntime::cuda::test::run_blkq4_gemm<32, false, false, true>(32, 96, 64);
+
+  onnxruntime::cuda::test::run_blkq4_gemm<32, false, false, false>(32, 96, 192);
+  onnxruntime::cuda::test::run_blkq4_gemm<32, false, false, true>(32, 96, 192);
+
+  onnxruntime::cuda::test::run_blkq4_gemm<32, false, false, false>(256, 672, 576);
+  onnxruntime::cuda::test::run_blkq4_gemm<32, false, false, true>(256, 672, 576);
+
+  onnxruntime::cuda::test::run_blkq4_gemm<32, false, false, false>(512, 2048 + 32, 960);
+  onnxruntime::cuda::test::run_blkq4_gemm<32, false, false, false>(512, 2048 + 32, 960);
+
+  onnxruntime::cuda::test::run_blkq4_gemm<16, false, false, false>(256, 672, 576);
+  onnxruntime::cuda::test::run_blkq4_gemm<16, false, false, true>(256, 672, 576);
+
+  onnxruntime::cuda::test::run_blkq4_gemm<64, false, false, false>(256, 1024, 576);
+  onnxruntime::cuda::test::run_blkq4_gemm<64, false, false, true>(256, 1024, 576);
+
+  onnxruntime::cuda::test::run_blkq4_gemm<16, true, false, false>(256, 672, 576);
+  onnxruntime::cuda::test::run_blkq4_gemm<16, true, false, true>(256, 672, 576);
+
+  onnxruntime::cuda::test::run_blkq4_gemm<64, true, false, false>(256, 1024, 576);
+  onnxruntime::cuda::test::run_blkq4_gemm<64, true, false, true>(256, 1024, 576);
+
+  // small m
+  onnxruntime::cuda::test::run_blkq4_gemm<16, false, true, false>(16, 704, 576);
+  onnxruntime::cuda::test::run_blkq4_gemm<16, false, true, true>(16, 704, 576);
+
+  onnxruntime::cuda::test::run_blkq4_gemm<64, false, true, false>(16, 1024, 576);
+  onnxruntime::cuda::test::run_blkq4_gemm<64, false, true, true>(16, 1024, 576);
+
+  onnxruntime::cuda::test::run_blkq4_gemm<16, true, true, false>(16, 672, 576);
+  onnxruntime::cuda::test::run_blkq4_gemm<16, true, true, true>(16, 672, 576);
+
+  onnxruntime::cuda::test::run_blkq4_gemm<64, true, true, false>(16, 1024, 576);
+  onnxruntime::cuda::test::run_blkq4_gemm<64, true, true, true>(16, 1024, 576);
 }
 
 }  // namespace test
