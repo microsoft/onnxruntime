@@ -68,7 +68,7 @@ export interface TrainingSession {
   loadParametersBuffer(array: Float32Array, trainableOnly: boolean): Promise<void>;
 
   /**
-   * Copies from the TrainingSession parameters to a contiguous buffer.
+   * Copies the model parameters to a contiguous buffer. Usually used in the context of Federated Learning
    *
    * @param trainableOnly - When set to true, only trainable parameters are copied. Trainable parameters are parameters
    * for which requires_grad is set to true. Default value is true.
