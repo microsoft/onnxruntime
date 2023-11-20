@@ -1292,7 +1292,7 @@ TEST(CApiTest, test_custom_op_local_function) {
 #elif defined(__APPLE__)
   lib_name = ORT_TSTR("libcustom_op_local_function.dylib");
 #else
-  lib_name = ORT_TSTR("./libcustom_op_local_function.so");
+lib_name = ORT_TSTR("./libcustom_op_local_function.so");
 #endif
 
   Ort::SessionOptions session_opts;
