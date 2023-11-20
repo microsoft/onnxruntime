@@ -1144,7 +1144,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               OPTIONAL_VALUE)
         .Input(0,
                "input",
-               "3D tensor with shape (batch_size, sequence_length, hidden_size)",
+               "3D tensor with shape (batch_size, sequence_length, hidden_size) or 4D with shape (batch_size, num_heads, sequence_length, head_size)",
                "T")
         .Input(1,
                "position_ids",
@@ -1160,7 +1160,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T")
         .Output(0,
                 "output",
-                "3D tensor with shape (batch_size, sequence_length, hidden_size)",
+                "tensor with same shape as input.",
                 "T")
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
         .TypeConstraint("M", {"tensor(int64)"}, "Constrain input and output types to integer tensors")

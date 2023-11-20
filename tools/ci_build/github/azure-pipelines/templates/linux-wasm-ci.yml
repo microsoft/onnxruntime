@@ -90,13 +90,20 @@ jobs:
       arguments: --new_dir $(Build.BinariesDirectory)/deps
       workingDirectory: $(Build.BinariesDirectory)
 
-  - script: |
-      set -ex
-      cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
-      ./emsdk install 3.1.44 ccache-git-emscripten-64bit
-      ./emsdk activate 3.1.44 ccache-git-emscripten-64bit
-    displayName: 'emsdk install and activate ccache for emscripten'
-    condition: eq('${{ parameters.WithCache }}', 'true')
+  - ${{if eq(parameters.WithCache, true)}}:
+      - script: |
+          set -ex
+          cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
+          ./emsdk install 3.1.44 ccache-git-emscripten-64bit
+          ./emsdk activate 3.1.44 ccache-git-emscripten-64bit
+        displayName: 'emsdk install and activate ccache for emscripten'
+  - ${{if eq(parameters.WithCache, false)}}:
+      - script: |
+          set -ex
+          cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
+          ./emsdk install 3.1.44
+          ./emsdk activate 3.1.44
+        displayName: 'emsdk install and activate ccache for emscripten'
 
   - template: build-linux-wasm-step.yml
     parameters:

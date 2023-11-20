@@ -412,14 +412,24 @@ def _matmul4bit_export(g, n, *args, **kwargs):
         return None
 
     quant_state = args[4]
-    absmax, shape, dtype, blocksize, compressed_stats, quant_type, data_type = quant_state
+    if isinstance(quant_state, list):
+        # version <= 0.41.1
+        absmax, shape, dtype, blocksize, compressed_stats, quant_type, data_type = quant_state
+        nested = compressed_stats is not None
+    else:
+        # version > 0.41.1
+        absmax = quant_state.absmax
+        shape = quant_state.shape
+        blocksize = quant_state.blocksize
+        nested = quant_state.nested
+        quant_type = quant_state.quant_type
 
     # MatMulBnb4's blocksize needs to be a power of 2 and not smaller than 16
     if blocksize < 16 or blocksize & (blocksize - 1) != 0:
         return None
 
     # MatMulBnb4 does not support double de-quantization (e.g. absmax is int, needs to be dequantized too)
-    if compressed_stats is not None:
+    if nested:
         return None
 
     # The PyTorch linear weight shape is [out_feature, in_feature]
