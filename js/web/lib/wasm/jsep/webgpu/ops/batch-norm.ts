@@ -6,7 +6,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo} from '../types';
 
-import {inputVariable, outputVariable, ShaderHelper} from './common';
+import {getMaxComponents, inputVariable, outputVariable, ShaderHelper} from './common';
 
 export interface BatchNormAttributes extends AttributeWithCacheKey {
   readonly epsilon: number;
@@ -71,20 +71,22 @@ const createBatchNormInferenceProgramInfo =
     (inputs: readonly TensorView[], attributes: BatchNormAttributes): ProgramInfo => {
       const {epsilon, spatial, format} = attributes;
       const yShape = inputs[0].dims;
-      const outputSize = ShapeUtil.size(yShape);
-      const x = inputVariable('x', inputs[0].dataType, inputs[0].dims);
-      const scale = inputVariable('scale', inputs[1].dataType, [ShapeUtil.size(inputs[1].dims)]);
-      const bias = inputVariable('bias', inputs[2].dataType, [ShapeUtil.size(inputs[2].dims)]);
-      const inputMean = inputVariable('inputMean', inputs[3].dataType, [ShapeUtil.size(inputs[3].dims)]);
-      const inputVar = inputVariable('inputVar', inputs[4].dataType, [ShapeUtil.size(inputs[4].dims)]);
-      const y = outputVariable('y', inputs[0].dataType, yShape);
+      const components = spatial ? getMaxComponents(yShape[yShape.length - 1]) : 1;
+      const cComponents = format === 'nhwc' && yShape.length > 1 ? components : 1;
+      const outputSize = ShapeUtil.size(yShape) / components;
+      const x = inputVariable('x', inputs[0].dataType, inputs[0].dims, components);
+      const scale = inputVariable('scale', inputs[1].dataType, [ShapeUtil.size(inputs[1].dims)], cComponents);
+      const bias = inputVariable('bias', inputs[2].dataType, [ShapeUtil.size(inputs[2].dims)], cComponents);
+      const inputMean = inputVariable('inputMean', inputs[3].dataType, [ShapeUtil.size(inputs[3].dims)], cComponents);
+      const inputVar = inputVariable('inputVar', inputs[4].dataType, [ShapeUtil.size(inputs[4].dims)], cComponents);
+      const y = outputVariable('y', inputs[0].dataType, yShape, components);
 
       const calcCOffset = (): string => {
         let cOffset = '';
         if (spatial) {
           cOffset = `let cOffset = ${
               yShape.length === 1   ? '0u' :
-                  format === 'nhwc' ? `outputIndices[${yShape.length - 1}]` :
+                  format === 'nhwc' ? `outputIndices[${yShape.length - 1}] / ${components}` :
                                       'outputIndices[1]'};`;
         } else {
           if (format === 'nchw') {
@@ -109,7 +111,7 @@ const createBatchNormInferenceProgramInfo =
   ${helper.declareVariables(x, scale, bias, inputMean, inputVar, y)}
   ${helper.mainStart()}
   ${helper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-    var outputIndices = ${y.offsetToIndices('global_idx')};
+    var outputIndices = ${y.offsetToIndices(`global_idx * ${components}`)};
     ${calcCOffset()}
     let scale = ${scale.getByOffset('cOffset')};
     let bias = ${bias.getByOffset('cOffset')};
@@ -121,7 +123,7 @@ const createBatchNormInferenceProgramInfo =
   }`;
       return {
         name: 'BatchNormalization',
-        shaderCache: {hint: `${attributes.epsilon}_${attributes.format}_${spatial}`},
+        shaderCache: {hint: `${attributes.epsilon}_${attributes.format}_${spatial}_${components}`},
         getShaderSource: getInferenceModeShaderSource,
         getRunData: () => ({
           outputs: [{dims: inputs[0].dims, dataType: inputs[0].dataType}],
