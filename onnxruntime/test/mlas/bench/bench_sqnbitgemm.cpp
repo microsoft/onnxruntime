@@ -96,7 +96,7 @@ void Q4GEMM_Jblas(benchmark::State& state, int block_size, bool is_asym, MLAS_CO
   const size_t N = static_cast<size_t>(state.range(1));
   const size_t K = static_cast<size_t>(state.range(2));
   const size_t threads = static_cast<size_t>(state.range(3));
-  block_size = block_size == -1 ? K : block_size;
+  block_size = block_size == -1 ? int(K) : block_size;
   const size_t pack_b_size = MlasNBitsGemmPackBSize(N, K, block_size, 4, is_asym, cmp_type);
 
   OrtThreadPoolParams tpo;
