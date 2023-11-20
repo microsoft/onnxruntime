@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {env} from 'onnxruntime-common';
+
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
@@ -77,7 +79,7 @@ const createBatchNormInferenceProgramInfo =
       // Only support uniforms for opset version >= 9 (spatial = true).
       const useShapesUniforms = enableShapesUniforms(yShape.length) && spatial;
       const shapeOrRank = useShapesUniforms ? yShape.length : yShape;
-      const x = inputVariable('x', inputs[0].dataType, shapeOrRank, components);
+      const x = inputVariable('x', inputs[0].dataType, inputs[0].dims, components);
       const scale = inputVariable('scale', inputs[1].dataType, [ShapeUtil.size(inputs[1].dims)], cComponents);
       const bias = inputVariable('bias', inputs[2].dataType, [ShapeUtil.size(inputs[2].dims)], cComponents);
       const inputMean = inputVariable('inputMean', inputs[3].dataType, [ShapeUtil.size(inputs[3].dims)], cComponents);
@@ -137,7 +139,6 @@ const createBatchNormInferenceProgramInfo =
           programUniforms: useShapesUniforms ?
               [
                 {type: 'uint32', data: outputSize},
-                ...createTensorShapeVariables(inputs[0].dims),
                 ...createTensorShapeVariables(yShape),
               ] :
               [
@@ -153,7 +154,9 @@ export const parseBatchNormAttributes = (attributes: Record<string, unknown>): B
 export const batchNorm = (context: ComputeContext, attributes: Record<string, unknown>): void => {
   const {inputs, outputCount} = context;
   const updatedAttributes = parseBatchNormAttributes({...attributes, outputCount});
-  validateInputs(inputs, updatedAttributes);
+  if (env.webgpu.validateInputContent) {
+    validateInputs(inputs, updatedAttributes);
+  }
   if (attributes.trainingMode) {
     throw new Error('BatchNormalization trainingMode is not supported yet.');
   } else {
