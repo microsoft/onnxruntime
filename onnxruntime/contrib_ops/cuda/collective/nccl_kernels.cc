@@ -24,31 +24,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define NCCL_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(NCCL_CALL(expr))
-
-static ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type) {
-  if (type == DataTypeImpl::GetType<uint8_t>()) {
-    return ncclUint8;
-  } else if (type == DataTypeImpl::GetType<bool>()) {
-    // CUDA bool is 8-bit large.
-    return ncclUint8;
-  } else if (type == DataTypeImpl::GetType<int8_t>()) {
-    return ncclInt8;
-  } else if (type == DataTypeImpl::GetType<int32_t>()) {
-    return ncclInt32;
-  } else if (type == DataTypeImpl::GetType<int64_t>()) {
-    return ncclInt64;
-  } else if (type == DataTypeImpl::GetType<MLFloat16>()) {
-    return ncclFloat16;
-  } else if (type == DataTypeImpl::GetType<float>()) {
-    return ncclFloat32;
-  } else if (type == DataTypeImpl::GetType<double>()) {
-    return ncclFloat64;
-  } else {
-    ORT_THROW("Tensor type not supported in NCCL.");
-  }
-}
-
 namespace IPC {
 #define FLLOG LOGS_DEFAULT(VERBOSE)
 #define FLLOGERRNO LOGS_DEFAULT(WARNING) << "error:" << strerror(errno)

@@ -126,7 +126,8 @@ class CutlassMoeFCRunner {
                                         int64_t* total_rows_before_expert, cudaStream_t stream);
 
   void dispatch_activations(int64_t*& total_rows_before_expert, int num_experts, int local_num_experts,
-                            int local_experts_start_index, int& total_past_rows, cudaStream_t stream);
+                            int local_experts_start_index, int& total_past_rows, int& total_covered_rows, 
+                            cudaStream_t stream);
 
   void get_local_rows_info(int& total_past_rows, int& total_covered_rows) {
     // cudaDeviceSynchronize();

@@ -644,16 +644,16 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
   }
 
   // expanded_active_expert_rows is not used
-  moe_gemm_runner_.moe_gemm_bias_act(permuted_data_ + total_past_rows * hidden_size,
+  moe_gemm_runner_.moe_gemm_bias_act(permuted_data_ + total_past_rows_ * hidden_size,
                                      fc1_expert_weights, fc1_scales, fc1_expert_biases,
-                                     fc1_result_ + total_past_rows * inter_size,
+                                     fc1_result_ + total_past_rows_ * inter_size,
                                      total_rows_before_expert_ + local_experts_start_index,
                                      expanded_active_expert_rows, inter_size, hidden_size,
                                      local_num_experts, fc1_activation_type, stream);
 
-  moe_gemm_runner_.moe_gemm(fc1_result_ + total_past_rows * inter_size,
+  moe_gemm_runner_.moe_gemm(fc1_result_ + total_past_rows_ * inter_size,
                             fc2_expert_weights, fc2_scales,
-                            fc2_result + total_past_rows * hidden_size,
+                            fc2_result + total_past_rows_ * hidden_size,
                             total_rows_before_expert_ + local_experts_start_index,
                             expanded_active_expert_rows, hidden_size, inter_size, local_num_experts, stream);
 }
