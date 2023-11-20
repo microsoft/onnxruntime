@@ -208,13 +208,13 @@ stages:
   dependsOn: []
   jobs:
     - job:
-      - steps:
+      steps:
         powershell: |
             Write-Host "##vso[task.prependpath]$(Build.BinariesDirectory)\RelWithDebInfo\_deps\vcpkg-src\installed\x86-windows\bin"
             $env:PATH
             Write-Host "##vso[task.prependpath]$(Build.BinariesDirectory)\RelWithDebInfo\_deps\vcpkg-src\installed\x64-windows\bin"
             $env:PATH
-      - displayName: 'Append x64-windows and x86-windows to PATH'
+      displayName: 'Append x64-windows and x86-windows to PATH'
     - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
