@@ -648,8 +648,8 @@ void CustomGemmKernel::ComputeGemm(
              dtype_C == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT &&
              dtype_Y == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT &&
              computeType_ == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-    std::vector<float> c_input_a(M * K);
-    std::vector<float> c_input_b(N * K);
+    std::vector<float> c_input_a(static_cast<size_t>(M * K));
+    std::vector<float> c_input_b(static_cast<size_t>(N * K));
     e4m3fn_to_float(c_input_a.size(), static_cast<const uint8_t*>(p_input_a),
                     c_input_a.data(), *(static_cast<const float*>(p_scale_a)));
     e4m3fn_to_float(c_input_b.size(), static_cast<const uint8_t*>(p_input_b),
