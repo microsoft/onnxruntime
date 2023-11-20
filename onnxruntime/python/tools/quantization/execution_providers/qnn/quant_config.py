@@ -14,6 +14,7 @@ from ...quantize import StaticQuantConfig
 Q16_TYPES = {QuantType.QInt16, QuantType.QUInt16}
 Q8_TYPES = {QuantType.QInt8, QuantType.QUInt8}
 OP_TYPES_TO_EXCLUDE = {"Cast"}
+OP_TYPES_INITIALIZER_AS_WEIGHTS = {"MatMul", "Add", "Sub", "Mul", "Div"}
 
 
 def get_qnn_qdq_config(
@@ -34,7 +35,7 @@ def get_qnn_qdq_config(
     for node in model.graph.node:
         op_types.add(node.op_type)
 
-        if node.op_type == "MatMul" and activation_type in Q16_TYPES and weight_type in Q8_TYPES:
+        if node.op_type in OP_TYPES_INITIALIZER_AS_WEIGHTS and activation_type in Q16_TYPES and weight_type in Q8_TYPES:
             weight_symmetric = weight_type == QuantType.QInt8
 
             # Override initializers to use the weight_type
