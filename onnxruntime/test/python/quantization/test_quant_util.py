@@ -18,13 +18,14 @@ from onnxruntime.quantization.quant_utils import compute_scale_zp, load_model_wi
 
 class TestQuantUtil(unittest.TestCase):
     def test_compute_scale_zp(self):
-        def _compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
+        def _compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_real_range=None):
             zp, scale = compute_scale_zp(
                 numpy.array(rmin, dtype=numpy.float32),
                 numpy.array(rmax, dtype=numpy.float32),
                 qmin,
                 qmax,
                 symmetric=symmetric,
+                min_real_range=min_real_range,
             )
             assert isinstance(zp, numpy.ndarray)
             assert isinstance(scale, numpy.ndarray)
