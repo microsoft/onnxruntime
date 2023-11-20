@@ -145,6 +145,17 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
     MatMulBnb4<MLFloat16>);
 
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    MatMulBnb4,
+    kMSDomain,
+    1,
+    BFloat16,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<BFloat16>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
+    MatMulBnb4<BFloat16>);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

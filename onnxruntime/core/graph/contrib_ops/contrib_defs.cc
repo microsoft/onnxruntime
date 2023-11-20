@@ -3431,7 +3431,7 @@ MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4
       .Input(1, "B", "1-dimensional quantized data for weight", "T2")
       .Input(2, "absmax", "quantization constants", "T1")
       .Output(0, "Y", "tensor. The output tensor has the same rank as the input. ", "T1")
-      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float/half_float tensors.")
+      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float/half_float/brain_float tensors.")
       .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain quantized weight types to uint8.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Type inference
