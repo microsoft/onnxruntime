@@ -331,7 +331,7 @@ void testPrepack(int rows, int columns, bool has_offset = true) {
   }
 
   int q_rows, q_cols;
-  MlasBlockwiseQuantizedShape<ElementT>(
+  MlasBlockwiseQuantizedShape<ElementT, 4>(
       block_size, ColumnMajorQuantBlocking, rows, columns, q_rows, q_cols);
   // to be exact, q_rows are padded to multiple of block_size, deal with it when we care about strange shapes
   EXPECT_EQ(q_rows, q_weight_shape[0]);

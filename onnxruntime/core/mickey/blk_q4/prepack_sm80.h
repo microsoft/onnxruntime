@@ -3,14 +3,6 @@
 
 #pragma once
 
-// #include <cuda.h>
-// #include <vector_types.h>
-// #include "cutlass/cutlass.h"
-// #include "cutlass/matrix_shape.h"
-// #include "cutlass/util/host_tensor.h"
-// #include "cutlass/util/reference/host/tensor_compare.h"
-// #include "cutlass/util/reference/host/tensor_copy.h"
-// #include "cutlass/util/reference/host/tensor_fill.h"
 
 #include "core/common/common.h"
 #include "core/util/matrix_layout.h"
@@ -66,7 +58,7 @@ struct BlockwiseQuantization {
    * into one int8
    */
   static inline auto get_quant_weights_shape(int rows, int columns) {
-    return make_Position((rows + 1) / 2, columns);
+    return make_Position(rows / 2, columns);
   }
 
   static inline auto get_quant_meta_shape(int rows, int columns) {
@@ -107,7 +99,9 @@ struct BlockwiseQuantization {
       const gsl::span<uint8_t const>& weights,     // <- int4 weights, column major
       const gsl::span<uint8_t>& weights_prepacked  // <- int4 prepacked weights tensor, same size buffer
   ) {
-    ORT_ENFORCE((rows % 16) == 0 && (columns % 16) == 0,
+    ORT_ENFORCE((rows % 16) == 0 && (columns % 16) == 0 &&
+                (rows % QuantBlocking::kRow) == 0 &&
+                (columns % QuantBlocking::kColumn) == 0,
                 "Does not support odd number of rows or columns!");
     ORT_ENFORCE(weights.size() == size_t(rows * columns / 2),
                 "Weight tensor shape mismatch!");
