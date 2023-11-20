@@ -3803,9 +3803,7 @@ IOnnxRuntimeOpSchemaCollectionPtr Graph::GetSchemaRegistry() const {
 }
 
 bool Graph::SetOpSchemaFromRegistryForNode(Node& node) {
-  if (node.op_ != nullptr) {
-    return true;
-  }
+  if (node.op_ != nullptr) return true;
 
   node.op_ = [&]() -> const ONNX_NAMESPACE::OpSchema* {
     const auto domain_to_version_it = DomainToVersionMap().find(node.Domain());
