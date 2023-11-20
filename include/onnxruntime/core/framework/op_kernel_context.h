@@ -10,7 +10,7 @@ namespace concurrency {
 class ThreadPool;
 }
 
-class OpKernelContext : public interface::IKernelContext {
+class OpKernelContext /*: public interface::IKernelContext*/ {
  public:
   using ArgMap = std::unordered_map<std::string, size_t>;
 
@@ -45,11 +45,11 @@ class OpKernelContext : public interface::IKernelContext {
     }
   }
 
-  const void* InputData(int index) const override {
-    //todo - check tensor type
-    const auto* tensor = Input<onnxruntime::Tensor>(index);
-    return tensor->DataRaw();
-  }
+  //const void* InputData(int index) const override {
+  //  //todo - check tensor type
+  //  const auto* tensor = Input<onnxruntime::Tensor>(index);
+  //  return tensor->DataRaw();
+  //}
 
   // Fetch a required input, enforcing that it is present.
   // Fetch a required input, enforcing that it is present. Fetch a required input, enforcing that it is present.
@@ -78,19 +78,19 @@ class OpKernelContext : public interface::IKernelContext {
   Tensor* Output(int index, const std::vector<int64_t>& shape);
   Tensor* Output(int index, const std::initializer_list<int64_t>& shape);
 
-  void* AllocateOutput(int index, const interface::TensorShape& shape) override {
-    auto* tensor = Output(index, shape);
-    ORT_ENFORCE(tensor);
-    return tensor->MutableDataRaw();
-  }
+  //void* AllocateOutput(int index, const interface::TensorShape& shape) override {
+  //  auto* tensor = Output(index, shape);
+  //  ORT_ENFORCE(tensor);
+  //  return tensor->MutableDataRaw();
+  //}
 
-  const int64_t* InputShape(int index, size_t* num_dims) const override {
-    const auto* tensor = Input<onnxruntime::Tensor>(index);
-    const auto& shape = tensor->Shape();
-    auto dims = shape.GetDims();
-    *num_dims = dims.size();
-    return dims.data();
-  };
+  //const int64_t* InputShape(int index, size_t* num_dims) const override {
+  //  const auto* tensor = Input<onnxruntime::Tensor>(index);
+  //  const auto& shape = tensor->Shape();
+  //  auto dims = shape.GetDims();
+  //  *num_dims = dims.size();
+  //  return dims.data();
+  //};
 
   // Fetch a required tensor output, enforcing that it is present.
   Tensor& RequiredOutput(int index, const TensorShape& shape) {

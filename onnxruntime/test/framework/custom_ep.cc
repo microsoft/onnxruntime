@@ -17,13 +17,14 @@ using namespace interface;
 namespace test {
 
 /////////////////////////////////////// Kernels ////////////////////////////////////////////
-onnxruntime::Status Identity(onnxruntime::interface::TensorView<float>& input,
-                             onnxruntime::interface::Tensor<float>& output) {
-  const auto& shape = input.Shape();
-  const float* input_data = input.Data();
+
+onnxruntime::Status Identity(onnxruntime::interface::IReadonlyTensor<float>& input,
+                              onnxruntime::interface::IMutableTensor<float>& output) {
+  const float* input_data = input.GetData();
+  const auto& shape = input.GetShape();
   float* output_data = output.Allocate(shape);
-  size_t number_of_elements = input.NumberOfElements();
-  for (size_t i = 0; i < number_of_elements; ++i) {
+  size_t num_elems = shape.NumberOfElements();
+  for (size_t i = 0; i < num_elems; ++i) {
     output_data[i] = input_data[i];
   }
   return onnxruntime::Status::OK();
@@ -31,22 +32,20 @@ onnxruntime::Status Identity(onnxruntime::interface::TensorView<float>& input,
 
 struct Celu {
   Celu(const interface::IKernelInfo&) {}
-  onnxruntime::Status Compute(onnxruntime::interface::TensorView<float>& input,
-                              onnxruntime::interface::Tensor<float>& output) {
-    const auto& shape = input.Shape();
-    const float* input_data = input.Data();
+  onnxruntime::Status Compute(onnxruntime::interface::IReadonlyTensor<float>& input,
+                              onnxruntime::interface::IMutableTensor<float>& output) {
+    const auto& shape = input.GetShape();
     float* output_data = output.Allocate(shape);
-    size_t number_of_elements = input.NumberOfElements();
+    size_t num_elems = shape.NumberOfElements();
 
-    onnxruntime::interface::TensorView<float> identity_input(input_data, shape);
-    onnxruntime::interface::Tensor<float> identity_output(output_data, shape);
-    auto status = Identity(identity_input, identity_output);
+    onnxruntime::interface::MutableTensorRef<float> identity_output(output);
+    auto status = Identity(input, identity_output);
     if (!status.IsOK()) {
       return status;
     }
 
-    for (size_t i = 0; i < number_of_elements; ++i) {
-      if (input_data[i] < 0) {
+    for (size_t i = 0; i < num_elems; ++i) {
+      if (output_data[i] < 0) {
         output_data[i] = 1.f;  // deliberately set to 1.f for testing
       }
     }

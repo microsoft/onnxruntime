@@ -257,4 +257,48 @@ void Tensor::SetShapeAndStrides(const TensorShape& new_shape, gsl::span<const in
 }
 #endif
 
+interface::TensorDataType Tensor::GetDataType() const {
+  interface::TensorDataType tensor_data_type = interface::TensorDataType::uknownn_tp;
+  switch (GetElementType()) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      tensor_data_type = interface::TensorDataType::float_tp;
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+      tensor_data_type = interface::TensorDataType::double_tp;
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+      tensor_data_type = interface::TensorDataType::int8_tp;
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+      tensor_data_type = interface::TensorDataType::uint8_tp;
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16:
+      tensor_data_type = interface::TensorDataType::int16_tp;
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
+      tensor_data_type = interface::TensorDataType::uint16_tp;
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      tensor_data_type = interface::TensorDataType::int32_tp;
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+      tensor_data_type = interface::TensorDataType::uint32_tp;
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      tensor_data_type = interface::TensorDataType::int64_tp;
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
+      tensor_data_type = interface::TensorDataType::uint64_tp;
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+      tensor_data_type = interface::TensorDataType::bool_tp;
+      break;
+    // case ...:
+    //     break
+    default:
+      break;
+  }
+  return tensor_data_type;
+}
+
 }  // namespace onnxruntime

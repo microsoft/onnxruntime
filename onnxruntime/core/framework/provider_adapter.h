@@ -25,15 +25,15 @@ class ExternalDataTransfer : public IDataTransfer {
   }
 
   common::Status CopyTensor(const Tensor& /*src*/, Tensor& /*dst*/) const override {
-    //OrtValue src_value, dst_value;
-    //const void* src_raw = src.DataRaw();
-    //Tensor::InitOrtValue(src.DataType(), src.Shape(), const_cast<void*>(src_raw), src.Location(), src_value, src.ByteOffset());
-    //Tensor::InitOrtValue(dst.DataType(), dst.Shape(), dst.MutableDataRaw(), dst.Location(), dst_value, dst.ByteOffset());
+    // OrtValue src_value, dst_value;
+    // const void* src_raw = src.DataRaw();
+    // Tensor::InitOrtValue(src.DataType(), src.Shape(), const_cast<void*>(src_raw), src.Location(), src_value, src.ByteOffset());
+    // Tensor::InitOrtValue(dst.DataType(), dst.Shape(), dst.MutableDataRaw(), dst.Location(), dst_value, dst.ByteOffset());
 
-    //Ort::ConstValue src_cv{&src_value};
-    //Ort::UnownedValue dst_uv{&dst_value};
+    // Ort::ConstValue src_cv{&src_value};
+    // Ort::UnownedValue dst_uv{&dst_value};
     ////external_ep_impl_->MemoryCpy(dst_uv, src_cv);
-    //return Status::OK();
+    // return Status::OK();
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED);
   }
 
@@ -42,6 +42,31 @@ class ExternalDataTransfer : public IDataTransfer {
 };
 
 //////////////////////////////////////////////// Kernel Adapters ////////////////////////////////////////////////
+struct AllocatorAdapter : public OrtAllocator {
+  AllocatorAdapter(interface::Allocator* impl) : impl_(impl),
+                                                 mem_info_("",
+                                                           OrtDeviceAllocator,
+                                                           OrtDevice(static_cast<OrtDevice::DeviceType>(impl->dev_type),
+                                                                     OrtDevice::MemType::DEFAULT, 0)) {
+    version = ORT_API_VERSION;
+    OrtAllocator::Alloc = [](struct OrtAllocator* this_, size_t size) -> void* {
+      auto self = reinterpret_cast<AllocatorAdapter*>(this_);
+      return self->impl_->Alloc(size);
+    };
+    OrtAllocator::Free = [](struct OrtAllocator* this_, void* p) {
+      auto self = reinterpret_cast<AllocatorAdapter*>(this_);
+      return self->impl_->Free(p);
+    };
+    OrtAllocator::Info = [](const struct OrtAllocator* this_) {
+      auto self = reinterpret_cast<const AllocatorAdapter*>(this_);
+      return &self->mem_info_;
+    };
+  }
+
+ private:
+  interface::Allocator* impl_;
+  struct OrtMemoryInfo mem_info_;
+};
 
 struct KernelInfoAdapter : public interface::IKernelInfo {
   KernelInfoAdapter(const OpKernelInfo&) {}
@@ -111,33 +136,28 @@ struct KernelBuilderAdapter : public interface::IKernelBuilder {
   KernelDefBuilder builder_;
 };
 
-#define INT(st) (static_cast<int>(st))
-
 struct KernelContextAdapter : public interface::IKernelContext {
   KernelContextAdapter(OpKernelContext& context) : context_(context) {
     input_count_ = context_.InputCount();
     output_count_ = context_.OutputCount();
   }
-  const void* InputData(int index) const override {
+  const interface::ITensor& GetInputTensor(int index) const override {
     ORT_ENFORCE(INT(index) < input_count_);
     const auto* tensor = context_.Input<onnxruntime::Tensor>(INT(index));
     ORT_ENFORCE(tensor);
-    return tensor->DataRaw();
+    return *tensor;
   };
-  const int64_t* InputShape(int index, size_t* num_dims) const override {
+  const interface::ITensorShape& GetInputShape(int index) const override {
     ORT_ENFORCE(INT(index) < input_count_);
     const auto* tensor = context_.Input<onnxruntime::Tensor>(INT(index));
     ORT_ENFORCE(tensor);
-    const auto dims = tensor->Shape().GetDims();
-    *num_dims = dims.size();
-    return dims.data();
+    return tensor->Shape();
   };
-  void* AllocateOutput(int index, const interface::TensorShape& shape) override {
+  interface::ITensor* AllocOutputTensor(int index, const int64_t* dims, size_t num_dims) override {
     ORT_ENFORCE(INT(index) < output_count_);
-    auto* tensor = context_.Output(INT(index), shape);
-    ORT_ENFORCE(tensor);
-    return tensor->MutableDataRaw();
-  };
+    onnxruntime::VectorInt64 shape{dims, dims + num_dims};
+    return context_.Output(INT(index), shape);
+  }
   OpKernelContext& context_;
   int input_count_ = 0;
   int output_count_ = 0;
@@ -180,39 +200,13 @@ struct KernelRegistryAdapter : public interface::IKernelRegistry {
   std::vector<BuilderPtr> builders_;
 };
 
-struct AllocatorAdapter : public OrtAllocator {
-  AllocatorAdapter(interface::Allocator* impl) : impl_(impl),
-                                                 mem_info_("",
-                                                           OrtDeviceAllocator,
-                                                           OrtDevice(static_cast<OrtDevice::DeviceType>(impl->dev_type),
-                                                                     OrtDevice::MemType::DEFAULT, 0)) {
-    version = ORT_API_VERSION;
-    OrtAllocator::Alloc = [](struct OrtAllocator* this_, size_t size) -> void* {
-      auto self = reinterpret_cast<AllocatorAdapter*>(this_);
-      return self->impl_->Alloc(size);
-    };
-    OrtAllocator::Free = [](struct OrtAllocator* this_, void* p) {
-      auto self = reinterpret_cast<AllocatorAdapter*>(this_);
-      return self->impl_->Free(p);
-    };
-    OrtAllocator::Info = [](const struct OrtAllocator* this_) {
-      auto self = reinterpret_cast<const AllocatorAdapter*>(this_);
-      return &self->mem_info_;
-    };
-  }
-
- private:
-  interface::Allocator* impl_;
-  struct OrtMemoryInfo mem_info_;
-};
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 class ExecutionProviderAdapter : public IExecutionProvider {
  public:
   ExecutionProviderAdapter(interface::ExecutionProvider* external_ep)
       : IExecutionProvider(external_ep->GetType(), external_ep->GetDevice()), external_ep_impl_(external_ep) {
     external_ep_impl_->RegisterKernels(kernel_registry_);
     kernel_registry_.BuildKernels();
+
     for (auto& allocator : external_ep_impl_->GetAllocators()) {
       allocators_.push_back(std::make_unique<AllocatorAdapter>(allocator.get()));
     }

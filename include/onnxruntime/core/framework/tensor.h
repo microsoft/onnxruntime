@@ -17,6 +17,7 @@
 #include "onnxruntime_config.h"
 #include "core/framework/data_types.h"
 #include "core/framework/data_types_internal.h"
+#include "interface/framework/tensor.h"
 
 struct OrtValue;
 
@@ -36,7 +37,7 @@ namespace onnxruntime {
   it, and won't do any allocation / release.
 */
 
-class Tensor final {
+class Tensor final: public interface::ITensor {
  public:
   // NB! Removing Create() methods returning unique_ptr<Tensor>.
   // Still available in other EPs that are dynamically linked.
@@ -292,6 +293,20 @@ class Tensor final {
    */
   void SetShapeAndStrides(const TensorShape& new_shape, gsl::span<const int64_t> new_strides);
 #endif
+
+  const interface::ITensorShape& GetShape() const override {
+    return shape_;
+  }
+
+  interface::TensorDataType GetDataType() const override;
+
+  const void* GetRawData() const override {
+    return DataRaw();
+  }
+
+  void* GetMutableRawData() override {
+    return MutableDataRaw();
+  }
 
   // More API methods.
  private:

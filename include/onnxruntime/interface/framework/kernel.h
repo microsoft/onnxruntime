@@ -5,84 +5,18 @@
 
 #include <cassert>
 #include <numeric>
-#include "interface/common/data_types.h"
+#include "interface/framework/tensor.h"
 #include "core/common/status.h"
 
 namespace onnxruntime {
 
 namespace interface {
 
-using TensorShape = std::vector<int64_t>;
-
 struct IKernelContext {
   virtual ~IKernelContext() = default;
-  virtual const void* InputData(int index) const = 0;
-  virtual const int64_t* InputShape(int index, size_t* num_dims) const = 0;
-  virtual void* AllocateOutput(int index, const TensorShape& shape) = 0;
-};
-
-struct IArg {
-  virtual ~IArg() = default;
-};
-
-using ArgPtr = std::unique_ptr<IArg>;
-using ArgPtrs = std::vector<ArgPtr>;
-
-struct ITensor : public IArg {
-  //using MyType = ITensor<T>;
-  ITensor(IKernelContext* ctx = {}, int index = -1) : ctx_(ctx), index_(index){};
-  const TensorShape& Shape() { return shape_; }
-  size_t NumberOfElements() const {
-    if (shape_.empty()) {
-      return 0;
-    } else {
-      return std::accumulate(shape_.begin(), shape_.end(), 1ULL, std::multiplies<size_t>{});
-    }
-  }
- protected:
-  IKernelContext* ctx_ = {};
-  int index_ = {};
-  TensorShape shape_;
-};
-
-template <typename T>
-struct TensorView : public ITensor {
-  TensorView(IKernelContext* ctx, int index) : ITensor(ctx, index) {
-    data_ = reinterpret_cast<const T*>(ctx->InputData(index));
-    size_t num_dims = 0;
-    const auto* dims = ctx->InputShape(index, &num_dims);
-    shape_ = TensorShape{dims, dims + num_dims};
-  }
-  TensorView(const T* data, const TensorShape& shape) : data_(data) {
-    shape_ = shape;
-  };
-  const T* Data() const {
-    return data_;
-  }
-
- protected:
-  const T* data_ = {};
-};
-
-template <typename T>
-struct Tensor : public ITensor {
-  Tensor(IKernelContext* ctx, int index) : ITensor(ctx, index) {}
-  Tensor(T* data, const TensorShape& shape) : data_(data) {
-    shape_ = shape;
-  };
-  T* Allocate(const TensorShape& shape) {
-    if (data_) {
-      return data_;
-    } else {
-      // assert ctx
-      shape_ = shape;
-      data_ = reinterpret_cast<T*>(ctx_->AllocateOutput(index_, shape_));
-      return data_;
-    }
-  }
-
- protected:
-  T* data_ = {};
+  virtual const ITensor& GetInputTensor(int index) const = 0;
+  virtual const ITensorShape& GetInputShape(int index) const = 0;
+  virtual ITensor* AllocOutputTensor(int index, const int64_t* dims, size_t num_dims) = 0;
 };
 
 struct IKernelInfo {
@@ -91,21 +25,21 @@ struct IKernelInfo {
 
 struct IKernel {
   explicit IKernel() = default;
-  explicit IKernel(const IKernelInfo&){};
   virtual ~IKernel() = default;
   virtual onnxruntime::Status Compute(IKernelContext*) const = 0;
 
   template <int ith_input, int ith_output, typename... Ts>
   static typename std::enable_if<sizeof...(Ts) == 0, std::tuple<>>::type
-  CreateTuple(IKernelContext*, ArgPtrs&) {
+  CreateTuple(IKernelContext*, IArgPtrs&) {
     return std::make_tuple();
   }
 
   // inputs
   template <int ith_input, int ith_output, typename T, typename... Ts>
-  static typename std::enable_if<std::is_same<T, TensorView<float>&>::value, std::tuple<T, Ts...>>::type
-  CreateTuple(IKernelContext* context, ArgPtrs& args) {
-    args.push_back(std::make_unique<TensorView<float>>(context, ith_input));
+  static typename std::enable_if<std::is_same<T, IReadonlyTensor<float>&>::value, std::tuple<T, Ts...>>::type
+  CreateTuple(IKernelContext* context, IArgPtrs& args) {
+    const ITensor& input_tensor = context->GetInputTensor(ith_input);
+    args.push_back(std::make_unique<ReadonlyTensor<float>>(input_tensor));
     std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*args.back().get())};
     auto next = CreateTuple<ith_input + 1, ith_output, Ts...>(context, args);
     return std::tuple_cat(current, next);
@@ -113,9 +47,12 @@ struct IKernel {
 
   // outputs
   template <int ith_input, int ith_output, typename T, typename... Ts>
-  static typename std::enable_if<std::is_same<T, Tensor<float>&>::value, std::tuple<T, Ts...>>::type
-  CreateTuple(IKernelContext* context, ArgPtrs& args) {
-    args.push_back(std::make_unique<Tensor<float>>(context, ith_output));
+  static typename std::enable_if<std::is_same<T, IMutableTensor<float>&>::value, std::tuple<T, Ts...>>::type
+  CreateTuple(IKernelContext* context, IArgPtrs& args) {
+    MutableTensor<float>::AllocFn alloc_fn = [context](const int64_t* dims, size_t num_dims) {
+      return context->AllocOutputTensor(ith_output, dims, num_dims);
+    };
+    args.push_back(std::make_unique<MutableTensor<float>>(alloc_fn));
     std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*args.back().get())};
     auto next = CreateTuple<ith_input, ith_output + 1, Ts...>(context, args);
     return std::tuple_cat(current, next);
@@ -128,7 +65,7 @@ struct FnKernel : public IKernel {
   FnKernel(ComputeFn compute_fn) : compute_fn_(compute_fn) {}
 
   onnxruntime::Status Compute(IKernelContext* context) const override {
-    ArgPtrs args;
+    IArgPtrs args;
     auto t = CreateTuple<0, 0, Args...>(context, args);
     return std::apply([this](Args const&... t_args) { return compute_fn_(t_args...); }, t);
   }
@@ -151,7 +88,7 @@ struct StructKernel : public IKernel {
 
   template <typename... Args>
   onnxruntime::Status InvokeCompute(ComputeFn<Args...>, IKernelContext* context) const {
-    ArgPtrs args;
+    IArgPtrs args;
     auto t = CreateTuple<0, 0, Args...>(context, args);
     return std::apply([this](Args const&... t_args) { return kernel_->Compute(t_args...); }, t);
   }
@@ -159,11 +96,8 @@ struct StructKernel : public IKernel {
 };
 
 struct IKernelBuilder {
-  // IKernelBuilder() = default;
-  // IKernelBuilder(const IKernelBuilder&) = delete;
   explicit IKernelBuilder() = default;
   IKernelBuilder(const IKernelBuilder&) = delete;
-
   virtual ~IKernelBuilder() = default;
   virtual IKernelBuilder& Provider(const char*) = 0;
   virtual IKernelBuilder& SetDomain(const char*) = 0;
@@ -175,7 +109,7 @@ struct IKernelBuilder {
   template <size_t, size_t, typename... Ts>
   typename std::enable_if<sizeof...(Ts) >= 0, IKernelBuilder&>::type
   ParseArgs() {
-    //todo - generate constraints by args...
+    // todo - generate constraints by args...
     return *this;
   }
 

@@ -3004,6 +3004,7 @@ TEST(CustomEpTest, InTree) {
   SessionOptions so;
   so.use_per_session_threads = true;
   so.session_logid = "CustomEpTestInTree";
+  so.graph_optimization_level = TransformerLevel::Default;
   auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
