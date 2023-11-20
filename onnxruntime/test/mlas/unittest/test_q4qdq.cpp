@@ -19,7 +19,7 @@ Abstract:
 #include "test_util.h"
 #include "mlas_q4.h"
 
-#if (defined(_M_AMD64) || defined(__x86_64__))
+#if ((defined(_M_AMD64) && !defined(_M_ARM64EC)) || defined(__x86_64__))
 
 /**
  * @brief For testing purpose,
@@ -93,7 +93,7 @@ class MlasQ4dqTest : public MlasTestBase {
                                      << K << "] QType: " << qtype;
     }
 
-#if (defined(_M_AMD64) || defined(__x86_64__))
+#if ((defined(_M_AMD64) && !defined(_M_ARM64EC)) || defined(__x86_64__))
 
     /* Test MlasBlkQ4DequantSgemmPackB, make sure we can reuse SGEMM kernel as it rearrange B the same way as sgemm pack B*/
     const size_t AlignedN = (N + 15) & ~15;
