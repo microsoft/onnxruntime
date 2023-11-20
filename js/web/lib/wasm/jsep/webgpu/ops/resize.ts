@@ -218,32 +218,30 @@ const initOutputShape =
           return outputShape;
         };
 
-const adjustOutputShape =
-    (inputShape: readonly number[], outputShape: readonly number[], scales: number[], attributes: ResizeAttributes):
-        number[] => {
-          const scaleInPolicy = (() => {
-            switch (attributes.keepAspectRatioPolicy) {
-              case 'not_larger':
-                return attributes.axes.length > 0 ? Math.min(...attributes.axes.map(i => scales[i]), Number.MAX_VALUE) :
-                                                    Math.min(...scales, Number.MAX_VALUE);
-              case 'not_smaller':
-                return attributes.axes.length > 0 ? Math.max(...attributes.axes.map(i => scales[i]), Number.MIN_VALUE) :
-                                                    Math.max(...scales, Number.MIN_VALUE);
-              default:
-                throw new Error(`Keep aspect ratio policy ${attributes.keepAspectRatioPolicy} is not supported`);
-            }
-          })();
-          scales.fill(1.0, 0, scales.length);
-          const adjustedOutputShape = inputShape.slice();
-          if (attributes.axes.length > 0) {
-            attributes.axes.forEach((v) => scales[v] = scaleInPolicy);
-            attributes.axes.forEach((v) => adjustedOutputShape[v] = Math.round(inputShape[v] * scales[v]));
-          } else {
-            scales.fill(scaleInPolicy, 0, scales.length);
-            adjustedOutputShape.forEach((v, i) => adjustedOutputShape[i] = Math.round(v * scales[i]));
-          }
-          return adjustedOutputShape;
-        };
+const adjustOutputShape = (inputShape: readonly number[], scales: number[], attributes: ResizeAttributes): number[] => {
+  const scaleInPolicy = (() => {
+    switch (attributes.keepAspectRatioPolicy) {
+      case 'not_larger':
+        return attributes.axes.length > 0 ? Math.min(...attributes.axes.map(i => scales[i]), Number.MAX_VALUE) :
+                                            Math.min(...scales, Number.MAX_VALUE);
+      case 'not_smaller':
+        return attributes.axes.length > 0 ? Math.max(...attributes.axes.map(i => scales[i]), Number.MIN_VALUE) :
+                                            Math.max(...scales, Number.MIN_VALUE);
+      default:
+        throw new Error(`Keep aspect ratio policy ${attributes.keepAspectRatioPolicy} is not supported`);
+    }
+  })();
+  scales.fill(1.0, 0, scales.length);
+  const adjustedOutputShape = inputShape.slice();
+  if (attributes.axes.length > 0) {
+    attributes.axes.forEach((v) => scales[v] = scaleInPolicy);
+    attributes.axes.forEach((v) => adjustedOutputShape[v] = Math.round(inputShape[v] * scales[v]));
+  } else {
+    scales.fill(scaleInPolicy, 0, scales.length);
+    adjustedOutputShape.forEach((v, i) => adjustedOutputShape[i] = Math.round(v * scales[i]));
+  }
+  return adjustedOutputShape;
+};
 
 const calculateOriginalIndicesFromOutputIndices =
     (output: IndicesHelper, inputShape: readonly number[], outputShape: readonly number[], scales: readonly number[],
@@ -314,8 +312,8 @@ const checkInputIndices = (input: IndicesHelper, inputShape: readonly number[]):
     }`;
 
 const bilinearInterpolation =
-    (input: IndicesHelper, output: IndicesHelper, inputShape: readonly number[], outputShape: readonly number[],
-     scales: readonly number[], useExtrapolation: boolean, extrapolationValue: number): string => {
+    (input: IndicesHelper, output: IndicesHelper, inputShape: readonly number[], scales: readonly number[],
+     useExtrapolation: boolean, extrapolationValue: number): string => {
       const [batchIdx, heightIdx, widthIdx, channelIdx] =
           inputShape.length === 2 ? [-1, 0, 1, -1] : (scales[1] === 1.0 ? [0, 2, 3, 1] : [0, 1, 2, 3]);
       return `
@@ -445,7 +443,7 @@ const createResizeProgramInfo =
       if (scalesInput.length === 0) {
         scales = inputShape.map((value, index) => value === 0 ? 1.0 : outputShape[index] / value);
         if (attributes.keepAspectRatioPolicy !== 'stretch') {
-          outputShape = adjustOutputShape(inputShape, outputShape, scales, attributes);
+          outputShape = adjustOutputShape(inputShape, scales, attributes);
         }
       }
       const output = outputVariable('output', inputTensor.dataType, outputShape);
@@ -454,6 +452,7 @@ const createResizeProgramInfo =
       const noScale = inputShape.length === outputShape.length && inputShape.every((d, i) => d === outputShape[i]);
       const useExtrapolation = attributes.coordinateTransformMode === 'tf_crop_and_resize';
       const getShaderSource = (shaderHelper: ShaderHelper) => `
+      ${noScale ? '' : `
       ${getOriginalCoordinateFromResizedCoordinate(attributes.coordinateTransformMode)};
       ${(() => {
         switch (attributes.mode) {
@@ -470,7 +469,7 @@ const createResizeProgramInfo =
               ${calculateOriginalIndicesFromOutputIndices(output, inputShape, outputShape, scales, roi)};
               ${
                 bilinearInterpolation(
-                    input, output, inputShape, outputShape, scales, useExtrapolation, attributes.extrapolationValue)};
+                    input, output, inputShape, scales, useExtrapolation, attributes.extrapolationValue)};
               `;
           case 'cubic':
             return `
@@ -483,23 +482,22 @@ const createResizeProgramInfo =
             throw Error('Invalid resize mode');
         }
       })()};
+      `}
       ${shaderHelper.declareVariables(input, output)}
       ${shaderHelper.mainStart()}
         ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-        if (${noScale}) {
-          output[global_idx] = input[global_idx];
-        } else {
-          let outputIndices = ${output.offsetToIndices('global_idx')};
-          var inputIndices: ${input.type.indices};
-          ${(() => {
+        ${noScale ? 'output[global_idx] = input[global_idx];' : `
+        let outputIndices = ${output.offsetToIndices('global_idx')};
+        var inputIndices: ${input.type.indices};
+        ${(() => {
         switch (attributes.mode) {
           case 'nearest':
             return `inputIndices = calculateInputIndicesFromOutputIndices(outputIndices);
-                  if (checkInputIndices(inputIndices)) {
-                    output[global_idx] = input[${input.indicesToOffset('inputIndices')}];
-                  } else {
-                    output[global_idx] = ${attributes.extrapolationValue};
-                  }`;
+                if (checkInputIndices(inputIndices)) {
+                  output[global_idx] = input[${input.indicesToOffset('inputIndices')}];
+                } else {
+                  output[global_idx] = ${attributes.extrapolationValue};
+                }`;
           case 'linear':
             return 'output[global_idx] = bilinearInterpolation(outputIndices);';
           case 'cubic':
@@ -508,14 +506,14 @@ const createResizeProgramInfo =
             throw Error(`Unsupported resize mode: ${attributes.mode}`);
         }
       })()};
-        }
+        `}
       }`;
 
       return {
         name: 'Resize',
         shaderCache: {
           hint: `${attributes.cacheKey}|${opsetVersion}|${scales.length > 0 ? scales : ''}|${
-              sizes.length > 0 ? sizes : ''}`
+              sizes.length > 0 ? sizes : ''}|${noScale}`
         },
         getShaderSource,
         getRunData: () => ({
