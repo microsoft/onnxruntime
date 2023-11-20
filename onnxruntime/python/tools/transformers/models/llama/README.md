@@ -34,18 +34,11 @@ To make this option compatible with [Hugging Face's Optimum](https://github.com/
 
 As indicated in `requirements.txt`, you will also need to install Optimum from source. Once installed, you will need to modify `ORTModelForCausalLM.forward` in `optimum/optimum/onnxruntime/modeling_decoder.py` as follows:
 
-```
-# Before
+```diff
 if self.use_cache:
     if past_key_values is not None:
-        input_ids = input_ids[:, -1:]
-        # Flatten the past_key_values (no need to flatten for models using multi-query attn)
-
-
-# After
-if self.use_cache:
-    if past_key_values is not None:
-        input_ids = input_ids[:, -1:] if past_key_values[0][0].shape[2] != 0 else input_ids
+-       input_ids = input_ids[:, -1:]
++       input_ids = input_ids[:, -1:] if past_key_values[0][0].shape[2] != 0 else input_ids
         # Flatten the past_key_values (no need to flatten for models using multi-query attn)
 ```
 
@@ -235,6 +228,8 @@ $ ./build.sh --config Release --use_cuda --cuda_home /usr/local/cuda-12.2 --cudn
 # 3. Shard and export the LLaMA-2 70B model. With FP16, you will need at least 140GB of GPU memory to load the model. Therefore, you will need at least 4 40GB A100 GPUs or 2 80GB A100 GPUs to shard the PyTorch model and export each shard to ONNX. Here is an example command:
 $ CUDA_VISIBLE_DEVICES=0,1,2,3 bash convert_70b_model.sh 4 -m meta-llama/Llama-2-70b-hf --output llama2-70b-distributed --precision fp16 --execution_provider cuda --use_gqa
 ```
+
+Note (tmp): On ROCm, support for GQA is not available yet, `--use_gqa` flag should not be used for now; and for 70B model, we need to use `--disable_attn` to disable attention fusion.
 
 ## Benchmark LLaMA-2
 
