@@ -203,7 +203,8 @@ TEST(InternalTestingEP, TestMixOfStaticAndCompiledKernels) {
 }
 
 TEST(InternalTestingEP, TestNhwcConversionOfStaticKernels) {
-  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "squeezenet/model.onnx";
+  // the internal NHWC domain supports opset 11 and later
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "squeezenet/model_opset11.onnx";
 
   SessionOptions so;
   // set this if you want to manually inspect the optimized model
