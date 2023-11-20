@@ -13,8 +13,8 @@ struct LogicalProcessorInformation {
 };
 
 struct CoreCounter {
-  long long PhysicalCores = 0;
-  long long SocDieCores = 0;
+  uint32_t PhysicalCores = 0;
+  uint32_t SocDieCores = 0;
 };
 
 static LogicalProcessorInformation GetLogicalProcessorInfos(LOGICAL_PROCESSOR_RELATIONSHIP relationship) {
@@ -34,6 +34,14 @@ static LogicalProcessorInformation GetLogicalProcessorInfos(LOGICAL_PROCESSOR_RE
   return {std::move(processorInformationBytes), length};
 }
 
+uint32_t CountSetBits(DWORD input) {
+  uint32_t c;
+  for (c = 0; input; c++) {
+    input &= input - 1;
+  }
+  return c;
+}
+
 static CoreCounter GetNumberOPhysicalAndEngineeringCores() {
   auto logicalProcessorInformation = GetLogicalProcessorInfos(RelationAll);
 
@@ -43,7 +51,8 @@ static CoreCounter GetNumberOPhysicalAndEngineeringCores() {
   size_t read = 0;
   PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX currentProcessorInfo = NULL;
 
-  while ((read + FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Processor)) < logicalProcessorInformation.Length) {
+  while ((read + FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Processor)) < logicalProcessorInformation.Length
+  ) {
     currentProcessorInfo = (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)(logicalProcessorInformation.Buffer.get() + read);
     if ((read + currentProcessorInfo->Size) > logicalProcessorInformation.Length) {
       break;
@@ -65,7 +74,7 @@ static CoreCounter GetNumberOPhysicalAndEngineeringCores() {
     read += currentProcessorInfo->Size;
   }
 
-  cores.SocDieCores = __popcnt(dwLevel2GroupMask & ~dwLevel3GroupMask);
+  cores.SocDieCores = CountSetBits(dwLevel2GroupMask & ~dwLevel3GroupMask);
   return cores;
 }
 
@@ -74,7 +83,7 @@ uint32_t HardwareCoreEnumerator::DefaultIntraOpNumThreads() {
   // # of logical cores = # of P cores x 2 (if hyper threading is enabled) + # of E cores + # of Soc Cores.
   auto cores = GetNumberOPhysicalAndEngineeringCores();
   // We want to use the number of pysical cores, but exclude soc cores
-  return static_cast<uint32_t>(cores.PhysicalCores - cores.SocDieCores);
+  return cores.PhysicalCores - cores.SocDieCores;
 }
 
 }  // namespace WINMLP

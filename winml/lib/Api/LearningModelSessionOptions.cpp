@@ -7,8 +7,7 @@
 
 namespace WINMLP {
 
-LearningModelSessionOptions::LearningModelSessionOptions()
-{
+LearningModelSessionOptions::LearningModelSessionOptions() {
   intra_op_num_threads_override_ = HardwareCoreEnumerator::DefaultIntraOpNumThreads();
 }
 
