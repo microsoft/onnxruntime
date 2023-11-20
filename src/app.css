@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+/* {
+    primary": "#b2b2b2",
+    "secondary": "#fcfcfc",
+    "accent": "#64c0fe",
+    "neutral": "#d1d1d1",
+    "base-100": "#212933",
+    "info": "#1d4ed8",
+    "success": "#818cf8",
+    "warning": "#facc15",
+    "error": "#ef4444",
+} */

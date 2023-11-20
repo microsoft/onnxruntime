@@ -25,8 +25,8 @@ Details on OS versions, compilers, language versions, dependent libraries, etc c
 * All builds require the English language package with `en_US.UTF-8` locale. On Linux, install [language-pack-en package](https://packages.ubuntu.com/search?keywords=language-pack-en)
 by running `locale-gen en_US.UTF-8` and `update-locale LANG=en_US.UTF-8`
 
-* Windows builds require [Visual C++ 2019 runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads). The latest version is recommended. 
- 
+* Windows builds require [Visual C++ 2019 runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads). The latest version is recommended.
+
 ## Python Installs
 
 ### Install ONNX Runtime (ORT)
@@ -120,7 +120,7 @@ In your CocoaPods `Podfile`, add the `onnxruntime-c`, `onnxruntime-mobile-c`, `o
 
 #### C/C++
 
-  ```pod
+  ```ruby
   use_frameworks!
 
   # choose one of the two below:
@@ -130,7 +130,7 @@ In your CocoaPods `Podfile`, add the `onnxruntime-c`, `onnxruntime-mobile-c`, `o
 
 #### Objective-C
 
-  ```pod
+  ```ruby
   use_frameworks!
 
   # choose one of the two below:
@@ -185,7 +185,8 @@ If the pre-built training package supports your model but is too large, you can 
 ### Offline Phase - Prepare for Training
 
 ```bash
-pip install onnxruntime-training
+python -m pip install cerberus flatbuffers h5py numpy>=1.16.6 onnx packaging protobuf sympy setuptools>=41.4.0
+pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT/pypi/simple/ onnxruntime-training-cpu
 ```
 
 ### Training Phase - On-Device Training
@@ -271,6 +272,41 @@ dependencies {
       </ol>
     </td>
   </tr>
+  <tr>
+    <td>iOS</td>
+    <td>C, C++</td>
+    <td><b>CocoaPods: onnxruntime-training-c</b></td>
+    <td>
+      <ul>
+        <li>In your CocoaPods <code>Podfile</code>, add the <code>onnxruntime-training-c</code> pod:
+          <pre>
+use_frameworks!
+pod 'onnxruntime-training-c'
+          </pre>
+        </li>
+        <li>Run <code>pod install</code>.</li>
+      </ul>
+    </td>
+  </tr>
+  <tr>
+    <td></td>
+    <td> Objective-C</td>
+     <td><b>CocoaPods: onnxruntime-training-objc</b> </td>
+     <td>
+       <ul>
+        <li>
+          In your CocoaPods <code>Podfile</code>, add the <code>onnxruntime-training-objc</code> pod:
+            <pre>
+use_frameworks!
+pod 'onnxruntime-training-objc'
+            </pre>
+        </li>
+        <li>
+          Run <code>pod install</code>.
+        </li>
+      </ul>
+    </td>
+  </tr>
 </table>
 
 ## Large Model Training
@@ -319,4 +355,4 @@ In addition to general [requirements](#requirements), please note additional req
 
 ## Training install table for all languages
 
-Refer to the getting started with [Optimized Training](../../index.html#getStartedTable) page for more fine-grained installation instructions.
+Refer to the getting started with [Optimized Training](https://onnxruntime.ai/getting-started) page for more fine-grained installation instructions.

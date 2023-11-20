@@ -4,7 +4,7 @@ name: Publish site
 on:
   # Runs on pushes targeting the branch where the website sources live
   push:
-    branches: ["gh-pages"]
+    branches: ['gh-pages']
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -18,7 +18,7 @@ permissions:
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
 # However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
-  group: "pages"
+  group: 'pages'
   cancel-in-progress: false
 
 jobs:
@@ -28,11 +28,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-        with:
-          ref: gh-pages
 
       - name: Setup Pages
         uses: actions/configure-pages@v3
+
+      - name: Use Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 19.x
+
+      - name: Install dependencies
+        run: npm install
 
       - name: Build with Jekyll
         uses: actions/jekyll-build-pages@v1
@@ -80,6 +86,14 @@ jobs:
           branch: main
           path: apidocs
 
+      - name: Download JS apidocs artifact
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          name: onnxruntime-node-apidocs
+          workflow: publish-js-apidocs.yml
+          branch: main
+          path: apidocs
+
       - name: Move apidocs folders into place
         run: |
           sudo rm -rf _site/docs/api/c
@@ -92,6 +106,15 @@ jobs:
           sudo mv apidocs/docs/api/python _site/docs/api
           sudo rm -rf _site/docs/api/objectivec
           sudo mv apidocs/docs/api/objectivec _site/docs/api
+          sudo rm -rf _site/docs/api/js
+          sudo mv apidocs/docs/api/js _site/docs/api
+
+      - name: Generate build
+        run: npm run build
+
+      - name: Move site into place
+        run: |
+          sudo mv ./build/* ./_site
 
       - name: Upload site
         uses: actions/upload-pages-artifact@v1

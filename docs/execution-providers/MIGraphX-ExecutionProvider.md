@@ -2,7 +2,7 @@
 title: AMD - MIGraphX
 description: Instructions to execute ONNX Runtime with the AMD MIGraphX execution provider
 parent: Execution Providers
-nav_order: 10
+nav_order: 11
 redirect_from: /docs/reference/execution-providers/MIGraphX-ExecutionProvider
 ---
 

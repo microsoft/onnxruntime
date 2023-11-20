@@ -233,7 +233,7 @@ It is also possible to use a precompiled model.
 
 The compiled model can be obtained using the [OctoML platform](https://onnx.octoml.ai)
 or compiled directly (see **Support precompiled model** section in
-[Sample notebook for ResNet50 inference with TVM EP](https://github.com/microsoft/onnxruntime/blob/main/docs/python/inference/notebooks/onnxruntime-tvm-tutorial.ipynb)
+[Sample notebook for ResNet50 inference with TVM EP](https://github.com/microsoft/onnxruntime/blob/main/docs/python/notebooks/onnxruntime-tvm-tutorial.ipynb)
 for more information on model compilation).
 
 In order to use the precompiled model, only need to pass two options:
@@ -247,7 +247,7 @@ the files of the precompiled model are located.
 You can read more about these options in section [Configuration options](#configuration-options) above.
 
 ## Samples
-- [Sample notebook for ResNet50 inference with TVM EP](https://github.com/microsoft/onnxruntime/blob/main/docs/python/inference/notebooks/onnxruntime-tvm-tutorial.ipynb)
+- [Sample notebook for ResNet50 inference with TVM EP](https://github.com/microsoft/onnxruntime/blob/main/docs/python/notebooks/onnxruntime-tvm-tutorial.ipynb)
 
 ## Known issues
 - At this moment, the TVM EP has only been verified on UNIX/Linux and Windows systems.

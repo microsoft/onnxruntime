@@ -100,7 +100,7 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
    * The path to the cuDNN installation (path to cudnn bin/include/lib) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter.
      * On Windows, cuDNN requires [zlibwapi.dll](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html#install-zlib-windows). Feel free to place this dll under `path_to_cudnn/bin`  
- * Install [TensorRT](https://developer.nvidia.com/tensorrt)
+ * Follow [instructions for installing TensorRT](https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html)
    * The TensorRT execution provider for ONNX Runtime is built and tested up to TensorRT 8.6.
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
    * ONNX Runtime uses TensorRT built-in parser from `tensorrt_home` by default.
@@ -142,58 +142,63 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 ### Build Instructions
 {: .no_toc }
 
-These instructions are for JetPack SDK 4.6.1.
+These instructions are for the latest [JetPack SDK 5.1.2](https://developer.nvidia.com/embedded/jetpack-sdk-512).
 
 1. Clone the ONNX Runtime repo on the Jetson host
 
-    ```bash
-    git clone --recursive https://github.com/microsoft/onnxruntime
-    ```
+   ```bash
+   git clone --recursive https://github.com/microsoft/onnxruntime
+   ```
 
 2. Specify the CUDA compiler, or add its location to the PATH.
 
-   Cmake can't automatically find the correct nvcc if it's not in the PATH.
+   1. Starting with **CUDA 11.8**, Jetson users on **JetPack 5.0+** can upgrade to the latest CUDA release without updating the JetPack version or Jetson Linux BSP (Board Support Package). CUDA version 11.8 with JetPack 5.1.2 has been tested on Jetson when building ONNX Runtime 1.16. 
 
-    ```bash
-    export CUDACXX="/usr/local/cuda/bin/nvcc"
+      1. Check [this official blog](https://developer.nvidia.com/blog/simplifying-cuda-upgrades-for-nvidia-jetson-users/) for CUDA 11.8 upgrade instruction.
 
-    ```
+      2. CUDA 12.x is only available to Jetson Orin and newer series (CUDA compute capability >= 8.7). Check [here](https://developer.nvidia.com/cuda-gpus#collapse5) for compute capability datasheet.
 
-    or:
+   2. CMake can't automatically find the correct `nvcc` if it's not in the `PATH`. `nvcc` can be added to `PATH` via:
 
-    ```bash
-    export PATH="/usr/local/cuda/bin:${PATH}"
-    ```
+      ```bash
+      export PATH="/usr/local/cuda/bin:${PATH}"
+      ```
 
-3. Install the ONNX Runtime build dependencies on the Jetpack 4.6.1 host:
+       or:
 
-    ```bash
-    sudo apt install -y --no-install-recommends \
-      build-essential software-properties-common libopenblas-dev \
-      libpython3.6-dev python3-pip python3-dev python3-setuptools python3-wheel
-    ```
+      ```bash
+      export CUDACXX="/usr/local/cuda/bin/nvcc"
+      ```
 
-4. Cmake is needed to build ONNX Runtime. Because the minimum required version is 3.18,
-   it is necessary to build CMake from source. Download Unix/Linux sources from https://cmake.org/download/
-   and follow https://cmake.org/install/ to build from source. Version 3.23.0 has been tested on Jetson.
+3. Install the ONNX Runtime build dependencies on the Jetpack 5.1.2 host:
 
-5. Build the ONNX Runtime Python wheel:
+   ```bash
+   sudo apt install -y --no-install-recommends \
+     build-essential software-properties-common libopenblas-dev \
+     libpython3.8-dev python3-pip python3-dev python3-setuptools python3-wheel
+   ```
 
-    ```bash
-    ./build.sh --config Release --update --build --parallel --build_wheel \
-    --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu
-    ```
+4. Cmake is needed to build ONNX Runtime. For ONNX Runtime 1.16, the minimum required CMake version is 3.26 (version 3.27.4 has been tested). This can be either installed by:
 
-    Note: You may optionally build with TensorRT support.
+   1. (Unix/Linux) Build from source. Download sources from [https://cmake.org/download/](https://cmake.org/download/)
+      and follow [https://cmake.org/install/](https://cmake.org/install/) to build from source. 
+   2. (Ubuntu) Install deb package via apt repository: e.g [https://apt.kitware.com/](https://apt.kitware.com/)
 
-    ```bash
-    ./build.sh --config Release --update --build --parallel --build_wheel \
-    --use_tensorrt --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu \
-    --tensorrt_home /usr/lib/aarch64-linux-gnu
-    ```
+5. Build the ONNX Runtime Python wheel (update path to CUDA/CUDNN/TensorRT libraries if necessary):
 
----
+   1. Build `onnxruntime-gpu` wheel with CUDA and TensorRT support:
 
+      ```bash
+      ./build.sh --config Release --update --build --parallel --build_wheel \
+      --use_tensorrt --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu \
+      --tensorrt_home /usr/lib/aarch64-linux-gnu
+      ```
+
+​	Notes:
+
+* By default, `onnxruntime-gpu` wheel file will be captured under `path_to/onnxruntime/build/Linux/Release/dist/` (build path can be customized by adding `--build_dir` followed by a customized path to the build command above).
+
+* For a portion of Jetson devices like the Xavier series, higher power mode involves more cores (up to 6) to compute but it consumes more resource when building ONNX Runtime. Set `--parallel 2` or smaller in the build command if system is hanging and OOM happens. 
 ## oneDNN
 
 See more information on oneDNN (formerly DNNL) [here](../execution-providers/oneDNN-ExecutionProvider.md).
@@ -235,14 +240,14 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
 ### Prerequisites
 {: .no_toc }
 
-1. Install the OpenVINO™ offline/online installer from Intel<sup>®</sup> Distribution of OpenVINO™<sup>TM</sup> Toolkit **Release 2023.0** for the appropriate OS and target hardware:
-   * [Windows - CPU, GPU](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html?ENVIRONMENT=RUNTIME&OP_SYSTEM=WINDOWS&VERSION=v_2023_0&DISTRIBUTION=ARCHIVE).
-   * [Linux - CPU, GPU](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html?ENVIRONMENT=RUNTIME&OP_SYSTEM=LINUX&VERSION=v_2023_0&DISTRIBUTION=ARCHIVE)
+1. Install the OpenVINO™ offline/online installer from Intel<sup>®</sup> Distribution of OpenVINO™<sup>TM</sup> Toolkit **Release 2023.1** for the appropriate OS and target hardware:
+   * [Windows - CPU, GPU](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html?VERSION=v_2023_1_0&OP_SYSTEM=WINDOWS&DISTRIBUTION=ARCHIVE).
+   * [Linux - CPU, GPU](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html?VERSION=v_2023_1_0&OP_SYSTEM=LINUX&DISTRIBUTION=ARCHIVE)
 
-   Follow [documentation](https://docs.openvino.ai/2023.0/index.html) for detailed instructions.
+   Follow [documentation](https://docs.openvino.ai/2023.1/index.html) for detailed instructions.
 
-  *2023.0 is the recommended OpenVINO™ version. [OpenVINO™ 2022.1](https://docs.openvino.ai/2022.1/index.html) is minimal OpenVINO™ version requirement.*
-  *The minimum ubuntu version to support 2023.0 is 18.04.*
+  *2023.1 is the recommended OpenVINO™ version. [OpenVINO™ 2022.1](https://docs.openvino.ai/archive/2022.1/index.html) is minimal OpenVINO™ version requirement.*
+  *The minimum ubuntu version to support 2023.1 is 18.04.*
 
 2. Configure the target hardware with specific follow on instructions:
    * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvino.ai/latest/openvino_docs_install_guides_configurations_for_intel_gpu.html#gpu-guide-windows), [Linux](https://docs.openvino.ai/latest/openvino_docs_install_guides_configurations_for_intel_gpu.html#linux)

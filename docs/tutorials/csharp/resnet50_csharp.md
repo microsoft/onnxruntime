@@ -77,9 +77,10 @@ Note, we're doing a centered crop resize to preserve aspect ratio.
 Next, we will preprocess the image according to the [requirements of the model](https://github.com/onnx/models/tree/master/vision/classification/resnet#preprocessing):
 
 ```cs
-Tensor<float> input = new DenseTensor<float>(new[] { 1, 3, 224, 224 });
+// We use DenseTensor for multi-dimensional access to populate the image data
 var mean = new[] { 0.485f, 0.456f, 0.406f };
 var stddev = new[] { 0.229f, 0.224f, 0.225f };
+DenseTensor<float> processedImage = new(new[] { 1, 3, 224, 224 });
 image.ProcessPixelRows(accessor =>
 {
     for (int y = 0; y < accessor.Height; y++)
@@ -87,9 +88,9 @@ image.ProcessPixelRows(accessor =>
         Span<Rgb24> pixelSpan = accessor.GetRowSpan(y);
         for (int x = 0; x < accessor.Width; x++)
         {
-            input[0, 0, y, x] = ((pixelSpan[x].R / 255f) - mean[0]) / stddev[0];
-            input[0, 1, y, x] = ((pixelSpan[x].G / 255f) - mean[1]) / stddev[1];
-            input[0, 2, y, x] = ((pixelSpan[x].B / 255f) - mean[2]) / stddev[2];
+            processedImage[0, 0, y, x] = ((pixelSpan[x].R / 255f) - mean[0]) / stddev[0];
+            processedImage[0, 1, y, x] = ((pixelSpan[x].G / 255f) - mean[1]) / stddev[1];
+            processedImage[0, 2, y, x] = ((pixelSpan[x].B / 255f) - mean[2]) / stddev[2];
         }
     }
 });
@@ -102,10 +103,17 @@ Here, we're creating a Tensor of the required size `(batch-size, channels, heigh
 Next, we will create the inputs to the model:
 
 ```cs
-var inputs = new List<NamedOnnxValue>
+// Pin tensor buffer and create a OrtValue with native tensor that makes use of
+// DenseTensor buffer directly. This avoids extra data copy within OnnxRuntime.
+// It will be unpinned on ortValue disposal
+using var inputOrtValue = OrtValue.CreateTensorValueFromMemory(OrtMemoryInfo.DefaultInstance,
+    processedImage.Buffer, new long[] { 1, 3, 224, 224 });
+
+var inputs = new Dictionary<string, OrtValue>
 {
-    NamedOnnxValue.CreateFromTensor("data", input)
-};
+    { "data", inputOrtValue }
+}
+
 ```
 
 To check the input node names for an ONNX model, you can use [Netron](https://github.com/lutzroeder/netron) to visualise the model and see input/output names. In this case, this model has `data` as the input node name.
@@ -116,7 +124,8 @@ Next, we will create an inference session and run the input through it:
 
 ```cs
 using var session = new InferenceSession(modelFilePath);
-using IDisposableReadOnlyCollection<DisposableNamedOnnxValue> results = session.Run(inputs);
+using var runOptions = new RunOptions();
+using IDisposableReadOnlyCollection<OrtValue> results = session.Run(runOptions, inputs, session.OutputNames);
 ```
 
 ### Postprocess output
@@ -124,7 +133,9 @@ using IDisposableReadOnlyCollection<DisposableNamedOnnxValue> results = session.
 Next, we will need to postprocess the output to get the softmax vector, as this is not handled by the model itself:
 
 ```cs
-IEnumerable<float> output = results.First().AsEnumerable<float>();
+// We copy results to array only to apply algorithms, otherwise data can be accessed directly
+// from the native buffer via ReadOnlySpan<T> or Span<T>
+var output = results[0].GetTensorDataAsSpan<float>().ToArray();
 float sum = output.Sum(x => (float)Math.Exp(x));
 IEnumerable<float> softmax = output.Select(x => (float)Math.Exp(x) / sum);
 ```

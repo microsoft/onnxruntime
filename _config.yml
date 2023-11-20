@@ -10,28 +10,28 @@ plugins:
   - jekyll-redirect-from
 kramdown:
   parse_block_html: true
-  toc_levels: "2"
-logo: "/images/ONNX-Runtime-logo.svg"
-aux_links:  
-  "ONNX Runtime":
-    - "/"
-  "Install":
-    - "/docs/install/"
-  "Get Started":
-    - "/docs/get-started/"
-  "Tutorials":
-    - "/docs/tutorials/"
-  "API Docs":
-    - "/docs/api/"
-  "YouTube":
-    - "https://www.youtube.com/onnxruntime"
-  "GitHub":
-    - "https://github.com/microsoft/onnxruntime"
-ga_tracking: UA-156955408-1    
+  toc_levels: '2'
+logo: '/images/ONNX-Runtime-logo.svg'
+aux_links:
+  'ONNX Runtime':
+    - '/'
+  'Install':
+    - '/docs/install/'
+  'Get Started':
+    - '/docs/get-started/'
+  'Tutorials':
+    - '/docs/tutorials/'
+  'API Docs':
+    - '/docs/api/'
+  'YouTube':
+    - 'https://www.youtube.com/onnxruntime'
+  'GitHub':
+    - 'https://github.com/microsoft/onnxruntime'
+ga_tracking: UA-156955408-1
 # Footer "Edit this page on GitHub" link text
 gh_edit_link: true # show or hide edit this page link
-gh_edit_link_text: "Edit this page on GitHub"
-gh_edit_repository: "https://github.com/microsoft/onnxruntime" # the github URL for your repo
-gh_edit_branch: "gh-pages" # the branch that your docs is served from
+gh_edit_link_text: 'Edit this page on GitHub'
+gh_edit_repository: 'https://github.com/microsoft/onnxruntime' # the github URL for your repo
+gh_edit_branch: 'gh-pages' # the branch that your docs is served from
 # gh_edit_source: docs # the source that your files originate from
-gh_edit_view_mode: "tree" # "tree" or "edit" if you want the user to jump into the editor immediately
+gh_edit_view_mode: 'tree' # "tree" or "edit" if you want the user to jump into the editor immediately

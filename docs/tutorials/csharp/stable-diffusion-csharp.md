@@ -136,33 +136,51 @@ make a picture of green tree with flowers aroundit and a red sky
 ```csharp
 public static int[] TokenizeText(string text)
 {
-    // Create Tokenizer and tokenize the sentence.
-    var tokenizerOnnxPath = Directory.GetCurrentDirectory().ToString() + ("\\text_tokenizer\\custom_op_cliptok.onnx");
+            // Create Tokenizer and tokenize the sentence.
+            var tokenizerOnnxPath = Directory.GetCurrentDirectory().ToString() + ("\\text_tokenizer\\custom_op_cliptok.onnx");
 
-    // Create session options for custom op of extensions
-    var sessionOptions = new SessionOptions();
-    var customOp = "ortextensions.dll";
-    sessionOptions.RegisterCustomOpLibraryV2(customOp, out var libraryHandle);
-    
-    // Create an InferenceSession from the onnx clip tokenizer.
-    var tokenizeSession = new InferenceSession(tokenizerOnnxPath, sessionOptions);
-    var inputTensor = new DenseTensor<string>(new string[] { text }, new int[] { 1 });
-    var inputString = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<string>("string_input", inputTensor) };
-    // Run session and send the input data in to get inference output. 
-    var tokens = tokenizeSession.Run(inputString);
-    var inputIds = (tokens.ToList().First().Value as IEnumerable<long>).ToArray();
-    Console.WriteLine(String.Join(" ", inputIds));
-    // Cast inputIds to Int32
-    var InputIdsInt = inputIds.Select(x => (int)x).ToArray();
-    var modelMaxLength = 77;
-    // Pad array with 49407 until length is modelMaxLength
-    if (InputIdsInt.Length < modelMaxLength)
-    {
-        var pad = Enumerable.Repeat(49407, 77 - InputIdsInt.Length).ToArray();
-        InputIdsInt = InputIdsInt.Concat(pad).ToArray();
-    }
-    return InputIdsInt;
+            // Create session options for custom op of extensions
+            using var sessionOptions = new SessionOptions();
+            var customOp = "ortextensions.dll";
+            sessionOptions.RegisterCustomOpLibraryV2(customOp, out var libraryHandle);
+
+            // Create an InferenceSession from the onnx clip tokenizer.
+            using var tokenizeSession = new InferenceSession(tokenizerOnnxPath, sessionOptions);
+
+            // Create input tensor from text
+            using var inputTensor = OrtValue.CreateTensorWithEmptyStrings(OrtAllocator.DefaultInstance, new long[] { 1 });
+            inputTensor.StringTensorSetElementAt(text.AsSpan(), 0);
+
+            var inputs = new Dictionary<string, OrtValue>
+            {
+                {  "string_input", inputTensor }
+            };
+
+            // Run session and send the input data in to get inference output. 
+            using var runOptions = new RunOptions();
+            using var tokens = tokenizeSession.Run(runOptions, inputs, tokenizeSession.OutputNames);
+
+            var inputIds = tokens[0].GetTensorDataAsSpan<long>();
+
+            // Cast inputIds to Int32
+            var InputIdsInt = new int[inputIds.Length];
+            for(int i = 0; i < inputIds.Length; i++)
+            {
+                InputIdsInt[i] = (int)inputIds[i];
+            }
+
+            Console.WriteLine(String.Join(" ", InputIdsInt));
+
+            var modelMaxLength = 77;
+            // Pad array with 49407 until length is modelMaxLength
+            if (InputIdsInt.Length < modelMaxLength)
+            {
+                var pad = Enumerable.Repeat(49407, 77 - InputIdsInt.Length).ToArray();
+                InputIdsInt = InputIdsInt.Concat(pad).ToArray();
+            }
+            return InputIdsInt;
 }
+
 ```
 
 ```text
@@ -186,26 +204,35 @@ The text encoder creates the text embedding which is trained to encode the text 
 - Text Embedding: A vector of numbers that represents the text prompt created from the tokenization result. The text embedding is created by the `text_encoder` model. 
 
 ```csharp
-public static DenseTensor<float> TextEncoder(int[] tokenizedInput)
-{
-    // Create input tensor.
-    var input_ids = TensorHelper.CreateTensor(tokenizedInput, new[] { 1, tokenizedInput.Count() });
+        public static float[] TextEncoder(int[] tokenizedInput)
+        {
+            // Create input tensor. OrtValue will not copy, will read from managed memory
+            using var input_ids = OrtValue.CreateTensorValueFromMemory<int>(tokenizedInput,
+                new long[] { 1, tokenizedInput.Count() });
 
-    var input = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<int>("input_ids", input_ids) };
+            var textEncoderOnnxPath = Directory.GetCurrentDirectory().ToString() + ("\\text_encoder\\model.onnx");
 
-    var textEncoderOnnxPath = Directory.GetCurrentDirectory().ToString() + ("\\text_encoder\\model.onnx");
+            using var encodeSession = new InferenceSession(textEncoderOnnxPath);
 
-    var encodeSession = new InferenceSession(textEncoderOnnxPath);
-    // Run inference.
-    var encoded = encodeSession.Run(input);
+            // Pre-allocate the output so it goes to a managed buffer
+            // we know the shape
+            var lastHiddenState = new float[1 * 77 * 768];
+            using var outputOrtValue = OrtValue.CreateTensorValueFromMemory<float>(lastHiddenState, new long[] { 1, 77, 768 });
 
-    var lastHiddenState = (encoded.ToList().First().Value as IEnumerable<float>).ToArray();
-    var lastHiddenStateTensor = TensorHelper.CreateTensor(lastHiddenState.ToArray(), new[] { 1, 77, 768 });
+            string[] input_names = { "input_ids" };
+            OrtValue[] inputs = { input_ids };
 
-    return lastHiddenStateTensor;
+            string[] output_names = { encodeSession.OutputNames[0] };
+            OrtValue[] outputs = { outputOrtValue };
 
-}
+            // Run inference.
+            using var runOptions = new RunOptions();
+            encodeSession.Run(runOptions, input_names, inputs, output_names, outputs);
+
+            return lastHiddenState;
+        }
 ```
+
 ```text
 torch.Size([1, 77, 768])
 tensor([[[-0.3884,  0.0229, -0.0522,  ..., -0.4899, -0.3066,  0.0675],
@@ -257,27 +284,37 @@ var latents = GenerateLatentSample(batchSize, height, width,seed, scheduler.Init
 For each inference step the latent image is duplicated to create the tensor shape of (2,4,64,64), it is then scaled and inferenced with the unet model. The output tensors (2,4,64,64) are split and guidance is applied. The resulting tensor is then sent into the `LMSDiscreteScheduler` step as part of the denoising process and the resulting tensor from the scheduler step is returned and the loop completes again until the `num_inference_steps` is reached. 
 
 ```csharp
+var modelPath = Directory.GetCurrentDirectory().ToString() + ("\\unet\\model.onnx");
+var scheduler = new LMSDiscreteScheduler();
+var timesteps = scheduler.SetTimesteps(numInferenceSteps);
+
+var seed = new Random().Next();
+var latents = GenerateLatentSample(batchSize, height, width, seed, scheduler.InitNoiseSigma);
+
 // Create Inference Session
-var unetSession = new InferenceSession(modelPath, options);
-var input = new List<NamedOnnxValue>();
+using var options = new SessionOptions();
+using var unetSession = new InferenceSession(modelPath, options);
+
+var latentInputShape = new int[] { 2, 4, height / 8, width / 8 };
+var splitTensorsShape = new int[] { 1, 4, height / 8, width / 8 };
 
 for (int t = 0; t < timesteps.Length; t++)
 {
     // torch.cat([latents] * 2)
-    var latentModelInput = TensorHelper.Duplicate(latents.ToArray(), new[] { 2, 4, height / 8, width / 8 });
-    
+    var latentModelInput = TensorHelper.Duplicate(latents.ToArray(), latentInputShape);
+
     // Scale the input
     latentModelInput = scheduler.ScaleInput(latentModelInput, timesteps[t]);
-    
+
     // Create model input of text embeddings, scaled latent image and timestep
-    input = CreateUnetModelInput(textEmbeddings, latentModelInput, timesteps[t]);
-    
+    var input = CreateUnetModelInput(textEmbeddings, latentModelInput, timesteps[t]);
+
     // Run Inference
-    var output = unetSession.Run(input);
-    var outputTensor = (output.ToList().First().Value as DenseTensor<float>);
+    using var output = unetSession.Run(input);
+    var outputTensor = output[0].Value as DenseTensor<float>;
 
     // Split tensors from 2,4,64,64 to 1,4,64,64
-    var splitTensors = TensorHelper.SplitTensor(outputTensor, new[] { 1, 4, height / 8, width / 8 });
+    var splitTensors = TensorHelper.SplitTensor(outputTensor, splitTensorsShape);
     var noisePred = splitTensors.Item1;
     var noisePredText = splitTensors.Item2;
 
@@ -287,6 +324,7 @@ for (int t = 0; t < timesteps.Length; t++)
     // LMS Scheduler Step
     latents = scheduler.Step(noisePred, timesteps[t], latents);
 }
+
 ```
 ## Postprocess the `output` with the VAEDecoder
 After the inference loop is complete, the resulting tensor is scaled and then sent to the `vae_decoder` model to decode the image. Lastly the decoded image tensor is converted to an image and saved to disc.

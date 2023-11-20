@@ -31,6 +31,7 @@ Please reference [Nvidia CUDA Minor Version Compatibility](https://docs.nvidia.c
 
 |ONNX Runtime|CUDA|cuDNN|Notes|
 |---|---|---|---|
+|1.15<br>1.16|11.8|8.2.4 (Linux)<br/>8.5.0.96 (Windows)|Tested with CUDA versions from 11.6 up to 11.8, and cuDNN from 8.2.4 up to 8.7.0|
 |1.14<br/>1.13.1<br/>1.13|11.6|8.2.4 (Linux)<br/>8.5.0.96 (Windows)|libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.5.2<br/>libcublas 11.6.5.2<br/>libcudnn 8.2.4|
 |1.12<br/>1.11|11.4|8.2.4 (Linux)<br/>8.2.2.26 (Windows)|libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.5.2<br/>libcublas 11.6.5.2<br/>libcudnn 8.2.4|
 |1.10|11.4|8.2.4 (Linux)<br/>8.2.2.26 (Windows)|libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.1.51<br/>libcublas 11.6.1.51<br/>libcudnn 8.2.4|
@@ -42,6 +43,8 @@ Please reference [Nvidia CUDA Minor Version Compatibility](https://docs.nvidia.c
 |1.0-1.1|10.0|7.6.4|CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017|
 
 For older versions, please reference the readme and build pages on the release branch.
+
+For Windows, [Microsoft C and C++ (MSVC) runtime libraries](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) is also required.
 
 ## Build
 For build instructions, please see the [BUILD page](../build/eps.md#cuda).

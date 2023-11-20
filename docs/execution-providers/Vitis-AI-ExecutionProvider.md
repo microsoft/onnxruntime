@@ -2,7 +2,7 @@
 title: AMD - Vitis AI
 description: Instructions to execute ONNX Runtime on AMD devices with the Vitis AI execution provider
 parent: Execution Providers
-nav_order: 6
+nav_order: 12
 redirect_from: /docs/execution-providers/community-maintained/Vitis-AI-ExecutionProvider
 ---
 
@@ -51,18 +51,22 @@ To enable the Vitis AI ONNX Runtime Execution Provider in Microsoft Windows, a .
 The contents of this archive are as follows:
 
 ```
-voe-3.0-win_amd64.zip
+voe-3.5-win_amd64.zip
 	│
 	├── Examples  
 	│    │    
-	│    └── resnet50_python                        # ONNX ResNet50 ILSVRC2012
-	│        
-	├── Install  
+	│    └── resnet50_python                               # ONNX ResNet50 ILSVRC2012
+	├── voe-0.1.0-cp39-cp39-win_amd64                      # Folder containing DLLs for C++ API
 	│    │    
-	│    ├── bin                                    # Folder containing DLLs for C++ API
-	│    ├── 1x4.xclbin                             # IPU Execution Provider executable file
-	│    ├── vaip_config.json                       # Runtime configuration file
-	│    └── voe-0.1.0-cp39-cp39-win_amd64.whl      # Python installation package
+	│    ├── onnxruntime.dll                                    
+	│    ├── onnxruntime_vitisai_ep.dll                            
+	├── vaip_config.json                       	       # Runtime configuration file
+        ├── installer.py                                       # Python script to copy dlls 
+        ├── voe-0.1.0-cp39-cp39-win_amd64.whl      	       # Python installation package
+        ├── onnxruntime_vitisai-1.15.1-cp39-cp39-win_amd64.whl # Python installation package
+        ├── 1x4.xclbin                                         # IPU Execution Provider executable file
+        ├── 5x4.xclbin                                         # IPU Execution Provider executable file
+	│    
 ```
 
 **_NOTE:_** Ryzen AI Linux support is not enabled in this release.
@@ -71,14 +75,14 @@ Both C++ and Python APIs are supported.  The following instructions assume that 
 
 **1. Verify Pre-requisites:**
 
-- Visual Studio = 2019
+- Visual Studio = 2022
 - cmake (version >= 3.26)
 - python (version >= 3.9) (Python 3.9.13 64bit recommended)
 - AMD IPU driver >= 10.105.5.38 installed
 
 **2. Prepare the files for installation:**
 
-- Download the [Ryzen AI ONNX Runtime Package](https://www.xilinx.com/bin/public/openDownload?filename=voe-3.0-win_amd64.zip).  
+- Download the [Ryzen AI ONNX Runtime Package](https://account.amd.com/en/forms/downloads/ryzen-ai-software-platform-xef.html?filename=voe-3.5-win_amd64.zip).  
 - Unzip `voe-[version]-win_amd64.zip`.  
 
 **3. Install the C++ Libraries:**
@@ -120,15 +124,15 @@ The current release of the Vitis AI Execution Provider ingests quantized ONNX mo
 
 ### Vitis AI Quantizer
  
-In the current release (3.0), the Vitis AI Quantizer supports quantization of PyTorch and TensorFlow models.  To support the Vitis AI ONNX Runtime Execution Provider, an option is provided in the Vitis AI Quantizer to export a quantized model in ONNX format, post quantization.
+[Pytorch](https://hub.docker.com/r/amdih/ryzen-ai-pytorch), [Tensorflow 2.x](https://hub.docker.com/r/amdih/ryzen-ai-tensorflow2) and [Tensorflow 1.x](https://hub.docker.com/r/amdih/ryzen-ai-tensorflow) dockers are avaialable to support quantization of PyTorch and TensorFlow models.  To support the Vitis AI ONNX Runtime Execution Provider, an option is provided in the Vitis AI Quantizer to export a quantized model in ONNX format, post quantization.
 
-With the future release of Vitis AI 3.5, available mid 2023, the Vitis AI Quantizer will enable parsing and quantization of ONNX models, enabling an end-to-end ONNX model -> ONNX Runtime workflow.  Also, in a future release, the Vitis AI ONNX Runtime Execution Provider will support on-the-fly quantization, enabling direct deployment of FP32 ONNX models.
+[ONNX Quantizer python wheel](https://www.xilinx.com/bin/public/openDownload?filename=vai_q_onnx-1.14.0-py2.py3-none-any.whl) is available to parse and quantize ONNX models, enabling an end-to-end ONNX model -> ONNX Runtime workflow.  Also, in a future release, the Vitis AI ONNX Runtime Execution Provider will support on-the-fly quantization, enabling direct deployment of FP32 ONNX models.
 
-See [Vitis AI Model Quantization](https://xilinx.github.io/Vitis-AI/3.0/html/docs/workflow-model-development.html#model-quantization) for details.
+See [Model Quantization](https://xilinx.github.io/Vitis-AI/3.5/html/docs/workflow-model-development.html#model-quantization) for details.
 
 ### Olive
 
-Experimental support for Microsoft Olive is enabled in this release.  The Vitis AI Quantizer has been integrated as a plugin into Olive and will be upstreamed.  Once this is complete, users can refer to the Vitis AI example(s) provided in the [Olive Vitis AI Example Directory](https://github.com/microsoft/Olive/blob/main/examples/resnet/resnet_vitis_ai_ptq_cpu.json).
+Experimental support for Microsoft Olive is enabled in this release.  The Vitis AI Quantizer has been integrated as a plugin into Olive and will be upstreamed.  Once this is complete, users can refer to the example(s) provided in the [Olive Vitis AI Example Directory](https://github.com/microsoft/Olive/tree/main/examples/resnet).
 
 ## Runtime Options
 

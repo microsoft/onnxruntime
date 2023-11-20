@@ -186,6 +186,20 @@ To produce pods for an iOS build, use the [build_and_assemble_ios_pods.py](https
 
     The reduced set of ops in the custom build is specified with the file provided to the `--include_ops_by_config` option. See the current op config used by the pre-built mobile package at [tools/ci_build/github/android/mobile_package.required_operators.config](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/android/mobile_package.required_operators.config) (Android and iOS pre-built mobile packages share the same config file). You can use this file directly.
 
+    The default package does not include the training APIs. To create a training package, add `--enable_training_apis` in the build options file provided to `--build-settings-file` and add the `--variant Training` option when calling `build_and_assemble_ios_pods.py`.
+    
+    For example:
+    
+    ```bash
+    # /path/to/build_settings.json is a file that includes the `--enable_training_apis` option
+    
+    python3 tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
+      --staging-dir /path/to/staging/dir \
+      --include-ops-by-config /path/to/ops.config \
+      --build-settings-file /path/to/build_settings.json \
+      --variant Training
+    ```
+
 3. Use the local pods.
 
     For example, update the Podfile to use the local onnxruntime-mobile-objc pod instead of the released one:

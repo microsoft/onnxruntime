@@ -136,8 +136,8 @@ Now that we have tested the model in Python its time to build it out in C#. The 
 ### Install the Nuget Packages
 - Install the Nuget packages `BERTTokenizers`, `Microsoft.ML.OnnxRuntime`, `Microsoft.ML.OnnxRuntime.Managed`, `Microsoft.ML`
 ```PowerShell
-dotnet add package Microsoft.ML.OnnxRuntime --version 1.12.0
-dotnet add package Microsoft.ML.OnnxRuntime.Managed --version 1.12.0
+dotnet add package Microsoft.ML.OnnxRuntime --version 1.16.0
+dotnet add package Microsoft.ML.OnnxRuntime.Managed --version 1.16.0
 dotnet add package dotnet add package Microsoft.ML
 dotnet add package dotnet add package BERTTokenizers --version 1.1.0
 ```
@@ -159,7 +159,7 @@ using System;
 
 namespace MyApp // Note: actual namespace depends on the project name.
 {
-    internal class Program
+    internal class BertTokenizeProgram
     {
         static void Main(string[] args)
         {
@@ -169,10 +169,10 @@ namespace MyApp // Note: actual namespace depends on the project name.
 }
 ```
 ### Create the BertInput class for encoding
-- Add the `BertInput` class
+- Add the `BertInput` struct
 
 ```csharp
-    public class BertInput
+    public struct BertInput
     {
         public long[] InputIds { get; set; }
         public long[] AttentionMask { get; set; }
@@ -205,83 +205,86 @@ namespace MyApp // Note: actual namespace depends on the project name.
   };
  
 ```
-### Create the Tensors
-- Create the `ConvertToTensor` function. Set the shape of the Tensor `new[] { 1, inputDimension }` and the values to be added to the `NamedOnnxValue` input list.
+### Create the `inputs` of `name -> OrtValue` pairs as required for inference
 
-```csharp
-        public static Tensor<long> ConvertToTensor(long[] inputArray, int inputDimension)
-        {
-            // Create a tensor with the shape the model is expecting. Here we are sending in 1 batch with the inputDimension as the amount of tokens.
-            Tensor<long> input = new DenseTensor<long>(new[] { 1, inputDimension });
-
-            // Loop through the inputArray (InputIds, AttentionMask and TypeIds)
-            for (var i = 0; i < inputArray.Length; i++)
-            {
-                // Add each to the input Tenor result.
-                // Set index and array value of each input Tensor.
-                input[0,i] = inputArray[i];
-            }
-            return input;
-        }
-```
-
-### Create the `input` of `List<NamedOnnxValue>` that is needed for inference
-
-- Get the model, call the `ConvertToTensor` function to create the tensor and create the list of `NamedOnnxValue` input variables for inferencing.
+- Get the model, create 3 OrtValues on top of the input buffers and wrap them into a Dictionary to feed into a Run().
+  Beware that almost all of the Onnxruntime classes wrap native data structures, and, therefore, must be disposed
+  to prevent memory leaks.
 
 ```csharp
   // Get path to model to create inference session.
   var modelPath = @"C:\code\bert-nlp-csharp\BertNlpTest\BertNlpTest\bert-large-uncased-finetuned-qa.onnx";
 
-  // Create input tensor.
+  using var runOptions = new RunOptions();
+  using var session = new InferenceSession(modelPath);
 
-  var input_ids = ConvertToTensor(bertInput.InputIds, bertInput.InputIds.Length);
-  var attention_mask = ConvertToTensor(bertInput.AttentionMask, bertInput.InputIds.Length);
-  var token_type_ids = ConvertToTensor(bertInput.TypeIds, bertInput.InputIds.Length);
+  // Create input tensors over the input data.
+  using var inputIdsOrtValue = OrtValue.CreateTensorValueFromMemory(bertInput.InputIds,
+        new long[] { 1, bertInput.InputIds.Length });
 
+  using var attMaskOrtValue = OrtValue.CreateTensorValueFromMemory(bertInput.AttentionMask,
+        new long[] { 1, bertInput.AttentionMask.Length });
 
-  // Create input data for session.
-  var input = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("input_ids", input_ids), 
-                                         NamedOnnxValue.CreateFromTensor("input_mask", attention_mask), 
-                                         NamedOnnxValue.CreateFromTensor("segment_ids", token_type_ids) };
+  using var typeIdsOrtValue = OrtValue.CreateTensorValueFromMemory(bertInput.TypeIds,
+        new long[] { 1, bertInput.TypeIds.Length });
 
+  // Create input data for session. Request all outputs in this case.
+  var inputs = new Dictionary<string, OrtValue>
+  {
+      { "input_ids", inputIdsOrtValue },
+      { "input_mask", attMaskOrtValue },
+      { "segment_ids", typeIdsOrtValue }
+  };
 
 ```
 ### Run Inference
 - Create the `InferenceSession`, run the inference and print out the result.
 
 ```csharp
-  // Create an InferenceSession from the Model Path.
-  var session = new InferenceSession(modelPath);
-
   // Run session and send the input data in to get inference output. 
-  var output = session.Run(input);
+  using var output = session.Run(runOptions, inputs, session.OutputNames);
 ```
 ### Postprocess the `output` and print the result
 
 - Here we get the index for the start position (`startLogit`) and end position (`endLogits`). Then we take the original `tokens` of the input sentence and get the vocabulary value for the token ids predicted.
 
 ```csharp
-  // Call ToList on the output.
-  // Get the First and Last item in the list.
-  // Get the Value of the item and cast as IEnumerable<float> to get a list result.
-  List<float> startLogits = (output.ToList().First().Value as IEnumerable<float>).ToList();
-  List<float> endLogits = (output.ToList().Last().Value as IEnumerable<float>).ToList();
+            // Get the Index of the Max value from the output lists.
+            // We intentionally do not copy to an array or to a list to employ algorithms.
+            // Hopefully, more algos will be available in the future for spans.
+            // so we can directly read from native memory and do not duplicate data that
+            // can be large for some models
+            // Local function
+            int GetMaxValueIndex(ReadOnlySpan<float> span)
+            {
+                float maxVal = span[0];
+                int maxIndex = 0;
+                for (int i = 1; i < span.Length; ++i)
+                {
+                    var v = span[i];
+                    if (v > maxVal)
+                    {
+                        maxVal = v;
+                        maxIndex = i;
+                    }
+                }
+                return maxIndex;
+            }
 
-  // Get the Index of the Max value from the output lists.
-  var startIndex = startLogits.ToList().IndexOf(startLogits.Max()); 
-  var endIndex = endLogits.ToList().IndexOf(endLogits.Max());
+            var startLogits = output[0].GetTensorDataAsSpan<float>();
+            int startIndex = GetMaxValueIndex(startLogits);
 
-  // From the list of the original tokens in the sentence
-  // Get the tokens between the startIndex and endIndex and convert to the vocabulary from the ID of the token.
-  var predictedTokens = tokens
-              .Skip(startIndex)
-              .Take(endIndex + 1 - startIndex)
-              .Select(o => tokenizer.IdToToken((int)o.VocabularyIndex))
-              .ToList();
+            var endLogits = output[output.Count - 1].GetTensorDataAsSpan<float>();
+            int endIndex = GetMaxValueIndex(endLogits);
 
-  // Print the result.
-  Console.WriteLine(String.Join(" ", predictedTokens));
+            var predictedTokens = tokens
+                          .Skip(startIndex)
+                          .Take(endIndex + 1 - startIndex)
+                          .Select(o => tokenizer.IdToToken((int)o.VocabularyIndex))
+                          .ToList();
+
+            // Print the result.
+            Console.WriteLine(String.Join(" ", predictedTokens));
   ```
 
 ## Deploy with Azure Web App

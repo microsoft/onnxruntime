@@ -88,7 +88,7 @@ To read about additional options and finer controls available to pre-processing,
 run the following command:
 
 ```console
-python -m onnxruntime.quantization.shape_inference --help
+python -m onnxruntime.quantization.preprocess --help
 ```
 
 Model optimization may also be performed during quantization. However, this is *NOT* recommended,

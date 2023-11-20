@@ -1,7 +1,7 @@
 ---
 title: Ecosystem
 description: See examples of how ONNX Runtime working end to end within the Azure AI and ML landscape and ecosystem
-nav_order: 8
+nav_order: 9
 redirect_from: /docs/tutorials/ecosystem
 ---
 # ORT Ecosystem
@@ -21,7 +21,7 @@ ONNX Runtime functions as part of an ecosystem of tools and platforms to deliver
 * [Azure Container Instance: Facial Expression Recognition](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-inference-facial-expression-recognition-deploy.ipynb){:target="_blank"}
 * [Azure Container Instance: MNIST](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-inference-mnist-deploy.ipynb){:target="_blank"}
 * [Azure Container Instance: Image classification (Resnet)](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/deployment/onnx/onnx-modelzoo-aml-deploy-resnet50.ipynb){:target="_blank"}
-* [Azure Kubernetes Services: FER+](https://github.com/microsoft/onnxruntime/blob/main/docs/python/inference/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb){:target="_blank"}
+* [Azure Kubernetes Services: FER+](https://github.com/microsoft/onnxruntime/blob/main/docs/python/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb){:target="_blank"}
 * [Azure IoT Sedge (Intel UP2 device with OpenVINO)](https://github.com/Azure-Samples/onnxruntime-iot-edge/blob/master/AzureML-OpenVINO/README.md){:target="_blank"}
 * [Automated Machine Learning](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/automated-machine-learning/classification-bank-marketing-all-features/auto-ml-classification-bank-marketing-all-features.ipynb){:target="_blank"}
 

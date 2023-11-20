@@ -37,7 +37,7 @@ For build instructions for iOS devices, please see [Build for iOS](../build/ios.
 
 The ONNX Runtime API details are [here](../api).
 
-The CoreML EP can be used via the C or C++ APIs currently. Additional support via the Objective-C API is in progress.
+The CoreML EP can be used via the C, C++, Objective-C, C# and Java APIs. 
 
 The CoreML EP must be explicitly registered when creating the inference session. For example:
 
@@ -96,16 +96,30 @@ Following ops are supported by the CoreML Execution Provider,
 |ai.onnx:Concat||
 |ai.onnx:Conv|Only 1D/2D Conv is supported.<br/>Weights and bias should be constant.|
 |ai.onnx:DepthToSpace|Only DCR mode DepthToSpace is supported.|
+|ai.onnx:Div||
+|ai.onnx:Flatten||
+|ai.onnx:Gather|Input `indices` with scalar value is not supported.|
 |ai.onnx:Gemm|Input B should be constant.|
 |ai.onnx:GlobalAveragePool|Only 2D Pool is supported.|
 |ai.onnx:GlobalMaxPool|Only 2D Pool is supported.|
+|ai.onnx:LeakyRelu||
+|ai.onnx:LRN||
 |ai.onnx:MatMul|Input B should be constant.|
 |ai.onnx:MaxPool|Only 2D Pool is supported.|
+|ai.onnx:Mul||
+|ai.onnx:Pad|Only constant mode and last two dim padding is supported.<br/>Input pads and constant_value should be constant.<br/>If provided, axes should be constant.|
+|ai.onnx:Pow|Only supports cases when both inputs are fp32.|
 |ai.onnx:PRelu|Input slope should be constant.<br/>Input slope should either have shape [C, 1, 1] or have 1 element.|
+|ai.onnx:Reciprocal||
+|ai.onnx.ReduceSum||
 |ai.onnx:Relu||
 |ai.onnx:Reshape||
 |ai.onnx:Resize||
+|ai.onnx:Shape|Attribute `start` with non-default value is not supported.<br/>Attribute `end` is not supported.|
 |ai.onnx:Sigmoid||
+|ai.onnx:Slice|Inputs `starts`, `ends`, `axes`, and `steps` should be constant. Empty slice is not supported.|
 |ai.onnx:Squeeze||
+|ai.onnx:Sqrt||
+|ai.onnx:Sub||
 |ai.onnx:Tanh||
 |ai.onnx:Transpose||

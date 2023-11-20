@@ -20,7 +20,7 @@ Accelerate ONNX models on Intel CPUs, GPUs with Intel OpenVINO™ Execution Prov
 ## Install
 
 Pre-built packages and Docker images are published for OpenVINO™ Execution Provider for ONNX Runtime by Intel for each release.
-* OpenVINO™ Execution Provider for ONNX Runtime Release page: [Latest v5.0 Release](https://github.com/intel/onnxruntime/releases)
+* OpenVINO™ Execution Provider for ONNX Runtime Release page: [Latest v5.1 Release](https://github.com/intel/onnxruntime/releases)
 * Python wheels Ubuntu/Windows: [onnxruntime-openvino](https://pypi.org/project/onnxruntime-openvino/)
 * Docker image: [openvino/onnxruntime_ep_ubuntu20](https://hub.docker.com/r/openvino/onnxruntime_ep_ubuntu20)
 
@@ -30,9 +30,9 @@ ONNX Runtime OpenVINO™ Execution Provider is compatible with three lastest rel
 
 |ONNX Runtime|OpenVINO™|Notes|
 |---|---|---|
-|1.15.0|2023.0|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.0)|
+|1.16.0|2023.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.1)|
+|1.15.0|2023.0|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.0.0)|
 |1.14.0|2022.3|[Details](https://github.com/intel/onnxruntime/releases/tag/v4.3)|
-|1.13.0|2022.2|[Details](https://github.com/intel/onnxruntime/releases/tag/v4.2)|
 
 ## Build
 
@@ -96,11 +96,9 @@ Enables [OpenCL queue throttling](https://docs.openvino.ai/latest/groupov_runtim
 
 OpenVINO™ supports [model caching](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Model_caching_overview.html).
 
-From OpenVINO™ 2022.1 version, model caching feature is supported on CPU and kernel caching on iGPU.
+From OpenVINO™ 2023.1 version, model caching feature is supported on CPU, GPU along with kernel caching on iGPU, dGPU.
 
-From OpenVINO™ 2022.3 version, the model caching feature is also supported on iGPU,dGPU as preview.
-
-This feature enables users to save and load the blob file directly. This file can be loaded directly on to the hardware device target and inferencing can be performed.
+This feature enables users to save and load the blob file directly on to the hardware device target and perform inference with improved Inference Latency.
 
 Kernel Caching on iGPU and dGPU:
 
@@ -150,8 +148,8 @@ Example:
 cl::Context _context;
 .....
 // Set the context through openvino options
-OrtOpenVINOProviderOptions options;
-options.context = (void *) _context.get() ;
+std::unordered_map<std::string, std::string> ov_options;
+ov_options[context] = std::to_string((unsigned long long)(void *) _context.get());
 .....
 //Define the Memory area
 Ort::MemoryInfo info_gpu("OpenVINO_GPU", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
@@ -168,6 +166,9 @@ Ort::Value inputTensors = Ort::Value::CreateTensor(
 ### Multi-threading for OpenVINO™ Execution Provider
 
 OpenVINO™ Execution Provider for ONNX Runtime enables thread-safe deep learning inference
+
+### Multi streams for OpenVINO™ Execution Provider
+OpenVINO™ Execution Provider for ONNX Runtime allows multiple stream execution for difference performance requirements part of API 2.0
 
 ### Auto-Device Execution for OpenVINO EP
 
@@ -210,7 +211,22 @@ session = onnxruntime.InferenceSession(<path_to_model_file>, providers=['OpenVIN
 ```
 *Note that the releases from (ORT 1.10) will require explicitly setting the providers parameter if you want to use execution providers other than the default CPU provider (as opposed to the current behavior of providers getting set/registered by default based on the build flags) when instantiating InferenceSession.*
 
-### C/C++ API
+### C/C++ API 2.0 
+The session configuration options are passed to SessionOptionsAppendExecutionProvider API as shown in an example below for GPU device type:
+
+```
+std::unordered_map<std::string, std::string> options;
+options[device_type] = "GPU_FP32";
+options[device_id] = "";
+options[num_of_threads] = "8";
+options[num_streams] = "8";
+options[cache_dir] = "";
+options[context] = "0x123456ff";
+options[enable_opencl_throttling] = "false";
+session_options.AppendExecutionProvider("OpenVINO", options);
+```
+
+### C/C++ Legacy API
 The session configuration options are passed to SessionOptionsAppendExecutionProvider_OpenVINO() API as shown in an example below for GPU device type:
 
 ```
@@ -221,7 +237,7 @@ options.num_of_threads = 8;
 options.cache_dir = "";
 options.context = 0x123456ff;
 options.enable_opencl_throttling = false;
-SessionOptionsAppendExecutionProvider_OpenVINO(session_options, &options);
+SessionOptions.AppendExecutionProvider_OpenVINO(session_options, &options);
 ```
 
 ### Onnxruntime Graph level Optimization
@@ -241,17 +257,18 @@ OpenVINO™ backend performs hardware, dependent as well as independent optimiza
 
 ## Summary of options
 
-The following table lists all the available configuration options and the Key-Value pairs to set them:
+The following table lists all the available configuration options for API 2.0 and the Key-Value pairs to set them:
 
 | **Key** | **Key type** | **Allowable Values** | **Value type** | **Description** |
 | --- | --- | --- | --- | --- |
 | device_type | string | CPU_FP32, CPU_FP16, GPU_FP32, GPU_FP16, GPU.0_FP32, GPU.1_FP32, GPU.0_FP16, GPU.1_FP16 based on the avaialable GPUs, Any valid Hetero combination, Any valid Multi or Auto devices combination | string | Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |
 | device_id   | string | Any valid OpenVINO device ID | string | Selects a particular hardware device for inference. The list of valid OpenVINO device ID's available on a platform can be obtained either by Python API (`onnxruntime.capi._pybind_state.get_available_openvino_device_ids()`) or by [OpenVINO C/C++ API](https://docs.openvino.ai/latest/classInferenceEngine_1_1Core.html). If this option is not explicitly set, an arbitrary free device will be automatically selected by OpenVINO runtime.|
-| num_of_threads | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default value of number of threads with this value at runtime. If this option is not explicitly set, default value of 8 is used during build time. |
+| num_of_threads | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default value of number of threads with this value at runtime. If this option is not explicitly set, default value of 8 during build time will be used for inference. |
+| num_streams | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default streams with this value at runtime. If this option is not explicitly set, default value of 1, performance for latency is used during build time will be used for inference. |
 | cache_dir | string | Any valid string path on the hardware target | string | Explicitly specify the path to save and load the blobs enabling model caching feature.|
-| context | string | OpenCL Context | void* | This option is only alvailable when OpenVINO EP is built with OpenCL flags enabled. It takes in the remote context i.e the cl_context address as a void pointer.|
+| context | string | OpenCL Context | void* | This option is only available when OpenVINO EP is built with OpenCL flags enabled. It takes in the remote context i.e the cl_context address as a void pointer.|
 | enable_opencl_throttling | string | True/False | boolean | This option enables OpenCL queue throttling for GPU devices (reduces CPU utilization when using GPU). |
-| enable_dynamic_shapes | string | True/False | boolean | This option if enabled works for dynamic shaped models whose shape will be set dynamically based on the infer input image/data shape at run time in CPU. This gives best result for running multiple inferences with varied shaped images/data. |
+
 
 Valid Hetero or Multi or Auto Device combinations:
 HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...
@@ -303,6 +320,7 @@ Atom, Core, and Xeon processors. GPU refers to the Intel Integrated Graphics. In
 | DequantizeLinear | Yes | Yes |
 | Div | Yes | Yes |
 | Dropout | Yes | Yes |
+| Einsum | Yes | Yes |
 | Elu | Yes | Yes |
 | Equal | Yes | Yes |
 | Erf | Yes | Yes |
