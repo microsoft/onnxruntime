@@ -19,6 +19,7 @@ class TestTorchDynamoOrt(unittest.TestCase):
     def setUp(self):
         # Make computation deterministic.
         torch.manual_seed(42)
+        print(f"TestTorchDynamoOrt uses PyTorch version {torch.__version__}")
 
     def test_elementwise_model(self):
         torch._dynamo.reset()
