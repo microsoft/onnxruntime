@@ -19,10 +19,14 @@ from packaging import version
 from transformers import AutoConfig, AutoModelForCausalLM
 
 from onnxruntime import quantization as ort_quantization
-from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
 
 logger = logging.getLogger("")
 init_dist()
+
+try:
+    from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
+except ImportError as e:
+    logger.warning(f"MatMul4BitsQuantizer not available in this version of onnxruntime: {e}")
 
 
 def get_model_dynamic_axes(input_names: List[str], output_names: List[str]):
@@ -391,10 +395,12 @@ def run_torchscript_merged_export(
 
 
 # Optimize the model as FP32
-def optimize_export(config: AutoConfig, input_path: str, output_path: str):
+def optimize_export(config: AutoConfig, input_path: str, output_path: str, disable_attn: bool = False):
     from fusion_options import FusionOptions
 
     optimization_options = FusionOptions("gpt2")
+
+    optimization_options.enable_attention = not disable_attn
 
     model_opt = optimize_model(
         input_path,
@@ -720,6 +726,12 @@ def get_args():
         help="model cache dir to override default HF cache dir to avoid overflood the /home dir",
     )
 
+    parser.add_argument(
+        "--disable_attn",
+        action="store_true",
+        help="(temporary for 70B on ROCm, GQA yet to be supported) Disable attention fusion",
+    )
+
     args = parser.parse_args()
     return args
 
@@ -822,7 +834,9 @@ def main():
             logger.info("Optimizing models...")
             for orig_path, opt_path in zip(old_paths, new_paths):
                 if os.path.exists(orig_path):
-                    optimize_export(l_config, input_path=orig_path, output_path=opt_path)
+                    optimize_export(
+                        l_config, input_path=orig_path, output_path=opt_path, disable_attn=args.disable_attn
+                    )
 
             # Re-assign default FP32 model paths as their optimized versions
             decoder_model_fp32_path = decoder_model_fp32_opt_path

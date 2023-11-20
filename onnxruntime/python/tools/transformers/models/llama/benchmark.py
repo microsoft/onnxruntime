@@ -619,7 +619,10 @@ def get_args(rank=0):
         if args.execution_provider == "CUDAExecutionProvider":
             args.execution_provider = (args.execution_provider, {"device_id": rank})
         elif args.execution_provider == "ROCMExecutionProvider":
-            args.execution_provider = (args.execution_provider, {"device_id": rank})
+            args.execution_provider = (
+                args.execution_provider,
+                {"device_id": rank, "tunable_op_enable": True, "tunable_op_tuning_enable": True},
+            )
             args.device = "cuda"
 
     # Check that paths have been specified for any benchmarking with ORT

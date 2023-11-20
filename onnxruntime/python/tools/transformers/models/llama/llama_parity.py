@@ -82,19 +82,22 @@ def verify_parity(
     del pt_model
 
     # Run inference with ORT
+    device = "cuda" if args.execution_provider == "rocm" else args.execution_provider
     past_sequence_length, _, max_sequence_length = get_sequence_lengths(args)
     inputs = convert_inputs_for_ort(
         inputs,
         use_gqa=args.use_gqa,
         past_seq_len=past_sequence_length,
         max_seq_len=max_sequence_length,
-        device=args.execution_provider,
+        device=device,
         device_id=int(args.rank),
     )
 
     ep = f"{args.execution_provider.upper()}ExecutionProvider"
     if ep == "CUDAExecutionProvider":
         ep = (ep, {"device_id": args.rank})
+    elif ep == "ROCMExecutionProvider":
+        ep = (ep, {"device_id": args.rank, "tunable_op_enable": True, "tunable_op_tuning_enable": True})
     ort_model = ort.InferenceSession(
         args.onnx_model_path,
         sess_options=ort.SessionOptions(),
@@ -106,7 +109,7 @@ def verify_parity(
         io_binding, kv_cache_ortvalues = add_io_bindings(
             ort_model,
             inputs,
-            args.execution_provider,
+            device,
             int(args.rank),
             args.use_gqa,
             kv_cache_ortvalues,
