@@ -22,12 +22,6 @@ These optimizations are firstly carried out on CUDA EP. They may not work on oth
 | [optimize_pipeline.py](./optimize_pipeline.py) | Optimize Stable Diffusion ONNX models exported from Huggingface diffusers or optimum      |
 | [benchmark.py](./benchmark.py)                 | Benchmark latency and memory of OnnxRuntime, xFormers or PyTorch 2.0 on stable diffusion. |
 
-In some example, we run the scripts in source code directory. You can get source code like the following:
-
-```
-git clone https://github.com/microsoft/onnxruntime
-cd onnxruntime/onnxruntime/python/tools/transformers/models/stable_diffusion
-```
 
 ## Run demo with docker
 
@@ -36,18 +30,13 @@ cd onnxruntime/onnxruntime/python/tools/transformers/models/stable_diffusion
 git clone https://github.com/microsoft/onnxruntime
 cd onnxruntime
 ```
+
 #### Launch NVIDIA pytorch container
 
 Install nvidia-docker using [these instructions](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html#docker).
 
 ```
 docker run --rm -it --gpus all -v $PWD:/workspace nvcr.io/nvidia/pytorch:23.10-py3 /bin/bash
-```
-
-Optionally, you can update TensorRT from 8.6.1 to latest pre-release.
-```
-python3 -m pip install --upgrade pip
-python3 -m pip install --pre --upgrade --extra-index-url https://pypi.nvidia.com tensorrt
 ```
 
 #### Build onnxruntime from source
@@ -61,6 +50,7 @@ sh build.sh --config Release  --build_shared_lib --parallel --use_cuda --cuda_ve
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF \
             --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=80 \
             --allow_running_as_root
+python3 -m pip install --upgrade pip
 python3 -m pip install build/Linux/Release/dist/onnxruntime_gpu-1.17.0-cp310-cp310-linux_x86_64.whl --force-reinstall
 ```
 
@@ -83,7 +73,7 @@ python3 demo_txt2img_xl.py --help
 
 For example:
 `--engine {ORT_CUDA,ORT_TRT,TRT}` can be used to choose different backend engines including CUDA or TensorRT execution provider of ONNX Runtime, or TensorRT.
-`--work-dir WORK_DIR` can be used to save models under a specified directory.
+`--work-dir WORK_DIR` can be used to load or save models under the given directory. You can download the [optimized ONNX models of Stable Diffusion XL 1.0](https://huggingface.co/tlwu/stable-diffusion-xl-1.0-onnxruntime#usage-example) to save time in running the XL demo.
 
 #### Generate an image guided by a text prompt
 ```python3 demo_txt2img.py "astronaut riding a horse on mars"```
@@ -93,11 +83,12 @@ For example:
 
 If you do not provide prompt, the script will generate different image sizes for a list of prompts for demonstration.
 
-It is recommended to use a machine with 64 GB or more memory to run this demo.
+## Optimize Stable Diffusion ONNX models for Hugging Face Diffusers or Optimum
 
-## Example of Stable Diffusion 1.5 or XL
+If you are able to run the above demo with docker, you can use the docker and skip the following setup and fast forward to [Export ONNX pipeline](#export-onnx-pipeline).
 
-Below is example to optimize Stable Diffusion 1.5 or XL in Linux. For Windows OS, please change the format of path to be like `.\sd` instead of `./sd`.
+Below setup does not use docker. We'll use the environment to optimize ONNX models of Stable Diffusion exported by huggingface diffusers or optimum.
+For Windows OS, please change the format of path to be like `.\sd` instead of `./sd`.
 
 It is recommended to create a Conda environment with Python 3.10 for the following setup:
 ```
@@ -217,7 +208,13 @@ Example to optimize the exported float32 ONNX models, and save to float16 models
 python -m onnxruntime.transformers.models.stable_diffusion.optimize_pipeline -i ./sd_v1_5/fp32 -o ./sd_v1_5/fp16 --float16
 ```
 
-For SDXL model, it is recommended to use a machine with 32 GB or more memory to optimize.
+In all examples below, we run the scripts in source code directory. You can get source code like the following:
+```
+git clone https://github.com/microsoft/onnxruntime
+cd onnxruntime/onnxruntime/python/tools/transformers/models/stable_diffusion
+```
+
+For SDXL model, it is recommended to use a machine with 48 GB or more memory to optimize.
 ```
 python optimize_pipeline.py -i ./sd_xl_base_onnx -o ./sd_xl_base_fp16 --float16
 ```

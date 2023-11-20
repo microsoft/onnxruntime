@@ -33,7 +33,7 @@ steps:
         displayName: 'Download TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8'
       - powershell: |
           Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8\lib"
-        displayName: 'Append TensorRT SDK Directory to PATH'
+        displayName: 'Append TensorRT Directory to PATH'
 
     - ${{ if eq(parameters.CudaVersion, '12.2') }}:
       - powershell: |
@@ -41,7 +41,7 @@ steps:
         displayName: 'Download TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0'
       - powershell: |
           Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0\lib"
-        displayName: 'Append TensorRT SDK Directory to PATH'
+        displayName: 'Append TensorRT Directory to PATH'
 
     - task: CmdLine@2
       inputs:
