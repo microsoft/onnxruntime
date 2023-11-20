@@ -39,22 +39,22 @@ namespace Dml::GraphDescBuilder
         case DML_TENSOR_DATA_TYPE_UINT8:
         case DML_TENSOR_DATA_TYPE_INT8:
             return 1;
-            
+
         case DML_TENSOR_DATA_TYPE_FLOAT16:
         case DML_TENSOR_DATA_TYPE_UINT16:
         case DML_TENSOR_DATA_TYPE_INT16:
             return 2;
-            
+
         case DML_TENSOR_DATA_TYPE_FLOAT32:
         case DML_TENSOR_DATA_TYPE_UINT32:
         case DML_TENSOR_DATA_TYPE_INT32:
             return 4;
-            
+
         case DML_TENSOR_DATA_TYPE_FLOAT64:
         case DML_TENSOR_DATA_TYPE_UINT64:
         case DML_TENSOR_DATA_TYPE_INT64:
             return 8;
-            
+
         default:
             return 0;
         }
@@ -375,7 +375,6 @@ namespace Dml::GraphDescBuilder
                             auto& operatorGraphInputNode = graphNodeCreateInfo.nodesAsOperatorDesc[operatorGraphInputEdge.ToNodeIndex];
                             std::vector<DmlBufferTensorDesc*> toNodeInputTensorDescs = operatorGraphInputNode->GetInputTensors();
                             DmlBufferTensorDesc* tensorDesc = toNodeInputTensorDescs[operatorGraphInputEdge.ToNodeInputIndex];
-                            size_t c_maxConstNodeDataSize = 8;
 
                             ComPtr<OnnxTensorWrapper> constantInput = constantCpuGraphInputGetter(arg->Name());
 
@@ -383,10 +382,10 @@ namespace Dml::GraphDescBuilder
                             {
                                 std::vector<uint8_t> tensorData;
                                 tensorData.insert(
-                                    tensorData.begin(), 
-                                    static_cast<const uint8_t*>(constantInput->GetData()), 
+                                    tensorData.begin(),
+                                    static_cast<const uint8_t*>(constantInput->GetData()),
                                     static_cast<const uint8_t*>(constantInput->GetData()) + GetElementSize(tensorDesc->dataType));
-                                if (tensorData.size() <= c_maxConstNodeDataSize)
+                                if (tensorData.size() <= tensorDesc.TotalTensorSizeInBytes)
                                 {
                                     NodeInfo nodeInfo = {};
                                     nodeInfo.nodeDef = std::move(tensorData);
@@ -471,7 +470,7 @@ namespace Dml::GraphDescBuilder
                     // TODO: Change as new header is ingested
                     if (dmlDesc.Type == (DML_OPERATOR_TYPE) DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING)
                         dmlDesc.Type = (DML_OPERATOR_TYPE) 169;
-                
+
                     // TODO: Change as new header is ingested
                     if (dmlDesc.Type == (DML_OPERATOR_TYPE) DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT)
                         dmlDesc.Type = (DML_OPERATOR_TYPE) 170;
