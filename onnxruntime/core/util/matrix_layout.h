@@ -1,21 +1,17 @@
-/*++
-
-Copyright (c) Microsoft Corporation. All rights reserved.
-
-Licensed under the MIT License.
-
-Module Name:
-
-    matrix_layout.h
-
-Abstract:
-
-    Utils for simplifying positioning and striding in tensors. Inspired
-    by CUTLASS, striving for 0 runtime cost while promote safety.
-
-    Only supports 2D tensors (matrix) for now.
-
---*/
+/**
+ * Copyright (c) Microsoft Corporation. All rights reserved.
+ *
+ * Licensed under the MIT License.
+ * See LICENSE file in the project root for details.
+ * SPDX-License-Identifier: MIT
+ * Module Name:
+ *    matrix_layout.h
+ *
+ * Abstract:
+ *   Utils for simplifying positioning and striding in tensors. Inspired
+ *   by CUTLASS, striving for 0 runtime cost while promote safety.
+ *    Only supports 2D tensors (matrix) for now.
+ */
 
 #include <cstdint>
 #include "core/common/gsl.h"
@@ -28,6 +24,13 @@ Abstract:
 #endif
 
 namespace onnxruntime {
+
+//
+// Clang-format doesn't handle __forceinline__ well, it insists on
+// adding extra indentation to the next line, making it very confusing
+// to read. So we turn it off for this file.
+// clang-format off
+//
 
 /**
  * @brief A tuple of integers to represent tensor coordinates
@@ -75,8 +78,7 @@ struct Position {
   }
 
   __forceinline__
-      Position
-      operator+(Position const& b) const {
+  Position operator+(Position const& b) const {
     Position c;
     for (int i = 0; i < kRank; ++i) {
       c.idx[i] = idx[i] + b.idx[i];
@@ -85,8 +87,7 @@ struct Position {
   }
 
   __forceinline__
-      Position
-      operator-(Position const& b) const {
+  Position operator-(Position const& b) const {
     Position c;
     for (int i = 0; i < kRank; ++i) {
       c.idx[i] = idx[i] - b.idx[i];
@@ -95,8 +96,7 @@ struct Position {
   }
 
   __forceinline__
-      Position
-      operator*(Position const& b) const {
+  Position operator*(Position const& b) const {
     Position c;
     for (int i = 0; i < kRank; ++i) {
       c.idx[i] = idx[i] * b.idx[i];
@@ -105,8 +105,7 @@ struct Position {
   }
 
   __forceinline__
-      Position
-      operator/(Position const& b) const {
+  Position operator/(Position const& b) const {
     Position c;
     for (int i = 0; i < kRank; ++i) {
       c.idx[i] = idx[i] / b.idx[i];
@@ -115,8 +114,7 @@ struct Position {
   }
 
   __forceinline__
-      Position&
-      operator+=(Position const& b) {
+  Position& operator+=(Position const& b) {
     for (int i = 0; i < kRank; ++i) {
       idx[i] += b.idx[i];
     }
@@ -124,8 +122,7 @@ struct Position {
   }
 
   __forceinline__
-      Position&
-      operator-=(Position const& b) {
+  Position& operator-=(Position const& b) {
     for (int i = 0; i < kRank; ++i) {
       idx[i] -= b.idx[i];
     }
@@ -133,8 +130,7 @@ struct Position {
   }
 
   __forceinline__
-      Position&
-      operator*=(Position const& b) {
+  Position& operator*=(Position const& b) {
     for (int i = 0; i < kRank; ++i) {
       idx[i] *= b.idx[i];
     }
@@ -142,8 +138,7 @@ struct Position {
   }
 
   __forceinline__
-      Position&
-      operator/=(Position const& b) {
+  Position& operator/=(Position const& b) {
     for (int i = 0; i < kRank; ++i) {
       idx[i] /= b.idx[i];
     }
@@ -344,6 +339,8 @@ class MatrixRef {
       typename std::remove_const<Element>::type,
       Layout, ExtraBoundsCheck_>;
 
+  static constexpr bool IsNonConstRef = std::is_same<NonConstMatrixRef, MatrixRef<Element_, Layout_>>::value;
+
  private:
   /// Pointer to data
   gsl::span<Element> data_;
@@ -381,8 +378,8 @@ class MatrixRef {
   MatrixRef(
       NonConstMatrixRef const& ref,  ///< MatrixRef to non-const data
       /// SFINAE trick to avoid creating a copy-constructor when Element_ is already non-const
-      _Magic magic =
-          (typename std::enable_if<!std::is_same<NonConstMatrixRef, MatrixRef<Element_, Layout_>>::value, _Magic>::type)0) : data_(ref.data()), shape_(ref.shape()), layout_(Layout::packed(ref.shape())) {}
+      _Magic magic = (typename std::enable_if<!IsNonConstRef, _Magic>::type)0
+      ) : data_(ref.data()), shape_(ref.shape()), layout_(Layout::packed(ref.shape())) {}
 
   __forceinline__
   ConstMatrixRef const_ref() const {
@@ -397,9 +394,8 @@ class MatrixRef {
   }
 
   /// Returns true if the MatrixRef is non-null
-  __forceinline__ bool good() const {
-    return !data_.empty();
-  }
+  __forceinline__
+  bool good() const { return !data_.empty(); }
 
   __forceinline__
   gsl::span<Element> const& data() const { return data_; }
@@ -473,34 +469,6 @@ make_MatrixRef(
   return MatrixRef<Element, Layout, ExtraBoundsCheck>(span, shape);
 }
 
-// Converting cutlass tensor to MatrixRef
-//
-//
-// template <
-//   typename Element,
-//   typename LayoutCutlass,
-//   typename Layout = std::conditional_t<std::is_same<LayoutCutlass, cutlass::layout::ColumnMajor>::value, ColumnMajorLayout, RowMajorLayout>
-//   >
-// __forceinline__
-// MatrixRef<Element, Layout> make_MatrixRef(cutlass::HostTensor<Element, LayoutCutlass> const& tensor) {
-//   static_assert(std::is_same<LayoutCutlass, cutlass::layout::ColumnMajor>::value
-//                 || std::is_same<LayoutCutlass, cutlass::layout::RowMajor>::value);
-//   auto shape = make_Position(tensor.extent().row(), tensor.extent().column());
-//   auto* ptr = const_cast<typename std::remove_const<Element>::type *>(tensor.host_data());
-//   return MatrixRef<Element, Layout>(ptr, tensor.capacity(), shape);
-// }
-
-// template <
-//   typename Element,
-//   typename LayoutCutlass,
-//   typename Layout = std::conditional_t<std::is_same<LayoutCutlass, cutlass::layout::ColumnMajor>::value, ColumnMajorLayout, RowMajorLayout>
-//   >
-// __forceinline__
-// MatrixRef<Element const, Layout> make_ConstMatrixRef(cutlass::HostTensor<Element, LayoutCutlass> const& tensor) {
-//   static_assert(std::is_same<LayoutCutlass, cutlass::layout::ColumnMajor>::value
-//                 || std::is_same<LayoutCutlass, cutlass::layout::RowMajor>::value);
-//   auto shape = make_Position(tensor.extent().row(), tensor.extent().column());
-//   return MatrixRef<Element const, Layout>(tensor.host_data(), tensor.capacity(), shape);
-// }
+// clang-format on
 
 }  // namespace onnxruntime
