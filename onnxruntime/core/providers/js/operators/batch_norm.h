@@ -8,7 +8,7 @@
 namespace onnxruntime {
 namespace js {
 
-template <typename T, bool is_channels_last>
+template <bool is_channels_last>
 class BatchNorm final : public JsKernel {
  public:
   explicit BatchNorm(const OpKernelInfo& info) : JsKernel(info) {
@@ -25,7 +25,7 @@ class BatchNorm final : public JsKernel {
                                  "momentum" : $2,
                                  "spatial" : !!$4,
                                  "trainingMode" : !!$3,
-                                 "format" : $5 ? "nhwc" : "nchw",
+                                 "format" : $5 ? "NHWC" : "NCHW",
                                }),
                                static_cast<float>(epsilon), static_cast<float>(momentum),
                                static_cast<int32_t>(training_mode), static_cast<int32_t>(spatial),

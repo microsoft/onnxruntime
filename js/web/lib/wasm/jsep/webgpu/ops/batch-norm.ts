@@ -15,7 +15,7 @@ export interface BatchNormAttributes extends AttributeWithCacheKey {
   readonly momentum: number;
   readonly spatial: boolean;
   readonly trainingMode: boolean;
-  readonly format: 'nhwc'|'nchw';
+  readonly format: 'NHWC'|'NCHW';
   readonly outputCount: number;
 }
 
@@ -31,31 +31,15 @@ const validateInputs = (inputs: readonly TensorView[], attributes: BatchNormAttr
     }
     expected.forEach((v, i) => {
       if (v !== actual[i]) {
-        switch (i % 100) {
-          case 11:
-          case 12:
-          case 13:
-            throw new Error(`${message}: ${i}th dimension != ${v}`);
-          default:
-        }
-        switch (i % 10) {
-          case 1:
-            throw new Error(`${message}: ${i}st dimension != ${v}`);
-          case 2:
-            throw new Error(`${message}: ${i}nd dimension != ${v}`);
-          case 3:
-            throw new Error(`${message}: ${i}rd dimension != ${v}`);
-          default:
-            throw new Error(`${message}: ${i}th dimension != ${v}`);
-        }
+        throw new Error(`${message}: dim[${i}] do not match`);
       }
     });
   };
 
   if (inputs[0].dims.length > 1) {
     const shape = Object.seal<Record<typeof attributes.format, number[]>>({
-      nhwc: inputs[0].dims.slice(-1),
-      nchw: inputs[0].dims.slice(1, attributes.spatial ? 2 : undefined),
+      NHWC: inputs[0].dims.slice(-1),
+      NCHW: inputs[0].dims.slice(1, attributes.spatial ? 2 : undefined),
     })[attributes.format];
     checkShapeEqual(inputs[1].dims, shape, 'Invalid input scale');
     checkShapeEqual(inputs[2].dims, shape, 'Invalid input B');
@@ -74,7 +58,7 @@ const createBatchNormInferenceProgramInfo =
       const {epsilon, spatial, format} = attributes;
       const yShape = inputs[0].dims;
       const components = spatial ? getMaxComponents(yShape[yShape.length - 1]) : 1;
-      const cComponents = format === 'nhwc' && yShape.length > 1 ? components : 1;
+      const cComponents = format === 'NHWC' && yShape.length > 1 ? components : 1;
       const outputSize = ShapeUtil.size(yShape) / components;
       // Only support uniforms for opset version >= 9 (spatial = true).
       const useShapesUniforms = enableShapesUniforms(yShape.length) && spatial;
@@ -91,10 +75,10 @@ const createBatchNormInferenceProgramInfo =
         if (spatial) {
           cOffset = `let cOffset = ${
               yShape.length === 1   ? '0u' :
-                  format === 'nhwc' ? `outputIndices[${yShape.length - 1}] / ${components}` :
+                  format === 'NHWC' ? `outputIndices[${yShape.length - 1}] / ${components}` :
                                       'outputIndices[1]'};`;
         } else {
-          if (format === 'nchw') {
+          if (format === 'NCHW') {
             cOffset = `
             ${y.indicesSet('outputIndices', '0', '0')}
             let cOffset = ${y.indicesToOffset('outputIndices')};`;
