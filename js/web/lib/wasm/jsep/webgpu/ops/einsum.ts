@@ -158,7 +158,7 @@ class EinsumEquation {
         }
         // Add '0', '1', '2', '3', '4', etc to represent ellipsis dimensions to avoid special handling
         for (let j = 0; j < ellipsisDims.length; j++) {
-          const symbol = String.fromCharCode('0'.charCodeAt(0) + i);
+          const symbol = String.fromCharCode('0'.charCodeAt(0) + j);
           einsumTerm.addSymbol(symbol, i + j);
           this.addSymbol(symbol, dims[nextDim++], index);
         }
