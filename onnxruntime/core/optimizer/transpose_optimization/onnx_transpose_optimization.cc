@@ -98,7 +98,7 @@ static std::unique_ptr<api::NodeRef> MakeSqueezeOrUnsqueeze(int64_t opset, api::
   return graph.AddNode(op_type, inputs, /*num_outputs*/ 1);
 }
 
-// Creates a QuantizeLinear or Quantize node. Does not update output ValueInfo.
+// Use to create a QuantizeLinear or DequantizeLinear node. Does not update output ValueInfo. Adds axis if needed.
 static std::unique_ptr<api::NodeRef> MakeQOrDQ(api::GraphRef& graph, std::string_view domain, std::string_view op_type,
                                                std::vector<std::string_view> inputs,
                                                std::optional<int64_t> axis) {
