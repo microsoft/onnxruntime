@@ -237,7 +237,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   int (*engine_encryption_)(const char*, char*, size_t) = nullptr;
   bool timing_cache_enable_ = false;
   bool force_timing_cache_match_ = false;
-  bool detailed_build_log_ = false;
+  bool detailed_build_log_ = true;
   bool cuda_graph_enable_ = false;
   std::string cache_prefix_;
 
