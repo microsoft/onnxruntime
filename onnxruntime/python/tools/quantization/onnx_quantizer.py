@@ -1084,6 +1084,20 @@ class ONNXQuantizer:
         if initializer is None:
             raise ValueError("{} is not an initializer", weight_name)
 
+        # Use quantization overrides if provided by the user.
+        quant_overrides = self.tensor_quant_overrides.get(weight_name, {})
+        if "quant_type" in quant_overrides:
+            weight_qType = quant_overrides["quant_type"].tensor_type
+
+        symmetric = quant_overrides.get(
+            "symmetric",
+            (
+                self.is_weight_symmetric
+                or weight_qType in (onnx_proto.TensorProto.INT8, onnx_proto.TensorProto.FLOAT8E4M3FN)
+            ),
+        )
+        reduce_range = quant_overrides.get("reduce_range", self.reduce_range and reduce_range)
+
         weights = tensor_proto_to_array(initializer)
         channel_count = weights.shape[channel_axis]
         rmin_list = []
@@ -1096,9 +1110,8 @@ class ONNXQuantizer:
             rmin, rmax, zero_point, scale, quantized_per_channel_data = quantize_data(
                 per_channel_data.flatten().tolist(),
                 weight_qType,
-                self.is_weight_symmetric
-                or weight_qType in (onnx_proto.TensorProto.INT8, onnx_proto.TensorProto.FLOAT8E4M3FN),
-                self.reduce_range and reduce_range,
+                symmetric,
+                reduce_range,
                 self.min_real_range,
             )
             rmin_list.append(rmin)
