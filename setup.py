@@ -535,9 +535,6 @@ if enable_training or enable_training_apis:
                 # Training ROCM package for ADO feeds is called onnxruntime-training-rocm
                 package_name = "onnxruntime-training-rocm"
 
-            if cuda_version and cuda_version.split(".")[0] == "12":
-                package_name = "onnxruntime-training-cuda12"
-
 if package_name == "onnxruntime-tvm":
     packages += ["onnxruntime.providers.tvm"]
 
