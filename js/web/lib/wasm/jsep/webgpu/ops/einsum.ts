@@ -102,7 +102,7 @@ class EinsumEquation {
         this.outputDims.push(info.dimValue);
       }
     });
-    this.rhs = this.processTerm(rhs, true, this.outputDims);
+    this.rhs = this.processTerm(rhs, false, this.outputDims);
   }  // End of EinsumEqation constructor
 
   // Add a symbol to the equation
