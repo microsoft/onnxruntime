@@ -153,7 +153,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         sigmoid_rmin, sigmoid_rmax = 0.0, 0.5
         inp_zp, inp_sc, sig_out_zp, sig_out_sc, _, _, _, _ = self.perform_qdq_quantization(
             "model_quant_overrides2.onnx",
-            tensor_quant_overrides={"SIG_OUT": {"rmin": 0.0, "rmax": 0.5}},
+            tensor_quant_overrides={"SIG_OUT": {"rmin": sigmoid_rmin, "rmax": sigmoid_rmax}},
         )
 
         # Input should have same quant params
