@@ -163,7 +163,7 @@ class EinsumEquation {
           this.addSymbol(symbol, dims[nextDim++], index);
         }
       } else {
-        einsumTerm.addSymbol(symbol, i);
+        einsumTerm.addSymbol(symbol, i + (this.hasEllipsis ? this.ellipsisDims.length - 1 : 0));
         this.addSymbol(symbol, dims[nextDim++], index);
       }
     });
