@@ -55,7 +55,6 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['BiasSplitGelu', [biasSplitGelu]],
   ['Cast', [unaryOps.cast, unaryOps.parseCastAttributes]],
   ['Ceil', [unaryOps.ceil]],
-  ['ClipV10', [unaryOps.clipV10]],
   ['Clip', [unaryOps.clip]],
   ['Concat', [concat, parseConcatAttributes]],
   ['Conv', [conv, parseConvAttributes]],
