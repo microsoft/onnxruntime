@@ -6,6 +6,7 @@
 #endif
 
 #include <type_traits>
+#include <unordered_map>
 #include <unordered_set>
 
 #include "core/common/gsl.h"
@@ -779,18 +780,23 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vect
         option = onnx::OpSchema::FormalParameterOption::Optional;
       } else if ((op->version >= min_ort_version_with_variadic_io_support) &&
                  (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC)) {
-        ORT_ENFORCE(i == count - 1, "Only the last ", (is_input ? "input" : "output"), " to a custom op may be marked variadic.");
+        ORT_ENFORCE(i == count - 1, "Only the last ", (is_input ? "input" : "output"),
+                    " to a custom op may be marked variadic.");
         option = onnx::OpSchema::FormalParameterOption::Variadic;
         min_arity = is_input ? op->GetVariadicInputMinArity(op) : op->GetVariadicOutputMinArity(op);
-        is_homogeneous = static_cast<bool>(is_input ? op->GetVariadicInputHomogeneity(op) : op->GetVariadicOutputHomogeneity(op));
+        is_homogeneous = static_cast<bool>(is_input
+                                           ? op->GetVariadicInputHomogeneity(op)
+                                           : op->GetVariadicOutputHomogeneity(op));
       }
     }
 
     std::unordered_set<ONNXTensorElementDataType> all_types;
     for (auto o : ops) {
       ORT_ENFORCE(i < (is_input ? o->GetInputTypeCount(o) : o->GetOutputTypeCount(o)),
-                  "Another version of operator '", schema.Name(), "'has less ", (is_input ? "inputs" : "outputs"),
-                  ". onnxruntime allows the overloading of an operator if all versions have the same number of declared ",
+                  "Another version of operator '", schema.Name(),
+                  "'has less ", (is_input ? "inputs" : "outputs"),
+                  ". onnxruntime allows the overloading of an operator "
+                  "if all versions have the same number of declared ",
                   (is_input ? "inputs" : "outputs"), ".");
       const auto type = is_input ? o->GetInputType(o, i) : o->GetOutputType(o, i);
       if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
@@ -1039,8 +1045,10 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       // define schema
       auto schema_map_iter = schema_map.find(op->GetName(op));
       ORT_ENFORCE(schema_map_iter != schema_map.end(),
-                  "This condition fail is no schema was defined for this operator as it should have in the previous loop.");
-      // If IsCompabible returns false, then all custom operators named 'op->GetName(op)' are not compatible among themselves.
+                  "This condition fail is no schema was defined for this "
+                  "operator as it should have in the previous loop.");
+      // If IsCompabible returns false, then all custom operators named
+      // 'op->GetName(op)' are not compatible among themselves.
       // They should have the same number of inputs and outputs, the same characteristics,
       // (optional, ...). Only the type can change.
       ORT_RETURN_IF_ERROR(IsCompatible(schema_map_iter->second, op));
