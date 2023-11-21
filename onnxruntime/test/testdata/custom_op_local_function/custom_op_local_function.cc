@@ -11,7 +11,7 @@
 #include "core/common/common.h"
 #include "core/framework/ortdevice.h"
 #include "core/framework/ortmemoryinfo.h"
-#include "custom_gemm.h"
+#include "dummy_gemm.h"
 
 static const char* c_OpDomain = "onnx_extented.ortops.tutorial.cpu";
 

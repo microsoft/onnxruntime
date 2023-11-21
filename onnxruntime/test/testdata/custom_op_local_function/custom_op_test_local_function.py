@@ -38,10 +38,7 @@ class TestOnnxToolsGraph(unittest.TestCase):
             providers=["CPUExecutionProvider"],
         )
         x = np.arange(2**2).reshape((2,) * 2).astype(np.float32)
-        t = np.array(
-            [[[0.24389695, 0.36584544], [0.75045216, 1.3695753]], [[0.7316909, 0.8129899], [3.2269444, 3.720992]]],
-            dtype=np.float32,
-        )
+        t = np.arange(8).reshape((2, 4)).astype(np.float32)
         got = sess.run(None, dict(X=x))[0]
         np.testing.assert_allclose(t, got, atol=1e-5)
 

@@ -1668,8 +1668,8 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND (NOT onnxruntime_MINIMAL_BUI
   file(GLOB_RECURSE custom_op_local_function_test_library_src
         "${TEST_SRC_DIR}/testdata/custom_op_local_function/custom_op_local_function.cc"
         "${TEST_SRC_DIR}/testdata/custom_op_local_function/custom_op_local_function.h"
-        "${TEST_SRC_DIR}/testdata/custom_op_local_function/custom_gemm.cc"
-        "${TEST_SRC_DIR}/testdata/custom_op_local_function/custom_gemm.h"
+        "${TEST_SRC_DIR}/testdata/custom_op_local_function/dummy_gemm.cc"
+        "${TEST_SRC_DIR}/testdata/custom_op_local_function/dummy_gemm.h"
   )
 
   onnxruntime_add_shared_library_module(custom_op_local_function ${custom_op_local_function_test_library_src})
