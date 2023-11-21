@@ -60,46 +60,56 @@ Status CreateNodeArgs(const std::vector<std::string>& names,
   return Status::OK();
 }
 
-Status GetEpContextFromModel(const std::string& ctx_onnx_model_path,
-                             std::string& ep_cache_context,
-                             const logging::Logger& logger) {
+Status QnnCacheModelHandler::GetEpContextFromModel(const std::string& ctx_onnx_model_path,
+                                                   QnnBackendManager* qnn_backend_manager,
+                                                   QnnModel& qnn_model,
+                                                   const logging::Logger& logger) {
   using namespace onnxruntime;
   std::shared_ptr<Model> model;
   ORT_RETURN_IF_ERROR(Model::Load(ToPathString(ctx_onnx_model_path), model, {}, logger));
   const auto& graph = model->MainGraph();
-  ORT_RETURN_IF_ERROR(GetEpContextFromGraph(GraphViewer(graph), ctx_onnx_model_path, ep_cache_context));
-
-  return Status::OK();
+  return GetEpContextFromGraph(GraphViewer(graph),
+                               ctx_onnx_model_path,
+                               qnn_backend_manager,
+                               qnn_model);
 }
 
-Status GetEpContextFromGraph(const onnxruntime::GraphViewer& graph_viewer,
-                             const std::string& ctx_onnx_model_path,
-                             std::string& ep_cache_context) {
+Status QnnCacheModelHandler::GetEpContextFromGraph(const onnxruntime::GraphViewer& graph_viewer,
+                                                   const std::string& ctx_onnx_model_path,
+                                                   QnnBackendManager* qnn_backend_manager,
+                                                   QnnModel& qnn_model) {
   const auto& node = graph_viewer.Nodes().begin();
   NodeAttrHelper node_helper(*node);
   bool is_embed_mode = node_helper.Get(EMBED_MODE, true);
   if (is_embed_mode) {
-    ep_cache_context = node_helper.Get(EP_CACHE_CONTEXT, "");
-  } else {
-    std::string external_qnn_context_binary_file_name = node_helper.Get(EP_CACHE_CONTEXT, "");
-
-    std::string context_binary_path(std::filesystem::path(ctx_onnx_model_path).parent_path().string() +
-                                    "/" + external_qnn_context_binary_file_name);
-    size_t buffer_size{0};
-    std::ifstream cache_file(context_binary_path.c_str(), std::ifstream::binary);
-    ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to open cache file.");
-    cache_file.seekg(0, cache_file.end);
-    buffer_size = static_cast<size_t>(cache_file.tellg());
-    ORT_RETURN_IF(0 == buffer_size, "Empty cache file encountered.");
-    cache_file.seekg(0, cache_file.beg);
-    ep_cache_context.reserve(buffer_size);
-    // Load file into buffer
-    ep_cache_context.assign(std::istreambuf_iterator<char>(cache_file), std::istreambuf_iterator<char>());
-    cache_file.close();
-    ORT_RETURN_IF(ep_cache_context.length() != buffer_size, "Failed to read contents from cached context file.");
+    const std::string& context_binary = node_helper.Get(EP_CACHE_CONTEXT, "");
+    return qnn_backend_manager->LoadCachedQnnContextFromBuffer(const_cast<char*>(context_binary.c_str()),
+                                                               static_cast<uint64_t>(context_binary.length()),
+                                                               qnn_model);
   }
-  ORT_RETURN_IF(ep_cache_context.empty(), "Cached context empty.");
-  return Status::OK();
+
+  std::string external_qnn_context_binary_file_name = node_helper.Get(EP_CACHE_CONTEXT, "");
+
+  std::string context_binary_path(std::filesystem::path(ctx_onnx_model_path).parent_path().string() +
+                                  "/" + external_qnn_context_binary_file_name);
+  size_t buffer_size{0};
+  std::ifstream cache_file(context_binary_path.c_str(), std::ifstream::binary);
+  ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to open cache file.");
+
+  cache_file.seekg(0, cache_file.end);
+  buffer_size = static_cast<size_t>(cache_file.tellg());
+  ORT_RETURN_IF(0 == buffer_size, "Empty cache file encountered.");
+
+  cache_file.seekg(0, cache_file.beg);
+  std::unique_ptr<char[]> buffer = std::make_unique<char[]>(buffer_size);
+  ORT_RETURN_IF(nullptr == buffer, "Failed to allocate memory for cache file.");
+  // Load file into buffer
+  const auto& read_result = cache_file.read(buffer.get(), buffer_size);
+  ORT_RETURN_IF(!read_result, "Failed to read contents from cached context file.");
+  cache_file.close();
+  return qnn_backend_manager->LoadCachedQnnContextFromBuffer(buffer.get(),
+                                                             static_cast<uint64_t>(buffer_size),
+                                                             qnn_model);
 }
 
 Status QnnCacheModelHandler::GetMetadataFromEpContextModel(const std::string& ctx_onnx_model_path,
@@ -144,7 +154,7 @@ bool QnnCacheModelHandler::IsContextCacheFileExists(const std::string& customer_
     context_cache_path_ = customer_context_cache_path;
   }
 
-  ctx_file_exists_ = std::filesystem::exists(context_cache_path_);
+  ctx_file_exists_ = std::filesystem::is_regular_file(context_cache_path_) && std::filesystem::exists(context_cache_path_);
 
   return ctx_file_exists_;
 }

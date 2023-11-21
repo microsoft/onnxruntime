@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <iostream>
 #include <iterator>
 #include <gtest/gtest.h>
 
@@ -410,7 +411,7 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
   // If an EP doesn't have any CI build pipeline, then there is no need to specify any opset.
 #ifdef USE_TENSORRT
   // tensorrt: only enable opset 14 to 17 of onnx tests
-  provider_names[provider_name_tensorrt] = {opset14, opset15, opset16, opset17};
+  provider_names[provider_name_tensorrt] = {opset12, opset14, opset15, opset16, opset17};
 #endif
 #ifdef USE_MIGRAPHX
   provider_names[provider_name_migraphx] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
@@ -442,6 +443,13 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
 #endif
 #ifdef USE_DML
   provider_names[provider_name_dml] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
+#endif
+
+#if defined(ENABLE_TRAINING_CORE) && defined(USE_CUDA)
+  // Removing the CPU EP tests from CUDA build for training as these tests are already run in the CPU pipelines.
+  // Note: These are inference tests, we run these in training builds as an extra check. Therefore reducing
+  // the number of times these are run to reduce the CI time.
+  provider_names.erase(provider_name_cpu);
 #endif
   std::vector<std::basic_string<ORTCHAR_T>> v;
   // Permanently exclude following tests because ORT support only opset starting from 7,
@@ -585,37 +593,10 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
                                                    ORT_TSTR("mul_uint8"),
                                                    ORT_TSTR("div_uint8")};
   static const ORTCHAR_T* tensorrt_disabled_tests[] = {
-      ORT_TSTR("udnie"),
-      ORT_TSTR("rain_princess"),
-      ORT_TSTR("pointilism"),
-      ORT_TSTR("mosaic"),
-      ORT_TSTR("LSTM_Seq_lens_unpacked"),
-      ORT_TSTR("cgan"),
-      ORT_TSTR("candy"),
-      ORT_TSTR("tinyyolov3"),
-      ORT_TSTR("yolov3"),
-      ORT_TSTR("mlperf_ssd_resnet34_1200"),
-      ORT_TSTR("mlperf_ssd_mobilenet_300"),
-      ORT_TSTR("mask_rcnn"),
-      ORT_TSTR("faster_rcnn"),
-      ORT_TSTR("fp16_shufflenet"),
-      ORT_TSTR("fp16_inception_v1"),
-      ORT_TSTR("fp16_tiny_yolov2"),
-      ORT_TSTR("tf_inception_v3"),
-      ORT_TSTR("tf_mobilenet_v1_1.0_224"),
-      ORT_TSTR("tf_mobilenet_v2_1.0_224"),
-      ORT_TSTR("tf_mobilenet_v2_1.4_224"),
-      ORT_TSTR("tf_resnet_v1_101"),
-      ORT_TSTR("tf_resnet_v1_152"),
-      ORT_TSTR("tf_resnet_v1_50"),
-      ORT_TSTR("tf_resnet_v2_101"),
-      ORT_TSTR("tf_resnet_v2_152"),
-      ORT_TSTR("tf_resnet_v2_50"),
-      ORT_TSTR("convtranspose_1d"),
-      ORT_TSTR("convtranspose_3d"),
-      ORT_TSTR("conv_with_strides_and_asymmetric_padding"),
-      ORT_TSTR("conv_with_strides_padding"),
-      ORT_TSTR("size")  // INVALID_ARGUMENT: Cannot find binding of given name: x
+      ORT_TSTR("YOLOv3-12"),           // needs to run symbolic shape inference shape first
+      ORT_TSTR("SSD-MobilenetV1-12"),  // symbolic shape inference shape error
+      ORT_TSTR("SSD"),                 // needs to run symbolic shape inference shape first
+      ORT_TSTR("size")                 // INVALID_ARGUMENT: Cannot find binding of given name: x
   };
   std::vector<std::basic_string<ORTCHAR_T>> paths;
 

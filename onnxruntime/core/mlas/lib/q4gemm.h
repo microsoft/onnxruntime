@@ -90,7 +90,7 @@ MlasQ4GemmOperation(
 
                 if (DataParams->OutputProcessor != nullptr) {
                     DataParams->OutputProcessor->Process(
-                        DataParams->C, RangeStartM + RangeCountM - RowsRemaining, RangeStartN,
+                        DataParams->C, RangeStartM + RangeCountM - RowsRemaining, RangeStartN + n,
                         RowsHandled, CountN, ldc);
                 }
 

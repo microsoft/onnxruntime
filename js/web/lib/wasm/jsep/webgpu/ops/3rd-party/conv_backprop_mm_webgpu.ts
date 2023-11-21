@@ -22,16 +22,16 @@
 import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
-import {GpuDataType, ProgramInfo, ProgramMetadata} from '../../types';
+import {ProgramInfo} from '../../types';
 import {ConvTransposeAttributes} from '../conv-transpose';
+import {getActivationSnippet} from '../fuse-utils';
 
-import {Activation, activationFnSnippet, biasActivationSnippet, typeSnippet} from './activation_util';
+import {biasSnippet, typeSnippet} from './activation_util';
 import {utilFunctions} from './conv_util';
 import {makeMatMulPackedSource, makeMatMulPackedVec4Source} from './matmul_packed_webgpu';
 
 const conv2dTransposeCommonSnippet =
-    (isChannelsLast: boolean, addBias = false, activation?: Activation, hasPreluActivationWeights = false,
-     innerElementSize = 4): string => {
+    (isChannelsLast: boolean, addBias = false, attributes: ConvTransposeAttributes, innerElementSize = 4): string => {
       const type = typeSnippet(innerElementSize, 'f32');
       const getWSnippet = (innerElementSize: number) => {
         switch (innerElementSize) {
@@ -129,9 +129,9 @@ const conv2dTransposeCommonSnippet =
       return ${type}(0.0);
       `;
 
-
+      const {activationFunction, applyActivation} = getActivationSnippet(attributes, type);
       const userCode = `
-  ${activationFnSnippet(activation, hasPreluActivationWeights, innerElementSize === 4, 4)}
+      ${activationFunction}
   fn mm_readA(batch: i32, row : i32, colIn : i32) -> ${type} {
     ${isChannelsLast ? sampleA : sampleW}
   }
@@ -146,7 +146,8 @@ const conv2dTransposeCommonSnippet =
       var value = valueInput;
       let outWidth = ${isChannelsLast ? 'outShape[2]' : 'outShape[3]'};
       ${coordResSnippet}
-      ${biasActivationSnippet(addBias, activation)}
+      ${biasSnippet(addBias)}
+      ${applyActivation}
       result[getIndexFromCoords4D(coords, outShape)/${innerElementSize}] = value;
     }
   }`;
@@ -154,8 +155,8 @@ const conv2dTransposeCommonSnippet =
     };
 
 export const createConv2DTransposeMatMulProgramInfo =
-    (inputs: readonly TensorView[], metadata: ProgramMetadata, attributes: ConvTransposeAttributes,
-     outputShape: readonly number[], dimAOuter: number, dimBOuter: number, dimInner: number, hasBias: boolean,
+    (inputs: readonly TensorView[], attributes: ConvTransposeAttributes, outputShape: readonly number[],
+     dimAOuter: number, dimBOuter: number, dimInner: number, hasBias: boolean,
      sequentialAccessByThreads: boolean): ProgramInfo => {
       const isChannelsLast = attributes.format === 'NHWC';
       const inChannels = isChannelsLast ? inputs[0].dims[3] : inputs[0].dims[1];
@@ -199,9 +200,12 @@ export const createConv2DTransposeMatMulProgramInfo =
         }`;
       }
       return {
-        ...metadata,
-        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
-        dispatchGroup: () => ({x: dispatch[0], y: dispatch[1], z: dispatch[2]}),
+        name: 'Conv2DTransposeMatMul',
+        shaderCache: {hint: attributes.cacheKey},
+        getRunData: () => ({
+          outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+          dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]}
+        }),
         getShaderSource: () => `
         ${utilFunctions}
         ${declareInputs.join('\n')}
@@ -233,7 +237,7 @@ export const createConv2DTransposeMatMulProgramInfo =
         const dimBOuter : i32 = ${dimBOuter};
         const dimInner : i32 = ${dimInner};
         ${declareFunctions}
-        ${conv2dTransposeCommonSnippet(isChannelsLast, hasBias, undefined, false, innerElementSize)}
+        ${conv2dTransposeCommonSnippet(isChannelsLast, hasBias, attributes, innerElementSize)}
         ${
             isVec4 ? makeMatMulPackedVec4Source(
                          elementsPerThread, workGroupSize, 'f32', undefined, !isChannelsLast, tileInner) :

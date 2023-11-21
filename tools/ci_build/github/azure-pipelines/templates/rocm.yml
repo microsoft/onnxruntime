@@ -27,7 +27,7 @@ jobs:
       ${{ if eq(parameters.BuildConfig, 'Release') }}:
         value: 'onnxruntime_rocm'
       ${{ else }}:
-        value: 'onnxruntime_rocm_enable_profiling'
+        value: 'onnxruntime_rocm_Debug'
 
   steps:
   - task: CmdLine@2
@@ -79,6 +79,7 @@ jobs:
             /onnxruntime_src/tools/ci_build/build.py \
               --config ${{ parameters.BuildConfig }} \
               --use_rocm \
+              --use_migraphx \
               --rocm_version=${{ parameters.RocmVersion }} \
               --rocm_home=/opt/rocm \
               --nccl_home=/opt/rocm \

@@ -1773,13 +1773,17 @@ def test_aten_upsample_nearest(input_rank, use_factor):
     _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
 
-def test_aten_upsample_bilinear():
+@pytest.mark.parametrize("interpolate_size_scale", ({"size": (8, 12)}, {"scale_factor": 4.7}))
+@pytest.mark.parametrize("align_corners", (True, False))
+def test_resize_grad_correctness_bilinear_2d(interpolate_size_scale, align_corners):
     class _NeuralNetUpsampleBilinear(torch.nn.Module):
         def __init__(self):
             super().__init__()
 
         def forward(self, input):
-            return torch.nn.functional.interpolate(input, size=(8, 12), mode="bilinear")
+            return torch.nn.functional.interpolate(
+                input, align_corners=align_corners, mode="bilinear", **interpolate_size_scale
+            )
 
     device = "cuda"
     pt_model = _NeuralNetUpsampleBilinear().to(device)
@@ -5757,6 +5761,7 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
         ("MatMul", 1),
         ("Dropout", 0),
         ("LayerNormalization", 0),
+        ("LayerNormalization", 1),
         ("Cast", 0),
         ("BiasGelu", 0),
         ("Gelu", 0),
@@ -5769,12 +5774,18 @@ def test_ops_for_padding_elimination(test_cases):
     test_op = test_cases[0]
     case = test_cases[1]
 
+    vocab_size, hidden_size = 50265, 768
+    batch_size, max_seq_length = 8, 128
+
     class ToyModel(torch.nn.Module):
         def __init__(self, vocab_size, hidden_size, pad_token_id):
             super().__init__()
             self.word_embeddings = nn.Embedding(vocab_size, hidden_size, padding_idx=pad_token_id)
             if test_op == "LayerNormalization":
-                self.LayerNorm = nn.LayerNorm(hidden_size, eps=1e-05)
+                if case == 0:
+                    self.LayerNorm = nn.LayerNorm(hidden_size, eps=1e-05)
+                else:
+                    self.LayerNorm = nn.LayerNorm([max_seq_length, hidden_size], eps=1e-05)
             self.hidden_size = hidden_size
 
         # test test_elementwise op for padding elimination
@@ -5782,14 +5793,14 @@ def test_ops_for_padding_elimination(test_cases):
         #            the test_op should be included in padding elimination subgraph and the PadAndUnflatten should be
         #            added to output of test_op.
         # in case 2, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [batch_size, 1, hidden_size],
-        #            the test_op should be included in padding elimination subgraph and a 'Expand + Reshape + ShrunkenGather'
+        #            the test_op should be included in padding elimination subgraph and a 'Expand + FlattenAndUnpad'
         #            pattern should be insert to the arg of [batch_size, 1, hidden_size].
         # in case 3, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [1, hidden_size],
-        #            the test_op should be included in padding elimination subgraph and a 'Expand + Reshape + ShrunkenGather'
+        #            the test_op should be included in padding elimination subgraph and a 'Expand + FlattenAndUnpad'
         #            pattern should be insert to the arg of [batch_size, 1, hidden_size].
         # in case 4, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [batch_size, seqlen, hidden_size],
         #            the test_op should be included in padding elimination subgraph and the PadAndUnflatten should be added to
-        #            output of test_op. Besides, the other input of Add should be added 'Reshape + ShrunkenGather' to
+        #            output of test_op. Besides, the other input of Add should be added 'FlattenAndUnpad' to
         #            flatten and elimination padding.
         def test_elementwise(self, input_ids):
             input_shape = input_ids.size()
@@ -5885,8 +5896,6 @@ def test_ops_for_padding_elimination(test_cases):
             batched_inputs.append(torch.cat((input_id, padding)))
         return torch.stack(batched_inputs)
 
-    vocab_size, hidden_size = 50265, 768
-    batch_size, max_seq_length = 8, 128
     device = "cuda"
     model = ORTModule(ToyModel(vocab_size, hidden_size, 1).to(device))
     x = generate_inputs(batch_size, max_seq_length, vocab_size)
@@ -5901,10 +5910,10 @@ def test_ops_for_padding_elimination(test_cases):
     assert len([node.op_type for node in training_model.graph.node if node.op_type == "Squeeze"]) == 1
     assert len([node.op_type for node in training_model.graph.node if node.op_type == "PadAndUnflatten"]) == 1
     if case >= 2:
-        assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 2
+        assert len([node.op_type for node in training_model.graph.node if node.op_type == "FlattenAndUnpad"]) == 3
     else:
-        assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 1
-    gathergrad_node = next(node for node in training_model.graph.node if node.op_type == "PadAndUnflatten")
+        assert len([node.op_type for node in training_model.graph.node if node.op_type == "FlattenAndUnpad"]) == 2
+    recover_pad_node = next(node for node in training_model.graph.node if node.op_type == "PadAndUnflatten")
 
     def find_input_node_type(model, arg):
         result = []
@@ -5913,14 +5922,14 @@ def test_ops_for_padding_elimination(test_cases):
                 result.append(node)
         return result[0].op_type if len(result) == 1 else None
 
-    gathergrad_input_optypes = [find_input_node_type(training_model, arg) for arg in gathergrad_node.input]
+    recover_pad_input_optypes = [find_input_node_type(training_model, arg) for arg in recover_pad_node.input]
     if test_op == "Add" or test_op == "Mul" or test_op == "Sub":
-        assert test_op in gathergrad_input_optypes
+        assert test_op in recover_pad_input_optypes
     else:
         if case == 0:
-            assert test_op in gathergrad_input_optypes
+            assert test_op in recover_pad_input_optypes
         else:
-            assert "ATen" in gathergrad_input_optypes
+            assert "ATen" in recover_pad_input_optypes
 
     del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
 
@@ -6067,7 +6076,7 @@ def test_e2e_padding_elimination():
             _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-4)
 
     training_model = ort_model._torch_module._execution_manager(True)._onnx_models.optimized_model
-    assert "ShrunkenGather" in [node.op_type for node in training_model.graph.node]
+    assert "FlattenAndUnpad" in [node.op_type for node in training_model.graph.node]
     assert "PadAndUnflatten" in [node.op_type for node in training_model.graph.node]
     del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
 

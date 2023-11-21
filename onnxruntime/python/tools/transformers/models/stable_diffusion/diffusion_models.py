@@ -24,7 +24,7 @@
 import logging
 import os
 import tempfile
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import onnx
 import onnx_graphsurgeon as gs
@@ -83,42 +83,58 @@ class TrtOptimizer:
 
 class PipelineInfo:
     def __init__(
-        self, version: str, is_inpaint: bool = False, is_sd_xl_refiner: bool = False, use_vae_in_xl_base=False
+        self,
+        version: str,
+        is_inpaint: bool = False,
+        is_refiner: bool = False,
+        use_vae=False,
+        min_image_size=256,
+        max_image_size=1024,
+        use_fp16_vae=True,
     ):
         self.version = version
         self._is_inpaint = is_inpaint
-        self._is_sd_xl_refiner = is_sd_xl_refiner
-        self._use_vae_in_xl_base = use_vae_in_xl_base
-
-        if is_sd_xl_refiner:
-            assert self.is_sd_xl()
+        self._is_refiner = is_refiner
+        self._use_vae = use_vae
+        self._min_image_size = min_image_size
+        self._max_image_size = max_image_size
+        self._use_fp16_vae = use_fp16_vae
+        if is_refiner:
+            assert self.is_xl()
 
     def is_inpaint(self) -> bool:
         return self._is_inpaint
 
-    def is_sd_xl(self) -> bool:
+    def is_xl(self) -> bool:
         return "xl" in self.version
 
-    def is_sd_xl_base(self) -> bool:
-        return self.is_sd_xl() and not self._is_sd_xl_refiner
+    def is_xl_base(self) -> bool:
+        return self.is_xl() and not self._is_refiner
 
-    def is_sd_xl_refiner(self) -> bool:
-        return self.is_sd_xl() and self._is_sd_xl_refiner
+    def is_xl_refiner(self) -> bool:
+        return self.is_xl() and self._is_refiner
 
     def use_safetensors(self) -> bool:
-        return self.is_sd_xl()
+        return self.is_xl()
 
     def stages(self) -> List[str]:
-        if self.is_sd_xl_base():
-            return ["clip", "clip2", "unetxl"] + (["vae"] if self._use_vae_in_xl_base else [])
+        if self.is_xl_base():
+            return ["clip", "clip2", "unetxl"] + (["vae"] if self._use_vae else [])
 
-        if self.is_sd_xl_refiner():
+        if self.is_xl_refiner():
             return ["clip2", "unetxl", "vae"]
 
         return ["clip", "unet", "vae"]
 
     def vae_scaling_factor(self) -> float:
-        return 0.13025 if self.is_sd_xl() else 0.18215
+        return 0.13025 if self.is_xl() else 0.18215
+
+    def vae_torch_fallback(self) -> bool:
+        return self.is_xl() and not self._use_fp16_vae
+
+    def custom_fp16_vae(self) -> Optional[str]:
+        # For SD XL, use a VAE that fine-tuned to run in fp16 precision without generating NaNs
+        return "madebyollin/sdxl-vae-fp16-fix" if self._use_fp16_vae and self.is_xl() else None
 
     @staticmethod
     def supported_versions(is_xl: bool):
@@ -150,7 +166,7 @@ class PipelineInfo:
         elif self.version == "2.1-base":
             return "stabilityai/stable-diffusion-2-1-base"
         elif self.version == "xl-1.0":
-            if self.is_sd_xl_refiner():
+            if self.is_xl_refiner():
                 return "stabilityai/stable-diffusion-xl-refiner-1.0"
             else:
                 return "stabilityai/stable-diffusion-xl-base-1.0"
@@ -166,7 +182,7 @@ class PipelineInfo:
             return 768
         elif self.version in ("2.0", "2.0-base", "2.1", "2.1-base"):
             return 1024
-        elif self.version in ("xl-1.0") and self.is_sd_xl_base():
+        elif self.version in ("xl-1.0") and self.is_xl_base():
             return 768
         else:
             raise ValueError(f"Invalid version {self.version}")
@@ -182,12 +198,25 @@ class PipelineInfo:
             return 768
         elif self.version in ("2.0", "2.0-base", "2.1", "2.1-base"):
             return 1024
-        elif self.version in ("xl-1.0") and self.is_sd_xl_base():
+        elif self.version in ("xl-1.0") and self.is_xl_base():
             return 2048
-        elif self.version in ("xl-1.0") and self.is_sd_xl_refiner():
+        elif self.version in ("xl-1.0") and self.is_xl_refiner():
             return 1280
         else:
             raise ValueError(f"Invalid version {self.version}")
+
+    def min_image_size(self):
+        return self._min_image_size
+
+    def max_image_size(self):
+        return self._max_image_size
+
+    def default_image_size(self):
+        if self.is_xl():
+            return 1024
+        if self.version in ("2.0", "2.1"):
+            return 768
+        return 512
 
 
 class BaseModel:
@@ -211,8 +240,8 @@ class BaseModel:
 
         self.min_batch = 1
         self.max_batch = max_batch_size
-        self.min_image_shape = 256  # min image resolution: 256x256
-        self.max_image_shape = 1024  # max image resolution: 1024x1024
+        self.min_image_shape = pipeline_info.min_image_size()
+        self.max_image_shape = pipeline_info.max_image_size()
         self.min_latent_shape = self.min_image_shape // 8
         self.max_latent_shape = self.max_image_shape // 8
 
@@ -254,16 +283,16 @@ class BaseModel:
     def load_model(self, framework_model_dir: str, hf_token: str, subfolder: str):
         pass
 
-    def get_input_names(self):
+    def get_input_names(self) -> List[str]:
         pass
 
-    def get_output_names(self):
+    def get_output_names(self) -> List[str]:
         pass
 
-    def get_dynamic_axes(self):
-        return None
+    def get_dynamic_axes(self) -> Dict[str, Dict[int, str]]:
+        pass
 
-    def get_sample_input(self, batch_size, image_height, image_width):
+    def get_sample_input(self, batch_size, image_height, image_width) -> tuple:
         pass
 
     def get_profile_id(self, batch_size, image_height, image_width, static_batch, static_image_shape):
@@ -293,10 +322,10 @@ class BaseModel:
 
     def get_input_profile(self, batch_size, image_height, image_width, static_batch, static_image_shape):
         """For TensorRT"""
-        return None
+        pass
 
     def get_shape_dict(self, batch_size, image_height, image_width):
-        return None
+        pass
 
     def fp32_input_output_names(self) -> List[str]:
         """For CUDA EP, we export ONNX model with FP32 first, then convert it to mixed precision model.
@@ -305,9 +334,25 @@ class BaseModel:
         """
         return []
 
-    def optimize_ort(self, input_onnx_path, optimized_onnx_path, to_fp16=True):
+    def optimize_ort(
+        self,
+        input_onnx_path,
+        optimized_onnx_path,
+        to_fp16=True,
+        fp32_op_list=None,
+        optimize_by_ort=True,
+        optimize_by_fusion=True,
+    ):
         optimizer = self.get_ort_optimizer()
-        optimizer.optimize(input_onnx_path, optimized_onnx_path, to_fp16, keep_io_types=self.fp32_input_output_names())
+        optimizer.optimize(
+            input_onnx_path,
+            optimized_onnx_path,
+            float16=to_fp16,
+            keep_io_types=self.fp32_input_output_names(),
+            fp32_op_list=fp32_op_list,
+            optimize_by_ort=optimize_by_ort,
+            optimize_by_fusion=optimize_by_fusion,
+        )
 
     def optimize_trt(self, input_onnx_path, optimized_onnx_path):
         onnx_graph = onnx.load(input_onnx_path)
@@ -382,7 +427,7 @@ class CLIP(BaseModel):
             max_batch_size=max_batch_size,
             embedding_dim=embedding_dim if embedding_dim > 0 else pipeline_info.clip_embedding_dim(),
         )
-        self.output_hidden_state = pipeline_info.is_sd_xl()
+        self.output_hidden_state = pipeline_info.is_xl()
 
         # see https://github.com/huggingface/diffusers/pull/5057 for more information of clip_skip.
         # Clip_skip=1 means that the output of the pre-final layer will be used for computing the prompt embeddings.
@@ -434,7 +479,7 @@ class CLIP(BaseModel):
 
         assert self.clip_skip >= 0 and self.clip_skip < hidden_layers
 
-        node_output_name = "/text_model/encoder/layers.{}/Add_1_output_0".format(hidden_layers - 1 - self.clip_skip)
+        node_output_name = f"/text_model/encoder/layers.{hidden_layers - 1 - self.clip_skip}/Add_1_output_0"
 
         # search the name in outputs of all node
         found = False
@@ -466,13 +511,29 @@ class CLIP(BaseModel):
         onnx_model.add_node(cast_node)
         onnx_model.save_model_to_file(optimized_onnx_path, use_external_data_format=use_external_data_format)
 
-    def optimize_ort(self, input_onnx_path, optimized_onnx_path, to_fp16=True):
+    def optimize_ort(
+        self,
+        input_onnx_path,
+        optimized_onnx_path,
+        to_fp16=True,
+        fp32_op_list=None,
+        optimize_by_ort=True,
+        optimize_by_fusion=True,
+    ):
         optimizer = self.get_ort_optimizer()
+
         if not self.output_hidden_state:
             optimizer.optimize(
-                input_onnx_path, optimized_onnx_path, to_fp16, keep_io_types=[], keep_outputs=["text_embeddings"]
+                input_onnx_path,
+                optimized_onnx_path,
+                float16=to_fp16,
+                keep_io_types=[],
+                fp32_op_list=fp32_op_list,
+                keep_outputs=["text_embeddings"],
+                optimize_by_ort=optimize_by_ort,
+                optimize_by_fusion=optimize_by_fusion,
             )
-        else:
+        elif optimize_by_fusion:
             with tempfile.TemporaryDirectory() as tmp_dir:
                 # Save to a temporary file so that we can load it with Onnx Runtime.
                 logger.info("Saving a temporary model to add hidden_states to graph output ...")
@@ -483,10 +544,24 @@ class CLIP(BaseModel):
                 optimizer.optimize(
                     tmp_model_path,
                     optimized_onnx_path,
-                    to_fp16,
+                    float16=to_fp16,
                     keep_io_types=[],
+                    fp32_op_list=fp32_op_list,
                     keep_outputs=["text_embeddings", "hidden_states"],
+                    optimize_by_ort=optimize_by_ort,
+                    optimize_by_fusion=optimize_by_fusion,
                 )
+        else:  # input is optimized model, there is no need to add hidden states.
+            optimizer.optimize(
+                input_onnx_path,
+                optimized_onnx_path,
+                float16=to_fp16,
+                keep_io_types=[],
+                fp32_op_list=fp32_op_list,
+                keep_outputs=["text_embeddings", "hidden_states"],
+                optimize_by_ort=optimize_by_ort,
+                optimize_by_fusion=optimize_by_fusion,
+            )
 
     def optimize_trt(self, input_onnx_path, optimized_onnx_path):
         onnx_graph = onnx.load(input_onnx_path)
@@ -741,27 +816,47 @@ class UNetXL(BaseModel):
 
 # VAE Decoder
 class VAE(BaseModel):
-    def __init__(self, pipeline_info: PipelineInfo, model, device, max_batch_size):
+    def __init__(
+        self,
+        pipeline_info: PipelineInfo,
+        model,
+        device,
+        max_batch_size,
+        fp16: bool = False,
+        custom_fp16_vae: Optional[str] = None,
+    ):
         super().__init__(
             pipeline_info,
             model=model,
             device=device,
+            fp16=fp16,
             max_batch_size=max_batch_size,
         )
 
+        # For SD XL, need custom trained fp16 model to speed up, and avoid overflow at the same time.
+        self.custom_fp16_vae = custom_fp16_vae
+
     def load_model(self, framework_model_dir, hf_token: Optional[str] = None, subfolder: str = "vae_decoder"):
-        model_dir = os.path.join(framework_model_dir, self.pipeline_info.name(), subfolder)
+        model_name = self.custom_fp16_vae or self.pipeline_info.name()
+
+        model_dir = os.path.join(framework_model_dir, model_name, subfolder)
         if not os.path.exists(model_dir):
-            vae = AutoencoderKL.from_pretrained(
-                self.pipeline_info.name(),
-                subfolder="vae",
-                use_safetensors=self.pipeline_info.use_safetensors(),
-                use_auth_token=hf_token,
-            ).to(self.device)
+            if self.custom_fp16_vae:
+                vae = AutoencoderKL.from_pretrained(self.custom_fp16_vae, torch_dtype=torch.float16).to(self.device)
+            else:
+                vae = AutoencoderKL.from_pretrained(
+                    self.pipeline_info.name(),
+                    subfolder="vae",
+                    use_safetensors=self.pipeline_info.use_safetensors(),
+                    use_auth_token=hf_token,
+                ).to(self.device)
             vae.save_pretrained(model_dir)
         else:
             print(f"Load {self.name} pytorch model from: {model_dir}")
-            vae = AutoencoderKL.from_pretrained(model_dir).to(self.device)
+            if self.custom_fp16_vae:
+                vae = AutoencoderKL.from_pretrained(model_dir, torch_dtype=torch.float16).to(self.device)
+            else:
+                vae = AutoencoderKL.from_pretrained(model_dir).to(self.device)
 
         vae.forward = vae.decode
         return vae
@@ -809,7 +904,7 @@ class VAE(BaseModel):
         return (torch.randn(batch_size, 4, latent_height, latent_width, dtype=torch.float32, device=self.device),)
 
     def fp32_input_output_names(self) -> List[str]:
-        return ["latent", "images"]
+        return [] if self.fp16 else ["latent", "images"]
 
 
 def get_tokenizer(pipeline_info: PipelineInfo, framework_model_dir, hf_token, subfolder="tokenizer"):
@@ -819,7 +914,7 @@ def get_tokenizer(pipeline_info: PipelineInfo, framework_model_dir, hf_token, su
         model = CLIPTokenizer.from_pretrained(
             pipeline_info.name(),
             subfolder=subfolder,
-            use_safetensors=pipeline_info.is_sd_xl(),
+            use_safetensors=pipeline_info.is_xl(),
             use_auth_token=hf_token,
         )
         model.save_pretrained(tokenizer_dir)

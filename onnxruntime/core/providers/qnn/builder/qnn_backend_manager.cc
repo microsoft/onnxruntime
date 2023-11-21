@@ -272,7 +272,7 @@ void QnnBackendManager::InitializeQnnLog() {
 
 Status QnnBackendManager::InitializeBackend() {
   if (true == backend_initialized_) {
-    LOGS_DEFAULT(INFO) << "Backend intialized already.";
+    LOGS_DEFAULT(INFO) << "Backend initialized already.";
     return Status::OK();
   }
 
@@ -312,7 +312,7 @@ bool QnnBackendManager::IsDevicePropertySupported() {
 
 Status QnnBackendManager::CreateDevice() {
   if (true == device_created_) {
-    LOGS_DEFAULT(INFO) << "Device intialized already.";
+    LOGS_DEFAULT(INFO) << "Device initialized already.";
     return Status::OK();
   }
 
@@ -380,15 +380,48 @@ Status QnnBackendManager::ReleaseProfilehandle() {
   return Status::OK();
 }
 
+Status SetQnnContextConfig(ContextPriority context_priority, QnnContext_Config_t& qnn_context_config) {
+  qnn_context_config.option = QNN_CONTEXT_CONFIG_OPTION_PRIORITY;
+  switch (context_priority) {
+    case ContextPriority::LOW: {
+      qnn_context_config.priority = QNN_PRIORITY_LOW;
+      break;
+    }
+    case ContextPriority::NORMAL: {
+      qnn_context_config.priority = QNN_PRIORITY_NORMAL;
+      break;
+    }
+    case ContextPriority::NORMAL_HIGH: {
+      qnn_context_config.priority = QNN_PRIORITY_NORMAL_HIGH;
+      break;
+    }
+    case ContextPriority::HIGH: {
+      qnn_context_config.priority = QNN_PRIORITY_HIGH;
+      break;
+    }
+    case ContextPriority::UNDEFINED: {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid Qnn context priority.");
+    }
+    default:
+      qnn_context_config.priority = QNN_PRIORITY_NORMAL;
+  }  // switch
+
+  return Status::OK();
+}
+
 Status QnnBackendManager::CreateContext() {
   if (true == context_created_) {
     LOGS_DEFAULT(INFO) << "Context created already.";
     return Status::OK();
   }
 
+  QnnContext_Config_t qnn_context_config = QNN_CONTEXT_CONFIG_INIT;
+  ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, qnn_context_config));
+  const QnnContext_Config_t* context_configs[] = {&qnn_context_config, nullptr};
+
   auto result = qnn_interface_.contextCreate(backend_handle_,
                                              device_handle_,
-                                             (const QnnContext_Config_t**)&context_config_,
+                                             context_configs,
                                              &context_);
 
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context.");
@@ -448,20 +481,7 @@ std::unique_ptr<unsigned char[]> QnnBackendManager::GetContextBinaryBuffer(uint6
   return context_buffer;
 }
 
-Status QnnBackendManager::LoadCachedQnnCtxFromOnnxModel(const std::string& ep_engine_cache,
-                                                        QnnModel& qnn_model,
-                                                        bool& loaded_from_cache) {
-  loaded_from_cache = false;
-
-  if (!ep_engine_cache.empty()) {
-    ORT_RETURN_IF_ERROR(LoadCachedQnnContextFromBuffer(ep_engine_cache, qnn_model));
-    loaded_from_cache = true;
-  }
-
-  return Status::OK();
-}
-
-Status QnnBackendManager::LoadCachedQnnContextFromBuffer(const std::string& buffer, QnnModel& qnn_model) {
+Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length, QnnModel& qnn_model) {
   bool result = nullptr == qnn_sys_interface_.systemContextCreate ||
                 nullptr == qnn_sys_interface_.systemContextGetBinaryInfo ||
                 nullptr == qnn_sys_interface_.systemContextFree;
@@ -474,8 +494,8 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(const std::string& buff
   const QnnSystemContext_BinaryInfo_t* binary_info = nullptr;
   Qnn_ContextBinarySize_t binary_info_size{0};
   rt = qnn_sys_interface_.systemContextGetBinaryInfo(sys_ctx_handle,
-                                                     static_cast<void*>(const_cast<char*>(buffer.c_str())),
-                                                     static_cast<uint64_t>(buffer.length()),
+                                                     static_cast<void*>(buffer),
+                                                     buffer_length,
                                                      &binary_info,
                                                      &binary_info_size);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to get context binary info.");
@@ -499,11 +519,16 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(const std::string& buff
 
   ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinary,
                 "Invalid function pointer for contextCreateFromBinary.");
+
+  QnnContext_Config_t qnn_context_config = QNN_CONTEXT_CONFIG_INIT;
+  ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, qnn_context_config));
+  const QnnContext_Config_t* context_configs[] = {&qnn_context_config, nullptr};
+
   rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
                                               device_handle_,
-                                              (const QnnContext_Config_t**)&context_config_,
-                                              static_cast<void*>(const_cast<char*>(buffer.c_str())),
-                                              static_cast<uint64_t>(buffer.length()),
+                                              context_configs,
+                                              static_cast<void*>(buffer),
+                                              buffer_length,
                                               &context_,
                                               profile_backend_handle_);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary.");
@@ -583,8 +608,7 @@ Status QnnBackendManager::SetHtpPowerConfig() {
                 "HTP infra type = ", htp_infra->infraType, ", which is not perf infra type.");
   QnnHtpDevice_PerfInfrastructure_t& htp_perf_infra = htp_infra->perfInfra;
   // Get power client id
-  uint32_t powerconfig_client_id = 0;
-  status = htp_perf_infra.createPowerConfigId(/*device_id=*/0, /*core_id=*/0, &powerconfig_client_id);
+  status = htp_perf_infra.createPowerConfigId(/*device_id=*/0, /*core_id=*/0, &htp_power_config_client_id_);
   ORT_RETURN_IF(QNN_SUCCESS != status, "createPowerConfigId failed.");
 
   constexpr const int kNumConfigs = 1;
@@ -593,7 +617,7 @@ Status QnnBackendManager::SetHtpPowerConfig() {
   QnnHtpPerfInfrastructure_PowerConfig_t& dcvs_config = power_configs[0];
   dcvs_config.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_DCVS_V3;
   QnnHtpPerfInfrastructure_DcvsV3_t& dcvs_v3 = dcvs_config.dcvsV3Config;
-  dcvs_v3.contextId = powerconfig_client_id;
+  dcvs_v3.contextId = htp_power_config_client_id_;
   dcvs_v3.setSleepDisable = 0;
   dcvs_v3.sleepDisable = 0;
   dcvs_v3.setDcvsEnable = 1;
@@ -691,7 +715,7 @@ Status QnnBackendManager::SetHtpPowerConfig() {
       break;
   }
   std::vector<const QnnHtpPerfInfrastructure_PowerConfig_t*> perf_power_configs_ptr_ = ObtainNullTermPtrVector(power_configs);
-  status = htp_perf_infra.setPowerConfig(powerconfig_client_id, perf_power_configs_ptr_.data());
+  status = htp_perf_infra.setPowerConfig(htp_power_config_client_id_, perf_power_configs_ptr_.data());
   ORT_RETURN_IF(QNN_SUCCESS != status, "setPowerConfig failed for HTP performance mode.");
 
   // Set rpc control latency here, but note that v68 doesn't support rpc polling mode.
@@ -705,7 +729,7 @@ Status QnnBackendManager::SetHtpPowerConfig() {
     rpc_polling_time.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_POLLING_TIME;
     rpc_control_latency.rpcControlLatencyConfig = rpc_control_latency_;
     perf_power_configs_ptr_ = ObtainNullTermPtrVector(rpc_power_configs);
-    status = htp_perf_infra.setPowerConfig(powerconfig_client_id, perf_power_configs_ptr_.data());
+    status = htp_perf_infra.setPowerConfig(htp_power_config_client_id_, perf_power_configs_ptr_.data());
     ORT_RETURN_IF(QNN_SUCCESS != status, "setPowerConfig failed for RPC control latency.");
   }
 
@@ -726,12 +750,36 @@ void QnnBackendManager::Split(std::vector<std::string>& split_string,
   }
 }
 
+Status QnnBackendManager::DestroyHTPPowerConfigID() {
+  if (htp_performance_mode_ == HtpPerformanceMode::kHtpDefault) {
+    return Status::OK();
+  }
+
+  QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
+  auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
+  ORT_RETURN_IF(QNN_SUCCESS != status, "backendGetPerfInfrastructure failed.");
+
+  auto* htp_infra = static_cast<QnnHtpDevice_Infrastructure_t*>(qnn_device_infra);
+  ORT_RETURN_IF(QNN_HTP_DEVICE_INFRASTRUCTURE_TYPE_PERF != htp_infra->infraType,
+                "HTP infra type = ", htp_infra->infraType, ", which is not perf infra type.");
+  QnnHtpDevice_PerfInfrastructure_t& htp_perf_infra = htp_infra->perfInfra;
+
+  Qnn_ErrorHandle_t destroy_ret = htp_perf_infra.destroyPowerConfigId(htp_power_config_client_id_);
+  ORT_RETURN_IF(QNN_SUCCESS != destroy_ret, "destroyPowerConfigId failed.");
+  return Status::OK();
+}
+
 void QnnBackendManager::ReleaseResources() {
   if (!backend_setup_completed_) {
     return;
   }
 
-  auto result = ReleaseContext();
+  auto result = DestroyHTPPowerConfigID();
+  if (Status::OK() != result) {
+    ORT_THROW("Failed to DestroyHTPPowerConfigID.");
+  }
+
+  result = ReleaseContext();
   if (Status::OK() != result) {
     ORT_THROW("Failed to ReleaseContext.");
   }
@@ -810,7 +858,7 @@ Status QnnBackendManager::ExtractProfilingSubEvents(QnnProfile_EventId_t profile
 Status QnnBackendManager::ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id) {
   QnnProfile_EventData_t event_data;
   auto result = qnn_interface_.profileGetEventData(profile_event_id, &event_data);
-  ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to get provile event data.");
+  ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to get profile event data.");
 
   LOGS(*logger_, VERBOSE) << "Profiling Event Info - Event Type: " << event_data.type
                           << ", Event Value: " << event_data.value

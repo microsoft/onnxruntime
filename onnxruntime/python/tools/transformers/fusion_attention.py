@@ -111,7 +111,7 @@ class FusionAttention(Fusion):
         model: OnnxModel,
         hidden_size: int,
         num_heads: int,
-        attention_mask: AttentionMask,
+        attention_mask: Optional[AttentionMask] = None,
         use_multi_head_attention: bool = False,
         disable_multi_head_attention_bias: bool = False,
         search_op_types: List[str] = ["SkipLayerNormalization", "LayerNormalization"],  # noqa: B006
@@ -120,7 +120,7 @@ class FusionAttention(Fusion):
         super().__init__(model, attention_op_name, search_op_types)
         self.hidden_size = hidden_size
         self.num_heads = num_heads
-        self.attention_mask = attention_mask
+        self.attention_mask = attention_mask if attention_mask else AttentionMask(model)
         self.use_multi_head_attention = use_multi_head_attention
         self.disable_multi_head_attention_bias = disable_multi_head_attention_bias
         self.mask_filter_value = None
@@ -218,6 +218,31 @@ class FusionAttention(Fusion):
             return None
 
         return add_qk.input[1]
+
+    def reshape_add_qk(self, add_qk: str):
+        # Convert 4D mask from (B,1,S,T) to (B,N,S,T)
+        # B = batch size, N = num heads, S = source sequence length, T = target sequence length
+        mask_output_name = add_qk + "_mask"
+
+        # Check if concat node for (B,1,S,T) --> (B,N,S,T) already exists
+        concat_node = list(filter(lambda node: node.output[0] == mask_output_name, self.nodes_to_add))
+        if len(concat_node) == 1:
+            return mask_output_name
+
+        assert len(concat_node) == 0
+        concat_node_name = self.model.create_node_name("Concat")
+        concat_add_qk_fp32 = helper.make_node(
+            "Concat",
+            inputs=[add_qk for _ in range(self.num_heads)],
+            outputs=[mask_output_name],
+            name=concat_node_name,
+            axis=1,
+        )
+        # Add new node to graph
+        self.nodes_to_add.append(concat_add_qk_fp32)
+        self.node_name_to_graph_name[concat_node_name] = self.this_graph_name
+
+        return mask_output_name
 
     def concat_kv(self, past_k: str, past_v: str) -> str:
         """Concatenate past_k and past_v inputs to create past_kv input.
@@ -632,7 +657,6 @@ class FusionAttention(Fusion):
             return None
 
         graph_input_names = set([node.name for node in self.model.graph().input])
-        graph_output_names = set([node.name for node in self.model.graph().output])
         mha_node_name = self.model.create_node_name("Attention")
 
         # Add initial Q/K/V inputs for MHA
@@ -668,12 +692,15 @@ class FusionAttention(Fusion):
             mha_inputs.append("")
 
         # Add optional inputs for MHA
-        if past_k and past_v and past_k in graph_input_names and past_v in graph_input_names:
+
+        if past_k and past_v:
             mha_inputs.extend([key_padding_mask, add_qk, past_k, past_v])
+        elif key_padding_mask or add_qk:
+            mha_inputs.extend([key_padding_mask, add_qk])
 
         # Add outputs for MHA
         mha_outputs = [output]
-        if present_k and present_v and present_k in graph_output_names and present_v in graph_output_names:
+        if present_k and present_v:
             mha_outputs.extend([present_k, present_v])
 
         mha_node = helper.make_node(
@@ -875,21 +902,8 @@ class FusionAttention(Fusion):
                 past_kv = self.concat_kv(past_k, past_v)
                 attention_inputs.append(past_kv)
 
-            if add_qk_str:
-                # Convert 4d mask from (B,1,M,M) to (B,N,M,M)
-                # B = batch size, M = max sequence length, N = num heads
-                concat_node_name = self.model.create_node_name("Concat")
-                mask_output_name = add_qk_str + "_mask"
-                concat_add_qk_fp32 = helper.make_node(
-                    "Concat",
-                    inputs=[add_qk_str for _ in range(num_heads)],
-                    outputs=[mask_output_name],
-                    name=concat_node_name,
-                    axis=1,
-                )
-                # Add new nodes to graph
-                self.nodes_to_add.append(concat_add_qk_fp32)
-                self.node_name_to_graph_name[concat_node_name] = self.this_graph_name
+            if add_qk_str is not None:
+                mask_output_name = self.reshape_add_qk(add_qk_str)
 
                 # Add attention mask to attention node
                 if not past_exists:

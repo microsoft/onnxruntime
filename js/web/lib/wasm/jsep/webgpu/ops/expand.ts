@@ -3,14 +3,9 @@
 
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {inputVariable, outputVariable, ShaderHelper} from './common';
-
-export const expandProgramMetadata = {
-  name: 'Expand',
-  inputTypes: [GpuDataType.default]
-};
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length !== 2) {
@@ -45,7 +40,7 @@ const calculateOutputShape = (inputShape: readonly number[], shape: readonly num
     (inputShape.length > shape.length) ? getAdjustedShape(inputShape, shape) : getAdjustedShape(shape, inputShape);
 
 
-const createExpandProgramInfo = (metadata: ProgramMetadata, inputs: readonly TensorView[]): ProgramInfo => {
+const createExpandProgramInfo = (inputs: readonly TensorView[]): ProgramInfo => {
   const inputShape = inputs[0].dims;
   const shape = Array.from(inputs[1].getBigInt64Array(), Number);
   const outputShape: number[] = calculateOutputShape(inputShape, shape);
@@ -74,18 +69,17 @@ const createExpandProgramInfo = (metadata: ProgramMetadata, inputs: readonly Ten
     ${output.setByOffset('global_idx', input.getByIndices('inputIndices'))}
   }`;
   return {
-    ...metadata,
+    name: 'Expand',
+    shaderCache: {hint: `${outputShape}`},
     getShaderSource,
-    outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
-    dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
+    getRunData: () => ({
+      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+      dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
+    })
   };
 };
 
 export const expand = (context: ComputeContext): void => {
   validateInputs(context.inputs);
-  const outputShape = Array.from(context.inputs[1].getBigInt64Array(), Number);
-  const cacheHint = outputShape.toString();
-  context.compute(
-      {...expandProgramMetadata, cacheHint, get: () => createExpandProgramInfo(expandProgramMetadata, context.inputs)},
-      {inputs: [0]});
+  context.compute(createExpandProgramInfo(context.inputs), {inputs: [0]});
 };

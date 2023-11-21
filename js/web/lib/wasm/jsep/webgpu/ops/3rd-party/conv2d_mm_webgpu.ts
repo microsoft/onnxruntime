@@ -22,18 +22,19 @@
 import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
-import {GpuDataType, ProgramInfo, ProgramMetadata} from '../../types';
+import {ProgramInfo} from '../../types';
 import {tensorTypeToWsglStorageType} from '../common';
 import {ConvAttributes} from '../conv';
+import {getActivationSnippet} from '../fuse-utils';
 
-import {Activation, activationFnSnippet, biasActivationSnippet, typeSnippet} from './activation_util';
+import {biasSnippet, typeSnippet} from './activation_util';
 import {utilFunctions} from './conv_util';
 import {makeMatMulPackedSource, makeMatMulPackedVec4Source} from './matmul_packed_webgpu';
 
 const conv2dCommonSnippet =
     (isChannelsLast: boolean, fitAOuter: boolean, fitBOuter: boolean, fitInner: boolean, addBias = false,
-     activation?: Activation, hasPreluActivationWeights = false, innerElementSizeX = 4, innerElementSizeW = 4,
-     innerElementSize = 4, dataType = 'f32'): string => {
+     attributes: ConvAttributes, innerElementSizeX = 4, innerElementSizeW = 4, innerElementSize = 4,
+     dataType = 'f32'): string => {
       const getXSnippet = (innerElementSize: number) => {
         switch (innerElementSize) {
           case 1:
@@ -129,8 +130,9 @@ const conv2dCommonSnippet =
           isChannelsLast ? typeSnippet(innerElementSizeX, dataType) : typeSnippet(innerElementSizeW, dataType);
       const bType =
           isChannelsLast ? typeSnippet(innerElementSizeW, dataType) : typeSnippet(innerElementSizeX, dataType);
+      const {activationFunction, applyActivation} = getActivationSnippet(attributes, resType);
       const userCode = `
-    ${activationFnSnippet(activation, hasPreluActivationWeights, innerElementSize === 4, 4)}
+    ${activationFunction}
     fn mm_readA(batch: i32, row : i32, colIn : i32) -> ${aType} {
       ${isChannelsLast ? sampleX : sampleW}
     }
@@ -146,7 +148,8 @@ const conv2dCommonSnippet =
       var value = valueIn;
       let outWidth = ${isChannelsLast ? 'outShape[2]' : 'outShape[3]'};
       ${coordResSnippet}
-      ${biasActivationSnippet(addBias, activation)}
+      ${biasSnippet(addBias)}
+      ${applyActivation}
       setOutputAtCoords(coords[0], coords[1], coords[2], coords[3], value);
       }
     }`;
@@ -154,9 +157,8 @@ const conv2dCommonSnippet =
     };
 
 export const createConv2DMatMulProgramInfo =
-    (inputs: readonly TensorView[], metadata: ProgramMetadata, attributes: ConvAttributes,
-     outputShape: readonly number[], dimAOuter: number, dimBOuter: number, dimInner: number, hasBias: boolean,
-     sequentialAccessByThreads: boolean): ProgramInfo => {
+    (inputs: readonly TensorView[], attributes: ConvAttributes, outputShape: readonly number[], dimAOuter: number,
+     dimBOuter: number, dimInner: number, hasBias: boolean, sequentialAccessByThreads: boolean): ProgramInfo => {
       const isChannelsLast = attributes.format === 'NHWC';
       const inChannels = isChannelsLast ? inputs[0].dims[3] : inputs[0].dims[1];
       const batchSize = outputShape[0];
@@ -213,9 +215,12 @@ export const createConv2DMatMulProgramInfo =
       }
 
       return {
-        ...metadata,
-        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
-        dispatchGroup: () => ({x: dispatch[0], y: dispatch[1], z: dispatch[2]}),
+        name: 'Conv2DMatMul',
+        shaderCache: {hint: attributes.cacheKey},
+        getRunData: () => ({
+          outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+          dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]},
+        }),
         getShaderSource: () => `
         ${utilFunctions}
         //struct Uniforms { xShape : vec4<i32>, wShape : vec4<i32>, outShape : vec4<i32>,
@@ -240,8 +245,8 @@ export const createConv2DMatMulProgramInfo =
         ${declareFunctions}
         ${
             conv2dCommonSnippet(
-                isChannelsLast, fitAOuter, fitBOuter, fitInner, hasBias, undefined, false, elementsSize[0],
-                elementsSize[1], elementsSize[2], t)}
+                isChannelsLast, fitAOuter, fitBOuter, fitInner, hasBias, attributes, elementsSize[0], elementsSize[1],
+                elementsSize[2], t)}
             ${
             isVec4 ?
                 makeMatMulPackedVec4Source(elementsPerThread, workGroupSize, t, undefined, !isChannelsLast, tileInner) :

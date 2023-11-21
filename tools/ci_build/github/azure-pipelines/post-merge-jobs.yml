@@ -4,9 +4,11 @@ stages:
     parameters:
       NpmPackagingMode: 'dev'
       IsReleasePipeline: true
-      PoolName: 'aiinfra-Win-CPU-2022-web-beta'
+      PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
       BuildStaticLib: true
       ExtraBuildArgs: ''
+      UseWebPoolName: true
+      WebCpuPoolName: 'Azure-Pipelines-EO-Windows2022-aiinfra'
 
 # This stage is to test if the combined build works on
 # o Windows ARM64
@@ -67,7 +69,7 @@ stages:
     - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
-        EnvSetupScript: setup_env_cuda_11.bat
+        EnvSetupScript: setup_env_cuda.bat
         buildArch: x64
         additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
         msbuildPlatform: x64

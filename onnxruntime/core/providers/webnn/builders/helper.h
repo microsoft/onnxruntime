@@ -156,6 +156,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"GlobalMaxPool", "maxPool2d"},
     {"GlobalLpPool", "l2Pool2d"},
     {"Greater", "greater"},
+    {"GreaterOrEqual", "greaterOrEqual"},
     {"GroupNormalization", "meanVarianceNormalization"},
     {"HardSigmoid", "hardSigmoid"},
     {"HardSwish", "hardSwish"},
@@ -164,6 +165,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"LayerNormalization", "meanVarianceNormalization"},
     {"LeakyRelu", "leakyRelu"},
     {"Less", "lesser"},
+    {"LessOrEqual", "lesserOrEqual"},
     {"Log", "log"},
     {"LpPool", "l2Pool2d"},
     {"MatMul", "matmul"},
@@ -231,5 +233,8 @@ bool IsSupportedDataType(const int32_t data_type, const WebnnDeviceType device_t
 bool IsValidMultidirectionalBroadcast(std::vector<int64_t>& shape_a,
                                       std::vector<int64_t>& shape_b,
                                       const logging::Logger& logger);
+
+bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type);
+
 }  // namespace webnn
 }  // namespace onnxruntime
