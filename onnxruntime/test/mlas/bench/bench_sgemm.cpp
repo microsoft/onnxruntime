@@ -79,7 +79,7 @@ void SGEMM(benchmark::State& state, bool pack_b, bool trans_a, bool trans_b, flo
         beta,
         C.data(),
         N,
-        tp.get());
+        nullptr);
 
     for (auto _ : state) {
       MlasGemm(
@@ -96,7 +96,7 @@ void SGEMM(benchmark::State& state, bool pack_b, bool trans_a, bool trans_b, flo
           beta,
           C.data(),
           N,
-          tp.get());
+          nullptr);
     }
   }
 }
@@ -128,7 +128,7 @@ BENCHMARK_CAPTURE(SGEMM, PACKB_TransA, true, true, false)->Apply(GemmSizeProduct
 
 static void GemmLLMSizeProducts(benchmark::internal::Benchmark* b) {
   b->ArgNames(sgemm_bench_arg_names);
-  ArgsProduct(b, {{1, 1024, 2048}, {4096, 11008}, {4096, 11008}});
+  ArgsProduct(b, {{2, 1024}, {4096}, {4096}});
 }
 
 BENCHMARK_CAPTURE(SGEMM, LLM, false, false, true)->Apply(GemmLLMSizeProducts)->UseRealTime();

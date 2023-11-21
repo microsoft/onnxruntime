@@ -75,5 +75,6 @@ MlasSQNBitGemmBatch(
 bool MLASCALL
 MlasIsSQNBitGemmAvailable(
     size_t BlkBitWidth,
-    size_t BlkLen
+    size_t BlkLen,
+    size_t M
 );

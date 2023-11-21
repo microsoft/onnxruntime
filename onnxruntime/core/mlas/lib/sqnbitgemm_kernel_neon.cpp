@@ -291,7 +291,7 @@ MlasSQNBitGemmM1KernelNeon(
 
     const size_t StrideQuantBData = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     const size_t StrideQuantBScale = BlockCountK;
-    const size_t StrideQuantBZeroPoint = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockCountK);
+    const size_t StrideQuantBZeroPoint = MlasQNBitZeroPointsForBlksSizeInBytes(BlkBitWidth, BlockCountK);
 
     const float* BiasPtr = Bias;
 
@@ -429,7 +429,7 @@ MlasQNBitBlkDequantBForSgemmNeon(
                 QuantBDataCol += BlockStrideQuantB * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
                 QuantBScaleCol += BlockStrideQuantB;
                 if (QuantBZeroPointCol != nullptr) {
-                    QuantBZeroPointCol += MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockStrideQuantB);
+                    QuantBZeroPointCol += MlasQNBitZeroPointsForBlksSizeInBytes(BlkBitWidth, BlockStrideQuantB);
                 }
             }
 

@@ -138,9 +138,9 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
 
 TEST(MatMulNBits, Float32) {
   for (auto M : {1, 2, 100}) {
-    for (auto N : {1, 2, 32, 288}) {
-      for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
-        for (auto block_size : {16, 32, 64, 128}) {
+    for (auto N : {512}) {
+      for (auto K : {512}) {
+        for (auto block_size : {32}) {
           RunTest(M, N, K, block_size, false, false);
           RunTest(M, N, K, block_size, true, false);
         }

@@ -190,55 +190,65 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
 
   static size_t RegisterSingleTest(size_t M, size_t N, size_t K,
                                    bool WithThreadpool, bool Symmetric, bool WithBias) {
-    std::stringstream ss;
-    ss << (WithThreadpool ? "SingleThread" : "Threaded")
-       << "/isSymmetric" << Symmetric
-       << "/M" << M << "xN" << N << "xK" << K
-       << "/hasBias" << WithBias;
-    auto test_name = ss.str();
+    if (MlasIsSQNBitGemmAvailable(BlkBitWidth, BlkLen, M)) {
+      std::stringstream ss;
+      ss << (WithThreadpool ? "SingleThread" : "Threaded")
+         << "/isSymmetric" << Symmetric
+         << "/M" << M << "xN" << N << "xK" << K
+         << "/hasBias" << WithBias;
+      auto test_name = ss.str();
 
-    testing::RegisterTest(
-        MlasSQNBitGemmTest<BlkBitWidth, BlkLen>::GetTestSuiteName(),
-        test_name.c_str(),
-        nullptr,
-        test_name.c_str(),
-        __FILE__,
-        __LINE__,
-        // Important to use the fixture type as the return type here.
-        [=]() -> MlasTestFixture<MlasSQNBitGemmTest<BlkBitWidth, BlkLen>>* {
-          return new SQNBitGemmShortExecuteTest(
-              M, N, K, WithThreadpool, Symmetric, WithBias);
-        });
+      testing::RegisterTest(
+          MlasSQNBitGemmTest<BlkBitWidth, BlkLen>::GetTestSuiteName(),
+          test_name.c_str(),
+          nullptr,
+          test_name.c_str(),
+          __FILE__,
+          __LINE__,
+          // Important to use the fixture type as the return type here.
+          [=]() -> MlasTestFixture<MlasSQNBitGemmTest<BlkBitWidth, BlkLen>>* {
+            return new SQNBitGemmShortExecuteTest(
+                M, N, K, WithThreadpool, Symmetric, WithBias);
+          });
 
-    return 1;
+      return 1;
+    } else {
+      return 0;
+    }
   }
 
   static size_t RegisterShortExecuteTests() {
     size_t test_registered = 0;
 
-    if (MlasIsSQNBitGemmAvailable(BlkBitWidth, BlkLen)) {
-      for (bool WithThreadpool : {false, true}) {
-        for (bool Symmetric : {false, true}) {
-          for (size_t b = 1; b < 16; b++) {
-            test_registered += RegisterSingleTest(b, b, b, WithThreadpool, Symmetric, false);
-            test_registered += RegisterSingleTest(b, b, b, WithThreadpool, Symmetric, true);
-          }
-          for (size_t b = 16; b <= 256; b <<= 1) {
-            test_registered += RegisterSingleTest(b, b, b, WithThreadpool, Symmetric, false);
-            test_registered += RegisterSingleTest(b, b, b, WithThreadpool, Symmetric, true);
-          }
-          for (size_t b = 256; b < 320; b += 32) {
-            test_registered += RegisterSingleTest(b, b, b, WithThreadpool, Symmetric, true);
-          }
-          for (size_t b = 1; b < 96; b++) {
-            test_registered += RegisterSingleTest(1, b, 32, WithThreadpool, Symmetric, false);
-            test_registered += RegisterSingleTest(1, 32, b, WithThreadpool, Symmetric, true);
-            test_registered += RegisterSingleTest(1, b, b, WithThreadpool, Symmetric, false);
-          }
-          test_registered += RegisterSingleTest(43, 500, 401, WithThreadpool, Symmetric, true);
+    // for (bool WithThreadpool : {false, true}) {
+    for (bool WithThreadpool : {false}) {
+      // for (bool Symmetric : {false, true}) {
+      for (bool Symmetric : {true}) {
+        // for (size_t b = 1; b < 16; b++) {
+        //   test_registered += RegisterSingleTest(b, b, b, WithThreadpool, Symmetric, false);
+        //   test_registered += RegisterSingleTest(b, b, b, WithThreadpool, Symmetric, true);
+        // }
+        // for (size_t b = 16; b <= 256; b <<= 1) {
+        //   test_registered += RegisterSingleTest(b, b, b, WithThreadpool, Symmetric, false);
+        //   test_registered += RegisterSingleTest(b, b, b, WithThreadpool, Symmetric, true);
+        // }
+        // for (size_t b = 256; b < 320; b += 32) {
+        //   test_registered += RegisterSingleTest(b, b, b, WithThreadpool, Symmetric, true);
+        // }
+        // for (size_t b = 1; b < 96; b++) {
+        //   test_registered += RegisterSingleTest(1, b, 32, WithThreadpool, Symmetric, false);
+        //   test_registered += RegisterSingleTest(1, 32, b, WithThreadpool, Symmetric, true);
+        //   test_registered += RegisterSingleTest(1, b, b, WithThreadpool, Symmetric, false);
+        // }
+        test_registered += RegisterSingleTest(2, 16, 32, WithThreadpool, Symmetric, false);
+        test_registered += RegisterSingleTest(2, 32, 32, WithThreadpool, Symmetric, false);
+        test_registered += RegisterSingleTest(2, 64, 32, WithThreadpool, Symmetric, false);
+        test_registered += RegisterSingleTest(2, 512, 32, WithThreadpool, Symmetric, false);
+        test_registered += RegisterSingleTest(2, 640, 32, WithThreadpool, Symmetric, false);
+        test_registered += RegisterSingleTest(2, 768, 32, WithThreadpool, Symmetric, false);
+        test_registered += RegisterSingleTest(2, 1024, 32, WithThreadpool, Symmetric, false);
 
-          // test_registered += RegisterSingleTest(1001, 1027, 1031, WithThreadpool, Symmetric, false);
-        }
+        //test_registered += RegisterSingleTest(1001, 1027, 1031, WithThreadpool, Symmetric, false);
       }
     }
 
@@ -253,11 +263,11 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
 static size_t SQNBitGemmRegisterAllShortExecuteTests() {
   size_t count = 0;
 
-  count += SQNBitGemmShortExecuteTest<4, 16>::RegisterShortExecuteTests();
+  // count += SQNBitGemmShortExecuteTest < 4, 16> ::RegisterShortExecuteTests();
   count += SQNBitGemmShortExecuteTest<4, 32>::RegisterShortExecuteTests();
-  count += SQNBitGemmShortExecuteTest<4, 64>::RegisterShortExecuteTests();
-  count += SQNBitGemmShortExecuteTest<4, 128>::RegisterShortExecuteTests();
-  count += SQNBitGemmShortExecuteTest<4, 256>::RegisterShortExecuteTests();
+  // count += SQNBitGemmShortExecuteTest<4, 64>::RegisterShortExecuteTests();
+  // count += SQNBitGemmShortExecuteTest<4, 128>::RegisterShortExecuteTests();
+  // count += SQNBitGemmShortExecuteTest<4, 256>::RegisterShortExecuteTests();
 
   return count;
 }

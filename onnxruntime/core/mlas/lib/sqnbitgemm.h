@@ -108,11 +108,10 @@ MlasQNBitBlkDataSizeInBytes(size_t BlkBitWidth, size_t BlkLen)
     return BlkLen * BlkBitWidth / 8;
 }
 
-template <size_t BlkBitWidth>
-constexpr MLAS_FORCEINLINE size_t
-MlasQNBitZeroPointsForBlksSizeInBytes(size_t BlkCount)
+MLAS_FORCEINLINE size_t
+MlasQNBitZeroPointsForBlksSizeInBytes(size_t BlkBitWidth, size_t BlkCount)
 {
-    if constexpr (BlkBitWidth <= 4) {
+    if (BlkBitWidth <= 4) {
         return MlasDivRoundup(BlkCount, 2);  // 2 blocks per byte
     } else {
         return BlkCount;
@@ -161,7 +160,7 @@ MlasSQNBitGemmOperation(
 
     const size_t k_blks = MlasDivRoundup(K, BlkLen);
     const size_t ldb = k_blks * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-    const size_t k_blks_zp_bytes = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(k_blks);
+    const size_t k_blks_zp_bytes = MlasQNBitZeroPointsForBlksSizeInBytes(BlkBitWidth, k_blks);
 
     const float* A = DataParams->A + RangeStartM * lda;
 

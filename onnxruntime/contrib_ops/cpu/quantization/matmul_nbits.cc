@@ -67,7 +67,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   const size_t K = static_cast<size_t>(helper.K());
   const size_t lda = helper.Lda(false);
 
-  if (MlasIsSQNBitGemmAvailable(nbits_, block_size_)) {
+  if (MlasIsSQNBitGemmAvailable(nbits_, block_size_, M)) {
     // number of bytes or elements between adjacent matrices
     size_t b_data_matrix_stride_in_bytes, b_scale_matrix_stride, b_zero_point_matrix_stride_in_bytes;
     MlasBlockwiseQuantizedBufferSizes(static_cast<int>(nbits_), static_cast<int>(block_size_), /* columnwise */ true,

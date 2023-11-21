@@ -912,6 +912,7 @@ extern const MLAS_FPQ4GEMM_DISPATCH MlasFpQ4GemmDispatchAvx512;
 
 struct MLAS_SQNBIT_GEMM_DISPATCH;
 
+extern const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchX64;
 extern const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon;
 
 //
