@@ -268,7 +268,7 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
     auto perm = GetPermAttrIfValid(next_node);
     assert(perm.has_value());  // onnx shape inferencing checks that `perm` is valid
     NormalizeAndValidateAxis(axis, scale_shape->size());
-    axis = InvertPerm(*perm)[axis];
+    axis = InvertPerm(*perm)[gsl::narrow_cast<size_t>(axis)];
   }
 
   auto next_node_output_name = next_node.Outputs()[0];
