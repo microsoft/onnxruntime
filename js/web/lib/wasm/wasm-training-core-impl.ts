@@ -347,11 +347,11 @@ export const getContiguousParameters =
   const parametersSize = getParametersSize(trainingSessionId, trainableOnly);
   let tensor = 0;
 
+  // allocates a Float32Array of the correct size on the WASM heap
   const paramsByteLength = 4 * parametersSize;
-  const paramsOffset = wasm.stackAlloc(paramsByteLength);
-  wasm.HEAPU8.set(new Float32Array(parametersSize), paramsOffset);
-
-  const tensorOffset = wasm.stackAlloc(paramsOffset / 4);
+  const paramsOffset = wasm._malloc(paramsByteLength);
+  const arr = new Float32Array(parametersSize);
+  wasm.HEAPU8.set(arr, paramsOffset);
 
   // handles the dimensions-related createTensor parameters
   const dims = [parametersSize];
@@ -361,13 +361,13 @@ export const getContiguousParameters =
   wasm.HEAP32[dimsIndex] = parametersSize;
 
   try {
+    // wraps allocated array in a tensor
     tensor = wasm._OrtCreateTensor(
         tensorDataTypeStringToEnum(tensorTypeAsString), paramsOffset, paramsByteLength, dimsOffset, dims.length,
         dataLocationStringToEnum(locationAsString));
     ifErrCodeCheckLastError(
         tensor, `Can't create tensor for getContiguousParameters. session=${trainingSessionId}.`, false);
 
-    wasm.HEAPU32[tensorOffset] = tensor;
     if (wasm._OrtTrainingCopyParametersToBuffer) {
       const errCode = wasm._OrtTrainingCopyParametersToBuffer(trainingSessionId, tensor, parametersSize, trainableOnly);
       ifErrCodeCheckLastError(errCode, 'Can\'t get contiguous parameters.');
@@ -376,13 +376,14 @@ export const getContiguousParameters =
       throw new Error(NO_TRAIN_FUNCS_MSG);
     }
 
+    // copies from WASM memory to a JavaScript typed array, which is then put into a TensorMetadata object
     const typedArrayConstructor = tensorTypeToTypedArrayConstructor(tensorTypeAsString);
     const data = new typedArrayConstructor(parametersSize);
     const output: TensorMetadata[] = [];
     new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
         .set(wasm.HEAPU8.subarray(paramsOffset, paramsOffset + paramsByteLength));
     output.push([tensorTypeAsString, dims, data, locationAsString]);
-    if (output.length > 1 || output.length < 1) {
+    if (output.length !== 1) {
       throw new Error(`something unexpected happened in the getContiguousParameters function. Expected output length of
      one, got ${output.length}`);
     } else {
@@ -394,7 +395,6 @@ export const getContiguousParameters =
     }
     wasm._free(paramsOffset);
     wasm._free(dimsOffset);
-    wasm._free(tensorOffset);
     wasm.stackRestore(stack);
   }
 };
@@ -407,23 +407,23 @@ export const loadParametersBuffer =
   const tensorTypeAsString = 'float32';
   const locationAsString = 'cpu';
 
+  // allocates & copies JavaScript buffer to WASM heap
   const bufferCount = buffer.length;
   const bufferByteLength = bufferCount * 4;
-  const bufferOffset = wasm.stackAlloc(bufferByteLength);
+  const bufferOffset = wasm._malloc(bufferByteLength);
   wasm.HEAPU8.set(new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength), bufferOffset);
+
+  // allocates and handles moving dimensions information to WASM memory
   const dimsOffset = wasm.stackAlloc(4);
   wasm.HEAP32[dimsOffset / 4] = bufferCount;
   const dimsLength = 1;
   let tensor = 0;
-  const bufferAlloc = wasm.stackAlloc(bufferOffset / 4);
 
   try {
     tensor = wasm._OrtCreateTensor(
         tensorDataTypeStringToEnum(tensorTypeAsString), bufferOffset, bufferByteLength, dimsOffset, dimsLength,
         dataLocationStringToEnum(locationAsString));
     ifErrCodeCheckLastError(tensor, `Can't create tensor for input/output. session=${trainingSessionId}`, false);
-
-    wasm.HEAPU32[bufferAlloc] = tensor;
 
     if (wasm._OrtTrainingCopyParametersFromBuffer) {
       const errCode = wasm._OrtTrainingCopyParametersFromBuffer(trainingSessionId, tensor, bufferCount, trainableOnly);
@@ -436,7 +436,6 @@ export const loadParametersBuffer =
       wasm._OrtReleaseTensor(tensor);
     }
     wasm.stackRestore(stack);
-    wasm._free(bufferAlloc);
     wasm._free(bufferOffset);
     wasm._free(dimsOffset);
   }
