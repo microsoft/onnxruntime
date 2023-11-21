@@ -2471,7 +2471,7 @@ class CoreCodeBase {
   static int constexpr KTILE = Code::KTILE;
   static int constexpr PACK_ROW = Code::PackRow;
   static int constexpr COMP = Code::COMPUTE;
-  static int constexpr PREFERRED_N = 144;
+  static int constexpr PREFERRED_N = NTILE * 3;
   static JBLAS_ISA constexpr ISA = (JBLAS_ISA)Code::ISA;
   static uint32_t constexpr ID = CoreAttr::make_core_id(NTILE, PACK_ROW, COMP, ISA);
   void configure() { (void)(0); }
@@ -2497,7 +2497,7 @@ class CoreCodeBaseAMX {
   static int constexpr KTILE = Code::KTILE;
   static int constexpr PACK_ROW = Code::PackRow;
   static int constexpr COMP = Code::COMPUTE;
-  static int constexpr PREFERRED_N = 144;
+  static int constexpr PREFERRED_N = NTILE * 3;
   static JBLAS_ISA constexpr ISA = (JBLAS_ISA)Code::ISA;
   static uint32_t constexpr ID = CoreAttr::make_core_id(_NTILE, PACK_ROW, COMP, ISA);
   Xbyak::CodeGenerator cfgcode;

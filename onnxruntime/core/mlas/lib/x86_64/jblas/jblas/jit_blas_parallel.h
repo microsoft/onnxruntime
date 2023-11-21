@@ -403,7 +403,8 @@ class SchedulerKBlock : public Scheduler2D {
         }
       }
       mBlock[2] = utils::downdiv(mKBlock, scale);
-    }
+	  mBlock[2] =utils::padto_le(mBlock[2],mStep[2]);
+    }      
     size_t size_remain = mL2Size - mBlock[1] * mBlock[2] * mEleSize[1];
     // MBlock*KBlock*ASize+MBlock*NBlock*CSize*2<=size_remain
     int maxMBlock = static_cast<int>(size_remain / (mBlock[1] * mEleSize[2] * 2 + mBlock[2] * mEleSize[0]));

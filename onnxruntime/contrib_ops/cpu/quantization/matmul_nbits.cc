@@ -51,10 +51,10 @@ class MatMulNBits final : public OpKernel {
   const size_t nbits_;
   const bool column_wise_quant_{true};
   IAllocatorUniquePtr<void> packed_b_;
-  size_t packed_b_size_;
-  bool is_asym_;
-  bool all_constant_;
-  int64_t accuracy_level_;
+  size_t packed_b_size_{0};
+  bool is_asym_{false};
+  bool all_constant_{false};
+  int64_t accuracy_level_{0};
 };
 
 Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
