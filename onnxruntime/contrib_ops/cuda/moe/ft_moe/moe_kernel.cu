@@ -38,6 +38,7 @@
 
 #include "moe_kernel.h"
 #include "my_dumper.h"
+#include <stdio.h>
 
 #if CUDA_VERSION >= 11000
 #include <cub/cub.cuh>
@@ -504,18 +505,19 @@ __global__ void compute_total_rows_before_expert_kernel(const int* sorted_expert
   total_rows_before_expert[expert] = find_total_elts_leq_target(sorted_experts, sorted_experts_len, expert);
 }
 
-__global__ void dispatch_activations_kernel(int64_t*& total_rows_before_expert, int num_experts,
-                                            int local_num_experts, int local_experts_start_index,
-                                            int& total_past_rows, int& total_covered_rows) {
+__global__ void dispatch_activations_kernel(int64_t* total_rows_before_expert, int num_experts,
+                                            int local_num_experts, int local_experts_start_index) {
   const int expert = blockIdx.x * blockDim.x + threadIdx.x;
   const int local_experts_end_index = local_experts_start_index + local_num_experts - 1;
 
-  if (expert == 0) {
-    total_past_rows = local_experts_start_index == 0 ? 0 : total_rows_before_expert[local_experts_start_index - 1];
-    total_covered_rows = total_rows_before_expert[local_experts_end_index] - total_past_rows;
+  int total_past_rows = 0;
+  if (local_experts_start_index > 0) {
+    total_past_rows = total_rows_before_expert[local_experts_start_index - 1];
   }
 
-  if (expert < local_experts_start_index || expert > local_experts_end_index) return;
+  if (expert < local_experts_start_index || expert > local_experts_end_index) {
+    return;
+  }
 
   total_rows_before_expert[expert] -= total_past_rows;
 }
@@ -570,7 +572,6 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::configure_ws_ptrs(char* ws_ptr, 
   const int interbuf_size = static_cast<int>(pad_to_multiple_of_16(k * num_rows * inter_size));
   const int padded_experts = static_cast<int>(pad_to_multiple_of_16(num_experts));
   const int num_moe_inputs = static_cast<int>(pad_to_multiple_of_16(k * num_rows));
-  // const int num_softmax_outs = pad_to_multiple_of_16(num_rows * num_experts);
 
   source_rows_ = (int*)ws_ptr;
   permuted_rows_ = source_rows_ + num_moe_inputs;
@@ -617,21 +618,15 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
   configure_ws_ptrs(workspace_ptr, num_rows, hidden_size, inter_size, num_experts, k);
   topk_gating_softmax_kernelLauncher<T>(gating_output, finished, expert_scales, softmax_out_, expert_for_source_row,
                                         source_rows_, num_rows, num_experts, k, stream);
-  print_cuda_buffer("source_rows_", source_rows_, num_rows);
-  print_cuda_buffer("expert_for_source_row", expert_for_source_row, num_rows);
 
   const int sorter_ws_size_bytes = static_cast<int>(pad_to_multiple_of_16(sorter_.getWorkspaceSize(k * num_rows)));
   sorter_.run((void*)fc1_result_, sorter_ws_size_bytes, expert_for_source_row, permuted_experts_, source_rows_,
               permuted_rows_, k * num_rows, stream);
   print_cuda_buffer("permuted_experts_", permuted_experts_, num_rows);
-  print_cuda_buffer("permuted_rows_", permuted_rows_, num_rows);
-  print_cuda_buffer("source_rows_", source_rows_, num_rows);
 
   initialize_moe_routing_kernelLauncher(input_activations, permuted_data_, permuted_rows_,
                                         expanded_source_row_to_expanded_dest_row, num_rows, active_rows, hidden_size, k,
                                         stream);
-  print_cuda_buffer("expanded_source_row_to_expanded_dest_row", expanded_source_row_to_expanded_dest_row, num_rows);
-  print_cuda_buffer("permuted_rows_", permuted_rows_, num_rows);
 
   const int expanded_active_expert_rows = k * active_rows;
   compute_total_rows_before_expert(permuted_experts_, expanded_active_expert_rows, num_experts,
@@ -639,13 +634,10 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
 
   print_cuda_buffer("total_rows_before_expert_", total_rows_before_expert_, num_experts);
   if (local_num_experts < num_experts) {
-    dispatch_activations(total_rows_before_expert_, num_experts, local_num_experts, local_experts_start_index,
-                         total_past_rows_, total_covered_rows_, stream);
-    // TODO: use cuda event
-    cudaDeviceSynchronize();
-    std::cout << "total_past_rows_ = " << total_past_rows_ << ", total_covered_rows_ = " << total_covered_rows_
-              << std::endl;
+    dispatch_activations(total_rows_before_expert_, num_experts, local_num_experts, local_experts_start_index, stream);
   }
+
+  print_cuda_buffer("total_rows_before_expert_", total_rows_before_expert_, num_experts);
 
   // expanded_active_expert_rows is not used
   moe_gemm_runner_.moe_gemm_bias_act(permuted_data_ + total_past_rows_ * hidden_size,
@@ -689,17 +681,28 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::compute_total_rows_before_expert
 }
 
 template <typename T, typename WeightType, typename Enable>
-void CutlassMoeFCRunner<T, WeightType, Enable>::dispatch_activations(int64_t*& total_rows_before_expert,
+void CutlassMoeFCRunner<T, WeightType, Enable>::dispatch_activations(int64_t* total_rows_before_expert,
                                                                      int num_experts, int local_num_experts,
                                                                      int local_experts_start_index,
-                                                                     int& total_past_rows, int& total_covered_rows,
                                                                      cudaStream_t stream) {
   const int threads = std::min(1024, num_experts);
   const int blocks = (num_experts + threads - 1) / threads;
 
   dispatch_activations_kernel<<<blocks, threads, 0, stream>>>(total_rows_before_expert, num_experts,
-                                                              local_num_experts, local_experts_start_index,
-                                                              total_past_rows, total_covered_rows);
+                                                              local_num_experts, local_experts_start_index);
+
+  std::vector<int64_t> total_rows_before_expert_host(num_experts);
+  cudaMemcpyAsync(total_rows_before_expert_host.data(), total_rows_before_expert, num_experts * sizeof(int64_t),
+                  cudaMemcpyDeviceToHost, stream);
+  // TODO: use cuda event
+  cudaDeviceSynchronize();
+
+  const int local_experts_end_index = local_experts_start_index + local_num_experts - 1;
+  if (local_experts_start_index > 0) {
+    total_past_rows_ = total_rows_before_expert_host[local_experts_start_index - 1];
+  }
+  total_covered_rows_ = total_rows_before_expert_host[local_experts_end_index];
+  printf("total_past_rows_ = %d, total_covered_rows_ = %d\n", total_past_rows_, total_covered_rows_);
 }
 
 // ========================== Permutation things =======================================

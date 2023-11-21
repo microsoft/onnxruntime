@@ -151,28 +151,36 @@ def create_moe_onnx_graph(
     model = helper.make_model(graph)
     return model.SerializeToString()
 
-# two gpus
 def main():
-    hidden_size = 32
-    inter_size = 64
-    num_experts = 16
-    num_rows = 32
+    hidden_size = 8
+    inter_size = 16
+    num_experts = 8
+    num_rows = 16
     local_experts_start_index = local_rank * num_experts // get_size()
 
-    # create weights and bias
     fc1_experts_weights_all = np.random.rand(num_experts, hidden_size, inter_size).astype(NP_TYPE)
     fc2_experts_weights_all = np.random.rand(num_experts, inter_size, hidden_size).astype(NP_TYPE)
     fc1_experts_bias_all = np.random.rand(num_experts, inter_size).astype(NP_TYPE)
     fc2_experts_bias_all = np.random.rand(num_experts, hidden_size).astype(NP_TYPE)
 
-    # expert slicing by local rank
+    onnx_model_full = create_moe_onnx_graph(
+        num_rows,
+        num_experts,
+        num_experts,
+        hidden_size,
+        inter_size,
+        fc1_experts_weights_all,
+        fc2_experts_weights_all,
+        fc1_experts_bias_all,
+        fc2_experts_bias_all,
+    )
+
     fc1_experts_weights = fc1_experts_weights_all[local_experts_start_index:local_experts_start_index + num_experts // get_size(), :, :]
     fc2_experts_weights = fc2_experts_weights_all[local_experts_start_index:local_experts_start_index + num_experts // get_size(), :, :]
     fc1_experts_bias = fc1_experts_bias_all[local_experts_start_index:local_experts_start_index + num_experts // get_size(), :]
     fc2_experts_bias = fc2_experts_bias_all[local_experts_start_index:local_experts_start_index + num_experts // get_size(), :]
 
-    # create onnx graph
-    onnx_model = create_moe_onnx_graph(
+    onnx_model_local = create_moe_onnx_graph(
         num_rows,
         num_experts,
         num_experts // get_size(),
@@ -186,19 +194,25 @@ def main():
     )
 
     sess_options = onnxruntime.SessionOptions()
-    cuda_provider_options = {"enable_skip_layer_norm_strict_mode": False, "device_id": local_rank}
-    provider_options = {"CUDAExecutionProvider": cuda_provider_options}
+    cuda_provider_options = {"device_id": local_rank}
     execution_providers = [("CUDAExecutionProvider", cuda_provider_options)]
 
-    ort_session = onnxruntime.InferenceSession(onnx_model, sess_options, providers=execution_providers)
+    ort_session = onnxruntime.InferenceSession(onnx_model_full, sess_options, providers=execution_providers)
+    ort_session_local = onnxruntime.InferenceSession(onnx_model_local, sess_options, providers=execution_providers)
 
-    input_name = ort_session.get_inputs()[0].name
-    router_probs_name = ort_session.get_inputs()[1].name
-    input_data = np.random.rand(num_rows, hidden_size).astype(NP_TYPE)
-    router_probs = np.random.rand(num_rows, num_experts).astype(NP_TYPE)
-    ort_inputs = {input_name: input_data, router_probs_name: router_probs}
+    ort_inputs = {
+        ort_session.get_inputs()[0].name: np.random.rand(num_rows, hidden_size).astype(NP_TYPE),
+        ort_session.get_inputs()[1].name: np.random.rand(num_rows, num_experts).astype(NP_TYPE)
+    }
 
-    output = ort_session.run(None, {input_name: input_data, router_probs_name: router_probs})
+    #output = ort_session.run(None, ort_inputs)
+    sharded_output = ort_session_local.run(None, ort_inputs)
+
+    # compare the output with numpy close
+    #np.testing.assert_allclose(output[0], sharded_output[0], rtol=THRESHOLD, atol=THRESHOLD)
+    #print_out("output[0]: ", output[0])
+    if local_rank == 1:
+        print_out("sharded_output[0]: ", sharded_output[0])
 
 
 if __name__ == "__main__":
