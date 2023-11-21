@@ -39,23 +39,21 @@ OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_inf
   if (!p_instance_) {
     std::unique_ptr<LoggingManager> lmgr;
     std::string name = lm_info.logid;
-    if (lm_info.logging_function) {
-      std::unique_ptr<ISink> logger = std::make_unique<UserLoggingSink>(lm_info.logging_function,
-                                                                        lm_info.logger_param);
-      lmgr = std::make_unique<LoggingManager>(std::move(logger),
-                                              static_cast<Severity>(lm_info.default_warning_level),
-                                              false,
-                                              LoggingManager::InstanceType::Default,
-                                              &name);
-    } else {
-      auto sink = MakePlatformDefaultLogSink();
 
-      lmgr = std::make_unique<LoggingManager>(std::move(sink),
-                                              static_cast<Severity>(lm_info.default_warning_level),
-                                              false,
-                                              LoggingManager::InstanceType::Default,
-                                              &name);
+    std::unique_ptr<ISink> sink = nullptr;
+    if (lm_info.logging_function) {
+      sink = std::make_unique<UserLoggingSink>(lm_info.logging_function, lm_info.logger_param);
+
+    } else {
+      sink = MakePlatformDefaultLogSink();
     }
+    sink = EnhanceLoggerWithEtw(std::move(sink));
+    lmgr = std::make_unique<LoggingManager>(std::move(sink),
+                                            static_cast<Severity>(lm_info.default_warning_level),
+                                            false,
+                                            LoggingManager::InstanceType::Default,
+                                            &name);
+
     std::unique_ptr<onnxruntime::Environment> env;
     if (!tp_options) {
       status = onnxruntime::Environment::Create(std::move(lmgr), env);

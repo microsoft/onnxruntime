@@ -69,6 +69,11 @@
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/util/thread_utils.h"
 
+#ifdef _WIN32
+#include "core/platform/windows/logging/etw_sink.h"
+#include "core/common/logging/sinks/composite_sink.h"
+#endif
+
 // custom ops are not available in a minimal build unless ORT_MINIMAL_BUILD_CUSTOM_OPS is set
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #include "core/framework/customregistry.h"
@@ -307,6 +312,7 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
 
 logging::Severity GetSeverity(const SessionOptions& session_options) {
   logging::Severity severity = logging::Severity::kWARNING;
+
   if (session_options.session_log_severity_level == -1) {
     severity = logging::LoggingManager::DefaultLogger().GetSeverity();
   } else {
@@ -316,16 +322,27 @@ logging::Severity GetSeverity(const SessionOptions& session_options) {
                 session_options.session_log_severity_level);
     severity = static_cast<logging::Severity>(session_options.session_log_severity_level);
   }
+#ifdef _WIN32
+    auto& manager = logging::EtwRegistrationManager::Instance();
+    if (manager.IsEnabled() && (manager.Keyword() & static_cast<ULONGLONG>(logging::Keyword::Logs)) != 0) {
+        severity = manager.MapLevelToSeverity();
+        // LOGS(*session_logger_, INFO) << "Overriding ...."
+    }
+#endif // _WIN32
   return severity;
 }
 
 void InferenceSession::SetLoggingManager(const SessionOptions& session_options,
                                          const Environment& session_env) {
   logging_manager_ = session_env.GetLoggingManager();
+  std::unique_ptr<logging::ISink> sink;
+
   if (session_options.user_logging_function) {
-    std::unique_ptr<logging::ISink> user_sink = std::make_unique<UserLoggingSink>(session_options.user_logging_function,
-                                                                                  session_options.user_logging_param);
-    user_logging_manager_ = std::make_unique<logging::LoggingManager>(std::move(user_sink),
+    sink = std::make_unique<UserLoggingSink>(session_options.user_logging_function,
+                                               session_options.user_logging_param);
+    sink = EnhanceLoggerWithEtw(std::move(sink));
+
+    user_logging_manager_ = std::make_unique<logging::LoggingManager>(std::move(sink),
                                                                       GetSeverity(session_options),
                                                                       false,
                                                                       logging::LoggingManager::InstanceType::Temporal,

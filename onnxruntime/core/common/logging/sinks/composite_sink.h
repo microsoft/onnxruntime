@@ -33,6 +33,14 @@ class CompositeSink : public ISink {
     return *this;
   }
 
+  /// <summary>
+  /// Gets a const reference to the collection of sinks.
+  /// </summary>
+  /// <returns>A const reference to the vector of unique_ptr to ISink.</returns>
+  const std::vector<std::unique_ptr<ISink>>& GetSinks() const {
+    return sinks_;
+  }
+
  private:
   void SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) override {
     for (auto& sink : sinks_) {

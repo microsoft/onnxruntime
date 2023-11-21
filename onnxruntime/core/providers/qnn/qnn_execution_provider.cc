@@ -146,9 +146,25 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 
   static const std::string PROFILING_LEVEL = "profiling_level";
   qnn::ProfilingLevel profiling_level = qnn::ProfilingLevel::OFF;
+  auto& manager = logging::EtwRegistrationManager::Instance();
+  if (manager.IsEnabled()) {
+      auto level = manager.Level();
+      auto keyword = manager.Keyword();
+    if ((manager.Keyword() & static_cast<ULONGLONG>(logging::Keyword::EP)) != 0) {
+        if (level != 0) {
+          if (level == 1) {
+              ParseProfilingLevel("basic", profiling_level);
+          } else {
+              ParseProfilingLevel("detailed", profiling_level);
+          }
+        }
+    }
+  }
+  else {
   auto profiling_level_pos = provider_options_map.find(PROFILING_LEVEL);
-  if (profiling_level_pos != provider_options_map.end()) {
-    ParseProfilingLevel(profiling_level_pos->second, profiling_level);
+    if (profiling_level_pos != provider_options_map.end()) {
+      ParseProfilingLevel(profiling_level_pos->second, profiling_level);
+    }
   }
 
   static const std::string RPC_CONTROL_LANTENCY = "rpc_control_latency";

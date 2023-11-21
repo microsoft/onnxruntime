@@ -12,6 +12,8 @@
 
 #ifdef _WIN32
 #include <Windows.h>
+#include "core/platform/windows/logging/etw_sink.h"
+#include "core/common/logging/sinks/composite_sink.h"
 #else
 #include <unistd.h>
 #if defined(__MACH__) || defined(__wasm__) || defined(_AIX)
@@ -241,6 +243,24 @@ unsigned int GetProcessId() {
 #else
   return static_cast<unsigned int>(syscall(SYS_getpid));
 #endif
+}
+
+
+std::unique_ptr<ISink> EnhanceLoggerWithEtw(std::unique_ptr<ISink> existingLogger) {
+#ifdef _WIN32
+    auto& manager = EtwRegistrationManager::Instance();
+    if (manager.IsEnabled()) {
+        auto compositeSink = std::make_unique<CompositeSink>();
+        compositeSink->AddSink(std::move(existingLogger));
+        compositeSink->AddSink(std::make_unique<EtwSink>());
+        return compositeSink;
+    } else {
+        return existingLogger;
+    }
+#else
+    // On non-Windows platforms, just return the existing logger
+    return existingLogger;
+#endif // _WIN32
 }
 
 }  // namespace logging
