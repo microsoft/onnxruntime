@@ -109,7 +109,7 @@ stages:
       inputs:
         actions: 'build-for-testing'
         configuration: 'Debug'
-        xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test/ios_package_test/ios_package_test.xcworkspace'
+        xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/apple_package_test.xcworkspace'
         sdk: 'iphoneos'
         scheme: 'ios_package_test'
         xcodeVersion: 'specifyPath'
@@ -118,8 +118,8 @@ stages:
         signingIdentity: '$(APPLE_CERTIFICATE_SIGNING_IDENTITY)'
         provisioningProfileName: 'temporary *'  # temporary name, change it back to the original below later
         #provisioningProfileName: 'iOS Team Provisioning Profile'
-        args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test/ios_package_test/DerivedData'
-        workingDirectory: '$(Build.BinariesDirectory)/app_center_test/ios_package_test/'
+        args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData'
+        workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
         useXcpretty: false  # xcpretty can hide useful error output so we will disable it
       displayName: 'Build App Center iPhone arm64 tests'
 
@@ -130,7 +130,7 @@ stages:
           --devices $(app_center_test_devices) \
           --test-series "master" \
           --locale "en_US" \
-          --build-dir $(Build.BinariesDirectory)/app_center_test/ios_package_test/DerivedData/Build/Products/Debug-iphoneos \
+          --build-dir $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData/Build/Products/Debug-iphoneos \
           --token $(app_center_api_token)
       displayName: "Run E2E tests on App Center"
 

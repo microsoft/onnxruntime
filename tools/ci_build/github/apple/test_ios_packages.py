@@ -58,10 +58,10 @@ def _test_ios_packages(args):
             os.makedirs(stage_dir)
 
         # assemble the test project here
-        target_proj_path = stage_dir / "ios_package_test"
+        target_proj_path = stage_dir / "apple_package_test"
 
         # copy the test project source files to target_proj_path
-        test_proj_path = pathlib.Path(REPO_DIR, "onnxruntime/test/platform/ios/ios_package_test")
+        test_proj_path = pathlib.Path(REPO_DIR, "onnxruntime/test/platform/apple/apple_package_test")
         shutil.copytree(test_proj_path, target_proj_path)
 
         # assemble local pod files here
@@ -133,7 +133,7 @@ def _test_ios_packages(args):
                     "xcodebuild",
                     "test",
                     "-workspace",
-                    "./ios_package_test.xcworkspace",
+                    "./apple_package_test.xcworkspace",
                     "-scheme",
                     "ios_package_test",
                     "-destination",
@@ -151,11 +151,11 @@ def _test_ios_packages(args):
                         "xcodebuild",
                         "test",
                         "-workspace",
-                        "./ios_package_test.xcworkspace",
+                        "./apple_package_test.xcworkspace",
                         "-scheme",
                         "macos_package_test",
                         "-destination",
-                        f"platform=macos",
+                        "platform=macos",
                     ],
                     shell=False,
                     check=True,

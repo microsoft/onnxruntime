@@ -2,6 +2,6 @@
 <Workspace
    version = "1.0">
    <FileRef
-      location = "self:/Users/rachguo/Repos/onnxruntime11/onnxruntime/onnxruntime/test/platform/ios/ios_package_test/apple_package_test.xcodeproj">
+      location = "self:/Users/rachguo/Repos/onnxruntime11/onnxruntime/onnxruntime/test/platform/apple/apple_package_test/apple_package_test.xcodeproj">
    </FileRef>
 </Workspace>
