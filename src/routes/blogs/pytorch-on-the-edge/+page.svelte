@@ -150,11 +150,41 @@ fun run(audioTensor: OnnxTensor): Result {
 		name="description"
 		content="Everything you need to know about running PyTorch models on the edge with ONNX Runtime."
 	/>
+	<meta name="title" content="Run PyTorch models on the edge" />
+	<meta
+		name="keywords"
+		content="PyTorch, ONNX Runtime, edge computing, machine learning, deep learning, model optimization, model deployment, AI on edge"
+	/>
+	<meta name="author" content="Natalie Kershaw, Prasanth Pulavarthi" />
+	<meta name="date" content="2023-10-12" />
+	<meta name="image" content={ORT} />
+	<meta name="robots" content="index, follow" />
+	<meta name="og:title" content="Run PyTorch models on the edge" />
+	<meta
+		name="og:description"
+		content="Learn how to run PyTorch models on edge devices using ONNX Runtime. Explore considerations, tools, and examples for deploying PyTorch models on Windows, in the browser, on mobile, and for on-device training."
+	/>
+	<meta name="og:type" content="article" />
+	<meta name="og:url" content="https://onnxruntime.ai/blogs/pytorch-on-the-edge" />
+	<meta name="og:image" content={ORT} />
+	<meta name="twitter:title" content="Run PyTorch models on the edge" />
+	<meta
+		name="twitter:description"
+		content="Learn how to run PyTorch models on edge devices using ONNX Runtime. Explore considerations, tools, and examples for deploying PyTorch models on Windows, in the browser, on mobile, and for on-device training."
+	/>
+	<meta name="twitter:card" content={ORT} />
+	<meta name="twitter:image" content={ORT} />
 </svelte:head>
 <Header pathvar="" />
 <div class="container mx-auto px-4 md:px-8 lg:px-48 pt-8">
 	<h1 class="text-5xl pb-2">Run PyTorch models on the edge</h1>
-	<p class="text-neutral">By: <a href="https://www.linkedin.com/in/natkershaw/" class="text-blue-500">Natalie Kershaw</a> and <a href="https://www.linkedin.com/in/prasanthpulavarthi/" class="text-blue-500">Prasanth Pulavarthi</a> </p>
+	<p class="text-neutral">
+		By: <a href="https://www.linkedin.com/in/natkershaw/" class="text-blue-500">Natalie Kershaw</a>
+		and
+		<a href="https://www.linkedin.com/in/prasanthpulavarthi/" class="text-blue-500"
+			>Prasanth Pulavarthi</a
+		>
+	</p>
 	<p class="text-neutral">12TH OCTOBER, 2023</p>
 	<div class="py-4">
 		<div class="col-span-12 md:col-span-9">
