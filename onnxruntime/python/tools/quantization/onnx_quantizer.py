@@ -148,7 +148,7 @@ class ONNXQuantizer:
         if self.mode not in QuantizationMode:
             raise ValueError(f"unsupported quantization mode {self.mode}")
 
-        self.tensor_quant_overrides = self.extra_options.get("TensorQuantOverrides", {})  # TODO: Validate overrides
+        self.tensor_quant_overrides = self._get_and_check_tensor_quant_overrides()
         self.quantization_params = self.calculate_quantization_params()
 
         # QuantizeRange tensor name and zero tensor name for scale and zero point calculation.
@@ -167,6 +167,33 @@ class ONNXQuantizer:
         self.generated_value_names = self.model.get_non_initializer_inputs()
         # to store specified scale and zeropoint instead of calculated value, tensor_name->(scale, zeropoint)
         self.used_scale_zp_map = {}
+
+    def _get_and_check_tensor_quant_overrides(self):
+        tensor_quant_overrides = self.extra_options.get("TensorQuantOverrides", {})
+
+        # Validate that compatible/valid overrides are provided.
+        if tensor_quant_overrides:
+            initializer_names = self.model.get_initializer_name_set()
+            value_info_names = set(self.value_infos.keys())
+            tensor_names = initializer_names.union(value_info_names)
+            keys_unsupported_with_scale_zp = {"symmetric", "reduce_range", "rmax", "rmin"}
+
+            for tensor_name, quant_overrides in tensor_quant_overrides.items():
+                if tensor_name not in tensor_names:
+                    raise ValueError(f"Tensor '{tensor_name}' in TensorQuantOverrides is not present in the model")
+
+                has_scale = "scale" in quant_overrides
+                has_zero_point = "zero_point" in quant_overrides
+
+                if (has_scale and not has_zero_point) or (has_zero_point and not has_scale):
+                    raise ValueError("Must provide both 'scale' and 'zero_point' if one of the overrides is provided")
+
+                if has_scale:
+                    for key in keys_unsupported_with_scale_zp:
+                        if key in quant_overrides:
+                            raise ValueError(f"Tensor override option '{key}' is invalid with 'scale' and 'zero_point'")
+
+        return tensor_quant_overrides
 
     # routines for subgraph support
     def quantize_subgraph(self, subgraph, graph_key):
@@ -992,10 +1019,15 @@ class ONNXQuantizer:
 
         # Use quantization overrides if provided by the user.
         quant_overrides = self.tensor_quant_overrides.get(weight.name, {})
-        symmetric = quant_overrides.get("symmetric", self.is_weight_symmetric)
-        reduce_range = quant_overrides.get("reduce_range", self.reduce_range and reduce_range)
         if "quant_type" in quant_overrides:
             quant_type = quant_overrides["quant_type"].tensor_type
+        symmetric = quant_overrides.get("symmetric", self.is_weight_symmetric)
+        reduce_range = quant_overrides.get("reduce_range", self.reduce_range and reduce_range)
+
+        unsupported_overrides = {"rmax", "rmin", "scale", "zero_point"}
+        for key in unsupported_overrides:
+            if key in quant_overrides:
+                raise ValueError(f"Tensor quantization override '{key}' is not supported for initializers")
 
         q_weight_name = weight.name + TENSOR_NAME_QUANT_SUFFIX
         zp_name = weight.name + "_zero_point"
@@ -1097,6 +1129,11 @@ class ONNXQuantizer:
             ),
         )
         reduce_range = quant_overrides.get("reduce_range", self.reduce_range and reduce_range)
+
+        unsupported_overrides = {"rmax", "rmin", "scale", "zero_point"}
+        for key in unsupported_overrides:
+            if key in quant_overrides:
+                raise ValueError(f"Tensor quantization override '{key}' is not supported for per-channel weights")
 
         weights = tensor_proto_to_array(initializer)
         channel_count = weights.shape[channel_axis]
