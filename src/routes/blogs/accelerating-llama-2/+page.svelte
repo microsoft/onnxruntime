@@ -51,7 +51,7 @@
 		and
 		<a href="https://www.linkedin.com/in/parinitaparinita/" class="text-blue-500">Parinita Rahi</a>
 	</p>
-	<p class="text-neutral">14TH NOVEMBER, 2023</p>
+	<p class="text-neutral">14TH NOVEMBER, 2023 <span class="italic text-stone-500">(Updated 22nd November)</span></p>
 	<div class="py-4">
 		<p class="mb-4">
 			Interested in running Llama2 faster? Let us explore how ONNX Runtime can propel your Llama2
@@ -134,7 +134,7 @@
 		<p class="mb-4">
 			Token generation throughput below is the average throughput of the first 256 tokens generated.
 			We see up to ~1.4X (7B) and ~1.7X (13B) gains in token generation throughput when compared to
-			PyTorch eager and compile modes.
+			PyTorch compile mode.
 		</p>
 
 		<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
