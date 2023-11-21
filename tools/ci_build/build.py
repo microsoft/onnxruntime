@@ -1259,7 +1259,7 @@ def generate_build_tree(
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
-    if (args.build_apple_framework and not args.ios) or args.ios:
+    if args.build_apple_framework or args.ios:
         if not args.cmake_generator == "Xcode":
             raise BuildError("MacOS/iOS build requires use of the Xcode CMake generator ('--cmake_generator Xcode').")
 

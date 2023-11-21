@@ -101,7 +101,7 @@ def _build_for_apple_sysroot(
 
     return framework_dir
 
-def _merge_json_lists(files, output_file):
+def _merge_framework_into_files(files, output_file):
     merged_data = defaultdict(dict)
 
     for file in files:
@@ -157,7 +157,7 @@ def _build_package(args):
     pathlib.Path(xcframework_dir).mkdir(parents=True, exist_ok=True)
     shutil.copy(os.path.join(REPO_DIR, "LICENSE"), xcframework_dir)
     shutil.copytree(public_headers_path, os.path.join(xcframework_dir, "Headers"), dirs_exist_ok=True)
-    _merge_json_lists(framework_info_files_to_merge, os.path.join(build_dir, "framework_info.json"))
+    _merge_framework_into_files(framework_info_files_to_merge, os.path.join(build_dir, "framework_info.json"))
 
     # remove existing xcframework if any
     xcframework_path = os.path.join(xcframework_dir, "onnxruntime.xcframework")
