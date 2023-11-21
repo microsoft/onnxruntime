@@ -26,7 +26,7 @@ static LogicalProcessorInformation GetLogicalProcessorInfos(LOGICAL_PROCESSOR_RE
   auto processorInformationBytes = std::make_unique<char[]>(length);
 
   rc = GetLogicalProcessorInformationEx(
-    relationship, (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)processorInformationBytes.get(), &length
+    relationship, static_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(processorInformationBytes.get()), &length
   );
 
   assert(rc == TRUE);
@@ -53,7 +53,7 @@ static CoreCounter GetNumberOPhysicalAndEngineeringCores() {
 
   while ((read + FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Processor)) < logicalProcessorInformation.Length
   ) {
-    currentProcessorInfo = (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX)(logicalProcessorInformation.Buffer.get() + read);
+    currentProcessorInfo = static_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(logicalProcessorInformation.Buffer.get() + read);
     if ((read + currentProcessorInfo->Size) > logicalProcessorInformation.Length) {
       break;
     }
@@ -82,7 +82,7 @@ uint32_t HardwareCoreEnumerator::DefaultIntraOpNumThreads() {
   // # of physical cores = # of P cores + # of E Cores + # of Soc Cores.
   // # of logical cores = # of P cores x 2 (if hyper threading is enabled) + # of E cores + # of Soc Cores.
   auto cores = GetNumberOPhysicalAndEngineeringCores();
-  // We want to use the number of pysical cores, but exclude soc cores
+  // We want to use the number of physical cores, but exclude soc cores
   return cores.PhysicalCores - cores.SocDieCores;
 }
 
