@@ -1307,12 +1307,15 @@ TEST(QDQTransformerTests, Where) {
 template <typename QuantType>
 static void RunDropQDQTransposeTestCase(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& perms,
                                         bool use_contrib_qdq = false) {
+  // model has DQ -> Mul -> Q -> DQ -> Transpose -> Q -> output
+  // post transform and optimization it should be DQ -> Mul -> Q -> Transpose(uint8) -> output
   auto check_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
     const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
     EXPECT_EQ(op_to_count["Transpose"], 1);
-    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
-    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+    EXPECT_EQ(op_to_count["Mul"], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
   };
 
   TransformerTester(BuildQDQTransposeTestCase<QuantType, QuantType>(input_shape, perms, use_contrib_qdq),

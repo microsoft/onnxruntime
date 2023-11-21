@@ -549,10 +549,13 @@ GetQDQTestCaseFn BuildQDQTransposeTestCase(
     InputType dq_zp = std::numeric_limits<InputType>::max() / 2;
     OutputType q_zp = std::numeric_limits<OutputType>::max() / 2;
 
-    // we need a QDQ node unit prior to DQ -> Transpose -> Q -> graph output as transpose optimizer will push the
-    // transpose, convert its input to uint8, and drop the empty DQ -> Q.
-    // if there's a QDQ node unit prior, the NNAPI EP can carry forward the quantization info from that and take the
-    // standalone Transpose node so we add a DQ -> Mul -> Q to provide that.
+    // In order to test additional EPs that are more sensitive to whether the Transpose is in a QDQ node unit or not,
+    // we need a QDQ node unit prior to DQ -> Transpose -> Q -> graph output.
+    // The transpose optimizer will push the transpose, convert its input to uint8, and drop the empty DQ -> Q.
+    // If there's a QDQ node unit prior, the scale and zp info can be read from the Q node feeding the standalone
+    // Transpose node, so we add a DQ -> Mul -> Q to provide that.
+    // Essentially eveything has worked correctly if the DQ -> Transpose -> Q becomes a single Transpose and the
+    // extra QDQ node unit simply allows some additional functionality to be tested.
 
     // add DQ -> Mul -> Q
     auto* dq_output_0 = builder.MakeIntermediate();
