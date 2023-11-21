@@ -49,9 +49,9 @@ const conv2dCommonSnippet =
       const getWSnippet = (innerElementSize: number) => {
         switch (innerElementSize) {
           case 1:
-            return `return w[row * i32(uniforms.w_shape[3]) + colIn];`;
+            return 'return w[row * i32(uniforms.w_shape[3]) + colIn];';
           case 4:
-            return `return w[row * i32(uniforms.w_shape[3]) / 4 + colIn];`;
+            return 'return w[row * i32(uniforms.w_shape[3]) / 4 + colIn];';
           default:
             throw new Error(`innerElementSize ${innerElementSize} is not supported.`);
         }
@@ -78,13 +78,13 @@ const conv2dCommonSnippet =
       col % outWidth);
     `;
 
-      const xHeight = isChannelsLast ? `i32(uniforms.x_shape[1])` : `i32(uniforms.x_shape[2])`;
-      const xWidth = isChannelsLast ? `i32(uniforms.x_shape[2])` : `i32(uniforms.x_shape[3])`;
+      const xHeight = isChannelsLast ? 'i32(uniforms.x_shape[1])' : 'i32(uniforms.x_shape[2])';
+      const xWidth = isChannelsLast ? 'i32(uniforms.x_shape[2])' : 'i32(uniforms.x_shape[3])';
       const row = isChannelsLast ? 'row' : 'col';
       const col = isChannelsLast ? 'col' : 'row';
       const readXSnippet = `
     let inChannels = i32(uniforms.w_shape[2]);
-    let outWidth = ${isChannelsLast ? `i32(uniforms.result_shape[2])` : `i32(uniforms.result_shape[3])`};
+    let outWidth = ${isChannelsLast ? 'i32(uniforms.result_shape[2])' : 'i32(uniforms.result_shape[3])'};
     let outRow = ${row} / outWidth;
     let outCol = ${row} % outWidth;
 
@@ -145,7 +145,7 @@ const conv2dCommonSnippet =
       if (row < uniforms.dimAOuter && col < uniforms.dimBOuter)
       {
       var value = valueIn;
-      let outWidth = ${isChannelsLast ? `i32(uniforms.result_shape[2])` : `i32(uniforms.result_shape[3])`};
+      let outWidth = ${isChannelsLast ? 'i32(uniforms.result_shape[2])' : 'i32(uniforms.result_shape[3])'};
       ${coordResSnippet}
       ${biasSnippet(addBias)}
       ${applyActivation}

@@ -36,7 +36,7 @@ const conv2dTransposeCommonSnippet =
       const getWSnippet = (innerElementSize: number) => {
         switch (innerElementSize) {
           case 1:
-            return `return w[getIndexFromCoords4D(coord, vec4<i32>(uniforms.w_shape))];`;
+            return 'return w[getIndexFromCoords4D(coord, vec4<i32>(uniforms.w_shape))];';
           case 4:
             return `
             let coord1 = vec4<i32>(coordX, coordY, col + 1, rowInner);
@@ -81,7 +81,7 @@ const conv2dTransposeCommonSnippet =
 
       const readASnippet = `
       let inChannels = ${isChannelsLast ? 'outBackprop[3]' : 'outBackprop[1]'};
-      let outWidth = ${isChannelsLast ? `i32(uniforms.result_shape[2])` : `i32(uniforms.result_shape[3])`};
+      let outWidth = ${isChannelsLast ? 'i32(uniforms.result_shape[2])' : 'i32(uniforms.result_shape[3])'};
       let outRow = ${row} / outWidth;
       let outCol = ${row} % outWidth;
 
@@ -144,7 +144,7 @@ const conv2dTransposeCommonSnippet =
     let col = colIn * ${innerElementSize};
     if (row < uniforms.dimAOuter && col < uniforms.dimBOuter) {
       var value = valueInput;
-      let outWidth = ${isChannelsLast ? `i32(uniforms.result_shape[2])` : `i32(uniforms.result_shape[3])`};
+      let outWidth = ${isChannelsLast ? 'i32(uniforms.result_shape[2])' : 'i32(uniforms.result_shape[3])'};
       ${coordResSnippet}
       ${biasSnippet(addBias)}
       ${applyActivation}
