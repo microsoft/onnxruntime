@@ -64,10 +64,10 @@ const createBatchNormInferenceProgramInfo =
       const useShapesUniforms = enableShapesUniforms(yShape.length) && spatial;
       const shapeOrRank = useShapesUniforms ? yShape.length : yShape;
       const x = inputVariable('x', inputs[0].dataType, inputs[0].dims, components);
-      const scale = inputVariable('scale', inputs[1].dataType, [ShapeUtil.size(inputs[1].dims)], cComponents);
-      const bias = inputVariable('bias', inputs[2].dataType, [ShapeUtil.size(inputs[2].dims)], cComponents);
-      const inputMean = inputVariable('inputMean', inputs[3].dataType, [ShapeUtil.size(inputs[3].dims)], cComponents);
-      const inputVar = inputVariable('inputVar', inputs[4].dataType, [ShapeUtil.size(inputs[4].dims)], cComponents);
+      const scale = inputVariable('scale', inputs[1].dataType, inputs[1].dims, cComponents);
+      const bias = inputVariable('bias', inputs[2].dataType, inputs[2].dims, cComponents);
+      const inputMean = inputVariable('inputMean', inputs[3].dataType, inputs[3].dims, cComponents);
+      const inputVar = inputVariable('inputVar', inputs[4].dataType, inputs[4].dims, cComponents);
       const y = outputVariable('y', inputs[0].dataType, shapeOrRank, components);
 
       const calcCOffset = (): string => {
@@ -84,11 +84,11 @@ const createBatchNormInferenceProgramInfo =
             let cOffset = ${y.indicesToOffset('outputIndices')};`;
           } else {
             // update C channel.
-            cOffset = `var cIndices = ${scale.type.indices}('0');
+            cOffset = `var cIndices = ${scale.type.indices}(0);
                        cIndices[0] = outputIndices[${yShape.length - 1}];`;
             // update D1 x ... x Dn channels.
             for (let i = 1; i < scale.rank; i++) {
-              cOffset += `cIndices[${i}] = outputIndices[${i + 1}];`;
+              cOffset += `cIndices[${i}] = outputIndices[${i}];`;
             }
             cOffset += `let cOffset = ${scale.indicesToOffset('cIndices')};`;
           }

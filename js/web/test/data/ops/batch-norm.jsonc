@@ -397,5 +397,50 @@
         ]
       }
     ]
+  },
+  {
+    "name": "BatchNormalization non-spatial mode - NHWC",
+    "operator": "BatchNormalization",
+    "opset": { "domain": "com.ms.internal.nhwc", "version": 7 },
+    "attributes": [{ "name": "spatial", "data": 0, "type": "int" }],
+    "cases": [
+      {
+        "name": "T[3,2,1]",
+        "inputs": [
+          {
+            "data": [0.2134, 0.32434, 0.5644, 0.3234, 0.4545, 0.3445],
+            "dims": [3, 2, 1],
+            "type": "float32"
+          },
+          {
+            "data": [0.5, 0.6],
+            "dims": [1, 2],
+            "type": "float32"
+          },
+          {
+            "data": [0.2, 0.1],
+            "dims": [1, 2],
+            "type": "float32"
+          },
+          {
+            "data": [0.034, 0.342],
+            "dims": [1, 2],
+            "type": "float32"
+          },
+          {
+            "data": [1, 1],
+            "dims": [1, 2],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.2897, 0.089404, 0.4652, 0.08884, 0.41025, 0.1015],
+            "dims": [3, 2, 1],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
   }
 ]
