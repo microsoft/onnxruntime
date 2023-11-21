@@ -5,10 +5,10 @@
 # Dockerfile to run ONNXRuntime with TensorRT integration
 
 # Build base image with required system packages
-ARG BASE_IMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
+ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
 ARG TRT_VERSION=8.6.1.6-1+cuda11.8
 ARG LD_LIBRARY_PATH_ARG=/usr/local/lib64:/usr/local/cuda/lib64
-FROM $BASE_IMAGE AS base
+FROM $BASEIMAGE AS base
 ARG TRT_VERSION
 ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${PATH}
 ENV DEBIAN_FRONTEND=noninteractive
