@@ -721,6 +721,7 @@ class UniPCMultistepScheduler:
         return self.num_train_timesteps
 
 
+# Modified from diffusers.schedulers.LCMScheduler
 class LCMScheduler:
     def __init__(
         self,
