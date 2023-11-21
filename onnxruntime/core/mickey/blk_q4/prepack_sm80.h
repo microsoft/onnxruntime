@@ -3,7 +3,6 @@
 
 #pragma once
 
-
 #include "core/common/common.h"
 #include "core/util/matrix_layout.h"
 
@@ -100,8 +99,8 @@ struct BlockwiseQuantization {
       const gsl::span<uint8_t>& weights_prepacked  // <- int4 prepacked weights tensor, same size buffer
   ) {
     ORT_ENFORCE((rows % 16) == 0 && (columns % 16) == 0 &&
-                (rows % QuantBlocking::kRow) == 0 &&
-                (columns % QuantBlocking::kColumn) == 0,
+                    (rows % QuantBlocking::kRow) == 0 &&
+                    (columns % QuantBlocking::kColumn) == 0,
                 "Does not support odd number of rows or columns!");
     ORT_ENFORCE(weights.size() == size_t(rows * columns / 2),
                 "Weight tensor shape mismatch!");
