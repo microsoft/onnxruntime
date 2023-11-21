@@ -973,10 +973,10 @@ class ONNXQuantizer:
 
         return quantized_input_names, zero_point_names, scale_names, nodes
 
-    def quantize_initializer(self, weight, qType, reduce_range=False, keep_float_weight=False):
+    def quantize_initializer(self, weight, quant_type, reduce_range=False, keep_float_weight=False):
         """
         :param weight: TensorProto initializer
-        :param qType: type to quantize to
+        :param quant_type: type to quantize to
         :param keep_float_weight: Whether to quantize the weight. In some cases, we only want to qunatize scale and zero point.
                                   If keep_float_weight is False, quantize the weight, or don't quantize the weight.
         :return: quantized weight name, zero point name, scale name
@@ -995,7 +995,7 @@ class ONNXQuantizer:
         symmetric = quant_overrides.get("symmetric", self.is_weight_symmetric)
         reduce_range = quant_overrides.get("reduce_range", self.reduce_range and reduce_range)
         if "quant_type" in quant_overrides:
-            qType = quant_overrides["quant_type"].tensor_type
+            quant_type = quant_overrides["quant_type"].tensor_type
 
         q_weight_name = weight.name + TENSOR_NAME_QUANT_SUFFIX
         zp_name = weight.name + "_zero_point"
@@ -1006,13 +1006,13 @@ class ONNXQuantizer:
         w_data = weight_data.flatten().tolist()
         _, _, zero_point, scale, q_weight_data = quantize_data(
             w_data,
-            qType,
+            quant_type,
             symmetric,
             reduce_range,
             self.min_real_range,
         )
 
-        if qType in {
+        if quant_type in {
             onnx.TensorProto.FLOAT8E4M3FN,
             onnx.TensorProto.FLOAT8E4M3FNUZ,
             onnx.TensorProto.FLOAT8E5M2,
@@ -1023,7 +1023,7 @@ class ONNXQuantizer:
         else:
             scale_dtype = onnx_proto.TensorProto.FLOAT
         scale_initializer = onnx.helper.make_tensor(scale_name, scale_dtype, [], [scale])
-        zero_initializer = onnx.helper.make_tensor(zp_name, qType, [], [zero_point])
+        zero_initializer = onnx.helper.make_tensor(zp_name, quant_type, [], [zero_point])
         self.model.initializer_extend([scale_initializer, zero_initializer])
 
         if not keep_float_weight:
@@ -1045,9 +1045,9 @@ class ONNXQuantizer:
                             f"\nraw={str(q_weight_initializer)[:200]}."
                         )
             else:
-                q_weight_data = np.asarray(q_weight_data, dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[qType]).reshape(
-                    weight.dims
-                )
+                q_weight_data = np.asarray(
+                    q_weight_data, dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[quant_type]
+                ).reshape(weight.dims)
                 q_weight_initializer = onnx.numpy_helper.from_array(q_weight_data, q_weight_name)
             self.model.initializer_extend([q_weight_initializer])
 
@@ -1066,7 +1066,7 @@ class ONNXQuantizer:
     def quantize_weight_per_channel(
         self,
         weight_name,
-        weight_qType,
+        weight_quant_type,
         channel_axis,
         reduce_range=True,
         keep_float_weight=False,
@@ -1087,13 +1087,13 @@ class ONNXQuantizer:
         # Use quantization overrides if provided by the user.
         quant_overrides = self.tensor_quant_overrides.get(weight_name, {})
         if "quant_type" in quant_overrides:
-            weight_qType = quant_overrides["quant_type"].tensor_type
+            weight_quant_type = quant_overrides["quant_type"].tensor_type
 
         symmetric = quant_overrides.get(
             "symmetric",
             (
                 self.is_weight_symmetric
-                or weight_qType in (onnx_proto.TensorProto.INT8, onnx_proto.TensorProto.FLOAT8E4M3FN)
+                or weight_quant_type in (onnx_proto.TensorProto.INT8, onnx_proto.TensorProto.FLOAT8E4M3FN)
             ),
         )
         reduce_range = quant_overrides.get("reduce_range", self.reduce_range and reduce_range)
@@ -1109,7 +1109,7 @@ class ONNXQuantizer:
             per_channel_data = weights.take(i, channel_axis)
             rmin, rmax, zero_point, scale, quantized_per_channel_data = quantize_data(
                 per_channel_data.flatten().tolist(),
-                weight_qType,
+                weight_quant_type,
                 symmetric,
                 reduce_range,
                 self.min_real_range,
@@ -1147,14 +1147,14 @@ class ONNXQuantizer:
         scale_initializer = onnx.helper.make_tensor(
             scale_name, onnx_proto.TensorProto.FLOAT, zero_scale_shape, scale_list
         )
-        zero_initializer = onnx.helper.make_tensor(zp_name, weight_qType, zero_scale_shape, zero_point_list)
+        zero_initializer = onnx.helper.make_tensor(zp_name, weight_quant_type, zero_scale_shape, zero_point_list)
 
         self.model.initializer_extend([scale_initializer, zero_initializer])
 
         if not keep_float_weight:
             quantized_weights = np.asarray(
                 quantized_weights,
-                dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[weight_qType],
+                dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[weight_quant_type],
             ).reshape(initializer.dims)
             q_weight_initializer = onnx.numpy_helper.from_array(quantized_weights, q_weight_name)
             self.model.initializer_extend([q_weight_initializer])
