@@ -179,9 +179,10 @@ def run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False
     if args.nvtx_profile:
         cudart.cudaProfilerStop()
 
-    print("|------------|--------------|")
-    print("| {:^10} | {:>9.2f} ms |".format("e2e", perf_data["latency"]))
-    print("|------------|--------------|")
+    if refiner:
+        print("|------------|--------------|")
+        print("| {:^10} | {:>9.2f} ms |".format("e2e", perf_data["latency"]))
+        print("|------------|--------------|")
 
     metadata = get_metadata(args, True)
     metadata.update({"base." + key: val for key, val in base.metadata().items()})
