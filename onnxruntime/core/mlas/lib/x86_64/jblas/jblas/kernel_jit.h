@@ -183,8 +183,14 @@ class DequanS8F32 {
                               int8_t* zero_points) {
     static MicroKernelAVX512F mAVX512FSym(true);
     static MicroKernelAVX512F mAVX512FASym(false);
-    auto param = MicroKernelAVX512F::params{
-        srcptr, dstptr, row, col, int(ld_src * sizeof(int8_t)), int(ld_dst * sizeof(float)), scales, zero_points};
+    auto param = MicroKernelAVX512F::params{srcptr,
+                                            dstptr,
+                                            row,
+                                            col,
+                                            static_cast<int>(ld_src * sizeof(int8_t)),
+                                            static_cast<int>(ld_dst * sizeof(float)),
+                                            scales,
+                                            zero_points};
     if (zero_points == nullptr) {
       mAVX512FSym.mKernel(&param);
     } else {
@@ -255,13 +261,13 @@ class JitMemcpy2DAvx2 : protected jblas::xbyak::JitAvx2 {
     static JitMemcpy2DAvx2 instance_withops(1, p);
     static JitMemcpy2DAvx2 instance2_withops(2, p);
     static_assert(sizeof(_SRC_T) == sizeof(_DST_T));  // TODO SRC_T DST_T conversion copy
-    auto param = params{(void*)srcptr,
-                        (void*)dstptr,
+    auto param = params{reinterpret_cast<void*>(const_cast<_SRC_T*>(srcptr)),
+                        reinterpret_cast<void*>(dstptr),
                         elt_const_v,
                         row,
-                        int(col * sizeof(_SRC_T)),
-                        int(srcstep * sizeof(_SRC_T)),
-                        int(dststep * sizeof(_DST_T))};
+                        static_cast<int>(col * sizeof(_SRC_T)),
+                        static_cast<int>(srcstep * sizeof(_SRC_T)),
+                        static_cast<int>(dststep * sizeof(_DST_T))};
     int row2 = utils::padto_le(row, 2);
     if (row2) {
       param.row = row2;
@@ -269,8 +275,8 @@ class JitMemcpy2DAvx2 : protected jblas::xbyak::JitAvx2 {
     }
     int rowtail = row - row2;
     if (rowtail) {
-      param.srcptr = (char*)param.srcptr + row2 * srcstep * sizeof(_SRC_T);
-      param.dstptr = (char*)param.dstptr + row2 * dststep * sizeof(_DST_T);
+      param.srcptr = reinterpret_cast<char*>(param.srcptr) + row2 * srcstep * sizeof(_SRC_T);
+      param.dstptr = reinterpret_cast<char*>(param.dstptr) + row2 * dststep * sizeof(_DST_T);
       param.row = rowtail;
       instance_withops.mKernel(&param);
     }
@@ -286,13 +292,13 @@ class JitMemcpy2DAvx2 : protected jblas::xbyak::JitAvx2 {
     static JitMemcpy2DAvx2 instance_withops(1, {kernel::jit_injector::eltwise_injector(Op)});
     static JitMemcpy2DAvx2 instance2_withops(2, {kernel::jit_injector::eltwise_injector(Op)});
     static_assert(sizeof(_SRC_T) == sizeof(_DST_T));  // TODO SRC_T DST_T conversion copy
-    auto param = params{(void*)srcptr,
-                        (void*)dstptr,
+    auto param = params{reinterpret_cast<void*>(const_cast<_SRC_T*>(srcptr)),
+                        reinterpret_cast<void*>(dstptr),
                         elt_const_v,
                         row,
-                        int(col * sizeof(_SRC_T)),
-                        int(srcstep * sizeof(_SRC_T)),
-                        int(dststep * sizeof(_DST_T))};
+                        static_cast<int>(col * sizeof(_SRC_T)),
+                        static_cast<int>(srcstep * sizeof(_SRC_T)),
+                        static_cast<int>(dststep * sizeof(_DST_T))};
     int row2 = utils::padto_le(row, 2);
     if (row2) {
       param.row = row2;
@@ -300,8 +306,8 @@ class JitMemcpy2DAvx2 : protected jblas::xbyak::JitAvx2 {
     }
     int rowtail = row - row2;
     if (rowtail) {
-      param.srcptr = (char*)param.srcptr + row2 * srcstep * sizeof(_SRC_T);
-      param.dstptr = (char*)param.dstptr + row2 * dststep * sizeof(_DST_T);
+      param.srcptr = reinterpret_cast<char*>(param.srcptr) + row2 * srcstep * sizeof(_SRC_T);
+      param.dstptr = reinterpret_cast<char*>(param.dstptr) + row2 * dststep * sizeof(_DST_T);
       param.row = rowtail;
       instance_withops.mKernel(&param);
     }
@@ -482,13 +488,13 @@ class JitMemcpy2DAvx512f : protected jblas::xbyak::JitAvx512f {
     static JitMemcpy2DAvx512f instance_withops(1, p);
     static JitMemcpy2DAvx512f instance4_withops(4, p);
     static_assert(sizeof(_SRC_T) == sizeof(_DST_T));  // TODO SRC_T DST_T conversion copy
-    auto param = params{(void*)srcptr,
-                        (void*)dstptr,
+    auto param = params{reinterpret_cast<void*>(const_cast<_SRC_T*>(srcptr)),
+                        reinterpret_cast<void*>(dstptr),
                         elt_const_v,
                         row,
-                        int(col * sizeof(_SRC_T)),
-                        int(srcstep * sizeof(_SRC_T)),
-                        int(dststep * sizeof(_DST_T))};
+                        static_cast<int>(col * sizeof(_SRC_T)),
+                        static_cast<int>(srcstep * sizeof(_SRC_T)),
+                        static_cast<int>(dststep * sizeof(_DST_T))};
     int row4 = utils::padto_le(row, 4);
     if (row4) {
       param.row = row4;
@@ -496,8 +502,8 @@ class JitMemcpy2DAvx512f : protected jblas::xbyak::JitAvx512f {
     }
     int rowtail = row - row4;
     if (rowtail) {
-      param.srcptr = (char*)param.srcptr + row4 * srcstep * sizeof(_SRC_T);
-      param.dstptr = (char*)param.dstptr + row4 * dststep * sizeof(_DST_T);
+      param.srcptr = reinterpret_cast<char*>(param.srcptr) + row4 * srcstep * sizeof(_SRC_T);
+      param.dstptr = reinterpret_cast<char*>(param.dstptr) + row4 * dststep * sizeof(_DST_T);
       param.row = rowtail;
       instance_withops.mKernel(&param);
     }
@@ -510,13 +516,13 @@ class JitMemcpy2DAvx512f : protected jblas::xbyak::JitAvx512f {
     static JitMemcpy2DAvx512f instance_withops(1, {kernel::jit_injector::eltwise_injector(Op)});
     static JitMemcpy2DAvx512f instance4_withops(4, {kernel::jit_injector::eltwise_injector(Op)});
     static_assert(sizeof(_SRC_T) == sizeof(_DST_T));  // TODO SRC_T DST_T conversion copy
-    auto param = params{(void*)srcptr,
-                        (void*)dstptr,
+    auto param = params{reinterpret_cast<void*>(const_cast<_SRC_T*>(srcptr)),
+                        reinterpret_cast<void*>(dstptr),
                         elt_const_v,
                         row,
-                        int(col * sizeof(_SRC_T)),
-                        int(srcstep * sizeof(_SRC_T)),
-                        int(dststep * sizeof(_DST_T))};
+                        static_cast<int>(col * sizeof(_SRC_T)),
+                        static_cast<int>(srcstep * sizeof(_SRC_T)),
+                        static_cast<int>(dststep * sizeof(_DST_T))};
     int row4 = utils::padto_le(row, 4);
     if (row4) {
       param.row = row4;
@@ -524,8 +530,8 @@ class JitMemcpy2DAvx512f : protected jblas::xbyak::JitAvx512f {
     }
     int rowtail = row - row4;
     if (rowtail) {
-      param.srcptr = (char*)param.srcptr + row4 * srcstep * sizeof(_SRC_T);
-      param.dstptr = (char*)param.dstptr + row4 * dststep * sizeof(_DST_T);
+      param.srcptr = reinterpret_cast<char*>(param.srcptr) + row4 * srcstep * sizeof(_SRC_T);
+      param.dstptr = reinterpret_cast<char*>(param.dstptr) + row4 * dststep * sizeof(_DST_T);
       param.row = rowtail;
       instance_withops.mKernel(&param);
     }
@@ -1276,13 +1282,13 @@ class CScaleInterleavedBF16FP16 : protected xbyak::JitAvx512_fp16 {
           vpmovzxwd(vreg1, yword[reg_src + (i * n_tile + j * row_pack) * sizeof(utils::bf16) + 32]);
           vpslldq(vreg0, vreg0, 2);
           vpslldq(vreg1, vreg1, 2);
-          vcvtps2phx(Ymm(vreg0.getIdx()), vreg0);
-          vcvtps2phx(Ymm(vreg1.getIdx()), vreg1);
+          vcvtps2phx(Xbyak::Ymm(vreg0.getIdx()), vreg0);
+          vcvtps2phx(Xbyak::Ymm(vreg1.getIdx()), vreg1);
           // #UD If (dest_reg == src1_reg) or (dest_reg == src2_reg)
-          vfmulcph(Ymm(vreg2.getIdx()), Ymm(vreg0.getIdx()), Ymm(vreg_scale.getIdx()));
-          vfmulcph(Ymm(vreg3.getIdx()), Ymm(vreg1.getIdx()), Ymm(vreg_scale.getIdx()));
-          vcvtph2psx(vreg0, Ymm(vreg2.getIdx()));
-          vcvtph2psx(vreg1, Ymm(vreg3.getIdx()));
+          vfmulcph(Xbyak::Ymm(vreg2.getIdx()), Xbyak::Ymm(vreg0.getIdx()), Xbyak::Ymm(vreg_scale.getIdx()));
+          vfmulcph(Xbyak::Ymm(vreg3.getIdx()), Xbyak::Ymm(vreg1.getIdx()), Xbyak::Ymm(vreg_scale.getIdx()));
+          vcvtph2psx(vreg0, Xbyak::Ymm(vreg2.getIdx()));
+          vcvtph2psx(vreg1, Xbyak::Ymm(vreg3.getIdx()));
           vcvtne2ps2bf16(vreg0, vreg1, vreg0);
           vmovups(zword[reg_src + (i * n_tile + j * row_pack) * sizeof(utils::bf16)] | mask, vreg0);
         }
@@ -1296,13 +1302,13 @@ class CScaleInterleavedBF16FP16 : protected xbyak::JitAvx512_fp16 {
           vpmovzxwd(vreg1, yword[reg_src + (i * n_tile + j * row_pack) * sizeof(utils::bf16) + 32]);
           vpslldq(vreg0, vreg0, 2);
           vpslldq(vreg1, vreg1, 2);
-          vcvtps2phx(Ymm(vreg0.getIdx()), vreg0);
-          vcvtps2phx(Ymm(vreg1.getIdx()), vreg1);
+          vcvtps2phx(Xbyak::Ymm(vreg0.getIdx()), vreg0);
+          vcvtps2phx(Xbyak::Ymm(vreg1.getIdx()), vreg1);
           // #UD If (dest_reg == src1_reg) or (dest_reg == src2_reg)
-          vfmulcph(Ymm(vreg2.getIdx()), Ymm(vreg0.getIdx()), Ymm(vreg_scale.getIdx()));
-          vfmulcph(Ymm(vreg3.getIdx()), Ymm(vreg1.getIdx()), Ymm(vreg_scale.getIdx()));
-          vcvtph2psx(vreg0, Ymm(vreg2.getIdx()));
-          vcvtph2psx(vreg1, Ymm(vreg3.getIdx()));
+          vfmulcph(Xbyak::Ymm(vreg2.getIdx()), Xbyak::Ymm(vreg0.getIdx()), Xbyak::Ymm(vreg_scale.getIdx()));
+          vfmulcph(Xbyak::Ymm(vreg3.getIdx()), Xbyak::Ymm(vreg1.getIdx()), Xbyak::Ymm(vreg_scale.getIdx()));
+          vcvtph2psx(vreg0, Xbyak::Ymm(vreg2.getIdx()));
+          vcvtph2psx(vreg1, Xbyak::Ymm(vreg3.getIdx()));
           vcvtne2ps2bf16(vreg0, vreg1, vreg0);
           vmovups(zword[reg_src + (i * n_tile + j * row_pack) * sizeof(utils::bf16)], vreg0);
         }

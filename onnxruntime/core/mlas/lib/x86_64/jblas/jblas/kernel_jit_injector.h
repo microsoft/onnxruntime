@@ -25,12 +25,13 @@
 #include "jit_blas.h"
 #include "jit_blas_utils.h"
 #include "xbyak/xbyak.h"
-using Zmm = Xbyak::Zmm;
-using Ymm = Xbyak::Ymm;
-using Xmm = Xbyak::Xmm;
+
 namespace jblas {
 namespace kernel {
 namespace jit_injector {
+using Zmm = Xbyak::Zmm;
+using Ymm = Xbyak::Ymm;
+using Xmm = Xbyak::Xmm;
 class eltwise_injector {
  public:
   eltwise_injector(JBLAS_ELTWISEOP eltwiseop) : elt_op(eltwiseop) { reigster_table_entries(); }

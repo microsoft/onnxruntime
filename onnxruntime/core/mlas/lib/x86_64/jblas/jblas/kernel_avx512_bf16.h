@@ -53,8 +53,8 @@ static inline JBLAS_CODE bf16_cvt_fp32_2D_write_back(const utils::bf16* src_ptr,
 static inline JBLAS_CODE fp32_cvt_bf16_2D_write_back(const void* raw_srcptr, void* raw_dstptr, int row, int col,
                                                      int srcstride, int dststride, bool zeropadding) {
 #if CompileBF16()
-  char* srcptr = (char*)raw_srcptr;
-  char* dstptr = (char*)raw_dstptr;
+  auto srcptr = reinterpret_cast<const char*>(raw_srcptr);
+  auto dstptr = reinterpret_cast<char*>(raw_dstptr);
   constexpr int simd_proc_elt = 32;
   auto col_body_loop = col / simd_proc_elt;
   auto col_tail = col % simd_proc_elt;

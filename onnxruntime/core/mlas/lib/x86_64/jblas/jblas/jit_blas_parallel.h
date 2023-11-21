@@ -87,7 +87,7 @@ class Scheduler2D {
   void schedule() {
     int rownum = utils::updiv(mSize[0], mStep[0]);
     int colnum = utils::updiv(mSize[1], mStep[1]);
-    float ratio = colnum * rownum / float(mThdCount);
+    float ratio = colnum * rownum / static_cast<float>(mThdCount);
     if (ratio <= 1) {
       mThdSize[0] = mStep[0];
       mThdSize[1] = mStep[1];
@@ -97,11 +97,13 @@ class Scheduler2D {
     }
     float colratio = ratio > colnum ? colnum : ceil(ratio);
     mThdSize[1] = static_cast<int>(colratio * mStep[1]);
-    mThdPerRow = static_cast<int>(ceil(float(colnum) / colratio));
-    mThdSize[0] = static_cast<int>(ceil(rownum / (float(mThdCount) / mThdPerRow)) * mStep[0]);
+    mThdPerRow = static_cast<int>(ceil(static_cast<float>(colnum) / colratio));
+    mThdSize[0] = static_cast<int>(ceil(rownum / (static_cast<float>(mThdCount) / mThdPerRow)) * mStep[0]);
     calc_valid_threads();
   }
-  void calc_valid_threads() { mThdValid = mThdPerRow * int(std::ceil(float(mSize[0]) / mThdSize[0])); }
+  void calc_valid_threads() {
+    mThdValid = mThdPerRow * static_cast<int>(std::ceil(static_cast<float>(mSize[0]) / mThdSize[0]));
+  }
 
   int mThdPerRow = 0;
   int mThdValid = 0;
@@ -170,7 +172,7 @@ class SchedulerBase : public Scheduler2D {
   void schedule() {
     int rownum = utils::updiv(mSize[0], mStep[0]);
     int colnum = utils::updiv(mSize[1], mStep[1]);
-    mDensity = float(mSize[0]) * mSize[1] / (mSize[0] + mSize[1]);
+    mDensity = static_cast<float>(mSize[0]) * mSize[1] / (mSize[0] + mSize[1]);
     int maxN = 0;
     float maxScore = std::numeric_limits<float>::min();
     int core_enum = static_cast<int>(std::sqrt(mThdCount));
@@ -191,16 +193,16 @@ class SchedulerBase : public Scheduler2D {
     generate_by_cores(maxN, mThdCount / maxN, rownum, colnum);
     update_cache_blocking();
     Scheduler2D::set(mThdSize, mSize, mStep);
-    mL2Use = size_t(mBlock[0]) * mBlock[1] * mEleSize[2];
-    mL2Use += size_t(mBlock[1]) * mBlock[2] * mEleSize[1];
-    mL2Use += size_t(mStep[0]) * mBlock[2] * mEleSize[0];
+    mL2Use = static_cast<size_t>(mBlock[0]) * mBlock[1] * mEleSize[2];
+    mL2Use += static_cast<size_t>(mBlock[1]) * mBlock[2] * mEleSize[1];
+    mL2Use += static_cast<size_t>(mStep[0]) * mBlock[2] * mEleSize[0];
   }
   const float DensityThres = 32;
 
   float calculate_score() {
     int tmpnstep = mThdSize[1] < _GemmCore_T::PREFERRED_N ? mThdSize[1] : _GemmCore_T::PREFERRED_N;
-    float threadratio = float(mThdValid) / mThdCount;
-    float density = float(tmpnstep) * mThdSize[0] / (tmpnstep + mThdSize[0]);
+    float threadratio = static_cast<float>(mThdValid) / mThdCount;
+    float density = static_cast<float>(tmpnstep) * mThdSize[0] / (tmpnstep + mThdSize[0]);
     if (mDensity < DensityThres) {
       return threadratio;
     }
@@ -257,11 +259,11 @@ class SchedulerBase : public Scheduler2D {
   void cache_block_memory() {
     mBlock[0] = mThdSize[0];
     mBlock[1] = mStep[1];
-    size_t reservsize = (size_t)mBlock[0] * mBlock[1] * mEleSize[2];
+    size_t reservsize = static_cast<size_t>(mBlock[0]) * mBlock[1] * mEleSize[2];
     size_t maxK = (mL1Size - reservsize) / (mBlock[1] * mEleSize[1] + mBlock[0] * mEleSize[0]);
     size_t Bsize = maxK * mBlock[1] * mEleSize[1];
     size_t Bsize_1K = utils::padto_le(Bsize, 1024);
-    mBlock[2] = int(Bsize_1K / mEleSize[1] / mBlock[1]);
+    mBlock[2] = static_cast<int>(Bsize_1K / mEleSize[1] / mBlock[1]);
     mBlock[2] = utils::padto_le(mBlock[2], mStep[2]);
   }
 
@@ -327,7 +329,7 @@ class SchedulerKBlock : public Scheduler2D {
   void schedule() {
     int rownum = utils::updiv(mSize[0], mStep[0]);
     int colnum = utils::updiv(mSize[1], mStep[1]);
-    mDensity = float(mSize[0]) * mSize[1] / (mSize[0] + mSize[1]);
+    mDensity = static_cast<float>(mSize[0]) * mSize[1] / (mSize[0] + mSize[1]);
     int maxN = 0;
     float maxScore = std::numeric_limits<float>::min();
     int core_enum = static_cast<int>(std::sqrt(mThdCount));
@@ -348,16 +350,16 @@ class SchedulerKBlock : public Scheduler2D {
     generate_by_cores(maxN, mThdCount / maxN, rownum, colnum);
     update_cache_blocking();
     Scheduler2D::set(mThdSize, mSize, mStep);
-    mL2Use = size_t(mBlock[0]) * mBlock[1] * mEleSize[2] * 2;
-    mL2Use += size_t(mBlock[1]) * mBlock[2] * mEleSize[1];
-    mL2Use += size_t(mStep[0]) * mBlock[2] * mEleSize[0];
+    mL2Use = static_cast<size_t>(mBlock[0]) * mBlock[1] * mEleSize[2] * 2;
+    mL2Use += static_cast<size_t>(mBlock[1]) * mBlock[2] * mEleSize[1];
+    mL2Use += static_cast<size_t>(mStep[0]) * mBlock[2] * mEleSize[0];
   }
   const float DensityThres = 32;
 
   float calculate_score() {
     int tmpnstep = mThdSize[1] < _GemmCore_T::PREFERRED_N ? mThdSize[1] : _GemmCore_T::PREFERRED_N;
-    float threadratio = float(mThdValid) / mThdCount;
-    float density = float(tmpnstep) * mThdSize[0] / (tmpnstep + mThdSize[0]);
+    float threadratio = static_cast<float>(mThdValid) / mThdCount;
+    float density = static_cast<float>(tmpnstep) * mThdSize[0] / (tmpnstep + mThdSize[0]);
     if (mDensity < DensityThres) {
       return threadratio * 1.f;
     }
@@ -404,7 +406,7 @@ class SchedulerKBlock : public Scheduler2D {
     }
     size_t size_remain = mL2Size - mBlock[1] * mBlock[2] * mEleSize[1];
     // MBlock*KBlock*ASize+MBlock*NBlock*CSize*2<=size_remain
-    int maxMBlock = int(size_remain / (mBlock[1] * mEleSize[2] * 2 + mBlock[2] * mEleSize[0]));
+    int maxMBlock = static_cast<int>(size_remain / (mBlock[1] * mEleSize[2] * 2 + mBlock[2] * mEleSize[0]));
     int maxM = utils::downdiv(maxMBlock, mStep[0]);
     int nthdm = mThdSize[0] / mStep[0];
     if (maxM < nthdm) {
@@ -430,12 +432,12 @@ class SchedulerKBlock : public Scheduler2D {
     };
     auto maxN = getMaxN(startK);
     if (maxN <= mThdSize[1]) {
-      mBlock[1] = int(maxN);
+      mBlock[1] = static_cast<int>(maxN);
       mBlock[1] = utils::padto_le(mBlock[1], mStep[1]);
-      mBlock[2] = int(startK);
+      mBlock[2] = static_cast<int>(startK);
     } else {
       mBlock[1] = mThdSize[1];
-      mBlock[2] = getMaxK(mBlock[1]);
+      mBlock[2] = static_cast<int>(getMaxK(mBlock[1]));
       mBlock[2] = utils::padto_le(mBlock[2], mStep[2]);
       mBlock[2] = std::min(mKBlock, mBlock[2]);
       auto tmp = utils::updiv(mKBlock, mBlock[2]);
@@ -613,7 +615,7 @@ template <class Parallel_T, class Launch_T>
 void GemmBaseRun(Launch_T& launcher, const typename Launch_T::Param& args, parallel::IThreading* th) {
   device::CpuBase cb;
   Parallel_T para({th->num_threads(), args.M, args.N, args.K, cb.mL2Cache, cb.mL1Cache});
-  static bool flag = false;
+  static bool flag = true;
   if (flag) {
     printf("%s\n", __FUNCTION__);
     para.print();
@@ -632,7 +634,7 @@ template <class Parallel_T, class Launch_T>
 void GemmKBlockRun(Launch_T& launcher, const typename Launch_T::Param& args, parallel::IThreading* th) {
   device::CpuBase cb;
   Parallel_T para({th->num_threads(), args.M, args.N, args.K, cb.mL2Cache, cb.mL1Cache, args.KBlock});
-  static bool flag = false;
+  static bool flag = true;
   if (flag) {
     printf("%s\n", __FUNCTION__);
     para.print();

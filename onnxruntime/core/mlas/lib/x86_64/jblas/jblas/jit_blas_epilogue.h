@@ -43,10 +43,10 @@ class AccumulatorWriteBack {
     static_assert(Valid, "fp32 to bf16 conversion only.");
     if constexpr (std::is_same<DType, utils::bf16>::value) {
       return kernel::wrapper::Memcpy2DFp32CvtBf16::template forward<ISA_T>(
-          (void*)cacheptr, (void*)cptr, M, N, cachestep * sizeof(SType), _param.ldc * sizeof(DType), false);
+          const_cast<_SRC_T*>(cacheptr), cptr, M, N, cachestep * sizeof(SType), _param.ldc * sizeof(DType), false);
     } else if constexpr (std::is_same<std::tuple<SType, DType>, std::tuple<utils::fp16, float>>::value) {
       return kernel::wrapper::Memcpy2DFp16CvtFp32::template forward<ISA_T>(
-          (void*)cacheptr, (void*)cptr, M, N, cachestep * sizeof(SType), _param.ldc * sizeof(DType), false);
+          const_cast<_SRC_T*>(cacheptr), cptr, M, N, cachestep * sizeof(SType), _param.ldc * sizeof(DType), false);
     } else if constexpr (sizeof(SType) == sizeof(DType)) {
       return kernel::wrapper::Memcpy2D::template forward<ISA_T, SType, DType>(cacheptr, cptr, M, N, cachestep,
                                                                               _param.ldc, _param.elt_const_v, ops...);
@@ -132,19 +132,21 @@ class CompFp32BlockEpilogue {
     auto ret = JblasNotSupport;
     if (_param.scaledtype == JBLAS_DTYPE::F32) {
       ret = kernel::wrapper::CompFp32BlockScale::template forward<ISA_T>(
-          (float*)_param.scales + K_offset * _param.ldsb + N_offset, srcptr, cachestep, dstptr, cachestep, M, N);
+          reinterpret_cast<float*>(_param.scales) + K_offset * _param.ldsb + N_offset, srcptr, cachestep, dstptr,
+          cachestep, M, N);
       assert(ret == JblasSuccess);
       if (_param.zps != nullptr) {
         ret = kernel::wrapper::RemoveZeroPointBias::forward_wei<ISA_T>(
             dstptr, cachestep, M, N, _param.zps + K_offset * _param.ldsb + N_offset,
-            (float*)_param.scales + K_offset * _param.ldsb + N_offset, _param.ldra,
+            reinterpret_cast<float*>(_param.scales) + K_offset * _param.ldsb + N_offset, _param.ldra,
             _param.reduce + M_offset * _param.ldra + K_offset);
       }
       assert(ret == JblasSuccess);
       return ret;
     } else if (_param.scaledtype == JBLAS_DTYPE::BF16) {
       ret = kernel::wrapper::CompFp32BlockScale::template forward<ISA_T>(
-          (utils::bf16*)_param.scales + K_offset * _param.ldsb + N_offset, srcptr, cachestep, dstptr, cachestep, M, N);
+          reinterpret_cast<utils::bf16*>(_param.scales) + K_offset * _param.ldsb + N_offset, srcptr, cachestep, dstptr,
+          cachestep, M, N);
       if (_param.zps != nullptr) {
         assert(0);
       }
@@ -202,31 +204,34 @@ class CompInt8BlockEpilogue {
     size_t ReduceBTmpSize = N * sizeof(float);
     assert(cachesize >= (ScaleBTmpSize + ReduceBTmpSize));
     if (_param.scaleBdtype == JBLAS_DTYPE::BF16) {
-      auto scache = (float*)tmpcache;
+      auto scache = reinterpret_cast<float*>(tmpcache);
       ret = kernel::wrapper::Memcpy2DBf16CvtFp32::template forward<ISA_T>(
-          (utils::bf16*)_param.scalesB + N_offset + K_offset * _param.ldsb, scache, 1, N, N, N, false);
+          reinterpret_cast<utils::bf16*>(_param.scalesB) + N_offset + K_offset * _param.ldsb, scache, 1, N, N, N,
+          false);
       assert(ret == JblasSuccess);
       scab = scache;
     } else if (_param.scaleBdtype == JBLAS_DTYPE::F32) {
-      scab = (float*)_param.scalesB + N_offset + K_offset * _param.ldsb;
+      scab = reinterpret_cast<float*>(_param.scalesB) + N_offset + K_offset * _param.ldsb;
     }
     float* redb = nullptr;
     if (_param.reduceB) {
       if (_param.reduceBdtype == JBLAS_DTYPE::BF16) {
-        auto rcache = (float*)((char*)tmpcache + ScaleBTmpSize);
+        auto rcache = reinterpret_cast<float*>(reinterpret_cast<char*>(tmpcache) + ScaleBTmpSize);
         ret = kernel::wrapper::Memcpy2DBf16CvtFp32::template forward<ISA_T>(
-            (utils::bf16*)_param.reduceB + N_offset + K_offset * _param.ldsb, rcache, 1, N, N, N, false);
+            reinterpret_cast<utils::bf16*>(_param.reduceB) + N_offset + K_offset * _param.ldsb, rcache, 1, N, N, N,
+            false);
         assert(ret == JblasSuccess);
         redb = rcache;
       } else if (_param.reduceBdtype == JBLAS_DTYPE::F32) {
-        redb = (float*)_param.reduceB + N_offset + K_offset * _param.ldsb;
+        redb = reinterpret_cast<float*>(_param.reduceB) + N_offset + K_offset * _param.ldsb;
       }
     }
-    ret = kernel::wrapper::DequanS32Fp32::template forward<ISA_T>(srcptr, cachestep, (float*)srcptr, cachestep, M, N,
-                                                                  _param.scalesA + M_offset * _param.ldsa + K_offset,
-                                                                  _param.ldsa, scab);
+    ret = kernel::wrapper::DequanS32Fp32::template forward<ISA_T>(
+        srcptr, cachestep, reinterpret_cast<float*>(const_cast<int32_t*>(srcptr)), cachestep, M, N,
+        _param.scalesA + M_offset * _param.ldsa + K_offset, _param.ldsa, scab);
     assert(ret == JblasSuccess);
-    ret = kernel::wrapper::AccumulateFp32::template forward<ISA_T>((float*)srcptr, cachestep, dstptr, cachestep, M, N);
+    ret = kernel::wrapper::AccumulateFp32::template forward<ISA_T>(reinterpret_cast<const float*>(srcptr), cachestep,
+                                                                   dstptr, cachestep, M, N);
     assert(ret == JblasSuccess);
 
     if (_param.zpA == nullptr) {

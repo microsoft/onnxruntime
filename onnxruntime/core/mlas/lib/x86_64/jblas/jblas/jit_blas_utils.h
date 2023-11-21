@@ -71,8 +71,6 @@
 #include <immintrin.h>
 #endif
 
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
-#define MAX(a, b) ((a) > (b) ? (a) : (b))
 namespace jblas {
 namespace utils {
 
@@ -324,7 +322,7 @@ inline constexpr const char* dtype_str() {
 }
 
 inline constexpr size_t jblas_dtype_size(const JBLAS_DTYPE t) {
-  auto bits = (uint32_t)t & 0xff;
+  auto bits = static_cast<uint32_t>(t) & static_cast<uint32_t>(0xff);
   return bits >> 3;  // bits to bytes
 }
 
@@ -410,13 +408,13 @@ bf16 cast(float _src) {
 
 template <typename _T>
 void serialize(int8_t*& buf, _T _val) {
-  *(_T*)buf = _val;
+  *reinterpret_cast<_T*>(buf) = _val;
   buf += sizeof(_T);
 }
 
 template <typename _T>
 _T deserialize(int8_t*& buf) {
-  auto val = *(_T*)buf;
+  auto val = *reinterpret_cast<_T*>(buf);
   buf += sizeof(_T);
   return val;
 }
@@ -435,11 +433,11 @@ static inline _T* amalloc(size_t _size, size_t _alignment = 64) {
   if (_size == 0) {
     return NULL;
   }
-  auto psize = padto(_size * sizeof(_T), int(_alignment));
+  auto psize = padto(_size * sizeof(_T), static_cast<int>(_alignment));
 #ifdef _WIN32
-  return (_T*)_aligned_malloc(psize, _alignment);
+  return reinterpret_cast<_T*>(_aligned_malloc(psize, _alignment));
 #else
-  return (_T*)aligned_alloc(_alignment, psize);
+  return reinterpret_cast<_T*>(aligned_alloc(_alignment, psize));
 #endif
 }
 
@@ -538,7 +536,7 @@ class timer_statistics_logger {
   typedef timer<milliseconds> log_timer_t;
   timer_statistics_logger() {
     clear();
-    log_ratio = (float)std::chrono::duration_cast<_PRECISION>(_LOG_PRECISION(1)).count();
+    log_ratio = static_cast<float>(std::chrono::duration_cast<_PRECISION>(_LOG_PRECISION(1)).count());
   }
 
   void clear() {

@@ -96,11 +96,11 @@ void Q4GEMM_Jblas(benchmark::State& state, int block_size, bool is_asym, MLAS_CO
   const size_t N = static_cast<size_t>(state.range(1));
   const size_t K = static_cast<size_t>(state.range(2));
   const size_t threads = static_cast<size_t>(state.range(3));
-  block_size = block_size == -1 ? int(K) : block_size;
+  block_size = block_size == -1 ? static_cast<int>(K) : block_size;
   const size_t pack_b_size = MlasNBitsGemmPackBSize(N, K, block_size, 4, is_asym, cmp_type);
 
   OrtThreadPoolParams tpo;
-  tpo.thread_pool_size = int(threads);
+  tpo.thread_pool_size = static_cast<int>(threads);
   tpo.auto_set_affinity = true;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> tp(onnxruntime::concurrency::CreateThreadPool(
       &onnxruntime::Env::Default(), tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
@@ -122,7 +122,7 @@ void Q4GEMM_Jblas(benchmark::State& state, int block_size, bool is_asym, MLAS_CO
   params1.C = C1.data();
   params1.ldc = N;
   params1.B = B1_packed.data();
-  std::vector<int8_t> workspace(size_t(M <= 32 ? 32 : M) * K * 4);
+  std::vector<int8_t> workspace(static_cast<size_t>(M <= 32 ? 32 : M) * K * 4);
   MlasNBitsGemmBatchPackedB(M, N, K, 1, &params1, workspace.data(), tp.get());
 
   for (auto _ : state) {

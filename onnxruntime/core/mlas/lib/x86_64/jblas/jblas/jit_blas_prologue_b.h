@@ -57,7 +57,7 @@ class WeightPack {
   }
 
   void packWeightTranspose(const int N, const int K, const Param& _param, parallel::IThreading* threading) {
-    auto B_NT = utils::amalloc<WType>((size_t)N * K);
+    auto B_NT = utils::amalloc<WType>(static_cast<size_t>(N) * K);
     transposeWeight<WType, ISA_T>(N, K, _param.B, _param.ldb, B_NT, N, threading);
     packWeight(N, K, {B_NT, N, _param.packedW}, threading);
     utils::afree(B_NT);
@@ -120,7 +120,7 @@ class WeightKBlockS8 {
 
   virtual void packTransposeWeight(const int N, const int K, const float* B, const int ldb, void* stor,
                                    parallel::IThreading* threading) {
-    auto B_NT = utils::amalloc<float>((size_t)N * K);
+    auto B_NT = utils::amalloc<float>(static_cast<size_t>(N) * K);
     transposeWeight<float, ISA_T>(N, K, B, ldb, B_NT, N, threading);
     packWeight(N, K, B_NT, N, stor, threading);
     utils::afree(B_NT);
@@ -129,7 +129,7 @@ class WeightKBlockS8 {
   // from packed N//NtilexKPadxNTile int8 weight to KxN f32 weight
   virtual void unpackTransposeWeight(const int N, const int K, void* stor, float* B, const int ldb,
                                      parallel::IThreading* threading) {
-    auto B_NT = utils::amalloc<float>((size_t)N * K);
+    auto B_NT = utils::amalloc<float>(static_cast<size_t>(N) * K);
     unpackWeight(N, K, stor, B_NT, N, threading);
     transposeWeight<float, ISA_T>(K, N, B_NT, N, B, ldb, threading);
     utils::afree(B_NT);
@@ -138,10 +138,10 @@ class WeightKBlockS8 {
   // from KxN f32 weight to packed N//NtilexKPadxNTile int8 weight
   virtual void packWeight(const int N, const int K, const float* B, const int ldb, void* stor,
                           parallel::IThreading* threading) {
-    auto tmpq = utils::amalloc<int8_t>((size_t)N * K);
+    auto tmpq = utils::amalloc<int8_t>(static_cast<size_t>(N) * K);
     auto ptr = reinterpret_cast<StorageWeight*>(stor);
     int nk_scale = utils::updiv(K, ptr->mBlockSize);
-    auto ssize = (size_t)N * nk_scale;
+    auto ssize = static_cast<size_t>(N) * nk_scale;
     auto Tscales = utils::amalloc<float>(ssize);
     auto Tzps = utils::amalloc<int8_t>(ptr->mIsAsym ? ssize : 0);
     quantizeWeight(N, K, B, ldb, ptr->mBlockSize, tmpq, Tscales, Tzps, ptr->mDType, threading);
@@ -401,7 +401,7 @@ class WeightKBlockS8 {
  public:
   virtual inline JBLAS_CODE getWeight(float** dstptr, int* dststep, int k_size, int n_size, int k_offset, int n_offset,
                                       const Param& _param, void* tmpcache, size_t cachesize) {
-    auto wptr = (StorageWeight*)(_param.packedW);
+    auto wptr = reinterpret_cast<StorageWeight*>(const_cast<storage::gemm::WeightKBlockBase*>(_param.packedW));
     auto NPad = wptr->mNPad;
     auto KPad = wptr->mKPad;
     auto bptr = wptr->WPtr() + n_offset * KPad + k_offset * _GemmCore_T::NTILE;
@@ -436,7 +436,7 @@ class WeightKBlockS8 {
   }
   virtual inline JBLAS_CODE getWeight(int8_t** dstptr, int* dststep, int k_size, int n_size, int k_offset, int n_offset,
                                       const Param& _param, void* tmpcache, size_t cachesize) {
-    auto wptr = (StorageWeight*)(_param.packedW);
+    auto wptr = reinterpret_cast<StorageWeight*>(const_cast<storage::gemm::WeightKBlockBase*>(_param.packedW));
     auto KPad = wptr->mKPad;
     auto bptr = wptr->WPtr() + n_offset * KPad + k_offset * _GemmCore_T::NTILE;
     kernel::wrapper::Memcpy2D::template forward<ISA_T, int8_t, int8_t>(
@@ -448,7 +448,7 @@ class WeightKBlockS8 {
 
   virtual inline JBLAS_CODE getKBlockWeight(float** dstptr, int* dststep, int k_size, int n_size, int k_offset,
                                             int n_offset, const Param& _param, void* tmpcache, size_t cachesize) {
-    auto wptr = (StorageWeight*)(_param.packedW);
+    auto wptr = reinterpret_cast<StorageWeight*>(const_cast<storage::gemm::WeightKBlockBase*>(_param.packedW));
     auto NPad = wptr->mNPad;
     auto KPad = wptr->mKPad;
     auto bptr = wptr->WPtr() + n_offset * KPad + k_offset * _GemmCore_T::NTILE;
@@ -463,7 +463,7 @@ class WeightKBlockS8 {
 
   virtual inline JBLAS_CODE getKBlockWeight(utils::bf16** dstptr, int* dststep, int k_size, int n_size, int k_offset,
                                             int n_offset, const Param& _param, void* tmpcache, size_t cachesize) {
-    auto wptr = (StorageWeight*)(_param.packedW);
+    auto wptr = reinterpret_cast<StorageWeight*>(const_cast<storage::gemm::WeightKBlockBase*>(_param.packedW));
     auto NPad = wptr->mNPad;
     auto KPad = wptr->mKPad;
     auto bptr = wptr->WPtr() + n_offset * KPad + k_offset * _GemmCore_T::NTILE;
@@ -528,10 +528,10 @@ class WeightKBlockS4 : public WeightKBlockS8<_GemmCore_T, ISA_T> {
                                const float* scales, const uint8_t* zero_points, void* ptr,
                                parallel::IThreading* threading) {
     auto stor = reinterpret_cast<StorageWeight*>(ptr);
-    auto tmp = utils::amalloc<float>((size_t)stor->mKPad * stor->mNPad);
+    auto tmp = utils::amalloc<float>(static_cast<size_t>(stor->mKPad) * stor->mNPad);
     auto blks = utils::updiv(K, stor->mBlockSize);
-    auto tmpscales = (float*)tmp;
-    auto tmpzeropoints = (int8_t*)(tmpscales + N * blks);
+    auto tmpscales = tmp;
+    auto tmpzeropoints = reinterpret_cast<int8_t*>(tmpscales + N * blks);
     if (scales) {
       for (size_t i = 0; i < N * blks; i += 2) {
         tmpscales[i] = scales[i] / 16;
@@ -567,7 +567,7 @@ class WeightKBlockS4 : public WeightKBlockS8<_GemmCore_T, ISA_T> {
         });
       };
       transposeunpackfunc_u4s4();
-      auto reorded = s8ptr + (size_t)K * N;
+      auto reorded = s8ptr + static_cast<size_t>(K) * N;
       WeightKBlockS8<_GemmCore_T, ISA_T>::reorderWeight(N, K, s8ptr, N, reorded, threading);
       compressWeight(stor->mNPad, stor->mKPad, reorded, stor->mNPad, stor->WPtr(), threading);
     }
@@ -592,7 +592,7 @@ class WeightKBlockS4 : public WeightKBlockS8<_GemmCore_T, ISA_T> {
  public:
   inline JBLAS_CODE getWeight(int8_t** dstptr, int* dststep, int k_size, int n_size, int k_offset, int n_offset,
                               const Param& _param, void* tmpcache, size_t cachesize) override {
-    auto wptr = (StorageWeight*)(_param.packedW);
+    auto wptr = reinterpret_cast<StorageWeight*>(const_cast<storage::gemm::WeightKBlockBase*>(_param.packedW));
     auto KPad = wptr->mKPad;
     auto bptr = wptr->WPtr() + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
     int constexpr ColSize = _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW;
@@ -657,7 +657,7 @@ class WeightKBlockS4 : public WeightKBlockS8<_GemmCore_T, ISA_T> {
   template <typename T>
   inline JBLAS_CODE getFpKBlockWeight(T** dstptr, int* dststep, int k_size, int n_size, int k_offset, int n_offset,
                                       const Param& _param, void* tmpcache, size_t cachesize) {
-    auto wptr = (StorageWeight*)(_param.packedW);
+    auto wptr = reinterpret_cast<StorageWeight*>(const_cast<storage::gemm::WeightKBlockBase*>(_param.packedW));
     auto NPad = wptr->mNPad;
     auto KPad = wptr->mKPad;
     auto bptr = wptr->WPtr() + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
@@ -694,7 +694,7 @@ class WeightKBlockS4 : public WeightKBlockS8<_GemmCore_T, ISA_T> {
   template <typename _T>
   inline JBLAS_CODE getFpWeight(_T** dstptr, int* dststep, int k_size, int n_size, int k_offset, int n_offset,
                                 const Param& _param, void* tmpcache, size_t cachesize) {
-    auto wptr = (StorageWeight*)(_param.packedW);
+    auto wptr = reinterpret_cast<StorageWeight*>(const_cast<storage::gemm::WeightKBlockBase*>(_param.packedW));
     auto NPad = wptr->mNPad;
     auto KPad = wptr->mKPad;
     auto bptr = wptr->WPtr() + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
@@ -755,7 +755,7 @@ class WeightKBlockF4 : public WeightKBlockS4<_GemmCore_T, ISA_T> {
                            parallel::IThreading* threading) {
     WeightKBlockS8<_GemmCore_T, ISA_T>::setQuantCorrection(N, K, NULL, scales, ptr, threading);
     auto stor = reinterpret_cast<StorageWeight*>(ptr);
-    auto reorded = utils::amalloc<int8_t>((size_t)stor->mKPad * stor->mNPad);
+    auto reorded = utils::amalloc<int8_t>(static_cast<size_t>(stor->mKPad) * stor->mNPad);
     WeightKBlockS8<_GemmCore_T, ISA_T>::reorderWeight(N, K, B, ldb, reorded, threading);
     WeightKBlockS4<_GemmCore_T, ISA_T>::compressWeight(stor->mNPad, stor->mKPad, reorded, stor->mNPad, stor->WPtr(),
                                                        threading);
@@ -806,7 +806,7 @@ class WeightKBlockF4 : public WeightKBlockS4<_GemmCore_T, ISA_T> {
   template <typename T>
   inline JBLAS_CODE getFpWeight(T** dstptr, int* dststep, int k_size, int n_size, int k_offset, int n_offset,
                                 const Param& _param, void* tmpcache, size_t cachesize) {
-    auto wptr = (StorageWeight*)(_param.packedW);
+    auto wptr = reinterpret_cast<StorageWeight*>(const_cast<storage::gemm::WeightKBlockBase*>(_param.packedW));
     auto NPad = wptr->mNPad;
     auto KPad = wptr->mKPad;
     auto bptr = wptr->WPtr() + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
@@ -859,7 +859,7 @@ class WeightKBlockF4 : public WeightKBlockS4<_GemmCore_T, ISA_T> {
   template <typename T>
   inline JBLAS_CODE getFpKBlockWeight(T** dstptr, int* dststep, int k_size, int n_size, int k_offset, int n_offset,
                                       const Param& _param, void* tmpcache, size_t cachesize) {
-    auto wptr = (StorageWeight*)(_param.packedW);
+    auto wptr = reinterpret_cast<StorageWeight*>(const_cast<storage::gemm::WeightKBlockBase*>(_param.packedW));
     auto NPad = wptr->mNPad;
     auto KPad = wptr->mKPad;
     auto bptr = wptr->WPtr() + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;

@@ -82,8 +82,8 @@ void MlasJblasQ4Test(int64_t M, int64_t N, int64_t K, int block_size, bool is_as
         auto src1 = ((srcv & 0xf0) >> 4) - 8;
         auto scale0 = input2_vals[j * kblks + i / block_size];
         auto scale1 = input2_vals[j * kblks + (i + 1) / block_size];
-        input1_f_vals[i * N + j] = float(src0) * scale0;
-        input1_f_vals[(i + 1) * N + j] = float(src1) * scale1;
+        input1_f_vals[i * N + j] = static_cast<float>(src0) * scale0;
+        input1_f_vals[(i + 1) * N + j] = static_cast<float>(src1) * scale1;
       }
     }
   }

@@ -56,13 +56,13 @@ class LauncherBase {
   void run(const Param& _param, const parallel::gemm::ThreadProblemBase& _config) {
     mGemmCore.configure();
     auto StackTmp = alloca(_config.l2cachesize);
-    auto tmpB = (BType*)(StackTmp);
+    auto tmpB = reinterpret_cast<BType*>(StackTmp);
     tmpB = utils::pointer_align<64>(tmpB);
-    auto tmpA = (AType*)(tmpB + (size_t)_config.block[1] * _config.block[2]);
+    auto tmpA = reinterpret_cast<AType*>(tmpB + static_cast<size_t>(_config.block[1]) * _config.block[2]);
     tmpA = utils::pointer_align<64>(tmpA);
-    auto tmpC = (CType*)(tmpA + (size_t)GemmCore::MTILE * _config.block[2]);
+    auto tmpC = reinterpret_cast<CType*>(tmpA + static_cast<size_t>(GemmCore::MTILE) * _config.block[2]);
     tmpC = utils::pointer_align<64>(tmpC);
-    auto tmpCache = (void*)(tmpC + (size_t)_config.block[0] * _config.block[1]);
+    auto tmpCache = (void*)(tmpC + static_cast<size_t>(_config.block[0]) * _config.block[1]);
     tmpCache = utils::pointer_align<64>(tmpCache);
     for (int itern = 0; itern < _config.size[1]; itern += _config.block[1]) {
       int n_remain = utils::remainsize(itern, _config.size[1], _config.block[1]);
@@ -151,15 +151,15 @@ class LauncherKBlock {
   void run(const Param& _param, const parallel::gemm::ThreadProblemBase& _config) {
     mGemmCore.configure();
     auto StackTmp = alloca(_config.l2cachesize);
-    auto tmpB = (BType*)(StackTmp);
+    auto tmpB = reinterpret_cast<BType*>(StackTmp);
     tmpB = utils::pointer_align<64>(tmpB);
-    auto tmpA = (AType*)(tmpB + (size_t)_config.block[1] * _config.block[2]);
+    auto tmpA = reinterpret_cast<AType*>(tmpB + static_cast<size_t>(_config.block[1]) * _config.block[2]);
     tmpA = utils::pointer_align<64>(tmpA);
-    auto tmpC = (AccType*)(tmpA + (size_t)GemmCore::MTILE * _config.block[2]);
+    auto tmpC = reinterpret_cast<AccType*>(tmpA + static_cast<size_t>(GemmCore::MTILE) * _config.block[2]);
     tmpC = utils::pointer_align<64>(tmpC);
-    auto tmpBlk = (CType*)(tmpC + (size_t)_config.block[0] * _config.block[1]);
+    auto tmpBlk = reinterpret_cast<CType*>(tmpC + static_cast<size_t>(_config.block[0]) * _config.block[1]);
     tmpBlk = utils::pointer_align<64>(tmpBlk);
-    auto tmpCache = (void*)(tmpBlk + (size_t)_config.block[0] * _config.block[1]);
+    auto tmpCache = reinterpret_cast<void*>(tmpBlk + static_cast<size_t>(_config.block[0]) * _config.block[1]);
     tmpCache = utils::pointer_align<64>(tmpCache);
     for (int itern = 0; itern < _config.size[1]; itern += _config.block[1]) {
       int n_remain = utils::remainsize(itern, _config.size[1], _config.block[1]);
@@ -221,7 +221,7 @@ class LauncherKBlock {
                           _config.tmpcachesize);
       }
     }
-    auto cachewithblk = _config.tmpcachesize + (size_t)_config.block[0] * _config.block[1] * sizeof(CType);
+    auto cachewithblk = _config.tmpcachesize + static_cast<size_t>(_config.block[0]) * _config.block[1] * sizeof(CType);
     mEpilogue.forward(tmpC, _config.block[1], (_config.loc[0] + blk_m), _config.loc[1] + blk_n, blk_msize, blk_nsize,
                       _param.paramC, tmpBlk, cachewithblk);
   }
@@ -271,7 +271,7 @@ class LauncherKBlock {
       mBlockEpi.forward(tmpBlk, tmpC, _config.block[1], (_config.loc[0] + blk_m), _config.loc[1] + blk_n,
                         iterk / _param.KBlock, blk_msize, blk_nsize, _param.paramBlk, tmpcache, _config.tmpcachesize);
     }
-    auto cachewithblk = _config.tmpcachesize + (size_t)_config.block[0] * _config.block[1] * sizeof(CType);
+    auto cachewithblk = _config.tmpcachesize + static_cast<size_t>(_config.block[0]) * _config.block[1] * sizeof(CType);
     mEpilogue.forward(tmpC, _config.block[1], (_config.loc[0] + blk_m), _config.loc[1] + blk_n, blk_msize, blk_nsize,
                       _param.paramC, tmpBlk, cachewithblk);
   }
