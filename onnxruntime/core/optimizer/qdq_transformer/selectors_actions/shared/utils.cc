@@ -27,6 +27,9 @@ void Selectors::RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops
 }
 
 /* static methods to return different operator's OpVersionMap */
+
+// These are operators that do not change the data and therefore the input DQ and
+// output Q have the same scale and zero_point.
 static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() {
   return {{"Gather", {}},
           {"Reshape", {}},
