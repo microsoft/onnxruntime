@@ -62,7 +62,7 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     const auto size_to_dimension = input_shape.SizeToDimension(axis_nonnegative);
     const auto size_from_dimension = input_shape.SizeFromDimension(axis_nonnegative);
 
-    std::vector<int64_t> target_shape;
+    TensorShapeVector target_shape;
     target_shape.push_back(size_to_dimension);
     target_shape.push_back(size_from_dimension);
 

@@ -87,7 +87,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     uint64_t remainder = split_dim_size % chunk_size;
     if (remainder) {
       // uneven
-      auto split_sizes = std::vector<uint64_t>(num_outputs, chunk_size);
+      auto split_sizes = InlinedVector<uint64_t>(num_outputs, chunk_size);
       split_sizes.back() = remainder;
       for (size_t i = 0; i < split_sizes.size(); i++) {
         coreml_splitnd->add_splitsizes(split_sizes[i]);
