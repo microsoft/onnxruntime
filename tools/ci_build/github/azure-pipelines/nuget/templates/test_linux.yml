@@ -58,7 +58,7 @@ stages:
           Context: tools/ci_build/github/linux/docker/
           ${{ if eq(parameters.CudaVersion, '12.2') }}:
             DockerBuildArgs: "
-            --build-arg BASEIMAGE=nvidia/12.2.2-cudnn8-devel-ubuntu20.04
+            --build-arg BASEIMAGE=nvidia/cuda:12.2.2-cudnn8-devel-ubuntu20.04
             --build-arg TRT_VERSION=8.6.1.6-1+cuda12.0
             --build-arg BUILD_UID=$( id -u )
             "
