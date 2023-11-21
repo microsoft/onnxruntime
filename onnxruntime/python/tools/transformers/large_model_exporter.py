@@ -157,9 +157,10 @@ def retrieve_onnx_inputs(model: nn.Module, sample_inputs: tuple, with_past: bool
     for idx, (key, value) in enumerate(zip(input_keys, onnx_inputs)):
         if type(value) is torch.Tensor:
             value.to(model.device)
-        # Didn't touch past_key_value now, please change it if you want
         if "use_cache" in key:
             onnx_inputs[idx] = with_past
+            out = model(sample_inputs[0], attention_mask=sample_inputs[1],
+                        use_cache=with_past) if with_past else out
 
     return input_keys, onnx_inputs, out.past_key_values
 
