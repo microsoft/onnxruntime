@@ -53,7 +53,8 @@ TEST(Float8_Tests, NanE4M3FN) {
   EXPECT_EQ(onnxruntime::Float8E4M3FN((float_bits{0x7FC00000}).val).val, static_cast<uint8_t>(0x7F));
   EXPECT_EQ(onnxruntime::Float8E4M3FN((float_bits{0xFFC00000}).val).val, static_cast<uint8_t>(0xFF));
   // small negative values should round to negative zero
-  EXPECT_EQ(onnxruntime::Float8E4M3FN(-0.00000001).ToFloat(), -0.0f);
+  EXPECT_EQ(onnxruntime::Float8E4M3FN(-0.00000001f).ToFloat(), -0.0f);
+  EXPECT_EQ(onnxruntime::Float8E4M3FN(-0.00000001f).val, static_cast<uint8_t>(0x80));
 }
 
 TEST(Float8_Tests, NanE4M3FNUZ) {
@@ -67,10 +68,10 @@ TEST(Float8_Tests, NanE4M3FNUZ) {
   EXPECT_EQ(onnxruntime::Float8E4M3FNUZ((float_bits{0x7FC00000}).val).val, static_cast<uint8_t>(0x80));
   EXPECT_EQ(onnxruntime::Float8E4M3FNUZ((float_bits{0xFFC00000}).val).val, static_cast<uint8_t>(0x80));
   // small negative values should round to zero
-  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ(-0.00000001).ToFloat(), 0.0f);
-  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ(-0.00000001).val, static_cast<uint8_t>(0x00));
-  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ(-0x1.0p-11).ToFloat(), 0.0f);
-  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ(-0x1.0p-11).val, static_cast<uint8_t>(0x00));
+  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ(-0.00000001f).ToFloat(), 0.0f);
+  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ(-0.00000001f).val, static_cast<uint8_t>(0x00));
+  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ(-0x1.0p-11f).ToFloat(), 0.0f);
+  EXPECT_EQ(onnxruntime::Float8E4M3FNUZ(-0x1.0p-11f).val, static_cast<uint8_t>(0x00));
 }
 
 TEST(Float8_Tests, NanE5M2) {
@@ -84,7 +85,8 @@ TEST(Float8_Tests, NanE5M2) {
   EXPECT_EQ(onnxruntime::Float8E5M2((float_bits{0x7FC00000}).val).val, static_cast<uint8_t>(0x7F));
   EXPECT_EQ(onnxruntime::Float8E5M2((float_bits{0xFFC00000}).val).val, static_cast<uint8_t>(0xFF));
   // small negative values should round to negative zero
-  EXPECT_EQ(onnxruntime::Float8E5M2(-0.00000001).ToFloat(), -0.0f);
+  EXPECT_EQ(onnxruntime::Float8E5M2(-0.00000001f).ToFloat(), 0.0f);
+  EXPECT_EQ(onnxruntime::Float8E5M2(-0.00000001f).val, static_cast<uint8_t>(0x80));
 }
 
 TEST(Float8_Tests, NanE5M2FNUZ) {
@@ -98,9 +100,9 @@ TEST(Float8_Tests, NanE5M2FNUZ) {
   EXPECT_EQ(onnxruntime::Float8E5M2FNUZ((float_bits{0x7FC00000}).val).val, static_cast<uint8_t>(0x80));
   EXPECT_EQ(onnxruntime::Float8E5M2FNUZ((float_bits{0xFFC00000}).val).val, static_cast<uint8_t>(0x80));
   // small negative values should round to zero
-  EXPECT_EQ(onnxruntime::Float8E5M2FNUZ(-0.00000001).ToFloat(), 0.0f);
-  EXPECT_EQ(onnxruntime::Float8E5M2FNUZ(-0.00000001).val, static_cast<uint8_t>(0x00));
-  EXPECT_EQ(onnxruntime::Float8E5M2FNUZ(-0x1.0p-18).ToFloat(), 0.0f);
+  EXPECT_EQ(onnxruntime::Float8E5M2FNUZ(-0.00000001f).ToFloat(), 0.0f);
+  EXPECT_EQ(onnxruntime::Float8E5M2FNUZ(-0.00000001f).val, static_cast<uint8_t>(0x00));
+  EXPECT_EQ(onnxruntime::Float8E5M2FNUZ(-0x1.0p-18f).ToFloat(), 0.0f);
 }
 
 }  // namespace test
