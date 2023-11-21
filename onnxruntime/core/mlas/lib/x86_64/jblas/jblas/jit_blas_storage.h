@@ -61,7 +61,7 @@ class ISerialBuffer : public ISerialObject {
  public:
   template <typename T>
   inline constexpr T* get() {
-    return (T*)mBufPtr;
+    return reinterpret_cast<T*>(mBufPtr);
   };
   template <typename T>
   inline size_t size() {
@@ -80,7 +80,7 @@ class ISerialBuffer : public ISerialObject {
   virtual void serializeToBuffer(int8_t*& wptr) override {
     utils::serialize(wptr, mBufSize);
     wptr = utils::pointer_align<Alignment>(wptr);
-    if (wptr != (int8_t*)mBufPtr) {
+    if (wptr != mBufPtr) {
       std::memcpy(wptr, mBufPtr, mBufSize);
     }
     wptr += mBufSize;
@@ -92,7 +92,7 @@ class ISerialBuffer : public ISerialObject {
       utils::serialize<size_t>(rptr, mBufSize);
     }
     rptr = utils::pointer_align<Alignment>(rptr);
-    mBufPtr = (int8_t*)rptr;
+    mBufPtr = rptr;
     rptr += mBufSize;
   }
 
@@ -251,7 +251,7 @@ class StorageQuantCorrection : public ISerialObject {
     mIsAsym = _is_asym;
     mHasReduce = _has_reduce;
     mCStep = Step;
-    mCSize = (size_t)Rows * Step;
+    mCSize = static_cast<size_t>(Rows) * Step;
     return getSerializedSize();
   }
 
@@ -352,7 +352,7 @@ class StorageReduce : public ISerializable, public ISerialBuffer {
     m = _m;
     k = _k;
     lda = utils::updiv(_k, _kblock);
-    size_t bufsize = size_t(m) * lda * utils::jblas_dtype_size(redt);
+    size_t bufsize = static_cast<size_t>(m) * lda * utils::jblas_dtype_size(redt);
     ISerialBuffer::resize(bufsize);
     mSize = getSerializedSize();
     return mSize;
@@ -425,7 +425,7 @@ class StorageQuantActivation : public ISerializable, public ISerialBuffer, publi
     lda = _lda;
     m = _m;
     CorrectionType::resize(_m, utils::updiv(_lda, _kblock), scalet, zpt, redt, is_asym, has_reduce);
-    size_t bufsize = size_t(m) * lda * utils::jblas_dtype_size(buft);
+    size_t bufsize = static_cast<size_t>(m) * lda * utils::jblas_dtype_size(buft);
     ISerialBuffer::resize(bufsize);
     mSize = getSerializedSize();
     return mSize;
@@ -495,7 +495,7 @@ class StoragePackedWeight : public WeightBase, public ISerialBuffer {
 
   size_t resize(int NPad, int KPad, int N, int K, JBLAS_DTYPE dtype) {
     WeightBase::resize(NPad, KPad, N, K, dtype);
-    auto bsize = (size_t)NPad * KPad * jblas::utils::jblas_dtype_size(dtype);
+    auto bsize = static_cast<size_t>(NPad) * KPad * jblas::utils::jblas_dtype_size(dtype);
     ISerialBuffer::resize(bsize);
     mSize = WeightBase::getSerializedSize() + ISerialBuffer::getSerializedSize();
     return mSize;
@@ -539,12 +539,12 @@ class StorageWeightKBlockS8 : public WeightKBlockBase, public Buffer8Bit, public
   size_t resize(int NPad, int KPad, int Block, int N, int K, JBLAS_DTYPE scalet, JBLAS_DTYPE redt, bool IsAsym) {
     JBLAS_DTYPE zpt = JBLAS_DTYPE::S8;
     InfoType::resize(NPad, KPad, Block, N, K, JBLAS_DTYPE::S8);
-    QWeightType::resize((size_t)NPad * KPad);
+    QWeightType::resize(static_cast<size_t>(NPad) * KPad);
     int nk_scale = utils::updiv(KPad, Block);
     auto gemm_comp = jblas::gemm::CoreAttr::get_mask_val(mCoreId, jblas::gemm::CoreAttr::COMP_MASK,
                                                          jblas::gemm::CoreAttr::COMP_SHIFT);
     CorrectionType::resize(nk_scale, NPad, scalet, zpt, redt, IsAsym,
-                           gemm_comp >= (uint32_t)jblas::gemm::CompType::COMP_INT_START);
+                           gemm_comp >= static_cast<uint32_t>(jblas::gemm::CompType::COMP_INT_START));
     mSize = InfoType::getSerializedSize() + QWeightType::getSerializedSize() + CorrectionType::getSerializedSize();
     return mSize;
   }
@@ -579,12 +579,12 @@ class StorageWeightKBlockS4 : public WeightKBlockBase, public Buffer4Bit, public
                 bool IsAsym) {
     JBLAS_DTYPE zpt = JBLAS_DTYPE::S8;
     InfoType::resize(NPad, KPad, Block, N, K, s4t);
-    QWeightType::resize((size_t)NPad * KPad);
+    QWeightType::resize(static_cast<size_t>(NPad) * KPad);
     int nk_scale = utils::updiv(KPad, Block);
     auto gemm_comp = jblas::gemm::CoreAttr::get_mask_val(mCoreId, jblas::gemm::CoreAttr::COMP_MASK,
                                                          jblas::gemm::CoreAttr::COMP_SHIFT);
     CorrectionType::resize(nk_scale, NPad, scalet, zpt, redt, IsAsym,
-                           gemm_comp >= (uint32_t)jblas::gemm::CompType::COMP_INT_START);
+                           gemm_comp >= static_cast<uint32_t>(jblas::gemm::CompType::COMP_INT_START));
     mSize = InfoType::getSerializedSize() + QWeightType::getSerializedSize() + CorrectionType::getSerializedSize();
     return mSize;
   }

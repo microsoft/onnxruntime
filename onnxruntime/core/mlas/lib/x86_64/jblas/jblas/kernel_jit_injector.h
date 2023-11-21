@@ -25,12 +25,13 @@
 #include "jit_blas.h"
 #include "jit_blas_utils.h"
 #include "xbyak/xbyak.h"
-using Zmm = Xbyak::Zmm;
-using Ymm = Xbyak::Ymm;
-using Xmm = Xbyak::Xmm;
+
 namespace jblas {
 namespace kernel {
 namespace jit_injector {
+using Zmm = Xbyak::Zmm;
+using Ymm = Xbyak::Ymm;
+using Xmm = Xbyak::Xmm;
 class eltwise_injector {
  public:
   eltwise_injector(JBLAS_ELTWISEOP eltwiseop) : elt_op(eltwiseop) { reigster_table_entries(); }
@@ -651,7 +652,7 @@ class eltwise_injector {
       h->vgatherdps(vmm_coeff, idx_addr, ymm_mask);
     };
 
-    // because tanh(x) = -tanh(-x), we extract sign to make x postive
+    // because tanh(x) = -tanh(-x), we extract sign to make x positive
     // and reapply sign at the end
     h->vmovups(ymm_src_original, ymm_src);
     h->vandps(ymm_src, ymm_src, table_val(positive_mask));
@@ -723,7 +724,7 @@ class eltwise_injector {
       h->vpermt2ps(zmm_coeff, zmm_pol_idx, coeffs_address(coeff_idx, 16));
     };
 
-    // because tanh(x) = -tanh(-x), we extract sign to make x postive
+    // because tanh(x) = -tanh(-x), we extract sign to make x positive
     // and reapply sign at the end
     h->vmovups(zmm_src_original, zmm_src);
     h->vpandd(zmm_src, zmm_src, table_val(positive_mask));

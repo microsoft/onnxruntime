@@ -23,7 +23,8 @@
 namespace onnxruntime {
 namespace test {
 
-void MlasJblasQ4Test(int64_t M, int64_t N, int64_t K, int block_size, bool is_asym, MLAS_COMPUTE_TYPE acc_lvl, float err = 0.1f) {
+void MlasJblasQ4Test(int64_t M, int64_t N, int64_t K, int block_size, bool is_asym, MLAS_COMPUTE_TYPE acc_lvl,
+                     float err = 0.1f) {
   // (M x K) X (K x N)
 
   OpTester test("MatMulNBits", 1, kMSDomain);
@@ -52,12 +53,12 @@ void MlasJblasQ4Test(int64_t M, int64_t N, int64_t K, int block_size, bool is_as
   for (size_t i = 0; i < N * kblks; i++) {
     input2_vals[i] += (i % 100) * 0.00003f;
   }
-  std::vector<uint8_t> input3_vals(N * kblks / 2, (uint8_t)0x88);
+  std::vector<uint8_t> input3_vals(N * kblks / 2, static_cast<uint8_t>(0x88));
 
   std::vector<float> input1_f_vals(N * K);
   if (is_asym) {
     for (size_t i = 0; i < N * kblks; i += 2) {
-      input3_vals[i / 2] = uint8_t(i + 1);
+      input3_vals[i / 2] = static_cast<uint8_t>(i + 1);
     }
     for (int64_t i = 0; i < K; i += 2) {
       for (int64_t j = 0; j < N; j++) {
@@ -69,8 +70,8 @@ void MlasJblasQ4Test(int64_t M, int64_t N, int64_t K, int block_size, bool is_as
         auto src1 = ((srcv & 0xf0) >> 4) - 8;
         auto scale0 = input2_vals[j * kblks + i / block_size];
         auto scale1 = input2_vals[j * kblks + (i + 1) / block_size];
-        input1_f_vals[i * N + j] = (float(src0) - zp0) * scale0;
-        input1_f_vals[(i + 1) * N + j] = (float(src1) - zp0) * scale1;
+        input1_f_vals[i * N + j] = (static_cast<float>(src0) - zp0) * scale0;
+        input1_f_vals[(i + 1) * N + j] = (static_cast<float>(src1) - zp0) * scale1;
       }
     }
   } else {
@@ -81,8 +82,8 @@ void MlasJblasQ4Test(int64_t M, int64_t N, int64_t K, int block_size, bool is_as
         auto src1 = ((srcv & 0xf0) >> 4) - 8;
         auto scale0 = input2_vals[j * kblks + i / block_size];
         auto scale1 = input2_vals[j * kblks + (i + 1) / block_size];
-        input1_f_vals[i * N + j] = float(src0) * scale0;
-        input1_f_vals[(i + 1) * N + j] = float(src1) * scale1;
+        input1_f_vals[i * N + j] = static_cast<float>(src0) * scale0;
+        input1_f_vals[(i + 1) * N + j] = static_cast<float>(src1) * scale1;
       }
     }
   }
@@ -100,21 +101,23 @@ void MlasJblasQ4Test(int64_t M, int64_t N, int64_t K, int block_size, bool is_as
 
   test.AddInput<float>("A", {M, K}, input0_vals, false);
 
-  test.AddInput<uint8_t>("B", {N, (int64_t)kblks, (int64_t)(block_size / 2)}, input1_vals, true);
-  test.AddInput<float>("scales", {N, (int64_t)kblks}, input2_vals, true);
+  test.AddInput<uint8_t>("B", {N, static_cast<int64_t>(kblks), static_cast<int64_t>(block_size / 2)}, input1_vals,
+                         true);
+  test.AddInput<float>("scales", {N, static_cast<int64_t>(kblks)}, input2_vals, true);
   if (is_asym) {
-    test.AddInput<uint8_t>("zero_points", {N, (int64_t)(kblks / 2)}, input3_vals, true);
+    test.AddInput<uint8_t>("zero_points", {N, static_cast<int64_t>(kblks / 2)}, input3_vals, true);
   }
   test.AddOutput<float>("Y", {M, N}, expected_vals, false, 0.f, err);
 
   OrtValue b, scale, zp;
-  Tensor::InitOrtValue(DataTypeImpl::GetType<uint8_t>(), TensorShape({N, (int64_t)kblks, (int64_t)(block_size / 2)}),
+  Tensor::InitOrtValue(DataTypeImpl::GetType<uint8_t>(),
+                       TensorShape({N, static_cast<int64_t>(kblks), static_cast<int64_t>(block_size / 2)}),
                        input1_vals.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), b);
 
-  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({N, (int64_t)kblks}),
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({N, static_cast<int64_t>(kblks)}),
                        input2_vals.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), scale);
   if (is_asym) {
-    Tensor::InitOrtValue(DataTypeImpl::GetType<uint8_t>(), TensorShape({N, (int64_t)(kblks / 2)}),
+    Tensor::InitOrtValue(DataTypeImpl::GetType<uint8_t>(), TensorShape({N, static_cast<int64_t>(kblks / 2)}),
                          input3_vals.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), zp);
   }
   SessionOptions so;
@@ -136,35 +139,21 @@ void MlasJblasQ4Test(int64_t M, int64_t N, int64_t K, int block_size, bool is_as
     return execution_providers;
   };
 
-  test.Config(so)
-      .ConfigEps(cpu_ep())
-      .RunWithConfig();
+  test.Config(so).ConfigEps(cpu_ep()).RunWithConfig();
 }
 
 #ifdef MLAS_JBLAS
-TEST(MatMulNBits, MlasJblasQ4Fp32G128Sym) {
-  MlasJblasQ4Test(2, 4096, 4096, 128, false, CompFp32);
-}
+TEST(MatMulNBits, MlasJblasQ4Fp32G128Sym) { MlasJblasQ4Test(2, 4096, 4096, 128, false, CompFp32); }
 
-TEST(MatMulNBits, MlasJblasQ4Fp32G32Sym) {
-  MlasJblasQ4Test(2, 4096, 4096, 32, false, CompFp32);
-}
+TEST(MatMulNBits, MlasJblasQ4Fp32G32Sym) { MlasJblasQ4Test(2, 4096, 4096, 32, false, CompFp32); }
 
-TEST(MatMulNBits, MlasJblasQ4Fp32G32Asym) {
-  MlasJblasQ4Test(2, 4096, 4096, 32, true, CompFp32);
-}
+TEST(MatMulNBits, MlasJblasQ4Fp32G32Asym) { MlasJblasQ4Test(2, 4096, 4096, 32, true, CompFp32); }
 
-TEST(MatMulNBits, MlasJblasQ4Int8G128Sym) {
-  MlasJblasQ4Test(2, 4096, 4096, 128, false, CompInt8);
-}
+TEST(MatMulNBits, MlasJblasQ4Int8G128Sym) { MlasJblasQ4Test(2, 4096, 4096, 128, false, CompInt8); }
 
-TEST(MatMulNBits, MlasJblasQ4Int8G1024) {
-  MlasJblasQ4Test(2, 4096, 4096, 1024, false, CompInt8);
-}
+TEST(MatMulNBits, MlasJblasQ4Int8G1024) { MlasJblasQ4Test(2, 4096, 4096, 1024, false, CompInt8); }
 
-TEST(MatMulNBits, MlasJblasQ4Int8GPerN) {
-  MlasJblasQ4Test(2, 4096, 4096, 4096, false, CompInt8);
-}
+TEST(MatMulNBits, MlasJblasQ4Int8GPerN) { MlasJblasQ4Test(2, 4096, 4096, 4096, false, CompInt8); }
 #endif
 
 }  // namespace test

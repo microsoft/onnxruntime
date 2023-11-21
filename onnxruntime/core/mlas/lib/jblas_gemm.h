@@ -45,7 +45,7 @@ JblasQ4GemmBatchDriver(
     const size_t N,
     const size_t K,
     const size_t BatchN,
-    const MLAS_NBITS_GEMM_DATA_SIMPLE_PARAMS* DataParams,
+    const MLAS_NBITS_GEMM_DATA_PACKED_PARAMS* DataParams,
     int8_t* WorkSpace,
     MLAS_THREADPOOL* ThreadPool
 );

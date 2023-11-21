@@ -13,7 +13,8 @@
 //  limitations under the License.
 #pragma once
 #include <vector>
-
+#include <algorithm>
+#include <limits>
 #include "jit_blas_utils.h"
 
 namespace jblas {
@@ -107,7 +108,7 @@ static inline JBLAS_CODE dequan_s8_f32(int8_t* srcptr, float* dstptr, int row, i
                                        float* scales) {
   for (int i = 0; i < row; i++) {
     for (int j = 0; j < col; j++) {
-      dstptr[i * ld_dst + j] = float(srcptr[i * ld_src + j]) * scales[j];
+      dstptr[i * ld_dst + j] = static_cast<float>(srcptr[i * ld_src + j]) * scales[j];
     }
   }
   return JblasSuccess;
@@ -118,7 +119,7 @@ static inline JBLAS_CODE dequan_s8_bf16(int8_t* srcptr, uint16_t* dstptr, int ro
   for (int i = 0; i < row; i++) {
     for (int j = 0; j < col; j++) {
       dstptr[i * ld_dst + j] =
-          jblas::utils::cast<float, jblas::utils::bf16>(float(srcptr[i * ld_src + j]) * scales[j]).x;
+          jblas::utils::cast<float, jblas::utils::bf16>(static_cast<float>(srcptr[i * ld_src + j]) * scales[j]).x;
     }
   }
   return JblasSuccess;
@@ -169,8 +170,8 @@ static inline JBLAS_CODE decompress_s4_f32(jblas::utils::int4x2* srcptr, float* 
     for (int j = 0; j < col; j += 2) {
       auto tmp = srcptr[i * ld_src / 2 + j / 2];
       auto noffset = i * NTile + j % NTile;
-      dstptr[i * ld_dst + j + 0] = float((int8_t)tmp.x << 4) * scales[noffset + 0];
-      dstptr[i * ld_dst + j + 1] = float((int8_t)tmp.y << 4) * scales[noffset + 1];
+      dstptr[i * ld_dst + j + 0] = static_cast<float>(static_cast<int8_t>(tmp.x) << 4) * scales[noffset + 0];
+      dstptr[i * ld_dst + j + 1] = static_cast<float>(static_cast<int8_t>(tmp.y) << 4) * scales[noffset + 1];
     }
   }
   return JblasSuccess;
@@ -188,7 +189,7 @@ inline int8_t get_s8(int8_t v) {
       assert(false);
       break;
   }
-  return int8_t(0);
+  return static_cast<int8_t>(0);
 }
 
 template <JBLAS_DTYPE S4_T>
@@ -210,8 +211,8 @@ inline JBLAS_CODE decompress_kblock_s8_f32(int8_t* srcptr, _DST_T* dstptr, int r
     int kpos = (k_offset + i) / kblock;
     auto sptr = scales + kpos * NPad;
     for (int j = 0; j < col; j += 1) {
-      float tmp = (float)(srcptr[i * ld_src + j]);
-      if (zero_points != nullptr) tmp -= (float)(zero_points[kpos * NPad + j]);
+      float tmp = static_cast<float>(srcptr[i * ld_src + j]);
+      if (zero_points != nullptr) tmp -= static_cast<float>(zero_points[kpos * NPad + j]);
       dstptr[i * ld_dst + j] = static_cast<_DST_T>(tmp * sptr[j / _PACK_ROW]);
     }
   }
@@ -231,14 +232,16 @@ inline JBLAS_CODE decompress_kblock_s4_fp(utils::int4x2* srcptr, _DST_T* dstptr,
       int s0_idx, s1_idx;
       s0_idx = j / _PACK_ROW;
       s1_idx = (j + 1) / _PACK_ROW;
-      scale0 = float(sptr[s0_idx]);
-      scale1 = float(sptr[s1_idx]);
+      scale0 = static_cast<float>(sptr[s0_idx]);
+      scale1 = static_cast<float>(sptr[s1_idx]);
       if (zero_points != nullptr) {
-        dst0 = (float(get_s8<S4_T>(tmp.x)) - float((zero_points + kpos * NPad)[s0_idx])) * scale0;
-        dst1 = (float(get_s8<S4_T>(tmp.y)) - float((zero_points + kpos * NPad)[s1_idx])) * scale1;
+        dst0 = (static_cast<float>(get_s8<S4_T>(tmp.x)) - static_cast<float>((zero_points + kpos * NPad)[s0_idx])) *
+               scale0;
+        dst1 = (static_cast<float>(get_s8<S4_T>(tmp.y)) - static_cast<float>((zero_points + kpos * NPad)[s1_idx])) *
+               scale1;
       } else {
-        dst0 = float(get_s8<S4_T>(tmp.x)) * scale0;
-        dst1 = float(get_s8<S4_T>(tmp.y)) * scale1;
+        dst0 = static_cast<float>(get_s8<S4_T>(tmp.x)) * scale0;
+        dst1 = static_cast<float>(get_s8<S4_T>(tmp.y)) * scale1;
       }
       dstptr[i * ld_dst + j + 0] = static_cast<_DST_T>(dst0);
       dstptr[i * ld_dst + j + 1] = static_cast<_DST_T>(dst1);
@@ -253,8 +256,8 @@ inline JBLAS_CODE decompress_kblock_s4_s8fp(utils::int4x2* srcptr, _DST_T* dstpt
   for (int i = 0; i < row; i++) {
     for (int j = 0; j < col; j += 2) {
       auto tmp = srcptr[i * ld_src / 2 + j / 2];
-      dstptr[i * ld_dst + j + 0] = static_cast<_DST_T>(float(get_s8<S4_T>(tmp.x)));
-      dstptr[i * ld_dst + j + 1] = static_cast<_DST_T>(float(get_s8<S4_T>(tmp.y)));
+      dstptr[i * ld_dst + j + 0] = static_cast<_DST_T>(static_cast<float>(get_s8<S4_T>(tmp.x)));
+      dstptr[i * ld_dst + j + 1] = static_cast<_DST_T>(static_cast<float>(get_s8<S4_T>(tmp.y)));
     }
   }
   return JblasSuccess;
@@ -265,7 +268,7 @@ inline JBLAS_CODE decompress_kblock_s8_s8fp(int8_t* srcptr, DST_T* dstptr, int r
   for (int i = 0; i < row; i++) {
     for (int j = 0; j < col; j += 1) {
       auto tmp = srcptr[i * ld_src + j];
-      dstptr[i * ld_dst + j] = static_cast<DST_T>(float(tmp));
+      dstptr[i * ld_dst + j] = static_cast<DST_T>(static_cast<float>(tmp));
     }
   }
   return JblasSuccess;
@@ -515,7 +518,7 @@ inline int8_t f4_quantize(float x) {
     default:
       break;
   }
-  return int8_t(0);
+  return static_cast<int8_t>(0);
 }
 
 template <JBLAS_DTYPE F4_T, typename _DST_T, int _PACK_ROW, typename _S_T>
@@ -531,8 +534,8 @@ inline JBLAS_CODE decompress_kblock_f4_fp(utils::f4x2* srcptr, _DST_T* dstptr, i
       int s0_idx, s1_idx;
       s0_idx = j / _PACK_ROW;
       s1_idx = (j + 1) / _PACK_ROW;
-      scale0 = float(sptr[s0_idx]);
-      scale1 = float(sptr[s1_idx]);
+      scale0 = static_cast<float>(sptr[s0_idx]);
+      scale1 = static_cast<float>(sptr[s1_idx]);
       dst0 = f4_dequantize<F4_T>(tmp.x, scale0);
       dst1 = f4_dequantize<F4_T>(tmp.y, scale1);
       dstptr[i * ld_dst + j + 0] = static_cast<_DST_T>(dst0);
@@ -610,7 +613,7 @@ inline JBLAS_CODE quantize_f32_sign_int_rowblock(const float* srcptr, int8_t* ds
       scales[j / raw_blocksize * ld_dst + i] = scale;
       for (size_t ij = 0; ij < blocksize; ij++) {
         auto quant_v = srcptr[(j + ij) * ld_src + i] * rscale;
-        int8_t x = MIN(15, (int8_t)(quant_v + 8.5f));
+        int8_t x = std::min(static_cast<int8_t>(15), static_cast<int8_t>(quant_v + 8.5f));
         dstptr[(j + ij) * ld_dst + i] = x << 4;
       }
     };
@@ -649,7 +652,7 @@ inline JBLAS_CODE quantize_f32_sign_int_rowblock(const float* srcptr, int8_t* ds
       zero_points[j / raw_blocksize * ld_dst + i] = bzp;
       for (size_t ij = 0; ij < blocksize; ij++) {
         auto quant_v = (srcptr[(j + ij) * ld_src + i] - fmedium) * rscale;
-        int8_t x = MIN(15, (int8_t)(quant_v + 8.5f));
+        int8_t x = std::min(static_cast<int8_t>(15), static_cast<int8_t>(quant_v + 8.5f));
         dstptr[(j + ij) * ld_dst + i] = x << 4;
       }
     };
@@ -748,7 +751,7 @@ inline JBLAS_CODE quantize_fp_u8_colblock(int row, int col, const SRC_T* srcptr,
       scales[j / blocksize + i * ld_scale] = scale;
       zps[j / blocksize + i * ld_scale] = zp;
       int sum = 0;
-      auto zpf = float(zp);
+      auto zpf = static_cast<float>(zp);
       for (size_t ij = 0; ij < blocksize; ij++) {
         auto fsrc = static_cast<float>(srcptr[(j + ij) + i * ld_src]);
         auto qtmp = utils::cast<float, int>(fsrc * rscale);
@@ -856,7 +859,7 @@ static inline JBLAS_CODE accum_alphaN_f32_f32(const SCA_T* alpha, const float* s
                                               const int dststep, const int M, const int N) {
   for (size_t i = 0; i < M; i++) {
     for (size_t j = 0; j < N; j++) {
-      dstptr[i * dststep + j] = float(alpha[j]) * srcptr[i * srcstep + j] + dstptr[i * dststep + j];
+      dstptr[i * dststep + j] = static_cast<float>(alpha[j]) * srcptr[i * srcstep + j] + dstptr[i * dststep + j];
     }
   }
   return JblasSuccess;
@@ -878,8 +881,8 @@ static inline JBLAS_CODE quanout_s32_u32(const float alpha, const int32_t* srcpt
   float factor = alpha * scaleSrc / scaleDst;
   for (int i = 0; i < M; i++) {
     for (int j = 0; j < N; j++) {
-      float fsrc = float(srcptr[i * srcstep + j]) * factor;
-      dstptr[i * dststep + j] = utils::cast<float, uint8_t>(fsrc + float(zpDst));
+      float fsrc = static_cast<float>(srcptr[i * srcstep + j]) * factor;
+      dstptr[i * dststep + j] = utils::cast<float, uint8_t>(fsrc + static_cast<float>(zpDst));
     }
   }
   return JblasSuccess;
@@ -892,7 +895,7 @@ static inline JBLAS_CODE dequant_s32_fp32(const int32_t* srcptr, const int srcst
   for (int i = 0; i < M; i++) {
     float scale = scaleA[i * ldsa];
     for (int j = 0; j < N; j++) {
-      float fsrc = float(srcptr[i * srcstep + j]) * float(scaleB[j]) * scale;
+      float fsrc = static_cast<float>(srcptr[i * srcstep + j]) * static_cast<float>(scaleB[j]) * scale;
       dstptr[i * dststep + j] = fsrc;
     }
   }
@@ -955,9 +958,10 @@ static inline JBLAS_CODE quant_s8_row_reduce_sum(const int8_t* srcptr, int ldsrc
   for (int i = 0; i < row; i++) {
     for (int j = 0; j < col; j++) {
       if (zero_points != nullptr) {
-        reduce[j] += _RT((float(srcptr[i * ldsrc + j]) - float(zero_points[j])) * float(scales[j]));
+        reduce[j] += static_cast<_RT>((static_cast<float>(srcptr[i * ldsrc + j]) - static_cast<float>(zero_points[j])) *
+                                      static_cast<float>(scales[j]));
       } else {
-        reduce[j] += _RT(srcptr[i * ldsrc + j] * scales[j]);
+        reduce[j] += static_cast<_RT>(srcptr[i * ldsrc + j] * scales[j]);
       }
     }
   }
@@ -971,7 +975,7 @@ static inline JBLAS_CODE row_reduce_sum(const float* srcptr, int ldsrc, int row,
     for (int i = 0; i < row; i++) {
       tmp += srcptr[i * ldsrc + j];
     }
-    reduce[j] = _RT(tmp);
+    reduce[j] = static_cast<_RT>(tmp);
   }
   return JblasSuccess;
 }
@@ -996,7 +1000,7 @@ static inline JBLAS_CODE col_block_reduce_sum(const SRC_T* srcptr, int ldsrc, in
 static inline JBLAS_CODE remove_act_zeropoint_bias(float* accptr, int ldacc, int row, int col, uint8_t* zps,
                                                    float* scales, int lds, const float* reduce) {
   for (int i = 0; i < row; i++) {
-    auto zpf = float(zps[i * lds]) * scales[i * lds];
+    auto zpf = static_cast<float>(zps[i * lds]) * scales[i * lds];
     for (int j = 0; j < col; j++) {
       accptr[i * ldacc + j] -= zpf * reduce[j];
     }
@@ -1009,7 +1013,7 @@ static inline JBLAS_CODE remove_wei_zeropoint_bias(float* accptr, int ldacc, int
   for (int i = 0; i < row; i++) {
     auto reducef = reduce[i * lds];
     for (int j = 0; j < col; j++) {
-      accptr[i * ldacc + j] -= float(zps[j]) * scales[j] * reducef;
+      accptr[i * ldacc + j] -= static_cast<float>(zps[j]) * scales[j] * reducef;
     }
   }
   return JblasSuccess;
@@ -1020,9 +1024,9 @@ static inline JBLAS_CODE remove_zeropoint_bias(float* accptr, int ldacc, int row
                                                const float* reduceb) {
   for (int i = 0; i < row; i++) {
     auto reduceaf = reducea[i * lds];
-    auto zpaf = float(zpa[i * lds]) * scalea[i * lds];
+    auto zpaf = static_cast<float>(zpa[i * lds]) * scalea[i * lds];
     for (int j = 0; j < col; j++) {
-      auto zpbf = float(zpb[j]) * scaleb[j];
+      auto zpbf = static_cast<float>(zpb[j]) * scaleb[j];
       accptr[i * ldacc + j] -= zpbf * reduceaf;
       accptr[i * ldacc + j] -= zpaf * reduceb[j];
       accptr[i * ldacc + j] -= zpaf * zpbf * k;

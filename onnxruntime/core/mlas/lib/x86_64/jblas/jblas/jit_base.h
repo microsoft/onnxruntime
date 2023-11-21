@@ -73,9 +73,9 @@ class JitBase : protected Xbyak::CodeGenerator {
     jb(".maskflag");
     cmp(_tmp, 0);
     jl(".zeroflag");
-    uint64_t allmask = ((uint64_t)1 << N) - 1;
+    uint64_t allmask = (static_cast<uint64_t>(1) << N) - 1;
     if (N == 64) {
-      allmask = (uint64_t)-1;
+      allmask = static_cast<uint64_t>(-1);
     }
     mov(_tmp, allmask);
     kmovq(_msk, _tmp);
@@ -256,19 +256,19 @@ class JitAmxtile : protected JitAvx512f {
     // Configure C tiles
     int t = 0;
     for (; t < CNum; ++t) {
-      tc.rows[t] = uint8_t(TILE_M);
-      tc.colb[t] = uint16_t(TILE_N * 4);
+      tc.rows[t] = static_cast<uint8_t>(TILE_M);
+      tc.colb[t] = static_cast<uint16_t>(TILE_N * 4);
     }
     // Configure A tiles
     for (; t < CNum + ANum; ++t) {
-      tc.rows[t] = uint8_t(TILE_M);
-      tc.colb[t] = uint16_t(TILE_K * elesize);
+      tc.rows[t] = static_cast<uint8_t>(TILE_M);
+      tc.colb[t] = static_cast<uint16_t>(TILE_K * elesize);
     }
     // Configure B tile. B effectively has 64 rows and 16 columns.
     int kpack = 4 / elesize;
     for (; t < CNum + ANum + BNum; ++t) {
-      tc.rows[t] = uint8_t(TILE_K / kpack);
-      tc.colb[t] = uint16_t(TILE_N * 4);
+      tc.rows[t] = static_cast<uint8_t>(TILE_K / kpack);
+      tc.colb[t] = static_cast<uint16_t>(TILE_N * 4);
     }
   }
 };

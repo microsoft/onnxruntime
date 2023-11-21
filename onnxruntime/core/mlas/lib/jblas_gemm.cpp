@@ -57,7 +57,7 @@ JblasQ4GemmCompF32(
             kernel.mProA.reduce({A, K}, &reduceA, M, K, &single);
         }
         typename Launcher::BEpiParam blkargs{
-            B->template SPtr<int8_t>(),    B->mScaT,   B->mCStep, B->template ZPtr<int8_t>(),
+            B->template SPtr<int8_t>(), B->mScaT, B->mCStep, B->template ZPtr<int8_t>(),
             reduceA.template get<float>(), reduceA.lda};
 
         typename Launcher::Param args{M, N, K, B->mBlockSize, {A, K}, {B}, blkargs, {C, N}};
@@ -121,7 +121,7 @@ JblasQ4GemmBatchDriver(
     const size_t N,
     const size_t K,
     const size_t BatchN,
-    const MLAS_NBITS_GEMM_DATA_SIMPLE_PARAMS* DataParams,
+    const MLAS_NBITS_GEMM_DATA_PACKED_PARAMS* DataParams,
     int8_t* WorkSpace,
     MLAS_THREADPOOL* ThreadPool
 )
@@ -222,6 +222,7 @@ size_t
 JblasQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, MLAS_COMPUTE_TYPE CompType)
 {
     GetCPUDevice();
+    // from low precision to high precision
     switch (CompType) {
         case CompInt8:
             if (_cd->AMX_INT8() && BlkSize % tAMX_INT8_SS::KTILE == 0) {
@@ -233,7 +234,8 @@ JblasQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, MLAS_COMPU
             if (_cd->AVX_VNNI() && BlkSize % tAVX_VNNI::KTILE == 0) {
                 return JblasQ4BuSize<tLauncher_Int8_S4_F32F32<tAVX_VNNI>>(int(BlkSize), N, K, isAsym);
             }
-            break;
+        case CompBf16:
+        case CompFp16:
         case CompFp32:
             if (_cd->AVX512F() && BlkSize % tAVX512F::KTILE == 0) {
                 return JblasQ4BuSize<tLauncher_Int8_S4_F32F32<tAVX512F>>(int(BlkSize), N, K, isAsym);
@@ -242,8 +244,6 @@ JblasQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, MLAS_COMPU
                 return JblasQ4BuSize<tLauncher_Int8_S4_F32F32<tAVX2>>(int(BlkSize), N, K, isAsym);
             }
             break;
-        case CompBf16:
-        case CompFp16:
         default:
             return 0;
     }
@@ -315,7 +315,8 @@ JblasQ4GemmPackB(
                 );
                 return true;
             }
-            break;
+        case CompBf16:
+        case CompFp16:
         case CompFp32:
             if (_cd->AVX512F() && BlkSize % tAVX512F::KTILE == 0) {
                 JblaNBitsGemmPackB<tLauncher_Fp32_S4_F32F32<tAVX512F>>(
@@ -329,9 +330,6 @@ JblasQ4GemmPackB(
                 );
                 return true;
             }
-            break;
-        case CompBf16:
-        case CompFp16:
         default:
             return false;
     }
