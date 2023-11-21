@@ -260,7 +260,7 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   trt_provider_options_v2.trt_engine_cache_enable = internal_options.engine_cache_enable;
 
   trt_provider_options_v2.trt_engine_cache_path = copy_string_if_needed(internal_options.engine_cache_path);
-  trt_provider_options_v2.trt_engine_cache_prefix = copy_string_if_needed(internal_options.trt_engine_cache_prefix);
+  trt_provider_options_v2.trt_engine_cache_prefix = copy_string_if_needed(internal_options.engine_cache_prefix);
   trt_provider_options_v2.trt_timing_cache_path = copy_string_if_needed(internal_options.timing_cache_path);
 
   trt_provider_options_v2.trt_engine_decryption_enable = internal_options.engine_decryption_enable;
