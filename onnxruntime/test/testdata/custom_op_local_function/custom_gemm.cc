@@ -17,7 +17,7 @@ namespace Cpu {
 // kernel inputs
 ////////////////
 
-void _ThrowOnError_(OrtStatus* ort_status, const char* filename,
+static void _ThrowOnError_(OrtStatus* ort_status, const char* filename,
                     int /*line*/, const OrtApi& api) {
   if (ort_status) {
     OrtErrorCode code = api.GetErrorCode(ort_status);
@@ -399,9 +399,6 @@ CustomGemmKernel::CustomGemmKernel(const OrtApi& api,
       KernelInfoGetOptionalAttributeInt64AsBool(api, info, "transA", false);
   transB_ =
       KernelInfoGetOptionalAttributeInt64AsBool(api, info, "transB", false);
-  fastAccumulationMode_ = KernelInfoGetOptionalAttributeInt64AsBool(
-      api, info, "fastAccumulationMode", true);
-  smCount_ = KernelInfoGetOptionalAttribute<int64_t>(api, info, "smCount", 0);
   alpha_ = KernelInfoGetOptionalAttribute<float>(api, info, "alpha", 1);
   beta_ = KernelInfoGetOptionalAttribute<float>(api, info, "beta", 0);
 
@@ -418,18 +415,6 @@ CustomGemmKernel::CustomGemmKernel(const OrtApi& api,
     computeType_ = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
   } else {
     ORT_CXX_API_THROW("Wrong computeType", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
-  }
-
-  std::string activation =
-      KernelInfoGetOptionalAttributeString(api, info, "activation", "DEFUALT");
-  if (activation == "DEFUALT") {
-    epilogue_ = EpiloqueGemmKernel::Default;
-  } else if (activation == "RELU") {
-    epilogue_ = EpiloqueGemmKernel::Relu;
-  } else if (activation == "GELU") {
-    epilogue_ = EpiloqueGemmKernel::Gelu;
-  } else {
-    ORT_CXX_API_THROW("Wrong activation", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
   }
 
   ThrowOnError(api, api.KernelInfo_GetInputCount(info, &n_inputs_));

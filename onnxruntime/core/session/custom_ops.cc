@@ -790,9 +790,14 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vect
 
     std::unordered_set<ONNXTensorElementDataType> all_types;
     for (auto o : ops) {
-      ORT_ENFORCE(i < o->GetInputTypeCount(o), "Another version of operator '", schema.Name(), "'has less inputs.");
+      ORT_ENFORCE(i < o->GetInputTypeCount(o), "Another version of operator '", schema.Name(), "'has less inputs.",
+                  "onnxruntime allwos the overloading of an operator if all versions have the same number of "
+                  "declared inputs.");
       const auto type = o->GetInputType(o, i);
       if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
+        // If 'type' is undefined, all types are allowed regardless of what other versions of the same operator
+        // define. In that case, all_types is cleared, that's the convention used by the code following this loop
+        // to declare all types as possible types.
         all_types.clear();
         break;
       }
@@ -803,6 +808,7 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vect
     schema.Input(gsl::narrow_cast<int>(i), input_name, "", input_name, option, is_homogeneous, min_arity);
 
     if (!all_types.empty()) {
+      // all_types is not empty then only the types in this container are allowed of this input.
       std::vector<std::string> input_types;
       for (auto type : all_types) {
         const ONNX_NAMESPACE::TypeProto* type_proto =
@@ -811,6 +817,7 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vect
       }
       schema.TypeConstraint(input_name, input_types, "defined list of types");
     } else {
+      // all_types is empty. As mentioned in the previous loop, all types are allowed.
       schema.TypeConstraint(input_name, DataTypeImpl::ToString(SUPPORTED_TENSOR_TYPES), "all types");
       undefined++;
     }
@@ -1040,6 +1047,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       }
     }
 
+    // domain_kernels aggregate all custom operator per names.
     std::unordered_map<std::string, std::vector<const OrtCustomOp*>> domain_kernels;
     for (const auto* op : domain->custom_ops_) {
       // define kernel
@@ -1051,11 +1059,14 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       }
     }
 
-    for (auto name_op : domain_kernels) {
-      auto schema = CreateSchema(domain->domain_, name_op.second);
+    // Creation of the schemas, one per unique name.
+    for (auto& [name, ops] : domain_kernels) {
+      auto schema = CreateSchema(domain->domain_, ops);
+      ORT_ENFORCE(name == schema.Name());
       schema_map.emplace(schema.Name(), schema);
     }
 
+    // This loops checks that all custom operators sharing the same name are compatible with the defined schema.
     for (const auto* op : domain->custom_ops_) {
       // define kernel
       auto kernel_create_info = CreateKernelCreateInfo(domain->domain_, op);
@@ -1063,8 +1074,12 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       ORT_RETURN_IF_ERROR(output->RegisterCustomKernel(kernel_create_info));
       // define schema
       auto schema_map_iter = schema_map.find(op->GetName(op));
-      ORT_ENFORCE(schema_map_iter != schema_map.end());
-      ORT_RETURN_IF_ERROR(IsCompatible(schema_map_iter->second, op));
+      ORT_ENFORCE(schema_map_iter != schema_map.end(),
+                  "This condition fail is no schema was defined for this operator as it should have in the previous loop.");
+      ORT_RETURN_IF_ERROR(IsCompatible(schema_map_iter->second, op),
+                          "All custom operators named '", op->GetName(op), "' are not compatible among themselves. ",
+                          "They should have the same number of inputs and outputs, the same characteristics ",
+                          "(optional, ...). Only the type can change.");
     }
 
     std::vector<ONNX_NAMESPACE::OpSchema> schemas;

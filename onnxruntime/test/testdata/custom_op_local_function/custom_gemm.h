@@ -11,12 +11,6 @@
 
 namespace Cpu {
 
-typedef enum _EpiloqueGemmKernel {
-  Default = 0,
-  Relu = 1,
-  Gelu = 2
-} EpiloqueGemmKernel;
-
 struct CustomGemmKernel {
   CustomGemmKernel(const OrtApi& api, const OrtKernelInfo* info);
   void Compute(OrtKernelContext* context);
@@ -61,11 +55,8 @@ struct CustomGemmKernel {
   // float beta_;
   bool transA_;
   bool transB_;
-  bool fastAccumulationMode_;
   int64_t rowMajor_;
-  int64_t smCount_;
   ONNXTensorElementDataType computeType_;
-  EpiloqueGemmKernel epilogue_;
 
   // when the kernel is initialized
   bool has_scale_Y_;
