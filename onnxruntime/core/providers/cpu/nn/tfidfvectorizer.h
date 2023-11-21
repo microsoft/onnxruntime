@@ -19,11 +19,11 @@ class TfIdfVectorizer final : public OpKernel {
   Status Compute(OpKernelContext* ctx) const override;
 
  private:
-  void ComputeImpl(OpKernelContext* ctx, ptrdiff_t row_num, size_t row_size,
-                   std::vector<uint32_t>& frequencies) const;
+  void ComputeImpl(const void* x_data_raw, size_t elem_size, ptrdiff_t row_num, size_t row_size,
+                   std::vector<uint32_t>& frequencies, bool is_input_string) const;
 
   // Apply weighing criteria and output
-  void OutputResult(OpKernelContext* ctx, size_t b_dim, const std::vector<uint32_t>& frequences) const;
+  void OutputResult(const std::vector<uint32_t>& frequences, float* output_data) const;
 
   struct Impl;
   std::unique_ptr<Impl> impl_;
