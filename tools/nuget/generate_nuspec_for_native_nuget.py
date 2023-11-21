@@ -194,7 +194,7 @@ def generate_repo_url(line_list, repo_url, commit_id):
 
 
 def generate_dependencies(xml_text, package_name, version):
-    dml_dependency = '<dependency id="Microsoft.AI.DirectML.Preview" version="1.13.0-deva1b3004dcdd5129a89af283b8e04f34f6c0467fc"/>'
+    dml_dependency = '<dependency id="Microsoft.AI.DirectML.Preview" version="1.13.0-devb7c99852e0b25080ea3388fea784008631dfd4c4"/>'
 
     if package_name == "Microsoft.AI.MachineLearning":
         xml_text.append("<dependencies>")
