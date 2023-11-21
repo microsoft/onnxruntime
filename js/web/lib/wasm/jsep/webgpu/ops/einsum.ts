@@ -190,7 +190,6 @@ const createEinsumProgramInfo = (inputs: readonly TensorView[], einsumEquation: 
   const outputShapeOrRank = enableOutputShapesUniforms ? outputShape.length : outputShape;
   const output = outputVariable('output', dataType, outputShapeOrRank);
   const idxCopy: string[] = [];
-  const rhsSymbols = Array.from(einsumEquation.rhs.symbolToIndices.keys());
   const initProd = 'var prod = 1.0;';
   const initSum = 'var sum = 0.0;';
   const updateSum = 'sum += prod;';
@@ -198,10 +197,10 @@ const createEinsumProgramInfo = (inputs: readonly TensorView[], einsumEquation: 
   const reduceOpsLoopHeaders: string[] = [];
   const reduceOpsLoopFooters: string[] = [];
   const reduceOpCompute: string[] = [];
-  const isReduceOpsWithoutLoop = einsumEquation.symbolToInfo.size === rhsSymbols.length;
+  const isReduceOpsWithoutLoop = einsumEquation.symbolToInfo.size === einsumEquation.rhs.symbolToIndices.size;
   einsumEquation.symbolToInfo.forEach((info, symbol) => {
-    if (rhsSymbols.includes(symbol)) {
-      const outputIndex = rhsSymbols.indexOf(symbol);
+    if (einsumEquation.rhs.symbolToIndices.has(symbol)) {
+      const outputIndex = einsumEquation.rhs.symbolToIndices.get(symbol)?.[0];
       einsumEquation.lhs.forEach((term, i) => {
         if (info.inputIndices.includes(i)) {
           const indices = term.symbolToIndices.get(symbol);
