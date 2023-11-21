@@ -21,6 +21,7 @@
 # --------------------------------------------------------------------------
 
 import argparse
+from typing import Any, Dict
 
 import torch
 from diffusion_models import PipelineInfo
@@ -226,22 +227,50 @@ def parse_arguments(is_xl: bool, description: str):
     if args.onnx_opset is None:
         args.onnx_opset = 14 if args.engine == "ORT_CUDA" else 17
 
-    if args.lcm:
-        if args.guidance > 1.0:
-            print("[I] Use --guidance=1.0 for base since LCM is used.")
-            args.guidance = 1.0
-        if args.scheduler != "LCM":
-            print("[I] Use --scheduler=LCM for base since LCM is used.")
-            args.scheduler = "LCM"
-        if args.denoising_steps > 16:
-            print("[I] Use --denoising_steps=8 (no more than 16) for base since LCM is used.")
-            args.denoising_steps = 8
-
-    assert args.strength > 0.0 and args.strength < 1.0
+    if is_xl:
+        if args.lcm:
+            if args.guidance > 1.0:
+                print("[I] Use --guidance=1.0 for base since LCM is used.")
+                args.guidance = 1.0
+            if args.scheduler != "LCM":
+                print("[I] Use --scheduler=LCM for base since LCM is used.")
+                args.scheduler = "LCM"
+            if args.denoising_steps > 16:
+                print("[I] Use --denoising_steps=8 (no more than 16) for base since LCM is used.")
+                args.denoising_steps = 8
+        assert args.strength > 0.0 and args.strength < 1.0
 
     print(args)
 
     return args
+
+
+def get_metadata(args, is_xl: bool = False) -> Dict[str, Any]:
+    metadata = {
+        "args.prompt": args.prompt,
+        "args.negative_prompt": args.negative_prompt,
+        "args.batch_size": args.batch_size,
+        "height": args.height,
+        "width": args.width,
+        "cuda_graph": not args.disable_cuda_graph,
+        "vae_slicing": args.enable_vae_slicing,
+        "engine": args.engine,
+    }
+
+    if is_xl and not args.disable_refiner:
+        metadata["base.scheduler"] = (args.scheduler,)
+        metadata["base.denoising_steps"] = (args.denoising_steps,)
+        metadata["base.guidance"] = (args.guidance,)
+        metadata["refiner.strength"] = args.strength
+        metadata["refiner.scheduler"] = args.refiner_scheduler
+        metadata["refiner.denoising_steps"] = args.refiner_steps
+        metadata["refiner.guidance"] = args.refiner_guidance
+    else:
+        metadata["scheduler"] = (args.scheduler,)
+        metadata["denoising_steps"] = (args.denoising_steps,)
+        metadata["guidance"] = (args.guidance,)
+
+    return metadata
 
 
 def repeat_prompt(args):

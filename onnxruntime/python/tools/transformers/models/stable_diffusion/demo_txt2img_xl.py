@@ -22,7 +22,7 @@
 
 import coloredlogs
 from cuda import cudart
-from demo_utils import init_pipeline, parse_arguments, repeat_prompt
+from demo_utils import get_metadata, init_pipeline, parse_arguments, repeat_prompt
 from diffusion_models import PipelineInfo
 from engine_builder import EngineType, get_engine_type
 from pipeline_img2img_xl import Img2ImgXLPipeline
@@ -122,7 +122,7 @@ def run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False
         refiner.load_resources(image_height, image_width, batch_size)
 
     def run_base_and_refiner(warmup=False):
-        images, time_base = base.run(
+        images, base_perf = base.run(
             prompt,
             negative_prompt,
             image_height,
@@ -134,12 +134,12 @@ def run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False
             return_type="latent" if refiner else "image",
         )
         if refiner is None:
-            return images, time_base
+            return images, base_perf
 
         # Use same seed in base and refiner.
         seed = base.get_current_seed()
 
-        images, time_refiner = refiner.run(
+        images, refiner_perf = refiner.run(
             prompt,
             negative_prompt,
             images,
@@ -152,7 +152,13 @@ def run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False
             seed=seed,
         )
 
-        return images, time_base + time_refiner
+        perf_data = None
+        if base_perf and refiner_perf:
+            perf_data = {"latency": base_perf["latency"] + refiner_perf["latency"]}
+            perf_data.update({"base." + key: val for key, val in base_perf.items()})
+            perf_data.update({"refiner." + key: val for key, val in refiner_perf.items()})
+
+        return images, perf_data
 
     if not args.disable_cuda_graph:
         # inference once to get cuda graph
@@ -169,13 +175,23 @@ def run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False
     print("[I] Running StableDiffusion XL pipeline")
     if args.nvtx_profile:
         cudart.cudaProfilerStart()
-    _, latency = run_base_and_refiner(warmup=False)
+    images, perf_data = run_base_and_refiner(warmup=False)
     if args.nvtx_profile:
         cudart.cudaProfilerStop()
 
     print("|------------|--------------|")
-    print("| {:^10} | {:>9.2f} ms |".format("e2e", latency))
+    print("| {:^10} | {:>9.2f} ms |".format("e2e", perf_data["latency"]))
     print("|------------|--------------|")
+
+    metadata = get_metadata(args, True)
+    metadata.update({"base." + key: val for key, val in base.metadata().items()})
+    if refiner:
+        metadata.update({"refiner." + key: val for key, val in refiner.metadata().items()})
+    if perf_data:
+        metadata.update(perf_data)
+    metadata["images"] = len(images)
+    print(metadata)
+    (refiner or base).save_images(images, prompt, negative_prompt, metadata)
 
 
 def run_demo(args):

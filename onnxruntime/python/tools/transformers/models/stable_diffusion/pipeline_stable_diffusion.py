@@ -23,6 +23,7 @@
 import os
 import pathlib
 import random
+from typing import Any, Dict, List
 
 import nvtx
 import torch
@@ -415,38 +416,42 @@ class StableDiffusionPipeline:
             nvtx.end_range(nvtx_vae)
         return images
 
-    def print_summary(self, tic, toc, batch_size, vae_enc=False):
+    def print_summary(self, tic, toc, batch_size, vae_enc=False) -> Dict[str, Any]:
+        throughput = batch_size / (toc - tic)
+        latency_clip = cudart.cudaEventElapsedTime(self.events["clip-start"], self.events["clip-stop"])[1]
+        latency_unet = cudart.cudaEventElapsedTime(self.events["denoise-start"], self.events["denoise-stop"])[1]
+        latency_vae = cudart.cudaEventElapsedTime(self.events["vae-start"], self.events["vae-stop"])[1]
+        latency_vae_encoder = (
+            cudart.cudaEventElapsedTime(self.events["vae_encoder-start"], self.events["vae_encoder-stop"])[1]
+            if vae_enc
+            else None
+        )
+        latency = (toc - tic) * 1000.0
+
         print("|------------|--------------|")
         print("| {:^10} | {:^12} |".format("Module", "Latency"))
         print("|------------|--------------|")
         if vae_enc:
-            print(
-                "| {:^10} | {:>9.2f} ms |".format(
-                    "VAE-Enc",
-                    cudart.cudaEventElapsedTime(self.events["vae_encoder-start"], self.events["vae_encoder-stop"])[1],
-                )
-            )
-        print(
-            "| {:^10} | {:>9.2f} ms |".format(
-                "CLIP", cudart.cudaEventElapsedTime(self.events["clip-start"], self.events["clip-stop"])[1]
-            )
-        )
-        print(
-            "| {:^10} | {:>9.2f} ms |".format(
-                "UNet x " + str(self.actual_steps),
-                cudart.cudaEventElapsedTime(self.events["denoise-start"], self.events["denoise-stop"])[1],
-            )
-        )
-        print(
-            "| {:^10} | {:>9.2f} ms |".format(
-                "VAE-Dec", cudart.cudaEventElapsedTime(self.events["vae-start"], self.events["vae-stop"])[1]
-            )
-        )
+            print("| {:^10} | {:>9.2f} ms |".format("VAE-Enc", latency_vae_encoder))
+        print("| {:^10} | {:>9.2f} ms |".format("CLIP", latency_clip))
+        print("| {:^10} | {:>9.2f} ms |".format("UNet x " + str(self.actual_steps), latency_unet))
+        print("| {:^10} | {:>9.2f} ms |".format("VAE-Dec", latency_vae))
 
         print("|------------|--------------|")
-        print("| {:^10} | {:>9.2f} ms |".format("Pipeline", (toc - tic) * 1000.0))
+        print("| {:^10} | {:>9.2f} ms |".format("Pipeline", latency))
         print("|------------|--------------|")
-        print(f"Throughput: {batch_size / (toc - tic):.2f} image/s")
+        print(f"Throughput: {throughput:.2f} image/s")
+
+        perf_data = {
+            "latency_clip": latency_clip,
+            "latency_unet": latency_unet,
+            "latency_vae": latency_vae,
+            "latency": latency,
+            "throughput": throughput,
+        }
+        if vae_enc:
+            perf_data["latency_vae_encoder"] = latency_vae_encoder
+        return perf_data
 
     @staticmethod
     def to_pil_image(images):
@@ -458,28 +463,31 @@ class StableDiffusionPipeline:
 
         return [Image.fromarray(images[i]) for i in range(images.shape[0])]
 
-    def save_images(self, images, pipeline, prompt):
-        image_name_prefix = (
-            pipeline + "".join(set(["-" + prompt[i].replace(" ", "_")[:10] for i in range(len(prompt))])) + "-"
-        )
+    def metadata(self) -> Dict[str, Any]:
+        return {
+            "actual_steps": self.actual_steps,
+            "seed": self.get_current_seed(),
+            "name": self.pipeline_info.name(),
+            "custom_vae": self.pipeline_info.custom_fp16_vae(),
+            "custom_unet": self.pipeline_info.custom_unet(),
+        }
 
+    def save_images(self, images: List, prompt: List[str], negative_prompt: List[str], metadata: Dict[str, Any]):
         images = self.to_pil_image(images)
-        random_session_id = str(random.randint(1000, 9999))
+        session_id = str(random.randint(1000, 9999))
         for i, image in enumerate(images):
             seed = str(self.get_current_seed())
-            image_path = os.path.join(
-                self.output_dir, image_name_prefix + str(i + 1) + "-" + random_session_id + "-" + seed + ".png"
-            )
+            prefix = "".join(x for x in prompt[i] if x.isalnum() or x in ", -").replace(" ", "_")[:20]
+            parts = [prefix, session_id, str(i + 1), str(seed), self.current_scheduler, str(self.actual_steps)]
+            image_path = os.path.join(self.output_dir, "-".join(parts) + ".png")
             print(f"Saving image {i+1} / {len(images)} to: {image_path}")
 
             from PIL import PngImagePlugin
 
-            # TODO: This only saves info of the last pipeline. Save info of both base and refiner pipelines.
-            metadata = PngImagePlugin.PngInfo()
-            metadata.add_text("prompt", prompt[i])
-            metadata.add_text("batch_size", str(len(images)))
-            metadata.add_text("denoising_steps", str(self.denoising_steps))
-            metadata.add_text("actual_steps", str(self.actual_steps))
-            metadata.add_text("seed", seed)
-            metadata.add_text("scheduler", self.current_scheduler)
-            image.save(image_path, "PNG", pnginfo=metadata)
+            info = PngImagePlugin.PngInfo()
+            for k, v in metadata.items():
+                info.add_text(k, str(v))
+            info.add_text("prompt", prompt[i])
+            info.add_text("negative_prompt", negative_prompt[i])
+
+            image.save(image_path, "PNG", pnginfo=info)
