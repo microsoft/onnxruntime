@@ -164,7 +164,7 @@ def retrieve_onnx_inputs(model: nn.Module, sample_inputs: tuple, with_past: bool
     return input_keys, onnx_inputs, out.past_key_values
 
 
-def move_to_approprate_device(model: nn.Module, sample_inputs_tp: tuple) -> nn.Module:
+def move_to_appropriate_device(model: nn.Module, sample_inputs_tp: tuple) -> nn.Module:
     """
     According to the model size, we will upload it to
     CPU if has no GPU or enough GPU memory,
@@ -307,7 +307,7 @@ def export_onnx(hf_model: str, cache_dir: Optional[str], onnx_path_str: str, wit
     """
     model, sample_inputs_tp = initialize_model_and_sample_inputs(hf_model, cache_dir)
 
-    model = move_to_approprate_device(model, sample_inputs_tp)
+    model = move_to_appropriate_device(model, sample_inputs_tp)
 
     sample_inputs = adapt_inputs_to_device(sample_inputs_tp, next(model.parameters()).device)
 
