@@ -2495,7 +2495,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             runtime_.get(), profiles_[context->node_name], context_memory_sharing_enable_, &max_ctx_mem_size_,
             dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
             global_cache_path_, force_timing_cache_match_, detailed_build_log_, build_heuristics_enable_, sparsity_enable_,
-            builder_optimization_level_, auxiliary_streams_, !tactic_sources_.empty(), tactics, cache_prefix_};
+            builder_optimization_level_, auxiliary_streams_, !tactic_sources_.empty(), tactics, cuda_graph_enable_, cache_prefix_};
       *state = p.release();
       return 0;
     };
