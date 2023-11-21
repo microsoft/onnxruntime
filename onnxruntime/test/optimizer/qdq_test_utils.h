@@ -549,13 +549,27 @@ GetQDQTestCaseFn BuildQDQTransposeTestCase(
     InputType dq_zp = std::numeric_limits<InputType>::max() / 2;
     OutputType q_zp = std::numeric_limits<OutputType>::max() / 2;
 
-    // add DQ
-    auto* dq_output = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<InputType>(input_arg, .003f, dq_zp, dq_output, use_contrib_qdq);
+    // we need a QDQ node unit prior to DQ -> Transpose -> Q -> graph output as transpose optimizer will push the
+    // transpose, convert its input to uint8, and drop the empty DQ -> Q.
+    // if there's a QDQ node unit prior, the NNAPI EP can carry forward the quantization info from that and take the
+    // standalone Transpose node so we add a DQ -> Mul -> Q to provide that.
+
+    // add DQ -> Mul -> Q
+    auto* dq_output_0 = builder.MakeIntermediate();
+    auto* mul_output = builder.MakeIntermediate();
+    auto* q_output_0 = builder.MakeIntermediate();
+    auto mul_by = builder.MakeInitializer<float>({1}, 2.f, 3.f);
+    builder.AddDequantizeLinearNode<InputType>(input_arg, .003f, dq_zp, dq_output_0, use_contrib_qdq);
+    builder.AddNode("Mul", {dq_output_0, mul_by}, {mul_output});
+    builder.AddQuantizeLinearNode<OutputType>(mul_output, .003f, q_zp, q_output_0, use_contrib_qdq);
+
+    // add DQ -> Transpose -> Q
+    auto* dq_output_1 = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<InputType>(q_output_0, .003f, dq_zp, dq_output_1, use_contrib_qdq);
 
     // add Transpose
     auto* transpose_output = builder.MakeIntermediate();
-    Node& transpose_node = builder.AddNode("Transpose", {dq_output}, {transpose_output});
+    Node& transpose_node = builder.AddNode("Transpose", {dq_output_1}, {transpose_output});
     transpose_node.AddAttribute("perm", perms);
 
     // add Q
