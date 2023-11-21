@@ -118,6 +118,7 @@ static bool IsGPU(IDXCoreAdapter* compute_adapter) {
   return compute_adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS);
 }
 
+#ifdef ENABLE_NPU_ADAPTER_ENUMERATION
 static bool IsNPU(IDXCoreAdapter* compute_adapter) {
   // Only considering hardware adapters
   if (!IsHardwareAdapter(compute_adapter)) {
@@ -125,6 +126,7 @@ static bool IsNPU(IDXCoreAdapter* compute_adapter) {
   }
   return !(compute_adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS));
 }
+#endif
 
 enum class DeviceType { GPU, NPU, BadDevice };
 
@@ -134,10 +136,12 @@ static DeviceType FilterAdapterTypeQuery(IDXCoreAdapter* adapter, OrtDmlDeviceFi
     return DeviceType::GPU;
   }
 
+#ifdef ENABLE_NPU_ADAPTER_ENUMERATION
   auto allow_npus = (filter & OrtDmlDeviceFilter::Npu) == OrtDmlDeviceFilter::Npu;
   if (IsNPU(adapter) && allow_npus) {
     return DeviceType::NPU;
   }
+#endif
 
   return DeviceType::BadDevice;
 }
@@ -216,6 +220,7 @@ static void SortHeterogenousDXCoreAdapterList(
     return;
   }
 
+#ifdef ENABLE_NPU_ADAPTER_ENUMERATION
   // When considering both GPUs and NPUs sort them by performance preference
   // of Default (Gpus first), HighPerformance (GPUs first), or LowPower (NPUs first)
   auto keep_npus = (filter & OrtDmlDeviceFilter::Npu) == OrtDmlDeviceFilter::Npu;
@@ -223,6 +228,7 @@ static void SortHeterogenousDXCoreAdapterList(
   if (!keep_npus || only_npus) {
     return;
   }
+#endif
 
   struct SortingPolicy {
     // default is false because GPUs are considered higher priority in
@@ -322,23 +328,26 @@ static std::optional<OrtDmlPerformancePreference> ParsePerformancePreference(con
 
 static std::optional<OrtDmlDeviceFilter> ParseFilter(const ProviderOptions& provider_options) {
   static const std::string Filter = "filter";
-  static const std::string Any = "any";
   static const std::string Gpu = "gpu";
+#ifdef ENABLE_NPU_ADAPTER_ENUMERATION
+  static const std::string Any = "any";
   static const std::string Npu = "npu";
+#endif
 
   auto preference_it = provider_options.find(Filter);
   if (preference_it != provider_options.end()) {
-    if (preference_it->second == Any) {
-      return OrtDmlDeviceFilter::Any;
-    }
-
     if (preference_it->second == Gpu) {
       return OrtDmlDeviceFilter::Gpu;
     }
 
+#ifdef ENABLE_NPU_ADAPTER_ENUMERATION
+    if (preference_it->second == Any) {
+      return OrtDmlDeviceFilter::Any;
+    }
     if (preference_it->second == Npu) {
       return OrtDmlDeviceFilter::Npu;
     }
+#endif
 
     ORT_THROW("Invalid Filter provided for DirectML EP device selection.");
   }

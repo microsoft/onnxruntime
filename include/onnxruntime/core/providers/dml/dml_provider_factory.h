@@ -37,9 +37,13 @@ enum OrtDmlPerformancePreference {
 };
 
 enum OrtDmlDeviceFilter : uint32_t {
+#ifdef ENABLE_NPU_ADAPTER_ENUMERATION
   Any = 0xffffffff,
   Gpu = 1 << 0,
   Npu = 1 << 1,
+#else
+  Gpu = 1 << 0,
+#endif
 };
 
 inline OrtDmlDeviceFilter operator~(OrtDmlDeviceFilter a) { return (OrtDmlDeviceFilter) ~(int)a; }
