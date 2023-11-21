@@ -263,5 +263,16 @@ std::unique_ptr<ISink> EnhanceLoggerWithEtw(std::unique_ptr<ISink> existingLogge
 #endif // _WIN32
 }
 
+Severity OverrideLevelWithEtw(Severity originalSeverity) {
+#ifdef _WIN32
+  auto& manager = logging::EtwRegistrationManager::Instance();
+  if (manager.IsEnabled() && (manager.Keyword() & static_cast<ULONGLONG>(logging::Keyword::Logs)) != 0) {
+      return manager.MapLevelToSeverity();
+      // LOGS(*session_logger_, INFO) << "Overriding ...."
+  }
+#endif // _WIN32
+  return originalSeverity;
+}
+
 }  // namespace logging
 }  // namespace onnxruntime

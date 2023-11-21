@@ -49,7 +49,7 @@ OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_inf
     }
     sink = EnhanceLoggerWithEtw(std::move(sink));
     lmgr = std::make_unique<LoggingManager>(std::move(sink),
-                                            static_cast<Severity>(lm_info.default_warning_level),
+                                            logging::OverrideLevelWithEtw(static_cast<Severity>(lm_info.default_warning_level)),
                                             false,
                                             LoggingManager::InstanceType::Default,
                                             &name);

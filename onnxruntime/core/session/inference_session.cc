@@ -322,14 +322,7 @@ logging::Severity GetSeverity(const SessionOptions& session_options) {
                 session_options.session_log_severity_level);
     severity = static_cast<logging::Severity>(session_options.session_log_severity_level);
   }
-#ifdef _WIN32
-    auto& manager = logging::EtwRegistrationManager::Instance();
-    if (manager.IsEnabled() && (manager.Keyword() & static_cast<ULONGLONG>(logging::Keyword::Logs)) != 0) {
-        severity = manager.MapLevelToSeverity();
-        // LOGS(*session_logger_, INFO) << "Overriding ...."
-    }
-#endif // _WIN32
-  return severity;
+  return logging::OverrideLevelWithEtw(severity);
 }
 
 void InferenceSession::SetLoggingManager(const SessionOptions& session_options,
