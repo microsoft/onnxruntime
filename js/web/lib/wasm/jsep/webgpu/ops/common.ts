@@ -646,6 +646,8 @@ export const outputVariable =
     (name: string, type: number, shapeOrRank: number|readonly number[], components: 1|2|3|4 = 1): IndicesHelper =>
         createIndicesHelper(name, type, shapeOrRank, false, components);
 
+export type UniformsArrayType = Array<{name: string; type: string}>;
+
 /**
  * A ShaderHelper is a helper class for generating WGSL code.
  */
@@ -697,6 +699,7 @@ export interface ShaderHelper {
    * A helper function to register one uniform. Can be called multiple times to register multiple uniforms.
    */
   registerUniform(name: string, type: string): ShaderHelper;
+  registerUniforms(nameToTypeMap: UniformsArrayType): ShaderHelper;
 }
 
 class ShaderHelperImpl implements ShaderHelper {
@@ -755,8 +758,13 @@ class ShaderHelperImpl implements ShaderHelper {
     return this;
   }
 
+  registerUniforms(additionalUniforms: UniformsArrayType): ShaderHelper {
+    this.uniforms = this.uniforms.concat(additionalUniforms);
+    return this;
+  }
+
   private indicesHelpers: IndicesHelper[] = [];
-  private uniforms: Array<{name: string; type: string}> = [];
+  private uniforms: UniformsArrayType = [];
   private uniformDeclaration(): string {
     if (this.uniforms.length === 0) {
       return '';

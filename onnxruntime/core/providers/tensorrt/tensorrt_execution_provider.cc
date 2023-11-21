@@ -1194,6 +1194,11 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
     }
   }
 
+  if (external_stream_) {
+    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasDestroy(external_cublas_handle_)));
+    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(external_cudnn_handle_)));
+  }
+
   if (!external_stream_ && stream_) {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
@@ -1270,6 +1275,20 @@ Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
   }
   return Status::OK();
+}
+
+// Get the pointer to the IBuilder instance.
+// Note: This function is not thread safe. Calls to this function from different threads must be serialized
+// even though it doesn't make sense to have multiple threads initializing the same inference session.
+nvinfer1::IBuilder* TensorrtExecutionProvider::GetBuilder() const {
+  if (!builder_) {
+    TensorrtLogger& trt_logger = GetTensorrtLogger();
+    {
+      auto lock = GetApiLock();
+      builder_ = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+    }
+  }
+  return builder_.get();
 }
 
 void TensorrtExecutionProvider::GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const {
@@ -1562,7 +1581,9 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           }
         }
 
-        if (has_control_flow_op) {
+        // Only if the newly built graph has control flow op as well as it has parent node,
+        // it needs to handle outer scope values before calling graph.Resolve().
+        if (has_control_flow_op && graph.ParentNode()) {
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Handle outer scope values for the subgraph " << graph_build.Name();
           BuildSubGraphContext(graph_build);
           SetGraphOuterScopeValuesAndInputs(graph_build, graph.GetGraph());
@@ -1631,7 +1652,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         // Get supported node list recursively
         SubGraphCollection_t parser_nodes_list;
         TensorrtLogger& trt_logger = GetTensorrtLogger();
-        auto trt_builder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+        auto trt_builder = GetBuilder();
         const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
         auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
 
@@ -1808,6 +1829,10 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
       if (sub_graphs.size() != 0) {
         bool all_subgraphs_are_supported = true;
         for (auto sub_graph : sub_graphs) {
+          // TRT EP should consider the empty subgraph is fully supported by TRT.
+          if (sub_graph->CreateGraphViewer()->NumberOfNodes() == 0) {
+            continue;
+          }
           if (!AllNodesAssignedToSpecificEP(*(sub_graph->CreateGraphViewer()), kTensorrtExecutionProvider)) {
             all_subgraphs_are_supported = false;
             break;
@@ -1875,27 +1900,33 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
       auto sub_graphs = graph.ParentNode()->GetSubgraphs();
       for (auto sub_graph : sub_graphs) {
         if (sub_graph.get() != &graph.GetGraph()) {
-          auto sub_graph_veiwer = sub_graph->CreateGraphViewer();
-          const int number_of_ort_subgraph_nodes = sub_graph_veiwer->NumberOfNodes();
+          auto sub_graph_viewer = sub_graph->CreateGraphViewer();
+          const int number_of_ort_subgraph_nodes = sub_graph_viewer->NumberOfNodes();
           std::vector<size_t> subgraph_nodes_vector(number_of_ort_subgraph_nodes);
           std::iota(std::begin(subgraph_nodes_vector), std::end(subgraph_nodes_vector), 0);
           SubGraphCollection_t parser_subgraph_nodes_vector = {{subgraph_nodes_vector, false}};
           bool subgraph_early_termination = false;
 
-          // Another subgraph of "If" control flow has been parsed by GetCapability before and all subgraph's nodes assigned to TRT EP.
-          if (AllNodesAssignedToSpecificEP(*sub_graph_veiwer, kTensorrtExecutionProvider)) {
+          // Another subgraph of "If" control flow op has no nodes.
+          // In this case, TRT EP should consider this empty subgraph is fully supported by TRT.
+          if (sub_graph_viewer->NumberOfNodes() == 0) {
+            all_subgraphs_are_supported = true;
+            break;
+          }
+          // Another subgraph of "If" control flow op has been parsed by GetCapability before and all subgraph's nodes assigned to TRT EP.
+          else if (AllNodesAssignedToSpecificEP(*sub_graph_viewer, kTensorrtExecutionProvider)) {
             all_subgraphs_are_supported = true;
             break;
           }
           // Another subgraph of "If" control flow has been parsed by GetCapability and not all subgraph's nodes assigned to TRT EP.
           // (Note: GetExecutionProviderType() returns "" meaning node has not yet been assigned to any EPs)
-          else if (!AllNodesAssignedToSpecificEP(*sub_graph_veiwer, "")) {
+          else if (!AllNodesAssignedToSpecificEP(*sub_graph_viewer, "")) {
             all_subgraphs_are_supported = false;
             break;
           }
 
           // Another subgraph of "If" control flow has not yet been parsed by GetCapability.
-          subgraph_supported_nodes_vector = GetSupportedList(parser_subgraph_nodes_vector, 0, max_partition_iterations_, *sub_graph_veiwer, &subgraph_early_termination);
+          subgraph_supported_nodes_vector = GetSupportedList(parser_subgraph_nodes_vector, 0, max_partition_iterations_, *sub_graph_viewer, &subgraph_early_termination);
           all_subgraphs_are_supported = IsSubGraphFullySupported(subgraph_supported_nodes_vector, number_of_ort_subgraph_nodes);
           break;
         }
@@ -1983,7 +2014,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     }
 
     TensorrtLogger& trt_logger = GetTensorrtLogger();
-    auto trt_builder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+    auto trt_builder = GetBuilder();
     const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
     auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
     auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
@@ -2436,7 +2467,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     parsers_.emplace(fused_node.Name(), std::move(trt_parser));
     engines_.emplace(fused_node.Name(), std::move(trt_engine));
     contexts_.emplace(fused_node.Name(), std::move(trt_context));
-    builders_.emplace(fused_node.Name(), std::move(trt_builder));
     networks_.emplace(fused_node.Name(), std::move(trt_network));
     input_info_[fused_node.Name()].push_back(input_indexes);
     output_info_[fused_node.Name()].push_back(output_indexes);
@@ -2454,8 +2484,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       if (!tactic_sources_.empty()) {
         tactics = GetTacticSourceFromString(tactic_sources_);
       }
-      *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name,
-            &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
+      *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name, builder_.get(),
+            &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
             input_shape_ranges_[context->node_name], sync_stream_after_enqueue_, &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
@@ -2488,7 +2518,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       bool sync_stream_after_enqueue = trt_state->sync_stream_after_enqueue;
       auto fused_node_name = trt_state->fused_node_name;
       auto& shape_ranges = trt_state->input_shape_ranges;
-      auto trt_builder = trt_state->builder->get();
+      auto trt_builder = trt_state->builder;
       auto trt_engine = trt_state->engine->get();
       auto trt_context = trt_state->context->get();
       auto trt_profiles = trt_state->profiles;

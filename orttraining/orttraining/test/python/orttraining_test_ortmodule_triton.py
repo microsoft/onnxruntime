@@ -543,6 +543,8 @@ def test_dropout_grad_op(onnx_dtype, input_shape_and_ratio):
         ([123, 4, 5, 6], [2], False),
         ([16, 8, 16, 8], [1, 3], True),
         ([16, 8, 16, 8], [0, 2], False),
+        ([16, 8, 16, 8], [0, 1, 2, 3], True),
+        ([16, 1, 16, 8], [0, 1, 2, 3], False),
     ],
 )
 def test_reduce_op(op_type, onnx_dtype, input_shape_and_reduce_info):
@@ -871,3 +873,34 @@ def test_gemm_tunable_op(dtype, m_n_k):
         return [torch.rand(m_n_k[0], m_n_k[2], dtype=dtype, device=DEVICE, requires_grad=True)]
 
     _run_tunable_op_test(NeuralNetGemm, dtype, _gen_inputs, "GemmTunableOp", 2)
+
+
+def test_user_config():
+    n, d, h, w = 8, 768, 12, 64
+    dtype = torch.float32
+
+    class NeuralNetElementwise(torch.nn.Module):
+        def forward(self, input1, input2, input3, input4):
+            return input1 + input2 - input3 * input4
+
+    def _gen_inputs(dtype):
+        return [
+            torch.rand(n, d, h, w, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(w, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(d, 1, 1, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(n, 1, h, w, dtype=dtype, device=DEVICE, requires_grad=True),
+        ]
+
+    user_config = (
+        '{"ops": {"Add": {"versions": [13, 14]}, "Mul": {"versions": [13, 14]}}, '
+        '"initializer": "scalar", "min_nodes": 2}'
+    )
+    with open("user_config.json", "w", encoding="UTF-8") as f:
+        f.write(user_config)
+    os.environ["ORTMODULE_TRITON_CONFIG_FILE"] = "./user_config.json"
+
+    # Mul is not supported, the graph is splited to 2 subgraphs with single Op, which will not be fused to TritonOp.
+    _run_module_test(NeuralNetElementwise, dtype, _gen_inputs, 0)
+
+    del os.environ["ORTMODULE_TRITON_CONFIG_FILE"]
+    os.remove(os.path.join(os.getcwd(), "user_config.json"))

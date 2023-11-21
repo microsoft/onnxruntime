@@ -475,7 +475,6 @@ bool InstanceAndLayerNormalizationNodeGroupSelector::Check(const GraphViewer& gr
   }
 
   int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-  int32_t dt_scale = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_bias = 0;
   bool has_bias = false;
   // bias is optional for LayerNorm
@@ -485,9 +484,9 @@ bool InstanceAndLayerNormalizationNodeGroupSelector::Check(const GraphViewer& gr
   }
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
-  // Input, output, and scale need to be the same type. The bias is int32.
+  // Input, output, need to be the same type. The bias is int32.
+  // Scale can be different with input for a16w8 case
   return (dt_input == dt_output) &&
-         (dt_input == dt_scale) &&
          (has_bias ? dt_bias == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32 : true);
 }
 
