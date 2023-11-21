@@ -1261,7 +1261,9 @@ def generate_build_tree(
 
     if args.build_apple_framework or args.ios:
         if not args.cmake_generator == "Xcode":
-            raise BuildError("MacOS/iOS build requires use of the Xcode CMake generator ('--cmake_generator Xcode').")
+            raise BuildError(
+                "iOS/MacOS framework build requires use of the Xcode CMake generator ('--cmake_generator Xcode')."
+            )
 
         needed_args = [
             args.apple_sysroot,
@@ -1281,14 +1283,14 @@ def generate_build_tree(
             "-DCMAKE_OSX_SYSROOT=" + args.apple_sysroot,
             "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
             # we do not need protoc binary for ios cross build
-            "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF"
+            "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
         ]
         if args.ios:
             cmake_args += [
-            "-DCMAKE_SYSTEM_NAME=iOS" ,
-            "-DCMAKE_TOOLCHAIN_FILE="
-            + (args.ios_toolchain_file if args.ios_toolchain_file else "../cmake/onnxruntime_ios.toolchain.cmake"),
-        ]
+                "-DCMAKE_SYSTEM_NAME=iOS",
+                "-DCMAKE_TOOLCHAIN_FILE="
+                + (args.ios_toolchain_file if args.ios_toolchain_file else "../cmake/onnxruntime_ios.toolchain.cmake"),
+            ]
 
     if args.build_wasm:
         emsdk_dir = os.path.join(cmake_dir, "external", "emsdk")
@@ -1750,7 +1752,7 @@ def run_ios_tests(args, source_dir, config, cwd):
         )
 
     if args.build_apple_framework:
-        package_test_py = os.path.join(source_dir, "tools", "ci_build", "github", "apple", "test_ios_packages.py")
+        package_test_py = os.path.join(source_dir, "tools", "ci_build", "github", "apple", "test_apple_packages.py")
         framework_info_file = os.path.join(cwd, "framework_info.json")
         dynamic_framework_dir = os.path.join(cwd, config + "-" + args.apple_sysroot)
         static_framework_dir = os.path.join(cwd, config + "-" + args.apple_sysroot, "static_framework")

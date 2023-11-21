@@ -19,7 +19,7 @@ SCRIPT_PATH = pathlib.Path(__file__).resolve(strict=True)
 REPO_DIR = SCRIPT_PATH.parents[4]
 
 
-def _test_ios_packages(args):
+def _test_apple_packages(args):
     # check if CocoaPods is installed
     if shutil.which("pod") is None:
         if args.fail_if_cocoapods_missing:
@@ -162,6 +162,7 @@ def _test_ios_packages(args):
                     cwd=target_proj_path,
                 )
 
+
 def parse_args():
     parser = argparse.ArgumentParser(
         os.path.basename(__file__), description="Test iOS framework using CocoaPods package."
@@ -210,7 +211,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    _test_ios_packages(args)
+    _test_apple_packages(args)
 
 
 if __name__ == "__main__":

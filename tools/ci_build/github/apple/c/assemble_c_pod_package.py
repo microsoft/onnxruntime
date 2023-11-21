@@ -77,9 +77,9 @@ def assemble_c_pod_package(
     # generate the podspec file from the template
     variable_substitutions = {
         "DESCRIPTION": pod_config["description"],
-         # By default, we build both "iphoneos" and "iphonesimulator" architectures, and the deployment target should be the same between these two.
+        # By default, we build both "iphoneos" and "iphonesimulator" architectures, and the deployment target should be the same between these two.
         "IOS_DEPLOYMENT_TARGET": framework_info["iphoneos"]["APPLE_DEPLOYMENT_TARGET"],
-        "MACOSX_DEPLOYMENT_TARGET": framework_info.get("macosx", {}).get("APPLE_DEPLOYMENT_TARGET", None),
+        "MACOSX_DEPLOYMENT_TARGET": framework_info.get("macosx", {}).get("APPLE_DEPLOYMENT_TARGET", ""),
         "LICENSE_FILE": "LICENSE",
         "NAME": pod_name,
         "ORT_C_FRAMEWORK": framework_dir.name,

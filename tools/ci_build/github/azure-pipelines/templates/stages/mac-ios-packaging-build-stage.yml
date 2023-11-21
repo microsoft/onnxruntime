@@ -38,7 +38,7 @@ stages:
         cPodName: onnxruntime-training-c
         objcPodName: onnxruntime-training-objc
 
-    timeoutInMinutes: 240
+    timeoutInMinutes: 180
 
     steps:
     - script: |
@@ -84,7 +84,7 @@ stages:
 
     # create and test mobile pods
     - script: |
-        python tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
+        python tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
           --build-dir "$(Build.BinariesDirectory)/apple_framework" \
           --staging-dir "$(Build.BinariesDirectory)/staging" \
           --pod-version "$(ortPodVersion)" \
@@ -96,9 +96,9 @@ stages:
       displayName: "Build macOS/iOS framework and assemble pod package files"
 
     - script: |
-        python tools/ci_build/github/apple/test_ios_packages.py \
+        python tools/ci_build/github/apple/test_apple_packages.py \
           --fail_if_cocoapods_missing \
-          --framework_info_file "$(Build.BinariesDirectory)/apple_framework/framework_info.json" \
+          --framework_info_file "$(Build.BinariesDirectory)/apple_framework/xcframework_info.json" \
           --c_framework_dir "$(Build.BinariesDirectory)/apple_framework/framework_out" \
           --variant ${{ parameters.packageVariant }} \
           --test_project_stage_dir "$(Build.BinariesDirectory)/app_center_test" \
