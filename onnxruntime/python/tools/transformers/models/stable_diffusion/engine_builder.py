@@ -81,8 +81,9 @@ class EngineBuilder:
         if model_name == "unetxl" and self.pipeline_info.custom_unet():
             model_name = "lcm_" + model_name
 
-        if model_name == "vae" and self.pipeline_info.custom_fp16_vae():
-            model_name = "custom_" + model_name
+        # TODO: When we support original VAE, we shall save custom VAE to another directory like
+        # if model_name == "vae" and self.pipeline_info.custom_fp16_vae():
+        #     model_name = "custom_" + model_name
 
         if self.pipeline_info.is_inpaint():
             model_name += "_inpaint"

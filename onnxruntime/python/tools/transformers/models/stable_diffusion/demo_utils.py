@@ -131,14 +131,14 @@ def parse_arguments(is_xl: bool, description: str):
             "--refiner-steps",
             type=int,
             default=30,
-            help="Number of denoising steps in refiner. Note that actual steps is also impacted by --strength.",
+            help="Number of denoising steps in refiner. Note that actual refiner steps is refiner_steps * strength.",
         )
 
         parser.add_argument(
             "--strength",
             type=float,
             default=0.3,
-            help="Between 0 and 1. The higher the value less the final image similar to the seed image.",
+            help="A value between 0 and 1. The higher the value less the final image similar to the seed image.",
         )
 
     # ONNX export
@@ -236,6 +236,8 @@ def parse_arguments(is_xl: bool, description: str):
         if args.denoising_steps > 16:
             print("[I] Use --denoising_steps=8 (no more than 16) for base since LCM is used.")
             args.denoising_steps = 8
+
+    assert args.strength > 0.0 and args.strength < 1.0
 
     print(args)
 

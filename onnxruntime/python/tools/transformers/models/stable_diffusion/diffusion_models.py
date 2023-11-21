@@ -142,15 +142,6 @@ class PipelineInfo:
     def custom_unet(self) -> Optional[str]:
         return "latent-consistency/lcm-sdxl" if self._use_lcm and self.is_xl_base() else None
 
-    # def model_name(self, stage:str) ->str:
-    #     if stage == "unetxl" and self._use_lcm and self.is_xl_base():
-    #         return "latent-consistency/lcm-sdxl"
-
-    #     if stage == "vae" and self._use_fp16_vae and self.is_xl():
-    #         return "madebyollin/sdxl-vae-fp16-fix"
-
-    #     return self.name()
-
     @staticmethod
     def supported_versions(is_xl: bool):
         return ["xl-1.0"] if is_xl else ["1.4", "1.5", "2.0-base", "2.0", "2.1", "2.1-base"]
@@ -748,9 +739,6 @@ class UNetXL(BaseModel):
         self.custom_unet = pipeline_info.custom_unet()
         self.do_classifier_free_guidance = not (self.custom_unet and "lcm" in self.custom_unet)
         self.batch_multiplier = 2 if self.do_classifier_free_guidance else 1
-        print(
-            "do_classifier_free_guidance", self.do_classifier_free_guidance, "batch_multiplier", self.batch_multiplier
-        )
 
     def load_model(self, framework_model_dir, hf_token, subfolder="unet"):
         options = {"variant": "fp16", "torch_dtype": torch.float16} if self.fp16 else {}
