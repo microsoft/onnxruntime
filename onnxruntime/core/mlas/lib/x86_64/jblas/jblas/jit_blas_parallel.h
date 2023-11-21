@@ -198,7 +198,7 @@ class SchedulerBase : public Scheduler2D {
   const float DensityThres = 32;
 
   float calculate_score() {
-    int tmpnstep = mThdSize[1] < _GemmCore_T::PREFERED_N ? mThdSize[1] : _GemmCore_T::PREFERED_N;
+    int tmpnstep = mThdSize[1] < _GemmCore_T::PREFERRED_N ? mThdSize[1] : _GemmCore_T::PREFERRED_N;
     float threadratio = float(mThdValid) / mThdCount;
     float density = float(tmpnstep) * mThdSize[0] / (tmpnstep + mThdSize[0]);
     if (mDensity < DensityThres) {
@@ -229,8 +229,8 @@ class SchedulerBase : public Scheduler2D {
 
   void cache_blocking_compute() {
     int constexpr KRef = 256;
-    size_t csize_total = mL2Size - _GemmCore_T::PREFERED_N * KRef * mEleSize[1];
-    int maxM = static_cast<int>(csize_total / _GemmCore_T::PREFERED_N / mEleSize[2]);
+    size_t csize_total = mL2Size - _GemmCore_T::PREFERRED_N * KRef * mEleSize[1];
+    int maxM = static_cast<int>(csize_total / _GemmCore_T::PREFERRED_N / mEleSize[2]);
     maxM = utils::downdiv(maxM, mStep[0]);
     int nthdm = mThdSize[0] / mStep[0];
     if (maxM < nthdm) {
@@ -355,7 +355,7 @@ class SchedulerKBlock : public Scheduler2D {
   const float DensityThres = 32;
 
   float calculate_score() {
-    int tmpnstep = mThdSize[1] < _GemmCore_T::PREFERED_N ? mThdSize[1] : _GemmCore_T::PREFERED_N;
+    int tmpnstep = mThdSize[1] < _GemmCore_T::PREFERRED_N ? mThdSize[1] : _GemmCore_T::PREFERRED_N;
     float threadratio = float(mThdValid) / mThdCount;
     float density = float(tmpnstep) * mThdSize[0] / (tmpnstep + mThdSize[0]);
     if (mDensity < DensityThres) {
@@ -385,7 +385,7 @@ class SchedulerKBlock : public Scheduler2D {
 
   void cache_blocking_compute() {
     int constexpr KRef = 256;
-    int constexpr NRef = _GemmCore_T::PREFERED_N;
+    int constexpr NRef = _GemmCore_T::PREFERRED_N;
     int constexpr MTile = _GemmCore_T::MTILE;
     int constexpr KSplitStage = 16;
     int BlkNum = utils::updiv(mSize[2], mKBlock);
@@ -438,7 +438,7 @@ class SchedulerKBlock : public Scheduler2D {
       mBlock[2] = getMaxK(mBlock[1]);
       mBlock[2] = utils::padto_le(mBlock[2], mStep[2]);
       mBlock[2] = std::min(mKBlock, mBlock[2]);
-	  auto tmp = utils::updiv(mKBlock, mBlock[2]);
+      auto tmp = utils::updiv(mKBlock, mBlock[2]);
       while (mKBlock % tmp != 0) tmp++;  // TODO(Yu) optimize
       mBlock[2] = utils::downdiv(mKBlock, tmp);
     }
@@ -456,7 +456,100 @@ class SchedulerKBlock : public Scheduler2D {
   int mSizePadded[3] = {0, 0, 0};
   int mBlock[3] = {0, 0, 0};
 };
+#if 0
+template <class _GemmCore_T>
+class SchedulerKBlockS : public SchedulerBase<_GemmCore_T> {
+  // Block[2]: block size of K must be mutiplier of mKBlock
+  //           or factor of mKBlock
+ public:
+  using ThreadProblem = ThreadProblemBase;
+  SchedulerKBlockS() = default;
+  SchedulerKBlockS(const ConfigGemmKBlock& config) { update(config); }
 
+ protected:
+  // C-KBlock Accumulator=MBlock*NBlock
+  // C-K Accumulator=MBlock*NBlock
+  // B=MBlock*KBlock
+  // A=MTILE*KBlock
+  void update_cache_blocking() {
+    if (mDensity <= DensityThres) {
+      return cache_block_memory();
+    } else {
+      return cache_blocking_compute();
+    }
+  }
+
+  void cache_blocking_compute() {
+    int constexpr KRef = 256;
+    int constexpr NRef = _GemmCore_T::PREFERRED_N;
+    int constexpr MTile = _GemmCore_T::MTILE;
+    int constexpr KSplitStage = 16;
+    int BlkNum = utils::updiv(mSize[2], mKBlock);
+    int KSplitSize = utils::padto(utils::updiv(mSize[2], KSplitStage), mStep[2]);
+    mBlock[1] = NRef < mThdSize[1] ? NRef : mThdSize[1];
+    if (KSplitSize >= mKBlock) {
+      mBlock[2] = mKBlock;
+    } else {
+      int scale = utils::downdiv(KSplitStage, BlkNum);
+      for (; scale >= 1; scale--) {
+        if (mKBlock % scale == 0) {
+          break;
+        }
+      }
+      mBlock[2] = utils::downdiv(mKBlock, scale);
+    }
+    size_t size_remain = mL2Size - mBlock[1] * mBlock[2] * mEleSize[1];
+    // MBlock*KBlock*ASize+MBlock*NBlock*CSize*2<=size_remain
+    int maxMBlock = int(size_remain / (mBlock[1] * mEleSize[2] * 2 + mBlock[2] * mEleSize[0]));
+    int maxM = utils::downdiv(maxMBlock, mStep[0]);
+    int nthdm = mThdSize[0] / mStep[0];
+    if (maxM < nthdm) {
+      int niter = utils::updiv(nthdm, maxM);
+      mBlock[0] = utils::updiv(nthdm, niter) * mStep[0];
+    } else {
+      mBlock[0] = mThdSize[0];
+    }
+  }
+
+  void cache_block_memory() {
+    mBlock[0] = _GemmCore_T::MTILE;
+    size_t startK = std::max(16, _GemmCore_T::KTILE);
+    auto getMaxN = [&](size_t refk) {
+      size_t sizeA = refk * mEleSize[0] * mBlock[0];
+      size_t maxN = (mL1Size - sizeA) / (mBlock[0] * mEleSize[2] * 2 + refk * mEleSize[1]);
+      return maxN;
+    };
+    auto getMaxK = [&](size_t refN) {
+      size_t sizeC = refN * mEleSize[2] * mBlock[0] * 2;
+      size_t maxK = (mL1Size - sizeC) / (mBlock[0] * mEleSize[0] + refN * mEleSize[1]);
+      return maxK;
+    };
+    auto maxN = getMaxN(startK);
+    if (maxN <= mThdSize[1]) {
+      mBlock[1] = int(maxN);
+      mBlock[1] = utils::padto_le(mBlock[1], mStep[1]);
+      mBlock[2] = int(startK);
+    } else {
+      mBlock[1] = mThdSize[1];
+      mBlock[2] = getMaxK(mBlock[1]);
+      mBlock[2] = utils::padto_le(mBlock[2], mStep[2]);
+      mBlock[2] = std::min(mKBlock, mBlock[2]);
+    }
+  }
+  size_t mL2Size = 0, mL1Size = 0, mL2Use = 0;
+  float mDensity = 0.f;
+  int mKBlock = 0;
+
+ private:
+  int mSize[3] = {0, 0, 0};
+  int mThdSize[3] = {0, 0, 0};
+  static constexpr int mStep[3] = {_GemmCore_T::MTILE, _GemmCore_T::NTILE, _GemmCore_T::KTILE};
+  static constexpr int mEleSize[3] = {sizeof(typename _GemmCore_T::AType), sizeof(typename _GemmCore_T::BType),
+                                      sizeof(typename _GemmCore_T::CType)};
+  int mSizePadded[3] = {0, 0, 0};
+  int mBlock[3] = {0, 0, 0};
+};
+#endif
 }  // namespace gemm
 using thread_func = std::function<void(int tid)>;
 
@@ -464,6 +557,7 @@ class IThreading {
  public:
   IThreading(int nthreads) : mThreadNum(nthreads) {}
   virtual void parallel_for(const thread_func& func) = 0;
+  virtual inline void sync() = 0;
   virtual int num_threads() { return mThreadNum; };
   virtual void set_threads(int nthreads) = 0;
 
@@ -485,6 +579,10 @@ class OMPThreading : public IThreading {
     mThreadNum = nthreads;
     omp_set_num_threads(nthreads);
   }
+  virtual inline void sync() override {
+#pragma omp barrier
+    (void)(0);  // make msvc happy with c++20
+  }
 };
 #endif
 
@@ -504,6 +602,8 @@ class StdThreading : public IThreading {
     mThreadNum = nthreads;
     thdset.resize(nthreads);
   }
+
+  virtual inline void sync() override { assert(0); }
 
  private:
   std::vector<std::thread> thdset;
@@ -539,6 +639,28 @@ void GemmKBlockRun(Launch_T& launcher, const typename Launch_T::Param& args, par
     flag = false;
   }
   th->parallel_for([&](int tidx) {
+    typename Parallel_T::ThreadProblem thdp{tidx};
+    para.getIndex(thdp);
+    if (thdp.valid) {
+      launcher.run(args, thdp);
+    }
+  });
+}
+
+template <class Parallel_T, class Launch_T>
+void GemmKBlockRunWithA(Launch_T& launcher, const typename Launch_T::Param& args,
+                        const typename Launch_T::AParam& Aargs, parallel::IThreading* th) {
+  device::CpuBase cb;
+  Parallel_T para({th->num_threads(), args.M, args.N, args.K, cb.mL2Cache, cb.mL1Cache, args.KBlock});
+  using AParall = typename Launch_T::PrologueA::Parallel;
+  AParall apara({th->num_threads(), args.M, args.K, 1, args.KBlock});
+  th->parallel_for([&](int tidx) {
+    typename AParall::ThreadProblem thdpA{tidx};
+    apara.getIndex(thdpA);
+    if (thdpA.valid) {
+      launcher.mProA.run(Aargs, thdpA);
+    }
+    th->sync();
     typename Parallel_T::ThreadProblem thdp{tidx};
     para.getIndex(thdp);
     if (thdp.valid) {

@@ -90,34 +90,19 @@ typedef enum {
 } MLAS_COMPUTE_TYPE;
 
 /**
- * @brief Data parameters for Q4 GEMM routine
- *        C = A * B + Bias
- *        A must be a float32 matrix
- *        B must be a quantized and packed int4 blob
+ * @brief Data parameters for NBits GEMM routine
+ *        C = A * B
+ *        A, C must be a float32 matrix
+ *        B must be a packed nbits blob
  *        All except C are [in] parameters
  */
-struct MLAS_NBITS_GEMM_DATA_SIMPLE_PARAMS {
+struct MLAS_NBITS_GEMM_DATA_PACKED_PARAMS {
     const float* A = nullptr; /**< address of A (float32 matrix)*/
-    const void* B = nullptr;  /**< address of B (quantized and packed int4 blob)*/
+    const void* B = nullptr;  /**< address of B (packed nbits blob)*/
     float* C = nullptr;       /**< address of result matrix */
     size_t lda = 0;           /**< leading dimension of A */
     size_t ldc = 0;           /**< leading dimension of C*/
 };
-
-/**
- * @brief Check if the parameter combination is supported by the runtime device.
- *
- * @param N      the number of columns of matrix B.
- * @param K      the number of rows of matrix B.
- * @param block_size    size of the block to quantize, elements from the same block share the same
- * scale and zero point
- * @param nbits  number of bits used for weight quantization (default 4)
- * @param is_asym  flag for asymmetric quantization
- * @param comp_type  specify input data type and accumulator data type
- * @return support flag, true if the combination is supported.
- */
-bool MLASCALL
-MlasIsNBitGemmAvailable(size_t N, size_t K, size_t block_size, int nbits, bool is_asym, MLAS_COMPUTE_TYPE comp_type);
 
 /**
  * @brief Compute the byte size of the parameter combination
@@ -204,7 +189,7 @@ MlasNBitsGemmBatchPackedB(
     const size_t N,
     const size_t K,
     const size_t BatchN,
-    const MLAS_NBITS_GEMM_DATA_SIMPLE_PARAMS* DataParams,
+    const MLAS_NBITS_GEMM_DATA_PACKED_PARAMS* DataParams,
     int8_t* WorkSpace,
     MLAS_THREADPOOL* ThreadPool = nullptr
 );

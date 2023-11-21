@@ -274,5 +274,4 @@ class CpuBase {
   int mNumThreads;
 };
 }  // namespace device
-
 }  // namespace jblas

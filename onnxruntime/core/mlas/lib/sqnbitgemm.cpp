@@ -166,12 +166,6 @@ MlasNBitsGemmPackBSize(size_t N, size_t K, size_t BlkSize, int nbits, bool isAsy
     return 0;
 }
 
-bool MLASCALL
-MlasIsNBitGemmAvailable(size_t N, size_t K, size_t BlkSize, int nbits, bool isAsym, MLAS_COMPUTE_TYPE CompType)
-{
-    return MlasNBitsGemmPackBSize(N, K, BlkSize, nbits, isAsym, CompType) > 0;
-}
-
 void MLASCALL
 MlasNBitsGemmPackB(
     void* PackedBuf,
@@ -233,7 +227,7 @@ MlasNBitsGemmBatchPackedB(
     const size_t N,
     const size_t K,
     const size_t BatchN,
-    const MLAS_NBITS_GEMM_DATA_SIMPLE_PARAMS* DataParams,
+    const MLAS_NBITS_GEMM_DATA_PACKED_PARAMS* DataParams,
     int8_t* WorkSpace,
     MLAS_THREADPOOL* ThreadPool
 )

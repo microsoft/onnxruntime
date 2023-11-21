@@ -11,8 +11,7 @@ Licensed under the MIT License.
 #include "jblas/jit_blas_prologue_b.h"
 #include "jblas/jit_blas_wrapper.h"
 
-namespace jblas
-{
+namespace jblas {
 template <class GemmCore_T>
 using tLauncher_Fp32_S4_F32F32 = jblas::wrapper::gemm::LauncherKBlock<
     GemmCore_T::ISA,
@@ -40,12 +39,12 @@ using tAMX_INT8_US = jblas::gemm::ICoreRowNAmxint8<64, 16>;
 using tAMX_INT8_SS = jblas::gemm::ICoreRowNAmxint8SS<64, 16>;
 using tAVX2 = jblas::gemm::SCoreRowNAvx2<48, 2>;
 
-class ORTThreading : public jblas::parallel::IThreading
-{
+class ORTThreading : public jblas::parallel::IThreading {
    public:
     ORTThreading(void* tp);
     void parallel_for(const jblas::parallel::thread_func& func) override;
     virtual void set_threads(int nthreads) override { assert(0); }
+    virtual void sync() override { assert(0); }
     void* mTp;
 };
 

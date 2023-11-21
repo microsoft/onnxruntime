@@ -779,7 +779,7 @@ class DecompressS4S8_AVX512F : protected jblas::xbyak::JitAvx512f {
 
 static inline JBLAS_CODE decompress_s4_s8(utils::int4x2* srcptr, int8_t* dstptr, int row, int col, int ld_src,
                                           int ld_dst) {
-  if (col != ld_src) {  // memory is not continueous
+  if (col != ld_src) {  // memory is not continuous
     return JblasNotSupport;
   }
   DecompressS4S8_AVX512F::forward(srcptr, dstptr, (size_t)row * col);
@@ -1115,7 +1115,7 @@ class PaddingTransInterleaveCvt : protected xbyak::JitAvx512f {
     jmp(ptr[reg_tmp + reg_tmp2 * sizeof(void*)], T_NEAR);  // switch(rows-iterrow) ...
     align(sizeof(intptr_t));
     L(l_tail_tbl);
-    db(reinterpret_cast<uintptr_t>(nullptr), sizeof(intptr_t));  // case 0 should never occour
+    db(reinterpret_cast<uintptr_t>(nullptr), sizeof(intptr_t));  // case 0 should never occur
     for (int i = 1; i < trans_cell; ++i) putL(l_tail_case[i]);
 
     for (int m_tail = 1; m_tail < trans_cell; ++m_tail) {  // case (m_tail):

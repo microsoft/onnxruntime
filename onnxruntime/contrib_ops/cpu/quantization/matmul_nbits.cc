@@ -65,57 +65,48 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     return Status::OK();
   }
   auto compt_type = static_cast<MLAS_COMPUTE_TYPE>(accuracy_level_);
-  if (MlasIsNBitGemmAvailable(N_, K_, block_size_, static_cast<int>(nbits_), is_asym_, compt_type)) {
-    // better to use threadpool here, LLM weight will consume a lot of time
-    MLAS_THREADPOOL* pool = NULL;
-    if (input_idx == 1) {
-      auto qptr = tensor.Data<uint8_t>();
-      packed_b_size_ = MlasNBitsGemmPackBSize(N_, K_, block_size_, static_cast<int>(nbits_), is_asym_, compt_type);
-      packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
-      if (packed_b_ == nullptr) {
-        return Status::OK();
-      }
-      MlasNBitsGemmPackB(packed_b_.get(), qptr, nullptr, nullptr, N_, K_, K_, block_size_, static_cast<int>(nbits_),
-                         is_asym_, false, compt_type, pool);
-      if (prepacked_weights) {
-        prepacked_weights->buffers_.push_back(std::move(packed_b_));
-        prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
-      }
-      is_packed = true;
+  MLAS_THREADPOOL* pool = NULL;
+  if (input_idx == 1) {
+    packed_b_size_ = MlasNBitsGemmPackBSize(N_, K_, block_size_, static_cast<int>(nbits_), is_asym_, compt_type);
+    if (packed_b_size_ == 0) return Status::OK();
+    auto qptr = tensor.Data<uint8_t>();
+    packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
+    if (packed_b_ == nullptr) {
+      return Status::OK();
     }
-    if (input_idx == 2) {
-      auto sptr = tensor.Data<float>();
-      if (packed_b_ == nullptr) {
-        return Status::OK();
-      }
-      MlasNBitsGemmPackB(packed_b_.get(), nullptr, sptr, nullptr, N_, K_, K_, block_size_, static_cast<int>(nbits_),
-                         is_asym_, !is_asym_, compt_type, pool);
-      if (prepacked_weights) {
-        prepacked_weights->buffers_.push_back(std::move(packed_b_));
-        prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
-      }
-      is_packed = true;
+    MlasNBitsGemmPackB(packed_b_.get(), qptr, nullptr, nullptr, N_, K_, K_, block_size_, static_cast<int>(nbits_),
+                       is_asym_, false, compt_type, pool);
+    if (prepacked_weights) {
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
     }
-    if (input_idx == 3) {
-      auto zptr = tensor.Data<uint8_t>();
-      if (packed_b_ == nullptr) {
-        return Status::OK();
-      }
-      MlasNBitsGemmPackB(packed_b_.get(), nullptr, nullptr, zptr, N_, K_, K_, block_size_, static_cast<int>(nbits_),
-                         is_asym_, is_asym_, compt_type, pool);
-      if (prepacked_weights) {
-        prepacked_weights->buffers_.push_back(std::move(packed_b_));
-        prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
-      }
-      is_packed = true;
+    is_packed = true;
+  }
+  if (input_idx == 2 && packed_b_ != nullptr) {
+    auto sptr = tensor.Data<float>();
+    MlasNBitsGemmPackB(packed_b_.get(), nullptr, sptr, nullptr, N_, K_, K_, block_size_, static_cast<int>(nbits_),
+                       is_asym_, !is_asym_, compt_type, pool);
+    if (prepacked_weights) {
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
     }
+    is_packed = true;
+  }
+  if (input_idx == 3 && packed_b_ != nullptr) {
+    auto zptr = tensor.Data<uint8_t>();
+    MlasNBitsGemmPackB(packed_b_.get(), nullptr, nullptr, zptr, N_, K_, K_, block_size_, static_cast<int>(nbits_),
+                       is_asym_, is_asym_, compt_type, pool);
+    if (prepacked_weights) {
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
+    }
+    is_packed = true;
   }
 
   return Status::OK();
 }
 
-Status MatMulNBits::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
-                                              int input_idx,
+Status MatMulNBits::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
                                               /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
   // Pack three tensors into one buffer
@@ -149,8 +140,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
     Tensor* y = ctx->Output(0, helper.OutputShape());
 
     // Bail out early if the output is going to be empty
-    if (y->Shape().Size() == 0)
-      return Status::OK();
+    if (y->Shape().Size() == 0) return Status::OK();
 
     auto* y_data = y->MutableData<float>();
 
@@ -159,7 +149,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
     const size_t N = static_cast<size_t>(helper.N());
     const size_t K = static_cast<size_t>(helper.K());
     const size_t lda = helper.Lda(false);
-    std::vector<MLAS_NBITS_GEMM_DATA_SIMPLE_PARAMS> gemm_params(max_len);
+    std::vector<MLAS_NBITS_GEMM_DATA_PACKED_PARAMS> gemm_params(max_len);
     AllocatorPtr allocator;
     auto status = ctx->GetTempSpaceAllocator(&allocator);
     ORT_RETURN_IF_ERROR(status);
@@ -172,7 +162,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
       gemm_params[i].C = y_data + helper.OutputOffsets()[i];
       gemm_params[i].ldc = N;
     }
-    MlasNBitsGemmBatchPackedB(M, N, K, max_len, gemm_params.data(), (int8_t*)ws_ptr.get(), thread_pool);
+    MlasNBitsGemmBatchPackedB(M, N, K, max_len, gemm_params.data(), reinterpret_cast<int8_t*>(ws_ptr.get()), thread_pool);
     return Status::OK();
   }
 
@@ -240,14 +230,14 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   // dequantize b, only 4b quantization is supported for now
   MlasDequantizeBlockwise<float, 4>(
       tmp_b_data_ptr.get(),               // dequantized output
-      b_data,                             // quantized input
-      scales_data,                        // quantization scales
-      zero_points_data,                   // quantization zero points
-      static_cast<int32_t>(block_size_),  // quantization block size
-      column_wise_quant_,                 // columnwise quantization or row-wise
-      static_cast<int32_t>(K_),           // number of rows in quantized input
-      static_cast<int32_t>(N_),           // number of columns in quantized input
-      thread_pool);
+                                    b_data,                             // quantized input
+                                    scales_data,                        // quantization scales
+                                    zero_points_data,                   // quantization zero points
+                                    static_cast<int32_t>(block_size_),  // quantization block size
+                                    column_wise_quant_,                 // columnwise quantization or row-wise
+                                    static_cast<int32_t>(K_),           // number of rows in quantized input
+                                    static_cast<int32_t>(N_),           // number of columns in quantized input
+                                    thread_pool);
 
 #if 0  // for debug
   auto tm_b_data_ptr_trans = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
@@ -277,10 +267,10 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
-    MatMulNBits);
+                        KernelDefBuilder()
+                            .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+                            .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
+                        MatMulNBits);
 
 }  // namespace contrib
 }  // namespace onnxruntime

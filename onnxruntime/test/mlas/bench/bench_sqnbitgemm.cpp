@@ -102,21 +102,21 @@ void Q4GEMM_Jblas(benchmark::State& state, int block_size, bool is_asym, MLAS_CO
   OrtThreadPoolParams tpo;
   tpo.thread_pool_size = int(threads);
   tpo.auto_set_affinity = true;
-  std::unique_ptr<onnxruntime::concurrency::ThreadPool> tp(
-      onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
-                                                 tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
+  std::unique_ptr<onnxruntime::concurrency::ThreadPool> tp(onnxruntime::concurrency::CreateThreadPool(
+      &onnxruntime::Env::Default(), tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
 
   auto A1 = RandomVectorUniform(static_cast<size_t>(M * K), -1.0f, 1.0f);
   auto B1 = RandomVectorUniform<uint8_t>(static_cast<size_t>(N * K / 2), 0, 255);
-  auto blk_num = (K + block_size - 1) / block_size;
+  auto blk_num = static_cast<size_t>((K + block_size - 1) / block_size);
   auto B_scale = RandomVectorUniform(static_cast<size_t>(N * blk_num), 0.003f, 0.005f);
   std::vector<float> C1(static_cast<size_t>(M * N));
   auto B_zp = RandomVectorUniform<uint8_t>(static_cast<size_t>(N * blk_num / 2), 0, 255);
 
   std::vector<int8_t> B1_packed(pack_b_size);
-  MlasNBitsGemmPackB(B1_packed.data(), B1.data(), B_scale.data(), is_asym ? B_zp.data() : nullptr, N, K, K, block_size, 4, is_asym, true, cmp_type, tp.get());
+  MlasNBitsGemmPackB(B1_packed.data(), B1.data(), B_scale.data(), is_asym ? B_zp.data() : nullptr, N, K, K, block_size,
+                     4, is_asym, true, cmp_type, tp.get());
 
-  MLAS_NBITS_GEMM_DATA_SIMPLE_PARAMS params1;
+  MLAS_NBITS_GEMM_DATA_PACKED_PARAMS params1;
   params1.A = A1.data();
   params1.lda = K;
   params1.C = C1.data();

@@ -57,7 +57,7 @@ JblasQ4GemmCompF32(
             kernel.mProA.reduce({A, K}, &reduceA, M, K, &single);
         }
         typename Launcher::BEpiParam blkargs{
-            B->template SPtr<int8_t>(),    B->mScaT,   B->mCStep, B->template ZPtr<int8_t>(),
+            B->template SPtr<int8_t>(), B->mScaT, B->mCStep, B->template ZPtr<int8_t>(),
             reduceA.template get<float>(), reduceA.lda};
 
         typename Launcher::Param args{M, N, K, B->mBlockSize, {A, K}, {B}, blkargs, {C, N}};
@@ -121,7 +121,7 @@ JblasQ4GemmBatchDriver(
     const size_t N,
     const size_t K,
     const size_t BatchN,
-    const MLAS_NBITS_GEMM_DATA_SIMPLE_PARAMS* DataParams,
+    const MLAS_NBITS_GEMM_DATA_PACKED_PARAMS* DataParams,
     int8_t* WorkSpace,
     MLAS_THREADPOOL* ThreadPool
 )
