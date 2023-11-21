@@ -37,10 +37,10 @@ const validateInputs = (inputs: readonly TensorView[], attributes: BatchNormAttr
   };
 
   if (inputs[0].dims.length > 1) {
-    const shape = Object.seal<Record<typeof attributes.format, number[]>>({
-      NHWC: inputs[0].dims.slice(-1),
-      NCHW: inputs[0].dims.slice(1, attributes.spatial ? 2 : undefined),
-    })[attributes.format];
+    const shape = attributes.format === 'NHWC' ?
+        (attributes.spatial ? inputs[0].dims.slice(-1) :
+                              inputs[0].dims.slice(-1).concat(inputs[0].dims.slice(1, inputs[0].dims.length - 1))) :
+        inputs[0].dims.slice(1, attributes.spatial ? 2 : undefined);
     checkShapeEqual(inputs[1].dims, shape, 'Invalid input scale');
     checkShapeEqual(inputs[2].dims, shape, 'Invalid input B');
     checkShapeEqual(inputs[3].dims, shape, 'Invalid input mean');
