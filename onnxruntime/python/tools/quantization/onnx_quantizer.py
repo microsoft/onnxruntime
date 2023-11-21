@@ -917,17 +917,10 @@ class ONNXQuantizer:
                         reduce_range,
                     )
                 else:
-                    quant_overrides = self.tensor_quant_overrides.get(initializer.name, {})
-
-                    quant_type = self.weight_qType if initializer_use_weight_qType else self.activation_qType
-                    if "quant_type" in quant_overrides:
-                        quant_type = quant_overrides["quant_type"].tensor_type
-
-                    symmetric = quant_overrides.get("symmetric", self.is_weight_symmetric)
-                    reduce_range = quant_overrides.get("reduce_range", reduce_range and self.reduce_range)
-
                     q_weight_name, zp_name, scale_name = self.quantize_initializer(
-                        initializer, quant_type, reduce_range=reduce_range, symmetric=symmetric
+                        initializer,
+                        self.weight_qType if initializer_use_weight_qType else self.activation_qType,
+                        reduce_range,
                     )
 
                 quantized_input_names.append(q_weight_name)
@@ -980,7 +973,7 @@ class ONNXQuantizer:
 
         return quantized_input_names, zero_point_names, scale_names, nodes
 
-    def quantize_initializer(self, weight, qType, reduce_range=False, keep_float_weight=False, symmetric=False):
+    def quantize_initializer(self, weight, qType, reduce_range=False, keep_float_weight=False):
         """
         :param weight: TensorProto initializer
         :param qType: type to quantize to
@@ -996,6 +989,13 @@ class ONNXQuantizer:
                 quantized_value.zp_name,
                 quantized_value.scale_name,
             )
+
+        # Use quantization overrides if provided by the user.
+        quant_overrides = self.tensor_quant_overrides.get(weight.name, {})
+        symmetric = quant_overrides.get("symmetric", self.is_weight_symmetric)
+        reduce_range = quant_overrides.get("reduce_range", self.reduce_range and reduce_range)
+        if "quant_type" in quant_overrides:
+            qType = quant_overrides["quant_type"].tensor_type
 
         q_weight_name = weight.name + TENSOR_NAME_QUANT_SUFFIX
         zp_name = weight.name + "_zero_point"

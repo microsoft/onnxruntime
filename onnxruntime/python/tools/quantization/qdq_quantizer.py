@@ -302,21 +302,10 @@ class QDQQuantizer(ONNXQuantizer):
                 keep_float_weight=self.add_qdq_pair_to_weight,
             )
         else:
-            quant_overrides = self.tensor_quant_overrides.get(weight_name, {})
-
-            quant_type = self.weight_qType if tensor_type is QDQQuantTensorType.WEIGHT else self.activation_qType
-            if "quant_type" in quant_overrides:
-                quant_type = quant_overrides["quant_type"].tensor_type
-
-            reduce_range = quant_overrides.get("reduce_range", False)
-            symmetric = quant_overrides.get("symmetric", self.is_weight_symmetric)
-
             q_weight_name, zp_name, scale_name = self.quantize_initializer(
                 weight_proto,
-                quant_type,
-                reduce_range=reduce_range,
+                self.weight_qType if tensor_type is QDQQuantTensorType.WEIGHT else self.activation_qType,
                 keep_float_weight=self.add_qdq_pair_to_weight,
-                symmetric=symmetric,
             )
 
         weight_dequant_output = add_dequant_output_suffix(weight_name)
