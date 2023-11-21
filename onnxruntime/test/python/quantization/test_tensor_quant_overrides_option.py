@@ -22,15 +22,14 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         ]
 
         self.weight = np.array([[[-1.0, -2.0], [1.0, 2.0]]], dtype="float32")
-        
         self.default_act_qtype = quantization.QuantType.QUInt8
         self.default_wgt_qtype = quantization.QuantType.QUInt8
 
         self.expected_zp_scales = {
-                "INP": (0, np.float32(0.0235294122248888)),
-                "SIG_OUT": (0, np.float32(0.003911871928721666)),
-                "OUT": (0, np.float32(0.001866568811237812)),
-                "WGT": (128, np.float32(0.01568627543747425)),
+            "INP": (0, np.float32(0.0235294122248888)),
+            "SIG_OUT": (0, np.float32(0.003911871928721666)),
+            "OUT": (0, np.float32(0.001866568811237812)),
+            "WGT": (128, np.float32(0.01568627543747425)),
         }
 
     def perform_qdq_quantization(self, output_model_name, tensor_quant_overrides=None):
@@ -43,7 +42,6 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         #    (output)
 
         inp = helper.make_tensor_value_info("INP", TensorProto.FLOAT, self.activations[0].shape)
-        sigmoid_out = helper.make_tensor_value_info("SIG_OUT", TensorProto.FLOAT, [None, None, None])
         sigmoid_node = onnx.helper.make_node("Sigmoid", ["INP"], ["SIG_OUT"])
 
         out = helper.make_tensor_value_info("OUT", TensorProto.FLOAT, [None, None, None])
@@ -123,8 +121,10 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         """
         inp_zp, inp_sc, sig_out_zp, sig_out_sc, wgt_zp, wgt_sc, _, _ = self.perform_qdq_quantization(
             "model_quant_overrides1.onnx",
-                tensor_quant_overrides={"SIG_OUT": {"scale": 1.0, "zero_point": 127},
-                    "WGT": {"quant_type": quantization.QuantType.QInt8, "symmetric": True, "reduce_range": True}},
+            tensor_quant_overrides={
+                "SIG_OUT": {"scale": 1.0, "zero_point": 127},
+                "WGT": {"quant_type": quantization.QuantType.QInt8, "symmetric": True, "reduce_range": True},
+            },
         )
 
         # Input should have same quant params
@@ -204,6 +204,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
             )
 
         self.assertTrue("option 'rmax' is invalid with 'scale' and 'zero_point'" in str(context.exception))
+
 
 if __name__ == "__main__":
     unittest.main()
