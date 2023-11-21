@@ -785,8 +785,8 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vect
         option = onnx::OpSchema::FormalParameterOption::Variadic;
         min_arity = is_input ? op->GetVariadicInputMinArity(op) : op->GetVariadicOutputMinArity(op);
         is_homogeneous = static_cast<bool>(is_input
-                                           ? op->GetVariadicInputHomogeneity(op)
-                                           : op->GetVariadicOutputHomogeneity(op));
+                                               ? op->GetVariadicInputHomogeneity(op)
+                                               : op->GetVariadicOutputHomogeneity(op));
       }
     }
 
