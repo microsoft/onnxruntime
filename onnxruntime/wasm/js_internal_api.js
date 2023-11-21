@@ -167,3 +167,9 @@ Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, relea
     return backend['createDownloader'](gpuBuffer, size, type);
   };
 };
+
+Module["createFileFromArrayBuffer"] = (path, buffer) => {
+  const weightsFile = FS.create(path);
+  weightsFile.contents = new Uint8Array(buffer);
+  weightsFile.usedBytes = buffer.byteLength;
+}

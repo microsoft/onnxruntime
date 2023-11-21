@@ -122,6 +122,14 @@ ort_session_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateSession(void* data,
                                                            ort_session_options_handle_t session_options);
 
 /**
+ * create an instance of ORT session.
+ * @param path a pointer to a string that contains the path to ONNX or ORT format model.
+ * @returns an ORT session handle. Caller must release it after use by calling OrtReleaseSession().
+ */
+ort_session_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateSessionFromFile(char* path,
+                                                           ort_session_options_handle_t session_options);
+
+/**
  * release the specified ORT session.
  */
 void EMSCRIPTEN_KEEPALIVE OrtReleaseSession(ort_session_handle_t session);

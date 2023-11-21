@@ -226,6 +226,8 @@ export declare namespace InferenceSession {
   }
   export interface WebAssemblyExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'wasm';
+    externalWeights?: ArrayBuffer;
+    externalWeightsFilename?: string;
   }
   export interface WebGLExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'webgl';
@@ -237,6 +239,8 @@ export declare namespace InferenceSession {
   export interface WebGpuExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'webgpu';
     preferredLayout?: 'NCHW'|'NHWC';
+    externalWeights?: ArrayBuffer;
+    externalWeightsFilename?: string;
   }
   export interface WebNNExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'webnn';

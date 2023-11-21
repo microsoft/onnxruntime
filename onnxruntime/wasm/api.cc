@@ -195,6 +195,19 @@ OrtSession* OrtCreateSession(void* data, size_t data_length, OrtSessionOptions* 
              : nullptr;
 }
 
+OrtSession* OrtCreateSessionFromFile(char* path, OrtSessionOptions* session_options) {
+#if defined(__EMSCRIPTEN_PTHREADS__)
+  RETURN_NULLPTR_IF_ERROR(DisablePerSessionThreads, session_options);
+#else
+  // must disable thread pool when WebAssembly multi-threads support is disabled.
+  RETURN_NULLPTR_IF_ERROR(SetIntraOpNumThreads, session_options, 1);
+  RETURN_NULLPTR_IF_ERROR(SetSessionExecutionMode, session_options, ORT_SEQUENTIAL);
+#endif
+
+  OrtSession* session = nullptr;
+  return (CHECK_STATUS(CreateSession, g_env, path, session_options, &session) == ORT_OK) ? session : nullptr;
+}
+
 void OrtReleaseSession(OrtSession* session) {
   Ort::GetApi().ReleaseSession(session);
 }

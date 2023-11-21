@@ -9,6 +9,7 @@ import {setSessionOptions} from './session-options';
 import {dataLocationStringToEnum, getTensorElementSize, isGpuBufferSupportedType, logLevelStringToEnum, tensorDataTypeEnumToString, tensorDataTypeStringToEnum, tensorTypeToTypedArrayConstructor} from './wasm-common';
 import {getInstance} from './wasm-factory';
 import {allocWasmString, checkLastError} from './wasm-utils';
+import WebAssemblyExecutionProviderOption = InferenceSession.WebAssemblyExecutionProviderOption
 
 let ortEnvInitialized = false;
 
@@ -123,6 +124,21 @@ export const createSessionFinalize =
     (modelData: SerializableModeldata, options?: InferenceSession.SessionOptions): SerializableSessionMetadata => {
       const wasm = getInstance();
 
+      const externalWeightsOption: WebAssemblyExecutionProviderOption|undefined =
+          options?.executionProviders?.find(e => (e as WebAssemblyExecutionProviderOption).externalWeights) as
+          WebAssemblyExecutionProviderOption;
+      let externalWeightsPath = '';
+      if (externalWeightsOption) {
+        const modelDirectory = '/home/web_user/' + Math.random().toString(10);
+        wasm.FS.mkdir(modelDirectory);
+        const modelName = modelDirectory + '/model.onnx';
+
+        externalWeightsPath = `${modelDirectory}/${externalWeightsOption.externalWeightsFilename}`;
+        wasm.createFileFromArrayBuffer(externalWeightsPath, externalWeightsOption.externalWeights!);
+        wasm.createFileFromArrayBuffer(modelName, new Uint8Array(wasm.HEAPU8.buffer, modelData[0], modelData[1]));
+        wasm.FS.chdir(modelDirectory);
+      }
+
       let sessionHandle = 0;
       let sessionOptionsHandle = 0;
       let ioBindingHandle = 0;
@@ -132,8 +148,13 @@ export const createSessionFinalize =
 
       try {
         [sessionOptionsHandle, allocs] = setSessionOptions(options);
-
-        sessionHandle = wasm._OrtCreateSession(modelData[0], modelData[1], sessionOptionsHandle);
+        // when external weights are passed, model must be created from a file
+        if (externalWeightsOption) {
+          const modelDirStringPtr = allocWasmString(modelName, allocs);
+          sessionHandle = wasm._OrtCreateSessionFromFile(modelDirStringPtr, sessionOptionsHandle);
+        } else {
+          sessionHandle = wasm._OrtCreateSession(modelData[0], modelData[1], sessionOptionsHandle);
+        }
         if (sessionHandle === 0) {
           checkLastError('Can\'t create a session.');
         }
@@ -206,6 +227,9 @@ export const createSessionFinalize =
           wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
         }
         allocs.forEach(alloc => wasm._free(alloc));
+        if (externalWeightsOption) {
+          wasm.FS.unlink(externalWeightsPath);
+        }
       }
     };
 

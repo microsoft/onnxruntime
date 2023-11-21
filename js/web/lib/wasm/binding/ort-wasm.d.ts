@@ -17,6 +17,8 @@ export declare namespace JSEP {
 
 export interface OrtWasmModule extends EmscriptenModule {
   // #region emscripten functions
+  FS: {unlink(path: string): void; mkdir(path: string): void; chdir(path: string): void};
+
   stackSave(): number;
   stackRestore(stack: number): void;
   stackAlloc(size: number): number;
@@ -24,6 +26,7 @@ export interface OrtWasmModule extends EmscriptenModule {
   UTF8ToString(offset: number, maxBytesToRead?: number): string;
   lengthBytesUTF8(str: string): number;
   stringToUTF8(str: string, offset: number, maxBytes: number): void;
+  createFileFromArrayBuffer(path: string, buffer: ArrayBuffer): void;
   // #endregion
 
   // #region ORT APIs
@@ -32,6 +35,7 @@ export interface OrtWasmModule extends EmscriptenModule {
   _OrtGetLastError(errorCodeOffset: number, errorMessageOffset: number): void;
 
   _OrtCreateSession(dataOffset: number, dataLength: number, sessionOptionsHandle: number): number;
+  _OrtCreateSessionFromFile(path: number, sessionOptionsHandle: number): number;
   _OrtReleaseSession(sessionHandle: number): void;
   _OrtGetInputOutputCount(sessionHandle: number, inputCountOffset: number, outputCountOffset: number): number;
   _OrtGetInputName(sessionHandle: number, index: number): number;
