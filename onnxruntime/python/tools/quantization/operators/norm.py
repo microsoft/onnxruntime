@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from ..quant_utils import find_by_name
 from .qdq_base_operator import QDQOperatorBase
 
 
@@ -19,7 +18,7 @@ class QDQNormalization(QDQOperatorBase):
         self.quantizer.quantize_activation_tensor(node.input[0])
 
         # Scale
-        scale_is_initializer = bool(find_by_name(node.input[1], self.quantizer.model.initializer()))
+        scale_is_initializer = self.quantizer.is_input_a_initializer(node.input[1])
 
         if self.quantizer.is_per_channel() and scale_is_initializer:
             channel_axis = self.quantizer.qdq_op_type_per_channel_support_to_axis.get(node.op_type, 1)
