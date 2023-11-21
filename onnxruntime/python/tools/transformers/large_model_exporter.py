@@ -159,8 +159,7 @@ def retrieve_onnx_inputs(model: nn.Module, sample_inputs: tuple, with_past: bool
             value.to(model.device)
         if "use_cache" in key:
             onnx_inputs[idx] = with_past
-            out = model(sample_inputs[0], attention_mask=sample_inputs[1],
-                        use_cache=with_past) if with_past else out
+            out = model(sample_inputs[0], attention_mask=sample_inputs[1], use_cache=with_past) if with_past else out
 
     return input_keys, onnx_inputs, out.past_key_values
 
