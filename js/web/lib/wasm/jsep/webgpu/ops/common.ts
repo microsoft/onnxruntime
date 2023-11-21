@@ -782,7 +782,7 @@ class ShaderHelperImpl implements ShaderHelper {
   }
 
   use(helperLike: {impl: () => string}): ShaderHelper {
-    this.helpers.push(helperLike as IndicesHelper);
+    this.helpers.push(helperLike);
     return this;
   }
 
