@@ -264,7 +264,7 @@ const createEinsumProgramInfo = (inputs: readonly TensorView[], einsumEquation: 
 
   const programUniforms: ProgramUniform[] =
       inputs.filter((_, index) => enableInputShapesUniforms[index])
-          .map((input, _) => [...createTensorShapeVariables(input.dims)])
+          .map((input, _) => createTensorShapeVariables(input.dims))
           .reduce(
               (acc, inputProgramUniforms) => acc.concat(inputProgramUniforms), [{type: 'uint32', data: outputSize}]);
   if (enableOutputShapesUniforms) {
