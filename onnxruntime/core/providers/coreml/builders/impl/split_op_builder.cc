@@ -55,7 +55,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& input_defs = node.InputDefs();
 
   std::vector<int64_t> data_shape;
-  ORT_RETURN_IF_NOT(GetStaticShape(*node.InputDefs()[0], data_shape, logger), "Failed to get input shape.");
+  ORT_RETURN_IF_NOT(GetShape(*node.InputDefs()[0], data_shape, logger), "Failed to get input shape.");
 
   NodeAttrHelper helper(node);
   const auto axis = helper.Get("axis", 0);
@@ -71,26 +71,26 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     // if "split" is explicitly provided as an input
     const auto& split_tensor = *model_builder.GetInitializerTensors().at(input_defs[1]->Name());
     Initializer unpacked_tensor(split_tensor);
-    auto split_span = unpacked_tensor.DataAsSpan<int64_t>();
+    auto split_span = unpacked_tensor.DataAsSpan<uint64_t>();
     auto split_sizes = split_span.size();
-    num_outputs = SafeInt<uint64_t>(split_sizes);
+    num_outputs = narrow<uint64_t>(split_sizes);
     for (size_t i = 0; i < split_sizes; i++) {
-      coreml_splitnd->add_splitsizes(SafeInt<uint64_t>(split_span[i]));
+      coreml_splitnd->add_splitsizes(split_span[i]);
     }
   } else if (node.SinceVersion() < 18) {
-    num_outputs = node.OutputDefs().size();
+    num_outputs = narrow<uint64_t>(node.OutputDefs().size());
     coreml_splitnd->set_numsplits(num_outputs);
   } else {
-    num_outputs = SafeInt<uint64_t>(helper.Get("num_outputs", 2));
+    num_outputs = static_cast<uint64_t>(helper.Get("num_outputs").value());
     auto split_dim_size = data_shape[HandleNegativeAxis(axis, data_shape.size())];
-    uint64_t chunk_size = SafeInt<uint64_t>((split_dim_size + num_outputs - 1) / num_outputs);
+    uint64_t chunk_size = narrow<uint64_t>((split_dim_size + num_outputs - 1) / num_outputs);
     uint64_t remainder = split_dim_size % chunk_size;
     if (remainder) {
       // uneven
       auto split_sizes = std::vector<uint64_t>(num_outputs, chunk_size);
       split_sizes.back() = remainder;
       for (size_t i = 0; i < split_sizes.size(); i++) {
-        coreml_splitnd->add_splitsizes(SafeInt<uint64_t>(split_sizes[i]));
+        coreml_splitnd->add_splitsizes(split_sizes[i]);
       }
     } else {
       // even
@@ -120,10 +120,9 @@ bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
 
   NodeAttrHelper helper(node);
   const auto axis = helper.Get("axis", 0);
-  const auto num_outputs = helper.Get("num_outputs", -1);
 
   std::vector<int64_t> input_shape;
-  if (!GetStaticShape(*input_defs[0], input_shape, logger))
+  if (!GetShape(*input_defs[0], input_shape, logger))
     return false;
 
   const auto split_dims_at_axis = input_shape[HandleNegativeAxis(axis, input_shape.size())];
@@ -154,15 +153,20 @@ bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
     }
   } else {
     if (node.SinceVersion() >= 18) {
-      if (num_outputs < 2) {
-        LOGS(logger, VERBOSE) << "Invalid num_outputs. The value can not be lower than 1.\n"
-                              << "CoreML SplitND requires at least 2 outputs. num_outputs: " << num_outputs;
+      const auto num_outputs = helper.Get("num_outputs");
+      if (!num_outputs.has_value()) {
+        LOGS(logger, VERBOSE) << "No 'num_outputs' provided. For split 18+, num_outputs is a required attribute.";
         return false;
       }
-      if (num_outputs != static_cast<int32_t>(node.OutputDefs().size()) || num_outputs > split_dims_at_axis) {
+      if (num_outputs.value() < 2) {
+        LOGS(logger, VERBOSE) << "Invalid num_outputs. The value can not be lower than 1.\n"
+                              << "CoreML SplitND requires at least 2 outputs. num_outputs: " << num_outputs.value();
+        return false;
+      }
+      if (num_outputs.value() != static_cast<int32_t>(node.OutputDefs().size()) || num_outputs.value() > split_dims_at_axis) {
         LOGS(logger, VERBOSE) << "Invalid num_outputs provided.\n."
                               << "The value should be smaller or equal to the size of dimension being split. num_outputs: "
-                              << num_outputs;
+                              << num_outputs.value();
         return false;
       }
     }

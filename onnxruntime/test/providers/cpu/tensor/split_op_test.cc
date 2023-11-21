@@ -169,11 +169,11 @@ TEST(SplitOperatorTest, Axis0UnequalSplitFloat) {
                      {3.f, 4.f,
                       5.f, 6.f,
                       7.f, 8.f}});
-// TensorRT parser: Assertion failed: axis != BATCH_DIM
-#ifdef USE_COREML
-  RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, false, true);
-#endif
+
+  // TensorRT parser: Assertion failed: axis != BATCH_DIM
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider});
+  // CoreML EP, etc. requires split to be an input. Same applies to below sets of tests.
+  RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, false, true);
 }
 
 TEST(SplitOperatorTest, Axis0UnequalSplitString) {
@@ -195,10 +195,8 @@ TEST(SplitOperatorTest, Axis0UnequalSplitString) {
                      {"c", "d",
                       "e", "f",
                       "g", "h"}});
-// TensorRT parser: Assertion failed: axis != BATCH_DIM
-#ifdef USE_COREML
+  // TensorRT parser: Assertion failed: axis != BATCH_DIM
   RunTest<std::string>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, false, true);
-#endif
   RunTest<std::string>(axis, splits, input, outputs, {kTensorrtExecutionProvider});
 }
 
@@ -218,9 +216,7 @@ TEST(SplitOperatorTest, Axis1EqualSplitFloat) {
   outputs.push_back({{2, 2},
                      {3.f, 4.f,
                       7.f, 8.f}});
-#ifdef USE_COREML
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true);
-#endif
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider});
 }
 
@@ -240,9 +236,8 @@ TEST(SplitOperatorTest, Axis1EqualSplitString) {
   outputs.push_back({{2, 2},
                      {"c", "d",
                       "g", "h"}});
-#ifdef USE_COREML
+
   RunTest<std::string>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true);
-#endif
   RunTest<std::string>(axis, {}, input, outputs, {kTensorrtExecutionProvider});
 }
 
@@ -264,9 +259,8 @@ TEST(SplitOperatorTest, Axis1UnequalSplitFloat) {
   outputs.push_back({{2, 1},
                      {4.f,
                       8.f}});
-#ifdef USE_COREML
+
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, false, true);
-#endif
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider});
 }
 
@@ -288,9 +282,8 @@ TEST(SplitOperatorTest, Axis1UnequalSplitString) {
   outputs.push_back({{2, 1},
                      {"d",
                       "h"}});
-#ifdef USE_COREML
+
   RunTest<std::string>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, false, true);
-#endif
   RunTest<std::string>(axis, splits, input, outputs, {kTensorrtExecutionProvider});
 }
 
@@ -332,9 +325,8 @@ TEST(SplitOperatorTest, Axis2EqualSplit) {
 
                       17.f, 18.f,
                       23.f, 24.f}});
-#ifdef USE_COREML
+
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true);
-#endif
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider});
 }
 
@@ -366,9 +358,8 @@ TEST(SplitOperatorTest, Axis2UnequalSplit) {
 
                       16.f, 17.f, 18.f,
                       22.f, 23.f, 24.f}});
-#ifdef USE_COREML
+
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, false, true);
-#endif
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider});
 }
 
@@ -401,9 +392,8 @@ TEST(SplitOperatorTest, Axis1SplitMiddleDimensionEqually) {
 
                       25.f, 26.f, 27.f, 28.f,
                       29.f, 30.f, 31.f, 32.f}});
-#ifdef USE_COREML
+
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true);
-#endif
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider});
 }
 
@@ -429,9 +419,8 @@ TEST(SplitOperatorTest, Axis1SplitMiddleDimensionUnequally) {
                       21.f, 22.f, 23.f, 24.f,
                       25.f, 26.f, 27.f, 28.f,
                       29.f, 30.f, 31.f, 32.f}});
-#ifdef USE_COREML
+
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, false, true);
-#endif
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider});
 }
 
@@ -451,9 +440,8 @@ TEST(SplitOperatorTest, NegativeAxis) {
   outputs.push_back({{2, 2},
                      {3.f, 4.f,
                       7.f, 8.f}});
-#ifdef USE_COREML
+
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true);
-#endif
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider});
 }
 
@@ -469,9 +457,8 @@ TEST(SplitOperatorTest, InvalidAxis) {
                               7.f, 8.f}};
 
   outputs.push_back({{1}, {0.f}});
-#ifdef USE_COREML
+
   RunTest<float>(axis, {}, input, outputs, {}, true, true, -1, true, "Invalid value of attribute 'axis'");
-#endif
   RunTest<float>(axis, {}, input, outputs, {}, true, false, -1, true, "Invalid value of attribute 'axis'");
 }
 
@@ -491,10 +478,9 @@ TEST(SplitOperatorTest, SplitAttributeSumTooSmall) {
 
   outputs.push_back({{1, 2}, {1.f, 2.f}});
   outputs.push_back({{2, 2}, {3.f, 4.f, 5.f, 6.f}});
-#ifdef USE_COREML
+
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, true, true, -1, true,
                  "[ShapeInferenceError] Mismatch between the sum of 'split'");
-#endif
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, true, false, -1, true,
                  "[ShapeInferenceError] Mismatch between the sum of 'split'");  // TensorRT parser: Assertion failed: axis != BATCH_DIM
 }
@@ -514,10 +500,8 @@ TEST(SplitOperatorTest, InvalidValueInSplitAttribute) {
   outputs.push_back({{1, 2}, {1.f, 2.f}});
   outputs.push_back({{3, 2}, {3.f, 4.f, 5.f, 6.f, 7.f, 8.f}});
 
-#ifdef USE_COREML
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, true, true, -1, true,
                  "[ShapeInferenceError] Mismatch between number of splits");
-#endif
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, true, false, -1, true,
                  "[ShapeInferenceError] Mismatch between number of splits");  // TensorRT parser: Assertion failed: axis != BATCH_DIM
 }
