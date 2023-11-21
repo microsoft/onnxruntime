@@ -185,7 +185,6 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         new_bias_zp, new_bias_sc = compute_scale_zp(bias_rmin, bias_rmax, bias_qmin, bias_qmax, symmetric=True)
         self.assertEqual(bias_zp.int32_data[0], new_bias_zp)
         self.assertEqual(bias_sc.float_data[0], np.float32(new_bias_sc))
-        print(new_bias_zp, new_bias_sc)
 
     def test_qdq_overrides2(self):
         """
@@ -236,7 +235,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
 
     def test_override_validation_bad_combination(self):
         """
-        Test that specifying a scale/zero_point with rmax should fail.
+        Test that specifying a scale/zero_point with rmax/rmin/symmetric/reduce_range should fail.
         """
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(
@@ -245,6 +244,66 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
             )
 
         self.assertTrue("option 'rmax' is invalid with 'scale' and 'zero_point'" in str(context.exception))
+
+        with self.assertRaises(ValueError) as context:
+            self.perform_qdq_quantization(
+                "model_validation.onnx",
+                tensor_quant_overrides={"SIG_OUT": {"scale": 0.0, "zero_point": 0, "rmin": 10.0}},
+            )
+
+        self.assertTrue("option 'rmin' is invalid with 'scale' and 'zero_point'" in str(context.exception))
+
+        with self.assertRaises(ValueError) as context:
+            self.perform_qdq_quantization(
+                "model_validation.onnx",
+                tensor_quant_overrides={"SIG_OUT": {"scale": 0.0, "zero_point": 0, "symmetric": True}},
+            )
+
+        self.assertTrue("option 'symmetric' is invalid with 'scale' and 'zero_point'" in str(context.exception))
+
+        with self.assertRaises(ValueError) as context:
+            self.perform_qdq_quantization(
+                "model_validation.onnx",
+                tensor_quant_overrides={"SIG_OUT": {"scale": 0.0, "zero_point": 0, "reduce_range": True}},
+            )
+
+        self.assertTrue("option 'reduce_range' is invalid with 'scale' and 'zero_point'" in str(context.exception))
+
+    def test_override_invalid_for_initializer(self):
+        """
+        Test that specifying a scale, zero_point, rmin, rmax for initializers should fail.
+        """
+        with self.assertRaises(ValueError) as context:
+            self.perform_qdq_quantization(
+                "model_validation.onnx",
+                tensor_quant_overrides={"WGT": {"scale": 0.0}},
+            )
+
+        self.assertTrue("option 'scale' is invalid for initializers" in str(context.exception))
+
+        with self.assertRaises(ValueError) as context:
+            self.perform_qdq_quantization(
+                "model_validation.onnx",
+                tensor_quant_overrides={"WGT": {"zero_point": 0}},
+            )
+
+        self.assertTrue("option 'zero_point' is invalid for initializers" in str(context.exception))
+
+        with self.assertRaises(ValueError) as context:
+            self.perform_qdq_quantization(
+                "model_validation.onnx",
+                tensor_quant_overrides={"WGT": {"rmin": 0.0}},
+            )
+
+        self.assertTrue("option 'rmin' is invalid for initializers" in str(context.exception))
+
+        with self.assertRaises(ValueError) as context:
+            self.perform_qdq_quantization(
+                "model_validation.onnx",
+                tensor_quant_overrides={"WGT": {"rmax": 0.0}},
+            )
+
+        self.assertTrue("option 'rmax' is invalid for initializers" in str(context.exception))
 
 
 if __name__ == "__main__":
