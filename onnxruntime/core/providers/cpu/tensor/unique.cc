@@ -146,9 +146,9 @@ class Subtensor {
 
 template <typename T>
 static void CreateFlattenedOutput(OpKernelContext& context,
-                                  const std::map<const T, int64_t>& offsets,         // map sorted key to unsorted idx
-                                  const std::vector<std::vector<int64_t>>& indices,  // unsorted
-                                  const std::vector<int64_t>& inverse_index,         // unsorted
+                                  const std::vector<std::pair<const T, int64_t>>& mapping,  // map sorted key to unsorted idx
+                                  const std::vector<std::vector<int64_t>>& indices,         // unsorted
+                                  const std::vector<int64_t>& inverse_index,                // unsorted
                                   bool sorted) {
   int64_t num_unique = static_cast<int64_t>(indices.size());
   Tensor& Y = *context.Output(0, {num_unique});
@@ -164,14 +164,12 @@ static void CreateFlattenedOutput(OpKernelContext& context,
   gsl::span<int64_t> counts_data = counts != nullptr ? counts->MutableDataAsSpan<int64_t>()
                                                      : gsl::span<int64_t>();
 
-  // iterate using 'offsets' which is sorted, but contains the offset of the unsorted entry
-  auto offsets_iter = offsets.begin();
-  for (int64_t i = 0, end = num_unique; i < end; ++i, ++offsets_iter) {
+  for (size_t i = 0; i < mapping.size(); ++i) {
     // write sequentially if we want sorted output, use the unsorted_idx if not
-    auto unsorted_idx = offsets_iter->second;
+    auto unsorted_idx = mapping[i].second;
     auto output_idx = sorted ? i : unsorted_idx;
 
-    Y_data[onnxruntime::narrow<size_t>(output_idx)] = offsets_iter->first;
+    Y_data[onnxruntime::narrow<size_t>(output_idx)] = mapping[i].first;
 
     if (indices_out) {
       indices_data[onnxruntime::narrow<size_t>(output_idx)] = indices[onnxruntime::narrow<size_t>(unsorted_idx)].front();
@@ -188,8 +186,9 @@ static void CreateFlattenedOutput(OpKernelContext& context,
       std::vector<int64_t> unsorted_to_sorted;
       unsorted_to_sorted.resize(onnxruntime::narrow<size_t>(num_unique));
       int64_t sorted_idx = 0;
-      for (const auto& offset : offsets) {
-        unsorted_to_sorted[onnxruntime::narrow<size_t>(offset.second)] = sorted_idx++;
+
+      for (const auto& mp : mapping) {
+        unsorted_to_sorted[onnxruntime::narrow<size_t>(mp.second)] = sorted_idx++;
       }
 
       for (size_t i = 0, end = inverse_index.size(); i < end; ++i) {
@@ -207,9 +206,9 @@ template <typename T>
 static void CreateOutput(OpKernelContext& context,
                          const TensorShape& subtensor_shape,
                          int64_t axis,
-                         const std::map<const Subtensor<T>, int64_t>& offsets,  // map sorted key to unsorted idx
-                         const std::vector<std::vector<int64_t>>& indices,      // unsorted
-                         const std::vector<int64_t>& inverse_index,             // unsorted
+                         const std::vector<std::pair<const Subtensor<T>, int64_t>>& mapping,  // map sorted key to unsorted idx
+                         const std::vector<std::vector<int64_t>>& indices,                    // unsorted
+                         const std::vector<int64_t>& inverse_index,                           // unsorted
                          bool sorted) {
   int64_t num_unique = static_cast<int64_t>(indices.size());
 
@@ -240,15 +239,12 @@ static void CreateOutput(OpKernelContext& context,
   gsl::span<int64_t> counts_data = counts != nullptr ? counts->MutableDataAsSpan<int64_t>()
                                                      : gsl::span<int64_t>();
 
-  // iterate using 'offsets' which is sorted, but contains the offset of the unsorted entry
-  auto offsets_iter = offsets.begin();
-
-  for (int64_t i = 0, end = num_unique; i < end; ++i, ++offsets_iter) {
+  for (size_t i = 0; i < mapping.size(); ++i) {
     // write sequentially if we want sorted output, use the unsorted_idx if not
-    auto unsorted_idx = offsets_iter->second;
+    auto unsorted_idx = mapping[i].second;
     auto output_idx = (sorted ? i : unsorted_idx);
 
-    const auto& items = offsets_iter->first.GetItems();
+    const auto& items = mapping[i].first.GetItems();
     auto item = items.cbegin();
     assert(static_cast<int64_t>(items.size()) == num_rows * num_cols);
 
@@ -283,8 +279,9 @@ static void CreateOutput(OpKernelContext& context,
       std::vector<int64_t> unsorted_to_sorted;
       unsorted_to_sorted.resize(onnxruntime::narrow<size_t>(num_unique));
       int64_t sorted_idx = 0;
-      for (const auto& offset : offsets) {
-        unsorted_to_sorted[onnxruntime::narrow<size_t>(offset.second)] = sorted_idx++;
+
+      for (const auto& mp : mapping) {
+        unsorted_to_sorted[onnxruntime::narrow<size_t>(mp.second)] = sorted_idx++;
       }
 
       for (size_t i = 0, end = inverse_index.size(); i < end; ++i) {
@@ -308,19 +305,32 @@ Status Unique::ComputeImpl(OpKernelContext& context) const {
   auto data = input.DataAsSpan<T>();
 
   if (flatten_) {
-    std::map<const T, int64_t> offsets;  // offset of entry in indices. provides map between sorted and unsorted values
+    std::map<const T, int64_t> offsets;  // offset of entry in indices. provides map between sorted and unsorted values. only includes non-nan values
     std::vector<std::vector<int64_t>> indices;
     std::vector<int64_t> inverse_index;
 
+    std::vector<std::pair<const T, int64_t>> mapping;  // provides final mapping between values and indices
+
     indices.reserve(data.size() / 2);  // arbitrary value. at worst 1 realloc but could be too large
     inverse_index.reserve(data.size());
+    mapping.reserve(data.size() / 2);
 
     int64_t num_unique = 0;
 
     for (int64_t i = 0, end = input.Shape().Size(); i < end; ++i) {
-      auto entry = offsets.find(data[onnxruntime::narrow<size_t>(i)]);
+      const auto& elem = data[onnxruntime::narrow<size_t>(i)];
+
+      if (elem != elem) {
+        mapping.push_back({elem, num_unique});
+        inverse_index.push_back({num_unique});
+        indices.push_back({i});
+        ++num_unique;
+        continue;
+      }
+
+      auto entry = offsets.find(elem);
       if (entry == offsets.end()) {
-        offsets[data[onnxruntime::narrow<size_t>(i)]] = num_unique;
+        offsets[elem] = num_unique;
         inverse_index.push_back({num_unique});
         indices.push_back({i});
         ++num_unique;
@@ -331,7 +341,11 @@ Status Unique::ComputeImpl(OpKernelContext& context) const {
       }
     }
 
-    CreateFlattenedOutput(context, offsets, indices, inverse_index, sort_);
+    for (const auto& offset : offsets) {
+      mapping.push_back(offset);
+    }
+
+    CreateFlattenedOutput(context, mapping, indices, inverse_index, sort_);
   } else {
     const auto& input_shape = input.Shape();
     const int64_t input_dims = static_cast<int64_t>(input_shape.NumDimensions());
@@ -349,14 +363,33 @@ Status Unique::ComputeImpl(OpKernelContext& context) const {
     std::vector<std::vector<int64_t>> indices;
     std::vector<int64_t> inverse_index;
 
+    std::vector<std::pair<const Subtensor<T>, int64_t>> mapping;  // provides final mapping between values and indices
+
     indices.reserve(data.size() / 2);  // arbitrary value. at worst 1 realloc but could be too large
     inverse_index.reserve(data.size());
+    mapping.reserve(data.size() / 2);
 
     int64_t num_unique = 0;
     int64_t n_axis = input_shape[onnxruntime::narrow<size_t>(axis)];
 
     for (int64_t i = 0; i < n_axis; ++i) {
       Subtensor<T> s(data, subtensor_shape, axis, n_axis, i);
+
+      bool has_nan = false;
+      for (const auto& item : s.GetItems()) {
+        if (item != item) {
+          has_nan = true;
+          break;
+        }
+      }
+
+      if (has_nan) {
+        mapping.push_back({std::move(s), num_unique});
+        inverse_index.push_back({num_unique});
+        indices.push_back({i});
+        ++num_unique;
+        continue;
+      }
 
       auto entry = offsets.find(s);
       if (entry == offsets.end()) {
@@ -371,7 +404,11 @@ Status Unique::ComputeImpl(OpKernelContext& context) const {
       }
     }
 
-    CreateOutput(context, subtensor_shape, axis, offsets, indices, inverse_index, sort_);
+    for (auto& offset : offsets) {
+      mapping.push_back(std::move(offset));
+    }
+
+    CreateOutput(context, subtensor_shape, axis, mapping, indices, inverse_index, sort_);
   }
 
   return Status::OK();
