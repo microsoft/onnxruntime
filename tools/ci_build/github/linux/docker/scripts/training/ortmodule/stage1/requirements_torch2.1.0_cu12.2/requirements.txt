@@ -4,5 +4,5 @@ torch==2.1.0+cu121
 torchvision==0.16.0+cu121
 torchtext==0.16.0
 # TODO(bmeswani): packaging 22.0 removes support for LegacyVersion leading to errors because transformers 4.4.2 uses LegacyVersion
-packaging==21.3
+packaging==23.1
 setuptools>=68.2.2
