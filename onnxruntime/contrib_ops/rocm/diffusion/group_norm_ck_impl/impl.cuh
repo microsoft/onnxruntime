@@ -79,19 +79,19 @@ using device_normalization_f16_instances =
     >;
 
 // Use this function to get implementation
-template <typename InDataType,
+template <typename XDataType,
           typename GammaDataType,
           typename BetaDataType,
-          typename AccDataType,
-          typename OutDataType,
+          typename YDataType,
+          typename SaveMeanInvStdDataType,
           typename YElementwiseOperation,
           ck::index_t Rank,
           ck::index_t NumReduceDim>
-std::vector<std::unique_ptr<DeviceNormalizationFwd<InDataType,
+std::vector<std::unique_ptr<DeviceNormalizationFwd<XDataType,
                                                    GammaDataType,
                                                    BetaDataType,
-                                                   AccDataType,
-                                                   OutDataType,
+                                                   YDataType,
+                                                   SaveMeanInvStdDataType,
                                                    YElementwiseOperation,
                                                    Rank,
                                                    NumReduceDim>>>
