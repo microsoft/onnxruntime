@@ -890,13 +890,29 @@ extern const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchNeon;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchDot;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchDot;
 
+//
+// Quantized 8-bit integer/quantized 4-bit integer matrix/matrix multiply dispatch structure.
+//
+
 struct MLAS_Q8Q4GEMM_DISPATCH;
 
 extern const MLAS_Q8Q4GEMM_DISPATCH MlasQ8Q4GemmDispatchAvx512vnni;
 
+//
+// Float/quantized 4-bit integer matrix/matrix multiply dispatch structure.
+//
+
 struct MLAS_FPQ4GEMM_DISPATCH;
 
 extern const MLAS_FPQ4GEMM_DISPATCH MlasFpQ4GemmDispatchAvx512;
+
+//
+// Float/quantized n-bit integer matrix/matrix multiply dispatch structure.
+//
+
+struct MLAS_SQNBIT_GEMM_DISPATCH;
+
+extern const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon;
 
 //
 // Quantized depthwise convolution kernels.
@@ -1029,6 +1045,8 @@ struct MLAS_PLATFORM {
 
     const MLAS_FPQ4GEMM_DISPATCH* FpQ4GemmDispatch{nullptr};
     const MLAS_Q8Q4GEMM_DISPATCH* Q8Q4GemmDispatch{nullptr};
+
+    const MLAS_SQNBIT_GEMM_DISPATCH* SQNBitGemmDispatch{nullptr};
 };
 
 inline

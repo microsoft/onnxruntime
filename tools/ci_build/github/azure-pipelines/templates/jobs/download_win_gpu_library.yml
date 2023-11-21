@@ -1,0 +1,51 @@
+parameters:
+  - name: DownloadCUDA
+    type: boolean
+    default: false
+  - name: DownloadTRT
+    type: boolean
+    default: false
+  - name: CudaVersion
+    type: string
+    default: '11.8'
+    values:
+      - 11.8
+      - 12.2
+
+steps:
+
+  - ${{ if eq(parameters.DownloadCUDA, true) }}:
+    - powershell: |
+        azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.CudaVersion }} $(Agent.TempDirectory)
+      displayName: 'Download CUDA SDK v${{ parameters.CudaVersion }}'
+    - powershell: |
+        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}\bin;$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}\extras\CUPTI\lib64"
+      displayName: 'Append CUDA SDK Directory to PATH'
+    - task: CmdLine@2
+      inputs:
+        script: |
+          echo %PATH%
+      displayName: 'Print PATH'
+
+  - ${{ if eq(parameters.DownloadTRT, true) }}:
+    - ${{ if eq(parameters.CudaVersion, '11.8') }}:
+      - powershell: |
+          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8 $(Agent.TempDirectory)
+        displayName: 'Download TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8'
+      - powershell: |
+          Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8\lib"
+        displayName: 'Append CUDA SDK Directory to PATH'
+
+    - ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      - powershell: |
+          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0 $(Agent.TempDirectory)
+        displayName: 'Download TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0'
+      - powershell: |
+          Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0\lib"
+        displayName: 'Append CUDA SDK Directory to PATH'
+
+    - task: CmdLine@2
+      inputs:
+        script: |
+          echo %PATH%
+      displayName: 'Print PATH'

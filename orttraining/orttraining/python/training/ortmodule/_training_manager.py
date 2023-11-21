@@ -18,7 +18,7 @@ from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPo
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
 from ._io import _FlattenedModule, _InputInfo, unflatten_user_output
-from ._logger import ORTModuleInitPhase, SuppressLogs, TrackTime
+from ._logger import ORTModuleInitPhase, TrackTime
 from ._runtime_inspector import Phase
 from ._utils import save_tuning_results, set_tuning_results
 from .graph_optimizer_registry import GraphOptimizerRegistry
@@ -358,7 +358,6 @@ class TrainingManager(GraphExecutionManager):
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
     @TrackTime(ORTModuleInitPhase.BUILD_GRAPH)
-    @SuppressLogs(ORTModuleInitPhase.BUILD_GRAPH)
     def _build_graph(self, graph_transformer_config):
         """Build an optimized gradient graph using the module_graph_builder"""
 
@@ -401,7 +400,6 @@ class TrainingManager(GraphExecutionManager):
                 self._gradient_map.append(-1)
 
     @TrackTime(ORTModuleInitPhase.CREATE_SESSION)
-    @SuppressLogs(ORTModuleInitPhase.CREATE_SESSION)
     def _create_execution_agent(self):
         """Creates a TrainingAgent that can run the forward and backward graph on the training model"""
 

@@ -10,7 +10,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo} from '../types';
 
-import {getMaxComponents, ShaderHelper, sumVector, tensorTypeToWsglStorageType} from './common';
+import {getMaxComponents, inputVariable, outputVariable, ShaderHelper, sumVector, tensorTypeToWsglStorageType} from './common';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length !== 1) {
@@ -23,7 +23,6 @@ export interface SoftmaxAttributes extends AttributeWithCacheKey {
 }
 
 const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttributes): ProgramInfo => {
-  const dataType = tensorTypeToWsglStorageType(input.dataType);
   const shape = input.dims;
   const outputSize = ShapeUtil.size(shape);
   const WG = 64;
@@ -39,7 +38,6 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
   const rows = outputSize / cols;
   const components = getMaxComponents(cols);
   const packedCols = cols / components;
-  const valueType = components === 1 ? dataType : `vec${components}<${dataType}>`;
 
   const maxVector = (name: string, components: number) => {
     if (components === 4) {
@@ -52,17 +50,17 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
 
     return name;
   };
-
+  const x = inputVariable('x', input.dataType, input.dims, components);
+  const output = outputVariable('result', input.dataType, input.dims, components);
+  const valueType = x.type.value;
   // 6.2.4 in wgsl spec
-  const threadMaxDecl =
-      dataType === 'f32' ? `var threadMax = ${valueType}(-3.402823e+38f);` : `var threadMax = ${valueType}(-65504.0h);`;
-  const getShaderSource = (_shaderHelper: ShaderHelper) => `
+  const threadMaxDecl = tensorTypeToWsglStorageType(input.dataType) === 'f32' ?
+      `var threadMax = ${valueType}(-3.402823e+38f);` :
+      `var threadMax = ${valueType}(-65504.0h);`;
+  const getShaderSource = (shaderHelper: ShaderHelper) => `
       var<workgroup> rowMaxShared : ${valueType};
       var<workgroup> rowSumShared : ${valueType};
       var<workgroup> threadShared : array<${valueType}, ${WG}>;
-
-      @group(0) @binding(0) var<storage, read> x : array<${valueType}>;
-      @group(0) @binding(1) var<storage, read_write> result : array<${valueType}>;
 
       fn getValue(row: i32, col: i32, row_stride: i32) -> ${valueType} {
         let index = row * row_stride + col;
@@ -73,15 +71,14 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
         let index = row * row_stride + col;
         result[index] = value;
       }
-
-      @compute @workgroup_size(${WG}, 1, 1)
-      fn main(@builtin(local_invocation_id) local_id : vec3<u32>, @builtin(global_invocation_id) global_id : vec3u) {
+      ${shaderHelper.registerUniform('packedCols', 'i32').declareVariables(x, output)}
+      ${shaderHelper.mainStart()}
         let gindex = i32(global_id.x);
         let lindex = i32(local_id.x);
         const wg = ${WG};
         let row = gindex / wg;
-        let cols = ${packedCols};
-        let row_stride : i32 = ${packedCols};
+        let cols = uniforms.packedCols;
+        let row_stride : i32 = uniforms.packedCols;
 
         // find the rows max
         ${threadMaxDecl}
@@ -135,11 +132,15 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
       }`;
   return {
     name: 'Softmax',
-    getRunData: () => ({outputs: [{dims: shape, dataType: input.dataType}], dispatchGroup: {x: rows}}),
+    shaderCache: {hint: `${components}`, inputDependencies: ['type']},
+    getRunData: () => ({
+      outputs: [{dims: shape, dataType: input.dataType}],
+      dispatchGroup: {x: rows},
+      programUniforms: [{type: 'uint32', data: packedCols}]
+    }),
     getShaderSource,
   };
 };
-
 
 export const softmax = (context: ComputeContext, attributes: SoftmaxAttributes): void => {
   validateInputs(context.inputs);
