@@ -230,14 +230,14 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   // dequantize b, only 4b quantization is supported for now
   MlasDequantizeBlockwise<float, 4>(
       tmp_b_data_ptr.get(),               // dequantized output
-                                    b_data,                             // quantized input
-                                    scales_data,                        // quantization scales
-                                    zero_points_data,                   // quantization zero points
-                                    static_cast<int32_t>(block_size_),  // quantization block size
-                                    column_wise_quant_,                 // columnwise quantization or row-wise
-                                    static_cast<int32_t>(K_),           // number of rows in quantized input
-                                    static_cast<int32_t>(N_),           // number of columns in quantized input
-                                    thread_pool);
+      b_data,                             // quantized input
+      scales_data,                        // quantization scales
+      zero_points_data,                   // quantization zero points
+      static_cast<int32_t>(block_size_),  // quantization block size
+      column_wise_quant_,                 // columnwise quantization or row-wise
+      static_cast<int32_t>(K_),           // number of rows in quantized input
+      static_cast<int32_t>(N_),           // number of columns in quantized input
+      thread_pool);
 
 #if 0  // for debug
   auto tm_b_data_ptr_trans = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
@@ -267,10 +267,10 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCpuExecutionProvider,
-                        KernelDefBuilder()
-                            .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
-                            .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
-                        MatMulNBits);
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
+    MatMulNBits);
 
 }  // namespace contrib
 }  // namespace onnxruntime
