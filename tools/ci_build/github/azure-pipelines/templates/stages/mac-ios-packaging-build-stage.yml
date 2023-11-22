@@ -139,7 +139,7 @@ stages:
 
         for POD_NAME in "${{ variables.cPodName}}" "${{ variables.objcPodName }}";
         do
-          ./tools/ci_build/github/apple/assemble_ios_packaging_artifacts.sh \
+          ./tools/ci_build/github/apple/assemble_apple_packaging_artifacts.sh \
             "$(Build.BinariesDirectory)/staging" \
             "$(Build.ArtifactStagingDirectory)" \
             "${POD_NAME}" \
