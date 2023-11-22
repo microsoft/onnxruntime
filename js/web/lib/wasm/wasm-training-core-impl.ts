@@ -406,8 +406,8 @@ export const loadParametersBuffer =
   const locationAsString = 'cpu';
 
   // allocates & copies JavaScript buffer to WASM heap
-  const bufferCount = getParametersSize(trainingSessionId, trainableOnly);
   const bufferByteLength = buffer.length;
+  const bufferCount = bufferByteLength / 4;
   const bufferOffset = wasm._malloc(bufferByteLength);
   wasm.HEAPU8.set(buffer, bufferOffset);
 
