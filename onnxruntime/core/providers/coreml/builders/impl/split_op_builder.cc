@@ -81,7 +81,9 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     num_outputs = narrow<uint64_t>(node.OutputDefs().size());
     coreml_splitnd->set_numsplits(num_outputs);
   } else {
-    num_outputs = static_cast<uint64_t>(helper.Get("num_outputs").value());
+    // note: for opset 18+ 'num_outputs' is a required attribute
+    num_outputs = narrow<uint64_t>(helper.Get("num_outputs").value());
+    // note: checked in IsOpSupportedImpl that ensures the dim value at splitting axis exists
     auto split_dim_size = data_shape[HandleNegativeAxis(axis, data_shape.size())];
     uint64_t chunk_size = narrow<uint64_t>((split_dim_size + num_outputs - 1) / num_outputs);
     uint64_t remainder = split_dim_size % chunk_size;
@@ -137,7 +139,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
     }
     const auto& splits_tensor = *initializers.at(input_defs[1]->Name());
     Initializer unpacked_tensor(splits_tensor);
-    auto splits_span = unpacked_tensor.DataAsSpan<int64_t>();
+    auto splits_span = unpacked_tensor.DataAsSpan<uint64_t>();
     int sum_of_splits = std::accumulate(splits_span.begin(), splits_span.end(), 0);
     if (sum_of_splits != split_dims_at_axis) {
       LOGS(logger, VERBOSE) << "Mismatch between the sum of 'split'. Expected: "
@@ -149,6 +151,10 @@ bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
     auto it = std::find(splits_span.begin(), splits_span.end(), 0);
     if (it != splits_span.end()) {
       LOGS(logger, VERBOSE) << "Invalid value in 'splits' input.";
+      return false;
+    }
+    if (split_dims_at_axis == -1) {
+      LOGS(logger, VERBOSE) << "Dim at the splitting axis is not allowed to be dynamic.";
       return false;
     }
   } else {
