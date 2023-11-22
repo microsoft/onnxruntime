@@ -57,9 +57,25 @@ The device ID.
 
 Default value: 0
 
+### has_user_compute_stream
+Defines that the user has set a `user_compute_stream`.
+This cannot be used in combination with an external allocator.
+
+### do_copy_in_default_stream
+Whether to do copies in the default stream or use separate streams. The recommended setting is true. If false, there are race conditions and possibly better performance.
+
+Default value: true
+
+### use_ep_level_unified_stream
+Uses the same CUDA stream for all threads of the CUDA EP. This is implicitly enabled by `has_user_compute_stream`, `enable_cuda_graph` or when using an external allocator.
+
+Default value: false
+
 ### gpu_mem_limit
 The size limit of the device memory arena in bytes. This size limit is only for the execution provider's arena. The total device memory usage may be higher.
 s: max value of C++ size_t type (effectively unlimited)
+
+_Note:_ Will be over-ridden by contents of `default_memory_arena_cfg` (if specified)
 
 ### arena_extend_strategy
 The strategy for extending the device memory arena.
@@ -70,6 +86,8 @@ kNextPowerOfTwo (0)     | subsequent extensions extend by larger amounts (multip
 kSameAsRequested (1)    | extend by the requested amount
 
 Default value: kNextPowerOfTwo
+
+_Note:_ Will be over-ridden by contents of `default_memory_arena_cfg` (if specified)
 
 ### cudnn_conv_algo_search
 The type of search done for cuDNN convolution algorithms.
@@ -82,10 +100,6 @@ DEFAULT (2)     | default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PR
 
 Default value: EXHAUSTIVE
 
-### do_copy_in_default_stream
-Whether to do copies in the default stream or use separate streams. The recommended setting is true. If false, there are race conditions and possibly better performance.
-
-Default value: true
 
 ### cudnn_conv_use_max_workspace
 Check [tuning performance for convolution heavy models](#convolution-heavy-models) for details on what this flag does.
@@ -112,8 +126,29 @@ This flag is only supported from the V2 version of the provider options struct w
 
 Default value: 0
 
+### gpu_external_alloc
+### gpu_external_free
+### gpu_external_empty_cache
+### tunable_op_enable
+### tunable_op_tuning_enable
+### tunable_op_max_tuning_duration_ms
+
+### prefer_nhwc
+This option is not available in default builds ! One has to compile ONNX Runtime with `onnxruntime_USE_CUDA_NHWC_OPS=ON`.
+If this is enabled the EP prefers NHWC operators over NCHW. Needed transforms will be added to the model. As NVIDIA tensor cores can only work on NHWC layout this can increase performance if the model consists of many supported operators and does not need too many new transpose nodes. Wider operator support is planned in the future.
+This flag is only supported from the V2 version of the provider options struct when used using the C API. The V2 provider options struct can be created using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a0d29cbf555aa806c050748cf8d2dc172) and updated using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a4710fc51f75a4b9a75bde20acbfa0783).
+
+Default value: 0
+
 ## Performance Tuning
-The [I/O Binding feature](../performance/tune-performance/iobinding.md) should be utilized to avoid overhead resulting from copies on inputs and outputs. 
+The [I/O Binding feature](../performance/tune-performance/iobinding.md) should be utilized to avoid overhead resulting from copies on inputs and outputs. Ideally up and downloads for inputs can be hidden behind the inference. This can be achieved by doing asynchronous copies while running inference. This is demonstrated in this [PR](https://github.com/microsoft/onnxruntime/pull/14088) 
+```
+Ort::RunOptions run_options;
+run_options.AddConfigEntry("disable_synchronize_execution_providers", "1");
+session->Run(run_options, io_binding);
+```
+By disabling the synchronization on the inference the user has to take care of synchronizing the compute stream after execution. 
+This feature should only be used with device local memory or an ORT Value allocated in [pinned memory](https://developer.nvidia.com/blog/how-optimize-data-transfers-cuda-cc/), otherwise the issued download will be blocking and not behave as desired. 
 
 ### Convolution-heavy models
 
