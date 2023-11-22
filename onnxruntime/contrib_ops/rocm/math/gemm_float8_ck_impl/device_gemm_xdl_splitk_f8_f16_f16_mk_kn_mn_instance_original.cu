@@ -19,13 +19,6 @@ namespace tunable {
 namespace blas {
 namespace internal {
 
-using F8 = ck::f8_t;
-using F16 = ck::half_t;
-using F32 = float;
-
-using Row = ck::tensor_layout::gemm::RowMajor;
-using Col = ck::tensor_layout::gemm::ColumnMajor;
-
 template <ck::index_t... Is>
 using S = ck::Sequence<Is...>;
 
@@ -33,7 +26,7 @@ using PassThrough = ck::tensor_operation::element_wise::PassThrough;
 
 static constexpr auto GemmMNPadding = ck::tensor_operation::device::GemmSpecialization::MNPadding;
 
-#define DeviceGemmXdlSplitKCShuffle ck::tensor_operation::device::DeviceGemmXdlSplitKCShuffle
+using ck::tensor_operation::device::DeviceGemmXdlSplitKCShuffle;
 
 // Compilation parameters for a[m, k] * b[k, n] = c[m, n]
 template <typename ScaleElemT>

@@ -21,11 +21,6 @@ class GemmFloat8 final : public RocmKernel {
     dtype_ = info.GetAttrOrDefault<int64_t>("dtype", onnx::TensorProto_DataType_FLOAT16);
     alpha_ = info.GetAttrOrDefault<float>("alpha", 1);
     beta_ = info.GetAttrOrDefault<float>("beta", 0);
-
-    tunable_op_fp8e4m3fn_fp16_fp16_ = std::make_unique<decltype(tunable_op_fp8e4m3fn_fp16_fp16_)::element_type>();
-    tunable_op_fp8e4m3fnuz_fp16_fp16_ = std::make_unique<decltype(tunable_op_fp8e4m3fnuz_fp16_fp16_)::element_type>();
-    tunable_op_fp16_fp8e4m3fn_fp16_ = std::make_unique<decltype(tunable_op_fp16_fp8e4m3fn_fp16_)::element_type>();
-    tunable_op_fp16_fp8e4m3fnuz_fp16_ = std::make_unique<decltype(tunable_op_fp16_fp8e4m3fnuz_fp16_)::element_type>();
   }
   Status ComputeInternal(OpKernelContext* ctx) const override;
 
@@ -35,21 +30,25 @@ class GemmFloat8 final : public RocmKernel {
   template <typename Fp8T>
   Status ComputeFp16Fp8Fp16(OpKernelContext* ctx, const Tensor* A, const Tensor* B, const Tensor* scaleB, Tensor* C) const;
 
-  template <typename Fp8T, bool IsAFp8>
-  [[nodiscard]] inline auto& GetOp() const {
-    if constexpr (std::is_same_v<Fp8T, Float8E4M3FN>) {
-      if constexpr (IsAFp8) {
-        return tunable_op_fp8e4m3fn_fp16_fp16_;
-      } else {
-        return tunable_op_fp16_fp8e4m3fn_fp16_;
-      }
-    } else if constexpr (std::is_same_v<Fp8T, Float8E4M3FNUZ>) {
-      if constexpr (IsAFp8) {
-        return tunable_op_fp8e4m3fnuz_fp16_fp16_;
-      } else {
-        return tunable_op_fp16_fp8e4m3fnuz_fp16_;
-      }
+  template <typename TA, typename TB, typename TC, typename ALayout, typename BLayout>
+  inline auto MaybeCreateTypeErasedSharedPtr() const {
+
+  }
+
+  template <typename TA, typename TB, typename TC, typename ALayout, typename BLayout>
+  [[nodiscard]] inline auto* GetOp() const {
+    using OpT = F8GemmTunableOp<TA, TB, TC, ALayout, BLayout>;
+    if (tunable_op_) {
+      return static_cast<OpT*>(tunable_op_.get());
     }
+
+    auto create = std::make_unique<OpT>();   // avoid new
+    tunable_op_ = std::shared_ptr<void>(create.release(), [](void* ptr) {
+      auto release = std::unique_ptr<OpT>();  // avoid delete
+      release.reset(static_cast<OpT*>(ptr));
+    });
+
+    return static_cast<OpT*>(tunable_op_.get());
   }
 
   float alpha_;
@@ -58,10 +57,8 @@ class GemmFloat8 final : public RocmKernel {
   bool transB_;
   int64_t dtype_;
 
-  std::unique_ptr<F8GemmTunableOp<Float8E4M3FN, MLFloat16, MLFloat16, internal::Row, internal::Row>> tunable_op_fp8e4m3fn_fp16_fp16_;
-  std::unique_ptr<F8GemmTunableOp<Float8E4M3FNUZ, MLFloat16, MLFloat16, internal::Row, internal::Row>> tunable_op_fp8e4m3fnuz_fp16_fp16_;
-  std::unique_ptr<F8GemmTunableOp<MLFloat16, Float8E4M3FN, MLFloat16, internal::Row, internal::Row>> tunable_op_fp16_fp8e4m3fn_fp16_;
-  std::unique_ptr<F8GemmTunableOp<MLFloat16, Float8E4M3FNUZ, MLFloat16, internal::Row, internal::Row>> tunable_op_fp16_fp8e4m3fnuz_fp16_;
+  // fully type erased
+  mutable std::shared_ptr<void> tunable_op_;
 };
 
 Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
@@ -81,7 +78,7 @@ Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
   output_shape[output_shape.size() - 1] = b_shape[b_shape.NumDimensions() - 1];
   Tensor* Y = ctx->Output(0, output_shape);
 
-  ORT_ENFORCE(!transA_ && !transB_, "ROCm GemmFloat8 does not support input transpose");
+  ORT_ENFORCE(!transA_, "ROCm GemmFloat8 does not support input A transpose");
   ORT_ENFORCE(dtype_ == onnx::TensorProto_DataType_FLOAT16, "ROCm GemmFloat8 only supports output float16");
   ORT_ENFORCE(C == nullptr, "ROCm GemmFloat8 does not support bias input");
   ORT_ENFORCE(scale_y == nullptr, "ROCm GemmFloat8 does not support output scaling");
@@ -114,20 +111,20 @@ Status GemmFloat8::ComputeFp8Fp16Fp16(OpKernelContext* ctx, const Tensor* A, con
   params.tuning_ctx = GetTuningContext();
   params.stream = ctx->GetComputeStream();
   params.handle = GetRocblasHandle(ctx);
-  params.opa = tunable::blas::BlasOp::NonTrans;
-  params.opb = tunable::blas::BlasOp::NonTrans;
+  params.opa = transA_ ? tunable::blas::BlasOp::Trans : tunable::blas::BlasOp::NonTrans;
+  params.opb = transB_ ? tunable::blas::BlasOp::Trans : tunable::blas::BlasOp::NonTrans;
 
   params.m = m;
   params.n = n;
   params.k = k;
 
   params.a = static_cast<const Fp8T*>(A->DataRaw());
-  params.lda = k;
+  params.lda = transA_ ? m : k;
   params.scale_a = alpha_;
   params.scale_a_dev = static_cast<const float*>(scale_a->DataRaw());
 
   params.b = static_cast<const MLFloat16*>(B->DataRaw());
-  params.ldb = n;
+  params.ldb = transB_ ? k : n;
   params.scale_b = 1.0f;         // NOTE: not used
   params.scale_b_dev = nullptr;  // NOTE: not used
 
@@ -136,7 +133,13 @@ Status GemmFloat8::ComputeFp8Fp16Fp16(OpKernelContext* ctx, const Tensor* A, con
   params.scale_c = 1.0f;         // NOTE: not implemented
   params.scale_c_dev = nullptr;  // NOTE: not implemented
 
-  return (*GetOp<Fp8T, true>())(&params);
+  // NOTE: transA is not implemented
+  if (transB_) {
+    ORT_NOT_IMPLEMENTED("transB is not implemented");
+    // return (*GetOp<Fp8T, MLFloat16, MLFloat16, Row, Col>())(&params);
+  } else {
+    return (*GetOp<Fp8T, MLFloat16, MLFloat16, Row, Row>())(&params);
+  }
 }
 
 template <typename Fp8T>
@@ -154,20 +157,20 @@ Status GemmFloat8::ComputeFp16Fp8Fp16(OpKernelContext* ctx, const Tensor* A, con
   params.tuning_ctx = GetTuningContext();
   params.stream = ctx->GetComputeStream();
   params.handle = GetRocblasHandle(ctx);
-  params.opa = tunable::blas::BlasOp::NonTrans;
-  params.opb = tunable::blas::BlasOp::NonTrans;
+  params.opa = transA_ ? tunable::blas::BlasOp::Trans : tunable::blas::BlasOp::NonTrans;
+  params.opb = transB_ ? tunable::blas::BlasOp::Trans : tunable::blas::BlasOp::NonTrans;
 
   params.m = m;
   params.n = n;
   params.k = k;
 
   params.a = static_cast<const MLFloat16*>(A->DataRaw());
-  params.lda = k;
+  params.lda = transA_ ? m : k;
   params.scale_a = 1.0f;         // NOTE: not used
   params.scale_a_dev = nullptr;  // NOTE: not used
 
   params.b = static_cast<const Fp8T*>(B->DataRaw());
-  params.ldb = n;
+  params.ldb = transB_ ? k : n;
   params.scale_b = alpha_;
   params.scale_b_dev = static_cast<const float*>(scale_b->DataRaw());
 
@@ -176,7 +179,12 @@ Status GemmFloat8::ComputeFp16Fp8Fp16(OpKernelContext* ctx, const Tensor* A, con
   params.scale_c = 1.0f;         // NOTE: not implemented
   params.scale_c_dev = nullptr;  // NOTE: not implemented
 
-  return (*GetOp<Fp8T, false>())(&params);
+  // NOTE: transA is not implemented
+  if (transB_) {
+    return (*GetOp<MLFloat16, Fp8T, MLFloat16, Row, Col>())(&params);
+  } else {
+    return (*GetOp<MLFloat16, Fp8T, MLFloat16, Row, Row>())(&params);
+  }
 }
 
 ONNX_OPERATOR_KERNEL_EX(

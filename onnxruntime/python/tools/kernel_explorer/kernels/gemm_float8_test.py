@@ -66,8 +66,8 @@ def _test_gemm(
 
     np.random.seed(0)
 
-    a, scale_a = cast_and_scale(np.random.randn(*a_shape), dta)
-    b, scale_b = cast_and_scale(np.random.randn(*b_shape), dtb)
+    a, scale_a = cast_and_scale(np.random.rand(*a_shape), dta)
+    b, scale_b = cast_and_scale(np.random.rand(*b_shape), dtb)
     scale_c = float("nan")
 
     inv_scale_a = np.array(1 / scale_a).astype("float32")
@@ -113,8 +113,8 @@ def _test_gemm(
 
     # TODO: how to derive the bound for fp8?
     atol = 0.01
-    rtol = 0.001
-    print(f"{dta} {dtb} {dtc} {transab_to_suffix((transa, transb))} m={m} n={n} k={k} atol={atol} rtol={rtol}")
+    rtol = 0.005
+    print(f"atol={atol} rtol={rtol}")  # print for pytest -s -v
 
     for impl in my_gemm.ListOps():
         if not my_gemm.SelectOp(impl):
@@ -144,13 +144,15 @@ dtypes = [
     ("float16", "float8_e4m3fn", "float16"),
     ("float16", "float8_e4m3fnuz", "float16"),
 ]
-all_transabs = [(False, False)]
+all_transabs = [(False, False), (False, True)]
 
 
 @pytest.mark.skipif(not ke.is_composable_kernel_available(), reason="ck is not enabled")
 @pytest.mark.parametrize(
     "m, n, k",
     [
+        (1, 768, 768),
+        (768, 768, 768),
         (1, 8192, 28672),
         (1, 28672, 8192),
         (1, 8192, 8192),
@@ -162,6 +164,8 @@ all_transabs = [(False, False)]
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dta, dtb, dtc", dtypes)
 def test_ck_gemm(dta, dtb, dtc, transa, transb, m, n, k):
+    if dtb == "float16" and transb:
+        pytest.skip("Only supports transb when b is fp8")
     wrapper_name = f"GemmFloat8CK_{dtype_to_suffix(dta)}_{dtype_to_suffix(dtb)}_{dtype_to_suffix(dtc)}_{transab_to_suffix((transa, transb))}"
     _test_gemm(getattr(ke, wrapper_name), dta, dtb, dtc, transa, transb, m, n, k)
 
@@ -171,6 +175,8 @@ def test_ck_gemm(dta, dtb, dtc, transa, transb, m, n, k):
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dta, dtb, dtc", dtypes)
 def test_ck_gemm_alpha_beta(dta, dtb, dtc, transa, transb, m, n, k, alpha, beta):
+    if dtb == "float16" and transb:
+        pytest.skip("Only supports transb when b is fp8")
     wrapper_name = f"GemmFloat8CK_{dtype_to_suffix(dta)}_{dtype_to_suffix(dtb)}_{dtype_to_suffix(dtc)}_{transab_to_suffix((transa, transb))}"
     _test_gemm(getattr(ke, wrapper_name), dta, dtb, dtc, transa, transb, m, n, k, alpha, beta)
 

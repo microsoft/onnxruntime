@@ -24,6 +24,13 @@ namespace onnxruntime {
 namespace rocm {
 namespace tunable {
 
+using F8 = ck::f8_t;
+using F16 = ck::half_t;
+using F32 = float;
+
+using Row = ck::tensor_layout::gemm::RowMajor;
+using Col = ck::tensor_layout::gemm::ColumnMajor;
+
 template <typename... Ts>
 constexpr bool always_false = false;
 
@@ -32,7 +39,7 @@ struct Scale {
   constexpr const static bool is_pack2_invocable = true;
   constexpr const static bool is_pack4_invocable = true;
 
-  explicit Scale(float scale_value, const float* dev_scale_ptr) :  scale_value_{scale_value}, dev_scale_ptr_{dev_scale_ptr} {}
+  explicit Scale(float scale_value, const float* dev_scale_ptr) : scale_value_{scale_value}, dev_scale_ptr_{dev_scale_ptr} {}
 
   template <typename Y, typename X>
   __forceinline__ __host__ __device__ Y fast_type_convert(X x) const {
@@ -141,8 +148,6 @@ struct GemmFloat8Params : tunable::OpParams {
   int64_t ldc;
 };
 
-namespace internal {
-
 #ifdef USE_COMPOSABLE_KERNEL
 
 using Row = ck::tensor_layout::gemm::RowMajor;
@@ -165,6 +170,14 @@ void add_device_gemm_xdl_splitk_f16_f8_f16_mk_kn_mn_instances(
 void add_device_gemm_xdl_splitk_f16_f8_f16_mk_kn_mn_instances(
     std::vector<std::unique_ptr<ck::tensor_operation::device::DeviceGemmSplitK<
         Row, Row, Row, ck::half_t, ck::f8_t, ck::half_t, Nop, Scale<Float8E4M3FNUZ>, Nop>>>& instances);
+
+void add_device_gemm_xdl_splitk_f16_f8_f16_mk_nk_mn_instances(
+    std::vector<std::unique_ptr<ck::tensor_operation::device::DeviceGemmSplitK<
+        Row, Col, Row, F16, F8, F16, Nop, Scale<Float8E4M3FN>, Nop>>>& instances);
+
+void add_device_gemm_xdl_splitk_f16_f8_f16_mk_nk_mn_instances(
+    std::vector<std::unique_ptr<ck::tensor_operation::device::DeviceGemmSplitK<
+        Row, Col, Row, F16, F8, F16, Nop, Scale<Float8E4M3FNUZ>, Nop>>>& instances);
 
 template <typename OrtT>
 auto CreateOp(float scale, const float* dev_scale) {
@@ -197,12 +210,17 @@ auto GetCKF8SplitKGemmTypeStringAndOps() {
   for (auto num_split : {1, 4, 16, 64}) {
     std::vector<std::unique_ptr<DeviceGemm>> instances{};
     // only supports fp8_fp16_fp16_row_row_row and fp16_fp8_fp16_row_row_row now.
-    if constexpr (std::is_same_v<CKTA, ck::f8_t> && std::is_same_v<CKTB, ck::half_t> && std::is_same_v<CKTC, ck::half_t>) {
+    if constexpr (std::is_same_v<CKTA, ck::f8_t> && std::is_same_v<CKTB, ck::half_t> && std::is_same_v<CKTC, ck::half_t> &&
+                  std::is_same_v<ALayout, Row> && std::is_same_v<BLayout, Row>) {
       add_device_gemm_xdl_splitk_f8_f16_f16_mk_kn_mn_instances(instances);
-    } else if constexpr (std::is_same_v<CKTA, ck::half_t> && std::is_same_v<CKTB, ck::f8_t> && std::is_same_v<CKTC, ck::half_t>) {
+    } else if constexpr (std::is_same_v<CKTA, ck::half_t> && std::is_same_v<CKTB, ck::f8_t> && std::is_same_v<CKTC, ck::half_t> &&
+                         std::is_same_v<ALayout, Row> && std::is_same_v<BLayout, Row>) {
       add_device_gemm_xdl_splitk_f16_f8_f16_mk_kn_mn_instances(instances);
+    } else if constexpr (std::is_same_v<CKTA, ck::half_t> && std::is_same_v<CKTB, ck::f8_t> && std::is_same_v<CKTC, ck::half_t> &&
+                         std::is_same_v<ALayout, Row> && std::is_same_v<BLayout, Col>) {
+      add_device_gemm_xdl_splitk_f16_f8_f16_mk_nk_mn_instances(instances);
     } else {
-      static_assert(always_false<CKTA, CKTB, CKTC>, "no instances for the type combination");
+      static_assert(always_false<CKTA, CKTB, CKTC, ALayout, BLayout>, "no instances for the type combination");
       LOGS_DEFAULT(FATAL) << "no instances for the type combination";
     }
     for (auto&& impl : instances) {
@@ -230,14 +248,12 @@ auto GetCKF8SplitKGemmTypeStringAndOps() {
 
 #endif  // USE_COMPOSABLE_KERNEL
 
-}  // namespace internal
-
 template <typename TA, typename TB, typename TC, typename ALayout, typename BLayout>
 class F8GemmTunableOp : public TunableOp<GemmFloat8Params<TA, TB, TC>> {
  public:
   F8GemmTunableOp() {
 #ifdef USE_COMPOSABLE_KERNEL
-    for (auto&& [_, op] : internal::GetCKF8SplitKGemmTypeStringAndOps<TA, TB, TC, ALayout, BLayout>()) {
+    for (auto&& [_, op] : GetCKF8SplitKGemmTypeStringAndOps<TA, TB, TC, ALayout, BLayout>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }

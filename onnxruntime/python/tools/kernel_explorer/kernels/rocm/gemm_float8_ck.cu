@@ -16,7 +16,6 @@
 #include "python/tools/kernel_explorer/kernel_explorer_interface.h"
 
 using namespace onnxruntime::rocm::tunable::blas;
-using namespace onnxruntime::rocm::tunable::blas::internal;
 
 namespace py = pybind11;
 
@@ -128,6 +127,9 @@ KE_REGISTER(m) {
   REGISTER_GEMM_FLOAT8_CK("GemmFloat8CK_half_fp8e4m3fn_half_NN", half, Float8E4M3FN, half, Row, Row);
   REGISTER_GEMM_FLOAT8_CK("GemmFloat8CK_fp8e4m3fnuz_half_half_NN", Float8E4M3FNUZ, half, half, Row, Row);
   REGISTER_GEMM_FLOAT8_CK("GemmFloat8CK_half_fp8e4m3fnuz_half_NN", half, Float8E4M3FNUZ, half, Row, Row);
+
+  REGISTER_GEMM_FLOAT8_CK("GemmFloat8CK_half_fp8e4m3fn_half_NT", half, Float8E4M3FN, half, Row, Col);
+  REGISTER_GEMM_FLOAT8_CK("GemmFloat8CK_half_fp8e4m3fnuz_half_NT", half, Float8E4M3FNUZ, half, Row, Col);
 }
 #endif  // USE_COMPOSABLE_KERNEL
 
