@@ -15,12 +15,12 @@ import {einsum, parseEinsumAttributes} from './ops/einsum';
 import {expand} from './ops/expand';
 import {gather, parseGatherAttributes} from './ops/gather';
 import {gatherElements, parseGatherElementsAttributes} from './ops/gather-elements';
-import {gemm, parseGemmAttributes} from './ops/gemm';
+import {gemm} from './ops/gemm';
 import {instanceNorm, parseInstanceNormAttributes} from './ops/instance-norm';
 import {layerNorm, parseLayerNormAttributes} from './ops/layer-norm';
 import {matMul} from './ops/matmul';
 import {multiHeadAttention, parseMultiHeadAttentionAttributes} from './ops/multi-head-attentiion';
-import {pad, parsePadAttributes} from './ops/pad';
+import {pad} from './ops/pad';
 import * as pool from './ops/pool';
 import {range} from './ops/range';
 import {parseReduceAttributes, reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
@@ -77,7 +77,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Gather', [gather, parseGatherAttributes]],
   ['GatherElements', [gatherElements, parseGatherElementsAttributes]],
   ['Gelu', [unaryOps.gelu]],
-  ['Gemm', [gemm, parseGemmAttributes]],
+  ['Gemm', [gemm]],
   ['GlobalAveragePool', [pool.globalAveragePool, pool.parseGlobalAveragePoolAttributes]],
   ['GlobalMaxPool', [pool.globalMaxPool, pool.parseGlobalMaxPoolAttributes]],
   ['Greater', [binaryOps.greater]],
@@ -95,7 +95,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['MultiHeadAttention', [multiHeadAttention, parseMultiHeadAttentionAttributes]],
   ['Neg', [unaryOps.neg]],
   ['Not', [unaryOps.not]],
-  ['Pad', [pad, parsePadAttributes]],
+  ['Pad', [pad]],
   ['Pow', [binaryOps.pow]],
   ['Range', [range]],
   ['Reciprocal', [unaryOps.reciprocal]],

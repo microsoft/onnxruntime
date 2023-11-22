@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {tensorDataTypeEnumToString} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {GemmUtil, ShapeUtil} from '../../util';
-import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
 
-import {ShaderHelper, tensorTypeToWsglStorageType} from './common';
+import {createTensorShapeVariables, getElementAt, inputVariable, outputVariable, ShaderHelper, UniformDataElementType, UniformsArrayType} from './common';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs) {
@@ -27,30 +27,28 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
   }
 };
 
-export interface GemmAttributes extends AttributeWithCacheKey {
+interface GemmAttributes {
   transA: boolean;
   transB: boolean;
   alpha: number;
   beta: number;
 }
 
-const offsetC = (m: number, n: number, dims: readonly number[]): string => {
-  if (dims.length === 0) {
-    return '0u';
-  }
+const calculateC = (m: number, n: number, dims: readonly number[]): [string, boolean, boolean] => {
+  let calculate = '0u';
+  if (dims.length !== 0) {
+    const broadcastM = (dims.length === 1 && m !== 1) || (dims.length === 2 && dims[0] !== m);
+    const broadcastN = dims[dims.length - 1] !== n;
 
-  const broadcastM = (dims.length === 1 && m !== 1) || (dims.length === 2 && dims[0] !== m);
-  const broadcastN = dims[dims.length - 1] !== n;
-
-  let offset = '0u';
-  if (!broadcastM) {
-    offset += `+ m * ${dims[dims.length - 1]}u`;
+    if (!broadcastM) {
+      calculate += `+ m * ${getElementAt('uniforms.c_shape', dims.length - 1, dims.length)}`;
+    }
+    if (!broadcastN) {
+      calculate += '+ n';
+    }
+    return [`value += uniforms.beta * c[${calculate}];`, broadcastM, broadcastN];
   }
-  if (!broadcastN) {
-    offset += '+n';
-  }
-
-  return offset;
+  return [`value += uniforms.beta * c[${calculate}];`, false, false];
 };
 
 const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAttributes): ProgramInfo => {
@@ -65,57 +63,75 @@ const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAt
   const outputSize = ShapeUtil.size(outputShape);
   let line = '';
   if (attributes.transA && attributes.transB) {
-    line = 'value += a[k * M + m] * b[n * K + k];';
+    line = 'value += a[k * uniforms.M + m] * b[n * uniforms.K + k];';
   } else if (attributes.transA && !attributes.transB) {
-    line = 'value += a[k * M + m] * b[k * N + n];';
+    line = 'value += a[k * uniforms.M + m] * b[k * uniforms.N + n];';
   } else if (!attributes.transA && attributes.transB) {
-    line = 'value += a[m * K + k] * b[n * K + k];';
+    line = 'value += a[m * uniforms.K + k] * b[n * uniforms.K + k];';
   } else if (!attributes.transA && !attributes.transB) {
-    line = 'value += a[m * K + k] * b[k * N + n];';
+    line = 'value += a[m * uniforms.K + k] * b[k * uniforms.N + n];';
   }
 
-  const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
-  const calculateAlpha = attributes.alpha === 1 ? '' : 'value *= alpha;';
-  const calculateC = inputs.length === 3 ? `value += beta * c[${offsetC(M, N, inputs[2].dims)}];` : '';
-  const inputStorageBuffersDeclarations = [
-    `@group(0) @binding(0) var<storage, read> a : array<${dataType}>;`,
-    `@group(0) @binding(1) var<storage, read> b : array<${dataType}>;`
+  const calculateAlpha = attributes.alpha === 1 ? '' : 'value *= uniforms.alpha;';
+  const [calculateCSnippet, broadcastM, broadcastN] =
+      inputs.length === 3 ? calculateC(M, N, inputs[2].dims) : ['', false, false];
+
+  const a = inputVariable('a', inputs[0].dataType, inputs[0].dims.length);
+  const b = inputVariable('b', inputs[1].dataType, inputs[1].dims.length);
+  const dataType = a.type.value;
+
+  const variables = [a, b];
+  const tensorDataType = tensorDataTypeEnumToString(inputs[0].dataType) as ProgramUniform['type'];
+  const programUniforms: ProgramUniform[] = [
+    {type: 'uint32', data: outputSize}, {type: 'uint32', data: M}, {type: 'uint32', data: N}, {type: 'uint32', data: K},
+    {type: tensorDataType, data: attributes.alpha}, {type: tensorDataType, data: attributes.beta},
+    ...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(inputs[1].dims)
   ];
-  if (inputs.length === 3) {
-    inputStorageBuffersDeclarations.push(`@group(0) @binding(2) var<storage, read> c : array<${dataType}>;`);
-  }
-  const getShaderSource = (shaderHelper: ShaderHelper) => `
-  const M: u32 = ${M}u;
-  const N: u32 = ${N}u;
-  const K: u32 = ${K}u;
-  const alpha = ${dataType}(${attributes.alpha});
-  const beta = ${dataType}(${attributes.beta});
 
-  ${inputStorageBuffersDeclarations.join('\n')}
-  @group(0) @binding(${inputs.length}) var<storage, read_write> output : array<${dataType}>;
+  const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
+  if (inputs.length === 3) {
+    variables.push(inputVariable('c', inputs[2].dataType, inputs[2].dims.length));
+    programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
+    inputDependencies.push('rank');
+  }
+  const output = outputVariable('output', inputs[0].dataType, outputShape.length);
+  variables.push(output);
+  programUniforms.push(...createTensorShapeVariables(outputShape));
+
+  const uniforms: UniformsArrayType = [
+    {name: 'outputSize', type: 'u32'}, {name: 'M', type: 'u32'}, {name: 'N', type: 'u32'}, {name: 'K', type: 'u32'},
+    {name: 'alpha', type: dataType as UniformDataElementType}, {name: 'beta', type: dataType as UniformDataElementType}
+  ];
+
+  const getShaderSource = (shaderHelper: ShaderHelper) => `
+  ${shaderHelper.registerUniforms(uniforms).declareVariables(...variables)}
 
   ${shaderHelper.mainStart()}
-    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
 
-    let m = global_id.x / N;
-    let n = global_id.x % N;
+    let m = global_id.x / uniforms.N;
+    let n = global_id.x % uniforms.N;
 
     var value = ${dataType}(0);
-    for (var k: u32 = 0u; k<${K}u; k++) {
+    for (var k: u32 = 0u; k < uniforms.K; k++) {
       ${line}
     }
 
     ${calculateAlpha}
-    ${calculateC}
+    ${calculateCSnippet}
     output[global_id.x] = value;
 
   }`;
   return {
     name: 'Gemm',
-    shaderCache: {hint: attributes.cacheKey},
+    shaderCache: {
+      hint: `${attributes.transA};${attributes.transB};${attributes.alpha === 1};${broadcastM};${broadcastN}`,
+      inputDependencies
+    },
     getRunData: () => ({
       outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
-      dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
+      dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
+      programUniforms
     }),
     getShaderSource,
   };
@@ -125,6 +141,3 @@ export const gemm = (context: ComputeContext, attributes: GemmAttributes): void 
   validateInputs(context.inputs);
   context.compute(createGemmProgramInfo(context.inputs, attributes));
 };
-
-export const parseGemmAttributes = (attributes: Record<string, unknown>): GemmAttributes =>
-    createAttributeWithCacheKey(attributes as Omit<GemmAttributes, keyof AttributeWithCacheKey>);
