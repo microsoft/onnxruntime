@@ -347,11 +347,9 @@ export const getContiguousParameters =
   const parametersSize = getParametersSize(trainingSessionId, trainableOnly);
   let tensor = 0;
 
-  // allocates a Float32Array of the correct size on the WASM heap
+  // allocates a buffer of the correct size on the WASM heap
   const paramsByteLength = 4 * parametersSize;
   const paramsOffset = wasm._malloc(paramsByteLength);
-  const arr = new Float32Array(parametersSize);
-  wasm.HEAPU8.set(arr, paramsOffset);
 
   // handles the dimensions-related createTensor parameters
   const dims = [parametersSize];
