@@ -82,7 +82,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     coreml_splitnd->set_numsplits(num_outputs);
   } else {
     // note: for opset 18+ 'num_outputs' is a required attribute
-    num_outputs = narrow<uint64_t>(helper.Get("num_outputs").value());
+    num_outputs = narrow<uint64_t>(helper.GetInt("num_outputs").value());
     // note: checked in IsOpSupportedImpl that ensures the dim value at splitting axis exists
     auto split_dim_size = data_shape[HandleNegativeAxis(axis, data_shape.size())];
     uint64_t chunk_size = narrow<uint64_t>((split_dim_size + num_outputs - 1) / num_outputs);
@@ -159,7 +159,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
     }
   } else {
     if (node.SinceVersion() >= 18) {
-      const auto num_outputs = helper.Get("num_outputs");
+      const auto num_outputs = helper.GetInt("num_outputs");
       if (!num_outputs.has_value()) {
         LOGS(logger, VERBOSE) << "No 'num_outputs' provided. For split 18+, num_outputs is a required attribute.";
         return false;

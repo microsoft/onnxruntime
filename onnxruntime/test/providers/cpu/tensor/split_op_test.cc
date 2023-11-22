@@ -127,7 +127,7 @@ void SplitTestAxis0EqualSplit(bool use_opset_13 = false) {
              // TensorRT parser: Assertion failed: axis != BATCH_DIM
              {kTensorrtExecutionProvider},  // is_tensorrt_supported
              false,                         // expect_failure
-             use_opset_13 = true);          // split_as_input
+             true);                         // split_as_input
 #endif
 }
 

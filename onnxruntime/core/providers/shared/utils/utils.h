@@ -58,7 +58,7 @@ class NodeAttrHelper {
   uint32_t Get(const std::string& key, uint32_t def_val) const;
   std::vector<uint32_t> Get(const std::string& key, const std::vector<uint32_t>& def_val) const;
 
-  std::optional<int32_t> Get(const std::string& key) const;
+  std::optional<int64_t> GetInt(const std::string& key) const;
 
   bool HasAttr(const std::string& key) const;
 
