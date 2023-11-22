@@ -144,7 +144,7 @@ def _test_apple_packages(args):
                 cwd=target_proj_path,
             )
 
-            if PackageVariant[args.variant] == PackageVariant.Full:
+            if PackageVariant[args.variant] != PackageVariant.Mobile:
                 subprocess.run(
                     [
                         "xcrun",

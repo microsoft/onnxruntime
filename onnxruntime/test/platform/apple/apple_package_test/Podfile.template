@@ -1,5 +1,5 @@
 def should_exclude_macos_target
-    if '@C_POD_NAME@' != 'onnxruntime-c'
+    if '@C_POD_NAME@' != 'onnxruntime-mobile-c'
       return true
     end
   return false
