@@ -84,11 +84,11 @@ class Txt2ImgPipeline(StableDiffusionPipeline):
             torch.cuda.synchronize()
             e2e_toc = time.perf_counter()
 
+            perf_data = None
             if not warmup:
-                self.print_summary(e2e_tic, e2e_toc, batch_size)
-                self.save_images(images, "txt2img", prompt)
+                perf_data = self.print_summary(e2e_tic, e2e_toc, batch_size)
 
-            return images, (e2e_toc - e2e_tic) * 1000.0
+            return images, perf_data
 
     def run(
         self,

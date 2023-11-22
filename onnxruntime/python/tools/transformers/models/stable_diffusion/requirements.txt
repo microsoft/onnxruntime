@@ -1,8 +1,8 @@
-diffusers==0.19.3
-transformers==4.31.0
+diffusers==0.23.1
+transformers==4.35.1
 numpy>=1.24.1
 accelerate
-onnx==1.14.0
+onnx==1.14.1
 coloredlogs
 packaging
 # Use newer version of protobuf might cause crash

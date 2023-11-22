@@ -22,7 +22,7 @@
 
 import coloredlogs
 from cuda import cudart
-from demo_utils import init_pipeline, parse_arguments, repeat_prompt
+from demo_utils import get_metadata, init_pipeline, parse_arguments, repeat_prompt
 from diffusion_models import PipelineInfo
 from engine_builder import EngineType, get_engine_type
 from pipeline_txt2img import Txt2ImgPipeline
@@ -104,17 +104,25 @@ if __name__ == "__main__":
 
     if not args.disable_cuda_graph:
         # inference once to get cuda graph
-        _image, _latency = run_inference(warmup=True)
+        _, _ = run_inference(warmup=True)
 
     print("[I] Warming up ..")
     for _ in range(args.num_warmup_runs):
-        _image, _latency = run_inference(warmup=True)
+        _, _ = run_inference(warmup=True)
 
     print("[I] Running StableDiffusion pipeline")
     if args.nvtx_profile:
         cudart.cudaProfilerStart()
-    _image, _latency = run_inference(warmup=False)
+    images, perf_data = run_inference(warmup=False)
     if args.nvtx_profile:
         cudart.cudaProfilerStop()
+
+    metadata = get_metadata(args, False)
+    metadata.update(pipeline.metadata())
+    if perf_data:
+        metadata.update(perf_data)
+    metadata["images"] = len(images)
+    print(metadata)
+    pipeline.save_images(images, prompt, negative_prompt, metadata)
 
     pipeline.teardown()

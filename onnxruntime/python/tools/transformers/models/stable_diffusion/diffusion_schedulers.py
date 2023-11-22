@@ -719,3 +719,228 @@ class UniPCMultistepScheduler:
 
     def __len__(self):
         return self.num_train_timesteps
+
+
+# Modified from diffusers.schedulers.LCMScheduler
+class LCMScheduler:
+    def __init__(
+        self,
+        device="cuda",
+        num_train_timesteps: int = 1000,
+        beta_start: float = 0.00085,
+        beta_end: float = 0.012,
+        original_inference_steps: int = 50,
+        clip_sample: bool = False,
+        clip_sample_range: float = 1.0,
+        steps_offset: int = 0,
+        prediction_type: str = "epsilon",
+        thresholding: bool = False,
+        dynamic_thresholding_ratio: float = 0.995,
+        sample_max_value: float = 1.0,
+        timestep_spacing: str = "leading",
+        timestep_scaling: float = 10.0,
+    ):
+        self.device = device
+        self.betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
+        self.alphas = 1.0 - self.betas
+        self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
+        self.final_alpha_cumprod = self.alphas_cumprod[0]
+        # standard deviation of the initial noise distribution
+        self.init_noise_sigma = 1.0
+        # setable values
+        self.num_inference_steps = None
+        self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy().astype(np.int64))
+
+        self.num_train_timesteps = num_train_timesteps
+        self.clip_sample = clip_sample
+        self.clip_sample_range = clip_sample_range
+        self.steps_offset = steps_offset
+        self.prediction_type = prediction_type
+        self.thresholding = thresholding
+        self.timestep_spacing = timestep_spacing
+        self.timestep_scaling = timestep_scaling
+        self.original_inference_steps = original_inference_steps
+        self.dynamic_thresholding_ratio = dynamic_thresholding_ratio
+        self.sample_max_value = sample_max_value
+
+        self._step_index = None
+
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
+    def _init_step_index(self, timestep):
+        if isinstance(timestep, torch.Tensor):
+            timestep = timestep.to(self.timesteps.device)
+
+        index_candidates = (self.timesteps == timestep).nonzero()
+
+        if len(index_candidates) > 1:
+            step_index = index_candidates[1]
+        else:
+            step_index = index_candidates[0]
+
+        self._step_index = step_index.item()
+
+    @property
+    def step_index(self):
+        return self._step_index
+
+    def scale_model_input(self, sample: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+        return sample
+
+    # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
+    def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
+        dtype = sample.dtype
+        batch_size, channels, *remaining_dims = sample.shape
+
+        if dtype not in (torch.float32, torch.float64):
+            sample = sample.float()  # upcast for quantile calculation, and clamp not implemented for cpu half
+
+        # Flatten sample for doing quantile calculation along each image
+        sample = sample.reshape(batch_size, channels * np.prod(remaining_dims))
+
+        abs_sample = sample.abs()  # "a certain percentile absolute pixel value"
+
+        s = torch.quantile(abs_sample, self.dynamic_thresholding_ratio, dim=1)
+        s = torch.clamp(
+            s, min=1, max=self.sample_max_value
+        )  # When clamped to min=1, equivalent to standard clipping to [-1, 1]
+        s = s.unsqueeze(1)  # (batch_size, 1) because clamp will broadcast along dim=0
+        sample = torch.clamp(sample, -s, s) / s  # "we threshold xt0 to the range [-s, s] and then divide by s"
+
+        sample = sample.reshape(batch_size, channels, *remaining_dims)
+        sample = sample.to(dtype)
+
+        return sample
+
+    def set_timesteps(
+        self,
+        num_inference_steps: int,
+        strength: int = 1.0,
+    ):
+        assert num_inference_steps <= self.num_train_timesteps
+
+        self.num_inference_steps = num_inference_steps
+        original_steps = self.original_inference_steps
+
+        assert original_steps <= self.num_train_timesteps
+        assert num_inference_steps <= original_steps
+
+        # LCM Timesteps Setting
+        # Currently, only linear spacing is supported.
+        c = self.num_train_timesteps // original_steps
+        # LCM Training Steps Schedule
+        lcm_origin_timesteps = np.asarray(list(range(1, int(original_steps * strength) + 1))) * c - 1
+        skipping_step = len(lcm_origin_timesteps) // num_inference_steps
+        # LCM Inference Steps Schedule
+        timesteps = lcm_origin_timesteps[::-skipping_step][:num_inference_steps]
+
+        self.timesteps = torch.from_numpy(timesteps.copy()).to(device=self.device, dtype=torch.long)
+
+        self._step_index = None
+
+    def get_scalings_for_boundary_condition_discrete(self, timestep):
+        self.sigma_data = 0.5  # Default: 0.5
+        scaled_timestep = timestep * self.timestep_scaling
+
+        c_skip = self.sigma_data**2 / (scaled_timestep**2 + self.sigma_data**2)
+        c_out = scaled_timestep / (scaled_timestep**2 + self.sigma_data**2) ** 0.5
+        return c_skip, c_out
+
+    def step(
+        self,
+        model_output: torch.FloatTensor,
+        timestep: int,
+        sample: torch.FloatTensor,
+        generator: Optional[torch.Generator] = None,
+    ):
+        if self.num_inference_steps is None:
+            raise ValueError(
+                "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
+            )
+
+        if self.step_index is None:
+            self._init_step_index(timestep)
+
+        # 1. get previous step value
+        prev_step_index = self.step_index + 1
+        if prev_step_index < len(self.timesteps):
+            prev_timestep = self.timesteps[prev_step_index]
+        else:
+            prev_timestep = timestep
+
+        # 2. compute alphas, betas
+        alpha_prod_t = self.alphas_cumprod[timestep]
+        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
+
+        beta_prod_t = 1 - alpha_prod_t
+        beta_prod_t_prev = 1 - alpha_prod_t_prev
+
+        # 3. Get scalings for boundary conditions
+        c_skip, c_out = self.get_scalings_for_boundary_condition_discrete(timestep)
+
+        # 4. Compute the predicted original sample x_0 based on the model parameterization
+        if self.prediction_type == "epsilon":  # noise-prediction
+            predicted_original_sample = (sample - beta_prod_t.sqrt() * model_output) / alpha_prod_t.sqrt()
+        elif self.prediction_type == "sample":  # x-prediction
+            predicted_original_sample = model_output
+        elif self.prediction_type == "v_prediction":  # v-prediction
+            predicted_original_sample = alpha_prod_t.sqrt() * sample - beta_prod_t.sqrt() * model_output
+        else:
+            raise ValueError(
+                f"prediction_type given as {self.prediction_type} must be one of `epsilon`, `sample` or"
+                " `v_prediction` for `LCMScheduler`."
+            )
+
+        # 5. Clip or threshold "predicted x_0"
+        if self.thresholding:
+            predicted_original_sample = self._threshold_sample(predicted_original_sample)
+        elif self.clip_sample:
+            predicted_original_sample = predicted_original_sample.clamp(-self.clip_sample_range, self.clip_sample_range)
+
+        # 6. Denoise model output using boundary conditions
+        denoised = c_out * predicted_original_sample + c_skip * sample
+
+        # 7. Sample and inject noise z ~ N(0, I) for MultiStep Inference
+        # Noise is not used on the final timestep of the timestep schedule.
+        # This also means that noise is not used for one-step sampling.
+        if self.step_index != self.num_inference_steps - 1:
+            noise = torch.randn(
+                model_output.shape, device=model_output.device, dtype=denoised.dtype, generator=generator
+            )
+            prev_sample = alpha_prod_t_prev.sqrt() * denoised + beta_prod_t_prev.sqrt() * noise
+        else:
+            prev_sample = denoised
+
+        # upon completion increase step index by one
+        self._step_index += 1
+
+        return (prev_sample,)
+
+    # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.add_noise
+    def add_noise(
+        self,
+        original_samples: torch.FloatTensor,
+        noise: torch.FloatTensor,
+        timesteps: torch.IntTensor,
+    ) -> torch.FloatTensor:
+        # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
+        alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+        timesteps = timesteps.to(original_samples.device)
+
+        sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
+        sqrt_alpha_prod = sqrt_alpha_prod.flatten()
+        while len(sqrt_alpha_prod.shape) < len(original_samples.shape):
+            sqrt_alpha_prod = sqrt_alpha_prod.unsqueeze(-1)
+
+        sqrt_one_minus_alpha_prod = (1 - alphas_cumprod[timesteps]) ** 0.5
+        sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
+        while len(sqrt_one_minus_alpha_prod.shape) < len(original_samples.shape):
+            sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.unsqueeze(-1)
+
+        noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
+        return noisy_samples
+
+    def configure(self):
+        pass
+
+    def __len__(self):
+        return self.num_train_timesteps
