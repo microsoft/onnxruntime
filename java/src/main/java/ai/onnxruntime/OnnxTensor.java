@@ -401,18 +401,18 @@ public class OnnxTensor extends OnnxTensorLike {
           buf = OrtUtil.convertArrayToBuffer(info, data);
         }
         return new OnnxTensor(
-                createTensorFromBuffer(
-                        OnnxRuntime.ortApiHandle,
-                        allocator.handle,
-                        buf,
-                        0,
-                        info.type.size * info.numElements,
-                        info.shape,
-                        info.onnxType.value),
+            createTensorFromBuffer(
+                OnnxRuntime.ortApiHandle,
                 allocator.handle,
-                info,
                 buf,
-                true);
+                0,
+                info.type.size * info.numElements,
+                info.shape,
+                info.onnxType.value),
+            allocator.handle,
+            info,
+            buf,
+            true);
       }
     } else {
       throw new IllegalStateException("Trying to create an OnnxTensor with a closed OrtAllocator.");
@@ -778,10 +778,6 @@ public class OnnxTensor extends OnnxTensorLike {
         tuple.data,
         tuple.isCopy);
   }
-
-  private static native long createTensor(
-      long apiHandle, long allocatorHandle, Object data, long[] shape, int onnxType)
-      throws OrtException;
 
   private static native long createTensorFromBuffer(
       long apiHandle,

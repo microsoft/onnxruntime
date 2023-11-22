@@ -12,8 +12,11 @@ import ai.onnxruntime.platform.Fp16Conversions;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
 import java.nio.ShortBuffer;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.SplittableRandom;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -93,30 +96,102 @@ public class OnnxTensorTest {
   }
 
   @Test
-  public void testBufferCreation() throws OrtException {
+  public void testArrayCreation() throws OrtException {
     OrtEnvironment env = OrtEnvironment.getEnvironment();
 
-    // Test creating a value from an array
-    // Arrays result in tensors allocated by ORT, so they do not have a backing java.nio.Buffer
+    // Test creating a value from a single dimensional array
     float[] arrValues = new float[] {0, 1, 2, 3, 4};
     try (OnnxTensor t = OnnxTensor.createTensor(env, arrValues)) {
-      // array creation isn't backed by buffers
-      assertFalse(t.ownsBuffer());
-      assertFalse(t.getBufferRef().isPresent());
-      FloatBuffer buf = t.getFloatBuffer();
+      Assertions.assertTrue(t.ownsBuffer());
+      Assertions.assertTrue(t.getBufferRef().isPresent());
+      FloatBuffer buf = (FloatBuffer) t.getBufferRef().get();
       float[] output = new float[arrValues.length];
       buf.get(output);
       Assertions.assertArrayEquals(arrValues, output);
 
-      // Can't modify the tensor through this buffer.
+      // Can modify the tensor through this buffer.
       buf.put(0, 25);
-      Assertions.assertArrayEquals(arrValues, output);
+      Assertions.assertArrayEquals(new float[] {25, 1, 2, 3, 4}, (float[]) t.getValue());
     }
+
+    // Test creating a value from a multidimensional float array
+    float[][][] arr3dValues =
+        new float[][][] {
+          {{0, 1, 2}, {3, 4, 5}},
+          {{6, 7, 8}, {9, 10, 11}},
+          {{12, 13, 14}, {15, 16, 17}},
+          {{18, 19, 20}, {21, 22, 23}}
+        };
+    try (OnnxTensor t = OnnxTensor.createTensor(env, arr3dValues)) {
+      Assertions.assertArrayEquals(new long[] {4, 2, 3}, t.getInfo().getShape());
+      Assertions.assertTrue(t.ownsBuffer());
+      Assertions.assertTrue(t.getBufferRef().isPresent());
+      float[][][] output = (float[][][]) t.getValue();
+      Assertions.assertArrayEquals(arr3dValues, output);
+
+      // Can modify the tensor through the buffer.
+      FloatBuffer buf = (FloatBuffer) t.getBufferRef().get();
+      buf.put(0, 25);
+      arr3dValues[0][0][0] = 25;
+      output = (float[][][]) t.getValue();
+      Assertions.assertArrayEquals(arr3dValues, output);
+    }
+
+    // Test creating a value from a multidimensional int array
+    int[][][] iArr3dValues =
+        new int[][][] {
+          {{0, 1, 2}, {3, 4, 5}},
+          {{6, 7, 8}, {9, 10, 11}},
+          {{12, 13, 14}, {15, 16, 17}},
+          {{18, 19, 20}, {21, 22, 23}}
+        };
+    try (OnnxTensor t = OnnxTensor.createTensor(env, iArr3dValues)) {
+      Assertions.assertArrayEquals(new long[] {4, 2, 3}, t.getInfo().getShape());
+      Assertions.assertTrue(t.ownsBuffer());
+      Assertions.assertTrue(t.getBufferRef().isPresent());
+      int[][][] output = (int[][][]) t.getValue();
+      Assertions.assertArrayEquals(iArr3dValues, output);
+
+      // Can modify the tensor through the buffer.
+      IntBuffer buf = (IntBuffer) t.getBufferRef().get();
+      buf.put(0, 25);
+      iArr3dValues[0][0][0] = 25;
+      output = (int[][][]) t.getValue();
+      Assertions.assertArrayEquals(iArr3dValues, output);
+    }
+
+    // Test creating a value from a ragged array throws
+    int[][][] ragged =
+        new int[][][] {
+          {{0, 1, 2}, {3, 4, 5}},
+          {{6, 7, 8}},
+          {{12, 13}, {15, 16, 17}},
+          {{18, 19, 20}, {21, 22, 23}}
+        };
+    try (OnnxTensor t = OnnxTensor.createTensor(env, ragged)) {
+      Assertions.fail("Can't create tensors from ragged arrays");
+    } catch (OrtException e) {
+      Assertions.assertTrue(e.getMessage().contains("ragged"));
+    }
+
+    // Test creating a value from a non-array, non-primitive type throws.
+    List<Integer> list = new ArrayList<>(5);
+    list.add(5);
+    try (OnnxTensor t = OnnxTensor.createTensor(env, list)) {
+      Assertions.fail("Can't create tensors from lists");
+    } catch (OrtException e) {
+      Assertions.assertTrue(e.getMessage().contains("Cannot convert"));
+    }
+  }
+
+  @Test
+  public void testBufferCreation() throws OrtException {
+    OrtEnvironment env = OrtEnvironment.getEnvironment();
 
     // Test creating a value from a non-direct byte buffer
     // Non-direct byte buffers are allocated on the Java heap and must be copied into off-heap
-    // direct byte buffers
-    // which can be directly passed to ORT
+    // direct byte buffers which can be directly passed to ORT
+    float[] arrValues = new float[] {0, 1, 2, 3, 4};
     FloatBuffer nonDirectBuffer = FloatBuffer.allocate(5);
     nonDirectBuffer.put(arrValues);
     nonDirectBuffer.rewind();

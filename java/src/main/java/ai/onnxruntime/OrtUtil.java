@@ -26,10 +26,10 @@ public final class OrtUtil {
   private OrtUtil() {}
 
   /**
-   * Converts an long shape into a int shape.
+   * Converts a long shape into an int shape.
    *
-   * <p>Validates that the shape has more than 1 elements, less than 9 elements, each element is
-   * less than {@link Integer#MAX_VALUE} and that each entry is non-negative.
+   * <p>Validates that the shape has more than 1 element, less than 9 elements, each element is less
+   * than {@link Integer#MAX_VALUE} and that each entry is non-negative.
    *
    * @param shape The long shape.
    * @return The int shape.
@@ -471,44 +471,212 @@ public final class OrtUtil {
    */
   static Buffer convertBoxedPrimitiveToBuffer(OnnxJavaType javaType, Object data) {
     switch (javaType) {
-      case FLOAT: {
-        FloatBuffer buf = ByteBuffer.allocateDirect(javaType.size).order(ByteOrder.nativeOrder()).asFloatBuffer();
-        buf.put(0, (Float) data);
-        return buf;
-      }
-      case DOUBLE: {
-        DoubleBuffer buf = ByteBuffer.allocateDirect(javaType.size).order(ByteOrder.nativeOrder()).asDoubleBuffer();
-        buf.put(0, (Double) data);
-        return buf;
-      }
+      case FLOAT:
+        {
+          FloatBuffer buf =
+              ByteBuffer.allocateDirect(javaType.size)
+                  .order(ByteOrder.nativeOrder())
+                  .asFloatBuffer();
+          buf.put(0, (Float) data);
+          return buf;
+        }
+      case DOUBLE:
+        {
+          DoubleBuffer buf =
+              ByteBuffer.allocateDirect(javaType.size)
+                  .order(ByteOrder.nativeOrder())
+                  .asDoubleBuffer();
+          buf.put(0, (Double) data);
+          return buf;
+        }
       case BOOL:
+        {
+          ByteBuffer buf = ByteBuffer.allocateDirect(javaType.size).order(ByteOrder.nativeOrder());
+          buf.put(0, ((boolean) data) ? (byte) 1 : (byte) 0);
+          return buf;
+        }
       case UINT8:
-      case INT8: {
-        ByteBuffer buf = ByteBuffer.allocateDirect(javaType.size).order(ByteOrder.nativeOrder());
-        buf.put(0, (Byte) data);
-        return buf;
-      }
+      case INT8:
+        {
+          ByteBuffer buf = ByteBuffer.allocateDirect(javaType.size).order(ByteOrder.nativeOrder());
+          buf.put(0, (Byte) data);
+          return buf;
+        }
       case FLOAT16:
       case BFLOAT16:
-      case INT16: {
-        ShortBuffer buf = ByteBuffer.allocateDirect(javaType.size).order(ByteOrder.nativeOrder()).asShortBuffer();
-        buf.put(0, (Short) data);
-        return buf;
-      }
-      case INT32: {
-        IntBuffer buf = ByteBuffer.allocateDirect(javaType.size).order(ByteOrder.nativeOrder()).asIntBuffer();
-        buf.put(0, (Integer) data);
-        return buf;
-      }
-      case INT64: {
-        LongBuffer buf = ByteBuffer.allocateDirect(javaType.size).order(ByteOrder.nativeOrder()).asLongBuffer();
-        buf.put(0, (Long) data);
-        return buf;
-      }
+      case INT16:
+        {
+          ShortBuffer buf =
+              ByteBuffer.allocateDirect(javaType.size)
+                  .order(ByteOrder.nativeOrder())
+                  .asShortBuffer();
+          buf.put(0, (Short) data);
+          return buf;
+        }
+      case INT32:
+        {
+          IntBuffer buf =
+              ByteBuffer.allocateDirect(javaType.size).order(ByteOrder.nativeOrder()).asIntBuffer();
+          buf.put(0, (Integer) data);
+          return buf;
+        }
+      case INT64:
+        {
+          LongBuffer buf =
+              ByteBuffer.allocateDirect(javaType.size)
+                  .order(ByteOrder.nativeOrder())
+                  .asLongBuffer();
+          buf.put(0, (Long) data);
+          return buf;
+        }
       case STRING:
       case UNKNOWN:
       default:
         return null;
+    }
+  }
+
+  /**
+   * Copies a Java (possibly multidimensional) array into a direct {@link Buffer}.
+   *
+   * <p>Throws {@link IllegalArgumentException} if the array is not an array of Java primitives or
+   * if the array is ragged.
+   *
+   * @param info The tensor info object containing the types and shape of the array.
+   * @param array The array object.
+   * @return A direct buffer containing all the elements.
+   */
+  static Buffer convertArrayToBuffer(TensorInfo info, Object array) {
+    ByteBuffer byteBuffer =
+        ByteBuffer.allocateDirect((int) info.numElements * info.type.size)
+            .order(ByteOrder.nativeOrder());
+
+    Buffer buffer;
+    switch (info.type) {
+      case FLOAT:
+        buffer = byteBuffer.asFloatBuffer();
+        break;
+      case DOUBLE:
+        buffer = byteBuffer.asDoubleBuffer();
+        break;
+      case BOOL:
+      case INT8:
+      case UINT8:
+        // no-op, it's already a bytebuffer
+        buffer = byteBuffer;
+        break;
+      case BFLOAT16:
+      case FLOAT16:
+      case INT16:
+        buffer = byteBuffer.asShortBuffer();
+        break;
+      case INT32:
+        buffer = byteBuffer.asIntBuffer();
+        break;
+      case INT64:
+        buffer = byteBuffer.asLongBuffer();
+        break;
+      case STRING:
+      case UNKNOWN:
+      default:
+        throw new IllegalArgumentException(
+            "Unexpected type, expected Java primitive found " + info.type);
+    }
+
+    fillBuffer(info, array, 0, buffer);
+
+    if (buffer.remaining() != 0) {
+      throw new IllegalArgumentException(
+          "Failed to copy all elements into the buffer, expected to copy "
+              + info.numElements
+              + " into a buffer of capacity "
+              + buffer.capacity()
+              + " but had "
+              + buffer.remaining()
+              + " values left over.");
+    }
+    buffer.rewind();
+
+    return buffer;
+  }
+
+  /**
+   * Fills the provided buffer with the values from the array, recursing through the array
+   * structure.
+   *
+   * @param info The tensor info containing the type and shape of the array.
+   * @param array The array object.
+   * @param curDim The current dimension we're processing.
+   * @param buffer The buffer to write to.
+   */
+  private static void fillBuffer(TensorInfo info, Object array, int curDim, Buffer buffer) {
+    if (curDim == info.shape.length - 1) {
+      // Reached primitive values, copy into buffer
+      switch (info.type) {
+        case FLOAT:
+          float[] fArr = (float[]) array;
+          FloatBuffer fBuf = (FloatBuffer) buffer;
+          fBuf.put(fArr);
+          break;
+        case DOUBLE:
+          double[] dArr = (double[]) array;
+          DoubleBuffer dBuf = (DoubleBuffer) buffer;
+          dBuf.put(dArr);
+          break;
+        case INT8:
+        case UINT8:
+          byte[] bArr = (byte[]) array;
+          ByteBuffer bBuf = (ByteBuffer) buffer;
+          bBuf.put(bArr);
+          break;
+        case FLOAT16:
+        case BFLOAT16:
+        case INT16:
+          short[] sArr = (short[]) array;
+          ShortBuffer sBuf = (ShortBuffer) buffer;
+          sBuf.put(sArr);
+          break;
+        case INT32:
+          int[] iArr = (int[]) array;
+          IntBuffer iBuf = (IntBuffer) buffer;
+          iBuf.put(iArr);
+          break;
+        case INT64:
+          long[] lArr = (long[]) array;
+          LongBuffer lBuf = (LongBuffer) buffer;
+          lBuf.put(lArr);
+          break;
+        case BOOL:
+          boolean[] boolArr = (boolean[]) array;
+          ByteBuffer boolBuf = (ByteBuffer) buffer;
+          for (int i = 0; i < boolArr.length; i++) {
+            boolBuf.put(boolArr[i] ? (byte) 1 : (byte) 0);
+          }
+          break;
+        case STRING:
+        case UNKNOWN:
+          throw new IllegalArgumentException(
+              "Unexpected type, expected Java primitive found " + info.type);
+      }
+    } else {
+      // Recurse through array
+      long expectedSize = info.shape[curDim];
+      long actualSize = Array.getLength(array);
+      if (expectedSize != actualSize) {
+        throw new IllegalArgumentException(
+            "Mismatch in array sizes, expected "
+                + expectedSize
+                + " at dim "
+                + curDim
+                + " from shape "
+                + Arrays.toString(info.shape)
+                + ", found "
+                + actualSize);
+      } else {
+        for (int i = 0; i < actualSize; i++) {
+          fillBuffer(info, Array.get(array, i), curDim + 1, buffer);
+        }
+      }
     }
   }
 
