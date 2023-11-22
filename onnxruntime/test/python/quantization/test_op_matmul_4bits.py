@@ -165,7 +165,6 @@ class TestOpMatMul4Bits(unittest.TestCase):
             algo_config = RTNWeightOnlyQuantConfig(model_path=model_fp32_path)
         elif algorithm == "GPTQ":
             # test GPTQ algorithm
-            print("=" * 50)
             from onnxruntime.quantization import GPTQWeightOnlyQuantConfig
 
             algo_config = GPTQWeightOnlyQuantConfig(model_path=model_fp32_path, calibration_data_reader=data_reader)
