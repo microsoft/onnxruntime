@@ -8,10 +8,9 @@ from pathlib import Path
 import onnx
 
 from ...calibrate import CalibrationDataReader, CalibrationMethod
+from ...onnx_model import ONNXModel
 from ...quant_utils import QuantType
 from ...quantize import StaticQuantConfig
-from ...onnx_model import ONNXModel
-
 from .fusion_gelu import FusionGelu
 
 Q16_TYPES = {QuantType.QInt16, QuantType.QUInt16}
@@ -36,6 +35,7 @@ def qnn_preprocess_model(model_input: Path, model_output: Path) -> bool:
         onnx.save_model(model, model_output)
 
     return modified
+
 
 def get_qnn_qdq_config(
     model_input: Path,

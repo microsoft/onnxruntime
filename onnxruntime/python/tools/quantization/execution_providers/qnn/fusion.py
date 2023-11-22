@@ -22,8 +22,12 @@ class Fusion:
         self.nodes_to_remove: list = []
         self.nodes_to_add: list = []
 
-    def fuse(self, node: onnx.NodeProto, input_name_to_nodes: dict[str, list[onnx.NodeProto]],
-             output_name_to_node: dict[str, onnx.NodeProto]):
+    def fuse(
+        self,
+        node: onnx.NodeProto,
+        input_name_to_nodes: dict[str, list[onnx.NodeProto]],
+        output_name_to_node: dict[str, onnx.NodeProto],
+    ):
         """
         Interface function for derived fusion classes. Tries to fuse a node sequence containing
         the specified node.
@@ -51,10 +55,13 @@ class Fusion:
 
         return graph_updated
 
-    def is_safe_to_fuse_nodes(self, nodes_to_remove: list[onnx.NodeProto],
-                              keep_outputs: list[str],
-                              input_name_to_nodes: dict[str, list[onnx.NodeProto]],
-                              output_name_to_node: dict[str, onnx.NodeProto]):
+    def is_safe_to_fuse_nodes(
+        self,
+        nodes_to_remove: list[onnx.NodeProto],
+        keep_outputs: list[str],
+        input_name_to_nodes: dict[str, list[onnx.NodeProto]],
+        output_name_to_node: dict[str, onnx.NodeProto],
+    ):
         for node_to_remove in nodes_to_remove:
             for output_to_remove in node_to_remove.output:
                 if output_to_remove in keep_outputs:
@@ -66,4 +73,3 @@ class Fusion:
                             # Not safe to remove nodes since output is used by impacted_node
                             return False
         return True
-

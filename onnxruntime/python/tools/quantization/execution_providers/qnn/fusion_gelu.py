@@ -7,27 +7,37 @@ from __future__ import annotations
 
 import onnx
 
-from .fusion import Fusion
 from ...onnx_model import ONNXModel
+from .fusion import Fusion
 
 
 class FusionGelu(Fusion):
     def __init__(self, model: ONNXModel):
         super().__init__(model, "Gelu", "Erf")
 
-    def fuse(self, erf_node: onnx.NodeProto, input_name_to_nodes: dict[str, list[onnx.NodeProto]],
-             output_name_to_node: dict[str, onnx.NodeProto]):
+    def fuse(
+        self,
+        erf_node: onnx.NodeProto,
+        input_name_to_nodes: dict[str, list[onnx.NodeProto]],
+        output_name_to_node: dict[str, onnx.NodeProto],
+    ):
         """
         Interface function that tries to fuse a node sequence containing an Erf node into a single
         Gelu node.
         """
-        if (self.fuse_1(erf_node, input_name_to_nodes, output_name_to_node) or
-            self.fuse_2(erf_node, input_name_to_nodes, output_name_to_node) or
-            self.fuse_3(erf_node, input_name_to_nodes, output_name_to_node)):
+        if (
+            self.fuse_1(erf_node, input_name_to_nodes, output_name_to_node)
+            or self.fuse_2(erf_node, input_name_to_nodes, output_name_to_node)
+            or self.fuse_3(erf_node, input_name_to_nodes, output_name_to_node)
+        ):
             self.model.set_opset_import("com.microsoft", 1)
 
-    def fuse_1(self, erf_node: onnx.NodeProto, input_name_to_nodes: dict[str, list[onnx.NodeProto]],
-               output_name_to_node: dict[str, onnx.NodeProto]) -> bool:
+    def fuse_1(
+        self,
+        erf_node: onnx.NodeProto,
+        input_name_to_nodes: dict[str, list[onnx.NodeProto]],
+        output_name_to_node: dict[str, onnx.NodeProto],
+    ) -> bool:
         """
         This pattern is from PyTorch model
         Fuse Gelu with Erf into one node:
@@ -98,9 +108,7 @@ class FusionGelu(Fusion):
             subgraph_output = mul_after_erf.output[0]
 
         subgraph_nodes = [div, erf_node, add_after_erf, mul_after_erf, mul_half]
-        if not self.is_safe_to_fuse_nodes(
-            subgraph_nodes, [subgraph_output], input_name_to_nodes, output_name_to_node
-        ):
+        if not self.is_safe_to_fuse_nodes(subgraph_nodes, [subgraph_output], input_name_to_nodes, output_name_to_node):
             return False
 
         self.nodes_to_remove.extend(subgraph_nodes)
@@ -109,8 +117,12 @@ class FusionGelu(Fusion):
         self.nodes_to_add.append(fused_node)
         return True
 
-    def fuse_2(self, erf_node: onnx.NodeProto, input_name_to_nodes: dict[str, list[onnx.NodeProto]],
-               output_name_to_node: dict[str, onnx.NodeProto]) -> bool:
+    def fuse_2(
+        self,
+        erf_node: onnx.NodeProto,
+        input_name_to_nodes: dict[str, list[onnx.NodeProto]],
+        output_name_to_node: dict[str, onnx.NodeProto],
+    ) -> bool:
         """
         This pattern is from Keras model
         Fuse Gelu with Erf into one node:
@@ -172,9 +184,7 @@ class FusionGelu(Fusion):
         if sqrt_node:
             subgraph_nodes.append(sqrt_node)
 
-        if not self.is_safe_to_fuse_nodes(
-            subgraph_nodes, [mul.output[0]], input_name_to_nodes, output_name_to_node
-        ):
+        if not self.is_safe_to_fuse_nodes(subgraph_nodes, [mul.output[0]], input_name_to_nodes, output_name_to_node):
             return False
 
         self.nodes_to_remove.extend(subgraph_nodes)
@@ -183,8 +193,12 @@ class FusionGelu(Fusion):
         self.nodes_to_add.append(fused_node)
         return True
 
-    def fuse_3(self, erf_node: onnx.NodeProto, input_name_to_nodes: dict[str, list[onnx.NodeProto]],
-               output_name_to_node: dict[str, onnx.NodeProto]) -> bool:
+    def fuse_3(
+        self,
+        erf_node: onnx.NodeProto,
+        input_name_to_nodes: dict[str, list[onnx.NodeProto]],
+        output_name_to_node: dict[str, onnx.NodeProto],
+    ) -> bool:
         """
         This pattern is from TensorFlow model
         Fuse Gelu with Erf into one node:
@@ -253,4 +267,3 @@ class FusionGelu(Fusion):
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         return True
-
