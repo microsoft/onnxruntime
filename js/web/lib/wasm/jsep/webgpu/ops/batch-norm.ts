@@ -69,7 +69,8 @@ const createBatchNormInferenceProgramInfo =
       const inputMean = inputVariable('inputMean', inputs[3].dataType, inputs[3].dims, cComponents);
       const inputVar = inputVariable('inputVar', inputs[4].dataType, inputs[4].dims, cComponents);
       const y = outputVariable('y', inputs[0].dataType, shapeOrRank, components);
-
+      // TODO: support inputs with different data type. Current we need to make sure all inputs have the same data type.
+      // Otherwise, the shader compilation will fail.
       const calcCOffset = (): string => {
         let cOffset = '';
         if (spatial) {
