@@ -32,7 +32,7 @@ def _parse_build_settings(args):
     build_settings["build_osx_archs"] = build_settings_data.get("build_osx_archs", DEFAULT_BUILD_OSX_ARCHS)
 
     if "build_params" in build_settings_data:
-        build_settings["build_params"] = build_settings_data.get("build_params")
+        build_settings["build_params"] = build_settings_data["build_params"]
     else:
         raise ValueError("build_params is required in the build config file")
 
