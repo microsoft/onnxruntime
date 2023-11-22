@@ -23,7 +23,7 @@ class TfIdfVectorizer final : public OpKernel {
                    std::vector<uint32_t>& frequencies, bool is_input_string) const;
 
   // Apply weighing criteria and output
-  void OutputResult(const std::vector<uint32_t>& frequences, float* output_data) const;
+  void OutputResult(gsl::span<const uint32_t> frequences, gsl::span<float> output_data) const;
 
   struct Impl;
   std::unique_ptr<Impl> impl_;

@@ -251,38 +251,34 @@ TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), imp
 
 TfIdfVectorizer::~TfIdfVectorizer() = default;
 
-void TfIdfVectorizer::OutputResult(const std::vector<uint32_t>& frequences, float* output_data) const {
+void TfIdfVectorizer::OutputResult(gsl::span<const uint32_t> frequences, gsl::span<float> output_data) const {
   const Impl& impl = *impl_;
-  const auto row_size = impl.output_size_;
-
   const auto& w = impl.weights_;
   switch (impl.weighting_criteria_) {
     case kTF: {
-      for (auto f : frequences) {
-        *output_data++ = static_cast<float>(f);
+      for (size_t i = 0; i < frequences.size(); ++i) {
+        output_data[i] = static_cast<float>(frequences[i]);
       }
     } break;
     case kIDF: {
       if (!w.empty()) {
-        const auto* freqs = frequences.data();
-        for (size_t i = 0; i < row_size; ++i) {
-          *output_data++ = (*freqs++ > 0) ? w[i] : 0;
+        for (size_t i = 0; i < frequences.size(); ++i) {
+          output_data[i] = frequences[i] > 0 ? w[i] : 0;
         }
       } else {
-        for (auto f : frequences) {
-          *output_data++ = (f > 0) ? 1.0f : 0;
+        for (size_t i = 0; i < frequences.size(); ++i) {
+          output_data[i] = frequences[i] > 0 ? 1.0f : 0.0f;
         }
       }
     } break;
     case kTFIDF: {
       if (!w.empty()) {
-        const auto* freqs = frequences.data();
-        for (size_t i = 0; i < row_size; ++i) {
-          *output_data++ = *freqs++ * w[i];
+        for (size_t i = 0; i < frequences.size(); ++i) {
+          output_data[i] = static_cast<float>(frequences[i]) * w[i];
         }
       } else {
-        for (auto f : frequences) {
-          *output_data++ = static_cast<float>(f);
+        for (size_t i = 0; i < frequences.size(); ++i) {
+          output_data[i] = static_cast<float>(frequences[i]);
         }
       }
     } break;
@@ -391,7 +387,7 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
 
   assert((num_rows * C) == total_items);
   const Impl& impl = *impl_;
-  std::vector<int64_t> output_dims;
+  TensorShapeVector output_dims;
   if (B == 0) {
     output_dims.push_back(impl.output_size_);
     B = 1;  // For use in the loops below
@@ -419,16 +415,20 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
 
   auto x_data_raw = ctx->Input<Tensor>(0)->DataRaw();
   const auto elem_size = X->DataType()->Size();
+  int32_t num_batches = std::min<int32_t>(concurrency::ThreadPool::DegreeOfParallelism(ctx->GetOperatorThreadPool()) * 2, num_rows);
 
-  std::function<void(ptrdiff_t)> fn = [this, ctx, C, output_data, x_data_raw, elem_size, is_input_string](ptrdiff_t row_num) {
+  std::function<void(ptrdiff_t)> fn = [this, ctx, C, output_data, x_data_raw, elem_size, is_input_string, num_batches, num_rows](ptrdiff_t batch_num) {
     // Frequency holder allocate [B..output_size_] and init all to zero.
-    std::vector<uint32_t> frequencies;
-    frequencies.resize(this->impl_->output_size_, 0);
-    ComputeImpl(x_data_raw, elem_size, row_num, C, frequencies, is_input_string);
-    OutputResult(frequencies, output_data + row_num * this->impl_->output_size_);
+    auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_batches, static_cast<size_t>(num_rows));
+    std::vector<uint32_t> frequencies(this->impl_->output_size_);
+    for (auto row_num = work.start; row_num < work.end; ++row_num) {
+      std::fill(frequencies.begin(), frequencies.end(), static_cast<uint32_t>(0));
+      ComputeImpl(x_data_raw, elem_size, row_num, C, frequencies, is_input_string);
+      OutputResult(frequencies, gsl::span<float>(output_data + row_num * this->impl_->output_size_, this->impl_->output_size_));
+    }
   };
 
-  concurrency::ThreadPool::TryBatchParallelFor(ctx->GetOperatorThreadPool(), num_rows, std::move(fn), 0);
+  concurrency::ThreadPool::TrySimpleParallelFor(ctx->GetOperatorThreadPool(), num_batches, std::move(fn));
   return Status::OK();
 }
 
