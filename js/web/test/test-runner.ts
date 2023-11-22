@@ -243,13 +243,11 @@ export class ModelTestContext {
       this.initializing = true;
 
       const initStart = now();
-      const session = modelTest.backend == 'webnn' ?
-          await initializeSession(
-              modelTest.modelUrl, testOptions?.webnnOptions || 'webnn', modelTest.ioBinding, profile,
-              testOptions?.sessionOptions || {} || {}, this.cache) :
-          await initializeSession(
-              modelTest.modelUrl, modelTest.backend!, modelTest.ioBinding, profile, testOptions?.sessionOptions || {},
-              this.cache);
+      const executionProviderConfig =
+          modelTest.backend == 'webnn' ? (testOptions?.webnnOptions || 'webnn') : modelTest.backend!;
+      const session = await initializeSession(
+          modelTest.modelUrl, executionProviderConfig, modelTest.ioBinding, profile, testOptions?.sessionOptions || {},
+          this.cache);
 
       const initEnd = now();
 
