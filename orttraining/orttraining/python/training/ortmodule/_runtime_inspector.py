@@ -675,7 +675,9 @@ class MemoryObserver:
 
                 index += 1
 
-            saving_recommendation = "use comma as delimiter to enable multiple memory optimization plans at the same time:\n"
+            saving_recommendation = (
+                "use comma as delimiter to enable multiple memory optimization plans at the same time:\n"
+            )
             saving_recommendation += "  export ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
 
             notes = []
