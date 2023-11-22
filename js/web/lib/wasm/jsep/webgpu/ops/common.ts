@@ -210,6 +210,11 @@ export interface IndicesHelper {
    * a string representing the variable name for the strides of the input or output.
    */
   readonly strides: string;
+
+  /**
+   * representing variable with uniforms, but without binding.
+   */
+  readonly uniformOnly: boolean;
 }
 
 const getWgslMappedType = (type: number, components: 1|2|3|4): string|[string, string] => {
@@ -335,8 +340,8 @@ export const sumVector = (name: string, components: number) => {
  *    vec4.
  */
 const createIndicesHelper =
-    (name: string, tensorType: number, shapeOrRank: number|readonly number[], isInput: boolean,
-     components: 1|2|3|4): IndicesHelper => {
+    (name: string, tensorType: number, shapeOrRank: number|readonly number[], isInput: boolean, components: 1|2|3|4,
+     uniformOnly = false): IndicesHelper => {
       const useUniform = typeof shapeOrRank === 'number';
       const rank = useUniform ? shapeOrRank : shapeOrRank.length;
       const rankIdentity = [...new Array(rank).keys()];
@@ -358,7 +363,7 @@ const createIndicesHelper =
         getByIndices: false,
       };
 
-      const uniformPrefix = useUniform ? 'uniforms.' : '';
+      const uniformPrefix = useUniform || uniformOnly ? 'uniforms.' : '';
       const shape = `${uniformPrefix}${name}_shape`;
       const strides = `${uniformPrefix}${name}_strides`;
       let o2iSnippet = '';
@@ -616,7 +621,8 @@ const createIndicesHelper =
         name,
         strides,
         shape,
-        rank
+        rank,
+        uniformOnly
       };
     };
 
@@ -630,8 +636,8 @@ const createIndicesHelper =
  * @returns an IndicesHelper for the input.
  */
 export const inputVariable =
-    (name: string, type: number, shapeOrRank: number|readonly number[], components: 1|2|3|4 = 1): IndicesHelper =>
-        createIndicesHelper(name, type, shapeOrRank, true, components);
+    (name: string, type: number, shapeOrRank: number|readonly number[], components: 1|2|3|4 = 1, uniformOnly = false):
+        IndicesHelper => createIndicesHelper(name, type, shapeOrRank, true, components, uniformOnly);
 
 /**
  * Create a IndicesHelper for an output.
@@ -734,7 +740,7 @@ class ShaderHelperImpl implements ShaderHelper {
   `;
   }
 
-  private declareVariable(variable: IndicesHelper, bindingIndex: number): string {
+  private declareVariable(variable: IndicesHelper, bindingIndex = -1): string {
     this.indicesHelpers.push(variable);
     if (variable.rank !== 0) {
       if (variable.shape.startsWith('uniforms.')) {
@@ -744,13 +750,24 @@ class ShaderHelperImpl implements ShaderHelper {
         this.uniforms.push({name: variable.strides.replace('uniforms.', ''), type: variable.type.indices});
       }
     }
+    if (variable.uniformOnly) {
+      return '';
+    }
     const access = variable.usage === 'input' ? 'read' : 'read_write';
     const storageType = variable.type.storage;
     return `@group(0) @binding(${bindingIndex}) var<storage, ${access}> ${variable.name}: array<${storageType}>;`;
   }
 
   declareVariables(...variables: IndicesHelper[]): string {
-    return variables.map(v => this.declareVariable(v, this.variableIndex++)).join('\n');
+    return variables
+        .map(v => {
+          if (v.uniformOnly === true) {
+            return this.declareVariable(v);
+          } else {
+            return this.declareVariable(v, this.variableIndex++);
+          }
+        })
+        .join('\n');
   }
 
   registerUniform(name: string, type: string): ShaderHelper {

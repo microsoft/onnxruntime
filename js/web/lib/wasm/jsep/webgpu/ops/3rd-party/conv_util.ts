@@ -19,13 +19,13 @@
 //
 // modified to fit the needs of the project
 
-export const utilFunctions = `
+export const utilFunctions = (strideStr: string) => (`
 fn getIndexFromCoords4D(coords : vec4<i32>, shape : vec4<i32>) -> i32 {
   return dot(coords, vec4<i32>(
       shape.y * shape.z * shape.w, shape.z * shape.w, shape.w, 1));
 }
 fn getOutputIndexFromCoords(coords : vec4<i32>) -> i32 {
   return dot(coords, vec4<i32>(
-    outShapeStrides.x, outShapeStrides.y, outShapeStrides.z, 1));
+    i32(${strideStr}.x), i32(${strideStr}.y), i32(${strideStr}.z), 1));
 }
-`;
+`);
