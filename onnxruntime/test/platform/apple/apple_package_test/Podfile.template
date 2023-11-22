@@ -1,4 +1,4 @@
-def should_exclude_macos_target
+def include_macos_target
     if '@C_POD_NAME@' != 'onnxruntime-mobile-c'
       return true
     end
@@ -17,7 +17,7 @@ target 'ios_package_test' do
   end
 end
 
-unless should_exclude_macos_target
+unless include_macos_target
   target 'macos_package_test' do
       # Comment the next line if you don't want to use dynamic frameworks
       use_frameworks!
