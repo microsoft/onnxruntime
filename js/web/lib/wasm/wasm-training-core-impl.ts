@@ -398,7 +398,7 @@ export const getContiguousParameters =
 };
 
 export const loadParametersBuffer =
-    async(trainingSessionId: number, buffer: Float32Array, trainableOnly: boolean): Promise<void> => {
+    async(trainingSessionId: number, buffer: Uint8Array, trainableOnly: boolean): Promise<void> => {
   const wasm = getInstance();
   const stack = wasm.stackSave();
 
@@ -406,10 +406,10 @@ export const loadParametersBuffer =
   const locationAsString = 'cpu';
 
   // allocates & copies JavaScript buffer to WASM heap
-  const bufferCount = buffer.length;
-  const bufferByteLength = bufferCount * 4;
+  const bufferCount = getParametersSize(trainingSessionId, trainableOnly);
+  const bufferByteLength = buffer.length;
   const bufferOffset = wasm._malloc(bufferByteLength);
-  wasm.HEAPU8.set(new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength), bufferOffset);
+  wasm.HEAPU8.set(buffer, bufferOffset);
 
   // allocates and handles moving dimensions information to WASM memory
   const dimsOffset = wasm.stackAlloc(4);

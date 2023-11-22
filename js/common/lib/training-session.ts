@@ -60,19 +60,21 @@ export interface TrainingSession {
   getParametersSize(trainableOnly: boolean): Promise<number>;
 
   /**
-   * Copies parameter values from the given array to the training state.
+   * Copies parameter values from the given array to the training state. Currently, only supporting models with
+   * parameters of type Float32.
    *
-   * @param buffer - buffer containing parameters
+   * @param buffer - Float32 buffer containing parameters converted to a Uint8Array.
    * @param trainableOnly - True if trainable parameters only to be modified, false otherwise. Default value is true.
    */
-  loadParametersBuffer(array: Float32Array, trainableOnly: boolean): Promise<void>;
+  loadParametersBuffer(array: Uint8Array, trainableOnly: boolean): Promise<void>;
 
   /**
-   * Copies the model parameters to a contiguous buffer. Usually used in the context of Federated Learning
+   * Copies the model parameters to a contiguous buffer. Usually used in the context of Federated Learning.
+   * Currently, only supporting models with parameters of type Float32.
    *
    * @param trainableOnly - When set to true, only trainable parameters are copied. Trainable parameters are parameters
    * for which requires_grad is set to true. Default value is true.
-   * @returns A promise that resolves to a buffer of the requested parameters.
+   * @returns A promise that resolves to a Float32 OnnxValue of the requested parameters.
    */
   getContiguousParameters(trainableOnly: boolean): Promise<OnnxValue>;
   // #endregion
