@@ -258,8 +258,8 @@ export const tensorTypeToWsglValueType = (type: DataType, components: 1|2|3|4 = 
   return typeof mappedType === 'string' ? mappedType : mappedType[1];
 };
 
-export const createTensorShapeVariables = (dims: readonly number[]):
-    ProgramUniform[] => [{type: 'uint32', data: dims}, {type: 'uint32', data: ShapeUtil.computeStrides(dims)}];
+export const createTensorShapeVariables = (dims: readonly number[]): ProgramUniform[] =>
+    dims.length === 0 ? [] : [{type: 'uint32', data: dims}, {type: 'uint32', data: ShapeUtil.computeStrides(dims)}];
 
 /**
  * A helper function to get maximum vector size for specified data length
@@ -646,6 +646,8 @@ export const outputVariable =
     (name: string, type: number, shapeOrRank: number|readonly number[], components: 1|2|3|4 = 1): IndicesHelper =>
         createIndicesHelper(name, type, shapeOrRank, false, components);
 
+export type UniformsArrayType = Array<{name: string; type: string}>;
+
 /**
  * A ShaderHelper is a helper class for generating WGSL code.
  */
@@ -697,6 +699,7 @@ export interface ShaderHelper {
    * A helper function to register one uniform. Can be called multiple times to register multiple uniforms.
    */
   registerUniform(name: string, type: string): ShaderHelper;
+  registerUniforms(nameToTypeMap: UniformsArrayType): ShaderHelper;
 }
 
 class ShaderHelperImpl implements ShaderHelper {
@@ -717,11 +720,12 @@ class ShaderHelperImpl implements ShaderHelper {
     const paramList = is1DimensionDispatch ? `@builtin(global_invocation_id) global_id : vec3<u32>,
     @builtin(local_invocation_id) local_id : vec3<u32>` :
                                              `@builtin(local_invocation_index) local_index : u32,
-    @builtin(workgroup_id) workgroup_id : vec3<u32>`;
+    @builtin(workgroup_id) workgroup_id : vec3<u32>,
+    @builtin(num_workgroups) num_workgroups : vec3<u32>`;
     const globalIdxDefinition = is1DimensionDispatch ?
         'let global_idx = global_id.x;' :
-        `let global_idx = (workgroup_id.z * ${this.normalizedDispatchGroup[0] * this.normalizedDispatchGroup[1]}u +
-          workgroup_id.y * ${this.normalizedDispatchGroup[0]}u + workgroup_id.x) * ${
+        `let global_idx = (workgroup_id.z * num_workgroups[0] * num_workgroups[1] +
+          workgroup_id.y * num_workgroups[0] + workgroup_id.x) * ${
             workgroupSizeX * workgroupSizeY * workgroupSizeZ}u + local_index;`;
 
     return `@compute @workgroup_size(${workgroupSizeX}, ${workgroupSizeY}, ${workgroupSizeZ})
@@ -732,11 +736,13 @@ class ShaderHelperImpl implements ShaderHelper {
 
   private declareVariable(variable: IndicesHelper, bindingIndex: number): string {
     this.indicesHelpers.push(variable);
-    if (variable.shape.startsWith('uniforms.')) {
-      this.uniforms.push({name: variable.shape.replace('uniforms.', ''), type: variable.type.indices});
-    }
-    if (variable.strides.startsWith('uniforms.')) {
-      this.uniforms.push({name: variable.strides.replace('uniforms.', ''), type: variable.type.indices});
+    if (variable.rank !== 0) {
+      if (variable.shape.startsWith('uniforms.')) {
+        this.uniforms.push({name: variable.shape.replace('uniforms.', ''), type: variable.type.indices});
+      }
+      if (variable.strides.startsWith('uniforms.')) {
+        this.uniforms.push({name: variable.strides.replace('uniforms.', ''), type: variable.type.indices});
+      }
     }
     const access = variable.usage === 'input' ? 'read' : 'read_write';
     const storageType = variable.type.storage;
@@ -752,8 +758,13 @@ class ShaderHelperImpl implements ShaderHelper {
     return this;
   }
 
+  registerUniforms(additionalUniforms: UniformsArrayType): ShaderHelper {
+    this.uniforms = this.uniforms.concat(additionalUniforms);
+    return this;
+  }
+
   private indicesHelpers: IndicesHelper[] = [];
-  private uniforms: Array<{name: string; type: string}> = [];
+  private uniforms: UniformsArrayType = [];
   private uniformDeclaration(): string {
     if (this.uniforms.length === 0) {
       return '';

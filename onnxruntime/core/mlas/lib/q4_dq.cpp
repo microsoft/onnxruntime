@@ -364,7 +364,7 @@ range2scalezp(float min, float max, ScaleT& scale, uint8_t& zp)
     } else {
         zp = (uint8_t)roundf(zero_point_fp);
     }
-    scale = static_cast<ScaleT>(scale_f);
+    scale = ScaleT(scale_f);
 }
 
 template <typename ScaleT, int qbits>
@@ -377,7 +377,7 @@ range2scale(float min, float max, ScaleT& scale)
 
     max = fabsf(max) > fabsf(min) ? max : min;
 
-    scale = static_cast<ScaleT>(max / mid_fp);
+    scale = ScaleT(max / mid_fp);
 };
 
 
@@ -420,6 +420,24 @@ struct BlockwiseQuantizer {
         // quantized matrix is stored in column major, packed by column
         q_rows = (meta_rows * QuantBlk::kRow * qbits + 7) / 8;
         q_cols = meta_cols * QuantBlk::kColumn;
+    }
+
+    static MLAS_FORCEINLINE void quantizedBufferSizes(
+        int rows, int columns, size_t& data_bytes, size_t& scale_num_elements, size_t* zero_point_bytes
+    )
+    {
+        int meta_rows, meta_cols;
+        quantizeMetaShape(rows, columns, meta_rows, meta_cols);
+        int q_rows, q_cols;
+        quantizedShape(rows, columns, q_rows, q_cols);
+
+        data_bytes = q_rows * q_cols;
+        scale_num_elements = meta_rows * meta_cols;
+
+        if (zero_point_bytes) {
+            // this works for qbits == 4 but may need to be updated for other qbits values
+            *zero_point_bytes = ((meta_rows * qbits + 7) / 8) * meta_cols;
+        }
     }
 
     /**
@@ -621,7 +639,7 @@ struct BlockwiseQuantizer {
 };
 
 
-template <typename T>
+template <typename T, int qbits>
 void
 MlasBlockwiseQuantMetaShape(
     int block_size,
@@ -635,47 +653,47 @@ MlasBlockwiseQuantMetaShape(
     switch (block_size) {
         case 16: {
             if (columnwise) {
-                BlockwiseQuantizer<T, 16, 4, true>::quantizeMetaShape(rows, columns, meta_rows, meta_cols);
+                BlockwiseQuantizer<T, 16, qbits, true>::quantizeMetaShape(rows, columns, meta_rows, meta_cols);
             } else {
-                BlockwiseQuantizer<T, 16, 4, false>::quantizeMetaShape(rows, columns, meta_rows, meta_cols);
+                BlockwiseQuantizer<T, 16, qbits, false>::quantizeMetaShape(rows, columns, meta_rows, meta_cols);
             }
             break;
         }
         case 32: {
             if (columnwise) {
-                BlockwiseQuantizer<T, 32, 4, true>::quantizeMetaShape(rows, columns, meta_rows, meta_cols);
+                BlockwiseQuantizer<T, 32, qbits, true>::quantizeMetaShape(rows, columns, meta_rows, meta_cols);
             } else {
-                BlockwiseQuantizer<T, 32, 4, false>::quantizeMetaShape(
+                BlockwiseQuantizer<T, 32, qbits, false>::quantizeMetaShape(
                                     rows, columns, meta_rows, meta_cols);
             }
             break;
         }
         case 64: {
             if (columnwise) {
-                BlockwiseQuantizer<T, 64, 4, true>::quantizeMetaShape(rows, columns, meta_rows,
+                BlockwiseQuantizer<T, 64, qbits, true>::quantizeMetaShape(rows, columns, meta_rows,
                                                                       meta_cols);
             } else {
-                BlockwiseQuantizer<T, 64, 4, false>::quantizeMetaShape(rows, columns, meta_rows,
+                BlockwiseQuantizer<T, 64, qbits, false>::quantizeMetaShape(rows, columns, meta_rows,
                                                                        meta_cols);
             }
             break;
         }
         case 128: {
             if (columnwise) {
-                BlockwiseQuantizer<T, 128, 4, true>::quantizeMetaShape(rows, columns, meta_rows,
+                BlockwiseQuantizer<T, 128, qbits, true>::quantizeMetaShape(rows, columns, meta_rows,
                                                                       meta_cols);
             } else {
-                BlockwiseQuantizer<T, 128, 4, false>::quantizeMetaShape(rows, columns, meta_rows,
+                BlockwiseQuantizer<T, 128, qbits, false>::quantizeMetaShape(rows, columns, meta_rows,
                                                                        meta_cols);
             }
             break;
         }
         case 256: {
             if (columnwise) {
-                BlockwiseQuantizer<T, 256, 4, true>::quantizeMetaShape(rows, columns, meta_rows,
+                BlockwiseQuantizer<T, 256, qbits, true>::quantizeMetaShape(rows, columns, meta_rows,
                                                                       meta_cols);
             } else {
-                BlockwiseQuantizer<T, 256, 4, false>::quantizeMetaShape(rows, columns, meta_rows,
+                BlockwiseQuantizer<T, 256, qbits, false>::quantizeMetaShape(rows, columns, meta_rows,
                                                                        meta_cols);
             }
             break;
@@ -689,7 +707,7 @@ MlasBlockwiseQuantMetaShape(
 
 
 
-template <typename T>
+template <typename T, int qbits>
 void
 MlasBlockwiseQuantizedShape(
     int block_size,
@@ -703,42 +721,42 @@ MlasBlockwiseQuantizedShape(
     switch (block_size) {
         case 16: {
             if (columnwise) {
-                BlockwiseQuantizer<T, 16, 4, true>::quantizedShape(rows, columns, q_rows, q_cols);
+                BlockwiseQuantizer<T, 16, qbits, true>::quantizedShape(rows, columns, q_rows, q_cols);
             } else {
-                BlockwiseQuantizer<T, 16, 4, false>::quantizedShape(rows, columns, q_rows, q_cols);
+                BlockwiseQuantizer<T, 16, qbits, false>::quantizedShape(rows, columns, q_rows, q_cols);
             }
             break;
         }
         case 32: {
             if (columnwise) {
-                BlockwiseQuantizer<T, 32, 4, true>::quantizedShape(rows, columns, q_rows, q_cols);
+                BlockwiseQuantizer<T, 32, qbits, true>::quantizedShape(rows, columns, q_rows, q_cols);
             } else {
-                BlockwiseQuantizer<T, 32, 4, false>::quantizedShape(
+                BlockwiseQuantizer<T, 32, qbits, false>::quantizedShape(
                                     rows, columns, q_rows, q_cols);
             }
             break;
         }
         case 64: {
             if (columnwise) {
-                BlockwiseQuantizer<T, 64, 4, true>::quantizedShape(rows, columns, q_rows, q_cols);
+                BlockwiseQuantizer<T, 64, qbits, true>::quantizedShape(rows, columns, q_rows, q_cols);
             } else {
-                BlockwiseQuantizer<T, 64, 4, false>::quantizedShape(rows, columns, q_rows, q_cols);
+                BlockwiseQuantizer<T, 64, qbits, false>::quantizedShape(rows, columns, q_rows, q_cols);
             }
             break;
         }
         case 128: {
             if (columnwise) {
-                BlockwiseQuantizer<T, 128, 4, true>::quantizedShape(rows, columns, q_rows, q_cols);
+                BlockwiseQuantizer<T, 128, qbits, true>::quantizedShape(rows, columns, q_rows, q_cols);
             } else {
-                BlockwiseQuantizer<T, 128, 4, false>::quantizedShape(rows, columns, q_rows, q_cols);
+                BlockwiseQuantizer<T, 128, qbits, false>::quantizedShape(rows, columns, q_rows, q_cols);
             }
             break;
         }
         case 256: {
             if (columnwise) {
-                BlockwiseQuantizer<T, 256, 4, true>::quantizedShape(rows, columns, q_rows, q_cols);
+                BlockwiseQuantizer<T, 256, qbits, true>::quantizedShape(rows, columns, q_rows, q_cols);
             } else {
-                BlockwiseQuantizer<T, 256, 4, false>::quantizedShape(rows, columns, q_rows, q_cols);
+                BlockwiseQuantizer<T, 256, qbits, false>::quantizedShape(rows, columns, q_rows, q_cols);
             }
             break;
         }
@@ -752,7 +770,7 @@ MlasBlockwiseQuantizedShape(
 
 template
 void
-MlasBlockwiseQuantMetaShape<float>(
+MlasBlockwiseQuantMetaShape<float, 4>(
     int block_size,
     bool columnwise,
     int rows,
@@ -763,7 +781,7 @@ MlasBlockwiseQuantMetaShape<float>(
 
 template
 void
-MlasBlockwiseQuantizedShape<float>(
+MlasBlockwiseQuantizedShape<float, 4>(
     int block_size,
     bool columnwise,
     int rows,
@@ -773,7 +791,94 @@ MlasBlockwiseQuantizedShape<float>(
     );
 
 
-template <typename T>
+void MLASCALL
+MlasBlockwiseQuantizedBufferSizes(
+    int qbits,
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    size_t& q_data_size_in_bytes,
+    size_t& q_scale_num_elements,
+    size_t* q_zero_point_size_in_bytes
+)
+{
+    q_data_size_in_bytes = q_scale_num_elements = 0;
+    if (q_zero_point_size_in_bytes) {
+        *q_zero_point_size_in_bytes = 0;
+    }
+
+    if (qbits == 4) {
+        switch (block_size) {
+            case 16:
+                if (columnwise) {
+                    BlockwiseQuantizer<float, 16, 4, true>::quantizedBufferSizes(
+                        rows, columns, q_data_size_in_bytes, q_scale_num_elements, q_zero_point_size_in_bytes
+                    );
+                } else {
+                    BlockwiseQuantizer<float, 16, 4, false>::quantizedBufferSizes(
+                        rows, columns, q_data_size_in_bytes, q_scale_num_elements, q_zero_point_size_in_bytes
+                    );
+                }
+                break;
+
+            case 32:
+                if (columnwise) {
+                    BlockwiseQuantizer<float, 32, 4, true>::quantizedBufferSizes(
+                        rows, columns, q_data_size_in_bytes, q_scale_num_elements, q_zero_point_size_in_bytes
+                    );
+                } else {
+                    BlockwiseQuantizer<float, 32, 4, false>::quantizedBufferSizes(
+                        rows, columns, q_data_size_in_bytes, q_scale_num_elements, q_zero_point_size_in_bytes
+                    );
+                }
+                break;
+
+            case 64:
+                if (columnwise) {
+                    BlockwiseQuantizer<float, 64, 4, true>::quantizedBufferSizes(
+                        rows, columns, q_data_size_in_bytes, q_scale_num_elements, q_zero_point_size_in_bytes
+                    );
+                } else {
+                    BlockwiseQuantizer<float, 64, 4, false>::quantizedBufferSizes(
+                        rows, columns, q_data_size_in_bytes, q_scale_num_elements, q_zero_point_size_in_bytes
+                    );
+                }
+                break;
+
+            case 128:
+                if (columnwise) {
+                    BlockwiseQuantizer<float, 128, 4, true>::quantizedBufferSizes(
+                        rows, columns, q_data_size_in_bytes, q_scale_num_elements, q_zero_point_size_in_bytes
+                    );
+                } else {
+                    BlockwiseQuantizer<float, 128, 4, false>::quantizedBufferSizes(
+                        rows, columns, q_data_size_in_bytes, q_scale_num_elements, q_zero_point_size_in_bytes
+                    );
+                }
+                break;
+
+            case 256:
+                if (columnwise) {
+                    BlockwiseQuantizer<float, 256, 4, true>::quantizedBufferSizes(
+                        rows, columns, q_data_size_in_bytes, q_scale_num_elements, q_zero_point_size_in_bytes
+                    );
+                } else {
+                    BlockwiseQuantizer<float, 256, 4, false>::quantizedBufferSizes(
+                        rows, columns, q_data_size_in_bytes, q_scale_num_elements, q_zero_point_size_in_bytes
+                    );
+                }
+                break;
+
+            default:
+                // Only block size 16, 32, 64, 128, 256 are supported.
+                break;
+        }
+    }
+}
+
+
+template <typename T, int qbits>
 void
 MlasQuantizeBlockwise(
     uint8_t* dst,
@@ -791,50 +896,50 @@ MlasQuantizeBlockwise(
     switch (block_size) {
         case 16:
             if (columnwise) {
-                BlockwiseQuantizer<T, 16, 4, true>::quantizeAndTranspose(
+                BlockwiseQuantizer<T, 16, qbits, true>::quantizeAndTranspose(
                     dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
             } else {
-                BlockwiseQuantizer<T, 16, 4, false>::quantizeAndTranspose(
+                BlockwiseQuantizer<T, 16, qbits, false>::quantizeAndTranspose(
                     dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
             }
             break;
 
         case 32:
             if (columnwise) {
-                BlockwiseQuantizer<T, 32, 4, true>::quantizeAndTranspose(
+                BlockwiseQuantizer<T, 32, qbits, true>::quantizeAndTranspose(
                     dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
             } else {
-                BlockwiseQuantizer<T, 32, 4, false>::quantizeAndTranspose(
+                BlockwiseQuantizer<T, 32, qbits, false>::quantizeAndTranspose(
                     dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
             }
             break;
 
         case 64:
             if (columnwise) {
-                BlockwiseQuantizer<T, 64, 4, true>::quantizeAndTranspose(
+                BlockwiseQuantizer<T, 64, qbits, true>::quantizeAndTranspose(
                     dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
             } else {
-                BlockwiseQuantizer<T, 64, 4, false>::quantizeAndTranspose(
+                BlockwiseQuantizer<T, 64, qbits, false>::quantizeAndTranspose(
                     dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
             }
             break;
 
         case 128:
             if (columnwise) {
-                BlockwiseQuantizer<T, 128, 4, true>::quantizeAndTranspose(
+                BlockwiseQuantizer<T, 128, qbits, true>::quantizeAndTranspose(
                     dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
             } else {
-                BlockwiseQuantizer<T, 128, 4, false>::quantizeAndTranspose(
+                BlockwiseQuantizer<T, 128, qbits, false>::quantizeAndTranspose(
                     dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
             }
             break;
 
         case 256:
             if (columnwise) {
-                BlockwiseQuantizer<T, 256, 4, true>::quantizeAndTranspose(
+                BlockwiseQuantizer<T, 256, qbits, true>::quantizeAndTranspose(
                     dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
             } else {
-                BlockwiseQuantizer<T, 256, 4, false>::quantizeAndTranspose(
+                BlockwiseQuantizer<T, 256, qbits, false>::quantizeAndTranspose(
                     dst, scales, zero_points, src, rows, columns, leading_dimension, thread_pool);
             }
             break;
@@ -847,7 +952,7 @@ MlasQuantizeBlockwise(
 
 template
 void
-MlasQuantizeBlockwise<float>(
+MlasQuantizeBlockwise<float, 4>(
     uint8_t* dst,
     float* scales,
     uint8_t* zero_points,
@@ -860,8 +965,23 @@ MlasQuantizeBlockwise<float>(
     MLAS_THREADPOOL* thread_pool
     );
 
+template
+void
+MlasQuantizeBlockwise<MLAS_FP16, 4>(
+    uint8_t* dst,
+    MLAS_FP16* scales,
+    uint8_t* zero_points,
+    const MLAS_FP16* src,
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    int leading_dimension,
+    MLAS_THREADPOOL* thread_pool
+    );
 
-template <typename T>
+
+template <typename T, int qbits>
 void
 MlasDequantizeBlockwise(
     T* dst,
@@ -878,46 +998,46 @@ MlasDequantizeBlockwise(
     switch (block_size) {
         case 16:
             if (columnwise) {
-                BlockwiseQuantizer<T, 16, 4, true>::dequantize(dst, src, scales, zero_points, rows,
+                BlockwiseQuantizer<T, 16, qbits, true>::dequantize(dst, src, scales, zero_points, rows,
                                                                columns, thread_pool);
             } else {
-                BlockwiseQuantizer<T, 16, 4, false>::dequantize(dst, src, scales, zero_points, rows,
+                BlockwiseQuantizer<T, 16, qbits, false>::dequantize(dst, src, scales, zero_points, rows,
                                                                 columns, thread_pool);
             }
             break;
         case 32:
             if (columnwise) {
-                BlockwiseQuantizer<T, 32, 4, true>::dequantize(dst, src, scales, zero_points, rows,
+                BlockwiseQuantizer<T, 32, qbits, true>::dequantize(dst, src, scales, zero_points, rows,
                                                                columns, thread_pool);
             } else {
-                BlockwiseQuantizer<T, 32, 4, false>::dequantize(dst, src, scales, zero_points, rows,
+                BlockwiseQuantizer<T, 32, qbits, false>::dequantize(dst, src, scales, zero_points, rows,
                                                                 columns, thread_pool);
             }
             break;
         case 64:
             if (columnwise) {
-                BlockwiseQuantizer<T, 64, 4, true>::dequantize(dst, src, scales, zero_points, rows,
+                BlockwiseQuantizer<T, 64, qbits, true>::dequantize(dst, src, scales, zero_points, rows,
                                                                columns, thread_pool);
             } else {
-                BlockwiseQuantizer<T, 64, 4, false>::dequantize(dst, src, scales, zero_points, rows,
+                BlockwiseQuantizer<T, 64, qbits, false>::dequantize(dst, src, scales, zero_points, rows,
                                                                 columns, thread_pool);
             }
             break;
         case 128:
             if (columnwise) {
-                BlockwiseQuantizer<T, 128, 4, true>::dequantize(dst, src, scales, zero_points, rows,
+                BlockwiseQuantizer<T, 128, qbits, true>::dequantize(dst, src, scales, zero_points, rows,
                                                                 columns, thread_pool);
             } else {
-                BlockwiseQuantizer<T, 128, 4, false>::dequantize(dst, src, scales, zero_points,
+                BlockwiseQuantizer<T, 128, qbits, false>::dequantize(dst, src, scales, zero_points,
                                                                  rows, columns, thread_pool);
             }
             break;
         case 256:
             if (columnwise) {
-                BlockwiseQuantizer<T, 256, 4, true>::dequantize(dst, src, scales, zero_points, rows,
+                BlockwiseQuantizer<T, 256, qbits, true>::dequantize(dst, src, scales, zero_points, rows,
                                                                 columns, thread_pool);
             } else {
-                BlockwiseQuantizer<T, 256, 4, false>::dequantize(dst, src, scales, zero_points,
+                BlockwiseQuantizer<T, 256, qbits, false>::dequantize(dst, src, scales, zero_points,
                                                                  rows, columns, thread_pool);
             }
             break;
@@ -929,7 +1049,7 @@ MlasDequantizeBlockwise(
 
 template
 void
-MlasDequantizeBlockwise<float>(
+MlasDequantizeBlockwise<float, 4>(
     float* dst,
     const uint8_t* src,
     const float* scales,

@@ -87,24 +87,26 @@ export interface TrainingSession {
    * Retrieves the size of all parameters for the training state. Calculates the total number of primitive (datatype of
    * the parameters) elements of all the parameters in the training state.
    *
-   * @param trainableOnly - When set to true, the size is calculated for trainable params only.
+   * @param trainableOnly - When set to true, the size is calculated for trainable params only. Default value is true.
    */
   getParametersSize(trainableOnly: boolean): Promise<number>;
 
   /**
-   * Copies parameter values from the given array to the training state.
+   * Copies parameter values from the given array to the training state. Currently, only supporting models with
+   * parameters of type Float32.
    *
-   * @param buffer - buffer containing parameters
-   * @param trainableOnly - True if trainable parameters only to be modified, false otherwise.
+   * @param buffer - Float32 buffer containing parameters converted to a Uint8Array.
+   * @param trainableOnly - True if trainable parameters only to be modified, false otherwise. Default value is true.
    */
-  loadParametersBuffer(array: Float32Array, trainableOnly: boolean): Promise<void>;
+  loadParametersBuffer(array: Uint8Array, trainableOnly: boolean): Promise<void>;
 
   /**
-   * Copies from the TrainingSession parameters to a contiguous buffer.
+   * Copies the model parameters to a contiguous buffer. Usually used in the context of Federated Learning.
+   * Currently, only supporting models with parameters of type Float32.
    *
    * @param trainableOnly - When set to true, only trainable parameters are copied. Trainable parameters are parameters
-   * for which requires_grad is set to true.
-   * @returns A promise that resolves to a buffer of the requested parameters.
+   * for which requires_grad is set to true. Default value is true.
+   * @returns A promise that resolves to a Float32 OnnxValue of the requested parameters.
    */
   getContiguousParameters(trainableOnly: boolean): Promise<OnnxValue>;
   // #endregion

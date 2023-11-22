@@ -147,7 +147,7 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
     return getParametersSize(this.sessionId, trainableOnly);
   }
 
-  async loadParametersBuffer(array: Float32Array, trainableOnly: boolean): Promise<void> {
+  async loadParametersBuffer(array: Uint8Array, trainableOnly: boolean): Promise<void> {
     await loadParametersBuffer(this.sessionId, array, trainableOnly);
   }
   async getContiguousParameters(trainableOnly: boolean): Promise<OnnxValue> {
