@@ -39,7 +39,7 @@ Not all models and recipes need this optimizer technique. Imagine if your traini
 	- Plan 10            :   OFF   :   Cast+:2:-1                                                  1       2,048           2.0*inputs_input_ids_dim0*inputs_input_ids_dim1
 
 
-	Note 1: use comma to enable multiple memory optimization plans at the same time:
+	Note 1: use comma as delimiter to enable multiple memory optimization plans at the same time:
 	export ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,...
 	Note 2: memory saving is calculated based on the 1st batch symbolic dim values:
 	inputs_input_ids_dim0=1,  inputs_input_ids_dim1=1024,  inputs_attention_mask_dim0=1,  inputs_attention_mask_dim1=1024,  inputs_labels_dim0=1,  inputs_labels_dim1=1024,

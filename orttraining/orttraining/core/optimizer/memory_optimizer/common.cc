@@ -18,17 +18,15 @@ namespace onnxruntime::optimizer::memory_optimizer {
 namespace {
 
 constexpr const char empty_dim_param_placeholder[] = "empty_dim_param";
-static int64_t index_empty_dim = 0;
+static size_t index_empty_dim = 0;
 
-void TensorShapeProtoToDimParamVector(const ONNX_NAMESPACE::TensorShapeProto* shape,
-                                      std::vector<std::string>& dim_params,
-                                      bool& has_unknown_dim) {
-  has_unknown_dim = false;
+bool TensorShapeProtoToDimParamVector(const ONNX_NAMESPACE::TensorShapeProto* shape,
+                                      std::vector<std::string>& dim_params) {
+  bool has_unknown_dim = false;
   for (int dim_index = 0; dim_index < shape->dim_size(); dim_index++) {
     auto dim = shape->dim(dim_index);
     if (utils::HasDimValue(dim)) {
       dim_params.push_back(std::to_string(dim.dim_value()));
-
     } else {
       std::string trimmed_dim_param = utils::TrimString(dim.dim_param());
       if (trimmed_dim_param.empty()) {
@@ -43,6 +41,8 @@ void TensorShapeProtoToDimParamVector(const ONNX_NAMESPACE::TensorShapeProto* sh
   if (shape->dim_size() == 0) {
     dim_params.push_back("(1)");  // Scalar
   }
+
+  return has_unknown_dim;
 }
 
 bool HasUnknowDimension(const ONNX_NAMESPACE::TensorShapeProto* shape) {
@@ -51,10 +51,7 @@ bool HasUnknowDimension(const ONNX_NAMESPACE::TensorShapeProto* shape) {
   }
 
   std::vector<std::string> dim_params;
-  bool has_unknown_dim = false;
-  TensorShapeProtoToDimParamVector(shape, dim_params, has_unknown_dim);
-
-  return has_unknown_dim;
+  return TensorShapeProtoToDimParamVector(shape, dim_params);
 }
 
 std::string TensorShapeProtoToString(const ONNX_NAMESPACE::TensorShapeProto* shape) {
@@ -63,8 +60,7 @@ std::string TensorShapeProtoToString(const ONNX_NAMESPACE::TensorShapeProto* sha
   }
 
   std::vector<std::string> dim_params;
-  bool has_unknown_dim = false;
-  TensorShapeProtoToDimParamVector(shape, dim_params, has_unknown_dim);
+  TensorShapeProtoToDimParamVector(shape, dim_params);
 
   std::ostringstream oss;
   oss << "(";

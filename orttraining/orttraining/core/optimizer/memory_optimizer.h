@@ -16,7 +16,13 @@ namespace onnxruntime {
 /**
 @Class MemoryOptimizer
 
-Find recomputable subgraphs and enable according to user configs.
+Find recompute subgraphs and enable them according to user configs. The way we collect subgraphs
+(in orttraining/orttraining/core/optimizer/memory_optimizer/recompute_analysis.h) in brief is:
+1. Find all nodes that generate stashed activations.
+2. For each node, check it data type is supported to recompute
+  a. If yes, add it in the subgraph, and append its input in the queue to scan next;
+  b. otherwise, stop collecting and start a new subgraph.
+3. Pick up the input node from the queue, and do 2 again. The process ends when the queue is empty or 2.b happens.
 */
 
 class MemoryOptimizer : public GraphTransformer {

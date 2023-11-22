@@ -237,7 +237,7 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
       LOGS(logger, VERBOSE) << "Searching Node " << p_node->Name() << "(" << p_node->OpType()
                             << ") for compromised recompute";
       // If the subgraph recompute can save memory by comprising the assumption - recompute graphs' input must exist
-      // during backward pass, then we can consider to recomute them.
+      // during backward pass, then we can consider to recompute them.
       std::unique_ptr<NodeRecomputePlan> recompute_with_compromise_plan =
           CheckNodeForRecompute(*p_node, probe_level, fw_op_output_arg_used_map,
                                 node_index_to_its_order_in_topological_sort_map,

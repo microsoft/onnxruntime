@@ -42,7 +42,7 @@ inline InlinedVector<std::string_view> SplitString(std::string_view string_to_sp
  * Trim a string from start inplace.
  * @param s The string to trim.
  */
-inline void LeftTrimString(std::string& s) {
+inline void TrimStringFromLeft(std::string& s) {
   s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) { return !std::isspace(ch); }));
 }
 
@@ -50,7 +50,7 @@ inline void LeftTrimString(std::string& s) {
  * Trim a string from end inplace.
  * @param s The string to trim.
  */
-inline void RightTrimString(std::string& s) {
+inline void TrimStringFromRight(std::string& s) {
   s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(), s.end());
 }
 
@@ -60,8 +60,8 @@ inline void RightTrimString(std::string& s) {
  * @return The trimmed string.
  */
 inline std::string TrimString(std::string s) {
-  RightTrimString(s);
-  LeftTrimString(s);
+  TrimStringFromRight(s);
+  TrimStringFromLeft(s);
   return s;
 }
 

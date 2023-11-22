@@ -432,6 +432,9 @@ class TrainingManager(GraphExecutionManager):
 
         local_device_rank = self._device.index if device_type == "ort" else _utils.get_device_index(self._device)
 
+        # When log level is <= INFO, we would collect memory optimization opportunities.
+        # Create a training agent without enabling memory optimization here is beneficial for memory analyzing
+        # when we have an allocation plan in place, and reuse information is available.
         if self._runtime_inspector.is_memory_inspector_enabled() and self._debug_options.log_level <= LogLevel.INFO:
             # Create a training agent without enabling memory optimization.
             execution_agent = TrainingAgent(
@@ -450,6 +453,7 @@ class TrainingManager(GraphExecutionManager):
                 execution_agent, self._runtime_options.memory_optimizer_config, self._runtime_options.probe_level
             )
 
+            # Release it as early as possible.
             del execution_agent
 
         # Enable memory optimization if it is enabled in the session options.

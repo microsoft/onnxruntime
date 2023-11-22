@@ -1150,8 +1150,9 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(copy_transformer, *session_logger_, graph));
   }
 
-// Memory optimization graph.
 #ifdef ENABLE_TRAINING
+  // Enable memory optimizations (mainly insert recomputation nodes with priority).
+  // Only applicable for training scenarios.
   {
     const std::string memory_optimizer_config =
         session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerEnabler, "");
