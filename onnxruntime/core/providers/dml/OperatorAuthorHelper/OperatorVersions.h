@@ -432,6 +432,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_Attention = 1;
         static const int sc_sinceVer_MultiHeadAttention = 1;
         static const int sc_sinceVer_SkipLayerNormalization = 1;
+        static const int sc_sinceVer_SkipSimplifiedLayerNormalization = 1;
         static const int sc_sinceVer_EmbedLayerNormalization = 1;
         static const int sc_sinceVer_BiasSplitGelu = 1;
         static const int sc_sinceVer_NhwcConv = 1;

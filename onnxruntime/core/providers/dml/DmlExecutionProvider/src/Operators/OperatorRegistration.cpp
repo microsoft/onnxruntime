@@ -335,6 +335,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(LRN);
 DML_OP_EXTERN_CREATION_FUNCTION(MeanVarianceNormalization);
 DML_OP_EXTERN_CREATION_FUNCTION(GroupNorm);
 DML_OP_EXTERN_CREATION_FUNCTION(SimplifiedLayerNormalization);
+DML_OP_EXTERN_CREATION_FUNCTION(SkipSimplifiedLayerNormalization);
 DML_OP_EXTERN_CREATION_FUNCTION(LpNormalization);
 DML_OP_EXTERN_CREATION_FUNCTION(RNN);
 DML_OP_EXTERN_CREATION_FUNCTION(GRU);
@@ -1034,6 +1035,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      7,  LayerNormalization,                 typeNameListLayerNormContrib,   supportedTypeListLayerNormalizationContrib, DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryLayerNormalization)},
     {REG_INFO(      7,  SimplifiedLayerNormalization,       typeNameListLayerNormContrib,   supportedTypeListLayerNormalizationContrib, DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryLayerNormalization)},
     {REG_INFO_MS(   1,  SkipLayerNormalization,             typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QuerySkipLayerNormalization)},
+    {REG_INFO_MS(   1,  SkipSimplifiedLayerNormalization,   typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QuerySkipLayerNormalization)},
     {REG_INFO_MS(   1,  EmbedLayerNormalization,            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  BiasSplitGelu,                      typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  BiasAdd,                            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
