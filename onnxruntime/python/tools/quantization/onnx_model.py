@@ -114,6 +114,14 @@ class ONNXModel:
     def opset_import(self):
         return self.model.opset_import
 
+    def set_opset_import(self, domain, version):
+        for opset in self.model.opset_import:
+            if opset.domain == domain:
+                self.model.opset_import.remove(opset)
+                break
+
+        self.model.opset_import.extend([onnx_helper.make_opsetid(domain, version)])
+
     def remove_node(self, node):
         if node in self.model.graph.node:
             self.model.graph.node.remove(node)
@@ -139,6 +147,39 @@ class ONNXModel:
             if tensor.name == name:
                 return tensor
         return None
+
+    def get_constant_value(self, output_name):
+        for node in self.model.graph.node:
+            if node.op_type == "Constant":
+                if node.output[0] == output_name:
+                    for attr in node.attribute:
+                        if attr.name == "value":
+                            return onnx_numpy_helper.to_array(attr.t)
+
+        # Fallback to initializer since constant folding may have been applied.
+        initializer = self.get_initializer(output_name)
+        if initializer is not None:
+            return onnx_numpy_helper.to_array(initializer)
+
+        return None
+
+    def get_constant_input(self, node):
+        for i, inp in enumerate(node.input):
+            value = self.get_constant_value(inp)
+            if value is not None:
+                return i, value
+
+        return None, None
+
+    def find_constant_input(self, node, expected_value, delta=0.000001):
+        i, value = self.get_constant_input(node)
+        if value is not None and value.size == 1 and abs(value - expected_value) < delta:
+            return i
+
+        return -1
+
+    def has_constant_input(self, node, expected_value, delta=0.000001):
+        return self.find_constant_input(node, expected_value, delta) >= 0
 
     def get_initializer_name_set(self):
         return {initializer.name for initializer in self.model.graph.initializer}
@@ -167,17 +208,19 @@ class ONNXModel:
         input_name_to_nodes = {}
         for node in self.model.graph.node:
             for input_name in node.input:
-                if input_name not in input_name_to_nodes:
-                    input_name_to_nodes[input_name] = [node]
-                else:
-                    input_name_to_nodes[input_name].append(node)
+                if input_name:  # Could be empty when it is optional
+                    if input_name not in input_name_to_nodes:
+                        input_name_to_nodes[input_name] = [node]
+                    else:
+                        input_name_to_nodes[input_name].append(node)
         return input_name_to_nodes
 
     def output_name_to_node(self):
         output_name_to_node = {}
         for node in self.model.graph.node:
             for output_name in node.output:
-                output_name_to_node[output_name] = node
+                if output_name:  # Could be empty when it is optional
+                    output_name_to_node[output_name] = node
         return output_name_to_node
 
     def get_children(self, node, input_name_to_nodes=None):
@@ -213,6 +256,78 @@ class ONNXModel:
             return None
 
         return output_name_to_node[input]
+
+    def match_first_parent(self, node, parent_op_type, output_name_to_node=None, exclude=[]):  # noqa: B006
+        """
+        Find parent node based on constraints on op_type.
+
+        Args:
+            node (str): current node name.
+            parent_op_type (str): constraint of parent node op_type.
+            output_name_to_node (dict): dictionary with output name as key, and node as value.
+            exclude (list): list of nodes that are excluded (not allowed to match as parent).
+
+        Returns:
+            parent: The matched parent node. None if not found.
+            index: The input index of matched parent node. None if not found.
+        """
+        if output_name_to_node is None:
+            output_name_to_node = self.output_name_to_node()
+
+        for i, inp in enumerate(node.input):
+            if inp in output_name_to_node:
+                parent = output_name_to_node[inp]
+                if parent.op_type == parent_op_type and parent not in exclude:
+                    return parent, i
+
+        return None, None
+
+    def match_parent(
+        self,
+        node,
+        parent_op_type,
+        input_index=None,
+        output_name_to_node=None,
+        exclude=[],  # noqa: B006
+        return_indice=None,
+    ):
+        """
+        Find parent node based on constraints on op_type and index.
+        When input_index is None, we will find the first parent node based on constraints,
+        and return_indice will be appended the corresponding input index.
+
+        Args:
+            node (str): current node name.
+            parent_op_type (str): constraint of parent node op_type.
+            input_index (int or None): only check the parent given input index of current node.
+            output_name_to_node (dict): dictionary with output name as key, and node as value.
+            exclude (list): list of nodes that are excluded (not allowed to match as parent).
+            return_indice (list): a list to append the input index when input_index is None.
+
+        Returns:
+            parent: The matched parent node.
+        """
+        assert node is not None
+        assert input_index is None or input_index >= 0
+
+        if output_name_to_node is None:
+            output_name_to_node = self.output_name_to_node()
+
+        if input_index is None:
+            parent, index = self.match_first_parent(node, parent_op_type, output_name_to_node, exclude)
+            if return_indice is not None:
+                return_indice.append(index)
+            return parent
+
+        if input_index >= len(node.input):
+            # Input index out of bounds.
+            return None
+
+        parent = self.get_parent(node, input_index, output_name_to_node)
+        if parent is not None and parent.op_type == parent_op_type and parent not in exclude:
+            return parent
+
+        return None
 
     def find_node_by_name(self, node_name, new_nodes_list, graph):
         """Find out if a node exists in a graph or a node is in the

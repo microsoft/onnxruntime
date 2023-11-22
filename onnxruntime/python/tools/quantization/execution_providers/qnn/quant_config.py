@@ -10,11 +10,32 @@ import onnx
 from ...calibrate import CalibrationDataReader, CalibrationMethod
 from ...quant_utils import QuantType
 from ...quantize import StaticQuantConfig
+from ...onnx_model import ONNXModel
+
+from .fusion_gelu import FusionGelu
 
 Q16_TYPES = {QuantType.QInt16, QuantType.QUInt16}
 Q8_TYPES = {QuantType.QInt8, QuantType.QUInt8}
 OP_TYPES_TO_EXCLUDE = {"Cast"}
 
+
+def qnn_preprocess_model(model_input: Path, model_output: Path) -> bool:
+    modified = False
+    model = onnx.load_model(model_input)
+    onnx_model = ONNXModel(model)
+
+    # Fuse Erf sequence into a single Gelu
+    fusion_gelu = FusionGelu(onnx_model)
+    if fusion_gelu.apply():
+        modified = True
+
+    # TODO: Fuse ReduceL2 sequence into a single LpNormalization node with p == 2.
+
+    if modified:
+        onnx_model.topological_sort()
+        onnx.save_model(model, model_output)
+
+    return modified
 
 def get_qnn_qdq_config(
     model_input: Path,
