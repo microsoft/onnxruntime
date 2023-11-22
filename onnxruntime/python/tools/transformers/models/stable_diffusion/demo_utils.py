@@ -258,17 +258,17 @@ def get_metadata(args, is_xl: bool = False) -> Dict[str, Any]:
     }
 
     if is_xl and not args.disable_refiner:
-        metadata["base.scheduler"] = (args.scheduler,)
-        metadata["base.denoising_steps"] = (args.denoising_steps,)
-        metadata["base.guidance"] = (args.guidance,)
+        metadata["base.scheduler"] = args.scheduler
+        metadata["base.denoising_steps"] = args.denoising_steps
+        metadata["base.guidance"] = args.guidance
         metadata["refiner.strength"] = args.strength
         metadata["refiner.scheduler"] = args.refiner_scheduler
         metadata["refiner.denoising_steps"] = args.refiner_steps
         metadata["refiner.guidance"] = args.refiner_guidance
     else:
-        metadata["scheduler"] = (args.scheduler,)
-        metadata["denoising_steps"] = (args.denoising_steps,)
-        metadata["guidance"] = (args.guidance,)
+        metadata["scheduler"] = args.scheduler
+        metadata["denoising_steps"] = args.denoising_steps
+        metadata["guidance"] = args.guidance
 
     return metadata
 
