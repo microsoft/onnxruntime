@@ -162,7 +162,8 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
       gemm_params[i].C = y_data + helper.OutputOffsets()[i];
       gemm_params[i].ldc = N;
     }
-    MlasNBitsGemmBatchPackedB(M, N, K, max_len, gemm_params.data(), reinterpret_cast<int8_t*>(ws_ptr.get()), thread_pool);
+    MlasNBitsGemmBatchPackedB(M, N, K, max_len, gemm_params.data(), reinterpret_cast<int8_t*>(ws_ptr.get()),
+                              thread_pool);
     return Status::OK();
   }
 
