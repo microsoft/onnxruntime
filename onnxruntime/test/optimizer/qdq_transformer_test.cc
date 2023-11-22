@@ -1210,27 +1210,51 @@ TEST(QDQTransformerTests, DoubleQDQ_Without_Last_Node_Being_Output) {
 // Runs a test that checks if DQ -> Split -> Q (many) is replaced with just Split.
 template <typename InputQType, typename OutputQType>
 static void RunDropSplitQDQTestCase(const std::vector<int64_t>& input_shape, int64_t axis,
-                                    bool use_contrib_qdq = false) {
-  auto check_graph = [use_contrib_qdq](InferenceSessionWrapper& session) {
+                                    bool all_same_quant_params, bool use_contrib_qdq = false) {
+  auto check_graph = [all_same_quant_params, use_contrib_qdq](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
     const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+    int expected_q_ops = all_same_quant_params ? 0 : 3;
+    int expected_dq_ops = all_same_quant_params ? 0 : 1;
     EXPECT_EQ(op_to_count["Split"], 1);
-    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
-    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], expected_q_ops);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], expected_dq_ops);
   };
-  TransformerTester(BuildQDQSplitTestCase<InputQType, OutputQType>(input_shape, axis, use_contrib_qdq),
+  TransformerTester(BuildQDQSplitTestCase<InputQType, OutputQType>(input_shape, axis, !all_same_quant_params,
+                                                                   use_contrib_qdq),
                     check_graph,
                     TransformerLevel::Level1,
                     TransformerLevel::Level2,
-                    {12, 18, 19});
+                    {12, 13, 18, 19});  // Test different ways to specify the split in each opset:
+                                        // 12 - split into equal parts without explicit 'split' attribute
+                                        // 13 - use optional 'split' input to split into 3 parts
+                                        // 18 - use 'num_outputs' attribute to split into 3 parts
+                                        // 19 - use 'num_outputs' attribute to split into 3 parts
 }
 
 // Test that DQ -> Split -> Q (many) is replaced with just Split for various quantization types.
 TEST(QDQTransformerTests, Split) {
-  RunDropSplitQDQTestCase<int8_t, int8_t>({6, 18, 54}, 0);
-  RunDropSplitQDQTestCase<int8_t, int8_t>({6, 18, 54}, 0, true);      // Use com.microsoft int8 QDQ ops
-  RunDropSplitQDQTestCase<int16_t, int16_t>({6, 18, 54}, 0, true);    // Use com.microsoft int16 QDQ ops
-  RunDropSplitQDQTestCase<uint16_t, uint16_t>({6, 18, 54}, 0, true);  // Use com.microsoft uint16 QDQ ops
+  // Test cases that drop Q/DQ ops from DQ -> Split -> Q (many).
+  // This happens when all the Q/DQ ops have equal and constant quantization parameters.
+  {
+    constexpr bool ALL_SAME_QUANT_PARAMS = true;
+    constexpr bool USE_CONTRIB_QDQ_OPS = true;
+    RunDropSplitQDQTestCase<int8_t, int8_t>({6, 18, 54}, 0, ALL_SAME_QUANT_PARAMS);
+    RunDropSplitQDQTestCase<int8_t, int8_t>({6, 18, 54}, 0, ALL_SAME_QUANT_PARAMS, USE_CONTRIB_QDQ_OPS);
+    RunDropSplitQDQTestCase<int16_t, int16_t>({6, 18, 54}, 0, ALL_SAME_QUANT_PARAMS, USE_CONTRIB_QDQ_OPS);
+    RunDropSplitQDQTestCase<uint16_t, uint16_t>({6, 18, 54}, 0, ALL_SAME_QUANT_PARAMS, USE_CONTRIB_QDQ_OPS);
+  }
+
+  // Test cases that DO NOT drop Q/DQ ops from DQ -> Split -> Q (many)
+  // This happens when the Q/DQ ops do not have equal and constant quantization parameters.
+  {
+    constexpr bool DIFF_QUANT_PARAMS = false;
+    constexpr bool USE_CONTRIB_QDQ_OPS = true;
+    RunDropSplitQDQTestCase<int8_t, int8_t>({6, 18, 54}, 0, DIFF_QUANT_PARAMS);
+    RunDropSplitQDQTestCase<int8_t, int8_t>({6, 18, 54}, 0, DIFF_QUANT_PARAMS, USE_CONTRIB_QDQ_OPS);
+    RunDropSplitQDQTestCase<int16_t, int16_t>({6, 18, 54}, 0, DIFF_QUANT_PARAMS, USE_CONTRIB_QDQ_OPS);
+    RunDropSplitQDQTestCase<uint16_t, uint16_t>({6, 18, 54}, 0, DIFF_QUANT_PARAMS, USE_CONTRIB_QDQ_OPS);
+  }
 }
 
 // Because split isn't one the supported ops, this will stay the same
