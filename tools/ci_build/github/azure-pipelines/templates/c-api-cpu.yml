@@ -117,32 +117,32 @@ stages:
 
     - script: |
         set -e -x
-        python3 tools/ci_build/github/apple/build_ios_framework.py \
-          --build_dir "$(Build.BinariesDirectory)/ios_framework" \
+        python3 tools/ci_build/github/apple/build_apple_framework.py \
+          --build_dir "$(Build.BinariesDirectory)/apple_framework" \
           --path_to_protoc_exe $(Build.BinariesDirectory)/protobuf_install/bin/protoc \
-          tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
+          tools/ci_build/github/apple/default_full_apple_framework_build_settings.json
         mkdir $(Build.BinariesDirectory)/artifacts
-        mkdir -p $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
-        cp -R $(Build.BinariesDirectory)/ios_framework/framework_out/onnxruntime.xcframework \
-          $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
+        mkdir -p $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-apple-xcframework-$(OnnxRuntimeVersion)
+        cp -R $(Build.BinariesDirectory)/apple_framework/framework_out/onnxruntime.xcframework \
+          $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-apple-xcframework-$(OnnxRuntimeVersion)
         pushd $(Build.BinariesDirectory)/artifacts_staging
         zip -vr $(Build.BinariesDirectory)/artifacts/onnxruntime_xcframework.zip \
-          onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
+          onnxruntime-apple-xcframework-$(OnnxRuntimeVersion)
         popd
-      displayName: "Build iOS xcframework"
+      displayName: "Build Apple xcframework"
 
     - script: |
-        python3 tools/ci_build/github/apple/test_ios_packages.py \
+        python3 tools/ci_build/github/apple/test_apple_packages.py \
           --fail_if_cocoapods_missing \
-          --framework_info_file "$(Build.BinariesDirectory)/ios_framework/framework_info.json" \
-          --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
+          --framework_info_file "$(Build.BinariesDirectory)/apple_framework/framework_info.json" \
+          --c_framework_dir "$(Build.BinariesDirectory)/apple_framework/framework_out" \
           --variant Full
-      displayName: "Test iOS framework"
+      displayName: "Test Apple framework"
 
     - task: PublishBuildArtifacts@1
       inputs:
         pathtoPublish: '$(Build.BinariesDirectory)/artifacts'
-        artifactName: 'onnxruntime-ios-full-xcframework'
+        artifactName: 'onnxruntime-apple-full-xcframework'
 
     - template: component-governance-component-detection-steps.yml
       parameters:

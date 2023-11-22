@@ -4,11 +4,9 @@ stages:
     parameters:
       NpmPackagingMode: 'dev'
       IsReleasePipeline: true
-      PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
+      PoolName: 'aiinfra-Win-CPU-2022-web-beta'
       BuildStaticLib: true
       ExtraBuildArgs: ''
-      UseWebPoolName: true
-      WebCpuPoolName: 'Azure-Pipelines-EO-Windows2022-aiinfra'
 
 # This stage is to test if the combined build works on
 # o Windows ARM64
@@ -286,14 +284,14 @@ stages:
       displayName: "Install Python requirements"
 
     - script: |
-        python tools/ci_build/github/apple/build_ios_framework.py \
+        python tools/ci_build/github/apple/build_apple_framework.py \
           --build_dir "$(Build.BinariesDirectory)/ios_framework" \
           --build_dynamic_framework \
           tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json
       displayName: "Build iOS dynamic framework"
 
     - script: |
-        python tools/ci_build/github/apple/test_ios_packages.py \
-          --framework_info_file "$(Build.BinariesDirectory)/ios_framework/framework_info.json" \
+        python tools/ci_build/github/apple/test_apple_packages.py \
+          --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
           --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out"
       displayName: "Test pod with iOS dynamic framework"
