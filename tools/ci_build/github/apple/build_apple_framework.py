@@ -106,7 +106,7 @@ def _merge_framework_info_files(files, output_file):
     merged_data = defaultdict(dict)
 
     for file in files:
-        with open(file, "r") as f:
+        with open(file) as f:
             data = json.load(f)
             for platform, values in data.items():
                 assert platform not in merged_data, f"Duplicate platform value: {platform}"
