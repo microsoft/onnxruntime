@@ -22,7 +22,7 @@
 
 import coloredlogs
 from cuda import cudart
-from demo_utils import init_pipeline, parse_arguments, repeat_prompt
+from demo_utils import get_metadata, init_pipeline, parse_arguments, repeat_prompt
 from diffusion_models import PipelineInfo
 from engine_builder import EngineType, get_engine_type
 from pipeline_img2img_xl import Img2ImgXLPipeline
@@ -54,7 +54,11 @@ def load_pipelines(args, batch_size):
 
     # No VAE decoder in base when it outputs latent instead of image.
     base_info = PipelineInfo(
-        args.version, use_vae=args.disable_refiner, min_image_size=min_image_size, max_image_size=max_image_size
+        args.version,
+        use_vae=args.disable_refiner,
+        min_image_size=min_image_size,
+        max_image_size=max_image_size,
+        use_lcm=args.lcm,
     )
 
     # Ideally, the optimized batch size and image size for TRT engine shall align with user's preference. That is to
@@ -118,7 +122,7 @@ def run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False
         refiner.load_resources(image_height, image_width, batch_size)
 
     def run_base_and_refiner(warmup=False):
-        images, time_base = base.run(
+        images, base_perf = base.run(
             prompt,
             negative_prompt,
             image_height,
@@ -130,24 +134,31 @@ def run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False
             return_type="latent" if refiner else "image",
         )
         if refiner is None:
-            return images, time_base
+            return images, base_perf
 
         # Use same seed in base and refiner.
         seed = base.get_current_seed()
 
-        images, time_refiner = refiner.run(
+        images, refiner_perf = refiner.run(
             prompt,
             negative_prompt,
             images,
             image_height,
             image_width,
             warmup=warmup,
-            denoising_steps=args.denoising_steps,
-            guidance=args.guidance,
+            denoising_steps=args.refiner_steps,
+            strength=args.strength,
+            guidance=args.refiner_guidance,
             seed=seed,
         )
 
-        return images, time_base + time_refiner
+        perf_data = None
+        if base_perf and refiner_perf:
+            perf_data = {"latency": base_perf["latency"] + refiner_perf["latency"]}
+            perf_data.update({"base." + key: val for key, val in base_perf.items()})
+            perf_data.update({"refiner." + key: val for key, val in refiner_perf.items()})
+
+        return images, perf_data
 
     if not args.disable_cuda_graph:
         # inference once to get cuda graph
@@ -164,13 +175,24 @@ def run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False
     print("[I] Running StableDiffusion XL pipeline")
     if args.nvtx_profile:
         cudart.cudaProfilerStart()
-    _, latency = run_base_and_refiner(warmup=False)
+    images, perf_data = run_base_and_refiner(warmup=False)
     if args.nvtx_profile:
         cudart.cudaProfilerStop()
 
-    print("|------------|--------------|")
-    print("| {:^10} | {:>9.2f} ms |".format("e2e", latency))
-    print("|------------|--------------|")
+    if refiner:
+        print("|------------|--------------|")
+        print("| {:^10} | {:>9.2f} ms |".format("e2e", perf_data["latency"]))
+        print("|------------|--------------|")
+
+    metadata = get_metadata(args, True)
+    metadata.update({"base." + key: val for key, val in base.metadata().items()})
+    if refiner:
+        metadata.update({"refiner." + key: val for key, val in refiner.metadata().items()})
+    if perf_data:
+        metadata.update(perf_data)
+    metadata["images"] = len(images)
+    print(metadata)
+    (refiner or base).save_images(images, prompt, negative_prompt, metadata)
 
 
 def run_demo(args):
@@ -189,6 +211,8 @@ def run_dynamic_shape_demo(args):
     """Run demo of generating images with different settings with ORT CUDA provider."""
     args.engine = "ORT_CUDA"
     args.disable_cuda_graph = True
+    if args.lcm:
+        args.disable_refiner = True
     base, refiner = load_pipelines(args, 1)
 
     prompts = [
@@ -198,22 +222,31 @@ def run_dynamic_shape_demo(args):
         "cute grey cat with blue eyes, wearing a bowtie, acrylic painting",
         "beautiful Renaissance Revival Estate, Hobbit-House, detailed painting, warm colors, 8k, trending on Artstation",
         "blue owl, big green eyes, portrait, intricate metal design, unreal engine, octane render, realistic",
+        "An astronaut riding a rainbow unicorn, cinematic, dramatic",
+        "close-up photography of old man standing in the rain at night, in a street lit by lamps, leica 35mm",
     ]
 
-    # batch size, height, width, scheduler, steps, prompt, seed
+    # refiner, batch size, height, width, scheduler, steps, prompt, seed, guidance, refiner scheduler, refiner steps, refiner strength
     configs = [
-        (1, 832, 1216, "UniPC", 8, prompts[0], None),
-        (1, 1024, 1024, "DDIM", 24, prompts[1], None),
-        (1, 1216, 832, "UniPC", 16, prompts[2], None),
-        (1, 1344, 768, "DDIM", 24, prompts[3], None),
-        (2, 640, 1536, "UniPC", 16, prompts[4], 4312973633252712),
-        (2, 1152, 896, "DDIM", 24, prompts[5], 1964684802882906),
+        (1, 832, 1216, "UniPC", 8, prompts[0], None, 5.0, "UniPC", 10, 0.3),
+        (1, 1024, 1024, "DDIM", 24, prompts[1], None, 5.0, "DDIM", 30, 0.3),
+        (1, 1216, 832, "UniPC", 16, prompts[2], None, 5.0, "UniPC", 10, 0.3),
+        (1, 1344, 768, "DDIM", 24, prompts[3], None, 5.0, "UniPC", 20, 0.3),
+        (2, 640, 1536, "UniPC", 16, prompts[4], 4312973633252712, 5.0, "UniPC", 10, 0.3),
+        (2, 1152, 896, "DDIM", 24, prompts[5], 1964684802882906, 5.0, "UniPC", 20, 0.3),
     ]
+
+    # In testing LCM, refiner is disabled so the settings of refiner is not used.
+    if args.lcm:
+        configs = [
+            (1, 1024, 1024, "LCM", 8, prompts[6], None, 1.0, "UniPC", 20, 0.3),
+            (1, 1216, 832, "LCM", 6, prompts[7], 1337, 1.0, "UniPC", 20, 0.3),
+        ]
 
     # Warm up each combination of (batch size, height, width) once before serving.
     args.prompt = ["warm up"]
     args.num_warmup_runs = 1
-    for batch_size, height, width, _, _, _, _ in configs:
+    for batch_size, height, width, _, _, _, _, _, _, _, _ in configs:
         args.batch_size = batch_size
         args.height = height
         args.width = width
@@ -223,7 +256,19 @@ def run_dynamic_shape_demo(args):
 
     # Run pipeline on a list of prompts.
     args.num_warmup_runs = 0
-    for batch_size, height, width, scheduler, steps, example_prompt, seed in configs:
+    for (
+        batch_size,
+        height,
+        width,
+        scheduler,
+        steps,
+        example_prompt,
+        seed,
+        guidance,
+        refiner_scheduler,
+        refiner_steps,
+        strength,
+    ) in configs:
         args.prompt = [example_prompt]
         args.batch_size = batch_size
         args.height = height
@@ -231,12 +276,13 @@ def run_dynamic_shape_demo(args):
         args.scheduler = scheduler
         args.denoising_steps = steps
         args.seed = seed
+        args.guidance = guidance
+        args.refiner_scheduler = refiner_scheduler
+        args.refiner_steps = refiner_steps
+        args.strength = strength
         base.set_scheduler(scheduler)
         if refiner:
-            refiner.set_scheduler(scheduler)
-        print(
-            f"\nbatch_size={batch_size}, height={height}, width={width}, scheduler={scheduler}, steps={steps}, prompt={example_prompt}, seed={seed}"
-        )
+            refiner.set_scheduler(refiner_scheduler)
         prompt, negative_prompt = repeat_prompt(args)
         run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False)
 
