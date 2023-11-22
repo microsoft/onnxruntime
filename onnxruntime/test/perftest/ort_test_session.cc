@@ -255,7 +255,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ov_options[key] = value;
         } else {
           ORT_THROW(
-              "[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
+              "[ERROR] [OpenVINO] You have selected a wrong configuration value for the key 'device_type'. "
               "Select from 'CPU_FP32', 'CPU_FP16', 'GPU_FP32', 'GPU.0_FP32', 'GPU.1_FP32', 'GPU_FP16', "
               "'GPU.0_FP16', 'GPU.1_FP16' or from"
               " HETERO/MULTI/AUTO options available. \n");
@@ -489,7 +489,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           dml_options[key] = value;
         } else {
           ORT_THROW(
-              "[ERROR] [DML] You have selcted wrong configuration value for the key 'device_filter'. "
+              "[ERROR] [DML] You have selected a wrong configuration value for the key 'device_filter'. "
               "Select from 'gpu', or 'npu' \n");
         }
       } else if (key == "performance_preference") {
@@ -498,7 +498,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           dml_options[key] = value;
         } else {
           ORT_THROW(
-              "[ERROR] [DML] You have selcted wrong configuration value for the key 'performance_preference'. "
+              "[ERROR] [DML] You have selected a wrong configuration value for the key 'performance_preference'. "
               "Select from 'default', 'high_performance' or 'minimal_power' \n");
         }
       } else if (key == "disable_metacommands") {
