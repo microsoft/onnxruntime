@@ -118,7 +118,6 @@ static bool IsGPU(IDXCoreAdapter* compute_adapter) {
   return compute_adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS);
 }
 
-#ifdef ENABLE_NPU_ADAPTER_ENUMERATION
 static bool IsNPU(IDXCoreAdapter* compute_adapter) {
   // Only considering hardware adapters
   if (!IsHardwareAdapter(compute_adapter)) {
@@ -126,7 +125,6 @@ static bool IsNPU(IDXCoreAdapter* compute_adapter) {
   }
   return !(compute_adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS));
 }
-#endif
 
 enum class DeviceType { GPU, NPU, BadDevice };
 
@@ -327,7 +325,8 @@ static std::optional<OrtDmlPerformancePreference> ParsePerformancePreference(con
 }
 
 static std::optional<OrtDmlDeviceFilter> ParseFilter(const ProviderOptions& provider_options) {
-  static const std::string Filter = "filter";
+  static const std::string Filter = "device_filter";
+  static const std::string Any = "any";
   static const std::string Gpu = "gpu";
 #ifdef ENABLE_NPU_ADAPTER_ENUMERATION
   static const std::string Any = "any";
