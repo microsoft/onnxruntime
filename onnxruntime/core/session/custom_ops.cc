@@ -836,7 +836,7 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vect
 
   const size_t input_count = op->GetInputTypeCount(op);
   for (size_t i = 0; i < input_count; i++) {
-    create_type_constraint(op, input_count, i, true);
+    create_type_constraint(op, input_count, static_cast<int>(i), true);
   }
 
   const size_t output_count = op->GetOutputTypeCount(op);
@@ -852,7 +852,7 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vect
                     "cannot be inferred without which model loading cannot proceed.");
       }
     }
-    create_type_constraint(op, output_count, i, false);
+    create_type_constraint(op, output_count, static_cast<int>(i), false);
   }
 
   schema.SetDomain(domain);
