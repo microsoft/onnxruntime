@@ -225,7 +225,7 @@ else()
     "SHELL:-s EXPORT_ALL=0"
     "SHELL:-s VERBOSE=0"
     "SHELL:-s FILESYSTEM=0"
-    "SHELL:-s INCOMING_MODULE_JS_API=[locateFile]"
+    "SHELL:-s INCOMING_MODULE_JS_API=[preRun,locateFile,arguments,onExit,wasmMemory,buffer,instantiateWasm,mainScriptUrlOrBlob]"
     ${WASM_API_EXCEPTION_CATCHING}
     --no-entry
   )
