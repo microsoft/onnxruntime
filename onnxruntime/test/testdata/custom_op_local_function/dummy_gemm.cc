@@ -110,7 +110,7 @@ void CustomGemmKernel::Compute(OrtKernelContext* context) {
   std::vector<int64_t> dimensions{shape_A[0], shape_B[1]};
   Ort::UnownedValue Y = ctx.GetOutput(0, dimensions);
   float* out = Y.GetTensorMutableData<float>();
-  size_t end = dimensions[0] * dimensions[1];
+  size_t end = static_cast<int64_t>(dimensions[0] * dimensions[1]);
   for (size_t i = static_cast<size_t>(0); i < end; ++i) {
     out[i] = static_cast<float>(i);
   }
