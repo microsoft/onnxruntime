@@ -5,6 +5,8 @@
 # --------------------------------------------------------------------------
 
 import argparse
+import copy
+import importlib
 import logging
 import os
 from typing import List, Tuple
@@ -13,9 +15,11 @@ import numpy as np
 import numpy.typing as npt
 import onnx
 from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
+from packaging import version
 
 from onnxruntime.capi._pybind_state import quantize_matmul_4bits
 
+from .calibrate import CalibrationDataReader
 from .onnx_model import ONNXModel
 from .quant_utils import attribute_to_kwarg
 
@@ -23,16 +27,122 @@ logging.basicConfig(format="%(asctime)s %(name)s [%(levelname)s] - %(message)s",
 logger = logging.getLogger(__name__)
 
 
+class WeightOnlyQuantConfig:
+    def __init__(
+        self,
+        algorithm,
+        model_path,
+        accuracy_level=0,
+    ):
+        """This is the Base class for Weight Only Quant Configuration.
+
+        Args:
+            algorithm:
+                weight only quantize algorithm name.
+            model_path:
+                path of the model to do 4b quantization.
+            accuracy_level:
+                support 0 (default fp32), 1 (optimized fp32 for intel CPU), 2 (fp16), 3 (bf16), 4 (int8). Set to 0 by default.
+        """
+        self.algorithm = algorithm
+        self.model_path = model_path
+        self.accuracy_level = accuracy_level
+
+
+class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
+    def __init__(
+        self,
+        model_path,
+        accuracy_level=0,
+        ratios=None,
+    ):
+        """
+        This is a class for round-to-nearest (RTN) algorithm Weight Only Quant Configuration.
+        RTN is the most straightforward way to quantize weight using scale maps.
+
+        Args:
+            model_path:
+                path of the model to do 4b quantization.
+            accuracy_level:
+                support 0 (default fp32), 1 (optimized fp32 for intel CPU), 2 (fp16), 3 (bf16), 4 (int8). Set to 0 by default.
+            ratios:
+                percentile of clip. Defaults to {}.
+        """
+        if ratios is None:
+            ratios = {}
+        super().__init__(
+            algorithm="RTN",
+            model_path=model_path,
+            accuracy_level=accuracy_level,
+        )
+        self.ratios = ratios
+
+
+class GPTQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
+    def __init__(
+        self,
+        model_path,
+        calibration_data_reader: CalibrationDataReader,
+        percdamp=0.01,
+        blocksize=128,
+        actorder=False,
+        mse=False,
+        perchannel=True,
+        accuracy_level=0,
+    ):
+        """
+        This is a class for GPTQ algorithm Weight Only Quant Configuration.
+        GPTQ algorithm provides more accurate quantization but requires more computational resources.
+
+        Args:
+            model_path:
+                path of the model to do 4b quantization.
+            calibration_data_reader:
+                a calibration data reader. It enumerates calibration data and generates inputs for the original model.
+            percdamp:
+                percent of the average Hessian diagonal to use for dampening.
+            blocksize (int, optional):
+                channel number in one block to execute a GPTQ quantization iteration.
+            actorder (bool, optional):
+                whether rearrange Hessian matrix considering the diag's value.
+            mse (bool, optional):
+                whether get scale and zero point with mse error.
+            perchannel (bool, optional):
+                whether quantize weight per-channel.
+            accuracy_level:
+                support 0 (default fp32), 1 (optimized fp32 for intel CPU), 2 (fp16), 3 (bf16), 4 (int8). Set to 0 by default.
+        """
+        super().__init__(
+            algorithm="GPTQ",
+            model_path=model_path,
+            accuracy_level=accuracy_level,
+        )
+        self.calibration_data_reader = calibration_data_reader
+        self.percdamp = percdamp
+        self.blocksize = blocksize
+        self.actorder = actorder
+        self.mse = mse
+        self.perchannel = perchannel
+
+
 class MatMul4BitsQuantizer:
     """Perform 4b quantization of constant MatMul weights"""
 
-    def __init__(self, model: ModelProto, block_size: int, is_symmetric: bool, nodes_to_exclude=None):
+    def __init__(
+        self,
+        model: ModelProto,
+        block_size: int,
+        is_symmetric: bool,
+        nodes_to_exclude=None,
+        algo_config: WeightOnlyQuantConfig = None,
+    ):
         if nodes_to_exclude is None:
             nodes_to_exclude = []
         self.model = ONNXModel(model)
         self.block_size = block_size
         self.is_symmetric = is_symmetric
         self.nodes_to_exclude = set(nodes_to_exclude)
+        self.algo_config = algo_config
 
     @staticmethod
     def __get_initializer(name, graph_path: List[GraphProto]) -> Tuple[TensorProto, GraphProto]:
@@ -165,20 +275,96 @@ class MatMul4BitsQuantizer:
         graph_stack.pop()
         return graph
 
+    def _generate_q4_node_config(self):
+        """Generate weight only quant configuration for nodes."""
+        q4_node_config = {}
+        template_config = {"bits": 4, "group_size": self.block_size, "scheme": "sym" if self.is_symmetric else "asym"}
+        for node in self.model.model.graph.node:
+            if node.op_type in ["MatMul"]:
+                q4_node_config[node.name] = template_config
+        return q4_node_config
+
+    def int4_quant_algo(self):
+        """4b quantize a model with RTN or GPTQ algorithm. Please refer to
+        https://github.com/intel/neural-compressor/blob/master/docs/source/quantization_weight_only.md
+        for more details on weight only quantization using Intel® Neural Compressor.
+        """
+
+        def inc_dataloader():
+            data_reader = copy.deepcopy(self.algo_config.calibration_data_reader)
+            for data in data_reader:
+                yield data, None
+
+        accuracy_level = self.algo_config.accuracy_level
+        weight_only_node_config = self._generate_q4_node_config()
+
+        algorithm = self.algo_config.algorithm
+        if algorithm == "RTN":
+            from neural_compressor.adaptor.ox_utils.weight_only import rtn_quantize
+
+            ratios = self.algo_config.ratios
+
+            self.model = rtn_quantize(
+                model=self.algo_config.model_path,
+                weight_config=weight_only_node_config,
+                ratios=ratios,
+                accuracy_level=accuracy_level,
+            )
+        elif algorithm == "GPTQ":
+            from neural_compressor.adaptor.ox_utils.weight_only import gptq_quantize
+
+            percdamp = self.algo_config.percdamp
+            blocksize = self.algo_config.blocksize
+            actorder = self.algo_config.actorder
+            mse = self.algo_config.mse
+            perchannel = self.algo_config.perchannel
+            dataloader = inc_dataloader()
+
+            self.model = gptq_quantize(
+                model=self.algo_config.model_path,
+                weight_config=weight_only_node_config,
+                dataloader=dataloader,
+                n_samples=-1,
+                percdamp=percdamp,
+                blocksize=blocksize,
+                actorder=actorder,
+                mse=mse,
+                perchannel=perchannel,
+                accuracy_level=accuracy_level,
+            )
+
     def process(self):
-        # use a stack to keep track of sub-graphs
-        graph_stack = [self.model.graph()]
-        opset_import = self.model.opset_import()
+        if self.algo_config is None:
+            # use a stack to keep track of sub-graphs
+            graph_stack = [self.model.graph()]
+            opset_import = self.model.opset_import()
 
-        has_ms_domain = False
-        for opset in opset_import:
-            if opset.domain == "com.microsoft":
-                has_ms_domain = True
-        if not has_ms_domain:
-            opset_import.extend([onnx.helper.make_opsetid("com.microsoft", 1)])
+            has_ms_domain = False
+            for opset in opset_import:
+                if opset.domain == "com.microsoft":
+                    has_ms_domain = True
+            if not has_ms_domain:
+                opset_import.extend([onnx.helper.make_opsetid("com.microsoft", 1)])
 
-        self._process_subgraph(graph_stack)
-        self.model.clean_initializers()
+            self._process_subgraph(graph_stack)
+            self.model.clean_initializers()
+        else:
+            # use Intel® Neural Compressor for RTN or GPTQ weight-only quantize algorithm
+            try:
+                importlib.import_module("neural_compressor")
+            except Exception as e:
+                logging.error(f"{e}.")
+                raise RuntimeError(
+                    "neural-compressor is not correctly installed. Please check your environment."
+                ) from e
+
+            import neural_compressor
+
+            assert version.parse(neural_compressor.__version__) >= version.parse(
+                "2.3.0"
+            ), "Require neural-compressor >= 2.3.0 to support weight only quantization!"
+
+            self.int4_quant_algo()
 
 
 def parse_args():

@@ -71,13 +71,16 @@ class TestOpMatMul4Bits(unittest.TestCase):
         output_name = "output"
         initializers = []
 
-        def make_matmul(input_name, weight_shape: Union[int, Tuple[int, ...]], weight_name: str, output_name: str):
+        def make_matmul(
+            input_name, weight_shape: Union[int, Tuple[int, ...]], weight_name: str, output_name: str, node_name: str
+        ):
             weight_data = self.fill_int4_data(weight_shape, symmetric).astype(np.float32)
             initializers.append(onnx.numpy_helper.from_array(weight_data, name=weight_name))
             return onnx.helper.make_node(
                 "MatMul",
                 [input_name, weight_name],
                 [output_name],
+                node_name,
             )
 
         in_features = 52
@@ -88,6 +91,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
             [in_features, out_features],
             "linear1.weight",
             output_name,
+            "MatMul_0",
         )
 
         # make graph
@@ -139,6 +143,52 @@ class TestOpMatMul4Bits(unittest.TestCase):
             else:
                 raise exception
 
+    def quant_test_with_algo(
+        self,
+        algorithm: str,
+        model_fp32_path: str,
+        data_reader: TestDataFeeds,
+        block_size: int,
+        is_symmetric: bool,
+    ):
+        model_int4_path = str(
+            Path(self._tmp_model_dir.name).joinpath(f"MatMulNBits_{block_size}_{is_symmetric}.onnx").absolute()
+        )
+
+        # Quantize fp32 model to int4 model
+        from onnxruntime.quantization import matmul_4bits_quantizer
+
+        if algorithm == "RTN":
+            # test RTN algorithm
+            from onnxruntime.quantization import RTNWeightOnlyQuantConfig
+
+            algo_config = RTNWeightOnlyQuantConfig(model_path=model_fp32_path)
+        elif algorithm == "GPTQ":
+            # test GPTQ algorithm
+            print("=" * 50)
+            from onnxruntime.quantization import GPTQWeightOnlyQuantConfig
+
+            algo_config = GPTQWeightOnlyQuantConfig(model_path=model_fp32_path, calibration_data_reader=data_reader)
+
+        model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
+        quant = matmul_4bits_quantizer.MatMul4BitsQuantizer(model, block_size, is_symmetric, algo_config=algo_config)
+        quant.process()
+        quant.model.save_model_to_file(model_int4_path, False)
+
+        quant_nodes = {"MatMulNBits": 1}
+        check_op_type_count(self, model_int4_path, **quant_nodes)
+
+        data_reader.rewind()
+
+        try:
+            check_model_correctness(self, model_fp32_path, model_int4_path, data_reader.get_next())
+        except Exception as exception:
+            if "4b quantization not yet supported on this hardware platform!" in exception.args[0]:
+                # Currently we don't have int4 quantization support on all platforms, has to tolerate this exception
+                pass
+            else:
+                raise exception
+
     @unittest.skipIf(
         find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_4bits"
     )
@@ -158,6 +208,30 @@ class TestOpMatMul4Bits(unittest.TestCase):
         self.construct_model_matmul(model_fp32_path, symmetric=False)
         data_reader = self.input_feeds(1, {"input": [100, 52]})
         self.quant_test(model_fp32_path, data_reader, 32, False)
+
+    @unittest.skip(
+        "Skip failed test in Python Packaging Test Pipeline."
+        "During importing neural_compressor, pycocotools throws ValueError: numpy.ndarray size changed"
+    )
+    def test_quantize_matmul_int4_using_rtn_algo(self):
+        if not find_spec("neural_compressor"):
+            self.skipTest("skip test_smooth_quant since neural_compressor is not installed")
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_offset.onnx").absolute())
+        self.construct_model_matmul(model_fp32_path, symmetric=False)
+        data_reader = self.input_feeds(1, {"input": [100, 52]})
+        self.quant_test_with_algo("RTN", model_fp32_path, data_reader, 32, False)
+
+    @unittest.skip(
+        "Skip failed test in Python Packaging Test Pipeline."
+        "During importing neural_compressor, pycocotools throws ValueError: numpy.ndarray size changed"
+    )
+    def test_quantize_matmul_int4_using_gptq_algo(self):
+        if not find_spec("neural_compressor"):
+            self.skipTest("skip test_smooth_quant since neural_compressor is not installed")
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_offset.onnx").absolute())
+        self.construct_model_matmul(model_fp32_path, symmetric=False)
+        data_reader = self.input_feeds(1, {"input": [100, 52]})
+        self.quant_test_with_algo("GPTQ", model_fp32_path, data_reader, 32, False)
 
 
 if __name__ == "__main__":
