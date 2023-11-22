@@ -399,7 +399,7 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
 
   auto Y = ctx->Output(0, output_shape);
   auto output_data = Y->MutableData<float>();
-  bool is_input_string = X->IsDataTypeString();
+  const bool is_input_string = X->IsDataTypeString();
 
   if (total_items == 0 ||
       (is_input_string && impl_->str_map_.empty()) ||
@@ -409,7 +409,7 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
     // TfidfVectorizer returns a zero tensor of shape
     // {b_dim, output_size} when b_dim is the number of received observations
     // and output_size the is the maximum value in ngram_indexes attribute plus 1.
-    memset(output_data, 0, impl.output_size_ * B * sizeof(float));
+    memset(output_data, 0, output_shape.Size() * sizeof(float));
     return Status::OK();
   }
 
