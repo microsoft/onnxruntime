@@ -17,6 +17,14 @@ from onnxruntime.training import artifacts
 # PyTorch Module definitions
 
 
+def get_opsets_model(filename):
+    if isinstance(filename, onnx.ModelProto):
+        onx = filename
+    else:
+        onx = onnx.load(filename)
+    return {d.domain: d.version for d in onx.opset_import}
+
+
 class SimpleNet(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
         super().__init__()
@@ -999,3 +1007,13 @@ def test_save_ort_format():
         assert os.path.exists(os.path.join(temp_dir, "eval_model.ort"))
         assert os.path.exists(os.path.join(temp_dir, "optimizer_model.onnx"))
         assert os.path.exists(os.path.join(temp_dir, "optimizer_model.ort"))
+        base_opsets = get_opsets_model(base_model)
+        training_opsets = get_opsets_model(os.path.join(temp_dir, "training_model.onnx"))
+        eval_opsets = get_opsets_model(os.path.join(temp_dir, "eval_model.onnx"))
+        optimizer_opsets = get_opsets_model(os.path.join(temp_dir, "optimizer_model.onnx"))
+        if base_opsets[""] != training_opsets[""]:
+            raise AssertionError(f"Opsets mismatch {base_opsets['']} != {training_opsets['']}.")
+        if base_opsets[""] != eval_opsets[""]:
+            raise AssertionError(f"Opsets mismatch {base_opsets['']} != {eval_opsets['']}.")
+        if base_opsets[""] != optimizer_opsets[""]:
+            raise AssertionError(f"Opsets mismatch {base_opsets['']} != {optimizer_opsets['']}.")
