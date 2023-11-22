@@ -86,11 +86,11 @@ Status MoEBase::CheckInputs(MoEParameters& parameters,
                              fc1_experts_bias_dims[0],
                              " and ", local_num_experts);
     }
-    if (fc2_experts_bias_dims[0] != local_num_experts) {
+    if (fc2_experts_bias_dims[0] != num_experts) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "fc2_experts_bias_dims[0] must be equal to local_num_experts, got ",
+                             "fc2_experts_bias_dims[0] must be equal to num_experts, got ",
                              fc2_experts_bias_dims[0],
-                             " and ", local_num_experts);
+                             " and ", num_experts);
     }
     if (fc1_experts_bias_dims[1] != inter_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

@@ -73,6 +73,7 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   // TODO: allocate one buffer and reuse it.
   IAllocatorUniquePtr<void> work_space = IAllocator::MakeUniquePtr<void>(allocator, ws_size, false, stream);
   IAllocatorUniquePtr<void> fc2_output = IAllocator::MakeUniquePtr<void>(allocator, fc2_output_size, false, stream);
+  IAllocatorUniquePtr<void> fc2_output_bc = IAllocator::MakeUniquePtr<void>(allocator, fc2_output_size, false, stream);
   IAllocatorUniquePtr<void> expert_scales =
       IAllocator::MakeUniquePtr<void>(allocator, expert_scales_size, false, stream);
   IAllocatorUniquePtr<void> expanded_source_row_to_expanded_dest_row =
@@ -104,29 +105,47 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, input->Shape());
 
   const ncclComm_t comm = nccl_->Comm();
-  int total_past_rows = 0;
-  int total_covered_rows = 0;
-  moe_runner.get_local_rows_info(total_past_rows, total_covered_rows);
-  std::cout << "nccl rank:" << nccl_->Rank() << " "
-            << "total_past_rows: " << total_past_rows << " total_covered_rows: " << total_covered_rows << std::endl;
+  // std::vector<int64_t> total_rows_before_expert = moe_runner.get_total_rows_info();
 
-  if (total_covered_rows > 0) {
-    NCCL_RETURN_IF_ERROR(ncclGroupStart());
-    size_t fc2_output_offset = total_past_rows * moe_params.hidden_size * sizeof(CudaT);
-    char* fc2_output_ptr = reinterpret_cast<char*>(fc2_output.get()) + fc2_output_offset;
-    ncclDataType_t dtype = GetNcclDataType(input->DataType());
-    NCCL_RETURN_IF_ERROR(ncclBroadcast(fc2_output_ptr,
-                                       fc2_output_ptr,
-                                       total_covered_rows * sizeof(CudaT),
+  NCCL_RETURN_IF_ERROR(ncclGroupStart());
+  // size_t fc2_output_offset = total_past_rows * moe_params.hidden_size * sizeof(CudaT);
+  ncclDataType_t dtype = GetNcclDataType(input->DataType());
+  if (nccl_->Rank() == 0) {
+    NCCL_RETURN_IF_ERROR(ncclBroadcast(reinterpret_cast<const char*>(fc2_output.get()),
+                                       reinterpret_cast<char*>(fc2_output_bc.get()),
+                                       5 * moe_params.hidden_size * sizeof(CudaT),
                                        dtype,
-                                       nccl_->Rank(),
+                                       0,
                                        comm,
                                        Stream(context)));
-    NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+    NCCL_RETURN_IF_ERROR(ncclBroadcast(reinterpret_cast<const char*>(fc2_output.get()) + 5 * moe_params.hidden_size * sizeof(CudaT),
+                                       reinterpret_cast<char*>(fc2_output_bc.get()) + 5 * moe_params.hidden_size * sizeof(CudaT),
+                                       3 * moe_params.hidden_size * sizeof(CudaT),
+                                       dtype,
+                                       1,
+                                       comm,
+                                       Stream(context)));
   }
+  if (nccl_->Rank() == 1) {
+    NCCL_RETURN_IF_ERROR(ncclBroadcast(reinterpret_cast<const char*>(fc2_output.get()),
+                                       reinterpret_cast<char*>(fc2_output_bc.get()),
+                                       5 * moe_params.hidden_size * sizeof(CudaT),
+                                       dtype,
+                                       0,
+                                       comm,
+                                       Stream(context)));
+    NCCL_RETURN_IF_ERROR(ncclBroadcast(reinterpret_cast<const char*>(fc2_output.get()) + 5 * moe_params.hidden_size * sizeof(CudaT),
+                                       reinterpret_cast<char*>(fc2_output_bc.get()) + 5 * moe_params.hidden_size * sizeof(CudaT),
+                                       3 * moe_params.hidden_size * sizeof(CudaT),
+                                       dtype,
+                                       1,
+                                       comm,
+                                       Stream(context)));
+  }
+  NCCL_RETURN_IF_ERROR(ncclGroupEnd());
 
   ort_fastertransformer::finalize_moe_routing_kernelLauncher(
-      reinterpret_cast<CudaT*>(fc2_output.get()), reinterpret_cast<CudaT*>(output->template MutableData<T>()),
+      reinterpret_cast<CudaT*>(fc2_output_bc.get()), reinterpret_cast<CudaT*>(output->template MutableData<T>()),
       fc2_experts_bias_optional == nullptr
           ? nullptr
           : reinterpret_cast<const CudaT*>(fc2_experts_bias_optional->template Data<T>()),

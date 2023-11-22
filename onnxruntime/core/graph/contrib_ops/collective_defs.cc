@@ -119,7 +119,7 @@ void RegisterCollectiveOps() {
              OpSchema::Optional)
       .Input(5,
              "fc2_experts_bias",
-             "2D optional input tensor with shape (local_num_experts, hidden_size)",
+             "2D optional input tensor with shape (num_experts, hidden_size)",
              "T",
              OpSchema::Optional)
       .Output(0,

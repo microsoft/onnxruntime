@@ -4,7 +4,7 @@ import onnxruntime
 import numpy as np
 from onnx import TensorProto, helper
 
-np.random.seed(42)
+np.random.seed(3)
 
 comm = MPI.COMM_WORLD
 
@@ -104,7 +104,7 @@ def create_moe_onnx_graph(
     ]
 
     fc1_bias_shape = [local_num_experts, inter_size]
-    fc2_bias_shape = [local_num_experts, hidden_size]
+    fc2_bias_shape = [num_experts, hidden_size]
     initializers.extend(
         [
             helper.make_tensor(
@@ -153,15 +153,16 @@ def create_moe_onnx_graph(
 
 def main():
     hidden_size = 8
-    inter_size = 16
+    inter_size = 8
     num_experts = 8
-    num_rows = 16
+    num_rows = 8
     local_experts_start_index = local_rank * num_experts // get_size()
 
     fc1_experts_weights_all = np.random.rand(num_experts, hidden_size, inter_size).astype(NP_TYPE)
     fc2_experts_weights_all = np.random.rand(num_experts, inter_size, hidden_size).astype(NP_TYPE)
     fc1_experts_bias_all = np.random.rand(num_experts, inter_size).astype(NP_TYPE)
-    fc2_experts_bias_all = np.random.rand(num_experts, hidden_size).astype(NP_TYPE)
+    #fc2_experts_bias_all = np.random.rand(num_experts, hidden_size).astype(NP_TYPE)
+    fc2_experts_bias_all = np.zeros((num_experts, hidden_size)).astype(NP_TYPE)
 
     onnx_model_full = create_moe_onnx_graph(
         num_rows,
@@ -178,7 +179,6 @@ def main():
     fc1_experts_weights = fc1_experts_weights_all[local_experts_start_index:local_experts_start_index + num_experts // get_size(), :, :]
     fc2_experts_weights = fc2_experts_weights_all[local_experts_start_index:local_experts_start_index + num_experts // get_size(), :, :]
     fc1_experts_bias = fc1_experts_bias_all[local_experts_start_index:local_experts_start_index + num_experts // get_size(), :]
-    fc2_experts_bias = fc2_experts_bias_all[local_experts_start_index:local_experts_start_index + num_experts // get_size(), :]
 
     onnx_model_local = create_moe_onnx_graph(
         num_rows,
@@ -189,11 +189,13 @@ def main():
         fc1_experts_weights,
         fc2_experts_weights,
         fc1_experts_bias,
-        fc2_experts_bias,
+        fc2_experts_bias_all,
         local_experts_start_index,
     )
 
     sess_options = onnxruntime.SessionOptions()
+    # sess_options.log_severity_level = 0
+    # sess_options.log_verbosity_level = 0
     cuda_provider_options = {"device_id": local_rank}
     execution_providers = [("CUDAExecutionProvider", cuda_provider_options)]
 
@@ -210,9 +212,8 @@ def main():
 
     # compare the output with numpy close
     #np.testing.assert_allclose(output[0], sharded_output[0], rtol=THRESHOLD, atol=THRESHOLD)
-    #print_out("output[0]: ", output[0])
-    if local_rank == 1:
-        print_out("sharded_output[0]: ", sharded_output[0])
+    #print("output[0]: ", output[0])
+    print("sharded_output[0]: ", sharded_output[0])
 
 
 if __name__ == "__main__":

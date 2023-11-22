@@ -130,9 +130,8 @@ class CutlassMoeFCRunner {
   void dispatch_activations(int64_t* total_rows_before_expert, int num_experts, int local_num_experts,
                             int local_experts_start_index, cudaStream_t stream);
 
-  void get_local_rows_info(int& total_past_rows, int& total_covered_rows) {
-    total_past_rows = total_past_rows_;
-    total_covered_rows = total_covered_rows_;
+  std::vector<int64_t> get_total_rows_info() {
+    return total_rows_before_expert_host_;
   }
 
  private:
@@ -154,9 +153,9 @@ class CutlassMoeFCRunner {
 
   T* fc1_result_;
 
-  // Host primitives
-  int total_past_rows_;
-  int total_covered_rows_;
+  int64_t total_past_rows_;
+  int64_t total_covered_rows_;
+  std::vector<int64_t> total_rows_before_expert_host_;
 };
 
 template <typename WeightType>
