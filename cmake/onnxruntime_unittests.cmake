@@ -1187,12 +1187,6 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       "${onnxruntime_perf_test_src_dir}/posix/*.h" )
   endif()
 
-  if(onnxruntime_USE_DML)
-    list(APPEND onnxruntime_perf_test_src_patterns
-      "${onnxruntime_perf_test_src_dir}/dml/*.cc"
-      "${onnxruntime_perf_test_src_dir}/dml/*.h" )
-  endif()
-
   file(GLOB onnxruntime_perf_test_src CONFIGURE_DEPENDS
     ${onnxruntime_perf_test_src_patterns}
     )
