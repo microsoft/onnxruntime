@@ -10,7 +10,6 @@ import pathlib
 import shutil
 import subprocess
 import sys
-from collections import defaultdict
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", "..", ".."))
