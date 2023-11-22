@@ -201,18 +201,21 @@ const createEinsumProgramInfo = (inputs: readonly TensorView[], einsumEquation: 
   einsumEquation.symbolToInfo.forEach((info, symbol) => {
     if (einsumEquation.rhs.symbolToIndices.has(symbol)) {
       const outputIndex = einsumEquation.rhs.symbolToIndices.get(symbol)?.[0];
-      einsumEquation.lhs.forEach((term, i) => {
-        if (info.inputIndices.includes(i)) {
-          const indices = term.symbolToIndices.get(symbol);
-          if (indices === undefined) {
-            throw new Error('Invalid symbol error');
+      if (outputIndex !== undefined) {
+        einsumEquation.lhs.forEach((term, i) => {
+          if (info.inputIndices.includes(i)) {
+            const indices = term.symbolToIndices.get(symbol);
+            if (indices === undefined) {
+              throw new Error('Invalid symbol error');
+            }
+            indices.forEach((index) => {
+              idxCopy.push(`${
+                  inputVars[i].indicesSet(
+                      `input${i}Indices`, index, output.indicesGet('outputIndices', outputIndex))}`);
+            });
           }
-          indices.forEach((index) => {
-            idxCopy.push(`${
-                inputVars[i].indicesSet(`input${i}Indices`, index, output.indicesGet('outputIndices', outputIndex))}`);
-          });
-        }
-      });
+        });
+      }
     } else {
       einsumEquation.lhs.forEach((term, i) => {
         const info = einsumEquation.symbolToInfo.get(symbol);
