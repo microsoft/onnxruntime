@@ -793,7 +793,7 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vect
 
     std::unordered_set<ONNXTensorElementDataType> all_types;
     for (auto o : ops) {
-      ORT_ENFORCE(i < (is_input ? o->GetInputTypeCount(o) : o->GetOutputTypeCount(o)),
+      ORT_ENFORCE(static_cast<size_t>(i) < (is_input ? o->GetInputTypeCount(o) : o->GetOutputTypeCount(o)),
                   "Another version of operator '", schema.Name(),
                   "'has less ", (is_input ? "inputs" : "outputs"),
                   ". onnxruntime allows the overloading of an operator "
