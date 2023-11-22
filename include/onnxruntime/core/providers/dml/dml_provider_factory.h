@@ -15,7 +15,9 @@
 #pragma warning(pop)
 
 #ifdef __cplusplus
-#include <DirectML.h>
+// TODO (pavignol): Remove
+#include "core/providers/dml/DirectML2.h"
+// #include <DirectML.h>
 #else
 struct IDMLDevice;
 typedef struct IDMLDevice IDMLDevice;

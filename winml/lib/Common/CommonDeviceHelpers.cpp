@@ -3,7 +3,9 @@
 
 #include "lib/Common/inc/pch.h"
 #if USE_DML
-#include <DirectML.h>
+// TODO (pavignol): Remove
+#include "core/providers/dml/DirectML2.h"
+// #include <DirectML.h>
 #endif USE_DML
 #include "inc/CommonDeviceHelpers.h"
 #include <d3d11on12.h>

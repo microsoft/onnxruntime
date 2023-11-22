@@ -844,6 +844,12 @@ struct OperatorDescTraits<DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_DESC>
 };
 
 template <>
+struct OperatorDescTraits<DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2;
+};
+
+template <>
 struct OperatorDescTraits<DML_RESAMPLE1_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_RESAMPLE1;
@@ -1833,6 +1839,12 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_MEAN_VARIANCE_NORMALIZ
 };
 
 template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2>
+{
+    using DescType = DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_DESC;
+};
+
+template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_RESAMPLE1>
 {
     using DescType = DML_RESAMPLE1_OPERATOR_DESC;
@@ -2387,6 +2399,8 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_SPACE_TO_DEPTH1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION1:
         return std::invoke(std::forward<Visitor>(visitor), DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2:
+        return std::invoke(std::forward<Visitor>(visitor), DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_RESAMPLE1:
         return std::invoke(std::forward<Visitor>(visitor), DML_RESAMPLE1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER:
@@ -2618,6 +2632,7 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_DEPTH_TO_SPACE1: return "DML_OPERATOR_DEPTH_TO_SPACE1";
     case DML_OPERATOR_SPACE_TO_DEPTH1: return "DML_OPERATOR_SPACE_TO_DEPTH1";
     case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION1: return "DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION1";
+    case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2: return "DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2";
     case DML_OPERATOR_RESAMPLE1: return "DML_OPERATOR_RESAMPLE1";
     case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER: return "DML_OPERATOR_MATRIX_MULTIPLY_INTEGER";
     case DML_OPERATOR_QUANTIZED_LINEAR_MATRIX_MULTIPLY: return "DML_OPERATOR_QUANTIZED_LINEAR_MATRIX_MULTIPLY";

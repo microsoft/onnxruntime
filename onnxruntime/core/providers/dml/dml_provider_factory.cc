@@ -4,7 +4,9 @@
 #include <dxcore.h>
 #include <vector>
 
-#include <DirectML.h>
+// TODO (pavignol): Remove
+#include "core/providers/dml/DirectML2.h"
+// #include <DirectML.h>
 #ifndef _GAMING_XBOX
 #include <dxgi1_4.h>
 #endif

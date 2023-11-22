@@ -4,7 +4,9 @@
 #include "lib/Api.Image/pch.h"
 
 #if USE_DML
-#include <DirectML.h>
+// TODO (pavignol): Remove
+#include "core/providers/dml/DirectML2.h"
+// #include <DirectML.h>
 #endif USE_DML
 #include <d3d11on12.h>
 #include <wil/winrt.h>

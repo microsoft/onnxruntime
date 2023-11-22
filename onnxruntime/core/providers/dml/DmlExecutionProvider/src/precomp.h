@@ -40,7 +40,9 @@
 
 #include "GraphicsUnknownHelper.h"
 
-#include <DirectML.h>
+// TODO (pavignol): Remove
+#include "core/providers/dml/DirectML2.h"
+// #include <DirectML.h>
 #include "core/common/common.h"
 #include "ErrorHandling.h"
 
