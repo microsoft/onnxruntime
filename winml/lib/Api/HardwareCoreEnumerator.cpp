@@ -26,7 +26,7 @@ static LogicalProcessorInformation GetLogicalProcessorInfos(LOGICAL_PROCESSOR_RE
   auto processorInformationBytes = std::make_unique<char[]>(length);
 
   rc = GetLogicalProcessorInformationEx(
-    relationship, static_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(processorInformationBytes.get()), &length
+    relationship, reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(processorInformationBytes.get()), &length
   );
 
   assert(rc == TRUE);
@@ -54,7 +54,7 @@ static CoreCounter GetNumberOPhysicalAndEngineeringCores() {
   while ((read + FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Processor)) < logicalProcessorInformation.Length
   ) {
     currentProcessorInfo =
-      static_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(logicalProcessorInformation.Buffer.get() + read);
+      reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(logicalProcessorInformation.Buffer.get() + read);
     if ((read + currentProcessorInfo->Size) > logicalProcessorInformation.Length) {
       break;
     }
