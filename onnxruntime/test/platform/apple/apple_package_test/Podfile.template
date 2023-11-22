@@ -17,7 +17,7 @@ target 'ios_package_test' do
   end
 end
 
-unless include_macos_target
+if include_macos_target
   target 'macos_package_test' do
       # Comment the next line if you don't want to use dynamic frameworks
       use_frameworks!
