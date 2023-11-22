@@ -103,14 +103,14 @@ def _build_for_apple_sysroot(
 
 
 def _merge_framework_info_files(files, output_file):
-    merged_data = defaultdict(dict)
+    merged_data = {}
 
     for file in files:
         with open(file, "r") as f:
             data = json.load(f)
             for platform, values in data.items():
                 assert platform not in merged_data, f"Duplicate platform value: {platform}"
-                merged_data[platform] = dict(values)
+                merged_data[platform] = values
 
     with open(output_file, "w") as f:
         json.dump(merged_data, f, indent=2)
