@@ -34,13 +34,11 @@ struct CustomGemmOp : Ort::CustomOpBase<CustomGemmOp, CustomGemmKernel> {
 
   size_t GetInputTypeCount() const;
   ONNXTensorElementDataType GetInputType(size_t index) const;
-  OrtCustomOpInputOutputCharacteristic
-  GetInputCharacteristic(size_t index) const;
+  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t index) const;
 
   size_t GetOutputTypeCount() const;
   ONNXTensorElementDataType GetOutputType(size_t index) const;
-  OrtCustomOpInputOutputCharacteristic
-  GetOutputCharacteristic(size_t index) const;
+  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t index) const;
 
  private:
   const char* op_name_;

@@ -14,8 +14,7 @@
 
 namespace Cpu {
 
-void* CustomGemmOp::CreateKernel(const OrtApi& api,
-                                 const OrtKernelInfo* info) const {
+void* CustomGemmOp::CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const {
   return std::make_unique<CustomGemmKernel>(api, info).release();
 }
 
@@ -43,8 +42,7 @@ ONNXTensorElementDataType CustomGemmOp::GetInputType(size_t index) const {
   }
 }
 
-OrtCustomOpInputOutputCharacteristic
-CustomGemmOp::GetInputCharacteristic(size_t index) const {
+OrtCustomOpInputOutputCharacteristic CustomGemmOp::GetInputCharacteristic(size_t index) const {
   switch (index) {
     case 0:
     case 1:
@@ -72,8 +70,7 @@ ONNXTensorElementDataType CustomGemmOp::GetOutputType(size_t index) const {
   }
 }
 
-OrtCustomOpInputOutputCharacteristic
-CustomGemmOp::GetOutputCharacteristic(size_t index) const {
+OrtCustomOpInputOutputCharacteristic CustomGemmOp::GetOutputCharacteristic(size_t index) const {
   switch (index) {
     case 0:
       return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED;
