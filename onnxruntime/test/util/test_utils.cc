@@ -132,11 +132,16 @@ static gsl::span<const std::byte> GetModelBytes(ModelPathOrBytes model_path_or_b
 void RunAndVerifyOutputsWithEP(ModelPathOrBytes model_path_or_bytes, std::string_view log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds,
-                               const EPVerificationParams& params) {
+                               const EPVerificationParams& params,
+                               const std::function<void(SessionOptions&)>& session_options_updater) {
   std::vector<std::byte> model_data_buffer{};
   const auto model_data = GetModelBytes(model_path_or_bytes, model_data_buffer);
 
   SessionOptions so;
+  if (session_options_updater) {
+    session_options_updater(so);
+  }
+
   so.session_logid = log_id;
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
