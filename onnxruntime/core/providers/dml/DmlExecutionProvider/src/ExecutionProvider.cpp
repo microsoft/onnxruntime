@@ -204,7 +204,7 @@ namespace Dml
             D3D12_FEATURE_DATA_D3D12_OPTIONS19 options19 = {};
 
             // The call may fail in which case the default value is false
-            d3d12Device->CheckFeatureSupport((D3D12_FEATURE) 48 /*D3D12_FEATURE_D3D12_OPTIONS19*/, &options19, sizeof(options19));    
+            d3d12Device->CheckFeatureSupport((D3D12_FEATURE) 48 /*D3D12_FEATURE_D3D12_OPTIONS19*/, &options19, sizeof(options19));
             m_areCustomHeapsSupported = options19.ComputeOnlyCustomHeapSupported;
         }
 

@@ -150,7 +150,7 @@ namespace Dml
         }
 
         STDMETHOD_(bool, IsMcdmDevice)() const noexcept final;
-        STDMETHOD_(bool, CustomHeapsSupported)() const noexcept final;        
+        STDMETHOD_(bool, CustomHeapsSupported)() const noexcept final;
 
         STDMETHOD_(bool, MetacommandsEnabled)() const noexcept final;
         bool DynamicGraphFusionEnabled() const noexcept;
