@@ -330,6 +330,24 @@ export const sumVector = (name: string, components: number) => {
 };
 
 /**
+ * A helper function that returns component name of vector or vector like struct.
+ * @param index
+ */
+let vecIndex: string[] = [];
+export const getVecIndex = (index: number): string => {
+  if (index > 25) {
+    throw new Error('index > 25 is not supported!');
+  }
+  if (vecIndex.length === 0) {
+    vecIndex = ['x', 'y', 'z', 'w', 'a', 'b'];
+    for (let i = 0; i < 20; i++) {
+      vecIndex.push(`.${String.fromCharCode(99 + i)}`);
+    }
+  }
+  return vecIndex[index];
+};
+
+/**
  * A helper function to get a IndicesHelper for a given input or output.
  *
  * @param name - the name of the input or output.
@@ -369,8 +387,8 @@ const createIndicesHelper =
       let o2iSnippet = '';
       for (let i = 0; i < rank - 1; i++) {
         o2iSnippet += `
-    let dim${i} = current / ${strides}[${i}];
-    let rest${i} = current % ${strides}[${i}];
+    let dim${i} = current / ${strides}.${getVecIndex(i)};
+    let rest${i} = current % ${strides}.${getVecIndex(i)};
     indices[${i}] = dim${i};
     current = rest${i};
     `;
@@ -393,7 +411,7 @@ const createIndicesHelper =
       const offsets: string[] = [];
       if (rank >= 2) {
         for (let i = rank - 1; i >= 0; i--) {
-          offsets.push(`${strides}[${i}] * (indices[${i}])`);
+          offsets.push(`${strides}.${getVecIndex(i)} * (indices[${i}])`);
         }
       }
 
@@ -652,7 +670,7 @@ export const outputVariable =
     (name: string, type: number, shapeOrRank: number|readonly number[], components: 1|2|3|4 = 1): IndicesHelper =>
         createIndicesHelper(name, type, shapeOrRank, false, components);
 
-export type UniformsArrayType = Array<{name: string; type: string}>;
+export type UniformsArrayType = Array<{name: string; type: string; length?: number}>;
 
 /**
  * A ShaderHelper is a helper class for generating WGSL code.
@@ -744,10 +762,10 @@ class ShaderHelperImpl implements ShaderHelper {
     this.indicesHelpers.push(variable);
     if (variable.rank !== 0) {
       if (variable.shape.startsWith('uniforms.')) {
-        this.uniforms.push({name: variable.shape.replace('uniforms.', ''), type: variable.type.indices});
+        this.uniforms.push({name: variable.shape.replace('uniforms.', ''), type: 'u32', length: variable.rank});
       }
       if (variable.strides.startsWith('uniforms.')) {
-        this.uniforms.push({name: variable.strides.replace('uniforms.', ''), type: variable.type.indices});
+        this.uniforms.push({name: variable.strides.replace('uniforms.', ''), type: 'u32', length: variable.rank});
       }
     }
     if (variable.uniformOnly) {
@@ -770,14 +788,25 @@ class ShaderHelperImpl implements ShaderHelper {
         .join('\n');
   }
 
-  registerUniform(name: string, type: string): ShaderHelper {
-    this.uniforms.push({name, type});
+  registerUniform(name: string, type: string, length = 1): ShaderHelper {
+    this.uniforms.push({name, type, length});
     return this;
   }
 
   registerUniforms(additionalUniforms: UniformsArrayType): ShaderHelper {
     this.uniforms = this.uniforms.concat(additionalUniforms);
     return this;
+  }
+
+  private generateNDType(type: string, length: number) {
+    const fillNdArray = (length: number) => {
+      let ndArray = '';
+      for (let i = 0; i < length; i++) {
+        ndArray += (i !== 0 ? ',' : '') + `${getVecIndex(i)}: ${type}`;
+      }
+      return ndArray;
+    };
+    return `struct vec${length}${type} {` + fillNdArray(length) + '}';
   }
 
   private indicesHelpers: IndicesHelper[] = [];
@@ -788,11 +817,33 @@ class ShaderHelperImpl implements ShaderHelper {
     }
 
     const uniformSnippets: string[] = [];
-    for (const {name, type} of this.uniforms) {
-      uniformSnippets.push(`${name}:${type}`);
+    // If the length of any previous uniform > 4, need to add align(16).
+    let needAlign16 = false;
+    const ndRegistry = [];
+    let ndTypeDeclaration = '';
+    for (const {name, type, length} of this.uniforms) {
+      if (type.includes('vec')) {
+        throw new Error(`Type should be scalar like u32, i32, f32, ${type} is not supported!`);
+      }
+      if (length && length > 4) {
+        if (needAlign16 === false) {
+          needAlign16 = true;
+        }
+        if (ndRegistry.indexOf(length + type) === -1) {
+          ndRegistry.push(length + type);
+          ndTypeDeclaration += this.generateNDType(type, length);
+        }
+        uniformSnippets.push(`@align(16) ${name}:vec${length}${type}`);
+      } else {
+        const typeTemp = length == null || length === 1 ? type : `vec${length}<${type}>`;
+        uniformSnippets.push(`${needAlign16 ? '@align(16)' : ''}${name}:${typeTemp}`);
+        if (needAlign16) {
+          needAlign16 = false;
+        }
+      }
     }
-
     return `
+      ${ndTypeDeclaration}
       struct Uniforms { ${uniformSnippets.join(', ')} };
       @group(0) @binding(${this.variableIndex}) var<uniform> uniforms: Uniforms;`;
   }
@@ -832,5 +883,5 @@ export const getBroadcastDims = (inShape: readonly number[], outShape: readonly 
   return dims;
 };
 
-// TODO: remove this limitation once >4D dims are supported by uniform.
-export const enableShapesUniforms = (rank: number): boolean => rank <= 4;
+// TODO: remove this when all related uses have been removed.
+export const enableShapesUniforms = (rank: number): boolean => rank <= 26;

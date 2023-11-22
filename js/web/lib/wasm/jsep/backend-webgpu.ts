@@ -361,17 +361,11 @@ export class WebGpuBackend {
           case 4:
             baseAlignment = 16;
             break;
-          case 5:
-            baseAlignment = 16;
-            break;
-          case 6:
-            baseAlignment = 16;
-            break;
           default:
-            throw new Error(`unsupported data length: ${data.length}`);
+            baseAlignment = 16;
         }
 
-        if (preLength === 5 || preLength === 6) {
+        if (preLength > 4) {
           baseAlignment = 16;
         }
         if (baseAlignment > maxAlignmentOfField) {
