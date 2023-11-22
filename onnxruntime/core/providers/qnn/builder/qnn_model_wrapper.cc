@@ -365,33 +365,33 @@ bool QnnModelWrapper::ProcessQuantizationParameter(const std::optional<NodeUnitI
   return true;
 }
 
-Status QnnModelWrapper::GetOnnxInputInfo(const NodeUnitIODef& input,
-                                         OnnxInputInfo& input_info) const {
+Status QnnModelWrapper::GetTensorInfo(const NodeUnitIODef& input, TensorInfo& tensor_info) const {
   const std::string& name = input.node_arg.Name();
 
   // Fill in quantization param info.
-  input_info.quant_param = QNN_QUANTIZE_PARAMS_INIT;
+  tensor_info.quant_param = QNN_QUANTIZE_PARAMS_INIT;
   bool is_quantized_tensor = input.quant_param.has_value();
-  utils::InitializeQuantizeParam(input_info.quant_param, is_quantized_tensor);
+  utils::InitializeQuantizeParam(tensor_info.quant_param, is_quantized_tensor);
 
   if (is_quantized_tensor) {
     ORT_RETURN_IF_NOT(ProcessQuantizationParameter(input.quant_param,
-                                                   input_info.quant_param.scaleOffsetEncoding.scale,
-                                                   input_info.quant_param.scaleOffsetEncoding.offset),
+                                                   tensor_info.quant_param.scaleOffsetEncoding.scale,
+                                                   tensor_info.quant_param.scaleOffsetEncoding.offset),
                       "QNN EP: Cannot get quantization parameters for input ", name.c_str());
   }
 
   // Fill in QNN data type.
-  input_info.qnn_data_type = QNN_DATATYPE_FLOAT_32;
-  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_tensor, input.node_arg.TypeAsProto(), input_info.qnn_data_type));
+  tensor_info.qnn_data_type = QNN_DATATYPE_FLOAT_32;
+  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_tensor, input.node_arg.TypeAsProto(),
+                                            tensor_info.qnn_data_type));
 
   // Fill in shape.
-  ORT_RETURN_IF_NOT(GetOnnxShape(input.node_arg, input_info.shape), "Cannot get shape");
+  ORT_RETURN_IF_NOT(GetOnnxShape(input.node_arg, tensor_info.shape), "Cannot get shape");
 
   // Fill in initializer info.
-  input_info.is_initializer = IsInitializerInput(name);
-  if (input_info.is_initializer) {
-    input_info.initializer_tensor = GetInitializerTensors().at(name);
+  tensor_info.is_initializer = IsInitializerInput(name);
+  if (tensor_info.is_initializer) {
+    tensor_info.initializer_tensor = GetInitializerTensors().at(name);
   }
 
   return Status::OK();

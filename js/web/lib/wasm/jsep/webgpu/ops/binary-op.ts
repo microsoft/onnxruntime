@@ -17,8 +17,9 @@ type BinaryFunctionCall = BuiltinFunctionName|BinaryCustomExpression|{
 
 const createBinaryOpProgramShader =
     (shaderHelper: ShaderHelper, dimsA: readonly number[], dimsB: readonly number[], dimsOutput: readonly number[],
-     vectorize: boolean, doBroadcast: boolean, funcCall: BinaryFunctionCall, typeA: number, typeB: number,
-     typeOutput: number, useShapesUniforms: boolean, additionalImplementation?: string) => {
+     vectorize: boolean, doBroadcast: boolean, sharedDimensionDivisibleBy4: boolean, funcCall: BinaryFunctionCall,
+     typeA: number, typeB: number, typeOutput: number, useShapesUniforms: boolean,
+     additionalImplementation?: string) => {
       let expressionScalar: BinaryCustomExpression;
       let expressionVector: BinaryCustomExpression;
       if (typeof funcCall === 'string') {
@@ -42,6 +43,8 @@ const createBinaryOpProgramShader =
         if (doBroadcast) {
           const isAOneElement = ShapeUtil.size(dimsA) === 1;
           const isBOneElement = ShapeUtil.size(dimsB) === 1;
+          const aLastDimDivisibleBy4 = dimsA.length > 0 && dimsA[dimsA.length - 1] % 4 === 0;
+          const bLastDimDivisibleBy4 = dimsB.length > 0 && dimsB[dimsB.length - 1] % 4 === 0;
           if (isAOneElement || isBOneElement) {
             assignment = output.setByOffset(
                 'global_idx',
@@ -55,7 +58,14 @@ const createBinaryOpProgramShader =
             let offsetB = ${b.broadcastedIndicesToOffset('outputIndices', output)};
             ${
                 output.setByOffset(
-                    'global_idx', expressionVector(a.getByOffset('offsetA / 4u'), b.getByOffset('offsetB / 4u')))}
+                    'global_idx',
+                    expressionVector(
+                        sharedDimensionDivisibleBy4 || aLastDimDivisibleBy4 ?
+                            a.getByOffset('offsetA / 4u') :
+                            `${a.type.value}(${a.getByOffset('offsetA / 4u')}[offsetA % 4u])`,
+                        sharedDimensionDivisibleBy4 || bLastDimDivisibleBy4 ?
+                            b.getByOffset('offsetB / 4u') :
+                            `${b.type.value}(${b.getByOffset('offsetB / 4u')}[offsetB % 4u])`))}
           `;
           }
         } else {
@@ -118,9 +128,9 @@ const createBinaryOpProgramInfo =
       let outputSize = ShapeUtil.size(a.dims);
 
       let vectorize = false;
+      let sharedDimensionDivisibleBy4 = false;
 
       // TODO: deal with zero-sized tensors (eg. dims=[1,0])
-
       const cacheKeyAux = [isBroadcast];
       if (isBroadcast) {
         const calculatedShape = BroadcastUtil.calcShape(a.dims, b.dims, false);
@@ -131,8 +141,12 @@ const createBinaryOpProgramInfo =
         outputSize = ShapeUtil.size(outputShape);
         const isAOneElement = ShapeUtil.size(a.dims) === 1;
         const isBOneElement = ShapeUtil.size(b.dims) === 1;
+        const aLastDimDivisibleBy4 = a.dims.length > 0 && a.dims[a.dims.length - 1] % 4 === 0;
+        const bLastDimDivisibleBy4 = b.dims.length > 0 && b.dims[b.dims.length - 1] % 4 === 0;
         cacheKeyAux.push(isAOneElement);
         cacheKeyAux.push(isBOneElement);
+        cacheKeyAux.push(aLastDimDivisibleBy4);
+        cacheKeyAux.push(bLastDimDivisibleBy4);
         // check whether vectorize can be enabled
         let sharedDimension = 1;
         for (let i = 1; i < outputShape.length; i++) {
@@ -144,7 +158,10 @@ const createBinaryOpProgramInfo =
             break;
           }
         }
-        if (sharedDimension % 4 === 0 || isAOneElement || isBOneElement) {
+        if (sharedDimension % 4 === 0) {
+          sharedDimensionDivisibleBy4 = true;
+          vectorize = true;
+        } else if (isAOneElement || isBOneElement || aLastDimDivisibleBy4 || bLastDimDivisibleBy4) {
           vectorize = true;
         }
       } else {
@@ -158,14 +175,11 @@ const createBinaryOpProgramInfo =
         name,
         shaderCache: {
           hint: cacheKey + cacheKeyAux.map((x) => x.toString()).join('_'),
-          // If the input is scalar then use type instead of dims because useShapesUniforms is false.
-          inputDependencies: useShapesUniforms ?
-              ['rank', 'rank'] :
-              [a.dims.length > 0 ? 'dims' : 'type', b.dims.length > 0 ? 'dims' : 'type'],
+          inputDependencies: useShapesUniforms ? ['rank', 'rank'] : ['dims', 'dims'],
         },
         getShaderSource: (shaderHelper) => createBinaryOpProgramShader(
-            shaderHelper, a.dims, b.dims, outputShape, vectorize, isBroadcast, funcCall, a.dataType, b.dataType,
-            outputDataType, useShapesUniforms, additionalImplementation),
+            shaderHelper, a.dims, b.dims, outputShape, vectorize, isBroadcast, sharedDimensionDivisibleBy4, funcCall,
+            a.dataType, b.dataType, outputDataType, useShapesUniforms, additionalImplementation),
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: outputDataType}],
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */ / 4 /* component size */)},

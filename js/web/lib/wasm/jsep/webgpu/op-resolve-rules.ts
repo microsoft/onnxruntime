@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {argMax, argMin, parseArgMinMaxAttributes} from './ops/argminmax';
+import {attention, parseAttentionAttributes} from './ops/attention';
 import {biasAdd} from './ops/bias-add';
 import {biasSplitGelu} from './ops/bias-split-gelu';
 import * as binaryOps from './ops/binary-op';
@@ -16,6 +17,7 @@ import {gemm, parseGemmAttributes} from './ops/gemm';
 import {instanceNorm, parseInstanceNormAttributes} from './ops/instance-norm';
 import {layerNorm, parseLayerNormAttributes} from './ops/layer-norm';
 import {matMul} from './ops/matmul';
+import {multiHeadAttention, parseMultiHeadAttentionAttributes} from './ops/multi-head-attentiion';
 import {pad, parsePadAttributes} from './ops/pad';
 import * as pool from './ops/pool';
 import {range} from './ops/range';
@@ -46,13 +48,13 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Asinh', [unaryOps.asinh]],
   ['Atan', [unaryOps.atan]],
   ['Atanh', [unaryOps.atanh]],
+  ['Attention', [attention, parseAttentionAttributes]],
   // TODO: support new attributes for AveragePool-10
   ['AveragePool', [pool.averagePool, pool.parseAveragePoolAttributes]],
   ['BiasAdd', [biasAdd]],
   ['BiasSplitGelu', [biasSplitGelu]],
   ['Cast', [unaryOps.cast, unaryOps.parseCastAttributes]],
   ['Ceil', [unaryOps.ceil]],
-  ['ClipV10', [unaryOps.clipV10]],
   ['Clip', [unaryOps.clip]],
   ['Concat', [concat, parseConcatAttributes]],
   ['Conv', [conv, parseConvAttributes]],
@@ -86,6 +88,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   // TODO: support new attributes for MaxPool-8 and MaxPool-10
   ['MaxPool', [pool.maxPool, pool.parseMaxPoolAttributes]],
   ['Mul', [binaryOps.mul]],
+  ['MultiHeadAttention', [multiHeadAttention, parseMultiHeadAttentionAttributes]],
   ['Neg', [unaryOps.neg]],
   ['Not', [unaryOps.not]],
   ['Pad', [pad, parsePadAttributes]],

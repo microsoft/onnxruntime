@@ -14,6 +14,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+
+def version_to_tuple(version: str) -> tuple:
+    v = []
+    for s in version.split("."):
+        with contextlib.suppress(ValueError):
+            v.append(int(s))
+    return tuple(v)
+
+
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 
@@ -1084,6 +1093,12 @@ def generate_build_tree(
     if args.use_cuda:
         nvcc_threads = number_of_nvcc_threads(args)
         cmake_args.append("-Donnxruntime_NVCC_THREADS=" + str(nvcc_threads))
+        if not disable_float8_types and args.cuda_version:
+            if version_to_tuple(args.cuda_version) < (11, 8):
+                raise BuildError(
+                    f"Float 8 types require CUDA>=11.8. They must be disabled on CUDA=={args.cuda_version}. "
+                    f"Add '--disable_types float8' to your command line. See option disable_types."
+                )
     if args.use_rocm:
         cmake_args.append("-Donnxruntime_ROCM_HOME=" + rocm_home)
         cmake_args.append("-Donnxruntime_ROCM_VERSION=" + args.rocm_version)
@@ -1171,9 +1186,9 @@ def generate_build_tree(
             "-Donnxruntime_USE_OPENVINO_AUTO=" + ("ON" if args.use_openvino.startswith("AUTO") else "OFF"),
         ]
 
-    # TensorRT and OpenVINO providers currently only support
+    # VitisAI and OpenVINO providers currently only support
     # full_protobuf option.
-    if args.use_full_protobuf or args.use_tensorrt or args.use_openvino or args.use_vitisai or args.gen_doc:
+    if args.use_full_protobuf or args.use_openvino or args.use_vitisai or args.gen_doc:
         cmake_args += ["-Donnxruntime_USE_FULL_PROTOBUF=ON", "-DProtobuf_USE_STATIC_LIBS=ON"]
 
     if args.use_tvm and args.llvm_path is not None:
@@ -1637,9 +1652,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
         # GCOV_PREFIX specifies the root directory
         # for creating the runtime code coverage files.
         if args.code_coverage:
-            adb_shell(
-                "cd {0} && GCOV_PREFIX={0} GCOV_PREFIX_STRIP={1} {2}".format(device_dir, cwd.count(os.sep) + 1, cmd)
-            )
+            adb_shell(f"cd {device_dir} && GCOV_PREFIX={device_dir} GCOV_PREFIX_STRIP={cwd.count(os.sep) + 1} {cmd}")
         else:
             adb_shell(f"cd {device_dir} && {cmd}")
 
@@ -1689,7 +1702,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                 )
 
             if args.use_nnapi:
-                run_adb_shell("{0}/onnx_test_runner -e nnapi {0}/test".format(device_dir))
+                run_adb_shell(f"{device_dir}/onnx_test_runner -e nnapi {device_dir}/test")
             else:
                 run_adb_shell(f"{device_dir}/onnx_test_runner {device_dir}/test")
 
@@ -1702,9 +1715,9 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                 adb_push("onnxruntime_customopregistration_test", device_dir, cwd=cwd)
                 adb_shell(f"chmod +x {device_dir}/onnxruntime_shared_lib_test")
                 adb_shell(f"chmod +x {device_dir}/onnxruntime_customopregistration_test")
-                run_adb_shell("LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{0} {0}/onnxruntime_shared_lib_test".format(device_dir))
+                run_adb_shell(f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/onnxruntime_shared_lib_test")
                 run_adb_shell(
-                    "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{0} {0}/onnxruntime_customopregistration_test".format(device_dir)
+                    f"LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{device_dir} {device_dir}/onnxruntime_customopregistration_test"
                 )
 
 
