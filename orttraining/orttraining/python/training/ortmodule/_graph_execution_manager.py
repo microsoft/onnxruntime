@@ -91,10 +91,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._first_skip_check_warning = True
 
         # Inspector for runtime information, for example input data, memory usage, etc.
-        self._runtime_inspector = RuntimeInspector(self._logger)
-        self._runtime_inspector.enable_memory_inspector(
-            self._original_module, self._runtime_options.print_memory_stat_by_step
-        )
+        self._runtime_inspector = RuntimeInspector(self._logger, self._original_module)
+        self._runtime_inspector.memory_ob.enable_memory_stats_by_step(self._runtime_options.print_memory_stat_by_step)
 
         # Tracker for ORTModule model export, session creation overhead.
         self.time_tracker = _logger.TimeTracker()
@@ -628,7 +626,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         if get_rank() != 0:
             return
 
-        if self._runtime_inspector.is_memory_inspector_enabled() and self._debug_options.log_level <= LogLevel.DEVINFO:
+        if self._runtime_inspector.memory_ob.is_enabled() and self._debug_options.log_level <= LogLevel.DEVINFO:
             self._logger.info(self._runtime_inspector.memory_ob.memory_optimization_opportunity_table_str)
 
         tbl = PTable()
@@ -670,7 +668,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             ],
         )
 
-        if self._runtime_inspector.is_memory_inspector_enabled() and output_memory_optimization_details:
+        if self._runtime_inspector.memory_ob.is_enabled() and output_memory_optimization_details:
             mem_notes, mem_tbl = self._runtime_inspector.memory_ob.display_memory_optimization_plans(
                 self._runtime_options.memory_optimizer_config
             )

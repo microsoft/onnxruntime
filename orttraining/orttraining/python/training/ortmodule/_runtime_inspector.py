@@ -5,7 +5,7 @@
 
 from enum import IntEnum
 from logging import Logger
-from typing import Dict, List, Optional, OrderedDict, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import onnx
 import torch
@@ -45,11 +45,11 @@ class RuntimeInspector:
     Runtime inspector for ORTModule.
     """
 
-    def __init__(self, logger: Logger):
+    def __init__(self, logger: Logger, module: torch.nn.Module):
         self._logger = logger
 
         self.input_density_ob: Union[InputDensityObserver, None] = None
-        self.memory_ob: Union[MemoryObserver, None] = None
+        self.memory_ob = MemoryObserver(module, self._logger)
 
     def enable_input_inspector(self, model: ModelProto, user_input_names: List[str]) -> None:
         """Initialize input inspector from the given ONNX model and user input names.
@@ -87,66 +87,6 @@ class RuntimeInspector:
     def disable_input_inspector(self) -> None:
         """Disable input density inspector."""
         self.input_density_ob = None
-
-    def enable_memory_inspector(self, module: torch.nn.Module, print_memory_stats_by_step: bool) -> None:
-        """Enable memory inspector for ORTModule.
-
-        Args:
-            module: ORTModule.
-            print_memory_stats: Whether to print memory stats.
-        """
-        if self.memory_ob is None:
-            self.memory_ob = MemoryObserver(module, print_memory_stats_by_step, self._logger)
-        else:
-            raise RuntimeError("Memory observer is already enabled.")
-
-    def inspect_memory(self, phase: Phase) -> None:
-        """Inspect memory usage and print statistics.
-
-        Args:
-            phase: Phase to inspect.
-        """
-        if self.memory_ob is not None:
-            self.memory_ob.inspect_memory(phase)
-
-    def find_memory_optimization_opportunity(
-        self, execution_agent: TrainingAgent, memory_optimizer_config, probe_level
-    ):
-        """Find memory optimization opportunity.
-
-        Args:
-            execution_agent: TrainingAgent.
-            memory_optimizer_config: Memory optimization config.
-            probe_level: Memory probe level.
-        """
-        if self.memory_ob is not None:
-            self.memory_ob.find_memory_optimization_opportunity(execution_agent, memory_optimizer_config, probe_level)
-
-    def collect_symbolic_dim_values(
-        self,
-        onnx_input_name_to_dynamic_axes_map: Dict[str, Dict[int, str]],
-        onnx_input_to_value_map: Dict[str, torch.Tensor],
-    ):
-        """Collect symbolic dim values."""
-        if self.memory_ob is not None:
-            self.memory_ob.collect_symbolic_dim_values(onnx_input_name_to_dynamic_axes_map, onnx_input_to_value_map)
-
-    def is_memory_inspector_enabled(self) -> bool:
-        """Check if memory inspector is enabled."""
-        return self.memory_ob is not None
-
-    def is_symbolic_dim_collecting_completed(self) -> bool:
-        """Check if symbolic dim collecting is completed."""
-        return self.memory_ob is not None and self.memory_ob.symbolic_dim_collecting_completed
-
-    def complete_symbolic_dim_collecting(self) -> None:
-        """Complete symbolic dim collecting."""
-        if self.memory_ob is not None:
-            self.memory_ob.symbolic_dim_collecting_completed = True
-
-    def disable_memory_inspector(self) -> None:
-        """Disable memory inspector."""
-        self.memory_ob = None
 
 
 class InputDensityObserver:
@@ -526,8 +466,9 @@ class MemoryObserver:
     NORMALIZER_FACTOR = float(1024 * 1024)
     NORMALIZER_UNIT = "MiB"
 
-    def __init__(self, m: torch.nn.Module, print_memory_stats_by_step: bool, logger: Logger):
+    def __init__(self, m: torch.nn.Module, logger: Logger):
         self._logger = logger
+        self._is_enabled = True
 
         # Memory optimization related.
         self.memory_optimization_opportunity_table_str = None
@@ -539,7 +480,7 @@ class MemoryObserver:
         self.symbolic_dim_collecting_completed = False
 
         # For per-step memory inspection.
-        self._print_memory_stats_by_step = print_memory_stats_by_step
+        self._print_memory_stats_by_step = False
         self._current_step = 0
         self._rank = 0
         self._world_size = 1
@@ -553,14 +494,20 @@ class MemoryObserver:
 
         self._is_first_inspect = True
 
-        # For peak memory summary.
-        self._peak_memory_summary = OrderedDict()
+    def is_enabled(self) -> bool:
+        """Check if memory inspector is enabled."""
+        return self._is_enabled
+
+    def enable_memory_stats_by_step(self, print_memory_stats_by_step: bool):
+        # For per-step memory inspection.
+        self._print_memory_stats_by_step = print_memory_stats_by_step
 
     def collect_symbolic_dim_values(
         self,
         onnx_input_name_to_dynamic_axes_map: Dict[str, Dict[int, str]],
         onnx_input_to_value_map: Dict[str, torch.Tensor],
     ):
+        """Collect symbolic dim values."""
         for input_name, dynamic_axes in onnx_input_name_to_dynamic_axes_map.items():
             if input_name in onnx_input_to_value_map:
                 for dim_idx, dim_name in dynamic_axes.items():
@@ -571,6 +518,13 @@ class MemoryObserver:
     def find_memory_optimization_opportunity(
         self, execution_agent: TrainingAgent, memory_optimizer_config, probe_level
     ):
+        """Find memory optimization opportunity.
+
+        Args:
+            execution_agent: TrainingAgent.
+            memory_optimizer_config: Memory optimization config.
+            probe_level: Memory probe level.
+        """
         (
             self.memory_optimization_opportunity_table_str,
             memory_optimization_saving_symbolics,
@@ -604,7 +558,13 @@ class MemoryObserver:
             self.cluster_id_combination_to_saving_symbolics_map[cluster_id] = values
 
     def inspect_memory(self, cur_phase: Phase):
-        if not torch.cuda.is_available():
+        """Inspect memory usage and print statistics.
+
+        Args:
+            phase: Phase to inspect.
+        """
+
+        if not torch.cuda.is_available() or not self._print_memory_stats_by_step:
             return
 
         if self._is_first_inspect:
@@ -616,18 +576,16 @@ class MemoryObserver:
         if self._rank != 0:
             return
 
-        if cur_phase < Phase.PRE_FORWARD or cur_phase > self._last_phase:
-            raise RuntimeError(f"Invalid phase detected: {cur_phase}")
+        if cur_phase < Phase.PRE_FORWARD or (cur_phase <= self._last_phase):
+            raise RuntimeError(f"Invalid phase detected: {cur_phase}, last_phase: {self._last_phase}")
 
         if (cur_phase - self._pre_phase) != 1:
             raise RuntimeError(f"Invalid phase transition detected: {self._pre_phase} -> {cur_phase}")
 
-        stabilized_mem_summary_print_condition = (
-            self._current_step > 15 and self._current_step < 65 and (self._current_step & (self._current_step - 1) == 0)
-        )
-
         # For the 10+ steps, only print when it is power of 2.
-        if self._print_memory_stats_by_step or stabilized_mem_summary_print_condition:
+        need_print = self._current_step < 10 or (self._current_step & (self._current_step - 1) == 0)
+
+        if need_print:
             cur_mem_allocated = self._normalize(torch.cuda.memory_allocated())
             max_mem_allocated = self._normalize(torch.cuda.max_memory_allocated())
             cur_mem_cached = self._normalize(torch.cuda.memory_reserved())
@@ -646,30 +604,11 @@ class MemoryObserver:
                 ["max inactive", max_mem_inactive],  # peak of inactive, non-releasable memory
             ]
 
-            if self._print_memory_stats_by_step:
-                summ = f"{self._rank_info} step {self._current_step} memory ({MemoryObserver.NORMALIZER_UNIT})"
-                for stat in mem_stats:
-                    summ += f" | {stat[0]}: {stat[1]}"
+            summ = f"{self._rank_info} step {self._current_step} memory ({MemoryObserver.NORMALIZER_UNIT})"
+            for stat in mem_stats:
+                summ += f" | {stat[0]}: {stat[1]}"
 
-                self._logger.info(summ)
-
-            # Accumulate peak memory summary.
-            phase_pair = mem_stats[0]
-            if phase_pair[1] not in self._peak_memory_summary:
-                self._peak_memory_summary[phase_pair[1]] = OrderedDict()
-
-            cur_phase_peak_summary = self._peak_memory_summary[phase_pair[1]]
-            for stat in mem_stats[1:]:
-                if stat[0] not in cur_phase_peak_summary:
-                    cur_phase_peak_summary[stat[0]] = 0.0
-                cur_phase_peak_summary[stat[0]] = max(cur_phase_peak_summary[stat[0]], float(stat[1]))
-
-            if cur_phase == self._last_phase:
-                for phase, phase_summary in self._peak_memory_summary.items():
-                    summ = f"{self._rank_info} until step {self._current_step}, {phase} peak memory ({MemoryObserver.NORMALIZER_UNIT})"
-                    for stat in phase_summary.items():
-                        summ += f" | {stat[0]}: {stat[1]}"
-                    self._logger.info(summ)
+            self._logger.info(summ)
 
         if cur_phase == self._last_phase:
             self._increase_step()
