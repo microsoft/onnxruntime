@@ -732,14 +732,6 @@ export interface ShaderHelper {
    * @param variables - an array of IndicesHelper for the variables.
    */
   registerInternalVariables(...variables: IndicesHelper[]): ShaderHelper;
-
-  /**
-   * A helper function to include a compatible helper for the purpose of generating specific WGSL code in front of the
-   * shader source. Can be called multiple times to include multiple helpers.
-   *
-   * @param helperLike - a helper-like object that has a function `impl` that returns a string of WGSL code.
-   */
-  use(helperLike: {impl: () => string}): ShaderHelper;
 }
 
 class ShaderHelperImpl implements ShaderHelper {
@@ -826,14 +818,8 @@ class ShaderHelperImpl implements ShaderHelper {
     return this;
   }
 
-  use(helperLike: {impl: () => string}): ShaderHelper {
-    this.helpers.push(helperLike);
-    return this;
-  }
-
   private internalVariables: IndicesHelper[] = [];
   private variables: IndicesHelper[] = [];
-  private helpers: Array<{impl: () => string}> = [];
   private uniforms: UniformsArrayType = [];
   private uniformDeclaration(): string {
     if (this.uniforms.length === 0) {
@@ -856,7 +842,7 @@ class ShaderHelperImpl implements ShaderHelper {
    */
   get additionalImplementations(): string {
     return this.uniformDeclaration() + this.variables.map(i => i.impl()).join('\n') +
-        this.helpers.map(i => i.impl()).join('\n');
+        this.internalVariables.map(i => i.impl()).join('\n');
   }
 }
 
