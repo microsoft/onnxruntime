@@ -141,13 +141,13 @@ struct TfIdfVectorizer::Impl {
   Impl(const Impl&) = delete;
   Impl& operator=(const Impl&) = delete;
 
-  void IncrementCount(size_t ngram_id, gsl::span<uint32_t> frequencies) const {
+  inline size_t OutputIdToIncrement(size_t ngram_id) const {
     assert(ngram_id != 0);
     --ngram_id;
     assert(ngram_id < ngram_indexes_.size());
     size_t output_idx = SafeInt<size_t>(ngram_indexes_[ngram_id]);
     assert(output_idx < frequencies.size());
-    ++frequencies[output_idx];
+    return output_idx;
   }
 };
 
@@ -251,45 +251,9 @@ TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), imp
 
 TfIdfVectorizer::~TfIdfVectorizer() = default;
 
-void TfIdfVectorizer::OutputResult(gsl::span<const uint32_t> frequences, gsl::span<float> output_data) const {
-  const Impl& impl = *impl_;
-  const auto& w = impl.weights_;
-  switch (impl.weighting_criteria_) {
-    case kTF: {
-      for (size_t i = 0; i < frequences.size(); ++i) {
-        output_data[i] = static_cast<float>(frequences[i]);
-      }
-    } break;
-    case kIDF: {
-      if (!w.empty()) {
-        for (size_t i = 0; i < frequences.size(); ++i) {
-          output_data[i] = frequences[i] > 0 ? w[i] : 0;
-        }
-      } else {
-        for (size_t i = 0; i < frequences.size(); ++i) {
-          output_data[i] = frequences[i] > 0 ? 1.0f : 0.0f;
-        }
-      }
-    } break;
-    case kTFIDF: {
-      if (!w.empty()) {
-        for (size_t i = 0; i < frequences.size(); ++i) {
-          output_data[i] = static_cast<float>(frequences[i]) * w[i];
-        }
-      } else {
-        for (size_t i = 0; i < frequences.size(); ++i) {
-          output_data[i] = static_cast<float>(frequences[i]);
-        }
-      }
-    } break;
-    case kNone:  // fall-through
-    default:
-      assert(false);
-  }
-}
-
 void TfIdfVectorizer::ComputeImpl(const void* x_data_raw, size_t elem_size, ptrdiff_t row_num, size_t row_size,
-                                  std::vector<uint32_t>& frequencies, bool is_input_string) const {
+                                  bool is_input_string, gsl::span<float> output_data,
+                                  std::function<void(size_t, gsl::span<float>&)>& fn_weight) const {
   const void* const row_begin = AdvanceElementPtr(x_data_raw, row_num * row_size, elem_size);
   const void* const row_end = AdvanceElementPtr(row_begin, row_size, elem_size);
 
@@ -297,6 +261,7 @@ void TfIdfVectorizer::ComputeImpl(const void* x_data_raw, size_t elem_size, ptrd
   const auto max_gram_length = impl.max_gram_length_;
   const auto max_skip_distance = impl.max_skip_count_ + 1;  // Convert to distance
   auto start_ngram_size = impl.min_gram_length_;
+  size_t output_idx;
 
   for (auto skip_distance = 1; skip_distance <= max_skip_distance; ++skip_distance) {
     auto ngram_start = row_begin;
@@ -323,7 +288,8 @@ void TfIdfVectorizer::ComputeImpl(const void* x_data_raw, size_t elem_size, ptrd
             break;
           }
           if (ngram_size >= start_ngram_size && hit->second->id_ != 0) {
-            impl.IncrementCount(hit->second->id_, frequencies);
+            output_idx = impl.OutputIdToIncrement(hit->second->id_);
+            fn_weight(output_idx, output_data);
           }
           str_map = &hit->second->leafs_;
         }
@@ -340,7 +306,8 @@ void TfIdfVectorizer::ComputeImpl(const void* x_data_raw, size_t elem_size, ptrd
             break;
           }
           if (ngram_size >= start_ngram_size && hit->second->id_ != 0) {
-            impl.IncrementCount(hit->second->id_, frequencies);
+            output_idx = impl.OutputIdToIncrement(hit->second->id_);
+            fn_weight(output_idx, output_data);
           }
           int_map = &hit->second->leafs_;
         }
@@ -409,7 +376,7 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
     // TfidfVectorizer returns a zero tensor of shape
     // {b_dim, output_size} when b_dim is the number of received observations
     // and output_size the is the maximum value in ngram_indexes attribute plus 1.
-    memset(output_data, 0, output_shape.Size() * sizeof(float));
+    memset(output_data, 0, static_cast<size_t>(output_shape.Size() * sizeof(float)));
     return Status::OK();
   }
 
@@ -417,14 +384,41 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
   const auto elem_size = X->DataType()->Size();
   int32_t num_batches = std::min<int32_t>(concurrency::ThreadPool::DegreeOfParallelism(ctx->GetOperatorThreadPool()) * 2, num_rows);
 
-  std::function<void(ptrdiff_t)> fn = [this, C, output_data, x_data_raw, elem_size, is_input_string, num_batches, num_rows](ptrdiff_t batch_num) {
+  const auto& w = impl.weights_;
+  std::function<void(size_t, gsl::span<float>&)> fn_weight;
+
+  switch (impl.weighting_criteria_) {
+    case kTF:
+      fn_weight = [&w](size_t i, gsl::span<float>& out) { out[i] += 1.0f; };
+      break;
+    case kIDF:
+      if (!w.empty()) {
+        fn_weight = [&w](size_t i, gsl::span<float>& out) { out[i] = w[i]; };
+      } else {
+        fn_weight = [&w](size_t i, gsl::span<float>& out) { out[i] = 1.0f; };
+      }
+      break;
+    case kTFIDF:
+      if (!w.empty()) {
+        fn_weight = [&w](size_t i, gsl::span<float>& out) { out[i] += w[i]; };
+      } else {
+        fn_weight = [&w](size_t i, gsl::span<float>& out) { out[i] += 1.0f; };
+      }
+      break;
+    case kNone:  // fall-through
+    default:
+      assert(false);
+  }
+
+  std::function<void(ptrdiff_t)> fn = [this, C, output_data, x_data_raw, elem_size,
+                                       is_input_string, num_batches, num_rows, &fn_weight](ptrdiff_t batch_num) {
     // Frequency holder allocate [B..output_size_] and init all to zero.
     auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_batches, static_cast<size_t>(num_rows));
     std::vector<uint32_t> frequencies(this->impl_->output_size_);
     for (auto row_num = work.start; row_num < work.end; ++row_num) {
-      std::fill(frequencies.begin(), frequencies.end(), static_cast<uint32_t>(0));
-      ComputeImpl(x_data_raw, elem_size, row_num, C, frequencies, is_input_string);
-      OutputResult(frequencies, gsl::span<float>(output_data + row_num * this->impl_->output_size_, this->impl_->output_size_));
+      auto out = gsl::span<float>(output_data + row_num * this->impl_->output_size_, this->impl_->output_size_);
+      std::fill(out.begin(), out.end(), 0.0f);
+      ComputeImpl(x_data_raw, elem_size, row_num, C, is_input_string, out, fn_weight);
     }
   };
 
