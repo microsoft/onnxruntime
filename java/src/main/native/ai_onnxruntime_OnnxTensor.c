@@ -161,7 +161,7 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxTensor_getBuffer
       size_t sizeBytes = typeShape.elementCount * typeSize;
 
       uint8_t* arr = NULL;
-      code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData((OrtValue*)handle, (void**)&arr));
+      code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData(ortValue, (void**)&arr));
 
       if (code == ORT_OK) {
         return (*jniEnv)->NewDirectByteBuffer(jniEnv, arr, (jlong)sizeBytes);
@@ -335,11 +335,11 @@ JNIEXPORT jboolean JNICALL Java_ai_onnxruntime_OnnxTensor_getBool
 
 /*
  * Class:     ai_onnxruntime_OnnxTensor
- * Method:    getArray
- * Signature: (JJLjava/lang/Object;)V
+ * Method:    getStringArray
+ * Signature: (JJ[Ljava/lang/String;)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OnnxTensor_getArray
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jobject carrier) {
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OnnxTensor_getStringArray
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jobjectArray carrier) {
     (void) jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     OrtValue* value = (OrtValue*) handle;
@@ -349,12 +349,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OnnxTensor_getArray
       if (typeShape.onnxTypeEnum == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
         copyStringTensorToArray(jniEnv, api, value, typeShape.elementCount, carrier);
       } else {
-        uint8_t* arr = NULL;
-        code = checkOrtStatus(jniEnv, api, api->GetTensorMutableData(value, (void**)&arr));
-        if (code == ORT_OK) {
-          copyTensorToJava(jniEnv, typeShape.onnxTypeEnum, arr, typeShape.elementCount,
-                           typeShape.dimensions, (jarray)carrier);
-        }
+        throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "Non-string types are not supported by this codepath, please raise a Github issue as it should not reach here.");
       }
     }
 }

@@ -583,7 +583,7 @@ public final class OrtUtil {
             "Unexpected type, expected Java primitive found " + info.type);
     }
 
-    fillBuffer(info, array, 0, buffer);
+    fillBufferFromArray(info, array, 0, buffer);
 
     if (buffer.remaining() != 0) {
       throw new IllegalArgumentException(
@@ -605,11 +605,12 @@ public final class OrtUtil {
    * structure.
    *
    * @param info The tensor info containing the type and shape of the array.
-   * @param array The array object.
+   * @param array The array object to read from.
    * @param curDim The current dimension we're processing.
    * @param buffer The buffer to write to.
    */
-  private static void fillBuffer(TensorInfo info, Object array, int curDim, Buffer buffer) {
+  private static void fillBufferFromArray(
+      TensorInfo info, Object array, int curDim, Buffer buffer) {
     if (curDim == info.shape.length - 1) {
       // Reached primitive values, copy into buffer
       switch (info.type) {
@@ -674,7 +675,88 @@ public final class OrtUtil {
                 + actualSize);
       } else {
         for (int i = 0; i < actualSize; i++) {
-          fillBuffer(info, Array.get(array, i), curDim + 1, buffer);
+          fillBufferFromArray(info, Array.get(array, i), curDim + 1, buffer);
+        }
+      }
+    }
+  }
+
+  /**
+   * Fills the provided array with the values from the buffer, recursing through the array
+   * structure.
+   *
+   * @param info The tensor info containing the type and shape of the array.
+   * @param buffer The buffer to read from.
+   * @param curDim The current dimension we're processing.
+   * @param array The array object to write to.
+   */
+  static void fillArrayFromBuffer(TensorInfo info, Buffer buffer, int curDim, Object array) {
+    if (curDim == info.shape.length - 1) {
+      // Reached primitive values, copy into buffer
+      switch (info.type) {
+        case FLOAT:
+          float[] fArr = (float[]) array;
+          FloatBuffer fBuf = (FloatBuffer) buffer;
+          fBuf.get(fArr);
+          break;
+        case DOUBLE:
+          double[] dArr = (double[]) array;
+          DoubleBuffer dBuf = (DoubleBuffer) buffer;
+          dBuf.get(dArr);
+          break;
+        case INT8:
+        case UINT8:
+          byte[] bArr = (byte[]) array;
+          ByteBuffer bBuf = (ByteBuffer) buffer;
+          bBuf.get(bArr);
+          break;
+        case FLOAT16:
+        case BFLOAT16:
+        case INT16:
+          short[] sArr = (short[]) array;
+          ShortBuffer sBuf = (ShortBuffer) buffer;
+          sBuf.get(sArr);
+          break;
+        case INT32:
+          int[] iArr = (int[]) array;
+          IntBuffer iBuf = (IntBuffer) buffer;
+          iBuf.get(iArr);
+          break;
+        case INT64:
+          long[] lArr = (long[]) array;
+          LongBuffer lBuf = (LongBuffer) buffer;
+          lBuf.get(lArr);
+          break;
+        case BOOL:
+          boolean[] boolArr = (boolean[]) array;
+          ByteBuffer boolBuf = (ByteBuffer) buffer;
+          for (int i = 0; i < boolArr.length; i++) {
+            // Test to see if the byte is non-zero, non-zero bytes are true, zero bytes are false.
+            boolArr[i] = boolBuf.get() != 0;
+          }
+          break;
+        case STRING:
+        case UNKNOWN:
+          throw new IllegalArgumentException(
+              "Unexpected type, expected Java primitive found " + info.type);
+      }
+    } else {
+      // Recurse through array
+      long expectedSize = info.shape[curDim];
+      long actualSize = Array.getLength(array);
+      if (expectedSize != actualSize) {
+        throw new IllegalArgumentException(
+            "Mismatch in array sizes, expected "
+                + expectedSize
+                + " at dim "
+                + curDim
+                + " from shape "
+                + Arrays.toString(info.shape)
+                + ", found "
+                + actualSize);
+      } else {
+        for (int i = 0; i < actualSize; i++) {
+          fillArrayFromBuffer(info, buffer, curDim + 1, Array.get(array, i));
         }
       }
     }

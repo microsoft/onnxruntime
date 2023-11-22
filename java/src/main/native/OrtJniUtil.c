@@ -599,65 +599,6 @@ int64_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxT
     }
 }
 
-int64_t copyTensorToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, const uint8_t* inputTensor, size_t tensorSize,
-                        size_t dimensionsRemaining, jarray outputArray) {
-  if (dimensionsRemaining == 1) {
-    // write out 1d array of the respective primitive type
-    return copyPrimitiveArrayToJava(jniEnv, onnxType, inputTensor, outputArray);
-  } else {
-    // recurse through the dimensions
-    // Java arrays are objects until the final dimension
-    jobjectArray outputObjArr = (jobjectArray)outputArray;
-    int32_t dimLength = (*jniEnv)->GetArrayLength(jniEnv, outputObjArr);
-    int64_t sizeConsumed = 0;
-    for (int32_t i = 0; i < dimLength; i++) {
-      jarray childArr = (jarray) (*jniEnv)->GetObjectArrayElement(jniEnv, outputObjArr, i);
-      int64_t consumed = copyTensorToJava(jniEnv, onnxType, inputTensor + sizeConsumed, tensorSize - sizeConsumed, dimensionsRemaining - 1, childArr);
-      sizeConsumed += consumed;
-      // Cleanup reference to childArr so it doesn't prevent GC.
-      (*jniEnv)->DeleteLocalRef(jniEnv, childArr);
-      // If we failed to copy an array then break and return.
-      if (consumed == -1) {
-        return -1;
-      }
-    }
-    return sizeConsumed;
-  }
-}
-
-jobject createStringFromStringTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor) {
-  jobject tempString = NULL;
-  // Get the buffer size needed
-  size_t totalStringLength = 0;
-  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetStringTensorDataLength(tensor, &totalStringLength));
-  if (code != ORT_OK) {
-    return NULL;
-  }
-
-  // Create the character and offset buffers, character is one larger to allow zero termination.
-  char * characterBuffer = malloc(sizeof(char)*(totalStringLength+1));
-  if (characterBuffer == NULL) {
-    throwOrtException(jniEnv, 1, "OOM error");
-  } else {
-    size_t * offsets = malloc(sizeof(size_t));
-    if (offsets != NULL) {
-      // Get a view on the String data
-      code = checkOrtStatus(jniEnv, api, api->GetStringTensorContent(tensor, characterBuffer, totalStringLength, offsets, 1));
-
-      if (code == ORT_OK) {
-        size_t curSize = (offsets[0]) + 1;
-        characterBuffer[curSize-1] = '\0';
-        tempString = (*jniEnv)->NewStringUTF(jniEnv, characterBuffer);
-      }
-
-      free((void*)characterBuffer);
-      free((void*)offsets);
-    }
-  }
-
-  return tempString;
-}
-
 OrtErrorCode copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor, size_t length, jobjectArray outputArray) {
   size_t bufferSize = 16;
   char * tempBuffer = malloc(bufferSize);
