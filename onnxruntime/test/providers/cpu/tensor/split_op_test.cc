@@ -94,7 +94,7 @@ constexpr T ValueFromIdx(size_t idx) {
 }
 
 template <typename T>
-void SplitTestAxis0EqualSplit(bool use_opset_13 = false) {
+void SplitTestAxis0EqualSplit() {
   SCOPED_TRACE(onnxruntime::MakeString("data type: ", utils::ToTensorProtoElementType<T>()));
 
   constexpr int64_t axis = 0;
@@ -117,18 +117,20 @@ void SplitTestAxis0EqualSplit(bool use_opset_13 = false) {
                      {V(5), V(6),
                       V(7), V(8)}});
 
+  // BFloat16 added in opset 13
+  if constexpr (!std::is_same_v<T, BFloat16>) {
+    RunTest<T>(axis, {}, input, outputs,
+               // TensorRT parser: Assertion failed: axis != BATCH_DIM
+               {kTensorrtExecutionProvider},  // is_tensorrt_supported
+               false,                         // expect_failure
+               false /*split_as_input*/);
+  }
+
   RunTest<T>(axis, {}, input, outputs,
              // TensorRT parser: Assertion failed: axis != BATCH_DIM
              {kTensorrtExecutionProvider},  // is_tensorrt_supported
              false,                         // expect_failure
-             use_opset_13);                 // split_as_input
-#ifdef USE_COREML
-  RunTest<T>(axis, {}, input, outputs,
-             // TensorRT parser: Assertion failed: axis != BATCH_DIM
-             {kTensorrtExecutionProvider},  // is_tensorrt_supported
-             false,                         // expect_failure
-             true);                         // split_as_input
-#endif
+             true /*split_as_input*/);
 }
 
 }  // namespace
@@ -137,7 +139,7 @@ TEST(SplitOperatorTest, Axis0EqualSplit) {
   SplitTestAxis0EqualSplit<float>();
   SplitTestAxis0EqualSplit<double>();
   SplitTestAxis0EqualSplit<MLFloat16>();
-  SplitTestAxis0EqualSplit<BFloat16>(true);  // BFloat16 added in opset 13
+  SplitTestAxis0EqualSplit<BFloat16>();
   SplitTestAxis0EqualSplit<int8_t>();
   SplitTestAxis0EqualSplit<int16_t>();
   SplitTestAxis0EqualSplit<int32_t>();
