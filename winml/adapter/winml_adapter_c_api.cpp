@@ -92,8 +92,6 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   &winmla::OperatorGetOutputName,
   &winmla::JoinModels,
   &winmla::CreateThreadPool,
-  &winmla::GetCommandQueueForSessionInput,
-  &winmla::GetCommandQueueForSessionOutput,
 
   // Release
   &winmla::ReleaseModel,

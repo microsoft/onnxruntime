@@ -18,7 +18,6 @@
 
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
-#include "dml/dml_interop.h"
 #endif
 
 #ifdef _WIN32
@@ -34,35 +33,12 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
   const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(test_inputs_.size() - 1));
   const size_t id = static_cast<size_t>(dist_(rand_engine_, p));
   auto& input = test_inputs_.at(id);
-
-  struct Timer {
-    std::chrono::high_resolution_clock::time_point start_;
-
-    static Timer Start() {
-      return Timer{std::chrono::high_resolution_clock::now()};
-    }
-
-    std::chrono::duration<double> End() {
-      auto end = std::chrono::high_resolution_clock::now();
-      std::chrono::duration<double> duration_seconds = end - start_;
-      return duration_seconds;
-    }
-
-   private:
-    Timer(std::chrono::high_resolution_clock::time_point start) : start_(start) {}
-  };
-
-  auto timer = Timer::Start();
-
-  if (test_outputs_.size() > 0) {
-    session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
-                 output_names_raw_ptr.data(), test_outputs_.data(), output_names_raw_ptr.size());
-  } else {
-    session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
-                 output_names_raw_ptr.data(), output_names_raw_ptr.size());
-  }
-
-  return timer.End();
+  auto start = std::chrono::high_resolution_clock::now();
+  auto output_values = session_.Run(Ort::RunOptions{nullptr}, input_names_.data(), input.data(), input_names_.size(),
+                                    output_names_raw_ptr.data(), output_names_raw_ptr.size());
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> duration_seconds = end - start;
+  return duration_seconds;
 }
 
 OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device& rd,
@@ -789,76 +765,28 @@ static void InitializeTensorWithSeed(int32_t seed, Ort::Value& tensor) {
 #undef CASE_FOR_TYPE
 }
 
-bool OnnxRuntimeTestSession::PopulateOutputs(bool use_native_bindings) {
-  if (!use_native_bindings) {
-    return true;
-  }
-
-#ifdef USE_DML
-  if (provider_name_ == onnxruntime::kDmlExecutionProvider) {
-    for (size_t i = 0; i < static_cast<size_t>(output_names_.size()); i++) {
-      Ort::TypeInfo type_info = session_.GetOutputTypeInfo(i);
-      if (type_info.GetONNXType() != ONNX_TYPE_TENSOR) {
-        continue;
-      }
-
-      auto& output_name = output_names_[i];
-      auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-      auto dml_value_pair = CreateDmlValue(tensor_info, session_, Ort::Value(nullptr), output_name.c_str(), false);
-      native_test_bindings_.emplace_back(std::move(dml_value_pair.second));
-      test_outputs_.push_back(std::move(dml_value_pair.first));
-    }
-    return true;
-  }
-#endif
-
-  return false;
-}
-
-bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed, bool use_native_bindings) {
-  auto allocator = Ort::AllocatorWithDefaultOptions();
-
+bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
   // iterate over all input nodes
   for (size_t i = 0; i < static_cast<size_t>(input_length_); i++) {
     Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);
-    if (type_info.GetONNXType() != ONNX_TYPE_TENSOR) {
-      continue;
-    }
-
     Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-    auto input_name = session_.GetInputNameAllocated(i, allocator);
-    auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-    std::vector<int64_t> input_node_dim = tensor_info.GetShape();
+    if (type_info.GetONNXType() == ONNX_TYPE_TENSOR) {
+      auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+      std::vector<int64_t> input_node_dim = tensor_info.GetShape();
 
-    // free dimensions are treated as 1 if not overriden
-    for (int64_t& dim : input_node_dim) {
-      if (dim == -1) {
-        dim = 1;
+      // free dimensions are treated as 1 if not overriden
+      for (int64_t& dim : input_node_dim) {
+        if (dim == -1) {
+          dim = 1;
+        }
       }
-    }
 
-    // Create a CPU tensor
-    Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(),
-                                                       input_node_dim.size(), tensor_info.GetElementType());
-
-    // Initialize the tensor with data
-    InitializeTensorWithSeed(seed, input_tensor);
-
-    if (!use_native_bindings) {
+      auto allocator = Ort::AllocatorWithDefaultOptions();
+      Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(),
+                                                         input_node_dim.size(), tensor_info.GetElementType());
+      InitializeTensorWithSeed(seed, input_tensor);
       PreLoadTestData(0, i, std::move(input_tensor));
     }
-#ifdef USE_DML
-    else if (provider_name_ == onnxruntime::kDmlExecutionProvider) {
-      auto value =
-          CreateDmlValueFromCpuValue(
-              std::move(input_tensor),
-              session_,
-              input_name.get());
-
-      native_test_bindings_.emplace_back(std::move(value.second));
-      PreLoadTestData(0, i, std::move(value.first));
-    }
-#endif
   }
   return true;
 }

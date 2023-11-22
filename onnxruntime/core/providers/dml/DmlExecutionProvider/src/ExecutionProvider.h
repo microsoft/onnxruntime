@@ -45,8 +45,6 @@ namespace Dml
 
         STDMETHOD(GetDmlDevice)(_COM_Outptr_ IDMLDevice** dmlDevice) const noexcept final;
 
-        STDMETHOD(GetCommandQueue)(_COM_Outptr_ ID3D12CommandQueue** queue) const noexcept final;
-
         STDMETHOD(ExecuteCommandList)(
             ID3D12GraphicsCommandList* commandList,
             _Outptr_ ID3D12Fence** fence,
@@ -152,7 +150,7 @@ namespace Dml
         }
 
         STDMETHOD_(bool, IsMcdmDevice)() const noexcept final;
-        STDMETHOD_(bool, CustomHeapsSupported)() const noexcept final;        
+        STDMETHOD_(bool, CustomHeapsSupported)() const noexcept final;
 
         STDMETHOD_(bool, MetacommandsEnabled)() const noexcept final;
         bool DynamicGraphFusionEnabled() const noexcept;

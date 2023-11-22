@@ -573,14 +573,6 @@ struct WinmlAdapterApi {
     _In_ ThreadPoolType type, _In_ OrtThreadPoolOptions* params, _Outptr_ OrtThreadPool** out
   )NO_EXCEPTION;
 
-  OrtStatus*(ORT_API_CALL* GetCommandQueueForSessionInput)(
-    _In_ OrtSession* session, _In_ const char* input, _Out_ ID3D12CommandQueue** queue
-  )NO_EXCEPTION;
-
-  OrtStatus*(ORT_API_CALL* GetCommandQueueForSessionOutput)(
-    _In_ OrtSession* session, _In_ const char* output, _Out_ ID3D12CommandQueue** queue
-  )NO_EXCEPTION;
-
   ORT_CLASS_RELEASE(Model);
   ORT_CLASS_RELEASE(ThreadPool);
 };
