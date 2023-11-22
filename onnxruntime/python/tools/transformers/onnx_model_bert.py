@@ -172,6 +172,9 @@ class BertOnnxModel(OnnxModel):
         if graph_input.type.tensor_type.elem_type == int(new_type):
             return None, []
 
+        if graph_input.name not in ['input_ids', 'attention_mask']:
+            return None, []
+
         new_cast_node = None
         nodes_to_remove = []
 

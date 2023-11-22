@@ -193,12 +193,12 @@ def change_io_shape(graph: GraphProto):
             #     shape=["batch_size", "seq_len"],
             # )
             # new_inputs.extend([vi_pid])
-        if vi.name == "input_ids":
-            vi = helper.make_tensor_value_info(
-                vi.name,
-                elem_type=TensorProto.INT32,
-                shape=shape_of(vi),
-            )
+        # if vi.name == "input_ids":
+        #     vi = helper.make_tensor_value_info(
+        #         vi.name,
+        #         elem_type=TensorProto.INT32,
+        #         shape=shape_of(vi),
+        #     )
         if "past" in vi.name:
             shape = shape_of(vi)
             vi = helper.make_tensor_value_info(
