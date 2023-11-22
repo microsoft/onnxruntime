@@ -141,7 +141,7 @@ struct TfIdfVectorizer::Impl {
   Impl(const Impl&) = delete;
   Impl& operator=(const Impl&) = delete;
 
-  void IncrementCount(size_t ngram_id, std::vector<uint32_t>& frequencies) const {
+  void IncrementCount(size_t ngram_id, gsl::span<uint32_t> frequencies) const {
     assert(ngram_id != 0);
     --ngram_id;
     assert(ngram_id < ngram_indexes_.size());
@@ -417,7 +417,7 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
   const auto elem_size = X->DataType()->Size();
   int32_t num_batches = std::min<int32_t>(concurrency::ThreadPool::DegreeOfParallelism(ctx->GetOperatorThreadPool()) * 2, num_rows);
 
-  std::function<void(ptrdiff_t)> fn = [this, ctx, C, output_data, x_data_raw, elem_size, is_input_string, num_batches, num_rows](ptrdiff_t batch_num) {
+  std::function<void(ptrdiff_t)> fn = [this, C, output_data, x_data_raw, elem_size, is_input_string, num_batches, num_rows](ptrdiff_t batch_num) {
     // Frequency holder allocate [B..output_size_] and init all to zero.
     auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_batches, static_cast<size_t>(num_rows));
     std::vector<uint32_t> frequencies(this->impl_->output_size_);
