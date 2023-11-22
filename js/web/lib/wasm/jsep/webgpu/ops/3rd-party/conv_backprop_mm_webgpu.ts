@@ -21,8 +21,8 @@
 
 import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor-view';
-import {ShapeUtil} from '../../../util';
-import {ProgramInfo} from '../../types';
+import {ProgramInfo, ProgramUniform} from '../../types';
+import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper} from '../common';
 import {ConvTransposeAttributes} from '../conv-transpose';
 import {getActivationSnippet} from '../fuse-utils';
 
@@ -36,16 +36,16 @@ const conv2dTransposeCommonSnippet =
       const getWSnippet = (innerElementSize: number) => {
         switch (innerElementSize) {
           case 1:
-            return 'return W[getIndexFromCoords4D(coord, wShape)];';
+            return 'return w[getIndexFromCoords4D(coord, vec4<i32>(uniforms.w_shape))];';
           case 4:
             return `
             let coord1 = vec4<i32>(coordX, coordY, col + 1, rowInner);
             let coord2 = vec4<i32>(coordX, coordY, col + 2, rowInner);
             let coord3 = vec4<i32>(coordX, coordY, col + 3, rowInner);
-            let v0 = W[getIndexFromCoords4D(coord, wShape)];
-            let v1 = W[getIndexFromCoords4D(coord1, wShape)];
-            let v2 = W[getIndexFromCoords4D(coord2, wShape)];
-            let v3 = W[getIndexFromCoords4D(coord3, wShape)];
+            let v0 = w[getIndexFromCoords4D(coord, vec4<i32>(uniforms.w_shape))];
+            let v1 = w[getIndexFromCoords4D(coord1, vec4<i32>(uniforms.w_shape))];
+            let v2 = w[getIndexFromCoords4D(coord2, vec4<i32>(uniforms.w_shape))];
+            let v3 = w[getIndexFromCoords4D(coord3, vec4<i32>(uniforms.w_shape))];
             return vec4<f32>(v0, v1, v2, v3);
             `;
           default:
@@ -81,7 +81,7 @@ const conv2dTransposeCommonSnippet =
 
       const readASnippet = `
       let inChannels = ${isChannelsLast ? 'outBackprop[3]' : 'outBackprop[1]'};
-      let outWidth = ${isChannelsLast ? 'outShape[2]' : 'outShape[3]'};
+      let outWidth = ${isChannelsLast ? 'i32(uniforms.result_shape[2])' : 'i32(uniforms.result_shape[3])'};
       let outRow = ${row} / outWidth;
       let outCol = ${row} % outWidth;
 
@@ -99,17 +99,17 @@ const conv2dTransposeCommonSnippet =
       let iXC = i32(xC);
       let xCh = ${col} % inChannels;
       ${coordASnippet}
-      return x[getIndexFromCoords4D(coord, xShape)/${innerElementSize}];`;
+      return x[getIndexFromCoords4D(coord, vec4<i32>(uniforms.x_shape))/${innerElementSize}];`;
 
       const sampleA = isChannelsLast ? `
       let col = colIn * ${innerElementSize};
-      if (row < dimAOuter && col < dimInner) {
+      if (row < uniforms.dimAOuter && col < uniforms.dimInner) {
         ${readASnippet}
       }
       return ${type}(0.0);` :
                                        `
       let col = colIn * ${innerElementSize};
-      if (row < dimInner && col < dimBOuter) {
+      if (row < uniforms.dimInner && col < uniforms.dimBOuter) {
         ${readASnippet}
       }
       return ${type}(0.0);`;
@@ -120,8 +120,8 @@ const conv2dTransposeCommonSnippet =
       let coordX = filterDims.x - 1 - row / (filterDims[1] * inChannels);
       let coordY = filterDims.y - 1 - (row / inChannels) % filterDims[1];
       if (${
-          isChannelsLast ? 'row < dimInner && col < dimBOuter' :
-                           'row < dimInner && col < dimAOuter'}  && coordX >= 0 && coordY >= 0) {
+          isChannelsLast ? 'row < uniforms.dimInner && col < uniforms.dimBOuter' :
+                           'row < uniforms.dimInner && col < uniforms.dimAOuter'}  && coordX >= 0 && coordY >= 0) {
         let rowInner = row % inChannels;
         let coord = vec4<i32>(coordX, coordY, col, rowInner);
         ${getWSnippet(innerElementSize)}
@@ -142,13 +142,13 @@ const conv2dTransposeCommonSnippet =
 
   fn mm_write(batch: i32, row : i32, colIn : i32, valueInput : ${type}) {
     let col = colIn * ${innerElementSize};
-    if (row < dimAOuter && col < dimBOuter) {
+    if (row < uniforms.dimAOuter && col < uniforms.dimBOuter) {
       var value = valueInput;
-      let outWidth = ${isChannelsLast ? 'outShape[2]' : 'outShape[3]'};
+      let outWidth = ${isChannelsLast ? 'i32(uniforms.result_shape[2])' : 'i32(uniforms.result_shape[3])'};
       ${coordResSnippet}
       ${biasSnippet(addBias)}
       ${applyActivation}
-      result[getIndexFromCoords4D(coords, outShape)/${innerElementSize}] = value;
+      result[getIndexFromCoords4D(coords, vec4<i32>(uniforms.result_shape))/${innerElementSize}] = value;
     }
   }`;
       return userCode;
@@ -185,37 +185,46 @@ export const createConv2DTransposeMatMulProgramInfo =
 
       const innerElementSize = isVec4 ? 4 : 1;
       const tileInner = Math.max(workGroupSize[0] * innerElementSize, workGroupSize[1]);
+      const components = isVec4 ? 4 : 1;
+      const programUniforms: ProgramUniform[] =
+          [{type: 'int32', data: dimAOuter}, {type: 'int32', data: dimBOuter}, {type: 'int32', data: dimInner}];
+      const x = inputVariable('x', inputs[0].dataType, inputs[0].dims.length, components);
+      const w = inputVariable('w', inputs[1].dataType, inputs[1].dims.length, 1);
+      const output = outputVariable('result', inputs[0].dataType, outputShape.length, components);
+      const inputVariables = [x, w];
+      programUniforms.push(...createTensorShapeVariables(inputs[0].dims));
+      programUniforms.push(...createTensorShapeVariables(inputs[1].dims));
 
-
-      const declareInputs = [
-        `@group(0) @binding(0) var<storage, read> x: array<${isVec4 ? 'vec4<f32>' : 'f32'}>;`,
-        '@group(0) @binding(1) var<storage, read> W: array<f32>;'
-      ];
       let declareFunctions = '';
       if (hasBias) {
-        declareInputs.push(`@group(0) @binding(2) var<storage, read> bias: array<${isVec4 ? 'vec4<f32>' : 'f32'}>;`);
+        const bias = inputVariable('bias', inputs[2].dataType, inputs[2].dims.length, components);
+        inputVariables.push(bias);
+        programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
+
         declareFunctions += `
         fn getBiasByOutputCoords(coords : vec4<i32>) -> ${isVec4 ? 'vec4<f32>' : 'f32'} {
           return bias[coords.${isChannelsLast ? 'w' : 'y'}${isVec4 ? '/ 4' : ''}];
         }`;
       }
+
+      programUniforms.push(...createTensorShapeVariables(outputShape));
+
       return {
         name: 'Conv2DTransposeMatMul',
         shaderCache: {hint: attributes.cacheKey},
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
-          dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]}
+          dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]},
+          programUniforms
         }),
-        getShaderSource: () => `
-        ${utilFunctions}
-        ${declareInputs.join('\n')}
-        @group(0) @binding(${declareInputs.length}) var<storage, read_write> result: array<${
-            isVec4 ? 'vec4<f32>' : 'f32'}>;
+        getShaderSource: (shaderHelper: ShaderHelper) => `
+        ${utilFunctions('uniforms.result_strides')}
+        ${
+            shaderHelper.registerUniform('dimAOuter', 'i32')
+                .registerUniform('dimBOuter', 'i32')
+                .registerUniform('dimInner', 'i32')
+                .declareVariables(...inputVariables, output)};
         const outBackprop : vec4<i32> = vec4<i32>(${inputs[0].dims.join(',')});
-        const xShape : vec4<i32> = vec4<i32>(${inputs[0].dims.join(',')});
-        const wShape : vec4<i32> = vec4<i32>(${inputs[1].dims.join(',')});
-        const outShape : vec4<i32> = vec4<i32>(${outputShape.join(',')});
-        const outShapeStrides : vec3<i32> = vec3<i32>(${ShapeUtil.computeStrides(outputShape).slice(0, 3).join(',')});
         const filterDims : vec2<i32> = vec2<i32>(${attributes.kernelShape[isChannelsLast ? 1 : 2]}, ${
             attributes.kernelShape[isChannelsLast ? 2 : 3]});
         const effectiveFilterDims : vec2<i32> = filterDims + vec2<i32>(
