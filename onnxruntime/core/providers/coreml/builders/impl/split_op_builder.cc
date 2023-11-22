@@ -165,7 +165,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
         return false;
       }
       if (num_outputs.value() < 2) {
-        LOGS(logger, VERBOSE) << "Invalid num_outputs. The value can not be lower than 1.\n"
+        LOGS(logger, VERBOSE) << "Invalid num_outputs. The value cannot be lower than 2.\n"
                               << "CoreML SplitND requires at least 2 outputs. num_outputs: " << num_outputs.value();
         return false;
       }
