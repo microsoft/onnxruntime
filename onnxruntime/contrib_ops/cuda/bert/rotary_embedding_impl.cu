@@ -27,7 +27,10 @@ __global__ void RotaryEmbeddingBSNH(T* output,                   // BxSxNxH
                                     const int num_heads,
                                     const int head_size,
                                     const int position_ids_format,
-                                    const bool interleaved) {
+                                    const bool interleaved,
+                                    const int batch_stride,
+                                    const int seq_stride,
+                                    const int head_stride) {
   // B = batch size, S = sequence length, N = num heads, H = head size, M = max sequence length
   // Use .x in innermost loop to access global memory efficiently
   
@@ -37,11 +40,10 @@ __global__ void RotaryEmbeddingBSNH(T* output,                   // BxSxNxH
 
   const int i = threadIdx.x;
 
-  const int block_offset = b * sequence_length * num_heads + s * num_heads + n;
-  const int data_offset = block_offset * head_size;
+  const int block_offset = b * batch_stride + s * seq_stride + n * head_stride;
 
-  const T* input_data = input + data_offset;
-  T* output_data = output + data_offset;
+  const T* input_data = input + block_offset;
+  T* output_data = output + block_offset;
 
   // Cache is (M, H/2)
   const int half_head_size = head_size / 2;
@@ -83,7 +85,8 @@ Status LaunchRotaryEmbeddingKernel(
     const int max_sequence_length,
     const int position_ids_format,
     const bool interleaved,
-    const int max_threads_per_block) {
+    const int max_threads_per_block,
+    const bool transposed) {
 
   constexpr int smem_size = 0;
   const dim3 grid(num_heads, sequence_length, batch_size);
@@ -94,10 +97,22 @@ Status LaunchRotaryEmbeddingKernel(
   // and num_heads values, we can create a block as `block(num_heads, head_size, 1)`
   // instead. This will require kernel changes to support.
 
+  // Default input tensor shape is [batch, seq, hidden_size]
+  int head_stride = head_size;
+  int seq_stride = num_heads * head_stride;
+  int batch_stride = sequence_length * seq_stride;
+  if (transposed) {
+    // When transposed, input tensor shape is [batch, num_heads, seq, head_size]
+    seq_stride = head_size;
+    head_stride = sequence_length * seq_stride;
+    batch_stride = num_heads * head_stride;
+  }
+
   assert(head_size <= max_threads_per_block);
   RotaryEmbeddingBSNH<<<grid, block, smem_size, stream>>>(
     output, input, cos_cache, sin_cache, position_ids,
-    sequence_length, num_heads, head_size, position_ids_format, interleaved
+    sequence_length, num_heads, head_size, position_ids_format, interleaved,
+    batch_stride, seq_stride, head_stride
   );
 
   return CUDA_CALL(cudaGetLastError());
@@ -117,7 +132,8 @@ template Status LaunchRotaryEmbeddingKernel<float>(
     const int max_sequence_length,
     const int position_ids_format,
     const bool interleaved,
-    const int max_threads_per_block);
+    const int max_threads_per_block,
+    const bool transposed);
 
 template Status LaunchRotaryEmbeddingKernel<half>(
     cudaStream_t stream,
@@ -133,7 +149,8 @@ template Status LaunchRotaryEmbeddingKernel<half>(
     const int max_sequence_length,
     const int position_ids_format,
     const bool interleaved,
-    const int max_threads_per_block);
+    const int max_threads_per_block,
+    const bool transposed);
 
 
 }  // namespace cuda
