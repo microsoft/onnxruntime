@@ -134,7 +134,7 @@ stages:
     - script: |
         python3 tools/ci_build/github/apple/test_apple_packages.py \
           --fail_if_cocoapods_missing \
-          --framework_info_file "$(Build.BinariesDirectory)/apple_framework/framework_info.json" \
+          --framework_info_file "$(Build.BinariesDirectory)/apple_framework/xcframework_info.json" \
           --c_framework_dir "$(Build.BinariesDirectory)/apple_framework/framework_out" \
           --variant Full
       displayName: "Test Apple framework"
