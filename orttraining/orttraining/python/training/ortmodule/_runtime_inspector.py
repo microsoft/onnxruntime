@@ -5,12 +5,18 @@
 
 from enum import IntEnum
 from logging import Logger
-from typing import List, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import onnx
 import torch
 from onnx import ModelProto, helper
 from onnx import onnx_pb as onnx_proto
+from sympy import Symbol, simplify
+from sympy.parsing.sympy_parser import parse_expr
+
+from onnxruntime.training.utils import PTable
+
+from ._execution_agent import TrainingAgent
 
 
 class Phase(IntEnum):
@@ -39,11 +45,11 @@ class RuntimeInspector:
     Runtime inspector for ORTModule.
     """
 
-    def __init__(self, logger: Logger):
+    def __init__(self, logger: Logger, module: torch.nn.Module):
         self._logger = logger
 
         self.input_density_ob: Union[InputDensityObserver, None] = None
-        self.memory_ob: Union[MemoryObserver, None] = None
+        self.memory_ob = MemoryObserver(module, self._logger)
 
     def enable_input_inspector(self, model: ModelProto, user_input_names: List[str]) -> None:
         """Initialize input inspector from the given ONNX model and user input names.
@@ -81,26 +87,6 @@ class RuntimeInspector:
     def disable_input_inspector(self) -> None:
         """Disable input density inspector."""
         self.input_density_ob = None
-
-    def enable_memory_inspector(self, module: torch.nn.Module):
-        """Enable memory inspector for ORTModule.
-
-        Args:
-            module: ORTModule.
-        """
-        if self.memory_ob is None:
-            self.memory_ob = MemoryObserver(module, self._logger)
-        else:
-            raise RuntimeError("Memory observer is already enabled.")
-
-    def inspect_memory(self, phase: Phase) -> None:
-        """Inspect memory usage and print statistics.
-
-        Args:
-            phase: Phase to inspect.
-        """
-        if self.memory_ob is not None:
-            self.memory_ob.inspect_memory(phase)
 
 
 class InputDensityObserver:
@@ -460,6 +446,16 @@ class InputDensityObserver:
         return value
 
 
+class MemoryOptimizationSummary:
+    """Memory optimization summary for a cluster id combination."""
+
+    def __init__(self, saving_str="", simplified_saving_expr=None, evaluated_saving=None, freq=0):
+        self.raw_symbolic_saving_str = saving_str
+        self.simplified_symbolic_saving_expr: Optional[Symbol] = simplified_saving_expr
+        self.evaluated_saving: Union[str, int, None] = evaluated_saving
+        self.freq = freq
+
+
 class MemoryObserver:
     """Memory inspector across the training lifetime.
 
@@ -472,6 +468,19 @@ class MemoryObserver:
 
     def __init__(self, m: torch.nn.Module, logger: Logger):
         self._logger = logger
+        self._is_enabled = True
+
+        # Memory optimization related.
+        self.memory_optimization_opportunity_table_str = None
+        self.cluster_id_combination_to_saving_symbolics_map: Dict[str, MemoryOptimizationSummary] = {}
+        ## The value is a list of symbolic dim values parsed from the first batch.
+        self.symbolic_dim_name_to_value_map: Dict = {}
+
+        ## Used to control only the first batch is used to collect symbolic dim values.
+        self.symbolic_dim_collecting_completed = False
+
+        # For per-step memory inspection.
+        self._print_memory_stats_by_step = False
         self._current_step = 0
         self._rank = 0
         self._world_size = 1
@@ -485,8 +494,77 @@ class MemoryObserver:
 
         self._is_first_inspect = True
 
+    def is_enabled(self) -> bool:
+        """Check if memory inspector is enabled."""
+        return self._is_enabled
+
+    def enable_memory_stats_by_step(self, print_memory_stats_by_step: bool):
+        # For per-step memory inspection.
+        self._print_memory_stats_by_step = print_memory_stats_by_step
+
+    def collect_symbolic_dim_values(
+        self,
+        onnx_input_name_to_dynamic_axes_map: Dict[str, Dict[int, str]],
+        onnx_input_to_value_map: Dict[str, torch.Tensor],
+    ):
+        """Collect symbolic dim values."""
+        for input_name, dynamic_axes in onnx_input_name_to_dynamic_axes_map.items():
+            if input_name in onnx_input_to_value_map:
+                for dim_idx, dim_name in dynamic_axes.items():
+                    self.symbolic_dim_name_to_value_map[Symbol(dim_name)] = onnx_input_to_value_map[input_name].size()[
+                        dim_idx
+                    ]
+
+    def find_memory_optimization_opportunity(
+        self, execution_agent: TrainingAgent, memory_optimizer_config, probe_level
+    ):
+        """Find memory optimization opportunity.
+
+        Args:
+            execution_agent: TrainingAgent.
+            memory_optimizer_config: Memory optimization config.
+            probe_level: Memory probe level.
+        """
+        (
+            self.memory_optimization_opportunity_table_str,
+            memory_optimization_saving_symbolics,
+        ) = execution_agent.get_serialized_ortmodule_memory_stat(memory_optimizer_config, probe_level)
+
+        cluster_id_to_saving_symbol_map: Dict[str, MemoryOptimizationSummary] = {}
+        for cluster_id, memory_saving_stat in memory_optimization_saving_symbolics.items():
+            memory_saving_symbolic = memory_saving_stat[0]
+            freq = memory_saving_stat[1]
+            expr = parse_expr(memory_saving_symbolic)
+            simplified_expr = simplify(expr)
+            r = simplified_expr.evalf(subs=self.symbolic_dim_name_to_value_map)
+            evaluated_saving = None
+            if r.is_number:
+                evaluated_saving = float(r)
+            else:
+                evaluated_saving = r
+
+            cluster_id_to_saving_symbol_map[cluster_id] = MemoryOptimizationSummary(
+                memory_saving_symbolic, simplified_expr, evaluated_saving, freq
+            )
+
+        # Sorted by evaluated_saving if it is a float
+        sorted_list = sorted(
+            cluster_id_to_saving_symbol_map.items(),
+            key=lambda x: x[1].evaluated_saving if isinstance(x[1].evaluated_saving, float) else 0,
+            reverse=True,
+        )
+
+        for cluster_id, values in sorted_list:
+            self.cluster_id_combination_to_saving_symbolics_map[cluster_id] = values
+
     def inspect_memory(self, cur_phase: Phase):
-        if not torch.cuda.is_available():
+        """Inspect memory usage and print statistics.
+
+        Args:
+            phase: Phase to inspect.
+        """
+
+        if not torch.cuda.is_available() or not self._print_memory_stats_by_step:
             return
 
         if self._is_first_inspect:
@@ -498,36 +576,38 @@ class MemoryObserver:
         if self._rank != 0:
             return
 
-        if cur_phase < Phase.PRE_FORWARD or cur_phase > self._last_phase:
-            raise RuntimeError(f"Invalid phase detected: {cur_phase}")
+        if cur_phase < Phase.PRE_FORWARD or (cur_phase <= self._last_phase):
+            raise RuntimeError(f"Invalid phase detected: {cur_phase}, last_phase: {self._last_phase}")
 
         if (cur_phase - self._pre_phase) != 1:
             raise RuntimeError(f"Invalid phase transition detected: {self._pre_phase} -> {cur_phase}")
 
-        cur_mem_allocated = self._normalize(torch.cuda.memory_allocated())
-        max_mem_allocated = self._normalize(torch.cuda.max_memory_allocated())
-        cur_mem_cached = self._normalize(torch.cuda.memory_reserved())
-        max_mem_cached = self._normalize(torch.cuda.max_memory_reserved())
-        torch_mem_stat = torch.cuda.memory_stats()
-        cur_mem_inactive = self._normalize(torch_mem_stat.get("inactive_split_bytes.all.current", 0))
-        max_mem_inactive = self._normalize(torch_mem_stat.get("inactive_split_bytes.all.peak", 0))
-
-        mem_stats = [
-            ["phase", _convert_phase_to_string(cur_phase)],
-            ["allocated", cur_mem_allocated],  # current memory alloeated for tensors
-            ["max allocated", max_mem_allocated],  # peak memory allocated for tensors
-            ["cached", cur_mem_cached],  # current memory cached for caching allocator
-            ["max cached", max_mem_cached],  # peak memory cached for caching allocator.
-            ["inactive", cur_mem_inactive],  # amount of inactive, non-releasable memory
-            ["max inactive", max_mem_inactive],  # peak of inactive, non-releasable memory
-        ]
-
-        summ = f"{self._rank_info} step {self._current_step} memory ({MemoryObserver.NORMALIZER_UNIT})"
-        for stat in mem_stats:
-            summ += f" | {stat[0]}: {stat[1]}"
-
         # For the 10+ steps, only print when it is power of 2.
-        if self._current_step < 10 or (self._current_step & (self._current_step - 1) == 0):
+        need_print = self._current_step < 10 or (self._current_step & (self._current_step - 1) == 0)
+
+        if need_print:
+            cur_mem_allocated = self._normalize(torch.cuda.memory_allocated())
+            max_mem_allocated = self._normalize(torch.cuda.max_memory_allocated())
+            cur_mem_cached = self._normalize(torch.cuda.memory_reserved())
+            max_mem_cached = self._normalize(torch.cuda.max_memory_reserved())
+            torch_mem_stat = torch.cuda.memory_stats()
+            cur_mem_inactive = self._normalize(torch_mem_stat.get("inactive_split_bytes.all.current", 0))
+            max_mem_inactive = self._normalize(torch_mem_stat.get("inactive_split_bytes.all.peak", 0))
+
+            mem_stats = [
+                ["phase", _convert_phase_to_string(cur_phase)],
+                ["allocated", cur_mem_allocated],  # current memory allocated for tensors
+                ["max allocated", max_mem_allocated],  # peak memory allocated for tensors
+                ["cached", cur_mem_cached],  # current memory cached for the caching allocator
+                ["max cached", max_mem_cached],  # peak memory cached for caching allocator.
+                ["inactive", cur_mem_inactive],  # amount of inactive, non-releasable memory
+                ["max inactive", max_mem_inactive],  # peak of inactive, non-releasable memory
+            ]
+
+            summ = f"{self._rank_info} step {self._current_step} memory ({MemoryObserver.NORMALIZER_UNIT})"
+            for stat in mem_stats:
+                summ += f" | {stat[0]}: {stat[1]}"
+
             self._logger.info(summ)
 
         if cur_phase == self._last_phase:
@@ -542,3 +622,72 @@ class MemoryObserver:
 
     def _normalize(self, mem_size_in_bytes: Union[float, int]) -> str:
         return f"{float(mem_size_in_bytes) / MemoryObserver.NORMALIZER_FACTOR:.0f}"
+
+    def display_memory_optimization_plans(self, memory_optimizer_config) -> Tuple[List[str], PTable]:
+        mem_plan_count = len(self.cluster_id_combination_to_saving_symbolics_map)
+
+        if mem_plan_count > 0:
+            mem_tbl = PTable()
+            mem_tbl.add_row(["", "", "", "", "Configs", "Freq", "Max Saving(Bytes)", "Saving Symbolic(Bytes)"])
+
+            index = 1
+
+            def _get_user_config_without_freq(configs: str):
+                if len(configs) == 0:
+                    return []
+                config_list = configs.split(",")
+                configs_with_out_freq = []
+                for config in config_list:
+                    config_values = config.split(":")
+                    freq = int(config_values[2])
+                    if freq == 0:
+                        continue
+                    configs_with_out_freq.append(config_values[0] + ":" + config_values[1])
+
+                return configs_with_out_freq
+
+            user_configs_with_out_freq = _get_user_config_without_freq(memory_optimizer_config)
+
+            for (
+                cluster_id,
+                saving_symbolic,
+            ) in self.cluster_id_combination_to_saving_symbolics_map.items():
+                saving_bytes = saving_symbolic.evaluated_saving
+                if isinstance(saving_bytes, float):
+                    saving_bytes = f"{saving_bytes:,.0f}"
+
+                cluster_ids_without_freq = _get_user_config_without_freq(cluster_id)
+
+                mem_tbl.add_row(
+                    [
+                        f" - Plan {index}",
+                        ":",
+                        "ON"
+                        if all(cluster_id in user_configs_with_out_freq for cluster_id in cluster_ids_without_freq)
+                        else "OFF",
+                        ":",
+                        cluster_id,
+                        saving_symbolic.freq,
+                        saving_bytes,
+                        saving_symbolic.simplified_symbolic_saving_expr,
+                    ]
+                )
+
+                index += 1
+
+            saving_recommendation = (
+                "use comma as delimiter to enable multiple memory optimization plans at the same time:\n"
+            )
+            saving_recommendation += "  export ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
+
+            notes = []
+            notes.append(saving_recommendation)
+
+            saving_recommendation = "memory saving is calculated based on the 1st batch symbolic dim values:\n"
+            for dim_param, dim_value in self.symbolic_dim_name_to_value_map.items():
+                saving_recommendation += f"  {dim_param}={dim_value},"
+            notes.append(saving_recommendation)
+
+            return notes, mem_tbl
+
+        return [], None

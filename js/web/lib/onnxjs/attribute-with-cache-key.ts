@@ -6,13 +6,13 @@ class AttributeWithCacheKeyImpl {
     Object.assign(this, attribute);
   }
 
-  private _cacheKey: string;
+  private key: string;
   public get cacheKey(): string {
-    if (!this._cacheKey) {
-      this._cacheKey =
+    if (!this.key) {
+      this.key =
           Object.getOwnPropertyNames(this).sort().map(name => `${(this as Record<string, unknown>)[name]}`).join(';');
     }
-    return this._cacheKey;
+    return this.key;
   }
 }
 

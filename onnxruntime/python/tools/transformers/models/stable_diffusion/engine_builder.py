@@ -60,15 +60,8 @@ class EngineBuilder:
         self.torch_device = torch.device(device, torch.cuda.current_device())
         self.stages = pipeline_info.stages()
 
-        # TODO: use custom fp16 for ORT_TRT, and no need to fallback to torch.
-        self.vae_torch_fallback = self.pipeline_info.is_xl() and engine_type != EngineType.ORT_CUDA
-
-        # For SD XL, use an VAE that modified to run in fp16 precision without generating NaNs.
-        self.custom_fp16_vae = (
-            "madebyollin/sdxl-vae-fp16-fix"
-            if self.pipeline_info.is_xl() and self.engine_type == EngineType.ORT_CUDA
-            else None
-        )
+        self.vae_torch_fallback = self.pipeline_info.vae_torch_fallback()
+        self.custom_fp16_vae = self.pipeline_info.custom_fp16_vae()
 
         self.models = {}
         self.engines = {}
@@ -84,6 +77,12 @@ class EngineBuilder:
         self.engines = {}
 
     def get_cached_model_name(self, model_name):
+        # TODO(tianleiwu): save custom model to a directory named by its original model.
+        if model_name == "unetxl" and self.pipeline_info.custom_unet():
+            model_name = "lcm_" + model_name
+
+        # TODO: When we support original VAE, we shall save custom VAE to another directory.
+
         if self.pipeline_info.is_inpaint():
             model_name += "_inpaint"
         return model_name
@@ -100,6 +99,7 @@ class EngineBuilder:
 
     def load_models(self, framework_model_dir: str):
         # Disable torch SDPA since torch 2.0.* cannot export it to ONNX
+        # TODO(tianleiwu): Test and remove it if this is not needed in Torch 2.1.
         if hasattr(torch.nn.functional, "scaled_dot_product_attention"):
             delattr(torch.nn.functional, "scaled_dot_product_attention")
 

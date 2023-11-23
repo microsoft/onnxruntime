@@ -96,6 +96,18 @@ jobs:
       flattenFolders: true
     displayName: 'Binplace js files'
   - script: |
+      npm i -g puppeteer
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Use puppeteer to prepare Chrome for tests'
+  - script: |
+      FOR /F "tokens=* USEBACKQ" %%F IN (`where /r %HOMEDRIVE%%HOMEPATH%\.cache\puppeteer chrome.exe`) DO (
+        SET var=%%F
+        ECHO found chrome.exe: %%F
+      )
+      ECHO ##vso[task.setvariable variable=CHROME_BIN;]%var%
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Set CHROME_BIN'
+  - script: |
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js'
     displayName: 'npm ci /js/'
@@ -157,44 +169,36 @@ jobs:
       errorActionPreference: stop
     displayName: 'Pack NPM packages'
   - script: |
-     npm test -- -e=edge -b=webgl,wasm,xnnpack
+     npm test -- -e=chrome -b=webgl,wasm,xnnpack
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (wasm,webgl,xnnpack backend)'
     condition: eq('${{ parameters.RunWebGpuTests }}', 'false')
-    retryCountOnTaskFailure: 3
   - script: |
-     npm test -- -e=edge -b=webgl,wasm,xnnpack,webgpu $(webgpuCommandlineExtraFlags)
+     npm test -- -e=chrome -b=webgl,wasm,xnnpack,webgpu $(webgpuCommandlineExtraFlags)
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (ALL backends)'
     condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
-    retryCountOnTaskFailure: 3
   - script: |
-     npm test -- suite1 -e=edge -b=webgpu --io-binding=gpu-tensor $(webgpuCommandlineExtraFlags)
+     npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-tensor $(webgpuCommandlineExtraFlags)
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-tensor)'
     condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
-    # temporarily allow this test to fail, so that people are not blocked.
-    # investigation is ongoing for the root cause of the random failure (Edge crash).
-    # TODO: remove this line once the root cause is found and fixed.
-    continueOnError: true
   - script: |
-     npm test -- suite1 -e=edge -b=webgpu --io-binding=gpu-location $(webgpuCommandlineExtraFlags)
+     npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-location $(webgpuCommandlineExtraFlags)
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-location)'
     condition: eq('${{ parameters.RunWebGpuTests }}', 'true')
-    retryCountOnTaskFailure: 3
   - script: |
-     npm test -- --webgl-texture-pack-mode -b=webgl -e=edge
+     npm test -- --webgl-texture-pack-mode -b=webgl -e=chrome
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebGL: packed mode'
-    retryCountOnTaskFailure: 3
   - script: |
-     npm test -- --wasm-enable-proxy -b=wasm -e=edge
+     npm test -- --wasm-enable-proxy -b=wasm -e=chrome
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebAssembly: proxy'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
   - script: |
-      npm run test:e2e -- --browser=Edge_default
+      npm run test:e2e -- --browser=Chrome_default
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'E2E package consuming test'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))

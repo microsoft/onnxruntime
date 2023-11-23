@@ -131,7 +131,7 @@ class OffsetCalculator:
         input_shape = tensor_arg.shape
         if tensor_arg.name in self.reduced_args:
             assert self.is_reduction
-            reduced_rank = len(input_shape) - len(self.reduce_axes)
+            reduced_rank = len(self.target_shape) - len(self.reduce_axes)
             if len(input_shape) < reduced_rank:
                 input_shape = [sympy.Integer(1)] * (reduced_rank - len(input_shape)) + input_shape
             input_shape = (
@@ -143,7 +143,9 @@ class OffsetCalculator:
             input_shape = [sympy.Integer(1)] * (len(self.target_shape) - len(input_shape)) + input_shape
         running_stride = sympy.Integer(1)
         for i in range(len(self.target_shape) - 1, -1, -1):
-            if self.target_shape[i] == input_shape[i]:
+            if self.target_shape[i] == input_shape[i] and not (
+                tensor_arg.name in self.reduced_args and i in self.reduce_axes
+            ):
                 strides.insert(0, running_stride)
                 running_stride = running_stride * input_shape[i]
             else:

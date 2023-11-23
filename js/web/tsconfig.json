@@ -3,7 +3,6 @@
   "compilerOptions": {
     "downlevelIteration": true,
     "declaration": true,
-    "noUnusedParameters": false,
     "typeRoots": ["./node_modules/@webgpu/types", "./node_modules/@types", "../node_modules/@types"]
   },
   "include": ["lib", "test"],

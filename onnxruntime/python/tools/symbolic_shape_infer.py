@@ -157,6 +157,7 @@ class SymbolicShapeInference:
             "MemcpyFromHost": self._pass_on_shape_and_type,
             "MemcpyToHost": self._pass_on_shape_and_type,
             "Min": self._infer_symbolic_compute_ops,
+            "MoE": self._pass_on_shape_and_type,
             "Mul": self._infer_symbolic_compute_ops,
             "NonMaxSuppression": self._infer_NonMaxSuppression,
             "NonZero": self._infer_NonZero,
