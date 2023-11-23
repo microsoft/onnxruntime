@@ -2712,6 +2712,202 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloat8, 1,
                                   updateOutputShape(ctx, 0, {first_input_shape.dim(transA ? 1 : 0), second_input_shape.dim(transB ? 0 : 1)});
                                 }));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(LinalgSVD, 1,
+                            OpSchema()
+                                .SetDoc(R"DOC(For internal use.)DOC")
+                                .Attr(
+                                    "full_matrices",
+                                    "",
+                                    AttributeProto::INT,
+                                    static_cast<int64_t>(1))
+                                .Input(
+                                    0,
+                                    "A",
+                                    "",
+                                    "T")
+                                .Output(
+                                    0,
+                                    "U",
+                                    "",
+                                    "T")
+                                .Output(
+                                    1,
+                                    "S",
+                                    "",
+                                    "T")
+                                .Output(
+                                    2,
+                                    "Vh",
+                                    "",
+                                    "T")
+                                .TypeConstraint(
+                                    "T",
+                                    {"tensor(float)", "tensor(double)"},
+                                    "")
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+                                  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
+                                  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 2);
+                                  int64_t full_matrices = ctx.getAttribute("full_matrices")->i();
+
+                                  const TensorShapeProto& A_shape = ctx.getInputType(0)->tensor_type().shape();
+                                  const auto& M = A_shape.dim(A_shape.dim_size() - 2);
+                                  const auto& N = A_shape.dim(A_shape.dim_size() - 1);
+                                  if (!M.has_dim_value() || !N.has_dim_value()) {
+                                    // cannot do shape inference without knowing dimension values
+                                    return;
+                                  }
+                                  const auto& K = M.dim_value() < N.dim_value() ? M : N;
+                                  auto* u_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+                                  auto* s_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
+                                  auto* v_shape = ctx.getOutputType(2)->mutable_tensor_type()->mutable_shape();
+                                  if (A_shape.dim_size() == 3) {
+                                    const auto& batch_dim = A_shape.dim(0);
+                                    *u_shape->add_dim() = batch_dim;
+                                    *s_shape->add_dim() = batch_dim;
+                                    *v_shape->add_dim() = batch_dim;
+                                  }
+                                  *u_shape->add_dim() = M;
+                                  *u_shape->add_dim() = full_matrices ? M : K;
+                                  *s_shape->add_dim() = K;
+                                  *v_shape->add_dim() = full_matrices ? N : K;
+                                  *v_shape->add_dim() = N;
+                                }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(LinalgCholesky, 1,
+                            OpSchema()
+                                .SetDoc(R"DOC(For internal use.)DOC")
+                                .Attr(
+                                    "upper",
+                                    "",
+                                    AttributeProto::INT,
+                                    static_cast<int64_t>(0))
+                                .Input(
+                                    0,
+                                    "A",
+                                    "",
+                                    "T")
+                                .Output(
+                                    0,
+                                    "X",
+                                    "",
+                                    "T")
+                                .TypeConstraint(
+                                    "T",
+                                    {"tensor(float)"},
+                                    "")
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+                                  const TensorShapeProto& A_shape = ctx.getInputType(0)->tensor_type().shape();
+                                  auto* output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+                                  *output_shape->add_dim() = A_shape.dim(0);
+                                  *output_shape->add_dim() = A_shape.dim(1);
+                                }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(LinalgInv, 1,
+                            OpSchema()
+                                .SetDoc(R"DOC(For internal use.)DOC")
+                                .Input(
+                                    0,
+                                    "A",
+                                    "",
+                                    "T")
+                                .Output(
+                                    0,
+                                    "X",
+                                    "",
+                                    "T")
+                                .TypeConstraint(
+                                    "T",
+                                    {"tensor(float)"},
+                                    "")
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+                                  const TensorShapeProto& A_shape = ctx.getInputType(0)->tensor_type().shape();
+                                  auto* output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+                                  *output_shape->add_dim() = A_shape.dim(0);
+                                  *output_shape->add_dim() = A_shape.dim(1);
+                                }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(LinalgSolve, 1,
+                            OpSchema()
+                                .SetDoc(R"DOC(For internal use.)DOC")
+                                .Attr(
+                                    "left",
+                                    "",
+                                    AttributeProto::INT,
+                                    static_cast<int64_t>(0))
+                                .Input(
+                                    0,
+                                    "A",
+                                    "",
+                                    "T")
+                                .Input(
+                                    1,
+                                    "B",
+                                    "",
+                                    "T")
+                                .Output(
+                                    0,
+                                    "X",
+                                    "",
+                                    "T")
+                                .TypeConstraint(
+                                    "T",
+                                    {"tensor(float)"},
+                                    "")
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+                                  const TensorShapeProto& A_shape = ctx.getInputType(0)->tensor_type().shape();
+                                  const TensorShapeProto& B_shape = ctx.getInputType(1)->tensor_type().shape();
+                                  auto* output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+                                  /////////////////////////////////
+                                  // for now only for np.linalg.solve(_s, _d)
+                                  /////////////////////////////////
+                                  *output_shape->add_dim() = A_shape.dim(0);
+                                  *output_shape->add_dim() = B_shape.dim(1);
+
+                                  // int64_t A_rank = A_shape.dim_size();
+                                  // int64_t B_rank = B_shape.dim_size();
+                                  // assert(A_rank == 3);  // shape A mush be (*, n, n)
+                                  ////assert(A_shape.dim(1) == A_shape.dim(2));
+
+                                  // auto* output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+                                  //*output_shape->add_dim() = A_shape.dim(0);
+                                  // if (B_rank == 3) {
+                                  //   // B (*, n, k) case => (*, n, k)
+                                  //   //assert(A_shape.dim(2) == B_shape.dim(1));
+                                  //   *output_shape->add_dim() = A_shape.dim(1);
+                                  //   *output_shape->add_dim() = B_shape.dim(2);
+                                  // }
+                                  // else if (B_rank == 1) {
+                                  //   // B (n,) case  => (*, n)
+                                  //   //assert(A_shape.dim(2) == B_shape.dim(0));
+                                  //   *output_shape->add_dim() = A_shape.dim(1);
+                                  // }
+                                  // else if (B_rank == 2) {
+                                  //   // B (*, n) or (n, k) cases
+                                  //   if (/*B_shape.dim(0) == A_shape.dim(0) &&*/ A_shape.dim(2).dim_value() == B_shape.dim(1).dim_value()) {
+                                  //     // B (*, n) => (*, n)
+                                  //     *output_shape->add_dim() = A_shape.dim(1);
+                                  //   }
+                                  //   else if (A_shape.dim(1).dim_value() == B_shape.dim(0).dim_value()) {
+                                  //     // B (n, k) => (*, n, k)
+                                  //     *output_shape->add_dim() = A_shape.dim(1);
+                                  //     *output_shape->add_dim() = B_shape.dim(1);
+                                  //   }
+                                  //   else {
+                                  //     assert(false);
+                                  //   }
+                                  // }
+                                  // else {
+                                  //   assert(false);
+                                  // }
+                                }));
+
 static void MatmulWithQuantWeightShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
                                                 int64_t K,
                                                 int64_t N,
