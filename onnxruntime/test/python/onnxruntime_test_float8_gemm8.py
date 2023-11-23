@@ -140,7 +140,10 @@ class TestFloat8Gemm8(unittest.TestCase):
         if "CUDAExecutionProvider" in available_providers:
             providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
         elif "ROCMExecutionProvider" in available_providers:
-            providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
+            providers = [
+                ("ROCMExecutionProvider", {"tunable_op_enable": "1", "tunable_op_tuning_enable": "1"}),
+                ("CPUExecutionProvider", {}),
+            ]
 
         expected = (a.T if kwargs.get("transA", 0) else a) @ (b.T if kwargs.get("transB", 0) else b)
         expected *= kwargs.get("alpha", 1.0)
