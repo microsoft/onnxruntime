@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <optional>
 
 #include "core/graph/basic_types.h"
 
@@ -56,6 +57,8 @@ class NodeAttrHelper {
   // Convert the i() or ints() of the attribute from int64_t to uint32_t
   uint32_t Get(const std::string& key, uint32_t def_val) const;
   std::vector<uint32_t> Get(const std::string& key, const std::vector<uint32_t>& def_val) const;
+
+  std::optional<int64_t> GetInt(const std::string& key) const;
 
   bool HasAttr(const std::string& key) const;
 

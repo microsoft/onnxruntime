@@ -166,6 +166,12 @@ std::vector<float> NodeAttrHelper::Get(const std::string& key, const std::vector
   return std::vector<float>{source.cbegin(), source.cend()};
 }
 
+std::optional<int64_t> NodeAttrHelper::GetInt(const std::string& key) const {
+  if (!HasAttr(key))
+    return std::nullopt;
+  return node_attributes_.at(key).i();
+}
+
 bool NodeAttrHelper::HasAttr(const std::string& key) const {
   return Contains(node_attributes_, key);
 }
