@@ -15,17 +15,9 @@ parameters:
   type: boolean
   default: true
 
-- name: IsReleaseBuild
-  type: boolean
-  default: false
-
 - name: CudaVersion
   type: string
   default: '11.8'
-- name: docker_base_image
-  type: string
-- name: linux_trt_version
-  type: string
 - name: win_cuda_home
   type: string
 - name: win_trt_home
@@ -71,10 +63,7 @@ stages:
     - Windows_Packaging_gpu
     - Windows_Packaging_tensorrt
   condition: succeeded()
-  #  variables:
-  #    cuda_sdk_url: https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.2
-  #    tensorrt_dir: TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0
-  #    tensorrt_url: https://lotusscus.blob.core.windows.net/models/local/TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0
+
   jobs:
     - job:
       workspace:
@@ -94,13 +83,6 @@ stages:
             DownloadTRT: true
             CudaVersion: ${{ parameters.CudaVersion }}
 
-        #    # TODO: set env variables for CUDA and TRT in download_win_gpu_library.yml
-        #    - task: BatchScript@1
-        #      displayName: 'setup env'
-        #      inputs:
-        #        filename: '$(Build.SourcesDirectory)\onnxruntime\tools\ci_build\github\windows\setup_env_gpu.bat'
-        #        modifyEnvironment: true
-        #        workingFolder: '$(Build.BinariesDirectory)'
         - template: ../templates/set-version-number-variables-step.yml
           parameters:
             versionFileDirectory: '$(Build.SourcesDirectory)\onnxruntime'

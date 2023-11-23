@@ -119,11 +119,7 @@ stages:
             name: Debug_Release_Version_Suffix
 
   # Nuget Packaging
-  - template: stages/nuget-combine-cuda-stage.yml
-    parameters:
-      DoCompliance: ${{ parameters.DoCompliance }}
-      DoEsrp: ${{ parameters.DoEsrp }}
-      IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+
   - template: stages/nuget-linux-cuda-packaging-stage.yml
     parameters:
       CudaVersion: ${{ parameters.CudaVersion }}
@@ -131,10 +127,16 @@ stages:
       linux_trt_version: ${{ variables.linux_trt_version }}
   - template: stages/nuget-win-cuda-packaging-stage.yml
     parameters:
+      RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+      UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
       CudaVersion: ${{ parameters.CudaVersion }}
       win_trt_home: ${{ variables.win_trt_home }}
       win_cuda_home: ${{ variables.win_cuda_home }}
-
+  - template: stages/nuget-combine-cuda-stage.yml
+    parameters:
+      DoCompliance: ${{ parameters.DoCompliance }}
+      DoEsrp: ${{ parameters.DoEsrp }}
+      IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
   # Testing
   ## Windows GPU Testing
   - template: nuget/templates/test_win.yml
