@@ -86,6 +86,8 @@ if (onnxruntime_ENABLE_TRAINING)
     "${ORTTRAINING_SOURCE_DIR}/core/optimizer/*.cc"
     "${ORTTRAINING_SOURCE_DIR}/core/optimizer/compute_optimizer/*.h"
     "${ORTTRAINING_SOURCE_DIR}/core/optimizer/compute_optimizer/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/core/optimizer/memory_optimizer/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/optimizer/memory_optimizer/*.cc"
   )
 endif()
 

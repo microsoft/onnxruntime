@@ -470,7 +470,8 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   // Get the first two dims value of input_ids which is [batch_size, seq_len]
   NodeArg* first_two_dims_arg = GetDimsValue(graph,
                                              input_ids_arg,
-                                             CreateInitializerFromVector(graph, {2}, {0, 1}, graph.GenerateNodeArgName("first_two_indices")),
+                                             CreateInitializerFromVector(graph, {2}, {0, 1},
+                                                                         graph.GenerateNodeArgName("first_two_indices")),
                                              *embedding_node);
 
   // Add flatten pattern to each input node of the subgraph

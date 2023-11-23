@@ -19,7 +19,7 @@ from torch.utils.cpp_extension import ROCM_HOME
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
-from onnxruntime.training.utils import ORTModelInputOutputSchemaType, onnx_dtype_to_pytorch_dtype
+from onnxruntime.training.utils import ORTModelInputOutputSchemaType, PTable, onnx_dtype_to_pytorch_dtype
 from onnxruntime.training.utils.hooks import configure_ort_compatible_zero_stage3
 
 from . import _are_deterministic_algorithms_enabled, _io, _logger, _onnx_models, _utils
@@ -91,7 +91,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._first_skip_check_warning = True
 
         # Inspector for runtime information, for example input data, memory usage, etc.
-        self._runtime_inspector = RuntimeInspector(self._logger)
+        self._runtime_inspector = RuntimeInspector(self._logger, self._original_module)
+        self._runtime_inspector.memory_ob.enable_memory_stats_by_step(self._runtime_options.print_memory_stat_by_step)
 
         # Tracker for ORTModule model export, session creation overhead.
         self.time_tracker = _logger.TimeTracker()
@@ -242,12 +243,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = int(self._debug_options.logging.log_level)
 
-        session_options.add_session_config_entry(
-            "optimization.enable_memory_optimizer", self._runtime_options.memory_optimizer_config
-        )
-        session_options.add_session_config_entry(
-            "optimization.enable_memory_probe_recompute_level", self._runtime_options.probe_level
-        )
         # Disable weight prepacking
         session_options.add_session_config_entry("session.disable_prepacking", "1")
 
@@ -318,7 +313,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         """
 
         # VERBOSE -> FULL export verbose log + FULL torch other logs from stdout and stderr (C++ backend)
-        # INFO -> FULL export verbose log + FILTERED torch other logs from stdout and stderr (C++ backend)
+        # DEVINFO -> FULL export verbose log + FULL torch other logs from stdout and stderr (C++ backend)
+        # INFO -> [Rank 0] FULL export verbose log + FILTERED torch other logs from stdout and stderr (C++ backend)
         # WARNING/ERROR -> [Rank 0] NO export verbose log + FILTERED torch other logs from stdout and stderr (C++ backend)
         # Be noted: rank 0 log only is controlled by logger configured in _logger.py
         torch_exporter_verbose_log = self._debug_options.logging.log_level <= LogLevel.INFO
@@ -565,7 +561,6 @@ class GraphExecutionManager(GraphExecutionInterface):
            enable sparsity-based optimization.
 
         """
-
         # Enable data sparsity inspection if sparse optimizer is ON or user wants to print input density.
         if self._runtime_options.enable_sparse_optimizer or self._runtime_options.print_input_density:
             self._runtime_inspector.enable_input_inspector(
@@ -612,9 +607,6 @@ class GraphExecutionManager(GraphExecutionInterface):
             if not self._runtime_options.print_input_density:
                 self._runtime_inspector.disable_input_inspector()
 
-        if self._runtime_options.print_memory_stat:
-            self._runtime_inspector.enable_memory_inspector(self._original_module)
-
     def _append_pull_weight_trigger_as_input(self, kwargs: Dict, device: torch.device):
         from ._zero_stage3_compatibility import (
             STAGE3_PULL_WEIGHT_TRIGGER_NAME,
@@ -634,105 +626,141 @@ class GraphExecutionManager(GraphExecutionInterface):
         if get_rank() != 0:
             return
 
-        feature_map: List[Tuple[str, bool, str]] = [
-            ("ATen Executor", True, "Dispatch ATen operators to ORT's ATen executor"),
-            (
+        if self._runtime_inspector.memory_ob.is_enabled() and self._debug_options.log_level <= LogLevel.DEVINFO:
+            self._logger.info(self._runtime_inspector.memory_ob.memory_optimization_opportunity_table_str)
+
+        tbl = PTable()
+
+        def _add_record(tbl, columns):
+            return tbl.add_row([columns[0], ":", "ON" if columns[1] else "OFF", ":", columns[2]])
+
+        notes = []
+
+        _add_record(tbl, ["ATen Executor", True, "Dispatch ATen operators to ORT's ATen executor"])
+        _add_record(
+            tbl,
+            [
                 "Cast Propagation",
                 self._runtime_options.propagate_cast_ops_level > 0,
                 f"Level {self._runtime_options.propagate_cast_ops_level} enabled",
-            ),
-            (
+            ],
+        )
+        _add_record(
+            tbl,
+            [
                 "Custom Function",
                 self._runtime_options.enable_custom_autograd_function,
                 "Support custom torch.autograd.Function export and execution",
-            ),
-            (
+            ],
+        )
+
+        output_memory_optimization_details = self._debug_options.log_level <= LogLevel.INFO
+        mem_row = _add_record(
+            tbl,
+            [
                 "Memory Optimizer",
                 len(self._runtime_options.memory_optimizer_config) > 0,
-                "Enable with env ORTMODULE_MEMORY_OPT_CONFIG=<config>",
-            ),
-        ]
+                (
+                    f"User config: {self._runtime_options.memory_optimizer_config}, probe level: {self._runtime_options.probe_level}"
+                    if len(self._runtime_options.memory_optimizer_config) > 0
+                    else "Enable with env ORTMODULE_MEMORY_OPT_CONFIG=<config>"
+                ),
+            ],
+        )
 
-        # Add compute optimizer
-        feature_map.extend(
+        if self._runtime_inspector.memory_ob.is_enabled() and output_memory_optimization_details:
+            mem_notes, mem_tbl = self._runtime_inspector.memory_ob.display_memory_optimization_plans(
+                self._runtime_options.memory_optimizer_config
+            )
+            if mem_tbl is not None:
+                mem_row.append_annotation_table(mem_tbl)
+                notes.extend(mem_notes)
+
+        _add_record(
+            tbl,
             [
-                (
-                    "Compute Optimizer",
-                    self._runtime_options.enable_compute_optimizer,
-                    "Enable/Disable with env ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=1/0",
-                ),
-                (
-                    " -FLOPReduction",
-                    self._runtime_options.enable_compute_optimizer,
-                    "Reduce FLOPs by upstreaming shrinking-sized ops",
-                ),
-            ]
+                "Compute Optimizer",
+                self._runtime_options.enable_compute_optimizer,
+                "Enable/Disable with env ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=1/0",
+            ],
+        )
+        _add_record(
+            tbl,
+            [
+                " - FLOPReduction",
+                self._runtime_options.enable_compute_optimizer,
+                "Reduce FLOPs by upstreaming shrinking-sized ops",
+            ],
         )
 
         if self._runtime_options.enable_compute_optimizer:
             if len(self._runtime_options.label_sparsity_ratio) > 0:
-                feature_map.append(
-                    (" -LabelSparsityOpt", True, f"Input density: {self._runtime_options.label_sparsity_ratio}")
+                _add_record(
+                    tbl, [" - LabelSparsityOpt", True, f"Input density: {self._runtime_options.label_sparsity_ratio}"]
                 )
 
             if len(self._runtime_options.embed_sparsity_ratio) > 0:
-                feature_map.append(
-                    (" -EmbedSparsityOpt", True, f"Input density: {self._runtime_options.embed_sparsity_ratio}")
+                _add_record(
+                    tbl, [" - EmbedSparsityOpt", True, f"Input density: {self._runtime_options.embed_sparsity_ratio}"]
                 )
 
         # Add fallback
-        feature_map.append(
-            (
+        _add_record(
+            tbl,
+            [
                 "Auto Fallback",
                 self._runtime_options.fallback_policy is not _FallbackPolicy.FALLBACK_DISABLE,
                 "Fallback to PyTorch when encountering unsupported ops",
-            )
+            ],
         )
 
-        if self._runtime_options.enable_triton:
-            feature_map.append(
-                (
-                    "TritonOp Enabled",
-                    True,
-                    "ORT will switch to Triton for executing some ops to further accelerate training.",
-                )
-            )
+        # Add Triton
+        _add_record(
+            tbl,
+            [
+                "TritonOp Enabled",
+                self._runtime_options.enable_triton,
+                "ORT will switch to Triton for executing some ops to further accelerate training.",
+            ],
+        )
 
         if self._runtime_options.enable_tuning:
             desc = "Enable tunning Ops online"
             if self._runtime_options.tuning_results_path:
                 desc += f", save tuning results to {self._runtime_options.tuning_results_path}"
-            feature_map.append(("Online Op Tuning", True, desc))
+            _add_record(tbl, ["Online Op Tuning", True, desc])
         elif self._runtime_options.tuning_results_path:
-            feature_map.append(
-                (
+            _add_record(
+                tbl,
+                [
                     "Offline Op Tuning",
                     True,
                     f"Use offline tuning results from {self._runtime_options.tuning_results_path}",
-                )
+                ],
             )
 
-        feature_map.append(
-            (
+        _add_record(
+            tbl,
+            [
                 "ZeRO Stage3 Support",
                 self._runtime_options.enable_zero_stage3_support,
                 "Enable/Disable with env ORTMODULE_ENABLE_ZERO_STAGE3=1/0",
-            )
+            ],
         )
 
         mode = "training" if self._export_mode == torch.onnx.TrainingMode.TRAINING else "inference"
         mode = f"{_logger.LogColor.UNDERLINE}{mode}{_logger.LogColor.ENDC}"
-
-        stat = f"\n\n{_logger.LogColor.HEADER}***** ONNX Runtime Training (ORTModule) is accelerating your model *****{_logger.LogColor.ENDC}\n\n"
+        stat = f"\n{_logger.LogColor.HEADER}***** ONNX Runtime Training (ORTModule) is accelerating your model *****{_logger.LogColor.ENDC}\n\n"
         stat += f"ORTModule is enabled with following features ON/OFF for [{mode}] mode:\n\n"
-        for feature_tuple in feature_map:
-            switch_str = "ON" if feature_tuple[1] else "OFF"
-            stat += f"{feature_tuple[0]:<20}:\t{switch_str:<10}:\t{feature_tuple[2]:<80}\n"
+        stat += tbl.get_string() + "\n"
 
         # Collect ORTModule overheads for different phases.
         stat += f"\n{self.time_tracker.to_string(self._debug_options.logging.log_level < LogLevel.WARNING)}\n"
-
         stat += f"Versions: ONNX Runtime - {onnxruntime.__version__}, ONNX - {onnx.__version__}\n\n"
-        stat += f"{_logger.LogColor.HEADER}************************************************************************{_logger.LogColor.ENDC}\n\n"
 
+        # Add notes
+        for index, note in enumerate(notes):
+            stat += f"Note {index + 1}: {note}\n"
+
+        stat += f"\n{_logger.LogColor.HEADER}************************************************************************{_logger.LogColor.ENDC}\n\n"
         self._logger.warning(stat)
