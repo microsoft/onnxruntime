@@ -618,11 +618,12 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
   configure_ws_ptrs(workspace_ptr, num_rows, hidden_size, inter_size, num_experts, k);
   topk_gating_softmax_kernelLauncher<T>(gating_output, finished, expert_scales, softmax_out_, expert_for_source_row,
                                         source_rows_, num_rows, num_experts, k, stream);
+  // print_cuda_buffer("expert_scales", expert_scales, num_rows);
 
   const int sorter_ws_size_bytes = static_cast<int>(pad_to_multiple_of_16(sorter_.getWorkspaceSize(k * num_rows)));
   sorter_.run((void*)fc1_result_, sorter_ws_size_bytes, expert_for_source_row, permuted_experts_, source_rows_,
               permuted_rows_, k * num_rows, stream);
-  print_cuda_buffer("permuted_experts_", permuted_experts_, num_rows);
+  // print_cuda_buffer("permuted_experts_", permuted_experts_, num_rows);
 
   initialize_moe_routing_kernelLauncher(input_activations, permuted_data_, permuted_rows_,
                                         expanded_source_row_to_expanded_dest_row, num_rows, active_rows, hidden_size, k,
@@ -653,7 +654,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
                             total_rows_before_expert_ + local_experts_start_index,
                             expanded_active_expert_rows, hidden_size, inter_size, local_num_experts, stream);
 
-  //print_cuda_buffer("fc2_result", fc2_result, num_rows, hidden_size);
+  // print_cuda_buffer("fc2_result", fc2_result, num_rows, hidden_size);
 }
 
 template <typename T, typename WeightType, typename Enable>
@@ -816,6 +817,7 @@ void finalize_moe_routing_kernelLauncher(const T* expanded_permuted_rows, T* red
                                          const int* expert_for_source_row, int num_rows, int cols,
                                          int k, cudaStream_t stream) {
   // print_cuda_buffer("expanded_permuted_rows", expanded_permuted_rows, num_rows, cols);
+  // print_cuda_buffer("scales", scales, num_rows);
   const int blocks = num_rows;
   const int threads = std::min(cols, 1024);
   finalize_moe_routing_kernel<T, 0><<<blocks, threads, 0, stream>>>(

@@ -137,22 +137,22 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
 
   size_t base_offset = moe_params.hidden_size * sizeof(CudaT);
   ncclDataType_t dtype = GetNcclDataType(input->DataType());
-  // NCCL_RETURN_IF_ERROR(ncclGroupStart()); flacky results with ncclBroadcast + ncclGroupStart/End
+  NCCL_RETURN_IF_ERROR(ncclGroupStart()); // flacky results with ncclBroadcast + ncclGroupStart/End
   for (int r = 0; r < nccl_->Size(); ++r) {
     int64_t experts_start_index = rank_to_experts_start_index[r];
     int64_t total_past_rows = 0;
     int64_t total_covered_rows = 0;
     moe_runner.get_total_rows_info(experts_start_index, moe_params.local_num_experts, total_past_rows, total_covered_rows);
-    std::cout << "rank: " << r << ", experts_start_index: " << experts_start_index << ", total_past_rows: " << total_past_rows << ", total_covered_rows: " << total_covered_rows << std::endl;
+    // std::cout << "rank: " << r << ", experts_start_index: " << experts_start_index << ", total_past_rows: " << total_past_rows << ", total_covered_rows: " << total_covered_rows << std::endl;
     NCCL_RETURN_IF_ERROR(ncclBroadcast(reinterpret_cast<const char*>(fc2_output.get()) + total_past_rows * base_offset,
                                        reinterpret_cast<char*>(fc2_output_bc.get()) + total_past_rows * base_offset,
-                                       total_covered_rows * base_offset,
+                                       total_covered_rows * moe_params.hidden_size,
                                        dtype,
                                        r,
                                        comm,
                                        Stream(context)));
   }
-  //NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+  NCCL_RETURN_IF_ERROR(ncclGroupEnd());
 
   ort_fastertransformer::finalize_moe_routing_kernelLauncher(
       reinterpret_cast<CudaT*>(fc2_output_bc.get()), reinterpret_cast<CudaT*>(output->template MutableData<T>()),
