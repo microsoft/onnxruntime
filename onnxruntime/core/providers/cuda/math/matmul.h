@@ -32,6 +32,7 @@ class MatMul final : public CudaKernel {
   const bool trans_batch_b_;
 };
 
+#ifndef USE_ROCM
 template <typename T>
 Status FuncMatMul(
     // Use OpKernel and do a pointer cast to unify functional calls with other eps.
@@ -48,6 +49,6 @@ Status FuncMatMul(
     bool trans_batch_A,
     bool trans_batch_B,
     Tensor* Y);
-
+#endif
 }  // namespace cuda
 }  // namespace onnxruntime

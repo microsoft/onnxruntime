@@ -77,10 +77,13 @@ struct PackedAttentionParameters {
   int v_hidden_size;      // hidden size of V
   int v_head_size;        // hidden size per head of V
   int num_heads;
+  int num_kv_heads;
   float scale;
   int token_count;
+  int valid_token_count;
   bool has_relative_position_bias;
   bool broadcast_res_pos_bias;
+  bool causal;
 };
 
 // Parameters deduced from node attributes and inputs/outputs.

@@ -658,6 +658,89 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           PackedMultiHeadAttentionTypeAndShapeInference(ctx);
         }));
 
+void propagateShapeAndTypeFromFirstInputAndParam(ONNX_NAMESPACE::InferenceContext& ctx) {
+  propagateShapeAndTypeFromFirstInput(ctx);
+  // fix output_shape
+  auto* output_shape =
+      ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+  for (int i = 0; i < output_shape->dim_size(); i++) {
+    auto* dim_i = output_shape->mutable_dim(i);
+    if (dim_i->has_dim_param() && dim_i->dim_value() == 0) {
+      dim_i->set_dim_value(-1);
+    }
+  }
+}
+constexpr const char* PagedAttention_ver1_doc = R"DOC(
+PagedAttention is from https://vllm.ai/
+It consists of two types of attention.
+1. packed attention
+2. Single token attention with paged kv-cache.
+It requires a input_metadata for now from the python side, which contains the following information:
+1. batch_size
+2. sequence_length
+3. Promot length
+4. generation token length
+5. table mapping
+)DOC";
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    PagedAttention, 1,
+    OpSchema()
+        .SetDomain(kMSDomain)
+        .SetDoc(PagedAttention_ver1_doc)
+        .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+        .Attr("num_kv_heads", "Number of attention  kv heads, GQA/MQA, shared heads", AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("head_size", "Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size", AttributeProto::INT)
+        .Attr("scale", "Custom scale will be used if specified. Default value is 1/sqrt(head_size)", AttributeProto::FLOAT)
+        .Attr("mask_type", "position_mask_type, support [normal, alibi, RoPE]", AttributeProto::STRING)
+        //.AllowUncheckedAttributes()
+        .Input(0, "query", "The input Q-Tensor with shape(batch,seqlen,num-heads, head-size).", "T")
+        .Input(1, "key", "The input K-Tensor with shape(batch,seqlen,num-heads, head-size).", "T")
+        .Input(2, "value", "The input V-Tensor with shape(batch,seqlen,num-heads, head-size).", "T")
+        .Input(3, "key_cache", "Blocked key cache in this layer.", "T2")
+        .Input(4, "value_cache", "Blocked value cache in this layer.", "T2")
+        .Input(5, "input_metadata", "Block mapping for each token, and some other eseential infos in InputMetadata, This input Tensor has shape [1], the value is a pointer of struct InputMetadata. It should be converted into a class and used then", "T1", OpSchema::Optional)
+        .Input(6, "positions", "positions used for RoPE embedding", "T1", OpSchema::Optional)
+        .Input(7, "cos_sin_cache_or_alibi_bais", "cos_sin_cache used for RoPE embedding, alibi for alibi embinding", "T3", OpSchema::Optional)
+        .Input(8, "kv_quant_param", "quantization param for kvcache, like scale and zeropoint", "S", OpSchema::Optional)
+        .Output(0, "output", "Attention output", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(bfloat16)"},
+                        "Constrain input and output types to float/ tensors.")
+        .TypeConstraint("T1", {"tensor(int64)"}, "Constrain input META types to pointer tensors.")
+        .TypeConstraint("T2", {"tensor(int8)", "tensor(float16)", "tensor(float)", "tensor(bfloat16)"}, "kvcache and quant scale")
+        .TypeConstraint("T3", {"tensor(float16)", "tensor(float)", "tensor(bfloat16)"}, "alibi scopt or cos_sin_cache")
+        .TypeConstraint("S", {"tensor(float16)", "tensor(float)", "tensor(bfloat16)"}, "Constrain kv quant scales (zero-points if used) to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateShapeAndTypeFromFirstInputAndParam(ctx);
+        }));
+
+void SiluMulShapeInfer(InferenceContext& ctx) {
+  auto* output_shape =
+      ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+
+  auto input_shape = ctx.getInputType(0)->tensor_type().shape();
+  int last_dim = input_shape.dim_size() - 1;
+  for (int i = 0; i < input_shape.dim_size(); i++) {
+    int64_t value = input_shape.dim(i).dim_value();
+    if (i == last_dim) {
+        value = value / 2;
+    }
+    output_shape->add_dim()->set_dim_value(value);
+  }
+}
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    SiluAndMul, 1,
+    OpSchema()
+        .SetDomain(kMSDomain)
+        .SetDoc("silu and mul ")
+        .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          SiluMulShapeInfer(ctx);
+        }));
+
 constexpr const char* DecoderMaskedSelfAttention_ver1_doc = R"DOC(
 Self attention that supports input sequence length of 1.
 
