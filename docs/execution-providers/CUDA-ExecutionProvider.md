@@ -61,6 +61,7 @@ Default value: 0
 Defines the compute stream for the inference to run on.
 It implicitly sets the `has_user_compute_stream` option. It cannot be set through `UpdateCUDAProviderOptions`, but rather `UpdateCUDAProviderOptionsWithValue`.
 This cannot be used in combination with an external allocator.
+This can not be set using the python API.
 
 ### do_copy_in_default_stream
 Whether to do copies in the default stream or use separate streams. The recommended setting is true. If false, there are race conditions and possibly better performance.
@@ -104,46 +105,52 @@ Default value: EXHAUSTIVE
 
 ### cudnn_conv_use_max_workspace
 Check [tuning performance for convolution heavy models](#convolution-heavy-models) for details on what this flag does.
-This flag is only supported from the V2 version of the provider options struct when used using the C API. The V2 provider options struct can be created using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a0d29cbf555aa806c050748cf8d2dc172) and updated using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a4710fc51f75a4b9a75bde20acbfa0783). Please take a look at the sample below for an example.
+This flag is only supported from the V2 version of the provider options struct when used using the C API.(sample below)
 
 Default value: 1, for versions 1.14 and later
                0, for previous versions
 
 ### cudnn_conv1d_pad_to_nc1d
 Check [convolution input padding in the CUDA EP](#convolution-input-padding) for details on what this flag does.
-This flag is only supported from the V2 version of the provider options struct when used using the C API. The V2 provider options struct can be created using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a0d29cbf555aa806c050748cf8d2dc172) and updated using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a4710fc51f75a4b9a75bde20acbfa0783). Please take a look at the sample below for an example.
+This flag is only supported from the V2 version of the provider options struct when used using the C API. (sample below)
 
 Default value: 0
 
 ### enable_cuda_graph
 Check [using CUDA Graphs in the CUDA EP](#using-cuda-graphs-preview) for details on what this flag does.
-This flag is only supported from the V2 version of the provider options struct when used using the C API. The V2 provider options struct can be created using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a0d29cbf555aa806c050748cf8d2dc172) and updated using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a4710fc51f75a4b9a75bde20acbfa0783).
+This flag is only supported from the V2 version of the provider options struct when used using the C API. (sample below)
 
 Default value: 0
 
 ### enable_skip_layer_norm_strict_mode
 Whether to use strict mode in SkipLayerNormalization cuda implementation. The default and recommanded setting is false. If enabled, accuracy improvement and performance drop can be expected.
-This flag is only supported from the V2 version of the provider options struct when used using the C API. The V2 provider options struct can be created using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a0d29cbf555aa806c050748cf8d2dc172) and updated using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a4710fc51f75a4b9a75bde20acbfa0783).
+This flag is only supported from the V2 version of the provider options struct when used using the C API. (sample below)
 
 Default value: 0
 
-### gpu_external_alloc
-### gpu_external_free
-### gpu_external_empty_cache
-### tunable_op_enable
-### tunable_op_tuning_enable
-### tunable_op_max_tuning_duration_ms
+### gpu_external_[alloc|free|empty_cache]
+
+gpu_external_* is used to pass external allocators.
+Example python usage:
+```python
+from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_gpu_allocator
+provider_option_map["gpu_external_alloc"] = str(torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address())
+provider_option_map["gpu_external_free"] = str(torch_gpu_allocator.gpu_caching_allocator_raw_delete_address())
+provider_option_map["gpu_external_empty_cache"] = str(torch_gpu_allocator.gpu_caching_allocator_empty_cache_address())
+```
+
+Default value: 0
 
 ### prefer_nhwc
 This option is not available in default builds ! One has to compile ONNX Runtime with `onnxruntime_USE_CUDA_NHWC_OPS=ON`.
 If this is enabled the EP prefers NHWC operators over NCHW. Needed transforms will be added to the model. As NVIDIA tensor cores can only work on NHWC layout this can increase performance if the model consists of many supported operators and does not need too many new transpose nodes. Wider operator support is planned in the future.
-This flag is only supported from the V2 version of the provider options struct when used using the C API. The V2 provider options struct can be created using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a0d29cbf555aa806c050748cf8d2dc172) and updated using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a4710fc51f75a4b9a75bde20acbfa0783).
+This flag is only supported from the V2 version of the provider options struct when used using the C API. The V2 provider options struct can be created using [CreateCUDAProviderOptions](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a0d29cbf555aa806c050748cf8d2dc172) and updated using [UpdateCUDAProviderOptions](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a4710fc51f75a4b9a75bde20acbfa0783).
 
 Default value: 0
 
 ## Performance Tuning
 The [I/O Binding feature](../performance/tune-performance/iobinding.md) should be utilized to avoid overhead resulting from copies on inputs and outputs. Ideally up and downloads for inputs can be hidden behind the inference. This can be achieved by doing asynchronous copies while running inference. This is demonstrated in this [PR](https://github.com/microsoft/onnxruntime/pull/14088)
-```
+```c++
 Ort::RunOptions run_options;
 run_options.AddConfigEntry("disable_synchronize_execution_providers", "1");
 session->Run(run_options, io_binding);
