@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index b09da41a8..fca2bdf69 100644
+index 04674124c..12e8b8b00 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -19,7 +19,7 @@ endif()
@@ -48,7 +48,18 @@ index b09da41a8..fca2bdf69 100644
  
  ## tidy
  include(EnableCompilerWarnings)
-@@ -489,11 +466,3 @@ rocm_install(FILES
+@@ -376,7 +353,9 @@ if(BUILD_DEV)
+     add_compile_options(-Werror -Weverything)
+ endif()
+ #add flags to reduce the size of binaries
+-add_compile_options(-Oz -flto=thin)
++# -flto requires ORT to use a linker that support LTO and -flto flag shoud be passed to linker together.
++# add_compile_options(-Oz -flto=thin)
++add_compile_options(-Oz)
+ message("CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
+ 
+ add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -C ${CMAKE_CFG_INTDIR})
+@@ -482,11 +461,3 @@ rocm_install(FILES
  
  set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
  set(CPACK_RPM_PACKAGE_LICENSE "MIT")
@@ -61,7 +72,7 @@ index b09da41a8..fca2bdf69 100644
 -    HEADER_ONLY
 -)
 diff --git a/library/src/tensor_operation_instance/gpu/CMakeLists.txt b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
-index a0478c9f0..1e7782cd4 100644
+index 9cb5d0e9a..141a46f3d 100644
 --- a/library/src/tensor_operation_instance/gpu/CMakeLists.txt
 +++ b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
 @@ -44,8 +44,14 @@ function(add_instance_library INSTANCE_NAME)
