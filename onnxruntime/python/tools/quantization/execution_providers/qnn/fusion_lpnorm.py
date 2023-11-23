@@ -12,8 +12,9 @@ from .fusion import Fusion
 
 
 class FusionLpNormalization(Fusion):
-    def __init__(self, model: ONNXModel):
+    def __init__(self, model: ONNXModel, epsilon: float = 1e-12):
         super().__init__(model, "LpNormalization", "ReduceL2")
+        self.epsilon = epsilon
 
     def fuse(
         self,
@@ -61,7 +62,7 @@ class FusionLpNormalization(Fusion):
             return
 
         axes = self.model.get_node_attribute(reduce_node, "axes")
-        if not axes:
+        if not axes and len(reduce_node.input) > 1:
             axes = self.model.get_constant_value(reduce_node.input[1])
 
         if not axes or len(axes) != 1:
@@ -81,10 +82,7 @@ class FusionLpNormalization(Fusion):
         if clip_max is None and len(clip_node.input) > 2:
             clip_max = self.model.get_constant_value(clip_node.input[2])
 
-        qnn_default_epsilon = 1e-12
-        if not (
-            clip_max is None and clip_min is not None and clip_min > 0 and abs(clip_min - qnn_default_epsilon) < 1e-13
-        ):
+        if not (clip_max is None and clip_min is not None and clip_min > 0 and abs(clip_min - self.epsilon) < 1e-13):
             return
 
         if clip_node.output[0] not in input_name_to_nodes:
