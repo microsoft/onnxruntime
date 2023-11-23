@@ -12,6 +12,7 @@ from ...onnx_model import ONNXModel
 from ...quant_utils import QuantType
 from ...quantize import StaticQuantConfig
 from .fusion_gelu import FusionGelu
+from .fusion_reducel2 import FusionReduceL2
 
 Q16_TYPES = {QuantType.QInt16, QuantType.QUInt16}
 Q8_TYPES = {QuantType.QInt8, QuantType.QUInt8}
@@ -28,7 +29,10 @@ def qnn_preprocess_model(model_input: Path, model_output: Path) -> bool:
     if fusion_gelu.apply():
         modified = True
 
-    # TODO: Fuse ReduceL2 sequence into a single LpNormalization node with p == 2.
+    # Fuse ReduceL2 sequence into a single LpNormalization node with p == 2.
+    fusion_reducel2 = FusionReduceL2(onnx_model)
+    if fusion_reducel2.apply():
+        modified = True
 
     if modified:
         onnx_model.topological_sort()

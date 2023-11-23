@@ -148,6 +148,55 @@ class ONNXModel:
                 return tensor
         return None
 
+    @staticmethod
+    def get_node_attribute(node: onnx.NodeProto, attribute_name: str):
+        for attr in node.attribute:
+            if attr.name == attribute_name:
+                value = onnx_helper.get_attribute_value(attr)
+                return value
+        return None
+
+    def find_graph_input(self, input_name):
+        for input in self.model.graph.input:
+            if input.name == input_name:
+                return input
+        return None
+
+    def find_graph_output(self, output_name):
+        for output in self.model.graph.output:
+            if output.name == output_name:
+                return output
+        return None
+
+    def get_tensor_type(self, tensor_name: str):
+        tensor_type_map = {obj.name: obj.type for obj in self.model.graph.value_info}
+
+        if tensor_name in tensor_type_map:
+            return tensor_type_map[tensor_name].tensor_type
+
+        g_input = self.find_graph_input(tensor_name)
+        if g_input:
+            return g_input.type.tensor_type
+        
+        g_output = self.find_graph_output(tensor_name)
+        if g_output:
+            return g_output.type.tensor_type
+
+        return None
+
+    @staticmethod
+    def tensor_shape_to_list(tensor_type):
+        """Convert tensor shape to list"""
+        shape_list = []
+        for d in tensor_type.shape.dim:
+            if d.HasField("dim_value"):
+                shape_list.append(d.dim_value)  # known dimension
+            elif d.HasField("dim_param"):
+                shape_list.append(d.dim_param)  # unknown dimension with symbolic name
+            else:
+                shape_list.append("?")  # shall not happen
+        return shape_list
+
     def get_constant_value(self, output_name):
         for node in self.model.graph.node:
             if node.op_type == "Constant":
