@@ -54,6 +54,11 @@ The onnxruntime code will look for the provider shared libraries in the same loc
 ### Build Instructions
 {: .no_toc }
 
+With an additional CMake argument the CUDA EP can be compiled with additional NHWC ops. 
+This option is not enabled by default due to the small amount of supported NHWC operators. 
+Over time more operators will be added but for now append `--cmake_extra_defines onnxruntime_USE_CUDA_NHWC_OPS=ON` to below build scripts to compile with NHWC operators.
+Another very helpful CMake build option is to build with NVTX support (`onnxruntime_ENABLE_NVTX_PROFILE=ON`) that will enable much easier profiling using [Nsight Systems](https://developer.nvidia.com/nsight-systems) and correlates CUDA kernels with their actual ONNX operator. 
+
 #### Windows
 
 ```
