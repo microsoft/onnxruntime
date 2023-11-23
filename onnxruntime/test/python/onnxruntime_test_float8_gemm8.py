@@ -33,6 +33,9 @@ class TestFloat8Gemm8(unittest.TestCase):
         beta=0.0,
         transA=0,
         transB=0,
+        scaleA=True,
+        scaleB=True,
+        scaleY=True,
         domain="",
         dtype=TensorProto.FLOAT,
         activation="NONE",
@@ -57,10 +60,14 @@ class TestFloat8Gemm8(unittest.TestCase):
             inputs.append(make_tensor_value_info("C", TensorProto.FLOAT, [None, None]))
             node_inputs = ["Af", "Bf", "Cf"]
             if use_f8:
-                node_inputs.extends(["one"] * 3)
+                node_inputs.append("one" if scaleA else "")
+                node_inputs.append("one" if scaleB else "")
+                node_inputs.append("one" if scaleY else "")
         elif use_f8:
             node_inputs.append("")
-            node_inputs.extend(["one"] * 3)
+            node_inputs.append("one" if scaleA else "")
+            node_inputs.append("one" if scaleB else "")
+            node_inputs.append("one" if scaleY else "")
 
         if use_f8:
             assert domain == "com.microsoft"
@@ -245,7 +252,7 @@ class TestFloat8Gemm8(unittest.TestCase):
 
     @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running without CUDA.")
     def test_model_gemm_float_bias(self):
-        self.common_test_model_gemm( transA=1, beta=1.0, rtol=1e-3)
+        self.common_test_model_gemm(transA=1, beta=1.0, rtol=1e-3)
 
     @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running without CUDA.")
     def test_model_gemm_float16(self):
@@ -327,6 +334,29 @@ class TestFloat8Gemm8(unittest.TestCase):
         self.assertEqual(expected.shape, got[0].shape)
         self.assertEqual(expected.dtype, got[0].dtype)
         assert_allclose(expected, got[0])
+
+    @parameterized.parameterized.expand(
+        [
+            ("FLOAT8E4M3FN", "FLOAT16", 0, 0),
+            ("FLOAT16", "FLOAT8E4M3FN", 0, 0),
+            ("FLOAT16", "FLOAT8E4M3FN", 0, 1),
+        ]
+    )
+    @unittest.skipIf("ROCMExecutionProvider" not in available_providers, reason="Not running without ROCm.")
+    @unittest.skipIf(not hasattr(TensorProto, "FLOAT8E4M3FN"), reason="needs onnx>=1.14.0")
+    def test_model_gemm_float8_e4m3(self, a_float_name, b_float_name, transA, transB):
+        self.common_test_model_gemm(
+            a_float_name=a_float_name,
+            b_float_name=b_float_name,
+            c_float_name="FLOAT8E4M3FN",
+            rtol=0.5,
+            dtype=TensorProto.FLOAT16,
+            transA=0,
+            transB=transB,
+            scaleY=False,
+            alpha=10.0,
+            beta=0.0,
+        )
 
 
 if __name__ == "__main__":
