@@ -118,7 +118,7 @@ stages:
           - bash: echo $(ReleaseVersionSuffix)
             name: Debug_Release_Version_Suffix
   # this is needed for certain artifacts to be published
-  - stage: Linux_C_API_Packaging_CPU
+  - stage: Linux_C_API_Packaging_CPU_x64
     dependsOn: [ ]
     jobs:
     - template: templates/c-api-linux-cpu.yml
