@@ -22,8 +22,7 @@ namespace onnxruntime {
 constexpr const char* VITISAI = "VITISAI";
 
 static vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>> compile_onnx_model(
-    const onnxruntime::GraphViewer& graph_viewer,
-    const logging::Logger& logger, const ProviderOptions& options) {
+    const onnxruntime::GraphViewer& graph_viewer, const logging::Logger& logger, const ProviderOptions& options) {
 #ifndef _WIN32
   auto model_path = graph_viewer.ModelPath().ToPathString();
 #else
@@ -36,8 +35,8 @@ static vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvid
 
 struct MyCustomOpKernel : OpKernel {
   MyCustomOpKernel(const OpKernelInfo& info, const OrtCustomOp& op) : OpKernel(info), op_(op) {
-    op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version),
-                                  reinterpret_cast<const OrtKernelInfo*>(&info));
+    op_kernel_ =
+        op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version), reinterpret_cast<const OrtKernelInfo*>(&info));
   }
 
   ~MyCustomOpKernel() override { op_.KernelDestroy(op_kernel_); }
@@ -54,8 +53,7 @@ struct MyCustomOpKernel : OpKernel {
   void* op_kernel_;
 };
 
-VitisAIExecutionProvider::VitisAIExecutionProvider(
-    const ProviderOptions& info)
+VitisAIExecutionProvider::VitisAIExecutionProvider(const ProviderOptions& info)
     : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider}, info_(info) {
   custom_op_domains_ = initialize_vitisai_ep();
   registry_ = std::make_shared<KernelRegistry>();
@@ -76,7 +74,8 @@ void VitisAIExecutionProvider::CreateKernelRegistry() {
         }
       }
       def_builder.Provider(onnxruntime::kVitisAIExecutionProvider);
-      KernelCreateFn kernel_create_fn = [op](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+      KernelCreateFn kernel_create_fn = [op](FuncManager&, const OpKernelInfo& info,
+                                             std::unique_ptr<OpKernel>& out) -> Status {
         out = std::make_unique<MyCustomOpKernel>(info, *op);
         return Status::OK();
       };
@@ -88,9 +87,8 @@ void VitisAIExecutionProvider::CreateKernelRegistry() {
 
 std::shared_ptr<KernelRegistry> VitisAIExecutionProvider::GetKernelRegistry() const { return registry_; }
 
-std::vector<std::unique_ptr<ComputeCapability>>
-VitisAIExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                        const IKernelLookup& /*kernel_lookup*/) const {
+std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCapability(
+    const onnxruntime::GraphViewer& graph, const IKernelLookup& /*kernel_lookup*/) const {
   if (graph.IsSubgraph()) {
     // VITIS AI EP not support sungraph. Assigned to CPU.
     return {};
@@ -99,8 +97,7 @@ VitisAIExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     // Only compiling a model once is currently supported
     return {};
   }
-  execution_providers_ =
-      std::make_unique<my_ep_t>(compile_onnx_model(graph, *GetLogger(), info_));
+  execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(graph, *GetLogger(), info_));
   auto result = vaip::GetComputeCapabilityOps(graph, execution_providers_.get(), vitisai_optypes_);
   size_t index = 0u;
   for (auto& ep : **execution_providers_) {
@@ -110,16 +107,14 @@ VitisAIExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   return result;
 }
 
-common::Status VitisAIExecutionProvider::Compile(
-    const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-    std::vector<NodeComputeInfo>& node_compute_funcs) {
+common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                                 std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto& fused_node_graph : fused_nodes_and_graphs) {
     NodeComputeInfo compute_info;
     const onnx::AttributeProto* attr = graph_utils::GetNodeAttribute(fused_node_graph.fused_node, "index");
     assert(attr != nullptr);
     size_t index = (size_t)attr->i();
-    compute_info.create_state_func = [this, index](ComputeContext* context,
-                                                   FunctionState* state) {
+    compute_info.create_state_func = [this, index](ComputeContext* context, FunctionState* state) {
       auto* p = (**this->execution_providers_)[index]->compile().release();
       *state = p;
       return 0;
@@ -127,15 +122,11 @@ common::Status VitisAIExecutionProvider::Compile(
 
     compute_info.release_state_func = [](FunctionState state) {
       if (state) {
-        delete reinterpret_cast<vaip_core::CustomOp*>(
-            state);
+        delete reinterpret_cast<vaip_core::CustomOp*>(state);
       }
     };
-    compute_info.compute_func = [](FunctionState state, const OrtApi* api,
-                                   OrtKernelContext* context) {
-      reinterpret_cast<vaip_core::CustomOp*>(
-          state)
-          ->Compute(api, context);
+    compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
+      reinterpret_cast<vaip_core::CustomOp*>(state)->Compute(api, context);
       return Status::OK();
     };
     node_compute_funcs.push_back(compute_info);
