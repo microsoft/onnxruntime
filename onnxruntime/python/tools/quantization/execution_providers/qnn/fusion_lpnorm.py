@@ -11,7 +11,7 @@ from ...onnx_model import ONNXModel
 from .fusion import Fusion
 
 
-class FusionReduceL2(Fusion):
+class FusionLpNormalization(Fusion):
     def __init__(self, model: ONNXModel):
         super().__init__(model, "LpNormalization", "ReduceL2")
 

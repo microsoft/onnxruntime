@@ -12,7 +12,7 @@ from ...onnx_model import ONNXModel
 from ...quant_utils import QuantType
 from ...quantize import StaticQuantConfig
 from .fusion_gelu import FusionGelu
-from .fusion_reducel2 import FusionReduceL2
+from .fusion_lpnorm import FusionLpNormalization
 
 Q16_TYPES = {QuantType.QInt16, QuantType.QUInt16}
 Q8_TYPES = {QuantType.QInt8, QuantType.QUInt8}
@@ -30,8 +30,8 @@ def qnn_preprocess_model(model_input: Path, model_output: Path) -> bool:
         modified = True
 
     # Fuse ReduceL2 sequence into a single LpNormalization node with p == 2.
-    fusion_reducel2 = FusionReduceL2(onnx_model)
-    if fusion_reducel2.apply():
+    fusion_lpnorm = FusionLpNormalization(onnx_model)
+    if fusion_lpnorm.apply():
         modified = True
 
     if modified:
