@@ -16,13 +16,25 @@ static const std::string MAIN_CONTEXT = "main_context";
 static const std::string EMBED_MODE = "embed_mode";
 static const std::string EP_CACHE_CONTEXT = "ep_cache_context";
 static const std::string EP_SDK_VER = "ep_sdk_version";
-static const std::string COMPUTE_CAPABILITY = "compute_capability";
+static const std::string COMPUTE_CAPABILITY = "hardware_arch";
 static const std::string PARTITION_NAME = "partition_name";
 static const std::string SOURCE = "source";
+static const std::string EPCONTEXT_OP_DOMAIN = "com.microsoft";
 
 bool GraphHasCtxNode(const GraphViewer& graph_viewer);
 const onnxruntime::Path& GetModelPath(const GraphViewer& graph_viewer);
 std::filesystem::path LocateEngineRelativeToPath(std::string engine_cache_path, const onnxruntime::Path& path);
+ONNX_NAMESPACE::ModelProto* CreateCtxNodeModel(const GraphViewer& graph_viewer,
+                                               const std::string engine_cache_path,
+                                               char* engine_data,
+                                               size_t size,
+                                               const int64_t embed_mode,
+                                               const logging::Logger* logger);
+void DumpCtxNodeModel(ONNX_NAMESPACE::ModelProto* model_proto,
+                      const std::string engine_cache_path);
+void UpdateCtxNodeModelEngineContext(ONNX_NAMESPACE::ModelProto* model_proto,
+                                     char* engine_data,
+                                     size_t size);
 
 class TensorRTCacheModelHandler {
  public:
@@ -35,8 +47,6 @@ class TensorRTCacheModelHandler {
   bool ValidateEPCtxNode(const GraphViewer& graph_viewer);
 
   Status GetEpContextFromGraph(const GraphViewer& graph_viewer);
-
-  std::string& GetComputeCapability();
 
  private:
   std::unique_ptr<nvinfer1::ICudaEngine>* trt_engine_;

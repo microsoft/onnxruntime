@@ -2977,9 +2977,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromGraph(const GraphViewer& 
   cudaDeviceProp prop;
   CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
   std::string compute_capability = GetComputeCapacity(prop);
+  const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
 
   if (!has_dynamic_shape) {
-    const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
     const std::string engine_cache_path = cache_path + "_sm" + compute_capability + ".engine";
     const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
     const std::string profile_cache_path = cache_path + "_sm" + compute_capability + ".profile";
@@ -3116,6 +3116,16 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromGraph(const GraphViewer& 
             LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized timing cache " + timing_cache_path;
           }
         }
+        // dump EP context node model
+        if (dump_ep_context_model_) {
+          std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto{CreateCtxNodeModel(graph_body_viewer,
+                                                                                     engine_cache_path,
+                                                                                     reinterpret_cast<char*>(serialized_engine->data()),
+                                                                                     serialized_engine->size(),
+                                                                                     ep_context_embed_mode_,
+                                                                                     GetLogger())};
+          DumpCtxNodeModel(model_proto.get(), cache_path + "_sm" + compute_capability);
+        }
       }
     }
 
@@ -3169,6 +3179,10 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromGraph(const GraphViewer& 
   output_info_[fused_node.Name()].push_back(output_types);
   input_shape_ranges_[fused_node.Name()] = input_implicit_shape_ranges;
   profiles_.emplace(fused_node.Name(), std::move(trt_profiles));
+
+  if (dump_ep_context_model_ && has_dynamic_shape) {
+    model_proto_.reset(CreateCtxNodeModel(graph_body_viewer, cache_path + "_sm" + compute_capability, nullptr, 0, ep_context_embed_mode_, GetLogger()));
+  }
 
   // Create function state
   // TODO: remove default capture
@@ -3479,6 +3493,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromGraph(const GraphViewer& 
         if (detailed_build_log_) {
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized timing cache " + timing_cache_path;
         }
+      }
+      
+      if (dump_ep_context_model_ && ep_context_embed_mode_) {
+        UpdateCtxNodeModelEngineContext(model_proto_.get(), reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
+        DumpCtxNodeModel(model_proto_.get(), cache_path + "_sm" + compute_capability);
       }
       context_update = true;
     }

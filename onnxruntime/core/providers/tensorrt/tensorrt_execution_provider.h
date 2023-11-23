@@ -314,6 +314,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   // and should be kept for the lifetime of TRT EP object.
   OrtAllocator* alloc_ = nullptr;
 
+  // For create/dump EP context node model
+  bool dump_ep_context_model_ = true;
+  int ep_context_embed_mode_ = 1;
+  std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_ = ONNX_NAMESPACE::ModelProto::Create();
+
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
   mutable std::unordered_map<std::string, std::unique_ptr<SubGraphContext>> subgraph_context_map_;
 

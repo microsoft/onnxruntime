@@ -3231,8 +3231,8 @@ void RegisterContribSchemas() {
           AttributeProto::STRING,
           OPTIONAL_VALUE)
       .Attr(
-          "compute_capability",
-          "(Optional) Compute capability of the GPU.",
+          "hardware_arch",
+          "(Optional) Hardware architecture of the GPU.",
           AttributeProto::STRING,
           OPTIONAL_VALUE)
       .Attr(
