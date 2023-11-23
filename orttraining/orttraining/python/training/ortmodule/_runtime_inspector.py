@@ -597,7 +597,7 @@ class MemoryObserver:
         if self._rank != 0:
             return
 
-        if cur_phase < Phase.PRE_FORWARD or (cur_phase <= self._last_phase):
+        if cur_phase < Phase.PRE_FORWARD or (cur_phase > Phase.POST_BACKWARD):
             raise RuntimeError(f"Invalid phase detected: {cur_phase}, last_phase: {self._last_phase}")
 
         if (cur_phase - self._pre_phase) != 1:
