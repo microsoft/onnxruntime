@@ -1,5 +1,8 @@
 def include_macos_target
-  if '@C_POD_NAME@' != 'onnxruntime-mobile-c'
+  if '@C_POD_NAME@' == 'onnxruntime-c'
+    return true
+  end
+  if '@C_POD_NAME@' == 'onnxruntime-training-c'
     return true
   end
   return false
