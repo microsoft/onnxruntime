@@ -115,14 +115,12 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
                                        sizeof(int64_t),
                                        cudaMemcpyHostToDevice,
                                        Stream(context)));
-  cudaDeviceSynchronize();
   NCCL_RETURN_IF_ERROR(ncclAllGather(reinterpret_cast<const char*>(experts_start_index_d.get()),
                                      reinterpret_cast<char*>(rank_to_experts_start_index_d.get()),
                                      1,
                                      ncclInt64,
                                      comm,
                                      Stream(context)));
-  cudaDeviceSynchronize();
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(rank_to_experts_start_index.data(),
                                        rank_to_experts_start_index_d.get(),
                                        nccl_->Size() * sizeof(int64_t),
@@ -131,7 +129,6 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
 
 
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(Stream(context)));
-  cudaDeviceSynchronize();
   // print rank_to_experts_start_index
   std::cout << "rank_to_experts_start_index: ";
   for (int i = 0; i < rank_to_experts_start_index.size(); ++i) {
@@ -143,53 +140,20 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   ncclDataType_t dtype = GetNcclDataType(input->DataType());
   //NCCL_RETURN_IF_ERROR(ncclGroupStart());
   // flacky results with ncclBroadcast + ncclGroupStart/End
-  NCCL_RETURN_IF_ERROR(ncclBroadcast(reinterpret_cast<const char*>(fc2_output.get()),
-                                     reinterpret_cast<char*>(fc2_output_bc.get()),
-                                     5 * base_offset,
-                                     dtype,
-                                     0,
-                                     comm,
-                                     Stream(context)));
-  NCCL_RETURN_IF_ERROR(ncclBroadcast(reinterpret_cast<const char*>(fc2_output.get()) + 5 * base_offset,
-                                     reinterpret_cast<char*>(fc2_output_bc.get()) + 5 * base_offset,
-                                     3 * base_offset,
-                                     dtype,
-                                     1,
-                                     comm,
-                                     Stream(context)));
-  //   if (nccl_->Rank() == 0) {
-  //     NCCL_RETURN_IF_ERROR(ncclGroupStart());
-  //     NCCL_RETURN_IF_ERROR(ncclSend(reinterpret_cast<const char*>(fc2_output.get()),
-  //                                   5 * base_offset,
-  //                                   dtype,
-  //                                   1,
-  //                                   comm,
-  //                                   Stream(context)));
-  //     NCCL_RETURN_IF_ERROR(ncclRecv(reinterpret_cast<char*>(fc2_output.get()) + 5 * base_offset,
-  //                                   3 * base_offset,
-  //                                   dtype,
-  //                                   1,
-  //                                   comm,
-  //                                   Stream(context)));
-  //     NCCL_RETURN_IF_ERROR(ncclGroupEnd());
-  //   }
-  //   if (nccl_->Rank() == 1) {
-  //     NCCL_RETURN_IF_ERROR(ncclGroupStart());
-  //     NCCL_RETURN_IF_ERROR(ncclSend(reinterpret_cast<const char*>(fc2_output.get()) + 5 * base_offset,
-  //                                   3 * base_offset,
-  //                                   dtype,
-  //                                   0,
-  //                                   comm,
-  //                                   Stream(context)));
-  //     NCCL_RETURN_IF_ERROR(ncclRecv(reinterpret_cast<char*>(fc2_output.get()),
-  //                                   5 * base_offset,
-  //                                   dtype,
-  //                                   0,
-  //                                   comm,
-  //                                   Stream(context)));
-  //     NCCL_RETURN_IF_ERROR(ncclGroupEnd());
-  //   }
-
+  for (int r = 0; r < nccl_->Size(); ++r) {
+    int64_t experts_start_index = rank_to_experts_start_index[r];
+    int total_past_rows = 0;
+    int total_covered_rows = 0;
+    moe_runner.get_total_rows_info(experts_start_index, moe_params.local_num_experts, total_past_rows, total_covered_rows);
+    std::cout << "rank: " << r << ", experts_start_index: " << experts_start_index << ", total_past_rows: " << total_past_rows << ", total_covered_rows: " << total_covered_rows << std::endl;
+    NCCL_RETURN_IF_ERROR(ncclBroadcast(reinterpret_cast<const char*>(fc2_output.get()) + total_past_rows * base_offset,
+                                       reinterpret_cast<char*>(fc2_output_bc.get()) + total_past_rows * base_offset,
+                                       total_covered_rows * base_offset,
+                                       dtype,
+                                       r,
+                                       comm,
+                                       Stream(context)));
+  }
   //NCCL_RETURN_IF_ERROR(ncclGroupEnd());
 
   ort_fastertransformer::finalize_moe_routing_kernelLauncher(

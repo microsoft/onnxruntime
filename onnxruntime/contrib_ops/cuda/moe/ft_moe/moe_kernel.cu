@@ -618,7 +618,6 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
   configure_ws_ptrs(workspace_ptr, num_rows, hidden_size, inter_size, num_experts, k);
   topk_gating_softmax_kernelLauncher<T>(gating_output, finished, expert_scales, softmax_out_, expert_for_source_row,
                                         source_rows_, num_rows, num_experts, k, stream);
-  print_cuda_buffer("expert_scales", expert_scales, num_experts);
 
   const int sorter_ws_size_bytes = static_cast<int>(pad_to_multiple_of_16(sorter_.getWorkspaceSize(k * num_rows)));
   sorter_.run((void*)fc1_result_, sorter_ws_size_bytes, expert_for_source_row, permuted_experts_, source_rows_,
