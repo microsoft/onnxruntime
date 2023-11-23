@@ -62,9 +62,7 @@ class FusionReduceL2(Fusion):
 
         axes = self.model.get_node_attribute(reduce_node, "axes")
         if not axes:
-            axes_idx, axes = self.model.get_constant_input(reduce_node)
-            if axes_idx != 1:
-                return
+            axes = self.model.get_constant_value(reduce_node.input[1])
 
         if not axes or len(axes) != 1:
             return
@@ -76,16 +74,12 @@ class FusionReduceL2(Fusion):
         # Clip node must have a min attribute approximately equal to 1e-12
         clip_node = children[0]
         clip_min = self.model.get_node_attribute(clip_node, "min")
-        if clip_min is None:
-            clip_min_idx, clip_min = self.model.get_constant_input(clip_node)
-            if clip_min_idx != 1:
-                return
+        if clip_min is None and len(clip_node.input) > 1:
+            clip_min = self.model.get_constant_value(clip_node.input[1])
 
         clip_max = self.model.get_node_attribute(clip_node, "max")  # TODO: clip_max could be FLOAT_MAX
-        if clip_max is None:
-            clip_max_idx, clip_max = self.model.get_constant_input(clip_node)
-            if clip_max_idx != 2:
-                clip_max = None
+        if clip_max is None and len(clip_node.input) > 2:
+            clip_max = self.model.get_constant_value(clip_node.input[2])
 
         qnn_default_epsilon = 1e-12
         if not (
