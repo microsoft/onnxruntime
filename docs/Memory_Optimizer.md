@@ -22,11 +22,16 @@ Not all models and recipes need this optimizer technique. Imagine if your traini
 
 Make sure ONNX Runtime training wheel is installed and correctly configured.
 Integrate models using `ORTModule`.
-	> ort_model = ORTModule(pt_model)
+```diff
+	model = build_model()
+
++	from onnxruntime.training.ortmodule import ORTModule
++	model = ORTModule(model)
+```
 
 There are two modes to enable the memory optimizations:
-- Aggressively Recompute All, enabled by `export ORTMODULE_MEMORY_OPT_LEVEL=1`, will recompute all detected subgraphs. The advantage of using this mode is, it is easy to enable, while be noted this recompute plan may NOT be the best one.
-- User Specified Subgraph Recompute, enabled by `export ORTMODULE_MEMORY_OPT_LEVEL=0` and `export ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,...`. This is an advanced usage, allow users to find most suitable graphs to recompute, at the cost of overhead to look for the best plans.
+- Aggressively Recompute All, enabled by `export ORTMODULE_MEMORY_OPT_LEVEL=1`. This will recompute all detected subgraphs. It is easy to enable, but be noted this recompute plan may NOT be the best one.
+- User Specified Subgraph Recompute, enabled by `export ORTMODULE_MEMORY_OPT_LEVEL=0` and `export ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,...`. This is an advanced usage, allows users to find the most suitable graphs to recompute, at the cost of overhead to look for the best plans.
 
 ### Mode 1 - Simple Usage (Aggressively Recompute All)
 
@@ -69,10 +74,10 @@ There are two modes to enable the memory optimizations:
 	```bash
 	# Use comma as a separator for enabling more than one subgraphs.
 	export ORTMODULE_MEMORY_OPT_CONFIG="BiasGelu+:1:1"
-	# 1 `BiasGelu+` related subgraphs are allowed to recompute.
-	# `BiasGelu+` is the subgraph string representative;
-	# `1` in the middle indicates 'Recompute' is enabled (0, on the contrary indicates it's disabled)
-	# The last `1` means the initial 1 subgraph occurrences will be recomputed, all others are left as it is, filling `-1` will make all occurrences be recomputed.
+	# Explanation:
+	#  > BiasGelu+ is the subgraph string representative;
+	#  > 1 in the middle indicates 'Recompute' is enabled (0, on the contrary indicates it's disabled)
+	#  > The last 1 means the initial 1 subgraph occurrences will be recomputed, all others are left as it is, filling `-1` will make all occurrences be recomputed.
 
 	```
 5. Then run the training again, and you will see logs like this:
@@ -96,11 +101,13 @@ The basic optimization unit is represented with a unique `cluster id`, for examp
 Following `cluster id` is the `optimization strategy`: 0 - none, 1 - recompute, 2 - recompute with compromised memory saving.
 Following `optimization strategy` is the `request count` to apply the given optimization. Using `-1` to apply all. This would give user a bit more flexibility to avoid unnecessary memory saving.
 
-## Compromised Recompute
+### Compromised Recompute
 
 If you check the above logs, there is a config `Cast+:2:-1`, `2` indicates it's a recomputation than can save part of the stashed activation size, not all. Recompute the subgraphs under it usually will save part of the activation (for example half of them), not all of them. Follow the same way to enable it.
 
-## Memory Optimization Debug Infos
+## Dev Notes
+
+### Memory Optimization Debug Infos
 
 Using following log level
 > ort_model = ORTModule(pt_model, DebugOptions(log_level=LogLevel.DEVINFO))
@@ -155,4 +162,4 @@ MemoryInsight Summary - User config: not provided
 
 ## Notes
 
-The feature is in experimental stage, we will tune and refine it according to real use cases.
+The feature is in the experimental stage, we will tune and refine it according to real use cases.
