@@ -161,6 +161,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Tanh", QNN_OP_TANH},
         {"Transpose", QNN_OP_TRANSPOSE},
         {"GridSample", QNN_OP_GRID_SAMPLE},
+        {"LpNormalization", QNN_OP_L2_NORM},
 
         {"DequantizeLinear", QNN_OP_DEQUANTIZE},
         {"QuantizeLinear", QNN_OP_QUANTIZE},
