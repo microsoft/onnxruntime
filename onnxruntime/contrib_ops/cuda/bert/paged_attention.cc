@@ -609,7 +609,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     bool use_v1 = max_num_partitions == 1 || (query_shape[0] * query_shape[1]) > PARTITION_SIZE ||
     (kv_quant_param != nullptr && kv_quant_param->Shape().Size() > 0);
     int64_t generation_qeury_shape[3] = {num_valid_tokens - num_prompt_tokens, num_heads_, head_size_};
-    if (use_v1){
+    if (true||use_v1){
       paged_attention_v1(Stream(context),
                          output->MutableData<MLFloat16>() + num_prompt_tokens * num_heads_ * head_size_,
                          query_data + num_prompt_tokens * num_heads_ * head_size_,
