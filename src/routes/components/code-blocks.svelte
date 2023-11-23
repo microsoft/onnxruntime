@@ -68,7 +68,7 @@
 				>
 			</div>
 		</div>
-		<div class="hidden lg:block col-span-2 mx-auto tab-container">
+		<div class="hidden lg:block col-span-2 mx-auto min-w-[675px] min-h-[400px]">
 			<div class="tabs">
 				<p
 					on:mouseenter={handleClick}
@@ -160,10 +160,3 @@
 	</div>
 	<div class="divider px-6" />
 </div>
-
-<style>
-	.tab-container {
-		min-width: 675px;
-		min-height: 400px;
-	}
-</style>
