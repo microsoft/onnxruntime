@@ -177,7 +177,7 @@ class ONNXModel:
         g_input = self.find_graph_input(tensor_name)
         if g_input:
             return g_input.type.tensor_type
-        
+
         g_output = self.find_graph_output(tensor_name)
         if g_output:
             return g_output.type.tensor_type

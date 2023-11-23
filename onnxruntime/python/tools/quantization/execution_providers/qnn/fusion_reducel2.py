@@ -88,7 +88,9 @@ class FusionReduceL2(Fusion):
                 clip_max = None
 
         qnn_default_epsilon = 1e-12
-        if not (clip_max is None and clip_min is not None and clip_min > 0 and abs(clip_min - qnn_default_epsilon) < 1e-13):
+        if not (
+            clip_max is None and clip_min is not None and clip_min > 0 and abs(clip_min - qnn_default_epsilon) < 1e-13
+        ):
             return
 
         if clip_node.output[0] not in input_name_to_nodes:
@@ -109,7 +111,7 @@ class FusionReduceL2(Fusion):
             return
 
         div_node = children[0]
-        
+
         # The first input to Div must be the root of the subgraph (i.e., reduce_node.input[0])
         # The second input to Div must be the output of the Expand.
         # As long as these two inputs go to the same Div node, then ONNX validation will ensure that
@@ -127,8 +129,7 @@ class FusionReduceL2(Fusion):
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)
-        fused_node = onnx.helper.make_node(self.fused_op_type, inputs=[subgraph_input], outputs=[subgraph_output], p=2,
-                                           axis=-1)
+        fused_node = onnx.helper.make_node(
+            self.fused_op_type, inputs=[subgraph_input], outputs=[subgraph_output], p=2, axis=-1
+        )
         self.nodes_to_add.append(fused_node)
-
-
