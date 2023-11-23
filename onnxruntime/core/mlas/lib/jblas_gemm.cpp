@@ -237,6 +237,7 @@ JblasQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, MLAS_COMPU
         case CompBf16:
         case CompFp16:
         case CompFp32:
+        case CompUndef:
             if (_cd->AVX512F() && BlkSize % tAVX512F::KTILE == 0) {
                 return JblasQ4BuSize<tLauncher_Int8_S4_F32F32<tAVX512F>>(int(BlkSize), N, K, isAsym);
             }
@@ -318,6 +319,7 @@ JblasQ4GemmPackB(
         case CompBf16:
         case CompFp16:
         case CompFp32:
+        case CompUndef:
             if (_cd->AVX512F() && BlkSize % tAVX512F::KTILE == 0) {
                 JblaNBitsGemmPackB<tLauncher_Fp32_S4_F32F32<tAVX512F>>(
                     PackedBuf, int(BlkSize), QData, Scale, Zp, int(N), int(K), isAsym, lastCall, int(ldb), ThreadPool
