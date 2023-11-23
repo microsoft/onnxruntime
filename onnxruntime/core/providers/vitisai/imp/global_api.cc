@@ -2,6 +2,10 @@
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 #include "vaip/global_api.h"
+
+#include <atomic>
+#include <fstream>
+
 #include "./vai_assert.h"
 #include "core/common/exceptions.h"
 #include "core/common/logging/logging.h"
@@ -12,8 +16,6 @@
 #include "core/session/ort_env.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
-#include <atomic>
-#include <fstream>
 #include <nlohmann/json.hpp>
 
 #include "vaip/dll_safe.h"
@@ -57,12 +59,12 @@ struct OrtVitisAIEpAPI {
     auto full_path = Env::Default().GetRuntimePath() +
                      PathString(LIBRARY_PREFIX ORT_TSTR("onnxruntime_vitisai_ep") LIBRARY_EXTENSION);
     ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, true, &handle_));
-    ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "initialize_onnxruntime_vitisai_ep",
-                                                           (void**)&initialize_onnxruntime_vitisai_ep));
+    ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(
+        handle_, "initialize_onnxruntime_vitisai_ep", reinterpret_cast<void**>(&initialize_onnxruntime_vitisai_ep)));
     auto status1 = Env::Default().GetSymbolFromLibrary(handle_, "compile_onnx_model_vitisai_ep_with_options",
-                                                       (void**)&compile_onnx_model_with_options);
-    auto status2 =
-        Env::Default().GetSymbolFromLibrary(handle_, "compile_onnx_model_vitisai_ep", (void**)&compile_onnx_model_3);
+                                                       reinterpret_cast<void**>(&compile_onnx_model_with_options));
+    auto status2 = Env::Default().GetSymbolFromLibrary(handle_, "compile_onnx_model_vitisai_ep",
+                                                       reinterpret_cast<void**>(&compile_onnx_model_3));
     if (!status1.IsOK() && !status2.IsOK()) {
       ::onnxruntime::LogRuntimeError(0, status1, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__);
       ORT_THROW(status1);
@@ -232,7 +234,7 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   };
   the_global_api.graph_nodes_unsafe = [](const Graph& graph) -> vaip_core::DllSafe<std::vector<const Node*>> {
     auto& node_refererence = graph.Nodes();
-    std::vector<const Node*> nodes((size_t)graph.NumberOfNodes(), nullptr);
+    std::vector<const Node*> nodes(static_cast<size_t>(graph.NumberOfNodes()), nullptr);
     std::transform(node_refererence.begin(), node_refererence.end(), nodes.begin(), [](const Node& n) { return &n; });
     return vaip_core::DllSafe(std::move(nodes));
   };
@@ -249,7 +251,7 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
 
   the_global_api.node_op_type = [](const Node& node) -> const std::string& { return node.OpType(); };
   the_global_api.node_op_domain = [](const Node& node) -> const std::string& { return node.Domain(); };
-  the_global_api.node_get_index = [](const Node& node) -> size_t { return (size_t)node.Index(); };
+  the_global_api.node_get_index = [](const Node& node) -> size_t { return static_cast<size_t>(node.Index()); };
   the_global_api.node_get_name = [](const Node& node) -> const std::string& { return node.Name(); };
   the_global_api.node_description = [](const Node& node) -> const std::string& { return node.Description(); };
 
