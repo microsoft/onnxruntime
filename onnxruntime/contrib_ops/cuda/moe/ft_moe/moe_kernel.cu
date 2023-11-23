@@ -692,7 +692,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::dispatch_activations(int64_t* to
   cudaMemcpyAsync(total_rows_before_expert_host_.data(), total_rows_before_expert, num_experts * sizeof(int64_t),
                   cudaMemcpyDeviceToHost, stream);
   // TODO: use cuda event
-  cudaDeviceSynchronize();
+  cudaStreamSynchronize(stream);
 
   const int threads = std::min(1024, num_experts);
   const int blocks = (num_experts + threads - 1) / threads;
