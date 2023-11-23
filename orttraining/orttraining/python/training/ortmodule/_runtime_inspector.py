@@ -528,7 +528,7 @@ class MemoryObserver:
         probe_level = runtime_options.probe_level
         memory_optimizer_config = runtime_options.memory_optimizer_config
 
-        # Of memory optimization level is aggressive, we will first collect all
+        # If memory optimization level is aggressive, we will first collect all
         # recompute subgraph by passing empty memory_optimizer_config to get_serialized_ortmodule_memory_stat.
         if runtime_options.memory_optimization_level == _MemoryOptimizationLevel.AGGRESSIVE_FULL_RECOMPUTE:
             memory_optimizer_config = ""
