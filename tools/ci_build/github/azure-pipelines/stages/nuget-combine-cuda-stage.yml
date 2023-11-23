@@ -36,12 +36,12 @@ stages:
       steps:
         - checkout: self
           submodules: true
+  # Download the all artifacts
         - task: DownloadPipelineArtifact@2
           displayName: 'Download Pipeline Artifact from Linux_C_API_Packaging_GPU_x64 Stage'
           inputs:
             artifactName: 'onnxruntime-win-x64-cuda'
             targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-
         - task: DownloadPipelineArtifact@2
           displayName: 'Download Pipeline Artifact from Linux_C_API_Packaging_GPU_TensorRT_x64 Stage'
           inputs:

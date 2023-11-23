@@ -117,7 +117,20 @@ stages:
             name: Set_Release_Version_Suffix
           - bash: echo $(ReleaseVersionSuffix)
             name: Debug_Release_Version_Suffix
-
+  # this is needed for certain artifacts to be published
+  - stage: Linux_C_API_Packaging_CPU_x64
+    dependsOn: [ ]
+    jobs:
+    - template: c-api-linux-cpu.yml
+      parameters:
+        BaseImage: 'registry.access.redhat.com/ubi8/ubi'
+        OnnxruntimeArch: 'x64'
+        OnnxruntimeCFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
+        OnnxruntimeCXXFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
+        OnnxruntimeNodejsBindingArch: 'x64'
+        PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
+        PackageJava: false
+        PackageNodeJS: false
   # Nuget Packaging
 
   - template: stages/nuget-linux-cuda-packaging-stage.yml
@@ -153,7 +166,6 @@ stages:
       AgentPool: Onnxruntime-Linux-GPU
       ArtifactSuffix: 'GPU'
       StageSuffix: 'GPU'
-      CustomOpArtifactName: onnxruntime-linux-x64-gpu
       NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
       SpecificArtifact: ${{ parameters.specificArtifact }}
       CudaVersion: ${{ parameters.CudaVersion }}
