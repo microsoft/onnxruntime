@@ -30,7 +30,7 @@ Integrate models using `ORTModule`.
 ```
 
 There are two modes to enable the memory optimizations:
-- Aggressively Recompute All, enabled by `export ORTMODULE_MEMORY_OPT_LEVEL=1`. This will recompute all detected subgraphs. It is easy to enable, but be noted this recompute plan may NOT be the best one.
+- Aggressively Recompute All, enabled by `export ORTMODULE_MEMORY_OPT_LEVEL=1`. This will recompute all detected subgraphs. It is easy to enable, but be noted this recompute plan may NOT be the best one. In this mode `ORTMODULE_MEMORY_OPT_CONFIG` env values passed by users are not respected.
 - User Specified Subgraph Recompute, enabled by `export ORTMODULE_MEMORY_OPT_LEVEL=0` and `export ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,...`. This is an advanced usage, allows users to find the most suitable graphs to recompute, at the cost of overhead to look for the best plans.
 
 ### Mode 1 - Simple Usage (Aggressively Recompute All)
