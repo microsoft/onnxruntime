@@ -1219,6 +1219,28 @@ TEST_F(QnnHTPBackendTests, VariadicOp_Concat_2Inputs_2ndAxis) {
                         13,
                         ExpectedEPNodeAssignment::All);
 }
+
+TEST_F(QnnHTPBackendTests, LpNormalization_u8_rank4) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 8);
+  RunQDQOpTest<uint8_t>("LpNormalization",
+                        {TestInputDef<float>({1, 2, 2, 2}, false, input_data)},
+                        {utils::MakeAttribute("axis", static_cast<int64_t>(-1)),  // Last axis
+                         utils::MakeAttribute("p", static_cast<int64_t>(2))},     // Order 2 to map to QNN's L2Norm operator
+                        13,
+                        ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnHTPBackendTests, LpNormalization_u16_rank4) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 8);
+  RunQDQOpTest<uint16_t>("LpNormalization",
+                         {TestInputDef<float>({1, 2, 2, 2}, false, input_data)},
+                         {utils::MakeAttribute("axis", static_cast<int64_t>(-1)),  // Last axis
+                          utils::MakeAttribute("p", static_cast<int64_t>(2))},     // Order 2 to map to QNN's L2Norm operator
+                         13,
+                         ExpectedEPNodeAssignment::All,
+                         kOnnxDomain,
+                         true);
+}
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test
