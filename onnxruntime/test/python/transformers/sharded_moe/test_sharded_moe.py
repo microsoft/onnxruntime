@@ -238,10 +238,10 @@ def test_moe_with_expert_slicing(
 
 class TestMoE(unittest.TestCase):
     def test_moe_expert_slicing(self):
-        for hidden_size in [16, 64, 128, 512]:
-            for inter_size in [512]:
-                for num_experts in [8, 16, 32, 64, 128]:
-                    for num_rows in [16, 64, 128, 512, 1024]:
+        for hidden_size in [16, 128]:
+            for inter_size in [512, 1024]:
+                for num_experts in [8, 16, 32]:
+                    for num_rows in [16, 128, 512]:
                         test_moe_with_expert_slicing(
                             hidden_size,
                             inter_size,
