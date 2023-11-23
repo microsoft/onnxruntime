@@ -23,6 +23,12 @@ stages:
     variables:
     - name: OnnxRuntimeBuildDirectory
       value: '$(Build.BinariesDirectory)'
+# SKip custom ops tests for non default GPU builds
+    - name: SKIPNONPACKAGETESTS
+      ${{ if eq( parameters.CudaVersion , '11.8' ) }}:
+        value: 'ON'
+      ${{ else }}:
+        value: 'OFF'
 
     steps:
     - template: ../../templates/flex-downloadPipelineArtifact.yml
@@ -79,6 +85,7 @@ stages:
             -e DisableMlOps='$(DisableMlOps)' \
             -e IsReleaseBuild='$(IsReleaseBuild)' \
             -e PACKAGENAME='${{ parameters.NugetPackageName }}' \
+            -e SKIPNONPACKAGETESTS='${{ variables.SKIPNONPACKAGETESTS }}' \
             onnxruntimepackagestest \
             /bin/bash -c "
               set -ex; \
