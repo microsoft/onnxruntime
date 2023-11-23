@@ -22,7 +22,7 @@ from ._logger import LogLevel, ORTModuleInitPhase, TrackTime
 from ._runtime_inspector import Phase
 from ._utils import save_tuning_results, set_tuning_results
 from .graph_optimizer_registry import GraphOptimizerRegistry
-from .options import DebugOptions, _SkipCheck
+from .options import DebugOptions, _MemoryOptimizationLevel, _SkipCheck
 
 
 class TrainingManager(GraphExecutionManager):
@@ -432,11 +432,14 @@ class TrainingManager(GraphExecutionManager):
 
         local_device_rank = self._device.index if device_type == "ort" else _utils.get_device_index(self._device)
 
-        # When log level is <= INFO, we would collect memory optimization opportunities.
-        # (TODO: consider to enable by default once memory optimization feature is stable and well improved.)
+        # When log level is <= INFO or we need an aggressive memory optimization, we would collect memory optimization opportunities.
+        # (TODO: consider enabling by default once the memory optimization feature is stable and well improved.)
         # Create a training agent without enabling memory optimization here is beneficial for memory analyzing
         # when we have an allocation plan in place, and reuse information is available.
-        if self._runtime_inspector.memory_ob.is_enabled() and self._debug_options.log_level <= LogLevel.INFO:
+        if self._runtime_inspector.memory_ob.is_enabled() and (
+            self._debug_options.log_level <= LogLevel.INFO
+            or self._runtime_options.memory_optimization_level == _MemoryOptimizationLevel.AGGRESSIVE_FULL_RECOMPUTE
+        ):
             # Create a training agent without enabling memory optimization.
             execution_agent = TrainingAgent(
                 self._onnx_models.optimized_model.SerializeToString(),
@@ -451,7 +454,7 @@ class TrainingManager(GraphExecutionManager):
             )
 
             self._runtime_inspector.memory_ob.find_memory_optimization_opportunity(
-                execution_agent, self._runtime_options.memory_optimizer_config, self._runtime_options.probe_level
+                execution_agent, self._runtime_options
             )
 
             # Release it as early as possible.

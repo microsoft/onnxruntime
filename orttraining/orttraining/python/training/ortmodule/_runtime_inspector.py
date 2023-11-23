@@ -17,6 +17,7 @@ from sympy.parsing.sympy_parser import parse_expr
 from onnxruntime.training.utils import PTable
 
 from ._execution_agent import TrainingAgent
+from .options import _MemoryOptimizationLevel, _RuntimeOptions
 
 
 class Phase(IntEnum):
@@ -515,9 +516,7 @@ class MemoryObserver:
                         dim_idx
                     ]
 
-    def find_memory_optimization_opportunity(
-        self, execution_agent: TrainingAgent, memory_optimizer_config, probe_level
-    ):
+    def find_memory_optimization_opportunity(self, execution_agent: TrainingAgent, runtime_options: _RuntimeOptions):
         """Find memory optimization opportunity.
 
         Args:
@@ -525,6 +524,15 @@ class MemoryObserver:
             memory_optimizer_config: Memory optimization config.
             probe_level: Memory probe level.
         """
+
+        probe_level = runtime_options.probe_level
+        memory_optimizer_config = runtime_options.memory_optimizer_config
+
+        # Of memory optimization level is aggressive, we will first collect all
+        # recompute subgraph by passing empty memory_optimizer_config to get_serialized_ortmodule_memory_stat.
+        if runtime_options.memory_optimization_level == _MemoryOptimizationLevel.AGGRESSIVE_FULL_RECOMPUTE:
+            memory_optimizer_config = ""
+
         (
             self.memory_optimization_opportunity_table_str,
             memory_optimization_saving_symbolics,
@@ -556,6 +564,19 @@ class MemoryObserver:
 
         for cluster_id, values in sorted_list:
             self.cluster_id_combination_to_saving_symbolics_map[cluster_id] = values
+
+        # For aggressive memory optimization, we update the memory_optimizer_config using all.
+        if runtime_options.memory_optimization_level == _MemoryOptimizationLevel.AGGRESSIVE_FULL_RECOMPUTE:
+            recompute_configs = []
+            for cluster_id in self.cluster_id_combination_to_saving_symbolics_map:
+                config_values = cluster_id.split(":")
+                opt_type = int(config_values[1])
+                if opt_type != 1:
+                    continue
+
+                recompute_configs.append(cluster_id)
+
+            runtime_options.memory_optimizer_config = ",".join(recompute_configs)
 
     def inspect_memory(self, cur_phase: Phase):
         """Inspect memory usage and print statistics.
@@ -675,12 +696,13 @@ class MemoryObserver:
 
                 index += 1
 
+            notes = []
+            notes.append("use ORTMODULE_MEMORY_OPT_LEVEL=1 to aggressively enable all recomputable subgraphs.")
             saving_recommendation = (
-                "use comma as delimiter to enable multiple memory optimization plans at the same time:\n"
+                "or use comma as a delimiter to selectively enable multiple memory optimization plans:\n"
             )
             saving_recommendation += "  export ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
 
-            notes = []
             notes.append(saving_recommendation)
 
             saving_recommendation = "memory saving is calculated based on the 1st batch symbolic dim values:\n"

@@ -192,6 +192,21 @@ class _SkipCheck(IntFlag):
         return _SkipCheck.SKIP_CHECK_DISABLED in self
 
 
+class _MemoryOptimizationLevel(IntFlag):
+    """Enumeration to specify memory optimization level"""
+
+    USER_SPECIFIED = 0  # Fully respect user specified config
+    AGGRESSIVE_FULL_RECOMPUTE = 1  # Enable all recomputable subgraphs
+
+    @staticmethod
+    def to_string(memory_optimization_level):
+        if memory_optimization_level == _MemoryOptimizationLevel.USER_SPECIFIED:
+            return "USER_SPECIFIED"
+
+        if memory_optimization_level == _MemoryOptimizationLevel.AGGRESSIVE_FULL_RECOMPUTE:
+            return "AGGRESSIVE_FULL_RECOMPUTE"
+
+
 class _RuntimeOptions:
     """Configurable runtime options for ORTModule."""
 
@@ -257,7 +272,10 @@ class _RuntimeOptions:
         self.enable_embedding_sparse_optimizer = False  # TODO(pengwa): remove once validation on more models are done.
 
         # Configuration for memory optimization.
-        self.memory_optimizer_config = ""
+        self.memory_optimization_level = (
+            _MemoryOptimizationLevel.USER_SPECIFIED
+        )  # 0: use `memory_optimizer_config`; 1: aggressive optimization, enable all recomputable subgraphs.
+        self.memory_optimizer_config = ""  # This is an advanced config, please refer to onnxruntime docs for details.
         self.probe_level = "1"
 
         # Configuration for dev tools.
@@ -314,6 +332,7 @@ class _RuntimeOptions:
             )
 
         # Configuration for memory optimization.
+        self.memory_optimization_level = int(os.getenv("ORTMODULE_MEMORY_OPT_LEVEL", self.memory_optimization_level))
         self.memory_optimizer_config = os.getenv("ORTMODULE_MEMORY_OPT_CONFIG", self.memory_optimizer_config)
         self.probe_level = os.getenv("ORTMODULE_MEMORY_OPT_PROBE_RECOMPUTE_LEVEL", self.probe_level)
 
