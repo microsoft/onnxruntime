@@ -6,13 +6,14 @@
 #include "core/framework/data_types.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
+#include "interface/framework/tensor.h"
 #include <vector>
 #include <utility>
 
 namespace onnxruntime {
 // Put this in a separate file to avoid circular dependency between tensor.h and data_types.h
 // Data type to represent a sequence of tensors of the same type
-class TensorSeq {
+class TensorSeq : public interface::ITensorSeq {
  public:
   TensorSeq() = default;
   explicit TensorSeq(MLDataType elem_type) noexcept {
@@ -48,7 +49,7 @@ class TensorSeq {
     return elem_type_ == o.DataType()->AsPrimitiveDataType();
   }
 
-  size_t Size() const noexcept { return tensors_.size(); }
+  size_t Size() const override { return tensors_.size(); }
 
   // Suitable for for range loop
   const_iterator begin() const noexcept {
@@ -78,6 +79,17 @@ class TensorSeq {
     return tensors_[i];
   }
 
+  const interface::ITensor& GetTensor(int64_t indice) const override {
+    return Get(static_cast<size_t>(indice));
+  }
+
+  void CloneFrom(const ITensorSeq& tensor_seq) override {
+    auto source_tensor_seq = reinterpret_cast<const TensorSeq&>(tensor_seq);
+    for (const auto& tensor : source_tensor_seq.tensors_) {
+      Add(tensor);
+    }
+  }
+
   void Add(const OrtValue& tensor) {
     ORT_ENFORCE(IsSameDataType(tensor.Get<Tensor>()),
                 "TensorSeq: tensor to be added has a different data type.");
@@ -96,6 +108,12 @@ class TensorSeq {
     OrtValue value;
     Tensor::InitOrtValue(std::move(tensor), value);
     Add(std::move(value));
+  }
+
+  void InsertTensor(interface::ITensor& tensor, int64_t indice) override {
+    Tensor& source_tensor = reinterpret_cast<Tensor&>(tensor);
+    OrtValue value(&source_tensor, TensorTypeBase::Type(), [](void*) {});
+    tensors_.insert(tensors_.begin() + indice, value);
   }
 
   static void InitOrtValue(const TensorSeq& source_tensor_seq, std::shared_ptr<IAllocator> allocator, OrtValue& ort_value) {

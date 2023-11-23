@@ -13,6 +13,7 @@
 #include "core/session/custom_ops.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/TensorSeq.h"
 #include "core/graph/graph_view_api_impl.h"
 #include <memory>
 
@@ -133,6 +134,46 @@ struct KernelBuilderAdapter : public interface::IKernelBuilder {
     }
     return *this;
   }
+  IKernelBuilder& TypeConstraint(const char* name, interface::TensorSeqDataType type) override {
+    switch (type) {
+      case interface::TensorSeqDataType::float_seq:
+        builder_.TypeConstraint(name, DataTypeImpl::GetSequenceTensorType<float>()->AsSequenceTensorType());
+        break;
+      case interface::TensorSeqDataType::double_seq:
+        builder_.TypeConstraint(name, DataTypeImpl::GetSequenceTensorType<double>()->AsSequenceTensorType());
+        break;
+      case interface::TensorSeqDataType::int8_seq:
+        builder_.TypeConstraint(name, DataTypeImpl::GetSequenceTensorType<int8_t>()->AsSequenceTensorType());
+        break;
+      case interface::TensorSeqDataType::uint8_seq:
+        builder_.TypeConstraint(name, DataTypeImpl::GetSequenceTensorType<uint8_t>()->AsSequenceTensorType());
+        break;
+      case interface::TensorSeqDataType::int16_seq:
+        builder_.TypeConstraint(name, DataTypeImpl::GetSequenceTensorType<int16_t>()->AsSequenceTensorType());
+        break;
+      case interface::TensorSeqDataType::uint16_seq:
+        builder_.TypeConstraint(name, DataTypeImpl::GetSequenceTensorType<uint16_t>()->AsSequenceTensorType());
+        break;
+      case interface::TensorSeqDataType::int32_seq:
+        builder_.TypeConstraint(name, DataTypeImpl::GetSequenceTensorType<int32_t>()->AsSequenceTensorType());
+        break;
+      case interface::TensorSeqDataType::uint32_seq:
+        builder_.TypeConstraint(name, DataTypeImpl::GetSequenceTensorType<uint32_t>()->AsSequenceTensorType());
+        break;
+      case interface::TensorSeqDataType::int64_seq:
+        builder_.TypeConstraint(name, DataTypeImpl::GetSequenceTensorType<int64_t>()->AsSequenceTensorType());
+        break;
+      case interface::TensorSeqDataType::uint64_seq:
+        builder_.TypeConstraint(name, DataTypeImpl::GetSequenceTensorType<uint64_t>()->AsSequenceTensorType());
+        break;
+      case interface::TensorSeqDataType::bool_seq:
+        builder_.TypeConstraint(name, DataTypeImpl::GetSequenceTensorType<bool>()->AsSequenceTensorType());
+        break;
+      default:
+        break;
+    }
+    return *this;
+  }
   KernelDefBuilder builder_;
 };
 
@@ -143,21 +184,29 @@ struct KernelContextAdapter : public interface::IKernelContext {
   }
   const interface::ITensor& GetInputTensor(int index) const override {
     ORT_ENFORCE(INT(index) < input_count_);
-    const auto* tensor = context_.Input<onnxruntime::Tensor>(INT(index));
+    const auto* tensor = context_.Input<onnxruntime::Tensor>(index);
     ORT_ENFORCE(tensor);
     return *tensor;
   };
-  const interface::ITensorShape& GetInputShape(int index) const override {
-    ORT_ENFORCE(INT(index) < input_count_);
-    const auto* tensor = context_.Input<onnxruntime::Tensor>(INT(index));
-    ORT_ENFORCE(tensor);
-    return tensor->Shape();
-  };
+  // const interface::ITensorShape& GetInputShape(int index) const override {
+  //   ORT_ENFORCE(INT(index) < input_count_);
+  //   const auto* tensor = context_.Input<onnxruntime::Tensor>(INT(index));
+  //   ORT_ENFORCE(tensor);
+  //   return tensor->Shape();
+  // };
   interface::ITensor* AllocOutputTensor(int index, const int64_t* dims, size_t num_dims) override {
     ORT_ENFORCE(INT(index) < output_count_);
     onnxruntime::VectorInt64 shape{dims, dims + num_dims};
     return context_.Output(INT(index), shape);
   }
+
+  const interface::ITensorSeq& GetInputTensorSeq(int index) const override {
+    return *context_.Input<onnxruntime::TensorSeq>(index);
+  }
+  interface::ITensorSeq& AllocOutputTensorSeq(int index) override {
+    return *context_.Output<onnxruntime::TensorSeq>(index);
+  }
+
   OpKernelContext& context_;
   int input_count_ = 0;
   int output_count_ = 0;

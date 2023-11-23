@@ -15,8 +15,11 @@ namespace interface {
 struct IKernelContext {
   virtual ~IKernelContext() = default;
   virtual const ITensor& GetInputTensor(int index) const = 0;
-  virtual const ITensorShape& GetInputShape(int index) const = 0;
+  //virtual const ITensorShape& GetInputShape(int index) const = 0;
   virtual ITensor* AllocOutputTensor(int index, const int64_t* dims, size_t num_dims) = 0;
+
+  virtual const ITensorSeq& GetInputTensorSeq(int index) const = 0;
+  virtual ITensorSeq& AllocOutputTensorSeq(int index) = 0;
 };
 
 struct IKernelInfo {
@@ -45,6 +48,38 @@ struct IKernel {
     return std::tuple_cat(current, next);
   }
 
+  template <int ith_input, int ith_output, typename T, typename... Ts>
+  static typename std::enable_if<std::is_same<T, IReadonlyTensor<int64_t>&>::value, std::tuple<T, Ts...>>::type
+  CreateTuple(IKernelContext* context, IArgPtrs& args) {
+    const ITensor& input_tensor = context->GetInputTensor(ith_input);
+    args.push_back(std::make_unique<ReadonlyTensor<int64_t>>(input_tensor));
+    std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*args.back().get())};
+    auto next = CreateTuple<ith_input + 1, ith_output, Ts...>(context, args);
+    return std::tuple_cat(current, next);
+  }
+
+  template <int ith_input, int ith_output, typename T, typename... Ts>
+  static typename std::enable_if<std::is_same<T, IReadonlyTensorSeq<int64_t>&>::value, std::tuple<T, Ts...>>::type
+  CreateTuple(IKernelContext* context, IArgPtrs& args) {
+    const ITensorSeq& input_tensor_seq = context->GetInputTensorSeq(ith_input);
+    args.push_back(std::make_unique<ReadonlyTensorSeq<int64_t>>(input_tensor_seq));
+    std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*args.back().get())};
+    auto next = CreateTuple<ith_input + 1, ith_output, Ts...>(context, args);
+    return std::tuple_cat(current, next);
+  }
+
+  template <int ith_input, int ith_output, typename T, typename... Ts>
+  static typename std::enable_if<std::is_same<T, int64_t>::value, std::tuple<T, Ts...>>::type
+  CreateTuple(IKernelContext* context, IArgPtrs& args) {
+    const ITensor& input_tensor = context->GetInputTensor(ith_input);
+    auto input_tensor_ptr = std::make_unique<ReadonlyTensor<int64_t>>(input_tensor);
+    int64_t scalar = input_tensor_ptr->AsScalar();
+    args.push_back(std::move(input_tensor_ptr));
+    std::tuple<T> current = std::tuple<T>{scalar};
+    auto next = CreateTuple<ith_input + 1, ith_output, Ts...>(context, args);
+    return std::tuple_cat(current, next);
+  }
+
   // outputs
   template <int ith_input, int ith_output, typename T, typename... Ts>
   static typename std::enable_if<std::is_same<T, IMutableTensor<float>&>::value, std::tuple<T, Ts...>>::type
@@ -53,6 +88,28 @@ struct IKernel {
       return context->AllocOutputTensor(ith_output, dims, num_dims);
     };
     args.push_back(std::make_unique<MutableTensor<float>>(alloc_fn));
+    std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*args.back().get())};
+    auto next = CreateTuple<ith_input, ith_output + 1, Ts...>(context, args);
+    return std::tuple_cat(current, next);
+  }
+
+  template <int ith_input, int ith_output, typename T, typename... Ts>
+  static typename std::enable_if<std::is_same<T, IMutableTensor<int64_t>&>::value, std::tuple<T, Ts...>>::type
+  CreateTuple(IKernelContext* context, IArgPtrs& args) {
+    MutableTensor<int64_t>::AllocFn alloc_fn = [context](const int64_t* dims, size_t num_dims) {
+      return context->AllocOutputTensor(ith_output, dims, num_dims);
+    };
+    args.push_back(std::make_unique<MutableTensor<int64_t>>(alloc_fn));
+    std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*args.back().get())};
+    auto next = CreateTuple<ith_input, ith_output + 1, Ts...>(context, args);
+    return std::tuple_cat(current, next);
+  }
+
+  template <int ith_input, int ith_output, typename T, typename... Ts>
+  static typename std::enable_if<std::is_same<T, IMutableTensorSeq<int64_t>&>::value, std::tuple<T, Ts...>>::type
+  CreateTuple(IKernelContext* context, IArgPtrs& args) {
+    ITensorSeq& output_tensor_seq = context->AllocOutputTensorSeq(ith_output);
+    args.push_back(std::make_unique<MutableTensorSeq<int64_t>>(output_tensor_seq));
     std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*args.back().get())};
     auto next = CreateTuple<ith_input, ith_output + 1, Ts...>(context, args);
     return std::tuple_cat(current, next);
@@ -105,6 +162,7 @@ struct IKernelBuilder {
   virtual IKernelBuilder& SinceVersion(int, int) = 0;
   virtual IKernelBuilder& Alias(int, int) = 0;
   virtual IKernelBuilder& TypeConstraint(const char*, TensorDataType) = 0;
+  virtual IKernelBuilder& TypeConstraint(const char*, TensorSeqDataType) = 0;
 
   template <size_t, size_t, typename... Ts>
   typename std::enable_if<sizeof...(Ts) >= 0, IKernelBuilder&>::type

@@ -3044,5 +3044,32 @@ TEST(CustomEpTest, InTree) {
   ASSERT_EQ(output_floats[1], 1.f); // -0.6 trimmed by CustomEP Celu to 1.f, not 0.f
 }
 
+TEST(CustomEpTest, InTreeSequence) {
+  SessionOptions so;
+  so.use_per_session_threads = true;
+  so.session_logid = "CustomEpTestInTree";
+  so.graph_optimization_level = TransformerLevel::Default;
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  auto st = Environment::Create(std::move(logging_manager), env);
+  ASSERT_TRUE(st.IsOK());
+
+  InferenceSessionTestGlobalThreadPools session_object{so, *env.get()};
+
+  auto custom_ep = std::make_unique<CustomEp>(CustomEpInfo{1, std::string{"1"}});
+  auto custom_ep_adapter = std::make_shared<ExecutionProviderAdapter>(custom_ep.release());
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(custom_ep_adapter));
+  ASSERT_STATUS_OK(session_object.Load("testdata/sequence_insert.onnx"));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  const auto& graph = session_object.GetGraph();
+  auto first_node = graph.Nodes().begin();
+  auto ep_type = first_node->GetExecutionProviderType();
+  ASSERT_EQ(ep_type, "CustomEp");
+}
+
 }  // namespace test
 }  // namespace onnxruntime

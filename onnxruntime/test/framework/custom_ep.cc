@@ -19,7 +19,7 @@ namespace test {
 /////////////////////////////////////// Kernels ////////////////////////////////////////////
 
 onnxruntime::Status Identity(onnxruntime::interface::IReadonlyTensor<float>& input,
-                              onnxruntime::interface::IMutableTensor<float>& output) {
+                             onnxruntime::interface::IMutableTensor<float>& output) {
   const float* input_data = input.GetData();
   const auto& shape = input.GetShape();
   float* output_data = output.Allocate(shape);
@@ -35,15 +35,14 @@ struct Celu {
   onnxruntime::Status Compute(onnxruntime::interface::IReadonlyTensor<float>& input,
                               onnxruntime::interface::IMutableTensor<float>& output) {
     const auto& shape = input.GetShape();
-    float* output_data = output.Allocate(shape);
     size_t num_elems = shape.NumberOfElements();
 
-    onnxruntime::interface::MutableTensorRef<float> identity_output(output);
-    auto status = Identity(input, identity_output);
+    auto status = Identity(input, output);
     if (!status.IsOK()) {
       return status;
     }
 
+    float* output_data = output.Allocate(shape);
     for (size_t i = 0; i < num_elems; ++i) {
       if (output_data[i] < 0) {
         output_data[i] = 1.f;  // deliberately set to 1.f for testing
@@ -54,6 +53,15 @@ struct Celu {
   }
   float alpha = 0.f;
 };
+
+onnxruntime::Status SequenceInsert(onnxruntime::interface::IReadonlyTensorSeq<int64_t>& input_seq,
+                                   onnxruntime::interface::IReadonlyTensor<int64_t>& tensor_to_insert,
+                                   int64_t insert_at,
+                                   onnxruntime::interface::IMutableTensorSeq<int64_t>& output_seq) {
+  output_seq.CloneFrom(input_seq);
+  output_seq.InsertTensor(tensor_to_insert, insert_at);
+  return onnxruntime::Status::OK();
+}
 
 struct CustomCPUAllocator : public Allocator {
   void* Alloc(size_t size) override {
@@ -141,6 +149,9 @@ void CustomEp::RegisterKernels(interface::IKernelRegistry& kernel_registry) {
   identity_builder.TypeConstraint("V", interface::TensorDataType::float_tp).Alias(0, 0);
   interface::IKernelBuilder& celu_builder = kernel_registry.RegisterKernel<Celu>("CustomEp", "ai.onnx", "Celu", 10, 19);
   celu_builder.TypeConstraint("T", interface::TensorDataType::float_tp).Alias(0, 0);
+  interface::IKernelBuilder& seq_insert_builder = kernel_registry.RegisterKernel("CustomEp", "ai.onnx", "SequenceInsert", 1, 19, SequenceInsert);
+  seq_insert_builder.TypeConstraint("T", interface::TensorDataType::int64_tp).TypeConstraint("S", interface::TensorSeqDataType::int64_seq).TypeConstraint("I", interface::TensorDataType::int64_tp);
+  // seq_insert_builder.TypeConstraint("S", interface::TensorDataType::int64_tp).TypeConstraint("I", interface::TensorDataType::int64_tp);
 }
 
 CustomEpInfo ProviderOption2CustomEpInfo(std::unordered_map<std::string, std::string>& provider_option) {

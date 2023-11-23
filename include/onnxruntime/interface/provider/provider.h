@@ -64,7 +64,7 @@ class ExecutionProvider {
   OrtDevice& GetDevice() { return default_device_; }
 
   virtual bool CanCopy(const OrtDevice&, const OrtDevice&) { return false; }
-  //virtual void MemoryCpy(Ort::UnownedValue&, Ort::ConstValue const&) {}
+  // virtual void MemoryCpy(Ort::UnownedValue&, Ort::ConstValue const&) {}
   virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry&, std::map<OrtDevice, OrtAllocator*>&) const {}
   virtual std::vector<std::unique_ptr<SubGraphDef>> GetCapability(GraphViewRef*) { return std::vector<std::unique_ptr<SubGraphDef>>(); }
   virtual common::Status Compile(std::vector<std::unique_ptr<GraphViewRef>>&, std::vector<std::unique_ptr<NodeViewRef>>&, std::vector<NodeComputeInfo>&) { return common::Status::OK(); }

@@ -22,6 +22,21 @@ enum TensorDataType {
   uknownn_tp,
 };
 
+enum TensorSeqDataType {
+  float_seq = 0,
+  double_seq,
+  int8_seq,
+  uint8_seq,
+  int16_seq,
+  uint16_seq,
+  int32_seq,
+  uint32_seq,
+  int64_seq,
+  uint64_seq,
+  bool_seq,
+  uknownn_seq,
+};
+
 }
 
 }  // namespace onnxruntime

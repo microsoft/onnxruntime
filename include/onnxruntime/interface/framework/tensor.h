@@ -47,6 +47,7 @@ struct ReadonlyTensor : public IReadonlyTensor<T> {
   const ITensorShape& GetShape() const override { return readonly_tensor_.GetShape(); }
   DataType GetData() const override { return reinterpret_cast<DataType>(readonly_tensor_.GetRawData()); }
   TensorDataType GetDataType() const override { return readonly_tensor_.GetDataType(); }
+  T AsScalar() const { return GetData()[0]; }
   const ITensor& readonly_tensor_;
 };
 
@@ -80,22 +81,47 @@ struct MutableTensor : public IMutableTensor<T> {
   ITensor* mutable_tensor_ = {};
 };
 
-template <typename T>
-struct MutableTensorRef : public IMutableTensor<T> {
-  MutableTensorRef(IMutableTensor<T>& ref) : ref_(ref) {}
-  const ITensorShape& GetShape() const override {
-    return ref_.GetShape();
-  }
-  T* Allocate(const ITensorShape& shape) override {
-    return ref_.Allocate(shape);
-  }
-  TensorDataType GetDataType() const override {
-    return ref_.GetDataType();
-  }
-  IMutableTensor<T>& ref_;
+struct ITensorSeq : public IArg {
+  virtual size_t Size() const = 0;
+  virtual const ITensor& GetTensor(int64_t indice) const = 0;
+  virtual void InsertTensor(ITensor& /*tensor*/, int64_t /*indice = -1*/){};
+  virtual void CloneFrom(const ITensorSeq&){};
 };
 
-// struct ITensorSeq
+template <typename T>
+struct IReadonlyTensorSeq : public ITensorSeq {
+  virtual const IReadonlyTensor<T>& GetReadOnly(int64_t indice) const = 0;
+};
+
+template <typename T>
+struct ReadonlyTensorSeq : public IReadonlyTensorSeq<T> {
+  ReadonlyTensorSeq(const ITensorSeq& tensor_seq) : tensor_seq_(tensor_seq) {}
+  size_t Size() const override { return tensor_seq_.Size(); }
+  const ITensor& GetTensor(int64_t indice) const override { return tensor_seq_.GetTensor(indice); }
+  const IReadonlyTensor<T>& GetReadOnly(int64_t indice) const override {
+    return reinterpret_cast<const IReadonlyTensor<T>&>(GetTensor(indice));
+  }
+  const ITensorSeq& tensor_seq_;
+};
+
+template <typename T>
+struct IMutableTensorSeq : public ITensorSeq {
+  virtual void CloneFromReadonly(const IReadonlyTensorSeq<T>& tensor_seq) = 0;
+};
+
+template <typename T>
+struct MutableTensorSeq : public IMutableTensorSeq<T> {
+  MutableTensorSeq(ITensorSeq& tensor_seq) : tensor_seq_(tensor_seq) {}
+  void CloneFromReadonly(const IReadonlyTensorSeq<T>& tensor_seq) override {
+    tensor_seq_.CloneFrom(tensor_seq);
+  }
+  size_t Size() const override { return tensor_seq_.Size(); }
+  const ITensor& GetTensor(int64_t indice) const override { return tensor_seq_.GetTensor(indice); }
+  void InsertTensor(ITensor& tensor, int64_t indice) override {
+    tensor_seq_.InsertTensor(tensor, indice);
+  }
+  ITensorSeq& tensor_seq_;
+};
 
 }  // namespace interface
 
