@@ -162,12 +162,12 @@ class TestOpMatMul4Bits(unittest.TestCase):
             # test RTN algorithm
             from onnxruntime.quantization import RTNWeightOnlyQuantConfig
 
-            algo_config = RTNWeightOnlyQuantConfig(model_path=model_fp32_path)
+            algo_config = RTNWeightOnlyQuantConfig()
         elif algorithm == "GPTQ":
             # test GPTQ algorithm
             from onnxruntime.quantization import GPTQWeightOnlyQuantConfig
 
-            algo_config = GPTQWeightOnlyQuantConfig(model_path=model_fp32_path, calibration_data_reader=data_reader)
+            algo_config = GPTQWeightOnlyQuantConfig(calibration_data_reader=data_reader)
 
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
         quant = matmul_4bits_quantizer.MatMul4BitsQuantizer(model, block_size, is_symmetric, algo_config=algo_config)

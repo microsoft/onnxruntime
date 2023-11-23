@@ -31,7 +31,6 @@ class WeightOnlyQuantConfig:
     def __init__(
         self,
         algorithm,
-        model_path,
         accuracy_level=0,
     ):
         """This is the Base class for Weight Only Quant Configuration.
@@ -39,20 +38,16 @@ class WeightOnlyQuantConfig:
         Args:
             algorithm:
                 weight only quantize algorithm name.
-            model_path:
-                path of the model to do 4b quantization.
             accuracy_level:
                 support 0 (default fp32), 1 (optimized fp32 for intel CPU), 2 (fp16), 3 (bf16), 4 (int8). Set to 0 by default.
         """
         self.algorithm = algorithm
-        self.model_path = model_path
         self.accuracy_level = accuracy_level
 
 
 class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
     def __init__(
         self,
-        model_path,
         accuracy_level=0,
         ratios=None,
     ):
@@ -61,8 +56,6 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         RTN is the most straightforward way to quantize weight using scale maps.
 
         Args:
-            model_path:
-                path of the model to do 4b quantization.
             accuracy_level:
                 support 0 (default fp32), 1 (optimized fp32 for intel CPU), 2 (fp16), 3 (bf16), 4 (int8). Set to 0 by default.
             ratios:
@@ -72,7 +65,6 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
             ratios = {}
         super().__init__(
             algorithm="RTN",
-            model_path=model_path,
             accuracy_level=accuracy_level,
         )
         self.ratios = ratios
@@ -81,7 +73,6 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
 class GPTQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
     def __init__(
         self,
-        model_path,
         calibration_data_reader: CalibrationDataReader,
         percdamp=0.01,
         blocksize=128,
@@ -95,8 +86,6 @@ class GPTQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         GPTQ algorithm provides more accurate quantization but requires more computational resources.
 
         Args:
-            model_path:
-                path of the model to do 4b quantization.
             calibration_data_reader:
                 a calibration data reader. It enumerates calibration data and generates inputs for the original model.
             percdamp:
@@ -114,7 +103,6 @@ class GPTQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         """
         super().__init__(
             algorithm="GPTQ",
-            model_path=model_path,
             accuracy_level=accuracy_level,
         )
         self.calibration_data_reader = calibration_data_reader
@@ -278,10 +266,14 @@ class MatMul4BitsQuantizer:
     def _generate_q4_node_config(self):
         """Generate weight only quant configuration for nodes."""
         q4_node_config = {}
-        template_config = {"bits": 4, "group_size": self.block_size, "scheme": "sym" if self.is_symmetric else "asym"}
+        template_config_q4 = {"bits": 4, "group_size": self.block_size, "scheme": "sym" if self.is_symmetric else "asym"}
+        template_config_fp32 = 'fp32'
         for node in self.model.model.graph.node:
             if node.op_type in ["MatMul"]:
-                q4_node_config[node.name] = template_config
+                if not all([self.model.get_initializer(i) is None for i in node.input]):
+                    q4_node_config[node.name] = template_config_q4
+                else:
+                    q4_node_config[node.name] = template_config_fp32
         return q4_node_config
 
     def int4_quant_algo(self):
@@ -305,7 +297,7 @@ class MatMul4BitsQuantizer:
             ratios = self.algo_config.ratios
 
             self.model = rtn_quantize(
-                model=self.algo_config.model_path,
+                model=self.model.model,
                 weight_config=weight_only_node_config,
                 ratios=ratios,
                 accuracy_level=accuracy_level,
@@ -321,7 +313,7 @@ class MatMul4BitsQuantizer:
             dataloader = inc_dataloader()
 
             self.model = gptq_quantize(
-                model=self.algo_config.model_path,
+                model=self.model.model,
                 weight_config=weight_only_node_config,
                 dataloader=dataloader,
                 n_samples=-1,
