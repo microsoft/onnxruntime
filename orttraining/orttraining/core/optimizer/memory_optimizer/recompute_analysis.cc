@@ -66,7 +66,7 @@ const InlinedHashMap<std::string, AllowedRecomputeNodeConfig>& GetAllowedRecompu
   if (probe_op_level >= static_cast<int>(ProbeLevel::Basic)) {
     recomputable_op_table.insert({
         // Binary elementwise
-        {"Add", AllowedRecomputeNodeConfig{{0, 1}}},
+        // {"Add", AllowedRecomputeNodeConfig{{0, 1}}},
         {"BiasGelu", AllowedRecomputeNodeConfig{{0, 1}}},
         {"Div", AllowedRecomputeNodeConfig{{0, 1}}},
         {"Mul", AllowedRecomputeNodeConfig{{0, 1}}},
@@ -93,6 +93,7 @@ const InlinedHashMap<std::string, AllowedRecomputeNodeConfig>& GetAllowedRecompu
         // Data copy
         {"Tile", AllowedRecomputeNodeConfig{{0}}},
         {"Cast", AllowedRecomputeNodeConfig{{0}}},
+        {"Transpose", AllowedRecomputeNodeConfig{{0}}},
     });
   }
 
@@ -103,6 +104,8 @@ const InlinedHashMap<std::string, AllowedRecomputeNodeConfig>& GetAllowedRecompu
         {"Softmax", AllowedRecomputeNodeConfig{{0}}},
         {"BiasSoftmax", AllowedRecomputeNodeConfig{{0, 1}}},
         {"BiasSoftmaxDropout", AllowedRecomputeNodeConfig{{0, 1}}},
+        {"SimplifiedLayerNormalization", AllowedRecomputeNodeConfig{{0, 1}}},
+        {"LayerNormalization", AllowedRecomputeNodeConfig{{0}}},
     });
   }
 
