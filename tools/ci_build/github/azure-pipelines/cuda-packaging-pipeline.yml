@@ -121,7 +121,7 @@ stages:
   - stage: Linux_C_API_Packaging_CPU_x64
     dependsOn: [ ]
     jobs:
-    - template: c-api-linux-cpu.yml
+    - template: templates/c-api-linux-cpu.yml
       parameters:
         BaseImage: 'registry.access.redhat.com/ubi8/ubi'
         OnnxruntimeArch: 'x64'
