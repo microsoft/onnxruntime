@@ -46,4 +46,7 @@ struct OrtTensorRTProviderOptionsV2 {
   const char* trt_profile_max_shapes{nullptr};           // Specify the range of the input shapes to build the engine with
   const char* trt_profile_opt_shapes{nullptr};           // Specify the range of the input shapes to build the engine with
   int trt_cuda_graph_enable{0};                          // Enable CUDA graph in ORT TRT
+  int trt_dump_ep_context_model{0};                      // Dump EP context node model
+  int trt_ep_context_embed_mode{0};                      // Specify EP context embed mode. Default 0 = context is engine cache path, 1 = context is engine binary data
+  int trt_ep_context_compute_capability_enable{1};       // Add GPU compute capability as an EP context node's attribute
 };

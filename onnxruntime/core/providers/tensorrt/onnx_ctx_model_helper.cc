@@ -83,6 +83,8 @@ ONNX_NAMESPACE::ModelProto* CreateCtxNodeModel(const GraphViewer& graph_viewer,
                                                char* engine_data,
                                                size_t size,
                                                const int64_t embed_mode,
+                                               bool compute_capability_enable,
+                                               int device_id,
                                                const logging::Logger* logger) {
   auto model_build = graph_viewer.CreateModel(*logger);
   auto& graph_build = model_build->MainGraph();
@@ -102,6 +104,7 @@ ONNX_NAMESPACE::ModelProto* CreateCtxNodeModel(const GraphViewer& graph_viewer,
   // Create EP context node attributes
   auto attr_0 = ONNX_NAMESPACE::AttributeProto::Create();  // embed_mode
   auto attr_1 = ONNX_NAMESPACE::AttributeProto::Create();  // ep_cache_context
+  auto attr_2 = ONNX_NAMESPACE::AttributeProto::Create();  // hardware_arch
   std::string engine_data_str = "";
   attr_0->set_name(EMBED_MODE);
   attr_0->set_type(onnx::AttributeProto_AttributeType_INT);
@@ -117,10 +120,19 @@ ONNX_NAMESPACE::ModelProto* CreateCtxNodeModel(const GraphViewer& graph_viewer,
     attr_1->set_s(engine_cache_path);
   }
   auto node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
-  int num_attributes = 2;
+  int num_attributes = compute_capability_enable ? 3 : 2;
   node_attributes->reserve(num_attributes);
   node_attributes->emplace(EMBED_MODE, *attr_0);
   node_attributes->emplace(EP_CACHE_CONTEXT, *attr_1);
+  
+  if (compute_capability_enable) {
+    cudaDeviceProp prop;
+    CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id));
+    attr_2->set_name(COMPUTE_CAPABILITY);
+    attr_2->set_type(onnx::AttributeProto_AttributeType_STRING);
+    attr_2->set_s(GetComputeCapacityString(prop));
+    node_attributes->emplace(COMPUTE_CAPABILITY, *attr_2);
+  }
 
   // Create EP context node
   graph_build.AddNode(EPCONTEXT_OP, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
@@ -145,7 +157,7 @@ void DumpCtxNodeModel(ONNX_NAMESPACE::ModelProto* model_proto,
   std::string string_buf;
   model_proto->SerializeToString(string_buf);
 
-  // Dump out EP context node model
+  // Dump EP context node model to disk
   std::fstream dump(engine_cache_path + "_wrapper.onnx", std::ios::out | std::ios::trunc | std::ios::binary);
   model_proto->SerializeToOstream(dump);
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path + "_wrapper.onnx";

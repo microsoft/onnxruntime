@@ -717,6 +717,28 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_cuda_graph_enable' should be 'True' or 'False'. Default value is 'False'.\n");
             }
+          } else if (option.first == "trt_dump_ep_context_model") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_dump_ep_context_model = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_dump_ep_context_model = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dump_ep_context_model' should be 'True' or 'False'. Default value is 'False'.\n");
+            }
+          } else if (option.first == "trt_ep_context_embed_mode") {
+            if (!option.second.empty()) {
+              params.trt_ep_context_embed_mode = std::stoi(option.second);
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_ep_context_embed_mode' should be a positive integer number i.e. '1'.\n");
+            }
+          } else if (option.first == "trt_ep_context_compute_capability_enable") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_ep_context_compute_capability_enable = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_ep_context_compute_capability_enable = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_ep_context_compute_capability_enable' should be 'True' or 'False'. Default value is 'False'.\n");
+            }
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
           }

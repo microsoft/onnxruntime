@@ -12,13 +12,9 @@
 namespace onnxruntime {
 
 static const std::string EPCONTEXT_OP = "EPContext";
-static const std::string MAIN_CONTEXT = "main_context";
 static const std::string EMBED_MODE = "embed_mode";
 static const std::string EP_CACHE_CONTEXT = "ep_cache_context";
-static const std::string EP_SDK_VER = "ep_sdk_version";
 static const std::string COMPUTE_CAPABILITY = "hardware_arch";
-static const std::string PARTITION_NAME = "partition_name";
-static const std::string SOURCE = "source";
 static const std::string EPCONTEXT_OP_DOMAIN = "com.microsoft";
 
 bool GraphHasCtxNode(const GraphViewer& graph_viewer);
@@ -29,6 +25,8 @@ ONNX_NAMESPACE::ModelProto* CreateCtxNodeModel(const GraphViewer& graph_viewer,
                                                char* engine_data,
                                                size_t size,
                                                const int64_t embed_mode,
+                                               bool compute_capability_enable,
+                                               int device_id,
                                                const logging::Logger* logger);
 void DumpCtxNodeModel(ONNX_NAMESPACE::ModelProto* model_proto,
                       const std::string engine_cache_path);
