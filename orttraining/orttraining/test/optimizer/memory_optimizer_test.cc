@@ -26,7 +26,7 @@
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
-#include "orttraining/core/optimizer/memory_optimizer.h"
+#include "orttraining/core/optimizer/memory_optimizer/memory_optimizer.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;

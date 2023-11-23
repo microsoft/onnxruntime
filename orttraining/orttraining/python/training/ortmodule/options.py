@@ -195,7 +195,7 @@ class _SkipCheck(IntFlag):
 class _MemoryOptimizationLevel(IntFlag):
     """Enumeration to specify memory optimization level"""
 
-    USER_SPECIFIED = 0  # Fully respect user specified config
+    USER_SPECIFIED = 0  # Fully respect user-specified config
     AGGRESSIVE_FULL_RECOMPUTE = 1  # Enable all recomputable subgraphs
 
     @staticmethod
@@ -205,6 +205,8 @@ class _MemoryOptimizationLevel(IntFlag):
 
         if memory_optimization_level == _MemoryOptimizationLevel.AGGRESSIVE_FULL_RECOMPUTE:
             return "AGGRESSIVE_FULL_RECOMPUTE"
+
+        return ""
 
 
 class _RuntimeOptions:

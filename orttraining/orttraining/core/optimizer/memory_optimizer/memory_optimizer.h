@@ -16,8 +16,6 @@ namespace onnxruntime {
 /**
 @Class MemoryOptimizer
 
-(TODO) move to orttraining/orttraining/core/optimizer/memory_optimizer/ folder.
-
 Find recompute subgraphs and enable them according to user configs. The way we collect subgraphs
 (in orttraining/orttraining/core/optimizer/memory_optimizer/recompute_analysis.h) in brief is:
 1. Find all nodes that generate stashed activations.

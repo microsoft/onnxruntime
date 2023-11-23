@@ -626,9 +626,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         if get_rank() != 0:
             return
 
-        if self._runtime_inspector.memory_ob.is_enabled() and self._debug_options.log_level <= LogLevel.DEVINFO:
-            self._logger.info(self._runtime_inspector.memory_ob.memory_optimization_opportunity_table_str)
-
         tbl = PTable(sortable=True)
 
         def _add_record(tbl, columns):
@@ -654,6 +651,9 @@ class GraphExecutionManager(GraphExecutionInterface):
             ],
         )
 
+        opt_config_to_display = self._runtime_options.memory_optimizer_config
+        if self._runtime_options.memory_optimization_level == _MemoryOptimizationLevel.AGGRESSIVE_FULL_RECOMPUTE:
+            opt_config_to_display = "ALL_RECOMPUTE_CONFIGS"
         mem_row = _add_record(
             tbl,
             [
@@ -661,7 +661,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                 len(self._runtime_options.memory_optimizer_config) > 0,
                 (
                     f"Memory Optimization Level: [{_MemoryOptimizationLevel.to_string(self._runtime_options.memory_optimization_level)}], "
-                    f"Optimization Config: [{self._runtime_options.memory_optimizer_config}], "
+                    f"Optimization Config: [{opt_config_to_display}], "
                     f"Probe Level: [{self._runtime_options.probe_level}]"
                     if len(self._runtime_options.memory_optimizer_config) > 0
                     else "Enable with env ORTMODULE_MEMORY_OPT_LEVEL=1 or ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."

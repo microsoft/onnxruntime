@@ -13,7 +13,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
 #include "orttraining/core/graph/recompute_graph_utils.h"
-#include "orttraining/core/optimizer/memory_optimizer.h"
+#include "orttraining/core/optimizer/memory_optimizer/memory_optimizer.h"
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
 #include "orttraining/core/optimizer/memory_optimizer/optimization_planner.h"
 #include "orttraining/core/optimizer/memory_optimizer/recompute_analysis.h"

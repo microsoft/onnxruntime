@@ -74,7 +74,7 @@
 #ifdef ENABLE_TRAINING
 #include "core/framework/partial_graph_execution_state.h"
 #include "core/framework/stream_execution_context.h"
-#include "orttraining/core/optimizer/memory_optimizer.h"
+#include "orttraining/core/optimizer/memory_optimizer/memory_optimizer.h"
 #endif
 
 using namespace ONNX_NAMESPACE;
