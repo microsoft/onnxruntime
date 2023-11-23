@@ -158,6 +158,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         # Quantize fp32 model to int4 model
         from onnxruntime.quantization import matmul_4bits_quantizer
 
+        algo_config = None
         if algorithm == "RTN":
             # test RTN algorithm
             from onnxruntime.quantization import RTNWeightOnlyQuantConfig
