@@ -123,13 +123,22 @@ def get_args():
         help="Number of mins to attempt the benchmark before moving on",
     )
 
+    parser.add_argument(
+        "--log-folder",
+        type=str,
+        default=None,
+        help="Path to folder to save logs and results",
+    )
+
     parser.add_argument("--tune", default=False, action="store_true")
 
     args = parser.parse_args()
 
     setattr(args, "model_size", args.model_name.split("/")[-1].replace(".", "-"))  # noqa: B010
     log_folder_name = f"./{args.model_size}-{args.precision}"
-    setattr(args, "log_folder", log_folder_name)  # noqa: B010
+    # setattr(args, "log_folder", log_folder_name)  # noqa: B010
+    if not args.log_folder:
+        args.log_folder = log_folder_name
     os.makedirs(args.log_folder, exist_ok=True)
 
     # Convert timeout value to secs
