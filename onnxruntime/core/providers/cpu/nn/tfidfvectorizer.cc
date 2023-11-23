@@ -387,20 +387,20 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
 
   switch (impl.weighting_criteria_) {
     case kTF:
-      fn_weight = [&w](size_t i, gsl::span<float>& out) { out[i] += 1.0f; };
+      fn_weight = [](size_t i, gsl::span<float>& out) { out[i] += 1.0f; };
       break;
     case kIDF:
       if (!w.empty()) {
         fn_weight = [&w](size_t i, gsl::span<float>& out) { out[i] = w[i]; };
       } else {
-        fn_weight = [&w](size_t i, gsl::span<float>& out) { out[i] = 1.0f; };
+        fn_weight = [](size_t i, gsl::span<float>& out) { out[i] = 1.0f; };
       }
       break;
     case kTFIDF:
       if (!w.empty()) {
         fn_weight = [&w](size_t i, gsl::span<float>& out) { out[i] += w[i]; };
       } else {
-        fn_weight = [&w](size_t i, gsl::span<float>& out) { out[i] += 1.0f; };
+        fn_weight = [](size_t i, gsl::span<float>& out) { out[i] += 1.0f; };
       }
       break;
     case kNone:  // fall-through
