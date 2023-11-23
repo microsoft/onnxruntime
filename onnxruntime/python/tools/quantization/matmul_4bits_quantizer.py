@@ -353,8 +353,8 @@ class MatMul4BitsQuantizer:
             import neural_compressor
 
             assert version.parse(neural_compressor.__version__) >= version.parse(
-                "2.3.0"
-            ), "Require neural-compressor >= 2.3.0 to support weight only quantization!"
+                "2.3.2"
+            ), "Require neural-compressor >= 2.3.2 to support weight only quantization!"
 
             self.int4_quant_algo()
 
