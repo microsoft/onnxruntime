@@ -145,9 +145,7 @@ struct TfIdfVectorizer::Impl {
     assert(ngram_id != 0);
     --ngram_id;
     assert(ngram_id < ngram_indexes_.size());
-    size_t output_idx = SafeInt<size_t>(ngram_indexes_[ngram_id]);
-    assert(output_idx < frequencies.size());
-    return output_idx;
+    return SafeInt<size_t>(ngram_indexes_[ngram_id]);
   }
 };
 
