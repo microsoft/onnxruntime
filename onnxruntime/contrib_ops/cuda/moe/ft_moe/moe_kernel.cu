@@ -632,12 +632,12 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
   compute_total_rows_before_expert(permuted_experts_, expanded_active_expert_rows, num_experts,
                                    total_rows_before_expert_, stream);
 
-  print_cuda_buffer("total_rows_before_expert_", total_rows_before_expert_, num_experts);
+  //print_cuda_buffer("total_rows_before_expert_", total_rows_before_expert_, num_experts);
   if (local_num_experts < num_experts) {
     dispatch_activations(total_rows_before_expert_, num_experts, local_num_experts, local_experts_start_index, stream);
   }
 
-  print_cuda_buffer("total_rows_before_expert_", total_rows_before_expert_, num_experts);
+  //print_cuda_buffer("total_rows_before_expert_", total_rows_before_expert_, num_experts);
 
   // expanded_active_expert_rows is not used
   moe_gemm_runner_.moe_gemm_bias_act(permuted_data_ + total_past_rows_ * hidden_size,
@@ -653,7 +653,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
                             total_rows_before_expert_ + local_experts_start_index,
                             expanded_active_expert_rows, hidden_size, inter_size, local_num_experts, stream);
 
-  print_cuda_buffer("fc2_result", fc2_result, num_rows, hidden_size);
+  //print_cuda_buffer("fc2_result", fc2_result, num_rows, hidden_size);
 }
 
 template <typename T, typename WeightType, typename Enable>
@@ -699,11 +699,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::dispatch_activations(int64_t* to
   dispatch_activations_kernel<<<blocks, threads, 0, stream>>>(total_rows_before_expert, num_experts,
                                                               local_num_experts, local_experts_start_index);
 
-  const int local_experts_end_index = local_experts_start_index + local_num_experts - 1;
-  if (local_experts_start_index > 0) {
-    total_past_rows_ = total_rows_before_expert_host_[local_experts_start_index - 1];
-  }
-  total_covered_rows_ = total_rows_before_expert_host_[local_experts_end_index] - total_past_rows_;
+  get_total_rows_info(local_experts_start_index, local_num_experts, total_past_rows_, total_covered_rows_);
 }
 
 // ========================== Permutation things =======================================
@@ -819,7 +815,7 @@ void finalize_moe_routing_kernelLauncher(const T* expanded_permuted_rows, T* red
                                          const T* scales, const int* expanded_source_row_to_expanded_dest_row,
                                          const int* expert_for_source_row, int num_rows, int cols,
                                          int k, cudaStream_t stream) {
-  print_cuda_buffer("expanded_permuted_rows", expanded_permuted_rows, num_rows, cols);
+  // print_cuda_buffer("expanded_permuted_rows", expanded_permuted_rows, num_rows, cols);
   const int blocks = num_rows;
   const int threads = std::min(cols, 1024);
   finalize_moe_routing_kernel<T, 0><<<blocks, threads, 0, stream>>>(

@@ -1,4 +1,5 @@
 import os
+import unittest
 from mpi4py import MPI
 import onnxruntime
 import numpy as np
@@ -33,7 +34,7 @@ local_rank = get_rank()
 
 ORT_DTYPE = TensorProto.FLOAT16
 NP_TYPE = np.float16 if ORT_DTYPE == TensorProto.FLOAT16 else np.float32
-THRESHOLD = 3e-2
+THRESHOLD = 1e-3
 
 def create_moe_onnx_graph(
     num_rows,
@@ -151,70 +152,66 @@ def create_moe_onnx_graph(
     model = helper.make_model(graph)
     return model.SerializeToString()
 
-def main():
-    hidden_size = 8
-    inter_size = 8
-    num_experts = 8
-    num_rows = 8
-    local_experts_start_index = local_rank * num_experts // get_size()
 
-    fc1_experts_weights_all = np.random.rand(num_experts, hidden_size, inter_size).astype(NP_TYPE)
-    fc2_experts_weights_all = np.random.rand(num_experts, inter_size, hidden_size).astype(NP_TYPE)
-    fc1_experts_bias_all = np.random.rand(num_experts, inter_size).astype(NP_TYPE)
-    #fc2_experts_bias_all = np.random.rand(num_experts, hidden_size).astype(NP_TYPE)
-    fc2_experts_bias_all = np.zeros((num_experts, hidden_size)).astype(NP_TYPE)
+class TestMoE(unittest.TestCase):
+    def test_moe_expert_slicing(self):
+        hidden_size = 8
+        inter_size = 8
+        num_experts = 8
+        num_rows = 8
+        local_experts_start_index = local_rank * num_experts // get_size()
 
-    onnx_model_full = create_moe_onnx_graph(
-        num_rows,
-        num_experts,
-        num_experts,
-        hidden_size,
-        inter_size,
-        fc1_experts_weights_all,
-        fc2_experts_weights_all,
-        fc1_experts_bias_all,
-        fc2_experts_bias_all,
-    )
+        fc1_experts_weights_all = np.random.rand(num_experts, hidden_size, inter_size).astype(NP_TYPE)
+        fc2_experts_weights_all = np.random.rand(num_experts, inter_size, hidden_size).astype(NP_TYPE)
+        fc1_experts_bias_all = np.random.rand(num_experts, inter_size).astype(NP_TYPE)
+        fc2_experts_bias_all = np.random.rand(num_experts, hidden_size).astype(NP_TYPE)
 
-    fc1_experts_weights = fc1_experts_weights_all[local_experts_start_index:local_experts_start_index + num_experts // get_size(), :, :]
-    fc2_experts_weights = fc2_experts_weights_all[local_experts_start_index:local_experts_start_index + num_experts // get_size(), :, :]
-    fc1_experts_bias = fc1_experts_bias_all[local_experts_start_index:local_experts_start_index + num_experts // get_size(), :]
+        onnx_model_full = create_moe_onnx_graph(
+            num_rows,
+            num_experts,
+            num_experts,
+            hidden_size,
+            inter_size,
+            fc1_experts_weights_all,
+            fc2_experts_weights_all,
+            fc1_experts_bias_all,
+            fc2_experts_bias_all,
+        )
 
-    onnx_model_local = create_moe_onnx_graph(
-        num_rows,
-        num_experts,
-        num_experts // get_size(),
-        hidden_size,
-        inter_size,
-        fc1_experts_weights,
-        fc2_experts_weights,
-        fc1_experts_bias,
-        fc2_experts_bias_all,
-        local_experts_start_index,
-    )
+        fc1_experts_weights = fc1_experts_weights_all[local_experts_start_index:local_experts_start_index + num_experts // get_size(), :, :]
+        fc2_experts_weights = fc2_experts_weights_all[local_experts_start_index:local_experts_start_index + num_experts // get_size(), :, :]
+        fc1_experts_bias = fc1_experts_bias_all[local_experts_start_index:local_experts_start_index + num_experts // get_size(), :]
 
-    sess_options = onnxruntime.SessionOptions()
-    # sess_options.log_severity_level = 0
-    # sess_options.log_verbosity_level = 0
-    cuda_provider_options = {"device_id": local_rank}
-    execution_providers = [("CUDAExecutionProvider", cuda_provider_options)]
+        onnx_model_local = create_moe_onnx_graph(
+            num_rows,
+            num_experts,
+            num_experts // get_size(),
+            hidden_size,
+            inter_size,
+            fc1_experts_weights,
+            fc2_experts_weights,
+            fc1_experts_bias,
+            fc2_experts_bias_all,
+            local_experts_start_index,
+        )
 
-    ort_session = onnxruntime.InferenceSession(onnx_model_full, sess_options, providers=execution_providers)
-    ort_session_local = onnxruntime.InferenceSession(onnx_model_local, sess_options, providers=execution_providers)
+        sess_options = onnxruntime.SessionOptions()
+        cuda_provider_options = {"device_id": local_rank}
+        execution_providers = [("CUDAExecutionProvider", cuda_provider_options)]
 
-    ort_inputs = {
-        ort_session.get_inputs()[0].name: np.random.rand(num_rows, hidden_size).astype(NP_TYPE),
-        ort_session.get_inputs()[1].name: np.random.rand(num_rows, num_experts).astype(NP_TYPE)
-    }
+        ort_session = onnxruntime.InferenceSession(onnx_model_full, sess_options, providers=execution_providers)
+        ort_session_local = onnxruntime.InferenceSession(onnx_model_local, sess_options, providers=execution_providers)
 
-    #output = ort_session.run(None, ort_inputs)
-    sharded_output = ort_session_local.run(None, ort_inputs)
+        ort_inputs = {
+            ort_session.get_inputs()[0].name: np.random.rand(num_rows, hidden_size).astype(NP_TYPE),
+            ort_session.get_inputs()[1].name: np.random.rand(num_rows, num_experts).astype(NP_TYPE)
+        }
 
-    # compare the output with numpy close
-    #np.testing.assert_allclose(output[0], sharded_output[0], rtol=THRESHOLD, atol=THRESHOLD)
-    #print("output[0]: ", output[0])
-    print("sharded_output[0]: ", sharded_output[0])
+        output = ort_session.run(None, ort_inputs)
+        sharded_output = ort_session_local.run(None, ort_inputs)
+
+        assert np.allclose(output[0], sharded_output[0], atol=THRESHOLD, rtol=THRESHOLD)
 
 
 if __name__ == "__main__":
-    main()
+    unittest.main()
