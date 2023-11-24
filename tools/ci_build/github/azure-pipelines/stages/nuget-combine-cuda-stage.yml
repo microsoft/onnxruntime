@@ -19,6 +19,7 @@ stages:
     - Set_ReleaseVersionSuffix
     - Windows_Packaging_gpu
     - Windows_Packaging_tensorrt
+    - Linux_C_API_Packaging_CPU_x64
     - Linux_C_API_Packaging_GPU_x64
     - Linux_C_API_Packaging_GPU_TensorRT_x64
   condition: succeeded()

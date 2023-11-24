@@ -12,7 +12,6 @@ stages:
 - stage: NuGet_Test_Linux_${{ parameters.StageSuffix }}
   dependsOn:
   - NuGet_Packaging_${{ parameters.StageSuffix }}
-  - Linux_C_API_Packaging_CPU_x64
   condition: succeeded()
   jobs:
   - job:
