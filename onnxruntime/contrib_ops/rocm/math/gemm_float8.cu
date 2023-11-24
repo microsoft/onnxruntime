@@ -25,19 +25,15 @@ class GemmFloat8 final : public RocmKernel {
   Status ComputeInternal(OpKernelContext* ctx) const override;
 
  private:
+#if !defined(DISABLE_FLOAT8_TYPES)
   template <typename Fp8T>
   Status ComputeFp8Fp16Fp16(OpKernelContext* ctx, const Tensor* A, const Tensor* scaleA, const Tensor* B, Tensor* C) const;
   template <typename Fp8T>
   Status ComputeFp16Fp8Fp16(OpKernelContext* ctx, const Tensor* A, const Tensor* B, const Tensor* scaleB, Tensor* C) const;
 
-  template <typename TA, typename TB, typename TC, typename ALayout, typename BLayout>
-  inline auto MaybeCreateTypeErasedSharedPtr() const {
-
-  }
-
-  template <typename TA, typename TB, typename TC, typename ALayout, typename BLayout>
+  template <typename TA, typename TB, typename TC, BlasOp OpA, BlasOp OpB>
   [[nodiscard]] inline auto* GetOp() const {
-    using OpT = F8GemmTunableOp<TA, TB, TC, ALayout, BLayout>;
+    using OpT = GemmFloat8TunableOp<TA, TB, TC, OpA, OpB>;
     if (tunable_op_) {
       return static_cast<OpT*>(tunable_op_.get());
     }
@@ -50,6 +46,7 @@ class GemmFloat8 final : public RocmKernel {
 
     return static_cast<OpT*>(tunable_op_.get());
   }
+#endif
 
   float alpha_;
   float beta_;
@@ -62,6 +59,9 @@ class GemmFloat8 final : public RocmKernel {
 };
 
 Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
+#if defined(DISABLE_FLOAT8_TYPES)
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DISABLE_FLOAT8_TYPES");
+#else
   const Tensor* A = ctx->Input<Tensor>(0);
   const Tensor* B = ctx->Input<Tensor>(1);
   const Tensor* C = ctx->Input<Tensor>(2);  // bias
@@ -94,8 +94,10 @@ Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unhandled type combination of GemmFloat8");
+#endif
 }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
 template <typename Fp8T>
 Status GemmFloat8::ComputeFp8Fp16Fp16(OpKernelContext* ctx, const Tensor* A, const Tensor* scale_a, const Tensor* B, Tensor* C) const {
   ORT_ENFORCE(A->IsDataType<Fp8T>() && scale_a->IsDataType<float>() && B->IsDataType<MLFloat16>());
@@ -136,9 +138,9 @@ Status GemmFloat8::ComputeFp8Fp16Fp16(OpKernelContext* ctx, const Tensor* A, con
   // NOTE: transA is not implemented
   if (transB_) {
     ORT_NOT_IMPLEMENTED("transB is not implemented");
-    // return (*GetOp<Fp8T, MLFloat16, MLFloat16, Row, Col>())(&params);
+    // return (*GetOp<Fp8T, MLFloat16, MLFloat16, BlasOp::NonTrans, BlasOp::Trans>())(&params);
   } else {
-    return (*GetOp<Fp8T, MLFloat16, MLFloat16, Row, Row>())(&params);
+    return (*GetOp<Fp8T, MLFloat16, MLFloat16, BlasOp::NonTrans, BlasOp::NonTrans>())(&params);
   }
 }
 
@@ -181,11 +183,15 @@ Status GemmFloat8::ComputeFp16Fp8Fp16(OpKernelContext* ctx, const Tensor* A, con
 
   // NOTE: transA is not implemented
   if (transB_) {
-    return (*GetOp<MLFloat16, Fp8T, MLFloat16, Row, Col>())(&params);
+    return (*GetOp<MLFloat16, Fp8T, MLFloat16, BlasOp::NonTrans, BlasOp::Trans>())(&params);
   } else {
-    return (*GetOp<MLFloat16, Fp8T, MLFloat16, Row, Row>())(&params);
+    return (*GetOp<MLFloat16, Fp8T, MLFloat16, BlasOp::NonTrans, BlasOp::NonTrans>())(&params);
   }
 }
+#define GEMM_FLOAT8_CONSTRAINTS BuildKernelDefConstraints<MLFloat16, Float8E4M3FN, Float8E4M3FNUZ>()
+#else
+#define GEMM_FLOAT8_CONSTRAINTS BuildKernelDefConstraints<MLFloat16>()
+#endif
 
 ONNX_OPERATOR_KERNEL_EX(
     GemmFloat8,
@@ -193,8 +199,8 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kRocmExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("TA", BuildKernelDefConstraints<MLFloat16, Float8E4M3FN, Float8E4M3FNUZ>())
-        .TypeConstraint("TB", BuildKernelDefConstraints<MLFloat16, Float8E4M3FN, Float8E4M3FNUZ>())
+        .TypeConstraint("TA", GEMM_FLOAT8_CONSTRAINTS)
+        .TypeConstraint("TB", GEMM_FLOAT8_CONSTRAINTS)
         .TypeConstraint("TR", BuildKernelDefConstraints<MLFloat16>())
         .TypeConstraint("TS", BuildKernelDefConstraints<float>()),
     GemmFloat8);

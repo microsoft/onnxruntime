@@ -34,6 +34,7 @@ struct CKDataTypeAdaptor<BFloat16> {
   using type = ck::bhalf16_t;
 };
 
+#if !defined(DISABLE_FLOAT8_TYPES)
 template <>
 struct CKDataTypeAdaptor<Float8E4M3FN> {
   using type = ck::f8_t;
@@ -43,6 +44,7 @@ template <>
 struct CKDataTypeAdaptor<Float8E4M3FNUZ> {
   using type = ck::f8_t;
 };
+#endif
 
 #endif
 

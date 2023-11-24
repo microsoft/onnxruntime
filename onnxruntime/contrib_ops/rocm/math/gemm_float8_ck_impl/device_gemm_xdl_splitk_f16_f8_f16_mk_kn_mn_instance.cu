@@ -4,6 +4,8 @@
 
 #include <cstdlib>
 
+#if defined(USE_COMPOSABLE_KERNEL) && !defined(DISABLE_FLOAT8_TYPES)
+
 #include "ck/ck.hpp"
 #include "ck/tensor_operation/gpu/device/tensor_layout.hpp"
 #include "ck/tensor_operation/gpu/device/gemm_specialization.hpp"
@@ -93,3 +95,5 @@ void add_device_gemm_xdl_splitk_f16_f8_f16_mk_kn_mn_instances_ort(
 }  // namespace tunable
 }  // namespace rocm
 }  // namespace onnxruntime
+
+#endif

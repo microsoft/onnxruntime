@@ -137,6 +137,7 @@ dtypes = [
 all_transabs = [(False, False), (False, True)]
 
 
+@pytest.mark.skipif(not ke.is_float8_available(), reason="float8 is not enabled")
 @pytest.mark.skipif(not ke.is_composable_kernel_available(), reason="ck is not enabled")
 @pytest.mark.parametrize(
     "m, n, k",
@@ -160,6 +161,8 @@ def test_ck_gemm(dta, dtb, dtc, transa, transb, m, n, k):
     _test_gemm(getattr(ke, wrapper_name), dta, dtb, dtc, transa, transb, m, n, k)
 
 
+@pytest.mark.skipif(not ke.is_float8_available(), reason="float8 is not enabled")
+@pytest.mark.skipif(not ke.is_composable_kernel_available(), reason="ck is not enabled")
 @pytest.mark.parametrize("alpha, beta", [(1.5, 0.0), [2.0, 0.0]])
 @pytest.mark.parametrize("m, n, k", [(768, 768, 768)])
 @pytest.mark.parametrize("transa, transb", all_transabs)

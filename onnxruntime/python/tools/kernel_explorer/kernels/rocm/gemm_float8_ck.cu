@@ -21,7 +21,7 @@ namespace py = pybind11;
 
 namespace onnxruntime {
 
-#ifdef USE_COMPOSABLE_KERNEL
+#if defined(USE_COMPOSABLE_KERNEL) && !defined(DISABLE_FLOAT8_TYPES)
 template <typename TA, typename TB, typename TC, typename ALayout, typename BLayout>
 class GemmFloat8CK : public IKernelExplorer {
  public:
@@ -131,6 +131,6 @@ KE_REGISTER(m) {
   REGISTER_GEMM_FLOAT8_CK("GemmFloat8CK_half_fp8e4m3fn_half_NT", half, Float8E4M3FN, half, Row, Col);
   REGISTER_GEMM_FLOAT8_CK("GemmFloat8CK_half_fp8e4m3fnuz_half_NT", half, Float8E4M3FNUZ, half, Row, Col);
 }
-#endif  // USE_COMPOSABLE_KERNEL
+#endif
 
 }  // namespace onnxruntime

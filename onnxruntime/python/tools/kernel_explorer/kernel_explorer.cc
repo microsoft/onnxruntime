@@ -51,6 +51,14 @@ KE_REGISTER(m) {
         return false;
 #endif
   });
+
+  m.def("is_float8_available", []() {
+#ifndef DISABLE_FLOAT8_TYPES
+    return true;
+#else
+        return false;
+#endif
+  });
 }
 
 }  // namespace onnxruntime

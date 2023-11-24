@@ -7,7 +7,8 @@
 #include <utility>
 #include <vector>
 
-#ifdef USE_COMPOSABLE_KERNEL
+#if defined(USE_COMPOSABLE_KERNEL)
+
 #include "core/providers/rocm/composable_kernel_common.h"
 
 #include "ck/ck.hpp"
@@ -17,13 +18,16 @@
 #include "ck/tensor_operation/gpu/element/element_wise_operation.hpp"
 #endif
 
+#if !defined(DISABLE_FLOAT8_TYPES)
 #include "core/framework/float8.h"
+#endif
 #include "core/providers/rocm/tunable/gemm_common.h"
 
 namespace onnxruntime {
 namespace rocm {
 namespace tunable {
 
+#if defined(USE_COMPOSABLE_KERNEL) && !defined(DISABLE_FLOAT8_TYPES)
 using F8 = ck::f8_t;
 using F16 = ck::half_t;
 using F32 = float;
@@ -119,6 +123,7 @@ struct Scale {
   float scale_value_;
   const float* const dev_scale_ptr_;
 };
+#endif
 
 namespace blas {
 
@@ -148,7 +153,7 @@ struct GemmFloat8Params : tunable::OpParams {
   int64_t ldc;
 };
 
-#ifdef USE_COMPOSABLE_KERNEL
+#if defined(USE_COMPOSABLE_KERNEL) && !defined(DISABLE_FLOAT8_TYPES)
 
 using Row = ck::tensor_layout::gemm::RowMajor;
 using Col = ck::tensor_layout::gemm::ColumnMajor;
@@ -248,18 +253,20 @@ auto GetCKF8SplitKGemmTypeStringAndOps() {
 
 #endif  // USE_COMPOSABLE_KERNEL
 
-template <typename TA, typename TB, typename TC, typename ALayout, typename BLayout>
-class F8GemmTunableOp : public TunableOp<GemmFloat8Params<TA, TB, TC>> {
+template <typename TA, typename TB, typename TC, BlasOp OpA, BlasOp OpB>
+class GemmFloat8TunableOp : public TunableOp<GemmFloat8Params<TA, TB, TC>> {
  public:
-  F8GemmTunableOp() {
-#ifdef USE_COMPOSABLE_KERNEL
+  GemmFloat8TunableOp() {
+#if defined(USE_COMPOSABLE_KERNEL) && !defined(DISABLE_FLOAT8_TYPES)
+    using ALayout = std::conditional_t<OpA == BlasOp::NonTrans, Row, Col>;
+    using BLayout = std::conditional_t<OpB == BlasOp::NonTrans, Row, Col>;
     for (auto&& [_, op] : GetCKF8SplitKGemmTypeStringAndOps<TA, TB, TC, ALayout, BLayout>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
 #else
-    static_assert(false, "CK is required to support fp8 computing")
-#endif
+    ORT_ENFORCE(false, "CK is required to support GemmFloat8 computing");
+#endif  // USE_COMPOSABLE_KERNEL
   }
 };
 
