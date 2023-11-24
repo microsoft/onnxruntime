@@ -609,7 +609,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     bool use_v1 = max_num_partitions == 1 || (query_shape[0] * query_shape[1]) > PARTITION_SIZE ||
     (kv_quant_param != nullptr && kv_quant_param->Shape().Size() > 0);
     int64_t generation_qeury_shape[3] = {num_valid_tokens - num_prompt_tokens, num_heads_, head_size_};
-    if (true||use_v1){
+    if (use_v1){
       paged_attention_v1(Stream(context),
                          output->MutableData<MLFloat16>() + num_prompt_tokens * num_heads_ * head_size_,
                          query_data + num_prompt_tokens * num_heads_ * head_size_,
@@ -630,8 +630,8 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                          kv_quant_param_dtype);
     } else {
       auto tmp_output = this->template GetScratchBuffer<T>(query_shape.Size() * max_num_partitions * sizeof(T), context->GetComputeStream());
-      auto exp_sums = this->template GetScratchBuffer<T>(query_shape[0] * query_shape [1]* max_num_partitions * sizeof(T), context->GetComputeStream());
-      auto max_logits = this->template GetScratchBuffer<T>(query_shape[0] * query_shape[1] * max_num_partitions * sizeof(T), context->GetComputeStream());
+      auto exp_sums = this->template GetScratchBuffer<T>(query_shape[0] * query_shape[1] * num_heads_ * max_num_partitions * sizeof(T), context->GetComputeStream());
+      auto max_logits = this->template GetScratchBuffer<T>(query_shape[0] * query_shape[1] * num_heads_ * max_num_partitions * sizeof(T), context->GetComputeStream());
       paged_attention_v2(Stream(context),
                          output->MutableData<MLFloat16>() + num_prompt_tokens * num_heads_ * head_size_,
                          exp_sums.get(),
