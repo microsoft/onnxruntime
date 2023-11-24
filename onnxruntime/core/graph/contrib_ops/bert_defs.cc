@@ -714,6 +714,21 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           propagateShapeAndTypeFromFirstInputAndParam(ctx);
         }));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    RmsNormalization, 1,
+    OpSchema()
+        .SetDomain(kMSDomain)
+        .SetDoc("RMS Normalization Fusion")
+        .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilon)
+        .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .Input(1, "weight", "2D input tensor with shape (hidden_size)", "T")
+        .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
+        .TypeAndShapeInferenceFunction(
+            [](ONNX_NAMESPACE::InferenceContext& ctx) {
+              propagateShapeAndTypeFromFirstInputAndParam(ctx);
+            }));
+
 void SiluMulShapeInfer(InferenceContext& ctx) {
   auto* output_shape =
       ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();

@@ -606,8 +606,8 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                          kv_quant_param_dtype);
     } else {
       auto tmp_output = this->template GetScratchBuffer<T>(query_shape.Size() * max_num_partitions * sizeof(T), stream);
-      auto exp_sums = this->template GetScratchBuffer<T>(query_shape[0] * query_shape [1]* max_num_partitions * sizeof(T), stream);
-      auto max_logits = this->template GetScratchBuffer<T>(query_shape[0] * query_shape[1] * max_num_partitions * sizeof(T), stream);
+      auto exp_sums = this->template GetScratchBuffer<T>(query_shape[0] * query_shape [1] * num_heads_ * max_num_partitions * sizeof(T), stream);
+      auto max_logits = this->template GetScratchBuffer<T>(query_shape[0] * query_shape[1] * num_heads_ * max_num_partitions * sizeof(T), stream);
       paged_attention_v2(Stream(context),
                          output->MutableData<MLFloat16>() + num_prompt_tokens * num_heads_ * head_size_,
                          exp_sums.get(),

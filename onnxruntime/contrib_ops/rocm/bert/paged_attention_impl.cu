@@ -192,7 +192,9 @@ __device__ void paged_attention_kernel(
 
 #pragma unroll
       for (int j = 0; j < NUM_VECS_PER_THREAD; j++) {
-        const scalar_t* k_ptr = k_cache + physical_block_number * kv_block_stride + kv_head_idx * kv_head_stride + physical_block_offset * x;
+        const scalar_t* k_ptr = k_cache + physical_block_number * kv_block_stride
+                                        + kv_head_idx * kv_head_stride
+                                        + physical_block_offset * x;
         const int vec_idx = thread_group_offset + j * THREAD_GROUP_SIZE;
         const int offset1 = (vec_idx * VEC_SIZE) / x;
         const int offset2 = (vec_idx * VEC_SIZE) % x;
@@ -256,9 +258,13 @@ __device__ void paged_attention_kernel(
 
   // If partitioning is enabled, store the max logit and exp_sum.
   if (USE_PARTITIONING && thread_idx == 0) {
-    float* max_logits_ptr = max_logits + seq_idx * num_heads * max_num_partitions + head_idx * max_num_partitions + partition_idx;
+    float* max_logits_ptr = max_logits + seq_idx * num_heads * max_num_partitions
+                                       + head_idx * max_num_partitions
+                                       + partition_idx;
     *max_logits_ptr = qk_max;
-    float* exp_sums_ptr = exp_sums + seq_idx * num_heads * max_num_partitions + head_idx * max_num_partitions + partition_idx;
+    float* exp_sums_ptr = exp_sums + seq_idx * num_heads * max_num_partitions
+                                   + head_idx * max_num_partitions
+                                   + partition_idx;
     *exp_sums_ptr = exp_sum;
   }
 
@@ -288,7 +294,8 @@ __device__ void paged_attention_kernel(
     L_vec logits_vec;
     from_float(logits_vec, *reinterpret_cast<Float_L_vec*>(logits + token_idx - start_token_idx));
 
-    const scalar_t* v_ptr = v_cache + physical_block_number * kv_block_stride + kv_head_idx * kv_head_stride;
+    const scalar_t* v_ptr = v_cache + physical_block_number * kv_block_stride
+                                    + kv_head_idx * kv_head_stride;
 #pragma unroll
     for (int i = 0; i < NUM_ROWS_PER_THREAD; i++) {
       const int row_idx = lane / NUM_V_VECS_PER_ROW + i * NUM_ROWS_PER_ITER;
@@ -359,7 +366,9 @@ __device__ void paged_attention_kernel(
 
   // Write the final output.
   if (warp_idx == 0) {
-    scalar_t* out_ptr = out + seq_idx * num_heads * max_num_partitions * HEAD_SIZE + head_idx * max_num_partitions * HEAD_SIZE + partition_idx * HEAD_SIZE;
+    scalar_t* out_ptr = out + seq_idx * num_heads * max_num_partitions * HEAD_SIZE
+                            + head_idx * max_num_partitions * HEAD_SIZE
+                            + partition_idx * HEAD_SIZE;
 #pragma unroll
     for (int i = 0; i < NUM_ROWS_PER_THREAD; i++) {
       const int row_idx = lane / NUM_V_VECS_PER_ROW + i * NUM_ROWS_PER_ITER;
@@ -391,9 +400,9 @@ __global__ void paged_attention_v1_kernel(
     const int kv_block_stride,
     const int kv_head_stride) {
   paged_attention_kernel<scalar_t, HEAD_SIZE, BLOCK_SIZE, NUM_THREADS>(
-      /* exp_sums */ nullptr, /* max_logits */ nullptr,
-      out, q, k_cache, v_cache, head_mapping, scale, block_tables, context_lens,
-      max_num_blocks_per_seq, alibi_slopes, q_stride, kv_block_stride, kv_head_stride);
+    /* exp_sums */ nullptr, /* max_logits */ nullptr,
+    out, q, k_cache, v_cache, head_mapping, scale, block_tables, context_lens,
+    max_num_blocks_per_seq, alibi_slopes, q_stride, kv_block_stride, kv_head_stride);
 }
 
 // Grid: (num_heads, num_seqs, max_num_partitions).
@@ -446,7 +455,8 @@ __global__ void paged_attention_v2_reduce_kernel(
   if (num_partitions == 1) {
     // No need to reduce. Only copy tmp_out to out.
     scalar_t* out_ptr = out + seq_idx * num_heads * HEAD_SIZE + head_idx * HEAD_SIZE;
-    const scalar_t* tmp_out_ptr = tmp_out + seq_idx * num_heads * max_num_partitions * HEAD_SIZE + head_idx * max_num_partitions * HEAD_SIZE;
+    const scalar_t* tmp_out_ptr = tmp_out + seq_idx * num_heads * max_num_partitions * HEAD_SIZE
+                                          + head_idx * max_num_partitions * HEAD_SIZE;
     for (int i = threadIdx.x; i < HEAD_SIZE; i += blockDim.x) {
       out_ptr[i] = tmp_out_ptr[i];
     }
@@ -465,7 +475,8 @@ __global__ void paged_attention_v2_reduce_kernel(
 
   // Load max logits to shared memory.
   float* shared_max_logits = reinterpret_cast<float*>(shared_mem);
-  const float* max_logits_ptr = max_logits + seq_idx * num_heads * max_num_partitions + head_idx * max_num_partitions;
+  const float* max_logits_ptr = max_logits + seq_idx * num_heads * max_num_partitions
+                                           + head_idx * max_num_partitions;
   float max_logit = -FLT_MAX;
   for (int i = threadIdx.x; i < num_partitions; i += blockDim.x) {
     const float l = max_logits_ptr[i];

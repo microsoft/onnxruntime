@@ -220,6 +220,8 @@ class SymbolicShapeInference:
             "SimplifiedLayerNormalization": self._infer_LayerNormalization,
             "SkipLayerNormalization": self._infer_SkipLayerNormalization,
             "SkipSimplifiedLayerNormalization": self._infer_SkipLayerNormalization,
+            "PagedAttention": self._pass_on_shape_and_type,
+            "SiluAndMul": self._infer_silu_and_mul,
         }
         self.aten_op_dispatcher_ = {
             "embedding": self._infer_Gather,
@@ -2460,6 +2462,13 @@ class SymbolicShapeInference:
         shape = self._get_shape(node, input_index)
         output_dtype = self.known_vi_[node.input[input_index]].type.tensor_type.elem_type
         vi = self.known_vi_[node.output[output_index]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[output_index], output_dtype, shape))
+
+    def _infer_silu_and_mul(self, node, input_index=0, output_index=0):
+        shape = self._get_shape(node, input_index)
+        output_dtype = self.known_vi_[node.input[input_index]].type.tensor_type.elem_type
+        vi = self.known_vi_[node.output[output_index]]
+        shape[-1] = shape[-1] // 2
         vi.CopyFrom(helper.make_tensor_value_info(node.output[output_index], output_dtype, shape))
 
     def _is_none_dim(self, dim_value):
