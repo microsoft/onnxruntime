@@ -11,6 +11,10 @@
 #include <xmmintrin.h>
 #endif
 
+#if defined(_M_AMD64) || defined(__x86_64__)
+#include <cstdint>
+#endif
+
 namespace onnxruntime {
 
 namespace concurrency {
@@ -25,7 +29,7 @@ inline void SpinPause() {
 
 inline void SpinTPAUSE() {
 #if defined(_M_AMD64) || defined(__x86_64__)
-   const uint64_t spin_delay_cycles = 2000;
+   const std::uint64_t spin_delay_cycles = 2000;
   _tpause(0x0, __rdtsc() + spin_delay_cycles);
 #endif
 }
