@@ -209,6 +209,9 @@ class TestFloat8Gemm8(unittest.TestCase):
                 # Skipping. This machine does not support float8.
                 warnings.warn("unable to test with float8 on this machine.")
                 return
+            if "CK is required to support GemmFloat8 computing" in str(e):
+                warnings.warn("unable to test with float8 on this build.")
+                return
             raise AssertionError(f"Could not execute model {onnx_model_f8}") from e
         try:
             assert_allclose(expected, y, atol=atol, rtol=rtol)
@@ -347,7 +350,7 @@ class TestFloat8Gemm8(unittest.TestCase):
     )
     @unittest.skipIf("ROCMExecutionProvider" not in available_providers, reason="Not running without ROCm.")
     @unittest.skipIf(not hasattr(TensorProto, "FLOAT8E4M3FN"), reason="needs onnx>=1.14.0")
-    def test_model_gemm_float8_e4m3(self, a_float_name, b_float_name, transA, transB):
+    def test_model_rocm_gemm_float8_e4m3(self, a_float_name, b_float_name, transA, transB):
         self.common_test_model_gemm(
             a_float_name=a_float_name,
             b_float_name=b_float_name,
