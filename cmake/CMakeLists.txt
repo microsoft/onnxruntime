@@ -64,6 +64,7 @@ if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_
 endif()
 
 # Options
+option(onnxruntime_USE_UNITY_BUILD "Enable Unity (Jumbo) build for ONNX Runtime" ON)
 option(onnxruntime_RUN_ONNX_TESTS "Enable ONNX Compatibility Testing" OFF)
 option(onnxruntime_GENERATE_TEST_REPORTS "Enable test report generation" OFF)
 option(onnxruntime_ENABLE_STATIC_ANALYSIS "Enable static analysis" OFF)
@@ -868,6 +869,14 @@ function(onnxruntime_set_compile_flags target_name)
     if (onnxruntime_DISABLE_FLOAT8_TYPES)
       target_compile_definitions(${target_name} PRIVATE DISABLE_FLOAT8_TYPES)
     endif()
+
+    if (onnxruntime_USE_UNITY_BUILD)
+      set_target_properties(${target_name} PROPERTIES
+        UNITY_BUILD ON
+        UNITY_BUILD_MODE BATCH
+        UNITY_BUILD_BATCH_SIZE 30)
+    endif()
+
 
     if (onnxruntime_ENABLE_ATEN)
       target_compile_definitions(${target_name} PRIVATE ENABLE_ATEN)
