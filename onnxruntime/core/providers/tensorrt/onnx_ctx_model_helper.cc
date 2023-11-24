@@ -124,7 +124,7 @@ ONNX_NAMESPACE::ModelProto* CreateCtxNodeModel(const GraphViewer& graph_viewer,
   node_attributes->reserve(num_attributes);
   node_attributes->emplace(EMBED_MODE, *attr_0);
   node_attributes->emplace(EP_CACHE_CONTEXT, *attr_1);
-  
+
   if (compute_capability_enable) {
     cudaDeviceProp prop;
     CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id));

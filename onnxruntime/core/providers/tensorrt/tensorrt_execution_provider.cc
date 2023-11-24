@@ -3530,7 +3530,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromGraph(const GraphViewer& 
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized timing cache " + timing_cache_path;
         }
       }
-      
+
+      // dump ep context model
       if (dump_ep_context_model_ && ep_context_embed_mode_) {
         UpdateCtxNodeModelEngineContext(model_proto_.get(), reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
         DumpCtxNodeModel(model_proto_.get(), cache_path_prefix);
