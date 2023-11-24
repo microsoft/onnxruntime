@@ -9,8 +9,10 @@
 #include <utility>
 
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
+#include "orttraining/core/optimizer/memory_optimizer/transformer_specific.h"
 #include "orttraining/core/optimizer/memory_optimizer/recompute_analysis.h"
 #include "core/framework/data_types.h"
+#include "core/optimizer/utils.h"
 
 namespace onnxruntime::optimizer::memory_optimizer {
 
@@ -53,7 +55,7 @@ struct AllowedRecomputeNodeConfig {
   InlinedVector<int> input_arg_indices;  // input index to iterate further (bottom up)
 };
 
-// The op types that are supported predefined.
+// The op types that are supported are predefined.
 
 const InlinedHashMap<std::string, AllowedRecomputeNodeConfig>& GetAllowedRecomputeOps(int probe_op_level) {
   static InlinedHashMap<int, InlinedHashMap<std::string, AllowedRecomputeNodeConfig>> recomputable_op_table_map;
@@ -131,7 +133,7 @@ bool IsRecomputable(const Node& node, ProbeLevel probe_level) {
  * @param compromise_stashed_activation Whether to compromise stashed activation, e.g. if we cannot find a
  * recomputable subgraph to save a stashed activation, we can compromise to find a recomputable subgraph to reduce the
  * size of stashed activation.
- * @param can_compromise_stashed_activation A bool return value, to indicate there is opportunaties for finding a
+ * @param can_compromise_stashed_activation A bool return value, to indicate there are opportunities for finding a
  * compromised subgraph.
  * @param save_ratio The ratio of memory saving if we can find a recomputable subgraph.
  * @return Status
@@ -335,18 +337,46 @@ void NodesInTopoOrderToString(gsl::span<const Node* const> nodes_in_topological_
 
 }  // namespace
 
-std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const Node& node,
+std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const GraphViewer& graph_viewer,
+                                                         const Node& node,
                                                          const ProbeLevel probe_level,
                                                          const ActivationUsedMap& fw_op_output_arg_used_map,
                                                          const InlinedHashMap<NodeIndex, ptrdiff_t>&
                                                              node_index_to_its_order_in_topological_sort_map,
                                                          const InlinedHashMap<const Node*, InlinedVector<size_t>>&
                                                              candidate_output_args_map,
+                                                         const InlinedHashSet<const Node*>& layer_boundary_ln_nodes,
                                                          const logging::Logger& logger,
                                                          bool compromise_stashed_activation,
                                                          bool& can_compromise_stashed_activation) {
   if (!IsRecomputable(node, probe_level)) {
     return nullptr;
+  }
+
+  // Check whether the node's stashed activation outputs are used by LayerNormalization's inputs.
+  // If yes, for Transformers, we don't need to recompute the node, because we treated
+  // LayerNormalization as the boundary for subgraph searching.
+  // Be noted for a Transformer Layer, imagine one layer contains an attention sublayer and an mlp sublayer, but each
+  // sublayer has its own LayerNormalization, we treat the LayerNormalization as the boundary for subgraph searching.
+  if (probe_level == ProbeLevel::Transformers) {
+    // Check at least one of the stashed activation output is used as the 1st input
+    // of LayerNormalization, e.g. will be used as input of LayerNormalizationGrad.
+    for (auto& output_index : candidate_output_args_map.at(&node)) {
+      auto output_name = node.OutputDefs()[output_index]->Name();
+      auto consumers = graph_viewer.GetConsumerNodes(output_name);
+      for (auto& consumer : consumers) {
+        if (layer_boundary_ln_nodes.find(consumer) != layer_boundary_ln_nodes.end()) {
+          int dest_in_index = optimizer_utils::IndexOfNodeInput(*consumer, *node.OutputDefs()[output_index]);
+          if (dest_in_index == 0) {
+            LOGS(logger, WARNING) << "Node " << node.Name() << "(" << node.OpType()
+                                  << ") is a Attention+MLP layer boundary node, "
+                                  << "its stashed activation outputs are used by LayerNormalization's inputs, "
+                                  << "we don't need to recompute it.";
+            return nullptr;
+          }
+        }
+      }
+    }
   }
 
   InlinedVector<const Node*> nodes_in_topological_order;

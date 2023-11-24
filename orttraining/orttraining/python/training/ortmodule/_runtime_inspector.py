@@ -530,7 +530,7 @@ class MemoryObserver:
 
         # If memory optimization level is aggressive, we will first collect all
         # recompute subgraph by passing empty memory_optimizer_config to get_serialized_ortmodule_memory_stat.
-        if runtime_options.memory_optimization_level == _MemoryOptimizationLevel.AGGRESSIVE_FULL_RECOMPUTE:
+        if runtime_options.memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
             memory_optimizer_config = ""
 
         (
@@ -566,7 +566,7 @@ class MemoryObserver:
             self.cluster_id_combination_to_saving_symbolics_map[cluster_id] = values
 
         # For aggressive memory optimization, we update the memory_optimizer_config using all.
-        if runtime_options.memory_optimization_level == _MemoryOptimizationLevel.AGGRESSIVE_FULL_RECOMPUTE:
+        if runtime_options.memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
             recompute_configs = []
             for cluster_id in self.cluster_id_combination_to_saving_symbolics_map:
                 config_values = cluster_id.split(":")

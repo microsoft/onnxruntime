@@ -105,6 +105,8 @@ Status MemoryOptimizationPlanner::FinalizeNodePlansFromUserConfig(
     const auto& node = node_to_optimization_plan.first;
     const auto& node_plans = node_to_optimization_plan.second;
 
+    std::cout << "FinalizeNodePlansFromUserConfig loop node name: " << node->Name() << std::endl;
+
     for (auto& node_plan : node_plans) {
       const std::string cluster_id = node_plan->GetClusterId();
       if (cluster_id_to_user_configs.find(cluster_id) == cluster_id_to_user_configs.end()) {

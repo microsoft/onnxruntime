@@ -438,7 +438,8 @@ class TrainingManager(GraphExecutionManager):
         # when we have an allocation plan in place, and reuse information is available.
         if self._runtime_inspector.memory_ob.is_enabled() and (
             self._debug_options.log_level <= LogLevel.INFO
-            or self._runtime_options.memory_optimization_level == _MemoryOptimizationLevel.AGGRESSIVE_FULL_RECOMPUTE
+            or self._runtime_options.memory_optimization_level
+            == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE
         ):
             # Create a training agent without enabling memory optimization.
             execution_agent = TrainingAgent(

@@ -196,15 +196,15 @@ class _MemoryOptimizationLevel(IntFlag):
     """Enumeration to specify memory optimization level"""
 
     USER_SPECIFIED = 0  # Fully respect user-specified config
-    AGGRESSIVE_FULL_RECOMPUTE = 1  # Enable all recomputable subgraphs
+    TRANSFORMER_LAYERWISE_RECOMPUTE = 1  # Enable all recomputable subgraphs per layer
 
     @staticmethod
     def to_string(memory_optimization_level):
         if memory_optimization_level == _MemoryOptimizationLevel.USER_SPECIFIED:
             return "USER_SPECIFIED"
 
-        if memory_optimization_level == _MemoryOptimizationLevel.AGGRESSIVE_FULL_RECOMPUTE:
-            return "AGGRESSIVE_FULL_RECOMPUTE"
+        if memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
+            return "TRANSFORMER_LAYERWISE_RECOMPUTE"
 
         return ""
 
@@ -336,7 +336,8 @@ class _RuntimeOptions:
         # Configuration for memory optimization.
         self.memory_optimization_level = int(os.getenv("ORTMODULE_MEMORY_OPT_LEVEL", self.memory_optimization_level))
         self.memory_optimizer_config = os.getenv("ORTMODULE_MEMORY_OPT_CONFIG", self.memory_optimizer_config)
-        self.probe_level = os.getenv("ORTMODULE_MEMORY_OPT_PROBE_RECOMPUTE_LEVEL", self.probe_level)
+        if self.memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
+            self.probe_level = "2"  # For transformer layer-wise recompute, we need to probe more aggressively.
 
         # Configuration for dev tools.
         if "ORTMODULE_PRINT_INPUT_DENSITY" in os.environ:

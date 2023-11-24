@@ -15,6 +15,7 @@
 #include "orttraining/core/optimizer/memory_optimizer/optimization_planner.h"
 #include "orttraining/core/optimizer/memory_optimizer/recompute_analysis.h"
 #include "orttraining/core/optimizer/memory_optimizer/memory_insight.h"
+#include "orttraining/core/optimizer/memory_optimizer/transformer_specific.h"
 
 namespace onnxruntime::optimizer::memory_optimizer {
 
@@ -209,6 +210,9 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
                                                      is_forward_nodes,
                                                      logger));
 
+  InlinedHashSet<const Node*> layer_boundary_ln_nodes;
+  FindLayerBoundaryLayerNodeNodes(graph_viewer, logger, layer_boundary_ln_nodes);
+
   // The first pass - find the candidate subgraphs.
   for (int i = static_cast<int>(node_ids.size()) - 1; i >= 0; --i) {
     const Node* p_node = graph_viewer.GetNode(node_ids[i]);
@@ -222,11 +226,13 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
 
     bool can_compromise_stashed_activation = false;
     std::unique_ptr<NodeRecomputePlan> recompute_plan =
-        CheckNodeForRecompute(*p_node,
+        CheckNodeForRecompute(graph_viewer,
+                              *p_node,
                               probe_level,
                               fw_op_output_arg_used_map,
                               node_index_to_its_order_in_topological_sort_map,
                               candidate_output_args_map,
+                              layer_boundary_ln_nodes,
                               logger, false,
                               can_compromise_stashed_activation);
     if (recompute_plan != nullptr) {
@@ -239,9 +245,10 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
       // If the subgraph recompute can save memory by comprising the assumption - recompute graphs' input must exist
       // during backward pass, then we can consider to recompute them.
       std::unique_ptr<NodeRecomputePlan> recompute_with_compromise_plan =
-          CheckNodeForRecompute(*p_node, probe_level, fw_op_output_arg_used_map,
+          CheckNodeForRecompute(graph_viewer, *p_node, probe_level, fw_op_output_arg_used_map,
                                 node_index_to_its_order_in_topological_sort_map,
                                 candidate_output_args_map,
+                                layer_boundary_ln_nodes,
                                 logger, true,
                                 can_compromise_stashed_activation);
       if (recompute_with_compromise_plan != nullptr) {
@@ -710,7 +717,7 @@ std::string GetSerializedORTModuleMemoryStat(const GraphViewer& graph_viewer,
     ORT_ENFORCE(probe_level_int < static_cast<int>(ProbeLevel::LevelMax) &&
                     probe_level_int >= 0,
                 "Invalid probe level specified: ", recompute_probe_level);
-    probe_level = static_cast<ProbeLevel>(probe_level);
+    probe_level = static_cast<ProbeLevel>(probe_level_int);
   }
 
   ptrdiff_t yield_op_order_in_topological_sort;

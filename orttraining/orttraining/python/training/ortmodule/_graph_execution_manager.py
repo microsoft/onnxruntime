@@ -652,8 +652,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         )
 
         opt_config_to_display = self._runtime_options.memory_optimizer_config
-        if self._runtime_options.memory_optimization_level == _MemoryOptimizationLevel.AGGRESSIVE_FULL_RECOMPUTE:
-            opt_config_to_display = "ALL_RECOMPUTE_CONFIGS"
+        if self._runtime_options.memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
+            opt_config_to_display = "ALL_RECOMPUTE_FOR_EACH_LAYER"
         mem_row = _add_record(
             tbl,
             [
@@ -661,8 +661,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                 len(self._runtime_options.memory_optimizer_config) > 0,
                 (
                     f"Memory Optimization Level: [{_MemoryOptimizationLevel.to_string(self._runtime_options.memory_optimization_level)}], "
-                    f"Optimization Config: [{opt_config_to_display}], "
-                    f"Probe Level: [{self._runtime_options.probe_level}]"
+                    f"Optimization Config: [{opt_config_to_display}]"
                     if len(self._runtime_options.memory_optimizer_config) > 0
                     else "Enable with env ORTMODULE_MEMORY_OPT_LEVEL=1 or ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
                 ),
