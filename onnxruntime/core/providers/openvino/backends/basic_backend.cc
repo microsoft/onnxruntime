@@ -67,7 +67,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
         LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
       }
 #else
-#if defined(OPENVINO_2023_0) || (OPENVINO_2023_1) || (OPENVION_2023_2)
+#if defined(OPENVINO_2023_0) || (OPENVINO_2023_1) || (OPENVINO_2023_2)
       if (!subgraph_context_.has_dynamic_input_shape && dev_prec != "CPU_FP16") {
         const std::string model = model_proto.SerializeAsString();
         exe_network_ = global_context_.ie_core.LoadNetwork(
