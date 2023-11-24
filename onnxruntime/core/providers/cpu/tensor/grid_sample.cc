@@ -25,7 +25,7 @@ namespace onnxruntime {
                                     .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
                                 GridSample<T>);
 
-REGISTER_KERNEL_TYPED(float)
+REGISTER_KERNEL_TYPED_GRID_SAMPLE(float)
 REGISTER_KERNEL_TYPED_20(float)
 REGISTER_KERNEL_TYPED_20(double)
 

@@ -412,7 +412,7 @@ Status Cast::Compute(OpKernelContext* context) const {
 
   return Status::OK();
 }
-}  // namespace
+}  // namespace castop_internal
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Cast,
@@ -429,10 +429,10 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     13,
     18,
     KernelDefBuilder()
-        .TypeConstraint("T1", BuildKernelDefConstraintsFromTypeList<EnabledSrcTypes>())
-        .TypeConstraint("T2", BuildKernelDefConstraintsFromTypeList<EnabledDstTypes>())
+        .TypeConstraint("T1", BuildKernelDefConstraintsFromTypeList<castop_internal::EnabledSrcTypes>())
+        .TypeConstraint("T2", BuildKernelDefConstraintsFromTypeList<castop_internal::EnabledDstTypes>())
         .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
-    Cast);
+    castop_internal::Cast);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Cast,

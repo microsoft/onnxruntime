@@ -8,14 +8,15 @@
 
 namespace onnxruntime {
 
-namespace {
+namespace matmulbnfusion_internal {
 const std::vector<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>> ignorable_nodes{
     {"Reshape", {1, 5, 13, 14, 19}},
     {"Transpose", {1, 13}}};
 const std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>> dest = {"BatchNormalization", {1, 6, 7, 9, 14, 15}};
-}  // namespace
+}  // namespace matmulbnfusion_internal
 
 bool NodeIsIgnorable(const Graph& graph, const Node& root_node, NodeIndex curr_node_index) {
+  using namespace matmulbnfusion_internal;
   const Node* curr_node = graph.GetNode(curr_node_index);
 
   // curr_node has different execution provider then it's parent or
@@ -37,6 +38,7 @@ bool NodeIsIgnorable(const Graph& graph, const Node& root_node, NodeIndex curr_n
 }
 
 std::optional<NodeIndex> MatchPath(const Graph& graph, const Node& root_node, NodeIndex curr_node_index) {
+  using namespace matmulbnfusion_internal;
   while (NodeIsIgnorable(graph, root_node, curr_node_index)) {
     curr_node_index = graph.GetNode(curr_node_index)->OutputNodesBegin()->Index();
   }

@@ -18,7 +18,7 @@ namespace onnxruntime {
       op, since_version, end_version,                                               \
       KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), op<float>);
 
-#define REGISTER_UNARY_ELEMENTWISE_KERNEL(op, since_version) \
+#define REGISTER_UNARY_ELEMENTWISE_KERNEL_ACTIVATION(op, since_version) \
   ONNX_CPU_OPERATOR_KERNEL(                                  \
       op, since_version,                                     \
       KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), op<float>);
@@ -33,8 +33,8 @@ namespace onnxruntime {
       op, since_version, type,                                           \
       KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), op<type>);
 
-REGISTER_UNARY_ELEMENTWISE_KERNEL(Elu, 6);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(HardSigmoid, 6);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_ACTIVATION(Elu, 6);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_ACTIVATION(HardSigmoid, 6);
 REGISTER_VERSIONED_UNARY_ELEMENTWISE_KERNEL(LeakyRelu, 6, 15);
 REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL(Relu, 6, 12, float);
 REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL(Relu, 6, 12, double);
@@ -52,22 +52,22 @@ REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL(LeakyRelu, 6, 15, MLFloat16);
 REGISTER_UNARY_ELEMENTWISE_TYPED_KERNEL(LeakyRelu, 16, MLFloat16);
 #endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 
-REGISTER_UNARY_ELEMENTWISE_KERNEL(Selu, 6);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_ACTIVATION(Selu, 6);
 REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL(Sigmoid, 6, 12, float);
 REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL(Sigmoid, 6, 12, double);
 REGISTER_UNARY_ELEMENTWISE_TYPED_KERNEL(Sigmoid, 13, float);
 REGISTER_UNARY_ELEMENTWISE_TYPED_KERNEL(Sigmoid, 13, double);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(Softplus, 1);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(Softsign, 1);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_ACTIVATION(Softplus, 1);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_ACTIVATION(Softsign, 1);
 REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL(Tanh, 6, 12, float);
 REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL(Tanh, 6, 12, double);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(Celu, 12);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_ACTIVATION(Celu, 12);
 REGISTER_UNARY_ELEMENTWISE_TYPED_KERNEL(Tanh, 13, float);
 REGISTER_UNARY_ELEMENTWISE_TYPED_KERNEL(Tanh, 13, double);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ThresholdedRelu, 10);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_ACTIVATION(ThresholdedRelu, 10);
 
 // Opset-16 adds BFloat16 to allowed types for the LeakyRelu operator
-REGISTER_UNARY_ELEMENTWISE_KERNEL(LeakyRelu, 16);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_ACTIVATION(LeakyRelu, 16);
 
 namespace functors {
 template <typename T>

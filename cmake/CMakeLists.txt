@@ -871,10 +871,29 @@ function(onnxruntime_set_compile_flags target_name)
     endif()
 
     if (onnxruntime_USE_UNITY_BUILD)
-      set_target_properties(${target_name} PROPERTIES
-        UNITY_BUILD ON
-        UNITY_BUILD_MODE BATCH
-        UNITY_BUILD_BATCH_SIZE 30)
+
+      if(NOT ${target_name} MATCHES ".*test.*")
+
+        get_target_property(srcs ${target_name} SOURCES)
+        set(__unity_src_files ${srcs})
+
+        # schemas files have forward declaration of templated classes that will be specialized in another TU. This causes a c++ error
+        list(FILTER __unity_src_files EXCLUDE REGEX "schemas\\.cc?$")
+        # provider files have forward declaration of templated classes that will be specialized in another TU. This causes a c++ error
+        list(FILTER __unity_src_files EXCLUDE REGEX "provider\\.cc?$")
+        # contrib files are not good candidates for Unity builds: They might clash with one another.
+        list(FILTER __unity_src_files EXCLUDE REGEX "/contrib_ops/")
+
+        set_source_files_properties(${__unity_src_files} PROPERTIES UNITY_GROUP "Unity_Group" )
+
+        set_target_properties(${target_name} PROPERTIES
+          UNITY_BUILD ON
+          UNITY_BUILD_MODE GROUP)
+
+        if (MSVC)
+          target_compile_options("${target_name}" PRIVATE /bigobj)
+        endif()
+      endif()
     endif()
 
 
@@ -1080,6 +1099,30 @@ function(onnxruntime_add_include_to_target dst_target)
         target_sources(${dst_target} PRIVATE $<TARGET_PROPERTY:${src_target},INTERFACE_SOURCES>)
       endif()
     endforeach()
+endfunction()
+
+function(onnxruntime_post_configuration target_name)
+  #unity stuff
+
+  if (onnxruntime_USE_UNITY_BUILD)
+
+
+    get_target_property(srcs ${target_name} SOURCES)
+    message(STATUS "Files in target ${target_name} : ${srcs}")
+    set(__unity_src_files ${srcs})
+    list(FILTER __unity_src_files EXCLUDE REGEX "\\schemas.cc?$")
+    message(STATUS "Files in unity  target ${target_name} : ${__unity_src_files}")
+
+    set_source_files_properties(${__unity_src_files} PROPERTIES UNITY_GROUP "Unity_Group" )
+
+    set_target_properties(${target_name} PROPERTIES
+      UNITY_BUILD ON
+      UNITY_BUILD_MODE GROUP)
+
+    if (MSVC)
+      target_compile_options("${target_name}" PRIVATE /bigobj)
+    endif()
+  endif()
 endfunction()
 
 # ACL

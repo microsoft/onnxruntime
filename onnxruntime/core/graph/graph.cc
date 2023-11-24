@@ -4053,7 +4053,7 @@ Status Graph::AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& nod
   }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
-  if (node_proto.attribute(0).type() == AttributeProto_AttributeType_SPARSE_TENSOR) {
+  if (node_proto.attribute(0).type() == ONNX_NAMESPACE::AttributeProto_AttributeType_SPARSE_TENSOR) {
     ORT_IGNORE_RETURN_VALUE(sparse_tensor_names_.emplace(tensor->name()));
   }
 #endif

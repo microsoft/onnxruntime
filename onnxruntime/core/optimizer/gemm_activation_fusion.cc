@@ -9,7 +9,7 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-namespace {
+namespace gemmactivationfusion_internal {
 // Don't check if the op is Deprecated. In ONNX Runtime's world, there is no deprecation.
 bool IsSupportedOptypeVersionAndDomain(const Node& node, const std::string& op_type,
                                        std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,
@@ -36,7 +36,7 @@ bool IsFusableActivation(const Node& node) {
 #endif
          IsSupportedOptypeVersionAndDomain(node, "ThresholdedRelu", {1, 10}, kOnnxDomain);
 }
-}  // namespace
+}  // namespace gemmactivationfusion_internal
 
 Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                        const logging::Logger& logger) const {
@@ -57,7 +57,7 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
     const Node& next_node = *(node.OutputNodesBegin());
-    if (!IsFusableActivation(next_node) || next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
+    if (!gemmactivationfusion_internal::IsFusableActivation(next_node) || next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
       continue;
     }
 

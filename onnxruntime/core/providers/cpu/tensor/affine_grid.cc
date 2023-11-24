@@ -13,7 +13,7 @@
 
 namespace onnxruntime {
 
-#define REGISTER_KERNEL_TYPED(T)                                         \
+#define REGISTER_KERNEL_TYPED_AFFINE_GRID(T)                                         \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                        \
       AffineGrid,                                                        \
       20,                                                                \
@@ -23,8 +23,8 @@ namespace onnxruntime {
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()), \
       AffineGrid<T>);
 
-REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(double)
+REGISTER_KERNEL_TYPED_AFFINE_GRID(float)
+REGISTER_KERNEL_TYPED_AFFINE_GRID(double)
 
 template <typename T>
 void generate_base_grid_2d(int64_t H, int64_t W, bool align_corners, Eigen::Matrix<T, Eigen::Dynamic, 2>& base_grid) {

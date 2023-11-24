@@ -9,7 +9,7 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
-namespace {
+namespace matmulactivationfusion_internal {
 // Don't check if the op is Deprecated. In ONNX Runtime's world, there is no deprecation.
 bool IsSupportedOptypeVersionAndDomain(const Node& node, const std::string& op_type,
                                        std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,
@@ -23,7 +23,7 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node, const std::string& op_t
 bool IsFusableActivation(const Node& node) {
   return IsSupportedOptypeVersionAndDomain(node, "Softmax", {1, 11, 13}, kOnnxDomain);
 }
-}  // namespace
+}  // namespace matmulactivationfusion_internal
 
 Status MatMulActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                          const logging::Logger& logger) const {
@@ -44,7 +44,7 @@ Status MatMulActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph
     }
 
     const Node& next_node = *(node.OutputNodesBegin());
-    if (!IsFusableActivation(next_node) || next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
+    if (!matmulactivationfusion_internal::IsFusableActivation(next_node) || next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
       continue;
     }
 
