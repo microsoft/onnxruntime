@@ -21,6 +21,7 @@
 # --------------------------------------------------------------------------
 
 import argparse
+from typing import Any, Dict
 
 import torch
 from diffusion_models import PipelineInfo
@@ -68,8 +69,8 @@ def parse_arguments(is_xl: bool, description: str):
         "--scheduler",
         type=str,
         default="DDIM",
-        choices=["DDIM", "EulerA", "UniPC"],
-        help="Scheduler for diffusion process",
+        choices=["DDIM", "UniPC", "LCM"] if is_xl else ["DDIM", "EulerA", "UniPC"],
+        help="Scheduler for diffusion process" + " of base" if is_xl else "",
     )
 
     parser.add_argument(
@@ -78,13 +79,13 @@ def parse_arguments(is_xl: bool, description: str):
         help="Root Directory to store torch or ONNX models, built engines and output images etc.",
     )
 
-    parser.add_argument("prompt", nargs="+", help="Text prompt(s) to guide image generation.")
+    parser.add_argument("prompt", nargs="*", default=[""], help="Text prompt(s) to guide image generation.")
 
     parser.add_argument(
         "--negative-prompt", nargs="*", default=[""], help="Optional negative prompt(s) to guide the image generation."
     )
     parser.add_argument(
-        "--repeat-prompt",
+        "--batch-size",
         type=int,
         default=1,
         choices=[1, 2, 4, 8, 16],
@@ -104,6 +105,42 @@ def parse_arguments(is_xl: bool, description: str):
         default=5.0 if is_xl else 7.5,
         help="Higher guidance scale encourages to generate images that are closely linked to the text prompt.",
     )
+
+    if is_xl:
+        parser.add_argument(
+            "--lcm",
+            action="store_true",
+            help="Use fine-tuned latent consistency model to replace the UNet in base.",
+        )
+
+        parser.add_argument(
+            "--refiner-scheduler",
+            type=str,
+            default="DDIM",
+            choices=["DDIM", "UniPC"],
+            help="Scheduler for diffusion process of refiner.",
+        )
+
+        parser.add_argument(
+            "--refiner-guidance",
+            type=float,
+            default=5.0,
+            help="Guidance scale used in refiner.",
+        )
+
+        parser.add_argument(
+            "--refiner-steps",
+            type=int,
+            default=30,
+            help="Number of denoising steps in refiner. Note that actual refiner steps is refiner_steps * strength.",
+        )
+
+        parser.add_argument(
+            "--strength",
+            type=float,
+            default=0.3,
+            help="A value between 0 and 1. The higher the value less the final image similar to the seed image.",
+        )
 
     # ONNX export
     parser.add_argument(
@@ -145,6 +182,13 @@ def parse_arguments(is_xl: bool, description: str):
     parser.add_argument("--seed", type=int, default=None, help="Seed for random generator to get consistent results.")
     parser.add_argument("--disable-cuda-graph", action="store_true", help="Disable cuda graph.")
 
+    parser.add_argument(
+        "--disable-refiner", action="store_true", help="Disable refiner and only run base for XL pipeline."
+    )
+
+    group = parser.add_argument_group("Options for ORT_CUDA engine only")
+    group.add_argument("--enable-vae-slicing", action="store_true", help="True will feed only one image to VAE once.")
+
     # TensorRT only options
     group = parser.add_argument_group("Options for TensorRT (--engine=TRT) only")
     group.add_argument("--onnx-refit-dir", help="ONNX models to load the weights from.")
@@ -171,9 +215,9 @@ def parse_arguments(is_xl: bool, description: str):
         )
 
     # Validate image dimensions
-    if args.height % 8 != 0 or args.width % 8 != 0:
+    if args.height % 64 != 0 or args.width % 64 != 0:
         raise ValueError(
-            f"Image height and width have to be divisible by 8 but specified as: {args.height} and {args.width}."
+            f"Image height and width have to be divisible by 64 but specified as: {args.height} and {args.width}."
         )
 
     if (args.build_dynamic_batch or args.build_dynamic_shape) and not args.disable_cuda_graph:
@@ -183,15 +227,56 @@ def parse_arguments(is_xl: bool, description: str):
     if args.onnx_opset is None:
         args.onnx_opset = 14 if args.engine == "ORT_CUDA" else 17
 
+    if is_xl:
+        if args.lcm:
+            if args.guidance > 1.0:
+                print("[I] Use --guidance=1.0 for base since LCM is used.")
+                args.guidance = 1.0
+            if args.scheduler != "LCM":
+                print("[I] Use --scheduler=LCM for base since LCM is used.")
+                args.scheduler = "LCM"
+            if args.denoising_steps > 16:
+                print("[I] Use --denoising_steps=8 (no more than 16) for base since LCM is used.")
+                args.denoising_steps = 8
+        assert args.strength > 0.0 and args.strength < 1.0
+
     print(args)
 
     return args
 
 
+def get_metadata(args, is_xl: bool = False) -> Dict[str, Any]:
+    metadata = {
+        "args.prompt": args.prompt,
+        "args.negative_prompt": args.negative_prompt,
+        "args.batch_size": args.batch_size,
+        "height": args.height,
+        "width": args.width,
+        "cuda_graph": not args.disable_cuda_graph,
+        "vae_slicing": args.enable_vae_slicing,
+        "engine": args.engine,
+    }
+
+    if is_xl and not args.disable_refiner:
+        metadata["base.scheduler"] = args.scheduler
+        metadata["base.denoising_steps"] = args.denoising_steps
+        metadata["base.guidance"] = args.guidance
+        metadata["refiner.strength"] = args.strength
+        metadata["refiner.scheduler"] = args.refiner_scheduler
+        metadata["refiner.denoising_steps"] = args.refiner_steps
+        metadata["refiner.guidance"] = args.refiner_guidance
+    else:
+        metadata["scheduler"] = args.scheduler
+        metadata["denoising_steps"] = args.denoising_steps
+        metadata["guidance"] = args.guidance
+
+    return metadata
+
+
 def repeat_prompt(args):
     if not isinstance(args.prompt, list):
         raise ValueError(f"`prompt` must be of type `str` or `str` list, but is {type(args.prompt)}")
-    prompt = args.prompt * args.repeat_prompt
+    prompt = args.prompt * args.batch_size
 
     if not isinstance(args.negative_prompt, list):
         raise ValueError(
@@ -206,7 +291,9 @@ def repeat_prompt(args):
     return prompt, negative_prompt
 
 
-def init_pipeline(pipeline_class, pipeline_info, engine_type, args, max_batch_size, batch_size):
+def init_pipeline(
+    pipeline_class, pipeline_info, engine_type, args, max_batch_size, opt_batch_size, opt_image_height, opt_image_width
+):
     onnx_dir, engine_dir, output_dir, framework_model_dir, timing_cache = get_engine_paths(
         work_dir=args.work_dir, pipeline_info=pipeline_info, engine_type=engine_type
     )
@@ -214,7 +301,7 @@ def init_pipeline(pipeline_class, pipeline_info, engine_type, args, max_batch_si
     # Initialize demo
     pipeline = pipeline_class(
         pipeline_info,
-        scheduler=args.scheduler,
+        scheduler=args.refiner_scheduler if pipeline_info.is_xl_refiner() else args.scheduler,
         output_dir=output_dir,
         hf_token=args.hf_token,
         verbose=False,
@@ -231,9 +318,6 @@ def init_pipeline(pipeline_class, pipeline_info, engine_type, args, max_batch_si
             engine_dir=engine_dir,
             framework_model_dir=framework_model_dir,
             onnx_dir=onnx_dir,
-            opt_image_height=args.height,
-            opt_image_width=args.height,
-            opt_batch_size=batch_size,
             force_engine_rebuild=args.force_engine_build,
             device_id=torch.cuda.current_device(),
         )
@@ -244,14 +328,15 @@ def init_pipeline(pipeline_class, pipeline_info, engine_type, args, max_batch_si
             framework_model_dir,
             onnx_dir,
             args.onnx_opset,
-            opt_image_height=args.height,
-            opt_image_width=args.height,
-            opt_batch_size=batch_size,
+            opt_image_height=opt_image_height,
+            opt_image_width=opt_image_width,
+            opt_batch_size=opt_batch_size,
             force_engine_rebuild=args.force_engine_build,
             static_batch=not args.build_dynamic_batch,
             static_image_shape=not args.build_dynamic_shape,
             max_workspace_size=0,
             device_id=torch.cuda.current_device(),
+            timing_cache=timing_cache,
         )
     elif engine_type == EngineType.TRT:
         # Load TensorRT engines and pytorch modules
@@ -260,9 +345,9 @@ def init_pipeline(pipeline_class, pipeline_info, engine_type, args, max_batch_si
             framework_model_dir,
             onnx_dir,
             args.onnx_opset,
-            opt_batch_size=batch_size,
-            opt_image_height=args.height,
-            opt_image_width=args.height,
+            opt_batch_size=opt_batch_size,
+            opt_image_height=opt_image_height,
+            opt_image_width=opt_image_width,
             force_export=args.force_onnx_export,
             force_optimize=args.force_onnx_optimize,
             force_build=args.force_engine_build,

@@ -51,6 +51,7 @@ set(contrib_ops_excluded_files
   "math/gemm_float8.cc"
   "math/gemm_float8.cu"
   "math/gemm_float8.h"
+  "moe/*"
   "quantization/attention_quantization.cc"
   "quantization/attention_quantization.h"
   "quantization/attention_quantization_impl.cu"
@@ -115,6 +116,8 @@ if (NOT onnxruntime_USE_NCCL)
   list(APPEND contrib_ops_excluded_files "collective/distributed_reshape.cc")
   list(APPEND contrib_ops_excluded_files "collective/distributed_expand.cc")
   list(APPEND contrib_ops_excluded_files "collective/distributed_reduce.cc")
+  list(APPEND contrib_ops_excluded_files "collective/distributed_unsqueeze.cc")
+  list(APPEND contrib_ops_excluded_files "collective/distributed_squeeze.cc")
 endif()
 
 set(provider_excluded_files

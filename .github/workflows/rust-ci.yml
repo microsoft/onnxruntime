@@ -13,82 +13,57 @@ jobs:
     name: Rustfmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - run: rustup component add rustfmt
-      - uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all --manifest-path ${{ env.MANIFEST_PATH }} -- --check
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/rust-toolchain-setup
+      - name: vendor onnxruntime source
+        run: just vendor
+      - name: fmt
+        run: cargo fmt --all -- --check
 
   download:
     name: Download prebuilt ONNX Runtime archive from build.rs
     runs-on: ubuntu-latest
+    env:
+      ORT_RUST_STRATEGY=download
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/rust-toolchain-setup
       - run: rustup target install x86_64-unknown-linux-gnu
       - run: rustup target install x86_64-apple-darwin
       - run: rustup target install i686-pc-windows-msvc
       - run: rustup target install x86_64-pc-windows-msvc
       # ******************************************************************
       - name: Download prebuilt archive (CPU, x86_64-unknown-linux-gnu)
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --target x86_64-unknown-linux-gnu --manifest-path ${{ env.MANIFEST_PATH }}
+        run: cargo build --target x86_64-unknown-linux-gnu  --manifest-path ${{ env.MANIFEST_PATH }}
       - name: Verify prebuilt archive downloaded (CPU, x86_64-unknown-linux-gnu)
         run: ls -lh target/x86_64-unknown-linux-gnu/debug/build/onnxruntime-sys-*/out/onnxruntime-linux-x64-1.*.tgz
       # ******************************************************************
       - name: Download prebuilt archive (CPU, x86_64-apple-darwin)
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --target x86_64-apple-darwin --manifest-path ${{ env.MANIFEST_PATH }}
+        run: cargo build --target x86_64-apple-darwin  --manifest-path ${{ env.MANIFEST_PATH }}
       - name: Verify prebuilt archive downloaded (CPU, x86_64-apple-darwin)
         run: ls -lh target/x86_64-apple-darwin/debug/build/onnxruntime-sys-*/out/onnxruntime-osx-x64-1.*.tgz
       # ******************************************************************
       - name: Download prebuilt archive (CPU, i686-pc-windows-msvc)
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --target i686-pc-windows-msvc --manifest-path ${{ env.MANIFEST_PATH }}
+        run: cargo build --target i686-pc-windows-msvc  --manifest-path ${{ env.MANIFEST_PATH }}
       - name: Verify prebuilt archive downloaded (CPU, i686-pc-windows-msvc)
         run: ls -lh target/i686-pc-windows-msvc/debug/build/onnxruntime-sys-*/out/onnxruntime-win-x86-1.*.zip
       # ******************************************************************
       - name: Download prebuilt archive (CPU, x86_64-pc-windows-msvc)
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --target x86_64-pc-windows-msvc  --manifest-path ${{ env.MANIFEST_PATH }}
+        run: cargo build --target x86_64-pc-windows-msvc  --manifest-path ${{ env.MANIFEST_PATH }}
       - name: Verify prebuilt archive downloaded (CPU, x86_64-pc-windows-msvc)
         run: ls -lh target/x86_64-pc-windows-msvc/debug/build/onnxruntime-sys-*/out/onnxruntime-win-x64-1.*.zip
       # ******************************************************************
       - name: Download prebuilt archive (GPU, x86_64-unknown-linux-gnu)
-        uses: actions-rs/cargo@v1
         env:
           ORT_USE_CUDA: "yes"
-        with:
-          command: build
-          args: --target x86_64-unknown-linux-gnu --manifest-path ${{ env.MANIFEST_PATH }}
+        run: cargo build --target x86_64-unknown-linux-gnu  --manifest-path ${{ env.MANIFEST_PATH }}
       - name: Verify prebuilt archive downloaded (GPU, x86_64-unknown-linux-gnu)
         run: ls -lh target/x86_64-unknown-linux-gnu/debug/build/onnxruntime-sys-*/out/onnxruntime-linux-x64-gpu-1.*.tgz
       # ******************************************************************
       - name: Download prebuilt archive (GPU, x86_64-pc-windows-msvc)
-        uses: actions-rs/cargo@v1
         env:
           ORT_USE_CUDA: "yes"
-        with:
-          command: build
-          args: --target x86_64-pc-windows-msvc  --manifest-path ${{ env.MANIFEST_PATH }}
+        run: cargo build --target x86_64-pc-windows-msvc  --manifest-path ${{ env.MANIFEST_PATH }}
       - name: Verify prebuilt archive downloaded (GPU, x86_64-pc-windows-msvc)
         run: ls -lh target/x86_64-pc-windows-msvc/debug/build/onnxruntime-sys-*/out/onnxruntime-win-gpu-x64-1.*.zip
 
@@ -117,89 +92,41 @@ jobs:
     env:
       CARGO_BUILD_TARGET: ${{ matrix.target }}
     steps:
-      - uses: actions/checkout@v2
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          target: ${{ matrix.target }}
-          override: true
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/rust-toolchain-setup
+      - name: vendor onnxruntime source
+        run: just vendor
+      - run: rustup target install ${{ matrix.target }}
       - name: Install additional packages (macOS)
         if: contains(matrix.target, 'x86_64-apple-darwin')
         run: brew install libomp
       - name: Build (cargo build)
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --all --manifest-path ${{ env.MANIFEST_PATH }}
+        run: cargo build --all --manifest-path ${{ env.MANIFEST_PATH }}
       - name: Build tests (cargo test)
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --no-run --manifest-path ${{ env.MANIFEST_PATH }}
+        run: cargo test --no-run --manifest-path ${{ env.MANIFEST_PATH }}
       - name: Build onnxruntime with 'model-fetching' feature
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          # Use --manifest-path instead of --package. See https://github.com/actions-rs/cargo/issues/86
-          args: --manifest-path ${{ env.MANIFEST_PATH }} --features model-fetching
+        run: cargo build --manifest-path ${{ env.MANIFEST_PATH }} --features model-fetching
       - name: Test onnxruntime-sys
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --package onnxruntime-sys -- --test-threads=1 --nocapture
+        run: cargo build --package onnxruntime-sys -- --test-threads=1 --nocapture
       - name: Test onnxruntime
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          # Use --manifest-path instead of --package. See https://github.com/actions-rs/cargo/issues/86
-          args: --manifest-path $MANIFEST_PATHl --features model-fetching -- --test-threads=1 --nocapture
+        run: cargo test --manifest-path ${{ env.MANIFEST_PATH }} --features model-fetching -- --test-threads=1 --nocapture
 
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - run: rustup component add clippy
-      - uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: --all-features --manifest-path ${{ env.MANIFEST_PATH }} -- -D warnings
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/rust-toolchain-setup
+      - name: vendor onnxruntime source
+        run: just vendor
+      - run: clippy --all-features --manifest-path ${{ env.MANIFEST_PATH }} -- -D warnings
 
-  coverage:
-    name: Code coverage
+  package-sys:
+    name: Package onnxruntime-sys
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-      - name: Build (required to download libonnxruntime)
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --package onnxruntime-sys  --manifest-path ${{ env.MANIFEST_PATH }}
-      - name: Copy libonnxruntime.*.dylib to /usr/lib/
-        run: sudo cp -r target/debug/build/onnxruntime-sys-*/out/onnxruntime/onnxruntime-*/lib/libonnxruntime.* /usr/lib/
-      - name: Run cargo-tarpaulin
-        uses: actions-rs/tarpaulin@v0.1
-        with:
-          args: "--ignore-tests"
-      - name: Upload to codecov.io
-        uses: codecov/codecov-action@v1
-        with:
-          token: ${{secrets.CODECOV_TOKEN}}
-      - name: Archive code coverage results
-        uses: actions/upload-artifact@v1
-        with:
-          name: code-coverage-report
-          path: cobertura.xml
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/rust-toolchain-setup
+      - name: vendor onnxruntime source
+        run: just vendor
+      - run: cargo package --allow-dirty --package onnxruntime-sys

@@ -137,7 +137,7 @@ class DebugOptions:
     def torch_exporter_filter(self):
         """Accessor for the filter export logs configuration."""
         torch_version = get_runtime_pytorch_version()
-        if self.log_level >= LogLevel.INFO:
+        if self.log_level > LogLevel.DEVINFO:
             if torch_version < version.parse("2.0"):
                 return [
                     # WARNING: The shape inference of com.microsoft::SoftmaxCrossEntropyLossInternal type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
@@ -167,11 +167,6 @@ class DebugOptions:
     @property
     def onnxruntime_log_filter(self):
         """Accessor for the filter onnxruntime logs configuration."""
-        if self.log_level >= LogLevel.INFO:
-            return [
-                "CleanUnusedInitializersAndNodeArgs] Removing initializer",
-                "Serializing optimized model with Graph Optimization level greater than ORT_ENABLE_EXTENDED",
-            ]
         return None
 
 
@@ -267,7 +262,7 @@ class _RuntimeOptions:
 
         # Configuration for dev tools.
         self.print_input_density = False
-        self.print_memory_stat = False
+        self.print_memory_stat_by_step = False
 
         # Configuration for fallback.
         self.fallback_policy = ortmodule.ORTMODULE_FALLBACK_POLICY
@@ -326,7 +321,7 @@ class _RuntimeOptions:
         if "ORTMODULE_PRINT_INPUT_DENSITY" in os.environ:
             self.print_input_density = int(os.getenv("ORTMODULE_PRINT_INPUT_DENSITY")) == 1
         if "ORTMODULE_PRINT_MEMORY_STATS" in os.environ:
-            self.print_memory_stat = int(os.getenv("ORTMODULE_PRINT_MEMORY_STATS")) == 1
+            self.print_memory_stat_by_step = int(os.getenv("ORTMODULE_PRINT_MEMORY_STATS")) == 1
 
         # Configuration for fallback.
         if "ORTMODULE_FALLBACK_POLICY" in os.environ:

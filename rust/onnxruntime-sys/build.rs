@@ -8,12 +8,16 @@ use std::{
     str::FromStr,
 };
 
+// use cmake::build;
+
+use anyhow::{anyhow, Context, Result};
+
 /// ONNX Runtime version
 ///
 /// WARNING: If version is changed, bindings for all platforms will have to be re-generated.
 ///          To do so, run this:
 ///              cargo build --package onnxruntime-sys --features generate-bindings
-const ORT_VERSION: &str = include_str!("../../VERSION_NUMBER");
+const ORT_VERSION: &str = include_str!("./vendor/onnxruntime-src/VERSION_NUMBER");
 
 /// Base Url from which to download pre-built releases/
 const ORT_RELEASE_BASE_URL: &str = "https://github.com/microsoft/onnxruntime/releases/download";
@@ -34,8 +38,8 @@ const ORT_RUST_ENV_GPU: &str = "ORT_RUST_USE_CUDA";
 /// Subdirectory (of the 'target' directory) into which to extract the prebuilt library.
 const ORT_PREBUILT_EXTRACT_DIR: &str = "onnxruntime";
 
-fn main() {
-    let libort_install_dir = prepare_libort_dir();
+fn main() -> Result<()> {
+    let libort_install_dir = prepare_libort_dir().context("preparing libort directory")?;
 
     let include_dir = libort_install_dir.join("include");
     let lib_dir = libort_install_dir.join("lib");
@@ -55,6 +59,7 @@ fn main() {
     );
 
     generate_bindings(&include_dir);
+    Ok(())
 }
 
 fn generate_bindings(include_dir: &Path) {
@@ -70,11 +75,7 @@ fn generate_bindings(include_dir: &Path) {
         ),
     ];
 
-    let path = include_dir
-        .join("onnxruntime")
-        .join("core")
-        .join("session")
-        .join("onnxruntime_c_api.h");
+    let path = include_dir.join("onnxruntime").join("onnxruntime_c_api.h");
 
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
@@ -190,15 +191,15 @@ enum Architecture {
 }
 
 impl FromStr for Architecture {
-    type Err = String;
+    type Err = anyhow::Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> Result<Self> {
         match s.to_lowercase().as_str() {
             "x86" => Ok(Architecture::X86),
             "x86_64" => Ok(Architecture::X86_64),
             "arm" => Ok(Architecture::Arm),
             "aarch64" => Ok(Architecture::Arm64),
-            _ => Err(format!("Unsupported architecture: {}", s)),
+            _ => Err(anyhow!("Unsupported architecture: {s}")),
         }
     }
 }
@@ -233,14 +234,14 @@ impl Os {
 }
 
 impl FromStr for Os {
-    type Err = String;
+    type Err = anyhow::Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> Result<Self> {
         match s.to_lowercase().as_str() {
             "windows" => Ok(Os::Windows),
             "macos" => Ok(Os::MacOs),
             "linux" => Ok(Os::Linux),
-            _ => Err(format!("Unsupported os: {}", s)),
+            _ => Err(anyhow!("Unsupported os: {s}")),
         }
     }
 }
@@ -262,9 +263,9 @@ enum Accelerator {
 }
 
 impl FromStr for Accelerator {
-    type Err = String;
+    type Err = anyhow::Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> Result<Self> {
         match s.to_lowercase().as_str() {
             "1" | "yes" | "true" | "on" => Ok(Accelerator::Cuda),
             _ => Ok(Accelerator::Cpu),
@@ -393,36 +394,37 @@ fn prepare_libort_dir_prebuilt() -> PathBuf {
     extract_dir.join(prebuilt_archive.file_stem().unwrap())
 }
 
-fn prepare_libort_dir() -> PathBuf {
+fn prepare_libort_dir() -> Result<PathBuf> {
     let strategy = env::var(ORT_RUST_ENV_STRATEGY);
     println!(
         "strategy: {:?}",
         strategy.as_ref().map_or_else(|_| "unknown", String::as_str)
     );
     match strategy.as_ref().map(String::as_str) {
-        Ok("download") => prepare_libort_dir_prebuilt(),
-        Ok("system") => PathBuf::from(match env::var(ORT_RUST_ENV_SYSTEM_LIB_LOCATION) {
-            Ok(p) => p,
-            Err(e) => {
-                panic!(
-                    "Could not get value of environment variable {:?}: {:?}",
-                    ORT_RUST_ENV_SYSTEM_LIB_LOCATION, e
-                );
-            }
-        }),
+        Ok("download") => Ok(prepare_libort_dir_prebuilt()),
+        Ok("system") => {
+            let location = env::var(ORT_RUST_ENV_SYSTEM_LIB_LOCATION).context(format!(
+                "Could not get value of environment variable {:?}",
+                ORT_RUST_ENV_SYSTEM_LIB_LOCATION
+            ))?;
+            Ok(PathBuf::from(location))
+        }
         Ok("compile") | Err(_) => prepare_libort_dir_compiled(),
-        _ => panic!("Unknown value for {:?}", ORT_RUST_ENV_STRATEGY),
+        _ => Err(anyhow!("Unknown value for {:?}", ORT_RUST_ENV_STRATEGY)),
     }
 }
 
-fn prepare_libort_dir_compiled() -> PathBuf {
-    let mut config = cmake::Config::new("../../cmake");
+fn prepare_libort_dir_compiled() -> Result<PathBuf> {
+    let manifest_dir_string = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let mut config = cmake::Config::new(format!(
+        "{manifest_dir_string}/vendor/onnxruntime-src/cmake"
+    ));
 
     config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
 
-    if env::var(ORT_RUST_ENV_GPU).unwrap_or_default().parse() == Ok(Accelerator::Cuda) {
+    if let Ok(Accelerator::Cuda) = env::var(ORT_RUST_ENV_GPU).unwrap_or_default().parse() {
         config.define("onnxruntime_USE_CUDA", "ON");
-    }
+    };
 
-    config.build()
+    Ok(config.build())
 }
