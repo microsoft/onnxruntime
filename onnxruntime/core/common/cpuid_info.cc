@@ -83,6 +83,7 @@ static inline int XGETBV() {
 #endif
 }
 
+// Exception filter used when testing operations that we can detect only by attempting to run them
 int filter(uint32_t code) {
   if(code == STATUS_ILLEGAL_INSTRUCTION || code == STATUS_PRIVILEGED_INSTRUCTION) {
     return EXCEPTION_EXECUTE_HANDLER;
