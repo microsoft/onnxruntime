@@ -15,8 +15,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/rust-toolchain-setup
-      - name: vendor onnxruntime source
-        run: just vendor
+# remove this step when we need a justfile
+#      - name: vendor onnxruntime source
+#        run: just vendor
       - name: fmt
         run: cargo fmt --all -- --check
 
@@ -94,8 +95,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/rust-toolchain-setup
-      - name: vendor onnxruntime source
-        run: just vendor
+#      - name: vendor onnxruntime source
+#        run: just vendor
       - run: rustup target install ${{ matrix.target }}
       - name: Install additional packages (macOS)
         if: contains(matrix.target, 'x86_64-apple-darwin')
@@ -117,8 +118,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/rust-toolchain-setup
-      - name: vendor onnxruntime source
-        run: just vendor
+#      - name: vendor onnxruntime source
+#        run: just vendor
       - run: clippy --all-features --manifest-path ${{ env.MANIFEST_PATH }} -- -D warnings
 
   package-sys:
@@ -127,6 +128,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/rust-toolchain-setup
-      - name: vendor onnxruntime source
-        run: just vendor
+#      - name: vendor onnxruntime source
+#        run: just vendor
       - run: cargo package --allow-dirty --package onnxruntime-sys
