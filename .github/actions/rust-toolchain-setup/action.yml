@@ -21,7 +21,7 @@ runs:
       if: ${{ (runner.os == 'Linux') }}
       run: |
         rustup set profile minimal
-        rustup install
+        rustup toolchain install nightly
       shell: bash
     # - name: Cargo login
     #   if: ${{ (runner.os == 'Linux') }}
@@ -36,7 +36,7 @@ runs:
       if: ${{ (runner.os == 'Windows') }}
       run: |
         rustup set profile minimal
-        rustup install
+        rustup toolchain install nightly
       shell: pwsh
     # - name: Cargo login
     #   if: ${{ (runner.os == 'Windows') }}
