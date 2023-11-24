@@ -19,7 +19,7 @@ jobs:
 #      - name: vendor onnxruntime source
 #        run: just vendor
       - name: fmt
-        run: cargo fmt --all -- --check
+        run: cargo fmt --all --manifest-path ${{ env.MANIFEST_PATH }} -- --check
 
   download:
     name: Download prebuilt ONNX Runtime archive from build.rs
