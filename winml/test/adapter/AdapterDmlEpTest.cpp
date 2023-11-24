@@ -93,14 +93,6 @@ UniqueOrtSession CreateCpuSession() {
   return CreateUniqueOrtSession(FileHelpers::GetModulePath() + L"fns-candy.onnx", session_options);
 }
 
-void DmlExecutionProviderSetDefaultRoundingMode() {
-  GPUTEST;
-  auto session = CreateDmlSession();
-  OrtExecutionProvider* ort_provider;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlExecutionProviderSetDefaultRoundingMode(ort_provider, false), ort_api);
-}
-
 void DmlExecutionProviderFlushContext() {
   GPUTEST;
   auto session = CreateDmlSession();
@@ -124,7 +116,8 @@ std::array<float, tensor_size> tensor_values = {};
 winrt::com_ptr<ID3D12Resource> CreateD3D12Resource(ID3D12Device& device) {
   constexpr uint64_t buffer_size = tensor_size * sizeof(float);
   constexpr D3D12_HEAP_PROPERTIES heap_properties = {
-    D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
+    D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0
+  };
   constexpr D3D12_RESOURCE_DESC resource_desc = {
     D3D12_RESOURCE_DIMENSION_BUFFER,
     0,
@@ -358,13 +351,12 @@ void SessionGetInputRequiredDeviceId() {
   );
   WINML_EXPECT_EQUAL(0, device_id);
 }
-}// namespace
+}  // namespace
 
 const AdapterDmlEpTestApi& getapi() {
   static constexpr AdapterDmlEpTestApi api = {
     AdapterDmlEpTestSetup,
     AdapterDmlEpTestTeardown,
-    DmlExecutionProviderSetDefaultRoundingMode,
     DmlExecutionProviderFlushContext,
     DmlExecutionProviderReleaseCompletedReferences,
     DmlCreateAndFreeGPUAllocationFromD3DResource,
@@ -374,6 +366,7 @@ const AdapterDmlEpTestApi& getapi() {
     DmlCopyTensor,
     CreateCustomRegistry,
     ValueGetDeviceId,
-    SessionGetInputRequiredDeviceId};
+    SessionGetInputRequiredDeviceId
+  };
   return api;
 }

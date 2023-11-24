@@ -25,7 +25,7 @@ const char* OpTypeToString(OpComputeType opCtype) {
     case op_compute_type_fp16:
       return "fp16";
     case op_compute_type_qs8_per_channel:
-      return "qc8";
+      return "qs8_qc8w";
     case op_compute_type_qs8:
       return "qs8";
     case op_compute_type_qu8:

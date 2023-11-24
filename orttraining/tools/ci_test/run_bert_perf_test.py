@@ -97,7 +97,7 @@ def main():
             cmds.append("--use_mixed_precision"),
             cmds.append("--allreduce_in_fp16"),
 
-        subprocess.run(cmds).check_returncode()
+        subprocess.run(cmds).check_returncode()  # noqa: PLW1510
         if c.expected_perf > 0.0:
             json_filename = "onnxruntime_perf_metrics_{}.onnx_bert_{}_{}_Lamb.json".format(
                 model, precision_prefix, c.max_seq_length

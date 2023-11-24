@@ -22,10 +22,12 @@ struct PropertyBag {
   PropertyBag() = default;
 
   void AddProperty(const std::string& name, const PropertyDataType& val) {
-    ORT_ENFORCE(named_properties_.find(name) == named_properties_.end(),
-                "Duplicated property named ", name);
-
-    named_properties_.insert({name, val});
+    auto it = named_properties_.find(name);
+    if (it == named_properties_.end()) {
+      named_properties_.insert({name, val});
+    } else {
+      it->second = val;
+    }
   }
 
   template <typename T>

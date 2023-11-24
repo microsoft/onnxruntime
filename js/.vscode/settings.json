@@ -36,7 +36,8 @@
     "node/lib/**/*.js.map": true,
     "node/lib/**/*.js": true,
     "web/lib/**/*.js.map": true,
-    "web/lib/**/*.js": true
+    "web/lib/**/*.js": true,
+    "web/lib/**/*.d.ts": true
   },
   "files.insertFinalNewline": true,
   "files.trimTrailingWhitespace": true,
@@ -46,5 +47,11 @@
   },
   "typescript.tsdk": "node_modules/typescript/lib",
   "git.detectSubmodules": false,
-  "cmake.configureOnOpen": false
+  "cmake.configureOnOpen": false,
+  "json.schemas": [
+    {
+      "fileMatch": ["web/test/data/ops/*.jsonc"],
+      "url": "./web/test/op-test-schema.json"
+    }
+  ]
 }

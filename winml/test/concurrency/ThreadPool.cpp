@@ -7,7 +7,7 @@ ThreadPool::ThreadPool(unsigned int initial_pool_size) : m_destruct_pool(false),
     m_threads.emplace_back([this]() {
       while (true) {
         std::unique_lock<std::mutex> lock(m_mutex);
-                // thread listening for event and acquire lock if event triggered
+        // thread listening for event and acquire lock if event triggered
         m_cond_var.wait(lock, [this] { return m_destruct_pool || !m_work_queue.empty(); });
         if (!m_work_queue.empty()) {
           auto work = m_work_queue.front();
@@ -15,8 +15,8 @@ ThreadPool::ThreadPool(unsigned int initial_pool_size) : m_destruct_pool(false),
           lock.unlock();
           work();
         } else {
-                    // Work queue is empty but lock acquired
-                    // This means we are destructing the pool
+          // Work queue is empty but lock acquired
+          // This means we are destructing the pool
           break;
         }
       }
@@ -26,7 +26,7 @@ ThreadPool::ThreadPool(unsigned int initial_pool_size) : m_destruct_pool(false),
 
 ThreadPool::~ThreadPool() {
   m_destruct_pool = true;
-  m_cond_var.notify_all(); // notify destruction to threads
+  m_cond_var.notify_all();  // notify destruction to threads
   for (auto& thread : m_threads) {
     thread.join();
   }

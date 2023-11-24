@@ -239,7 +239,7 @@ class UpsampleBase {
     if (coordinate_transform_mode_name == "half_pixel_symmetric") {
       return HALF_PIXEL_SYMMETRIC;
     }
-    ORT_THROW("coordinate_transform_mode:[" + coordinate_transform_mode_name + "] is not supportted!");
+    ORT_THROW("coordinate_transform_mode:[" + coordinate_transform_mode_name + "] is not supported!");
   }
 
   GetOriginalCoordinateFunc GetOriginalCoordinateFromResizedCoordinate(
@@ -352,7 +352,7 @@ class UpsampleBase {
                             (scales.size() == 4 && scales[0] == 1 && scales[3] == 1) ||
                             scales.size() == 3 ||
                             (scales.size() == 5 && scales[0] == 1 && scales[1] == 1),
-                        "'Linear' mode only support:\n"
+                        "'Linear' mode only supports:\n"
                         "  * 2-D inputs or\n"
                         "  * 3-D inputs ('Bilinear', 'Trilinear') or\n"
                         "  * 4-D inputs with the corresponding outermost 2 scale values being 1"

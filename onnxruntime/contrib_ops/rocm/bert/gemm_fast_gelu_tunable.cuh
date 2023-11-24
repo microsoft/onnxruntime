@@ -45,7 +45,7 @@ Status GemmFastGeluUnfused(const GemmFastGeluParams<T>* params) {
   // Note: If any change cause directly usage of GemmFastGeluUnfused, add PreTuning() and PostTuning() in FastGeluTunableOp
   // to protect original input value.
   return onnxruntime::contrib::rocm::LaunchElementwiseKernel<functor::FastGeLU, T>(
-      params->tuning_ctx, params->stream,
+      params->tuning_ctx, params->Stream(),
       params->c, static_cast<int>(fast_gelu_input_length),
       params->bias, static_cast<int>(bias_length),
       params->c);

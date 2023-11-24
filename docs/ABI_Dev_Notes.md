@@ -4,7 +4,7 @@ Global variables may get constructed or destructed inside "DllMain". There are s
 ## Thread Local variables
 Onnxruntime must support explicit linking, where the operating system loads the DLL on demand at runtime, instead of process startup time. This is required by our language bindings like C#/Java.
 
-However, there are some special restrictions on this, If a thread local variable need non-trivial construction, for the threads already exist before onnxruntime.dll is loaded, the variable won't get initialized correctly. So it's better to only access such variables from onnxruntime internal threads, or make these variables function local (Like the magic statics).
+However, there are some special restrictions on this. If a thread local variable need non-trivial construction, for the threads already exist before onnxruntime.dll is loaded, the variable won't get initialized correctly. So it's better to only access such variables from onnxruntime internal threads, or make these variables function local (Like the magic statics).
 
 
 ## No undefined symbols

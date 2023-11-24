@@ -89,7 +89,13 @@ TRT_ENGINE_CACHE_DIR_NAME = "engine_cache"
 
 def split_and_sort_output(string_list):
     string_list = string_list.split("\n")
-    string_list.sort()
+
+    def custom_sort(item):
+        # Parse digits
+        numbers = re.findall(r"\d+", item)
+        return int(numbers[0]) if numbers else float("inf")
+
+    string_list.sort(key=custom_sort)
     return string_list
 
 
@@ -812,7 +818,7 @@ def write_map_to_file(result, file_name):
     if os.path.exists(file_name):
         existed_result = read_map_from_file(file_name)
 
-    for model, _ep_list in result.items():
+    for model in result:
         if model in existed_result:
             existed_result[model] = {**existed_result[model], **result[model]}
         else:
@@ -1122,7 +1128,7 @@ def calculate_gain(value, ep1, ep2):
 
 
 def add_improvement_information(model_to_latency):
-    for _key, value in model_to_latency.items():
+    for value in model_to_latency.values():
         if trt in value and cuda in value:
             gain = calculate_gain(value, trt, cuda)
             value[trt_cuda_gain] = f"{gain:.2f} %"
@@ -1209,13 +1215,13 @@ def add_status_dict(status_dict, model_name, ep, status):
 def build_status(status_dict, results, is_fail):
     if is_fail:
         for model, model_info in results.items():
-            for ep, _ep_info in model_info.items():
+            for ep in model_info:
                 model_name = model
                 status = "Fail"
                 add_status_dict(status_dict, model_name, ep, status)
     else:
         for model, value in results.items():
-            for ep, _ep_info in value.items():
+            for ep in value:
                 model_name = model
                 status = "Pass"
                 add_status_dict(status_dict, model_name, ep, status)
@@ -2176,7 +2182,7 @@ def parse_arguments():
         required=False,
         default=True,
         action="store_true",
-        help="Inlcude Float16 into benchmarking.",
+        help="Include Float16 into benchmarking.",
     )
 
     parser.add_argument("--trtexec", required=False, default=None, help="trtexec executable path.")
@@ -2270,7 +2276,7 @@ def main():
     logger.info(f"\nTotal models: {len(models)}")
 
     fail_model_cnt = 0
-    for key, _value in models.items():
+    for key in models:
         if key in model_to_fail_ep:
             fail_model_cnt += 1
     logger.info(f"Fail models: {fail_model_cnt}")

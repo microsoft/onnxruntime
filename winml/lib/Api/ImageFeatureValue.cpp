@@ -424,7 +424,7 @@ std::optional<ImageFeatureValue::ImageResourceMetadata> ImageFeatureValue::GetIn
     THROW_HR(WINML_ERR_INVALID_BINDING);
   }
 
-    //NCHW layout
+  //NCHW layout
   auto imageTensorDescriptor = CreateImageTensorDescriptor(
     tensorKind, pixelFormat.value(), pixelRange.value(), m_batchSize, descriptorWidth, descriptorHeight
   );

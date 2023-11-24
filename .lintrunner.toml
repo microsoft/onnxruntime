@@ -45,6 +45,7 @@ exclude_patterns = [
     'cmake/external/**',
     # ignore generated flatbuffers code
     'onnxruntime/core/flatbuffers/ort_flatbuffers_py/**',
+    'orttraining/orttraining/python/training/optim/_ds_code_store.py',
 ]
 command = [
     'python',
@@ -76,6 +77,7 @@ exclude_patterns = [
     'cmake/**',
     'orttraining/*',
     'onnxruntime/core/flatbuffers/**',
+    'orttraining/orttraining/python/training/optim/_ds_code_store.py',
 ]
 command = [
     'python',
@@ -96,33 +98,6 @@ init_command = [
     '--requirement=requirements-lintrunner.txt',
 ]
 is_formatter = true
-
-[[linter]]
-code = 'PYLINT'
-include_patterns = [
-    # TODO: Opt in to pylint by adding paths here
-]
-exclude_patterns = [
-]
-command = [
-    'python',
-    '-m',
-    'lintrunner_adapters',
-    'run',
-    'pylint_linter',
-    '--rcfile=pyproject.toml',
-    '--',
-    '@{{PATHSFILE}}'
-]
-init_command = [
-    'python',
-    '-m',
-    'lintrunner_adapters',
-    'run',
-    'pip_init',
-    '--dry-run={{DRYRUN}}',
-    '--requirement=requirements-lintrunner.txt',
-]
 
 [[linter]]
 code = 'RUSTFMT'

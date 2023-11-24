@@ -1,10 +1,5 @@
 #include "test_symm_qgemm_fixture.h"
 
-template <>
-MlasSymmQgemmTest<int8_t, int32_t, false>* MlasTestFixture<MlasSymmQgemmTest<int8_t, int32_t, false>>::mlas_tester(nullptr);
-template <>
-MlasSymmQgemmTest<int8_t, int32_t, true>* MlasTestFixture<MlasSymmQgemmTest<int8_t, int32_t, true>>::mlas_tester(nullptr);
-
 static size_t SymmQgemmRegistLongExecute() {
   if (MlasSymmQgemmPackBSize(16, 16, true) == 0) {
     return 0;

@@ -52,28 +52,38 @@ namespace contrib {
       kCpuExecutionProvider,                                      \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      transformers::BeamSearch);
+      transformers::BeamSearch);                                  \
+                                                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      WhisperBeamSearch,                                          \
+      kMSDomain,                                                  \
+      1,                                                          \
+      T,                                                          \
+      kCpuExecutionProvider,                                      \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      transformers::WhisperBeamSearch);
 
 REGISTER_KERNEL_TYPED(float)
 
 namespace transformers {
 
 void BeamSearch::Init(const OpKernelInfo& info) {
-  parameters_.ParseFromAttributes(info);
+  parameters_->ParseFromAttributes(info);
 
   // Model_type could be either 0 (GPT-2), 1 (encoder-decoder like T5), or 2 (Whisper)
-  ORT_ENFORCE(parameters_.model_type == IGenerationParameters::kModelTypeGpt ||
-              parameters_.model_type == IGenerationParameters::kModelTypeT5 ||
-              parameters_.model_type == IGenerationParameters::kModelTypeWhisper);
+  ORT_ENFORCE(parameters_->model_type == IGenerationParameters::kModelTypeGpt ||
+              parameters_->model_type == IGenerationParameters::kModelTypeT5 ||
+              parameters_->model_type == IGenerationParameters::kModelTypeWhisper);
 
   ONNX_NAMESPACE::GraphProto proto;
 
-  if (parameters_.model_type != IGenerationParameters::kModelTypeGpt) {
+  if (parameters_->model_type != IGenerationParameters::kModelTypeGpt) {
     // Make sure the encoder sub-graph attribute is present for the T5 and Whisper models.
     ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("encoder", &proto).IsOK());
   }
 
-  if (parameters_.model_type == IGenerationParameters::kModelTypeGpt) {
+  if (parameters_->model_type == IGenerationParameters::kModelTypeGpt) {
     // Check if the init_decoder sub-graph attribute is present for the GPT2 model.
     if (info.GetAttr<ONNX_NAMESPACE::GraphProto>("init_decoder", &proto).IsOK()) {
       has_init_decoder_ = true;
@@ -90,11 +100,11 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
                                               const std::string& attribute_name,
                                               const SessionState& subgraph_session_state) {
   const auto& node = Node();
-  if (parameters_.model_type == IGenerationParameters::kModelTypeGpt) {
+  if (parameters_->model_type == IGenerationParameters::kModelTypeGpt) {
     if (attribute_name == "decoder") {
       ORT_ENFORCE(gpt_subgraph_ == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
       auto res = gpt_details::CreateGptSubgraphAndUpdateParameters(node, session_state, attribute_name,
-                                                                   subgraph_session_state, parameters_);
+                                                                   subgraph_session_state, *parameters_);
 
       auto status = res.first;
       if (!status.IsOK()) {
@@ -109,7 +119,7 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
       // updated once for the 'decoder' attribute). In future, find a way to update 'parameters' only once based on only one subgraph
       // attribute.
       auto res = gpt_details::CreateGptSubgraphAndUpdateParameters(node, session_state, attribute_name,
-                                                                   subgraph_session_state, parameters_);
+                                                                   subgraph_session_state, *parameters_);
 
       auto status = res.first;
       if (!status.IsOK()) {
@@ -119,7 +129,7 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
       init_run_gpt_subgraph_ = std::move(res.second);
       init_run_decoder_feeds_fetches_manager_ = init_run_gpt_subgraph_->GetFeedsFetchesManager();
     }
-  } else if (parameters_.model_type == IGenerationParameters::kModelTypeT5) {
+  } else if (parameters_->model_type == IGenerationParameters::kModelTypeT5) {
     if (attribute_name == "encoder") {
       ORT_ENFORCE(t5_encoder_subgraph_ == nullptr,
                   "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
@@ -129,7 +139,7 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
       ORT_RETURN_IF_ERROR(t5_encoder_subgraph_->Setup(session_state, subgraph_session_state));
       encoder_feeds_fetches_manager_ = t5_encoder_subgraph_->GetFeedsFetchesManager();
 
-      if (parameters_.decoder_start_token_id < 0) {
+      if (parameters_->decoder_start_token_id < 0) {
         ORT_RETURN_IF(t5_encoder_subgraph_->num_subgraph_inputs != 2,
                       "Encoder subgraph shall have 2 inputs when decoder_start_token_id attribute is empty");
       } else {
@@ -144,12 +154,12 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
                                                                  subgraph_session_state.GetGraphViewer());
       ORT_RETURN_IF_ERROR(t5_decoder_subgraph_->Setup(session_state, subgraph_session_state));
       decoder_feeds_fetches_manager_ = t5_decoder_subgraph_->GetFeedsFetchesManager();
-      parameters_.SetSubgraphParameters(t5_decoder_subgraph_->vocab_size,
-                                        t5_decoder_subgraph_->num_heads,
-                                        t5_decoder_subgraph_->head_size,
-                                        t5_decoder_subgraph_->num_layers);
+      parameters_->SetSubgraphParameters(t5_decoder_subgraph_->vocab_size,
+                                         t5_decoder_subgraph_->num_heads,
+                                         t5_decoder_subgraph_->head_size,
+                                         t5_decoder_subgraph_->num_layers);
     }
-  } else if (parameters_.model_type == IGenerationParameters::kModelTypeWhisper) {
+  } else if (parameters_->model_type == IGenerationParameters::kModelTypeWhisper) {
     if (attribute_name == "encoder") {
       ORT_ENFORCE(whisper_encoder_subgraph_ == nullptr,
                   "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
@@ -169,10 +179,10 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
                                                                            subgraph_session_state.GetGraphViewer());
       ORT_RETURN_IF_ERROR(whisper_decoder_subgraph_->Setup(session_state, subgraph_session_state));
       decoder_feeds_fetches_manager_ = whisper_decoder_subgraph_->GetFeedsFetchesManager();
-      parameters_.SetSubgraphParameters(whisper_decoder_subgraph_->vocab_size,
-                                        whisper_decoder_subgraph_->num_heads,
-                                        whisper_decoder_subgraph_->head_size,
-                                        whisper_decoder_subgraph_->num_layers);
+      parameters_->SetSubgraphParameters(whisper_decoder_subgraph_->vocab_size,
+                                         whisper_decoder_subgraph_->num_heads,
+                                         whisper_decoder_subgraph_->head_size,
+                                         whisper_decoder_subgraph_->num_layers);
     }
   }
 
@@ -197,9 +207,9 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
   // Make a copy of parameters since we will update it based on inputs later
-  BeamSearchParameters parameters = parameters_;
+  BeamSearchParameters parameters = *parameters_;
 
-  if (parameters_.model_type == IGenerationParameters::kModelTypeGpt) {
+  if (parameters.model_type == IGenerationParameters::kModelTypeGpt) {
     if (!gpt_subgraph_->IsOutputFloat16()) {  // Output float32
       BeamSearchGpt<float> impl{
           *ctx_internal,
@@ -253,7 +263,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(encoder_session_state, "Subgraph SessionState was not found for 'encoder' attribute.");
   ORT_ENFORCE(encoder_feeds_fetches_manager_, "CreateFeedsFetchesManager must be called prior to execution of graph.");
 
-  if (parameters_.model_type == IGenerationParameters::kModelTypeT5) {
+  if (parameters.model_type == IGenerationParameters::kModelTypeT5) {
     // Subgraph has constraint that the output is either float or float16
     if (!t5_decoder_subgraph_->IsOutputFloat16()) {
       BeamSearchT5<float> impl{
@@ -303,7 +313,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
   }
 
   // Change the CreateEncoderInputs function for Whisper shapes
-  if (parameters_.model_type == IGenerationParameters::kModelTypeWhisper) {
+  if (parameters.model_type == IGenerationParameters::kModelTypeWhisper) {
     // Subgraph has constraint that the output is either float or float16
     if (!whisper_decoder_subgraph_->IsOutputFloat16()) {
       BeamSearchWhisper<float> impl{
@@ -319,7 +329,10 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           update_decoder_feeds_func_ ? update_decoder_feeds_func_ : GenerationCpuDeviceHelper::UpdateDecoderFeeds<float>,
           expand_buffer_float_func_ ? expand_buffer_float_func_ : GenerationCpuDeviceHelper::ExpandBuffer<float>,
           expand_buffer_float16_func_ ? expand_buffer_float16_func_ : GenerationCpuDeviceHelper::ExpandBuffer<MLFloat16>,
-          create_beam_scorer_func_};
+          create_beam_scorer_func_,
+          update_decoder_cross_qk_func_ ? update_decoder_cross_qk_func_ : GenerationCpuDeviceHelper::UpdateDecoderCrossQK,
+          finalize_decoder_cross_qk_func_ ? finalize_decoder_cross_qk_func_ : GenerationCpuDeviceHelper::FinalizeDecoderCrossQK};
+
 #ifdef USE_CUDA
       ORT_RETURN_IF_ERROR(impl.InitializeCuda(reorder_past_state_func_, init_cache_indir_func_, cuda_device_prop_, cuda_device_arch_));
 #endif
@@ -340,7 +353,10 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           update_decoder_feeds_fp16_func_ ? update_decoder_feeds_fp16_func_ : GenerationCpuDeviceHelper::UpdateDecoderFeeds<MLFloat16>,
           expand_buffer_float_func_,
           expand_buffer_float16_func_,
-          create_beam_scorer_func_};
+          create_beam_scorer_func_,
+          update_decoder_cross_qk_func_ ? update_decoder_cross_qk_func_ : GenerationCpuDeviceHelper::UpdateDecoderCrossQK,
+          finalize_decoder_cross_qk_func_ ? finalize_decoder_cross_qk_func_ : GenerationCpuDeviceHelper::FinalizeDecoderCrossQK};
+
 #ifdef USE_CUDA
       ORT_RETURN_IF_ERROR(impl.InitializeCuda(reorder_past_state_func_, init_cache_indir_func_, cuda_device_prop_, cuda_device_arch_));
 #endif
@@ -352,6 +368,10 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
 
   // Model type not supported in IGenerationParameters
   ORT_THROW("Model type is not supported.");
+}
+
+Status WhisperBeamSearch::Compute(OpKernelContext* ctx) const {
+  return BeamSearch::Compute(ctx);
 }
 
 }  // namespace transformers

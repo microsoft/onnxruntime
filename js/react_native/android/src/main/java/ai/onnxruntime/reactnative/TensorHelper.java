@@ -174,7 +174,11 @@ public class TensorHelper {
       tensor = OnnxTensor.createTensor(ortEnvironment, buffer, dims, OnnxJavaType.UINT8);
       break;
     }
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
+      ByteBuffer buffer = values;
+      tensor = OnnxTensor.createTensor(ortEnvironment, buffer, dims, OnnxJavaType.BOOL);
+      break;
+    }
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:

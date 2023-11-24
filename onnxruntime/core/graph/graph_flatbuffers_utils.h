@@ -5,6 +5,8 @@
 
 #include <memory>
 
+#include "flatbuffers/flatbuffers.h"
+
 #include "core/common/status.h"
 #include "core/graph/ort_format_load_options.h"
 #include "core/framework/tensor.h"
@@ -17,12 +19,6 @@ class TensorProto;
 class SparseTensorProto;
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 }  // namespace ONNX_NAMESPACE
-
-namespace flatbuffers {
-class FlatBufferBuilder;
-template <typename T>
-struct Offset;
-}  // namespace flatbuffers
 
 namespace onnxruntime {
 

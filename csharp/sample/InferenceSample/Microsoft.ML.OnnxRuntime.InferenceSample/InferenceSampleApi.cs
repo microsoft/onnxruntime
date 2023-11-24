@@ -1,8 +1,8 @@
-﻿using System;
+﻿using Microsoft.ML.OnnxRuntime.Tensors;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 
 namespace Microsoft.ML.OnnxRuntime.InferenceSample
 {
@@ -30,7 +30,7 @@ namespace Microsoft.ML.OnnxRuntime.InferenceSample
                 // We create an OrtValue in this case over the buffer of potentially different shapes.
                 // It is Okay as long as the specified shape does not exceed the actual length of the buffer
                 var shape = Array.ConvertAll<int, long>(inputMeta[name].Dimensions, Convert.ToInt64);
-                Debug.Assert(shape.Aggregate(1L, (a, v) => a * v) <= inputData.LongLength);
+                Debug.Assert(ShapeUtils.GetSizeForShape(shape) <= inputData.LongLength);
 
                 var ortValue = OrtValue.CreateTensorValueFromMemory(inputData, shape);
                 _inputData.Add(ortValue);

@@ -31,7 +31,8 @@ namespace cuda {
   UNARY_OP_NAME_EXPR(Not, !a)              \
   UNARY_OP_NAME_EXPR(Round, _Round(a))     \
   UNARY_OP_NAME_EXPR(Sin, _Sin(a))         \
-  UNARY_OP_NAME_EXPR(Cos, _Cos(a))
+  UNARY_OP_NAME_EXPR(Cos, _Cos(a))         \
+  UNARY_OP_NAME_EXPR(Sign, _Sign(a))
 
 #define UNARY_ELEMENTWISE_IMPL_DECLARATION(name) \
   template <typename T>                          \

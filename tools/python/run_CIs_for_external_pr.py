@@ -71,6 +71,7 @@ def main():
     pipelines = [
         # windows
         "Windows ARM64 QNN CI Pipeline",
+        "Windows x64 QNN CI Pipeline",
         "Windows CPU CI Pipeline",
         "Windows GPU CI Pipeline",
         "Windows GPU TensorRT CI Pipeline",
@@ -92,6 +93,10 @@ def main():
         # checks
         "onnxruntime-python-checks-ci-pipeline",
         "onnxruntime-binary-size-checks-ci-pipeline",
+        # not currently required, but running ensures we're hitting all mobile platforms
+        "Android CI Pipeline",
+        "iOS CI Pipeline",
+        "ONNX Runtime React Native CI Pipeline",
     ]
 
     # remove pipelines that have already run successfully

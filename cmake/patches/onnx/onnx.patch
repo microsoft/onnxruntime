@@ -38,7 +38,7 @@ index 0aab3e26..0f859267 100644
 @@ -47,10 +47,28 @@
  #define ONNX_API ONNX_IMPORT
  #endif
- 
+
 +#if defined(__GNUC__)
 +#pragma GCC diagnostic push
 +
@@ -58,7 +58,7 @@ index 0aab3e26..0f859267 100644
  #else
  #include "onnx/onnx.pb.h"
  #endif
- 
+
 +#if defined(__GNUC__)
 +#pragma GCC diagnostic pop
 +#endif

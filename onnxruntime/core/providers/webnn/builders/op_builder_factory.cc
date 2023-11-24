@@ -23,6 +23,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateUnaryOpBuilder("Exp", op_registrations);
     CreateUnaryOpBuilder("Floor", op_registrations);
     CreateUnaryOpBuilder("Identity", op_registrations);
+    CreateUnaryOpBuilder("Log", op_registrations);
     CreateUnaryOpBuilder("Neg", op_registrations);
     CreateUnaryOpBuilder("Not", op_registrations);
     CreateUnaryOpBuilder("Reciprocal", op_registrations);
@@ -98,7 +99,9 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   {  // Logical
     CreateLogicalOpBuilder("Equal", op_registrations);
     CreateLogicalOpBuilder("Greater", op_registrations);
+    CreateLogicalOpBuilder("GreaterOrEqual", op_registrations);
     CreateLogicalOpBuilder("Less", op_registrations);
+    CreateLogicalOpBuilder("LessOrEqual", op_registrations);
   }
 
   {  // Max/Min
@@ -107,6 +110,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   }
 
   {  // Normalization
+    CreateNormalizationOpBuilder("BatchNormalization", op_registrations);
     CreateNormalizationOpBuilder("GroupNormalization", op_registrations);
     CreateNormalizationOpBuilder("InstanceNormalization", op_registrations);
     CreateNormalizationOpBuilder("LayerNormalization", op_registrations);
@@ -117,9 +121,11 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   }
 
   {  // Pool
+    CreatePoolOpBuilder("AveragePool", op_registrations);
     CreatePoolOpBuilder("GlobalAveragePool", op_registrations);
     CreatePoolOpBuilder("GlobalMaxPool", op_registrations);
-    CreatePoolOpBuilder("AveragePool", op_registrations);
+    CreatePoolOpBuilder("GlobalLpPool", op_registrations);
+    CreatePoolOpBuilder("LpPool", op_registrations);
     CreatePoolOpBuilder("MaxPool", op_registrations);
   }
 

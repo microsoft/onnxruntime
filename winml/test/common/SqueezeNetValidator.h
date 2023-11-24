@@ -29,4 +29,4 @@ void SqueezeNet(
   OutputBindingStrategy outputBindingStrategy = OutputBindingStrategy::Bound,
   bool bindInputsAsIInspectable = false
 );
-}// namespace WinML::Engine::Test::ModelValidator
+}  // namespace WinML::Engine::Test::ModelValidator

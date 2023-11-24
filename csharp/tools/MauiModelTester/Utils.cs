@@ -70,7 +70,7 @@ namespace MauiModelTester
                 int idx = 0;
                 foreach (var str in tensorProto.StringData)
                 {
-                    ortValue.FillStringTensorElement(str.Span, idx++);
+                    ortValue.StringTensorSetElementAt(str.Span, idx++);
                 }
             }
             else
@@ -111,7 +111,7 @@ namespace MauiModelTester
                 case TensorElementType.Int8:
                     return typeof(sbyte);
                 case TensorElementType.String:
-                    return typeof(byte);
+                    return typeof(string);
                 case TensorElementType.Bool:
                     return typeof(bool);
                 default:
@@ -120,6 +120,7 @@ namespace MauiModelTester
         }
 
         static OrtValue TensorProtoToOrtValue<T>(Onnx.TensorProto tensorProto)
+            where T : unmanaged
         {
             unsafe
             {
@@ -141,7 +142,7 @@ namespace MauiModelTester
             private delegate ReadOnlySpan<T> GetDataFn<T>(OrtValue ortValue);
 
             private static ReadOnlySpan<T> GetData<T>(OrtValue ortValue)
-                where T : struct
+                where T : unmanaged
             {
                 return ortValue.GetTensorDataAsSpan<T>();
             }
@@ -186,7 +187,7 @@ namespace MauiModelTester
 
             private static void CheckEqual<T>(string name, OrtValue expected, OrtValue actual,
                                               IEqualityComparer<T> comparer)
-                where T : struct
+                where T : unmanaged
             {
                 CheckEqual(name, expected, actual, comparer, GetData<T>);
             }

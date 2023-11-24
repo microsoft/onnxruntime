@@ -30,6 +30,7 @@ limitations under the License.
 #include "contrib_ops/cpu/bert/attention_base.h"
 #include "contrib_ops/rocm/bert/attention_impl.h"
 #include "contrib_ops/rocm/bert/attention_softmax.h"
+#include "contrib_ops/rocm/bert/decoder_attention_impl.h"
 
 using namespace onnxruntime::rocm;
 
@@ -180,7 +181,7 @@ template <typename T>
 Status DecoderQkvToContext(
     const hipDeviceProp_t& prop,
     RocmTuningContext* tuning_ctx,
-    hipStream_t stream,
+    Stream* ort_stream,
     rocblas_handle& rocblas,
     const size_t element_size,
     const int batch_size,
@@ -211,6 +212,7 @@ Status DecoderQkvToContext(
   const int v_buffer_offset = (sequence_length + kv_sequence_length) * BHN;
 
   T* temp_qkv_buffer = workspace_buffer;
+  auto stream = static_cast<hipStream_t>(ort_stream->GetHandle());
 
   const T* q = qkv_buffer;
   // transpose q and copy them to qkv_buffer
@@ -282,7 +284,7 @@ Status DecoderQkvToContext(
   const int strideB = sequence_length * head_size;
   if (use_past && static_kv) {
     ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
-        tuning_ctx, stream, rocblas,
+        tuning_ctx, ort_stream, rocblas,
         blas::BlasOp::Trans, blas::BlasOp::NonTrans,
         kv_sequence_length, sequence_length, head_size,
         /*alpha=*/rsqrt_head_size,
@@ -293,7 +295,7 @@ Status DecoderQkvToContext(
         BN));
   } else {
     ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
-        tuning_ctx, stream, rocblas,
+        tuning_ctx, ort_stream, rocblas,
         blas::BlasOp::Trans, blas::BlasOp::NonTrans,
         kv_sequence_length, sequence_length, head_size,
         /*alpha=*/rsqrt_head_size,
@@ -307,7 +309,7 @@ Status DecoderQkvToContext(
   if (has_key_padding_mask) {
     int3 strides = Get2DMaskStrides(kv_sequence_length);
     ORT_RETURN_IF_ERROR(ComputeSoftmaxWithRawMask<T>(
-        stream, kv_sequence_length, sequence_length, batch_size, num_heads,
+        ort_stream, kv_sequence_length, sequence_length, batch_size, num_heads,
         strides, nullptr, key_padding_mask, nullptr, scratch1, scratch2,
         false, 1.0f, false, nullptr, mask_filter_value));
   } else {
@@ -318,7 +320,7 @@ Status DecoderQkvToContext(
   // compute P*V (as V*P), and store in scratch3: BxNxSxH
   if (use_past && static_kv) {
     ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
-        tuning_ctx, stream, rocblas,
+        tuning_ctx, ort_stream, rocblas,
         blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
         head_size, sequence_length, kv_sequence_length,
         /*alpha=*/1.0f,
@@ -329,7 +331,7 @@ Status DecoderQkvToContext(
         BN));
   } else {
     ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
-        tuning_ctx, stream, rocblas,
+        tuning_ctx, ort_stream, rocblas,
         blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
         head_size, sequence_length, kv_sequence_length,
         /*alpha=*/1.0f,
@@ -348,7 +350,7 @@ Status DecoderQkvToContext(
 Status LaunchDecoderAttentionKernel(
     const hipDeviceProp_t& prop,
     RocmTuningContext* tuning_ctx,
-    hipStream_t stream,
+    Stream* stream,
     rocblas_handle& rocblas,
     const size_t element_size,
     const int batch_size,

@@ -562,7 +562,7 @@ static ptrdiff_t CalculateParallelForBlock(const ptrdiff_t n, const Eigen::Tenso
   constexpr ptrdiff_t max_oversharding_factor = 4;
   ptrdiff_t block_size = Eigen::numext::mini(
       n,
-      Eigen::numext::maxi<ptrdiff_t>(Eigen::divup<ptrdiff_t>(n, max_oversharding_factor * num_threads), static_cast<ptrdiff_t>(block_size_f)));
+      Eigen::numext::maxi<ptrdiff_t>(Eigen::numext::div_ceil<ptrdiff_t>(n, max_oversharding_factor * num_threads), static_cast<ptrdiff_t>(block_size_f)));
   const ptrdiff_t max_block_size = Eigen::numext::mini(n, 2 * block_size);
 
   if (block_align) {
@@ -571,19 +571,19 @@ static ptrdiff_t CalculateParallelForBlock(const ptrdiff_t n, const Eigen::Tenso
     block_size = Eigen::numext::mini(n, new_block_size);
   }
 
-  ptrdiff_t block_count = Eigen::divup(n, block_size);
+  ptrdiff_t block_count = Eigen::numext::div_ceil(n, block_size);
 
   // Calculate parallel efficiency as fraction of total CPU time used for
   // computations:
   double max_efficiency =
-      static_cast<double>(block_count) / (Eigen::divup<ptrdiff_t>(block_count, num_threads) * num_threads);
+      static_cast<double>(block_count) / (Eigen::numext::div_ceil<ptrdiff_t>(block_count, num_threads) * num_threads);
 
   // Now try to increase block size up to max_block_size as long as it
   // doesn't decrease parallel efficiency.
   for (ptrdiff_t prev_block_count = block_count; max_efficiency < 1.0 && prev_block_count > 1;) {
     // This is the next block size that divides size into a smaller number
     // of blocks than the current block_size.
-    ptrdiff_t coarser_block_size = Eigen::divup(n, prev_block_count - 1);
+    ptrdiff_t coarser_block_size = Eigen::numext::div_ceil(n, prev_block_count - 1);
     if (block_align) {
       ptrdiff_t new_block_size = block_align(coarser_block_size);
       assert(new_block_size >= coarser_block_size);
@@ -593,11 +593,11 @@ static ptrdiff_t CalculateParallelForBlock(const ptrdiff_t n, const Eigen::Tenso
       break;  // Reached max block size. Stop.
     }
     // Recalculate parallel efficiency.
-    const ptrdiff_t coarser_block_count = Eigen::divup(n, coarser_block_size);
+    const ptrdiff_t coarser_block_count = Eigen::numext::div_ceil(n, coarser_block_size);
     assert(coarser_block_count < prev_block_count);
     prev_block_count = coarser_block_count;
     const double coarser_efficiency =
-        static_cast<double>(coarser_block_count) / (Eigen::divup<ptrdiff_t>(coarser_block_count, num_threads) * num_threads);
+        static_cast<double>(coarser_block_count) / (Eigen::numext::div_ceil<ptrdiff_t>(coarser_block_count, num_threads) * num_threads);
     if (coarser_efficiency + 0.01 >= max_efficiency) {
       // Taking it.
       block_size = coarser_block_size;

@@ -1,3 +1,32 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
 resources:
   repositories:
   - repository: manylinux # The name used to reference this repository in the checkout step
@@ -27,21 +56,69 @@ stages:
         clean: true
         submodules: none
 
-      - task: NodeTool@0
+      - task: DownloadPackage@1
+        displayName: 'Download ARM64 GCC'
         inputs:
-          versionSpec: '16.x'
+          packageType: upack
+          feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
+          definition: 'gcc_aarch64_linux_gnu_host_x86_64'
+          version: 13.2.1
+          downloadPath: $(Build.BinariesDirectory)/gcc
 
-      - task: UsePythonVersion@0
+      - task: DownloadPackage@1
+        displayName: 'Download ARM32 GCC'
         inputs:
-          versionSpec: '3.8'
-          addToPath: true
+          packageType: upack
+          feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
+          definition: 'gcc_aarch32_linux_gnu_host_x86_64'
+          version: 13.2.1
+          downloadPath: $(Build.BinariesDirectory)/gcc
 
       - template: templates/get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
-          Context: tools/ci_build/github/linux/docker
-          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
+          Context: tools/ci_build/github/linux/docker/
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=registry.access.redhat.com/ubi8/ubi"
           Repository: onnxruntimecpubuild
+
+      - task: PythonScript@0
+        displayName: 'Update deps.txt'
+        inputs:
+          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
+          arguments: --new_dir $(Build.BinariesDirectory)/deps
+          workingDirectory: $(Build.BinariesDirectory)
+          pythonInterpreter: /usr/bin/python3
+
+      - script: |
+          set -e -x
+          # ARM64 build
+          mkdir -p $(Build.BinariesDirectory)/gccbin
+          tar -Jxf $(Build.BinariesDirectory)/gcc/arm-gnu-toolchain-13.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz --strip=1 -C $(Build.BinariesDirectory)/gccbin
+          export PATH=$(Build.BinariesDirectory)/gccbin/bin:$PATH
+          mkdir $(Build.BinariesDirectory)/aarch64build
+          cd $(Build.BinariesDirectory)/aarch64build
+          cmake $(Build.SourcesDirectory)/cmake -Donnxruntime_ENABLE_CPUINFO=OFF -DPython_EXECUTABLE=/usr/bin/python3 -DPYTHON_EXECUTABLE=/usr/bin/python3 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$(Build.SourcesDirectory)/cmake/linux_arm64_crosscompile_toolchain.cmake -G Ninja
+          ninja
+          rm -rf $(Build.BinariesDirectory)/aarch64build $(Build.BinariesDirectory)/gccbin
+          # ARM32 build
+          mkdir -p $(Build.BinariesDirectory)/gccbin
+          tar -Jxf $(Build.BinariesDirectory)/gcc/arm-gnu-toolchain-13.2.rel1-x86_64-arm-none-linux-gnueabihf.tar.xz --strip=1 -C $(Build.BinariesDirectory)/gccbin
+          ls $(Build.BinariesDirectory)/gccbin/bin
+          mkdir $(Build.BinariesDirectory)/arm32build
+          cd $(Build.BinariesDirectory)/arm32build
+          # TODO: fix the warnings and remove the --compile-no-warning-as-error arg
+          cmake --compile-no-warning-as-error $(Build.SourcesDirectory)/cmake -Donnxruntime_ENABLE_CPUINFO=OFF -DPython_EXECUTABLE=/usr/bin/python3 -DPYTHON_EXECUTABLE=/usr/bin/python3 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$(Build.SourcesDirectory)/cmake/linux_arm32_crosscompile_toolchain.cmake -G Ninja
+          ninja
+          rm -rf $(Build.BinariesDirectory)/arm32build $(Build.BinariesDirectory)/gccbin
+        displayName: Cross-compile for Linux ARM32 and ARM64
+
+      - task: PythonScript@0
+        displayName: 'Update deps.txt'
+        inputs:
+          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
+          arguments: --new_dir /build/deps
+          workingDirectory: $(Build.BinariesDirectory)
+          pythonInterpreter: /usr/bin/python3
 
       - template: templates/linux-build-step-with-cache.yml
         parameters:
@@ -56,7 +133,6 @@ stages:
               inputs:
                 script: |
                   mkdir -p $HOME/.onnx
-                  mkdir -p $(Pipeline.Workspace)/ccache
                   docker run --rm \
                     --volume /data/onnx:/data/onnx:ro \
                     --volume $(Build.SourcesDirectory):/onnxruntime_src \
@@ -72,7 +148,7 @@ stages:
                       set -ex; \
                       ccache -s; \
                       /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-                        --build_dir /build --cmake_generator Ninja \
+                        --build_dir /build --cmake_generator 'Ninja' \
                         --config Debug Release \
                         --skip_submodule_sync \
                         --build_shared_lib \
@@ -82,124 +158,70 @@ stages:
                         --enable_onnx_tests \
                         --enable_transformers_tool_test \
                         --use_cache \
-                        --build_java --build_nodejs --update --build --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON; \
+                        --update --build --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON; \
                       ccache -sv; \
                       ccache -z"
                 workingDirectory: $(Build.SourcesDirectory)
 
-      - task: UseDotNet@2
-        displayName: "Setup dotnet"
-        inputs:
-          version: '6.0.408'
+      - script: |
+          ln -s /data/models $(Build.BinariesDirectory)/models
+        displayName: link model dir
 
-      - task: DotNetCoreCLI@2
-        displayName: "Restore C# packages"
-        inputs:
-          command: 'restore'
-          projects: '$(Build.SourcesDirectory)/csharp/OnnxRuntime.DesktopOnly.CSharp.sln'
+      - bash: |
+          mkdir -p $HOME/.onnx
+          docker run --rm \
+            --volume /data/onnx:/data/onnx:ro \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --volume /data/models:/build/models:ro \
+            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+            -e NIGHTLY_BUILD \
+            -e BUILD_BUILDNUMBER \
+            onnxruntimecpubuild \
+            /bin/bash -c "
+              set -ex; \
+              pushd /onnxruntime_src/csharp; \
+              dotnet restore /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; \
+              dotnet build /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; \
+              dotnet test /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln -f net6.0 --no-build -l \"console;verbosity=normal\"; \
+              popd
+              "
+        displayName: 'Dotnet build C# sln and Test'
 
-      # the props file was generated with docker container paths. convert to the 'real' path by replacing the
-      # the container path of '/build'. The '>' prefix is to match the closing angle bracket of the tag.
-      # e.g. <OnnxRuntimeBuildDirectory>/build/... so we only match the start of a path.
-      # We use powershell so we don't need extra escaping of the '/' chars in the path.
-      - task: CmdLine@2
-        displayName: 'Update props from docker path to local and create models link'
-        inputs:
-          script: |
-             pwsh -Command '(Get-Content $(Build.SourcesDirectory)/csharp/Directory.Build.props) -replace ">/build", ">$(Build.BinariesDirectory)" | Set-Content $(Build.SourcesDirectory)/csharp/Directory.Build.props'
-             cat $(Build.SourcesDirectory)/csharp/Directory.Build.props
-             ln -s /data/models $(Build.BinariesDirectory)/models
+      - bash: |
+          mkdir -p $HOME/.onnx
+          docker run --rm \
+            --volume /data/onnx:/data/onnx:ro \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --volume /data/models:/build/models:ro \
+            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+            -e NIGHTLY_BUILD \
+            -e BUILD_BUILDNUMBER \
+            onnxruntimecpubuild \
+              /bin/bash -c "
+                set -ex; \
+                /bin/bash /onnxruntime_src/tools/scripts/python_test.sh /onnxruntime_src /build Release && \
+                /bin/bash /onnxruntime_src/tools/scripts/symbolic_shape_infer_test.sh /build
+              "
+        displayName: 'Run Release tests and symbolic shape infer test'
 
-      - task: DotNetCoreCLI@2
-        displayName: 'dotnet build C# sln'
-        inputs:
-          command: 'build'
-          projects: '$(Build.SourcesDirectory)/csharp/OnnxRuntime.DesktopOnly.CSharp.sln'
-
-      - task: DotNetCoreCLI@2
-        displayName: 'dotnet test C#'
-        inputs:
-          command: 'test'
-          projects: '$(Build.SourcesDirectory)/csharp/OnnxRuntime.DesktopOnly.CSharp.sln'
-          # extra logging so all tests are listed in output to validate what's actually run
-          arguments: '-f net6.0 --no-build -l "console;verbosity=normal"'
-          workingDirectory: $(Build.SourcesDirectory)/csharp
-
-      - task: CmdLine@2
-        displayName: 'Install python deps and run java tests'
-        inputs:
-          script: |
-             set -e -x
-             python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq
-             cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
-             # Test ORT with the latest ONNX release.
-             sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/" $(Build.BinariesDirectory)/requirements.txt
-             python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
-             mkdir $(Build.BinariesDirectory)/requirements_torch_cpu/
-             cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu/requirements.txt $(Build.BinariesDirectory)/requirements_torch_cpu/requirements.txt
-             python3 -m pip install -r $(Build.BinariesDirectory)/requirements_torch_cpu/requirements.txt
-             cd $(Build.SourcesDirectory)/java
-             $(Build.SourcesDirectory)/java/gradlew "cmakeCheck" "-DcmakeBuildDir=$(Build.BinariesDirectory)/Release"
-
-      - task: CmdLine@2
-        displayName: 'Install Release python package'
-        inputs:
-          script: |
-             rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
-             python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
-
-      - task: PythonScript@0
-        displayName: 'Run Release unit tests'
-        inputs:
-           scriptPath: $(Build.SourcesDirectory)/tools/ci_build/build.py
-           workingDirectory: $(Build.BinariesDirectory)/Release
-           arguments: >-
-              --build_dir $(Build.BinariesDirectory)
-              --cmake_generator Ninja
-              --config Release
-              --test
-              --skip_submodule_sync
-              --build_shared_lib
-              --parallel
-              --build_wheel
-              --enable_onnx_tests
-              --enable_transformers_tool_test
-              --build_nodejs
-              --ctest_path ""
-
-      - task: CmdLine@2
-        displayName: 'Install Debug python package'
-        inputs:
-          script: |
-             set -e -x
-             rm -rf $(Build.BinariesDirectory)/Debug/onnxruntime $(Build.BinariesDirectory)/Debug/pybind11
-             python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
-             python3 -m pip install $(Build.BinariesDirectory)/Debug/dist/*.whl
-
-      - task: PythonScript@0
-        displayName: 'Run Debug unit tests'
-        inputs:
-          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/build.py
-          workingDirectory: $(Build.BinariesDirectory)/Debug
-          arguments: >-
-              --build_dir $(Build.BinariesDirectory)
-              --cmake_generator Ninja
-              --config Debug
-              --test
-              --skip_submodule_sync
-              --build_shared_lib
-              --parallel
-              --build_wheel
-              --enable_onnx_tests
-              --enable_transformers_tool_test
-              --build_nodejs
-              --ctest_path ""
-
-      - task: PythonScript@0
-        displayName: 'Symbolic shape infer'
-        inputs:
-          scriptPath: $(Build.BinariesDirectory)/Release/onnxruntime_test_python_symbolic_shape_infer.py
-          workingDirectory: $(Build.BinariesDirectory)/Release
+      - bash: |
+          mkdir -p $HOME/.onnx
+          docker run --rm \
+            --volume /data/onnx:/data/onnx:ro \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --volume /data/models:/build/models:ro \
+            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+            -e NIGHTLY_BUILD \
+            -e BUILD_BUILDNUMBER \
+            onnxruntimecpubuild \
+                /bin/bash /onnxruntime_src/tools/scripts/python_test.sh /onnxruntime_src /build Debug
+        displayName: 'Run Debug tests'
 
       - task: PublishTestResults@2
         displayName: 'Publish unit test results'
@@ -209,7 +231,6 @@ stages:
           testRunTitle: 'Unit Test Run'
         condition: succeededOrFailed()
 
-
 - stage: arm64_build
   dependsOn: []
   jobs:
@@ -217,17 +238,21 @@ stages:
     parameters:
       arch: 'aarch64'
       machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
-      base_image: 'arm64v8/centos:7'
-      devtoolset_rootpath: /opt/rh/devtoolset-10/root
-      ld_library_path_arg: /opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64
-      prepend_path: '/opt/rh/devtoolset-10/root/usr/bin:'
+      base_image: 'arm64v8/almalinux:8'
+      devtoolset_rootpath: /opt/rh/gcc-toolset-12/root
+      ld_library_path_arg: /opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64
+      prepend_path: '/opt/rh/gcc-toolset-12/root/usr/bin:'
       with_cache: true
+      cmake_build_type: Release
 
 - stage: arm64_test
   dependsOn: ['arm64_build']
   jobs:
-  - template: templates/py-packaging-linux-test.yml
+  - template: templates/py-packaging-linux-test-cpu.yml
     parameters:
       arch: 'aarch64'
       machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
-      device: 'CPU'
+      base_image: 'arm64v8/almalinux:8'
+      devtoolset_rootpath: /opt/rh/gcc-toolset-12/root
+      ld_library_path_arg: /opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64
+      prepend_path: '/opt/rh/gcc-toolset-12/root/usr/bin:'

@@ -43,15 +43,13 @@ from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
 from typing import Any, Dict, List
 
+import benchmark_helper
 import numpy as np
 import torch
 from longformer_helper import PRETRAINED_LONGFORMER_MODELS, LongformerHelper, LongformerInputs
 from transformers import LongformerModel
 
 import onnxruntime
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-import benchmark_helper  # noqa: E402
 
 logger = logging.getLogger("")
 

@@ -37,7 +37,7 @@ struct BufferBackedRandomAccessStreamReadAsync
   virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_Id(
     /* [retval][out] */ __RPC__out unsigned __int32* id
   ) override {
-    *id = 0; // Do we need to implement this?
+    *id = 0;  // Do we need to implement this?
     return S_OK;
   }
 
@@ -134,7 +134,7 @@ struct RandomAccessStream
     return S_OK;
   }
 
-    // Content Provider
+  // Content Provider
 
   /* [propget] */ virtual HRESULT STDMETHODCALLTYPE get_ContentType(
     /* [retval, out] */ __RPC__deref_out_opt HSTRING* value
@@ -142,7 +142,7 @@ struct RandomAccessStream
     return WindowsCreateString(nullptr, 0, value);
   }
 
-    // IRandomAccessStream
+  // IRandomAccessStream
 
   /* [propget] */ virtual HRESULT STDMETHODCALLTYPE get_Size(
     /* [retval, out] */ __RPC__out UINT64* value
@@ -210,18 +210,18 @@ struct RandomAccessStream
     return S_OK;
   }
 
-    // IInputStream
+  // IInputStream
   virtual HRESULT STDMETHODCALLTYPE ReadAsync(
     /* [in] */ __RPC__in_opt ABI::Windows::Storage::Streams::IBuffer* buffer,
     /* [in] */ UINT32 count,
     /* [in] */ ABI::Windows::Storage::Streams::InputStreamOptions /*options*/,
-        /* [retval, out] */
+    /* [retval, out] */
     __RPC__deref_out_opt __FIAsyncOperationWithProgress_2_Windows__CStorage__CStreams__CIBuffer_UINT32** operation
   ) override {
     auto read_async = Microsoft::WRL::Make<BufferBackedRandomAccessStreamReadAsync>();
     read_async.CopyTo(operation);
 
-        // perform the "async work" which is actually synchronous atm
+    // perform the "async work" which is actually synchronous atm
     Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IBuffer> spBuffer = buffer;
     Microsoft::WRL::ComPtr<Windows::Storage::Streams::IBufferByteAccess> out_buffer_byte_access;
     spBuffer.As<Windows::Storage::Streams::IBufferByteAccess>(&out_buffer_byte_access);
@@ -240,7 +240,7 @@ struct RandomAccessStream
     return S_OK;
   }
 
-    // IOutputStream
+  // IOutputStream
   virtual HRESULT STDMETHODCALLTYPE WriteAsync(
     /* [in] */ __RPC__in_opt ABI::Windows::Storage::Streams::IBuffer* /*buffer*/,
     /* [retval, out] */ __RPC__deref_out_opt __FIAsyncOperationWithProgress_2_UINT32_UINT32** /*operation*/
@@ -254,7 +254,7 @@ struct RandomAccessStream
     return E_NOTIMPL;
   }
 
-    // IClosable
+  // IClosable
   virtual HRESULT STDMETHODCALLTYPE Close(void) override {
     buffer_ = nullptr;
     return S_OK;
@@ -287,7 +287,7 @@ struct BufferBackedRandomAccessStreamReferenceOpenReadAsync
   virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_Id(
     /* [retval][out] */ __RPC__out unsigned __int32* id
   ) override {
-    *id = 0; // Do we need to implement this?
+    *id = 0;  // Do we need to implement this?
     return S_OK;
   }
 
@@ -364,6 +364,6 @@ struct BufferBackedRandomAccessStreamReference
   }
 };
 
-} // namespace WinMLTest
+}  // namespace WinMLTest
 
-#endif // RANDOM_ACCESS_STREAM_H
+#endif  // RANDOM_ACCESS_STREAM_H

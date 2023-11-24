@@ -275,7 +275,7 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
         for output in added_outputs:
             self.assertTrue(output in augmented_model_outputs)
 
-    def construct_test_compute_range_model(self, test_model_path):
+    def construct_test_compute_data_model(self, test_model_path):
         #    (input)
         #       |
         #      Relu
@@ -323,15 +323,15 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
         onnx.save(model, test_model_path)
 
-    def test_compute_range(self):
+    def test_compute_data(self):
         test_model_path = Path(self._tmp_model_dir.name).joinpath("./test_model_4.onnx")
-        self.construct_test_compute_range_model(test_model_path.as_posix())
+        self.construct_test_compute_data_model(test_model_path.as_posix())
 
         augmented_model_path = Path(self._tmp_model_dir.name).joinpath("./augmented_test_model_4.onnx")
         calibrater = create_calibrator(test_model_path, augmented_model_path=augmented_model_path.as_posix())
         data_reader = TestDataReader()
         calibrater.collect_data(data_reader)
-        tensors_range = calibrater.compute_range()
+        tensors_range = calibrater.compute_data()
 
         sess_options = onnxruntime.SessionOptions()
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
@@ -355,7 +355,7 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
         output_names = [infer_session.get_outputs()[i].name for i in range(len(infer_session.get_outputs()))]
         output_min_max_dict = dict(zip(output_names, min_max_pairs))
         for output_name in output_min_max_dict:
-            self.assertEqual(output_min_max_dict[output_name], tensors_range[output_name])
+            self.assertEqual(output_min_max_dict[output_name], tensors_range[output_name].range_value)
 
     def test_augment_graph_with_zero_value_dimension(self):
         """TEST_CONFIG_5"""

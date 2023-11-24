@@ -43,12 +43,17 @@ namespace cuda {
   ACTIVATION_GRAD_OP_TYPED(name, ver, domain, float)     \
   ACTIVATION_GRAD_OP_TYPED(name, ver, domain, double)
 
+#define ACTIVATION_GRAD_OP_HFDX(name, ver, domain) \
+  ACTIVATION_GRAD_OP_HFD(name, ver, domain)        \
+  ACTIVATION_GRAD_OP_TYPED(name, ver, domain, BFloat16)
+
 ACTIVATION_GRAD_OP_HFD(GeluGrad, 1, kMSDomain);
 ACTIVATION_GRAD_OP_HFD(FastGeluGrad, 1, kMSDomain);
 ACTIVATION_GRAD_OP_HFD(ReluGrad, 1, kMSDomain);
 ACTIVATION_GRAD_OP_HFD(SigmoidGrad, 1, kMSDomain);
-ACTIVATION_GRAD_OP_HFD(QuickGeluGrad, 1, kMSDomain);
+ACTIVATION_GRAD_OP_HFDX(QuickGeluGrad, 1, kMSDomain);
 ACTIVATION_GRAD_OP_HFD(TanhGrad, 1, kMSDomain);
+ACTIVATION_GRAD_OP_HFD(LeakyReluGrad, 1, kMSDomain);
 
 }  // namespace cuda
 }  // namespace onnxruntime

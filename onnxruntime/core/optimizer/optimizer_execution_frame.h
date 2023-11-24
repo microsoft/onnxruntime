@@ -70,7 +70,6 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     OrtValueNameIdxMap ort_value_name_idx_map_;
     std::unordered_map<int, const NodeArg*> ort_value_idx_nodearg_map_;
     std::unordered_map<int, OrtValue> initializers_;
-    InlinedHashMap<int, std::unique_ptr<char[]>> buffer_for_initialized_tensors_;
     std::unique_ptr<NodeIndexInfo> node_index_info_;
     const IExecutionProvider& execution_provider_;
     const std::function<bool(const std::string&)>& is_sparse_initializer_func_;

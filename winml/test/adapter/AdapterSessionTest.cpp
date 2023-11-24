@@ -348,7 +348,7 @@ void GetNumberOfIntraOpThreads() {
   winml_adapter_api->SessionGetNumberOfIntraOpThreads(session.get(), &num_threads);
   WINML_EXPECT_EQUAL(num_threads, desired_num_threads);
 }
-}// namespace
+}  // namespace
 
 const AdapterSessionTestAPI& getapi() {
   static AdapterSessionTestAPI api = {
@@ -368,7 +368,8 @@ const AdapterSessionTestAPI& getapi() {
     Profiling,
     CopyInputAcrossDevices,
     CopyInputAcrossDevices_DML,
-    GetNumberOfIntraOpThreads};
+    GetNumberOfIntraOpThreads
+  };
 
   if (SkipGpuTests()) {
     api.AppendExecutionProvider_DML = SkipTest;

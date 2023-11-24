@@ -17,8 +17,9 @@ class PackedMultiHeadAttention final : public TrtFusedAttention<T>, public CudaK
 
  private:
   Status CheckInputs(const TensorShape& query_shape,
-                     const Tensor* key_shape,
-                     const Tensor* value_shape,
+                     const Tensor* key,
+                     const Tensor* value,
+                     const Tensor* bias,
                      const TensorShape& token_offset_shape,
                      const TensorShape& cu_seq_len_shape,
                      const Tensor* relative_position_bias,
@@ -30,6 +31,8 @@ class PackedMultiHeadAttention final : public TrtFusedAttention<T>, public CudaK
   float scale_;    // the scale for softmax in memory efficient attention or unfused attention.
 
   bool disable_memory_efficient_attention_;
+  bool disable_flash_attention_;
+  int min_seq_len_for_flash_attention_packed_qkv_;
 };
 
 }  // namespace cuda

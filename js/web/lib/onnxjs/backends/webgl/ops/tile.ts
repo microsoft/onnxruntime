@@ -22,7 +22,7 @@ export const tile = (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]):
 };
 
 const createTileProgramInfo =
-    (handler: WebGLInferenceHandler, inputs: Tensor[], tileProgramMetadata: ProgramMetadata): ProgramInfo => {
+    (_handler: WebGLInferenceHandler, inputs: Tensor[], tileProgramMetadata: ProgramMetadata): ProgramInfo => {
       const inputShape = inputs[0].dims.slice();
       const outputShape = new Array(inputShape.length);
 

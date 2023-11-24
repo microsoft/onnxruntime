@@ -22,7 +22,7 @@ def is_windows():
 def run(cmd_arg_list, **kwargs):
     print(f"Running command:\n  {shlex.join(cmd_arg_list)}")
     kwargs.update({"check": True})
-    return subprocess.run(cmd_arg_list, **kwargs)
+    return subprocess.run(cmd_arg_list, **kwargs)  # noqa: PLW1510
 
 
 def parse_args():

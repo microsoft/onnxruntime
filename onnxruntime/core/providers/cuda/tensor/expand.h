@@ -20,5 +20,18 @@ Status ComputeOutputShape(
     const TensorShape& rhs_shape,
     TensorShape& out_shape);
 
+Status FuncExpand(
+    const CudaKernel* cuda_kernel,
+    OpKernelContext* ctx,
+    const Tensor* input_data_tensor,
+    const Tensor* /*input_shape_tensor*/,
+    Tensor* output_tensor);
+
+std::unique_ptr<Tensor> FuncExpand(
+    const CudaKernel* cuda_kernel,
+    OpKernelContext* ctx,
+    const Tensor* input_data_tensor,
+    const Tensor* input_shape_tensor);
+
 }  // namespace cuda
 }  // namespace onnxruntime

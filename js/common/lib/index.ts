@@ -22,3 +22,4 @@ export * from './env.js';
 export * from './inference-session.js';
 export * from './tensor.js';
 export * from './onnx-value.js';
+export * from './training-session.js';

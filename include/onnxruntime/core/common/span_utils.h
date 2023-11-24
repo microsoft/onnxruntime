@@ -4,6 +4,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstddef>
 
 #include "core/common/gsl.h"
 
@@ -76,6 +77,10 @@ template <class U, class T>
   // https://github.com/gsl-lite/gsl-lite/blob/4720a2980a30da085b4ddb4a0ea2a71af7351a48/include/gsl/gsl-lite.hpp#L4102-L4108
   Expects(src.size_bytes() % sizeof(U) == 0);
   return gsl::span<U>(reinterpret_cast<U*>(src.data()), src.size_bytes() / sizeof(U));
+}
+
+[[nodiscard]] inline gsl::span<const std::byte> AsByteSpan(const void* data, size_t length) {
+  return gsl::span<const std::byte>(reinterpret_cast<const std::byte*>(data), length);
 }
 
 template <class T1, size_t Extent1, class T2, size_t Extent2>

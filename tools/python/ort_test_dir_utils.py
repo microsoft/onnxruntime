@@ -212,8 +212,8 @@ def run_test_dir(model_or_dir):
         models = onnx_models + ort_models
         if len(models) > 1:
             raise ValueError(
-                "'Multiple .onnx and/or .ort files found in {}. '"
-                "'Please provide specific .onnx or .ort file as input.".format(model_dir)
+                f"'Multiple .onnx and/or .ort files found in {model_dir}. '"
+                "'Please provide specific .onnx or .ort file as input."
             )
         elif len(models) == 0:
             raise ValueError(f"'No .onnx or .ort files found in {model_dir}.")

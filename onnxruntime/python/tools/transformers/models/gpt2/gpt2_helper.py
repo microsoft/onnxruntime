@@ -9,7 +9,6 @@ import os
 import pickle
 import random
 import shutil
-import sys
 import tempfile
 import time
 from pathlib import Path
@@ -18,15 +17,14 @@ from typing import Dict, List, Tuple, Union
 import numpy
 import onnx
 import torch
+from benchmark_helper import Precision
+from float16 import float_to_float16_max_diff
+from fusion_options import FusionOptions
+from io_binding_helper import IOBindingHelper
+from onnx_model import OnnxModel
+from optimizer import optimize_model
+from torch_onnx_export_helper import torch_onnx_export
 from transformers import GPT2Config, GPT2LMHeadModel, GPT2Model, TFGPT2Model
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-
-from benchmark_helper import Precision  # noqa: E402
-from float16 import float_to_float16_max_diff  # noqa: E402
-from io_binding_helper import IOBindingHelper  # noqa: E402
-from onnx_model import OnnxModel  # noqa: E402
-from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -517,9 +515,6 @@ class Gpt2Helper:
         **kwargs,
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
-        from fusion_options import FusionOptions
-        from optimizer import optimize_model
-
         optimization_options = FusionOptions("gpt2")
 
         m = optimize_model(

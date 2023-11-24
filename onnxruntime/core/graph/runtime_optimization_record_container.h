@@ -9,16 +9,10 @@
 #include <unordered_map>
 #include <vector>
 
+#include "flatbuffers/flatbuffers.h"
+
 #include "core/common/common.h"
 #include "core/graph/runtime_optimization_record.h"
-
-namespace flatbuffers {
-class FlatBufferBuilder;
-template <typename T>
-struct Offset;
-template <typename T>
-class Vector;
-}  // namespace flatbuffers
 
 namespace onnxruntime {
 

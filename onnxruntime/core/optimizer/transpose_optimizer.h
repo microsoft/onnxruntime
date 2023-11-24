@@ -15,10 +15,14 @@ Push transposes through ops and eliminate them.
 class TransposeOptimizer : public GraphTransformer {
  private:
   AllocatorPtr cpu_allocator_;
+  const std::string ep_;
 
  public:
-  explicit TransposeOptimizer(AllocatorPtr cpu_allocator) noexcept
-      : GraphTransformer("TransposeOptimizer"), cpu_allocator_(std::move(cpu_allocator)) {}
+  explicit TransposeOptimizer(AllocatorPtr cpu_allocator,
+                              const std::string& ep = {}) noexcept
+      : GraphTransformer(ep.empty() ? "TransposeOptimizer" : "TransposeOptimizer_" + ep),
+        cpu_allocator_(std::move(cpu_allocator)),
+        ep_{ep} {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 

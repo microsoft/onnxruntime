@@ -38,7 +38,8 @@ void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64
  * Create a simple model with dynamic or non-dynamic input shape.
  * \param model_name - model name
  * \param graph_name - graph name
- * \params dims - input dimensions
+ * \param dims - input dimensions
+ * \param add_non_zero_node - add NonZero node which makes the whole model partition into TRT EP and CUDA EP subgraphs.
  *
  * input: "X", "Y" and "Z"
  *        you can specify input dimensions, for example (1, 3, 2), (1, 2) or (1, -1, -1)). Note: -1 means the dimension is dynamic.
@@ -53,8 +54,22 @@ void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64
  *       /
  *     "M"
  *
+ *     or
+ *
+ *      "X"  "Y"
+ *        \  /
+ *    "Z"  Add
+ *      \  /
+ *       Add
+ *       /
+ *    NonZero (This node will be placed on CUDA EP)
+ *     /
+ *   "M"
  */
-void CreateBaseModel(std::string model_name, std::string graph_name, std::vector<int> dims) {
+void CreateBaseModel(std::string model_name,
+                     std::string graph_name,
+                     std::vector<int> dims,
+                     bool add_non_zero_node = false) {
   onnxruntime::Model model(graph_name, false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   std::vector<onnxruntime::NodeArg*> inputs;
@@ -80,10 +95,27 @@ void CreateBaseModel(std::string model_name, std::string graph_name, std::vector
   inputs.clear();
   inputs.push_back(&output_arg);
   inputs.push_back(&input_arg_3);
-  auto& output_arg_2 = graph.GetOrCreateNodeArg("M", &float_tensor);
-  outputs.clear();
-  outputs.push_back(&output_arg_2);
-  graph.AddNode("node_2", "Add", "node 2.", inputs, outputs);
+
+  if (add_non_zero_node) {
+    auto& output_arg_2 = graph.GetOrCreateNodeArg("node_2_out_1", &float_tensor);
+    outputs.clear();
+    outputs.push_back(&output_arg_2);
+    graph.AddNode("node_2", "Add", "node 2.", inputs, outputs);
+
+    inputs.clear();
+    inputs.push_back(&output_arg_2);
+    ONNX_NAMESPACE::TypeProto int_tensor;
+    int_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    auto& output_arg_3 = graph.GetOrCreateNodeArg("M", &int_tensor);
+    outputs.clear();
+    outputs.push_back(&output_arg_3);
+    graph.AddNode("node_3", "NonZero", "node 3.", inputs, outputs);
+  } else {
+    auto& output_arg_2 = graph.GetOrCreateNodeArg("M", &float_tensor);
+    outputs.clear();
+    outputs.push_back(&output_arg_2);
+    graph.AddNode("node_2", "Add", "node 2.", inputs, outputs);
+  }
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
@@ -96,6 +128,18 @@ void RunSession(InferenceSession& session_object,
                 std::vector<std::string> output_names,
                 std::vector<int64_t> expected_dims,
                 std::vector<float> expected_values) {
+  std::vector<OrtValue> fetches;
+  auto status = session_object.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_TRUE(status.IsOK());
+  VerifyOutputs(fetches, expected_dims, expected_values);
+}
+
+void RunSession2(InferenceSession& session_object,
+                 RunOptions& run_options,
+                 NameMLValMap& feeds,
+                 std::vector<std::string> output_names,
+                 std::vector<int64_t> expected_dims,
+                 std::vector<int64_t> expected_values) {
   std::vector<OrtValue> fetches;
   auto status = session_object.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());
@@ -131,41 +175,7 @@ void RunWithOneSessionSingleThreadInference(std::string model_name, std::string 
   std::vector<int64_t> expected_dims_mul_m = {1, 3, 2};
   std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
 
-  OrtTensorRTProviderOptionsV2 params{
-      0,
-      0,
-      nullptr,
-      1000,
-      1,
-      1 << 30,
-      0,
-      0,
-      nullptr,
-      0,
-      0,
-      0,
-      0,
-      0,
-      nullptr,
-      0,
-      nullptr,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      3,
-      -1,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      0};
-
+  OrtTensorRTProviderOptionsV2 params;
   params.trt_engine_cache_enable = 1;
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
@@ -184,7 +194,7 @@ void RunWithOneSessionSingleThreadInference(std::string model_name, std::string 
   RunSession(session_object, run_options, feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
 }
 
-void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string sess_log_id) {
+void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string sess_log_id, bool has_non_zero_node = false) {
   SessionOptions so;
   so.session_logid = sess_log_id;
   RunOptions run_options;
@@ -212,42 +222,10 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
   // prepare expected inputs and outputs
   std::vector<int64_t> expected_dims_mul_m = {1, 3, 2};
   std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
+  std::vector<int64_t> expected_dims_nonzero_m = {3, 6};
+  std::vector<int64_t> expected_values_nonzero_m = {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 0, 1, 0, 1, 0, 1};
 
-  OrtTensorRTProviderOptionsV2 params{
-      0,
-      0,
-      nullptr,
-      1000,
-      1,
-      1 << 30,
-      0,
-      0,
-      nullptr,
-      0,
-      0,
-      0,
-      0,
-      0,
-      nullptr,
-      0,
-      nullptr,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      3,
-      -1,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      0};
-
+  OrtTensorRTProviderOptionsV2 params;
   params.trt_engine_cache_enable = 1;
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
@@ -266,8 +244,12 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
 
   std::vector<std::thread> threads;
   int num_thread = 5;
-  for (int i = 0; i < num_thread; ++i)
-    threads.push_back(std::thread(RunSession, std::ref(session_object), std::ref(run_options), std::ref(feeds), std::ref(output_names), std::ref(expected_dims_mul_m), std::ref(expected_values_mul_m)));
+  for (int i = 0; i < num_thread; ++i) {
+    if (has_non_zero_node)
+      threads.push_back(std::thread(RunSession2, std::ref(session_object), std::ref(run_options), std::ref(feeds), std::ref(output_names), std::ref(expected_dims_nonzero_m), std::ref(expected_values_nonzero_m)));
+    else
+      threads.push_back(std::thread(RunSession, std::ref(session_object), std::ref(run_options), std::ref(feeds), std::ref(output_names), std::ref(expected_dims_mul_m), std::ref(expected_values_mul_m)));
+  }
 
   for (auto& th : threads)
     th.join();
@@ -298,6 +280,12 @@ TEST(TensorrtExecutionProviderTest, SessionCreationWithSingleThreadAndInferenceW
 
   CreateBaseModel(model_name, graph_name, dims);
   RunWithOneSessionMultiThreadsInference(model_name, sess_log_id);
+
+  // In addition to the test case that whole model can be run by TRT, we also need to test the case where
+  // the model is partitioned into TRT EP and CUDA EP subgraphs.
+  // We did observe synchronization issue for TRT EP without PerContextThread implementation running those models.
+  CreateBaseModel(model_name, graph_name, dims, true);
+  RunWithOneSessionMultiThreadsInference(model_name, sess_log_id, true);
 }
 
 // Test loading same model in different way, when hash id is generated via model name/model content/env metadata
@@ -366,41 +354,7 @@ TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   output_names.push_back("output");
   std::vector<OrtValue> fetches;
 
-  OrtTensorRTProviderOptionsV2 params{
-      0,
-      0,
-      nullptr,
-      1000,
-      1,
-      1 << 30,
-      0,
-      0,
-      nullptr,
-      0,
-      0,
-      0,
-      0,
-      0,
-      nullptr,
-      0,
-      nullptr,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      3,
-      -1,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      0};
-
+  OrtTensorRTProviderOptionsV2 params;
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
   std::cout << model_name << std::endl;
@@ -460,41 +414,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
   std::vector<int64_t> expected_dims_mul_m = {1, 3, 2};
   std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
 
-  OrtTensorRTProviderOptionsV2 params{
-      0,
-      0,
-      nullptr,
-      1000,
-      1,
-      1 << 30,
-      0,
-      0,
-      nullptr,
-      0,
-      0,
-      0,
-      0,
-      0,
-      nullptr,
-      0,
-      nullptr,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      3,
-      -1,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      0};
-
+  OrtTensorRTProviderOptionsV2 params;
   if (cache_type.compare("engine") == 0) {
     /* Following code block tests the functionality of engine and optimization profile of ORT TRT, including:
      * - engine cache serialization/de-serialization
@@ -670,6 +590,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
     // uint64_t compilation_without_cache_ms, compilation_with_cache_ms;
 
     // First session is created with TRT EP with timing cache enabled
+    // Not specifying a trt_timing_cache_path will result in using the working directory
     params.trt_timing_cache_enable = 1;
     {
       // auto start = chrono::steady_clock::now();

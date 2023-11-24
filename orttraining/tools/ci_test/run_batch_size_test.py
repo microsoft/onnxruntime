@@ -108,7 +108,7 @@ def main():
         if config.enable_mixed_precision:
             cmds.append("--use_mixed_precision"),
 
-        subprocess.run(cmds, timeout=120).check_returncode()
+        subprocess.run(cmds, timeout=120).check_returncode()  # noqa: PLW1510
 
     return 0
 

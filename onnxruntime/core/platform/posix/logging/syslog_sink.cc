@@ -20,7 +20,7 @@ void SysLogSink::SendImpl(const Timestamp& timestamp, const std::string& logger_
   msg << timestamp << " [" << message.SeverityPrefix() << ":" << message.Category() << ":" << logger_id << ", "
       << message.Location().ToString() << "] " << message.Message();
 
-  GSL_SUPPRESS(bounds .2) {
+  GSL_SUPPRESS(bounds.2) {
     syslog(SYSLOG_LEVEL[static_cast<int>(message.Severity())] - '0', "%s", msg.str().c_str());
   }
 }

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 /* Modifications Copyright (c) Microsoft. */
+// Copyright (c) 2023 NVIDIA Corporation.
 
 #pragma once
 
@@ -44,17 +45,19 @@ struct ConvTransposeAttributes : public ConvAttributes {
   };
 
   Status PrepareForCompute(OpKernelContext* context, bool has_bias, Prepare& p,
-                           bool dynamic_padding = false, const TensorShape* filter_shape = nullptr) const {
+                           bool dynamic_padding = false, const TensorShape* filter_shape = nullptr,
+                           bool is_nhwc = false) const {
     const Tensor* X = context->Input<Tensor>(0);
     const Tensor* F = (filter_shape != nullptr) ? nullptr : context->Input<Tensor>(1);
     const TensorShape& F_Shape = (filter_shape != nullptr) ? *filter_shape : F->Shape();
     const Tensor* Pads = dynamic_padding ? context->Input<Tensor>(2) : nullptr;
     const Tensor* B = has_bias ? (dynamic_padding ? context->Input<Tensor>(3) : context->Input<Tensor>(2)) : nullptr;
-    TensorShape input_shape = X->Shape().Slice(2);
 
-    const int64_t num_input_channels = X->Shape()[1];
+    const int rank = static_cast<int>(X->Shape().NumDimensions());
+    TensorShape input_shape = X->Shape().Slice(is_nhwc ? 1 : 2, is_nhwc ? rank - 1 : rank);
+    const int64_t num_input_channels = is_nhwc ? X->Shape()[rank - 1] : X->Shape()[1];
     const int64_t N = X->Shape()[0];
-    const int64_t num_output_channels_multiplier = F_Shape[1];
+    const int64_t num_output_channels_multiplier = is_nhwc ? F_Shape[3] : F_Shape[1];
     const int64_t num_output_channels = num_output_channels_multiplier * group;
 
     // input validations
@@ -85,7 +88,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
     }
 
     TensorShapeVector kernel_shape;
-    ORT_RETURN_IF_ERROR(ComputeKernelShape(F_Shape, kernel_shape));
+    ORT_RETURN_IF_ERROR(ComputeKernelShape(F_Shape, kernel_shape, is_nhwc));
 
     TensorShapeVector local_output_padding(output_padding);
     if (local_output_padding.empty()) {
@@ -115,7 +118,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
     TensorShapeVector Y_dims;
 
     ComputePadsAndOutputShape(input_shape, num_output_channels, kernel_shape,
-                              local_strides, local_dilations, local_output_padding, N, &local_pads, &Y_dims);
+                              local_strides, local_dilations, local_output_padding, N, &local_pads, &Y_dims, is_nhwc);
     TensorShape Yshape(Y_dims);
     Tensor* Y = context->Output(0, Yshape);
 
@@ -137,9 +140,14 @@ struct ConvTransposeAttributes : public ConvAttributes {
   void ComputePadsAndOutputShape(TensorShape input_shape, int64_t output_channel,
                                  const TensorShapeVector& kernel_shape, const TensorShapeVector& p_strides,
                                  const TensorShapeVector& p_dilations, const TensorShapeVector& p_output_padding, const int64_t N,
-                                 ConvPadVector* p_pads, TensorShapeVector* output_shape_p) const {
+                                 ConvPadVector* p_pads, TensorShapeVector* output_shape_p,
+                                 bool is_nhwc = false) const {
     size_t output_shape_size = output_shape.size();
-    output_shape_p->insert(output_shape_p->begin(), {N, output_channel});
+    if (is_nhwc) {
+      output_shape_p->insert(output_shape_p->begin(), {N});
+    } else {
+      output_shape_p->insert(output_shape_p->begin(), {N, output_channel});
+    }
 
     size_t rank = input_shape.NumDimensions();
     for (size_t dim = 0; dim < rank; ++dim) {
@@ -162,6 +170,9 @@ struct ConvTransposeAttributes : public ConvAttributes {
 
       ORT_ENFORCE(dim_size > 0, "Invalid input shape: ", input_shape.ToString());
       output_shape_p->push_back(dim_size);
+    }
+    if (is_nhwc) {
+      output_shape_p->push_back(output_channel);
     }
   }
 

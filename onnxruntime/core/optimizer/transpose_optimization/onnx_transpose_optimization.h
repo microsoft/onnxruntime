@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <unordered_map>
+#include <vector>
+
 // implementation details of the transpose optimizer API defined in optimizer_api.h.
 // This exposes some internals so they can be extended as needed.
 #include "optimizer_api.h"
@@ -36,6 +39,8 @@ struct HandlerInfo {
   bool transposes_outputs = true;
 };
 
+using NodeIdToInputIdxsMap = std::unordered_map<int64_t, std::vector<size_t>>;
+
 struct OptimizerCtx {
   int64_t opset;
   api::GraphRef& graph;
@@ -67,6 +72,7 @@ bool HandleSimpleNodeWithAxis(HandlerArgs& args, std::optional<int64_t> default_
 
 // base handlers that are used by extended handlers. add from transpose_optimizer.cc as needed.
 bool HandleReduceOps(HandlerArgs& args);
+bool HandleResize([[maybe_unused]] HandlerArgs& args);
 
 void TransposeInput(api::GraphRef& graph, api::NodeRef& node, size_t i,
                     const std::vector<int64_t>& perm,
@@ -106,4 +112,14 @@ std::vector<int64_t> ChannelFirstToLastPerm(size_t rank);
 /// <param name="rank">Rank of the tensor</param>
 /// <returns>perm attribute to transpose from channel last to channel first. Ex: [0, 3, 1, 2]</returns>
 std::vector<int64_t> ChannelLastToFirstPerm(size_t rank);
+
+/// <summary>
+/// Updates the axis attribute of QuantizeLinear or DequantizeLinear operators according to the
+/// provided transposition permutation. Only applies to per-axis (de)quantization.
+/// </summary>
+/// <param name="graph">The graph containing the node</param>
+/// <param name="perm">The transpose permutation</param>
+/// <param name="node">The QuantizeLinear or DequantizeLinear node</param>
+/// <returns>True if the axis attribute remains valid</returns>
+bool TransposeQuantizeDequantizeAxis(const api::GraphRef& graph, const std::vector<int64_t>& perm, api::NodeRef& node);
 }  // namespace onnx_transpose_optimization

@@ -112,13 +112,13 @@ class CheckpointState : public detail::Base<OrtCheckpointState> {
                              const std::basic_string<ORTCHAR_T>& path_to_checkpoint,
                              const bool include_optimizer_state = false);
 
-  /** \brief Adds the given property to the checkpoint state.
+  /** \brief Adds or updates the given property to/in the checkpoint state.
    *
    * Runtime properties such as epoch, training step, best score, and others can be added to the checkpoint
-   * state by the user if they desire by calling this function with the appropriate property name and
-   * value. The given property name must be unique to be able to successfully add the property.
+   * state by the user by calling this function with the corresponding property name and value.
+   * The given property name must be unique to be able to successfully add the property.
    *
-   * \param[in] property_name Unique name of the property being added.
+   * \param[in] property_name Name of the property being added or updated.
    * \param[in] property_value Property value associated with the given name.
    *
    */
@@ -129,11 +129,37 @@ class CheckpointState : public detail::Base<OrtCheckpointState> {
    * Gets the property value from an existing entry in the checkpoint state. The property must
    * exist in the checkpoint state to be able to retrieve it successfully.
    *
-   * \param[in] property_name Unique name of the property being retrieved.
+   * \param[in] property_name Name of the property being retrieved.
    * \return Property value associated with the given property name.
    *
    */
   Property GetProperty(const std::string& property_name);
+
+  /** \brief Updates the data associated with the model parameter in the checkpoint state for the given parameter name.
+   *
+   * This function updates a model parameter in the checkpoint state with the given parameter data.
+   * The training session must be already created with the checkpoint state that contains the parameter
+   * being updated. The given parameter is copied over to the registered device for the training session.
+   * The parameter must exist in the checkpoint state to be able to update it successfully.
+   *
+   * \param[in] parameter_name Name of the parameter being updated.
+   * \param[in] parameter The parameter data that should replace the existing parameter data.
+   *
+   */
+  void UpdateParameter(const std::string& parameter_name, const Value& parameter);
+
+  /** \brief Gets the data associated with the model parameter from the checkpoint state for the given parameter name.
+   *
+   * This function retrieves the model parameter data from the checkpoint state for the given parameter name.
+   * The parameter is copied over to the provided OrtValue. The training session must be already created
+   * with the checkpoint state that contains the parameter being retrieved.
+   * The parameter must exist in the checkpoint state to be able to retrieve it successfully.
+   *
+   * \param[in] parameter_name Name of the parameter being retrieved.
+   * \return The parameter data that is retrieved from the checkpoint state.
+   *
+   */
+  Value GetParameter(const std::string& parameter_name);
 
   /// @}
 };
@@ -176,6 +202,20 @@ class TrainingSession : public detail::Base<OrtTrainingSession> {
                   const std::optional<std::basic_string<ORTCHAR_T>>& eval_model_path = std::nullopt,
                   const std::optional<std::basic_string<ORTCHAR_T>>& optimizer_model_path = std::nullopt);
 
+  /** \brief Create a training session that can be used to begin or resume training.
+   * This constructor allows the users to load the models from buffers instead of files.
+   *
+   * \param[in] env Env to be used for the training session.
+   * \param[in] session_options SessionOptions that the user can customize for this training session.
+   * \param[in] checkpoint_state Training states that the training session uses as a starting point for training.
+   * \param[in] train_model_data Buffer containing training model data.
+   * \param[in] eval_model_data Buffer containing evaluation model data.
+   * \param[in] optim_model_data Buffer containing optimizer model (used for performing weight/parameter update).
+   *
+   */
+  TrainingSession(const Env& env, const SessionOptions& session_options, CheckpointState& checkpoint_state,
+                  const std::vector<uint8_t>& train_model_data, const std::vector<uint8_t>& eval_model_data = {},
+                  const std::vector<uint8_t>& optim_model_data = {});
   /// @}
 
   /// \name Implementing The Training Loop

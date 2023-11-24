@@ -7,7 +7,7 @@ ONNX Runtime is a performance-focused scoring engine for Open Neural Network Exc
 For more information on ONNX Runtime, please see `aka.ms/onnxruntime <https://aka.ms/onnxruntime/>`_
 or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
 """
-__version__ = "1.16.0"
+__version__ = "1.17.0"
 __author__ = "Microsoft"
 
 # we need to do device version validation (for example to check Cuda version for an onnxruntime-training package).
@@ -42,6 +42,7 @@ try:
     from onnxruntime.capi._pybind_state import get_build_info  # noqa: F401
     from onnxruntime.capi._pybind_state import get_device  # noqa: F401
     from onnxruntime.capi._pybind_state import get_version_string  # noqa: F401
+    from onnxruntime.capi._pybind_state import has_collective_ops  # noqa: F401
     from onnxruntime.capi._pybind_state import set_default_logger_severity  # noqa: F401
     from onnxruntime.capi._pybind_state import set_default_logger_verbosity  # noqa: F401
     from onnxruntime.capi._pybind_state import set_seed  # noqa: F401
@@ -60,7 +61,6 @@ from onnxruntime.capi.onnxruntime_inference_collection import IOBinding  # noqa:
 from onnxruntime.capi.onnxruntime_inference_collection import OrtDevice  # noqa: F401
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue  # noqa: F401
 from onnxruntime.capi.onnxruntime_inference_collection import SparseTensor  # noqa: F401
-from onnxruntime.capi.training import *  # noqa: F403
 
 # TODO: thiagofc: Temporary experimental namespace for new PyTorch front-end
 try:  # noqa: SIM105

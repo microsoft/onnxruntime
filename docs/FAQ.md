@@ -2,13 +2,13 @@
 Here are some commonly raised questions from users of ONNX Runtime and brought up in [Issues](https://github.com/microsoft/onnxruntime/issues).
 
 ## Do the GPU builds support quantized models?
-The default CUDA build supports 3 standard quantization operators: QuantizeLinear, DequantizeLinear, and MatMulInteger. The TensorRT EP has limited support for INT8 quantized ops. In general, support of quantized models through ORT is continuing to expand on a model-driven basis. For performance improvements, quantization is not always required, and we suggest trying alternative strategies to [performance tune](./ONNX_Runtime_Perf_Tuning.md) before determining that quantization is necessary.
+The default CUDA build supports 3 standard quantization operators: QuantizeLinear, DequantizeLinear, and MatMulInteger. The TensorRT EP has limited support for INT8 quantized ops. In general, support of quantized models through ORT is continuing to expand on a model-driven basis. For performance improvements, quantization is not always required, and we suggest trying alternative strategies to [performance tune](https://onnxruntime.ai/docs/performance/tune-performance/) before determining that quantization is necessary.
 
 ## How do I change the severity level of the default logger to something other than the default (WARNING)?
 Setting the severity level to VERBOSE is most useful when debugging errors.
 
 Refer to the API documentation:
-* Python - [RunOptions.log_severity_level](https://microsoft.github.io/onnxruntime/python/api_summary.html#onnxruntime.RunOptions.log_severity_level)
+* Python - [RunOptions.log_severity_level](https://onnxruntime.ai/docs/api/python/api_summary.html#onnxruntime.RunOptions.log_severity_level)
 ```
 import onnxruntime as ort
 ort.set_default_logger_severity(0)

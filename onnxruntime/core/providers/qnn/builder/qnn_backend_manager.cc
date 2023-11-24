@@ -3,16 +3,18 @@
 
 #include "qnn_backend_manager.h"
 #include "qnn_model.h"
-#include <iostream>
-#include <fstream>
 #include <filesystem>
 #include "QnnOpDef.h"
 #include "HTP/QnnHtpPerfInfrastructure.h"
+#include "CPU/QnnCpuCommon.h"
+// TODO: not exist for Windows yet
+// #include "GPU/QnnGpuCommon.h"
 #include "DSP/QnnDspCommon.h"
 #include "HTP/QnnHtpCommon.h"
 #include "core/common/gsl.h"
 #include "core/framework/endian_utils.h"
 #include "core/common/logging/capture.h"
+#include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1
@@ -25,14 +27,20 @@ typedef Qnn_ErrorHandle_t (*QnnInterfaceGetProvidersFn_t)(const QnnInterface_t**
 typedef Qnn_ErrorHandle_t (*QnnSystemInterfaceGetProvidersFn_t)(const QnnSystemInterface_t*** providerList,
                                                                 uint32_t* numProviders);
 
-constexpr const char* QNN_PROVIDER = "ORTQNNEP";
+static Qnn_Version_t GetQnnInterfaceApiVersion(const QnnInterface_t* qnn_interface) {
+  return qnn_interface->apiVersion.coreApiVersion;
+}
+
+static Qnn_Version_t GetQnnInterfaceApiVersion(const QnnSystemInterface_t* qnn_interface) {
+  return qnn_interface->systemApiVersion;
+}
 
 template <typename F, class T>
-Status QnnBackendManager::GetQnnInterfaceProviders(const char* lib_path,
-                                                   const char* interface_provider_name,
-                                                   void** backend_lib_handle,
-                                                   T*** interface_providers,
-                                                   uint32_t& num_providers) {
+Status QnnBackendManager::GetQnnInterfaceProvider(const char* lib_path,
+                                                  const char* interface_provider_name,
+                                                  void** backend_lib_handle,
+                                                  Qnn_Version_t req_version,
+                                                  T** interface_provider) {
   std::string error_msg;
   *backend_lib_handle = LoadLib(lib_path,
                                 static_cast<int>(DlOpenFlag::DL_NOW) | static_cast<int>(DlOpenFlag::DL_LOCAL),
@@ -44,47 +52,144 @@ Status QnnBackendManager::GetQnnInterfaceProviders(const char* lib_path,
   GetInterfaceProviders = ResolveSymbol<F>(*backend_lib_handle, interface_provider_name, *logger_);
   ORT_RETURN_IF(nullptr == GetInterfaceProviders, "Failed to get QNN providers!");
 
-  auto result = GetInterfaceProviders((const T***)interface_providers, &num_providers);
+  T** interface_providers{nullptr};
+  uint32_t num_providers{0};
+
+  auto result = GetInterfaceProviders((const T***)&interface_providers, &num_providers);
   ORT_RETURN_IF((QNN_SUCCESS != result || nullptr == *interface_providers || 0 == num_providers),
                 "Failed to get QNN providers.");
+
+  bool found_valid_interface{false};
+  for (size_t pIdx = 0; pIdx < num_providers; pIdx++) {
+    Qnn_Version_t interface_version = GetQnnInterfaceApiVersion(interface_providers[pIdx]);
+
+    LOGS_DEFAULT(VERBOSE) << lib_path << " interface version: " << interface_version.major << "."
+                          << interface_version.minor << "." << interface_version.patch;
+
+    // Check the interface's API version against the required version.
+    // Major versions must match. The interface's minor version must be greater OR equal with a suitable patch version.
+    if (interface_version.major == req_version.major) {
+      bool minor_and_patch_version_ok = (interface_version.minor > req_version.minor) ||
+                                        (interface_version.minor == req_version.minor &&
+                                         interface_version.patch >= req_version.patch);
+      if (minor_and_patch_version_ok) {
+        found_valid_interface = true;
+        *interface_provider = interface_providers[pIdx];
+        break;
+      }
+    }
+  }
+
+  ORT_RETURN_IF_NOT(found_valid_interface, "Unable to find a valid interface for ", lib_path);
 
   return Status::OK();
 }
 
+void QnnBackendManager::SetQnnBackendType(uint32_t backend_id) {
+  switch (backend_id) {
+    case QNN_BACKEND_ID_CPU:
+      qnn_backend_type_ = QnnBackendType::CPU;
+      break;
+      // TODO: update once it's ready for Widows
+      // case QNN_BACKEND_ID_GPU:
+      //  qnn_backend_type_ = QnnBackendType::GPU;
+      //  break;
+    case QNN_BACKEND_ID_DSP:
+      qnn_backend_type_ = QnnBackendType::DSP;
+      break;
+    case QNN_BACKEND_ID_HTP:
+      qnn_backend_type_ = QnnBackendType::HTP;
+      break;
+    default:
+      qnn_backend_type_ = QnnBackendType::CPU;
+      break;
+  }
+}
+
 Status QnnBackendManager::LoadBackend() {
-  QnnInterface_t** interface_providers{nullptr};
-  uint32_t num_providers{0};
-  auto rt = GetQnnInterfaceProviders<QnnInterfaceGetProvidersFn_t,
-                                     QnnInterface_t>(backend_path_.c_str(),
-                                                     "QnnInterface_getProviders",
-                                                     &backend_lib_handle_,
-                                                     &interface_providers,
-                                                     num_providers);
+  QnnInterface_t* backend_interface_provider{nullptr};
+  auto rt = GetQnnInterfaceProvider<QnnInterfaceGetProvidersFn_t,
+                                    QnnInterface_t>(backend_path_.c_str(),
+                                                    "QnnInterface_getProviders",
+                                                    &backend_lib_handle_,
+                                                    {QNN_API_VERSION_MAJOR,
+                                                     QNN_API_VERSION_MINOR,
+                                                     QNN_API_VERSION_PATCH},
+                                                    &backend_interface_provider);
+  ORT_RETURN_IF_ERROR(rt);
+  qnn_interface_ = backend_interface_provider->QNN_INTERFACE_VER_NAME;
+  auto backend_id = backend_interface_provider->backendId;
+  SetQnnBackendType(backend_id);
+
+  Qnn_Version_t backend_interface_version = GetQnnInterfaceApiVersion(backend_interface_provider);
+  LOGS_DEFAULT(INFO) << "Found valid interface, version: " << backend_interface_version.major
+                     << "." << backend_interface_version.minor << "." << backend_interface_version.patch
+                     << " backend provider name: " << backend_interface_provider->providerName
+                     << " backend id: " << backend_id;
+
+  return Status::OK();
+}
+
+// Loads the intended backend (e.g., HTP, CPU, etc) to get its type, and then
+// sets QNN Saver as the active backend. QNN op builders will still see the intended backend (e.g., HTP)
+// as the backend type to ensure they emit the expected QNN API calls.
+//
+// QNN Saver is a "debugging" backend that serializes all QNN API calls (and weights) into local files.
+// This information can be used to debug issues by replaying QNN API calls with another backend.
+Status QnnBackendManager::LoadQnnSaverBackend() {
+  void* backend_lib_handle = nullptr;
+
+  // Helper that unloads the intended backend library handle when the `unload_backend_lib` variable
+  // goes out of scope. Similar to `defer` in other languages.
+  auto unload_backend_lib = gsl::finally([&] {
+    if (backend_lib_handle != nullptr) {
+      auto result = UnloadLib(backend_lib_handle);
+      if (Status::OK() != result) {
+        ORT_THROW("Failed to unload backend library.");
+      }
+    }
+  });
+
+  // Load the intended backend (e.g., HTP, CPU) to ensure it is valid and to get its type.
+  QnnInterface_t* backend_interface_provider{nullptr};
+  auto rt = GetQnnInterfaceProvider<QnnInterfaceGetProvidersFn_t,
+                                    QnnInterface_t>(backend_path_.c_str(),
+                                                    "QnnInterface_getProviders",
+                                                    &backend_lib_handle,
+                                                    {QNN_API_VERSION_MAJOR,
+                                                     QNN_API_VERSION_MINOR,
+                                                     QNN_API_VERSION_PATCH},
+                                                    &backend_interface_provider);
   ORT_RETURN_IF_ERROR(rt);
 
-  bool found_valid_interface{false};
-  LOGS_DEFAULT(VERBOSE) << "QNN_API_VERSION_MAJOR: " << QNN_API_VERSION_MAJOR
-                        << " QNN_API_VERSION_MINOR: " << QNN_API_VERSION_MINOR;
-  for (size_t pIdx = 0; pIdx < num_providers; pIdx++) {
-    LOGS_DEFAULT(VERBOSE) << "interface_providers major: " << interface_providers[pIdx]->apiVersion.coreApiVersion.major
-                          << " interface_providers minor: " << interface_providers[pIdx]->apiVersion.coreApiVersion.minor;
-    if (QNN_API_VERSION_MAJOR == interface_providers[pIdx]->apiVersion.coreApiVersion.major &&
-        QNN_API_VERSION_MINOR <= interface_providers[pIdx]->apiVersion.coreApiVersion.minor) {
-      found_valid_interface = true;
-      qnn_interface_ = interface_providers[pIdx]->QNN_INTERFACE_VER_NAME;
-      auto backend_id = interface_providers[pIdx]->backendId;
-      if (QNN_BACKEND_ID_DSP == backend_id || QNN_BACKEND_ID_HTP == backend_id) {
-        is_npu_backend_ = true;
-      }
-      LOGS_DEFAULT(INFO) << "Found valid interface, version: " << QNN_API_VERSION_MAJOR
-                         << "." << QNN_API_VERSION_MINOR
-                         << " backend provider name: " << interface_providers[pIdx]->providerName
-                         << " backend id: " << backend_id;
-      break;
-    }
-  }
+  // Set the "intended" backend type so that QNN builders still make the expected QNN API calls.
+  auto backend_id = backend_interface_provider->backendId;
+  SetQnnBackendType(backend_id);
 
-  ORT_RETURN_IF_NOT(found_valid_interface, "Unable to find a valid interface.");
+  // Load the QNN Saver backend and set it as the activate backend.
+  QnnInterface_t* saver_interface_provider{nullptr};
+  auto saver_rt = GetQnnInterfaceProvider<QnnInterfaceGetProvidersFn_t,
+                                          QnnInterface_t>(qnn_saver_path_.c_str(),
+                                                          "QnnInterface_getProviders",
+                                                          &backend_lib_handle_,  // NOTE: QNN Saver library handle is set
+                                                          {QNN_API_VERSION_MAJOR,
+                                                           QNN_API_VERSION_MINOR,
+                                                           QNN_API_VERSION_PATCH},
+                                                          &saver_interface_provider);
+  ORT_RETURN_IF_ERROR(saver_rt);
+  qnn_interface_ = saver_interface_provider->QNN_INTERFACE_VER_NAME;  // NOTE: QNN Saver will provide the interfaces
+
+  Qnn_Version_t backend_interface_version = GetQnnInterfaceApiVersion(backend_interface_provider);
+  Qnn_Version_t saver_interface_version = GetQnnInterfaceApiVersion(saver_interface_provider);
+
+  LOGS_DEFAULT(INFO) << "Using QNN Saver version: " << saver_interface_version.major << "."
+                     << saver_interface_version.minor << "." << saver_interface_version.patch
+                     << " provider name : " << saver_interface_provider->providerName;
+
+  LOGS_DEFAULT(INFO) << "Intended backend provider name: " << backend_interface_provider->providerName
+                     << " backend id: " << backend_id
+                     << " interface version: " << backend_interface_version.major
+                     << "." << backend_interface_version.minor << "." << backend_interface_version.patch;
 
   return Status::OK();
 }
@@ -97,34 +202,22 @@ Status QnnBackendManager::LoadQnnSystemLib() {
 #endif  // #ifdef _WIN32
   std::filesystem::path lib_file_path(backend_path_.c_str());
   std::string sys_file_path(lib_file_path.remove_filename().string() + system_lib_file);
-  QnnSystemInterface_t** system_interface_providers{nullptr};
-  uint32_t num_providers = 0;
-  auto rt = GetQnnInterfaceProviders<QnnSystemInterfaceGetProvidersFn_t,
-                                     QnnSystemInterface_t>(sys_file_path.c_str(),
-                                                           "QnnSystemInterface_getProviders",
-                                                           &system_lib_handle_,
-                                                           &system_interface_providers,
-                                                           num_providers);
+  QnnSystemInterface_t* system_interface_provider{nullptr};
+  auto rt = GetQnnInterfaceProvider<QnnSystemInterfaceGetProvidersFn_t,
+                                    QnnSystemInterface_t>(sys_file_path.c_str(),
+                                                          "QnnSystemInterface_getProviders",
+                                                          &system_lib_handle_,
+                                                          {QNN_SYSTEM_API_VERSION_MAJOR,
+                                                           QNN_SYSTEM_API_VERSION_MINOR,
+                                                           QNN_SYSTEM_API_VERSION_PATCH},
+                                                          &system_interface_provider);
   ORT_RETURN_IF_ERROR(rt);
+  Qnn_Version_t system_interface_version = GetQnnInterfaceApiVersion(system_interface_provider);
+  qnn_sys_interface_ = system_interface_provider->QNN_SYSTEM_INTERFACE_VER_NAME;
 
-  bool found_valid_interface{false};
-  for (size_t pIdx = 0; pIdx < num_providers; pIdx++) {
-    LOGS_DEFAULT(VERBOSE) << "system_interface_providers major: " << system_interface_providers[pIdx]->systemApiVersion.major
-                          << " system_interface_providers minor: " << system_interface_providers[pIdx]->systemApiVersion.minor;
-    int64_t systems_version_major = static_cast<int64_t>(system_interface_providers[pIdx]->systemApiVersion.major);
-    int64_t systems_version_minor = static_cast<int64_t>(system_interface_providers[pIdx]->systemApiVersion.minor);
-    if (systems_version_major == QNN_SYSTEM_API_VERSION_MAJOR &&
-        systems_version_minor >= QNN_SYSTEM_API_VERSION_MINOR) {
-      found_valid_interface = true;
-      qnn_sys_interface_ = system_interface_providers[pIdx]->QNN_SYSTEM_INTERFACE_VER_NAME;
-      LOGS_DEFAULT(INFO) << "Found valid system interface, version: " << QNN_API_VERSION_MAJOR
-                         << "." << QNN_API_VERSION_MINOR
-                         << " backend provider name: " << system_interface_providers[pIdx]->providerName;
-      break;
-    }
-  }
-
-  ORT_RETURN_IF_NOT(found_valid_interface, "Unable to find a valid system interface.");
+  LOGS_DEFAULT(INFO) << "Found valid system interface, version: " << system_interface_version.major
+                     << "." << system_interface_version.minor
+                     << " backend provider name: " << system_interface_provider->providerName;
 
   return Status::OK();
 }
@@ -179,7 +272,7 @@ void QnnBackendManager::InitializeQnnLog() {
 
 Status QnnBackendManager::InitializeBackend() {
   if (true == backend_initialized_) {
-    LOGS_DEFAULT(INFO) << "Backend intialized already.";
+    LOGS_DEFAULT(INFO) << "Backend initialized already.";
     return Status::OK();
   }
 
@@ -219,7 +312,7 @@ bool QnnBackendManager::IsDevicePropertySupported() {
 
 Status QnnBackendManager::CreateDevice() {
   if (true == device_created_) {
-    LOGS_DEFAULT(INFO) << "Device intialized already.";
+    LOGS_DEFAULT(INFO) << "Device initialized already.";
     return Status::OK();
   }
 
@@ -287,15 +380,48 @@ Status QnnBackendManager::ReleaseProfilehandle() {
   return Status::OK();
 }
 
+Status SetQnnContextConfig(ContextPriority context_priority, QnnContext_Config_t& qnn_context_config) {
+  qnn_context_config.option = QNN_CONTEXT_CONFIG_OPTION_PRIORITY;
+  switch (context_priority) {
+    case ContextPriority::LOW: {
+      qnn_context_config.priority = QNN_PRIORITY_LOW;
+      break;
+    }
+    case ContextPriority::NORMAL: {
+      qnn_context_config.priority = QNN_PRIORITY_NORMAL;
+      break;
+    }
+    case ContextPriority::NORMAL_HIGH: {
+      qnn_context_config.priority = QNN_PRIORITY_NORMAL_HIGH;
+      break;
+    }
+    case ContextPriority::HIGH: {
+      qnn_context_config.priority = QNN_PRIORITY_HIGH;
+      break;
+    }
+    case ContextPriority::UNDEFINED: {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid Qnn context priority.");
+    }
+    default:
+      qnn_context_config.priority = QNN_PRIORITY_NORMAL;
+  }  // switch
+
+  return Status::OK();
+}
+
 Status QnnBackendManager::CreateContext() {
   if (true == context_created_) {
     LOGS_DEFAULT(INFO) << "Context created already.";
     return Status::OK();
   }
 
+  QnnContext_Config_t qnn_context_config = QNN_CONTEXT_CONFIG_INIT;
+  ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, qnn_context_config));
+  const QnnContext_Config_t* context_configs[] = {&qnn_context_config, nullptr};
+
   auto result = qnn_interface_.contextCreate(backend_handle_,
                                              device_handle_,
-                                             (const QnnContext_Config_t**)&context_config_,
+                                             context_configs,
                                              &context_);
 
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context.");
@@ -316,134 +442,50 @@ Status QnnBackendManager::ReleaseContext() {
   return Status::OK();
 }
 
-bool QnnBackendManager::IsContextCacheFileExists(const std::string& customer_context_cache_path,
-                                                 const std::string& model_description,
-                                                 const onnxruntime::PathString& model_pathstring) {
-  // Avoid duplicate work
-  if (!context_cache_path_.empty()) {
-    return ctx_file_exists_;
-  }
-  model_description_ = model_description;
-  // Use user provided context cache file path if exist, otherwise try model_file.onnx.bin by default
-  if (customer_context_cache_path.empty()) {
-    context_cache_path_ = PathToUTF8String(model_pathstring) + ".bin";
-  } else {
-    context_cache_path_ = customer_context_cache_path;
-  }
-
-  ctx_file_exists_ = std::filesystem::exists(context_cache_path_);
-
-  return ctx_file_exists_;
-}
-
-Status WriteInt16ToBinaryFile(std::ofstream& of_stream, uint16_t value) {
-  const std::vector<uint16_t> data{value};
-  std::vector<unsigned char> data_bytes(sizeof(uint16_t) / sizeof(unsigned char));
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::WriteLittleEndian(gsl::make_span(data), gsl::make_span(data_bytes)));
-  of_stream.write(reinterpret_cast<char*>(data_bytes.data()), data_bytes.size());
-  return Status::OK();
-}
-
-Status QnnBackendManager::DumpQnnContext(const std::string& model_name, const std::string& graph_name) {
+std::unique_ptr<unsigned char[]> QnnBackendManager::GetContextBinaryBuffer(uint64_t& written_buffer_size) {
   if (nullptr == qnn_interface_.contextGetBinarySize ||
       nullptr == qnn_interface_.contextGetBinary) {
     LOGS(*logger_, ERROR) << "Failed to get valid function pointer.";
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get valid function pointer.");
+    return nullptr;
   }
 
   uint64_t required_buffer_size(0);
   Qnn_ErrorHandle_t rt = qnn_interface_.contextGetBinarySize(context_, &required_buffer_size);
   if (QNN_CONTEXT_NO_ERROR != rt) {
     LOGS(*logger_, ERROR) << "Failed to get QNN context binary size. Error code: " << rt;
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get QNN context binary size.");
+    return nullptr;
   }
 
   std::unique_ptr<unsigned char[]> context_buffer = std::make_unique<unsigned char[]>(required_buffer_size);
   if (nullptr == context_buffer) {
     LOGS(*logger_, ERROR) << "Failed to allocate buffer for context cache.";
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to allocate buffer for context cache.");
+    return nullptr;
   }
 
-  uint64_t written_buffer_size(0);
   rt = qnn_interface_.contextGetBinary(context_,
                                        reinterpret_cast<void*>(context_buffer.get()),
                                        required_buffer_size,
                                        &written_buffer_size);
   if (QNN_CONTEXT_NO_ERROR != rt) {
     LOGS(*logger_, ERROR) << "Failed to get context binary.";
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get context binary.");
+    return nullptr;
   }
 
   if (required_buffer_size < written_buffer_size) {
     LOGS(*logger_, ERROR) << "Context written buffer size: " << written_buffer_size
                           << " exceeds allocated buffer size: " << required_buffer_size;
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Context written buffer exceeds allocated buffer size.");
+    return nullptr;
   }
 
-  std::ofstream of_stream(context_cache_path_.c_str(), std::ofstream::binary);
-  if (!of_stream) {
-    LOGS(*logger_, ERROR) << "Failed to open cached context file.";
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to open context cache file.");
-  }
-
-  // Write Ort metadata into context binary file
-  uint16_t model_name_length = static_cast<uint16_t>(model_name.length());
-  uint16_t graph_name_length = static_cast<uint16_t>(graph_name.length());
-  uint16_t model_description_length = static_cast<uint16_t>(model_description_.length());
-
-  // Header: uint16_t(totale_length)|uint16_t(model_name_length)|model_name|uint16_t(graph_name_length)|graph_name|uint16_t(model_description_length)|model_description
-  uint16_t header_length = 4 * sizeof(uint16_t) + model_name_length + graph_name_length + model_description_length;
-  uint16_t totale_length = header_length + static_cast<uint16_t>(strlen(QNN_PROVIDER));
-  of_stream.write(QNN_PROVIDER, strlen(QNN_PROVIDER));
-
-  ORT_RETURN_IF_ERROR(WriteInt16ToBinaryFile(of_stream, header_length));
-
-  ORT_RETURN_IF_ERROR(WriteInt16ToBinaryFile(of_stream, model_name_length));
-  of_stream.write(model_name.c_str(), model_name_length);
-
-  ORT_RETURN_IF_ERROR(WriteInt16ToBinaryFile(of_stream, graph_name_length));
-  of_stream.write(graph_name.c_str(), graph_name_length);
-
-  ORT_RETURN_IF_ERROR(WriteInt16ToBinaryFile(of_stream, model_description_length));
-  of_stream.write(model_description_.c_str(), model_description_length);
-  model_description_.clear();
-
-  LOGS(*logger_, VERBOSE) << "Dump metadata with length: " << totale_length;
-
-  of_stream.write(reinterpret_cast<char*>(context_buffer.get()), written_buffer_size);
-
-  LOGS(*logger_, VERBOSE) << "Dump QNN Context completed.";
-  return Status::OK();
+  LOGS(*logger_, VERBOSE) << "Get context binary buffer succeed.";
+  return context_buffer;
 }
 
-Status QnnBackendManager::LoadCachedQnnContext(QnnModel& qnn_model) {
+Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length, QnnModel& qnn_model) {
   bool result = nullptr == qnn_sys_interface_.systemContextCreate ||
                 nullptr == qnn_sys_interface_.systemContextGetBinaryInfo ||
                 nullptr == qnn_sys_interface_.systemContextFree;
   ORT_RETURN_IF(result, "Failed to get valid function pointer.");
-
-  ORT_RETURN_IF(!ctx_file_exists_, "Qnn context binary file not exist for some reason!");
-
-  uint64_t buffer_size{0};
-  std::ifstream cache_file(context_cache_path_.c_str(), std::ifstream::binary);
-  ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to open cache file.");
-  cache_file.seekg(0, cache_file.end);
-  buffer_size = cache_file.tellg();
-  ORT_RETURN_IF(0 == buffer_size, "Empty cache file encountered.");
-  cache_file.seekg(0, cache_file.beg);
-  // Skip Ort generated metadata
-  if (ort_generated_ctx_cache_) {
-    cache_file.seekg(ort_ctx_metadata_length_);
-    buffer_size -= ort_ctx_metadata_length_;
-  }
-
-  std::unique_ptr<unsigned char[]> buffer = std::make_unique<unsigned char[]>(buffer_size);
-  ORT_RETURN_IF(nullptr == buffer, "Failed to allocate memory for cache file.");
-
-  // Load file into buffer
-  const auto& read_result = cache_file.read(reinterpret_cast<char*>(buffer.get()), buffer_size);
-  cache_file.close();
-  ORT_RETURN_IF(!read_result, "Failed to read contents from cached context file.");
 
   QnnSystemContext_Handle_t sys_ctx_handle = nullptr;
   auto rt = qnn_sys_interface_.systemContextCreate(&sys_ctx_handle);
@@ -452,8 +494,8 @@ Status QnnBackendManager::LoadCachedQnnContext(QnnModel& qnn_model) {
   const QnnSystemContext_BinaryInfo_t* binary_info = nullptr;
   Qnn_ContextBinarySize_t binary_info_size{0};
   rt = qnn_sys_interface_.systemContextGetBinaryInfo(sys_ctx_handle,
-                                                     static_cast<void*>(buffer.get()),
-                                                     buffer_size,
+                                                     static_cast<void*>(buffer),
+                                                     buffer_length,
                                                      &binary_info,
                                                      &binary_info_size);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to get context binary info.");
@@ -477,15 +519,22 @@ Status QnnBackendManager::LoadCachedQnnContext(QnnModel& qnn_model) {
 
   ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinary,
                 "Invalid function pointer for contextCreateFromBinary.");
+
+  QnnContext_Config_t qnn_context_config = QNN_CONTEXT_CONFIG_INIT;
+  ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, qnn_context_config));
+  const QnnContext_Config_t* context_configs[] = {&qnn_context_config, nullptr};
+
   rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
                                               device_handle_,
-                                              (const QnnContext_Config_t**)&context_config_,
-                                              static_cast<void*>(buffer.get()),
-                                              buffer_size,
+                                              context_configs,
+                                              static_cast<void*>(buffer),
+                                              buffer_length,
                                               &context_,
                                               profile_backend_handle_);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary.");
 
+  // More work to support multiple partition, how to map the graph name in compile to qnn graph name
+  // Need the lower level framework to understand EPContext op and pass in the partition_name in fused_node during Compile
   ORT_RETURN_IF_ERROR(qnn_model.DeserializeGraphInfoFromBinaryInfo(graphs_info[0]));
 
   qnn_sys_interface_.systemContextFree(sys_ctx_handle);
@@ -494,123 +543,7 @@ Status QnnBackendManager::LoadCachedQnnContext(QnnModel& qnn_model) {
   ORT_RETURN_IF_ERROR(ExtractBackendProfilingInfo());
   context_created_ = true;
 
-  model_description_.clear();
-  model_description_from_ctx_cache_.clear();
   LOGS(*logger_, VERBOSE) << "Load from cached QNN Context completed.";
-  return Status::OK();
-}
-
-/* \brief: Read string data from binary file with given length
- * \param[in] binary_file - file stream of the binary file
- * \param[out] result_str - string read from binary file
- * \param[out] length - length to read
- */
-Status ReadStringFromBinaryFile(std::ifstream& binary_file, std::string& result_str, size_t length) {
-  result_str.resize(length);
-  const auto& read_result = binary_file.read(result_str.data(), length);
-  ORT_RETURN_IF(!read_result, "Failed to read contents from cached context binary file.");
-
-  return Status::OK();
-}
-
-/* \brief: Read a uint16_t from binary file
- * \param[in] binary_file - file stream of the binary file
- * \param[out] value - uint16_t value
- */
-Status ReadInt16FromBinaryFile(std::ifstream& binary_file, uint16_t& value) {
-  std::unique_ptr<char[]> buffer = std::make_unique<char[]>(sizeof(uint16_t));
-  ORT_RETURN_IF(nullptr == buffer, "Failed to allocate memory for buffer.");
-  const auto& read_result = binary_file.read(buffer.get(), sizeof(uint16_t));
-  ORT_RETURN_IF(!read_result, "Failed to read contents from cached context binary file.");
-
-  auto src = gsl::make_span<const unsigned char>(reinterpret_cast<unsigned char*>(buffer.get()), sizeof(uint16_t));
-  std::vector<uint16_t> dst(1);
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::ReadLittleEndian(src, gsl::make_span(dst)));
-  value = dst[0];
-
-  return Status::OK();
-}
-
-/* \brief: Try to get metadata from Ort generated context cache binary file.
- *  Cached context binary file generated by Ort has some metadata which can be used for validation with the model
- *  to avoid user choose a wrong context binary file which is not for this model
- *  It is treated as Qnn generated context binary file if no metadata found from the file
- */
-Status QnnBackendManager::GetMetadataFromOrtContextFile() {
-  // Only try parse meta data once
-  if (ctx_metadata_tried_) {
-    return Status::OK();
-  }
-  ctx_metadata_tried_ = true;
-
-  uint64_t buffer_size = 0;
-  std::ifstream cache_file(context_cache_path_.c_str(), std::ifstream::binary);
-  ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to open context cache file.");
-  cache_file.seekg(0, cache_file.end);
-  buffer_size = cache_file.tellg();
-  ORT_RETURN_IF(0 == buffer_size, "Empty cache file encountered.");
-  cache_file.seekg(0, cache_file.beg);
-
-  // Read ort flag
-  std::string ort_flag("");
-  size_t ort_flag_length = strlen(QNN_PROVIDER);
-  ORT_RETURN_IF_ERROR(ReadStringFromBinaryFile(cache_file, ort_flag, ort_flag_length));
-
-  // It's not Ort generated context binary file
-  if (strncmp(ort_flag.c_str(), QNN_PROVIDER, ort_flag_length) != 0) {
-    return Status::OK();
-  }
-  ort_generated_ctx_cache_ = true;
-
-  uint16_t str_length = 0;
-  ORT_RETURN_IF_ERROR(ReadInt16FromBinaryFile(cache_file, str_length));
-  ort_ctx_metadata_length_ = str_length + static_cast<uint16_t>(ort_flag_length);
-
-  ORT_RETURN_IF_ERROR(ReadInt16FromBinaryFile(cache_file, str_length));
-  ORT_RETURN_IF_ERROR(ReadStringFromBinaryFile(cache_file, model_name_from_ctx_cache_, static_cast<size_t>(str_length)));
-
-  ORT_RETURN_IF_ERROR(ReadInt16FromBinaryFile(cache_file, str_length));
-  ORT_RETURN_IF_ERROR(ReadStringFromBinaryFile(cache_file, graph_name_from_ctx_cache_, static_cast<size_t>(str_length)));
-
-  ORT_RETURN_IF_ERROR(ReadInt16FromBinaryFile(cache_file, str_length));
-  ORT_RETURN_IF_ERROR(ReadStringFromBinaryFile(cache_file, model_description_from_ctx_cache_, static_cast<size_t>(str_length)));
-
-  return Status::OK();
-}
-
-/* \brief: Validate the model file name and graph name with Ort generated context cache metadata
- * \param[in] model_name - model file name
- * \param[in] graph_name - graph name, e.g Ort_QNN_[hash_id]_[id]. Since GetCapability is called twice,
- *                         [hash_id]_[id] changes even for same graph,
- *                          so only validate the graph name for 2nd call
- */
-Status QnnBackendManager::ValidateWithContextFile(const std::string& model_name, const std::string& graph_name) {
-  ORT_RETURN_IF(!ctx_file_exists_, "Qnn context binary file not exist for some reason!");
-
-  // Get metadata from cached context binary file
-  ORT_RETURN_IF_ERROR(GetMetadataFromOrtContextFile());
-
-  // The context binary file doesn't have ORT metadata, so it is generated from QNN toolchain not from ORT
-  if (!ort_generated_ctx_cache_) {
-    return Status::OK();
-  }
-
-  ORT_RETURN_IF(model_name != model_name_from_ctx_cache_,
-                "Model file name from context cache metadata: " + model_name_from_ctx_cache_ +
-                    " is different with target: " + model_name +
-                    ". Please make sure the context binary file matches the model.");
-
-  ORT_RETURN_IF(model_description_ != model_description_from_ctx_cache_,
-                "Model description from context cache metadata: " + model_description_from_ctx_cache_ +
-                    " is different with target: " + model_description_ +
-                    ". Please make sure the context binary file matches the model.");
-
-  ORT_RETURN_IF(graph_name != graph_name_from_ctx_cache_ && get_capability_round_2_,
-                "Graph name from context cache metadata: " + graph_name_from_ctx_cache_ +
-                    " is different with target: " + graph_name +
-                    ". You may need to re-generate the context binary file.");
-
-  get_capability_round_2_ = true;
   return Status::OK();
 }
 
@@ -620,15 +553,21 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger, bool load_
     return Status::OK();
   }
 
-  ORT_RETURN_IF_ERROR(LoadBackend());
+  if (qnn_saver_path_.empty()) {
+    ORT_RETURN_IF_ERROR(LoadBackend());
+  } else {
+    ORT_RETURN_IF_ERROR(LoadQnnSaverBackend());
+  }
+
   LOGS(logger, VERBOSE) << "LoadBackend succeed.";
 
   if (load_from_cached_context) {
     ORT_RETURN_IF_ERROR(LoadQnnSystemLib());
   }
 
+  sdk_build_version_ = GetBackendBuildId();
   LOGS(logger, VERBOSE) << "Backend build version: "
-                        << GetBackendBuildId();
+                        << sdk_build_version_;
 
   SetLogger(&logger);
   LOGS(logger, VERBOSE) << "SetLogger succeed.";
@@ -669,8 +608,7 @@ Status QnnBackendManager::SetHtpPowerConfig() {
                 "HTP infra type = ", htp_infra->infraType, ", which is not perf infra type.");
   QnnHtpDevice_PerfInfrastructure_t& htp_perf_infra = htp_infra->perfInfra;
   // Get power client id
-  uint32_t powerconfig_client_id = 0;
-  status = htp_perf_infra.createPowerConfigId(/*device_id=*/0, /*core_id=*/0, &powerconfig_client_id);
+  status = htp_perf_infra.createPowerConfigId(/*device_id=*/0, /*core_id=*/0, &htp_power_config_client_id_);
   ORT_RETURN_IF(QNN_SUCCESS != status, "createPowerConfigId failed.");
 
   constexpr const int kNumConfigs = 1;
@@ -679,7 +617,7 @@ Status QnnBackendManager::SetHtpPowerConfig() {
   QnnHtpPerfInfrastructure_PowerConfig_t& dcvs_config = power_configs[0];
   dcvs_config.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_DCVS_V3;
   QnnHtpPerfInfrastructure_DcvsV3_t& dcvs_v3 = dcvs_config.dcvsV3Config;
-  dcvs_v3.contextId = powerconfig_client_id;
+  dcvs_v3.contextId = htp_power_config_client_id_;
   dcvs_v3.setSleepDisable = 0;
   dcvs_v3.sleepDisable = 0;
   dcvs_v3.setDcvsEnable = 1;
@@ -777,7 +715,7 @@ Status QnnBackendManager::SetHtpPowerConfig() {
       break;
   }
   std::vector<const QnnHtpPerfInfrastructure_PowerConfig_t*> perf_power_configs_ptr_ = ObtainNullTermPtrVector(power_configs);
-  status = htp_perf_infra.setPowerConfig(powerconfig_client_id, perf_power_configs_ptr_.data());
+  status = htp_perf_infra.setPowerConfig(htp_power_config_client_id_, perf_power_configs_ptr_.data());
   ORT_RETURN_IF(QNN_SUCCESS != status, "setPowerConfig failed for HTP performance mode.");
 
   // Set rpc control latency here, but note that v68 doesn't support rpc polling mode.
@@ -791,7 +729,7 @@ Status QnnBackendManager::SetHtpPowerConfig() {
     rpc_polling_time.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_POLLING_TIME;
     rpc_control_latency.rpcControlLatencyConfig = rpc_control_latency_;
     perf_power_configs_ptr_ = ObtainNullTermPtrVector(rpc_power_configs);
-    status = htp_perf_infra.setPowerConfig(powerconfig_client_id, perf_power_configs_ptr_.data());
+    status = htp_perf_infra.setPowerConfig(htp_power_config_client_id_, perf_power_configs_ptr_.data());
     ORT_RETURN_IF(QNN_SUCCESS != status, "setPowerConfig failed for RPC control latency.");
   }
 
@@ -812,12 +750,36 @@ void QnnBackendManager::Split(std::vector<std::string>& split_string,
   }
 }
 
+Status QnnBackendManager::DestroyHTPPowerConfigID() {
+  if (htp_performance_mode_ == HtpPerformanceMode::kHtpDefault) {
+    return Status::OK();
+  }
+
+  QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
+  auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
+  ORT_RETURN_IF(QNN_SUCCESS != status, "backendGetPerfInfrastructure failed.");
+
+  auto* htp_infra = static_cast<QnnHtpDevice_Infrastructure_t*>(qnn_device_infra);
+  ORT_RETURN_IF(QNN_HTP_DEVICE_INFRASTRUCTURE_TYPE_PERF != htp_infra->infraType,
+                "HTP infra type = ", htp_infra->infraType, ", which is not perf infra type.");
+  QnnHtpDevice_PerfInfrastructure_t& htp_perf_infra = htp_infra->perfInfra;
+
+  Qnn_ErrorHandle_t destroy_ret = htp_perf_infra.destroyPowerConfigId(htp_power_config_client_id_);
+  ORT_RETURN_IF(QNN_SUCCESS != destroy_ret, "destroyPowerConfigId failed.");
+  return Status::OK();
+}
+
 void QnnBackendManager::ReleaseResources() {
   if (!backend_setup_completed_) {
     return;
   }
 
-  auto result = ReleaseContext();
+  auto result = DestroyHTPPowerConfigID();
+  if (Status::OK() != result) {
+    ORT_THROW("Failed to DestroyHTPPowerConfigID.");
+  }
+
+  result = ReleaseContext();
   if (Status::OK() != result) {
     ORT_THROW("Failed to ReleaseContext.");
   }
@@ -896,7 +858,7 @@ Status QnnBackendManager::ExtractProfilingSubEvents(QnnProfile_EventId_t profile
 Status QnnBackendManager::ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id) {
   QnnProfile_EventData_t event_data;
   auto result = qnn_interface_.profileGetEventData(profile_event_id, &event_data);
-  ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to get provile event data.");
+  ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to get profile event data.");
 
   LOGS(*logger_, VERBOSE) << "Profiling Event Info - Event Type: " << event_data.type
                           << ", Event Value: " << event_data.value

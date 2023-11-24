@@ -36,6 +36,12 @@ Status LaunchGatedRelativePositionBiasKernel(
     const int D,
     const int ldqw);
 
+template <typename T>
+void RestorePaddingAddBiasTranspose(
+    const T* query, const T* bias, T* output,
+    const int batch_size, const int sequence_length, const int num_heads, const int qk_head_size,
+    const int32_t* token_offset, int32_t token_count, cudaStream_t stream);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

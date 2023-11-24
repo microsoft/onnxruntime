@@ -53,8 +53,6 @@ struct PackedAttentionTestData : public BaseAttentionTestData {
   std::vector<int32_t> cumulative_sequence_length;
 };
 
-// Disable some tests in Windows since prefast build might crash with large test data.
-#if !defined(_MSC_VER)
 // Return packed weights and bias for input projection.
 void GetAttentionWeight(std::vector<float>& weight_data, int elements = 64 * 3 * 64, int offset = 0, int step = 1);
 void GetAttentionBias(std::vector<float>& bias_data, int elements = 3 * 64, int offset = 0, int step = 1);
@@ -68,8 +66,6 @@ void GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding_NoBias(AttentionTes
 
 void GetCrossAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedKV(AttentionTestData& data);
 void GetSelfAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedQKV(AttentionTestData& data);
-void GetPackedMultiHeadAttentionData_Batch2_HeadSize32_NoRelPosBias(PackedAttentionTestData& data);
-#endif
 
 void GetCrossAttentionData_HeadSize16_8(AttentionTestData& data);
 void GetCrossAttentionData_HeadSize16_8_NoBias(AttentionTestData& data);
@@ -87,9 +83,15 @@ void GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias(Atten
 void GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBias(AttentionTestData& data);
 void GetCrossAttentionData_WithPastPassedInDirectly_NoMask(AttentionTestData& data);
 
+void GetCausal_EmptyPastState(std::vector<float>& input, std::vector<float>& output, std::vector<float>& present);
+
 void GetAttentionDataCutlassRelPosBias(AttentionTestData& data);
-void GetAttentionDataWithNeoXRotaryEmbedding(std::vector<float>& input, std::vector<float>& weights, std::vector<float>& bias,
+void GetAttentionDataWithNeoXRotaryEmbedding(std::vector<float>& input,
+                                             std::vector<float>& weights,
+                                             std::vector<float>& bias,
                                              std::vector<float>& output);
+
+void GetPackedMultiHeadAttentionData_Batch2_HeadSize32_NoRelPosBias(PackedAttentionTestData& data);
 
 void GetPackedMultiHeadAttentionData_Batch2_HeadSize8_RelPosBias(PackedAttentionTestData& data);
 

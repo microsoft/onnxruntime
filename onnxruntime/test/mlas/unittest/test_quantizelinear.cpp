@@ -3,26 +3,26 @@
 
 #include "test_util.h"
 
-template <typename xint8_t>
+template <typename QuantInt>
 class MlasQuantizeLinearTest : public MlasTestBase {
  private:
   MatrixGuardBuffer<float> BufferInput;
-  MatrixGuardBuffer<xint8_t> BufferOutput;
-  MatrixGuardBuffer<xint8_t> BufferOutputReference;
+  MatrixGuardBuffer<QuantInt> BufferOutput;
+  MatrixGuardBuffer<QuantInt> BufferOutputReference;
 
-  void GenerateReference(const float* Input, xint8_t* OutputReference, size_t N, float Scale, xint8_t ZeroPoint) {
+  void GenerateReference(const float* Input, QuantInt* OutputReference, size_t N, float Scale, QuantInt ZeroPoint) {
     for (size_t n = 0; n < N; n++) {
       float FloatValue = std::nearbyintf(Input[n] / Scale) + float(ZeroPoint);
-      FloatValue = std::max(FloatValue, float(std::numeric_limits<xint8_t>::min()));
-      FloatValue = std::min(FloatValue, float(std::numeric_limits<xint8_t>::max()));
-      OutputReference[n] = (xint8_t)FloatValue;
+      FloatValue = std::max(FloatValue, static_cast<float>(std::numeric_limits<QuantInt>::min()));
+      FloatValue = std::min(FloatValue, static_cast<float>(std::numeric_limits<QuantInt>::max()));
+      OutputReference[n] = static_cast<QuantInt>(FloatValue);
     }
   }
 
   void Test(size_t N) {
     float* Input = BufferInput.GetBuffer(N);
-    xint8_t* Output = BufferOutput.GetBuffer(N);
-    xint8_t* OutputReference = BufferOutputReference.GetBuffer(N);
+    QuantInt* Output = BufferOutput.GetBuffer(N);
+    QuantInt* OutputReference = BufferOutputReference.GetBuffer(N);
 
     std::default_random_engine generator(static_cast<unsigned>(N));
 
@@ -34,8 +34,9 @@ class MlasQuantizeLinearTest : public MlasTestBase {
 
     float Scale = (MaximumValue - MinimumValue) / 512.f;
 
-    std::uniform_int_distribution<int32_t> zp_distribution(std::numeric_limits<xint8_t>::min(), std::numeric_limits<xint8_t>::max());
-    xint8_t ZeroPoint = static_cast<xint8_t>(zp_distribution(generator));
+    std::uniform_int_distribution<int32_t> zp_distribution(std::numeric_limits<QuantInt>::min(),
+                                                           std::numeric_limits<QuantInt>::max());
+    QuantInt ZeroPoint = static_cast<QuantInt>(zp_distribution(generator));
 
     std::uniform_real_distribution<float> distribution(MinimumValue, MaximumValue);
     for (size_t n = 0; n < N; n++) {
@@ -52,8 +53,15 @@ class MlasQuantizeLinearTest : public MlasTestBase {
 
  public:
   static const char* GetTestSuiteName() {
-    static const std::string suite_name(std::is_signed<xint8_t>::value ? "QuantizeLinearS8" : "QuantizeLinearU8");
-    return suite_name.c_str();
+    if constexpr (std::is_same_v<QuantInt, int8_t>) {
+      return "QuantizeLinearS8";
+    } else if (std::is_same_v<QuantInt, uint8_t>) {
+      return "QuantizeLinearU8";
+    } else if (std::is_same_v<QuantInt, int16_t>) {
+      return "QuantizeLinearS16";
+    } else {
+      return "QuantizeLinearU16";
+    }
   }
 
   void ExecuteShort(void) override {
@@ -63,16 +71,13 @@ class MlasQuantizeLinearTest : public MlasTestBase {
   }
 };
 
-template <>
-MlasQuantizeLinearTest<int8_t>* MlasTestFixture<MlasQuantizeLinearTest<int8_t>>::mlas_tester(nullptr);
-template <>
-MlasQuantizeLinearTest<uint8_t>* MlasTestFixture<MlasQuantizeLinearTest<uint8_t>>::mlas_tester(nullptr);
-
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   size_t count = 0;
   if (is_short_execute) {
     count += MlasDirectShortExecuteTests<MlasQuantizeLinearTest<int8_t>>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasQuantizeLinearTest<uint8_t>>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasQuantizeLinearTest<int16_t>>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasQuantizeLinearTest<uint16_t>>::RegisterShortExecute();
   }
   return count;
 });

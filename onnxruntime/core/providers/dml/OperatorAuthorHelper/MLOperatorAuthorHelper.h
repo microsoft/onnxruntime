@@ -5,6 +5,7 @@
 
 #include "core/providers/dml/DmlExecutionProvider/inc/MLOperatorAuthor.h"
 #include "MLOperatorAuthorPrivate.h"
+#include "core/common/gsl.h"
 
 #ifdef ORT_NO_EXCEPTIONS
 #define ML_CHECK_BOOL(x) ORT_THROW_HR_IF(E_INVALIDARG, !(x))

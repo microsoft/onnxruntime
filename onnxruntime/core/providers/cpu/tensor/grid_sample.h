@@ -15,37 +15,52 @@ template <typename T>
 class GridSample final : public OpKernel {
  public:
   explicit GridSample(const OpKernelInfo& info) : OpKernel(info) {
-    std::string mode_str = info.GetAttrOrDefault<std::string>("mode", "bilinear");
+    int start_version = info.node().SinceVersion();
+    if (start_version >= 20) {
+      std::string mode_str = info.GetAttrOrDefault<std::string>("mode", "linear");
+      if (mode_str == "cubic") {
+        mode_ = Cubic;
+      } else if (mode_str == "nearest") {
+        mode_ = Nearest;
+      } else if (mode_str == "linear") {
+        mode_ = Linear;
+      } else {
+        ORT_THROW("mode \"", mode_str, "\" not supported, expect linear, nearest or cubic");
+      }
+    } else {
+      std::string mode_str = info.GetAttrOrDefault<std::string>("mode", "bilinear");
+      if (mode_str == "bicubic") {
+        mode_ = Cubic;
+      } else if (mode_str == "nearest") {
+        mode_ = Nearest;
+      } else if (mode_str == "bilinear") {
+        mode_ = Linear;
+      } else {
+        ORT_THROW("mode \"", mode_str, "\" not supported, expect bilinear, nearest or bicubic");
+      }
+    }
+
     std::string padding_mode_str = info.GetAttrOrDefault<std::string>("padding_mode", "zeros");
     align_corners_ = static_cast<bool>(info.GetAttrOrDefault<int64_t>("align_corners", 0));
-    ORT_ENFORCE(mode_str == "bilinear" || mode_str == "nearest" || mode_str == "bicubic",
-                "mode \"", mode_str, "\" not supported, expect bilinear, nearest or bicubic");
-    ORT_ENFORCE(padding_mode_str == "zeros" || padding_mode_str == "border" || padding_mode_str == "reflection",
-                "padding_mode \"", padding_mode_str, "\" not supported, expect zeros, border or reflection");
-    if (mode_str == "bicubic") {
-      mode_ = Bicubic;
-    } else if (mode_str == "nearest") {
-      mode_ = Nearest;
-    } else {
-      mode_ = Bilinear;
-    }
     if (padding_mode_str == "reflection") {
       padding_mode_ = Reflection;
     } else if (padding_mode_str == "border") {
       padding_mode_ = Border;
-    } else {
+    } else if (padding_mode_str == "zeros") {
       padding_mode_ = Zeros;
+    } else {
+      ORT_THROW("padding_mode \"", padding_mode_str, "\" not supported, expect zeros, border or reflection");
     }
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  enum GridSampleInterpolationMode {
-    Bilinear,
+  typedef enum {
+    Linear,
+    Cubic,
     Nearest,
-    Bicubic
-  };
+  } GridSampleInterpolationMode;
 
   enum GridSamplePaddingMode {
     Zeros,
@@ -53,9 +68,10 @@ class GridSample final : public OpKernel {
     Reflection
   };
 
-  T PixelAtGrid(const T* image, int64_t r, int64_t c, int64_t H, int64_t W, float border[/* 4 */]) const;
+  T PixelAtGrid(const T* image, int64_t r, int64_t c, int64_t H, int64_t W, T border[/* 4 */]) const;
+  T PixelAtGrid3D(const T* image, int64_t d, int64_t h, int64_t w, int64_t D, int64_t H, int64_t W, T border[/* 6 */]) const;
 
-  GridSampleInterpolationMode mode_{Bilinear};
+  GridSampleInterpolationMode mode_{Linear};
   GridSamplePaddingMode padding_mode_{Zeros};
   bool align_corners_{0};
 };

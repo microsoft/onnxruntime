@@ -95,42 +95,11 @@ def _build_aar(args):
     exe_dir = os.path.join(intermediates_dir, "executables", build_config)
     base_build_command = [sys.executable, BUILD_PY] + build_settings["build_params"] + ["--config=" + build_config]
     header_files_path = ""
-    # Build and install protoc
-    protobuf_installation_script = os.path.join(
-        REPO_DIR,
-        "tools",
-        "ci_build",
-        "github",
-        "linux",
-        "docker",
-        "inference",
-        "x64",
-        "python",
-        "cpu",
-        "scripts",
-        "install_protobuf.sh",
-    )
-    subprocess.run(
-        [
-            protobuf_installation_script,
-            "-p",
-            os.path.join(build_dir, "protobuf"),
-            "-d",
-            os.path.join(REPO_DIR, "cmake", "deps.txt"),
-        ],
-        shell=False,
-        check=True,
-    )
+
     # Build binary for each ABI, one by one
     for abi in build_settings["build_abis"]:
         abi_build_dir = os.path.join(intermediates_dir, abi)
-        abi_build_command = [
-            *base_build_command,
-            "--android_abi=" + abi,
-            "--build_dir=" + abi_build_dir,
-            "--path_to_protoc_exe",
-            os.path.join(build_dir, "protobuf", "bin", "protoc"),
-        ]
+        abi_build_command = [*base_build_command, "--android_abi=" + abi, "--build_dir=" + abi_build_dir]
 
         if ops_config_path is not None:
             abi_build_command += ["--include_ops_by_config=" + ops_config_path]

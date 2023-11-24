@@ -39,36 +39,22 @@ jobs:
       versionSpec: $(PythonVersion)
       architecture: ${{ parameters.python_arch }}
 
-  - task: DownloadPipelineArtifact@2
-    displayName: 'Download Pipeline Artifact'
-    inputs:
-      artifactName: 'onnxruntime'
-      targetPath: '$(Build.BinariesDirectory)/whl'
-      itemPattern: ${{parameters.itemPattern}}
-      # The public ADO project
-      ${{ if eq(variables['System.CollectionId'], 'f3ad12f2-e480-4533-baf2-635c95467d29') }}:
-        buildType: current
-      # The private ADO project
-      ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
-        project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
-        definition: 841
-        preferTriggeringPipeline: true
-        runVersion: 'latest'
-        buildType: specific
+  - download: build   # pipeline resource identifier.
+    artifact: 'onnxruntime'
 
   - task: Bash@3
     inputs:
       targetType: 'inline'
       script: |
         set -ex
-        files=(whl/*.whl)
+        files=(*.whl)
         FILE_NAME="${files[0]}"
         FILE_NAME=$(basename $FILE_NAME)
         PYTHON_PACKAGE_NAME=$(echo "$FILE_NAME" | cut -f 1 -d '-')
-        python3 -m pip install --find-links "$(Build.BinariesDirectory)/whl" $PYTHON_PACKAGE_NAME
-        pip show $PYTHON_PACKAGE_NAME
-        python -c "import onnxruntime as ort; print(ort.__version__)"
-      workingDirectory: $(Build.BinariesDirectory)
+        python3 -m pip install --find-links "$(Pipeline.Workspace)/build/onnxruntime" $PYTHON_PACKAGE_NAME
+        python3 -m pip show $PYTHON_PACKAGE_NAME
+        python3 -c "import onnxruntime as ort; print(ort.__version__)"
+      workingDirectory: $(Pipeline.Workspace)/build/onnxruntime
     displayName: Test Package Installation
 
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3

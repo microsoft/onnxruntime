@@ -12,7 +12,6 @@ from typing import Dict, Tuple, Union
 
 import numpy as np
 import torch
-from datasets import load_dataset
 from transformers import WhisperConfig, WhisperForConditionalGeneration, WhisperProcessor
 from whisper_decoder import WhisperDecoder, WhisperDecoderHelper, WhisperDecoderInit
 from whisper_encoder import WhisperEncoder, WhisperEncoderHelper
@@ -270,6 +269,18 @@ class WhisperHelper:
         pt_model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path).to(device)
         processor = WhisperProcessor.from_pretrained(model_name_or_path)
         config = WhisperConfig.from_pretrained(model_name_or_path)
+
+        # Try to import `datasets` pip package
+        try:
+            from datasets import load_dataset
+        except Exception as e:
+            logger.error(f"An error occurred while importing `datasets`: {e}", exc_info=True)
+            install_cmd = "pip install datasets"
+            logger.warning(f"Could not import `datasets`. Attempting to install `datasets` via `{install_cmd}`.")
+            os.system(install_cmd)
+
+        from datasets import load_dataset  # noqa: F811
+
         ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
         input_features = processor([ds[0]["audio"]["array"]], return_tensors="pt").input_features
 
@@ -301,6 +312,7 @@ class WhisperHelper:
             "tensor(uint8)": np.uint8,
         }
 
+        use_extra_decoding_ids = "extra_decoding_ids" in ort_names
         for name, dtype in zip(ort_names, ort_dtypes):
             if name == "input_features":
                 inputs[name] = inputs[name].detach().cpu().numpy()
@@ -309,9 +321,18 @@ class WhisperHelper:
             elif name == "prefix_vocab_mask":
                 inputs[name] = np.ones((batch_size, config.vocab_size), dtype=ort_to_np[dtype])
             elif name == "decoder_input_ids":
-                inputs[name] = np.array([[config.decoder_start_token_id, 50259, 50359, 50363]], dtype=ort_to_np[dtype])
+                raw_input_ids = (
+                    [[config.decoder_start_token_id]]
+                    if use_extra_decoding_ids
+                    else [[config.decoder_start_token_id, 50259, 50359, 50363]]
+                )
+                inputs[name] = np.array(raw_input_ids, dtype=ort_to_np[dtype])
             elif name == "logits_processor":
                 inputs[name] = np.array([1], dtype=ort_to_np[dtype])
+            elif name == "cross_qk_layer_head":
+                inputs[name] = np.array([[0, 0]], dtype=ort_to_np[dtype])
+            elif name == "extra_decoding_ids":
+                inputs[name] = np.repeat(np.array([[50259, 50359, 50363]], dtype=ort_to_np[dtype]), batch_size, 0)
             else:
                 inputs[name] = np.array([inputs[name]], dtype=ort_to_np[dtype])
         ort_outputs = ort_session.run(None, inputs)[0][0]

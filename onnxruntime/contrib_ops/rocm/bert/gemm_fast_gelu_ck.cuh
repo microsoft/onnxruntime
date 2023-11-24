@@ -58,7 +58,7 @@ auto GetCKGemmAddFastGeluTypeStringAndOps() {
       auto zero = ToHipType<T>::FromFloat(0.0f);
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           params->alpha != one || params->beta != zero || params->bias == nullptr,
-          impl->GetTypeString(), " only supports alpha == 1 and beta == 0 and bias != nullptr", params->Signature());
+          impl->GetTypeString(), " only supports alpha == 1 and beta == 0 and bias != nullptr");
 
       auto nop = Nop{};
       auto addfastgelu = AddFastGelu{};
@@ -67,8 +67,8 @@ auto GetCKGemmAddFastGeluTypeStringAndOps() {
                                            params->lda, params->ldb, std::array<ck::index_t, 1>{0}, params->ldc,
                                            nop, nop, addfastgelu);
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
-                                                impl->GetTypeString(), " does not support ", params->Signature());
-      invoker->Run(arg.get(), StreamConfig{params->stream});
+                                                impl->GetTypeString(), " does not support the params");
+      invoker->Run(arg.get(), StreamConfig{params->StreamHandle()});
       return Status::OK();
     };
     ret.emplace_back(std::make_pair(std::move(type_string), std::move(ck_gemmfastgelu_op)));
@@ -95,7 +95,7 @@ auto GetCKGemmFastGeluTypeStringAndOps() {
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           params->alpha != one || params->beta != zero || params->bias != nullptr,
-          impl->GetTypeString(), " only supports alpha == 1 and beta == 0 and bias == nullptr", params->Signature());
+          impl->GetTypeString(), " only supports alpha == 1 and beta == 0 and bias == nullptr");
 
       auto nop = Nop{};
       auto fastgelu = FastGelu{};
@@ -108,8 +108,8 @@ auto GetCKGemmFastGeluTypeStringAndOps() {
                                            params->ldc,
                                            nop, nop, fastgelu);
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
-                                                impl->GetTypeString(), " does not support ", params->Signature());
-      invoker->Run(arg.get(), StreamConfig{params->stream});
+                                                impl->GetTypeString(), " does not support the params");
+      invoker->Run(arg.get(), StreamConfig{params->StreamHandle()});
       return Status::OK();
     };
     ret.emplace_back(std::make_pair(std::move(type_string), std::move(ck_gemmfastgelu_op)));

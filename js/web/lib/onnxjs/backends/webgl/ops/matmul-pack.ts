@@ -107,10 +107,10 @@ function getBcastSamplerForMatmul(
   const rankADiff = outRank - inARank;
   const rankBDiff = outRank - inBRank;
 
-  unpackedACoordsSnippet = inAShape.map((s, i) => `coords.${allGlChannels[i + rankADiff]}`);
+  unpackedACoordsSnippet = inAShape.map((_s, i) => `coords.${allGlChannels[i + rankADiff]}`);
   unpackedACoordsSnippet[inARank - 1] = 'i*2';
   unpackedACoordsSnippet.join(', ');
-  unpackedBCoordsSnippet = inBShape.map((s, i) => `coords.${allGlChannels[i + rankBDiff]}`);
+  unpackedBCoordsSnippet = inBShape.map((_s, i) => `coords.${allGlChannels[i + rankBDiff]}`);
   unpackedBCoordsSnippet[inBRank - 2] = 'i*2';
   unpackedBCoordsSnippet.join(', ');
 

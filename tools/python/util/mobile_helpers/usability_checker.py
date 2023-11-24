@@ -13,6 +13,7 @@ from typing import Optional
 import onnx
 
 from ..onnx_model_utils import (
+    ModelProtoWithShapeInfo,
     get_producer_consumer_maps,
     is_fixed_size_tensor,
     iterate_graph_per_graph_func,
@@ -464,9 +465,9 @@ def check_shapes(graph: onnx.GraphProto, logger: Optional[logging.Logger] = None
     return dynamic_inputs, num_dynamic_values
 
 
-def checker(model_path, logger: logging.Logger):
-    model = onnx.load(model_path)
-    model_with_shape_info = onnx.shape_inference.infer_shapes(model)
+def checker(model_path: pathlib.Path, logger: logging.Logger):
+    model_with_shape_info_wrapper = ModelProtoWithShapeInfo(model_path)
+    model_with_shape_info = model_with_shape_info_wrapper.model_with_shape_info
 
     # create lookup map for efficiency
     value_to_shape = {}
@@ -541,10 +542,10 @@ def analyze_model(model_path: pathlib.Path, skip_optimize: bool = False, logger:
     with tempfile.TemporaryDirectory() as tmp:
         if not skip_optimize:
             tmp_path = pathlib.Path(tmp) / model_path.name
-            optimize_model(model_path, tmp_path)
+            optimize_model(model_path, tmp_path, use_external_initializers=True)
             model_path = tmp_path
 
-        try_eps = checker(str(model_path.resolve(strict=True)), logger)
+        try_eps = checker(model_path.resolve(strict=True), logger)
 
     return try_eps
 

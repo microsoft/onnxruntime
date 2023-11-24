@@ -13,6 +13,7 @@ using namespace onnxruntime;
 namespace onnxruntime {
 
 common::Status LoadDynamicLibrary(onnxruntime::PathString library_name);
+common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths);
 common::Status CreateTensorRTCustomOpDomainList(TensorrtExecutionProviderInfo& info);
 void ReleaseTensorRTCustomOpDomain(OrtCustomOpDomain* domain);
 void ReleaseTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list);

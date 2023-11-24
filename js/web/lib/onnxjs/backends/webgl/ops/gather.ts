@@ -30,7 +30,7 @@ const gatherProgramMetadata = {
 };
 
 const createGatherProgramInfo =
-    (handler: WebGLInferenceHandler, metadata: ProgramMetadata, inputs: Tensor[], axis: number): ProgramInfo => {
+    (_handler: WebGLInferenceHandler, metadata: ProgramMetadata, inputs: Tensor[], axis: number): ProgramInfo => {
       const inputShape = inputs[0].dims.slice();
       const indexDataShape = inputs[1].dims.slice();
       const outputShape = new Array(inputShape.length + indexDataShape.length - 1);

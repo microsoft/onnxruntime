@@ -6,7 +6,7 @@ ONNXRuntime Extensions is a comprehensive package to extend the capability of th
 onnxruntime-extensions supports many useful custom operators to enhance the text processing capability of ONNXRuntime, which include some widely used **string operators** and popular **tokenizers**. For custom operators supported and how to use them, please check the documentation [custom operators](https://github.com/microsoft/onnxruntime-extensions/blob/main/docs/custom_text_ops.md).
 
 ## Build ONNXRuntime with Extensions
-We have supported build onnxruntime-extensions as a static library and link it into ONNXRuntime. To enable custom operators from onnxruntime-extensions, you should add argument `--use_extensions`, which will use onnxruntime-extensions from git submodule in path cmake/external/onnxruntime-extensions **by default**.
+We have supported build onnxruntime-extensions as a static library and link it into ONNXRuntime. To enable custom operators from onnxruntime-extensions, you should add argument `--use_extensions`, which will fetch onnxruntime-extensions and build it as static library from https://github.com/microsoft/onnxruntime-extensions **by default**.
 
 If you want to build ONNXRuntime with a pre-pulled onnxruntime-extensions, pass extra argument `--extensions_overridden_path <path-to-onnxruntime-extensions>`.
 

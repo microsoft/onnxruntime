@@ -49,6 +49,90 @@ More options for **developers**.
 ```
 Check [DebugOptions implementation](../orttraining/orttraining/python/training/ortmodule/options.py) for more details.
 
+#### Log Level Explanations
+
+<table>
+<tr>
+<th style="width:20%">Log Level</th>
+<th style="width:80%">Description</th>
+</tr>
+<tr>
+<td>
+
+`FATAL` | `ERROR` | `WARNING` (For Users)
+
+<sup>`WARNING` is the default and recommended level for
+<br>users.</sup>
+</td>
+<td>
+
+- ONNX Runtime backend log level - `FATAL` | `ERROR` | `WARNING`.
+- ORTModule log level - `FATAL` | `ERROR` | `WARNING`.
+- Rank-0 log filtering is `ON` (e.g. logging on rank-0-only).
+- PyTorch exporter export logs filtering is `ON`.
+- PyTorch exporter verbose logs (including tracing graph) filtering is `ON`.
+
+</td>
+</tr>
+<tr>
+<td>
+
+`INFO` (For Users | ORT Developers)
+
+<sup>`INFO` is used for collecting experimental
+<br>feature stats, or a little bit more error messages.</sup>
+</td>
+<td>
+
+- ONNX Runtime backend log level - `WARNING`.
+- ORTModule log level - `INFO`.
+- Rank-0 log filtering is `ON` (e.g. logging on rank-0-only).
+- PyTorch exporter export logs filtering is `ON`.
+- PyTorch exporter verbose logs (including tracing graph) filtering is `OFF`.
+
+</td>
+</tr>
+<tr>
+<td>
+
+`DEVINFO` (For ORT Developers)
+
+<sup>`DEVINFO` is the recommended level for
+<br>debugging purposes.</sup>
+</td>
+<td>
+
+- ONNX Runtime backend log level - `INFO`.
+- ORTModule log level - `INFO`.
+- Rank-0 log filtering is `OFF` (e.g. logging on all ranks).
+- PyTorch exporter export logs filtering is `OFF`.
+- PyTorch exporter verbose logs (including tracing graph) filtering is `OFF`.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`VERBOSE` (For ORT Developers)
+
+<sup>`VERBOSE` is the last resort for debugging
+<br>hard problems.</sup>
+</td>
+<td>
+
+- ONNX Runtime backend log level - `VERBOSE`.
+- ORTModule log level - `VERBOSE`.
+- Rank-0 log filtering is `OFF` (e.g. logging on all ranks).
+- PyTorch exporter export logs filtering is `OFF`.
+- PyTorch exporter verbose logs (including tracing graph) filtering is `OFF`.
+
+</td>
+</tr>
+
+</table>
+
+
 ### 2.1 Environment Variables
 
 `ORTModule` provides environment variables targeting different use cases.
@@ -115,15 +199,7 @@ The output directory of the onnx models by default is set to the current working
 	enable_custom_autograd_support(False)
 	```
 
-#### ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS
 
-- **Feature Area**: *ORTMODULE/PythonOp (torch.autograd.Function)*
-- **Description**: By default, this is empty. When user model's setup depends on libraries who might define multiple torch.autograd.Function classes of same name, though their python import paths (e.g. 'namespace') are different, while due to limitation of PyTorch exporter (https://github.com/microsoft/onnx-converters-private/issues/115), ORT backend cannot infer which one to call. So an exception will be thrown for this case.
-Before full qualified name can be got from exporter, this environment variables can be used to specify which torch.autograd.Function classes can be ignored. An example as below, be noted, full qualified name is needed here. If there are multiple classes to be ignored, use comma as the separator.
-
-	```bash
-	export ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS="megatron.fp16.fp16.fused_kernels.GELUFunction"
-	```
 
 #### ORTMODULE_ENABLE_COMPUTE_OPTIMIZER
 
@@ -192,6 +268,15 @@ data sparsity based performance optimizations.
 	export ORTMODULE_CACHE_DIR="/path/to/cache_dir" # Enable
 	unset ORTMODULE_CACHE_DIR # Disable
 	```
+
+#### ORTMODULE_USE_EFFICIENT_ATTENTION
+
+- **Feature Area**: *ORTMODULE/Optimizations*
+- **Description**: By default, this is disabled. This env var can be used for enabling attention fusion and falling back to PyTorch's efficient_attention ATen kernel for execution. NOTE that it requires torch's version is 2.1.1 or above. There are some build-in patterns for attention fusion, if none of the patterns works for your model, you can add a custom one in your user script manually.
+
+    ```bash
+    export ORTMODULE_USE_EFFICIENT_ATTENTION=1
+    ```
 
 ### 2.2 Memory Optimization
 
@@ -319,6 +404,15 @@ Check [FP16_Optimizer implementation](../orttraining/orttraining/python/training
 
     ```bash
     export ORTMODULE_TUNING_RESULTS_PATH=/tmp/tuning_results
+    ```
+
+#### ORTMODULE_USE_FLASH_ATTENTION
+
+- **Feature Area**: *ORTMODULE/TritonOp*
+- **Description**: By default, this is disabled. This env var can be used for enabling attention fusion and using Flash Attention's Triton version as the kernel. NOTE that it requires ORTMODULE_USE_TRITON to be enabled, and CUDA device capability is 8.0 or above. There are some build-in patterns for attention fusion, if none of the patterns works for your model, you can add a custom one in your user script manually.
+
+    ```bash
+    export ORTMODULE_USE_FLASH_ATTENTION=1
     ```
 
 #### ORTMODULE_TRITON_DEBUG

@@ -84,17 +84,17 @@ LearningModel::LearningModel(const hstring& path, const winml::ILearningModelOpe
     0,                  // size of mapping object, high
     0,                  // size of mapping object, low
     NULL
-  ));             // name of mapping object
+  ));  // name of mapping object
 
   WINML_THROW_HR_IF_TRUE_MSG(__HRESULT_FROM_WIN32(GetLastError()), file_mapping == nullptr, "Model load failed!");
 
   auto buffer = MapViewOfFile(
-    file_mapping.get(), // handle to mapping object
-    FILE_MAP_READ,      // read/write
-    0,                  // high-order 32 bits of file offset
-    0,                  // low-order 32 bits of file offset
+    file_mapping.get(),  // handle to mapping object
+    FILE_MAP_READ,       // read/write
+    0,                   // high-order 32 bits of file offset
+    0,                   // low-order 32 bits of file offset
     0
-  );                 // number of bytes to map. 0 means read whole file.
+  );  // number of bytes to map. 0 means read whole file.
 
   WINML_THROW_HR_IF_TRUE_MSG(__HRESULT_FROM_WIN32(GetLastError()), buffer == nullptr, "Model load failed!");
   LARGE_INTEGER file_size;

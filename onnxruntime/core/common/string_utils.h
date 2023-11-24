@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -35,6 +36,33 @@ inline InlinedVector<std::string_view> SplitString(std::string_view string_to_sp
                             : segment_end_pos + delimiter.size();
   }
   return result;
+}
+
+/**
+ * Trim a string from start inplace.
+ * @param s The string to trim.
+ */
+inline void TrimStringFromLeft(std::string& s) {
+  s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) { return !std::isspace(ch); }));
+}
+
+/**
+ * Trim a string from end inplace.
+ * @param s The string to trim.
+ */
+inline void TrimStringFromRight(std::string& s) {
+  s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(), s.end());
+}
+
+/**
+ * Trim a string from both ends.
+ * @param s The string to trim.
+ * @return The trimmed string.
+ */
+inline std::string TrimString(std::string s) {
+  TrimStringFromRight(s);
+  TrimStringFromLeft(s);
+  return s;
 }
 
 }  // namespace utils

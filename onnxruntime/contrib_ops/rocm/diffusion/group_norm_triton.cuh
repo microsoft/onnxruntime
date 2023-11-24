@@ -77,7 +77,7 @@ auto GetTritonGroupNormNHWCTypeStringAndOps() {
           params->epsilon};
 
       // Grid dim is (batch_count, groups, 1)
-      return LaunchTritonKernel(params->stream, i, params->n, params->groups, 1, &args, sizeof(args));
+      return LaunchTritonKernel(params->StreamHandle(), i, params->n, params->groups, 1, &args, sizeof(args));
     };
     ret.emplace_back(std::make_pair(metadata->name, std::move(impl)));
   }

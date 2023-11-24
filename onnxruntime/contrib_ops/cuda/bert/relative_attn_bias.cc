@@ -66,7 +66,7 @@ Status RelPosAttnBias<T>::ComputeInternal(OpKernelContext* context) const {
   const int64_t key_len = *key_length->Data<int64_t>();
 
   if (query_len != key_len) {
-    ORT_THROW("Relatvie position bias currently only support query length equal to key length in Self Attention.");
+    ORT_THROW("Relative position bias currently only support query length equal to key length in Self Attention.");
   }
 
   Tensor* output = context->Output(0, {1, num_heads, query_len, key_len});
@@ -100,17 +100,33 @@ Status GatedRelativePositionBias<T>::ComputeInternal(OpKernelContext* context) c
   const Tensor& weight_tensor = *context->Input<Tensor>(3);
   const Tensor& bias_tensor = *context->Input<Tensor>(4);
   const Tensor& eco_a_tensor = *context->Input<Tensor>(5);
+  const Tensor* token_offset_tensor = context->Input<Tensor>(6);
 
   const auto& query_dims = query_tensor.Shape().GetDims();
-  ORT_ENFORCE(query_dims.size() == 3);
-  ORT_ENFORCE(query_dims[2] > 0);
-  ORT_ENFORCE(query_dims[2] % num_heads_ == 0);
-  const auto batch_size = SafeInt<int>(query_dims[0]);
-  const auto seq_len = SafeInt<int>(query_dims[1]);
-  const auto head_size = SafeInt<int>(query_dims[2] / num_heads_);
+
+  bool is_padding_removed = (token_offset_tensor != nullptr);
+  ORT_ENFORCE(query_dims.size() == (is_padding_removed ? 2 : 3));
+  int hidden_size = static_cast<int>(query_dims[query_dims.size() - 1]);
+
+  ORT_ENFORCE(hidden_size > 0);
+  ORT_ENFORCE(hidden_size % num_heads_ == 0);
+  const auto head_size = SafeInt<int>(hidden_size / num_heads_);
+
+  int batch_size;
+  int seq_len;
+  int token_count = 0;
+  if (is_padding_removed) {
+    const auto& token_offset_dims = token_offset_tensor->Shape().GetDims();
+    batch_size = SafeInt<int>(token_offset_dims[0]);
+    seq_len = SafeInt<int>(token_offset_dims[1]);
+    token_count = SafeInt<int>(query_dims[0]);
+  } else {
+    batch_size = SafeInt<int>(query_dims[0]);
+    seq_len = SafeInt<int>(query_dims[1]);
+  }
 
   ORT_ENFORCE(query_bias_tensor.Shape().NumDimensions() == 1);
-  ORT_ENFORCE(query_bias_tensor.Shape()[0] == query_dims[2]);
+  ORT_ENFORCE(query_bias_tensor.Shape()[0] == hidden_size);
 
   const auto& rel_pos_dims = rel_pos_tensor.Shape().GetDims();
   ORT_ENFORCE(rel_pos_dims.size() == 4);
@@ -149,21 +165,31 @@ Status GatedRelativePositionBias<T>::ComputeInternal(OpKernelContext* context) c
   size_t workspace_size = sizeof(T) * (elements_in_query + (reuse_output ? (size_t)0 : elements_after_gemm));
   auto workspace = GetScratchBuffer<void>(workspace_size, context->GetComputeStream());
 
-  // format 1: BxSx(NH * total_matrix) => matrix_to_transpose * (BxNxSxH)
-  constexpr int format = 1;
-  constexpr int total_maxtrix = 1;
-  constexpr int num_matrix_to_transpose = 1;
-  LaunchAddBiasTranspose(Stream(context), num_matrix_to_transpose, format, device_prop.maxThreadsPerBlock,
-                         batch_size, seq_len, num_heads_, head_size,
-                         reinterpret_cast<const CudaT*>(query_tensor.template Data<T>()),
-                         reinterpret_cast<const CudaT*>(query_bias_tensor.template Data<T>()),
-                         reinterpret_cast<CudaT*>(workspace.get()),
-                         false, head_size, reinterpret_cast<CudaT*>(static_cast<CudaT*>(nullptr)), total_maxtrix);
+  cudaStream_t stream = Stream(context);
+  if (!is_padding_removed) {
+    // format 1: BxSx(NH * total_matrix) => matrix_to_transpose * (BxNxSxH)
+    constexpr int format = 1;
+    constexpr int total_maxtrix = 1;
+    constexpr int num_matrix_to_transpose = 1;
+    LaunchAddBiasTranspose(stream, num_matrix_to_transpose, format, device_prop.maxThreadsPerBlock,
+                           batch_size, seq_len, num_heads_, head_size,
+                           reinterpret_cast<const CudaT*>(query_tensor.Data<T>()),
+                           reinterpret_cast<const CudaT*>(query_bias_tensor.Data<T>()),
+                           reinterpret_cast<CudaT*>(workspace.get()),
+                           false, head_size, reinterpret_cast<CudaT*>(static_cast<CudaT*>(nullptr)), total_maxtrix);
+  } else {
+    RestorePaddingAddBiasTranspose(reinterpret_cast<const CudaT*>(query_tensor.Data<T>()),
+                                   reinterpret_cast<const CudaT*>(query_bias_tensor.Data<T>()),
+                                   reinterpret_cast<CudaT*>(workspace.get()),
+                                   batch_size, seq_len, num_heads_, head_size,
+                                   token_offset_tensor->Data<int>(),
+                                   token_count, stream);
+  }
 
   // reuse output if possible
   CudaT* gemm_output = reuse_output ? reinterpret_cast<CudaT*>(output->template MutableData<T>())
                                     : (reinterpret_cast<CudaT*>(workspace.get()) + elements_in_query);
-  int ld_gemm_output = reuse_output ? seq_len : D;
+  int ld_gemm_output = reuse_output ? seq_len : static_cast<int>(D);
 
   const CudaT one = ToCudaType<T>::FromFloat(1.0f);
   const CudaT zero = ToCudaType<T>::FromFloat(0.0f);
@@ -177,7 +203,7 @@ Status GatedRelativePositionBias<T>::ComputeInternal(OpKernelContext* context) c
       &zero, gemm_output, ld_gemm_output, device_prop));
 
   auto status = LaunchGatedRelativePositionBiasKernel<CudaT>(
-      device_prop, Stream(context),
+      device_prop, stream,
       reinterpret_cast<CudaT*>(output->template MutableData<T>()),
       reinterpret_cast<const CudaT*>(rel_pos_tensor.template Data<T>()),
       reinterpret_cast<const CudaT*>(gemm_output),

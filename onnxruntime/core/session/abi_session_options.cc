@@ -60,7 +60,7 @@ onnxruntime::Status OrtSessionOptions::RegisterCustomOpsLibrary(onnxruntime::Pat
 
 ORT_API_STATUS_IMPL(OrtApis::CreateSessionOptions, OrtSessionOptions** out) {
   API_IMPL_BEGIN
-  GSL_SUPPRESS(r .11)
+  GSL_SUPPRESS(r.11)
   *out = new OrtSessionOptions();
   return nullptr;
   API_IMPL_END
@@ -72,7 +72,7 @@ ORT_API(void, OrtApis::ReleaseSessionOptions, _Frees_ptr_opt_ OrtSessionOptions*
 
 ORT_API_STATUS_IMPL(OrtApis::CloneSessionOptions, const OrtSessionOptions* input, OrtSessionOptions** out) {
   API_IMPL_BEGIN
-  GSL_SUPPRESS(r .11)
+  GSL_SUPPRESS(r.11)
   *out = new OrtSessionOptions(*input);
   return nullptr;
   API_IMPL_END
@@ -140,6 +140,14 @@ ORT_API_STATUS_IMPL(OrtApis::DisableCpuMemArena, _In_ OrtSessionOptions* options
 ///< logger id to use for session output
 ORT_API_STATUS_IMPL(OrtApis::SetSessionLogId, _In_ OrtSessionOptions* options, const char* logid) {
   options->value.session_logid = logid;
+  return nullptr;
+}
+
+///< logging function and optional logging param to use for session output
+ORT_API_STATUS_IMPL(OrtApis::SetUserLoggingFunction, _In_ OrtSessionOptions* options,
+                    _In_ OrtLoggingFunction user_logging_function, _In_opt_ void* user_logging_param) {
+  options->value.user_logging_function = user_logging_function;
+  options->value.user_logging_param = user_logging_param;
   return nullptr;
 }
 

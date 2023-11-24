@@ -1,14 +1,5 @@
 trigger: none
 
-variables:
-  - name: isMain
-    value: ${{ eq(variables['Build.SourceBranch'], 'refs/heads/main') }}
-  - name: finalStorage
-    ${{ if eq(variables['isMain'], 'true') }}:
-      value: '--final_storage'
-    ${{ else }}:
-      value: ''
-
 resources:
   repositories:
   - repository: manylinux
@@ -18,7 +9,7 @@ resources:
     ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 stages:
-- stage: Python_Packaging
+- stage: Python_Packaging_Linux_Training_CPU
 
   jobs:
     - job: Linux_Training_CPU_Wheels
@@ -39,14 +30,6 @@ stages:
             PythonVersion: '3.11'
 
       steps:
-      - task: CmdLine@2
-        displayName: 'check variables'
-        inputs:
-          script: |
-            echo "Branch is "${{ variables['Build.SourceBranch'] }} && \
-            echo "isMain is "${{ variables['isMain'] }} && \
-            echo "final_storage is "${{ variables['finalStorage'] }}
-
       - checkout: self
         clean: true
         submodules: recursive
@@ -55,7 +38,7 @@ stages:
 
       - template: templates/get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
             --build-arg PYTHON_VERSION=$(PythonVersion)
@@ -76,6 +59,8 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
+              -e ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION \
+              -e DEFAULT_TRAINING_PACKAGE_DEVICE \
               onnxruntimetrainingcpubuild \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
@@ -85,7 +70,7 @@ stages:
                   --parallel \
                   --build_wheel \
                   --enable_onnx_tests \
-                  --enable_pybind --build_java --build_nodejs --enable_training
+                  --enable_pybind --enable_training
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
@@ -100,19 +85,19 @@ stages:
         inputs:
           ArtifactName: onnxruntime_training_cpu
 
-      - task: CmdLine@2
-        condition: succeeded()
-        displayName: 'Upload wheel'
-        inputs:
-          script: |
-            files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
-            echo ${files[0]} && \
-            echo ${{ variables['finalStorage'] }} && \
-            tools/ci_build/upload_python_package_to_azure_storage.py \
-                --python_wheel_path ${files[0]} ${{ variables['finalStorage'] }}
-
       - template: templates/component-governance-component-detection-steps.yml
         parameters:
           condition: 'succeeded'
 
       - template: templates/clean-agent-build-directory-step.yml
+
+- template: templates/py-packaging-stage.yml
+  parameters:
+    build_py_parameters: --enable_training
+    enable_linux_gpu: false
+    enable_linux_cpu: false
+    enable_windows_cpu: true
+    enable_windows_gpu: false
+    enable_mac_cpu: true
+    enable_mac_silicon: true
+    enable_linux_arm: false

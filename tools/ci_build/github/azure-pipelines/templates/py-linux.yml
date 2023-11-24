@@ -17,13 +17,26 @@ parameters:
 - name: prepend_path
   type: string
 
+- name: cmake_build_type
+  type: string
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
 - name: device
   type: string
-  default: '-d CPU'
+  default: 'CPU'
 
 - name: with_cache
   type: boolean
   default: false
+
+- name: extra_build_arg
+  type: string
+  default: ''
 
 jobs:
 - job: Linux_py_Wheels_${{ parameters.arch }}
@@ -33,9 +46,17 @@ jobs:
   pool: ${{ parameters.machine_pool }}
   variables:
     # The build machine pool doesn't have dotnet, so it can't run CG.
-    skipComponentGovernanceDetection: true
-    ORT_CACHE_DIR: $(Agent.TempDirectory)/ort_ccache
-    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+    - name: skipComponentGovernanceDetection
+      value: true
+    - name: ORT_CACHE_DIR
+      value: $(Agent.TempDirectory)/ort_ccache
+    - name: TODAY
+      value: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+    - name: extra_build_args
+      ${{ if ne(parameters.extra_build_arg, '') }}:
+        value: -x ${{ parameters.extra_build_arg }}
+      ${{ if eq(parameters.extra_build_arg, '') }}:
+        value: ''
   steps:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
@@ -49,10 +70,10 @@ jobs:
 
     - template: get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/inference/x64/python/cpu/Dockerfile.manylinux2014_cpu
+        Dockerfile: tools/ci_build/github/linux/docker/inference/x64/python/cpu/Dockerfile.manylinux2_28_cpu
         Context: tools/ci_build/github/linux/docker/inference/x64/python/cpu
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=${{ parameters.base_image }} --build-arg PLATFORM=${{ parameters.arch }} --build-arg PREPEND_PATH=${{ parameters.prepend_path }} --build-arg LD_LIBRARY_PATH_ARG=${{ parameters.ld_library_path_arg }} --build-arg DEVTOOLSET_ROOTPATH=${{ parameters.devtoolset_rootpath }}"
-        Repository: onnxruntimecpubuilpython${{ parameters.arch }}
+        DockerBuildArgs: "--build-arg POLICY=manylinux_2_28 --build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=${{ parameters.base_image }} --build-arg PLATFORM=${{ parameters.arch }} --build-arg PREPEND_PATH=${{ parameters.prepend_path }} --build-arg LD_LIBRARY_PATH_ARG=${{ parameters.ld_library_path_arg }} --build-arg DEVTOOLSET_ROOTPATH=${{ parameters.devtoolset_rootpath }}"
+        Repository: onnxruntimecpubuildpython${{ parameters.arch }}
         ${{ if eq(parameters.arch, 'aarch64') }}:
             UpdateDepsTxt: false
 
@@ -69,7 +90,7 @@ jobs:
             inputs:
               targetType: filePath
               filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
-              arguments: -i onnxruntimecpubuilpython${{ parameters.arch }} -x "${{ parameters.device }}"
+              arguments: -i onnxruntimecpubuildpython${{ parameters.arch }} -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} $(extra_build_args)
             ${{ if eq(parameters.with_cache, 'true') }}:
               env:
                 ADDITIONAL_DOCKER_PARAMETER: "--volume $(ORT_CACHE_DIR):/cache -e CCACHE_DIR=/cache -e ORT_BUILD_WITH_CACHE=1"
@@ -84,4 +105,4 @@ jobs:
       displayName: 'Publish Test Binaries'
       inputs:
         artifactName: 'drop-linux-cpu-${{ parameters.arch }}'
-        targetPath: '$(Build.BinariesDirectory)/Release'
+        targetPath: '$(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}'

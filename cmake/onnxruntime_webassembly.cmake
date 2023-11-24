@@ -192,8 +192,13 @@ else()
     onnxruntime_util
     re2::re2
   )
+
+  set(EXPORTED_RUNTIME_METHODS "'stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8'")
+
   if (onnxruntime_USE_XNNPACK)
     target_link_libraries(onnxruntime_webassembly PRIVATE XNNPACK)
+    string(APPEND EXPORTED_RUNTIME_METHODS ",'addFunction'")
+    target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s ALLOW_TABLE_GROWTH=1")
   endif()
 
   if(onnxruntime_USE_WEBNN)
@@ -204,15 +209,14 @@ else()
     target_link_libraries(onnxruntime_webassembly PRIVATE tensorboard)
   endif()
 
-  set(EXPORTED_RUNTIME_METHODS "['stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8']")
   if (onnxruntime_USE_JSEP)
-    set(EXPORTED_FUNCTIONS "_malloc,_free,_JsepOutput")
+    set(EXPORTED_FUNCTIONS "_malloc,_free,_JsepOutput,_JsepGetNodeName")
   else()
     set(EXPORTED_FUNCTIONS "_malloc,_free")
   endif()
 
   target_link_options(onnxruntime_webassembly PRIVATE
-    "SHELL:-s EXPORTED_RUNTIME_METHODS=${EXPORTED_RUNTIME_METHODS}"
+    "SHELL:-s EXPORTED_RUNTIME_METHODS=[${EXPORTED_RUNTIME_METHODS}]"
     "SHELL:-s EXPORTED_FUNCTIONS=${EXPORTED_FUNCTIONS}"
     "SHELL:-s MAXIMUM_MEMORY=4294967296"
     "SHELL:-s EXIT_RUNTIME=0"
@@ -236,6 +240,7 @@ else()
       "SHELL:-s ASYNCIFY=1"
       "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
     )
+    set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS ${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js)
   endif()
 
   if (onnxruntime_EMSCRIPTEN_SETTINGS)
@@ -277,19 +282,29 @@ else()
       "SHELL:-s EXPORT_NAME=ortWasmThreaded"
       "SHELL:-s DEFAULT_PTHREAD_STACK_SIZE=131072"
     )
-    if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-      set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-simd-threaded")
-    else()
-      set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-threaded")
-    endif()
   else()
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s EXPORT_NAME=ortWasm"
     )
-    if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-      set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-simd")
-    else()
-      set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm")
-    endif()
   endif()
+
+  set(target_name_list ort)
+
+  if (onnxruntime_ENABLE_TRAINING_APIS)
+    list(APPEND target_name_list  "training")
+  endif()
+
+  list(APPEND target_name_list  "wasm")
+
+  if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+    list(APPEND target_name_list  "simd")
+  endif()
+
+  if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+    list(APPEND target_name_list  "threaded")
+  endif()
+
+  list(JOIN target_name_list  "-" target_name)
+
+  set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME ${target_name})
 endif()

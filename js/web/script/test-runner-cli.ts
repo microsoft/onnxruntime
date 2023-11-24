@@ -28,6 +28,7 @@ async function main() {
 
   npmlog.verbose('TestRunnerCli.Init.Config', inspect(args));
 
+  const DIST_ROOT = path.join(__dirname, '..', 'dist');
   const TEST_ROOT = path.join(__dirname, '..', 'test');
   const TEST_DATA_MODEL_NODE_ROOT = path.join(TEST_ROOT, 'data', 'node');
   const TEST_DATA_OP_ROOT = path.join(TEST_ROOT, 'data', 'ops');
@@ -84,8 +85,10 @@ async function main() {
             .flat();
 
     for (const backend of DEFAULT_BACKENDS) {
-      nodeTests.set(backend, loadNodeTests(backend, allNodeTestsFolders));
-      opTests.set(backend, loadOpTests(backend));
+      if (args.backends.indexOf(backend) !== -1) {
+        nodeTests.set(backend, loadNodeTests(backend, allNodeTestsFolders));
+        opTests.set(backend, loadOpTests(backend));
+      }
     }
   }
 
@@ -234,7 +237,7 @@ async function main() {
       }
 
       const test = testIds && testIds.length > 0 ? allTests[testIds[0]] : undefined;
-      const condition = test && typeof test !== 'string' ? test.condition : undefined;
+      const platformCondition = test && typeof test !== 'string' ? test.platformCondition : undefined;
 
       const opsetVersion = folder.split('/')[0];
       const category = `node-${opsetVersion}-${backend}`;
@@ -243,17 +246,19 @@ async function main() {
         modelTests = [];
         opsetTests.set(category, modelTests);
       }
-      modelTests.push(modelTestFromFolder(path.resolve(TEST_DATA_MODEL_NODE_ROOT, folder), backend, condition, times));
+      modelTests.push(
+          modelTestFromFolder(path.resolve(TEST_DATA_MODEL_NODE_ROOT, folder), backend, platformCondition, times));
     }
 
     return Array.from(opsetTests.keys()).map(category => ({name: category, tests: opsetTests.get(category)!}));
   }
 
   function modelTestFromFolder(
-      testDataRootFolder: string, backend: string, condition?: Test.Condition, times?: number): Test.ModelTest {
+      testDataRootFolder: string, backend: string, platformCondition?: Test.PlatformCondition,
+      times?: number): Test.ModelTest {
     if (times === 0) {
       npmlog.verbose('TestRunnerCli.Init.Model', `Skip test data from folder: ${testDataRootFolder}`);
-      return {name: path.basename(testDataRootFolder), backend, modelUrl: '', cases: []};
+      return {name: path.basename(testDataRootFolder), backend, modelUrl: '', cases: [], ioBinding: args.ioBindingMode};
     }
 
     let modelUrl: string|null = null;
@@ -319,6 +324,16 @@ async function main() {
       }
     }
 
+    let ioBinding: Test.IOBindingMode;
+    if (backend !== 'webgpu' && args.ioBindingMode !== 'none') {
+      npmlog.warn(
+          'TestRunnerCli.Init.Model', `Ignoring IO Binding Mode "${args.ioBindingMode}" for backend "${backend}".`);
+      ioBinding = 'none';
+    } else {
+      ioBinding = args.ioBindingMode;
+    }
+
+
     npmlog.verbose('TestRunnerCli.Init.Model', 'Finished preparing test data.');
     npmlog.verbose('TestRunnerCli.Init.Model', '===============================================================');
     npmlog.verbose('TestRunnerCli.Init.Model', ` Model file: ${modelUrl}`);
@@ -326,7 +341,7 @@ async function main() {
     npmlog.verbose('TestRunnerCli.Init.Model', ` Test set(s): ${cases.length} (${caseCount})`);
     npmlog.verbose('TestRunnerCli.Init.Model', '===============================================================');
 
-    return {name: path.basename(testDataRootFolder), condition, modelUrl, backend, cases};
+    return {name: path.basename(testDataRootFolder), platformCondition, modelUrl, backend, cases, ioBinding};
   }
 
   function tryLocateModelTestFolder(searchPattern: string): string {
@@ -385,7 +400,14 @@ async function main() {
       // field 'verbose' and 'backend' is not set
       for (const test of tests) {
         test.backend = backend;
-        test.opsets = test.opsets || [{domain: '', version: MAX_OPSET_VERSION}];
+        test.opset = test.opset || {domain: '', version: MAX_OPSET_VERSION};
+        if (backend !== 'webgpu' && args.ioBindingMode !== 'none') {
+          npmlog.warn(
+              'TestRunnerCli.Init.Op', `Ignoring IO Binding Mode "${args.ioBindingMode}" for backend "${backend}".`);
+          test.ioBinding = 'none';
+        } else {
+          test.ioBinding = args.ioBindingMode;
+        }
       }
       npmlog.verbose('TestRunnerCli.Init.Op', 'Finished preparing test data.');
       npmlog.verbose('TestRunnerCli.Init.Op', '===============================================================');
@@ -432,9 +454,6 @@ async function main() {
     npmlog.info('TestRunnerCli.Run', '(3/4) Running build to generate bundle...');
     const buildCommand = `node ${path.join(__dirname, 'build')}`;
     const buildArgs = [`--bundle-mode=${args.env === 'node' ? 'node' : args.bundleMode}`];
-    if (args.backends.indexOf('wasm') === -1) {
-      buildArgs.push('--no-wasm');
-    }
     npmlog.info('TestRunnerCli.Run', `CMD: ${buildCommand} ${buildArgs.join(' ')}`);
     const build = spawnSync(buildCommand, buildArgs, {shell: true, stdio: 'inherit'});
     if (build.status !== 0) {
@@ -454,7 +473,14 @@ async function main() {
       npmlog.info('TestRunnerCli.Run', '(4/4) Running tsc... DONE');
 
       npmlog.info('TestRunnerCli.Run', '(4/4) Running mocha...');
-      const mochaArgs = ['mocha', path.join(TEST_ROOT, 'test-main'), `--timeout ${args.debug ? 9999999 : 60000}`];
+      const mochaArgs = [
+        'mocha',
+        '--timeout',
+        `${args.debug ? 9999999 : 60000}`,
+        '-r',
+        path.join(DIST_ROOT, 'ort.node.min.js'),
+        path.join(TEST_ROOT, 'test-main'),
+      ];
       npmlog.info('TestRunnerCli.Run', `CMD: npx ${mochaArgs.join(' ')}`);
       const mocha = spawnSync('npx', mochaArgs, {shell: true, stdio: 'inherit'});
       if (mocha.status !== 0) {
@@ -473,10 +499,12 @@ async function main() {
           args.bundleMode === 'perf' ? 'perf' :
               args.debug             ? 'debug' :
                                        'test',
-          webgpu, webnn, config.options.globalEnvFlags?.webgpu?.profilingMode === 'default');
+          webgpu, webnn);
       const karmaArgs = ['karma', 'start', `--browsers ${browser}`];
+      const chromiumFlags = ['--enable-features=SharedArrayBuffer', ...args.chromiumFlags];
       if (args.debug) {
         karmaArgs.push('--log-level info --timeout-mocha 9999999');
+        chromiumFlags.push('--remote-debugging-port=9333');
       } else {
         karmaArgs.push('--single-run');
       }
@@ -486,8 +514,17 @@ async function main() {
       if (webgpu || webnn) {
         karmaArgs.push('--force-localhost');
       }
+      if (webgpu) {
+        // flag 'allow_unsafe_apis' is required to enable experimental features like fp16 and profiling inside pass.
+        // flag 'use_dxc' is required to enable DXC compiler.
+        chromiumFlags.push('--enable-dawn-features=allow_unsafe_apis,use_dxc');
+      }
+      if (webnn) {
+        chromiumFlags.push('--enable-experimental-web-platform-features');
+      }
       karmaArgs.push(`--bundle-mode=${args.bundleMode}`);
-      if (browser === 'Edge') {
+      karmaArgs.push(...chromiumFlags.map(flag => `--chromium-flags=${flag}`));
+      if (browser.startsWith('Edge')) {
         // There are currently 2 Edge browser launchers:
         //  - karma-edge-launcher: used to launch the old Edge browser
         //  - karma-chromium-edge-launcher: used to launch the new chromium-kernel Edge browser
@@ -578,12 +615,12 @@ async function main() {
   }
 
   function getBrowserNameFromEnv(
-      env: TestRunnerCliArgs['env'], mode: 'debug'|'perf'|'test', webgpu: boolean, webnn: boolean, profile: boolean) {
+      env: TestRunnerCliArgs['env'], mode: 'debug'|'perf'|'test', webgpu: boolean, webnn: boolean) {
     switch (env) {
       case 'chrome':
-        return selectChromeBrowser(mode, webgpu, webnn, profile);
+        return selectChromeBrowser(mode, webgpu, webnn);
       case 'edge':
-        return 'Edge';
+        return 'EdgeTest';
       case 'firefox':
         return 'Firefox';
       case 'electron':
@@ -597,25 +634,14 @@ async function main() {
     }
   }
 
-  function selectChromeBrowser(mode: 'debug'|'perf'|'test', webgpu: boolean, webnn: boolean, profile: boolean) {
-    if (webgpu) {
-      switch (mode) {
-        case 'debug':
-          return profile ? 'ChromeWebGpuProfileDebug' : 'ChromeDebug';
-        default:
-          return profile ? 'ChromeWebGpuProfileTest' : 'ChromeTest';
-      }
-    } else if (webnn) {
-      switch (mode) {
-        case 'debug':
-          return 'ChromeCanaryDebug';
-        default:
-          return 'ChromeCanaryTest';
-      }
+  function selectChromeBrowser(mode: 'debug'|'perf'|'test', webgpu: boolean, webnn: boolean) {
+    if (webnn) {
+      return 'ChromeCanaryTest';
+    } else if (webgpu) {
+      return 'ChromeTest';
     } else {
       switch (mode) {
         case 'debug':
-          return 'ChromeDebug';
         case 'perf':
           return 'ChromeTest';
         default:

@@ -4,7 +4,8 @@
 import logging
 
 
-def get_logger(name):
-    logging.basicConfig(format="%(asctime)s %(name)s [%(levelname)s] - %(message)s", level=logging.DEBUG)
-
-    return logging.getLogger(name)
+def get_logger(name, level=logging.DEBUG):
+    logging.basicConfig(format="%(asctime)s %(name)s [%(levelname)s] - %(message)s")
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    return logger

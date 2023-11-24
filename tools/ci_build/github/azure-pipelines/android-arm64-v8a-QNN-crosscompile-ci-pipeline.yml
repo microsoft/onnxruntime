@@ -1,9 +1,37 @@
-parameters:
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+#### end trigger ####
 
+parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: qnn-v2.12.0.230626
+  default: qnn-v2.14.1.230828
 
 jobs:
 - job: Build_QNN_EP
@@ -37,15 +65,17 @@ jobs:
 
   - script: |
       set -e -x
-      tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh -p $(Build.BinariesDirectory)/installed -d cmake/deps.txt
+      rm -rf /tmp/scripts
+      cp -r tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts /tmp
+      /tmp/scripts/install_protobuf.sh -p $(Build.BinariesDirectory)/installed -d cmake/deps.txt
       python3 tools/ci_build/build.py \
         --config Release \
         --android \
         --build_dir build_qnn \
         --android_sdk_path $ANDROID_HOME \
         --android_ndk_path $ANDROID_NDK_HOME \
-        --android_abi=arm64-v8a \
-        --android_api=30 \
+        --android_abi=x86_64 \
+        --android_api=31 \
         --parallel \
         --use_qnn \
         --qnn_home $(QNN_SDK_ROOT) \
@@ -55,48 +85,36 @@ jobs:
 
   - script: |
       mkdir -p build_qnn/Release/testdata/QNN/node_tests
-      cp -r cmake/external/onnx//onnx/backend/test/data/node/test_basic_conv_with_padding build_qnn/Release/testdata/QNN/node_tests
+      cp -r cmake/external/onnx/onnx/backend/test/data/node/test_basic_conv_with_padding build_qnn/Release/testdata/QNN/node_tests
     displayName: Initialize test directories
 
   - task: JavaToolInstaller@0
-    displayName: Use jdk 8
+    displayName: Use jdk 11
     inputs:
-      versionSpec: '8'
+      versionSpec: '11'
       jdkArchitectureOption: 'x64'
       jdkSourceOption: 'PreInstalled'
 
-  - script: |
-      python3 tools/python/run_android_emulator.py \
-      --android-sdk-root ${ANDROID_SDK_ROOT} \
-      --create-avd --system-image "system-images;android-30;google_apis;arm64-v8a" \
-      --start --emulator-extra-args="-partition-size 4096" \
-      --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-    displayName: Start Android emulator
-    enabled: false
-    continueOnError: true
+  # This is commented out for now. The emulator runs correctly, onnx_test_runner is executable, and the test passes
+  # with the CPU EP but returns 139 when attempting to use the QNN EP. Maybe some QNN EP parameters need to be provided?
+  #
+  # - template: templates/use-android-emulator.yml
+  #   parameters:
+  #     create: true
+  #     start: true
 
-  - script: |
-      $ANDROID_SDK_ROOT/emulator/emulator -list-avds
-    displayName: List emulators
+  # - task: CmdLine@2
+  #   inputs:
+  #     script: |
+  #       set -e -x
+  #       ${ANDROID_SDK_ROOT}/platform-tools/adb push onnx_test_runner /data/local/tmp/
+  #       ${ANDROID_SDK_ROOT}/platform-tools/adb push testdata/QNN/node_tests/test_basic_conv_with_padding /data/local/tmp/
+  #       ${ANDROID_SDK_ROOT}/platform-tools/adb shell "chmod +x /data/local/tmp/onnx_test_runner"
+  #       ${ANDROID_SDK_ROOT}/platform-tools/adb shell "/data/local/tmp/onnx_test_runner -v /data/local/tmp/test_basic_conv_with_padding"
+  #       ${ANDROID_SDK_ROOT}/platform-tools/adb shell "/data/local/tmp/onnx_test_runner -v -e qnn /data/local/tmp/test_basic_conv_with_padding"
+  #     workingDirectory: build_qnn/Release
+  #   displayName: Run test_basic_conv_with_padding on emulator
 
-  - task: CmdLine@2
-    inputs:
-      script: |
-        ${ANDROID_SDK_ROOT}/platform-tools/adb shell "mkdir /data/local/tmp/qnn"
-        ${ANDROID_SDK_ROOT}/platform-tools/adb push onnx_test_runner /data/local/tmp/qnn
-        ${ANDROID_SDK_ROOT}/platform-tools/adb push testdata/QNN/node_tests/test_basic_conv_with_padding /data/local/tmp/qnn
-        ${ANDROID_SDK_ROOT}/platform-tools/adb shell "/data/local/tmp/qnn/onnx_test_runner -e qnn /data/local/tmp/qnn/test_basic_conv_with_padding"
-      workingDirectory: build_qnn/Release
-    displayName: Run tests
-    enabled: false
-    continueOnError: true
-
-  - script: |
-        python3 tools/python/run_android_emulator.py \
-          --android-sdk-root ${ANDROID_SDK_ROOT} \
-          --stop \
-          --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-    displayName: Stop Android emulator
-    condition: always()
-    enabled: false
-    continueOnError: true
+  # - template: templates/use-android-emulator.yml
+  #   parameters:
+  #     stop: true

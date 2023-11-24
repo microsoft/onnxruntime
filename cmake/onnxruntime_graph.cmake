@@ -20,6 +20,8 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_deprecated_operators.cc"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_function_util.h"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_function_util.cc"
+    "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/shape_inference_functions.h"
+    "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/shape_inference_functions.cc"
     "${ONNXRUNTIME_ROOT}/core/graph/function_template.h"
     "${ONNXRUNTIME_ROOT}/core/graph/function_utils.h"
     "${ONNXRUNTIME_ROOT}/core/graph/function_utils.cc"
@@ -87,7 +89,7 @@ endif()
 
 onnxruntime_add_static_library(onnxruntime_graph ${onnxruntime_graph_lib_src})
 add_dependencies(onnxruntime_graph onnx_proto flatbuffers::flatbuffers)
-onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common WIL::WIL onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11)
+onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common ${WIL_TARGET} onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11)
 
 if (MSVC)
   set(ONNX_PROTOBUF_NATVIS_FILE "onnx_protobuf.natvis")
@@ -98,7 +100,7 @@ if (MSVC)
 endif()
 
 if(NOT MSVC)
-  target_compile_options(onnxruntime_graph PRIVATE "-Wno-parentheses")
+  target_compile_options(onnxruntime_graph PRIVATE "-Wno-parentheses" "-Wno-deprecated-declarations")
 endif()
 if (onnxruntime_ENABLE_TRAINING)
   #TODO: the graph library should focus on ONNX IR, it shouldn't depend on math libraries like MKLML/OpenBlas

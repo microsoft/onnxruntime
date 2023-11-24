@@ -69,7 +69,7 @@ def base(model: onnx.ModelProto):
             "model from scratch."
         )
 
-    _GLOBAL_ACCESSOR = ModelAccessor(model_clone)  # noqa: PLW0603
+    _GLOBAL_ACCESSOR = ModelAccessor(model_clone)
     try:
         yield _GLOBAL_ACCESSOR
     finally:
@@ -112,7 +112,7 @@ def empty_base(opset_version: int | None = None):
         )
     )
 
-    _GLOBAL_ACCESSOR = ModelAccessor(model)  # noqa: PLW0603
+    _GLOBAL_ACCESSOR = ModelAccessor(model)
     try:
         yield _GLOBAL_ACCESSOR
     finally:
@@ -144,7 +144,7 @@ def custom_op_library(custom_op_library_path: os.PathLike):
     if not os.path.exists(custom_op_library_path):
         raise RuntimeError(f"Custom op library path {custom_op_library_path} does not exist.")
 
-    _GLOBAL_CUSTOM_OP_LIBRARY = copy.copy(custom_op_library_path)  # noqa: PLW0603
+    _GLOBAL_CUSTOM_OP_LIBRARY = copy.copy(custom_op_library_path)
     try:
         yield _GLOBAL_CUSTOM_OP_LIBRARY
     finally:

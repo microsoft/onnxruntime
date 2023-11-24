@@ -8,7 +8,6 @@
 namespace onnxruntime {
 namespace js {
 
-template <typename T>
 class Gemm : public JsKernel {
  public:
   Gemm(const OpKernelInfo& info) : JsKernel(info) {

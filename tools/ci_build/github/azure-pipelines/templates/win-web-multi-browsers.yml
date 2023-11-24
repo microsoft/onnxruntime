@@ -33,7 +33,7 @@ jobs:
     displayName: 'Checkout submodule onnx'
   - task: NodeTool@0
     inputs:
-      versionSpec: '16.x'
+      versionSpec: '18.x'
   - task: DownloadPipelineArtifact@2
     inputs:
       patterns: 'Release_*/**/*'
@@ -68,15 +68,15 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm ci /js/web/'
   - script: |
-      npm test -- suite0 --wasm-init-timeout=30000 --file-cache
+      npm test -- suite0 -b=wasm,webgl,xnnpack --wasm-init-timeout=30000 --file-cache
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm test (Suite0, Chrome)'
   - script: |
-      npm test -- suite0 --env=firefox --wasm-init-timeout=30000 --file-cache
+      npm test -- suite0 -b=wasm,webgl,xnnpack --env=firefox --wasm-init-timeout=30000 --file-cache
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm test (Suite0, Firefox)'
   - script: |
-      npm test -- suite0 --env=edge --wasm-init-timeout=30000 --file-cache
+      npm test -- suite0 -b=wasm,webgl,xnnpack --env=edge --wasm-init-timeout=30000 --file-cache
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm test (Suite0, Edge)'
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3

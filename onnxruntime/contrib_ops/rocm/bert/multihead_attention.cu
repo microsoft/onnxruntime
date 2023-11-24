@@ -241,7 +241,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   GemmSoftmaxGemmPermuteParams<HipT> params;
   params.tuning_ctx = GetTuningContext();
-  params.stream = stream;
+  params.stream = context->GetComputeStream();
   params.handle = GetRocblasHandle(context);
   params.attention = &attn;
   params.device_prop = &device_prop;

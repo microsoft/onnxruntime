@@ -17,34 +17,35 @@ struct BeamSearchState : IBeamSearchState<T> {
   BeamSearchState(const IGenerationParameters& parameters,
                   AllocatorPtr allocator,
                   int has_decoder_masked_attention,
-                  bool use_position) {
+                  bool use_position,
+                  Stream* stream) {
     size_t batch_beam_size = SafeInt<size_t>(parameters.batch_size) * parameters.num_beams;
 
     size_t next_token_size = SafeInt<size_t>(batch_beam_size) * parameters.vocab_size;
-    this->next_token_logits = AllocateBuffer<T>(allocator, next_token_logits_buffer_, next_token_size);
-    this->next_token_scores = AllocateBuffer<float>(allocator, next_token_scores_buffer_, next_token_size);
-    this->next_tokens = AllocateBuffer<int32_t>(allocator, next_tokens_buffer_, SafeInt<size_t>(2) * batch_beam_size);
-    this->next_indices = AllocateBuffer<int32_t>(allocator, next_indices_buffer_, SafeInt<size_t>(2) * batch_beam_size);
-    this->next_scores = AllocateBuffer<float>(allocator, next_scores_buffer_, SafeInt<size_t>(2) * batch_beam_size);
+    this->next_token_logits = AllocateBuffer<T>(allocator, next_token_logits_buffer_, next_token_size, stream);
+    this->next_token_scores = AllocateBuffer<float>(allocator, next_token_scores_buffer_, next_token_size, stream);
+    this->next_tokens = AllocateBuffer<int32_t>(allocator, next_tokens_buffer_, SafeInt<size_t>(2) * batch_beam_size, stream);
+    this->next_indices = AllocateBuffer<int32_t>(allocator, next_indices_buffer_, SafeInt<size_t>(2) * batch_beam_size, stream);
+    this->next_scores = AllocateBuffer<float>(allocator, next_scores_buffer_, SafeInt<size_t>(2) * batch_beam_size, stream);
 
     constexpr size_t max_parts_of_vocab = 128;
     size_t topk_buffer_size = SafeInt<size_t>(batch_beam_size) * (max_parts_of_vocab + 1) * parameters.num_beams * 2 * 2;
-    this->topk_buffer = AllocateBuffer<float>(allocator, topk_temp_buffer_, topk_buffer_size);
+    this->topk_buffer = AllocateBuffer<float>(allocator, topk_temp_buffer_, topk_buffer_size, stream);
 
     if (allocator->Info().device.Type() == OrtDevice::GPU) {
       size_t sequences_elements = SafeInt<size_t>(2) * batch_beam_size * parameters.max_length;
-      this->sequences_device = AllocateBuffer<int32_t>(allocator, sequences_device_buffer_, sequences_elements);
+      this->sequences_device = AllocateBuffer<int32_t>(allocator, sequences_device_buffer_, sequences_elements, stream);
     }
 
     if (use_position) {
-      this->next_positions = AllocateBuffer<int32_t>(allocator, next_positions_buffer_, batch_beam_size);
+      this->next_positions = AllocateBuffer<int32_t>(allocator, next_positions_buffer_, batch_beam_size, stream);
     }
 
-    this->beam_scores = AllocateBuffer<float>(allocator, beam_scores_buffer_, batch_beam_size);
+    this->beam_scores = AllocateBuffer<float>(allocator, beam_scores_buffer_, batch_beam_size, stream);
 
     if (parameters.output_scores) {
       size_t elements = SafeInt<size_t>(parameters.max_length - parameters.sequence_length) * parameters.batch_size * parameters.num_beams * parameters.vocab_size;
-      this->scores = AllocateBuffer<float>(allocator, scores_buffer_, elements);
+      this->scores = AllocateBuffer<float>(allocator, scores_buffer_, elements, stream);
       this->remaining_scores = this->scores;
     }
 
@@ -68,35 +69,38 @@ struct BeamSearchState : IBeamSearchState<T> {
   }
 
  private:
-  BufferUniquePtr next_token_logits_buffer_;
-  BufferUniquePtr next_token_scores_buffer_;
-  BufferUniquePtr next_tokens_buffer_;
-  BufferUniquePtr next_indices_buffer_;
-  BufferUniquePtr next_scores_buffer_;
-  BufferUniquePtr next_positions_buffer_;
-  BufferUniquePtr beam_scores_buffer_;
-  BufferUniquePtr scores_buffer_;
-  BufferUniquePtr topk_temp_buffer_;
-  BufferUniquePtr sequences_device_buffer_;
+  IAllocatorUniquePtr<void> next_token_logits_buffer_;
+  IAllocatorUniquePtr<void> next_token_scores_buffer_;
+  IAllocatorUniquePtr<void> next_tokens_buffer_;
+  IAllocatorUniquePtr<void> next_indices_buffer_;
+  IAllocatorUniquePtr<void> next_scores_buffer_;
+  IAllocatorUniquePtr<void> next_positions_buffer_;
+  IAllocatorUniquePtr<void> beam_scores_buffer_;
+  IAllocatorUniquePtr<void> scores_buffer_;
+  IAllocatorUniquePtr<void> topk_temp_buffer_;
+  IAllocatorUniquePtr<void> sequences_device_buffer_;
 };
 
 struct BeamSearchCpuState : IBeamSearchCpuState {
   Sequences sequences;
 
-  BeamSearchCpuState(const IGenerationParameters& parameters, AllocatorPtr allocator, bool is_cuda)
+  BeamSearchCpuState(const IGenerationParameters& parameters, AllocatorPtr allocator, bool is_cuda, Stream* stream)
       : parameters_{parameters} {
-    sequence_lengths = AllocateBuffer<int32_t>(allocator, sequence_lengths_buffer_, batch_beam_size_);
+    sequence_lengths = AllocateBuffer<int32_t>(allocator, sequence_lengths_buffer_, batch_beam_size_, stream);
 
     size_t sequences_bytes = SafeInt<size_t>(2) * batch_beam_size_ * parameters.max_length;
-    sequences_space = AllocateBuffer<int32_t>(allocator, sequences_space_buffer_, sequences_bytes, true /* fill */);
+    sequences_space = AllocateBuffer<int32_t>(allocator, sequences_space_buffer_, sequences_bytes, stream, true /* fill */);
     sequences.Init(sequences_space, batch_beam_size_, parameters.sequence_length, parameters.max_length);
 
     if (is_cuda) {
       // buffers used by CUDA operator but not by CPU operator.
-      topk_scores = AllocateBuffer<float>(allocator, topk_scores_buffer_, 2 * static_cast<size_t>(batch_beam_size_));
-      topk_tokens = AllocateBuffer<int32_t>(allocator, topk_tokens_buffer_, 2 * static_cast<size_t>(batch_beam_size_));
-      topk_indices = AllocateBuffer<int32_t>(allocator, topk_indices_buffer_, 2 * static_cast<size_t>(batch_beam_size_));
-      final_beam_scores = AllocateBuffer<float>(allocator, final_beam_scores_buffer_, batch_beam_size_);
+      topk_scores = AllocateBuffer<float>(allocator, topk_scores_buffer_, 2 * static_cast<size_t>(batch_beam_size_), stream);
+      topk_tokens = AllocateBuffer<int32_t>(allocator, topk_tokens_buffer_, 2 * static_cast<size_t>(batch_beam_size_), stream);
+      topk_indices = AllocateBuffer<int32_t>(allocator, topk_indices_buffer_, 2 * static_cast<size_t>(batch_beam_size_), stream);
+      final_beam_scores = AllocateBuffer<float>(allocator, final_beam_scores_buffer_, batch_beam_size_, stream);
+
+      size_t next_token_size = SafeInt<size_t>(batch_beam_size_) * parameters.vocab_size;
+      next_token_scores = AllocateBuffer<float>(allocator, next_token_scores_buffer_, next_token_size, stream);
     }
   }
 
@@ -124,12 +128,13 @@ struct BeamSearchCpuState : IBeamSearchCpuState {
   const IGenerationParameters& parameters_;
   const int batch_beam_size_{parameters_.batch_size * parameters_.num_beams};
 
-  BufferUniquePtr final_beam_scores_buffer_;
-  BufferUniquePtr sequence_lengths_buffer_;
-  BufferUniquePtr topk_scores_buffer_;
-  BufferUniquePtr topk_tokens_buffer_;
-  BufferUniquePtr topk_indices_buffer_;
-  BufferUniquePtr sequences_space_buffer_;
+  IAllocatorUniquePtr<void> final_beam_scores_buffer_;
+  IAllocatorUniquePtr<void> sequence_lengths_buffer_;
+  IAllocatorUniquePtr<void> topk_scores_buffer_;
+  IAllocatorUniquePtr<void> topk_tokens_buffer_;
+  IAllocatorUniquePtr<void> topk_indices_buffer_;
+  IAllocatorUniquePtr<void> sequences_space_buffer_;
+  IAllocatorUniquePtr<void> next_token_scores_buffer_;
 };
 
 // Base class of beam search implementation that is common for GPT-2, T5, and Whisper.

@@ -126,6 +126,42 @@
     ]
   },
   {
+    "name": "conv with bias addition C",
+    "operator": "Conv",
+    "inputShapeDefinitions": "rankOnly",
+    "opset": { "domain": "", "version": 17 },
+    "attributes": [{ "name": "kernel_shape", "data": [2, 2], "type": "ints" }],
+    "cases": [
+      {
+        "name": "T[0]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+            "dims": [3, 1, 2, 2],
+            "type": "float32"
+          },
+          {
+            "data": [1, 1, 1, 1, 2, 3, 4, 5],
+            "dims": [2, 1, 2, 2],
+            "type": "float32"
+          },
+          {
+            "data": [5, 6],
+            "dims": [2],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [15, 46, 31, 102, 47, 158],
+            "dims": [3, 2, 1, 1],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "name": "conv - group - A",
     "operator": "Conv",
     "attributes": [

@@ -60,7 +60,7 @@ void RunAsync(std::vector<EvaluationUnit>& evaluation_units) {
   std::for_each(evaluation_units.begin(), evaluation_units.end(), [](EvaluationUnit& unit) {
     unit.operation = unit.session.EvaluateAsync(unit.binding, L"");
   });
-    // get results
+  // get results
   std::for_each(evaluation_units.begin(), evaluation_units.end(), [](EvaluationUnit& unit) {
     unit.result = unit.operation.get();
   });
@@ -121,7 +121,7 @@ void EvalAsyncDifferentSessions() {
   std::vector<EvaluationUnit> evaluation_units(num_units, EvaluationUnit());
   auto ifv = FileHelpers::LoadImageFeatureValue(L"kitten_224.png");
 
-    // same model, different session
+  // same model, different session
   auto model = LearningModel::LoadFromFilePath(FileHelpers::GetModulePath() + L"model.onnx");
   for (unsigned int i = 0; i < num_units; ++i) {
     evaluation_units[i].model = model;
@@ -141,9 +141,10 @@ void EvalAsyncDifferentBindings() {
   std::vector<EvaluationUnit> evaluation_units(num_units, EvaluationUnit());
 
   std::vector<ImageFeatureValue> ifvs = {
-    FileHelpers::LoadImageFeatureValue(L"kitten_224.png"), FileHelpers::LoadImageFeatureValue(L"fish.png")};
+    FileHelpers::LoadImageFeatureValue(L"kitten_224.png"), FileHelpers::LoadImageFeatureValue(L"fish.png")
+  };
 
-    // same session, different binding
+  // same session, different binding
   auto model = LearningModel::LoadFromFilePath(FileHelpers::GetModulePath() + L"model.onnx");
   auto session = LearningModelSession(model);
   for (unsigned int i = 0; i < num_units; ++i) {
@@ -171,7 +172,7 @@ unsigned int GetRandomNumber(unsigned int max_number) {
 }
 
 void MultiThreadLoadModel() {
-    // load same model
+  // load same model
   auto path = FileHelpers::GetModulePath() + L"model.onnx";
   ThreadPool pool(NUM_THREADS);
   try {
@@ -191,10 +192,11 @@ void MultiThreadMultiSessionOnDevice(const LearningModelDevice& device) {
   auto path = FileHelpers::GetModulePath() + L"model.onnx";
   auto model = LearningModel::LoadFromFilePath(path);
   std::vector<ImageFeatureValue> ivfs = {
-    FileHelpers::LoadImageFeatureValue(L"kitten_224.png"), FileHelpers::LoadImageFeatureValue(L"fish.png")};
+    FileHelpers::LoadImageFeatureValue(L"kitten_224.png"), FileHelpers::LoadImageFeatureValue(L"fish.png")
+  };
   std::vector<int> max_indices = {
-    281, // tabby, tabby cat
-    0 // tench, Tinca tinca
+    281,  // tabby, tabby cat
+    0     // tench, Tinca tinca
   };
   std::vector<float> max_values = {0.9314f, 0.7385f};
   float tolerance = 0.001f;
@@ -202,11 +204,11 @@ void MultiThreadMultiSessionOnDevice(const LearningModelDevice& device) {
   ThreadPool pool(NUM_THREADS);
   try {
     device.as<IMetacommandsController>()->SetMetacommandsEnabled(false);
-        // create all the sessions
+    // create all the sessions
     for (unsigned i = 0; i < NUM_THREADS; ++i) {
       modelSessions[i] = LearningModelSession(model, device);
     }
-        // start all the threads
+    // start all the threads
     for (unsigned i_thread = 0; i_thread < NUM_THREADS; ++i_thread) {
       LearningModelSession& model_session = modelSessions[i_thread];
       pool.SubmitWork([&model_session, &ivfs, &max_indices, &max_values, tolerance, i_thread]() {
@@ -257,10 +259,11 @@ void MultiThreadSingleSessionOnDevice(const LearningModelDevice& device) {
   LearningModelSession model_session = nullptr;
   WINML_EXPECT_NO_THROW(model_session = LearningModelSession(model, device));
   std::vector<ImageFeatureValue> ivfs = {
-    FileHelpers::LoadImageFeatureValue(L"kitten_224.png"), FileHelpers::LoadImageFeatureValue(L"fish.png")};
+    FileHelpers::LoadImageFeatureValue(L"kitten_224.png"), FileHelpers::LoadImageFeatureValue(L"fish.png")
+  };
   std::vector<int> max_indices = {
-    281, // tabby, tabby cat
-    0 // tench, Tinca tinca
+    281,  // tabby, tabby cat
+    0     // tench, Tinca tinca
   };
   std::vector<float> max_values = {0.9314f, 0.7385f};
   float tolerance = 0.001f;
@@ -309,7 +312,7 @@ void MultiThreadSingleSession() {
 void MultiThreadSingleSessionGpu() {
   MultiThreadSingleSessionOnDevice(LearningModelDevice(LearningModelDeviceKind::DirectX));
 }
-}// namespace
+}  // namespace
 
 const ConcurrencyTestsApi& getapi() {
   static ConcurrencyTestsApi api = {
@@ -322,7 +325,8 @@ const ConcurrencyTestsApi& getapi() {
     MultiThreadSingleSessionGpu,
     EvalAsyncDifferentModels,
     EvalAsyncDifferentSessions,
-    EvalAsyncDifferentBindings};
+    EvalAsyncDifferentBindings
+  };
 
   if (SkipGpuTests()) {
     api.MultiThreadMultiSessionGpu = SkipTest;

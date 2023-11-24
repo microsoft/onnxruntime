@@ -967,7 +967,7 @@ Status Xor::Compute(OpKernelContext* context) const {
       },
       [](BroadcastHelper& per_iter_bh) {
         per_iter_bh.OutputEigen<bool>() =
-            per_iter_bh.EigenInput0<bool>().array() ^ per_iter_bh.EigenInput1<bool>().array();
+            per_iter_bh.EigenInput0<bool>().array() != per_iter_bh.EigenInput1<bool>().array();
       }};
 
   UntypedBroadcastTwo(*context, funcs, 1.0);

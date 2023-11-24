@@ -45,12 +45,9 @@ import logging
 import os
 import timeit
 from datetime import datetime
-from enum import Enum  # noqa: F401
 
 import numpy
-import onnx  # noqa: F401
 import psutil
-from benchmark_helper import allocateOutputBuffers  # noqa: F401
 from benchmark_helper import (
     ConfigModifier,
     OptimizerInfo,
@@ -65,6 +62,7 @@ from benchmark_helper import (
     setup_logger,
 )
 from fusion_options import FusionOptions
+from huggingface_models import MODEL_CLASSES, MODELS
 from onnx_exporter import (
     create_onnxruntime_input,
     export_onnx_model_from_pt,
@@ -76,8 +74,6 @@ from quantize_helper import QuantizeHelper
 
 logger = logging.getLogger("")
 
-from huggingface_models import MODEL_CLASSES, MODELS  # noqa: E402
-
 cpu_count = psutil.cpu_count(logical=False)
 
 # Set OMP environment variable before importing onnxruntime or torch.
@@ -85,7 +81,7 @@ if "OMP_NUM_THREADS" not in os.environ:
     os.environ["OMP_NUM_THREADS"] = str(cpu_count)
 
 import torch  # noqa: E402
-from transformers import AutoConfig, AutoModel, AutoTokenizer, GPT2Model, LxmertConfig  # noqa: E402, F401
+from transformers import AutoConfig, AutoTokenizer, LxmertConfig  # noqa: E402
 
 
 def run_onnxruntime(
@@ -783,7 +779,7 @@ def main():
         logger.error("fp16 is for GPU only")
         return
 
-    if args.precision == Precision.INT8 and args.use_gpu:
+    if args.precision == Precision.INT8 and args.use_gpu and args.provider != "migraphx":
         logger.error("int8 is for CPU only")
         return
 

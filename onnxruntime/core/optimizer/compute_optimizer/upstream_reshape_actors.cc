@@ -3,6 +3,7 @@
 
 #ifdef ENABLE_TRAINING
 
+#include <onnx/defs/attr_proto_util.h>
 #include "core/optimizer/utils.h"
 #include "core/optimizer/compute_optimizer/upstream_reshape_actors.h"
 
@@ -280,6 +281,23 @@ bool LayerNormalizationReshapeActor::PreCheck(
   };
 
   return propagate_input_indices.size() > 0;
+}
+
+bool LayerNormalizationReshapeActor::PostProcess(
+    Graph& /* graph */, Node& current_node, const ReshapeInfo& /* info_without_node */,
+    const logging::Logger& /* logger */,
+    std::vector<int>& /* propagate_input_indices */,
+    const std::unordered_map<int, std::vector<DimCompare>>& /* all_input_cmp_rets */,
+    const std::unordered_map<int, ReshapeInfo>& /* new_reshape_infos */) {
+  auto axis = static_cast<int64_t>(current_node.GetAttributes().at("axis").i());
+  // When Reshape(from 3D to 2D, with the first two dimensions be merged) upstream a LayerNormalization,
+  // The axis attribute of LayerNormalization should be decreased by 1 if it is greater than 1.
+  if (axis > 1) {
+    auto new_axis = axis - 1;
+    auto& attributes = current_node.GetMutableAttributes();
+    attributes["axis"] = ONNX_NAMESPACE::MakeAttribute("axis", static_cast<int64_t>(new_axis));
+  }
+  return true;
 }
 
 template class SimplePointwiseReshapeActor<true>;

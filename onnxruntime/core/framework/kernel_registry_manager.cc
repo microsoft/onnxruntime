@@ -62,9 +62,15 @@ Status KernelRegistryManager::SearchKernelRegistry(const Node& node,
 
   auto create_error_message = [&node, &status](const std::string& prefix) {
     std::ostringstream errormsg;
-    errormsg << prefix << node.OpType() << "(" << node.SinceVersion() << ")";
-    if (!node.Name().empty()) errormsg << " (node " << node.Name() << "). ";
-    if (!status.IsOK()) errormsg << status.ErrorMessage();
+    errormsg << prefix;
+    const auto& domain = node.Domain();
+    if (!domain.empty()) {
+      errormsg << domain << ".";
+    }
+    errormsg << node.OpType() << "(" << node.SinceVersion() << ")"
+             << " (node:'" << node.Name() << "' ep:'" << node.GetExecutionProviderType() << "'). ";
+    if (!status.IsOK())
+      errormsg << status.ErrorMessage();
 
     return errormsg.str();
   };

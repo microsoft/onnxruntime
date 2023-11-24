@@ -73,7 +73,7 @@ def apply_filters(filters, category):
     opset_version = f"opset{onnx.defs.onnx_opset_version()}"
     validated_filters = []
     for f in filters[category]:
-        if type(f) is list:
+        if type(f) is list:  # noqa: E721
             opset_regex = f[0]
             filter_regex = f[1]
             opset_match = re.match(opset_regex, opset_version)
@@ -139,6 +139,9 @@ def create_backend_test(test_name=None):
 
         if backend.supports_device("OPENVINO_CPU_FP16"):
             current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_CPU_FP16")
+
+        if backend.supports_device("OPENVINO_NPU_FP16"):
+            current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_NPU_FP16")
 
         if backend.supports_device("OPENVINO"):
             current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_opset18")

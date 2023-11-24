@@ -25,6 +25,14 @@ if (ARCH !== 'x64' && ARCH !== 'ia32' && ARCH !== 'arm64' && ARCH !== 'arm') {
 const ONNXRUNTIME_BUILD_DIR = buildArgs['onnxruntime-build-dir'];
 // --rebuild
 const REBUILD = !!buildArgs.rebuild;
+// --use_dml
+const USE_DML = !!buildArgs.use_dml;
+// --use_cuda
+const USE_CUDA = !!buildArgs.use_cuda;
+// --use_tensorrt
+const USE_TENSORRT = !!buildArgs.use_tensorrt;
+// --use_coreml
+const USE_COREML = !!buildArgs.use_coreml;
 
 // build path
 const ROOT_FOLDER = path.join(__dirname, '..');
@@ -41,11 +49,23 @@ const args = [
   'cmake-js',
   (REBUILD ? 'reconfigure' : 'configure'),
   `--arch=${ARCH}`,
-  '--CDnapi_build_version=3',
+  '--CDnapi_build_version=6',
   `--CDCMAKE_BUILD_TYPE=${CONFIG}`,
 ];
 if (ONNXRUNTIME_BUILD_DIR && typeof ONNXRUNTIME_BUILD_DIR === 'string') {
   args.push(`--CDONNXRUNTIME_BUILD_DIR=${ONNXRUNTIME_BUILD_DIR}`);
+}
+if (USE_DML) {
+  args.push('--CDUSE_DML=ON');
+}
+if (USE_CUDA) {
+  args.push('--CDUSE_CUDA=ON');
+}
+if (USE_TENSORRT) {
+  args.push('--CDUSE_TENSORRT=ON');
+}
+if (USE_COREML) {
+  args.push('--CDUSE_COREML=ON');
 }
 
 // set CMAKE_OSX_ARCHITECTURES for macOS build
