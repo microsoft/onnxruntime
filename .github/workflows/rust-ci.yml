@@ -7,7 +7,7 @@ env:
   RUST_LOG: onnxruntime=debug,onnxruntime-sys=debug
   RUST_BACKTRACE: 1
   MANIFEST_PATH: ${{ github.workspace }}/rust/Cargo.toml
-
+  ORT_SYS_MANIFEST_PATH: ${{ github.workspace }}/rust/onnxruntime-sys/Cargo.toml
 jobs:
   fmt:
     name: Rustfmt
@@ -118,6 +118,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/rust-toolchain-setup
+      - run: rustup component add clippy
 #      - name: vendor onnxruntime source
 #        run: just vendor
       - run: clippy --all-features --manifest-path ${{ env.MANIFEST_PATH }} -- -D warnings
@@ -130,4 +131,4 @@ jobs:
       - uses: ./.github/actions/rust-toolchain-setup
 #      - name: vendor onnxruntime source
 #        run: just vendor
-      - run: cargo package --allow-dirty --package onnxruntime-sys
+      - run: cargo package --allow-dirty --package onnxruntime-sys --manifest-path ${{ env.ORT_SYS_MANIFEST_PATH }}
