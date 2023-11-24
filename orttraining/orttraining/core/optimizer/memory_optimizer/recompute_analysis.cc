@@ -368,10 +368,10 @@ std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const GraphViewer& grap
         if (layer_boundary_ln_nodes.find(consumer) != layer_boundary_ln_nodes.end()) {
           int dest_in_index = optimizer_utils::IndexOfNodeInput(*consumer, *node.OutputDefs()[output_index]);
           if (dest_in_index == 0) {
-            LOGS(logger, WARNING) << "Node " << node.Name() << "(" << node.OpType()
-                                  << ") is a Attention+MLP layer boundary node, "
-                                  << "its stashed activation outputs are used by LayerNormalization's inputs, "
-                                  << "we don't need to recompute it.";
+            LOGS(logger, INFO) << "Node " << node.Name() << "(" << node.OpType()
+                               << ") is a Attention+MLP layer boundary node, "
+                               << "its stashed activation outputs are used by LayerNormalization's inputs, "
+                               << "we don't need to recompute it.";
             return nullptr;
           }
         }
