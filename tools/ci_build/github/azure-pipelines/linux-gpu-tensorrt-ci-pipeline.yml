@@ -116,7 +116,8 @@ jobs:
                       --build_shared_lib \
                       --parallel \
                       --build_wheel \
-                      --enable_onnx_tests --use_cuda --cuda_home=/usr/local/cuda-${{ parameters:CudaVersion }}--cudnn_home=/usr/local/cuda-${{ parameters:CudaVersion }} \
+                      --enable_onnx_tests \
+                      --use_cuda --cuda_home=/usr/local/cuda-${{ parameters:CudaVersion }} --cudnn_home=/usr/local/cuda-${{ parameters:CudaVersion }} \
                       --enable_pybind --build_java \
                       --use_tensorrt --tensorrt_home /usr \
                       --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75 \
