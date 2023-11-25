@@ -2794,7 +2794,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(LinalgCholesky, 1,
                                     "T")
                                 .TypeConstraint(
                                     "T",
-                                    {"tensor(float)"},
+                                    {"tensor(float)", "tensor(double)"},
                                     "")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
                                   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);

@@ -140,15 +140,15 @@ class TestLinalgOps(unittest.TestCase):
             [helper.make_tensor_value_info("A", onnx.TensorProto.FLOAT, ["B", "N", "N"] if use_batch else ["N", "N"])],
             [helper.make_tensor_value_info("L", onnx.TensorProto.FLOAT, ["B", "N", "N"] if use_batch else ["N", "N"])],
             opset_version=self.opset_version,
-            node_kwargs={"upper": upper, "domain": "com.microsoft",},
+            node_kwargs={"upper": 1 if upper else 0, "domain": "com.microsoft",},
         )
-        # session = ort.InferenceSession(onnx_model.SerializeToString())
-        # input_name = session.get_inputs()[0].name
-        # output_names = [output.name for output in session.get_outputs()]
-        # input_data = {input_name: A.numpy()}
-        # actual_l = session.run(output_names, input_data)
-        # expected_l = L.numpy()
-        # validate_base_equal(actual_l[0], expected_l)
+        session = ort.InferenceSession(onnx_model.SerializeToString())
+        input_name = session.get_inputs()[0].name
+        output_names = [output.name for output in session.get_outputs()]
+        input_data = {input_name: A.numpy()}
+        actual_l = session.run(output_names, input_data)
+        expected_l = L.numpy()
+        np.testing.assert_allclose(actual_l[0], expected_l, rtol=1e-5, atol=1e-7)
 
         if generate_testcases:
             # Print the C++ test case

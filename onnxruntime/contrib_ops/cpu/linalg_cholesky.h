@@ -13,6 +13,7 @@ namespace onnxruntime {
 
 namespace contrib {
 
+template <typename T>
 class LinalgCholesky : public OpKernel {
  public:
    LinalgCholesky(const OpKernelInfo& info)
