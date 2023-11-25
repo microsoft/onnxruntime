@@ -2,6 +2,7 @@
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+import hashlib
 import os
 from enum import Enum
 
@@ -68,8 +69,18 @@ class EngineBuilder:
         self.torch_models = {}
         self.use_vae_slicing = False
 
+        self.torch_sdpa = getattr(torch.nn.functional, "scaled_dot_product_attention", None)
+
     def enable_vae_slicing(self):
         self.use_vae_slicing = True
+
+    def disable_torch_spda(self):
+        if hasattr(torch.nn.functional, "scaled_dot_product_attention"):
+            delattr(torch.nn.functional, "scaled_dot_product_attention")
+
+    def enable_torch_spda(self):
+        if (not hasattr(torch.nn.functional, "scaled_dot_product_attention")) and self.torch_sdpa:
+            torch.nn.functional.scaled_dot_product_attention = self.torch_sdpa
 
     def teardown(self):
         for engine in self.engines.values():
@@ -77,9 +88,22 @@ class EngineBuilder:
         self.engines = {}
 
     def get_cached_model_name(self, model_name):
+        hash_source = []
+        if model_name in ["unet", "unetxl"] and self.pipeline_info.lora_weights:
+            model_name = "l_" + model_name
+            hash_source.append(self.pipeline_info.lora_weights)
+
         # TODO(tianleiwu): save custom model to a directory named by its original model.
         if model_name == "unetxl" and self.pipeline_info.custom_unet():
             model_name = "lcm_" + model_name
+            hash_source.append(self.pipeline_info.custom_unet())
+
+        if model_name in ["unet", "unetxl"] and self.pipeline_info.controlnet:
+            model_name = f"c{len(self.pipeline_info.controlnet)}_" + model_name
+            hash_source.extend(self.pipeline_info.controlnet)
+
+        if hash_source:
+            model_name += "_" + hashlib.md5("\t".join(hash_source).encode("utf-8")).digest().hex()[:8]
 
         # TODO: When we support original VAE, we shall save custom VAE to another directory.
 
@@ -97,12 +121,39 @@ class EngineBuilder:
     def get_engine_path(self, engine_dir, model_name, profile_id):
         return os.path.join(engine_dir, self.get_cached_model_name(model_name) + profile_id)
 
-    def load_models(self, framework_model_dir: str):
-        # Disable torch SDPA since torch 2.0.* cannot export it to ONNX
-        # TODO(tianleiwu): Test and remove it if this is not needed in Torch 2.1.
-        if hasattr(torch.nn.functional, "scaled_dot_product_attention"):
-            delattr(torch.nn.functional, "scaled_dot_product_attention")
+    def load_pipeline_with_lora(self):
+        """Load text encoders and UNet with diffusers pipeline"""
+        from diffusers import DiffusionPipeline
 
+        pipeline = DiffusionPipeline.from_pretrained(
+            self.pipeline_info.name(),
+            variant="fp16",
+            torch_dtype=torch.float16,
+        )
+        pipeline.load_lora_weights(self.pipeline_info.lora_weights)
+        pipeline.fuse_lora(lora_scale=self.pipeline_info.lora_scale)
+
+        del pipeline.vae
+        pipeline.vae = None
+        return pipeline
+
+    def get_or_load_model(self, pipeline, model_name, model_obj, framework_model_dir):
+        if model_name not in ["clip", "clip2", "unet", "unetxl"] or not pipeline:
+            return model_obj.load_model(framework_model_dir, self.hf_token)
+
+        if model_name == "clip":
+            model = pipeline.text_encoder
+            pipeline.text_encoder = None
+        elif model_name == "clip2":
+            model = pipeline.text_encoder_2
+            pipeline.text_encoder_2 = None
+        elif model_name in ["unet", "unetxl"]:
+            model = pipeline.unet
+            pipeline.unet = None
+        model.to(self.torch_device)
+        return model
+
+    def load_models(self, framework_model_dir: str):
         # For TRT or ORT_TRT, we will export fp16 torch model for UNet.
         # For ORT_CUDA, we export fp32 model first, then optimize to fp16.
         export_fp16_unet = self.engine_type in [EngineType.ORT_TRT, EngineType.TRT]

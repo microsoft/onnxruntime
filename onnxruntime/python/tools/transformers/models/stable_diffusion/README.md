@@ -83,6 +83,11 @@ For example:
 
 If you do not provide prompt, the script will generate different image sizes for a list of prompts for demonstration.
 
+### Generate an image guided by a text prompt, and using specified LoRA model weight updates
+```
+python3 demo_txt2img_xl.py "Self-portrait oil painting, a beautiful cyborg with golden hair, 8k" --scheduler LCM --lora-weights latent-consistency/lcm-lora-sdxl --denoising-steps 4
+```
+
 #### Generate an image with SDXL LCM guided by a text prompt
 ```python3 demo_txt2img_xl.py --lcm --disable-refiner "an astronaut riding a rainbow unicorn, cinematic, dramatic"```
 

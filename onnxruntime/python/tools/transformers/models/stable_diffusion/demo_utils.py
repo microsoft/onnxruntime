@@ -21,20 +21,25 @@
 # --------------------------------------------------------------------------
 
 import argparse
+from io import BytesIO
 from typing import Any, Dict
 
+import requests
 import torch
 from diffusion_models import PipelineInfo
 from engine_builder import EngineType, get_engine_paths
+from PIL import Image
 
 
 class RawTextArgumentDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter):
     pass
 
 
-def parse_arguments(is_xl: bool, description: str):
-    parser = argparse.ArgumentParser(description=description, formatter_class=RawTextArgumentDefaultsHelpFormatter)
+def arg_parser(description: str):
+    return argparse.ArgumentParser(description=description, formatter_class=RawTextArgumentDefaultsHelpFormatter)
 
+
+def parse_arguments(is_xl: bool, parser):
     engines = ["ORT_CUDA", "ORT_TRT", "TRT"]
 
     parser.add_argument(
@@ -69,7 +74,7 @@ def parse_arguments(is_xl: bool, description: str):
         "--scheduler",
         type=str,
         default="DDIM",
-        choices=["DDIM", "UniPC", "LCM"] if is_xl else ["DDIM", "EulerA", "UniPC"],
+        choices=["DDIM", "UniPC", "LCM"] if is_xl else ["DDIM", "EulerA", "UniPC", "LCM"],
         help="Scheduler for diffusion process" + " of base" if is_xl else "",
     )
 
@@ -105,6 +110,11 @@ def parse_arguments(is_xl: bool, description: str):
         default=5.0 if is_xl else 7.5,
         help="Higher guidance scale encourages to generate images that are closely linked to the text prompt.",
     )
+
+    parser.add_argument(
+        "--lora-scale", type=float, default=1, help="Scale of LoRA weights, default 1 (must between 0 and 1)"
+    )
+    parser.add_argument("--lora-weights", type=str, default="", help="LoRA weights to apply in the base model")
 
     if is_xl:
         parser.add_argument(
@@ -228,21 +238,32 @@ def parse_arguments(is_xl: bool, description: str):
         args.onnx_opset = 14 if args.engine == "ORT_CUDA" else 17
 
     if is_xl:
-        if args.lcm:
-            if args.guidance > 1.0:
-                print("[I] Use --guidance=1.0 for base since LCM is used.")
-                args.guidance = 1.0
-            if args.scheduler != "LCM":
-                print("[I] Use --scheduler=LCM for base since LCM is used.")
-                args.scheduler = "LCM"
-            if args.denoising_steps > 16:
-                print("[I] Use --denoising_steps=8 (no more than 16) for base since LCM is used.")
-                args.denoising_steps = 8
+        if args.lcm and args.scheduler != "LCM":
+            print("[I] Use --scheduler=LCM for base since LCM is used.")
+            args.scheduler = "LCM"
         assert args.strength > 0.0 and args.strength < 1.0
+        assert not (args.lcm and args.lora_weights), "it is not supported to use both lcm unet and Lora together"
+
+    if args.scheduler == "LCM":
+        if args.guidance > 1.0:
+            print("[I] Use --guidance=1.0 for base since LCM is used.")
+            args.guidance = 1.0
+        if args.denoising_steps > 16:
+            print("[I] Use --denoising_steps=8 (no more than 16) for base since LCM is used.")
+            args.denoising_steps = 8
 
     print(args)
 
     return args
+
+
+def max_batch(args):
+    do_classifier_free_guidance = args.guidance > 1.0
+    batch_multiplier = 2 if do_classifier_free_guidance else 1
+    max_batch_size = 32 // batch_multiplier
+    if args.engine != "ORT_CUDA" and (args.build_dynamic_shape or args.height > 512 or args.width > 512):
+        max_batch_size = 8 // batch_multiplier
+    return max_batch_size
 
 
 def get_metadata(args, is_xl: bool = False) -> Dict[str, Any]:
@@ -361,3 +382,8 @@ def init_pipeline(
         )
 
     return pipeline
+
+
+def download_image(url):
+    response = requests.get(url)
+    return Image.open(BytesIO(response.content)).convert("RGB")

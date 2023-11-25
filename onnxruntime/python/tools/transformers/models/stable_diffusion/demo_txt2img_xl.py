@@ -22,7 +22,7 @@
 
 import coloredlogs
 from cuda import cudart
-from demo_utils import get_metadata, init_pipeline, parse_arguments, repeat_prompt
+from demo_utils import arg_parser, get_metadata, init_pipeline, max_batch, parse_arguments, repeat_prompt
 from diffusion_models import PipelineInfo
 from engine_builder import EngineType, get_engine_type
 from pipeline_img2img_xl import Img2ImgXLPipeline
@@ -37,11 +37,7 @@ def load_pipelines(args, batch_size):
 
         init_trt_plugins()
 
-    max_batch_size = 16
-    if (engine_type in [EngineType.ORT_TRT, EngineType.TRT]) and (
-        args.build_dynamic_shape or args.height > 512 or args.width > 512
-    ):
-        max_batch_size = 4
+    max_batch_size = max_batch(args)
 
     if batch_size > max_batch_size:
         raise ValueError(f"Batch size {batch_size} is larger than allowed {max_batch_size}.")
@@ -59,6 +55,10 @@ def load_pipelines(args, batch_size):
         min_image_size=min_image_size,
         max_image_size=max_image_size,
         use_lcm=args.lcm,
+        do_classifier_free_guidance=(args.guidance > 1.0),
+        controlnet=None,
+        lora_weights=args.lora_weights,
+        lora_scale=args.lora_scale,
     )
 
     # Ideally, the optimized batch size and image size for TRT engine shall align with user's preference. That is to
@@ -294,7 +294,9 @@ def run_dynamic_shape_demo(args):
 if __name__ == "__main__":
     coloredlogs.install(fmt="%(funcName)20s: %(message)s")
 
-    args = parse_arguments(is_xl=True, description="Options for Stable Diffusion XL Demo")
+    parser = arg_parser("Options for Stable Diffusion XL Demo")
+    args = parse_arguments(is_xl=True, parser=parser)
+
     no_prompt = isinstance(args.prompt, list) and len(args.prompt) == 1 and not args.prompt[0]
     if no_prompt:
         run_dynamic_shape_demo(args)
