@@ -2,7 +2,10 @@ name: "Build XCFramework for MacCatalyst"
 
 on:
   workflow_dispatch:
-    branches: [main, develop]
+  push:
+  #workflow_dispatch:
+  #  branches: [main, develop]
+
 
 jobs:
   build_macabi_xcf:
@@ -29,10 +32,8 @@ https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.1
         run: mkdir -p $HOME/onnxlibrary/macabi_release_v20230327_2320
 
       - name: create release build
-        run: python tools/ci_build/github/apple/build_macabi_framework.py --config Release 
---build_dir 
-$HOME/onnxlibrary/macabi_release_v20230327_2320 --include_ops_by_config 
-tools/ci_build/github/apple/hws_mobile_package.required_operators.config --path_to_protoc_exe 
-/usr/local/bin/protoc-3.21.12.0 
-tools/ci_build/github/apple/default_full_macabi_framework_build_settings.json
+        run: python tools/ci_build/github/apple/build_macabi_framework.py --config Release \
+             --build_dir $HOME/onnxlibrary/macabi_release_v20230327_2320 \
+             --include_ops_by_config tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
+             --path_to_protoc_exe /usr/local/bin/protoc-3.21.12.0 tools/ci_build/github/apple/default_full_macabi_framework_build_settings.json
 
