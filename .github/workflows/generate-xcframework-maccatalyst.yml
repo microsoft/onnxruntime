@@ -16,9 +16,9 @@ jobs:
           /usr/bin/xcodebuild -version
           brew uninstall --ignore-dependencies python@3.10
           brew install python@3.10
-          brew install python3
-          alias python3=/opt/homebrew/bin/python3
-          alias python=/opt/homebrew/bin/python3
+          #brew install python3
+          alias python3=/usr/local/bin/python3.10
+          alias python=/usr/local/bin/python3.10
           python3 --version
           python --version
 
