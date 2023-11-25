@@ -130,8 +130,8 @@ class CutlassMoeFCRunner {
   void dispatch_activations(int64_t* total_rows_before_expert, int num_experts, int local_num_experts,
                             int local_experts_start_index, cudaStream_t stream);
 
-  void get_total_rows_info(int64_t experts_start_index, int64_t local_num_experts, int64_t& total_past_rows, int64_t& total_covered_rows){
-    int experts_end_index = experts_start_index + local_num_experts - 1;
+  void get_total_rows_info(int64_t experts_start_index, int64_t local_num_experts, int64_t& total_past_rows, int64_t& total_covered_rows) {
+    int64_t experts_end_index = experts_start_index + local_num_experts - 1;
     total_past_rows = 0;
     if (experts_start_index > 0) {
       total_past_rows = total_rows_before_expert_host_[experts_start_index - 1];

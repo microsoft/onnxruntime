@@ -23,7 +23,10 @@ class ShardedMoE final : public NcclKernel, public MoEBase {
   Status ComputeInternal(OpKernelContext* ctx) const override;
 
  private:
+  Status SynchronizeExpertsStartIndex(AllocatorPtr& alloc, OpKernelContext* ctx) const;
+
   int64_t local_experts_start_index_;
+  std::vector<int64_t> rank_to_experts_start_index_;
 };
 
 #endif

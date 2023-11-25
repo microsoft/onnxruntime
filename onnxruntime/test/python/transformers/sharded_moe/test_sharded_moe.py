@@ -1,9 +1,15 @@
-import os
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------------------
+
 import unittest
-from mpi4py import MPI
-import onnxruntime
+
 import numpy as np
+from mpi4py import MPI
 from onnx import TensorProto, helper
+
+import onnxruntime
 
 np.random.seed(3)
 
@@ -51,7 +57,7 @@ def create_moe_onnx_graph(
     fc2_experts_bias,
     local_experts_start_index=-1,
 ):
-    use_sharded_moe = True if local_experts_start_index >= 0 else False
+    use_sharded_moe = local_experts_start_index >= 0
     nodes = [
         helper.make_node(
             "MoE",
@@ -164,18 +170,6 @@ def test_moe_with_expert_slicing(
     num_experts,
     num_rows,
 ):
-    print_out(
-        "hidden_size: ",
-        hidden_size,
-        " inter_size: ",
-        inter_size,
-        " num_experts: ",
-        num_experts,
-        " num_rows: ",
-        num_rows,
-        " world_size: ",
-        get_size(),
-    )
     local_experts_start_index = local_rank * num_experts // get_size()
 
     fc1_experts_weights_all = np.random.rand(num_experts, hidden_size, inter_size).astype(NP_TYPE)
@@ -234,6 +228,20 @@ def test_moe_with_expert_slicing(
     sharded_output = ort_session_local.run(None, ort_inputs)
 
     assert np.allclose(output[0], sharded_output[0], atol=THRESHOLD, rtol=THRESHOLD)
+
+    print_out(
+        "hidden_size: ",
+        hidden_size,
+        " inter_size: ",
+        inter_size,
+        " num_experts: ",
+        num_experts,
+        " num_rows: ",
+        num_rows,
+        " world_size: ",
+        get_size(),
+        " Parity: OK",
+    )
 
 
 class TestMoE(unittest.TestCase):
