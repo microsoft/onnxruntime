@@ -15,11 +15,14 @@ jobs:
         run: |
           /usr/bin/xcodebuild -version
           brew uninstall --ignore-dependencies python
+          brew uninstall --ignore-dependencies python@3.11
+          brew uninstall --ignore-dependencies python@3.12
           brew install python@3.10
           #brew install python3
           ls /usr/local/bin/python*
           echo "alias python=/usr/local/bin/python3.10" >> ~/.zshrc
           echo "alias python3=/usr/local/bin/python3.10" >> ~/.zshrc
+          source ~/.zshrc
           alias python3=/usr/local/bin/python3.10
           alias python=/usr/local/bin/python3.10
           brew link --overwrite python@3.10
