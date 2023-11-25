@@ -20,7 +20,7 @@ jobs:
           brew install python@3.10
           #brew install python3
           ls /usr/local/bin/python*
-          rm /usr/local/bin/python /usr/local/bin/python3
+          rm /usr/local/bin/python3
           #echo "alias python=/usr/local/bin/python3.10" >> ~/.zshrc
           #echo "alias python3=/usr/local/bin/python3.10" >> ~/.zshrc
           #source ~/.zshrc
