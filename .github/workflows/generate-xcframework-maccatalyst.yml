@@ -18,6 +18,7 @@ jobs:
           brew install python@3.10
           brew install python3
           python3 --version
+          python --version
 
       - name: checkout repository
         uses: actions/checkout@v3
