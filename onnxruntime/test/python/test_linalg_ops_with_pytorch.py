@@ -57,6 +57,40 @@ def create_svd_model(use_batch, full_matrices):
     )
     return onnx_model
 
+def create_solve_model(use_batch, left, boardcast, b_as_vector):
+    a_shape = ["B"] if use_batch else []
+    b_shape = ["B"] if use_batch and not boardcast else []
+    x_shape = ["B"] if use_batch else []
+    if left:
+        a_shape = [*a_shape, "N", "N"]
+        if b_as_vector:
+            b_shape = [*b_shape, "N"]
+            x_shape = [*x_shape, "N"]
+        else:
+            b_shape = [*b_shape, "N", "K"]
+            x_shape = [*x_shape, "N", "K"]
+    else:
+        a_shape = [*a_shape, "K", "K"]
+        if b_as_vector:
+            b_shape = [*b_shape, 1, "K"]
+            x_shape = [*x_shape, 1, "K"]
+        else:
+            b_shape = [*b_shape, "N", "K"]
+            x_shape = [*x_shape, "N", "K"]
+
+    a_value_info = helper.make_tensor_value_info("A", onnx.TensorProto.FLOAT, a_shape)
+    b_value_info = helper.make_tensor_value_info("B", onnx.TensorProto.FLOAT, b_shape)
+    x_value_info = helper.make_tensor_value_info("X", onnx.TensorProto.FLOAT, x_shape)
+
+    onnx_model = create_model(
+        "LinalgSolve",
+        [a_value_info, b_value_info],
+        [x_value_info],
+        opset_version=17,
+        node_kwargs={"left": left, "domain": "com.microsoft",},
+    )
+    return onnx_model
+
 def normalize_signs(a, b):
     signs = np.sign(a[0]) * np.sign(b[0])
     return a, b * signs, signs == -1
@@ -86,6 +120,146 @@ def format_tensor(tensor):
 class TestLinalgOps(unittest.TestCase):
     def setUp(self):
         self.opset_version = 17
+
+    @parameterized.parameterized.expand([
+        (False, False),
+        (False, True),
+        (True, False),
+        (True, True),
+        ])
+    def test_linalg_cholesky(self, use_batch, upper):
+        torch.manual_seed(0)
+        batch = 2
+        n = 4
+        A = torch.randn(batch, n, n) if use_batch else torch.randn(n, n)
+        A = A @ A.transpose(-2, -1) + torch.eye(n)
+        L = torch.linalg.cholesky(A, upper=upper)
+
+        onnx_model = create_model(
+            "LinalgCholesky",
+            [helper.make_tensor_value_info("A", onnx.TensorProto.FLOAT, ["B", "N", "N"] if use_batch else ["N", "N"])],
+            [helper.make_tensor_value_info("L", onnx.TensorProto.FLOAT, ["B", "N", "N"] if use_batch else ["N", "N"])],
+            opset_version=self.opset_version,
+            node_kwargs={"upper": upper, "domain": "com.microsoft",},
+        )
+        # session = ort.InferenceSession(onnx_model.SerializeToString())
+        # input_name = session.get_inputs()[0].name
+        # output_names = [output.name for output in session.get_outputs()]
+        # input_data = {input_name: A.numpy()}
+        # actual_l = session.run(output_names, input_data)
+        # expected_l = L.numpy()
+        # validate_base_equal(actual_l[0], expected_l)
+
+        if generate_testcases:
+            # Print the C++ test case
+            A_str = format_tensor(A)
+            L_str = format_tensor(L)
+
+            batch_str = 'batch' if use_batch else 'no_batch'
+            upper_str = 'upper' if upper else 'lower'
+            test_case_name = f'{batch_str}_{upper_str}'
+
+            print(f'TYPED_TEST(LinalgCholeskyContribOpTest, {test_case_name}) {{\n'
+                f'  OpTester test("LinalgCholesky", 1, kMSDomain);\n'
+                f'  test.AddAttribute("upper", (int64_t){"1" if upper else "0"});\n'
+                f'  test.AddInput<TypeParam>("A", {{{", ".join(map(str, A.shape))}}}, {A_str});\n'
+                f'  test.AddOutput<TypeParam>("L", {{{", ".join(map(str, L.shape))}}}, {L_str});\n'
+                f'  test.Run();\n'
+                f'}}')
+
+
+    @parameterized.parameterized.expand([
+        (False, False, False, False),
+        (False, False, False, True),
+        (False, True, False, False),
+        (False, True, False, True),
+        (True, False, False, False),
+        (True, False, False, True),
+        (True, False, True, False),
+        (True, False, True, True),
+        (True, True, False, False),
+        (True, True, False, True),
+        (True, True, True, False),
+        (True, True, True, True),
+        ])
+    def test_linalg_solve(self, use_batch, left, boardcast, b_as_vector):
+        def create_invertable_matrix(shape):
+            A = torch.randn(*shape)
+            if len(shape) == 3:
+                return torch.matmul(A, A.transpose(-2, -1))
+            else:
+                return torch.matmul(A, A.t())
+
+        torch.manual_seed(0)
+        batch = 2
+        n = 4
+        k = 3
+        if left:
+            A = create_invertable_matrix((batch, n, n)) if use_batch else create_invertable_matrix((n, n))
+        else:
+            A = create_invertable_matrix((batch, k, k)) if use_batch else create_invertable_matrix((k, k))
+        if use_batch:
+            if boardcast:
+                if b_as_vector:
+                    if left:
+                        B = torch.randn(n)
+                    else:
+                        B = torch.randn(1, k)
+                else:
+                    B = torch.randn(n, k)
+            else:
+                if b_as_vector:
+                    if left:
+                        B = torch.randn(batch, n)
+                    else:
+                        B = torch.randn(batch, 1, k)
+                else:
+                    B = torch.randn(batch, n, k)
+        else:
+            assert boardcast is False, "boardcast shall not set for non-batch mode"
+            if b_as_vector:
+                if left:
+                    B = torch.randn(n)
+                else:
+                    B = torch.randn(1, k)
+            else:
+                B = torch.randn(n, k)
+
+        X = torch.linalg.solve(A, B, left=left)
+
+        onnx_model = create_solve_model(use_batch=use_batch, left=left, boardcast=boardcast, b_as_vector=b_as_vector)
+        session = ort.InferenceSession(onnx_model.SerializeToString())
+        input_names = [input.name for input in session.get_inputs()]
+        output_names = [output.name for output in session.get_outputs()]
+        input_data = {input_names[0]: A.numpy(), input_names[1]: B.numpy()}
+        actual_x = session.run(output_names, input_data)
+        expected_x = X.numpy()
+        np.testing.assert_allclose(actual_x[0], expected_x, rtol=1e-5, atol=1e-7)
+        if generate_testcases:
+            # Print the C++ test case
+            A_str = format_tensor(A)
+            B_str = format_tensor(B)
+            X_str = format_tensor(X)
+
+            batch_str = 'batch' if use_batch else 'no_batch'
+            left_str = '_left' if left else '_no_left'
+            boardcast_str = '_boardcast' if boardcast else '_no_boardcast'
+            b_as_vector_str = '_b_as_vector' if b_as_vector else '_no_b_as_vector'
+            test_case_name = f'{batch_str}{left_str}{boardcast_str}{b_as_vector_str}'
+
+            print(f'TYPED_TEST(LinalgSolveContribOpTest, {test_case_name}) {{\n'
+                f'  OpTester test("LinalgSolve", 1, kMSDomain);\n'
+                f'  test.AddAttribute("left", (int64_t){"1" if left else "0"});\n'
+                f'  test.AddInput<TypeParam>("A", {{{", ".join(map(str, A.shape))}}}, {A_str});\n'
+                f'  test.AddInput<TypeParam>("B", {{{", ".join(map(str, B.shape))}}}, {B_str});\n'
+                f'  test.AddOutput<TypeParam>("X", {{{", ".join(map(str, X.shape))}}}, {{{X_str}}},\n'
+                f'    false,\n'
+                f'    1e-3f,\n'
+                f'    1e-3f);\n'
+                f'  test.Run();\n'
+                f'}}')
+
+
 
     @parameterized.parameterized.expand([
         (True, True),

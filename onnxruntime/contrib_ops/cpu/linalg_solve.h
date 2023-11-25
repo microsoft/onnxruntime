@@ -13,6 +13,7 @@ namespace onnxruntime {
 
 namespace contrib {
 
+template <typename T>
 class LinalgSolve : public OpKernel {
  public:
    LinalgSolve(const OpKernelInfo& info)
@@ -25,7 +26,7 @@ class LinalgSolve : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
 private:
-  bool left_ = false;
+  bool left_ = true;
 };
 
 }  // namespace contrib
