@@ -43,7 +43,8 @@ jobs:
           # Since Python 3.12, distutils is removed
           # pip3 install setuptools
           export PYTHONPATH=${{ github.workspace }}/tools/python:$PYTHONPATH
+          cd ${{ github.workspace }}/tools/python
           pip install -r ${{ github.workspace }}/tools/ci_build/requirements.txt
-          python tools/ci_build/github/apple/build_macabi_framework.py --config=Release --build_dir=$HOME/onnxlibrary/macabi_release_v20230327_2320 \
-            --include_ops_by_config=tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
-            --path_to_protoc_exe=/usr/local/bin/protoc-3.21.12.0 tools/ci_build/github/apple/default_full_macabi_framework_build_settings.json
+          python ${{ github.workspace }}/tools/ci_build/github/apple/build_macabi_framework.py --config=Release --build_dir=$HOME/onnxlibrary/macabi_release_v20230327_2320 \
+            --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
+            --path_to_protoc_exe=/usr/local/bin/protoc-3.21.12.0 ${{ github.workspace }}/tools/ci_build/github/apple/default_full_macabi_framework_build_settings.json
