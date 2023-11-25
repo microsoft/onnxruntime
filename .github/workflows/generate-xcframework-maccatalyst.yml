@@ -14,7 +14,7 @@ jobs:
       - name: check Xcode version and Python 3
         run: |
           /usr/bin/xcodebuild -version
-          brew uninstall --ignore-dependencies python@3.10
+          brew uninstall --ignore-dependencies python
           brew install python@3.10
           #brew install python3
           ls /usr/local/bin/python*
