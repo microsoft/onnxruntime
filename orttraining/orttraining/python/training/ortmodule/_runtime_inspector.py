@@ -644,12 +644,13 @@ class MemoryObserver:
     def _normalize(self, mem_size_in_bytes: Union[float, int]) -> str:
         return f"{float(mem_size_in_bytes) / MemoryObserver.NORMALIZER_FACTOR:.0f}"
 
-    def display_memory_optimization_plans(self, memory_optimizer_config) -> Tuple[List[str], PTable]:
+    def display_memory_optimization_plans(self, memory_optimizer_config, details=False) -> Tuple[List[str], PTable]:
         mem_plan_count = len(self.cluster_id_combination_to_saving_symbolics_map)
 
         if mem_plan_count > 0:
             mem_tbl = PTable()
-            mem_tbl.add_row(["", "", "", "", "Configs", "Freq", "Max Saving(Bytes)", "Saving Symbolic(Bytes)"])
+            if details:
+                mem_tbl.add_row(["", "", "", "", "Configs", "Freq", "Max Saving(Bytes)", "Saving Symbolic(Bytes)"])
 
             index = 1
 
@@ -688,27 +689,28 @@ class MemoryObserver:
                         else "OFF",
                         ":",
                         cluster_id,
-                        saving_symbolic.freq,
-                        saving_bytes,
-                        saving_symbolic.simplified_symbolic_saving_expr,
+                        saving_symbolic.freq if details else "",
+                        saving_bytes if details else "",
+                        saving_symbolic.simplified_symbolic_saving_expr if details else "",
                     ]
                 )
 
                 index += 1
 
             notes = []
-            notes.append("use ORTMODULE_MEMORY_OPT_LEVEL=1 to aggressively enable all recomputable subgraphs.")
-            saving_recommendation = (
-                "or use comma as a delimiter to selectively enable multiple memory optimization plans:\n"
-            )
-            saving_recommendation += "  export ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
+            if details:
+                notes.append(
+                    "[Memory Optimizer] Use ORTMODULE_MEMORY_OPT_LEVEL=1 to enable all recomputable subgraphs per transformer layer."
+                )
+                saving_recommendation = "[Memory Optimizer] Or use comma as a delimiter to selectively enable multiple memory optimization plans:\n"
+                saving_recommendation += "  export ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
 
-            notes.append(saving_recommendation)
+                notes.append(saving_recommendation)
 
-            saving_recommendation = "memory saving is calculated based on the 1st batch symbolic dim values:\n"
-            for dim_param, dim_value in self.symbolic_dim_name_to_value_map.items():
-                saving_recommendation += f"  {dim_param}={dim_value},"
-            notes.append(saving_recommendation)
+                saving_recommendation = "memory saving is calculated based on the 1st batch symbolic dim values:\n"
+                for dim_param, dim_value in self.symbolic_dim_name_to_value_map.items():
+                    saving_recommendation += f"  {dim_param}={dim_value},"
+                notes.append(saving_recommendation)
 
             return notes, mem_tbl
 

@@ -166,7 +166,7 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   // The reason we do reversed topological order is that we want the later layers' recompute nodes can be appended
   // earlier than the earlier layers, in this way, the execution order of later layers will be in front of the earlier
   // layers.
-  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
   for (int i = static_cast<int>(node_ids.size()) - 1; i >= 0; --i) {
     Node* p_node = graph.GetNode(node_ids[i]);
     if (p_node == nullptr) {

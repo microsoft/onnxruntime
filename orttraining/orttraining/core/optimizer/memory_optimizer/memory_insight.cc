@@ -47,7 +47,7 @@ void GetForwardOutputUsageMap(const GraphViewer& graph_viewer,
                               ActivationUsedMap& fw_op_output_arg_used_map,
                               InlinedHashMap<const Node*, bool>& is_forward_nodes) {
   ORT_ENFORCE(boundary_op_order_in_topological_sort >= 0);
-  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
   is_forward_nodes.clear();
   is_forward_nodes.reserve(node_ids.size());
 
@@ -65,7 +65,6 @@ void GetForwardOutputUsageMap(const GraphViewer& graph_viewer,
     }
 
     const Node& node = *p_node;
-
     bool is_forward_op = is_forward_pass_operator(static_cast<ptrdiff_t>(i), boundary_op_order_in_topological_sort);
     if (!is_forward_op) {
       is_forward_nodes[p_node] = false;
@@ -123,11 +122,11 @@ Status GetStashedActivationCandidates(const GraphViewer& graph_viewer,
                                       InlinedHashMap<const Node*, bool>& is_forward_nodes,
                                       const logging::Logger& logger) {
   if (boundary_op_order_in_topological_sort < 0) {
-    LOGS(logger, VERBOSE) << "No boundary op found. Skip memory optimization.";
+    MO_LOG_DEBUG_INFO(logger, "No boundary op found. Skip memory optimization.");
     return Status::OK();
   }
 
-  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
 
   InlinedHashMap<NodeIndex, size_t> node_index_to_its_order_in_topological_sort_map;
   for (size_t i = 0; i < node_ids.size(); ++i) {
@@ -162,8 +161,8 @@ Status GetStashedActivationCandidates(const GraphViewer& graph_viewer,
       }
 
       candidate_output_args_map[n].push_back(k);
-      LOGS(logger, VERBOSE) << "Find candidate output named [" << kv.first << "] of Node " << n->Name() << "("
-                            << n->OpType() << ")";
+      MO_LOG_DEBUG_INFO(logger, "Find candidate output named [" + kv.first + "] of Node " +
+                                    n->Name() + "(" + n->OpType() + ")");
     }
   }
 
@@ -179,7 +178,7 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
                                       InlinedHashMap<const Node*, InlinedVector<size_t>>&
                                           candidate_output_args_map,
                                       MemoryOptimizationPlanner& memory_opt_planner) {
-  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
 
   // Find boundary ops between forward and backward pass, currently, it's limited to YieldOp.
   yield_op_order_in_topological_sort = -1;
@@ -240,8 +239,8 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
     }
 
     if (can_compromise_stashed_activation) {
-      LOGS(logger, VERBOSE) << "Searching Node " << p_node->Name() << "(" << p_node->OpType()
-                            << ") for compromised recompute";
+      MO_LOG_DEBUG_INFO(logger, "Searching Node " + p_node->Name() + "(" + p_node->OpType() +
+                                    ") for compromised recompute");
       // If the subgraph recompute can save memory by comprising the assumption - recompute graphs' input must exist
       // during backward pass, then we can consider to recompute them.
       std::unique_ptr<NodeRecomputePlan> recompute_with_compromise_plan =
@@ -279,7 +278,7 @@ void GetMemoryRecordsGroupedByNodeClusterId(const MemoryOptimizationPlanner& mem
 
     // Collect more information for display.
     for (auto& plan : node_plans) {
-      // Same node cluster id, plans might still have different reuse_buffer pattern, so we need to collect all of them.
+      // Same node cluster id, plans might still have different reuse_buffer patterns, so we need to collect all of them.
       if (plan->reuse_buffers.size() > 0) {
         gsl::span<const size_t> output_indices = plan->GetActivationOutputIndices();
         for (auto output_index : output_indices) {
@@ -322,13 +321,13 @@ void GetMemoryRecordsGroupedByNodeClusterId(const MemoryOptimizationPlanner& mem
         if (plan->GetOptimizationType() == OptimizationType::RecomputeWithCompromise) {
           record.compromise_recomputed_outputs.emplace_back(
               output_index,
-              GetTensorElemCountInSymbolicString(node, output_index),
+              plan->GetActivationOutputDimParamString(output_index),
               byte_count_per_element,
               plan->GetSaveRatio());
 
         } else if (plan->GetOptimizationType() == OptimizationType::Recompute) {
           record.recomputed_outputs.emplace_back(output_index,
-                                                 GetTensorElemCountInSymbolicString(node, output_index),
+                                                 plan->GetActivationOutputDimParamString(output_index),
                                                  byte_count_per_element,
                                                  plan->GetSaveRatio());
         }
@@ -355,6 +354,7 @@ void GetMemoryRecordsGroupedByNodeClusterId(const MemoryOptimizationPlanner& mem
   }
 
   // If apply context is provided, also update the actual applied count.
+  // Be noted, node_to_apply_contexts_map contains some or all of the nodes in node_to_optimization_plan_map.
   if (node_to_apply_contexts_map.size() > 0) {
     InlinedHashMap<std::string, MemoryRecord*> node_cluster_id_to_record_map;
     for (auto& p : generated_records) {
@@ -365,6 +365,10 @@ void GetMemoryRecordsGroupedByNodeClusterId(const MemoryOptimizationPlanner& mem
       const auto& node = p.first;
       const auto& apply_context = p.second;
       std::string node_cluster_id = memory_opt_planner.GenerateNodeClusterId(node);
+
+      ORT_ENFORCE(node_cluster_id_to_record_map.find(node_cluster_id) != node_cluster_id_to_record_map.end(),
+                  "Node cluster id not found in memory record map: ", node_cluster_id);
+
       if (apply_context->type == OptimizationType::Recompute) {
         node_cluster_id_to_record_map[node_cluster_id]->actual_recompute_count += 1;
         node_cluster_id_to_record_map[node_cluster_id]->request_recompute_count = apply_context->requested_count;

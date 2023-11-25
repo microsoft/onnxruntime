@@ -86,6 +86,7 @@ const InlinedHashMap<std::string, AllowedRecomputeNodeConfig>& GetAllowedRecompu
         /// The axis input is trivial whether it exists or not in backward
         {"CumSum", AllowedRecomputeNodeConfig{{0}}},
         {"Dropout", AllowedRecomputeNodeConfig{{0}}},
+        {"BiasGelu", AllowedRecomputeNodeConfig{{0, 1}}},
         {"Gelu", AllowedRecomputeNodeConfig{{0}}},
         {"FastGelu", AllowedRecomputeNodeConfig{{0}}},
 
@@ -100,6 +101,7 @@ const InlinedHashMap<std::string, AllowedRecomputeNodeConfig>& GetAllowedRecompu
 
   if (probe_op_level >= static_cast<int>(ProbeLevel::Advanced)) {
     recomputable_op_table.insert({
+        {"LayerNormalization", AllowedRecomputeNodeConfig{{0, 1, 2}}},
         {"MatMul", AllowedRecomputeNodeConfig{{0, 1}}},
         {"FusedMatMul", AllowedRecomputeNodeConfig{{0, 1}}},
         {"Softmax", AllowedRecomputeNodeConfig{{0}}},
@@ -153,8 +155,8 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
 
   can_compromise_stashed_activation = false;
 
-  LOGS(logger, VERBOSE) << "Enter SelectRecomputeSubgraph for Node " << entry_node.Name() << "("
-                        << entry_node.OpType() << ")";
+  MO_LOG_DEBUG_INFO(logger, "Enter SelectRecomputeSubgraph for Node " + entry_node.Name() +
+                                "(" + entry_node.OpType() + ")");
   nodes.clear();
 
   std::deque<NodeOutputPort> q;
@@ -209,33 +211,34 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
         // (either of the above checks is true for entry node outputs)
         if (op_recompute_config_it == recomputable_op_table.end()) {
           early_stop = true;
-          LOGS(logger, VERBOSE) << "Entry Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is **NOT** "
-                                << "in recompute op list, search terminates.";
+          MO_LOG_DEBUG_INFO(logger, "Entry Node " + curr_node->Name() + "(" + curr_node->OpType() +
+                                        ") is **NOT** in recompute op list, search terminates.");
           break;
         }
       } else {
         if (op_recompute_config_it == recomputable_op_table.end()) {
           if (fw_op_output_arg_used_map.at(cur_output_arg_name).second) {
-            LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is **NOT** in "
-                                  << "recompute op list, but its output [" << cur_output_arg_name << "] is used in "
-                                  << "backward, we don't need trace bottom-up further. Entry node: "
-                                  << entry_node.Name() << "(" << entry_node.OpType() << ")";
+            MO_LOG_DEBUG_INFO(logger, "Node " + curr_node->Name() + "(" + curr_node->OpType() +
+                                          ") is **NOT** in recompute op list, but its output [" +
+                                          cur_output_arg_name +
+                                          "] is used in backward, we don't need trace bottom-up further. Entry node: " +
+                                          entry_node.Name() + "(" + entry_node.OpType() + ")");
             continue;
           } else {
             early_stop = true;
-            LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is **NOT** in "
-                                  << "recompute op list, and its output [" << cur_output_arg_name
-                                  << "] does not exist in backward, search terminates. Entry node: "
-                                  << entry_node.Name() << "(" << entry_node.OpType() << ")";
+            MO_LOG_DEBUG_INFO(logger, "Node " + curr_node->Name() + "(" + curr_node->OpType() + ") is **NOT** in " +
+                                          "recompute op list, and its output [" + cur_output_arg_name +
+                                          "] does not exist in backward, search terminates. Entry node: " +
+                                          entry_node.Name() + "(" + entry_node.OpType() + ")");
             break;
           }
         }
 
         if (fw_op_output_arg_used_map.at(cur_output_arg_name).second) {
-          LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") "
-                                << "is in recompute op list, while its output [" << cur_output_arg_name
-                                << "] is used in backward, we don't need trace bottom-up further. Entry node: "
-                                << entry_node.Name() << "(" << entry_node.OpType() << ")";
+          MO_LOG_DEBUG_INFO(logger, "Node " + curr_node->Name() + "(" + curr_node->OpType() + ") " +
+                                        "is in recompute op list, while its output [" + cur_output_arg_name +
+                                        "] is used in backward, we don't need trace bottom-up further. Entry node: " +
+                                        entry_node.Name() + "(" + entry_node.OpType() + ")");
           continue;
         }
       }
@@ -243,8 +246,8 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
       // Append node to the selected graph.
       if (std::find(nodes.begin(), nodes.end(), curr_node) == nodes.end()) {
         nodes.push_back(curr_node);
-        LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType()
-                              << ") is added in selected subgraph  ";
+        MO_LOG_DEBUG_INFO(logger, "Node " + curr_node->Name() + "(" + curr_node->OpType() +
+                                      ") is added in selected subgraph");
       }
 
       // This check is not matured now, subject to change.
@@ -253,15 +256,16 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
       float is_current_node_compromisable = (ratio < 1.f);
       can_compromise_stashed_activation = can_compromise_stashed_activation || is_current_node_compromisable;
       if (is_current_node_compromisable) {
-        LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType()
-                              << ") has input/output size " << ratio << " < 1.f, can compromise stashed activation";
+        MO_LOG_DEBUG_INFO(logger, "Node " + curr_node->Name() + "(" + curr_node->OpType() +
+                                      ") has input/output size " + std::to_string(ratio) +
+                                      " < 1.f, can compromise stashed activation");
       }
 
       if (is_current_node_compromisable && compromise_stashed_activation) {
-        LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is in "
-                              << "recompute op list, and its output [" << cur_output_arg_name
-                              << "] does not exist in backward, while it meets compromised check, we don't need trace "
-                              << "bottom-up further.";
+        MO_LOG_DEBUG_INFO(logger, "Node " + curr_node->Name() + "(" + curr_node->OpType() + ") is in " +
+                                      "recompute op list, and its output [" + cur_output_arg_name +
+                                      "] does not exist in backward, while it meets compromised check, we don't need trace " +
+                                      "bottom-up further.");
         save_ratio = saving_ratio;
         continue;
       }
@@ -277,10 +281,10 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
             input_arg_indices.end()) {
           NodeOutputPort next_p = std::make_pair(&parent_node, parent_node_output_index);
 
-          LOGS(logger, VERBOSE) << "Node " << parent_node.Name() << "(" << parent_node.OpType() << ")'s "
-                                << parent_node_output_index
-                                << "th output [" << parent_node.OutputDefs()[parent_node_output_index]->Name()
-                                << "] is added in recompute search list  ";
+          MO_LOG_DEBUG_INFO(logger, "Node " + parent_node.Name() + "(" + parent_node.OpType() + ")'s " +
+                                        std::to_string(parent_node_output_index) + "th output [" +
+                                        parent_node.OutputDefs()[parent_node_output_index]->Name() +
+                                        "] is added in recompute search list");
 
           q.push_back(next_p);
         }
@@ -292,8 +296,9 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
 
   // If input args are not found in bw, but op count exceed MAXIMUM_RECOMPUTE_NODE_COUNT, skip recompute.
   if (!q.empty() || early_stop) {
-    LOGS(logger, VERBOSE) << "Fail to find a solution for recompute: current node count is " << nodes.size()
-                          << ", queue size: " << q.size() << ", early stop: " << early_stop;
+    MO_LOG_DEBUG_INFO(logger, "Fail to find a solution for recompute: current node count is " +
+                                  std::to_string(nodes.size()) + ", queue size: " + std::to_string(q.size()) +
+                                  ", early stop: " + std::to_string(early_stop));
     nodes.clear();
   } else {
     // Re-order the nodes in topological order.
@@ -353,12 +358,10 @@ std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const GraphViewer& grap
     return nullptr;
   }
 
-  // Check whether the node's stashed activation outputs are used by LayerNormalization's inputs.
-  // If yes, for Transformers, we don't need to recompute the node, because we treated
-  // LayerNormalization as the boundary for subgraph searching.
-  // Be noted for a Transformer Layer, imagine one layer contains an attention sublayer and an mlp sublayer, but each
-  // sublayer has its own LayerNormalization, we treat the LayerNormalization as the boundary for subgraph searching.
   if (probe_level == ProbeLevel::Transformers) {
+    // Check whether the node's stashed activation outputs are used by LayerNormalization's inputs.
+    // If yes, for Transformers, we don't need to recompute the node, because we treated
+    // LayerNormalization of Attention as the boundary for subgraph searching.
     // Check at least one of the stashed activation output is used as the 1st input
     // of LayerNormalization, e.g. will be used as input of LayerNormalizationGrad.
     for (auto& output_index : candidate_output_args_map.at(&node)) {
@@ -399,7 +402,7 @@ std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const GraphViewer& grap
   std::string subgraph_str_representation, log_info;
   NodesInTopoOrderToString(nodes_in_topological_order, subgraph_str_representation, log_info);
 
-  LOGS(logger, VERBOSE) << "Node " << node.Name() << "(" << node.OpType() << ") can be recomputed" << log_info;
+  MO_LOG_DEBUG_INFO(logger, "Node " + node.Name() + "(" + node.OpType() + ") can be recomputed" + log_info);
 
   return std::make_unique<NodeRecomputePlan>(&node, candidate_output_args_map.at(&node),
                                              nodes_in_topological_order,
@@ -418,7 +421,7 @@ std::string NodeRecomputePlan::NormalizeForNodeClusterId() const {
   oss << "recompute:" << node->OpType() << "-"
       << compromise_recompute_ << "-";
   for (auto& output_index : GetActivationOutputIndices()) {
-    oss << output_index << ":" << GetTensorElemCountInSymbolicString(node, output_index);
+    oss << output_index << ":" << GetActivationOutputDimParamString(output_index);
     oss << ":" << node->OutputDefs()[output_index]->TypeAsProto()->tensor_type().elem_type() << "-";
   }
 

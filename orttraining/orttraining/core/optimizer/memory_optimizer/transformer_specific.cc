@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
+#include "orttraining/core/optimizer/memory_optimizer/transformer_specific.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
 #include "core/graph/graph_viewer.h"
@@ -28,7 +29,7 @@ void FindLayerBoundaryLayerNodeNodes(
   const InlinedHashSet<std::string_view> layernorm_ops{"LayerNormalization", "SkipLayerNormalization"};
 
   layer_boundary_ln_nodes.clear();
-  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
   for (auto node_index : node_topology_list) {
     auto& node = *graph_viewer.GetNode(node_index);
 

@@ -670,7 +670,8 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         if self._runtime_inspector.memory_ob.is_enabled():
             mem_notes, mem_tbl = self._runtime_inspector.memory_ob.display_memory_optimization_plans(
-                self._runtime_options.memory_optimizer_config
+                self._runtime_options.memory_optimizer_config,
+                details=self._debug_options.logging.log_level < LogLevel.WARNING,
             )
             if mem_tbl is not None:
                 mem_row.append_annotation_table(mem_tbl)

@@ -83,8 +83,8 @@ std::string GetTensorElemCountInSymbolicString(const Node* node, size_t output_i
 
   std::string shape_str = TensorShapeProtoToString(shape);
 
-  // If the output shape contains unknown dimension, we try to get the shape from input.
-  // though the input shape might be different, but its elem size and count should be the same
+  // If the output shape contains an unknown dimension, we try to get the shape from the input.
+  // Though the input shape might be different, its elem size and count should be the same
   // with the output.
   if (node->OpType() == "Reshape" && HasUnknowDimension(shape) &&
       !HasUnknowDimension(node->InputDefs()[0]->Shape())) {
@@ -121,7 +121,7 @@ Status ParseConfigFromString(std::string_view memory_optimization_config,
     for (const auto& user_config_str : user_config_strs) {
       const auto user_config = utils::SplitString(user_config_str, ":");
       ORT_RETURN_IF_NOT(user_config.size() == 3,
-                        "User config should be in format of SubgraphStr:OptimizationType:RequestApplyCount.");
+                        "User config should be in the format of SubgraphStr:OptimizationType:RequestApplyCount.");
 
       const std::string subgraph_string_representation(user_config[0]);
       int optimization_type_int = ParseIntValueFromString(user_config[1]);
@@ -136,7 +136,7 @@ Status ParseConfigFromString(std::string_view memory_optimization_config,
                         "Invalid requested_apply_count specified for subgraph: ", requested_apply_count);
 
       // At this point, subgraph_string_representation is a pattern graph string representation.
-      // If duplicated subgraph_string_representation is found in user config, the last one will be used.
+      // If a duplicated subgraph_string_representation is found in user config, the last one will be used.
       cluster_id_to_config_map[subgraph_string_representation] = UserConfig{
           static_cast<OptimizationType>(optimization_type_int),
           requested_apply_count};
