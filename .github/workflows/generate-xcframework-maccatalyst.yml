@@ -1,0 +1,38 @@
+name: "Build XCFramework for MacCatalyst"
+
+on:
+  workflow_dispatch:
+    branches: [main, develop]
+
+jobs:
+  build_macabi_xcf:
+    runs-on: macos-latest
+    steps:
+      - name: check Xcode version
+        run: /usr/bin/xcodebuild -version
+
+      - name: checkout repository
+        uses: actions/checkout@v3
+
+      - name: install protoc
+        run : |
+          mkdir -p $HOME/Downloads
+          cd $HOME/Downloads
+          curl 
+https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-osx-universal_binary.zip 
+--output $HOME/Downloads/protoc-21.12.zip
+          unzip protoc-21.12-osx-universal_binary.zip
+          mv protoc-21.12-osx-universal_binary/bin/protoc /usr/local/bin/protoc-3.21.12.0
+          mv protoc-21.12-osx-universal_binary/include/* /usr/local/include/
+ 
+      - name: create directory to store the library
+        run: mkdir -p $HOME/onnxlibrary/macabi_release_v20230327_2320
+
+      - name: create release build
+        run: python tools/ci_build/github/apple/build_macabi_framework.py --config Release 
+--build_dir 
+$HOME/onnxlibrary/macabi_release_v20230327_2320 --include_ops_by_config 
+tools/ci_build/github/apple/hws_mobile_package.required_operators.config --path_to_protoc_exe 
+/usr/local/bin/protoc-3.21.12.0 
+tools/ci_build/github/apple/default_full_macabi_framework_build_settings.json
+
