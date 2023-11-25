@@ -22,6 +22,7 @@ jobs:
           echo "alias python3=/usr/local/bin/python3.10" >> ~/.zshrc
           alias python3=/usr/local/bin/python3.10
           alias python=/usr/local/bin/python3.10
+          brew link --overwrite python@3.10
           python3 --version
           python --version
 
