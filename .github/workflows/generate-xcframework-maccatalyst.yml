@@ -14,6 +14,8 @@ jobs:
       - name: check Xcode version and Python 3
         run: |
           /usr/bin/xcodebuild -version
+          brew uninstall --ignore-dependencies python@3.10
+          brew install python@3.10
           python3 --version
 
       - name: checkout repository
@@ -34,7 +36,7 @@ jobs:
       - name: create release build
         run: |
           # Since Python 3.12, distutils is removed
-          pip3 install setuptools
+          # pip3 install setuptools
           pip3 install -r tools/ci_build/requirements.txt
           python3 tools/ci_build/github/apple/build_macabi_framework.py --config=Release --build_dir=$HOME/onnxlibrary/macabi_release_v20230327_2320 \
             --include_ops_by_config=tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
