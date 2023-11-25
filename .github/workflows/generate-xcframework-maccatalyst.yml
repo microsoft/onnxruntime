@@ -21,7 +21,7 @@ jobs:
         run : |
           mkdir -p $HOME/Downloads
           cd $HOME/Downloads
-          curl -k https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-osx-universal_binary.zip
+          curl -LJO https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-osx-universal_binary.zip
           unzip protoc-21.12-osx-universal_binary.zip
           mv protoc-21.12-osx-universal_binary/bin/protoc /usr/local/bin/protoc-3.21.12.0
           mv protoc-21.12-osx-universal_binary/include/* /usr/local/include/
