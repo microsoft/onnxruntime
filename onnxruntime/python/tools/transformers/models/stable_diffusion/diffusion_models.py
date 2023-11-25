@@ -853,7 +853,7 @@ class UNet(BaseModel):
                 torch.randn(
                     len(self.controlnet), m * batch_size, 3, image_height, image_width, dtype=dtype, device=self.device
                 ),
-                torch.randn(len(self.controlnet), dtype=dtype, device=self.device)
+                torch.randn(len(self.controlnet), dtype=dtype, device=self.device),
             )
 
     def fp32_input_output_names(self) -> List[str]:

@@ -85,9 +85,12 @@ class Txt2ImgPipeline(StableDiffusionPipeline):
             add_kwargs = None
             if self.pipeline_info.controlnet:
                 controlnet_images = self.preprocess_controlnet_images(
-                    latents.shape[0], controlnet_images, do_classifier_free_guidance=do_classifier_free_guidance)
-                add_kwargs = {"images": controlnet_images,
-                              "controlnet_scales": controlnet_scales.to(controlnet_images.dtype).to(controlnet_images.device)}
+                    latents.shape[0], controlnet_images, do_classifier_free_guidance=do_classifier_free_guidance
+                )
+                add_kwargs = {
+                    "images": controlnet_images,
+                    "controlnet_scales": controlnet_scales.to(controlnet_images.dtype).to(controlnet_images.device),
+                }
 
             # UNet denoiser
             latents = self.denoise_latent(latents, text_embeddings, guidance=guidance, add_kwargs=add_kwargs)
