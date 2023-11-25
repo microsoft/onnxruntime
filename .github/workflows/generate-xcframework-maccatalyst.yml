@@ -11,24 +11,14 @@ jobs:
   build_macabi_xcf:
     runs-on: macos-latest
     steps:
+      - name: install Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
       - name: check Xcode version and Python 3
         run: |
           /usr/bin/xcodebuild -version
-          brew uninstall --ignore-dependencies python
-          #brew uninstall --ignore-dependencies python@3.11
-          #brew uninstall --ignore-dependencies python@3.12
-          brew install python@3.10
-          #brew install python3
-          ls /usr/local/bin/python*
-          rm /usr/local/bin/python3
-          #echo "alias python=/usr/local/bin/python3.10" >> ~/.zshrc
-          #echo "alias python3=/usr/local/bin/python3.10" >> ~/.zshrc
-          #source ~/.zshrc
-          alias python3=/usr/local/bin/python3.10
-          alias python=/usr/local/bin/python3.10
-          #brew unlink python
-          #brew switch python 3.10
-          brew link --overwrite python@3.10
           python3 --version
           python --version
           which python3
