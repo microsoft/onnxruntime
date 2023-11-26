@@ -74,11 +74,11 @@ class TestOpSoftmax(unittest.TestCase):
             [identity_out, output_tensor],
             initializer=initializers,
         )
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13), helper.make_opsetid("com.microsoft", 1)])
         model.ir_version = 7  # use stable onnx ir version
         onnx.save(model, output_model_path)
 
-    def quantize_softmax_test(self, activation_type, weight_type, extra_options={}):  # noqa: B006
+    def quantize_softmax_test_qop(self, activation_type, weight_type, extra_options={}):  # noqa: B006
         np.random.seed(1)
         model_fp32_path = "softmax_fp32.onnx"
         self.construct_model_conv_softmax(
@@ -91,11 +91,10 @@ class TestOpSoftmax(unittest.TestCase):
         )
         data_reader = self.input_feeds(1, {"input": [1, 2, 26, 42]})
 
-        activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
-        activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
-        weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
+        activation_proto_qtype = activation_type.tensor_type
+        activation_type_str = str(activation_type)
+        weight_type_str = str(weight_type)
         model_q8_path = f"softmax_{activation_type_str}{weight_type_str}.onnx"
-        model_q8_qdq_path = f"softmax_qdq_{activation_type_str}{weight_type_str}.onnx"
 
         # Verify QOperator mode
         data_reader.rewind()
@@ -138,11 +137,29 @@ class TestOpSoftmax(unittest.TestCase):
         data_reader.rewind()
         check_model_correctness(self, model_fp32_path, model_q8_path, data_reader.get_next())
 
+    def quantize_softmax_test_qdq(self, activation_type, weight_type, extra_options={}):  # noqa: B006
+        np.random.seed(1)
+        model_fp32_path = "softmax_fp32.onnx"
+        self.construct_model_conv_softmax(
+            model_fp32_path,
+            [1, 2, 26, 42],
+            [3, 2, 3, 3],
+            [1, 3, 24, 40],
+            {"axis": -2},
+            [1, 3, 24, 40],
+        )
+        data_reader = self.input_feeds(1, {"input": [1, 2, 26, 42]})
+
+        activation_proto_qtype = activation_type.tensor_type
+        activation_type_str = str(activation_type)
+        weight_type_str = str(weight_type)
+        model_qdq_path = f"softmax_qdq_{activation_type_str}{weight_type_str}.onnx"
+
         # Verify QDQ mode
         data_reader.rewind()
         quantize_static(
             model_fp32_path,
-            model_q8_qdq_path,
+            model_qdq_path,
             data_reader,
             quant_format=QuantFormat.QDQ,
             activation_type=activation_type,
@@ -150,7 +167,7 @@ class TestOpSoftmax(unittest.TestCase):
             extra_options=extra_options,
         )
 
-        result_model = onnx.load(Path(model_q8_qdq_path))
+        result_model = onnx.load(Path(model_qdq_path))
         qnode_cnt = 0
         dqnode_cnt = 0
         softmax_cnt = 0
@@ -182,22 +199,52 @@ class TestOpSoftmax(unittest.TestCase):
                 ["o", 0, activation_proto_qtype],
             ]
         }
-        check_qtype_by_node_type(self, model_q8_qdq_path, qnode_io_qtypes)
+        check_qtype_by_node_type(self, model_qdq_path, qnode_io_qtypes)
         data_reader.rewind()
-        check_model_correctness(self, model_fp32_path, model_q8_qdq_path, data_reader.get_next())
+        check_model_correctness(self, model_fp32_path, model_qdq_path, data_reader.get_next())
 
     def test_quantize_softmax(self):
-        self.quantize_softmax_test(QuantType.QUInt8, QuantType.QUInt8)
+        self.quantize_softmax_test_qop(QuantType.QUInt8, QuantType.QUInt8)
+        self.quantize_softmax_test_qdq(QuantType.QUInt8, QuantType.QUInt8)
 
     def test_quantize_softmax_s8s8(self):
-        self.quantize_softmax_test(
+        self.quantize_softmax_test_qop(
             QuantType.QInt8,
             QuantType.QInt8,
         )
-        self.quantize_softmax_test(
+        self.quantize_softmax_test_qdq(
+            QuantType.QInt8,
+            QuantType.QInt8,
+        )
+        self.quantize_softmax_test_qop(
             QuantType.QInt8,
             QuantType.QInt8,
             extra_options={"ActivationSymmetric": True},
+        )
+        self.quantize_softmax_test_qdq(
+            QuantType.QInt8,
+            QuantType.QInt8,
+            extra_options={"ActivationSymmetric": True},
+        )
+
+    def test_quantize_softmax_qdq_u16u16(self):
+        self.quantize_softmax_test_qdq(
+            QuantType.QUInt16,
+            QuantType.QUInt16,
+            extra_options={"UseQDQContribOps": True},
+        )
+
+    def test_quantize_softmax_qdq_s16s16(self):
+        self.quantize_softmax_test_qdq(
+            QuantType.QInt16,
+            QuantType.QInt16,
+            extra_options={"UseQDQContribOps": True},
+        )
+        self.quantize_softmax_test_qdq(
+            QuantType.QInt16,
+            QuantType.QInt16,
+            extra_options={"UseQDQContribOps": True,
+                "ActivationSymmetric": True},
         )
 
 
