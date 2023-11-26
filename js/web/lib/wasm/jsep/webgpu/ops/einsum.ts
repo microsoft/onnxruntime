@@ -6,7 +6,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
 
-import {createTensorShapeVariables, enableShapesUniforms, inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, enableShapesUniforms, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
 
 
 export interface EinsumAttributes extends AttributeWithCacheKey {
@@ -197,6 +197,7 @@ const createEinsumProgramInfo = (inputs: readonly TensorView[], einsumEquation: 
   const reduceOpsLoopHeaders: string[] = [];
   const reduceOpsLoopFooters: string[] = [];
   const reduceOpCompute: string[] = [];
+  const uniformsSymbols: string[] = [];  // Equations symbols that require dim limit added to Uniforms.
   const isReduceOpsWithoutLoop = einsumEquation.symbolToInfo.size === einsumEquation.rhs.symbolToIndices.size;
   einsumEquation.symbolToInfo.forEach((info, symbol) => {
     if (einsumEquation.rhs.symbolToIndices.has(symbol)) {
@@ -233,8 +234,8 @@ const createEinsumProgramInfo = (inputs: readonly TensorView[], einsumEquation: 
           reduceOpCompute.push(`prod *= ${inputVars[i].getByIndices(`input${i}Indices`)};`);
         }
       });
-      reduceOpsLoopHeaders.push(`for(var ${symbol}: u32 = 0; ${symbol} < ${
-          einsumEquation.symbolToInfo.get(symbol)?.dimValue}; ${symbol}++) {`);
+      reduceOpsLoopHeaders.push(`for(var ${symbol}: u32 = 0; ${symbol} < uniforms.${symbol}_max; ${symbol}++) {`);
+      uniformsSymbols.push(symbol)
       reduceOpsLoopFooters.push('}');
     }
   });
@@ -254,9 +255,12 @@ const createEinsumProgramInfo = (inputs: readonly TensorView[], einsumEquation: 
         ...reduceOpsLoopFooters,
       ];
   const getShaderSource = (shaderHelper: ShaderHelper) => `
-      ${shaderHelper.registerUniform('outputSize', 'u32').declareVariables(...inputVars, output)}
+      ${
+      shaderHelper.registerUniforms(uniformsSymbols.map((symbol) => ({name: `${symbol}_max`, type: 'u32'})))
+      .registerUniform('outputSize', 'u32')
+      .declareVariables(...inputVars, output)}
 
-      ${shaderHelper.mainStart()}
+        ${shaderHelper.mainStart()}
         ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
         var outputIndices = ${output.offsetToIndices('global_idx')};
         ${inputVars.map((_var, i) => `var input${i}Indices: ${inputVars[i].type.indices};`).join('\n')}
@@ -264,11 +268,18 @@ const createEinsumProgramInfo = (inputs: readonly TensorView[], einsumEquation: 
         ${output.setByOffset('global_idx', 'sum')};
       }`;
 
+  // The symbols from uniformSymbols array are guaranteed to exist in einsumEquations.symbolToInfo map. The filter
+  // is added to make sure that dimValue is never 0.
+  const programUniformsInit: ProgramUniform[] =
+      uniformsSymbols.filter((symbol) => einsumEquation.symbolToInfo.has(symbol))
+          .map((symbol) => ({type: 'uint32', data: einsumEquation.symbolToInfo.get(symbol)?.dimValue || 0}));
+  programUniformsInit.push({type: 'uint32', data: outputSize});
+
   const programUniforms: ProgramUniform[] =
       inputs.filter((_, index) => enableInputShapesUniforms[index])
           .map((input, _) => createTensorShapeVariables(input.dims))
-          .reduce(
-              (acc, inputProgramUniforms) => acc.concat(inputProgramUniforms), [{type: 'uint32', data: outputSize}]);
+          .reduce((acc, inputProgramUniforms) => acc.concat(inputProgramUniforms), programUniformsInit);
+
   if (enableOutputShapesUniforms) {
     programUniforms.push(...createTensorShapeVariables(outputShape));
   }
