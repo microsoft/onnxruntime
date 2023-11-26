@@ -47,6 +47,10 @@ jobs:
           ls ${{ github.workspace }}/tools/python
           pip install -r ${{ github.workspace }}/requirements-dev.txt
           pip install -r ${{ github.workspace }}/tools/ci_build/requirements.txt
+          #Deal with lSystem
+          export SDKROOT=$(xcrun --sdk macosx --show-sdk-path)
+          export LIBRARY_PATH="$LIBRARY_PATH:$SDKROOT/usr/lib"
+          #Build command
           python ${{ github.workspace }}/tools/ci_build/github/apple/build_macabi_framework.py --config=Release --build_dir=$HOME/onnxlibrary/macabi_release_v20230327_2320 \
             --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
             --path_to_protoc_exe=/usr/local/bin/protoc-3.21.12.0 ${{ github.workspace }}/tools/ci_build/github/apple/default_full_macabi_framework_build_settings.json
