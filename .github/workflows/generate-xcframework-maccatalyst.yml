@@ -45,6 +45,7 @@ jobs:
           export PYTHONPATH=${{ github.workspace }}/tools/python:$PYTHONPATH
           cd ${{ github.workspace }}/tools/python
           ls ${{ github.workspace }}/tools/python
+          pip install -r ${{ github.workspace }}/requirements-dev.txt
           pip install -r ${{ github.workspace }}/tools/ci_build/requirements.txt
           python ${{ github.workspace }}/tools/ci_build/github/apple/build_macabi_framework.py --config=Release --build_dir=$HOME/onnxlibrary/macabi_release_v20230327_2320 \
             --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
