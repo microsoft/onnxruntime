@@ -257,8 +257,8 @@ const createEinsumProgramInfo = (inputs: readonly TensorView[], einsumEquation: 
   const getShaderSource = (shaderHelper: ShaderHelper) => `
       ${
       shaderHelper.registerUniforms(uniformsSymbols.map((symbol) => ({name: `${symbol}_max`, type: 'u32'})))
-      .registerUniform('outputSize', 'u32')
-      .declareVariables(...inputVars, output)}
+          .registerUniform('outputSize', 'u32')
+          .declareVariables(...inputVars, output)}
 
         ${shaderHelper.mainStart()}
         ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
