@@ -503,7 +503,7 @@ class TestInferenceSession(unittest.TestCase):
             run_base_test1()
             run_base_test2()
             cuda = self.load_cuda_lib()
-            if cuda != None:
+            if cuda is not None:
                 print("run advanced_test")
                 run_advanced_test(cuda)
 
@@ -1714,7 +1714,7 @@ class TestInferenceSession(unittest.TestCase):
         ort_arena_cfg_kvp = onnxrt.OrtArenaCfg(expected_kvp_allocator)
         verify_allocator(ort_arena_cfg_kvp, expected_kvp_allocator)
 
-    def test_IOBinding_multiple_devices(self):
+    def test_iobinding_multiple_devices(self):
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
             cuda_lib = self.load_cuda_lib()
             cuda_devices = self.cuda_device_count(cuda_lib)
@@ -1739,9 +1739,6 @@ class TestInferenceSession(unittest.TestCase):
                 binding.synchronize_inputs()
                 sessions[i].run_with_iobinding(binding)
                 binding.synchronize_outputs()
-
-                outputs = binding.get_outputs()
-
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)
