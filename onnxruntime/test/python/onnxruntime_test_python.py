@@ -62,15 +62,18 @@ class TestInferenceSession(unittest.TestCase):
 
     def load_cuda_lib(self):
         cuda_lib = None
-        if sys.platform == 'win32':
+        if sys.platform == "win32":
             cuda_lib = "cuda.dll"
-        elif sys.platform == 'linux':
-            cuda_lib = 'libcuda.so'
-        elif sys.platform == 'darwin':
-            cuda_lib = 'libcuda.dylib'
+        elif sys.platform == "linux":
+            cuda_lib = "libcuda.so"
+        elif sys.platform == "darwin":
+            cuda_lib = "libcuda.dylib"
 
         if cuda_lib is not None:
-            return ctypes.CDLL(cuda_lib)
+            try:
+                return ctypes.CDLL(cuda_lib)
+            except OSError:
+                pass
         return None
 
     def cuda_device_count(self, cuda_lib):
@@ -1719,21 +1722,26 @@ class TestInferenceSession(unittest.TestCase):
                 return
             sessions = []
             for i in range(3):
-                sessions.append(onnxrt.InferenceSession(get_name("mnist.onnx"), providers=[('CUDAExecutionProvider', {'device_id': i%2})]))
+                sessions.append(
+                    onnxrt.InferenceSession(
+                        get_name("mnist.onnx"), providers=[("CUDAExecutionProvider", {"device_id": i % 2})]
+                    )
+                )
 
             for i in range(3):
                 binding = sessions[i].io_binding()
-                image = np.ones([1,1,28,28], np.float32)
-                image_on_gpu = onnxrt.OrtValue.ortvalue_from_numpy(image, 'cuda', i%2)
+                image = np.ones([1, 1, 28, 28], np.float32)
+                image_on_gpu = onnxrt.OrtValue.ortvalue_from_numpy(image, "cuda", i % 2)
 
-                binding.bind_ortvalue_input('Input3', image_on_gpu)
-                binding.bind_output(name='Plus214_Output_0', device_type='cuda', device_id=i%2)
+                binding.bind_ortvalue_input("Input3", image_on_gpu)
+                binding.bind_output(name="Plus214_Output_0", device_type="cuda", device_id=i % 2)
 
                 binding.synchronize_inputs()
                 sessions[i].run_with_iobinding(binding)
                 binding.synchronize_outputs()
 
                 outputs = binding.get_outputs()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)
