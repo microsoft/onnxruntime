@@ -144,7 +144,7 @@ def _test_apple_packages(args):
                 cwd=target_proj_path,
             )
 
-            if PackageVariant[args.variant] != PackageVariant.Mobile:
+            if PackageVariant[args.variant] == PackageVariant.Full or PackageVariant[args.variant] == PackageVariant.Training:
                 subprocess.run(
                     [
                         "xcrun",
