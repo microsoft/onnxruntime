@@ -1,3 +1,8 @@
+# --------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------------------
+from collections import deque
 from pathlib import Path
 
 import onnx
@@ -227,6 +232,16 @@ class ONNXModel:
 
         return -1
 
+    def is_constant_with_specified_dimension(self, output_name, dimensions):
+        value = self.get_constant_value(output_name)
+        if value is None:
+            return False  # Not an initializer
+
+        if len(value.shape) != dimensions:
+            return False  # Wrong dimensions
+
+        return True
+
     def has_constant_input(self, node, expected_value, delta=0.000001):
         return self.find_constant_input(node, expected_value, delta) >= 0
 
@@ -282,6 +297,15 @@ class ONNXModel:
                 for node in input_name_to_nodes[output]:
                     children.append(node)  # noqa: PERF402
         return children
+
+    @staticmethod
+    def input_index(node_output, child_node):
+        index = 0
+        for input in child_node.input:
+            if input == node_output:
+                return index
+            index += 1
+        return -1
 
     def get_parents(self, node, output_name_to_node=None):
         if output_name_to_node is None:
@@ -375,6 +399,78 @@ class ONNXModel:
         parent = self.get_parent(node, input_index, output_name_to_node)
         if parent is not None and parent.op_type == parent_op_type and parent not in exclude:
             return parent
+
+        return None
+
+    def match_parent_path(
+        self,
+        node,
+        parent_op_types,
+        parent_input_index=None,
+        output_name_to_node=None,
+        return_indice=None,
+    ):
+        """
+        Find a sequence of input edges based on constraints on parent op_type and index.
+        When input_index is None, we will find the first parent node based on constraints,
+        and return_indice will be appended the corresponding input index.
+
+        Args:
+            node (str): current node name.
+            parent_op_types (str): constraint of parent node op_type of each input edge.
+            parent_input_index (list): constraint of input index of each input edge. None means no constraint.
+            output_name_to_node (dict): dictionary with output name as key, and node as value.
+            return_indice (list): a list to append the input index
+                                  When there is no constraint on input index of an edge.
+
+        Returns:
+            parents: a list of matched parent node.
+        """
+        if parent_input_index is not None:
+            assert len(parent_input_index) == len(parent_op_types)
+
+        if output_name_to_node is None:
+            output_name_to_node = self.output_name_to_node()
+
+        current_node = node
+        matched_parents = []
+        for i, op_type in enumerate(parent_op_types):
+            matched_parent = self.match_parent(
+                current_node,
+                op_type,
+                parent_input_index[i] if parent_input_index is not None else None,
+                output_name_to_node,
+                exclude=[],
+                return_indice=return_indice,
+            )
+            if matched_parent is None:
+                return None
+
+            matched_parents.append(matched_parent)
+            current_node = matched_parent
+
+        return matched_parents
+
+    def match_parent_paths(self, node, paths, output_name_to_node):
+        for i, path in enumerate(paths):
+            return_indice = []
+            matched = self.match_parent_path(node, path[0], path[1], output_name_to_node, return_indice)
+            if matched:
+                return i, matched, return_indice
+        return -1, None, None
+
+    def find_first_child_by_type(self, node, child_type, input_name_to_nodes=None, recursive=True):
+        children = self.get_children(node, input_name_to_nodes)
+        dq = deque(children)
+        while len(dq) > 0:
+            current_node = dq.pop()
+            if current_node.op_type == child_type:
+                return current_node
+
+            if recursive:
+                children = self.get_children(current_node, input_name_to_nodes)
+                for child in children:
+                    dq.appendleft(child)
 
         return None
 

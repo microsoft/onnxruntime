@@ -3,6 +3,7 @@
 # Licensed under the MIT License. See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
+import logging
 from pathlib import Path
 
 import onnx
@@ -12,6 +13,7 @@ from ...onnx_model import ONNXModel
 from ...quant_utils import QuantType
 from ...quantize import StaticQuantConfig
 from .fusion_gelu import FusionGelu
+from .fusion_layernorm import FusionLayerNormalization
 from .fusion_lpnorm import FusionLpNormalization
 
 Q16_TYPES = {QuantType.QInt16, QuantType.QUInt16}
@@ -19,7 +21,7 @@ Q8_TYPES = {QuantType.QInt8, QuantType.QUInt8}
 OP_TYPES_TO_EXCLUDE = {"Cast"}
 
 
-def qnn_preprocess_model(model_input: Path, model_output: Path) -> bool:
+def qnn_preprocess_model(model_input: Path, model_output: Path, fuse_layernorm: bool = False) -> bool:
     modified = False
     model = onnx.load_model(model_input)
     onnx_model = ONNXModel(model)
@@ -33,6 +35,22 @@ def qnn_preprocess_model(model_input: Path, model_output: Path) -> bool:
     fusion_lpnorm = FusionLpNormalization(onnx_model)
     if fusion_lpnorm.apply():
         modified = True
+
+    # Optionally, fuse ReduceMean sequence into a single LayerNormalization node.
+    if fuse_layernorm:
+        onnx_opset = next(x for x in model.opset_import if x.domain == "" or x.domain == "ai.onnx")
+
+        # Need opset >= 17 to use LayerNormalization.
+        if onnx_opset.version < 17:
+            logging.warning(
+                "Unable to fuse ReduceMean sequence into a LayerNormalization node. "
+                "ONNX model must use an opset >= 17 in order to use LayerNormalization, "
+                f"but found version {onnx_opset.version}. Please use onnx.version_converter to update your model."
+            )
+        else:
+            fusion_layernorm = FusionLayerNormalization(onnx_model)
+            if fusion_layernorm.apply():
+                modified = True
 
     if modified:
         onnx_model.topological_sort()
