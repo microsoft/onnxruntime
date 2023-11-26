@@ -178,7 +178,7 @@ class EinsumEquation {
   outputDims: number[];                   // Output dimensions of the equation
 }  // End of class EinsumEquation
 
-const appendMax = (name: string): string => name + '_max'
+const appendMax = (name: string): string => name + '_max';
 
 const createEinsumProgramInfo = (inputs: readonly TensorView[], einsumEquation: EinsumEquation): ProgramInfo => {
   const dataType = inputs[0].dataType;
@@ -236,8 +236,9 @@ const createEinsumProgramInfo = (inputs: readonly TensorView[], einsumEquation: 
           reduceOpCompute.push(`prod *= ${inputVars[i].getByIndices(`input${i}Indices`)};`);
         }
       });
-      reduceOpsLoopHeaders.push(`for(var ${symbol}: u32 = 0; ${symbol} < uniforms.${appendMax(symbol)}; ${symbol}++) {`);
-      uniformsSymbols.push(symbol)
+      reduceOpsLoopHeaders.push(
+          `for(var ${symbol}: u32 = 0; ${symbol} < uniforms.${appendMax(symbol)}; ${symbol}++) {`);
+      uniformsSymbols.push(symbol);
       reduceOpsLoopFooters.push('}');
     }
   });
