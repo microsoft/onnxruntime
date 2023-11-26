@@ -20,9 +20,7 @@ namespace cuda {
 
 #define NCCL_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(NCCL_CALL(expr))
 
-#if defined(ORT_USE_NCCL)
 ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type);
-#endif
 
 // -----------------------------------------------------------------------
 // Defines a new version of nccl classes
