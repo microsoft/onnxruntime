@@ -924,7 +924,7 @@ TEST(ReductionOpTest, ReduceMax_default_axes_do_not_keep_dims) {
                         55.0f, 1.0f,
                         60.0f, 2.0f});
   test.AddOutput<float>("reduced", {}, {60.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});// TensorRT: full reduce without keepDimensions is not supported with explicit batch //TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch //TensorRT: axis must be 0
 }
 
 #ifndef USE_MIGRAPHX
@@ -1200,7 +1200,7 @@ TEST(ReductionOpTest, test_bool_ReduceMin_19) {
           kOpenVINOExecutionProvider,
       });
 }
-#endif // USE_MIGRAPHX
+#endif  // USE_MIGRAPHX
 
 TEST(ReductionOpTest, ReduceMax_do_not_keepdims) {
   OpTester test("ReduceMax");
@@ -1361,7 +1361,7 @@ TEST(ReductionOpTest, ReduceMax_int32) {
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          // TensorRT: axis must be 0
 #endif
 }
 
@@ -1382,7 +1382,7 @@ TEST(ReductionOpTest, ReduceMax_int64) {
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          // TensorRT: axis must be 0
 #endif
 }
 
@@ -3557,7 +3557,7 @@ TEST(ReductionOpTest, ReduceDimWithZero1) {
   test.AddOutput<float>("reduced", {1, 1, 1}, {0.0f});
   run(test);
 }
-#endif // USE_MIGRAPHX
+#endif  // USE_MIGRAPHX
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero2) {
   FastReduceKind fast_kind;
@@ -5918,6 +5918,6 @@ TEST(ReductionOpTest, empty_set_ReduceSumSquare_13) {
 
   test_empty_set("ReduceSumSquare", 13, false, 0.0f);
 }
-#endif // USE_MIGRAPHX
+#endif  // USE_MIGRAPHX
 }  // namespace test
 }  // namespace onnxruntime
