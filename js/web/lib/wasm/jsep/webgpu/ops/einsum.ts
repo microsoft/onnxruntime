@@ -178,6 +178,8 @@ class EinsumEquation {
   outputDims: number[];                   // Output dimensions of the equation
 }  // End of class EinsumEquation
 
+const appendMax = (name: string): string => name + '_max'
+
 const createEinsumProgramInfo = (inputs: readonly TensorView[], einsumEquation: EinsumEquation): ProgramInfo => {
   const dataType = inputs[0].dataType;
   const enableInputShapesUniforms = inputs.map((input, _) => enableShapesUniforms(input.dims.length));
@@ -234,7 +236,7 @@ const createEinsumProgramInfo = (inputs: readonly TensorView[], einsumEquation: 
           reduceOpCompute.push(`prod *= ${inputVars[i].getByIndices(`input${i}Indices`)};`);
         }
       });
-      reduceOpsLoopHeaders.push(`for(var ${symbol}: u32 = 0; ${symbol} < uniforms.${symbol}_max; ${symbol}++) {`);
+      reduceOpsLoopHeaders.push(`for(var ${symbol}: u32 = 0; ${symbol} < uniforms.${appendMax(symbol)}; ${symbol}++) {`);
       uniformsSymbols.push(symbol)
       reduceOpsLoopFooters.push('}');
     }
@@ -256,7 +258,7 @@ const createEinsumProgramInfo = (inputs: readonly TensorView[], einsumEquation: 
       ];
   const getShaderSource = (shaderHelper: ShaderHelper) => `
       ${
-      shaderHelper.registerUniforms(uniformsSymbols.map((symbol) => ({name: `${symbol}_max`, type: 'u32'})))
+      shaderHelper.registerUniforms(uniformsSymbols.map((symbol) => ({name: `${appendMax(symbol)}`, type: 'u32'})))
           .registerUniform('outputSize', 'u32')
           .declareVariables(...inputVars, output)}
 
