@@ -6,7 +6,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
 
-import {createTensorShapeVariables, enableShapesUniforms, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
+import {createTensorShapeVariables, enableShapesUniforms, inputVariable, outputVariable, ShaderHelper} from './common';
 
 
 export interface EinsumAttributes extends AttributeWithCacheKey {
