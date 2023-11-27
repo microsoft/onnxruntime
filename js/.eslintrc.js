@@ -5,10 +5,18 @@
 
 module.exports = {
   root: true,
-  ignorePatterns: ['**/*.js', 'ort-schema/', 'common/test/type-tests/', 'test/data/', 'node_modules/', 'dist/'],
+  ignorePatterns: [
+    '**/*.js',
+    'node_modules/',
+    'ort-schema/',
+    'common/test/type-tests/',
+    'web/types.d.ts',
+    'test/data/',
+    'dist/',
+  ],
   env: { 'es6': true },
   parser: '@typescript-eslint/parser',
-  parserOptions: { 'project': 'tsconfig.json', 'sourceType': 'module' },
+  parserOptions: { 'project': true, 'sourceType': 'module' },
   plugins: ['@typescript-eslint', 'prefer-arrow', 'header', 'import', 'unicorn', 'jsdoc'],
   rules: {
     'unicorn/filename-case': 'error',
@@ -144,10 +152,55 @@ module.exports = {
       'no-unused-expressions': 'off',
     }
   }, {
-    files: ['web/lib/**/*.ts'],
-    excludedFiles: 'web/lib/wasm/proxy-worker/**/*',
-    parserOptions: { 'project': 'web/tsconfig.json' },rules: {
-      'no-underscore-dangle': 'off',
+    files: ['web/lib/**/*.ts'], rules: {
+      'no-underscore-dangle': ['error', {
+        'allow': [
+          '_free',
+          '_malloc',
+          '_JsepGetNodeName',
+          '_JsepOutput',
+          '_OrtAddFreeDimensionOverride',
+          '_OrtAddRunConfigEntry',
+          '_OrtAddSessionConfigEntry',
+          '_OrtAppendExecutionProvider',
+          '_OrtBindInput',
+          '_OrtBindOutput',
+          '_OrtClearBoundOutputs',
+          '_OrtCreateBinding',
+          '_OrtCreateRunOptions',
+          '_OrtCreateSession',
+          '_OrtCreateSessionOptions',
+          '_OrtCreateTensor',
+          '_OrtEndProfiling',
+          '_OrtFree',
+          '_OrtGetInputName',
+          '_OrtGetInputOutputCount',
+          '_OrtGetLastError',
+          '_OrtGetOutputName',
+          '_OrtGetTensorData',
+          '_OrtInit',
+          '_OrtReleaseBinding',
+          '_OrtReleaseRunOptions',
+          '_OrtReleaseSession',
+          '_OrtReleaseSessionOptions',
+          '_OrtReleaseTensor',
+          '_OrtRun',
+          '_OrtRunWithBinding',
+          '_OrtTrainingCopyParametersFromBuffer',
+          '_OrtTrainingCopyParametersToBuffer',
+          '_OrtTrainingCreateSession',
+          '_OrtTrainingEvalStep',
+          '_OrtTrainingGetModelInputOutputCount',
+          '_OrtTrainingGetModelInputOutputName',
+          '_OrtTrainingGetParametersSize',
+          '_OrtTrainingLazyResetGrad',
+          '_OrtTrainingLoadCheckpoint',
+          '_OrtTrainingOptimizerStep',
+          '_OrtTrainingReleaseCheckpoint',
+          '_OrtTrainingReleaseSession',
+          '_OrtTrainingRunTrainStep'
+        ]
+      }]
     }
   }, {
     files: ['web/lib/onnxjs/**/*.ts'], rules: {
@@ -160,6 +213,7 @@ module.exports = {
       'import/no-internal-modules': 'off',
       'prefer-arrow/prefer-arrow-functions': 'off',
       'no-param-reassign': 'off',
+      'no-underscore-dangle': 'off',
       'guard-for-in': 'off'
     }
   }, {

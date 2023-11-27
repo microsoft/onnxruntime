@@ -3,9 +3,9 @@
 
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
-import {ComputeContext, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
 
-import {inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, enableShapesUniforms, inputVariable, outputVariable, ShaderHelper} from './common';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length !== 2) {
@@ -47,14 +47,18 @@ const createExpandProgramInfo = (inputs: readonly TensorView[]): ProgramInfo => 
   const outputSize = ShapeUtil.size(outputShape);
 
   const dataType = inputs[0].dataType;
-  const input = inputVariable('input', dataType, inputShape);
-  const output = outputVariable('output', dataType, outputShape);
+  const enableInputShapeUniform = enableShapesUniforms(inputShape.length);
+  const inputShapeOrRank = enableInputShapeUniform ? inputShape.length : inputShape;
+  const input = inputVariable('input', dataType, inputShapeOrRank);
+  const enableOutputShapeUniform = enableShapesUniforms(outputShape.length);
+  const outputShapeOrRank = enableOutputShapeUniform ? outputShape.length : outputShape;
+  const output = outputVariable('output', dataType, outputShapeOrRank);
 
   const getShaderSource = (shaderHelper: ShaderHelper) => `
   const inputShape = ${input.indices(...inputShape)};
-  ${shaderHelper.declareVariables(input, output)}
+  ${shaderHelper.registerUniform('vec_size', 'u32').declareVariables(input, output)}
   ${shaderHelper.mainStart()}
-  ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
+  ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.vec_size')}
     let outputIndices = ${output.offsetToIndices('global_idx')};
     var inputIndices: ${input.type.indices};
     for (var i = 0; i < ${inputShape.length}; i++) {
@@ -68,13 +72,21 @@ const createExpandProgramInfo = (inputs: readonly TensorView[]): ProgramInfo => 
     }
     ${output.setByOffset('global_idx', input.getByIndices('inputIndices'))}
   }`;
+  const programUniforms: ProgramUniform[] = [{type: 'uint32', data: outputSize}];
+  if (enableInputShapeUniform) {
+    programUniforms.push(...createTensorShapeVariables(inputShape));
+  }
+  if (enableOutputShapeUniform) {
+    programUniforms.push(...createTensorShapeVariables(outputShape));
+  }
   return {
     name: 'Expand',
-    shaderCache: {hint: `${outputShape}`},
+    shaderCache: {hint: `${outputShape}`, inputDependencies: [enableInputShapeUniform ? 'rank' : 'dims']},
     getShaderSource,
     getRunData: () => ({
       outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
-      dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
+      dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
+      programUniforms
     })
   };
 };

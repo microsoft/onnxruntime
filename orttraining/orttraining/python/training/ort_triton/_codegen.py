@@ -52,7 +52,8 @@ class TritonCodegen(NodeVisitor):
 
     def _get_elementwise_offset_mask(self, offset_calc: OffsetCalculator, arg_name: str) -> Tuple[str, str]:
         if offset_calc.is_x_reduced(arg_name):
-            return "", ""
+            # Scalar.
+            return "tl.full([1], 0, tl.int32)", ""
         if offset_calc.is_same_x_shape(arg_name):
             return "xindex", "xmask" if offset_calc.requires_x_mask else ""
         strides = offset_calc.get_input_strides(arg_name)
@@ -88,13 +89,16 @@ class TritonCodegen(NodeVisitor):
             if offset_calc.requires_r_mask:
                 mask_strs.append("rmask")
 
+        # If both is_x_reduced and is_r_reduced are True, it's scalar.
+        if len(offset_strs) == 0:
+            offset_strs.append("tl.full([1, 1], 0, tl.int32)")
         return " + ".join(offset_strs), " & ".join(mask_strs)
 
-    def _get_offset_mask(self, node: OffsetCalculator, arg_name: str) -> Tuple[str, str]:
+    def _get_offset_mask(self, offset_calc: OffsetCalculator, arg_name: str) -> Tuple[str, str]:
         return (
-            self._get_reduce_offset_mask(node, arg_name)
-            if node.is_reduction
-            else self._get_elementwise_offset_mask(node, arg_name)
+            self._get_reduce_offset_mask(offset_calc, arg_name)
+            if offset_calc.is_reduction
+            else self._get_elementwise_offset_mask(offset_calc, arg_name)
         )
 
     def IONode(self, node: IONode, context: CodegenContext, code_buffer: CodeBuffer, indent: int):  # noqa: N802

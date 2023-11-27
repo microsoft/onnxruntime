@@ -182,7 +182,7 @@ ORT_DEFINE_GET_ATTRS_SPAN_SPECIALIZATION(float, floats)
 ORT_DEFINE_GET_ATTRS_SPAN_SPECIALIZATION(int64_t, ints)
 
 template <typename Impl_t>
-MUST_USE_RESULT Status OpNodeProtoHelper<Impl_t>::GetAttrs(const std::string& name, TensorShapeVector& out) const {
+Status OpNodeProtoHelper<Impl_t>::GetAttrs(const std::string& name, TensorShapeVector& out) const {
   gsl::span<const int64_t> span;
   Status status = this->GetAttrsAsSpan<int64_t>(name, span);
   if (status.IsOK()) {
@@ -193,7 +193,7 @@ MUST_USE_RESULT Status OpNodeProtoHelper<Impl_t>::GetAttrs(const std::string& na
 }
 
 template <typename Impl_t>
-MUST_USE_RESULT Status OpNodeProtoHelper<Impl_t>::GetAttrsStringRefs(
+Status OpNodeProtoHelper<Impl_t>::GetAttrsStringRefs(
     const std::string& name,
     std::vector<std::reference_wrapper<const std::string>>& refs) const {
   const AttributeProto* attr = TryGetAttribute(name);
