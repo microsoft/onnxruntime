@@ -1,36 +1,30 @@
 /**
  * Copyright (c) Microsoft Corporation. All rights reserved.
- *
  * Licensed under the MIT License.
- * See LICENSE file in the project root for details.
- * SPDX-License-Identifier: MIT
+ *
  * Module Name:
  *    matrix_layout.h
  *
  * Abstract:
  *   Utils for simplifying positioning and striding in tensors. Inspired
  *   by CUTLASS, striving for 0 runtime cost while promote safety.
- *    Only supports 2D tensors (matrix) for now.
+ *
+ *   Only supports 2D tensors (matrix) for now.
  */
+
+#pragma once
 
 #include <cstdint>
 #include "core/common/gsl.h"
 
 // TODO!! Already have this in cuda, what about cpu code though?
 #if defined(_MSC_VER)
-#define __forceinline__ __forceinline
+#define ORT_FORCEINLINE __forceinline
 #else
-#define __forceinline__ __attribute__((always_inline)) inline
+#define ORT_FORCEINLINE __attribute__((always_inline)) inline
 #endif
 
 namespace onnxruntime {
-
-//
-// Clang-format doesn't handle __forceinline__ well, it insists on
-// adding extra indentation to the next line, making it very confusing
-// to read. So we turn it off for this file.
-// clang-format off
-//
 
 /**
  * @brief A tuple of integers to represent tensor coordinates
@@ -55,14 +49,14 @@ struct Position {
   Index idx[kRank];
 
  public:
-  __forceinline__ explicit Position(Index value = Index(0)) {
+  ORT_FORCEINLINE explicit Position(Index value = Index(0)) {
     for (int i = 0; i < kRank; ++i) {
       idx[i] = value;
     }
   }
 
   /// Constructs from an array of integers
-  __forceinline__
+  ORT_FORCEINLINE
   Position(Index const (&_idx)[kRank]) {
     for (int i = 0; i < kRank; ++i) {
       idx[i] = _idx[i];
@@ -70,14 +64,14 @@ struct Position {
   }
 
   template <int R, typename I, typename L>
-  __forceinline__
+  ORT_FORCEINLINE
   Position(Position<R, I, L> other) {
     for (int i = 0; i < kRank; ++i) {
       idx[i] = other[i];
     }
   }
 
-  __forceinline__
+  ORT_FORCEINLINE
   Position operator+(Position const& b) const {
     Position c;
     for (int i = 0; i < kRank; ++i) {
@@ -86,7 +80,7 @@ struct Position {
     return c;
   }
 
-  __forceinline__
+  ORT_FORCEINLINE
   Position operator-(Position const& b) const {
     Position c;
     for (int i = 0; i < kRank; ++i) {
@@ -95,7 +89,7 @@ struct Position {
     return c;
   }
 
-  __forceinline__
+  ORT_FORCEINLINE
   Position operator*(Position const& b) const {
     Position c;
     for (int i = 0; i < kRank; ++i) {
@@ -104,7 +98,7 @@ struct Position {
     return c;
   }
 
-  __forceinline__
+  ORT_FORCEINLINE
   Position operator/(Position const& b) const {
     Position c;
     for (int i = 0; i < kRank; ++i) {
@@ -113,7 +107,7 @@ struct Position {
     return c;
   }
 
-  __forceinline__
+  ORT_FORCEINLINE
   Position& operator+=(Position const& b) {
     for (int i = 0; i < kRank; ++i) {
       idx[i] += b.idx[i];
@@ -121,7 +115,7 @@ struct Position {
     return *this;
   }
 
-  __forceinline__
+  ORT_FORCEINLINE
   Position& operator-=(Position const& b) {
     for (int i = 0; i < kRank; ++i) {
       idx[i] -= b.idx[i];
@@ -129,7 +123,7 @@ struct Position {
     return *this;
   }
 
-  __forceinline__
+  ORT_FORCEINLINE
   Position& operator*=(Position const& b) {
     for (int i = 0; i < kRank; ++i) {
       idx[i] *= b.idx[i];
@@ -137,7 +131,7 @@ struct Position {
     return *this;
   }
 
-  __forceinline__
+  ORT_FORCEINLINE
   Position& operator/=(Position const& b) {
     for (int i = 0; i < kRank; ++i) {
       idx[i] /= b.idx[i];
@@ -145,11 +139,11 @@ struct Position {
     return *this;
   }
 
-  __forceinline__ Index& operator[](int dim) { return idx[dim]; }
+  ORT_FORCEINLINE Index& operator[](int dim) { return idx[dim]; }
 
-  __forceinline__ Index const& operator[](int dim) const { return idx[dim]; }
+  ORT_FORCEINLINE Index const& operator[](int dim) const { return idx[dim]; }
 
-  __forceinline__ bool operator==(Position const& b) const {
+  ORT_FORCEINLINE bool operator==(Position const& b) const {
     bool equal = true;
     for (int i = 0; equal && i < kRank; ++i) {
       equal = (idx[i] == b.idx[i]);
@@ -157,17 +151,17 @@ struct Position {
     return equal;
   }
 
-  __forceinline__ bool operator!=(Position const& b) const { return !(*this == b); }
+  ORT_FORCEINLINE bool operator!=(Position const& b) const { return !(*this == b); }
 
-  __forceinline__
+  ORT_FORCEINLINE
   Position& clamp(Position const& max, Position const& min = Position()) {
     for (int i = 0; i < kRank; ++i) {
-      idx[i] = __NV_STD_MAX(__NV_STD_MIN(idx[i], max.idx[i]), min.idx[i]);
+      idx[i] = std::max(std::min(idx[i], max.idx[i]), min.idx[i]);
     }
     return *this;
   }
 
-  __forceinline__
+  ORT_FORCEINLINE
   Index sum() const {
     Index sum_(idx[0]);
     for (int i = 1; i < kRank; ++i) {
@@ -176,7 +170,7 @@ struct Position {
     return sum_;
   }
 
-  __forceinline__
+  ORT_FORCEINLINE
   LongIndex product() const {
     LongIndex product_(idx[0]);
     for (int i = 1; i < kRank; ++i) {
@@ -208,7 +202,7 @@ struct MatrixShape {
   static int const kColumn = Column_;        ///< columns of a matrix
   static int const kCount = Row_ * Column_;  ///< total number of elements in a matrix
 
-  __forceinline__ static Position<2> toCoord() {
+  ORT_FORCEINLINE static Position<2> toCoord() {
     return make_Position(kRow, kColumn);
   }
 };
@@ -232,27 +226,27 @@ class RowMajorLayout {
   Index stride_;
 
  public:
-  __forceinline__
+  ORT_FORCEINLINE
   RowMajorLayout(Index ldm = 0) : stride_(ldm) {}
 
-  __forceinline__ static RowMajorLayout packed(MatCoord const& extent) {
+  ORT_FORCEINLINE static RowMajorLayout packed(MatCoord const& extent) {
     return RowMajorLayout(extent[1]);
   }
 
   /// Returns the offset of a coordinate in linear memory.
   /// Assumes coordinate has convention (row, column)
-  __forceinline__
+  ORT_FORCEINLINE
   LongIndex operator()(MatCoord const& coord) const {
     return LongIndex(coord[0]) * stride_ + coord[1];
   }
 
   /// Inverse of layout function, mapping linear offset to logical coordinate
-  __forceinline__
+  ORT_FORCEINLINE
   MatCoord inverse(LongIndex offset) const {
     return make_Position(Index(offset / stride_), Index(offset % stride_));
   }
 
-  __forceinline__
+  ORT_FORCEINLINE
   Index stride() const {
     return stride_;
   }
@@ -273,27 +267,27 @@ class ColumnMajorLayout {
   Index stride_;
 
  public:
-  __forceinline__
+  ORT_FORCEINLINE
   ColumnMajorLayout(Index ldm = 0) : stride_(ldm) {}
 
-  __forceinline__ static ColumnMajorLayout packed(MatCoord const& extent) {
+  ORT_FORCEINLINE static ColumnMajorLayout packed(MatCoord const& extent) {
     return ColumnMajorLayout(extent[0]);
   }
 
   /// Returns the offset of a coordinate in linear memory.
   /// Assumes coordinate has convention (row, column)
-  __forceinline__
+  ORT_FORCEINLINE
   LongIndex operator()(MatCoord const& coord) const {
     return LongIndex(coord[1]) * LongIndex(stride_) + coord[0];
   }
 
   /// Inverse of layout function, mapping linear offset to logical coordinate
-  __forceinline__
+  ORT_FORCEINLINE
   MatCoord inverse(LongIndex offset) const {
     return make_Position(Index(offset % stride_), Index(offset / stride_));
   }
 
-  __forceinline__
+  ORT_FORCEINLINE
   Index stride() const {
     return stride_;
   }
@@ -352,10 +346,10 @@ class MatrixRef {
   Layout layout_;
 
  public:
-  __forceinline__
+  ORT_FORCEINLINE
   MatrixRef() : data_() {}
 
-  __forceinline__
+  ORT_FORCEINLINE
   MatrixRef(
       gsl::span<Element> const& data,  ///< pointer to start of tensor
       MatCoord const& shape            ///< shape of tensor
@@ -363,7 +357,7 @@ class MatrixRef {
     Expects(data_.size() >= size_t(shape_.product()));
   }
 
-  __forceinline__
+  ORT_FORCEINLINE
   MatrixRef(
       Element* ptr,          ///< pointer to start of tensor
       LongIndex size,        ///< size of tensor in elements
@@ -374,49 +368,49 @@ class MatrixRef {
 
   /// Converting constructor from MatrixRef to non-constant data.
   template <typename _Magic = int>
-  __forceinline__
+  ORT_FORCEINLINE
   MatrixRef(
       NonConstMatrixRef const& ref,  ///< MatrixRef to non-const data
       /// SFINAE trick to avoid creating a copy-constructor when Element_ is already non-const
       _Magic magic = (typename std::enable_if<!IsNonConstRef, _Magic>::type)0
       ) : data_(ref.data()), shape_(ref.shape()), layout_(Layout::packed(ref.shape())) {}
 
-  __forceinline__
+  ORT_FORCEINLINE
   ConstMatrixRef const_ref() const {
     return ConstMatrixRef(data_, shape_);
   }
 
-  __forceinline__
-  NonConstMatrixRef non_const_ref() const {
+  ORT_FORCEINLINE
+  NonConstMatrixRef non_const_ref() {
     return NonConstMatrixRef(
         const_cast<typename std::remove_const<Element>::type*>(data_.data()),
         data_.size(), shape_);
   }
 
   /// Returns true if the MatrixRef is non-null
-  __forceinline__
+  ORT_FORCEINLINE
   bool good() const { return !data_.empty(); }
 
-  __forceinline__
+  ORT_FORCEINLINE
   gsl::span<Element> const& data() const { return data_; }
 
-  __forceinline__
+  ORT_FORCEINLINE
   MatCoord const& shape() const { return shape_; }
 
-  __forceinline__
+  ORT_FORCEINLINE
   Layout& layout() { return layout_; }
 
-  __forceinline__
+  ORT_FORCEINLINE
   Layout layout() const { return layout_; }
 
-  __forceinline__
+  ORT_FORCEINLINE
   Index stride() const { return layout_.stride(); }
 
-  __forceinline__
+  ORT_FORCEINLINE
   Index& stride() { return layout_.stride(); }
 
   /// Computes the offset of an index from the origin of the tensor
-  __forceinline__
+  ORT_FORCEINLINE
   LongIndex offset(MatCoord const& coord) const {
     if constexpr (ExtraBoundsCheck_) {
       Expects(coord[0] >= 0 && coord[0] < shape_[0]);
@@ -426,18 +420,18 @@ class MatrixRef {
   }
 
   /// Returns a reference to the element at a given Coord
-  __forceinline__
+  ORT_FORCEINLINE
   Reference at(MatCoord const& coord) const {
     return data_[offset(coord)];
   }
 
-  __forceinline__
+  ORT_FORCEINLINE
   Reference at(int row, int col) const {
     return data_[offset(make_Position(row, col))];
   }
 
   /// Returns a reference to the element at a given Coord
-  __forceinline__
+  ORT_FORCEINLINE
   Reference operator[](MatCoord const& coord) const {
     return data_[offset(coord)];
   }
@@ -448,7 +442,7 @@ template <
     typename Element,
     typename Layout = RowMajorLayout,
     bool ExtraBoundsCheck = false>
-__forceinline__
+ORT_FORCEINLINE
 MatrixRef<Element, Layout, ExtraBoundsCheck>
 make_MatrixRef(
     Element* ptr,
@@ -461,7 +455,7 @@ template <
     typename Element,
     typename Layout = RowMajorLayout,
     bool ExtraBoundsCheck = false>
-__forceinline__
+ORT_FORCEINLINE
 MatrixRef<Element, Layout, ExtraBoundsCheck>
 make_MatrixRef(
     const gsl::span<Element>& span,
@@ -469,6 +463,5 @@ make_MatrixRef(
   return MatrixRef<Element, Layout, ExtraBoundsCheck>(span, shape);
 }
 
-// clang-format on
 
 }  // namespace onnxruntime

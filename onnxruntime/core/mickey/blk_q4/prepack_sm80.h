@@ -1,5 +1,20 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
+/**
+ * Copyright (c) Microsoft Corporation. All rights reserved.
+ * Licensed under the MIT License.
+ *
+ * Module Name:
+ *    prepack_sm80.h
+ *
+ * Abstract:
+ *    Prepack weights and quantization parameters (scales and offsets) for
+ *    GEMM, where activations are fp16 or bf16, and weights are block-wise
+ *    4b quantized values, specifically for Ampere GPUs.
+ *
+ *    Prepacking enables faster loading of weights and quantization parameters
+ *    into tensor cores, and faster dequantization of weights.
+ *
+ *    Only supports fp16 for now, bfloat16 support will be added later.
+ */
 
 #pragma once
 

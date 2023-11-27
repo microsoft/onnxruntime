@@ -71,7 +71,7 @@ void prepack_quant_scales_ref(
   //    (1,n) quantization blocking
   if constexpr (sizeof(ScaleElementT) == 2 && QuantBlocking::kRow == 1) {
     // In Ampere tensor op, each operand B tile is 8 x 8, in a warp of 32 threads, each thread
-    // holds a fragement of the tile containing 2 elements in the k dimension. Most often we use
+    // holds a fragment of the tile containing 2 elements in the k dimension. Most often we use
     // mma instruction shape of 16x8x16, which means 2 B tiles are stacked in the k dimension,
     // as shown below (T stands for thread):
     // T0, T4, T8, T12
@@ -85,9 +85,9 @@ void prepack_quant_scales_ref(
     //
     // We need to deliver quantization scale and offset elements to the corresponding threads,
     // so we can perform dequantization efficiently. With a column major layout, each thread
-    // needs two seperate loads for a mma instruction, due to the tile fragement layout shown
+    // needs two separate loads for a mma instruction, due to the tile fragment layout shown
     // above. To reduce the number of loads, we rearrange each column as below, so we can use
-    // a single load to load fragements for two tiles:
+    // a single load to load fragments for two tiles:
     // T0        T0
     // T1        T0
     // T2        T1
@@ -132,7 +132,7 @@ void prepack_quant_offsets_ref(
     FAIL() << "Offsets prepack only supported for 16b gemm with (1,n) quantization blocking";
   }
   // In Ampere tensor op, each operand B tile is 8 x 8, in a warp of 32 threads, each thread
-  // holds a fragement of the tile containing 2 elements in the k dimension. Most often we use
+  // holds a fragment of the tile containing 2 elements in the k dimension. Most often we use
   // mma instruction shape of 16x8x16, which means 2 B tiles are stacked in the k dimension,
   // as shown below (T stands for thread):
   // T0, T4, T8, T12
@@ -146,9 +146,9 @@ void prepack_quant_offsets_ref(
   //
   // We need to deliver quantization scale and offset elements to the corresponding threads,
   // so we can perform dequantization efficiently. With a column major layout, each thread
-  // needs two seperate loads for a mma instruction, due to the tile fragement layout shown
+  // needs two separate loads for a mma instruction, due to the tile fragment layout shown
   // above. To reduce the number of loads, we rearrange each column as below, so we can use
-  // a single load to load fragements for two tiles:
+  // a single load to load fragments for two tiles:
   // T0        T0
   // T1        T0
   // T2        T1
