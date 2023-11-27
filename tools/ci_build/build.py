@@ -1781,7 +1781,7 @@ def run_ios_tests(args, source_dir, config, cwd):
                 "--framework_info_file",
                 framework_info_file,
                 "--variant",
-                "Mobile"
+                "Mobile",
             ],
             cwd=cwd,
         )
@@ -1795,7 +1795,7 @@ def run_ios_tests(args, source_dir, config, cwd):
                 "--framework_info_file",
                 framework_info_file,
                 "--variant",
-                "Mobile"
+                "Mobile",
             ],
             cwd=cwd,
         )
