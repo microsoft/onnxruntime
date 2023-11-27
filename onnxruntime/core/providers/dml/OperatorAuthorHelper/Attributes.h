@@ -23,7 +23,6 @@ namespace AttrName
     static constexpr const char* BlockSize = "blocksize";
     static constexpr const char* Border = "border";
     static constexpr const char* Broadcast = "broadcast";
-    static constexpr const char* ChannelsLast = "channels_last";
     static constexpr const char* CeilMode = "ceil_mode";
     static constexpr const char* ChannelsLast = "channels_last";
     static constexpr const char* Clip = "clip";
