@@ -330,11 +330,23 @@ TEST(SequenceOpsTest, SequenceConstructPositive) {
 
 // SplitToSequence
 template <typename T>
-static std::vector<T> GetConsequtiveVector(T start, int num) {
+static std::vector<T> GetConsequtiveVector(T start, size_t num) {
   std::vector<T> inputv(num);
   std::iota(inputv.begin(), inputv.end(), start);
   return inputv;
 }
+
+template<>
+std::vector<MLFloat16> GetConsequtiveVector<MLFloat16>(MLFloat16 start, size_t num) {
+  std::vector<MLFloat16> inputv;
+  inputv.reserve(num);
+  float start_f = start.ToFloat();
+  for (size_t i = 0; i < num; ++i) {
+    inputv.push_back(MLFloat16{start_f + static_cast<float>(i)});
+  }
+  return inputv;
+}
+
 
 TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitFloat) {
   OpTester test("SplitToSequence", 11);
@@ -346,6 +358,29 @@ TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitFloat) {
   test.AddSeqOutput("S2", output);
   test.Run();
 }
+
+TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitMLFloat16) {
+  OpTester test("SplitToSequence", 11);
+  test.AddInput<MLFloat16>("input", {4, 2}, GetConsequtiveVector<MLFloat16>(MLFloat16::One, 8));
+  test.AddInput<int64_t>("split", {1, 2}, {2, 2});
+  SeqTensors<MLFloat16> output;
+
+  std::vector<MLFloat16> tensor_1;
+  const auto data_1 = {1.f, 2.f, 3.f, 4.f};
+  for (auto f : data_1)
+    tensor_1.push_back(MLFloat16{f});
+
+  std::vector<MLFloat16> tensor_2;
+  const auto data_2 = {5.f, 6.f, 7.f, 8.f};
+  for (auto f : data_2)
+    tensor_2.push_back(MLFloat16{f});
+
+  output.AddTensor({2, 2}, tensor_1);
+  output.AddTensor({2, 2}, tensor_2);
+  test.AddSeqOutput("S2", output);
+  test.Run();
+}
+
 
 TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitLong) {
   OpTester test("SplitToSequence", 11);

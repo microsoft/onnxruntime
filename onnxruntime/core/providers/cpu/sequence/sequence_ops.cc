@@ -337,7 +337,7 @@ Status SequenceConstruct::Compute(OpKernelContext* context) const {
 namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, SplitToSequence, Input, 0,
-    float, double, int32_t, int64_t, std::string);
+    float, MLFloat16, double, int32_t, int64_t, std::string);
 }  // namespace op_kernel_type_control
 
 namespace {
@@ -370,6 +370,8 @@ Status SplitToSequence::Compute(OpKernelContext* context) const {
 
   if (input.IsDataType<float>())
     status = ComputeImpl<float>(*context, input, p_split_input);
+  else if (input.IsDataType<MLFloat16>())
+    status = ComputeImpl<MLFloat16>(*context, input, p_split_input);
   else if (input.IsDataType<double>())
     status = ComputeImpl<double>(*context, input, p_split_input);
   else if (input.IsDataType<int32_t>())
