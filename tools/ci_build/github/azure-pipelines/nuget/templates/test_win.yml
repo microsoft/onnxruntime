@@ -8,6 +8,7 @@ parameters:
   # the parent pipeline.
   TestDataArtifactSuffix: ''
   Skipx86Tests: 'false'
+  CudaVersion: ''
 
 stages:
 - stage: NuGet_Test_Win_${{ parameters.StageSuffix }}
@@ -27,6 +28,10 @@ stages:
       value: 'ON'
     - name: runCodesignValidationInjection
       value: false
+    - name: CUDA_MODULE_LOADINGL
+      value: 'LAZY'
+    - name: GRADLE_OPTS
+      value: '-Dorg.gradle.daemon=false'
 
     steps:
     - task: UsePythonVersion@0
@@ -39,13 +44,12 @@ stages:
       displayName: Use Nuget 5.7.0
       inputs:
         versionSpec: 5.7.0
-
-    - task: BatchScript@1
-      displayName: 'setup env'
-      inputs:
-        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_gpu.bat'
-        modifyEnvironment: true
-        workingFolder: '$(Build.BinariesDirectory)'
+    - ${{ if ne( parameters.CudaVersion, '') }}:
+      - template: ../../templates/jobs/download_win_gpu_library.yml
+        parameters:
+          DownloadCUDA: true
+          DownloadTRT: true
+          CudaVersion: ${{ parameters.CudaVersion }}
 
     - task: BatchScript@1
       displayName: 'Setup Visual Studio env vars'
