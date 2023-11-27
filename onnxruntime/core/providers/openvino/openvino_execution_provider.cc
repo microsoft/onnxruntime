@@ -23,16 +23,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   openvino_ep::BackendManager::GetGlobalContext().context = info.context_;
   openvino_ep::BackendManager::GetGlobalContext().enable_opencl_throttling = info.enable_opencl_throttling_;
   openvino_ep::BackendManager::GetGlobalContext().enable_dynamic_shapes = info.enable_dynamic_shapes_;
-
-  if (static_cast<int>(info.num_of_threads_) <= 0) {
-    openvino_ep::BackendManager::GetGlobalContext().num_of_threads = 8;
-  } else if (static_cast<int>(info.num_of_threads_) > 8) {
-    std::string err_msg = std::string("\n [ERROR] num_of_threads configured during runtime is: ") +
-                          std::to_string(info.num_of_threads_) + "\nnum_of_threads configured should be >0 and <=8.\n";
-    ORT_THROW(err_msg);
-  } else {
-    openvino_ep::BackendManager::GetGlobalContext().num_of_threads = info.num_of_threads_;
-  }
+  openvino_ep::BackendManager::GetGlobalContext().num_of_threads = info.num_of_threads_;
   // to check if target device is available
   // using ie_core capability GetAvailableDevices to fetch list of devices plugged in
   if (info.cache_dir_.empty()) {
