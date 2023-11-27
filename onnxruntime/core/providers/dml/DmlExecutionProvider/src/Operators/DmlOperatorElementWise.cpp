@@ -479,17 +479,37 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 2);
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
 
-        Initialize(kernelInfo, std::nullopt, std::nullopt, kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0));
+        auto constExpTensor = kernelInfo.TryGetConstantInputTensor(1);
+        if (constExpTensor && constExpTensor->GetTotalElementCount() == 1)
+        {
+            std::vector<std::optional<uint32_t>> kernelInputIndices = {0};
 
-        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
-        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+            Initialize(kernelInfo, kernelInputIndices, std::nullopt, kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0));
 
-        DML_ELEMENT_WISE_POW_OPERATOR_DESC opDesc = {};
-        opDesc.InputTensor = &inputDescs[0];
-        opDesc.ExponentTensor = &inputDescs[1];
-        opDesc.OutputTensor = &outputDescs[0];
+            std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+            std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs(); 
 
-        SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_POW, &opDesc}, kernelInfo);
+            DML_ELEMENT_WISE_CONSTANT_POW_OPERATOR_DESC opDesc = {};
+            opDesc.InputTensor = &inputDescs[0];
+            opDesc.OutputTensor = &outputDescs[0];
+            opDesc.Exponent = static_cast<float>(ReadScalarTensorCastToFloat64(*constExpTensor));
+
+            SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_CONSTANT_POW, &opDesc}, kernelInfo);
+        }
+        else
+        {        
+            Initialize(kernelInfo, std::nullopt, std::nullopt, kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0));
+
+            std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+            std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs(); 
+
+            DML_ELEMENT_WISE_POW_OPERATOR_DESC opDesc = {};
+            opDesc.InputTensor = &inputDescs[0];
+            opDesc.ExponentTensor = &inputDescs[1];
+            opDesc.OutputTensor = &outputDescs[0];
+
+            SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_POW, &opDesc}, kernelInfo);
+        }
     }
 };
 
@@ -565,6 +585,9 @@ public:
         opDesc.ScaleTensor = &inputDescs[1];
         opDesc.ZeroPointTensor = &inputDescs[2];
         opDesc.OutputTensor = &outputDescs[0];
+        
+        TryConvertTensorToBroadcastScalar(kernelInfo, opDesc.ScaleTensor,     1);
+        TryConvertTensorToBroadcastScalar(kernelInfo, opDesc.ZeroPointTensor, 2);
 
         SetDmlOperatorDesc({ApiTraits::OperatorDescTraits<TOperatorDesc>::Type, &opDesc}, kernelInfo);
     }

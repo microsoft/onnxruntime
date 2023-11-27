@@ -4,6 +4,7 @@
 #pragma once
 
 #include "MLOperatorAuthorImpl.h"
+#include "ExecutionProvider.h"
 
 namespace Dml
 {
@@ -27,7 +28,7 @@ namespace Dml
 
         struct NodeInfo
         {
-            Microsoft::WRL::ComPtr<IDMLOperator> op;
+            std::variant<Microsoft::WRL::ComPtr<IDMLOperator>, std::vector<uint8_t>> nodeDef;
             std::string name;
         };
 
@@ -48,6 +49,6 @@ namespace Dml
             const onnxruntime::IndexedSubGraph& indexedSubGraph,
             const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
             IDMLDevice* device,
-            const void* executionHandle);
+            const ExecutionProviderImpl* executionHandle);
     }
 }

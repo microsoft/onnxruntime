@@ -116,7 +116,7 @@ namespace Dml
         ORT_TRY
         {
         ComPtr<IUnknown> allocation;
-        allocation.Attach(static_cast<IUnknown* >(m_allocator->Alloc(size)));
+        allocation.Attach(static_cast<IUnknown* >(m_allocator->Alloc(size, roundingMode)));
 
         const auto* allocInfo = m_allocator->DecodeDataHandle(allocation.Get());
 
@@ -181,6 +181,31 @@ namespace Dml
         }
 
         m_isMcdmDevice = (featureLevels.MaxSupportedFeatureLevel == D3D_FEATURE_LEVEL_1_0_CORE_PRIVATE);
+        m_areCustomHeapsSupported = !m_isMcdmDevice;
+
+        if (m_isMcdmDevice) {
+
+            // TODO: Ingest updated header file
+            typedef struct D3D12_FEATURE_DATA_D3D12_OPTIONS19
+            {
+                BOOL MismatchingOutputDimensionsSupported;
+                UINT SupportedSampleCountsWithNoOutputs;
+                BOOL PointSamplingAddressesNeverRoundUp;
+                BOOL RasterizerDesc2Supported;
+                BOOL NarrowQuadrilateralLinesSupported;
+                BOOL AnisoFilterWithPointMipSupported;
+                UINT MaxSamplerDescriptorHeapSize;
+                UINT MaxSamplerDescriptorHeapSizeWithStaticSamplers;
+                UINT MaxViewDescriptorHeapSize;
+                _Out_  BOOL ComputeOnlyCustomHeapSupported;
+            } 	D3D12_FEATURE_DATA_D3D12_OPTIONS19;
+
+            D3D12_FEATURE_DATA_D3D12_OPTIONS19 options19 = {};
+
+            // The call may fail in which case the default value is false
+            d3d12Device->CheckFeatureSupport((D3D12_FEATURE) 48 /*D3D12_FEATURE_D3D12_OPTIONS19*/, &options19, sizeof(options19));    
+            m_areCustomHeapsSupported = options19.ComputeOnlyCustomHeapSupported;
+        }
 
         m_context = std::make_shared<ExecutionContext>(m_d3d12Device.Get(), m_dmlDevice.Get(), queue);
 
@@ -204,7 +229,6 @@ namespace Dml
                 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                 std::make_unique<DmlCommittedResourceAllocator>(m_d3d12Device.Get()));
-            m_allocator->SetDefaultRoundingMode(m_defaultRoundingMode);   // TODO(leca): REVIEW: the original code is able to set roudingMode multiple times during alloc's life time. Double check this case is not happening
             m_context->SetAllocator(m_allocator);
             // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
             m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
@@ -963,11 +987,6 @@ namespace Dml
         m_context->Flush();
     }
 
-    void ExecutionProviderImpl::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
-    {
-        m_defaultRoundingMode = roundingMode;
-    }
-
     void ExecutionProviderImpl::ReleaseCompletedReferences()
     {
          m_context->ReleaseCompletedReferences();
@@ -1094,6 +1113,11 @@ namespace Dml
         return m_isMcdmDevice;
     }
 
+    bool __stdcall ExecutionProviderImpl::CustomHeapsSupported() const noexcept
+    {
+        return m_areCustomHeapsSupported;
+    }
+
     bool __stdcall ExecutionProviderImpl::MetacommandsEnabled() const noexcept
     {
         return m_areMetacommandsEnabled;
@@ -1125,6 +1149,10 @@ namespace Dml
         m_context->ReleaseCompletedReferences();
         m_uploadHeap->Trim();
 
+        // Allocations after this point are potentially transient and their sizes are
+        // rounded to enable pooling.
+        m_allocator->SetDefaultRoundingMode(AllocatorRoundingMode::Enabled);
+
         return onnxruntime::common::Status::OK();
     }
 
@@ -1146,12 +1174,6 @@ namespace Dml
     {
         ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
         dmlexecutionprovider->Flush();
-    }
-
-    void SetDefaultRoundingMode(onnxruntime::IExecutionProvider* provider, AllocatorRoundingMode roundingMode)
-    {
-        ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
-        dmlexecutionprovider->SetDefaultRoundingMode(roundingMode);
     }
 
     void ReleaseCompletedReferences(onnxruntime::IExecutionProvider * provider)

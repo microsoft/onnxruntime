@@ -62,10 +62,9 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
   &winmla::SessionGetNamedDimensionsOverrides,
 
     // Dml methods (TODO need to figure out how these need to move to session somehow...)
-  &winmla::DmlExecutionProviderSetDefaultRoundingMode,
-  &winmla::DmlExecutionProviderFlushContext,
-  &winmla::DmlExecutionProviderReleaseCompletedReferences,
-  &winmla::DmlCopyTensor,
+    &winmla::DmlExecutionProviderFlushContext,
+    &winmla::DmlExecutionProviderReleaseCompletedReferences,
+    &winmla::DmlCopyTensor,
 
   &winmla::GetProviderMemoryInfo,
   &winmla::GetProviderAllocator,

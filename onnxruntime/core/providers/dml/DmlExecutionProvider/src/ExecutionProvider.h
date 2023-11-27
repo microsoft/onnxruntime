@@ -126,8 +126,6 @@ namespace Dml
         STDMETHOD_(D3D12_COMMAND_LIST_TYPE, GetCommandListTypeForQueue)() const override;
         STDMETHOD_(void, Flush)() const override;
 
-        void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
-
         // Waits for flushed work, discards unflushed work, and discards associated references to
         // prevent circular references.  Must be the last call on the object before destruction.
         void Close() override;
@@ -150,6 +148,7 @@ namespace Dml
         }
 
         STDMETHOD_(bool, IsMcdmDevice)() const noexcept final;
+        STDMETHOD_(bool, CustomHeapsSupported)() const noexcept final;        
 
         STDMETHOD_(bool, MetacommandsEnabled)() const noexcept final;
         std::shared_ptr<onnxruntime::IAllocator> GetGpuAllocator();
@@ -185,6 +184,7 @@ namespace Dml
         ComPtr<ID3D12Device> m_d3d12Device;
         ComPtr<IDMLDevice> m_dmlDevice;
         bool m_isMcdmDevice = false;
+        bool m_areCustomHeapsSupported = false;
         bool m_areMetacommandsEnabled = true;
         bool m_native16BitShaderOpsSupported = false;
         std::shared_ptr<ExecutionContext> m_context;
@@ -198,7 +198,6 @@ namespace Dml
         bool m_closed = false;
         mutable std::chrono::time_point<std::chrono::steady_clock> m_lastUploadFlushTime;
         static constexpr std::chrono::milliseconds m_batchFlushInterval = std::chrono::milliseconds(10);
-        AllocatorRoundingMode m_defaultRoundingMode = AllocatorRoundingMode::Enabled;
     };
 
     class DataTransfer : public onnxruntime::IDataTransfer
@@ -285,11 +284,6 @@ namespace Dml
         void Flush()
         {
             return m_impl->Flush();
-        }
-
-        void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
-        {
-            return m_impl->SetDefaultRoundingMode(roundingMode);
         }
 
         void ReleaseCompletedReferences()

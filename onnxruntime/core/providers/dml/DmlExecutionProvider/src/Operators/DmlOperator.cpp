@@ -6,6 +6,9 @@
 
 namespace Dml
 {
+
+    /*static*/ const uint32_t DmlOperator::zeroArray[8] = {};
+
     DmlOperator::DmlOperator(const MLOperatorKernelCreationContext& kernelInfo)
     {
         ML_CHECK_HRESULT(kernelInfo.GetExecutionInterface().As(&m_executionProvider));
@@ -37,10 +40,6 @@ namespace Dml
                 return;
             }
         }
-
-        // Create and compile the operator.
-        ComPtr<IDMLOperator> dmlOperator;
-        ORT_THROW_IF_FAILED(m_dmlDevice->CreateOperator(&operatorDesc, IID_PPV_ARGS(&dmlOperator)));
 
         ComPtr<IMLOperatorKernelCreationContextPrivate> contextPrivate;
         ORT_THROW_IF_FAILED(kernelInfo.GetInterface()->QueryInterface(contextPrivate.GetAddressOf()));
@@ -87,6 +86,20 @@ namespace Dml
         }
         else
         {
+            auto operatorDescCopy = operatorDesc;
+
+            // TODO: Change as new header is ingested
+            if (operatorDescCopy.Type == (DML_OPERATOR_TYPE) DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING)
+                operatorDescCopy.Type = (DML_OPERATOR_TYPE) 169;
+                
+            // TODO: Change as new header is ingested
+            if (operatorDescCopy.Type == (DML_OPERATOR_TYPE) DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT)
+                operatorDescCopy.Type = (DML_OPERATOR_TYPE) 170;
+
+            // Create and compile the operator.
+            ComPtr<IDMLOperator> dmlOperator;
+            ORT_THROW_IF_FAILED(m_dmlDevice->CreateOperator(&operatorDescCopy, IID_PPV_ARGS(&dmlOperator)));
+
             DML_EXECUTION_FLAGS executionFlags = GetExecutionFlags();
             ORT_THROW_IF_FAILED(m_dmlDevice->CompileOperator(dmlOperator.Get(), executionFlags, IID_PPV_ARGS(&m_compiledOperator)));
 
@@ -792,8 +805,18 @@ namespace Dml
         graphDesc.NodeCount = operatorGraphDesc.nodeCount;
         for (size_t i = 0; i < graphDesc.NodeCount; ++i)
         {
+            DML_OPERATOR_DESC opDesc = *operatorGraphDesc.nodesAsOpDesc[i];
+            
+            // TODO: Change as new header is ingested
+            if (opDesc.Type == (DML_OPERATOR_TYPE) DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING)
+                opDesc.Type = (DML_OPERATOR_TYPE) 169;
+                
+            // TODO: Change as new header is ingested
+            if (opDesc.Type == (DML_OPERATOR_TYPE) DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT)
+                opDesc.Type = (DML_OPERATOR_TYPE) 170;
+
             // Create the operator.
-            ORT_THROW_IF_FAILED(m_dmlDevice->CreateOperator(operatorGraphDesc.nodesAsOpDesc[i], IID_PPV_ARGS(&dmlOperators[i])));
+            ORT_THROW_IF_FAILED(m_dmlDevice->CreateOperator(&opDesc, IID_PPV_ARGS(&dmlOperators[i])));
             dmlOperatorGraphNodes[i] = DML_OPERATOR_GRAPH_NODE_DESC{dmlOperators[i].Get()};
             dmlGraphNodes[i] = DML_GRAPH_NODE_DESC{DML_GRAPH_NODE_TYPE_OPERATOR, &dmlOperatorGraphNodes[i]};
         }
@@ -822,6 +845,82 @@ namespace Dml
             dmlIntermediateEdges[i] = DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_INTERMEDIATE, &operatorGraphDesc.intermediateEdges[i]};
         }
         graphDesc.IntermediateEdges = dmlIntermediateEdges.data();
+    }
+
+    /*static*/ void DmlOperator::TryConvertTensorToBroadcastScalar(
+        const MLOperatorKernelCreationContext& kernelInfo, 
+        const DML_TENSOR_DESC* tensor, 
+        uint32_t kernelInputIndex)
+    {
+        if (!tensor)
+        {
+            return;
+        }
+
+        auto constExpTensor = kernelInfo.TryGetConstantInputTensor(kernelInputIndex);
+        if (!constExpTensor)
+        {
+            return;
+        }
+        
+        uint32_t totalKernelInputElementCount = constExpTensor->GetTotalElementCount();
+        if (totalKernelInputElementCount <= 1)
+        {
+            return;
+        }        
+        
+        uint32_t elementSize = 0;
+
+        switch (constExpTensor->GetTensorDataType())
+        {
+        case MLOperatorTensorDataType::UInt8:
+        case MLOperatorTensorDataType::Int8:
+            elementSize = 1;
+            break;
+
+        case MLOperatorTensorDataType::Float16:
+        case MLOperatorTensorDataType::UInt16:
+        case MLOperatorTensorDataType::Int16:
+            elementSize = 2;
+            break;
+            
+        case MLOperatorTensorDataType::/*Float32*/Float:
+        case MLOperatorTensorDataType::UInt32:
+        case MLOperatorTensorDataType::Int32:
+            elementSize = 4;
+            break;
+
+        case MLOperatorTensorDataType::/*Float64*/Double:
+        case MLOperatorTensorDataType::UInt64:
+        case MLOperatorTensorDataType::Int64:
+            elementSize = 8;
+            break;
+
+        default:
+            return;
+        }
+
+        const std::uint8_t* byteData = static_cast<const std::uint8_t*>(constExpTensor->GetByteData());
+
+        assert(tensor->Type == DML_TENSOR_TYPE_BUFFER);
+        auto *bufferTensorDesc = const_cast<DML_BUFFER_TENSOR_DESC*>(static_cast<const DML_BUFFER_TENSOR_DESC*>(tensor->Desc));
+
+        for (size_t i = 1; i < totalKernelInputElementCount; ++i)
+        {
+            if (memcmp(byteData, byteData + i * elementSize, elementSize))
+            {
+                return;
+            }
+        }
+
+        if (bufferTensorDesc->DimensionCount > sizeof(zeroArray) / sizeof(zeroArray[0]))
+        {
+            assert(false);
+            return;
+        }
+
+        bufferTensorDesc->Strides = zeroArray;
+        bufferTensorDesc->TotalTensorSizeInBytes = (elementSize + 3) & ~3;
     }
 
 } // namespace Dml

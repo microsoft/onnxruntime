@@ -179,12 +179,16 @@ class BaseSelector : public NodeSelector {
 
   // We std::move SelectorActionRegistry into the SelectorActionTransformer so this class needs to have a move ctor
   BaseSelector(BaseSelector&& rhs) noexcept
-      : node_group_selector_{std::move(rhs.node_group_selector_)} {
+      : node_group_selector_{std::move(rhs.node_group_selector_)},
+        compatible_providers_{std::move(rhs.compatible_providers_)} {
   }
 
  protected:
-  BaseSelector(std::unique_ptr<NodeGroupSelector> node_group_selector)
-      : node_group_selector_{std::move(node_group_selector)} {}
+  BaseSelector(std::unique_ptr<NodeGroupSelector> node_group_selector, std::vector<const char*> compatible_providers = {})
+      : node_group_selector_{std::move(node_group_selector)}
+    {
+        compatible_providers_.assign(compatible_providers.begin(), compatible_providers.end());
+    }
 
   // override if you need to adjust the values in NodesToOptimize.
   // e.g. add entries for missing optional DQ inputs or set num_inputs to handle variadic inputs
@@ -193,6 +197,7 @@ class BaseSelector : public NodeSelector {
 
  private:
   std::unique_ptr<NodeGroupSelector> node_group_selector_;
+  std::vector<std::string> compatible_providers_;
 };
 
 class DropQDQNodesSelector : public BaseSelector {
@@ -207,12 +212,12 @@ class DropDQNodesSelector : public BaseSelector {
 
 class UnarySelector : public BaseSelector {
  public:
-  UnarySelector() : BaseSelector(std::make_unique<UnaryNodeGroupSelector>()) {}
+  UnarySelector(std::vector<const char*> compatible_providers) : BaseSelector(std::make_unique<UnaryNodeGroupSelector>(), compatible_providers) {}
 };
 
 class BinarySelector : public BaseSelector {
  public:
-  BinarySelector() : BaseSelector(std::make_unique<BinaryNodeGroupSelector>()) {}
+  BinarySelector(std::vector<const char*> compatible_providers = {}) : BaseSelector(std::make_unique<BinaryNodeGroupSelector>(), compatible_providers) {}
 };
 
 // Variadic DQ nodes -> node -> Q
@@ -240,7 +245,7 @@ class ConvSelector : public BaseSelector {
 };
 class WhereSelector : public BaseSelector {
  public:
-  WhereSelector() : BaseSelector(std::make_unique<WhereNodeGroupSelector>()) {}
+  WhereSelector(std::vector<const char*> compatible_providers = {}) : BaseSelector(std::make_unique<WhereNodeGroupSelector>(), compatible_providers) {}
 };
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
 class MatMulSelector : public BaseSelector {
@@ -253,8 +258,8 @@ class MatMulSelector : public BaseSelector {
 // Output: optional Q node for Y
 class GemmSelector : public BaseSelector {
  public:
-  GemmSelector()
-      : BaseSelector(std::make_unique<GemmNodeGroupSelector>()) {}
+  GemmSelector(std::vector<const char*> compatible_providers = {})
+      : BaseSelector(std::make_unique<GemmNodeGroupSelector>(), compatible_providers) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };

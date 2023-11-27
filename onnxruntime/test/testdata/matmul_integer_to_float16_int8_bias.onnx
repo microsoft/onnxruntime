@@ -8,7 +8,8 @@
 multiplier	mul_right"Mul
 A
 matmul_output_int32matmul_output_floatcast"Cast*	
-to 
+to
+ 
 E
 matmul_output_float
 
@@ -29,16 +30,20 @@ mul_bottom"Mul
 NZ
 a_scale
 
-
+
+
 Z
 b_scale
-	
+	
+
 CZ
 bias
-	
+	
+
 Nb
 Y
-
+
+
 
 M
 NB

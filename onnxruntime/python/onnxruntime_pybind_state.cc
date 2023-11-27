@@ -873,18 +873,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kDmlExecutionProvider) {
 #ifdef USE_DML
-    int device_id = 0;
-    auto it = provider_options_map.find(type);
-    if (it != provider_options_map.end()) {
-      for (auto option : it->second) {
-        if (option.first == "device_id") {
-          if (!option.second.empty()) {
-            device_id = std::stoi(option.second);
-          }
-        }
-      }
-    }
-    return onnxruntime::DMLProviderFactoryCreator::Create(device_id)->CreateProvider();
+    auto cit = provider_options_map.find(type);
+    return onnxruntime::DMLProviderFactoryCreator::CreateFromProviderOptions(
+               cit == provider_options_map.end() ? ProviderOptions{} : cit->second)
+        ->CreateProvider();
 #endif
   } else if (type == kNnapiExecutionProvider) {
 #if defined(USE_NNAPI)

@@ -25,6 +25,7 @@ namespace AttrName
     static constexpr const char* Broadcast = "broadcast";
     static constexpr const char* ChannelsLast = "channels_last";
     static constexpr const char* CeilMode = "ceil_mode";
+    static constexpr const char* ChannelsLast = "channels_last";
     static constexpr const char* Clip = "clip";
     static constexpr const char* CoordinateTransformationMode = "coordinate_transformation_mode";
     static constexpr const char* CountIncludePad = "count_include_pad";
@@ -107,6 +108,7 @@ namespace AttrName
     static constexpr const char* QkvHiddenSizes = "qkv_hidden_sizes";
     static constexpr const char* Unidirectional = "unidirectional";
     static constexpr const char* NumHeads = "num_heads";
+    static constexpr const char* PastPresentShareBuffer = "past_present_share_buffer";
 
     static constexpr const char* FusedActivation = "fused_activation";
     static constexpr const char* FusedActivationDomain = "fused_activation_domain";
