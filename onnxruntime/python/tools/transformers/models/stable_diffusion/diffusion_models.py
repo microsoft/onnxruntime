@@ -90,6 +90,8 @@ class PipelineInfo:
         use_vae=False,
         min_image_size=256,
         max_image_size=1024,
+        use_fp16_vae=True,
+        use_lcm=False,
     ):
         self.version = version
         self._is_inpaint = is_inpaint
@@ -97,7 +99,10 @@ class PipelineInfo:
         self._use_vae = use_vae
         self._min_image_size = min_image_size
         self._max_image_size = max_image_size
+        self._use_fp16_vae = use_fp16_vae
+        self._use_lcm = use_lcm
         if is_refiner:
+            assert not use_lcm
             assert self.is_xl()
 
     def is_inpaint(self) -> bool:
@@ -126,6 +131,16 @@ class PipelineInfo:
 
     def vae_scaling_factor(self) -> float:
         return 0.13025 if self.is_xl() else 0.18215
+
+    def vae_torch_fallback(self) -> bool:
+        return self.is_xl() and not self._use_fp16_vae
+
+    def custom_fp16_vae(self) -> Optional[str]:
+        # For SD XL, use a VAE that fine-tuned to run in fp16 precision without generating NaNs
+        return "madebyollin/sdxl-vae-fp16-fix" if self._use_fp16_vae and self.is_xl() else None
+
+    def custom_unet(self) -> Optional[str]:
+        return "latent-consistency/lcm-sdxl" if self._use_lcm and self.is_xl_base() else None
 
     @staticmethod
     def supported_versions(is_xl: bool):
@@ -201,6 +216,13 @@ class PipelineInfo:
 
     def max_image_size(self):
         return self._max_image_size
+
+    def default_image_size(self):
+        if self.is_xl():
+            return 1024
+        if self.version in ("2.0", "2.1"):
+            return 768
+        return 512
 
 
 class BaseModel:
@@ -463,7 +485,7 @@ class CLIP(BaseModel):
 
         assert self.clip_skip >= 0 and self.clip_skip < hidden_layers
 
-        node_output_name = "/text_model/encoder/layers.{}/Add_1_output_0".format(hidden_layers - 1 - self.clip_skip)
+        node_output_name = f"/text_model/encoder/layers.{hidden_layers - 1 - self.clip_skip}/Add_1_output_0"
 
         # search the name in outputs of all node
         found = False
@@ -714,8 +736,22 @@ class UNetXL(BaseModel):
         self.unet_dim = unet_dim
         self.time_dim = time_dim
 
+        self.custom_unet = pipeline_info.custom_unet()
+        self.do_classifier_free_guidance = not (self.custom_unet and "lcm" in self.custom_unet)
+        self.batch_multiplier = 2 if self.do_classifier_free_guidance else 1
+
     def load_model(self, framework_model_dir, hf_token, subfolder="unet"):
         options = {"variant": "fp16", "torch_dtype": torch.float16} if self.fp16 else {}
+
+        if self.custom_unet:
+            model_dir = os.path.join(framework_model_dir, self.custom_unet, subfolder)
+            if not os.path.exists(model_dir):
+                unet = UNet2DConditionModel.from_pretrained(self.custom_unet, **options)
+                unet.save_pretrained(model_dir)
+            else:
+                unet = UNet2DConditionModel.from_pretrained(model_dir, **options)
+            return unet.to(self.device)
+
         return self.from_pretrained(UNet2DConditionModel, framework_model_dir, hf_token, subfolder, **options)
 
     def get_input_names(self):
@@ -725,12 +761,20 @@ class UNetXL(BaseModel):
         return ["latent"]
 
     def get_dynamic_axes(self):
+        if self.do_classifier_free_guidance:
+            return {
+                "sample": {0: "2B", 2: "H", 3: "W"},
+                "encoder_hidden_states": {0: "2B"},
+                "latent": {0: "2B", 2: "H", 3: "W"},
+                "text_embeds": {0: "2B"},
+                "time_ids": {0: "2B"},
+            }
         return {
-            "sample": {0: "2B", 2: "H", 3: "W"},
-            "encoder_hidden_states": {0: "2B"},
-            "latent": {0: "2B", 2: "H", 3: "W"},
-            "text_embeds": {0: "2B"},
-            "time_ids": {0: "2B"},
+            "sample": {0: "B", 2: "H", 3: "W"},
+            "encoder_hidden_states": {0: "B"},
+            "latent": {0: "B", 2: "H", 3: "W"},
+            "text_embeds": {0: "B"},
+            "time_ids": {0: "B"},
         }
 
     def get_input_profile(self, batch_size, image_height, image_width, static_batch, static_image_shape):
@@ -747,49 +791,52 @@ class UNetXL(BaseModel):
             min_latent_width,
             max_latent_width,
         ) = self.get_minmax_dims(batch_size, image_height, image_width, static_batch, static_image_shape)
+        m = self.batch_multiplier
         return {
             "sample": [
-                (2 * min_batch, self.unet_dim, min_latent_height, min_latent_width),
-                (2 * batch_size, self.unet_dim, latent_height, latent_width),
-                (2 * max_batch, self.unet_dim, max_latent_height, max_latent_width),
+                (m * min_batch, self.unet_dim, min_latent_height, min_latent_width),
+                (m * batch_size, self.unet_dim, latent_height, latent_width),
+                (m * max_batch, self.unet_dim, max_latent_height, max_latent_width),
             ],
             "encoder_hidden_states": [
-                (2 * min_batch, self.text_maxlen, self.embedding_dim),
-                (2 * batch_size, self.text_maxlen, self.embedding_dim),
-                (2 * max_batch, self.text_maxlen, self.embedding_dim),
+                (m * min_batch, self.text_maxlen, self.embedding_dim),
+                (m * batch_size, self.text_maxlen, self.embedding_dim),
+                (m * max_batch, self.text_maxlen, self.embedding_dim),
             ],
-            "text_embeds": [(2 * min_batch, 1280), (2 * batch_size, 1280), (2 * max_batch, 1280)],
+            "text_embeds": [(m * min_batch, 1280), (m * batch_size, 1280), (m * max_batch, 1280)],
             "time_ids": [
-                (2 * min_batch, self.time_dim),
-                (2 * batch_size, self.time_dim),
-                (2 * max_batch, self.time_dim),
+                (m * min_batch, self.time_dim),
+                (m * batch_size, self.time_dim),
+                (m * max_batch, self.time_dim),
             ],
         }
 
     def get_shape_dict(self, batch_size, image_height, image_width):
         latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
+        m = self.batch_multiplier
         return {
-            "sample": (2 * batch_size, self.unet_dim, latent_height, latent_width),
+            "sample": (m * batch_size, self.unet_dim, latent_height, latent_width),
             "timestep": (1,),
-            "encoder_hidden_states": (2 * batch_size, self.text_maxlen, self.embedding_dim),
-            "latent": (2 * batch_size, 4, latent_height, latent_width),
-            "text_embeds": (2 * batch_size, 1280),
-            "time_ids": (2 * batch_size, self.time_dim),
+            "encoder_hidden_states": (m * batch_size, self.text_maxlen, self.embedding_dim),
+            "latent": (m * batch_size, 4, latent_height, latent_width),
+            "text_embeds": (m * batch_size, 1280),
+            "time_ids": (m * batch_size, self.time_dim),
         }
 
     def get_sample_input(self, batch_size, image_height, image_width):
         latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
         dtype = torch.float16 if self.fp16 else torch.float32
+        m = self.batch_multiplier
         return (
             torch.randn(
-                2 * batch_size, self.unet_dim, latent_height, latent_width, dtype=torch.float32, device=self.device
+                m * batch_size, self.unet_dim, latent_height, latent_width, dtype=torch.float32, device=self.device
             ),
             torch.tensor([1.0], dtype=torch.float32, device=self.device),
-            torch.randn(2 * batch_size, self.text_maxlen, self.embedding_dim, dtype=dtype, device=self.device),
+            torch.randn(m * batch_size, self.text_maxlen, self.embedding_dim, dtype=dtype, device=self.device),
             {
                 "added_cond_kwargs": {
-                    "text_embeds": torch.randn(2 * batch_size, 1280, dtype=dtype, device=self.device),
-                    "time_ids": torch.randn(2 * batch_size, self.time_dim, dtype=dtype, device=self.device),
+                    "text_embeds": torch.randn(m * batch_size, 1280, dtype=dtype, device=self.device),
+                    "time_ids": torch.randn(m * batch_size, self.time_dim, dtype=dtype, device=self.device),
                 }
             },
         )

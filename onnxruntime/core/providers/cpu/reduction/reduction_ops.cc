@@ -688,21 +688,23 @@ FastReduceKind OptimizeShapeForFastReduce(gsl::span<const int64_t> input_shape,
   return FastReduceKind::kNone;
 }
 
-void ValidateCommonFastReduce(const Tensor* axes_tensor) {
-  ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
-  ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
-              "An axes tensor must be a vector tensor.");
-}
-
 // template <typename T, typename TVAL>
 bool CommonFastReduceCopy(OpKernelContext* ctx, TensorShapeVector& input_axes, bool noop_with_empty_axes) {
   if (ctx->InputCount() == 2) {
     // second input holds the axes.
+    // the argument is optional
     const Tensor* axes_tensor = ctx->Input<Tensor>(1);
-    ValidateCommonFastReduce(axes_tensor);
-    auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
-    const auto* data = axes_tensor->Data<int64_t>();
-    input_axes.insert(input_axes.begin(), data, data + nDims);
+
+    if (axes_tensor != nullptr) {
+      ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
+                  "An axes tensor must be a vector tensor.");
+
+      const auto data_span = axes_tensor->DataAsSpan<int64_t>();
+      input_axes.assign(data_span.begin(), data_span.end());
+    } else {
+      input_axes.clear();
+    }
+
     if (input_axes.empty() && noop_with_empty_axes) {
       const Tensor* input = ctx->Input<Tensor>(0);
       auto* output = ctx->Output(0, input->Shape());

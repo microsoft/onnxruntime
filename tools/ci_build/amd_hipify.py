@@ -35,6 +35,9 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace("HIPBLAS_OP_T", "rocblas_operation_transpose")
     s = s.replace("HIPBLAS_OP_N", "rocblas_operation_none")
 
+    # in rocm 6.0, hipify-perl, the -roc option also maps __half -> rocblas_half which we don't want
+    s = s.replace("rocblas_half", "__half")
+
     s = s.replace("RegisterCudaContribKernels", "RegisterRocmContribKernels")
     s = s.replace("cudaEvent", "hipEvent")
     s = s.replace("CreateCudaAllocator", "CreateRocmAllocator")

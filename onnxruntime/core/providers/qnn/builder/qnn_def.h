@@ -48,6 +48,14 @@ enum class HtpPerformanceMode : uint8_t {
   kHtpBalanced,
 };
 
+enum class ContextPriority : uint8_t {
+  LOW = 0,
+  NORMAL,
+  NORMAL_HIGH,
+  HIGH,
+  UNDEFINED
+};
+
 // Defines the graph optimization strategy used by the HTP backend.
 enum class HtpGraphFinalizationOptimizationMode : uint8_t {
   kDefault = 0,
@@ -113,6 +121,20 @@ uint32_t GetQnnTensorRank(const Qnn_Tensor_t& qnn_tensor);
 uint32_t* GetQnnTensorDims(const Qnn_Tensor_t& qnn_tensor);
 const Qnn_ClientBuffer_t& GetQnnTensorClientBuf(const Qnn_Tensor_t& qnn_tensor);
 const Qnn_QuantizeParams_t& GetQnnTensorQParams(const Qnn_Tensor_t& qnn_tensor);
+
+/**
+ * Compares two sets of quantization parameters. Sets the parameters `scale_diff` and `offset_diff`
+ * to the absolute differences. Returns an error status if the quantization parameters are not
+ * of the same type, or if the type is not supported.
+ *
+ * \param qparam0 The first set of quantization parameters.
+ * \param qparam1 The second set of quantization parameters.
+ * \param scale_diff Set to the absolute value of the difference in scale value.
+ * \param offset_diff Set to the absolute value of the difference in offset value.
+ * \return Status indicating success.
+ */
+Status CompareQnnQuantParams(const Qnn_QuantizeParams_t& qparam0, const Qnn_QuantizeParams_t& qparam1,
+                             float& max_scale_diff, int32_t& max_offset_diff);
 
 // TODO: split out separate files for Wrappers
 class QnnTensorWrapper {
