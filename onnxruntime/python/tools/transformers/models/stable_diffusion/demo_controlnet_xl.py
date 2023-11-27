@@ -74,9 +74,9 @@ def load_pipeline(args, batch_size):
 
     # Ideally, the optimized batch size and image size for TRT engine shall align with user's preference. That is to
     # optimize the shape used most frequently. We can let user config it when we develop a UI plugin.
-    # In this demo, we optimize batch size 1 and image size 1024x1024 for SD XL dynamic engine.
+    # In this demo, we optimize batch size 4 and image size 1024x1024 for SD XL dynamic engine.
     # This is mainly for benchmark purpose to simulate the case that we have no knowledge of user's preference.
-    opt_batch_size = 1 if args.build_dynamic_batch else batch_size
+    opt_batch_size = 4 if args.build_dynamic_batch else batch_size
     opt_image_height = base_info.default_image_size() if args.build_dynamic_shape else args.height
     opt_image_width = base_info.default_image_size() if args.build_dynamic_shape else args.width
 
