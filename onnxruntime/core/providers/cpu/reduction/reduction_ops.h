@@ -482,7 +482,7 @@ class ReduceAggregatorMax<bool> : public ReduceAggregator<bool> {
         [data, stridei, out](std::ptrdiff_t first, std::ptrdiff_t last) {
           EigenVectorMap<bool>(out + first, last - first) = ConstEigenMatrixMap<bool>(
                                                                 data + first * stridei, onnxruntime::narrow<size_t>(stridei), last - first)
-                                                                .cast<int>()
+                                                                .cast<unsigned char>()
                                                                 .colwise()
                                                                 .maxCoeff()
                                                                 .cast<bool>();
@@ -523,7 +523,7 @@ class ReduceAggregatorMax<bool> : public ReduceAggregator<bool> {
             EigenVectorMap<bool>(out + j * strideo, onnxruntime::narrow<size_t>(strideo)) =
                 ConstEigenMatrixMap<bool>(
                     data + j * stridei, onnxruntime::narrow<size_t>(fast_shape[2]), onnxruntime::narrow<size_t>(fast_shape[1]))
-                    .cast<int>()
+                    .cast<unsigned char>()
                     .rowwise()
                     .maxCoeff()
                     .cast<bool>();
@@ -750,7 +750,7 @@ class ReduceAggregatorMin<bool> : public ReduceAggregator<bool, bool> {
         [data, stridei, out](std::ptrdiff_t first, std::ptrdiff_t last) {
           EigenVectorMap<bool>(out + first, last - first) = ConstEigenMatrixMap<bool>(
                                                                 data + first * stridei, onnxruntime::narrow<size_t>(stridei), last - first)
-                                                                .cast<int>()
+                                                                .cast<unsigned char>()
                                                                 .colwise()
                                                                 .minCoeff()
                                                                 .cast<bool>();
@@ -791,7 +791,7 @@ class ReduceAggregatorMin<bool> : public ReduceAggregator<bool, bool> {
             EigenVectorMap<bool>(out + j * strideo, onnxruntime::narrow<size_t>(strideo)) =
                 ConstEigenMatrixMap<bool>(
                     data + j * stridei, onnxruntime::narrow<size_t>(fast_shape[2]), onnxruntime::narrow<size_t>(fast_shape[1]))
-                    .cast<int>()
+                    .cast<unsigned char>()
                     .rowwise()
                     .minCoeff()
                     .cast<bool>();
