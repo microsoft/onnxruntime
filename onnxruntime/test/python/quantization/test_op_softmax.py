@@ -43,6 +43,7 @@ class TestOpSoftmax(unittest.TestCase):
         softmax_input_shape,
         softmax_attributes,
         output_shape,
+        add_ms_domain_opset=False,
     ):
         #      (input)
         #          \
@@ -74,7 +75,12 @@ class TestOpSoftmax(unittest.TestCase):
             [identity_out, output_tensor],
             initializer=initializers,
         )
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13), helper.make_opsetid("com.microsoft", 1)])
+
+        opset_imports = [helper.make_opsetid("", 13)]
+        if add_ms_domain_opset:
+            opset_imports.append(helper.make_opsetid("com.microsoft", 1))
+
+        model = helper.make_model(graph, opset_imports=opset_imports)
         model.ir_version = 7  # use stable onnx ir version
         onnx.save(model, output_model_path)
 
@@ -147,6 +153,7 @@ class TestOpSoftmax(unittest.TestCase):
             [1, 3, 24, 40],
             {"axis": -2},
             [1, 3, 24, 40],
+            add_ms_domain_opset=extra_options.get("UseQDQContribOps", False),
         )
         data_reader = self.input_feeds(1, {"input": [1, 2, 26, 42]})
 
@@ -183,9 +190,15 @@ class TestOpSoftmax(unittest.TestCase):
         self.assertEqual(3, qnode_cnt, f"Expected 3 QuantizeLinear nodes, found {qnode_cnt}")
         self.assertEqual(4, dqnode_cnt, f"Expected 4 DequantizeLinear nodes, found {dqnode_cnt}")
         self.assertEqual(1, softmax_cnt, f"Expected 1 Softmax node, found {softmax_cnt}")
-        if extra_options.get("ActivationSymmetric", False):
-            for tensor in result_model.graph.initializer:
-                if tensor.name in qnode_zeropoints:
+        for tensor in result_model.graph.initializer:
+            if tensor.name in qnode_zeropoints:
+                self.assertEqual(
+                    tensor.data_type,
+                    activation_proto_qtype,
+                    f"QuantizeLinear zero-point must be of proto type {activation_proto_qtype}, "
+                    f"but found {tensor.data_type} instead.",
+                )
+                if extra_options.get("ActivationSymmetric", False):
                     np_value = numpy_helper.to_array(tensor)
                     self.assertEqual(
                         0,
@@ -193,13 +206,6 @@ class TestOpSoftmax(unittest.TestCase):
                         f"QuantizeLinear node zero point value must be 0, found {np_value} instead!",
                     )
 
-        qnode_io_qtypes = {
-            "QuantizeLinear": [
-                ["i", 2, activation_proto_qtype],
-                ["o", 0, activation_proto_qtype],
-            ]
-        }
-        check_qtype_by_node_type(self, model_qdq_path, qnode_io_qtypes)
         data_reader.rewind()
         check_model_correctness(self, model_fp32_path, model_qdq_path, data_reader.get_next())
 
@@ -243,8 +249,7 @@ class TestOpSoftmax(unittest.TestCase):
         self.quantize_softmax_test_qdq(
             QuantType.QInt16,
             QuantType.QInt16,
-            extra_options={"UseQDQContribOps": True,
-                "ActivationSymmetric": True},
+            extra_options={"UseQDQContribOps": True, "ActivationSymmetric": True},
         )
 
 

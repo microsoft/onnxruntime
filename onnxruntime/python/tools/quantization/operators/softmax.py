@@ -91,6 +91,5 @@ class QDQSoftmax(QDQOperatorBase):
         rmin, rmax = 0.0, 1.0
         qmin, qmax = get_qmin_qmax_for_qType(self.quantizer.activation_qType, symmetric=symmetric)
         out_zero_point, out_scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=symmetric)
-        print(f"Softmax zp: {out_zero_point}, scale: {out_scale}\n")
 
         self.quantizer.set_quant_scale_zp(self.node.output[0], (out_scale, out_zero_point))

@@ -393,20 +393,20 @@ def check_qtype_by_node_type(testcase, model_to_check, check_list):
         model = onnx.load(model_to_check)
     elif isinstance(model_to_check, onnx.ModelProto):
         model = model_to_check
+    # NOTE: ONNX shape inference does not work on MS domain nodes.
+    # Therefore, this function cannot currently be used for graphs that contain ops such as
+    # com.microsoft.QuantizeLinear, which support 16-bit quantization.
     model = onnx.shape_inference.infer_shapes(model)
     value_infos = {vi.name: vi for vi in model.graph.value_info}
     value_infos.update({ot.name: ot for ot in model.graph.output})
     value_infos.update({it.name: it for it in model.graph.input})
     initializers = {init.name: init for init in model.graph.initializer}
-    print(value_infos)
-    print(initializers)
 
     for node in model.graph.node:
         if node.op_type in check_list:
             input_output_check_list = check_list[node.op_type]
             for check_item in input_output_check_list:
                 tensor_name = node.input[check_item[1]] if check_item[0] == "i" else node.output[check_item[1]]
-                print(f"IS {check_item[0]} TENSOR IN GRAPH? {tensor_name}: {(tensor_name in value_infos) or (tensor_name in initializers)}")
                 testcase.assertTrue((tensor_name in value_infos) or (tensor_name in initializers))
                 if tensor_name in value_infos:
                     vi = value_infos[tensor_name]
