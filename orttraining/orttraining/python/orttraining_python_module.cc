@@ -40,7 +40,7 @@ const ROCMExecutionProviderInfo GetRocmExecutionProviderInfo(ProviderInfo_ROCM* 
 
 void addGlobalMethods(py::module& m);
 void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn);
-void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn);
+void addObjectMethodsForTraining(py::module& m);
 void addObjectMethodsForEager(py::module& m);
 #ifdef ENABLE_LAZY_TENSOR
 void addObjectMethodsForLazyTensor(py::module& m);
@@ -339,7 +339,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   }
 #endif
 
-  addObjectMethodsForTraining(m, ORTTrainingRegisterExecutionProviders);
+  addObjectMethodsForTraining(m);
 
 #ifdef ENABLE_LAZY_TENSOR
   addObjectMethodsForLazyTensor(m);
