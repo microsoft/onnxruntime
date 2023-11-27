@@ -78,15 +78,25 @@ Status SqueezeUnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
     }
   }
 
-  if (axes_data.size() > 0) {
-    options.set("axes", emscripten::val::array(axes_data));
-  }
-
   emscripten::val output = emscripten::val::undefined();
   if (op_type == "Squeeze") {
+    if (axes_data.size() > 0) {
+      options.set("axes", emscripten::val::array(axes_data));
+    }
     output = model_builder.GetBuilder().call<emscripten::val>("squeeze", input, options);
   } else if (op_type == "Unsqueeze") {
-    output = model_builder.GetBuilder().call<emscripten::val>("unsqueeze", input, options);
+    // Use WebNN's reshape to implement Unsqueeze.
+    std::vector<int32_t> new_shape;
+    std::transform(
+        input_shape.begin(), input_shape.end(), std::back_inserter(new_shape),
+        [](int64_t data) -> int32_t { return SafeInt<int32_t>(data); });
+    // Sort axes_data in ascending order.
+    std::sort(axes_data.begin(), axes_data.end());
+    // Expand new_shape according to axes_data.
+    for (const int32_t& axis : axes_data) {
+      new_shape.insert(new_shape.begin() + axis, 1);
+    }
+    output = model_builder.GetBuilder().call<emscripten::val>("reshape", input, emscripten::val::array(new_shape));
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "SqueezeUnsqueezeOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);

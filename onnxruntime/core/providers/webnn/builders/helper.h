@@ -211,7 +211,7 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Tan", {"tan", false}},
     {"Tanh", {"tanh", true}},
     {"Transpose", {"transpose", true}},
-    {"Unsqueeze", {"unsqueeze", false}},
+    {"Unsqueeze", {"reshape", true}},
     {"Where", {"elementwiseIf", false}},
 };
 
