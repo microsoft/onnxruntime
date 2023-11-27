@@ -959,25 +959,24 @@ Status QnnBackendManager::ExtractProfilingEventExtended(
 }
 
 const std::string& QnnBackendManager::GetUnitString(QnnProfile_EventUnit_t unitType) {
-    const auto& unitStringMap = GetUnitStringMap();
-    auto it = unitStringMap.find(unitType);
-    if (it != unitStringMap.end()) {
-        return it->second;
-    }
-    static const std::string unknown = "UNKNOWN";
-    return unknown;
+  const auto& unitStringMap = GetUnitStringMap();
+  auto it = unitStringMap.find(unitType);
+  if (it != unitStringMap.end()) {
+    return it->second;
+  }
+  static const std::string unknown = "UNKNOWN";
+  return unknown;
 }
 
 const std::unordered_map<QnnProfile_EventUnit_t, std::string>& QnnBackendManager::GetUnitStringMap() {
-    static const std::unordered_map<QnnProfile_EventUnit_t, std::string> unitStringMap = {
-        {QNN_PROFILE_EVENTUNIT_MICROSEC, "US"},
-        {QNN_PROFILE_EVENTUNIT_BYTES, "BYTES"},
-        {QNN_PROFILE_EVENTUNIT_CYCLES, "CYCLES"},
-        {QNN_PROFILE_EVENTUNIT_COUNT, "COUNT"},
-        {QNN_PROFILE_EVENTUNIT_OBJECT, "OBJECT"},
-        {QNN_PROFILE_EVENTUNIT_BACKEND, "BACKEND"}
-    };
-    return unitStringMap;
+  static const std::unordered_map<QnnProfile_EventUnit_t, std::string> unitStringMap = {
+      {QNN_PROFILE_EVENTUNIT_MICROSEC, "US"},
+      {QNN_PROFILE_EVENTUNIT_BYTES, "BYTES"},
+      {QNN_PROFILE_EVENTUNIT_CYCLES, "CYCLES"},
+      {QNN_PROFILE_EVENTUNIT_COUNT, "COUNT"},
+      {QNN_PROFILE_EVENTUNIT_OBJECT, "OBJECT"},
+      {QNN_PROFILE_EVENTUNIT_BACKEND, "BACKEND"}};
+  return unitStringMap;
 }
 
 const std::string QnnBackendManager::GetEventTypeString(QnnProfile_EventType_t eventType) {
