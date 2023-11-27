@@ -26,6 +26,13 @@
 
 namespace onnxruntime {
 
+//
+// Clang-format doesn't handle force inline decorator well, it insists on
+// adding extra indentation to the next line, making it very confusing
+// to read. So we turn it off for this file.
+// clang-format off
+//
+
 /**
  * @brief A tuple of integers to represent tensor coordinates
  */
@@ -463,5 +470,6 @@ make_MatrixRef(
   return MatrixRef<Element, Layout, ExtraBoundsCheck>(span, shape);
 }
 
+// clang-format off
 
 }  // namespace onnxruntime
