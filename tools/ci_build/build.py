@@ -1780,6 +1780,8 @@ def run_ios_tests(args, source_dir, config, cwd):
                 dynamic_framework_dir,
                 "--framework_info_file",
                 framework_info_file,
+                "--variant",
+                "Mobile"
             ],
             cwd=cwd,
         )
@@ -1792,6 +1794,8 @@ def run_ios_tests(args, source_dir, config, cwd):
                 static_framework_dir,
                 "--framework_info_file",
                 framework_info_file,
+                "--variant",
+                "Mobile"
             ],
             cwd=cwd,
         )

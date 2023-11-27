@@ -144,10 +144,7 @@ def _test_apple_packages(args):
                 cwd=target_proj_path,
             )
 
-            if (
-                PackageVariant[args.variant] == PackageVariant.Full
-                or PackageVariant[args.variant] == PackageVariant.Training
-            ):
+            if PackageVariant[args.variant] != PackageVariant.Mobile:
                 subprocess.run(
                     [
                         "xcrun",
@@ -193,7 +190,7 @@ def parse_args():
     parser.add_argument(
         "--variant",
         choices=PackageVariant.all_variant_names(),
-        default=PackageVariant.Test.name,
+        required=True,
         help="Pod package variant.",
     )
 
