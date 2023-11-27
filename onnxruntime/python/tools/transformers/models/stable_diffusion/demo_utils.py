@@ -21,9 +21,9 @@
 # --------------------------------------------------------------------------
 
 import argparse
+import os
 from io import BytesIO
 from typing import Any, Dict
-import os
 
 import requests
 import torch
