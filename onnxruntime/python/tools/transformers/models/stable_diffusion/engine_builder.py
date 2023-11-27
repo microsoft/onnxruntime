@@ -90,17 +90,21 @@ class EngineBuilder:
     def get_cached_model_name(self, model_name):
         hash_source = []
         if model_name in ["unet", "unetxl"] and self.pipeline_info.lora_weights:
-            model_name = "l_" + model_name
-            hash_source.append(self.pipeline_info.lora_weights)
+            if self.pipeline_info.lora_weights in [
+                "latent-consistency/lcm-lora-sdxl",
+                "latent-consistency/lcm-lora-sdv1-5",
+            ]:
+                model_name = model_name + "_lcm-lora"
+            else:
+                model_name = model_name + "_lora"
+                hash_source.append(self.pipeline_info.lora_weights)
 
         # TODO(tianleiwu): save custom model to a directory named by its original model.
         if model_name == "unetxl" and self.pipeline_info.custom_unet():
-            model_name = "lcm_" + model_name
-            hash_source.append(self.pipeline_info.custom_unet())
+            model_name = model_name + "_lcm"
 
         if model_name in ["unet", "unetxl"] and self.pipeline_info.controlnet:
-            model_name = f"c{len(self.pipeline_info.controlnet)}_" + model_name
-            hash_source.extend(self.pipeline_info.controlnet)
+            model_name = model_name + "_" + "_".join(self.pipeline_info.controlnet)
 
         if hash_source:
             model_name += "_" + hashlib.md5("\t".join(hash_source).encode("utf-8")).digest().hex()[:8]
@@ -111,11 +115,16 @@ class EngineBuilder:
             model_name += "_inpaint"
         return model_name
 
-    def get_onnx_path(self, model_name, onnx_dir, opt=True, suffix=""):
+    def get_model_dir(self, model_name, root_dir, opt=True, suffix="", create=True):
         engine_name = self.engine_type.name.lower()
         directory_name = self.get_cached_model_name(model_name) + (f".{engine_name}" if opt else "") + suffix
-        onnx_model_dir = os.path.join(onnx_dir, directory_name)
-        os.makedirs(onnx_model_dir, exist_ok=True)
+        onnx_model_dir = os.path.join(root_dir, directory_name)
+        if create:
+            os.makedirs(onnx_model_dir, exist_ok=True)
+        return onnx_model_dir
+
+    def get_onnx_path(self, model_name, onnx_dir, opt=True, suffix=""):
+        onnx_model_dir = self.get_model_dir(model_name, onnx_dir, opt=opt, suffix=suffix)
         return os.path.join(onnx_model_dir, "model.onnx")
 
     def get_engine_path(self, engine_dir, model_name, profile_id):
@@ -249,6 +258,7 @@ def get_engine_paths(work_dir: str, pipeline_info: PipelineInfo, engine_type: En
     onnx_dir = os.path.join(root_dir, engine_type.name, short_name, "onnx")
     engine_dir = os.path.join(root_dir, engine_type.name, short_name, "engine")
     output_dir = os.path.join(root_dir, engine_type.name, short_name, "output")
+
     timing_cache = os.path.join(root_dir, engine_type.name, "timing_cache")
     framework_model_dir = os.path.join(root_dir, engine_type.name, "torch_model")
 

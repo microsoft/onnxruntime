@@ -88,7 +88,7 @@ class Txt2ImgPipeline(StableDiffusionPipeline):
                     latents.shape[0], controlnet_images, do_classifier_free_guidance=do_classifier_free_guidance
                 )
                 add_kwargs = {
-                    "images": controlnet_images,
+                    "controlnet_images": controlnet_images,
                     "controlnet_scales": controlnet_scales.to(controlnet_images.dtype).to(controlnet_images.device),
                 }
 

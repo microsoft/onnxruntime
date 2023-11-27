@@ -23,6 +23,7 @@
 import argparse
 from io import BytesIO
 from typing import Any, Dict
+import os
 
 import requests
 import torch
@@ -39,7 +40,7 @@ def arg_parser(description: str):
     return argparse.ArgumentParser(description=description, formatter_class=RawTextArgumentDefaultsHelpFormatter)
 
 
-def parse_arguments(is_xl: bool, parser):
+def parse_arguments(is_xl: bool, parser, disable_refiner=False):
     engines = ["ORT_CUDA", "ORT_TRT", "TRT"]
 
     parser.add_argument(
@@ -123,6 +124,7 @@ def parse_arguments(is_xl: bool, parser):
             help="Use fine-tuned latent consistency model to replace the UNet in base.",
         )
 
+    if is_xl and not disable_refiner:
         parser.add_argument(
             "--refiner-scheduler",
             type=str,
@@ -150,6 +152,10 @@ def parse_arguments(is_xl: bool, parser):
             type=float,
             default=0.3,
             help="A value between 0 and 1. The higher the value less the final image similar to the seed image.",
+        )
+
+        parser.add_argument(
+            "--disable-refiner", action="store_true", help="Disable refiner and only run base for XL pipeline."
         )
 
     # ONNX export
@@ -191,10 +197,6 @@ def parse_arguments(is_xl: bool, parser):
     parser.add_argument("--nvtx-profile", action="store_true", help="Enable NVTX markers for performance profiling.")
     parser.add_argument("--seed", type=int, default=None, help="Seed for random generator to get consistent results.")
     parser.add_argument("--disable-cuda-graph", action="store_true", help="Disable cuda graph.")
-
-    parser.add_argument(
-        "--disable-refiner", action="store_true", help="Disable refiner and only run base for XL pipeline."
-    )
 
     group = parser.add_argument_group("Options for ORT_CUDA engine only")
     group.add_argument("--enable-vae-slicing", action="store_true", help="True will feed only one image to VAE once.")
@@ -241,7 +243,10 @@ def parse_arguments(is_xl: bool, parser):
         if args.lcm and args.scheduler != "LCM":
             print("[I] Use --scheduler=LCM for base since LCM is used.")
             args.scheduler = "LCM"
-        assert args.strength > 0.0 and args.strength < 1.0
+
+        if not disable_refiner:
+            assert args.strength > 0.0 and args.strength < 1.0
+
         assert not (args.lcm and args.lora_weights), "it is not supported to use both lcm unet and Lora together"
 
     if args.scheduler == "LCM":
@@ -278,7 +283,7 @@ def get_metadata(args, is_xl: bool = False) -> Dict[str, Any]:
         "engine": args.engine,
     }
 
-    if is_xl and not args.disable_refiner:
+    if is_xl and hasattr(args, "disable_refiner") and not args.disable_refiner:
         metadata["base.scheduler"] = args.scheduler
         metadata["base.denoising_steps"] = args.denoising_steps
         metadata["base.guidance"] = args.guidance
@@ -339,6 +344,7 @@ def init_pipeline(
             engine_dir=engine_dir,
             framework_model_dir=framework_model_dir,
             onnx_dir=onnx_dir,
+            tmp_dir=os.path.join(args.work_dir or ".", engine_type.name, pipeline_info.short_name(), "tmp"),
             force_engine_rebuild=args.force_engine_build,
             device_id=torch.cuda.current_device(),
         )

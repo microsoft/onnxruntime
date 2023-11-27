@@ -158,6 +158,7 @@ class OrtCudaEngineBuilder(EngineBuilder):
         engine_dir: str,
         framework_model_dir: str,
         onnx_dir: str,
+        tmp_dir: Optional[str] = None,
         onnx_opset_version: int = 17,
         force_engine_rebuild: bool = False,
         device_id: int = 0,
@@ -210,7 +211,6 @@ class OrtCudaEngineBuilder(EngineBuilder):
                 continue
 
             onnx_path = self.get_onnx_path(model_name, onnx_dir, opt=False)
-
             suffix = ".fp16" if self.model_config[model_name].fp16 else ".fp32"
             onnx_opt_path = self.get_onnx_path(model_name, engine_dir, opt=True, suffix=suffix)
             if not os.path.exists(onnx_opt_path):
@@ -253,14 +253,13 @@ class OrtCudaEngineBuilder(EngineBuilder):
                     if not os.path.exists(onnx_fp32_path):
                         print("------")
                         logger.info("Generating optimized model: %s", onnx_fp32_path)
-
-                        # There is risk that some ORT fused ops fp32 only. So far, we have not encountered such issue.
                         model_obj.optimize_ort(
                             onnx_path,
                             onnx_fp32_path,
                             to_fp16=False,
                             fp32_op_list=self.model_config[model_name].force_fp32_ops,
                             optimize_by_ort=self.model_config[model_name].optimize_by_ort,
+                            tmp_dir=self.get_model_dir(model_name, tmp_dir, opt=False, suffix=".fp32", create=False),
                         )
                     else:
                         logger.info("Found cached optimized model: %s", onnx_fp32_path)
@@ -280,6 +279,7 @@ class OrtCudaEngineBuilder(EngineBuilder):
                         fp32_op_list=self.model_config[model_name].force_fp32_ops,
                         optimize_by_ort=optimize_by_ort,
                         optimize_by_fusion=not use_fp32_intermediate,
+                        tmp_dir=self.get_model_dir(model_name, tmp_dir, opt=False, suffix=".fp16", create=False),
                     )
                 else:
                     logger.info("Found cached optimized model: %s", onnx_opt_path)

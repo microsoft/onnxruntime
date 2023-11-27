@@ -180,9 +180,9 @@ def run_pipelines(args, base, refiner, prompt, negative_prompt, is_warm_up=False
         cudart.cudaProfilerStop()
 
     if refiner:
-        print("|------------|--------------|")
-        print("| {:^10} | {:>9.2f} ms |".format("e2e", perf_data["latency"]))
-        print("|------------|--------------|")
+        print("|----------------|--------------|")
+        print("| {:^14} | {:>9.2f} ms |".format("e2e", perf_data["latency"]))
+        print("|----------------|--------------|")
 
     metadata = get_metadata(args, True)
     metadata.update({"base." + key: val for key, val in base.metadata().items()})

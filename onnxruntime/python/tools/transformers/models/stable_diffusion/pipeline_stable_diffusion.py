@@ -137,6 +137,14 @@ class StableDiffusionPipeline:
                 self.pipeline_info, self.framework_model_dir, self.hf_token, subfolder="tokenizer_2"
             )
 
+        self.control_image_processor = None
+        if self.pipeline_info.is_xl() and self.pipeline_info.controlnet:
+            from diffusers.image_processor import VaeImageProcessor
+
+            self.control_image_processor = VaeImageProcessor(
+                vae_scale_factor=8, do_convert_rgb=True, do_normalize=False
+            )
+
         # Create CUDA events
         self.events = {}
         for stage in ["clip", "denoise", "vae", "vae_encoder"]:
@@ -244,27 +252,37 @@ class StableDiffusionPipeline:
         self.stop_profile("preprocess")
         return tuple(init_images)
 
-    def preprocess_controlnet_images(self, batch_size, images=None, do_classifier_free_guidance=True):
+    def preprocess_controlnet_images(
+        self, batch_size, images=None, do_classifier_free_guidance=True, height=1024, width=1024
+    ):
         """
         images: List of PIL.Image.Image
         """
         if images is None:
             return None
         self.start_profile("preprocess", color="pink")
-        images = [
-            (np.array(i.convert("RGB")).astype(np.float32) / 255.0)[..., None]
-            .transpose(3, 2, 0, 1)
-            .repeat(batch_size, axis=0)
-            for i in images
-        ]
-        if do_classifier_free_guidance:
-            images = [torch.cat([torch.from_numpy(i).to(self.device).float()] * 2) for i in images]
-        else:
-            images = [torch.from_numpy(i).to(self.device).float() for i in images]
-        images = torch.cat([image[None, ...] for image in images], dim=0)
-        self.stop_profile("preprocess")
 
-        return images.to(dtype=torch.float16)
+        if not self.pipeline_info.is_xl():
+            images = [
+                (np.array(i.convert("RGB")).astype(np.float32) / 255.0)[..., None]
+                .transpose(3, 2, 0, 1)
+                .repeat(batch_size, axis=0)
+                for i in images
+            ]
+            if do_classifier_free_guidance:
+                images = [torch.cat([torch.from_numpy(i).to(self.device).float()] * 2) for i in images]
+            else:
+                images = [torch.from_numpy(i).to(self.device).float() for i in images]
+            images = torch.cat([image[None, ...] for image in images], dim=0)
+            images = images.to(dtype=torch.float16)
+        else:
+            images = self.control_image_processor.preprocess(images, height=height, width=width).to(dtype=torch.float32)
+            images = images.repeat_interleave(batch_size, dim=0)
+            images = images.to(device=self.device, dtype=torch.float16)
+            if do_classifier_free_guidance:
+                images = torch.cat([images] * 2)
+        self.stop_profile("preprocess")
+        return images
 
     def encode_prompt(
         self,
@@ -439,23 +457,23 @@ class StableDiffusionPipeline:
         )
         latency = (toc - tic) * 1000.0
 
-        print("|------------|--------------|")
-        print("| {:^10} | {:^12} |".format("Module", "Latency"))
-        print("|------------|--------------|")
+        print("|----------------|--------------|")
+        print("| {:^14} | {:^12} |".format("Module", "Latency"))
+        print("|----------------|--------------|")
         if vae_enc:
-            print("| {:^10} | {:>9.2f} ms |".format("VAE-Enc", latency_vae_encoder))
-        print("| {:^10} | {:>9.2f} ms |".format("CLIP", latency_clip))
+            print("| {:^14} | {:>9.2f} ms |".format("VAE-Enc", latency_vae_encoder))
+        print("| {:^14} | {:>9.2f} ms |".format("CLIP", latency_clip))
         print(
-            "| {:^10} | {:>9.2f} ms |".format(
+            "| {:^14} | {:>9.2f} ms |".format(
                 "UNet" + ("+CNet" if self.pipeline_info.controlnet else "") + " x " + str(self.actual_steps),
                 latency_unet,
             )
         )
-        print("| {:^10} | {:>9.2f} ms |".format("VAE-Dec", latency_vae))
+        print("| {:^14} | {:>9.2f} ms |".format("VAE-Dec", latency_vae))
 
-        print("|------------|--------------|")
-        print("| {:^10} | {:>9.2f} ms |".format("Pipeline", latency))
-        print("|------------|--------------|")
+        print("|----------------|--------------|")
+        print("| {:^14} | {:>9.2f} ms |".format("Pipeline", latency))
+        print("|----------------|--------------|")
         print(f"Throughput: {throughput:.2f} image/s")
 
         perf_data = {
