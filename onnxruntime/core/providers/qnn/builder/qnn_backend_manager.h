@@ -22,7 +22,6 @@ namespace onnxruntime {
 namespace qnn {
 
 class QnnModel;
-class QnnCacheModelHandler;
 
 class QnnBackendManager {
  public:
