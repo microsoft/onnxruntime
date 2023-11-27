@@ -198,7 +198,7 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
               " doesn't exist in the list of OpenVINO input tensor names");
       }
       size_t batch_slice_idx = 0;
-      if (subgraph_context_.has_dynamic_input_shape &&
+      if ((subgraph_context_.has_dynamic_input_shape && global_context_.disable_dynamic_shapes==false)&&
           (global_context_.device_type.find("CPU") != std::string::npos ||
            global_context_.device_type.find("GPU") != std::string::npos)) {
         auto tensor = context.GetInput(subgraph_context_.input_names.at(input_name));

@@ -11,13 +11,13 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   OpenVINOProviderFactory(const char* device_type, bool enable_npu_fast_compile,
                           const char* device_id, size_t num_of_threads,
                           const char* cache_dir, int num_streams, void* context,
-                          bool enable_opencl_throttling, bool enable_dynamic_shapes)
+                          bool enable_opencl_throttling, bool disable_dynamic_shapes)
       : enable_npu_fast_compile_(enable_npu_fast_compile),
         num_of_threads_(num_of_threads),
         num_streams_(num_streams),
         context_(context),
         enable_opencl_throttling_(enable_opencl_throttling),
-        enable_dynamic_shapes_(enable_dynamic_shapes) {
+        disable_dynamic_shapes_(disable_dynamic_shapes) {
     device_type_ = (device_type == nullptr) ? "" : device_type;
     device_id_ = (device_id == nullptr) ? "" : device_id;
     cache_dir_ = (cache_dir == nullptr) ? "" : cache_dir;
@@ -36,13 +36,13 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   int num_streams_;
   void* context_;
   bool enable_opencl_throttling_;
-  bool enable_dynamic_shapes_;
+  bool disable_dynamic_shapes_;
 };
 
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
   OpenVINOExecutionProviderInfo info(device_type_, enable_npu_fast_compile_, device_id_, num_of_threads_,
                                      cache_dir_, num_streams_, context_, enable_opencl_throttling_,
-                                     enable_dynamic_shapes_);
+                                     disable_dynamic_shapes_);
   return std::make_unique<OpenVINOExecutionProvider>(info);
 }
 
@@ -78,7 +78,7 @@ struct OpenVINO_Provider : Provider {
                                             // with this value at runtime.
     bool enable_opencl_throttling = false;  // [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU
                                             // device (Reduces CPU Utilization when using GPU)
-    bool enable_dynamic_shapes = false;     // [enable_dynamic_shapes]: Enables Dynamic Shapes feature for CPU device)
+    bool disable_dynamic_shapes = false;     // [disable_dynamic_shapes]:  Execute model with default static shape for optimal performance.
     void* context = nullptr;
 
     if (provider_options_map.find("device_type") != provider_options_map.end()) {
@@ -147,12 +147,12 @@ struct OpenVINO_Provider : Provider {
       bool_flag = "";
     }
 
-    if (provider_options_map.find("enable_dynamic_shapes") != provider_options_map.end()) {
-      bool_flag = provider_options_map.at("enable_dynamic_shapes");
+    if (provider_options_map.find("disable_dynamic_shapes") != provider_options_map.end()) {
+      bool_flag = provider_options_map.at("disable_dynamic_shapes");
       if (bool_flag == "true" || bool_flag == "True")
-        enable_dynamic_shapes = true;
+        disable_dynamic_shapes = true;
       else if (bool_flag == "false" || bool_flag == "False")
-        enable_dynamic_shapes = false;
+        disable_dynamic_shapes = false;
     }
     return std::make_shared<OpenVINOProviderFactory>(const_cast<char*>(device_type.c_str()),
                                                      enable_npu_fast_compile,
@@ -162,7 +162,7 @@ struct OpenVINO_Provider : Provider {
                                                      num_streams,
                                                      context,
                                                      enable_opencl_throttling,
-                                                     enable_dynamic_shapes);
+                                                     disable_dynamic_shapes);
   }
 
   void Initialize() override {
