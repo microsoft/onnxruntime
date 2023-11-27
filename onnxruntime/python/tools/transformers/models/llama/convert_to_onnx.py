@@ -16,7 +16,7 @@ from llama_torch import setup_torch_model
 from onnx_model import OnnxModel
 from optimizer import optimize_model
 from packaging import version
-from transformers import AutoConfig, AutoCausalModelForLM, LlamaConfig, LlamaForCausalLM, PretrainedConfig
+from transformers import AutoConfig, AutoModelForCausalLM, LlamaConfig, LlamaForCausalLM, PretrainedConfig
 
 from onnxruntime import quantization as ort_quantization
 from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
@@ -439,7 +439,7 @@ def convert_to_float16(
     return new_paths
 
 
-def use_group_query_attention(config: AutoConfig, fp16_model_opt: OnnxModel, world_size: int = 1):
+def use_group_query_attention(config: AutoConfig, fp16_model_opt: OnnxModel, world_size: int = 1, window_size = 0):
     # Replace MultiHeadAttention with GroupQueryAttention
     fp16_model_opt = replace_mha_with_gqa(fp16_model_opt, "attention_mask", config.num_key_value_heads, world_size)
     fp16_model_opt.prune_graph()
