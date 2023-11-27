@@ -10,6 +10,7 @@
 #define OV_API_20
 #include "openvino/openvino.hpp"
 #include "openvino/pass/convert_fp32_to_fp16.hpp"
+#include "openvino/frontend/manager.hpp"
 #else
 #include <inference_engine.hpp>
 #endif
@@ -43,7 +44,7 @@ class OVCore {
   ov::Core oe;
 
  public:
-  std::shared_ptr<OVNetwork> ReadModel(const std::string& model_stream) const;
+  std::shared_ptr<OVNetwork> ReadModel(const std::string& model_stream, const std::string& model_path) const;
   OVExeNetwork LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network,
                            std::string& hw_target,
                            ov::AnyMap& device_config,

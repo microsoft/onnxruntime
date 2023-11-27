@@ -54,7 +54,7 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
   }
   const std::string model = model_proto.SerializeAsString();
   try {
-    auto cnn_network = global_context.ie_core.ReadModel(model);
+    auto cnn_network = global_context.ie_core.ReadModel(model, global_context.onnx_model_path_name);
     if ((subgraph_context.precision == "FP16") &&
         (global_context.device_type.find("NPU") == std::string::npos)) {
       // FP16 transformations
