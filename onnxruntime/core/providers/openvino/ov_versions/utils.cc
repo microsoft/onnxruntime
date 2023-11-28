@@ -60,17 +60,17 @@ bool IsOpSupportedOnlyInModel(std::string name) {
 void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
                              const std::vector<std::string>& inputs,
                              const std::vector<std::string>& outputs,
-                             std::vector<std::unique_ptr<SubGraphDef>>& result) {
+                             std::vector<std::unique_ptr<interface::SubGraphDef>>& result) {
   static size_t op_counter = 0;
 
-  auto meta_def = std::make_unique<SubGraphDef::MetaDef>();
+  auto meta_def = std::make_unique<interface::SubGraphDef::MetaDef>();
   meta_def->name = "OpenVINO-EP-subgraph_" + std::to_string(++op_counter);
   meta_def->domain = "com.intel.ai";
   meta_def->since_version = 1;
   meta_def->inputs = inputs;
   meta_def->outputs = outputs;
 
-  auto sub_graph = std::make_unique<SubGraphDef>();
+  auto sub_graph = std::make_unique<interface::SubGraphDef>();
   sub_graph->nodes = nodes;
   sub_graph->SetMetaDef(std::move(meta_def));
   result.push_back(std::move(sub_graph));

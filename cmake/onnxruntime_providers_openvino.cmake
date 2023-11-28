@@ -37,7 +37,7 @@
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_openvino_cc_srcs})
   onnxruntime_add_shared_library_module(onnxruntime_providers_openvino ${onnxruntime_providers_openvino_cc_srcs} "${ONNXRUNTIME_ROOT}/core/dll/onnxruntime.rc")
-  onnxruntime_add_include_to_target(onnxruntime_providers_openvino onnxruntime_common onnx)
+  onnxruntime_add_include_to_target(onnxruntime_providers_openvino onnxruntime_common onnx flatbuffers::flatbuffers)
   install(FILES ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/openvino/openvino_provider_factory.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/)
   set_target_properties(onnxruntime_providers_openvino PROPERTIES LINKER_LANGUAGE CXX)

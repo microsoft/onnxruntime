@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 //
 #include "core/framework/provider_options.h"
-
+#include <memory>
+struct OrtCustomOpDomain;
 namespace onnxruntime {
 // The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
 // However, we do not allocate this type on heap.
@@ -11,6 +12,7 @@ namespace onnxruntime {
 #pragma warning(push)
 #pragma warning(disable : 26436)
 #endif
+struct IExecutionProviderFactory;
 struct Provider {
   // Takes a pointer to a provider specific structure to create the factory. For example, with OpenVINO it is a pointer to an OrtOpenVINOProviderOptions structure
   virtual std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* /*provider_options*/) { return nullptr; }

@@ -1,9 +1,12 @@
 // Copyright (C) 2019-2022 Intel Corporation
 // Licensed under the MIT License
 
-#include "core/providers/shared_library/provider_api.h"
+//#include "core/providers/shared_library/provider_api.h"
+#include "core/providers/shared_library/provider_host_api.h"
+#include "core/framework/execution_provider.h"
+#include "core/framework/provider_adapter.h"
 #include "core/providers/openvino/openvino_provider_factory.h"
-//#include "core/providers/openvino/openvino_execution_provider.h"
+#include "core/providers/openvino/openvino_execution_provider.h"
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
 
 namespace onnxruntime {
@@ -35,11 +38,11 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
-//  OpenVINOExecutionProviderInfo info(device_type_, enable_vpu_fast_compile_, device_id_, num_of_threads_,
-//                                     cache_dir_, num_streams_, context_, enable_opencl_throttling_,
-//                                     enable_dynamic_shapes_);
-//  return std::make_unique<OpenVINOExecutionProvider>(info);
-  return nullptr;
+  OpenVINOExecutionProviderInfo info(device_type_, enable_vpu_fast_compile_, device_id_, num_of_threads_,
+                                     cache_dir_, num_streams_, context_, enable_opencl_throttling_,
+                                     enable_dynamic_shapes_);
+  std::unique_ptr<OpenVINOExecutionProvider> openvino_ep = std::make_unique<OpenVINOExecutionProvider>(info);
+  return std::make_unique<ExecutionProviderAdapter>(openvino_ep.release());
 }
 
 }  // namespace onnxruntime
@@ -47,8 +50,8 @@ std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
 namespace onnxruntime {
 struct ProviderInfo_OpenVINO_Impl : ProviderInfo_OpenVINO {
   std::vector<std::string> GetAvailableDevices() const override {
-//    openvino_ep::OVCore ie_core;
-//    return ie_core.GetAvailableDevices();
+    openvino_ep::OVCore ie_core;
+    return ie_core.GetAvailableDevices();
     return std::vector<std::string>{};
   }
 } g_info;

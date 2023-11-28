@@ -183,7 +183,7 @@ struct KernelContextAdapter : public interface::IKernelContext {
     output_count_ = context_.OutputCount();
   }
   const interface::ITensor& GetInputTensor(int index) const override {
-    ORT_ENFORCE(INT(index) < input_count_);
+    ORT_ENFORCE(index < input_count_);
     const auto* tensor = context_.Input<onnxruntime::Tensor>(index);
     ORT_ENFORCE(tensor);
     return *tensor;
@@ -195,9 +195,9 @@ struct KernelContextAdapter : public interface::IKernelContext {
   //   return tensor->Shape();
   // };
   interface::ITensor* AllocOutputTensor(int index, const int64_t* dims, size_t num_dims) override {
-    ORT_ENFORCE(INT(index) < output_count_);
+    ORT_ENFORCE(index < output_count_);
     onnxruntime::VectorInt64 shape{dims, dims + num_dims};
-    return context_.Output(INT(index), shape);
+    return context_.Output(index, shape);
   }
 
   const interface::ITensorSeq& GetInputTensorSeq(int index) const override {

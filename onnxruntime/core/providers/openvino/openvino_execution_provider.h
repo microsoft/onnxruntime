@@ -168,9 +168,11 @@ class OpenVINOExecutionProvider : public interface::ExecutionProvider {
   explicit OpenVINOExecutionProvider(const OpenVINOExecutionProviderInfo& info);
   ~OpenVINOExecutionProvider() = default;
 
-  std::vector<std::unique_ptr<SubGraphDef>> GetCapability(interface::GraphViewRef*) override;
+  std::vector<std::unique_ptr<interface::SubGraphDef>> GetCapability(interface::GraphViewRef*) override;
 
   Status Compile(std::vector<std::unique_ptr<interface::GraphViewRef>>&, std::vector<std::unique_ptr<interface::NodeViewRef>>&, std::vector<NodeComputeInfo>&) override;
+
+  void RegisterKernels(interface::IKernelRegistry&) override {}
 };
 
 }  // namespace onnxruntime

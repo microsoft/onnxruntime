@@ -94,8 +94,8 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   openvino_ep::BackendManager::GetGlobalContext().device_id = info.device_id_;
 }
 
-std::vector<std::unique_ptr<SubGraphDef>> OpenVINOExecutionProvider::GetCapability(interface::GraphViewRef* graph_viewer) {
-  std::vector<std::unique_ptr<SubGraphDef>> result;
+std::vector<std::unique_ptr<interface::SubGraphDef>> OpenVINOExecutionProvider::GetCapability(interface::GraphViewRef* graph_viewer) {
+  std::vector<std::unique_ptr<interface::SubGraphDef>> result;
   // Enable CI Logs
 //  if (!(GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG").empty())) {
 //    std::cout << "In the OpenVINO EP" << std::endl;

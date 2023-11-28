@@ -39,8 +39,8 @@ GetCapability::GetCapability(const onnxruntime::interface::GraphViewRef& graph_v
   }
 }
 
-std::vector<std::unique_ptr<SubGraphDef>> GetCapability::Execute() {
-  std::vector<std::unique_ptr<SubGraphDef>> result;
+std::vector<std::unique_ptr<interface::SubGraphDef>> GetCapability::Execute() {
+  std::vector<std::unique_ptr<interface::SubGraphDef>> result;
 
   // Check if it is a subgraph
   if (graph_viewer_.IsSubGraph() && graph_viewer_.Name() == "tf2onnx") {

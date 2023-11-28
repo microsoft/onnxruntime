@@ -16,9 +16,8 @@ namespace onnxruntime {
 
 namespace interface {
     class GraphViewRef;
+    struct SubGraphDef;
 }
-
-class SubGraphDef;
 
 namespace openvino_ep {
 
@@ -27,7 +26,7 @@ bool IsOpSupportedOnlyInModel(std::string name);
 void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
                              const std::vector<std::string>& inputs,
                              const std::vector<std::string>& outputs,
-                             std::vector<std::unique_ptr<SubGraphDef>>& result);
+                             std::vector<std::unique_ptr<interface::SubGraphDef>>& result);
 
 int GetOnnxOpSet(const interface::GraphViewRef& graph_viewer);
 

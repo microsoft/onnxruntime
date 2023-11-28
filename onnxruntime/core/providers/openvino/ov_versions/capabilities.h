@@ -17,7 +17,7 @@ class GetCapability {
 
  public:
   GetCapability(const onnxruntime::interface::GraphViewRef& graph_viewer_param, std::string device_type_param, const std::string version_param);
-  virtual std::vector<std::unique_ptr<SubGraphDef>> Execute();
+  virtual std::vector<std::unique_ptr<interface::SubGraphDef>> Execute();
 };
 
 }  // namespace openvino_ep
