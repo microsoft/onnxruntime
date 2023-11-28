@@ -30,19 +30,17 @@ def _parse_build_settings(args):
 
     build_settings["build_osx_archs"] = build_settings_data.get("build_osx_archs", DEFAULT_BUILD_OSX_ARCHS)
 
-    build_params = []
     if "build_params" in build_settings_data:
-        build_params += build_settings_data["build_params"]
+        build_settings["build_params"] = build_settings_data["build_params"]
     else:
         raise ValueError("build_params is required in the build config file")
 
-    build_settings["build_params"] = build_params
     return build_settings
 
 
 # Build fat framework for all archs of a single sysroot
 # For example, arm64 and x86_64 for iphonesimulator
-def _build_for_ios_sysroot(
+def _build_for_apple_sysroot(
     build_config, intermediates_dir, base_build_command, sysroot, archs, build_dynamic_framework
 ):
     # paths of the onnxruntime libraries for different archs
@@ -54,7 +52,7 @@ def _build_for_ios_sysroot(
         build_dir_current_arch = os.path.join(intermediates_dir, sysroot + "_" + current_arch)
         build_command = [
             *base_build_command,
-            "--ios_sysroot=" + sysroot,
+            "--apple_sysroot=" + sysroot,
             "--osx_arch=" + current_arch,
             "--build_dir=" + build_dir_current_arch,
         ]
@@ -103,6 +101,20 @@ def _build_for_ios_sysroot(
     return framework_dir
 
 
+def _merge_framework_info_files(files, output_file):
+    merged_data = {}
+
+    for file in files:
+        with open(file) as f:
+            data = json.load(f)
+            for platform, values in data.items():
+                assert platform not in merged_data, f"Duplicate platform value: {platform}"
+                merged_data[platform] = values
+
+    with open(output_file, "w") as f:
+        json.dump(merged_data, f, indent=2)
+
+
 def _build_package(args):
     build_settings = _parse_build_settings(args)
     build_dir = os.path.abspath(args.build_dir)
@@ -110,20 +122,26 @@ def _build_package(args):
     # Temp dirs to hold building results
     intermediates_dir = os.path.join(build_dir, "intermediates")
     build_config = args.config
-    base_build_command = [sys.executable, BUILD_PY] + build_settings["build_params"] + ["--config=" + build_config]
-
-    if args.include_ops_by_config is not None:
-        base_build_command += ["--include_ops_by_config=" + str(args.include_ops_by_config.resolve())]
-
-    if args.path_to_protoc_exe is not None:
-        base_build_command += ["--path_to_protoc_exe=" + str(args.path_to_protoc_exe.resolve())]
 
     # build framework for individual sysroot
     framework_dirs = []
-    framework_info_path = ""
+    framework_info_files_to_merge = []
     public_headers_path = ""
     for sysroot in build_settings["build_osx_archs"]:
-        framework_dir = _build_for_ios_sysroot(
+        base_build_command = (
+            [sys.executable, BUILD_PY]
+            + build_settings["build_params"]["base"]
+            + build_settings["build_params"][sysroot]
+            + ["--config=" + build_config]
+        )
+
+        if args.include_ops_by_config is not None:
+            base_build_command += ["--include_ops_by_config=" + str(args.include_ops_by_config.resolve())]
+
+        if args.path_to_protoc_exe is not None:
+            base_build_command += ["--path_to_protoc_exe=" + str(args.path_to_protoc_exe.resolve())]
+
+        framework_dir = _build_for_apple_sysroot(
             build_config,
             intermediates_dir,
             base_build_command,
@@ -132,17 +150,20 @@ def _build_package(args):
             args.build_dynamic_framework,
         )
         framework_dirs.append(framework_dir)
-        # podspec and headers for each sysroot are the same, pick one of them
-        if not framework_info_path:
-            framework_info_path = os.path.join(os.path.dirname(framework_dir), "framework_info.json")
+
+        curr_framework_info_path = os.path.join(os.path.dirname(framework_dir), "framework_info.json")
+        framework_info_files_to_merge.append(curr_framework_info_path)
+
+        # headers for each sysroot are the same, pick one of them
+        if not public_headers_path:
             public_headers_path = os.path.join(os.path.dirname(framework_dir), "onnxruntime.framework", "Headers")
 
-    # create the folder for xcframework and copy the LICENSE and podspec file
+    # create the folder for xcframework and copy the LICENSE and framework_info.json file
     xcframework_dir = os.path.join(build_dir, "framework_out")
     pathlib.Path(xcframework_dir).mkdir(parents=True, exist_ok=True)
     shutil.copy(os.path.join(REPO_DIR, "LICENSE"), xcframework_dir)
     shutil.copytree(public_headers_path, os.path.join(xcframework_dir, "Headers"), dirs_exist_ok=True)
-    shutil.copy(framework_info_path, build_dir)
+    _merge_framework_info_files(framework_info_files_to_merge, os.path.join(build_dir, "xcframework_info.json"))
 
     # remove existing xcframework if any
     xcframework_path = os.path.join(xcframework_dir, "onnxruntime.xcframework")
@@ -171,7 +192,7 @@ def parse_args():
     parser.add_argument(
         "--build_dir",
         type=pathlib.Path,
-        default=os.path.join(REPO_DIR, "build/iOS_framework"),
+        default=os.path.join(REPO_DIR, "build/apple_framework"),
         help="Provide the root directory for build output",
     )
 

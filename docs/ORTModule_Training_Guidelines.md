@@ -269,6 +269,15 @@ data sparsity based performance optimizations.
 	unset ORTMODULE_CACHE_DIR # Disable
 	```
 
+#### ORTMODULE_USE_EFFICIENT_ATTENTION
+
+- **Feature Area**: *ORTMODULE/Optimizations*
+- **Description**: By default, this is disabled. This env var can be used for enabling attention fusion and falling back to PyTorch's efficient_attention ATen kernel for execution. NOTE that it requires torch's version is 2.1.1 or above. There are some build-in patterns for attention fusion, if none of the patterns works for your model, you can add a custom one in your user script manually.
+
+    ```bash
+    export ORTMODULE_USE_EFFICIENT_ATTENTION=1
+    ```
+
 ### 2.2 Memory Optimization
 
 Q: *Want to run a bigger batch size?*
@@ -395,6 +404,15 @@ Check [FP16_Optimizer implementation](../orttraining/orttraining/python/training
 
     ```bash
     export ORTMODULE_TUNING_RESULTS_PATH=/tmp/tuning_results
+    ```
+
+#### ORTMODULE_USE_FLASH_ATTENTION
+
+- **Feature Area**: *ORTMODULE/TritonOp*
+- **Description**: By default, this is disabled. This env var can be used for enabling attention fusion and using Flash Attention's Triton version as the kernel. NOTE that it requires ORTMODULE_USE_TRITON to be enabled, and CUDA device capability is 8.0 or above. There are some build-in patterns for attention fusion, if none of the patterns works for your model, you can add a custom one in your user script manually.
+
+    ```bash
+    export ORTMODULE_USE_FLASH_ATTENTION=1
     ```
 
 #### ORTMODULE_TRITON_DEBUG

@@ -2,9 +2,9 @@
 
 If you require a custom build of ONNX Runtime, you can create CocoaPods pods with your custom build locally and use them from a Podfile.
 
-**Prerequisite** - The custom build must be able to be done with [build_ios_framework.py](./build_ios_framework.py).
+**Prerequisite** - The custom build must be able to be done with [build_apple_framework.py](./build_apple_framework.py).
 
-To do a custom build and create the pods, run [build_and_assemble_ios_pods.py](./build_and_assemble_ios_pods.py).
+To do a custom build and create the pods, run [build_and_assemble_apple_pods.py](./build_and_assemble_apple_pods.py).
 Use the `--help` argument to see more information.
 
 ## Example usage
@@ -15,7 +15,7 @@ Our custom build will use a custom reduced operator kernel config file: `/path/t
 
 Run the script:
 ```bash
-python3 tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
+python3 tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
   --staging-dir /path/to/staging/dir \
   --include-ops-by-config /path/to/custom.config \
   --build-settings-file tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json
