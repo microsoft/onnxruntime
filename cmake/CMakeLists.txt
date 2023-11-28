@@ -1406,9 +1406,13 @@ if (onnxruntime_USE_CUDA)
   if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --Werror default-stream-launch")
   endif()
+  
   if (NOT WIN32)
-    list(APPEND CUDA_NVCC_FLAGS --compiler-options -fPIC)
+    list(APPEND CUDA_NVCC_FLAGS --debug_mode -generate-line-info --compiler-options -fPIC)
   endif()
+ 
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --generate-line-info")
+  
   # Options passed to cudafe
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=bad_friend_decl\"")
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=unsigned_compare_with_zero\"")
