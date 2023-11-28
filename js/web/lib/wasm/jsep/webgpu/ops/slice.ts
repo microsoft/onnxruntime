@@ -7,7 +7,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo, ProgramUniform, TensorInfo} from '../types';
 
-import {createTensorShapeVariables, getVecIndex, IndicesHelper, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
+import {createTensorShapeVariables, getArrayVec4Index, IndicesHelper, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
 
 export interface SliceAttributes extends AttributeWithCacheKey {
   readonly starts: number[];
@@ -76,36 +76,25 @@ const fixStartEndValues =
           }
         };
 
-const unrollInputIndexLoop = (inputShapeLength: number, outputShapeLength: number) => {
-  const commonInputIndex = `
-    var inputIndex = outputIndex * steps_i + starts_i + carry;
-    carry = inputIndex / input_shape_i;
-    inputIndex = inputIndex % input_shape_i;
-    if (signs_i < 0) {
-      inputIndex = input_shape_i - inputIndex - 1u + starts_i;
-    }`;
-  let inputIndexSnippets = '';
-  for (let i = inputShapeLength - 1; i >= 0; i--) {
-    const indexStr = inputShapeLength <= 1 ? '' : '.' + getVecIndex(i);
-    inputIndexSnippets += `{
-      let input_shape_i = uniforms.input_shape${indexStr};
-      let steps_i = uniforms.steps${indexStr};
-      let signs_i = uniforms.signs${indexStr};
-      let starts_i = uniforms.starts${indexStr};
-      var outputIndex = ${outputShapeLength === 1 ? 'outputIndices' : `outputIndices[${i}]`};
-      ` +
-        commonInputIndex + `${inputShapeLength === 1 ? 'inputIndices' : `inputIndices[${i}]`} = inputIndex;
-      }`;
-  }
-  return inputIndexSnippets;
-};
-
 const calculateInputIndicesImpl =
     (input: IndicesHelper, output: IndicesHelper, inputShape: readonly number[], outputShape: readonly number[]):
         string => `fn calculateInputIndices(outputIndices: ${output.type.indices}) -> ${input.type.indices} {
           var inputIndices: ${input.type.indices};
           var carry = 0u;
-          ${unrollInputIndexLoop(inputShape.length, outputShape.length)}
+          for (var i = ${inputShape.length}; i >= 0; i--) {
+            let input_shape_i = uniforms.input_shape${getArrayVec4Index(inputShape.length, 'i')};
+            let steps_i = uniforms.steps${getArrayVec4Index(inputShape.length, 'i')};
+            let signs_i = uniforms.signs${getArrayVec4Index(inputShape.length, 'i')};
+            let starts_i = uniforms.starts${getArrayVec4Index(inputShape.length, 'i')};
+            var outputIndex = ${outputShape.length === 1 ? 'outputIndices' : 'outputIndices[i]'};
+            var inputIndex = outputIndex * steps_i + starts_i + carry;
+            carry = inputIndex / input_shape_i;
+            inputIndex = inputIndex % input_shape_i;
+            if (signs_i < 0) {
+              inputIndex = input_shape_i - inputIndex - 1u + starts_i;
+            }
+            ${inputShape.length === 1 ? 'inputIndices' : 'inputIndices[i]'} = inputIndex;
+          }
           return inputIndices;
       }`;
 

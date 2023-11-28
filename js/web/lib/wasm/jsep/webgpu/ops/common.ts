@@ -330,21 +330,16 @@ export const sumVector = (name: string, components: number) => {
 };
 
 /**
- * A helper function that returns component name of vector or vector like struct.
+ * A helper function that returns component index of vector.
+ * @param rank
  * @param index
  */
-let vecIndex: string[] = [];
-export const getVecIndex = (index: number): string => {
-  if (index > 25) {
-    throw new Error('index > 25 is not supported!');
+export const getArrayVec4Index = (rank: number, index: number|string): string => {
+  if (typeof (index) === 'string') {
+    return rank > 4 ? `[${index}/4][${index}%4]` : rank > 1 ? `[${index}]` : '';
+  } else {
+    return rank > 4 ? `[${Math.floor(index / 4)}][${index % 4}]` : rank > 1 ? `[${index}]` : '';
   }
-  if (vecIndex.length === 0) {
-    vecIndex = ['x', 'y', 'z', 'w', 'a', 'b'];
-    for (let i = 0; i < 20; i++) {
-      vecIndex.push(`.${String.fromCharCode(99 + i)}`);
-    }
-  }
-  return vecIndex[index];
 };
 
 /**
@@ -384,11 +379,12 @@ const createIndicesHelper =
       const uniformPrefix = useUniform || uniformOnly ? 'uniforms.' : '';
       const shape = `${uniformPrefix}${name}_shape`;
       const strides = `${uniformPrefix}${name}_strides`;
+
       let o2iSnippet = '';
       for (let i = 0; i < rank - 1; i++) {
         o2iSnippet += `
-    let dim${i} = current / ${strides}.${getVecIndex(i)};
-    let rest${i} = current % ${strides}.${getVecIndex(i)};
+    let dim${i} = current / ${strides}${getArrayVec4Index(rank, i)};
+    let rest${i} = current % ${strides}${getArrayVec4Index(rank, i)};
     indices[${i}] = dim${i};
     current = rest${i};
     `;
@@ -411,7 +407,7 @@ const createIndicesHelper =
       const offsets: string[] = [];
       if (rank >= 2) {
         for (let i = rank - 1; i >= 0; i--) {
-          offsets.push(`${strides}.${getVecIndex(i)} * (indices[${i}])`);
+          offsets.push(`${strides}${getArrayVec4Index(rank, i)} * (indices[${i}])`);
         }
       }
 
@@ -798,17 +794,6 @@ class ShaderHelperImpl implements ShaderHelper {
     return this;
   }
 
-  private generateNDType(type: string, length: number) {
-    const fillNdArray = (length: number) => {
-      let ndArray = '';
-      for (let i = 0; i < length; i++) {
-        ndArray += (i !== 0 ? ',' : '') + `${getVecIndex(i)}: ${type}`;
-      }
-      return ndArray;
-    };
-    return `struct vec${length}${type} {` + fillNdArray(length) + '}';
-  }
-
   private indicesHelpers: IndicesHelper[] = [];
   private uniforms: UniformsArrayType = [];
   private uniformDeclaration(): string {
@@ -819,8 +804,6 @@ class ShaderHelperImpl implements ShaderHelper {
     const uniformSnippets: string[] = [];
     // If the length of any previous uniform > 4, need to add align(16).
     let needAlign16 = false;
-    const ndRegistry = [];
-    let ndTypeDeclaration = '';
     for (const {name, type, length} of this.uniforms) {
       if (type.includes('vec')) {
         throw new Error(`Type should be scalar like u32, i32, f32, ${type} is not supported!`);
@@ -829,11 +812,7 @@ class ShaderHelperImpl implements ShaderHelper {
         if (needAlign16 === false) {
           needAlign16 = true;
         }
-        if (ndRegistry.indexOf(length + type) === -1) {
-          ndRegistry.push(length + type);
-          ndTypeDeclaration += this.generateNDType(type, length);
-        }
-        uniformSnippets.push(`@align(16) ${name}:vec${length}${type}`);
+        uniformSnippets.push(`@align(16) ${name}:array<vec4<${type}>, ${Math.ceil(length / 4)}>`);
       } else {
         const typeTemp = length == null || length === 1 ? type : `vec${length}<${type}>`;
         uniformSnippets.push(`${needAlign16 ? '@align(16)' : ''}${name}:${typeTemp}`);
@@ -842,8 +821,8 @@ class ShaderHelperImpl implements ShaderHelper {
         }
       }
     }
+
     return `
-      ${ndTypeDeclaration}
       struct Uniforms { ${uniformSnippets.join(', ')} };
       @group(0) @binding(${this.variableIndex}) var<uniform> uniforms: Uniforms;`;
   }
