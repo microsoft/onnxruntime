@@ -495,7 +495,7 @@ Most ROCm kernel optimizations are from [composable kernel](https://github.com/R
 Some kernels are enabled by MIOpen. We hereby thank for the AMD developers' collaboration.
 
 ### Future Works
-* Update demo to support inpainting, LoRA Weights and Control Net.
+* Update demo to support inpainting.
 * Support flash attention in Windows.
 * Integration with UI.
 * Optimization for H100 GPU.

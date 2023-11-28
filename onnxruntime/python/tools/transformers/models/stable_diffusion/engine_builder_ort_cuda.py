@@ -220,7 +220,7 @@ class OrtCudaEngineBuilder(EngineBuilder):
                     logger.info("Exporting model: %s", onnx_path)
 
                     model = self.get_or_load_model(pipe, model_name, model_obj, framework_model_dir)
-                    model.to(torch.float32)
+                    model = model.to(torch.float32)
 
                     with torch.inference_mode():
                         # For CUDA EP, export FP32 onnx since some graph fusion only supports fp32 graph pattern.

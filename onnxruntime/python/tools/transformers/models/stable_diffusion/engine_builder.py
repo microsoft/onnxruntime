@@ -148,20 +148,20 @@ class EngineBuilder:
         return pipeline
 
     def get_or_load_model(self, pipeline, model_name, model_obj, framework_model_dir):
-        if model_name not in ["clip", "clip2", "unet", "unetxl"] or not pipeline:
-            return model_obj.load_model(framework_model_dir, self.hf_token)
+        if model_name in ["clip", "clip2", "unet", "unetxl"] and pipeline:
+            if model_name == "clip":
+                model = pipeline.text_encoder
+                pipeline.text_encoder = None
+            elif model_name == "clip2":
+                model = pipeline.text_encoder_2
+                pipeline.text_encoder_2 = None
+            else:
+                model = pipeline.unet
+                pipeline.unet = None
+        else:
+            model = model_obj.load_model(framework_model_dir, self.hf_token)
 
-        if model_name == "clip":
-            model = pipeline.text_encoder
-            pipeline.text_encoder = None
-        elif model_name == "clip2":
-            model = pipeline.text_encoder_2
-            pipeline.text_encoder_2 = None
-        elif model_name in ["unet", "unetxl"]:
-            model = pipeline.unet
-            pipeline.unet = None
-        model.to(self.torch_device)
-        return model
+        return model.to(self.torch_device)
 
     def load_models(self, framework_model_dir: str):
         # For TRT or ORT_TRT, we will export fp16 torch model for UNet.
