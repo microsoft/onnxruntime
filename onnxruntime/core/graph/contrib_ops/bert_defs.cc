@@ -661,15 +661,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 void propagateShapeAndTypeFromFirstInputAndParam(ONNX_NAMESPACE::InferenceContext& ctx) {
   propagateShapeAndTypeFromFirstInput(ctx);
   // fix output_shape
-  auto* output_shape =
-      ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+  // auto* output_shape =
+  //     ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
 
-  for (int i = 0; i < output_shape->dim_size(); i++) {
-    auto* dim_i = output_shape->mutable_dim(i);
-    if (dim_i->has_dim_param() && dim_i->dim_value() == 0) {
-      dim_i->set_dim_value(-1);
-    }
-  }
+  // for (int i = 0; i < output_shape->dim_size(); i++) {
+  //   auto* dim_i = output_shape->mutable_dim(i);
+  //   if (dim_i->has_dim_param() && dim_i->dim_value() == 0) {
+  //     dim_i->set_dim_value(-1);
+  //   }
+  // }
 }
 constexpr const char* PagedAttention_ver1_doc = R"DOC(
 PagedAttention is from https://vllm.ai/
@@ -730,6 +730,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             }));
 
 void SiluMulShapeInfer(InferenceContext& ctx) {
+  if (!hasInputShape(ctx, 0)) {
+    return;
+  }
   auto* output_shape =
       ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
 
