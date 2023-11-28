@@ -162,19 +162,19 @@ using Nop = ck::tensor_operation::element_wise::PassThrough;
 
 void add_device_gemm_xdl_splitk_f8_f16_f16_mk_kn_mn_instances(
     std::vector<std::unique_ptr<ck::tensor_operation::device::DeviceGemmSplitK<
-        Row, Row, Row, ck::f8_t, ck::half_t, ck::half_t, Scale<Float8E4M3FN>, Nop, Nop>>>& instances);
+        Row, Row, Row, F8, F16, F16, Scale<Float8E4M3FN>, Nop, Nop>>>& instances);
 
 void add_device_gemm_xdl_splitk_f8_f16_f16_mk_kn_mn_instances(
     std::vector<std::unique_ptr<ck::tensor_operation::device::DeviceGemmSplitK<
-        Row, Row, Row, ck::f8_t, ck::half_t, ck::half_t, Scale<Float8E4M3FNUZ>, Nop, Nop>>>& instances);
+        Row, Row, Row, F8, F16, F16, Scale<Float8E4M3FNUZ>, Nop, Nop>>>& instances);
 
 void add_device_gemm_xdl_splitk_f16_f8_f16_mk_kn_mn_instances(
     std::vector<std::unique_ptr<ck::tensor_operation::device::DeviceGemmSplitK<
-        Row, Row, Row, ck::half_t, ck::f8_t, ck::half_t, Nop, Scale<Float8E4M3FN>, Nop>>>& instances);
+        Row, Row, Row, F16, F8, F16, Nop, Scale<Float8E4M3FN>, Nop>>>& instances);
 
 void add_device_gemm_xdl_splitk_f16_f8_f16_mk_kn_mn_instances(
     std::vector<std::unique_ptr<ck::tensor_operation::device::DeviceGemmSplitK<
-        Row, Row, Row, ck::half_t, ck::f8_t, ck::half_t, Nop, Scale<Float8E4M3FNUZ>, Nop>>>& instances);
+        Row, Row, Row, F16, F8, F16, Nop, Scale<Float8E4M3FNUZ>, Nop>>>& instances);
 
 void add_device_gemm_xdl_splitk_f16_f8_f16_mk_nk_mn_instances(
     std::vector<std::unique_ptr<ck::tensor_operation::device::DeviceGemmSplitK<
@@ -214,7 +214,6 @@ auto GetCKF8SplitKGemmTypeStringAndOps() {
 
   for (auto num_split : {1, 4, 16, 64}) {
     std::vector<std::unique_ptr<DeviceGemm>> instances{};
-    // only supports fp8_fp16_fp16_row_row_row and fp16_fp8_fp16_row_row_row now.
     if constexpr (std::is_same_v<CKTA, ck::f8_t> && std::is_same_v<CKTB, ck::half_t> && std::is_same_v<CKTC, ck::half_t> &&
                   std::is_same_v<ALayout, Row> && std::is_same_v<BLayout, Row>) {
       add_device_gemm_xdl_splitk_f8_f16_f16_mk_kn_mn_instances(instances);

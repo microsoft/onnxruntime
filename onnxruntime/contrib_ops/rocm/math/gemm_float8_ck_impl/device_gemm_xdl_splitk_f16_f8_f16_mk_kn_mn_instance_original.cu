@@ -59,20 +59,16 @@ using device_gemm_xdl_splitk_f16_f8_f16_mk_kn_mn_instances_ck = std::tuple<
 
 void add_device_gemm_xdl_splitk_f16_f8_f16_mk_kn_mn_instances_ck(
     std::vector<std::unique_ptr<ck::tensor_operation::device::DeviceGemmSplitK<
-        Row, Row, Row, F16, F8, F16, PassThrough, Scale<Float8E4M3FN>, PassThrough>>>&
-        instances) {
+        Row, Row, Row, F16, F8, F16, PassThrough, Scale<Float8E4M3FN>, PassThrough>>>& instances) {
   ck::tensor_operation::device::instance::add_device_operation_instances(
-      instances,
-      device_gemm_xdl_splitk_f16_f8_f16_mk_kn_mn_instances_ck<Float8E4M3FN>{});
+      instances, device_gemm_xdl_splitk_f16_f8_f16_mk_kn_mn_instances_ck<Float8E4M3FN>{});
 }
 
 void add_device_gemm_xdl_splitk_f16_f8_f16_mk_kn_mn_instances_ck(
     std::vector<std::unique_ptr<ck::tensor_operation::device::DeviceGemmSplitK<
-        Row, Row, Row, F16, F8, F16, PassThrough, Scale<Float8E4M3FNUZ>, PassThrough>>>&
-        instances) {
+        Row, Row, Row, F16, F8, F16, PassThrough, Scale<Float8E4M3FNUZ>, PassThrough>>>& instances) {
   ck::tensor_operation::device::instance::add_device_operation_instances(
-      instances,
-      device_gemm_xdl_splitk_f16_f8_f16_mk_kn_mn_instances_ck<Float8E4M3FNUZ>{});
+      instances, device_gemm_xdl_splitk_f16_f8_f16_mk_kn_mn_instances_ck<Float8E4M3FNUZ>{});
 }
 
 }  // namespace internal

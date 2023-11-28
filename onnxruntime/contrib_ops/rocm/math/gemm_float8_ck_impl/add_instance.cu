@@ -48,16 +48,14 @@ void add_device_gemm_xdl_splitk_f16_f8_f16_mk_kn_mn_instances_ort(
 
 void add_device_gemm_xdl_splitk_f16_f8_f16_mk_kn_mn_instances(
     std::vector<std::unique_ptr<ck::tensor_operation::device::DeviceGemmSplitK<
-        Row, Row, Row, F16, F8, F16, PassThrough, Scale<Float8E4M3FN>, PassThrough>>>&
-        instances) {
+        Row, Row, Row, F16, F8, F16, PassThrough, Scale<Float8E4M3FN>, PassThrough>>>& instances) {
   internal::add_device_gemm_xdl_splitk_f16_f8_f16_mk_kn_mn_instances_ck(instances);
   internal::add_device_gemm_xdl_splitk_f16_f8_f16_mk_kn_mn_instances_ort(instances);
 }
 
 void add_device_gemm_xdl_splitk_f16_f8_f16_mk_kn_mn_instances(
     std::vector<std::unique_ptr<ck::tensor_operation::device::DeviceGemmSplitK<
-        Row, Row, Row, F16, F8, F16, PassThrough, Scale<Float8E4M3FNUZ>, PassThrough>>>&
-        instances) {
+        Row, Row, Row, F16, F8, F16, PassThrough, Scale<Float8E4M3FNUZ>, PassThrough>>>& instances) {
   internal::add_device_gemm_xdl_splitk_f16_f8_f16_mk_kn_mn_instances_ck(instances);
   internal::add_device_gemm_xdl_splitk_f16_f8_f16_mk_kn_mn_instances_ort(instances);
 }
@@ -99,26 +97,22 @@ void add_device_gemm_xdl_splitk_f8_f16_f16_mk_kn_mn_instances(
 namespace internal {
 void add_device_gemm_xdl_splitk_f16_f8_f16_mk_nk_mn_instances_ck(
     std::vector<std::unique_ptr<ck::tensor_operation::device::DeviceGemmSplitK<
-        Row, Col, Row, F16, F8, F16, PassThrough, Scale<Float8E4M3FN>, PassThrough>>>&
-        instances);
+        Row, Col, Row, F16, F8, F16, PassThrough, Scale<Float8E4M3FN>, PassThrough>>>& instances);
 
 void add_device_gemm_xdl_splitk_f16_f8_f16_mk_nk_mn_instances_ck(
     std::vector<std::unique_ptr<ck::tensor_operation::device::DeviceGemmSplitK<
-        Row, Col, Row, F16, F8, F16, PassThrough, Scale<Float8E4M3FNUZ>, PassThrough>>>&
-        instances);
+        Row, Col, Row, F16, F8, F16, PassThrough, Scale<Float8E4M3FNUZ>, PassThrough>>>& instances);
 }  // namespace internal
 
 void add_device_gemm_xdl_splitk_f16_f8_f16_mk_nk_mn_instances(
     std::vector<std::unique_ptr<ck::tensor_operation::device::DeviceGemmSplitK<
-        Row, Col, Row, F16, F8, F16, PassThrough, Scale<Float8E4M3FN>, PassThrough>>>&
-        instances) {
+        Row, Col, Row, F16, F8, F16, PassThrough, Scale<Float8E4M3FN>, PassThrough>>>& instances) {
   internal::add_device_gemm_xdl_splitk_f16_f8_f16_mk_nk_mn_instances_ck(instances);
 }
 
 void add_device_gemm_xdl_splitk_f16_f8_f16_mk_nk_mn_instances(
     std::vector<std::unique_ptr<ck::tensor_operation::device::DeviceGemmSplitK<
-        Row, Col, Row, F16, F8, F16, PassThrough, Scale<Float8E4M3FNUZ>, PassThrough>>>&
-        instances) {
+        Row, Col, Row, F16, F8, F16, PassThrough, Scale<Float8E4M3FNUZ>, PassThrough>>>& instances) {
   internal::add_device_gemm_xdl_splitk_f16_f8_f16_mk_nk_mn_instances_ck(instances);
 }
 

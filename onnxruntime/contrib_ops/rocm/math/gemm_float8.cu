@@ -135,13 +135,16 @@ Status GemmFloat8::ComputeFp8Fp16Fp16(OpKernelContext* ctx, const Tensor* A, con
   params.scale_c = 1.0f;         // NOTE: not implemented
   params.scale_c_dev = nullptr;  // NOTE: not implemented
 
-  // NOTE: transA is not implemented
-  if (transB_) {
-    ORT_NOT_IMPLEMENTED("transB is not implemented");
-    // return (*GetOp<Fp8T, MLFloat16, MLFloat16, BlasOp::NonTrans, BlasOp::Trans>())(&params);
-  } else {
+  if (!transA_ && !transB_) {
     return (*GetOp<Fp8T, MLFloat16, MLFloat16, BlasOp::NonTrans, BlasOp::NonTrans>())(&params);
+  } else if (transA_ && !transB_) {
+    ORT_NOT_IMPLEMENTED("transA is not implemented");
+  } else if (!transA_ && transB_) {
+    ORT_NOT_IMPLEMENTED("transB is not implemented");
+  } else if (transA_ && transB_) {
+    ORT_NOT_IMPLEMENTED("transA & transB is not implemented");
   }
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unreachable");
 }
 
 template <typename Fp8T>
@@ -181,12 +184,16 @@ Status GemmFloat8::ComputeFp16Fp8Fp16(OpKernelContext* ctx, const Tensor* A, con
   params.scale_c = 1.0f;         // NOTE: not implemented
   params.scale_c_dev = nullptr;  // NOTE: not implemented
 
-  // NOTE: transA is not implemented
-  if (transB_) {
-    return (*GetOp<MLFloat16, Fp8T, MLFloat16, BlasOp::NonTrans, BlasOp::Trans>())(&params);
-  } else {
+  if (!transA_ && !transB_) {
     return (*GetOp<MLFloat16, Fp8T, MLFloat16, BlasOp::NonTrans, BlasOp::NonTrans>())(&params);
+  } else if (transA_ && !transB_) {
+    ORT_NOT_IMPLEMENTED("transA is not implemented");
+  } else if (!transA_ && transB_) {
+    return (*GetOp<MLFloat16, Fp8T, MLFloat16, BlasOp::NonTrans, BlasOp::Trans>())(&params);
+  } else if (transA_ && transB_) {
+    ORT_NOT_IMPLEMENTED("transA & transB is not implemented");
   }
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unreachable");
 }
 #define GEMM_FLOAT8_CONSTRAINTS BuildKernelDefConstraints<MLFloat16, Float8E4M3FN, Float8E4M3FNUZ>()
 #else
