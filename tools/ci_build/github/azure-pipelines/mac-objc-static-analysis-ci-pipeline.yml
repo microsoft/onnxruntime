@@ -30,7 +30,7 @@ jobs:
     displayName: Generate compile_commands.json and ONNX protobuf files
 
   - script: |
-      patch < "$(Build.BinariesDirectory)/cmake/patches/abseil/absl_gh_issue_1435_workaround.patch"
+      patch < "$(Build.SourcesDirectory)/cmake/patches/abseil/absl_gh_issue_1435_workaround.patch"
     workingDirectory: "$(Build.BinariesDirectory)/Debug/_deps/abseil_cpp-src"
     displayName: Apply absl_gh_issue_1435_workaround.patch
 
