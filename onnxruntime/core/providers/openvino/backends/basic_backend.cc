@@ -166,7 +166,9 @@ void BasicBackend::EnableStreams() {
 }
 
 void BasicBackend::SetNumThreads(ov::AnyMap& device_config) {
-  device_config.emplace(ov::inference_num_threads(global_context_.num_of_threads));
+  //inference_num_threads is applicable only for the CPU device
+  if (global_context_.device_type.find("CPU") != std::string::npos)
+    device_config.emplace(ov::inference_num_threads(global_context_.num_of_threads));
 }
 
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
