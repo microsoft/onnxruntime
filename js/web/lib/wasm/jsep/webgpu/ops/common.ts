@@ -802,23 +802,15 @@ class ShaderHelperImpl implements ShaderHelper {
     }
 
     const uniformSnippets: string[] = [];
-    // If the length of any previous uniform > 4, need to add align(16).
-    let needAlign16 = false;
     for (const {name, type, length} of this.uniforms) {
       if (type.includes('vec')) {
         throw new Error(`Type should be scalar like u32, i32, f32, ${type} is not supported!`);
       }
       if (length && length > 4) {
-        if (needAlign16 === false) {
-          needAlign16 = true;
-        }
         uniformSnippets.push(`@align(16) ${name}:array<vec4<${type}>, ${Math.ceil(length / 4)}>`);
       } else {
         const typeTemp = length == null || length === 1 ? type : `vec${length}<${type}>`;
-        uniformSnippets.push(`${needAlign16 ? '@align(16)' : ''}${name}:${typeTemp}`);
-        if (needAlign16) {
-          needAlign16 = false;
-        }
+        uniformSnippets.push(`${name}:${typeTemp}`);
       }
     }
 
