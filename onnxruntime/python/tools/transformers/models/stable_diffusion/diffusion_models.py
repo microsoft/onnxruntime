@@ -261,8 +261,10 @@ class PipelineInfo:
 
     def controlnet_name(self):
         """Return a list of controlnet name"""
+        if not self.controlnet:
+            return None
         controlnet_map = PipelineInfo.supported_controlnet(self.version)
-        if self.controlnet is None or controlnet_map is None:
+        if controlnet_map is None:
             return None
         return [controlnet_map[controlnet] for controlnet in self.controlnet]
 
@@ -809,7 +811,7 @@ class UNet(BaseModel):
         return model
 
     def get_input_names(self):
-        if self.controlnet is None:
+        if not self.controlnet:
             return ["sample", "timestep", "encoder_hidden_states"]
         else:
             return ["sample", "timestep", "encoder_hidden_states", "controlnet_images", "controlnet_scales"]
@@ -1065,7 +1067,7 @@ class UNetXL(BaseModel):
         latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
         dtype = torch.float16 if self.fp16 else torch.float32
         m = self.get_batch_multiplier()
-        if self.controlnet is None:
+        if not self.controlnet:
             return (
                 torch.randn(
                     m * batch_size, self.unet_dim, latent_height, latent_width, dtype=torch.float32, device=self.device
