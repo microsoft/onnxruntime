@@ -667,7 +667,9 @@ class MemoryObserver:
 
                 return configs_with_out_freq
 
-            user_configs_with_out_freq = _get_user_config_without_freq(memory_optimizer_config)
+            user_configs_with_out_freq = []
+            if memory_optimizer_config:
+                user_configs_with_out_freq = _get_user_config_without_freq(memory_optimizer_config)
 
             for (
                 cluster_id,
