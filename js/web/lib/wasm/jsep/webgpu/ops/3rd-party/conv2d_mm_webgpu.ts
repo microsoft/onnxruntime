@@ -180,7 +180,7 @@ export const createConv2DMatMulProgramInfo =
 
       LOG_DEBUG('verbose', () => `[conv2d_mm_webgpu] dispatch = ${dispatch}`);
 
-      const innerElementSize = isVec4 ? (isChannelsLast && inChannels % 4 !== 0 ? 3 : 4) : elementsPerThread[0];
+      const innerElementSize = isVec4 ? (isChannelsLast && inChannels % 4 !== 0 ? 3 : 4) : 1;
 
       const tileAOuter = workGroupSize[1] * elementsPerThread[1];
       const tileBOuter = workGroupSize[0] * elementsPerThread[0];
@@ -197,7 +197,8 @@ export const createConv2DMatMulProgramInfo =
       const components = isVec4 ? 4 : 1;
       const programUniforms: ProgramUniform[] =
           [{type: 'int32', data: dimAOuter}, {type: 'int32', data: dimBOuter}, {type: 'int32', data: dimInner}];
-      const x = inputVariable('x', inputs[0].dataType, inputs[0].dims.length, components);
+      const x =
+          inputVariable('x', inputs[0].dataType, inputs[0].dims.length, innerElementSize === 3 ? 1 : innerElementSize);
       const w = inputVariable('w', inputs[1].dataType, inputs[1].dims.length, components);
       const inputVariables = [x, w];
 
