@@ -263,12 +263,16 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>UTF-16 string instance</returns>
         public string GetStringElement(int index)
         {
-            var chars = GetStringTensorElementChars(index);
-            if (chars.Length == 0)
+            GetStringTensorElementBuffer((UIntPtr)index, out uint bytesLen, out IntPtr bufferPtr);
+            if (bytesLen == 0)
             {
                 return string.Empty;
             }
-            return new string(chars);
+
+            unsafe
+            {
+                return new string((sbyte*)bufferPtr.ToPointer(), 0, (int)bytesLen, Encoding.UTF8);
+            }
         }
 
 
