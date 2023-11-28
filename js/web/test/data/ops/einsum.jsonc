@@ -360,6 +360,123 @@
     "attributes": [
       {
         "name": "equation",
+        "data": "ij,ij -> ij",
+        "type": "string"
+      }
+    ],
+    "cases": [
+      {
+        "name": "Elementwise multiplication",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8, 9],
+            "dims": [3, 3],
+            "type": "float32"
+          },
+          {
+            "data": [1, 0, 0, 0, 1, 0, 0, 0, 1],
+            "dims": [3, 3],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1, 0, 0, 0, 5, 0, 0, 0, 9],
+            "dims": [3, 3],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "einsum",
+    "operator": "Einsum",
+    "opset": {
+      "domain": "",
+      "version": 12
+    },
+    "attributes": [
+      {
+        "name": "equation",
+        "data": "i,i",
+        "type": "string"
+      }
+    ],
+    "cases": [
+      {
+        "name": "Dot product/scalar product",
+        "inputs": [
+          {
+            "data": [1, 2, 3],
+            "dims": [3],
+            "type": "float32"
+          },
+          {
+            "data": [1, 1, 1],
+            "dims": [3],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [6],
+            "dims": [],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "einsum",
+    "operator": "Einsum",
+    "opset": {
+      "domain": "",
+      "version": 12
+    },
+    "attributes": [
+      {
+        "name": "equation",
+        "data": "i,j->ij",
+        "type": "string"
+      }
+    ],
+    "cases": [
+      {
+        "name": "outer product",
+        "inputs": [
+          {
+            "data": [1, 2, 3],
+            "dims": [3],
+            "type": "float32"
+          },
+          {
+            "data": [1, 2, 3],
+            "dims": [3],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1, 2, 3, 2, 4, 6, 3, 6, 9],
+            "dims": [3, 3],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "einsum",
+    "operator": "Einsum",
+    "opset": {
+      "domain": "",
+      "version": 12
+    },
+    "attributes": [
+      {
+        "name": "equation",
         "data": "ij,jk->ik",
         "type": "string"
       }
