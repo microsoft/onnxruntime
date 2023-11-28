@@ -19,9 +19,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # --------------------------------------------------------------------------
-
 import argparse
 import os
+import sys
+from importlib.metadata import PackageNotFoundError, version
 from io import BytesIO
 from typing import Any, Dict, List
 
@@ -275,6 +276,7 @@ def max_batch(args):
 
 def get_metadata(args, is_xl: bool = False) -> Dict[str, Any]:
     metadata = {
+        "command": " ".join(['"' + x + '"' if " " in x else x for x in sys.argv]),
         "args.prompt": args.prompt,
         "args.negative_prompt": args.negative_prompt,
         "args.batch_size": args.batch_size,
@@ -284,6 +286,14 @@ def get_metadata(args, is_xl: bool = False) -> Dict[str, Any]:
         "vae_slicing": args.enable_vae_slicing,
         "engine": args.engine,
     }
+
+    if args.lora_weights:
+        metadata["lora_weights"] = args.lora_weights
+        metadata["lora_scale"] = args.lora_scale
+
+    if args.controlnet_type:
+        metadata["controlnet_type"] = args.controlnet_type
+        metadata["controlnet_scale"] = args.controlnet_scale
 
     if is_xl and not args.disable_refiner:
         metadata["base.scheduler"] = args.scheduler
@@ -297,6 +307,25 @@ def get_metadata(args, is_xl: bool = False) -> Dict[str, Any]:
         metadata["scheduler"] = args.scheduler
         metadata["denoising_steps"] = args.denoising_steps
         metadata["guidance"] = args.guidance
+
+    # Version of installed python packages
+    packages = ""
+    for name in [
+        "onnxruntime-gpu",
+        "torch",
+        "tensorrt",
+        "transformers",
+        "diffusers",
+        "onnx",
+        "onnx-graphsurgeon",
+        "polygraphy",
+        "controlnet_aux",
+    ]:
+        try:
+            packages += (" " if packages else "") + f"{name}=={version(name)}"
+        except PackageNotFoundError:
+            continue
+    metadata["packages"] = packages
 
     return metadata
 
@@ -613,7 +642,7 @@ def process_controlnet_arguments(args):
         return None, None
 
     if len(args.controlnet_scale) == 0:
-        args.controlnet_scale = [0.35 if is_xl else 1.0] * len(args.controlnet_type)
+        args.controlnet_scale = [0.5 if is_xl else 1.0] * len(args.controlnet_type)
     elif len(args.controlnet_type) != len(args.controlnet_scale):
         raise ValueError(
             f"Numbers of ControlNets {len(args.controlnet_type)} should be equal to number of ControlNet scales {len(args.controlnet_scale)}."
