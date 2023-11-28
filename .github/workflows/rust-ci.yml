@@ -24,7 +24,7 @@ jobs:
     name: Download prebuilt ONNX Runtime archive from build.rs
     runs-on: ubuntu-latest
     env:
-      ORT_RUST_STRATEGY=download
+      ORT_RUST_STRATEGY: download
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/rust-toolchain-setup
@@ -73,13 +73,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target:
-          [
-            x86_64-unknown-linux-gnu,
-            x86_64-apple-darwin,
-            x86_64-pc-windows-msvc,
-            i686-pc-windows-msvc,
-          ]
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
