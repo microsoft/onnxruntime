@@ -326,6 +326,8 @@ def get_metadata(args, is_xl: bool = False) -> Dict[str, Any]:
         except PackageNotFoundError:
             continue
     metadata["packages"] = packages
+    metadata["device"] = torch.cuda.get_device_name()
+    metadata["torch.version.cuda"] = torch.version.cuda
 
     return metadata
 
