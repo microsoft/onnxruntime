@@ -56,6 +56,7 @@ Status SqueezeUnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
 
   emscripten::val options = emscripten::val::object();
   std::vector<int32_t> axes_data;
+  auto rank = input_rank;
 
   if (node.SinceVersion() >= 13 && input_defs.size() > 1) {
     // Input axes is provided, use axes initializer data.
@@ -63,45 +64,57 @@ Status SqueezeUnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
     const auto& axes_tensor = *initializers.at(input_defs[1]->Name());
     Initializer axes_initializer(axes_tensor);
     const auto axes_data_span = axes_initializer.DataAsSpan<int64_t>();
-    const auto output_rank = input_rank + axes_data_span.size();
+    if (op_type == "Unsqueeze") {
+      // Unsqueeze should check the expanded rank.
+      rank = input_rank + axes_data_span.size();
+    }
     std::transform(
         axes_data_span.begin(), axes_data_span.end(), std::back_inserter(axes_data),
-        [output_rank](int64_t axis) -> int32_t { return SafeInt<int32_t>(HandleNegativeAxis(axis, output_rank)); });
+        [rank](int64_t axis) -> int32_t { return SafeInt<int32_t>(HandleNegativeAxis(axis, rank)); });
   } else {
     NodeAttrHelper helper(node);
     if (helper.HasAttr("axes")) {
       auto axes = helper.Get("axes", std::vector<int64_t>{});
-      const auto output_rank = input_rank + axes.size();
+      if (op_type == "Unsqueeze") {
+        // Unsqueeze should check the expanded rank.
+        rank = input_rank + axes.size();
+      }
       std::transform(
           axes.begin(), axes.end(), std::back_inserter(axes_data),
-          [output_rank](int64_t axis) -> int32_t { return SafeInt<int32_t>(HandleNegativeAxis(axis, output_rank)); });
+          [rank](int64_t axis) -> int32_t { return SafeInt<int32_t>(HandleNegativeAxis(axis, rank)); });
     }
   }
 
   emscripten::val output = emscripten::val::undefined();
+  // Use WebNN's reshape to implement Squeeze/Unsqueeze.
+  std::vector<uint32_t> new_shape;
+  std::transform(
+      input_shape.begin(), input_shape.end(), std::back_inserter(new_shape),
+      [](int64_t data) -> uint32_t { return SafeInt<uint32_t>(data); });
+  // Sort axes_data in ascending order.
+  std::sort(axes_data.begin(), axes_data.end());
   if (op_type == "Squeeze") {
-    if (axes_data.size() > 0) {
-      options.set("axes", emscripten::val::array(axes_data));
+    if (!axes_data.empty()) {
+      for (auto axis = axes_data.rbegin(); axis != axes_data.rend(); ++axis) {
+        size_t index = *axis;
+        new_shape.erase(new_shape.begin() + index);
+      }
+    } else {
+      // Remove all the single dimensions.
+      new_shape.erase(
+          std::remove_if(new_shape.begin(), new_shape.end(), [](uint32_t axis) { return axis == 1; }), new_shape.end());
     }
-    output = model_builder.GetBuilder().call<emscripten::val>("squeeze", input, options);
   } else if (op_type == "Unsqueeze") {
-    // Use WebNN's reshape to implement Unsqueeze.
-    std::vector<int32_t> new_shape;
-    std::transform(
-        input_shape.begin(), input_shape.end(), std::back_inserter(new_shape),
-        [](int64_t data) -> int32_t { return SafeInt<int32_t>(data); });
-    // Sort axes_data in ascending order.
-    std::sort(axes_data.begin(), axes_data.end());
     // Expand new_shape according to axes_data.
     for (const int32_t& axis : axes_data) {
       new_shape.insert(new_shape.begin() + axis, 1);
     }
-    output = model_builder.GetBuilder().call<emscripten::val>("reshape", input, emscripten::val::array(new_shape));
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "SqueezeUnsqueezeOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
   }
 
+  output = model_builder.GetBuilder().call<emscripten::val>("reshape", input, emscripten::val::array(new_shape));
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
 }
