@@ -49,32 +49,32 @@ OVExeNetwork OVCore::LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network,
   ov::CompiledModel obj;
   try {
     obj = oe.compile_model(ie_cnn_network, hw_target, device_config);
-    
+
 #ifndef NDEBUG
-   if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
+    if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
       // output of the actual settings that the device selected
       auto supported_properties = obj.get_property(ov::supported_properties);
       std::cout << "Model:" << std::endl;
       for (const auto& cfg : supported_properties) {
-          if (cfg == ov::supported_properties)
-              continue;
-          auto prop = obj.get_property(cfg);
-          if (cfg == ov::device::properties) {
-              auto devices_properties = prop.as<ov::AnyMap>();
-              for (auto& item : devices_properties) {
-                  std::cout << "  " << item.first << ": " << std::endl;
-                  for (auto& item2 : item.second.as<ov::AnyMap>()) {
-                      OPENVINO_SUPPRESS_DEPRECATED_START
-                      if (item2.first == ov::supported_properties || item2.first == "SUPPORTED_CONFIG_KEYS)" ||
-                          item2.first == "SUPPORTED_METRICS")
-                          continue;
-                      OPENVINO_SUPPRESS_DEPRECATED_END
-                      std::cout << "    " << item2.first << ": " << item2.second.as<std::string>() << std::endl;
-                  }
-              }
-          } else {
-              std::cout << "  " << cfg << ": " << prop.as<std::string>() << std::endl;
+        if (cfg == ov::supported_properties)
+          continue;
+        auto prop = obj.get_property(cfg);
+        if (cfg == ov::device::properties) {
+          auto devices_properties = prop.as<ov::AnyMap>();
+          for (auto& item : devices_properties) {
+            std::cout << "  " << item.first << ": " << std::endl;
+            for (auto& item2 : item.second.as<ov::AnyMap>()) {
+              OPENVINO_SUPPRESS_DEPRECATED_START
+              if (item2.first == ov::supported_properties || item2.first == "SUPPORTED_CONFIG_KEYS)" ||
+                  item2.first == "SUPPORTED_METRICS")
+                continue;
+              OPENVINO_SUPPRESS_DEPRECATED_END
+              std::cout << "    " << item2.first << ": " << item2.second.as<std::string>() << std::endl;
+            }
           }
+        } else {
+          std::cout << "  " << cfg << ": " << prop.as<std::string>() << std::endl;
+        }
       }
     }
 #endif
