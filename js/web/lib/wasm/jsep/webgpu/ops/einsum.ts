@@ -181,7 +181,7 @@ class EinsumEquation {
 const appendMax = (name: string): string => name + '_max';
 
 const createEinsumProgramInfo =
-    (enableInputShapesUniforms: readonly boolean[], inputShapes: readonly number[][], dataType: number,
+    (enableInputShapesUniforms: readonly boolean[], inputShapes: Array<readonly number[]>, dataType: number,
      einsumEquation: EinsumEquation, outputShape: readonly number[]): ProgramInfo => {
       const shapeOrRanks = inputShapes.map((dims, index) => enableInputShapesUniforms[index] ? dims.length : dims);
       const inputVars = shapeOrRanks.map((shapeOrRank, index) => inputVariable(`input${index}`, dataType, shapeOrRank));
