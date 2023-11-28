@@ -407,11 +407,32 @@ class TensorrtEngineBuilder(EngineBuilder):
 
         self.load_models(framework_model_dir)
 
+        # Load lora only when we need export text encoder or UNet to ONNX.
+        load_lora = False
+        if self.pipeline_info.lora_weights:
+            for model_name, model_obj in self.models.items():
+                if model_name not in ["clip", "clip2", "unet", "unetxl"]:
+                    continue
+                profile_id = model_obj.get_profile_id(
+                    opt_batch_size, opt_image_height, opt_image_width, static_batch, static_shape
+                )
+                engine_path = self.get_engine_path(engine_dir, model_name, profile_id)
+                if force_export or force_build or not os.path.exists(engine_path):
+                    onnx_path = self.get_onnx_path(model_name, onnx_dir, opt=False)
+                    onnx_opt_path = self.get_onnx_path(model_name, onnx_dir, opt=True)
+                    if force_export or not os.path.exists(onnx_opt_path):
+                        if force_export or not os.path.exists(onnx_path):
+                            load_lora = True
+                            break
+
         # Export models to ONNX
-        for model_name, obj in self.models.items():
+        self.disable_torch_spda()
+        pipe = self.load_pipeline_with_lora() if load_lora else None
+
+        for model_name, model_obj in self.models.items():
             if model_name == "vae" and self.vae_torch_fallback:
                 continue
-            profile_id = obj.get_profile_id(
+            profile_id = model_obj.get_profile_id(
                 opt_batch_size, opt_image_height, opt_image_width, static_batch, static_shape
             )
             engine_path = self.get_engine_path(engine_dir, model_name, profile_id)
@@ -421,9 +442,10 @@ class TensorrtEngineBuilder(EngineBuilder):
                 if force_export or not os.path.exists(onnx_opt_path):
                     if force_export or not os.path.exists(onnx_path):
                         print(f"Exporting model: {onnx_path}")
-                        model = obj.load_model(framework_model_dir, self.hf_token)
+                        model = self.get_or_load_model(pipe, model_name, model_obj, framework_model_dir)
+
                         with torch.inference_mode(), torch.autocast("cuda"):
-                            inputs = obj.get_sample_input(1, opt_image_height, opt_image_width)
+                            inputs = model_obj.get_sample_input(1, opt_image_height, opt_image_width)
                             torch.onnx.export(
                                 model,
                                 inputs,
@@ -431,9 +453,9 @@ class TensorrtEngineBuilder(EngineBuilder):
                                 export_params=True,
                                 opset_version=onnx_opset,
                                 do_constant_folding=True,
-                                input_names=obj.get_input_names(),
-                                output_names=obj.get_output_names(),
-                                dynamic_axes=obj.get_dynamic_axes(),
+                                input_names=model_obj.get_input_names(),
+                                output_names=model_obj.get_output_names(),
+                                dynamic_axes=model_obj.get_dynamic_axes(),
                             )
                         del model
                         torch.cuda.empty_cache()
@@ -444,15 +466,16 @@ class TensorrtEngineBuilder(EngineBuilder):
                     # Optimize onnx
                     if force_optimize or not os.path.exists(onnx_opt_path):
                         print(f"Generating optimizing model: {onnx_opt_path}")
-                        obj.optimize_trt(onnx_path, onnx_opt_path)
+                        model_obj.optimize_trt(onnx_path, onnx_opt_path)
                     else:
                         print(f"Found cached optimized model: {onnx_opt_path} ")
+        self.enable_torch_spda()
 
         # Build TensorRT engines
-        for model_name, obj in self.models.items():
+        for model_name, model_obj in self.models.items():
             if model_name == "vae" and self.vae_torch_fallback:
                 continue
-            profile_id = obj.get_profile_id(
+            profile_id = model_obj.get_profile_id(
                 opt_batch_size, opt_image_height, opt_image_width, static_batch, static_shape
             )
             engine_path = self.get_engine_path(engine_dir, model_name, profile_id)
@@ -463,7 +486,7 @@ class TensorrtEngineBuilder(EngineBuilder):
                 engine.build(
                     onnx_opt_path,
                     fp16=True,
-                    input_profile=obj.get_input_profile(
+                    input_profile=model_obj.get_input_profile(
                         opt_batch_size,
                         opt_image_height,
                         opt_image_width,
