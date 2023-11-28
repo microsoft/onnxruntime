@@ -6,6 +6,10 @@
         "iphonesimulator": [
             "arm64",
             "x86_64"
+        ],
+        "macosx": [
+            "arm64",
+            "x86_64"
         ]
     },
     "build_params": {
@@ -13,14 +17,13 @@
             "--parallel",
             "--use_xcode",
             "--build_apple_framework",
-            "--minimal_build=extended",
-            "--disable_rtti",
-            "--disable_ml_ops",
-            "--disable_exceptions",
-            "--enable_reduced_operator_type_support",
             "--use_coreml",
+            "--use_xnnpack",
             "--skip_tests",
             "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF"
+        ],
+        "macosx": [
+            "--apple_deploy_target=11.0"
         ],
         "iphoneos": [
             "--ios",
