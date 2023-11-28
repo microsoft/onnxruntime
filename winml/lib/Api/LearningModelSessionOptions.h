@@ -11,7 +11,7 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<
                                        LearningModelSessionOptions,
                                        ILearningModelSessionOptionsNative,
                                        ILearningModelSessionOptionsNative1> {
-  LearningModelSessionOptions() = default;
+  LearningModelSessionOptions();
 
   LearningModelSessionOptions(const LearningModelSessionOptions& options);
 
@@ -72,7 +72,7 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<
   // The intra operator num threads property is used to control the number of threads used in the threadpool for intra operator calculations.
   // The default value here is the maximum number of logical cores to ensure that the default behavior of WinML always runs the fastest.
   // WARNING: Setting a number higher than the maximum number of logical cores may result in an inefficient threadpool
-  uint32_t intra_op_num_threads_override_ = std::thread::hardware_concurrency();
+  uint32_t intra_op_num_threads_override_;
 
   bool allow_thread_spinning_ = true;
 
