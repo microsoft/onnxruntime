@@ -337,7 +337,8 @@ class _RuntimeOptions:
 
         # Configuration for memory optimization.
         self.memory_optimization_level = int(os.getenv("ORTMODULE_MEMORY_OPT_LEVEL", self.memory_optimization_level))
-        self.memory_optimizer_config = os.getenv("ORTMODULE_MEMORY_OPT_CONFIG", self.memory_optimizer_config)
+        user_given_memory_optimizer_config = os.getenv("ORTMODULE_MEMORY_OPT_CONFIG", self.memory_optimizer_config)
+        self.memory_optimizer_config = ",".join([c for c in user_given_memory_optimizer_config.split(",") if c])
         if self.memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
             # For transformer layer-wise recompute, we enable layer boundary when detecting subgraphs.
             # Then all detected subgraphs will not cross different layers.
