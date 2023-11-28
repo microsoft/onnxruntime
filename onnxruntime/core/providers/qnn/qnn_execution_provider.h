@@ -8,7 +8,6 @@
 #include <string>
 #include "core/providers/qnn/builder/qnn_backend_manager.h"
 #include "core/providers/qnn/builder/qnn_model.h"
-#include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 #include "core/providers/qnn/builder/qnn_graph_configs_helper.h"
 
 namespace onnxruntime {
@@ -71,10 +70,10 @@ class QNNExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models_;
   uint32_t rpc_control_latency_ = 0;
   bool context_cache_enabled_ = false;
-  std::string context_cache_path_ = "";
+  std::string context_cache_path_cfg_ = "";
   bool disable_cpu_ep_fallback_ = false;  // True if CPU EP fallback has been disabled for this session.
-  std::unique_ptr<qnn::QnnCacheModelHandler> qnn_cache_model_handler_;
   qnn::ContextPriority context_priority_ = qnn::ContextPriority::NORMAL;
+  bool qnn_context_embed_mode_ = true;
 };
 
 }  // namespace onnxruntime

@@ -83,6 +83,9 @@ For example:
 
 If you do not provide prompt, the script will generate different image sizes for a list of prompts for demonstration.
 
+#### Generate an image with SDXL LCM guided by a text prompt
+```python3 demo_txt2img_xl.py --lcm --disable-refiner "an astronaut riding a rainbow unicorn, cinematic, dramatic"```
+
 ## Optimize Stable Diffusion ONNX models for Hugging Face Diffusers or Optimum
 
 If you are able to run the above demo with docker, you can use the docker and skip the following setup and fast forward to [Export ONNX pipeline](#export-onnx-pipeline).
