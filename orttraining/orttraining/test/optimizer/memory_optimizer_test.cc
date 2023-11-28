@@ -105,7 +105,7 @@ TEST(MemoryOptimizerTests, TileRecompute) {
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
 
-  const std::string alleviation_config("Tile+:1:-1");
+  const std::string alleviation_config("Expand+Tile+:1:-1");
   const std::string probe_config("1:0");
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
       std::make_unique<MemoryOptimizer>(alleviation_config, probe_config), TransformerLevel::Level3));
@@ -113,7 +113,7 @@ TEST(MemoryOptimizerTests, TileRecompute) {
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *logger));
 
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Tile"] == 2);
+  ASSERT_EQ(op_to_count["Tile"], 2);
   ASSERT_TRUE(op_to_count["com.microsoft.YieldOp"] == 1);
   ASSERT_TRUE(op_to_count["com.microsoft.FusedMatMul"] == 3);
 
@@ -137,8 +137,14 @@ TEST(MemoryOptimizerTests, TileRecompute) {
   ASSERT_TRUE(original_tile_node);
   ASSERT_TRUE(query_layer_grad_node);
 
-  ASSERT_EQ(recompute_tile_node->MutableInputDefs()[0]->Name(), original_tile_node->MutableInputDefs()[0]->Name());
-  ASSERT_EQ(query_layer_grad_node->InputDefs()[1]->Name(), recompute_tile_node->MutableOutputDefs()[0]->Name());
+  const Node* recompute_expand_node = graph.GetProducerNode(recompute_tile_node->InputDefs()[0]->Name());
+  ASSERT_TRUE(recompute_expand_node);
+
+  const Node* original_expand_node = graph.GetProducerNode(original_tile_node->InputDefs()[0]->Name());
+  ASSERT_TRUE(original_expand_node);
+
+  ASSERT_EQ(recompute_expand_node->InputDefs()[0]->Name(), original_expand_node->InputDefs()[0]->Name());
+  ASSERT_EQ(query_layer_grad_node->InputDefs()[1]->Name(), recompute_tile_node->OutputDefs()[0]->Name());
 
   ASSERT_EQ(recompute_tile_node->Priority(), static_cast<int>(ExecutionPriority::LOCAL_LOW));
   ASSERT_EQ(original_tile_node->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
@@ -155,7 +161,7 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
   // Find all optimizable subgraphs
   GraphViewer graph_viewer(graph);
   const std::string initial_mem_config("");
-  const std::string probe_config("2:0");
+  const std::string probe_config("1:1");
   std::map<std::string, std::pair<std::string, int>>
       cluster_id_combinations_to_saved_symbolic_byte_map;
   std::string record_str =
@@ -191,6 +197,10 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *logger));
 
+  // Save the graph
+  std::string model_save_path = "3layer_bloom_optimized_training_recompute1128.onnx";
+  ASSERT_STATUS_OK(Model::Save(*model, model_save_path));
+
   std::vector<const Node*> bw_nodes_in_expected_order;
   const Node* yield_op_node = nullptr;
   for (auto& node : graph.Nodes()) {
@@ -220,7 +230,7 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
             recompute_ln_node = consumer;
             ASSERT_EQ(consumer->Priority(), static_cast<int>(ExecutionPriority::LOCAL_LOW));
             recompute_ln_node_parent_add_or_ln_node = graph.GetProducerNode(consumer->InputDefs()[0]->Name());
-            ASSERT_TRUE(recompute_ln_node_parent_add_or_ln_node);
+            ASSERT_TRUE(recompute_ln_node_parent_add_or_ln_node != nullptr);
             ASSERT_EQ(recompute_ln_node_parent_add_or_ln_node->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
             ASSERT_TRUE(recompute_ln_node_parent_add_or_ln_node->Name().find("_recompute") == std::string::npos);
           } else {

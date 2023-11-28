@@ -125,7 +125,9 @@ bool MemoryOptimizer::ModifyGraph(Graph& graph,
 Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& logger)
     const {
   LOGS(logger, VERBOSE) << "Memory optimization config: " << optimizer_config_ << ", probe level: "
-                        << static_cast<int>(recompute_probe_level_);
+                        << static_cast<int>(recompute_probe_config_.probe_level)
+                        << ", enable_transformer_layer_as_boundary:"
+                        << recompute_probe_config_.enable_transformer_layer_as_boundary;
 
   if (pattern_subgraph_to_user_optimizer_config_map_.empty()) {
     LOGS(logger, VERBOSE) << "No optimization pattern is specified, skip memory optimization.";
@@ -141,7 +143,7 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   optimizer::memory_optimizer::MemoryOptimizationPlanner memory_opt_planner;
   ORT_ENFORCE(optimizer::memory_optimizer::FindORTModuleMemoryOpportunity(
                   graph_viewer,
-                  recompute_probe_level_,
+                  recompute_probe_config_,
                   logger,
                   node_index_to_its_order_in_topological_sort_map,
                   yield_op_order_in_topological_sort,

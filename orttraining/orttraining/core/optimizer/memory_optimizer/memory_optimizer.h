@@ -81,7 +81,7 @@ class MemoryOptimizer : public GraphTransformer {
                     const logging::Logger& logger) const;
 
   /**************************************************
-   ** Recompute related function definition starts **
+   ** Recompute-related function definition starts **
    *************************************************/
 
   /**
@@ -97,13 +97,12 @@ class MemoryOptimizer : public GraphTransformer {
                               Node*& recompute_subgraph_output_node) const;
 
   /**************************************************
-   ** Recompute related function definition ends   **
+   ** Recompute-related function definition ends   **
    *************************************************/
 
-  // User enabled map of the subgraph string representation to the alleviation type.
+  // User-enabled map of the subgraph string representation to the alleviation type.
   InlinedHashMap<std::string, optimizer::memory_optimizer::UserConfig> pattern_subgraph_to_user_optimizer_config_map_;
   std::string optimizer_config_;
-  optimizer::memory_optimizer::ProbeLevel recompute_probe_level_;
   optimizer::memory_optimizer::ProbeConfig recompute_probe_config_;
 };
 

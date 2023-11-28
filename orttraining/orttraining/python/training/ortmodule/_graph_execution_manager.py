@@ -651,9 +651,11 @@ class GraphExecutionManager(GraphExecutionInterface):
             ],
         )
 
-        opt_config_to_display = self._runtime_options.memory_optimizer_config
         if self._runtime_options.memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
             opt_config_to_display = "ALL_RECOMPUTE_FOR_EACH_LAYER"
+        else:
+            opt_config_to_display = self._runtime_options.memory_optimizer_config
+
         mem_row = _add_record(
             tbl,
             [

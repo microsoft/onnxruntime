@@ -79,17 +79,19 @@ const InlinedHashMap<std::string, AllowedRecomputeNodeConfig>& GetAllowedRecompu
         /// The shape input is trivial whether it exists or not in backward.
         {"Reshape", AllowedRecomputeNodeConfig{{0}}},
         {"Squeeze", AllowedRecomputeNodeConfig{{0}}},
+        {"Transpose", AllowedRecomputeNodeConfig{{0}}},
         {"Unsqueeze", AllowedRecomputeNodeConfig{{0}}},
 
         // Unary elementwise
+        {"Dropout", AllowedRecomputeNodeConfig{{0}}},
+        {"BiasGelu", AllowedRecomputeNodeConfig{{0, 1}}},
         /// The ratio and mode input are trivial whether they exist or not in backward
         {"BitmaskDropout", AllowedRecomputeNodeConfig{{0}}},
         /// The axis input is trivial whether it exists or not in backward
         {"CumSum", AllowedRecomputeNodeConfig{{0}}},
-        {"Dropout", AllowedRecomputeNodeConfig{{0}}},
-        {"BiasGelu", AllowedRecomputeNodeConfig{{0, 1}}},
-        {"Gelu", AllowedRecomputeNodeConfig{{0}}},
+        {"Expand", AllowedRecomputeNodeConfig{{0}}},
         {"FastGelu", AllowedRecomputeNodeConfig{{0}}},
+        {"Gelu", AllowedRecomputeNodeConfig{{0}}},
 
         // Ternary elementwise
         {"Where", AllowedRecomputeNodeConfig{{0, 1, 2}}},
@@ -97,6 +99,10 @@ const InlinedHashMap<std::string, AllowedRecomputeNodeConfig>& GetAllowedRecompu
         // Data copy
         {"Tile", AllowedRecomputeNodeConfig{{0}}},
         {"Cast", AllowedRecomputeNodeConfig{{0}}},
+        {"ConcatTraining", AllowedRecomputeNodeConfig{{0, 1}}},  // Input could be more than 2. But mostly 2.
+        {"Slice", AllowedRecomputeNodeConfig{{0}}},
+        {"Split", AllowedRecomputeNodeConfig{{0}}},
+        {"Gather", AllowedRecomputeNodeConfig{{0}}},
     });
   }
 
@@ -346,7 +352,6 @@ void NodesInTopoOrderToString(gsl::span<const Node* const> nodes_in_topological_
 }  // namespace
 
 Status ParseProbeConfigFromString(std::string_view recompute_probe_config, ProbeConfig& probe_config) {
-  ProbeLevel probe_level = ProbeLevel::Basic;
   int transformer_layer_as_boundary = 0;
   if (!recompute_probe_config.empty()) {
     const auto probe_configs = utils::SplitString(recompute_probe_config, ":");
@@ -363,10 +368,10 @@ Status ParseProbeConfigFromString(std::string_view recompute_probe_config, Probe
                   "Invalid transformer_layer_as_boundary specified: ", probe_configs[1]);
     }
 
-    probe_level = static_cast<ProbeLevel>(probe_level_int);
+    probe_config.probe_level = static_cast<ProbeLevel>(probe_level_int);
   }
 
-  probe_config = ProbeConfig(probe_level, transformer_layer_as_boundary == 1);
+  probe_config.enable_transformer_layer_as_boundary = transformer_layer_as_boundary == 1;
 
   return Status::OK();
 }
