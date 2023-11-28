@@ -166,7 +166,7 @@ void BasicBackend::EnableStreams() {
 }
 
 void BasicBackend::SetNumThreads(ov::AnyMap& device_config) {
-  //inference_num_threads is applicable only for the CPU device
+  // inference_num_threads is applicable only for the CPU device
   if (global_context_.device_type.find("CPU") != std::string::npos)
     device_config.emplace(ov::inference_num_threads(global_context_.num_of_threads));
 }
