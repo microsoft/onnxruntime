@@ -3,7 +3,7 @@ parameters:
   NugetPackageName : ''
   ArtifactSuffix: ''
   StageSuffix: 'CPU'
-  # For inference packages, the test data artifact name is drop-nuget and no suffix is required.
+  # For inference packages, the test data artifact name is drop-extra and no suffix is required.
   # For training packages, to differentiate the artifact name we add '-training' suffix. This needs to be passed from
   # the parent pipeline.
   TestDataArtifactSuffix: ''
@@ -63,12 +63,6 @@ stages:
       inputs:
         artifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
         targetPath: '$(Build.BinariesDirectory)\nuget-artifact'
-
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - testdata'
-      inputs:
-        artifactName: 'drop-nuget${{ parameters.TestDataArtifactSuffix }}'
-        targetPath: '$(Build.BinariesDirectory)\testdata'
 
     - template: get-nuget-package-version-as-variable.yml
       parameters:
