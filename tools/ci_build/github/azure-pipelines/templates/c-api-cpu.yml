@@ -304,9 +304,7 @@ stages:
   - job:
     workspace:
       clean: all
-    # we need to use the 2022 pool to create the nuget package with both pre-net6+Xamarin and net6 targets.
-    # VS2019 has no support for net6 and we need to use msbuild (from the VS install) to do the packing
-    pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
+    pool: 'onnxruntime-Win-CPU-2022'
     variables:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
@@ -315,66 +313,86 @@ stages:
     steps:
     - checkout: self
       submodules: true
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download win-x64 Pipeline Artifact'
-      inputs:
-        artifactName: 'onnxruntime-win-x64'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download win-x86 Pipeline Artifact'
-      inputs:
-        artifactName: 'onnxruntime-win-x86'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - Win x64'
+        ArtifactName: 'onnxruntime-win-x64'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download win-arm64 Pipeline Artifact'
-      inputs:
-        artifactName: 'onnxruntime-win-arm64'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download win-x86 Pipeline Artifact'
+        ArtifactName: 'onnxruntime-win-x86'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download win-arm Pipeline Artifact'
-      inputs:
-        artifactName: 'onnxruntime-win-arm'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download win-arm64 Pipeline Artifact'
+        ArtifactName: 'onnxruntime-win-arm64'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download osx-x64 Pipeline Artifact'
-      inputs:
-        artifactName: 'onnxruntime-osx'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download win-arm Pipeline Artifact'
+        ArtifactName: 'onnxruntime-win-arm'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download linux-x64 Pipeline Artifact'
-      inputs:
-        artifactName: 'onnxruntime-linux-x64'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download osx-x64 Pipeline Artifact'
+        ArtifactName: 'onnxruntime-osx'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - NuGet'
-      inputs:
-        artifactName: 'onnxruntime-linux-aarch64'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download linux-x64 Pipeline Artifact'
+        ArtifactName: 'onnxruntime-linux-x64'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download iOS Pipeline Artifact'
-      inputs:
-        artifactName: 'onnxruntime-ios-full-xcframework'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download linux-aarch64 Pipeline Artifact'
+        ArtifactName: 'onnxruntime-linux-aarch64'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download android-full-aar Pipeline Artifact'
-      inputs:
-        artifactName: 'onnxruntime-android-full-aar'
-        patterns: '**/*.aar'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download iOS Pipeline Artifact'
+        ArtifactName: 'onnxruntime-ios-full-xcframework'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download drop-extra Pipeline Artifact'
-      inputs:
-        artifactName: 'drop-extra'
-        targetPath: '$(Build.BinariesDirectory)/extra-artifact'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Android-full-aar Pipeline Artifact'
+        ArtifactName: 'onnxruntime-android-full-aar'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download drop-extra Pipeline Artifact'
+        ArtifactName: 'drop-extra'
+        TargetPath: '$(Build.BinariesDirectory)/extra-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
     - script: |
        dir
