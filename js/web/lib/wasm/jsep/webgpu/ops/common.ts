@@ -336,7 +336,7 @@ export const sumVector = (name: string, components: number) => {
  */
 export const getArrayVec4Index = (length: number, index: number|string): string => {
   if (typeof (index) === 'string') {
-    return length > 4 ? `[${index}/4][${index}%4]` : length > 1 ? `[${index}]` : '';
+    return length > 4 ? `[(${index}) / 4][(${index}) % 4]` : length > 1 ? `[${index}]` : '';
   } else {
     return length > 4 ? `[${Math.floor(index / 4)}][${index % 4}]` : length > 1 ? `[${index}]` : '';
   }
