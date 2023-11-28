@@ -291,7 +291,7 @@ def benchmark(args, benchmark_cmd, engine, audio_file, duration):
 
     # Create entries for csv
     logger.info("Gathering data from log files...")
-    base_results = [engine, args.precision, args.device, audio_file, duration]
+    base_results = [args.model_name, engine, args.precision, args.device, audio_file, duration]
     results = process_log_file(args.device_id, log_path, base_results)
 
     return results
