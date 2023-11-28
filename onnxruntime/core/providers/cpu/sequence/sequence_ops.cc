@@ -507,27 +507,17 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
     void* output_data = output_tensor.MutableDataRaw();
 
     const auto M = before_dims;
-    const auto N = split_size * after_dims_excluding_split;
     const auto* A = static_cast<const char*>(input_data) + static_cast<size_t>(input_offset * element_size);
     const auto lda = after_dims_including_split_axis;
     auto* B = output_data;
-    const auto ldb = split_size * after_dims_excluding_split;
 
-    //::onnxruntime::math::CopyMatrix<T>(
-    //    before_dims,                                       // M
-    //    split_size * after_dims_excluding_split,           // N
-    //    static_cast<const T*>(input_data + input_offset),  // A
-    //    after_dims_including_split_axis,                   // lda
-    //    static_cast<T*>(output_data),                      // B
-    //    split_size * after_dims_excluding_split,           // ldb
-    //    [](const T* src, T* dst, size_t count) {
-    //      copy_data<T>(src, dst, count);
-    //    });
+    const auto N = split_size * after_dims_excluding_split;
+    const auto ldb = N;
 
     if (is_string_type) {
       const auto* src = reinterpret_cast<const std::string*>(A);
       auto* dst = reinterpret_cast<std::string*>(B);
-      if (lda == N && ldb == N) {
+      if (lda == N) {
         copy_data<std::string>(src, dst, static_cast<size_t>(M * N));
       } else {
         size_t lda_offset = 0;
@@ -538,21 +528,21 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
         }
       }
     } else {
-      if (lda == N && ldb == N) {
+      if (lda == N) {
         // if the data is contiguous, we can just copy the data
         const size_t bytes_to_copy = static_cast<size_t>(N) * static_cast<size_t>(M) * element_size;
         memcpy(B, A, bytes_to_copy);
       } else {
         // otherwise we need to copy each row
-        const size_t row_bytes = static_cast<size_t>(N) * element_size;
-        const auto lda_bytes_inc = narrow<size_t>(lda) * element_size;
-        const auto ldb_bytes_inc = narrow<size_t>(ldb) * element_size;
-        size_t lda_bytes_offset = 0;
-        size_t ldb_bytes_offset = 0;
+        const size_t row_bytes = SafeInt<size_t>(N) * element_size;
+        const auto lda_bytes_inc = SafeInt<size_t>(lda) * element_size;
+        const auto ldb_bytes_inc = SafeInt<size_t>(ldb) * element_size;
+        SafeInt<size_t> lda_bytes_offset = 0;
+        SafeInt<size_t> ldb_bytes_offset = 0;
         for (size_t idx = 0; idx < static_cast<size_t>(M); ++idx,
                     lda_bytes_offset += lda_bytes_inc, ldb_bytes_offset += ldb_bytes_inc) {
-          memcpy(reinterpret_cast<char*>(B) + ldb_bytes_offset, reinterpret_cast<const char*>(A) + lda_bytes_offset,
-                 row_bytes);
+          memcpy(reinterpret_cast<char*>(B) + static_cast<size_t>(ldb_bytes_offset),
+                 reinterpret_cast<const char*>(A) + static_cast<size_t>(lda_bytes_offset), row_bytes);
         }
       }
     }
