@@ -146,7 +146,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Dropout", V_2023_0, {"NPU"}},
     {"Elu", V_2020_4, {"CPU", "GPU"}},
     {"Elu", V_2023_0, {"NPU"}},
-    // {"Einsum", V_2023_0, {"CPU", "GPU"}},
+    {"Einsum", V_2023_1, {"CPU", "GPU"}},
     {"Equal", V_2020_4, {"CPU", "GPU"}},
     {"Equal", V_2023_0, {"NPU"}},  // Added for whisper decoder model.
     {"Erf", V_2020_4, {"CPU", "GPU"}},
