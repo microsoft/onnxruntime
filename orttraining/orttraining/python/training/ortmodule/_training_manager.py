@@ -462,7 +462,7 @@ class TrainingManager(GraphExecutionManager):
             "optimization.memory_optimizer_config", self._runtime_options.memory_optimizer_config
         )
         session_options.add_session_config_entry(
-            "optimization.enable_memory_probe_recompute_level", self._runtime_options.probe_level
+            "optimization.enable_memory_probe_recompute_config", self._runtime_options.recompute_probe_config
         )
 
         self._execution_agent = TrainingAgent(

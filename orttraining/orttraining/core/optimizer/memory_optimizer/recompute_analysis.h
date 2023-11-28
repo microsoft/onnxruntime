@@ -19,9 +19,27 @@ namespace onnxruntime::optimizer::memory_optimizer {
 enum class ProbeLevel {
   Basic = 0,
   Advanced = 1,
-  Transformers = 2,  // On top of Advanced, LayerNorm as the boundary for subgraph searching.
-  LevelMax = 3,
+  LevelMax = 2,
 };
+
+/**
+ * @brief Configuration to control recompute subgraph detection.
+ */
+class ProbeConfig {
+ public:
+  ProbeConfig() = default;
+
+  ProbeConfig(ProbeLevel level, bool transformer_layer_as_boundary = false) {
+    probe_level = level;
+    enable_transformer_layer_as_boundary = transformer_layer_as_boundary;
+  }
+
+  ProbeLevel probe_level{ProbeLevel::Basic};
+  bool enable_transformer_layer_as_boundary{false};
+};
+
+Status ParseProbeConfigFromString(std::string_view recompute_probe_config,
+                                  ProbeConfig& probe_config);
 
 /**
  * @brief A child class used for Recompute/RecomputeWithCompromise optimization plan.
@@ -78,7 +96,7 @@ class NodeRecomputePlan : public NodeOptimizationPlanBase {
  *
  * @param graph_viewer The graph viewer to get node information.
  * @param node The entry node to start the subgraph matching (bottom-up), usually the last node of found subgraphs.
- * @param probe_level The level to control allowed operations during subgraph detecting.
+ * @param probe_config The config for subgraph detecting.
  * @param fw_op_output_arg_used_map The activation usage (in fw and bw) mapping.
  * @param node_index_to_its_order_in_topological_sort_map The mapping of node index to its order in topological sort.
  *   Used to re-order the collected subgraph nodes.
@@ -95,7 +113,7 @@ class NodeRecomputePlan : public NodeOptimizationPlanBase {
  */
 std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const GraphViewer& graph_viewer,
                                                          const Node& node,
-                                                         const ProbeLevel probe_level,
+                                                         const ProbeConfig& probe_config,
                                                          const ActivationUsedMap& fw_op_output_arg_used_map,
                                                          const InlinedHashMap<NodeIndex, ptrdiff_t>&
                                                              node_index_to_its_order_in_topological_sort_map,

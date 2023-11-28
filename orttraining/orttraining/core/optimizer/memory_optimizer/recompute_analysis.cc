@@ -11,6 +11,7 @@
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
 #include "orttraining/core/optimizer/memory_optimizer/transformer_specific.h"
 #include "orttraining/core/optimizer/memory_optimizer/recompute_analysis.h"
+#include "core/common/string_utils.h"
 #include "core/framework/data_types.h"
 #include "core/optimizer/utils.h"
 
@@ -124,7 +125,8 @@ bool IsRecomputable(const Node& node, ProbeLevel probe_level) {
 /**
  * @brief Find recomputable subgraphs (has at least one nodes, at most MAXIMUM_RECOMPUTE_NODE_COUNT nodes).
  *
- * @param node The entry node to start the subgraph matching (bottom-up), usually the last node of found subgraphs.
+ * @param entry_node The entry node to start the subgraph matching (bottom-up), usually the last node of found subgraphs.
+ * @param probe_config The probe config to control recomputable subgraph detecting.
  * @param node_output_index_candidates Candidate output indices of "node", which are consumed by both fw and bw ops.
  * @param fw_op_output_arg_used_map The activation usage (in fw and bw) mapping.
  * @param node_index_to_its_order_in_topological_sort_map The mapping of node index to its order in topological sort.
@@ -141,7 +143,7 @@ bool IsRecomputable(const Node& node, ProbeLevel probe_level) {
  * @return Status
  */
 Status SelectRecomputeSubgraph(const Node& entry_node,
-                               const ProbeLevel probe_level,
+                               const ProbeConfig& probe_config,
                                const InlinedVector<size_t>& node_output_index_candidates,
                                const ActivationUsedMap& fw_op_output_arg_used_map,
                                const InlinedHashMap<NodeIndex, ptrdiff_t>&
@@ -151,6 +153,7 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
                                bool compromise_stashed_activation,
                                bool& can_compromise_stashed_activation,
                                float& save_ratio) {
+  const ProbeLevel probe_level = probe_config.probe_level;
   const auto& recomputable_op_table = GetAllowedRecomputeOps(static_cast<int>(probe_level));
 
   can_compromise_stashed_activation = false;
@@ -342,9 +345,35 @@ void NodesInTopoOrderToString(gsl::span<const Node* const> nodes_in_topological_
 
 }  // namespace
 
+Status ParseProbeConfigFromString(std::string_view recompute_probe_config, ProbeConfig& probe_config) {
+  ProbeLevel probe_level = ProbeLevel::Basic;
+  int transformer_layer_as_boundary = 0;
+  if (!recompute_probe_config.empty()) {
+    const auto probe_configs = utils::SplitString(recompute_probe_config, ":");
+    ORT_ENFORCE(probe_configs.size() >= 1, "Probe config information is not complete.");
+    int probe_level_int = ParseIntValueFromString(probe_configs[0]);
+    ORT_ENFORCE(probe_level_int <
+                        static_cast<int>(ProbeLevel::LevelMax) &&
+                    probe_level_int >= 0,
+                "Invalid probe level specified: ", probe_configs[0]);
+
+    if (probe_configs.size() > 1) {
+      transformer_layer_as_boundary = ParseIntValueFromString(probe_configs[1]);
+      ORT_ENFORCE(transformer_layer_as_boundary == 0 || transformer_layer_as_boundary == 1,
+                  "Invalid transformer_layer_as_boundary specified: ", probe_configs[1]);
+    }
+
+    probe_level = static_cast<ProbeLevel>(probe_level_int);
+  }
+
+  probe_config = ProbeConfig(probe_level, transformer_layer_as_boundary == 1);
+
+  return Status::OK();
+}
+
 std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const GraphViewer& graph_viewer,
                                                          const Node& node,
-                                                         const ProbeLevel probe_level,
+                                                         const ProbeConfig& probe_config,
                                                          const ActivationUsedMap& fw_op_output_arg_used_map,
                                                          const InlinedHashMap<NodeIndex, ptrdiff_t>&
                                                              node_index_to_its_order_in_topological_sort_map,
@@ -354,11 +383,11 @@ std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const GraphViewer& grap
                                                          const logging::Logger& logger,
                                                          bool compromise_stashed_activation,
                                                          bool& can_compromise_stashed_activation) {
-  if (!IsRecomputable(node, probe_level)) {
+  if (!IsRecomputable(node, probe_config.probe_level)) {
     return nullptr;
   }
 
-  if (probe_level == ProbeLevel::Transformers) {
+  if (probe_config.enable_transformer_layer_as_boundary) {
     // Check whether the node's stashed activation outputs are used by LayerNormalization's inputs.
     // If yes, for Transformers, we don't need to recompute the node, because we treated
     // LayerNormalization of Attention as the boundary for subgraph searching.
@@ -385,7 +414,7 @@ std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const GraphViewer& grap
   InlinedVector<const Node*> nodes_in_topological_order;
   float save_ratio = 1.f;
   ORT_ENFORCE(SelectRecomputeSubgraph(node,
-                                      probe_level,
+                                      probe_config,
                                       candidate_output_args_map.at(&node),
                                       fw_op_output_arg_used_map,
                                       node_index_to_its_order_in_topological_sort_map,

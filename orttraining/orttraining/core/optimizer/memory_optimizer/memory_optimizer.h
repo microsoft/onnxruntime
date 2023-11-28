@@ -29,10 +29,10 @@ Find recompute subgraphs and enable them according to user configs. The way we c
 class MemoryOptimizer : public GraphTransformer {
  private:
  public:
-  MemoryOptimizer(const std::string& memory_optimizer_config, const std::string& level)
+  MemoryOptimizer(const std::string& memory_optimizer_config, const std::string& recompute_probe_config)
       : GraphTransformer("MemoryOptimizer") {
-    // Parse user defined configs.
-    ORT_ENFORCE(ParseConfigFromString(memory_optimizer_config, level).IsOK());
+    // Parse user-defined configs.
+    ORT_ENFORCE(ParseConfigFromString(memory_optimizer_config, recompute_probe_config).IsOK());
   }
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
@@ -40,7 +40,7 @@ class MemoryOptimizer : public GraphTransformer {
   bool ShouldOnlyApplyOnce() const override { return true; }
 
  private:
-  Status ParseConfigFromString(const std::string& memory_optimizer_config, const std::string& level);
+  Status ParseConfigFromString(const std::string& memory_optimizer_config, const std::string& recompute_probe_config);
 
   /**
    * @brief Apply graph modifications based on user configs.
@@ -104,6 +104,7 @@ class MemoryOptimizer : public GraphTransformer {
   InlinedHashMap<std::string, optimizer::memory_optimizer::UserConfig> pattern_subgraph_to_user_optimizer_config_map_;
   std::string optimizer_config_;
   optimizer::memory_optimizer::ProbeLevel recompute_probe_level_;
+  optimizer::memory_optimizer::ProbeConfig recompute_probe_config_;
 };
 
 }  // namespace onnxruntime

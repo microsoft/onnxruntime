@@ -170,7 +170,7 @@ Status GetStashedActivationCandidates(const GraphViewer& graph_viewer,
 }
 
 Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
-                                      const ProbeLevel probe_level,
+                                      const ProbeConfig& probe_config,
                                       const logging::Logger& logger,
                                       InlinedHashMap<NodeIndex, ptrdiff_t>&
                                           node_index_to_its_order_in_topological_sort_map,
@@ -227,7 +227,7 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
     std::unique_ptr<NodeRecomputePlan> recompute_plan =
         CheckNodeForRecompute(graph_viewer,
                               *p_node,
-                              probe_level,
+                              probe_config,
                               fw_op_output_arg_used_map,
                               node_index_to_its_order_in_topological_sort_map,
                               candidate_output_args_map,
@@ -244,7 +244,7 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
       // If the subgraph recompute can save memory by comprising the assumption - recompute graphs' input must exist
       // during backward pass, then we can consider to recompute them.
       std::unique_ptr<NodeRecomputePlan> recompute_with_compromise_plan =
-          CheckNodeForRecompute(graph_viewer, *p_node, probe_level, fw_op_output_arg_used_map,
+          CheckNodeForRecompute(graph_viewer, *p_node, probe_config, fw_op_output_arg_used_map,
                                 node_index_to_its_order_in_topological_sort_map,
                                 candidate_output_args_map,
                                 layer_boundary_ln_nodes,
@@ -709,20 +709,14 @@ std::string SerializeMemoryRecords(
 
 std::string GetSerializedORTModuleMemoryStat(const GraphViewer& graph_viewer,
                                              std::string_view memory_optimization_config,
-                                             std::string_view recompute_probe_level,
+                                             std::string_view recompute_probe_config,
                                              const logging::Logger& logger,
                                              std::map<std::string, std::pair<std::string, int>>&
                                                  cluster_id_combinations_to_saved_symbolic_byte_map,
                                              const OrtValueNameIdxMap* ortvalue_name_to_idx_map,
                                              const SequentialExecutionPlan* p_seq_exec_plan) {
-  ProbeLevel probe_level = ProbeLevel::Advanced;
-  if (!recompute_probe_level.empty()) {
-    int probe_level_int = ParseIntValueFromString(recompute_probe_level);
-    ORT_ENFORCE(probe_level_int < static_cast<int>(ProbeLevel::LevelMax) &&
-                    probe_level_int >= 0,
-                "Invalid probe level specified: ", recompute_probe_level);
-    probe_level = static_cast<ProbeLevel>(probe_level_int);
-  }
+  ProbeConfig probe_config;
+  ORT_ENFORCE(ParseProbeConfigFromString(recompute_probe_config, probe_config).IsOK());
 
   ptrdiff_t yield_op_order_in_topological_sort;
   InlinedHashMap<const Node*, InlinedVector<size_t>> candidate_output_args_map;
@@ -732,7 +726,7 @@ std::string GetSerializedORTModuleMemoryStat(const GraphViewer& graph_viewer,
   MemoryOptimizationPlanner memory_opt_planner;
   ORT_ENFORCE(FindORTModuleMemoryOpportunity(
                   graph_viewer,
-                  probe_level,
+                  probe_config,
                   logger,
                   node_index_to_its_order_in_topological_sort_map,
                   yield_op_order_in_topological_sort,

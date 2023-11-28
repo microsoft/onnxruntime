@@ -62,9 +62,9 @@ TEST(MemoryOptimizerTests, GeluRecompute) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
 
   const std::string alleviation_config("Gelu+:1:-1");
-  const std::string probe_level("1");
+  const std::string probe_config("1:0");
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<MemoryOptimizer>(alleviation_config, probe_level), TransformerLevel::Level3));
+      std::make_unique<MemoryOptimizer>(alleviation_config, probe_config), TransformerLevel::Level3));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *logger));
 
@@ -106,9 +106,9 @@ TEST(MemoryOptimizerTests, TileRecompute) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
 
   const std::string alleviation_config("Tile+:1:-1");
-  const std::string probe_level("1");
+  const std::string probe_config("1:0");
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<MemoryOptimizer>(alleviation_config, probe_level), TransformerLevel::Level3));
+      std::make_unique<MemoryOptimizer>(alleviation_config, probe_config), TransformerLevel::Level3));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *logger));
 
@@ -155,13 +155,13 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
   // Find all optimizable subgraphs
   GraphViewer graph_viewer(graph);
   const std::string initial_mem_config("");
-  const std::string probe_level("2");
+  const std::string probe_config("2:0");
   std::map<std::string, std::pair<std::string, int>>
       cluster_id_combinations_to_saved_symbolic_byte_map;
   std::string record_str =
       optimizer::memory_optimizer::GetSerializedORTModuleMemoryStat(graph_viewer,
                                                                     initial_mem_config,
-                                                                    probe_level,
+                                                                    probe_config,
                                                                     *logger,
                                                                     cluster_id_combinations_to_saved_symbolic_byte_map,
                                                                     nullptr,
@@ -187,7 +187,7 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
   GraphTransformerManager graph_transformation_mgr{5};
   const std::string layer_wise_recompute_config(oss.str());
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<MemoryOptimizer>(layer_wise_recompute_config, probe_level), TransformerLevel::Level3));
+      std::make_unique<MemoryOptimizer>(layer_wise_recompute_config, probe_config), TransformerLevel::Level3));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *logger));
 

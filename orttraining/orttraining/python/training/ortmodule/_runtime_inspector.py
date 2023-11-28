@@ -521,14 +521,13 @@ class MemoryObserver:
 
         Args:
             execution_agent: TrainingAgent.
-            memory_optimizer_config: Memory optimization config.
-            probe_level: Memory probe level.
+            runtime_options: Runtime options.
         """
 
-        probe_level = runtime_options.probe_level
+        recompute_probe_config = runtime_options.recompute_probe_config
         memory_optimizer_config = runtime_options.memory_optimizer_config
 
-        # If memory optimization level is aggressive, we will first collect all
+        # If the memory optimization level is aggressive, we will first collect all
         # recompute subgraph by passing empty memory_optimizer_config to get_serialized_ortmodule_memory_stat.
         if runtime_options.memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
             memory_optimizer_config = ""
@@ -536,7 +535,7 @@ class MemoryObserver:
         (
             self.memory_optimization_opportunity_table_str,
             memory_optimization_saving_symbolics,
-        ) = execution_agent.get_serialized_ortmodule_memory_stat(memory_optimizer_config, probe_level)
+        ) = execution_agent.get_serialized_ortmodule_memory_stat(memory_optimizer_config, recompute_probe_config)
 
         cluster_id_to_saving_symbol_map: Dict[str, MemoryOptimizationSummary] = {}
         for cluster_id, memory_saving_stat in memory_optimization_saving_symbolics.items():

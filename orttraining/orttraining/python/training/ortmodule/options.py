@@ -278,7 +278,9 @@ class _RuntimeOptions:
             _MemoryOptimizationLevel.USER_SPECIFIED
         )  # 0: use `memory_optimizer_config`; 1: aggressive optimization, enable all recomputable subgraphs.
         self.memory_optimizer_config = ""  # This is an advanced config, please refer to onnxruntime docs for details.
-        self.probe_level = "1"
+        # 1 is the op set level; 0 indicates whether consider the Transformer-based model's layer boundary when
+        # detecting recompute subgraphs.
+        self.recompute_probe_config = "1:0"
 
         # Configuration for dev tools.
         self.print_input_density = False
@@ -337,7 +339,9 @@ class _RuntimeOptions:
         self.memory_optimization_level = int(os.getenv("ORTMODULE_MEMORY_OPT_LEVEL", self.memory_optimization_level))
         self.memory_optimizer_config = os.getenv("ORTMODULE_MEMORY_OPT_CONFIG", self.memory_optimizer_config)
         if self.memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
-            self.probe_level = "2"  # For transformer layer-wise recompute, we need to probe more aggressively.
+            # For transformer layer-wise recompute, we enable layer boundary when detecting subgraphs.
+            # Then all detected subgraphs will not cross different layers.
+            self.recompute_probe_config = "1:1"
 
         # Configuration for dev tools.
         if "ORTMODULE_PRINT_INPUT_DENSITY" in os.environ:

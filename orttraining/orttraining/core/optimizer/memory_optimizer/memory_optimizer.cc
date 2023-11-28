@@ -31,18 +31,16 @@ constexpr bool IsForwardPassOperator(ptrdiff_t op_order_in_topological_sort,
 }  // namespace
 
 Status MemoryOptimizer::ParseConfigFromString(const std::string& memory_optimizer_config,
-                                              const std::string& level) {
+                                              const std::string& recompute_probe_config) {
   optimizer_config_ = memory_optimizer_config;
 
   ORT_RETURN_IF_ERROR(optimizer::memory_optimizer::ParseConfigFromString(
       memory_optimizer_config,
       pattern_subgraph_to_user_optimizer_config_map_));
 
-  int probe_level = optimizer::memory_optimizer::ParseIntValueFromString(level);
-  ORT_RETURN_IF_NOT(probe_level < static_cast<int>(optimizer::memory_optimizer::ProbeLevel::LevelMax) &&
-                        probe_level >= 0,
-                    "Invalid probe level specified: ", level);
-  recompute_probe_level_ = static_cast<optimizer::memory_optimizer::ProbeLevel>(probe_level);
+  ORT_RETURN_IF_ERROR(optimizer::memory_optimizer::ParseProbeConfigFromString(
+      recompute_probe_config,
+      recompute_probe_config_));
 
   return Status::OK();
 }
