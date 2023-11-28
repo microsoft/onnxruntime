@@ -50,6 +50,7 @@ OVExeNetwork OVCore::LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network,
   try {
     obj = oe.compile_model(ie_cnn_network, hw_target, device_config);
     
+#ifndef NDEBUG
    if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
       // output of the actual settings that the device selected
       auto supported_properties = obj.get_property(ov::supported_properties);
@@ -76,7 +77,7 @@ OVExeNetwork OVCore::LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network,
           }
       }
     }
-
+#endif
     OVExeNetwork exe(obj);
     return exe;
   } catch (const Exception& e) {
