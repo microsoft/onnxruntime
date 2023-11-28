@@ -32,6 +32,13 @@ using namespace onnxruntime;
 using namespace onnxruntime::coreml;
 
 namespace {
+// Converts a UTF8 const char* to an NSString. Throws on failure.
+NSString* _Nonnull Utf8StringToNSString(const char* utf8_str) {
+  NSString* result = [NSString stringWithUTF8String:utf8_str];
+  ORT_ENFORCE(result != nil, "NSString conversion failed.");
+  return result;
+}
+
 /**
  * Computes the static output shape used to allocate the output tensor.
  * `inferred_shape` is the inferred shape known at model compile time. It may contain dynamic dimensions (-1).
@@ -152,19 +159,20 @@ Status CreateInputFeatureProvider(const std::unordered_map<std::string, OnnxTens
                                                               deallocator:^(void* /* bytes */) {
                                                               }
                                                                     error:&error];
-    ORT_RETURN_IF(error != nil,
+    ORT_RETURN_IF(multi_array == nil,
                   "Failed to create MLMultiArray for feature: ", name,
-                  ", error: ", [[error localizedDescription] UTF8String]);
+                  (error != nil) ? MakeString(", error: ", [[error localizedDescription] UTF8String]) : "");
 
     MLFeatureValue* feature_value = [MLFeatureValue featureValueWithMultiArray:multi_array];
-    NSString* feature_name = [NSString stringWithUTF8String:name.c_str()];
+    NSString* feature_name = Utf8StringToNSString(name.c_str());
     feature_dictionary[feature_name] = feature_value;
   }
 
   auto* feature_provider = [[MLDictionaryFeatureProvider alloc] initWithDictionary:feature_dictionary
                                                                              error:&error];
-  ORT_RETURN_IF(error != nil,
-                "Failed to create MLDictionaryFeatureProvider, error: ", [[error localizedDescription] UTF8String]);
+  ORT_RETURN_IF(feature_provider == nil,
+                "Failed to create MLDictionaryFeatureProvider",
+                (error != nil) ? MakeString(", error: ", [[error localizedDescription] UTF8String]) : "");
 
   *feature_provider_out = feature_provider;
   conversion_buffers_out = std::move(conversion_buffers);
@@ -251,7 +259,7 @@ NS_ASSUME_NONNULL_BEGIN
                               get_output_tensor_mutable_raw_data_fn
     API_AVAILABLE_OS_VERSIONS;
 
-@property MLModel* model API_AVAILABLE_OS_VERSIONS;
+@property(nullable) MLModel* model API_AVAILABLE_OS_VERSIONS;
 
 @end
 
@@ -297,12 +305,15 @@ NS_ASSUME_NONNULL_BEGIN
 - (Status)loadModel {
   NSError* error = nil;
   NSURL* modelUrl = [NSURL URLWithString:coreml_model_path_];
-  NSAssert(modelUrl != nil, @"modelUrl must not be nil");
+  if (modelUrl == nil) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create model URL from path");
+  }
+
   NSURL* compileUrl = [MLModel compileModelAtURL:modelUrl error:&error];
 
   if (error != nil) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error compiling model ",
-                           [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error compiling model: ",
+                           [[error localizedDescription] UTF8String]);
   }
 
   compiled_model_path_ = [compileUrl path];
@@ -313,9 +324,9 @@ NS_ASSUME_NONNULL_BEGIN
                             : MLComputeUnitsAll;
   _model = [MLModel modelWithContentsOfURL:compileUrl configuration:config error:&error];
 
-  if (error != NULL) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error Creating MLModel ",
-                           [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
+  if (_model == nil) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create MLModel",
+                           (error != nil) ? MakeString(", error: ", [[error localizedDescription] UTF8String]) : "");
   }
 
   return Status::OK();
@@ -327,7 +338,7 @@ NS_ASSUME_NONNULL_BEGIN
   Status status = Status::OK();
   ORT_TRY {
     if (_model == nil) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model is not loaded");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Model is not loaded");
     }
 
     id<MLFeatureProvider> input_features;
@@ -342,12 +353,12 @@ NS_ASSUME_NONNULL_BEGIN
 
     if (error != nil) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error executing model: ",
-                             [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
+                             [[error localizedDescription] UTF8String]);
     }
 
     for (const auto& [output_name, output_tensor_info] : outputs) {
       MLFeatureValue* output_value =
-          [output_features featureValueForName:[NSString stringWithUTF8String:output_name.c_str()]];
+          [output_features featureValueForName:Utf8StringToNSString(output_name.c_str())];
 
       if (output_value == nil) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "output_features has no value for ", output_name);
@@ -452,7 +463,7 @@ Status Execution::LoadModel() {
     return status;
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution::LoadModel requires macos 10.15+ or ios 13+ ");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution::LoadModel requires macos 10.15+ or ios 13+");
 }
 
 Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>& inputs,
@@ -468,7 +479,7 @@ Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>&
     }
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution::LoadModel requires macos 10.15+ or ios 13+ ");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution::Predict requires macos 10.15+ or ios 13+");
 }
 
 Model::Model(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags)
