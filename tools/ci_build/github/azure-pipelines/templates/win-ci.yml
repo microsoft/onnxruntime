@@ -194,13 +194,6 @@ stages:
           Contents: 'custom_op_library.dll'
           TargetFolder: '$(Build.ArtifactStagingDirectory)/testdata'
 
-      #To be used in test_win.yml
-      - task: PublishPipelineArtifact@1
-        condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64'))
-        inputs:
-          targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe'
-          artifactName: 'drop-nuget${{ parameters.artifact_name_suffix }}'
-
       - task: CmdLine@2
         condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
         displayName: 'Add symbols and notices to Java'
