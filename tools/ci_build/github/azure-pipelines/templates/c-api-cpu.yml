@@ -622,7 +622,7 @@ stages:
         targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/linux/arm64/'
 
     - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - NuGet'
+      displayName: 'Download Pipeline Artifact - drop-extra'
       inputs:
         artifactName: 'drop-extra'
         targetPath: '$(Build.BinariesDirectory)/extra-artifact'
