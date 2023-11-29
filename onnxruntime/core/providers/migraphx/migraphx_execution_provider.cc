@@ -114,6 +114,12 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
     fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
   }
 
+  // whether fp16 is enable
+  const std::string fast_math_enable_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kFastMathOptimization);
+  if (!fast_math_env.empty()) {
+    fast_math_enable_ = (std::stoi(fast_math_enable_env) == 0 ? false : true);
+  }
+
   // whether int8 is enabled
   const std::string int8_enable_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kINT8Enable);
   if (!int8_enable_env.empty()) {
@@ -168,6 +174,7 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   LOGS_DEFAULT(VERBOSE) << "[MIGraphX EP] MIGraphX provider options: "
                         << "device_id: " << device_id_
                         << ", migraphx_fp16_enable: " << fp16_enable_
+                        << ", migraphx_fast_math: " << fast_math_enable_
                         << ", migraphx_int8_enable: " << int8_enable_
                         << ", dump_model_ops: " << dump_model_ops_
                         << ", migraphx_int8_calibration_cache_name: " << int8_calibration_cache_name_
@@ -1145,7 +1152,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         migraphx::quantize_int8(prog, t_, quant_opts);
       }
       migraphx::compile_options co;
-      co.set_fast_math(false);
+      co.set_fast_math(fast_math_enable_);
       prog.compile(t_, co);
       auto prog_output_shapes = prog.get_output_shapes();
       for (std::size_t i = 0; i < output_names.size(); ++i) {
@@ -1165,7 +1172,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       std::unique_ptr<MIGraphXFuncState> p = std::make_unique<MIGraphXFuncState>();
       *p = {context->allocate_func, context->release_func, context->allocator_handle, map_progs_[context->node_name],
             map_onnx_string_[context->node_name], options, t_, map_input_index_[context->node_name], &mgx_mu_,
-            map_no_input_shape_[context->node_name], fp16_enable_, int8_enable_,
+            map_no_input_shape_[context->node_name], fp16_enable_, fast_math_enable_, int8_enable_,
             int8_calibration_cache_available_, dynamic_range_map, dump_model_ops_};
       *state = p.release();
       return 0;
@@ -1265,7 +1272,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         }
 
         migraphx::compile_options co;
-        co.set_fast_math(false);
+        co.set_fast_math(fast_math_enable);
         prog.compile(t, co);
         mgx_state->prog = prog;
         param_shapes = prog.get_parameter_shapes();
