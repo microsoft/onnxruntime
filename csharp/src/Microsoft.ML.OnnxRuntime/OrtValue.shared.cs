@@ -271,7 +271,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             unsafe
             {
-                return new string((sbyte*)bufferPtr.ToPointer(), 0, (int)bytesLen, Encoding.UTF8);
+                return Encoding.UTF8.GetString((byte*)bufferPtr.ToPointer(), (int)bytesLen);
             }
         }
 
