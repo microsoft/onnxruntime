@@ -58,6 +58,8 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
         denoising_steps=30,
         guidance=5.0,
         seed=None,
+        controlnet_images=None,
+        controlnet_scales=None,
         warmup=False,
         return_type="image",
     ):
@@ -117,6 +119,20 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
                 add_time_ids = torch.cat([add_time_ids, add_time_ids], dim=0)
 
             add_kwargs = {"text_embeds": pooled_embeddings2, "time_ids": add_time_ids.to(self.device)}
+            if self.pipeline_info.controlnet:
+                controlnet_images = self.preprocess_controlnet_images(
+                    latents.shape[0],
+                    controlnet_images,
+                    do_classifier_free_guidance=do_classifier_free_guidance,
+                    height=image_height,
+                    width=image_width,
+                )
+                add_kwargs.update(
+                    {
+                        "controlnet_images": controlnet_images,
+                        "controlnet_scales": controlnet_scales.to(controlnet_images.dtype).to(controlnet_images.device),
+                    }
+                )
 
             # UNet denoiser
             latents = self.denoise_latent(
@@ -152,6 +168,8 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
         denoising_steps=30,
         guidance=5.0,
         seed=None,
+        controlnet_images=None,
+        controlnet_scales=None,
         warmup=False,
         return_type="image",
     ):
@@ -192,6 +210,8 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
                     denoising_steps=denoising_steps,
                     guidance=guidance,
                     seed=seed,
+                    controlnet_images=controlnet_images,
+                    controlnet_scales=controlnet_scales,
                     warmup=warmup,
                     return_type=return_type,
                 )
@@ -204,6 +224,8 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
                 denoising_steps=denoising_steps,
                 guidance=guidance,
                 seed=seed,
+                controlnet_images=controlnet_images,
+                controlnet_scales=controlnet_scales,
                 warmup=warmup,
                 return_type=return_type,
             )
