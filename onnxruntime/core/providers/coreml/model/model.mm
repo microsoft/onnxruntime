@@ -159,7 +159,7 @@ Status CreateInputFeatureProvider(const std::unordered_map<std::string, OnnxTens
                                                               deallocator:^(void* /* bytes */) {
                                                               }
                                                                     error:&error];
-    ORT_RETURN_IF(multi_array == nil,
+    ORT_RETURN_IF(error != nil || multi_array == nil,
                   "Failed to create MLMultiArray for feature: ", name,
                   (error != nil) ? MakeString(", error: ", [[error localizedDescription] UTF8String]) : "");
 
@@ -170,7 +170,7 @@ Status CreateInputFeatureProvider(const std::unordered_map<std::string, OnnxTens
 
   auto* feature_provider = [[MLDictionaryFeatureProvider alloc] initWithDictionary:feature_dictionary
                                                                              error:&error];
-  ORT_RETURN_IF(feature_provider == nil,
+  ORT_RETURN_IF(error != nil || feature_provider == nil,
                 "Failed to create MLDictionaryFeatureProvider",
                 (error != nil) ? MakeString(", error: ", [[error localizedDescription] UTF8String]) : "");
 
@@ -303,12 +303,12 @@ NS_ASSUME_NONNULL_BEGIN
 }
 
 - (Status)loadModel {
-  NSError* error = nil;
   NSURL* modelUrl = [NSURL URLWithString:coreml_model_path_];
   if (modelUrl == nil) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create model URL from path");
   }
 
+  NSError* error = nil;
   NSURL* compileUrl = [MLModel compileModelAtURL:modelUrl error:&error];
 
   if (error != nil) {
@@ -324,7 +324,7 @@ NS_ASSUME_NONNULL_BEGIN
                             : MLComputeUnitsAll;
   _model = [MLModel modelWithContentsOfURL:compileUrl configuration:config error:&error];
 
-  if (_model == nil) {
+  if (error != nil || _model == nil) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create MLModel",
                            (error != nil) ? MakeString(", error: ", [[error localizedDescription] UTF8String]) : "");
   }
