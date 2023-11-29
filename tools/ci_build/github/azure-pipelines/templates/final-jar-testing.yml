@@ -61,7 +61,7 @@ stages:
           java --version
           mkdir test
           pushd test
-          jar xf $(Build.BinariesDirectory)/final-jar/testing.jar
+          jar xf '$(Build.BinariesDirectory)/final-jar/testing.jar'
           popd
           java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.21.7.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
         workingDirectory: '$(Build.BinariesDirectory)/final-jar'
