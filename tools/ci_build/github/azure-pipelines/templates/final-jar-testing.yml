@@ -24,10 +24,10 @@ stages:
   - job:
     workspace:
       clean: all
-    - ${{ if eq(parameters['OS'], 'MacOS') }}:
+    ${{ if eq(parameters.OS, 'MacOS') }}:
       pool:
         vmImage: ${{ parameters.PoolName }}
-    - ${{ else }}:
+    ${{ else }}:
       pool: ${{ parameters.PoolName }}
     variables:
     - name: runCodesignValidationInjection
