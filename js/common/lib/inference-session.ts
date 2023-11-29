@@ -192,6 +192,7 @@ export declare namespace InferenceSession {
     wasm: WebAssemblyExecutionProviderOption;
     webgl: WebGLExecutionProviderOption;
     xnnpack: XnnpackExecutionProviderOption;
+    webgpu: WebGpuExecutionProviderOption;
     webnn: WebNNExecutionProviderOption;
     nnapi: NnapiExecutionProviderOption;
   }
@@ -233,9 +234,14 @@ export declare namespace InferenceSession {
   export interface XnnpackExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'xnnpack';
   }
+  export interface WebGpuExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'webgpu';
+    preferredLayout?: 'NCHW'|'NHWC';
+  }
   export interface WebNNExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'webnn';
     deviceType?: 'cpu'|'gpu';
+    numThreads?: number;
     powerPreference?: 'default'|'low-power'|'high-performance';
   }
   export interface CoreMLExecutionProviderOption extends ExecutionProviderOption {

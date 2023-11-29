@@ -5,7 +5,7 @@ import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
@@ -36,8 +36,8 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 };
 
 const getPadConstant =
-    (output: IndicesHelper, outputDims: readonly number[], inputDims: readonly number[],
-     inputStrides: readonly number[], pads: number[], dataType: string, constantValue: number): string => {
+    (output: IndicesHelper, inputDims: readonly number[], inputStrides: readonly number[], pads: number[],
+     dataType: string, constantValue: number): string => {
       const inputRank = inputDims.length;
 
       let block = '';
@@ -66,8 +66,7 @@ const getPadConstant =
     };
 
 const getPadReflect =
-    (output: IndicesHelper, outputDims: readonly number[], inputDims: readonly number[],
-     inputStrides: readonly number[], pads: number[]): string => {
+    (output: IndicesHelper, inputDims: readonly number[], inputStrides: readonly number[], pads: number[]): string => {
       const inputRank = inputDims.length;
 
       let block = '';
@@ -97,8 +96,7 @@ const getPadReflect =
     };
 
 const getPadEdge =
-    (output: IndicesHelper, outputDims: readonly number[], inputDims: readonly number[],
-     inputStrides: readonly number[], pads: number[]): string => {
+    (output: IndicesHelper, inputDims: readonly number[], inputStrides: readonly number[], pads: number[]): string => {
       const inputRank = inputDims.length;
 
       let block = '';
@@ -124,8 +122,7 @@ const getPadEdge =
     };
 
 const getPadWrap =
-    (output: IndicesHelper, outputDims: readonly number[], inputDims: readonly number[],
-     inputStrides: readonly number[], pads: number[]): string => {
+    (output: IndicesHelper, inputDims: readonly number[], inputStrides: readonly number[], pads: number[]): string => {
       const inputRank = inputDims.length;
 
       let block = '';
@@ -151,18 +148,17 @@ const getPadWrap =
     };
 
 const getPadSnippet =
-    (output: IndicesHelper, outputDims: readonly number[], inputDims: readonly number[],
-     inputStrides: readonly number[], attributes: PadAttributes, dataType: string): string => {
+    (output: IndicesHelper, inputDims: readonly number[], inputStrides: readonly number[], attributes: PadAttributes,
+     dataType: string): string => {
       switch (attributes.mode) {
         case 0:
-          return getPadConstant(
-              output, outputDims, inputDims, inputStrides, attributes.pads, dataType, attributes.value);
+          return getPadConstant(output, inputDims, inputStrides, attributes.pads, dataType, attributes.value);
         case 1:
-          return getPadReflect(output, outputDims, inputDims, inputStrides, attributes.pads);
+          return getPadReflect(output, inputDims, inputStrides, attributes.pads);
         case 2:
-          return getPadEdge(output, outputDims, inputDims, inputStrides, attributes.pads);
+          return getPadEdge(output, inputDims, inputStrides, attributes.pads);
         case 3:
-          return getPadWrap(output, outputDims, inputDims, inputStrides, attributes.pads);
+          return getPadWrap(output, inputDims, inputStrides, attributes.pads);
         default:
           throw new Error('Invalid mode');
       }
@@ -179,10 +175,9 @@ const generatePadCode =
           const output = outputVariable('output', inputs[0].dataType, outputDims);
           const input = inputVariable('x', inputs[0].dataType, inputDims);
 
-          const padSnippet = getPadSnippet(output, outputDims, inputDims, inputStrides, attributes, dataType);
+          const padSnippet = getPadSnippet(output, inputDims, inputStrides, attributes, dataType);
           const padCode = `
               ${shaderHelper.declareVariables(input, output)}
-              ${output.impl()}
               ${shaderHelper.mainStart()}
               ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
@@ -195,21 +190,23 @@ const generatePadCode =
           return padCode;
         };
 
-const createPadProgramInfo =
-    (inputs: readonly TensorView[], metadata: ProgramMetadata, attributes: PadAttributes): ProgramInfo => {
-      const outputShape = ShapeUtil.padShape(inputs[0].dims.slice(), attributes.pads);
-      return {
-        ...metadata,
-        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
-        getShaderSource: shaderHelper => generatePadCode(shaderHelper, inputs, attributes, 'f32'),
-        dispatchGroup: () => ({x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)})
-      };
-    };
+const createPadProgramInfo = (inputs: readonly TensorView[], attributes: PadAttributes): ProgramInfo => {
+  const outputShape = ShapeUtil.padShape(inputs[0].dims.slice(), attributes.pads);
+  return {
+    name: 'Pad',
+    shaderCache: {hint: attributes.cacheKey},
+    getRunData: () => ({
+      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+      dispatchGroup: {x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)}
+    }),
+    getShaderSource: shaderHelper => generatePadCode(shaderHelper, inputs, attributes, 'f32'),
+  };
+};
 
 const createPadAttributesFromInputs = (inputs: readonly TensorView[], attributes: PadAttributes): PadAttributes => {
   if (inputs.length > 1) {
     const bigInt64Pads = inputs[1].getBigInt64Array();
-    const value = (inputs.length >= 3) ? inputs[2].getFloat32Array()[0] : 0.0;
+    const value = (inputs.length >= 3 && inputs[2].data) ? inputs[2].getFloat32Array()[0] : 0.0;
 
     const inputRank = inputs[0].dims.length;
     const updatePads = new Int32Array(2 * inputRank).fill(0);
@@ -220,7 +217,7 @@ const createPadAttributesFromInputs = (inputs: readonly TensorView[], attributes
         updatePads[Number(axes[i]) + inputRank] = Number(bigInt64Pads[i + axes.length]);
       }
     } else {
-      bigInt64Pads.forEach((i, v) => updatePads[Number(i)] = (Number(v)));
+      bigInt64Pads.forEach((v, i) => updatePads[Number(i)] = (Number(v)));
     }
 
     const pads: number[] = [];
@@ -232,16 +229,10 @@ const createPadAttributesFromInputs = (inputs: readonly TensorView[], attributes
   }
 };
 
-const createPadProgramInfoLoader = (inputs: readonly TensorView[], attributes: PadAttributes): ProgramInfoLoader => {
-  const updatedAttributes = createPadAttributesFromInputs(inputs, attributes);
-  const metadata:
-      ProgramMetadata = {name: 'Pad', inputTypes: [GpuDataType.default], cacheHint: updatedAttributes.cacheKey};
-  return {...metadata, get: () => createPadProgramInfo(inputs, metadata, updatedAttributes)};
-};
-
 export const pad = (context: ComputeContext, attributes: PadAttributes): void => {
   validateInputs(context.inputs);
-  context.compute(createPadProgramInfoLoader(context.inputs, attributes), {inputs: [0]});
+  const updatedAttributes = createPadAttributesFromInputs(context.inputs, attributes);
+  context.compute(createPadProgramInfo(context.inputs, updatedAttributes), {inputs: [0]});
 };
 
 export const parsePadAttributes = (attributes: Record<string, unknown>): PadAttributes => {

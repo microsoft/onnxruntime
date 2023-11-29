@@ -4,6 +4,7 @@ parameters:
 
 - name: EnvSetupScript
   type: string
+  default: setup_env.bat
 
 - name: job_name_suffix
   type: string
@@ -97,7 +98,7 @@ jobs:
 
   - task: NodeTool@0
     inputs:
-      versionSpec: '16.x'
+      versionSpec: '18.x'
       force32bit: ${{ parameters.isX86 }}
 
   # Our build machine doesn't have java x86
@@ -169,16 +170,21 @@ jobs:
   - task: MSBuild@1
     displayName: 'Restore NuGet Packages'
     inputs:
-      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
       platform: 'Any CPU'
       configuration: '${{ parameters.BuildConfig }}'
       msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
+  - script: |
+      python3 tools\ValidateNativeDelegateAttributes.py
+    displayName: 'Validate C# native delegates'
+    workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
   - task: MSBuild@1
     displayName: 'Build C#'
     inputs:
-      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
       configuration: '${{ parameters.BuildConfig }}'
       platform: 'Any CPU'
       msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
@@ -197,7 +203,7 @@ jobs:
           command: test
           projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp.csproj'
           configuration: '${{ parameters.BuildConfig }}'
-          arguments: '--configuration ${{ parameters.BuildConfig }} -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) --blame'
+          arguments: '--configuration ${{ parameters.BuildConfig }} -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IncludeMobileTargets=false --blame'
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - ${{ if eq(parameters.EnablePython, true) }}:

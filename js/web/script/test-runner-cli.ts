@@ -28,6 +28,7 @@ async function main() {
 
   npmlog.verbose('TestRunnerCli.Init.Config', inspect(args));
 
+  const DIST_ROOT = path.join(__dirname, '..', 'dist');
   const TEST_ROOT = path.join(__dirname, '..', 'test');
   const TEST_DATA_MODEL_NODE_ROOT = path.join(TEST_ROOT, 'data', 'node');
   const TEST_DATA_OP_ROOT = path.join(TEST_ROOT, 'data', 'ops');
@@ -257,7 +258,7 @@ async function main() {
       times?: number): Test.ModelTest {
     if (times === 0) {
       npmlog.verbose('TestRunnerCli.Init.Model', `Skip test data from folder: ${testDataRootFolder}`);
-      return {name: path.basename(testDataRootFolder), backend, modelUrl: '', cases: []};
+      return {name: path.basename(testDataRootFolder), backend, modelUrl: '', cases: [], ioBinding: args.ioBindingMode};
     }
 
     let modelUrl: string|null = null;
@@ -323,6 +324,16 @@ async function main() {
       }
     }
 
+    let ioBinding: Test.IOBindingMode;
+    if (backend !== 'webgpu' && args.ioBindingMode !== 'none') {
+      npmlog.warn(
+          'TestRunnerCli.Init.Model', `Ignoring IO Binding Mode "${args.ioBindingMode}" for backend "${backend}".`);
+      ioBinding = 'none';
+    } else {
+      ioBinding = args.ioBindingMode;
+    }
+
+
     npmlog.verbose('TestRunnerCli.Init.Model', 'Finished preparing test data.');
     npmlog.verbose('TestRunnerCli.Init.Model', '===============================================================');
     npmlog.verbose('TestRunnerCli.Init.Model', ` Model file: ${modelUrl}`);
@@ -330,7 +341,7 @@ async function main() {
     npmlog.verbose('TestRunnerCli.Init.Model', ` Test set(s): ${cases.length} (${caseCount})`);
     npmlog.verbose('TestRunnerCli.Init.Model', '===============================================================');
 
-    return {name: path.basename(testDataRootFolder), platformCondition, modelUrl, backend, cases};
+    return {name: path.basename(testDataRootFolder), platformCondition, modelUrl, backend, cases, ioBinding};
   }
 
   function tryLocateModelTestFolder(searchPattern: string): string {
@@ -390,6 +401,13 @@ async function main() {
       for (const test of tests) {
         test.backend = backend;
         test.opset = test.opset || {domain: '', version: MAX_OPSET_VERSION};
+        if (backend !== 'webgpu' && args.ioBindingMode !== 'none') {
+          npmlog.warn(
+              'TestRunnerCli.Init.Op', `Ignoring IO Binding Mode "${args.ioBindingMode}" for backend "${backend}".`);
+          test.ioBinding = 'none';
+        } else {
+          test.ioBinding = args.ioBindingMode;
+        }
       }
       npmlog.verbose('TestRunnerCli.Init.Op', 'Finished preparing test data.');
       npmlog.verbose('TestRunnerCli.Init.Op', '===============================================================');
@@ -436,9 +454,6 @@ async function main() {
     npmlog.info('TestRunnerCli.Run', '(3/4) Running build to generate bundle...');
     const buildCommand = `node ${path.join(__dirname, 'build')}`;
     const buildArgs = [`--bundle-mode=${args.env === 'node' ? 'node' : args.bundleMode}`];
-    if (args.backends.indexOf('wasm') === -1) {
-      buildArgs.push('--no-wasm');
-    }
     npmlog.info('TestRunnerCli.Run', `CMD: ${buildCommand} ${buildArgs.join(' ')}`);
     const build = spawnSync(buildCommand, buildArgs, {shell: true, stdio: 'inherit'});
     if (build.status !== 0) {
@@ -458,7 +473,14 @@ async function main() {
       npmlog.info('TestRunnerCli.Run', '(4/4) Running tsc... DONE');
 
       npmlog.info('TestRunnerCli.Run', '(4/4) Running mocha...');
-      const mochaArgs = ['mocha', path.join(TEST_ROOT, 'test-main'), `--timeout ${args.debug ? 9999999 : 60000}`];
+      const mochaArgs = [
+        'mocha',
+        '--timeout',
+        `${args.debug ? 9999999 : 60000}`,
+        '-r',
+        path.join(DIST_ROOT, 'ort.node.min.js'),
+        path.join(TEST_ROOT, 'test-main'),
+      ];
       npmlog.info('TestRunnerCli.Run', `CMD: npx ${mochaArgs.join(' ')}`);
       const mocha = spawnSync('npx', mochaArgs, {shell: true, stdio: 'inherit'});
       if (mocha.status !== 0) {
@@ -493,18 +515,12 @@ async function main() {
         karmaArgs.push('--force-localhost');
       }
       if (webgpu) {
-        if (browser.includes('Canary')) {
-          chromiumFlags.push('--enable-dawn-features=allow_unsafe_apis,use_dxc');
-        } else {
-          chromiumFlags.push('--enable-dawn-features=use_dxc');
-          chromiumFlags.push('--disable-dawn-features=disallow_unsafe_apis');
-        }
+        // flag 'allow_unsafe_apis' is required to enable experimental features like fp16 and profiling inside pass.
+        // flag 'use_dxc' is required to enable DXC compiler.
+        chromiumFlags.push('--enable-dawn-features=allow_unsafe_apis,use_dxc');
       }
       if (webnn) {
         chromiumFlags.push('--enable-experimental-web-platform-features');
-      }
-      if (config.options.globalEnvFlags?.webgpu?.profilingMode === 'default') {
-        chromiumFlags.push('--disable-dawn-features=disallow_unsafe_apis');
       }
       karmaArgs.push(`--bundle-mode=${args.bundleMode}`);
       karmaArgs.push(...chromiumFlags.map(flag => `--chromium-flags=${flag}`));

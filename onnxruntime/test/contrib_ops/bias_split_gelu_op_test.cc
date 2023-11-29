@@ -152,6 +152,20 @@ TEST(BiasSplitGeluTest, BiasSplitGeluTest_HiddenSize_10240) {
   RunBiasSplitGeluTest(batch_size, sequence_length, hidden_size);
 }
 
+TEST(BiasSplitGeluTest, BiasSplitGeluTest_HiddenSize_6144) {
+  constexpr int64_t batch_size = 2;
+  constexpr int64_t sequence_length = 3;
+  constexpr int64_t hidden_size = 6144;
+  RunBiasSplitGeluTest(batch_size, sequence_length, hidden_size);
+}
+
+TEST(BiasSplitGeluTest, BiasSplitGeluTest_HiddenSize_12288) {
+  constexpr int64_t batch_size = 1;
+  constexpr int64_t sequence_length = 2;
+  constexpr int64_t hidden_size = 12288;
+  RunBiasSplitGeluTest(batch_size, sequence_length, hidden_size);
+}
+
 #endif
 
 }  // namespace test

@@ -50,10 +50,7 @@ class VideoFrameToTensorConverter : public ImageConverter {
 
  private:
   GUID d3d11_texture_GUID_ = {
-    0x485e4bb3,
-    0x3fe8,
-    0x497b,
-    {0x85, 0x9e, 0xc7, 0x5, 0x18, 0xdb, 0x11, 0x2a}
+    0x485e4bb3, 0x3fe8, 0x497b, {0x85, 0x9e, 0xc7, 0x5, 0x18, 0xdb, 0x11, 0x2a}
   };  // {485E4BB3-3FE8-497B-859E-C70518DB112A}
   GUID handle_GUID_ = {
     0xce43264e, 0x41f7, 0x4882, {0x9e, 0x20, 0xfa, 0xa5, 0x1e, 0x37, 0x64, 0xfc}
@@ -86,7 +83,7 @@ class VideoFrameToTensorConverter : public ImageConverter {
     const UINT32 batch_index, const D3D12_RESOURCE_DESC& resource_description, const ImageTensorDescription& description
   );
 
-  static void VideoFrameToTensorConverter::ConvertSoftwareBitmapToCPUTensor(
+  static void ConvertSoftwareBitmapToCPUTensor(
     _In_ const wgi::SoftwareBitmap& software_bitmap,
     _In_ const ImageTensorDescription& tensor_description,
     _In_ const wgi::BitmapBounds& input_bounds,

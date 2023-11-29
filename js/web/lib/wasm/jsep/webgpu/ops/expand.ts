@@ -3,14 +3,9 @@
 
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
 
-import {inputVariable, outputVariable, ShaderHelper} from './common';
-
-export const expandProgramMetadata = {
-  name: 'Expand',
-  inputTypes: [GpuDataType.default]
-};
+import {createTensorShapeVariables, enableShapesUniforms, inputVariable, outputVariable, ShaderHelper} from './common';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length !== 2) {
@@ -45,21 +40,25 @@ const calculateOutputShape = (inputShape: readonly number[], shape: readonly num
     (inputShape.length > shape.length) ? getAdjustedShape(inputShape, shape) : getAdjustedShape(shape, inputShape);
 
 
-const createExpandProgramInfo = (metadata: ProgramMetadata, inputs: readonly TensorView[]): ProgramInfo => {
+const createExpandProgramInfo = (inputs: readonly TensorView[]): ProgramInfo => {
   const inputShape = inputs[0].dims;
   const shape = Array.from(inputs[1].getBigInt64Array(), Number);
   const outputShape: number[] = calculateOutputShape(inputShape, shape);
   const outputSize = ShapeUtil.size(outputShape);
 
   const dataType = inputs[0].dataType;
-  const input = inputVariable('input', dataType, inputShape);
-  const output = outputVariable('output', dataType, outputShape);
+  const enableInputShapeUniform = enableShapesUniforms(inputShape.length);
+  const inputShapeOrRank = enableInputShapeUniform ? inputShape.length : inputShape;
+  const input = inputVariable('input', dataType, inputShapeOrRank);
+  const enableOutputShapeUniform = enableShapesUniforms(outputShape.length);
+  const outputShapeOrRank = enableOutputShapeUniform ? outputShape.length : outputShape;
+  const output = outputVariable('output', dataType, outputShapeOrRank);
 
   const getShaderSource = (shaderHelper: ShaderHelper) => `
   const inputShape = ${input.indices(...inputShape)};
-  ${shaderHelper.declareVariables(input, output)}
+  ${shaderHelper.registerUniform('vec_size', 'u32').declareVariables(input, output)}
   ${shaderHelper.mainStart()}
-  ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
+  ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.vec_size')}
     let outputIndices = ${output.offsetToIndices('global_idx')};
     var inputIndices: ${input.type.indices};
     for (var i = 0; i < ${inputShape.length}; i++) {
@@ -73,19 +72,26 @@ const createExpandProgramInfo = (metadata: ProgramMetadata, inputs: readonly Ten
     }
     ${output.setByOffset('global_idx', input.getByIndices('inputIndices'))}
   }`;
+  const programUniforms: ProgramUniform[] = [{type: 'uint32', data: outputSize}];
+  if (enableInputShapeUniform) {
+    programUniforms.push(...createTensorShapeVariables(inputShape));
+  }
+  if (enableOutputShapeUniform) {
+    programUniforms.push(...createTensorShapeVariables(outputShape));
+  }
   return {
-    ...metadata,
+    name: 'Expand',
+    shaderCache: {hint: `${outputShape}`, inputDependencies: [enableInputShapeUniform ? 'rank' : 'dims']},
     getShaderSource,
-    outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
-    dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
+    getRunData: () => ({
+      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+      dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
+      programUniforms
+    })
   };
 };
 
 export const expand = (context: ComputeContext): void => {
   validateInputs(context.inputs);
-  const outputShape = Array.from(context.inputs[1].getBigInt64Array(), Number);
-  const cacheHint = outputShape.toString();
-  context.compute(
-      {...expandProgramMetadata, cacheHint, get: () => createExpandProgramInfo(expandProgramMetadata, context.inputs)},
-      {inputs: [0]});
+  context.compute(createExpandProgramInfo(context.inputs), {inputs: [0]});
 };

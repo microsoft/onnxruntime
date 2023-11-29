@@ -2055,6 +2055,7 @@ struct KernelContext {
   void* GetGPUComputeStream() const;
   Logger GetLogger() const;
   OrtAllocator* GetAllocator(const OrtMemoryInfo& memory_info) const;
+  OrtKernelContext* GetOrtKernelContext() const { return ctx_; }
 
  private:
   OrtKernelContext* ctx_;
@@ -2155,6 +2156,80 @@ struct Op : detail::Base<OrtOp> {
               size_t output_count);
 };
 
+/// <summary>
+/// Provide access to per-node attributes and input shapes, so one could compute and set output shapes.
+/// </summary>
+struct ShapeInferContext {
+  struct SymbolicInteger {
+    SymbolicInteger(int64_t i) : i_(i), is_int_(true){};
+    SymbolicInteger(const char* s) : s_(s), is_int_(false){};
+    SymbolicInteger(const SymbolicInteger&) = default;
+    SymbolicInteger(SymbolicInteger&&) = default;
+
+    SymbolicInteger& operator=(const SymbolicInteger&) = default;
+    SymbolicInteger& operator=(SymbolicInteger&&) = default;
+
+    bool operator==(const SymbolicInteger& dim) const {
+      if (is_int_ == dim.is_int_) {
+        if (is_int_) {
+          return i_ == dim.i_;
+        } else {
+          return std::string{s_} == std::string{dim.s_};
+        }
+      }
+      return false;
+    }
+
+    bool IsInt() const { return is_int_; }
+    int64_t AsInt() const { return i_; }
+    const char* AsSym() const { return s_; }
+
+    static constexpr int INVALID_INT_DIM = -2;
+
+   private:
+    union {
+      int64_t i_;
+      const char* s_;
+    };
+    bool is_int_;
+  };
+
+  using Shape = std::vector<SymbolicInteger>;
+
+  ShapeInferContext(const OrtApi* ort_api, OrtShapeInferContext* ctx);
+
+  const Shape& GetInputShape(size_t indice) const { return input_shapes_.at(indice); }
+
+  size_t GetInputCount() const { return input_shapes_.size(); }
+
+  Status SetOutputShape(size_t indice, const Shape& shape);
+
+  int64_t GetAttrInt(const char* attr_name);
+
+  using Ints = std::vector<int64_t>;
+  Ints GetAttrInts(const char* attr_name);
+
+  float GetAttrFloat(const char* attr_name);
+
+  using Floats = std::vector<float>;
+  Floats GetAttrFloats(const char* attr_name);
+
+  std::string GetAttrString(const char* attr_name);
+
+  using Strings = std::vector<std::string>;
+  Strings GetAttrStrings(const char* attr_name);
+
+ private:
+  const OrtOpAttr* GetAttrHdl(const char* attr_name) const;
+  const OrtApi* ort_api_;
+  OrtShapeInferContext* ctx_;
+  std::vector<Shape> input_shapes_;
+};
+
+using ShapeInferFn = Ort::Status (*)(Ort::ShapeInferContext&);
+
+#define MAX_CUSTOM_OP_END_VER (1UL << 31) - 1
+
 template <typename TOp, typename TKernel, bool WithStatus = false>
 struct CustomOpBase : OrtCustomOp {
   CustomOpBase() {
@@ -2205,6 +2280,16 @@ struct CustomOpBase : OrtCustomOp {
         static_cast<TKernel*>(op_kernel)->Compute(context);
       };
     }
+
+    SetShapeInferFn<TOp>(0);
+
+    OrtCustomOp::GetStartVersion = [](const OrtCustomOp* this_) {
+      return static_cast<const TOp*>(this_)->start_ver_;
+    };
+
+    OrtCustomOp::GetEndVersion = [](const OrtCustomOp* this_) {
+      return static_cast<const TOp*>(this_)->end_ver_;
+    };
   }
 
   // Default implementation of GetExecutionProviderType that returns nullptr to default to the CPU provider
@@ -2256,9 +2341,26 @@ struct CustomOpBase : OrtCustomOp {
     return std::vector<std::string>{};
   }
 
+  template <typename C>
+  decltype(&C::InferOutputShape) SetShapeInferFn(decltype(&C::InferOutputShape)) {
+    OrtCustomOp::InferOutputShapeFn = [](const OrtCustomOp*, OrtShapeInferContext* ort_ctx) -> OrtStatusPtr {
+      ShapeInferContext ctx(&GetApi(), ort_ctx);
+      return C::InferOutputShape(ctx);
+    };
+    return {};
+  }
+
+  template <typename C>
+  void SetShapeInferFn(...) {
+    OrtCustomOp::InferOutputShapeFn = {};
+  }
+
  protected:
   // Helper function that returns a map of session config entries specified by CustomOpBase::GetSessionConfigKeys.
   void GetSessionConfigs(std::unordered_map<std::string, std::string>& out, ConstSessionOptions options) const;
+
+  int start_ver_ = 1;
+  int end_ver_ = MAX_CUSTOM_OP_END_VER;
 };
 
 }  // namespace Ort

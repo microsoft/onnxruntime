@@ -184,11 +184,17 @@ class MLASCPUIDInfo
 
     bool IsCurrentCoreArmv8NarrowLd() const { return false; }
 
+    bool HasArmNeon_I8MM() const { return has_arm_neon_i8mm_; }
+
+    bool HasArmSVE_I8MM() const { return has_arm_sve_i8mm_; }
+
    private:
     MLASCPUIDInfo();
 
     bool has_arm_neon_dot_{false};
     bool has_fp16_{false};
+    bool has_arm_neon_i8mm_{false};
+    bool has_arm_sve_i8mm_{false};
 };
 using MLAS_CPUIDINFO = MLASCPUIDInfo;
 
@@ -856,6 +862,8 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchNeon;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmX8S8DispatchNeon;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSdot;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUmmla;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSmmla;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchDefault;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemm8X8DispatchPOWER10;
@@ -882,13 +890,29 @@ extern const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchNeon;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchDot;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchDot;
 
+//
+// Quantized 8-bit integer/quantized 4-bit integer matrix/matrix multiply dispatch structure.
+//
+
 struct MLAS_Q8Q4GEMM_DISPATCH;
 
 extern const MLAS_Q8Q4GEMM_DISPATCH MlasQ8Q4GemmDispatchAvx512vnni;
 
+//
+// Float/quantized 4-bit integer matrix/matrix multiply dispatch structure.
+//
+
 struct MLAS_FPQ4GEMM_DISPATCH;
 
 extern const MLAS_FPQ4GEMM_DISPATCH MlasFpQ4GemmDispatchAvx512;
+
+//
+// Float/quantized n-bit integer matrix/matrix multiply dispatch structure.
+//
+
+struct MLAS_SQNBIT_GEMM_DISPATCH;
+
+extern const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon;
 
 //
 // Quantized depthwise convolution kernels.
@@ -1021,6 +1045,8 @@ struct MLAS_PLATFORM {
 
     const MLAS_FPQ4GEMM_DISPATCH* FpQ4GemmDispatch{nullptr};
     const MLAS_Q8Q4GEMM_DISPATCH* Q8Q4GemmDispatch{nullptr};
+
+    const MLAS_SQNBIT_GEMM_DISPATCH* SQNBitGemmDispatch{nullptr};
 };
 
 inline
@@ -1068,6 +1094,23 @@ MlasTrySimpleParallel(
     const std::ptrdiff_t Iterations,
     const std::function<void(std::ptrdiff_t tid)>& Work
     );
+
+
+/**
+ * @brief Distribute many iterations of work over a thread pool if supported.
+ * This function is for small workloads in non-performance critical situation.
+ *
+ * @param ThreadPool [IN]          Optional thread pool. Ignored when using OpenMP
+ * @param Iterations [IN]          Total number of iterations
+ * @param Work [IN]                Logic for computing a range of iterations [begin, end)
+ */
+void
+MlasTryBatchParallel(
+	MLAS_THREADPOOL * ThreadPool,
+	const std::ptrdiff_t Iterations,
+	const std::function<void(std::ptrdiff_t tid)>& Work
+    );
+
 
 inline
 ptrdiff_t

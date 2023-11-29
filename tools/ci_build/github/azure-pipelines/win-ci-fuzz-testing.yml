@@ -32,7 +32,7 @@ jobs:
 
   - task: NodeTool@0
     inputs:
-      versionSpec: '16.x'
+      versionSpec: '18.x'
 
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 5.7.0

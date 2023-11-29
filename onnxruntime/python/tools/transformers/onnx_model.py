@@ -337,6 +337,18 @@ class OnnxModel:
                 return i, matched, return_indice
         return -1, None, None
 
+    def match_parent_paths_all(self, node, paths, output_name_to_node):
+        match_i, matches, return_indices = [], [], []
+        for i, path in enumerate(paths):
+            assert isinstance(path, (List, Tuple))
+            return_indice = []
+            matched = self.match_parent_path(node, path[0], path[1], output_name_to_node, return_indice)
+            if matched:
+                match_i.append(i)
+                matches.append(matched)
+                return_indices.append(return_indice)
+        return match_i, matches, return_indices
+
     def match_parent_path(
         self,
         node,
@@ -610,7 +622,7 @@ class OnnxModel:
 
            When symbolic shape inference is used (even if it failed), ONNX shape inference will be disabled.
 
-           Note that onnx shape inference will fail for model larger than 2GB. For large model, you have to eanble
+           Note that onnx shape inference will fail for model larger than 2GB. For large model, you have to enable
            symbolic shape inference. If your model is not optimized, you can also use model path to call
            convert_float_to_float16 in float16.py (see https://github.com/microsoft/onnxruntime/pull/15067) to
            avoid the 2GB limit.
@@ -663,7 +675,7 @@ class OnnxModel:
                         if vi.name in name_vi:
                             del name_vi[vi.name]
                     for vi in name_vi.values():
-                        model.graph.value_info.append(vi)  # noqa: PERF402
+                        model.graph.value_info.append(vi)
             except Exception:
                 logger.warning(
                     "Failed to run symbolic shape inference. Please file an issue in https://github.com/microsoft/onnxruntime."
@@ -832,7 +844,7 @@ class OnnxModel:
         # Keep track of nodes to keep. The key is first output of node, and the value is the node.
         output_to_node = {}
 
-        # Start from graph outputs, and find parent nodes recurisvely, and add nodes to the output_to_node dictionary.
+        # Start from graph outputs, and find parent nodes recursively, and add nodes to the output_to_node dictionary.
         dq = deque()
         for output in keep_outputs:
             if output in output_name_to_node:
@@ -1114,7 +1126,9 @@ class OnnxModel:
             op = (node.domain + ":" if include_domain and node.domain else "") + node.op_type
             op_count[op] = 1 if op not in op_count else (op_count[op] + 1)
 
-        logger.info(f"Operators:{op_count}")
+        # Sorted by count in the descending order, then by key in alphabetical order.
+        logger.info(f"Operators:{sorted(op_count.items(), key=lambda kv:(-kv[1], kv[0]))}")
+
         return op_count
 
     @staticmethod
@@ -1161,7 +1175,7 @@ class OnnxModel:
             signature_cache1 (dict): Optional dictionary to store data signatures of tensor1 in order to speed up comparison.
             signature_cache2 (dict): Optional dictionary to store data signatures of tensor2 in order to speed up comparison.
         Returns:
-            bool: True when two intializers has same value.
+            bool: True when two initializers has same value.
         """
         sig1 = (
             signature_cache1[tensor1.name]

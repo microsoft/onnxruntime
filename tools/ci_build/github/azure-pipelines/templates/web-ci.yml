@@ -26,7 +26,7 @@ parameters:
 
 - name: WASMTemplate
   type: string
-  default: win-wasm-ci.yml
+  default: linux-wasm-ci.yml
 # parameter couldn't be compared by string, so add one boolean parameter.
 - name: UseWebPoolName
   type: boolean
@@ -39,10 +39,10 @@ parameters:
   default: false
 - name: WebGpuPoolName
   type: string
-  default: ''
+  default: 'onnxruntime-Win2022-webgpu-A10'
 - name: WebCpuPoolName
   type: string
-  default: ''
+  default: 'onnxruntime-Win-CPU-2022-web'
 
 - name: ExtraBuildArgs
   displayName: 'Extra build command line arguments'
@@ -65,7 +65,6 @@ stages:
       clean: all
     steps:
     - checkout: self
-      fetchDepth: 1
       submodules: false
     - script: |
        git submodule sync -- cmake/external/onnx
@@ -74,7 +73,7 @@ stages:
       displayName: 'Checkout submodule onnx'
     - task: NodeTool@0
       inputs:
-        versionSpec: '16.x'
+        versionSpec: '18.x'
     - template: linux-web-init-and-check.yml
     - task: Bash@3
       displayName: 'Extract commit SHA and save to __commit.txt'

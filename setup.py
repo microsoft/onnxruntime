@@ -192,26 +192,37 @@ try:
 
                 cuda_dependencies = [
                     "libcublas.so.11",
+                    "libcublas.so.12",
                     "libcublasLt.so.11",
-                    "libcudnn.so.8",
+                    "libcublasLt.so.12",
                     "libcudart.so.11.0",
-                    "libcurand.so.10",
+                    "libcudart.so.12",
+                    "libcudnn.so.8",
                     "libcufft.so.10",
+                    "libcufft.so.11",
+                    "libcurand.so.10",
                 ]
                 rocm_dependencies = [
-                    "librccl.so.1",
-                    "libnuma.so.1",
                     "libamd_comgr.so.2",
-                    "libdrm.so.2",
-                    "librocblas.so.0",
-                    "libdrm_amdgpu.so.1",
                     "libamdhip64.so.5",
-                    "libroctracer64.so.4",
-                    "libMIOpen.so.1",
-                    "libtinfo.so.6",
+                    "libdrm.so.2",
+                    "libdrm_amdgpu.so.1",
                     "libelf.so.1",
-                    "librocm_smi64.so.5",
+                    "libhipfft.so.0",
+                    "libhiprtc.so.5",
                     "libhsa-runtime64.so.1",
+                    "libMIOpen.so.1",
+                    "libnuma.so.1",
+                    "librccl.so.1",
+                    "librocblas.so.3",
+                    "librocfft.so.0",
+                    "librocm_smi64.so.5",
+                    "libroctracer64.so.4",
+                    "libtinfo.so.6",
+                    "libmigraphx_c.so.3",
+                    "libmigraphx.so.2",
+                    "libmigraphx_onnx.so.2",
+                    "libmigraphx_tf.so.2",
                 ]
 
                 tensorrt_dependencies = ["libnvinfer.so.8", "libnvinfer_plugin.so.8", "libnvonnxparser.so.8"]
@@ -387,7 +398,6 @@ packages = [
     "onnxruntime",
     "onnxruntime.backend",
     "onnxruntime.capi",
-    "onnxruntime.capi.training",
     "onnxruntime.datasets",
     "onnxruntime.tools",
     "onnxruntime.tools.mobile_helpers",
@@ -462,6 +472,7 @@ if enable_training or enable_training_apis:
                 "onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils",
                 "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator",
                 "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops",
+                "onnxruntime.training.ortmodule.graph_optimizers",
                 "onnxruntime.training.ort_triton",
                 "onnxruntime.training.ort_triton.kernel",
                 "onnxruntime.training.utils",
@@ -519,6 +530,10 @@ if enable_training or enable_training_apis:
             if not (cuda_version or rocm_version):
                 # Training CPU package for ADO feeds is called onnxruntime-training-cpu
                 package_name = "onnxruntime-training-cpu"
+
+            if rocm_version:
+                # Training ROCM package for ADO feeds is called onnxruntime-training-rocm
+                package_name = "onnxruntime-training-rocm"
 
 if package_name == "onnxruntime-tvm":
     packages += ["onnxruntime.providers.tvm"]

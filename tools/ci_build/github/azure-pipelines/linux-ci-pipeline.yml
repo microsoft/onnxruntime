@@ -56,14 +56,23 @@ stages:
         clean: true
         submodules: none
 
-      - task: NodeTool@0
+      - task: DownloadPackage@1
+        displayName: 'Download ARM64 GCC'
         inputs:
-          versionSpec: '16.x'
+          packageType: upack
+          feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
+          definition: 'gcc_aarch64_linux_gnu_host_x86_64'
+          version: 13.2.1
+          downloadPath: $(Build.BinariesDirectory)/gcc
 
-      - task: UsePythonVersion@0
+      - task: DownloadPackage@1
+        displayName: 'Download ARM32 GCC'
         inputs:
-          versionSpec: '3.8'
-          addToPath: true
+          packageType: upack
+          feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
+          definition: 'gcc_aarch32_linux_gnu_host_x86_64'
+          version: 13.2.1
+          downloadPath: $(Build.BinariesDirectory)/gcc
 
       - template: templates/get-docker-image-steps.yml
         parameters:
@@ -71,6 +80,45 @@ stages:
           Context: tools/ci_build/github/linux/docker/
           DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=registry.access.redhat.com/ubi8/ubi"
           Repository: onnxruntimecpubuild
+
+      - task: PythonScript@0
+        displayName: 'Update deps.txt'
+        inputs:
+          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
+          arguments: --new_dir $(Build.BinariesDirectory)/deps
+          workingDirectory: $(Build.BinariesDirectory)
+          pythonInterpreter: /usr/bin/python3
+
+      - script: |
+          set -e -x
+          # ARM64 build
+          mkdir -p $(Build.BinariesDirectory)/gccbin
+          tar -Jxf $(Build.BinariesDirectory)/gcc/arm-gnu-toolchain-13.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz --strip=1 -C $(Build.BinariesDirectory)/gccbin
+          export PATH=$(Build.BinariesDirectory)/gccbin/bin:$PATH
+          mkdir $(Build.BinariesDirectory)/aarch64build
+          cd $(Build.BinariesDirectory)/aarch64build
+          cmake $(Build.SourcesDirectory)/cmake -Donnxruntime_ENABLE_CPUINFO=OFF -DPython_EXECUTABLE=/usr/bin/python3 -DPYTHON_EXECUTABLE=/usr/bin/python3 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$(Build.SourcesDirectory)/cmake/linux_arm64_crosscompile_toolchain.cmake -G Ninja
+          ninja
+          rm -rf $(Build.BinariesDirectory)/aarch64build $(Build.BinariesDirectory)/gccbin
+          # ARM32 build
+          mkdir -p $(Build.BinariesDirectory)/gccbin
+          tar -Jxf $(Build.BinariesDirectory)/gcc/arm-gnu-toolchain-13.2.rel1-x86_64-arm-none-linux-gnueabihf.tar.xz --strip=1 -C $(Build.BinariesDirectory)/gccbin
+          ls $(Build.BinariesDirectory)/gccbin/bin
+          mkdir $(Build.BinariesDirectory)/arm32build
+          cd $(Build.BinariesDirectory)/arm32build
+          # TODO: fix the warnings and remove the --compile-no-warning-as-error arg
+          cmake --compile-no-warning-as-error $(Build.SourcesDirectory)/cmake -Donnxruntime_ENABLE_CPUINFO=OFF -DPython_EXECUTABLE=/usr/bin/python3 -DPYTHON_EXECUTABLE=/usr/bin/python3 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$(Build.SourcesDirectory)/cmake/linux_arm32_crosscompile_toolchain.cmake -G Ninja
+          ninja
+          rm -rf $(Build.BinariesDirectory)/arm32build $(Build.BinariesDirectory)/gccbin
+        displayName: Cross-compile for Linux ARM32 and ARM64
+
+      - task: PythonScript@0
+        displayName: 'Update deps.txt'
+        inputs:
+          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
+          arguments: --new_dir /build/deps
+          workingDirectory: $(Build.BinariesDirectory)
+          pythonInterpreter: /usr/bin/python3
 
       - template: templates/linux-build-step-with-cache.yml
         parameters:

@@ -299,6 +299,7 @@ ORT_RUNTIME_CLASS(DnnlProviderOptions);
 ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
 ORT_RUNTIME_CLASS(Logger);
+ORT_RUNTIME_CLASS(ShapeInferContext);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -598,9 +599,11 @@ typedef struct OrtTensorRTProviderOptions {
  * \see OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
  */
 typedef struct OrtMIGraphXProviderOptions {
-  int device_id;             // hip device id.
-  int migraphx_fp16_enable;  // enable MIGraphX FP16 precision. Default 0 = false, nonzero = true
-  int migraphx_int8_enable;  // enable MIGraphX INT8 precision. Default 0 = false, nonzero = true
+  int device_id;                                     // hip device id.
+  int migraphx_fp16_enable;                          // MIGraphX FP16 precision. Default 0 = false, nonzero = true
+  int migraphx_int8_enable;                          // MIGraphX INT8 precision. Default 0 = false, nonzero = true
+  int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, noznero = true
+  const char* migraphx_int8_calibration_table_name;  // MIGraphx INT8 calibration table name
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options
@@ -610,7 +613,7 @@ typedef struct OrtMIGraphXProviderOptions {
 typedef struct OrtOpenVINOProviderOptions {
 #ifdef __cplusplus
   OrtOpenVINOProviderOptions() : device_type{},
-                                 enable_vpu_fast_compile{},
+                                 enable_npu_fast_compile{},
                                  device_id{},
                                  num_of_threads{},
                                  cache_dir{},
@@ -623,7 +626,7 @@ typedef struct OrtOpenVINOProviderOptions {
    * Valid settings are one of: "CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU_FP16"
    */
   const char* device_type;
-  unsigned char enable_vpu_fast_compile;  ///< 0 = disabled, nonzero = enabled
+  unsigned char enable_npu_fast_compile;  ///< 0 = disabled, nonzero = enabled
   const char* device_id;
   size_t num_of_threads;  ///< 0 = Use default number of threads
   const char* cache_dir;  // path is set to empty by default
@@ -745,6 +748,8 @@ struct OrtApi {
 
   /** \brief Create an OrtEnv
    *
+   * \note Invoking this function will return the same instance of the environment as that returned by a previous call
+   * to another env creation function; all arguments to this function will be ignored.
    * \param[in] log_severity_level The log severity level.
    * \param[in] logid The log identifier.
    * \param[out] out Returned newly created OrtEnv. Must be freed with OrtApi::ReleaseEnv
@@ -755,17 +760,20 @@ struct OrtApi {
 
   /** \brief Create an OrtEnv
    *
+   * \note Invoking this function will return the same instance of the environment as that returned by a previous call
+   * to another env creation function; all arguments to this function will be ignored. If you want to provide your
+   * own logging function, consider setting it using the SetUserLoggingFunction API instead.
    * \param[in] logging_function A pointer to a logging function.
    * \param[in] logger_param A pointer to arbitrary data passed as the ::OrtLoggingFunction `param` parameter to
-   *                         `logging_function`.
+   *                         `logging_function`. This parameter is optional.
    * \param[in] log_severity_level The log severity level.
    * \param[in] logid The log identifier.
    * \param[out] out Returned newly created OrtEnv. Must be freed with OrtApi::ReleaseEnv
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
-  ORT_API2_STATUS(CreateEnvWithCustomLogger, OrtLoggingFunction logging_function, _In_opt_ void* logger_param,
-                  OrtLoggingLevel log_severity_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
+  ORT_API2_STATUS(CreateEnvWithCustomLogger, _In_ OrtLoggingFunction logging_function, _In_opt_ void* logger_param,
+                  _In_ OrtLoggingLevel log_severity_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
 
   /** \brief Enable Telemetry
    *
@@ -3592,6 +3600,18 @@ struct OrtApi {
    *   "rpc_control_latency": QNN RPC control latency.
    *   "htp_performance_mode": QNN performance mode, options: "burst", "balanced", "default", "high_performance",
    *   "high_power_saver", "low_balanced", "low_power_saver", "power_saver", "sustained_high_performance". Default to "default".
+   *   "qnn_context_embed_mode", 1 means dump the QNN context binary into node attribute EPContext->ep_cache_context in the ONNX skeleton model.
+   *   0 means dump the QNN context binary into separate bin file and set the path to EPContext->ep_cache_context.
+   *   The path is relative path to the ONNX skeleton model file.
+   *   "qnn_saver_path": File path to the QNN Saver backend library. If specified, QNN Saver will be enabled and will
+   *   dump QNN API calls to disk for replay/debugging. QNN Saver produces incorrect model inference results and
+   *   may alter model/EP partitioning. Use only for debugging.
+   *   "qnn_context_priority": QNN context priority, options: "low", "normal", "normal_high", "high". Default to "normal".
+   *   "htp_graph_finalization_optimization_mode": Set the optimization mode for graph finalization on the HTP backend. Available options:
+   *     - "0": Default.
+   *     - "1": Faster preparation time, less optimal graph.
+   *     - "2": Longer preparation time, more optimal graph.
+   *     - "3": Longest preparation time, most likely even more optimal graph. See QNN SDK documentation for specific details.
    *
    * SNPE supported keys:
    *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",
@@ -4413,6 +4433,93 @@ struct OrtApi {
    * \since Version 1.16.
    */
   ORT_API2_STATUS(KernelContext_GetResource, _In_ const OrtKernelContext* context, _In_ int resouce_version, _In_ int resource_id, _Outptr_ void** resource);
+
+  /** \brief Set user logging function
+   *
+   *  By default the logger created by the CreateEnv* functions is used to create the session logger as well.
+   *  This function allows a user to override this default session logger with a logger of their own choosing. This way
+   *  the user doesn't have to create a separate environment with a custom logger. This addresses the problem when
+   *  the user already created an env but now wants to use a different logger for a specific session (for debugging or
+   *  other reasons).
+   *
+   * \param[in] options
+   * \param[in] user_logging_function A pointer to a logging function.
+   * \param[in] user_logging_param A pointer to arbitrary data passed as the ::OrtLoggingFunction `param` parameter to
+   *                         `user_logging_function`. This parameter is optional.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(SetUserLoggingFunction, _Inout_ OrtSessionOptions* options,
+                  _In_ OrtLoggingFunction user_logging_function, _In_opt_ void* user_logging_param);
+
+  /**
+   * Get number of input from OrtShapeInferContext
+   *
+   * \param[in] context
+   * \param[out] out The number of inputs
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(ShapeInferContext_GetInputCount, _In_ const OrtShapeInferContext* context, _Out_ size_t* out);
+
+  /**
+   * Get type and shape info of an input
+   *
+   * \param[in] context
+   * \param[in] index The index of the input
+   * \param[out] info Type shape info of the input
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(ShapeInferContext_GetInputTypeShape, _In_ const OrtShapeInferContext* context, _In_ size_t index, _Outptr_ OrtTensorTypeAndShapeInfo** info);
+
+  /**
+   * Get attribute from OrtShapeInferContext. Note that OrtShapeInferContext is a per-node context, one could only read attribute from current node.
+   *
+   * \param[in] context
+   * \param[in] attr_name Name of the attribute
+   * \param[out] attr Handle of the attribute fetched
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(ShapeInferContext_GetAttribute, _In_ const OrtShapeInferContext* context, _In_ const char* attr_name, _Outptr_ const OrtOpAttr** attr);
+
+  /**
+   * Set type and shape info of an ouput
+   *
+   * \param[in] context
+   * \param[in] index The index of the ouput
+   * \param[out] info Type shape info of the output
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(ShapeInferContext_SetOutputTypeShape, _In_ const OrtShapeInferContext* context, _In_ size_t index, _In_ const OrtTensorTypeAndShapeInfo* info);
+
+  /**
+   * Set symbolic shape to type shape info
+   *
+   * \param[in] info Type shape info
+   * \param[in] dim_params Symbolic strings
+   * \param[in] dim_params_length Number of strings
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(SetSymbolicDimensions, _In_ OrtTensorTypeAndShapeInfo* info, _In_ const char* dim_params[], _In_ size_t dim_params_length);
+
+  /**
+   * Read contents of an attribute to data
+   *
+   * \param[in] op_attr
+   * \param[in] type Attribute type
+   * \param[out] data Memory address to save raw content of the attribute
+   * \param[in] len Number of bytes allowed to store in data
+   * \param[out] out Number of bytes required to save the data when the call failed, or the real number of bytes saved to data on success
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ OrtOpAttrType type, _Inout_ void* data, _In_ size_t len, _Out_ size_t* out);
 };
 
 /*
@@ -4504,6 +4611,12 @@ struct OrtCustomOp {
 
   // Perform the computation step.
   OrtStatusPtr(ORT_API_CALL* KernelComputeV2)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
+
+  OrtStatusPtr(ORT_API_CALL* InferOutputShapeFn)(_In_ const struct OrtCustomOp* op, _In_ OrtShapeInferContext*);
+
+  // Get start range
+  int(ORT_API_CALL* GetStartVersion)(_In_ const struct OrtCustomOp* op);
+  int(ORT_API_CALL* GetEndVersion)(_In_ const struct OrtCustomOp* op);
 };
 
 /*
@@ -4543,6 +4656,14 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessio
  * \param use_arena zero: false. non-zero: true.
  */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena);
+
+/*
+ * This is the old way to add the TensorRT provider to the session, please use SessionOptionsAppendExecutionProvider_TensorRT_V2 above to access the latest functionality
+ * This function always exists, but will only succeed if Onnxruntime was built with TensorRT support and the TensorRT provider shared library exists
+ *
+ * \param device_id CUDA device id, starts from zero.
+ */
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtSessionOptions* options, int device_id);
 
 #ifdef __cplusplus
 }

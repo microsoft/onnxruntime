@@ -33,7 +33,7 @@ void Q4GEMM(benchmark::State& state, MLAS_BLK_QUANT_TYPE qtype) {
   auto B1 = RandomVectorUniform(static_cast<size_t>(N * K), -1.0f, 1.0f);
   std::vector<float> C1(static_cast<size_t>(M * N));
 
-  std::vector<float> B1_packed(pack_b_size);
+  std::vector<uint8_t> B1_packed(pack_b_size);
   MlasQ4GemmPackB(qtype, B1_packed.data(), B1.data(), N, K, N);
 
   MLAS_Q4_GEMM_DATA_PARAMS params1;

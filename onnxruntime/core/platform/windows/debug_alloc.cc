@@ -12,7 +12,7 @@
 //
 #ifndef NDEBUG
 #ifdef ONNXRUNTIME_ENABLE_MEMLEAK_CHECK
-constexpr int c_callstack_limit = 16;  // Maximum depth of callstack in leak trace
+constexpr int c_callstack_limit = 32;  // Maximum depth of callstack in leak trace
 #define VALIDATE_HEAP_EVERY_ALLOC 0    // Call HeapValidate on every new/delete
 
 #pragma warning(disable : 4073)  // initializers put in library initialization area (this is intentional)
@@ -223,6 +223,11 @@ Memory_LeakCheck::~Memory_LeakCheck() {
     //     empty_group_names = new std::map<int, string>; });
     if (string.find("RtlRunOnceExecuteOnce") == std::string::npos &&
         string.find("re2::RE2::Init") == std::string::npos &&
+        string.find("dynamic initializer for 'FLAGS_") == std::string::npos &&
+        string.find("AbslFlagDefaultGenForgtest_") == std::string::npos &&
+        string.find("AbslFlagDefaultGenForundefok::Gen") == std::string::npos &&
+        string.find("::SetProgramUsageMessage") == std::string::npos &&
+        string.find("testing::internal::ParseGoogleTestFlagsOnly") == std::string::npos &&
         string.find("testing::internal::Mutex::ThreadSafeLazyInit") == std::string::npos &&
         string.find("testing::internal::ThreadLocalRegistryImpl::GetThreadLocalsMapLocked") == std::string::npos &&
         string.find("testing::internal::ThreadLocalRegistryImpl::GetValueOnCurrentThread") == std::string::npos &&

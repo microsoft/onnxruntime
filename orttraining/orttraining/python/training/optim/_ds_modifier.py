@@ -10,6 +10,9 @@
 # - has_overflow_partitioned_grads_serial : https://github.com/microsoft/DeepSpeed/blob/d8e9ef6f99e27bb95e10bd146d145b3372b4cfda/deepspeed/runtime/zero/stage2.py#L1799
 # --------------------------------------------------------------------------
 
+from __future__ import annotations
+
+import inspect
 import types
 import warnings
 
@@ -17,10 +20,67 @@ import torch
 from numpy import inf
 from packaging.version import Version
 
+from ._ds_code_store import Stage1And2_DeepSpeedZeroOptimizer_0_9_2
 from ._modifier import FP16OptimizerModifier, check_overflow, check_overflow_for_grads
 from ._multi_tensor_apply import MultiTensorApply
 
 multi_tensor_applier = MultiTensorApply(2048 * 32)
+
+
+def _get_normalized_str(function) -> str:
+    return inspect.getsource(function)
+
+
+def _dynamic_checks(cur_ds_version: Version, optimizer) -> bool:
+    _functions_to_override = ["has_overflow_serial", "get_grad_norm_direct", "has_overflow_partitioned_grads_serial"]
+
+    _version_to_source_code_map = {"0.9.2": Stage1And2_DeepSpeedZeroOptimizer_0_9_2}
+
+    # Try to find the biggest version that is smaller than or equal to cur_ds_version.
+    # then compare the source code (in case the found version is the latest version supported);
+    # If current code does not match the found version, return False, and raise a warning to
+    # add the new version to the list.
+    versions = [Version(v) for v in _version_to_source_code_map]
+    sorted_versions = sorted(versions, reverse=True)
+    version_to_compare = None
+    for sv in sorted_versions:
+        if cur_ds_version >= sv:
+            version_to_compare = sv
+            break
+
+    if version_to_compare is None:
+        warnings.warn(
+            "Unable to find a DeepSpeed version that is smaller than or equal to the current version "
+            f"{cur_ds_version}. Skip modifying optimizer.",
+            UserWarning,
+        )
+        return False
+
+    v_optimizer_cls = _version_to_source_code_map[str(version_to_compare)]
+    all_match = True
+    for func_name in _functions_to_override:
+        if not getattr(optimizer, func_name):
+            warnings.warn(
+                f"DeepSpeed function {func_name} is not found in optimizer. Skip modifying optimizer.", UserWarning
+            )
+            all_match = False
+        cur_code_str = _get_normalized_str(getattr(optimizer, func_name))
+        v_code_str = _get_normalized_str(getattr(v_optimizer_cls, func_name))
+        if cur_code_str != v_code_str:
+            warnings.warn(
+                f"DeepSpeed function {func_name} has changed after version {version_to_compare}. "
+                f"Please append new version {cur_ds_version} in _version_to_source_code_map and _ds_code_store.py.\n"
+                f"---[{func_name}] Old Source Code Start----\n"
+                f"{v_code_str}\n"
+                f"---{func_name} Old Source Code End----\n"
+                f"---[{func_name}] New Source Code Start----\n"
+                f"{cur_code_str}\n"
+                f"---{func_name} New Source Code End----",
+                UserWarning,
+            )
+            all_match = False
+
+    return all_match
 
 
 class DeepSpeedZeROModifier(FP16OptimizerModifier):
@@ -30,19 +90,32 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
     def can_be_modified(self):
         import deepspeed
 
+        # Note 1:
         # This modifier relies on the implementation of has_overflow_serial, get_grad_norm_direct,
         # and has_overflow_partitioned_grads_serial
         # in https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/runtime/zero/stage_1_and_2.py.
-        # Everytime if we want to update this version supporting list to a newer version,
-        # we need to check if the implementation of these functions are changed.
-        # An easy way to check is to check the history of this file, if there is no change during the update,
+        # The minimum version supported is 0.4.0, all versions in between [0.4.0, 0.9.1]
+        # are manually checked to make sure the implementation of these functions are "logically" not changed.
+        # The way we did the check is to check the history of this file, if there is no change during the update,
         # it's safe to update the version supporting list. Otherwise, or the file is moved or renamed,
         # we need to check the implementation of these functions in detail.
+        #
+        # Note 2:
+        # Since version 0.9.2, we added dynamic source code check, by comparing installed version of code with
+        # the source code in our code store. If the source code is changed, we will raise a warning to ask user
+        # to add the new version to the code store. Otherwise, we will override the functions.
+
         ds_version = Version(deepspeed.__version__)
-        if ds_version > Version("0.9.1") or ds_version < Version("0.4.0"):
+        if ds_version < Version("0.4.0"):
             warnings.warn(
-                "Skip modifying optimizer because of unsupported DeepSpeed version {}, "
-                "supported version: 0.4.0 - 0.9.1.".format(deepspeed.__version__),
+                f"Skip modifying optimizer because of unsupported DeepSpeed version {ds_version}, "
+                "minimum supported version: 0.4.0, current version",
+                UserWarning,
+            )
+            return False
+        if ds_version > Version("0.9.1") and not _dynamic_checks(ds_version, self._optimizer):
+            warnings.warn(
+                f"Skip modifying optimizer because of unsupported DeepSpeed version {ds_version}.",
                 UserWarning,
             )
             return False
@@ -55,7 +128,7 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
             if not get_accelerator().device_name().startswith("cuda"):
                 warnings.warn(
                     "Skip modifying optimizer as device is not supported, "
-                    "device name: {}".format(get_accelerator().device_name()),
+                    f"device name: {get_accelerator().device_name()}",
                     UserWarning,
                 )
                 return False

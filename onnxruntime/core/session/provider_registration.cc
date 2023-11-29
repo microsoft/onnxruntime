@@ -12,6 +12,10 @@
 #include "core/session/ort_apis.h"
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
 
+#if defined(USE_DML)
+#include "core/providers/dml/dml_provider_factory_creator.h"
+#endif
+
 using namespace onnxruntime;
 
 namespace {
@@ -67,7 +71,13 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
                                  (std::string(provider_name) + " execution provider is not supported in this build. ").c_str());
   };
 
-  if (strcmp(provider_name, "QNN") == 0) {
+  if (strcmp(provider_name, "DML") == 0) {
+#if defined(USE_DML)
+    options->provider_factories.push_back(DMLProviderFactoryCreator::CreateFromProviderOptions(provider_options));
+#else
+    status = create_not_supported_status();
+#endif
+  } else if (strcmp(provider_name, "QNN") == 0) {
 #if defined(USE_QNN)
     options->provider_factories.push_back(QNNProviderFactoryCreator::Create(provider_options, &(options->value)));
 #else
@@ -94,8 +104,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   } else if (strcmp(provider_name, "WEBNN") == 0) {
 #if defined(USE_WEBNN)
     std::string deviceType = options->value.config_options.GetConfigOrDefault("deviceType", "cpu");
+    std::string numThreads = options->value.config_options.GetConfigOrDefault("numThreads", "0");
     std::string powerPreference = options->value.config_options.GetConfigOrDefault("powerPreference", "default");
     provider_options["deviceType"] = deviceType;
+    provider_options["numThreads"] = numThreads;
     provider_options["powerPreference"] = powerPreference;
     options->provider_factories.push_back(WebNNProviderFactoryCreator::Create(provider_options));
 #else
@@ -109,6 +121,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #endif
   } else if (strcmp(provider_name, "JS") == 0) {
 #if defined(USE_JSEP)
+    std::string preferred_layout;
+    if (options->value.config_options.TryGetConfigEntry("preferredLayout", preferred_layout)) {
+      provider_options["preferred_layout"] = preferred_layout;
+    }
     options->provider_factories.push_back(JsProviderFactoryCreator::Create(provider_options));
 #else
     status = create_not_supported_status();

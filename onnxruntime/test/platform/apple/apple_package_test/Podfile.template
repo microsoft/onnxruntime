@@ -1,0 +1,40 @@
+def include_macos_target
+  if '@C_POD_NAME@' != 'onnxruntime-mobile-c'
+    return true
+  end
+  return false
+end
+
+target 'ios_package_test' do
+  # Comment the next line if you don't want to use dynamic frameworks
+  use_frameworks!
+
+  platform :ios, '13.0'
+
+  target 'ios_package_testUITests' do
+    inherit! :search_paths
+    pod '@C_POD_NAME@', :podspec  => '@C_POD_PODSPEC@'
+  end
+end
+
+if include_macos_target
+  target 'macos_package_test' do
+      # Comment the next line if you don't want to use dynamic frameworks
+      use_frameworks!
+
+      platform :osx, '11.0'
+
+      target 'macos_package_testUITests' do
+        inherit! :search_paths
+        pod '@C_POD_NAME@', :podspec  => '@C_POD_PODSPEC@'
+      end
+  end
+end
+
+# This is to prevent the pods to be code signed if enabled
+post_install do |installer|
+  installer.pods_project.build_configurations.each do |config|
+      config.build_settings['CODE_SIGNING_REQUIRED'] = "NO"
+      config.build_settings['CODE_SIGNING_ALLOWED'] = "NO"
+  end
+end

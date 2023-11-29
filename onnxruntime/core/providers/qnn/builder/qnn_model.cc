@@ -36,15 +36,16 @@ Status QnnModel::SetGraphInputOutputInfo(const GraphViewer& graph_viewer,
     initializer_inputs_.emplace(graph_ini.first);
   }
   auto input_defs = fused_node.InputDefs();
-  ORT_RETURN_IF_ERROR(ParseGraphInputOrOutput(input_defs, inputs_info_, model_input_index_map_, true));
+  ORT_RETURN_IF_ERROR(ParseGraphInputOrOutput(input_defs, input_names_, inputs_info_, model_input_index_map_, true));
 
   auto output_defs = fused_node.OutputDefs();
-  ORT_RETURN_IF_ERROR(ParseGraphInputOrOutput(output_defs, outputs_info_, model_output_index_map_));
+  ORT_RETURN_IF_ERROR(ParseGraphInputOrOutput(output_defs, output_names_, outputs_info_, model_output_index_map_));
 
   return Status::OK();
 }
 
 Status QnnModel::ParseGraphInputOrOutput(ConstPointerContainer<std::vector<NodeArg*>>& input_output_defs,
+                                         std::vector<std::string>& input_output_names,
                                          std::unordered_map<std::string, OnnxTensorInfo>& input_output_info_table,
                                          std::unordered_map<std::string, size_t>& input_output_index_map,
                                          bool is_input) {
@@ -72,6 +73,7 @@ Status QnnModel::ParseGraphInputOrOutput(ConstPointerContainer<std::vector<NodeA
     int32_t data_type = type_proto->tensor_type().elem_type();
     // use index i so that for graph input, it has initializers included
     input_output_info_table.emplace(std::piecewise_construct, std::forward_as_tuple(name), std::forward_as_tuple(i, data_type, std::move(shape)));
+    input_output_names.push_back(name);
   }
 
   return Status::OK();
@@ -85,7 +87,8 @@ const NodeUnit& QnnModel::GetNodeUnit(const Node* node,
 }
 
 Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
-                              const onnxruntime::Node& fused_node) {
+                              const onnxruntime::Node& fused_node,
+                              const QnnGraph_Config_t** graph_configs) {
   LOGS(logger_, VERBOSE) << "ComposeGraph Graph name: " << graph_viewer.Name();
 
   // Holder for the NodeUnits in the graph, this will guarantee the NodeUnits is
@@ -105,7 +108,7 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
                                                       initializer_inputs_,
                                                       qnn_backend_manager_->GetQnnBackendType());
   bool rt = true;
-  rt = qnn_model_wrapper.CreateQnnGraph(qnn_backend_manager_->GetQnnContext(), graph_name);
+  rt = qnn_model_wrapper.CreateQnnGraph(qnn_backend_manager_->GetQnnContext(), graph_name, graph_configs);
   if (!rt) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to initialize qnn_model_wrapper.");
   }

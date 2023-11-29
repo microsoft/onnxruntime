@@ -339,9 +339,6 @@ configure_file(${ONNXRUNTIME_ROOT}/python/_pybind_state.py.in
                ${CMAKE_BINARY_DIR}/onnxruntime/capi/_pybind_state.py)
 
 if (onnxruntime_ENABLE_TRAINING)
-  file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/deprecated/*.py"
-  )
   file(GLOB onnxruntime_python_root_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/*.py"
   )
@@ -387,6 +384,9 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_fused_ops_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/cuda/fused_ops/*"
   )
+  file(GLOB onnxruntime_python_ortmodule_graph_optimizers_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/graph_optimizers/*"
+  )
   file(GLOB onnxruntime_python_ort_triton_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/ort_triton/*.py"
   )
@@ -416,10 +416,6 @@ if (onnxruntime_ENABLE_TRAINING)
     "${ORTTRAINING_SOURCE_DIR}/python/training/onnxblock/optim/*"
     )
   endif()
-else()
-  file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/python/training/*.py"
-  )
 endif()
 
 if (onnxruntime_BUILD_UNIT_TESTS)
@@ -439,6 +435,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   )
   file(GLOB onnxruntime_python_transformers_testdata_whisper CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/test/python/transformers/test_data/models/whisper/*.onnx"
+  )
+  file(GLOB onnxruntime_python_transformers_testdata_conformer CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/test/python/transformers/test_data/models/conformer/*.onnx"
   )
 endif()
 
@@ -553,6 +552,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/whisper
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/eager_test
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/conformer
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
@@ -574,9 +574,6 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
       ${CMAKE_BINARY_DIR}/onnxruntime/capi/_pybind_state.py
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_capi_training_srcs}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
   COMMAND ${CMAKE_COMMAND} -E copy
       $<TARGET_FILE:onnxruntime_pybind11_state>
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
@@ -708,6 +705,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_transformers_testdata_whisper}
         $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/whisper/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_transformers_testdata_conformer}
+        $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/conformer/
   )
 endif()
 
@@ -741,14 +741,12 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cpu/torch_interop_utils
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/torch_gpu_allocator
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/fused_ops
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/graph_optimizers
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ort_triton
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ort_triton/kernel
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/data/
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/hooks/
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_capi_training_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_root_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/
@@ -794,6 +792,9 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_ortmodule_torch_cpp_ext_fused_ops_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/fused_ops/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_ortmodule_graph_optimizers_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/graph_optimizers/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_ort_triton_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ort_triton/

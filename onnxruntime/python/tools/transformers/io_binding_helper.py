@@ -1,6 +1,6 @@
 import logging
 from collections import OrderedDict
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple, Union
 
 import numpy
 import torch
@@ -229,7 +229,7 @@ class CudaSession:
         del self.io_binding
         del self.ort_session
 
-    def allocate_buffers(self, shape_dict: Dict[str, tuple]):
+    def allocate_buffers(self, shape_dict: Dict[str, Union[Tuple[int], List[int]]]):
         """Allocate tensors for I/O Binding"""
         if self.enable_cuda_graph:
             for name, shape in shape_dict.items():
@@ -283,6 +283,7 @@ class CudaSession:
             if name in self.input_names:
                 if self.enable_cuda_graph:
                     assert self.input_tensors[name].nelement() == tensor.nelement()
+                    assert self.input_tensors[name].dtype == tensor.dtype
                     assert tensor.device.type == "cuda"
                     # Please install cuda-python package with a version corresponding to CUDA in your machine.
                     from cuda import cudart
