@@ -14,6 +14,12 @@ s) ORT_SOURCE=${OPTARG};;
 esac
 done
 
+# Lock GPU freq
+nvidia-smi -i 0 -pm 1
+nvidia-smi -i 0 --lock-gpu-clocks=1590,1590
+nvidia-smi -i 0 --lock-memory-clocks=5001,5001 
+nvidia-smi -i 0 -q -d CLOCK
+
 ONNX_MODEL_TAR_URL="https://github.com/onnx/models/raw/main/vision/classification/squeezenet/model/squeezenet1.0-7.tar.gz"
 MODEL_TAR_NAME="squeezenet1.0-7.tar.gz"
 ONNX_MODEL="squeezenet.onnx"

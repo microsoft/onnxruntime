@@ -51,6 +51,10 @@ download_files() {
 }
 
 setup() {
+    nvidia-smi -i 0 -q -d CLOCK
+    if [ $? -ne 0 ]; then
+        echo "Failed to fetch GPU clock frequency"
+    fi
     apt update
     apt-get install -y --no-install-recommends pciutils
     pip install --upgrade pip
