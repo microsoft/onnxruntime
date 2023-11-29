@@ -11,6 +11,7 @@ parameters:
 
 - name: EnvSetupScript
   type: string
+  default: ''
 
 - name: buildArch
   type: string
@@ -63,11 +64,24 @@ parameters:
   type: boolean
   default: false
 
+- name: PublishProtoc
+  type: boolean
+  default: false
+
+- name: CudaVersion
+  type: string
+  default: '11.8'
+  values:
+      - 11.8
+      - 12.2
+
 stages:
 - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}
   dependsOn: []
   variables:
+    GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
+    CUDA_MODULE_LOADING: 'LAZY'
   jobs:
   - job:
     workspace:
@@ -102,12 +116,26 @@ stages:
         condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
         inputs:
           versionSpec: '18.x'
+      - ${{ if ne(parameters.EnvSetupScript, '') }}:
+        - template: jobs/set-winenv.yml
+          parameters:
+            EnvSetupScript: ${{ parameters.EnvSetupScript }}
+            ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
+              DownloadCUDA: true
 
-      - template: jobs/set-winenv.yml
-        parameters:
-          EnvSetupScript: ${{ parameters.EnvSetupScript }}
-          ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
-            DownloadCUDA: true
+      - ${{ if eq(parameters.EnvSetupScript, '') }}:
+        - template: jobs/download_win_gpu_library.yml
+          parameters:
+            CudaVersion: ${{ parameters.CudaVersion }}
+            ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
+              DownloadCUDA: true
+            ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
+              DownloadCUDA: true
+              DownloadTRT: true
+      - powershell: |
+          Write-Host "##vso[task.prependpath]C:\Program Files (x86)\dotnet"
+        displayName: 'Append dotnet x86  Directory to PATH'
+        condition: and(succeeded(), eq('${{ parameters.buildArch}}', 'x86'))
 
       - template: download-deps.yml
 
@@ -180,7 +208,8 @@ stages:
 
       #Upload protoc.exe, which will be used in nuget build for generating C# files
       - task: PublishPipelineArtifact@1
-        condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64'))
+        displayName: Publish protoc as drop-extra
+        condition: and(succeeded(), or(eq('${{ parameters.packageName}}', 'x64'), eq('${{ parameters.PublishProtoc}}', true)))
         inputs:
           targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe'
           artifactName: 'drop-extra${{ parameters.artifact_name_suffix }}'
@@ -193,13 +222,6 @@ stages:
           SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
           Contents: 'custom_op_library.dll'
           TargetFolder: '$(Build.ArtifactStagingDirectory)/testdata'
-
-      #To be used in test_win.yml
-      - task: PublishPipelineArtifact@1
-        condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64'))
-        inputs:
-          targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe'
-          artifactName: 'drop-nuget${{ parameters.artifact_name_suffix }}'
 
       - task: CmdLine@2
         condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))

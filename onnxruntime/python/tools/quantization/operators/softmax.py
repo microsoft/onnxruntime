@@ -86,7 +86,6 @@ class QDQSoftmax(QDQOperatorBase):
     def quantize(self):
         super().quantize()
         output_name = self.node.output[0]
-
         quant_overrides = self.quantizer.tensor_quant_overrides.get(output_name, {})
 
         quant_type = self.quantizer.activation_qType
