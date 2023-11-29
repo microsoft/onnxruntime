@@ -16,6 +16,7 @@ parameters:
 - name: PoolName
   type: string
 
+stages:
 - stage: Final_Jar_Testing_${{parameters.OS}}
   dependsOn:
     Jar_Packaging
