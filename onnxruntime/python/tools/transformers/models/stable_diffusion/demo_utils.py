@@ -255,7 +255,7 @@ def parse_arguments(is_xl: bool, parser):
                 print("[I] Use --denoising_steps=4 (no more than 8) for sdxl-turbo.")
                 args.denoising_steps = 4
             if not args.disable_refiner:
-                print("[I] sdxl-turbo cannot use with SDXL refiner.")
+                print("[I] Disable SDXL refiner to run sdxl-turbo.")
                 args.disable_refiner = True
 
         if args.lcm and args.scheduler != "LCM":

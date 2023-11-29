@@ -223,7 +223,7 @@ class PipelineInfo:
             return 1024
         elif self.is_xl_base_or_turbo():
             return 2048
-        elif self.version == "xl-1.0" and self.is_xl_refiner():
+        elif self.is_xl_refiner():
             return 1280
         else:
             raise ValueError(f"Invalid version {self.version}")
