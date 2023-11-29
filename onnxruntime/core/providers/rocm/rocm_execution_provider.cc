@@ -320,8 +320,6 @@ Status ROCMExecutionProvider::Sync() const {
 }
 
 Status ROCMExecutionProvider::OnRunStart() {
-  // always set ROCM device when session::Run() in case it runs in a worker thread
-  HIP_RETURN_IF_ERROR(hipSetDevice(GetDeviceId()));
   return Status::OK();
 }
 

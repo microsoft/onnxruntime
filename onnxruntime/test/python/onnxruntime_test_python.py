@@ -1740,5 +1740,6 @@ class TestInferenceSession(unittest.TestCase):
                 sessions[i].run_with_iobinding(binding)
                 binding.synchronize_outputs()
 
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
