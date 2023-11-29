@@ -1,0 +1,72 @@
+parameters:
+- name: OS
+  displayName: Opserating System
+  type: string
+
+- name: SpecificArtifact
+  displayName: Specific Artifact
+  type: string
+  default: ''
+
+- name: BuildId
+  displayName: Build Id
+  type: string
+  default: ''
+
+- name: PoolName
+  type: string
+
+- stage: Final_Jar_Testing_${{parameters.OS}}
+  dependsOn:
+    Jar_Packaging
+  jobs:
+  - job:
+    workspace:
+      clean: all
+    - ${{ if eq(parameters['OS'], 'MacOS') }}:
+      pool:
+        vmImage: ${{ parameters.PoolName }}
+    - ${{ else }}:
+      pool: ${{ parameters.PoolName }}
+    variables:
+    - name: runCodesignValidationInjection
+      value: false
+    timeoutInMinutes: 60
+
+    steps:
+    - template: set-version-number-variables-step.yml
+
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Final Jar'
+        ArtifactName: onnxruntime-java
+        TargetPath: '$(Build.BinariesDirectory)/final-jar'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+
+    - Bash:
+      inputs:
+        targetType: 'inline'
+        script: |
+          echo "Java Version"
+          java --version
+          mkdir test
+          pushd test
+          jar xf $(Build.BinariesDirectory)/final-jar/testing.jar
+          popd
+          wget --tries=3 https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
+          wget --tries=3 https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.21.7/protobuf-java-3.21.7.jar -P ./
+          LD_LIBRARY_PATH=./test:${LD_LIBRARY_PATH}
+          java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.21.7.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
+        workingDirectory: '$(Build.BinariesDirectory)/final-jar'
+
+    - ${{ if eq(parameters['OS'], 'MacOS') }}:
+      - template: use-xcode-version.yml
+
+    - template: component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
+
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
