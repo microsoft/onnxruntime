@@ -28,7 +28,8 @@ def get_sequence_lengths(args: argparse.Namespace):
 
 def get_inputs(args: argparse.Namespace, config: LlamaConfig):
     # Dummy values for parity
-    batch_size = 2
+    # TODO (pavignol): Revert when the model is working for bigger batch sizes
+    batch_size = 1 if args.execution_provider == "dml" else 2
     past_sequence_length, sequence_length, _ = get_sequence_lengths(args)
 
     if args.merged:
@@ -90,17 +91,18 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
 
     # Run inference with ORT
     past_sequence_length, _, max_sequence_length = get_sequence_lengths(args)
+
     inputs = convert_inputs_for_ort(
         inputs,
         use_fp16=args.use_fp16,
-        use_buffer_share=args.use_fp16,
+        use_buffer_share=args.use_fp16 and args.execution_provider != "dml",
         past_seq_len=past_sequence_length,
         max_seq_len=max_sequence_length,
         device=args.execution_provider,
         device_id=int(args.device_id),
     )
 
-    ep = f"{args.execution_provider.upper()}ExecutionProvider"
+    ep = "DmlExecutionProvider" if args.execution_provider == "dml" else f"{args.execution_provider.upper()}ExecutionProvider"
     if ep == "CUDAExecutionProvider":
         ep = (ep, {"device_id": args.device_id})
     ort_model = ort.InferenceSession(
@@ -109,8 +111,8 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
         providers=[ep],
     )
 
-    # Add IO bindings for non-CPU execution providers
-    if args.execution_provider != "cpu":
+    # Add IO bindings for non-CPU and non-DML execution providers
+    if args.execution_provider not in {"cpu", "dml"} :
         io_binding = add_io_bindings(args, ort_model, inputs)
 
         torch.cuda.synchronize()
@@ -138,6 +140,11 @@ def verify_parity(args: argparse.Namespace, config: LlamaConfig, pt_model: Llama
         if args.precision == "fp32"
         else 5e-1
     )
+
+    # The DML model only outputs the logits for the last token, even for the non-cache case
+    if args.execution_provider == "dml":
+        pt_outputs = pt_outputs[:, -1, :]
+
     parity = np.allclose(pt_outputs, ort_outputs, rtol=tol, atol=tol)
     logger.warning(f"Are PyTorch and ONNX Runtime results close? {parity}")
     if not parity:
@@ -175,7 +182,7 @@ def get_args(argv: List[str]):
         "--execution_provider",
         required=False,
         default="cpu",
-        choices=["cpu", "cuda", "rocm"],
+        choices=["cpu", "cuda", "rocm", "dml"],
         help="Execution provider to verify parity with",
     )
 

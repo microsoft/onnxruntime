@@ -112,12 +112,14 @@ def get_sample_past_kv_inputs(
 
 
 # Convert list of past_kv to dict of past_key and past_value
-def flatten_past_kv_inputs(past_key_values: List[Tuple[torch.Tensor, torch.Tensor]], use_fp16: bool):
+def flatten_past_kv_inputs(past_key_values: List[Tuple[torch.Tensor, torch.Tensor]], use_fp16: bool, device: str):
     past_kv = {}
     np_dtype = np.float16 if use_fp16 else np.float32
     for i, (past_k, past_v) in enumerate(past_key_values):
-        past_kv[f"past_key_values.{i}.key"] = past_k.detach().cpu().numpy().astype(np_dtype)
-        past_kv[f"past_key_values.{i}.value"] = past_v.detach().cpu().numpy().astype(np_dtype)
+        key = f"cache.{i}.key" if device == "dml" else f"past_key_values.{i}.key"
+        value = f"cache.{i}.value" if device == "dml" else f"past_key_values.{i}.value"
+        past_kv[key] = past_k.detach().cpu().numpy().astype(np_dtype)
+        past_kv[value] = past_v.detach().cpu().numpy().astype(np_dtype)
     return past_kv
 
 
@@ -136,15 +138,36 @@ def convert_inputs_for_ort(
         if isinstance(v, np.ndarray):
             ort_inputs[k] = v
         elif k == "past_key_values":
-            ort_inputs.update(flatten_past_kv_inputs(v, use_fp16))
+            pt_cache = flatten_past_kv_inputs(v, use_fp16, device)
+
+            if device == "dml":
+                for cache_k, cache_v in pt_cache.items():
+                    pt_cache[cache_k] = np.pad(cache_v, ((0, 0), (0, 0), (max_seq_len - cache_v.shape[2], 0), (0, 0)))
+
+            ort_inputs.update(pt_cache)
         elif k == "attention_mask" and use_fp16 and use_buffer_share:
             # Skip because FP16 model has GroupQueryAttention, uses buffer sharing,
             # and GQA supports a causal mask by default
 
             # Instead, add the past sequence length input for GQA
             ort_inputs["past_sequence_length"] = np.array([past_seq_len], dtype=np.int64)
+        elif k == "attention_mask" and device == "dml":
+            pt_attn_mask = v.detach().cpu().numpy()
+            pt_attn_mask = np.pad(pt_attn_mask, ((0, 0), (max_seq_len - pt_attn_mask.shape[1], 0)))
+            ort_inputs["attn_mask"] = pt_attn_mask.astype(np.int32)
+        elif k == "input_ids" and device == "dml":
+            ort_inputs["tokens"] = v.detach().cpu().numpy()
+            ort_inputs["tokens_increment"] = v.detach().cpu().numpy()
+        elif k == "position_ids" and device == "dml":
+            ort_inputs["position_ids"] = v.detach().cpu().numpy()
+            ort_inputs["position_ids_increment"] = v.detach().cpu().numpy()
         else:
             ort_inputs[k] = v.detach().cpu().numpy()
+
+    if past_seq_len == 0:
+        ort_inputs["use_cache_branch"] = np.zeros((1,), dtype=np.bool_)
+    else:
+        ort_inputs["use_cache_branch"] = np.ones((1,), dtype=np.bool_)
 
     # Enable past-present-share-buffer by using device memory directly
     if use_buffer_share and device != "" and device != "cpu" and device_id > -1:
