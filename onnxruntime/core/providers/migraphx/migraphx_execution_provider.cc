@@ -115,8 +115,8 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   }
 
   // whether fp16 is enable
-  const std::string fast_math_enable_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kFastMathOptimization);
-  if (!fast_math_env.empty()) {
+  const std::string fast_math_enable_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kSetFastMathOptimization);
+  if (!fast_math_enable_env.empty()) {
     fast_math_enable_ = (std::stoi(fast_math_enable_env) == 0 ? false : true);
   }
 
@@ -1195,6 +1195,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       migraphx::onnx_options& cmp_options = mgx_state->options;
       bool& no_input_shape = mgx_state->no_input_shape;
       bool fp16_enable = mgx_state->fp16_enable;
+      bool fast_math_enable = mgx_state->fast_math_enable;
       bool int8_enable = mgx_state->int8_enable;
       bool int8_calibration_cache_available = mgx_state->int8_calibration_cache_available;
 

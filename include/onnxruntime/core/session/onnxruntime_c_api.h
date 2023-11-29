@@ -600,6 +600,7 @@ typedef struct OrtTensorRTProviderOptions {
 typedef struct OrtMIGraphXProviderOptions {
   int device_id;                                     // hip device id.
   int migraphx_fp16_enable;                          // MIGraphX FP16 precision. Default 0 = false, nonzero = true
+  int migraphx_fast_math_enable;                     // MIGraphX Fast Math Optimize. Default 0 = false, nonzero = true
   int migraphx_int8_enable;                          // MIGraphX INT8 precision. Default 0 = false, nonzero = true
   int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, noznero = true
   const char* migraphx_int8_calibration_table_name;  // MIGraphx INT8 calibration table name
