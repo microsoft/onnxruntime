@@ -347,6 +347,7 @@ static bool CreateTrainingPybindStateModule(py::module& m) {
 #ifdef ENABLE_LAZY_TENSOR
   addObjectMethodsForLazyTensor(m);
 #endif
+  return true;
 }
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   if (!CreateTrainingPybindStateModule(m)) {
