@@ -45,6 +45,14 @@ stages:
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Final Jar'
+        ArtifactName: onnxruntime-java-tools
+        TargetPath: '$(Build.BinariesDirectory)/final-jar-tools'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+
     - task: Bash@3
       inputs:
         targetType: 'inline'
@@ -55,8 +63,8 @@ stages:
           pushd test
           jar xf $(Build.BinariesDirectory)/final-jar/testing.jar
           popd
-          wget --tries=3 https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
-          wget --tries=3 https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.21.7/protobuf-java-3.21.7.jar -P ./
+          mv $(Build.BinariesDirectory)/final-jar-tools/*.jar $(Build.BinariesDirectory)/final-jar
+          ls $(Build.BinariesDirectory)/final-jar
           LD_LIBRARY_PATH=./test:${LD_LIBRARY_PATH}
           java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.21.7.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
         workingDirectory: '$(Build.BinariesDirectory)/final-jar'

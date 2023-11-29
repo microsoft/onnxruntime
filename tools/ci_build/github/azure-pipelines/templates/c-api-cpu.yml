@@ -225,40 +225,45 @@ stages:
       submodules: false
     - template: set-version-number-variables-step.yml
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - Win x64'
-      inputs:
-        buildType: 'current'
-        artifactName: 'drop-onnxruntime-java-win-x64'
-        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - Win x64'
+        ArtifactName: 'drop-onnxruntime-java-win-x64'
+        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - Linux x64'
-      inputs:
-        buildType: 'current'
-        artifactName: 'drop-onnxruntime-java-linux-x64'
-        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - Linux x64'
+        ArtifactName: 'drop-onnxruntime-java-linux-x64'
+        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - Linux AARCH64'
-      inputs:
-        buildType: 'current'
-        artifactName: 'drop-onnxruntime-java-linux-aarch64'
-        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-aarch64'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - Linux AARCH64'
+        ArtifactName: 'drop-onnxruntime-java-linux-aarch64'
+        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-aarch64'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - MacOS x64'
-      inputs:
-        buildType: 'current'
-        artifactName: 'drop-onnxruntime-java-osx-x86_64'
-        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-x86_64'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - MacOS x64'
+        ArtifactName: 'drop-onnxruntime-java-osx-x86_64'
+        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-x86_64'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - MacOS ARM64'
-      inputs:
-        buildType: 'current'
-        artifactName: 'drop-onnxruntime-java-osx-arm64'
-        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-arm64'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - MacOS ARM64'
+        ArtifactName: 'drop-onnxruntime-java-osx-arm64'
+        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-arm64'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
     - task: PowerShell@2
       displayName: 'PowerShell Script'
@@ -274,6 +279,20 @@ stages:
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: Bash@3
+      displayName: 'Download java tools'
+      targetType: 'inline'
+      script: |
+          wget --tries=3 https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
+          wget --tries=3 https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.21.7/protobuf-java-3.21.7.jar -P ./
+      workingDirectory: '$(Agent.TempDirectory)\java-tools'
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Pipeline Java Tools Artifact'
+      inputs:
+        targetPath: '$(Agent.TempDirectory)\java-tools'
+        artifact: 'onnxruntime-java-tools'
 
     - task: PublishPipelineArtifact@1
       displayName: 'Publish Pipeline Artifact'
@@ -810,14 +829,14 @@ stages:
     OS: Windows
     BuildId: ${{ parameters.BuildId }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
+    PoolName: 'onnxruntime-Win-CPU-2022'
 
 - template: final-jar-testing.yml
   parameters:
     OS: Linux
     BuildId: ${{ parameters.BuildId }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    PoolName: 'onnxruntime-Win-CPU-2022'
+    PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
 
 - template: final-jar-testing.yml
   parameters:
