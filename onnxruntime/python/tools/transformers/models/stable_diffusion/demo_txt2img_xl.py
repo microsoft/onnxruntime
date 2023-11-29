@@ -54,8 +54,12 @@ def load_pipelines(args, batch_size):
     # For TensorRT,  performance of engine built with dynamic shape is very sensitive to the range of image size.
     # Here, we reduce the range of image size for TensorRT to trade-off flexibility and performance.
     # This range can cover most frequent shape of landscape (832x1216), portrait (1216x832) or square (1024x1024).
-    min_image_size = 832 if args.engine != "ORT_CUDA" else 512
-    max_image_size = 1216 if args.engine != "ORT_CUDA" else 2048
+    if args.version == "xl-turbo":
+        min_image_size = 512
+        max_image_size = 768 if args.engine != "ORT_CUDA" else 1024
+    else:
+        min_image_size = 832 if args.engine != "ORT_CUDA" else 512
+        max_image_size = 1216 if args.engine != "ORT_CUDA" else 2048
 
     # No VAE decoder in base when it outputs latent instead of image.
     base_info = PipelineInfo(

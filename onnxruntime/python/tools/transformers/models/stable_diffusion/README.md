@@ -92,13 +92,17 @@ python3 demo_txt2img_xl.py "Self-portrait oil painting, a beautiful cyborg with 
 python3 demo_txt2img_xl.py --lcm --disable-refiner "an astronaut riding a rainbow unicorn, cinematic, dramatic"
 ```
 
+#### Generate an image with SDXL Turbo model guided by a text prompt
+```
+python3 demo_txt2img_xl.py --version xl-turbo --height 512 --width 512 --denoising-steps 1 --scheduler UniPC "little cute gremlin sitting on a bed, cinematic"
+```
+
 #### Generate an image with a text prompt using a control net
 ```
 python3 demo_txt2img.py "Stormtrooper's lecture in beautiful lecture hall" --controlnet-type depth --controlnet-scale 1.0
 
 python3 demo_txt2img_xl.py "young Mona Lisa" --controlnet-type canny --controlnet-scale 0.5 --scheduler UniPC --disable-refiner
 ```
-
 ## Optimize Stable Diffusion ONNX models for Hugging Face Diffusers or Optimum
 
 If you are able to run the above demo with docker, you can use the docker and skip the following setup and fast forward to [Export ONNX pipeline](#export-onnx-pipeline).

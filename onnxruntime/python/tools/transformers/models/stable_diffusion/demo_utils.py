@@ -61,7 +61,7 @@ def parse_arguments(is_xl: bool, parser):
     parser.add_argument(
         "--version",
         type=str,
-        default=supported_versions[-1] if is_xl else "1.5",
+        default="xl-1.0" if is_xl else "1.5",
         choices=supported_versions,
         help="Version of Stable Diffusion" + (" XL." if is_xl else "."),
     )
@@ -244,6 +244,20 @@ def parse_arguments(is_xl: bool, parser):
         args.onnx_opset = 14 if args.engine == "ORT_CUDA" else 17
 
     if is_xl:
+        if args.version == "xl-turbo":
+            if args.guidance > 1.0:
+                print("[I] Use --guidance=1.0 for sdxl-turbo.")
+                args.guidance = 1.0
+            if args.lcm:
+                print("[I] sdxl-turbo cannot use with LCM.")
+                args.lcm = False
+            if args.denoising_steps > 8:
+                print("[I] Use --denoising_steps=4 (no more than 8) for sdxl-turbo.")
+                args.denoising_steps = 4
+            if not args.disable_refiner:
+                print("[I] sdxl-turbo cannot use with SDXL refiner.")
+                args.disable_refiner = True
+
         if args.lcm and args.scheduler != "LCM":
             print("[I] Use --scheduler=LCM for base since LCM is used.")
             args.scheduler = "LCM"
@@ -628,12 +642,12 @@ def process_controlnet_arguments(args):
     assert isinstance(args.controlnet_type, list)
     assert isinstance(args.controlnet_scale, list)
     assert isinstance(args.controlnet_image, list)
-    if args.version not in ["1.5", "xl-1.0"]:
-        raise ValueError("This demo only supports ControlNet in Stable Diffusion 1.5 or XL.")
+    if args.version not in ["1.5", "xl-1.0", "xl-turbo"]:
+        raise ValueError("This demo only supports ControlNet in Stable Diffusion 1.5, XL or Turbo.")
 
-    is_xl = args.version == "xl-1.0"
+    is_xl = "xl" in args.version
     if is_xl and len(args.controlnet_type) > 1:
-        raise ValueError("This demo only support one ControlNet for Stable Diffusion XL.")
+        raise ValueError("This demo only support one ControlNet for Stable Diffusion XL or Turbo.")
 
     if len(args.controlnet_image) != 0 and len(args.controlnet_image) != len(args.controlnet_scale):
         raise ValueError(
