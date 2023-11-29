@@ -49,7 +49,7 @@ stages:
       parameters:
         StepName: 'Download Jar Tools'
         ArtifactName: onnxruntime-java-tools
-        TargetPath: '$(Build.BinariesDirectory)/final-jar-tools'
+        TargetPath: '$(Build.BinariesDirectory)/final-jar'
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
@@ -63,11 +63,13 @@ stages:
           pushd test
           jar xf $(Build.BinariesDirectory)/final-jar/testing.jar
           popd
-          mv $(Build.BinariesDirectory)/final-jar-tools/*.jar $(Build.BinariesDirectory)/final-jar
-          ls $(Build.BinariesDirectory)/final-jar
-          LD_LIBRARY_PATH=./test:${LD_LIBRARY_PATH}
           java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.21.7.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
         workingDirectory: '$(Build.BinariesDirectory)/final-jar'
+      env:
+        ${{ if eq(parameters.OS, 'MacOS') }}:
+          DYLD_LIBRARY_PATH: '$(Build.BinariesDirectory)/final-jar/test:$(DYLD_LIBRARY_PATH)'
+        ${{ if eq(parameters.OS, 'Linux') }}:
+          LD_LIBRARY_PATH: '$(Build.BinariesDirectory)/final-jar/test:$(LD_LIBRARY_PATH)'
 
     - ${{ if eq(parameters['OS'], 'MacOS') }}:
       - template: use-xcode-version.yml
