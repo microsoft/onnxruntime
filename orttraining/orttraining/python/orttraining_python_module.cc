@@ -1,7 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-#include <numpy/arrayobject.h>
 
 #include "orttraining/python/orttraining_pybind_common.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
@@ -47,6 +45,7 @@ void addObjectMethodsForEager(py::module& m);
 #ifdef ENABLE_LAZY_TENSOR
 void addObjectMethodsForLazyTensor(py::module& m);
 #endif
+bool InitArray();
 
 bool GetDyanmicExecutionProviderHash(
     const std::string& ep_shared_lib_path,
@@ -226,6 +225,7 @@ class TrainingEnvInitialzer {
 
  private:
   TrainingEnvInitialzer() {
+    ORT_ENFORCE(InitArray());
     Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
     ort_training_env_ = std::make_unique<ORTTrainingPythonEnv>();
   }
@@ -318,8 +318,7 @@ void ORTTrainingRegisterExecutionProviders(InferenceSession* sess, const std::ve
   }
 }
 
-static bool CreateTrainingPybindStateModule(py::module& m) {
-  import_array1(false);
+PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   m.doc() = "pybind11 stateful interface to ORTTraining";
   RegisterExceptions(m);
 
@@ -345,12 +344,6 @@ static bool CreateTrainingPybindStateModule(py::module& m) {
 #ifdef ENABLE_LAZY_TENSOR
   addObjectMethodsForLazyTensor(m);
 #endif
-  return true;
-}
-PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
-  if (!CreateTrainingPybindStateModule(m)) {
-    throw pybind11::import_error();
-  }
 
   m.def("_register_provider_lib", [](const std::string& name,
                                      const std::string& provider_shared_lib_path,

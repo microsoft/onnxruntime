@@ -2082,6 +2082,12 @@ bool CreateInferencePybindStateModule(py::module& m) {
   return true;
 }
 
+// This function is only used by orttraining module
+bool InitArray() {
+  import_array1(false);
+  return true;
+}
+
 namespace {
 // This class provides a static shell for on-demand and thread-safe construction
 // of Environment object for both Inference and Training python layers.
