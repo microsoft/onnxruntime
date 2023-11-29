@@ -47,7 +47,7 @@ stages:
 
     - template: flex-downloadPipelineArtifact.yml
       parameters:
-        StepName: 'Download Final Jar'
+        StepName: 'Download Jar Tools'
         ArtifactName: onnxruntime-java-tools
         TargetPath: '$(Build.BinariesDirectory)/final-jar-tools'
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
