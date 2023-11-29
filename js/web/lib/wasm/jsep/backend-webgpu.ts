@@ -369,8 +369,9 @@ export class WebGpuBackend {
         }
         currentOffset = Math.ceil(currentOffset / baseAlignment) * baseAlignment;
         offsets.push(currentOffset);
-        // When data.length > 4, it is of type array<vec4<u32>,N>, the total byte legnth is Math.ceil(data.length / 4) *
-        // 4 * 4.
+        // When data.length > 4, the uniform variable is of type array<vec4<i32|u32|f32>,N>, where N =
+        // Math.ceil(data.length / 4) and SizeOf(vec4<i32|u32|f32>) = 16. The total byte length is N *
+        // SizeOf(vec4<i32|u32|f32>).
         currentOffset += data.length > 4 ? Math.ceil(data.length / 4) * 16 : data.length * 4;
       });
 
