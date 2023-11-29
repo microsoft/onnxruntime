@@ -31,15 +31,15 @@
 	/>
 	<meta property="og:type" content="article" />
 	<meta property="og:url" content="https://onnxruntime.ai/blogs/accelerating-llama-2" />
-	<meta property="og:image" content={figure5} />
+	<meta property="og:image" content={figure1b} />
 	<meta property="og:site_name" content="ONNX Runtime" />
-	<meta name="twitter:card" content={figure5} />
+	<meta name="twitter:card" content={figure1b} />
 	<meta name="twitter:title" content="Accelerating LLaMA-2 Inference with ONNX Runtime" />
 	<meta
 		name="twitter:description"
 		content="Explore how ONNX Runtime can propel your Llama2 variants for faster inference."
 	/>
-	<meta name="twitter:image" content={figure5} />
+	<meta name="twitter:image" content={figure1b} />
 </svelte:head>
 <Header pathvar="" />
 <div class="container mx-auto px-4 md:px-8 lg:px-48 pt-8">
@@ -133,7 +133,7 @@
 
 		<p class="mb-4">
 			Token generation throughput below is the average throughput of the first 256 tokens generated.
-			We see up to ~1.4X (7B) and ~1.7X (13B) gains in token generation throughput when compared to
+			We see up to ~1.3X (7B) and ~1.5X (13B) gains in token generation throughput when compared to
 			PyTorch compile mode.
 		</p>
 
