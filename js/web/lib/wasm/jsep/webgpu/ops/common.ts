@@ -846,7 +846,7 @@ class ShaderHelperImpl implements ShaderHelper {
         throw new Error(`Type should be scalar like u32, i32, f32, ${type} is not supported!`);
       }
       if (length && length > 4) {
-        uniformSnippets.push(`@align(16) ${name}:array<vec4<${type}>, ${Math.ceil(length / 4)}>`);
+        uniformSnippets.push(`${name}:array<vec4<${type}>, ${Math.ceil(length / 4)}>`);
       } else {
         const typeTemp = length == null || length === 1 ? type : `vec${length}<${type}>`;
         uniformSnippets.push(`${name}:${typeTemp}`);
