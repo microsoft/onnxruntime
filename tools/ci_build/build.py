@@ -346,6 +346,11 @@ def parse_arguments():
         help="[cross-compiling] Create ARM64EC makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed",
     )
+    parser.add_argument(
+        "--buildasx",
+        action="store_true",
+        help="[cross-compiling] Create ARM64X Binary.",
+    )
     parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
     parser.add_argument("--windows_sdk_version", help="Windows SDK version to use. e.g. 10.0.19041.0")
     parser.add_argument("--android", action="store_true", help="Build for Android")
@@ -2496,8 +2501,12 @@ def main():
                     cmake_extra_args = ["-A", "ARM"]
                 elif args.arm64:
                     cmake_extra_args = ["-A", "ARM64"]
+                    if args.buildasx:
+                        cmake_extra_args += ["-D", "BUILD_AS_ARM64X=ARM64"]
                 elif args.arm64ec:
-                    cmake_extra_args = ["-A", "ARM64EC"]
+                    cmake_extra_args = ["-A", "ARM64EC", "-D", "BUILD_AS_ARM64X=ARM64EC"]
+                    if args.buildasx:
+                        cmake_extra_args += ["-D", "BUILD_AS_ARM64X=ARM64EC"]
                 cmake_extra_args += ["-G", args.cmake_generator]
                 # Cannot test on host build machine for cross-compiled
                 # builds (Override any user-defined behaviour for test if any)
@@ -2532,6 +2541,7 @@ def main():
                 cmake_extra_args = ["-A", target_arch, "-T", toolset, "-G", args.cmake_generator]
             if args.enable_wcos:
                 cmake_extra_defines.append("CMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake")
+
         elif args.cmake_generator is not None:
             cmake_extra_args += ["-G", args.cmake_generator]
 

@@ -1774,3 +1774,8 @@ if(TARGET onnxruntime)
     "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
 endif()
+
+if(DEFINED BUILD_AS_ARM64X)
+  set(ARM64X_TARGETS onnxruntime)
+  include("${CMAKE_SOURCE_DIR}/arm64x.cmake")
+endif()
