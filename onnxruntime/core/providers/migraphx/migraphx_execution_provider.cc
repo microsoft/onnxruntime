@@ -1144,7 +1144,9 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         // perform static quantization on the programs
         migraphx::quantize_int8(prog, t_, quant_opts);
       }
-      prog.compile(t_);
+      migraphx::compile_options co;
+      co.set_fast_math(false);
+      prog.compile(t_, co);
       auto prog_output_shapes = prog.get_output_shapes();
       for (std::size_t i = 0; i < output_names.size(); ++i) {
         auto out_len = prog_output_shapes[i].lengths();
@@ -1262,7 +1264,9 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
           migraphx::quantize_int8(prog, t, quant_opts);
         }
 
-        prog.compile(t);
+        migraphx::compile_options co;
+        co.set_fast_math(false);
+        prog.compile(t, co);
         mgx_state->prog = prog;
         param_shapes = prog.get_parameter_shapes();
         no_input_shape = false;
