@@ -338,7 +338,6 @@ export class WebGpuBackend {
     let uniformBufferBinding: GPUBindingResource|undefined;
     if (programUniforms) {
       let currentOffset = 0;
-      let preLength = 0;
       const offsets: number[] = [];
       let maxAlignmentOfField = 1;
       programUniforms.forEach(v => {
@@ -365,16 +364,14 @@ export class WebGpuBackend {
             baseAlignment = 16;
         }
 
-        if (preLength > 4) {
-          baseAlignment = 16;
-        }
         if (baseAlignment > maxAlignmentOfField) {
           maxAlignmentOfField = baseAlignment;
         }
         currentOffset = Math.ceil(currentOffset / baseAlignment) * baseAlignment;
-        preLength = data.length;
         offsets.push(currentOffset);
-        currentOffset += data.length * 4;
+        // When data.length > 4, it is of type array<vec4<u32>,N>, the total byte legnth is Math.ceil(data.length / 4) *
+        // 4 * 4.
+        currentOffset += data.length > 4 ? Math.ceil(data.length / 4) * 16 : data.length * 4;
       });
 
       currentOffset = Math.ceil(currentOffset / maxAlignmentOfField) * maxAlignmentOfField;
