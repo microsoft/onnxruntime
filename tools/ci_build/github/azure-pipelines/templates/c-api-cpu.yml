@@ -282,11 +282,12 @@ stages:
 
     - task: Bash@3
       displayName: 'Download java tools'
-      targetType: 'inline'
-      script: |
-          wget --tries=3 https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
-          wget --tries=3 https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.21.7/protobuf-java-3.21.7.jar -P ./
-      workingDirectory: '$(Agent.TempDirectory)\java-tools'
+      inputs:
+        targetType: 'inline'
+        script: |
+            wget --tries=3 https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
+            wget --tries=3 https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.21.7/protobuf-java-3.21.7.jar -P ./
+        workingDirectory: '$(Agent.TempDirectory)\java-tools'
 
     - task: PublishPipelineArtifact@1
       displayName: 'Publish Pipeline Java Tools Artifact'
