@@ -14,7 +14,6 @@ namespace migraphx {
 namespace provider_option_names {
 constexpr const char* kDeviceId = "device_id";
 constexpr const char* kFp16Enable = "trt_fp16_enable";
-constexpr const char* kFastMathEnable = "migx_fast_math_enable";
 constexpr const char* kInt8Enable = "migx_int8_enable";
 constexpr const char* kInt8CalibTable = "migx_int8_calibration_table_name";
 constexpr const char* kInt8UseNativeCalibTable = "migx_int8_use_native_calibration_table";
@@ -39,7 +38,6 @@ MIGraphXExecutionProviderInfo MIGraphXExecutionProviderInfo::FromProviderOptions
                 return Status::OK();
               })
           .AddAssignmentToReference(migraphx::provider_option_names::kFp16Enable, info.fp16_enable)
-          .AddAssignmentToReference(migraphx::provider_option_names::kFastMathEnable, info.fast_math_enable)
           .AddAssignmentToReference(migraphx::provider_option_names::kInt8Enable, info.int8_enable)
           .Parse(options));
 
@@ -50,7 +48,6 @@ ProviderOptions MIGraphXExecutionProviderInfo::ToProviderOptions(const MIGraphXE
   const ProviderOptions options{
       {migraphx::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {migraphx::provider_option_names::kFp16Enable, MakeStringWithClassicLocale(info.fp16_enable)},
-      {migraphx::provider_option_names::kFastMathEnable, MakeStringWithClassicLocale(info.fast_math_enable)},
       {migraphx::provider_option_names::kInt8Enable, MakeStringWithClassicLocale(info.int8_enable)},
   };
   return options;
@@ -60,7 +57,6 @@ ProviderOptions MIGraphXExecutionProviderInfo::ToProviderOptions(const OrtMIGrap
   const ProviderOptions options{
       {migraphx::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {migraphx::provider_option_names::kFp16Enable, MakeStringWithClassicLocale(info.migraphx_fp16_enable)},
-      {migraphx::provider_option_names::kFastMathEnable, MakeStringWithClassicLocale(info.migraphx_fast_math_enable)},
       {migraphx::provider_option_names::kInt8Enable, MakeStringWithClassicLocale(info.migraphx_int8_enable)},
   };
   return options;

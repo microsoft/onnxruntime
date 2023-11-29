@@ -26,7 +26,6 @@ static const char dumpModelOps[] = "ORT_MIGRAPHX_DUMP_MODEL_OPS";
 static const char kINT8CalibrationTableName[] = "ORT_MIGRAPHX_INT8_CALIBRATION_TABLE_NAME";
 static const char kCachePath[] = "ORT_MIGRAPHX_CACHE_PATH";
 static const char kINT8UseNativeMIGraphXCalibrationTable[] = "ORT_MIGRAPHX_INT8_USE_NATIVE_CALIBRATION_TABLE";
-static const char kSetFastMathOptimization[] = "ORT_MIGRAPHX_SET_FAST_MATH";
 };  // namespace migraphx_env_vars
 
 // Information to construct kernel function state.
@@ -42,7 +41,6 @@ struct MIGraphXFuncState {
   OrtMutex* mgx_mu_ptr = nullptr;
   bool no_input_shape = false;
   bool fp16_enable = false;
-  bool fast_math_enable = false;
   bool int8_enable = false;
   bool int8_calibration_cache_available = false;
   std::unordered_map<std::string, float> dynamic_range_map;
@@ -80,7 +78,6 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
 
  private:
   bool fp16_enable_ = false;
-  bool fast_math_enable_ = false;
   bool int8_enable_ = false;
   std::string int8_calibration_cache_name_;
   bool int8_calibration_cache_available_ = false;

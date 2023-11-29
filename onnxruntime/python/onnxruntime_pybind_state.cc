@@ -734,7 +734,6 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           0,
           0,
           0,
-          0,
           nullptr};
       for (auto option : it->second) {
         if (option.first == "device_id") {
@@ -752,13 +751,6 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             ORT_THROW(
                 "[ERROR] [MIGraphX] The value for the key 'trt_fp16_enable' should be"
                 " 'True' or 'False'. Default value is 'False'.\n");
-          }
-        }
-        else if (option.first == "migraphx_set_fast_math") {
-          if (option.second == "True" || option.second == "true") {
-            params.migraphx_fast_math_enable = true;
-          } else {
-            params.migraphx_fast_math_enable = false;
           }
         } else if (option.first == "migraphx_int8_enable") {
           if (option.second == "True" || option.second == "true") {
