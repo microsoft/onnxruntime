@@ -861,7 +861,7 @@ stages:
     steps:
     - template: set-version-number-variables-step.yml
 
-    - template: templates/flex-downloadPipelineArtifact.yml
+    - template: flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Final Jar'
         ArtifactName: onnxruntime-java
