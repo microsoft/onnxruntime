@@ -22,14 +22,14 @@ logger = logging.getLogger("")
 
 def get_sequence_lengths(args: argparse.Namespace):
     past_sequence_length, curr_sequence_length = (8, 1) if args.use_past_kv else (0, 8)
-    max_sequence_length = 2048
+    # DML barely doesn't have enough memory in this test for 2048 (but it has enough when ran in standalone)
+    max_sequence_length = 256 if args.execution_provider == "dml" else 2048
     return past_sequence_length, curr_sequence_length, max_sequence_length
 
 
 def get_inputs(args: argparse.Namespace, config: LlamaConfig):
     # Dummy values for parity
-    # TODO (pavignol): Revert when the model is working for bigger batch sizes
-    batch_size = 1 if args.execution_provider == "dml" else 2
+    batch_size = 2
     past_sequence_length, sequence_length, _ = get_sequence_lengths(args)
 
     if args.merged:
