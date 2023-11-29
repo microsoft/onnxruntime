@@ -2504,7 +2504,7 @@ def main():
                     if args.buildasx:
                         cmake_extra_args += ["-D", "BUILD_AS_ARM64X=ARM64"]
                 elif args.arm64ec:
-                    cmake_extra_args = ["-A", "ARM64EC", "-D", "BUILD_AS_ARM64X=ARM64EC"]
+                    cmake_extra_args = ["-A", "ARM64EC"]
                     if args.buildasx:
                         cmake_extra_args += ["-D", "BUILD_AS_ARM64X=ARM64EC"]
                 cmake_extra_args += ["-G", args.cmake_generator]
