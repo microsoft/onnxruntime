@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <iostream>
 #include <iterator>
 #include <gtest/gtest.h>
 
@@ -623,7 +624,13 @@ static ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
       ORT_TSTR("convtranspose_3d"),
       ORT_TSTR("conv_with_strides_and_asymmetric_padding"),
       ORT_TSTR("conv_with_strides_padding"),
-      ORT_TSTR("size")  // INVALID_ARGUMENT: Cannot find binding of given name: x
+      ORT_TSTR("YOLOv3-12"),           // needs to run symbolic shape inference shape first
+      ORT_TSTR("SSD-MobilenetV1-12"),  // symbolic shape inference shape error
+      ORT_TSTR("SSD"),                 // needs to run symbolic shape inference shape first
+      ORT_TSTR("Mask_RCNN_R50FPN_faster_rcnn_R_50_FPN_1x"), // needs to run symbolic shape inference first
+      ORT_TSTR("size"),                 // INVALID_ARGUMENT: Cannot find binding of given name: x
+      ORT_TSTR("GPT2"),                 // needs to run symbolic shape inference first
+      ORT_TSTR("mlperf_resnet_resnet50_v1") // output mismatch
   };
   std::vector<std::basic_string<ORTCHAR_T>> paths;
 

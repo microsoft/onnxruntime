@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -31,6 +32,13 @@ using namespace onnxruntime;
 using namespace onnxruntime::coreml;
 
 namespace {
+// Converts a UTF8 const char* to an NSString. Throws on failure.
+NSString* _Nonnull Utf8StringToNSString(const char* utf8_str) {
+  NSString* result = [NSString stringWithUTF8String:utf8_str];
+  ORT_ENFORCE(result != nil, "NSString conversion failed.");
+  return result;
+}
+
 /**
  * Computes the static output shape used to allocate the output tensor.
  * `inferred_shape` is the inferred shape known at model compile time. It may contain dynamic dimensions (-1).
@@ -151,22 +159,77 @@ Status CreateInputFeatureProvider(const std::unordered_map<std::string, OnnxTens
                                                               deallocator:^(void* /* bytes */) {
                                                               }
                                                                     error:&error];
-    ORT_RETURN_IF(error != nil,
+    ORT_RETURN_IF(multi_array == nil,
                   "Failed to create MLMultiArray for feature: ", name,
-                  ", error: ", [[error localizedDescription] UTF8String]);
+                  (error != nil) ? MakeString(", error: ", [[error localizedDescription] UTF8String]) : "");
 
     MLFeatureValue* feature_value = [MLFeatureValue featureValueWithMultiArray:multi_array];
-    NSString* feature_name = [NSString stringWithUTF8String:name.c_str()];
+    NSString* feature_name = Utf8StringToNSString(name.c_str());
     feature_dictionary[feature_name] = feature_value;
   }
 
   auto* feature_provider = [[MLDictionaryFeatureProvider alloc] initWithDictionary:feature_dictionary
                                                                              error:&error];
-  ORT_RETURN_IF(error != nil,
-                "Failed to create MLDictionaryFeatureProvider, error: ", [[error localizedDescription] UTF8String]);
+  ORT_RETURN_IF(feature_provider == nil,
+                "Failed to create MLDictionaryFeatureProvider",
+                (error != nil) ? MakeString(", error: ", [[error localizedDescription] UTF8String]) : "");
 
   *feature_provider_out = feature_provider;
   conversion_buffers_out = std::move(conversion_buffers);
+  return Status::OK();
+}
+
+bool IsArrayContiguous(const MLMultiArray* array) {
+  int64_t batch_stride = [array.strides[0] longLongValue];
+  const auto* shape = array.shape;
+  int64_t batch_elems = 1;
+  for (unsigned long i = 1; i < shape.count; i++) batch_elems *= [shape[i] longLongValue];
+  return batch_stride == batch_elems;
+}
+
+Status CopyMLMultiArrayBuffer(const void* mlmultiarray_buffer, void* tensor_buffer,
+                              const MLMultiArray* array_info,
+                              const OnnxTensorInfo* tensor_info,
+                              const std::optional<unsigned long> mlmultiarray_buffer_size) {
+  if (mlmultiarray_buffer == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "mlmultiarray_buffer has no data");
+  }
+
+  const size_t num_elements = array_info.count;
+  const auto onnx_data_type = tensor_info->data_type;
+  switch (onnx_data_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
+      const auto output_data_byte_size = num_elements * sizeof(float);
+      ORT_RETURN_IF_NOT(!mlmultiarray_buffer_size || mlmultiarray_buffer_size == output_data_byte_size,
+                        "CoreML output buffer size and expected output size differ");
+      memcpy(tensor_buffer, mlmultiarray_buffer, output_data_byte_size);
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+      const auto output_data_byte_size = num_elements * sizeof(int32_t);
+      ORT_RETURN_IF_NOT(!mlmultiarray_buffer_size || mlmultiarray_buffer_size == output_data_byte_size,
+                        "CoreML output buffer size and expected output size differ");
+      memcpy(tensor_buffer, mlmultiarray_buffer, output_data_byte_size);
+      break;
+    }
+    // For this case, since Coreml Spec only uses int32 for model output while onnx provides
+    // int64 for model output data type. We are doing a type casting (int32 -> int64) here
+    // when copying the model to ORT
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+      ORT_RETURN_IF_NOT(array_info.dataType == MLMultiArrayDataTypeInt32,
+                        "CoreML output data type is not MLMultiArrayDataTypeInt32");
+      ORT_RETURN_IF_NOT(!mlmultiarray_buffer_size || mlmultiarray_buffer_size == num_elements * sizeof(int32_t),
+                        "CoreML output buffer size and expected output size differ");
+      const auto model_output_span = gsl::span{static_cast<const int32_t*>(mlmultiarray_buffer), num_elements};
+      const auto output_span = gsl::span{static_cast<int64_t*>(tensor_buffer), num_elements};
+      std::transform(model_output_span.begin(), model_output_span.end(), output_span.begin(),
+                     [](int32_t v) { return static_cast<int64_t>(v); });
+      break;
+    }
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Output data type is not supported, actual type: ", onnx_data_type);
+  }
   return Status::OK();
 }
 }  // namespace
@@ -196,7 +259,7 @@ NS_ASSUME_NONNULL_BEGIN
                               get_output_tensor_mutable_raw_data_fn
     API_AVAILABLE_OS_VERSIONS;
 
-@property MLModel* model API_AVAILABLE_OS_VERSIONS;
+@property(nullable) MLModel* model API_AVAILABLE_OS_VERSIONS;
 
 @end
 
@@ -242,12 +305,15 @@ NS_ASSUME_NONNULL_BEGIN
 - (Status)loadModel {
   NSError* error = nil;
   NSURL* modelUrl = [NSURL URLWithString:coreml_model_path_];
-  NSAssert(modelUrl != nil, @"modelUrl must not be nil");
+  if (modelUrl == nil) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create model URL from path");
+  }
+
   NSURL* compileUrl = [MLModel compileModelAtURL:modelUrl error:&error];
 
   if (error != nil) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error compiling model ",
-                           [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error compiling model: ",
+                           [[error localizedDescription] UTF8String]);
   }
 
   compiled_model_path_ = [compileUrl path];
@@ -258,9 +324,9 @@ NS_ASSUME_NONNULL_BEGIN
                             : MLComputeUnitsAll;
   _model = [MLModel modelWithContentsOfURL:compileUrl configuration:config error:&error];
 
-  if (error != NULL) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error Creating MLModel ",
-                           [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
+  if (_model == nil) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create MLModel",
+                           (error != nil) ? MakeString(", error: ", [[error localizedDescription] UTF8String]) : "");
   }
 
   return Status::OK();
@@ -272,7 +338,7 @@ NS_ASSUME_NONNULL_BEGIN
   Status status = Status::OK();
   ORT_TRY {
     if (_model == nil) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model is not loaded");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Model is not loaded");
     }
 
     id<MLFeatureProvider> input_features;
@@ -287,20 +353,20 @@ NS_ASSUME_NONNULL_BEGIN
 
     if (error != nil) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error executing model: ",
-                             [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
+                             [[error localizedDescription] UTF8String]);
     }
 
     for (const auto& [output_name, output_tensor_info] : outputs) {
       MLFeatureValue* output_value =
-          [output_features featureValueForName:[NSString stringWithUTF8String:output_name.c_str()]];
+          [output_features featureValueForName:Utf8StringToNSString(output_name.c_str())];
 
       if (output_value == nil) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "output_features has no value for ", output_name);
       }
 
-      auto* data = [output_value multiArrayValue];
+      MLMultiArray* data = [output_value multiArrayValue];
 
-      const auto coreml_static_output_shape = [&]() {
+      const auto coreml_static_output_shape = [data]() {
         InlinedVector<int64_t> result;
         result.reserve(data.shape.count);
         for (NSNumber* dim in data.shape) {
@@ -324,41 +390,21 @@ NS_ASSUME_NONNULL_BEGIN
                                  ") do not match");
         }
 
-        const void* model_output_buffer = data.dataPointer;
-
-        if (model_output_buffer == nullptr) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model_output_buffer has no data for ", output_name);
+        ORT_RETURN_IF_NOT(IsArrayContiguous(data),
+                          "Non-contiguous output MLMultiArray is not currently supported");
+        __block Status copy_status;
+        const auto* tensor_info = &output_tensor_info;
+        // `getBytesWithHandler` replaces deprecated `.dataPointer` on new versions
+        if (@available(macOS 12.3, iOS 15.4, *)) {
+          [data getBytesWithHandler:^(const void* bytes, NSInteger size) {
+            copy_status = CopyMLMultiArrayBuffer(bytes, output_buffer, data, tensor_info, size);
+          }];
+        } else {
+          // disable size check as old API does not return buffer length
+          copy_status = CopyMLMultiArrayBuffer(data.dataPointer, output_buffer, data, tensor_info, std::nullopt);
         }
-
-        const auto onnx_data_type = output_tensor_info.data_type;
-        switch (onnx_data_type) {
-          case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
-            const auto output_data_byte_size = num_elements * sizeof(float);
-            memcpy(output_buffer, model_output_buffer, output_data_byte_size);
-            break;
-          }
-          case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
-            const auto output_data_byte_size = num_elements * sizeof(int32_t);
-            memcpy(output_buffer, model_output_buffer, output_data_byte_size);
-            break;
-          }
-          // For this case, since Coreml Spec only uses int32 for model output while onnx provides
-          // int64 for model output data type. We are doing a type casting (int32 -> int64) here
-          // when copying the model to ORT
-          case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
-            ORT_RETURN_IF_NOT(data.dataType == MLMultiArrayDataTypeInt32,
-                              "CoreML output data type is not MLMultiArrayDataTypeInt32");
-
-            const auto model_output_span = gsl::span{static_cast<const int32_t*>(model_output_buffer), num_elements};
-            const auto output_span = gsl::span{static_cast<int64_t*>(output_buffer), num_elements};
-            std::transform(model_output_span.begin(), model_output_span.end(), output_span.begin(),
-                           [](int32_t v) { return static_cast<int64_t>(v); });
-            break;
-          }
-          default:
-            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                   "Output data type is not supported, actual type: ", onnx_data_type);
-        }
+        if (!copy_status.IsOK())
+          return copy_status;
       }
     }
   }
@@ -417,7 +463,7 @@ Status Execution::LoadModel() {
     return status;
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution::LoadModel requires macos 10.15+ or ios 13+ ");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution::LoadModel requires macos 10.15+ or ios 13+");
 }
 
 Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>& inputs,
@@ -433,7 +479,7 @@ Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>&
     }
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution::LoadModel requires macos 10.15+ or ios 13+ ");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution::Predict requires macos 10.15+ or ios 13+");
 }
 
 Model::Model(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags)

@@ -17,7 +17,6 @@ class PackageVariant(enum.Enum):
     Full = 0  # full ORT build with all opsets, ops, and types
     Mobile = 1  # minimal ORT build with reduced ops
     Training = 2  # full ORT build with all opsets, ops, and types, plus training APIs
-    Test = -1  # for testing purposes only
 
     @classmethod
     def release_variant_names(cls):

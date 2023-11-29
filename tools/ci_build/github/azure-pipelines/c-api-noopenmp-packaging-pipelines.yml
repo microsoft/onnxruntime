@@ -60,6 +60,14 @@ parameters:
   type: string
   default: '--use_azure'
 
+- name: CudaVersion
+  displayName: CUDA version
+  type: string
+  default: '11.8'
+  values:
+    - 11.8
+    - 12.2
+
 resources:
   repositories:
   - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
@@ -146,7 +154,13 @@ stages:
     timeoutInMinutes: 120
     pool: 'Onnxruntime-Linux-GPU'
     variables:
-      CUDA_VERSION: '11.8'
+      - name: CUDA_VERSION_MAJOR
+        ${{ if eq(parameters.CudaVersion, '11.8') }}:
+          value: '11'
+        ${{ if eq(parameters.CudaVersion, '12.2') }}:
+          value: '12'
+      - name: CUDA_VERSION
+        value: ${{ parameters.CudaVersion }}
     steps:
     - template: templates/set-version-number-variables-step.yml
     - template: templates/get-docker-image-steps.yml
@@ -154,7 +168,7 @@ stages:
         Dockerfile: tools/ci_build/github/linux/docker/inference/x64/default/gpu/Dockerfile
         Context: tools/ci_build/github/linux/docker/inference/x64/default/gpu
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-        Repository: onnxruntimecuda11centosbuild
+        Repository: onnxruntimecuda$(CUDA_VERSION_MAJOR)build
 
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
       workingDirectory: $(Build.SourcesDirectory)
@@ -201,7 +215,7 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-cuda
-    buildparameter: --use_cuda --cuda_version=11.8 --cuda_home=$(Agent.TempDirectory)\v11.8 --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80" ${{parameters.AdditionalBuildFlag}}
+    buildparameter: --use_cuda --cuda_home=$(Agent.TempDirectory)\v11.8 --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80" ${{parameters.AdditionalBuildFlag}}
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
@@ -217,7 +231,7 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-tensorrt
-    buildparameter: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8" --cuda_version=11.8 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8"  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
+    buildparameter: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8"  --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8"  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
@@ -1094,7 +1108,6 @@ stages:
     DoNugetPack : 'true'
     DoCompliance: 'false'
     DoEsrp: ${{ parameters.DoEsrp }}
-    OrtPackageId: 'Microsoft.ML.OnnxRuntime.DirectML'
     NuPackScript: |
      msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)

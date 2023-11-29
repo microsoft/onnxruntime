@@ -124,7 +124,14 @@ export interface ClipAttributes extends AttributeWithCacheKey {
   readonly max: number;
 }
 
-export const clipV10 = (context: ComputeContext, attributes: ClipAttributes): void => {
+const generateClipAttributesFromInputs = (inputs: readonly TensorView[]): ClipAttributes => {
+  const min = (inputs.length >= 2) ? inputs[1].getFloat32Array()[0] : MIN_CLIP;
+  const max = (inputs.length >= 3) ? inputs[2].getFloat32Array()[0] : MAX_CLIP;
+  return createAttributeWithCacheKey({min, max});
+};
+
+export const clip = (context: ComputeContext, clipAttributes: ClipAttributes): void => {
+  const attributes = context.inputs.length === 1 ? clipAttributes : generateClipAttributesFromInputs(context.inputs);
   const dataType = tensorTypeToWsglStorageType(context.inputs[0].dataType);
   context.compute(
       createElementwiseProgramInfo(
@@ -134,16 +141,6 @@ export const clipV10 = (context: ComputeContext, attributes: ClipAttributes): vo
 `,
           attributes.cacheKey),
       {inputs: [0]});
-};
-const generateClipAttributesFromInputs = (inputs: readonly TensorView[]): ClipAttributes => {
-  const min = (inputs.length >= 2) ? inputs[1].getFloat32Array()[0] : MIN_CLIP;
-  const max = (inputs.length >= 3) ? inputs[2].getFloat32Array()[0] : MAX_CLIP;
-  return createAttributeWithCacheKey({min, max});
-};
-
-export const clip = (context: ComputeContext): void => {
-  const attributes = generateClipAttributesFromInputs(context.inputs);
-  clipV10(context, attributes);
 };
 
 export const ceil = (context: ComputeContext): void => {
