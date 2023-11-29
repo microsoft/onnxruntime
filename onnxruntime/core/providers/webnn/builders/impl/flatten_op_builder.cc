@@ -36,14 +36,20 @@ Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   int64_t rank = input_shape.size();
   NodeAttrHelper helper(node);
   int64_t axis = helper.Get("axis", 1);
-  ORT_ENFORCE(axis >= -rank && axis <= rank, "axis ", axis,
-              " is not in valid range [-", rank, ",", rank, "]");
-  if (axis < 0) {
-    axis += rank;
-  }
+  axis = HandleNegativeAxis(axis, rank);
+
+  // Use WebNN's reshape to implement Flatten.
+  int64_t num_pre_axis_elements = std::accumulate(
+      input_shape.begin(), input_shape.begin() + static_cast<int32_t>(axis), 1, std::multiplies<int64_t>());
+  int64_t num_post_axis_elements = std::accumulate(
+      input_shape.begin() + static_cast<int32_t>(axis), input_shape.end(), 1, std::multiplies<int64_t>());
+
+  std::vector<uint32_t> new_shape = {SafeInt<uint32_t>(num_pre_axis_elements),
+                                     SafeInt<uint32_t>(num_post_axis_elements)};
+
   emscripten::val inputs = model_builder.GetOperand(input_defs[0]->Name());
-  emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("flattenTo2d", inputs,
-                                                                            static_cast<int32_t>(axis));
+  emscripten::val output = model_builder.GetBuilder().call<emscripten::val>(
+      "reshape", inputs, emscripten::val::array(new_shape));
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
