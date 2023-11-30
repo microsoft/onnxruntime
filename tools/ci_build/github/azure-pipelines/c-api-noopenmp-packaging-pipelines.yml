@@ -132,8 +132,8 @@ stages:
         script: |
           mkdir -p java-tools
           pushd java-tools
-          powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -OutFile junit-platform-console-standalone-1.6.2.jar"
-          powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.21.7/protobuf-java-3.21.7.jar -OutFile protobuf-java-3.21.7.jar"
+          powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -OutFile junit-platform-console-standalone-1.6.2.jar -MaximumRetryCount 3"
+          powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.21.7/protobuf-java-3.21.7.jar -OutFile protobuf-java-3.21.7.jar -MaximumRetryCount 3"
           popd
         workingDirectory: '$(Agent.TempDirectory)\'
     - task: PublishPipelineArtifact@1
@@ -423,12 +423,21 @@ stages:
         modifyEnvironment: true
         workingFolder: '$(Build.BinariesDirectory)'
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Final Jar'
-      inputs:
-        buildType: 'current'
-        artifactName: 'onnxruntime-java-gpu'
-        targetPath: '$(Build.BinariesDirectory)\final-jar'
+    - template: template\flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Final Jar'
+        ArtifactName: onnxruntime-java-gpu
+        TargetPath: '$(Build.BinariesDirectory)\final-jar'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+
+    - template: template\flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Jar Tools'
+        ArtifactName: onnxruntime-java-tools
+        TargetPath: '$(Build.BinariesDirectory)\final-jar'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
     - task: CmdLine@2
       inputs:
@@ -437,8 +446,6 @@ stages:
           pushd test
           jar xf $(Build.BinariesDirectory)\final-jar\testing.jar
           popd
-          powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -OutFile junit-platform-console-standalone-1.6.2.jar"
-          powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.21.7/protobuf-java-3.21.7.jar -OutFile protobuf-java-3.21.7.jar"
           java -DUSE_CUDA=1 -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.21.7.jar;onnxruntime_gpu-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
         workingDirectory: '$(Build.BinariesDirectory)\final-jar'
 
