@@ -213,6 +213,7 @@ stages:
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
+  - Download_Java_Tools
   condition: succeeded()
   jobs:
   - job:
@@ -279,23 +280,6 @@ stages:
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-    - task: CmdLine@2
-      displayName: Download Java Tools
-      inputs:
-        script: |
-          mkdir -p java-tools
-          pushd java-tools
-          powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -OutFile junit-platform-console-standalone-1.6.2.jar"
-          powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.21.7/protobuf-java-3.21.7.jar -OutFile protobuf-java-3.21.7.jar"
-          popd
-        workingDirectory: '$(Agent.TempDirectory)\'
-
-    - task: PublishPipelineArtifact@1
-      displayName: 'Publish Pipeline Java Tools Artifact'
-      inputs:
-        targetPath: '$(Agent.TempDirectory)\java-tools'
-        artifact: 'onnxruntime-java-tools'
 
     - task: PublishPipelineArtifact@1
       displayName: 'Publish Pipeline Artifact'

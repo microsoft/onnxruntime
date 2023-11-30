@@ -118,6 +118,30 @@ stages:
     - checkout: none
     - bash: echo $(MyVar)
 
+- stage: Download_Java_Tools
+  dependsOn: []
+  jobs:
+  - job: Download_Java_Tools
+    pool:
+      vmImage: windows-latest
+    steps:
+    - checkout: none
+    - task: CmdLine@2
+      displayName: Download Java Tools
+      inputs:
+        script: |
+          mkdir -p java-tools
+          pushd java-tools
+          powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -OutFile junit-platform-console-standalone-1.6.2.jar"
+          powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.21.7/protobuf-java-3.21.7.jar -OutFile protobuf-java-3.21.7.jar"
+          popd
+        workingDirectory: '$(Agent.TempDirectory)\'
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Pipeline Java Tools Artifact'
+      inputs:
+        targetPath: '$(Agent.TempDirectory)\java-tools'
+        artifact: 'onnxruntime-java-tools'
+
 - template: templates/c-api-cpu.yml
   parameters:
     RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
@@ -309,6 +333,7 @@ stages:
   - Linux_C_API_Packaging_GPU_TensorRT_x64
   - Windows_Packaging_gpu
   - Windows_Packaging_tensorrt
+  - Download_Java_Tools
   condition: succeeded()
   jobs:
   - job:
