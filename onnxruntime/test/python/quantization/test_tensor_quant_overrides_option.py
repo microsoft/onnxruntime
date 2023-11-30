@@ -5,6 +5,7 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import struct
 import unittest
 
 import numpy as np
@@ -24,6 +25,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         self.bias = np.array([0.0, 1.0], dtype=np.float32)
         self.default_act_qtype = onnx.TensorProto.UINT8
         self.default_wgt_qtype = onnx.TensorProto.UINT8
+        self.default_wgt_qtype_per_channel = onnx.TensorProto.INT8
         self.default_bias_qtype = onnx.TensorProto.INT32
 
         self.default_zp_scales = {
@@ -33,8 +35,15 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
             "BIAS": (0, np.float32(0.0000613626980339177)),  # zp == 0, scale = weight_scale * sig_out_scale
             "OUT": (0, np.float32(0.005075461231172085)),
         }
+        self.default_zp_scales_per_channel = {
+            "INP": (0, np.float32(0.0235294122248888)),
+            "SIG_OUT": (0, np.float32(0.003911871928721666)),
+            "WGT": ([0, 0], [np.float32(0.015748031437397003), np.float32(0.011811023578047752)]),
+            "BIAS": ([0, 0], [np.float32(0.00006160428165458143), np.float32(0.00004620321124093607)]),
+            "OUT": (0, np.float32(0.005075461231172085)),
+        }
 
-    def perform_qdq_quantization(self, output_model_name, tensor_quant_overrides=None):
+    def perform_qdq_quantization(self, output_model_name, tensor_quant_overrides=None, per_channel=False):
         #    (input)
         #       |
         #    Sigmoid
@@ -54,7 +63,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         graph = onnx.helper.make_graph(
             [sigmoid_node, conv_node], "test", [inp], [out], initializer=[wgt_init, bias_init]
         )
-        model = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 11)])
+        model = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 13)])
         onnx.save(model, "model.onnx")
 
         # Quantize model
@@ -76,6 +85,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
             quant_format=quantization.QuantFormat.QDQ,
             activation_type=self.default_act_qtype,
             weight_type=self.default_wgt_qtype,
+            per_channel=per_channel,
             op_types_to_quantize=["Conv", "Sigmoid"],
             extra_options=extra_options,
         )
@@ -143,6 +153,58 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         self.assertEqual(out_zp.data_type, self.default_act_qtype)
         self.assertEqual(out_sc.float_data[0], self.default_zp_scales["OUT"][1])
 
+    def test_qdq_default_per_channel(self):
+        """
+        Test default per-channel behavior without specifying the TensorQuantOverrides option.
+        """
+        (
+            inp_zp,
+            inp_sc,
+            sig_out_zp,
+            sig_out_sc,
+            wgt_zp,
+            wgt_sc,
+            bias_zp,
+            bias_sc,
+            out_zp,
+            out_sc,
+        ) = self.perform_qdq_quantization(
+            "model_default_per_channel_quant_overrides.onnx",
+            tensor_quant_overrides=None,  # default behavior
+            per_channel=True,
+        )
+
+        # No overrides set. Expect default values
+        self.assertEqual(inp_zp.int32_data[0], self.default_zp_scales["INP"][0])
+        self.assertEqual(inp_zp.data_type, self.default_act_qtype)
+        self.assertEqual(inp_sc.float_data[0], self.default_zp_scales["INP"][1])
+
+        self.assertEqual(sig_out_zp.int32_data[0], self.default_zp_scales["SIG_OUT"][0])
+        self.assertEqual(sig_out_zp.data_type, self.default_act_qtype)
+        self.assertEqual(sig_out_sc.float_data[0], self.default_zp_scales["SIG_OUT"][1])
+
+        self.assertEqual(wgt_zp.data_type, self.default_wgt_qtype_per_channel)
+        for index, zp in enumerate(self.default_zp_scales_per_channel["WGT"][0]):
+            self.assertEqual(wgt_zp.int32_data[index], zp)
+        for index, scale in enumerate(self.default_zp_scales_per_channel["WGT"][1]):
+            self.assertEqual(wgt_sc.float_data[index], scale)
+
+        self.assertEqual(bias_zp.data_type, self.default_bias_qtype)
+
+        num_bias_zps = len(self.default_zp_scales_per_channel["BIAS"][0])
+        actual_bias_zps = struct.unpack(f"<{num_bias_zps}i", bias_zp.raw_data)
+        for index, zp in enumerate(self.default_zp_scales_per_channel["BIAS"][0]):
+            self.assertEqual(actual_bias_zps[index], zp)
+
+        num_bias_scales = len(self.default_zp_scales_per_channel["BIAS"][1])
+        actual_bias_scales = struct.unpack(f"<{num_bias_scales}f", bias_sc.raw_data)
+        for index, scale in enumerate(self.default_zp_scales_per_channel["BIAS"][1]):
+            self.assertEqual(actual_bias_scales[index], scale)
+
+        self.assertEqual(out_zp.int32_data[0], self.default_zp_scales["OUT"][0])
+        self.assertEqual(out_zp.data_type, self.default_act_qtype)
+        self.assertEqual(out_sc.float_data[0], self.default_zp_scales["OUT"][1])
+
     def test_qdq_overrides1(self):
         """
         Test overriding:
@@ -153,9 +215,9 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         inp_zp, inp_sc, sig_out_zp, sig_out_sc, wgt_zp, wgt_sc, bias_zp, bias_sc, _, _ = self.perform_qdq_quantization(
             "model_quant_overrides1.onnx",
             tensor_quant_overrides={
-                "SIG_OUT": {"scale": 1.0, "zero_point": 127},
-                "WGT": {"quant_type": quantization.QuantType.QInt8, "symmetric": True, "reduce_range": True},
-                "BIAS": {"quant_type": quantization.QuantType.QInt8, "symmetric": True, "reduce_range": True},
+                "SIG_OUT": [{"scale": 1.0, "zero_point": 127}],
+                "WGT": [{"quant_type": quantization.QuantType.QInt8, "symmetric": True, "reduce_range": True}],
+                "BIAS": [{"quant_type": quantization.QuantType.QInt8, "symmetric": True, "reduce_range": True}],
             },
         )
 
@@ -194,7 +256,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         sigmoid_rmin, sigmoid_rmax = 0.0, 0.5
         inp_zp, inp_sc, sig_out_zp, sig_out_sc, _, _, _, _, _, _ = self.perform_qdq_quantization(
             "model_quant_overrides2.onnx",
-            tensor_quant_overrides={"SIG_OUT": {"rmin": sigmoid_rmin, "rmax": sigmoid_rmax}},
+            tensor_quant_overrides={"SIG_OUT": [{"rmin": sigmoid_rmin, "rmax": sigmoid_rmax}]},
         )
 
         # Input should have same quant params
@@ -210,6 +272,136 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         self.assertEqual(sig_out_zp.int32_data[0], new_sigmoid_zp)
         self.assertEqual(sig_out_sc.float_data[0], np.float32(new_sigmoid_sc))
 
+    def test_qdq_overrides3(self):
+        """
+        Test overriding rmin and rmax for Conv weight
+        """
+        wgt_rmin, wgt_rmax = 0.0, 1.0
+        _, _, _, _, wgt_zp, wgt_sc, _, _, _, _ = self.perform_qdq_quantization(
+            "model_quant_overrides3.onnx",
+            tensor_quant_overrides={
+                "WGT": [{"rmin": wgt_rmin, "rmax": wgt_rmax}],
+            },
+        )
+
+        # Weight should have different zero_point and scale
+        self.assertEqual(wgt_zp.data_type, self.default_wgt_qtype)
+        self.assertNotEqual(wgt_rmin, np.min(self.weight))
+        self.assertNotEqual(wgt_rmax, np.max(self.weight))
+
+        wgt_qmin, wgt_qmax = get_qmin_qmax_for_qType(wgt_zp.data_type)
+        new_wgt_zp, new_wgt_sc = compute_scale_zp(wgt_rmin, wgt_rmax, wgt_qmin, wgt_qmax)
+        self.assertEqual(wgt_zp.int32_data[0], new_wgt_zp)
+        self.assertEqual(wgt_sc.float_data[0], np.float32(new_wgt_sc))
+
+    def test_qdq_overrides4(self):
+        """
+        Test overriding scale and zero_point for Conv weight
+        """
+        wgt_zp_val, wgt_scale_val = 4, 0.5
+        _, _, _, _, wgt_zp, wgt_sc, _, _, _, _ = self.perform_qdq_quantization(
+            "model_quant_overrides4.onnx",
+            tensor_quant_overrides={
+                "WGT": [{"zero_point": wgt_zp_val, "scale": wgt_scale_val}],
+            },
+        )
+
+        # Weight should have have the expected zero_point and scale
+        self.assertEqual(wgt_zp.data_type, self.default_wgt_qtype)
+        self.assertEqual(wgt_zp.int32_data[0], wgt_zp_val)
+        self.assertEqual(wgt_sc.float_data[0], np.float32(wgt_scale_val))
+
+    def test_qdq_overrides_per_channel1(self):
+        """
+        Test per-channel overriding of scale/zero_point for Conv weight and bias.
+        """
+        zp_vals, scale_vals = [2, 4], [0.5, 0.2]
+        (
+            _,
+            _,
+            _,
+            _,
+            wgt_zp,
+            wgt_sc,
+            bias_zp,
+            bias_sc,
+            _,
+            _,
+        ) = self.perform_qdq_quantization(
+            "model_per_channel_quant_overrides1.onnx",
+            tensor_quant_overrides={
+                "WGT": [
+                    {"zero_point": zp_vals[0], "scale": scale_vals[0]},
+                    {"zero_point": zp_vals[1], "scale": scale_vals[1]},
+                ],
+                "BIAS": [
+                    {"zero_point": zp_vals[0], "scale": scale_vals[0]},
+                    {"zero_point": zp_vals[1], "scale": scale_vals[1]},
+                ],
+            },
+            per_channel=True,
+        )
+
+        self.assertEqual(wgt_zp.data_type, self.default_wgt_qtype_per_channel)
+        for index, zp in enumerate(zp_vals):
+            self.assertEqual(wgt_zp.int32_data[index], zp)
+        for index, scale in enumerate(scale_vals):
+            self.assertEqual(wgt_sc.float_data[index], np.float32(scale))
+
+        # NOTE: Bias with overrides is treated as a weight.
+        self.assertEqual(bias_zp.data_type, self.default_wgt_qtype_per_channel)
+        for index, zp in enumerate(zp_vals):
+            self.assertEqual(bias_zp.int32_data[index], zp)
+        for index, scale in enumerate(scale_vals):
+            self.assertEqual(bias_sc.float_data[index], np.float32(scale))
+
+    def test_qdq_overrides_per_channel2(self):
+        """
+        Test per-channel overriding of rmin, rmax, reduce_range, and quant_type for Conv weight.
+        """
+        rmin_vals = [0.0, 0.2]
+        rmax_vals = [1.0, 0.8]
+        quant_type = quantization.QuantType.QUInt8
+        reduce_ranges = [True, False]
+        (
+            _,
+            _,
+            _,
+            _,
+            wgt_zp,
+            wgt_sc,
+            bias_zp,
+            bias_sc,
+            _,
+            _,
+        ) = self.perform_qdq_quantization(
+            "model_per_channel_quant_overrides2.onnx",
+            tensor_quant_overrides={
+                "WGT": [
+                    {
+                        "quant_type": quant_type,
+                        "rmin": rmin_vals[0],
+                        "rmax": rmax_vals[0],
+                        "reduce_range": reduce_ranges[0],
+                    },
+                    {
+                        "quant_type": quant_type,
+                        "rmin": rmin_vals[1],
+                        "rmax": rmax_vals[1],
+                        "reduce_range": reduce_ranges[1],
+                    },
+                ],
+            },
+            per_channel=True,
+        )
+
+        self.assertEqual(wgt_zp.data_type, quant_type.tensor_type)
+        for index, (zp, scale) in enumerate(zip(wgt_zp.int32_data, wgt_sc.float_data)):
+            wgt_qmin, wgt_qmax = get_qmin_qmax_for_qType(wgt_zp.data_type, reduce_range=reduce_ranges[index])
+            expected_zp, expected_scale = compute_scale_zp(rmin_vals[index], rmax_vals[index], wgt_qmin, wgt_qmax)
+            self.assertEqual(zp, expected_zp)
+            self.assertEqual(scale, np.float32(expected_scale))
+
     def test_override_validation_nonexisting_tensor(self):
         """
         Test that specifying a non-existing tensor should fail.
@@ -217,7 +409,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(
                 "model_validation.onnx",
-                tensor_quant_overrides={"NON_EXISTING": {"rmin": 0.0, "rmax": 0.5}},
+                tensor_quant_overrides={"NON_EXISTING": [{"rmin": 0.0, "rmax": 0.5}]},
             )
 
         self.assertIn("is not present in the model", str(context.exception))
@@ -229,7 +421,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(
                 "model_validation.onnx",
-                tensor_quant_overrides={"SIG_OUT": {"scale": 0.0}},
+                tensor_quant_overrides={"SIG_OUT": [{"scale": 0.0}]},
             )
 
         self.assertIn("Must provide both 'scale' and 'zero_point'", str(context.exception))
@@ -241,7 +433,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(
                 "model_validation.onnx",
-                tensor_quant_overrides={"SIG_OUT": {"scale": 0.0, "zero_point": 0, "rmax": 10.0}},
+                tensor_quant_overrides={"SIG_OUT": [{"scale": 0.0, "zero_point": 0, "rmax": 10.0}]},
             )
 
         self.assertIn("option 'rmax' is invalid with 'scale' and 'zero_point'", str(context.exception))
@@ -249,7 +441,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(
                 "model_validation.onnx",
-                tensor_quant_overrides={"SIG_OUT": {"scale": 0.0, "zero_point": 0, "rmin": 10.0}},
+                tensor_quant_overrides={"SIG_OUT": [{"scale": 0.0, "zero_point": 0, "rmin": 10.0}]},
             )
 
         self.assertIn("option 'rmin' is invalid with 'scale' and 'zero_point'", str(context.exception))
@@ -257,7 +449,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(
                 "model_validation.onnx",
-                tensor_quant_overrides={"SIG_OUT": {"scale": 0.0, "zero_point": 0, "symmetric": True}},
+                tensor_quant_overrides={"SIG_OUT": [{"scale": 0.0, "zero_point": 0, "symmetric": True}]},
             )
 
         self.assertIn("option 'symmetric' is invalid with 'scale' and 'zero_point'", str(context.exception))
@@ -265,46 +457,10 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(
                 "model_validation.onnx",
-                tensor_quant_overrides={"SIG_OUT": {"scale": 0.0, "zero_point": 0, "reduce_range": True}},
+                tensor_quant_overrides={"SIG_OUT": [{"scale": 0.0, "zero_point": 0, "reduce_range": True}]},
             )
 
         self.assertIn("option 'reduce_range' is invalid with 'scale' and 'zero_point'", str(context.exception))
-
-    def test_override_invalid_for_initializer(self):
-        """
-        Test that specifying a scale, zero_point, rmin, rmax for initializers should fail.
-        """
-        with self.assertRaises(ValueError) as context:
-            self.perform_qdq_quantization(
-                "model_validation.onnx",
-                tensor_quant_overrides={"WGT": {"scale": 0.0}},
-            )
-
-        self.assertIn("option 'scale' is invalid for initializers", str(context.exception))
-
-        with self.assertRaises(ValueError) as context:
-            self.perform_qdq_quantization(
-                "model_validation.onnx",
-                tensor_quant_overrides={"WGT": {"zero_point": 0}},
-            )
-
-        self.assertIn("option 'zero_point' is invalid for initializers", str(context.exception))
-
-        with self.assertRaises(ValueError) as context:
-            self.perform_qdq_quantization(
-                "model_validation.onnx",
-                tensor_quant_overrides={"WGT": {"rmin": 0.0}},
-            )
-
-        self.assertIn("option 'rmin' is invalid for initializers", str(context.exception))
-
-        with self.assertRaises(ValueError) as context:
-            self.perform_qdq_quantization(
-                "model_validation.onnx",
-                tensor_quant_overrides={"WGT": {"rmax": 0.0}},
-            )
-
-        self.assertIn("option 'rmax' is invalid for initializers", str(context.exception))
 
 
 if __name__ == "__main__":
