@@ -184,7 +184,7 @@ class QuantBGemm {
   using QuantBlocking = QuantBlocking_;
   static constexpr bool kHasQOffset = !(std::is_same<ElementQOffset, std::monostate>::value);
 
-  // TODO enable uint4_t or smaller for QOffset
+  // TODO(chenfucn): consider moving to uint4_t or smaller for QOffset
   static_assert(!kHasQOffset || std::is_same<ElementQOffset_, uint8_t>::value, "QOffset must be uint8_t");
 
   /// Define the kernel
@@ -378,8 +378,7 @@ public:
           return Status::kErrorInternal;
         }
       }
-    }
-    else {
+    } else {
 
       if (args.split_k_slices > 1) {
         return Status::kErrorInvalidProblem;
