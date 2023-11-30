@@ -246,8 +246,8 @@ def parse_arguments(is_xl: bool, parser):
     if is_xl:
         if args.version == "xl-turbo":
             if args.guidance > 1.0:
-                print("[I] Use --guidance=1.0 for sdxl-turbo.")
-                args.guidance = 1.0
+                print("[I] Use --guidance=0.0 for sdxl-turbo.")
+                args.guidance = 0.0
             if args.lcm:
                 print("[I] sdxl-turbo cannot use with LCM.")
                 args.lcm = False
@@ -268,8 +268,8 @@ def parse_arguments(is_xl: bool, parser):
 
     if args.scheduler == "LCM":
         if args.guidance > 1.0:
-            print("[I] Use --guidance=1.0 for base since LCM is used.")
-            args.guidance = 1.0
+            print("[I] Use --guidance=0.0 for base since LCM is used.")
+            args.guidance = 0.0
         if args.denoising_steps > 16:
             print("[I] Use --denoising_steps=8 (no more than 16) for base since LCM is used.")
             args.denoising_steps = 8
