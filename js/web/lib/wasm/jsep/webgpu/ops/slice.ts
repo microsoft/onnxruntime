@@ -82,10 +82,10 @@ const calculateInputIndicesImpl =
           var inputIndices: ${input.type.indices};
           var carry = 0u;
           for (var i = ${inputShape.length}; i >= 0; i--) {
-            let input_shape_i = uniforms.input_shape${getUniformElementAt(inputShape.length, 'i')};
-            let steps_i = uniforms.steps${getUniformElementAt(inputShape.length, 'i')};
-            let signs_i = uniforms.signs${getUniformElementAt(inputShape.length, 'i')};
-            let starts_i = uniforms.starts${getUniformElementAt(inputShape.length, 'i')};
+            let input_shape_i = ${getUniformElementAt('uniforms.input_shape', 'i', inputShape.length)};
+            let steps_i = ${getUniformElementAt('uniforms.steps', 'i', inputShape.length)};
+            let signs_i = ${getUniformElementAt('uniforms.signs', 'i', inputShape.length)};
+            let starts_i = ${getUniformElementAt('uniforms.starts', 'i', inputShape.length)};
             var outputIndex = ${outputShape.length === 1 ? 'outputIndices' : 'outputIndices[i]'};
             var inputIndex = outputIndex * steps_i + starts_i + carry;
             carry = inputIndex / input_shape_i;

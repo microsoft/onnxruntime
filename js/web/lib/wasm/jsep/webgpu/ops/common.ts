@@ -326,15 +326,16 @@ export const sumVector = (name: string, components: number) => {
 };
 
 /**
- * A helper function that returns component index of vector.
- * @param length
- * @param index
+ * A helper function that returns uniform element at index.
+ * @param name - the name of uniform element.
+ * @param index - the index of uniform element.
+ * @param length - the length of uniform element.
  */
-export const getUniformElementAt = (length: number, index: number|string): string => {
+export const getUniformElementAt = (name: string, index: number|string, length: number): string => {
   if (typeof (index) === 'string') {
-    return length > 4 ? `[(${index}) / 4][(${index}) % 4]` : length > 1 ? `[${index}]` : '';
+    return length > 4 ? `${name}[(${index}) / 4][(${index}) % 4]` : length > 1 ? `${name}[${index}]` : name;
   } else {
-    return length > 4 ? `[${Math.floor(index / 4)}][${index % 4}]` : length > 1 ? `[${index}]` : '';
+    return length > 4 ? `${name}[${Math.floor(index / 4)}][${index % 4}]` : length > 1 ? `${name}[${index}]` : name;
   }
 };
 
@@ -379,8 +380,8 @@ const createIndicesHelper =
       let o2iSnippet = '';
       for (let i = 0; i < rank - 1; i++) {
         o2iSnippet += `
-    let dim${i} = current / ${strides}${getUniformElementAt(rank, i)};
-    let rest${i} = current % ${strides}${getUniformElementAt(rank, i)};
+    let dim${i} = current / ${getUniformElementAt(strides, i, rank)};
+    let rest${i} = current % ${getUniformElementAt(strides, i, rank)};
     indices[${i}] = dim${i};
     current = rest${i};
     `;
@@ -403,7 +404,7 @@ const createIndicesHelper =
       const offsets: string[] = [];
       if (rank >= 2) {
         for (let i = rank - 1; i >= 0; i--) {
-          offsets.push(`${strides}${getUniformElementAt(rank, i)} * (indices[${i}])`);
+          offsets.push(`${getUniformElementAt(strides, i, rank)} * (indices[${i}])`);
         }
       }
 
