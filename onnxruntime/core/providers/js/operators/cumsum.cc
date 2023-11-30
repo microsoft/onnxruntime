@@ -16,7 +16,8 @@ ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
     kJsExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", JsepSupportedFloatTypes())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int32_t>())
+        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
+                                                      DataTypeImpl::GetTensorType<int64_t>()})
         .InputMemoryType(OrtMemTypeCPU, 1),
     CumSum);
 
@@ -28,7 +29,8 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     kJsExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", JsepSupportedFloatTypes())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int32_t>())
+        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
+                                                      DataTypeImpl::GetTensorType<int64_t>()})
         .InputMemoryType(OrtMemTypeCPU, 1),
     CumSum);
 
