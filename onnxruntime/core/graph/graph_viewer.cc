@@ -57,6 +57,12 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
                       : ConstGraphNodes::NodeFilterFunc(nullptr))},
       filter_info_{filter_info} {
   std::vector<const Node*> leaf_nodes;
+  // Keep the info of shape and size nodes and their parents so that after topological sort, we can move them
+  // right after their parents. This is to make sure the shape and size nodes are executed right after their parents
+  // so it's possible the input tensor memory can be released as soon as possible. This is especially important
+  // for non-CPU devices or for training case where some gradient graphs use only shape/size of tensors from forward.
+  InlinedHashSet<NodeIndex> shape_size_nodes;
+  InlinedHashMap<NodeIndex, InlinedVector<NodeIndex>> shape_size_parents;
   for (auto& node : graph_->Nodes()) {
     // This is a leaf node (without any output node)
     if (node.OutputNodesBegin() == node.OutputNodesEnd()) {
@@ -65,6 +71,15 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
     // This is a root node (without any input node)
     if (node.InputEdgesBegin() == node.InputEdgesEnd()) {
       root_nodes_.push_back(node.Index());
+    }
+    if ((node.OpType() == "Shape" || node.OpType() == "Size") && node.InputEdgesBegin() != node.InputEdgesEnd()) {
+      shape_size_nodes.insert(node.Index());
+      NodeIndex parent = node.InputNodesBegin()->Index();
+      if (shape_size_parents.find(parent) == shape_size_parents.end()) {
+        shape_size_parents[parent] = InlinedVector<NodeIndex>{node.Index()};
+      } else {
+        shape_size_parents[parent].push_back(node.Index());
+      }
     }
   }
 
@@ -75,6 +90,20 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
         nodes_in_topological_order_.push_back(n->Index());
       },
       NodeCompare());
+
+  auto original = std::move(nodes_in_topological_order_);
+  nodes_in_topological_order_.reserve(original.size());
+  for (auto& node : original) {
+    if (shape_size_nodes.find(node) != shape_size_nodes.end()) {
+      continue;
+    }
+    nodes_in_topological_order_.push_back(node);
+    if (shape_size_parents.find(node) != shape_size_parents.end()) {
+      for (auto& following_node : shape_size_parents[node]) {
+        nodes_in_topological_order_.push_back(following_node);
+      }
+    }
+  }
 
 #if !defined(ORT_MINIMAL_BUILD)
   graph.KahnsTopologicalSort(

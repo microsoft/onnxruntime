@@ -413,6 +413,7 @@ export class WebGpuBackend {
     if (!artifact) {
       artifact = this.programManager.build(program, normalizedDispatchGroup);
       this.programManager.setArtifact(key, artifact);
+      LOG_DEBUG('info', () => `[artifact] key: ${key}, programName: ${program.name}`);
     }
 
     LOG_DEBUG(

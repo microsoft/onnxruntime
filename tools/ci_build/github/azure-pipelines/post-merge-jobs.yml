@@ -8,7 +8,7 @@ stages:
       BuildStaticLib: true
       ExtraBuildArgs: ''
       UseWebPoolName: true
-      WebCpuPoolName: 'Azure-Pipelines-EO-Windows2022-aiinfra'
+      WebCpuPoolName: 'Onnxruntime-Win-CPU-2022'
 
 # This stage is to test if the combined build works on
 # o Windows ARM64
@@ -268,7 +268,7 @@ stages:
   dependsOn: []
   jobs:
   - job: IosDynamicFramework
-
+    timeoutInMinutes: 120
     pool:
       vmImage: "macOS-13"
 

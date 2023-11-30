@@ -27,9 +27,7 @@ stages:
     - job:
       workspace:
         clean: all
-      # we need to use the 2022 pool to create the nuget package with both pre-net6+Xamarin and net6 targets.
-      # VS2019 has no support for net6 and we need to use msbuild (from the VS install) to do the packing
-      pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
+      pool: 'Onnxruntime-Win-CPU-2022'
       variables:
         breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
         ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
