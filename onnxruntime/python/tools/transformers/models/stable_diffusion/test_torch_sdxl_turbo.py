@@ -21,6 +21,7 @@ def load_pipeline(compile=True):
     if compile:
         pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead", fullgraph=True)
 
+    pipeline.set_progress_bar_config(disable=True)
     return pipeline
 
 
@@ -54,9 +55,9 @@ def test(pipeline, batch_size=1, steps=4, warmup_runs=5, test_runs=10, seed=123)
         torch.cuda.synchronize()
         seconds = time.time() - start_time
         latency_list.append(seconds)
-        print(seconds)
 
-    print(f"batch_size={batch_size}, steps={steps}, average_latency_in_ms={mean(latency_list) * 1000}")
+    print(latency_list)
+    print(f"batch_size={batch_size}, steps={steps}, average_latency_in_ms={mean(latency_list) * 1000:.1f}")
 
     if image:
         image.save(f"torch_xl_turbo_{batch_size}_{steps}.png")
