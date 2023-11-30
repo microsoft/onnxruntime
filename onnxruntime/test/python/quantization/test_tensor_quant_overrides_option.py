@@ -355,6 +355,53 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         for index, scale in enumerate(scale_vals):
             self.assertEqual(bias_sc.float_data[index], np.float32(scale))
 
+    def test_qdq_overrides_per_channel2(self):
+        """
+        Test per-channel overriding of rmin, rmax, reduce_range, and quant_type for Conv weight.
+        """
+        rmin_vals = [0.0, 0.2]
+        rmax_vals = [1.0, 0.8]
+        quant_type = quantization.QuantType.QUInt8
+        reduce_ranges = [True, False]
+        (
+            _,
+            _,
+            _,
+            _,
+            wgt_zp,
+            wgt_sc,
+            bias_zp,
+            bias_sc,
+            _,
+            _,
+        ) = self.perform_qdq_quantization(
+            "model_per_channel_quant_overrides2.onnx",
+            tensor_quant_overrides={
+                "WGT": [
+                    {
+                        "quant_type": quant_type,
+                        "rmin": rmin_vals[0],
+                        "rmax": rmax_vals[0],
+                        "reduce_range": reduce_ranges[0],
+                    },
+                    {
+                        "quant_type": quant_type,
+                        "rmin": rmin_vals[1],
+                        "rmax": rmax_vals[1],
+                        "reduce_range": reduce_ranges[1],
+                    },
+                ],
+            },
+            per_channel=True,
+        )
+
+        self.assertEqual(wgt_zp.data_type, quant_type.tensor_type)
+        for index, (zp, scale) in enumerate(zip(wgt_zp.int32_data, wgt_sc.float_data)):
+            wgt_qmin, wgt_qmax = get_qmin_qmax_for_qType(wgt_zp.data_type, reduce_range=reduce_ranges[index])
+            expected_zp, expected_scale = compute_scale_zp(rmin_vals[index], rmax_vals[index], wgt_qmin, wgt_qmax)
+            self.assertEqual(zp, expected_zp)
+            self.assertEqual(scale, np.float32(expected_scale))
+
     def test_override_validation_nonexisting_tensor(self):
         """
         Test that specifying a non-existing tensor should fail.
