@@ -312,6 +312,30 @@ bool QnnBackendManager::IsDevicePropertySupported() {
   return true;
 }
 
+void SetHtpDeviceArch(QnnHtpDeviceArch qnn_htp_device_arch, QnnHtpDevice_CustomConfig_t& custom_config) {
+    switch (qnn_htp_device_arch) {
+    //QNN_SOC_MODEL_SM8550
+    case QnnHtpDeviceArch::ARCH_V68:
+      custom_config.arch.arch = QNN_HTP_DEVICE_ARCH_V68;
+      break;
+    case QnnHtpDeviceArch::ARCH_V69:
+      custom_config.arch.arch = QNN_HTP_DEVICE_ARCH_V69;
+      break;
+    case QnnHtpDeviceArch::ARCH_V73:
+      custom_config.arch.arch = QNN_HTP_DEVICE_ARCH_V73;
+      break;
+#ifndef _WIN32
+    case QnnHtpDeviceArch::ARCH_V75:
+      custom_config.arch.arch = QNN_HTP_DEVICE_ARCH_V75;
+      break;
+#endif
+    default:
+      custom_config.arch.arch = QNN_HTP_DEVICE_ARCH_NONE;
+      LOGS_DEFAULT(INFO) << "QNN HTP Device Arch not supported: " << static_cast<int>(qnn_htp_device_arch);
+      break;
+  }
+}
+
 Status QnnBackendManager::CreateDevice() {
   if (true == device_created_) {
     LOGS_DEFAULT(INFO) << "Device initialized already.";
@@ -326,7 +350,22 @@ Status QnnBackendManager::CreateDevice() {
 
   LOGS_DEFAULT(INFO) << "Create device.";
   if (nullptr != qnn_interface_.deviceCreate) {
-    auto result = qnn_interface_.deviceCreate(log_handle_, nullptr, &device_handle_);
+    std::vector<QnnDevice_Config_t> qnn_device_configs;
+    std::vector<const QnnDevice_Config_t*> qnn_device_configs_p;
+    if (qnn_htp_device_arch_ != QnnHtpDeviceArch::ARCH_NONE) {
+      QnnHtpDevice_CustomConfig_t custom_config;
+      custom_config.option = QNN_HTP_DEVICE_CONFIG_OPTION_ARCH;
+      SetHtpDeviceArch(qnn_htp_device_arch_, custom_config);
+      custom_config.arch.deviceId = 0;  // Id of device to be used. If single device is used by default 0.
+      QnnDevice_Config_t device_config;
+      device_config.option = QNN_DEVICE_CONFIG_OPTION_CUSTOM;
+      device_config.customConfig = &custom_config;
+      qnn_device_configs.push_back(device_config);
+      qnn_device_configs_p.push_back(&qnn_device_configs.back());
+    }
+    qnn_device_configs_p.push_back(nullptr);
+
+    auto result = qnn_interface_.deviceCreate(log_handle_, qnn_device_configs_p.data(), &device_handle_);
     if (QNN_SUCCESS != result) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create device. Error: ", result);
     }

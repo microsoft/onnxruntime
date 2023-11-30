@@ -74,6 +74,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool disable_cpu_ep_fallback_ = false;  // True if CPU EP fallback has been disabled for this session.
   qnn::ContextPriority context_priority_ = qnn::ContextPriority::NORMAL;
   bool qnn_context_embed_mode_ = true;
+  int32_t vtcm_size_in_mb_ = 0;
 };
 
 }  // namespace onnxruntime
