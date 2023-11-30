@@ -3598,9 +3598,7 @@ struct OrtApi {
    *   "qnn_context_cache_path": explicitly provide the QNN context cache file. Default to model_file.onnx.bin if not provided.
    *   "profiling_level": QNN profiling level, options: "off", "basic", "detailed". Default to off.
    *   "rpc_control_latency": QNN RPC control latency.
-   *   "vtcm_mb": QNN VTCM size in MB. default to 0(not set). Only work for offline prepare(on x64 with qnn_context_cache_enable=1).
-   *   "htp_device_arch": QNN HTP device Arch, options: 'v68', 'v69', 'v73', 'v75'(Android only). default to None(not set)."
-   *   Only work for offline prepare(on x64 with qnn_context_cache_enable=1).
+   *   "vtcm_mb": QNN VTCM size in MB. default to 0(not set).
    *   "htp_performance_mode": QNN performance mode, options: "burst", "balanced", "default", "high_performance",
    *   "high_power_saver", "low_balanced", "low_power_saver", "power_saver", "sustained_high_performance". Default to "default".
    *   "qnn_context_embed_mode", 1 means dump the QNN context binary into node attribute EPContext->ep_cache_context in the ONNX skeleton model.

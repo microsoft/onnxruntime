@@ -55,7 +55,6 @@ void usage() {
       "\t    [QNN only] [profiling_level]: QNN profiling level, options:  'basic', 'detailed', default 'off'.\n"
       "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
       "\t    [QNN only] [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).\n"
-      "\t    [QNN only] [htp_device_arch]: QNN HTP device Arch, options: 'v68', 'v69', 'v73', 'v75'(Android only). default to None(not set).\n"
       "\t    [QNN only] [htp_performance_mode]: QNN performance mode, options: 'burst', 'balanced', 'default', 'high_performance', \n"
       "\t    'high_power_saver', 'low_balanced', 'low_power_saver', 'power_saver', 'sustained_high_performance'. Default to 'default'. \n"
       "\t    [QNN only] [qnn_context_priority]: QNN context priority, options: 'low', 'normal', 'normal_high', 'high'. Default to 'normal'. \n"
@@ -491,11 +490,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             std::string str = str_stream.str();
             ORT_THROW("Wrong value for htp_performance_mode. select from: " + str);
           }
-        } else if (key == "htp_device_arch") {
-          std::set<std::string> supported_qnn_htp_device_arch = {"v68", "v69", "v73", "v75"};
-          if (supported_qnn_htp_device_arch.find(value) == supported_qnn_htp_device_arch.end()) {
-            ORT_THROW("Supported htp_device_arch: v68, v69, v73, v75(Android only)");
-          }
         } else if (key == "qnn_context_priority") {
           std::set<std::string> supported_qnn_context_priority = {"low", "normal", "normal_high", "high"};
           if (supported_qnn_context_priority.find(value) == supported_qnn_context_priority.end()) {
@@ -514,7 +508,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           }
         } else {
           ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path', 'qnn_context_cache_enable',
-'qnn_context_cache_path', 'profiling_level', 'rpc_control_latency', 'vtcm_mb', 'htp_device_arch', 'htp_performance_mode',
+'qnn_context_cache_path', 'profiling_level', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
 'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority'])");
         }
 

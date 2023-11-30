@@ -106,33 +106,6 @@ void QNNExecutionProvider::ParseHtpGraphFinalizationOptimizationMode(const std::
   }
 }
 
-void ParseQnnHtpDeviceArch(std::string qnn_htp_device_arch_string,
-                           qnn::QnnHtpDeviceArch& qnn_htp_device_arch) {
-  std::transform(qnn_htp_device_arch_string.begin(),
-                 qnn_htp_device_arch_string.end(),
-                 qnn_htp_device_arch_string.begin(),
-                 [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
-  LOGS_DEFAULT(VERBOSE) << "QNN HTP device arch: " << qnn_htp_device_arch_string;
-  qnn_htp_device_arch = qnn::QnnHtpDeviceArch::ARCH_NONE;
-
-  if (qnn_htp_device_arch_string == "v68") {
-    qnn_htp_device_arch = qnn::QnnHtpDeviceArch::ARCH_V68;
-  } else if (qnn_htp_device_arch_string == "v69") {
-    qnn_htp_device_arch = qnn::QnnHtpDeviceArch::ARCH_V69;
-  } else if (qnn_htp_device_arch_string == "v73") {
-    qnn_htp_device_arch = qnn::QnnHtpDeviceArch::ARCH_V73;
-  }
-#ifndef _WIN32
-  else if (qnn_htp_device_arch_string == "v75") {
-    qnn_htp_device_arch = qnn::QnnHtpDeviceArch::ARCH_V75;
-  }
-#endif
-  else {
-    LOGS_DEFAULT(WARNING) << "Invalid HTP device arch: "
-                          << qnn_htp_device_arch_string;
-  }
-}
-
 QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_options_map,
                                            const SessionOptions* session_options)
     : IExecutionProvider{onnxruntime::kQnnExecutionProvider, true} {
@@ -227,20 +200,12 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     }
   }
 
-  qnn::QnnHtpDeviceArch qnn_htp_device_arch = qnn::QnnHtpDeviceArch::ARCH_NONE;
-  static const std::string QNN_HTP_DEVICE_ARCH = "htp_device_arch";
-  auto qnn_htp_device_arch_pos = provider_options_map.find(QNN_HTP_DEVICE_ARCH);
-  if (qnn_htp_device_arch_pos != provider_options_map.end()) {
-    ParseQnnHtpDeviceArch(qnn_htp_device_arch_pos->second, qnn_htp_device_arch);
-  }
-
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
       std::move(backend_path),
       profiling_level_,
       rpc_control_latency_,
       htp_performance_mode_,
       context_priority_,
-      qnn_htp_device_arch,
       std::move(qnn_saver_path));
 }
 

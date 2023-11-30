@@ -367,11 +367,6 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           std::string str = str_stream.str();
           ORT_THROW("Wrong value for htp_graph_finalization_optimization_mode. select from: " + str);
         }
-      } else if (key == "htp_device_arch") {
-        std::set<std::string> supported_qnn_htp_device_arch = {"v68", "v69", "v73", "v75"};
-        if (supported_qnn_htp_device_arch.find(value) == supported_qnn_htp_device_arch.end()) {
-          ORT_THROW("Supported htp_device_arch: v68, v69, v73, v75(Android only)");
-        }
       } else if (key == "qnn_context_priority") {
         std::set<std::string> supported_qnn_context_priority = {"low", "normal", "normal_high", "high"};
         if (supported_qnn_context_priority.find(value) == supported_qnn_context_priority.end()) {
@@ -379,7 +374,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         }
       } else {
         ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path', 'qnn_context_cache_enable',
-'qnn_context_cache_path', 'profiling_level', 'rpc_control_latency', 'vtcm_mb', 'htp_device_arch', 'htp_performance_mode',
+'qnn_context_cache_path', 'profiling_level', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
 'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority'])");
       }
 

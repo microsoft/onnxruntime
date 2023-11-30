@@ -72,14 +72,6 @@ enum class QnnBackendType : uint8_t {
   HTP_FP16
 };
 
-enum class QnnHtpDeviceArch {
-  ARCH_NONE = 0,
-  ARCH_V68 = 68,
-  ARCH_V69 = 69,
-  ARCH_V73 = 73,
-  ARCH_V75 = 75
-};
-
 bool IsNpuBackend(QnnBackendType backend_type);
 
 // constexpr config values

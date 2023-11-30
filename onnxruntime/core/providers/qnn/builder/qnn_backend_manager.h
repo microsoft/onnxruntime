@@ -30,15 +30,13 @@ class QnnBackendManager {
                     uint32_t rpc_control_latency,
                     HtpPerformanceMode htp_performance_mode,
                     ContextPriority context_priority,
-                    QnnHtpDeviceArch qnn_htp_device_arch,
                     std::string&& qnn_saver_path)
       : backend_path_(backend_path),
         profiling_level_(profiling_level),
         rpc_control_latency_(rpc_control_latency),
         htp_performance_mode_(htp_performance_mode),
         context_priority_(context_priority),
-        qnn_saver_path_(qnn_saver_path),
-        qnn_htp_device_arch_(qnn_htp_device_arch) {
+        qnn_saver_path_(qnn_saver_path) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
 
@@ -215,7 +213,6 @@ class QnnBackendManager {
 #endif
   const std::string qnn_saver_path_;
   uint32_t htp_power_config_client_id_ = 0;
-  QnnHtpDeviceArch qnn_htp_device_arch_ = qnn::QnnHtpDeviceArch::ARCH_NONE;
 };
 
 }  // namespace qnn
