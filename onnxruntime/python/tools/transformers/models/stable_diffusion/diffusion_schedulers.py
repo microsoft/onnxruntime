@@ -38,7 +38,7 @@ class DDIMScheduler:
         set_alpha_to_one: bool = False,
         steps_offset: int = 1,
         prediction_type: str = "epsilon",
-        timestep_spacing = "leading",
+        timestep_spacing: str = "leading",
     ):
         # this schedule is very specific to the latent diffusion model.
         betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
@@ -213,9 +213,9 @@ class EulerAncestralDiscreteScheduler:
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         device="cuda",
-        steps_offset=1,
-        prediction_type="epsilon",
-        timestep_spacing = "trailing", # set default to trailing for SDXL Turbo
+        steps_offset: int = 1,
+        prediction_type: str = "epsilon",
+        timestep_spacing: str = "trailing",  # set default to trailing for SDXL Turbo
     ):
         betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
         alphas = 1.0 - betas
@@ -340,7 +340,6 @@ class EulerAncestralDiscreteScheduler:
                 f"prediction_type given as {self.prediction_type} must be one of `epsilon`, or `v_prediction`"
             )
 
-
         sigma_from = self.sigmas[self._step_index]
         sigma_to = self.sigmas[self._step_index + 1]
         sigma_up = (sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2) ** 0.5
@@ -378,7 +377,6 @@ class EulerAncestralDiscreteScheduler:
         return noisy_samples
 
 
-
 class UniPCMultistepScheduler:
     def __init__(
         self,
@@ -396,10 +394,10 @@ class UniPCMultistepScheduler:
         lower_order_final: bool = True,
         disable_corrector: Optional[List[int]] = None,
         use_karras_sigmas: Optional[bool] = False,
-        timestep_spacing = "linspace",
+        timestep_spacing: str = "linspace",
         steps_offset: int = 0,
-        sigma_min = None,
-        sigma_max = None,
+        sigma_min=None,
+        sigma_max=None,
     ):
         self.device = device
         self.betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
@@ -630,7 +628,7 @@ class UniPCMultistepScheduler:
         model_output: torch.FloatTensor,
         *args,
         sample: torch.FloatTensor = None,
-        order: int = None,
+        order: Optional[int] = None,
         **kwargs,
     ) -> torch.FloatTensor:
         prev_timestep = args[0] if len(args) > 0 else kwargs.pop("prev_timestep", None)
@@ -650,7 +648,7 @@ class UniPCMultistepScheduler:
             )
         model_output_list = self.model_outputs
 
-        s0 = self.timestep_list[-1]
+        # s0 = self.timestep_list[-1]
         m0 = model_output_list[-1]
         x = sample
 
@@ -676,7 +674,7 @@ class UniPCMultistepScheduler:
             d1s.append((mi - m0) / rk)
 
         rks.append(1.0)
-        rks = torch.tensor(rks, device=self.device)
+        rks = torch.tensor(rks, device=device)
 
         r = []
         b = []
@@ -701,13 +699,13 @@ class UniPCMultistepScheduler:
             h_phi_k = h_phi_k / hh - 1 / factorial_i
 
         r = torch.stack(r)
-        b = torch.tensor(b, device=self.device)
+        b = torch.tensor(b, device=device)
 
         if len(d1s) > 0:
             d1s = torch.stack(d1s, dim=1)  # (B, K)
             # for order 2, we use a simplified version
             if order == 2:
-                rhos_p = torch.tensor([0.5], dtype=x.dtype, device=self.device)
+                rhos_p = torch.tensor([0.5], dtype=x.dtype, device=device)
             else:
                 rhos_p = torch.linalg.solve(r[:-1, :-1], b[:-1])
         else:
@@ -737,7 +735,7 @@ class UniPCMultistepScheduler:
         *args,
         last_sample: torch.FloatTensor = None,
         this_sample: torch.FloatTensor = None,
-        order: int = None,
+        order: Optional[int] = None,
         **kwargs,
     ) -> torch.FloatTensor:
         this_timestep = args[0] if len(args) > 0 else kwargs.pop("this_timestep", None)
@@ -765,7 +763,7 @@ class UniPCMultistepScheduler:
 
         m0 = model_output_list[-1]
         x = last_sample
-        #x_t = this_sample
+        # x_t = this_sample
         model_t = this_model_output
 
         sigma_t, sigma_s0 = self.sigmas[self.step_index], self.sigmas[self.step_index - 1]
@@ -790,7 +788,7 @@ class UniPCMultistepScheduler:
             d1s.append((mi - m0) / rk)
 
         rks.append(1.0)
-        rks = torch.tensor(rks, device=self.device)
+        rks = torch.tensor(rks, device=device)
 
         r = []
         b = []
@@ -815,7 +813,7 @@ class UniPCMultistepScheduler:
             h_phi_k = h_phi_k / hh - 1 / factorial_i
 
         r = torch.stack(r)
-        b = torch.tensor(b, device=self.device)
+        b = torch.tensor(b, device=device)
 
         if len(d1s) > 0:
             d1s = torch.stack(d1s, dim=1)
@@ -824,7 +822,7 @@ class UniPCMultistepScheduler:
 
         # for order 1, we use a simplified version
         if order == 1:
-            rhos_c = torch.tensor([0.5], dtype=x.dtype, device=self.device)
+            rhos_c = torch.tensor([0.5], dtype=x.dtype, device=device)
         else:
             rhos_c = torch.linalg.solve(r, b)
 
@@ -885,7 +883,6 @@ class UniPCMultistepScheduler:
             self.step_index > 0 and self.step_index - 1 not in self.disable_corrector and self.last_sample is not None
         )
 
-
         model_output_convert = self.convert_model_output(model_output, sample=sample)
         if use_corrector:
             sample = self.multistep_uni_c_bh_update(
@@ -922,7 +919,6 @@ class UniPCMultistepScheduler:
 
         # upon completion increase step index by one
         self._step_index += 1
-
 
         if not return_dict:
             return (prev_sample,)
