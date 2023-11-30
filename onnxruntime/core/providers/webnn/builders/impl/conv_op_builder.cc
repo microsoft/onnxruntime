@@ -258,6 +258,8 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
             total_padding[i] = strides[i] * (narrow<size_t>(input_shape[i + 1]) - 1) +
                                output_padding[i] + ((kernel_shape[i] - 1) * dilations[i] + 1) - output_shape[i];
           } else {
+            ORT_RETURN_IF_NOT(model_builder.GetPreferredLayout() == DataLayout::NCHW,
+                              "WebNN GPU backend preferred layout should be NCHW.");
             total_padding[i] = strides[i] * (narrow<size_t>(input_shape[i + 2]) - 1) +
                                output_padding[i] + ((kernel_shape[i] - 1) * dilations[i] + 1) - output_shape[i];
           }
