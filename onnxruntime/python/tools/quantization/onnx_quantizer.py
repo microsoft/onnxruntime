@@ -244,7 +244,7 @@ class ONNXQuantizer:
 
         if len(quant_overrides_list) != num_channels:
             raise ValueError(
-                f"Expected tensor '{tensor_name}' have {num_channels} per-tensor quantization overrides, "
+                f"Expected tensor '{tensor_name}' to have {num_channels} per-channel quantization overrides, "
                 f"but found {len(quant_overrides_list)} instead."
             )
 
@@ -1170,27 +1170,27 @@ class ONNXQuantizer:
 
         weights = tensor_proto_to_array(initializer)
         channel_count = weights.shape[channel_axis]
-        quant_overrides_list = self.get_per_channel_quant_overrides(weight_name, channel_count)
+        quant_overrides_for_channels = self.get_per_channel_quant_overrides(weight_name, channel_count)
 
         # If user provides per-channel quantization overrides, all channels must use the same quantization type.
         # So, just use the first channel's type.
-        if "quant_type" in quant_overrides_list[0]:
-            weight_qType = quant_overrides_list[0]["quant_type"].tensor_type  # noqa: N806
+        if "quant_type" in quant_overrides_for_channels[0]:
+            weight_qType = quant_overrides_for_channels[0]["quant_type"].tensor_type  # noqa: N806
 
         zero_point_list = []
         scale_list = []
         quantized_per_channel_data_list = []
         for i in range(channel_count):
             per_channel_data = weights.take(i, channel_axis)
-            quant_overrides = quant_overrides_list[i]
+            channel_quant_overrides = quant_overrides_for_channels[i]
 
-            if "scale" in quant_overrides and "zero_point" in quant_overrides:
-                zero_point, scale = quant_overrides["zero_point"], quant_overrides["scale"]
+            if "scale" in channel_quant_overrides and "zero_point" in channel_quant_overrides:
+                zero_point, scale = channel_quant_overrides["zero_point"], channel_quant_overrides["scale"]
                 quantized_per_channel_data = quantize_nparray(
                     weight_qType, per_channel_data.flatten(), scale, zero_point
                 )
             else:
-                symmetric = quant_overrides.get(
+                symmetric = channel_quant_overrides.get(
                     "symmetric",
                     (
                         self.is_weight_symmetric
@@ -1201,10 +1201,10 @@ class ONNXQuantizer:
                     per_channel_data.flatten().tolist(),
                     weight_qType,
                     symmetric,
-                    reduce_range=quant_overrides.get("reduce_range", self.reduce_range and reduce_range),
+                    reduce_range=channel_quant_overrides.get("reduce_range", self.reduce_range and reduce_range),
                     min_real_range=self.min_real_range,
-                    rmin_override=quant_overrides.get("rmin"),
-                    rmax_override=quant_overrides.get("rmax"),
+                    rmin_override=channel_quant_overrides.get("rmin"),
+                    rmax_override=channel_quant_overrides.get("rmax"),
                 )
 
             zero_point_list.append(zero_point)
