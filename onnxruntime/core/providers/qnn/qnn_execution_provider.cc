@@ -153,7 +153,6 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     auto level = provider.Level();
     auto keyword = provider.Keyword();
     if ((keyword & static_cast<unsigned long long>(onnxruntime::logging::TLKeyword::EP)) != 0) {
-      tracelogging_provider_ep_enabled_ = true;
       if (level != 0) {
         if (level == 1) {
             ParseProfilingLevel("basic", profiling_level);

@@ -117,8 +117,8 @@ class QnnBackendManager {
   void Split(std::vector<std::string>& split_string, const std::string& tokenized_string, const char separator);
 
   Status ExtractBackendProfilingInfo();
-  Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id, std::ofstream& outfile, bool backendSupportsExtendedEventData);
-  Status ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel, std::ofstream& outfile, bool backendSupportsExtendedEventData);
+  Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id, std::ofstream& outfile, bool backendSupportsExtendedEventData, bool tracelogging_provider_ep_enabled);
+  Status ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel, std::ofstream& outfile, bool backendSupportsExtendedEventData, bool tracelogging_provider_ep_enabled);
 
   void SetQnnBackendType(uint32_t backend_id);
   QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
@@ -175,13 +175,21 @@ class QnnBackendManager {
     return (backend_build_id == nullptr ? std::string("") : std::string(backend_build_id));
   }
 
-  Status ExtractProfilingEventBasic(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel, std::ofstream& outfile);
-  Status ExtractProfilingEventExtended(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel, std::ofstream& outfile);
+  Status ExtractProfilingEventBasic(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel, std::ofstream& outfile, bool tracelogging_provider_ep_enabled);
+  Status ExtractProfilingEventExtended(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel, std::ofstream& outfile, bool tracelogging_provider_ep_enabled);
   static const std::string& GetUnitString(QnnProfile_EventUnit_t unitType);
   static const std::unordered_map<QnnProfile_EventUnit_t, std::string>& GetUnitStringMap();
   static const std::string GetEventTypeString(QnnProfile_EventType_t eventType);
   static const std::string ExtractQnnScalarValue(const Qnn_Scalar_t& scalar);
   const char* QnnProfileErrorToString(QnnProfile_Error_t error);
+  void LogQnnProfileEventAsTraceLogging(
+    uint64_t timestamp,
+    const std::string& message,
+    const std::string& qnnScalarValue,
+    const std::string& unit,
+    const std::string& timingSource,
+    const std::string& eventLevel,
+    const char* eventIdentifier);
 
  private:
   const std::string backend_path_;
