@@ -31,7 +31,7 @@ resources:
       ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 stages:
-  - template: stages/py-cuda-packaging-stage.yml
+  - template: stages/py-nuget-combine-cuda-stage.yml
     parameters:
       enable_linux_gpu: ${{ parameters.enable_linux_gpu }}
       enable_windows_gpu: ${{ parameters.enable_windows_gpu }}
