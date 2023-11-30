@@ -54,12 +54,12 @@ export const createNaiveMatmulProgramInfo =
       const broadCastADims = getBroadcastDims(outerDimsA, outerDims);
       const broadCastBDims = getBroadcastDims(outerDimsB, outerDims);
       const getIndices = (variable: IndicesHelper, broadCastDims: number[]) => {
-        const rank = variable.shape.length;
+        const rank = variable.rank;
         const name = variable.name;
         if (rank === 2) {
           return `var ${name}Indices = ${variable.type.indices}(0u, 0u);`;
         }
-        const batchRank = batchDims.shape.length;
+        const batchRank = batchDims.rank;
         let resStr = `var ${name}Indices: ${variable.type.indices};`;
         for (let i = rank - 2 - 1, j = batchRank - 1; i >= 0; i--, j--) {
           resStr += `\n${name}Indices[${i}] = ${batchRank > 1 ? `batchIndices[${j}]` : 'batchIndices'};`;
