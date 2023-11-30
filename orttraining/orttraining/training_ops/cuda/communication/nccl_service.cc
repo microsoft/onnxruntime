@@ -232,7 +232,7 @@ void NcclService::Initialize() {
   //   GPUs
   //   CPUs
   //   Other devices
-
+#ifdef USE_MPI
   const int mpi_rank = onnxruntime::training::MPIContext::GetInstance().GetWorldRank();
   const int mpi_local_rank = onnxruntime::training::MPIContext::GetInstance().GetLocalRank();
   const int mpi_size = onnxruntime::training::MPIContext::GetInstance().GetWorldSize();
@@ -248,6 +248,7 @@ void NcclService::Initialize() {
   if (mpi_rank == 0) NCCL_CALL_THROW(ncclGetUniqueId(&id));
   MPI_CHECK(MPI_Bcast((void*)&id, sizeof(id), MPI_BYTE, 0, MPI_COMM_WORLD));
   NCCL_CALL_THROW(ncclCommInitRank(&comm_, mpi_size, id, mpi_rank));
+#endif
 }
 
 void NcclService::Launch() {
