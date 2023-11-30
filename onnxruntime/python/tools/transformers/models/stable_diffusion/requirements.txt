@@ -9,6 +9,7 @@ packaging
 protobuf==3.20.3
 psutil
 sympy
+controlnet_aux
 # The following are for SDXL
 optimum==1.13.1
 safetensors
