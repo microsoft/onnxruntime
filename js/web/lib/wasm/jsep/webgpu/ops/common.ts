@@ -730,8 +730,9 @@ export interface ShaderHelper {
    *
    * @param name - the name of the uniform.
    * @param type - the type of the uniform.
+   * @param length - the length of the uniform, default to 1 when it is not provided.
    */
-  registerUniform(name: string, type: string): ShaderHelper;
+  registerUniform(name: string, type: string, length?: number): ShaderHelper;
 
   /**
    * A helper function to register multiple uniforms. Can be called multiple times to register multiple uniforms.

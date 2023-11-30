@@ -355,9 +355,10 @@ export class WebGpuBackend {
         currentOffset += data.length > 4 ? Math.ceil(data.length / 4) * 16 : data.length * 4;
       });
 
-      // Buffer requires 16 bytes alignment.
-      const align16 = 16;
-      currentOffset = Math.ceil(currentOffset / align16) * align16;
+      // Meet alignment of struct here: https://www.w3.org/TR/WGSL/#alignment-and-size. For simplicity, set
+      // maxAlignmentOfField to 16 since the underlying buffer has been rounded up to 16.
+      const maxAlignmentOfField = 16;
+      currentOffset = Math.ceil(currentOffset / maxAlignmentOfField) * maxAlignmentOfField;
       const arrayBuffer = new ArrayBuffer(currentOffset);
       programUniforms.forEach((v, i) => {
         const offset = offsets[i];
