@@ -69,22 +69,25 @@ BackendManager::BackendManager(const onnxruntime::Node& fused_node,
   subgraph_context_.subgraph_name = fused_node.Name();
   model_proto_ = GetModelProtoFromFusedNode(fused_node, subgraph, logger);
 
-  if ((ModelHasSymbolicInputDims(subgraph) && GetGlobalContext().disable_dynamic_shapes==false) &&
-      (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
-       GetGlobalContext().device_type.find("GPU") != std::string::npos)) {
-      subgraph_context_.has_dynamic_input_shape = true;
-      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
-      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Starting backend initialization. "
-                         << "Creating backend Dynamic Shapes";
-      try {
-        concrete_backend_ = BackendFactory::MakeBackend(*model_proto_,
-                                                        GetGlobalContext(),
-                                                        subgraph_context_);
-      } catch (std::string const& msg) {
-        throw msg;
+  if (ModelHasSymbolicInputDims(subgraph)) {
+    subgraph_context_.has_dynamic_input_shape = true;
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
+    if (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
+        GetGlobalContext().device_type.find("GPU") != std::string::npos) {
+      if (!GetGlobalContext().disable_dynamic_shapes) {
+        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Starting backend initialization. "
+                           << "Creating backend Dynamic Shapes";
+        try {
+          concrete_backend_ = BackendFactory::MakeBackend(*model_proto_,
+                                                          GetGlobalContext(),
+                                                          subgraph_context_);
+        } catch (std::string const& msg) {
+          throw msg;
+        }
+        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
+                           << "Backend created for graph " << subgraph_context_.subgraph_name;
       }
-      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
-                         << "Backend created for graph " << subgraph_context_.subgraph_name;
+    }
   } else {
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has concrete input dims. "
                        << "Initializing backend for graph "
@@ -259,8 +262,7 @@ void BackendManager::Compute(OrtKernelContext* context) {
   }
 #endif
   bool use_dynamic_backend = true;
-  if ((subgraph_context_.has_dynamic_input_shape &&
-       GetGlobalContext().disable_dynamic_shapes==false) &&
+  if (!GetGlobalContext().disable_dynamic_shapes && subgraph_context_.has_dynamic_input_shape &&
       (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
        GetGlobalContext().device_type.find("GPU") != std::string::npos)) {
     concrete_backend_->Infer(context);
