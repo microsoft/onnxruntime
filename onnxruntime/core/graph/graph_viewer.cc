@@ -35,6 +35,17 @@ struct PriorityNodeCompare {
       return n1->Priority() > n2->Priority();
     }
 
+    // nodes of forward pass will be output first
+    auto n1_attrs = n1->GetAttributes();
+    auto n2_attrs = n2->GetAttributes();
+    int64_t n1_is_forward = static_cast<int64_t>(n1_attrs.find(kBackwardNodeAttributeName) == n1_attrs.cend()) ||
+                            n1_attrs.at(kBackwardNodeAttributeName).i();
+    int64_t n2_is_forward = static_cast<int64_t>(n2_attrs.find(kBackwardNodeAttributeName) == n2_attrs.cend()) ||
+                            n2_attrs.at(kBackwardNodeAttributeName).i();
+    if (n1_is_forward != n2_is_forward) {
+      return n1_is_forward > n2_is_forward;
+    }
+
     // otherwise, nodes with lower index will be output first
     return n1->Index() > n2->Index();
   }

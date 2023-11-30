@@ -58,6 +58,16 @@ class MemoryRecord {
 };
 
 /**
+ * @brief Reset `__backwardpass` attribute for all backward nodes in the graph.
+ * `__backwardpass` is used by Priority-Based topology sorting.
+ *
+ * @param graph To be scanned and modified.
+ * @param modified Whether the graph is modified.
+ * @return Status
+ */
+Status ResetNodeBackwardPassAttribute(Graph& graph, bool& modified);
+
+/**
  * @brief Iterate the graph and find all possible memory optimization opportunities for related nodes.
  *
  * @param graph_viewer  The graph to iterate.
