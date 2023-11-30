@@ -37,14 +37,18 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     set(gtest_disable_pthreads ON)
   endif()
   set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-  # Set it to ON will cause crashes in onnxruntime_test_all when onnxruntime_USE_CUDA is ON
-  set(GTEST_HAS_ABSL OFF CACHE BOOL "" FORCE)
+  if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    # Needs to update onnxruntime/test/xctest/xcgtest.mm
+    set(GTEST_HAS_ABSL OFF CACHE BOOL "" FORCE)
+  else()
+    set(GTEST_HAS_ABSL ON CACHE BOOL "" FORCE)
+  endif()
   # gtest and gmock
   FetchContent_Declare(
     googletest
     URL ${DEP_URL_googletest}
+    FIND_PACKAGE_ARGS 1.14.0...<2.0.0 NAMES GTest
     URL_HASH SHA1=${DEP_SHA1_googletest}
-    OVERRIDE_FIND_PACKAGE
   )
 endif()
 
@@ -331,6 +335,7 @@ if(onnxruntime_USE_CUDA)
     URL ${DEP_URL_microsoft_gsl}
     URL_HASH SHA1=${DEP_SHA1_microsoft_gsl}
     PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/gsl/1064.patch
+    FIND_PACKAGE_ARGS 4.0 NAMES Microsoft.GSL
   )
 else()
   FetchContent_Declare(

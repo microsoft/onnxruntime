@@ -82,19 +82,11 @@ class FusionGroupNorm(Fusion):
             return
 
         instance_norm_scale = self.model.get_constant_value(instance_norm.input[1])
-        if instance_norm_scale is None:
-            return
-        instance_norm_bias = self.model.get_constant_value(instance_norm.input[2])
-        if instance_norm_bias is None:
+        if instance_norm_scale is None or len(instance_norm_scale.shape) != 1:
             return
 
-        if not (
-            len(instance_norm_scale.shape) == 1
-            and len(instance_norm_bias.shape) == 1
-            and instance_norm_scale.shape == instance_norm_bias.shape
-            and instance_norm_scale.shape[0] == 32
-        ):
-            logger.info("InstanceNormalization groups=%d", instance_norm_scale.shape[0])
+        instance_norm_bias = self.model.get_constant_value(instance_norm.input[2])
+        if instance_norm_bias is None or instance_norm_scale.shape != instance_norm_scale.shape:
             return
 
         if not np.allclose(np.ones_like(instance_norm_scale), instance_norm_scale):
@@ -103,9 +95,6 @@ class FusionGroupNorm(Fusion):
             return
 
         group_norm_name = self.model.create_node_name("GroupNorm", name_prefix="GroupNorm")
-
-        if weight_elements not in [320, 640, 960, 1280, 1920, 2560, 128, 256, 512]:
-            logger.info("GroupNorm channels=%d", weight_elements)
 
         self.add_initializer(
             name=group_norm_name + "_gamma",

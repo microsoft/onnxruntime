@@ -14,80 +14,32 @@ parameters:
 
 - name: ENV_SETUP_SCRIPT
   type: string
+  default: ''
 
 - name: BUILD_PY_PARAMETERS
   displayName: >
     Extra parameters to pass to build.py. Don't put newlines in here.
   type: string
   default: ''
-
+- name: CudaVersion
+  type: string
+  default: '11.8'
+  values:
+    - 11.8
+    - 12.2
 jobs:
-- ${{ if eq(parameters.PYTHON_VERSION, '3.8') }}:
-    - job: Win_py_${{ parameters.EP_NAME }}_Wheels_StaticAnalysis
-      timeoutInMinutes: 240
-      workspace:
-        clean: all
-      pool: onnxruntime-Win-CPU-2022
-      steps:
-          - checkout: self
-            clean: true
-            submodules: none
-          - task: UsePythonVersion@0
-            inputs:
-              versionSpec: 3.8
-              addToPath: true
-              architecture: 'x64'       
-          - task: onebranch.pipeline.tsaoptions@1
-            displayName: 'OneBranch TSAOptions'
-            inputs:
-              tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
-              appendSourceBranchName: false
-              
-          - template: download-deps.yml
-
-          - template: jobs/set-winenv.yml
-            parameters:
-              EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
-              DownloadCUDA: true
-
-          - task: PythonScript@0
-            displayName: 'Update deps.txt'
-            inputs:
-              scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
-              arguments: --new_dir $(Build.BinariesDirectory)/deps
-              workingDirectory: $(Build.BinariesDirectory)
-
-          - task: SDLNativeRules@3
-            displayName: 'Run the PREfast SDL Native Rules for MSBuild'
-            inputs:
-              msBuildArchitecture: amd64
-              setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.SourcesDirectory)\b --skip_submodule_sync --cmake_generator "Visual Studio 17 2022" --enable_pybind ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }} --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON onnxruntime_ENABLE_LTO=OFF'
-              msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.SourcesDirectory)\b\Debug\onnxruntime.sln" /p:RunCodeAnalysis=true /p:platform=x64 /p:configuration=Debug /p:VisualStudioVersion="17.0" /m /p:PreferredToolArchitecture=x64'
-              excludedPaths: '$(Build.SourcesDirectory)\b#$(Build.SourcesDirectory)\cmake#C:\program files#C:\program files (x86)#C:\program files'
-              rulesetName: Custom
-              customRuleset: $(Build.SourcesDirectory)\cmake\Sdl.ruleset
-              publishXML: true
-
-          - task: SdtReport@2
-            displayName: 'Create Security Analysis Report'
-            inputs:
-              SDLNativeRules: true
-
-          - task: TSAUpload@2
-            displayName: 'TSA upload'
-            condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-            inputs:
-              GdnPublishTsaOnboard: false
-              GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa' 
-
- 
 - job: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}
   timeoutInMinutes: 240
   workspace:
     clean: all
-  pool: ${{ parameters.MACHINE_POOL }}
+  pool:
+    name: ${{ parameters.MACHINE_POOL }}
+#    demands:
+#      - ImageVersionOverride -equals 1.0.367516
   variables:
+    GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
+    CUDA_MODULE_LOADING: 'LAZY'
   steps:
       - checkout: self
         clean: true
@@ -120,10 +72,21 @@ jobs:
 
       - template: download-deps.yml
 
-      - template: jobs/set-winenv.yml
-        parameters:
-          EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
-          DownloadCUDA: true
+      - ${{ if ne(parameters.ENV_SETUP_SCRIPT, '') }}:
+        - template: jobs/set-winenv.yml
+          parameters:
+            EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
+            ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt')) }}:
+              DownloadCUDA: true
+
+      - ${{ if eq(parameters.ENV_SETUP_SCRIPT, '') }}:
+        - template: jobs/download_win_gpu_library.yml
+          parameters:
+            CudaVersion: ${{ parameters.CudaVersion }}
+            ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt')) }}:
+              DownloadCUDA: true
+            ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt') }}:
+              DownloadTRT: true
 
       - task: PythonScript@0
         displayName: 'Update deps.txt'

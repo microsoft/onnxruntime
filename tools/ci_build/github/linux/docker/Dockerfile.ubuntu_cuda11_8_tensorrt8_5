@@ -28,7 +28,7 @@ RUN apt-get install -y --no-install-recommends \
     ln -s /usr/bin/pip3 pip;
 
 RUN pip install --upgrade pip 
-RUN pip install setuptools>=41.0.0
+RUN pip install setuptools>=68.2.2
 
 # Install TensorRT
 RUN v="8.5.1-1+cuda11.8" &&\

@@ -6,14 +6,13 @@
 namespace onnxruntime {
 namespace js {
 
-#define REG_ELEMENTWISE_KERNEL(OP_TYPE, VERSION, KERNEL_CLASS)                          \
-  ONNX_OPERATOR_KERNEL_EX(                                                              \
-      OP_TYPE,                                                                          \
-      kOnnxDomain,                                                                      \
-      VERSION,                                                                          \
-      kJsExecutionProvider,                                                             \
-      KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),     \
-                                              DataTypeImpl::GetTensorType<int32_t>()}), \
+#define REG_ELEMENTWISE_KERNEL(OP_TYPE, VERSION, KERNEL_CLASS)          \
+  ONNX_OPERATOR_KERNEL_EX(                                              \
+      OP_TYPE,                                                          \
+      kOnnxDomain,                                                      \
+      VERSION,                                                          \
+      kJsExecutionProvider,                                             \
+      KernelDefBuilder().TypeConstraint("T", JsepSupportedDataTypes()), \
       KERNEL_CLASS);
 
 #define REG_ELEMENTWISE_VERSIONED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS) \
@@ -22,8 +21,7 @@ namespace js {
       kOnnxDomain,                                                                        \
       VERSION_FROM, VERSION_TO,                                                           \
       kJsExecutionProvider,                                                               \
-      KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),       \
-                                              DataTypeImpl::GetTensorType<int32_t>()}),   \
+      KernelDefBuilder().TypeConstraint("T", JsepSupportedDataTypes()),                   \
       KERNEL_CLASS);
 
 JSEP_KERNEL_IMPL(Add, Add)

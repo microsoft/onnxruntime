@@ -157,7 +157,7 @@ class QLinearConv(QuantOperatorBase):
                 nodes,
             ) = self.quantizer.quantize_activation(node, [0])
             quant_weight_tuple = self.quantizer.quantize_weight_per_channel(
-                node.input[1], onnx_proto.TensorProto.INT8, 0
+                node.input[1], onnx_proto.TensorProto.INT8, 0  # self.quantizer.weight_qType?
             )
             quantized_input_names.append(quant_weight_tuple[0])
             zero_point_names.append(quant_weight_tuple[1])

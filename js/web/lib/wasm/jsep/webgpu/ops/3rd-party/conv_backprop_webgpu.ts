@@ -18,15 +18,16 @@
 // sampled from [@tensorflow/tfjs] tfjs-backend-webgpu/src/conv_backprop_webgpu.ts
 
 import {LOG_DEBUG} from '../../../log';
-import {TensorView} from '../../../tensor';
+import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
-import {GpuDataType, ProgramInfo, ProgramMetadata} from '../../types';
-import {inputVariable, outputVariable, ShaderHelper} from '../common';
+import {ProgramInfo} from '../../types';
+import {inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from '../common';
 import {ConvTransposeAttributes} from '../conv-transpose';
 
 const createConvTranspose2DOpProgramShaderSource =
     (shaderHelper: ShaderHelper, inputs: readonly TensorView[], attributes: ConvTransposeAttributes,
-     outputShape: readonly number[], hasBias: boolean, is1DimensionDispatch: boolean, isVec4 = false): string => {
+     outputShape: readonly number[], hasBias: boolean, is1DimensionDispatch: boolean, isVec4 = false,
+     dataType: string): string => {
       const isChannelsLast = attributes.format === 'NHWC';
       const rowDim = isChannelsLast ? 1 : 2;
       const colDim = isChannelsLast ? 2 : 3;
@@ -39,12 +40,12 @@ const createConvTranspose2DOpProgramShaderSource =
       const outputChannelsPerGroup = wShape[1];
 
       let declareFunctions = `
-  fn setOutputAtIndex(flatIndex : u32, value : ${isVec4 ? 'vec4<f32>' : 'f32'}) {
-    result[flatIndex] = ${isVec4 ? 'vec4<f32>' : 'f32'}(value);
+  fn setOutputAtIndex(flatIndex : u32, value : ${isVec4 ? `vec4<${dataType}>` : dataType}) {
+    result[flatIndex] = ${isVec4 ? `vec4<${dataType}>` : dataType}(value);
   }`;
       if (hasBias) {
         declareFunctions += `
-    fn getBiasByOutputCoords(coords : vec4<u32>) -> ${isVec4 ? 'vec4<f32>' : 'f32'} {
+    fn getBiasByOutputCoords(coords : vec4<u32>) -> ${isVec4 ? `vec4<${dataType}>` : dataType} {
       return bias[coords.${isChannelsLast ? 'w' : 'y'}${isVec4 ? '/ 4' : ''}];
     }`;
       }
@@ -66,33 +67,33 @@ const createConvTranspose2DOpProgramShaderSource =
 
         // Convolve dy(?, ?, d2) with w(:, :, d1, d2) to compute dx(xR, xC, d1).
         // ? = to be determined. : = across all values in that axis.
-        var dotProd: array<vec4<f32>, ${workPerThread}>;
+        var dotProd: array<vec4<${dataType}>, ${workPerThread}>;
         for (var i = 0; i < ${workPerThread}; i++) {
-          dotProd[i] = vec4<f32>(0.0);
+          dotProd[i] = vec4<${dataType}>(0.0);
         }
         for (var wR: u32 = 0; wR < filterDims[0]; wR = wR + 1) {
-          var dyR = (f32(dyCorner.x) + f32(wR)) / f32(strides.x);
+          var dyR = (${dataType}(dyCorner.x) + ${dataType}(wR)) / ${dataType}(strides.x);
           let wRPerm = filterDims[0] - 1 - wR;
-          if (dyR < 0.0 || dyR >= f32(outBackprop[1]) ||
+          if (dyR < 0.0 || dyR >= ${dataType}(outBackprop[1]) ||
               fract(dyR) > 0.0 || wRPerm < 0) {
             continue;
           }
           let idyR: u32 = u32(dyR);
 
           for (var wC: u32 = 0; wC < filterDims[1]; wC = wC + 1) {
-            let dyC = (f32(dyCorner.y) + f32(wC)) / f32(strides.y);
-            let dyC2 = (f32(dyCorner.y) + 1.0 + f32(wC)) / f32(strides.y);
+            let dyC = (${dataType}(dyCorner.y) + ${dataType}(wC)) / ${dataType}(strides.y);
+            let dyC2 = (${dataType}(dyCorner.y) + 1.0 + ${dataType}(wC)) / ${dataType}(strides.y);
             let wCPerm = filterDims[1] - 1 - wC;
             if (wCPerm < 0) {
               continue;
             }
             var bDyCVal = true;
             var bDyCVal2 = true;
-            if (dyC < 0.0 || dyC >= f32(outBackprop[2]) ||
+            if (dyC < 0.0 || dyC >= ${dataType}(outBackprop[2]) ||
                 fract(dyC) > 0.0) {
               bDyCVal = false;
             }
-            if (dyC2 < 0.0 || dyC2 >= f32(outBackprop[2]) ||
+            if (dyC2 < 0.0 || dyC2 >= ${dataType}(outBackprop[2]) ||
                 fract(dyC2) > 0.0) {
               bDyCVal2 = false;
             }
@@ -108,7 +109,7 @@ const createConvTranspose2DOpProgramShaderSource =
                 let wValue3 = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1 + 3', 'd2')};
 
                 var xValue = ${dy.get('batch', 'idyR', 'idyC', 'd2')};
-                let tmpval = vec4<f32>(dot(xValue, wValue0),
+                let tmpval = vec4<${dataType}>(dot(xValue, wValue0),
                                       dot(xValue, wValue1),
                                       dot(xValue, wValue2),
                                       dot(xValue, wValue3));
@@ -116,7 +117,7 @@ const createConvTranspose2DOpProgramShaderSource =
 
                 xValue =  ${dy.get('batch', 'idyR', 'idyC2', 'd2')};
 
-                dotProd[1] = dotProd[1] + vec4<f32>(dot(xValue, wValue0),
+                dotProd[1] = dotProd[1] + vec4<${dataType}>(dot(xValue, wValue0),
                                                     dot(xValue, wValue1),
                                                     dot(xValue, wValue2),
                                                     dot(xValue, wValue3));
@@ -130,7 +131,7 @@ const createConvTranspose2DOpProgramShaderSource =
                 let wValue3 = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1 + 3', 'd2')};
 
                 var xValue = ${dy.get('batch', 'idyR', 'idyC', 'd2')};
-                let tmpval = vec4<f32>(dot(xValue, wValue0),
+                let tmpval = vec4<${dataType}>(dot(xValue, wValue0),
                                       dot(xValue, wValue1),
                                       dot(xValue, wValue2),
                                       dot(xValue, wValue3));
@@ -145,7 +146,7 @@ const createConvTranspose2DOpProgramShaderSource =
                 let wValue3 = ${w.get('u32(wRPerm)', 'u32(wCPerm)', 'd1 + 3', 'd2')};
 
                 var xValue = ${dy.get('batch', 'idyR', 'idyC2', 'd2')};
-                let tmpval = vec4<f32>(dot(xValue, wValue0),
+                let tmpval = vec4<${dataType}>(dot(xValue, wValue0),
                                       dot(xValue, wValue1),
                                       dot(xValue, wValue2),
                                       dot(xValue, wValue3));
@@ -178,9 +179,9 @@ const createConvTranspose2DOpProgramShaderSource =
             if (wR % dilations.x != 0) {
               continue;
             }
-            let dyR = (f32(dyRCorner) + f32(wR)) / f32(strides[0]);
+            let dyR = (${dataType}(dyRCorner) + ${dataType}(wR)) / ${dataType}(strides[0]);
             let wRPerm = filterDims.x - 1 - wR / dilations.x;
-            if (dyR < 0.0 || dyR >= f32(outBackprop[${rowDim}]) || fract(dyR) > 0.0 ||
+            if (dyR < 0.0 || dyR >= ${dataType}(outBackprop[${rowDim}]) || fract(dyR) > 0.0 ||
                 wRPerm < 0) {
               continue;
             }
@@ -190,21 +191,21 @@ const createConvTranspose2DOpProgramShaderSource =
               if (wC % dilations.y != 0) {
                 continue;
               }
-              let dyC = (f32(dyCCorner) + f32(wC)) / f32(strides.y);
+              let dyC = (${dataType}(dyCCorner) + ${dataType}(wC)) / ${dataType}(strides.y);
               let wCPerm = filterDims.y - 1 - wC / dilations.y;
-              if (dyC < 0.0 || dyC >= f32(outBackprop[${colDim}]) ||
+              if (dyC < 0.0 || dyC >= ${dataType}(outBackprop[${colDim}]) ||
                   fract(dyC) > 0.0 || wCPerm < 0) {
                 continue;
               }
               let idyC: u32 = u32(dyC);
-
+              var inputChannel = groupId * ${inputChannelsPerGroup};
               for (var d2: u32 = 0; d2 < ${inputChannelsPerGroup}; d2 = d2 + 1) {
-                let inputChannel = groupId * ${inputChannelsPerGroup} + d2;
                 let xValue = ${
           isChannelsLast ? dy.get('batch', 'idyR', 'idyC', 'inputChannel') :
                            dy.get('batch', 'inputChannel', 'idyR', 'idyC')};
                 let wValue = ${w.get('inputChannel', 'wOutChannel', 'u32(wRPerm)', 'u32(wCPerm)')};
                 dotProd = dotProd + xValue * wValue;
+                inputChannel = inputChannel + 1;
               }
             }
           }
@@ -238,7 +239,7 @@ const createConvTranspose2DOpProgramShaderSource =
     };
 
 export const createConvTranspose2DProgramInfo =
-    (inputs: readonly TensorView[], metadata: ProgramMetadata, attributes: ConvTransposeAttributes,
+    (inputs: readonly TensorView[], attributes: ConvTransposeAttributes,
      squeezeOutputShapeFunction?: (shape: readonly number[]) => number[]): ProgramInfo => {
       const hasBias = inputs.length > 2;
       // const isChannelsLast = attributes.format === 'NHWC';
@@ -256,15 +257,19 @@ export const createConvTranspose2DProgramInfo =
       ];
       LOG_DEBUG('verbose', () => `[conv2d_backprop_webgpu] dispatch = ${dispatch}`);
 
+      const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
       return {
-        ...metadata,
-        outputs: [{
-          dims: squeezeOutputShapeFunction ? squeezeOutputShapeFunction(outputShape) : outputShape,
-          dataType: inputs[0].dataType,
-          gpuDataType: GpuDataType.default
-        }],
-        dispatchGroup: () => ({x: dispatch[0], y: dispatch[1], z: dispatch[2]}),
+        name: 'ConvTranspose2D',
+        shaderCache: {hint: attributes.cacheKey},
+        getRunData: () => ({
+          dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]},
+          outputs: [{
+            dims: squeezeOutputShapeFunction ? squeezeOutputShapeFunction(outputShape) : outputShape,
+            dataType: inputs[0].dataType
+          }]
+        }),
         getShaderSource: (shaderHelper: ShaderHelper) => createConvTranspose2DOpProgramShaderSource(
-            shaderHelper, inputs, attributes, outputShape, hasBias, dispatch[1] === 1 && dispatch[2] === 1),
+            shaderHelper, inputs, attributes, outputShape, hasBias, dispatch[1] === 1 && dispatch[2] === 1, false,
+            dataType),
       };
     };

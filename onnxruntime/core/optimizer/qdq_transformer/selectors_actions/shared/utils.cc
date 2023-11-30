@@ -27,16 +27,20 @@ void Selectors::RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops
 }
 
 /* static methods to return different operator's OpVersionMap */
+
+// These are operators that do not change the data and therefore the input DQ and
+// output Q have the same scale and zero_point.
 static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() {
   return {{"Gather", {}},
           {"Reshape", {}},
+          {"Expand", {}},
           {"Flatten", {}},
           {"Transpose", {}},
           {"MaxPool", {12}},
           {"Resize", {}},
-          {"Split", {}},
           {"Squeeze", {}},
-          {"Unsqueeze", {}}};
+          {"Unsqueeze", {}},
+          {"Tile", {}}};
 }
 
 static const OpVersionsAndSelector::OpVersionsMap GetDropDQOpVersionsMap() {
@@ -78,7 +82,9 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"Abs", {}},
           {"Neg", {}},
           {"DepthToSpace", {}},
-          {"SpaceToDepth", {}}};
+          {"SpaceToDepth", {}},
+          {"Clip", {}},
+          {"LpNormalization", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
   return {{"Add", {}},
@@ -93,6 +99,9 @@ static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() {
   return {{"Concat", {}},
           {"Max", {}},
           {"Min", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetSplitOpVersionsMap() {
+  return {{"Split", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetConvOpVersionsMap() {
   return {{"Conv", {}}};
@@ -122,6 +131,13 @@ static const OpVersionsAndSelector::OpVersionsMap GetLogicalComparisonOpVersions
 }
 static const OpVersionsAndSelector::OpVersionsMap GetWhereOpVersionsMap() {
   return {{"Where", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetPadOpVersionsMap() {
+  return {{"Pad", {}}};
+}
+
+static const OpVersionsAndSelector::OpVersionsMap GetTopKOpVersionsMap() {
+  return {{"TopK", {}}};
 }
 
 /* Selector rules registration related */
@@ -157,6 +173,13 @@ void RegisterVariadicSelectors(Selectors& qdq_selectors) {
   /* register selectors for variadic ops */
   std::unique_ptr<NodeGroupSelector> selector = std::make_unique<VariadicNodeGroupSelector>();
   qdq_selectors.RegisterSelector(GetVariadicOpVersionsMap(),
+                                 std::move(selector));
+}
+
+void RegisterSplitSelector(Selectors& qdq_selectors) {
+  /* register selectors for Split op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<SplitNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetSplitOpVersionsMap(),
                                  std::move(selector));
 }
 
@@ -217,12 +240,27 @@ void RegisterWhereSelectors(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterPadSelectors(Selectors& qdq_selectors) {
+  /* register selectors for Pad ops */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<PadNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetPadOpVersionsMap(),
+                                 std::move(selector));
+}
+
+void RegisterTopKSelector(Selectors& qdq_selectors) {
+  /* register selector for TopK op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<TopKNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetTopKOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void SelectorManager::CreateSelectors() {
   RegisterMiscSelectors(qdq_selectors_);
   RegisterDropDQSelectors(qdq_selectors_);
   RegisterUnarySelectors(qdq_selectors_);
   RegisterBinarySelectors(qdq_selectors_);
   RegisterVariadicSelectors(qdq_selectors_);
+  RegisterSplitSelector(qdq_selectors_);
   RegisterConvSelector(qdq_selectors_);
   RegisterConvTransposeSelector(qdq_selectors_);
   RegisterMatMulSelector(qdq_selectors_);
@@ -231,6 +269,8 @@ void SelectorManager::CreateSelectors() {
   RegisterBatchNormalizationSelector(qdq_selectors_);
   RegisterLogicalComparisonSelectors(qdq_selectors_);
   RegisterWhereSelectors(qdq_selectors_);
+  RegisterPadSelectors(qdq_selectors_);
+  RegisterTopKSelector(qdq_selectors_);
 }
 
 void SelectorManager::InitializeSelectorsMap() {

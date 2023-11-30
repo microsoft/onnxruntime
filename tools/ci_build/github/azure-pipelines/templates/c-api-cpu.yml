@@ -117,32 +117,32 @@ stages:
 
     - script: |
         set -e -x
-        python3 tools/ci_build/github/apple/build_ios_framework.py \
-          --build_dir "$(Build.BinariesDirectory)/ios_framework" \
+        python3 tools/ci_build/github/apple/build_apple_framework.py \
+          --build_dir "$(Build.BinariesDirectory)/apple_framework" \
           --path_to_protoc_exe $(Build.BinariesDirectory)/protobuf_install/bin/protoc \
-          tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
+          tools/ci_build/github/apple/default_full_apple_framework_build_settings.json
         mkdir $(Build.BinariesDirectory)/artifacts
-        mkdir -p $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
-        cp -R $(Build.BinariesDirectory)/ios_framework/framework_out/onnxruntime.xcframework \
-          $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
+        mkdir -p $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-apple-xcframework-$(OnnxRuntimeVersion)
+        cp -R $(Build.BinariesDirectory)/apple_framework/framework_out/onnxruntime.xcframework \
+          $(Build.BinariesDirectory)/artifacts_staging/onnxruntime-apple-xcframework-$(OnnxRuntimeVersion)
         pushd $(Build.BinariesDirectory)/artifacts_staging
         zip -vr $(Build.BinariesDirectory)/artifacts/onnxruntime_xcframework.zip \
-          onnxruntime-ios-xcframework-$(OnnxRuntimeVersion)
+          onnxruntime-apple-xcframework-$(OnnxRuntimeVersion)
         popd
-      displayName: "Build iOS xcframework"
+      displayName: "Build Apple xcframework"
 
     - script: |
-        python3 tools/ci_build/github/apple/test_ios_packages.py \
+        python3 tools/ci_build/github/apple/test_apple_packages.py \
           --fail_if_cocoapods_missing \
-          --framework_info_file "$(Build.BinariesDirectory)/ios_framework/framework_info.json" \
-          --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
+          --framework_info_file "$(Build.BinariesDirectory)/apple_framework/xcframework_info.json" \
+          --c_framework_dir "$(Build.BinariesDirectory)/apple_framework/framework_out" \
           --variant Full
-      displayName: "Test iOS framework"
+      displayName: "Test Apple framework"
 
     - task: PublishBuildArtifacts@1
       inputs:
         pathtoPublish: '$(Build.BinariesDirectory)/artifacts'
-        artifactName: 'onnxruntime-ios-full-xcframework'
+        artifactName: 'onnxruntime-apple-full-xcframework'
 
     - template: component-governance-component-detection-steps.yml
       parameters:
@@ -304,9 +304,7 @@ stages:
   - job:
     workspace:
       clean: all
-    # we need to use the 2022 pool to create the nuget package with both pre-net6+Xamarin and net6 targets.
-    # VS2019 has no support for net6 and we need to use msbuild (from the VS install) to do the packing
-    pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
+    pool: 'onnxruntime-Win-CPU-2022'
     variables:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
@@ -315,66 +313,86 @@ stages:
     steps:
     - checkout: self
       submodules: true
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download win-x64 Pipeline Artifact'
-      inputs:
-        artifactName: 'onnxruntime-win-x64'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download win-x86 Pipeline Artifact'
-      inputs:
-        artifactName: 'onnxruntime-win-x86'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - Win x64'
+        ArtifactName: 'onnxruntime-win-x64'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download win-arm64 Pipeline Artifact'
-      inputs:
-        artifactName: 'onnxruntime-win-arm64'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download win-x86 Pipeline Artifact'
+        ArtifactName: 'onnxruntime-win-x86'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download win-arm Pipeline Artifact'
-      inputs:
-        artifactName: 'onnxruntime-win-arm'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download win-arm64 Pipeline Artifact'
+        ArtifactName: 'onnxruntime-win-arm64'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download osx-x64 Pipeline Artifact'
-      inputs:
-        artifactName: 'onnxruntime-osx'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download win-arm Pipeline Artifact'
+        ArtifactName: 'onnxruntime-win-arm'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download linux-x64 Pipeline Artifact'
-      inputs:
-        artifactName: 'onnxruntime-linux-x64'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download osx-x64 Pipeline Artifact'
+        ArtifactName: 'onnxruntime-osx'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - NuGet'
-      inputs:
-        artifactName: 'onnxruntime-linux-aarch64'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download linux-x64 Pipeline Artifact'
+        ArtifactName: 'onnxruntime-linux-x64'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download iOS Pipeline Artifact'
-      inputs:
-        artifactName: 'onnxruntime-ios-full-xcframework'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download linux-aarch64 Pipeline Artifact'
+        ArtifactName: 'onnxruntime-linux-aarch64'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download android-full-aar Pipeline Artifact'
-      inputs:
-        artifactName: 'onnxruntime-android-full-aar'
-        patterns: '**/*.aar'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download iOS Pipeline Artifact'
+        ArtifactName: 'onnxruntime-ios-full-xcframework'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download drop-extra Pipeline Artifact'
-      inputs:
-        artifactName: 'drop-extra'
-        targetPath: '$(Build.BinariesDirectory)/extra-artifact'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Android-full-aar Pipeline Artifact'
+        ArtifactName: 'onnxruntime-android-full-aar'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download drop-extra Pipeline Artifact'
+        ArtifactName: 'drop-extra'
+        TargetPath: '$(Build.BinariesDirectory)/extra-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
     - script: |
        dir
@@ -398,44 +416,29 @@ stages:
         versionSpec: 6.2.1
 
     - task: PowerShell@2
-      displayName: Install .NET 6 workloads
+      displayName: Install mobile workloads
       inputs:
         targetType: 'inline'
         script: |
-          dotnet workload install android ios macos
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-    - task: PowerShell@2
-      displayName: Build Microsoft.ML.OnnxRuntime .NET 6 targets using dotnet
-      inputs:
-        targetType: 'inline'
-        # we don't specify 'Any CPU' as the platform here because if we do it gets added to the output path
-        #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\Any CPU\RelWithDebInfo\net6.0-ios\
-        # which is inconsistent with the msbuild output path for the pre-.net6 targets
-        #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\monoandroid11.0
-        # and makes it harder to do the packing
-        #
-        # 'Any CPU' is the default (first 'mixed' platform specified in the csproj) so this should be fine.
-        script: |
-          dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:SelectedTargets=Net6  -p:Configuration=RelWithDebInfo -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
+          dotnet workload install android ios
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
-      displayName: 'Restore NuGet Packages and create project.assets.json for pre-.net6 targets'
+      displayName: 'Restore NuGet Packages and create project.assets.json'
       inputs:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
         platform: 'Any CPU'
         configuration: RelWithDebInfo
-        msbuildArguments: '-t:restore -p:SelectedTargets=PreNet6 -p:OrtPackageId=$(OrtPackageId)'
+        msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
-      displayName: 'Build C# for pre-.net6 targets'
+      displayName: 'Build C# bindings'
       inputs:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
         platform: 'Any CPU'
         configuration: RelWithDebInfo
-        msbuildArguments: '-p:SelectedTargets=PreNet6 -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
+        msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - ${{ if eq(parameters.DoEsrp, true) }}:
@@ -444,15 +447,6 @@ stages:
           FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
           DisplayName: 'ESRP - Sign C# dlls'
           DoEsrp: ${{ parameters.DoEsrp }}
-
-    - task: MSBuild@1
-      displayName: Update projects.assets.json with combined list of all target frameworks
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj'
-        platform: 'Any CPU'
-        configuration: RelWithDebInfo
-        msbuildArguments: '-t:restore -p:SelectedTargets=All -p:OrtPackageId=$(OrtPackageId)'
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
       displayName: 'Build Nuget Packages'
@@ -804,7 +798,7 @@ stages:
 
 - template: ../nodejs/templates/test_linux.yml
   parameters:
-    AgentPool : 'onnxruntime-Ubuntu2004-AMD-CPU'
+    AgentPool : 'Azure-Pipelines-EO-Ubuntu-2004-aiinfra'
     StageSuffix : 'Linux_CPU_x64'
 
 - template: ../nodejs/templates/test_macos.yml

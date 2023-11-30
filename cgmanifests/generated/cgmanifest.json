@@ -3,82 +3,6 @@
   "Version": 1,
   "Registrations": [
     {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "autoconf",
-          "Version": "2.71",
-          "DownloadUrl": "http://ftp.gnu.org/gnu/autoconf/autoconf-2.71.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "automake",
-          "Version": "1.16.5",
-          "DownloadUrl": "http://ftp.gnu.org/gnu/automake/automake-1.16.5.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "libtool",
-          "Version": "2.4.7",
-          "DownloadUrl": "http://ftp.gnu.org/gnu/libtool/libtool-2.4.7.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "git",
-          "Version": "2.36.2",
-          "DownloadUrl": "https://www.kernel.org/pub/software/scm/git/git-2.36.2.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "sqlite_autoconf",
-          "Version": "3390200",
-          "DownloadUrl": "https://www.sqlite.org/2022/sqlite-autoconf-3390200.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "openssl",
-          "Version": "1.1.1q",
-          "DownloadUrl": "https://www.openssl.org/source/openssl-1.1.1q.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "50cf2b6dd4fdf04309445f2eec8de7051d953abf",
-          "repositoryUrl": "https://github.com/besser82/libxcrypt.git"
-        },
-        "comments": "manylinux dependency LIBXCRYPT"
-      }
-    },
-    {
       "component": {
         "type": "git",
         "git": {
@@ -102,7 +26,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "e2525550194ce3d8a2c4a3af451c9d9b3ae6650e",
+          "commitHash": "b86cc54efce19530fb953e4b21f57e6b3888534c",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -212,7 +136,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "003c580e696a774afdc984996ee909b7c8d8128c",
+          "commitHash": "0da379fc4808f9601faef392352018c741c0f297",
           "repositoryUrl": "https://github.com/google/XNNPACK.git"
         },
         "comments": "googlexnnpack"
@@ -272,7 +196,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "0462dc31ae78f48744b6141ae376df1f96d3f459",
+          "commitHash": "a43ce67187bab219520fd80f21af8bbd4354bc8c",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "onnx_tensorrt"
@@ -302,7 +226,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "1787867f6183f056420e532eec640cba25efafea",
+          "commitHash": "4fe0e1e183925bf8cfa6aae24237e724a96479b8",
           "repositoryUrl": "https://github.com/Maratyszcza/pthreadpool.git"
         },
         "comments": "pthreadpool"
@@ -362,7 +286,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "c4f6b8c6bc94ff69048492fb34df0dfaf1983933",
+          "commitHash": "6f47420213f757831fae65c686aa471749fa8d60",
           "repositoryUrl": "https://github.com/NVIDIA/cutlass.git"
         },
         "comments": "cutlass"
@@ -392,7 +316,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "d52ec01652b7d620386251db92455968d8d90bdc",
+          "commitHash": "a4f72a314a85732ed67d5aa8d1088d207a7e0e61",
           "repositoryUrl": "https://github.com/ROCmSoftwarePlatform/composable_kernel.git"
         },
         "comments": "composable_kernel"

@@ -279,6 +279,9 @@ def check_model_correctness(
     ops_set = set(node.op_type for node in model_onnx.graph.node)
     check_reference_evaluator = not (ops_set & {"EmbedLayerNormalization", "Conv", "Attention", "Transpose"})
 
+    with open(model_path_to_check, "rb") as f:
+        model_check = onnx.load(f)
+
     if check_reference_evaluator and onnx_recent_enough:
         ref = ReferenceEvaluator(model_path_origin)
         ref_origin_results = ref.run(None, inputs)
@@ -289,7 +292,7 @@ def check_model_correctness(
                 output,
                 rtol=rtol,
                 atol=atol,
-                err_msg=f"Model {model_path_to_check!r} failed for providers={providers!r}.",
+                err_msg=f"Model {model_path_origin!r} failed for providers={providers!r}.",
             )
 
     # Verifies the shapes in the quantized model.
@@ -301,40 +304,52 @@ def check_model_correctness(
                 expected_shapes[init.name] = tuple(init.dims)
         checked = 0
         f8_quantization = False
-        with open(model_path_to_check, "rb") as f:
-            model_check = onnx.load(f)
-            for init in model_check.graph.initializer:
-                if init.name.endswith("_quantized"):
-                    name = init.name.replace("_quantized", "")
-                    expected = expected_shapes[name]
-                    shape = tuple(init.dims)
-                    if not dynamic and expected != shape:
-                        raise AssertionError(
-                            f"Shape mismatch for initializer {init.name!r} from {init.name!r}, "
-                            f"shape={shape} != {expected} (expected)."
-                        )
-                    else:
-                        checked += 1
-                if "zero_point" in init.name:
-                    dt = init.data_type
-                    f8_quantization = f8_quantization or dt in (
-                        TensorProto.FLOAT8E4M3FN,
-                        TensorProto.FLOAT8E4M3FNUZ,
-                        TensorProto.FLOAT8E5M2,
-                        TensorProto.FLOAT8E5M2FNUZ,
+        for init in model_check.graph.initializer:
+            if init.name.endswith("_quantized"):
+                name = init.name.replace("_quantized", "")
+                expected = expected_shapes[name]
+                shape = tuple(init.dims)
+                if not dynamic and expected != shape:
+                    raise AssertionError(
+                        f"Shape mismatch for initializer {init.name!r} from {init.name!r}, "
+                        f"shape={shape} != {expected} (expected)."
                     )
-            if checked == 0:
-                raise AssertionError(
-                    f"Unable to check expected shape, expected_shapes={expected_shapes}, "
-                    f"names={[init.name for init in model_check.graph.initializer]}."
+                else:
+                    checked += 1
+            if "zero_point" in init.name:
+                dt = init.data_type
+                f8_quantization = f8_quantization or dt in (
+                    TensorProto.FLOAT8E4M3FN,
+                    TensorProto.FLOAT8E4M3FNUZ,
+                    TensorProto.FLOAT8E5M2,
+                    TensorProto.FLOAT8E5M2FNUZ,
                 )
+        if checked == 0:
+            raise AssertionError(
+                f"Unable to check expected shape, expected_shapes={expected_shapes}, "
+                f"names={[init.name for init in model_check.graph.initializer]}."
+            )
         if f8_quantization:
             check_sign_f8_quantization(model_path_origin, model_path_to_check)
 
     # Verifies the expected outputs.
     if check_reference_evaluator and onnx_recent_enough:
+        reference_new_ops = [QGemm]
+        has_missing_reference_ops = any(
+            node.domain not in ["", "ai.onnx"]
+            and not any(
+                node.domain == new_node.op_domain and node.op_type == new_node.__name__
+                for new_node in reference_new_ops
+            )
+            for node in model_check.graph.node
+        )
+        if has_missing_reference_ops:
+            # We need to skip the test if the model contains ops that are not supported.
+            testcase.skipTest(
+                f"Model {model_path_to_check!r} contains ops that are not supported by the reference evaluator."
+            )
         # Needs pv.Version(onnx.__version__) >= pv.Version("1.16.0")
-        ref = ReferenceEvaluator(model_path_to_check, new_ops=[QGemm])
+        ref = ReferenceEvaluator(model_check, new_ops=reference_new_ops)
         target_results = ref.run(None, inputs)
         testcase.assertEqual(len(origin_results), len(target_results), "result count are different")
         for idx, ref_output in enumerate(origin_results):
@@ -378,6 +393,9 @@ def check_qtype_by_node_type(testcase, model_to_check, check_list):
         model = onnx.load(model_to_check)
     elif isinstance(model_to_check, onnx.ModelProto):
         model = model_to_check
+    # NOTE: ONNX shape inference does not work on MS domain nodes.
+    # Therefore, this function cannot currently be used for graphs that contain ops such as
+    # com.microsoft.QuantizeLinear, which support 16-bit quantization.
     model = onnx.shape_inference.infer_shapes(model)
     value_infos = {vi.name: vi for vi in model.graph.value_info}
     value_infos.update({ot.name: ot for ot in model.graph.output})

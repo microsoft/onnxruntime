@@ -144,7 +144,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 
   BeamSearchCpuState cpu_state{*parameters,
                                this->cpu_allocator_,
-                               this->IsCuda()};
+                               this->IsCuda(),
+                               this->ort_stream_};
 
   IAllocatorUniquePtr<char> buffer;
 
@@ -197,7 +198,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   BeamSearchState<T> beam_state{*parameters,
                                 this->temp_space_allocator_,
                                 decoder_subgraph_.has_decoder_masked_attention_,
-                                false /* use_position */};
+                                false /* use_position */,
+                                this->ort_stream_};
 
   init_beam_state_func_(&beam_state,
                         cpu_state.sequence_lengths,

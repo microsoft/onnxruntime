@@ -31,7 +31,7 @@ RUN yum install -y hipify-clang
 RUN yum -y install wget
 
 # rocm lib
-RUN yum install -y miopen-hip-devel rocblas-devel rocrand-devel rccl-devel hipsparse-devel hipfft-devel hipcub-devel hipblas-devel rocthrust-devel
+RUN yum install -y miopen-hip-devel rocblas-devel rocrand-devel rccl-devel hipsparse-devel hipfft-devel hipcub-devel hipblas-devel rocthrust-devel migraphx-devel
 
 ENV AUDITWHEEL_POLICY=${POLICY} AUDITWHEEL_ARCH=${PLATFORM} AUDITWHEEL_PLAT=${POLICY}_${PLATFORM}
 ENV LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 LANGUAGE=en_US.UTF-8
@@ -184,6 +184,13 @@ RUN cd /tmp/scripts && \
     /tmp/scripts/install_python_deps.sh -d gpu -p 3.10 $INSTALL_DEPS_EXTRA_ARGS && \
      rm -rf /tmp/scripts
 
+
+# Install ccache to reuse this dockerfile for CI
+RUN mkdir -p /tmp/ccache && \
+    cd /tmp/ccache && \
+    wget -q -O - https://github.com/ccache/ccache/releases/download/v4.7.4/ccache-4.7.4-linux-x86_64.tar.xz | tar --strip 1 -J -xf - && \
+    cp /tmp/ccache/ccache /usr/bin && \
+    rm -rf /tmp/ccache
 
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev

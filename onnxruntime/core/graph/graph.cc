@@ -860,18 +860,18 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_e
 }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-void Node::Init(const std::string& name,
-                const std::string& op_type,
-                const std::string& description,
-                const std::vector<NodeArg*>& input_args,
-                const std::vector<NodeArg*>& output_args,
+void Node::Init(std::string_view name,
+                std::string_view op_type,
+                std::string_view description,
+                gsl::span<NodeArg* const> input_args,
+                gsl::span<NodeArg* const> output_args,
                 const NodeAttributes* attributes,
-                const std::string& domain) {
+                std::string_view domain) {
   name_ = name;
   op_type_ = op_type;
   description_ = description;
-  definitions_.input_defs = input_args;
-  definitions_.output_defs = output_args;
+  definitions_.input_defs.assign(input_args.begin(), input_args.end());
+  definitions_.output_defs.assign(output_args.begin(), output_args.end());
   domain_ = domain;
   can_be_saved_ = true;
   priority_ = 0;
@@ -984,6 +984,7 @@ bool Node::ClearAttribute(const std::string& attr_name) {
   graph_->SetGraphProtoSyncNeeded();
   return attributes_.erase(attr_name) > 0;
 }
+
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 int Node::PruneRemovableAttributes(gsl::span<const std::string> removable_attributes) {
@@ -1145,7 +1146,8 @@ Graph::Graph(const Model& owning_model,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
              const logging::Logger& logger,
              bool strict_shape_type_inference)
-    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, logger, strict_shape_type_inference) {}
+    : Graph(owning_model, graph_proto, domain_to_version, ir_version,
+            schema_registry, nullptr, nullptr, logger, strict_shape_type_inference) {}
 
 Graph::Graph(const Model& owning_model,
              GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
@@ -3261,8 +3263,8 @@ Node& Graph::AddNode(const std::string& name,
                      gsl::span<NodeArg* const> output_args,
                      const NodeAttributes* attributes,
                      const std::string& domain) {
-  std::vector<NodeArg*> inputs;
-  std::vector<NodeArg*> outputs;
+  InlinedVector<NodeArg*> inputs;
+  InlinedVector<NodeArg*> outputs;
   inputs.resize(input_args.size());
   outputs.resize(output_args.size());
   int i = 0;
@@ -3907,7 +3909,8 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
   // kernel lookup works as per usual, if not using an existing schema.
   if (sub_graph.schema_source == IndexedSubGraph::SourceOfSchema::EXISTING) {
     ORT_ENFORCE(SetOpSchemaFromRegistryForNode(fused_node),
-                "Schema was not found for fused node. Domain:", fused_node.Domain(), " OpType:", fused_node.OpType());
+                "Schema was not found for fused node. Domain:", fused_node.Domain(), " OpType:", fused_node.OpType(),
+                " SinceVersion:", fused_node.SinceVersion());
   } else if (IndexedSubGraph::SourceOfSchema::REUSE_OR_CREATE == sub_graph.schema_source) {
     auto schema_key = GenerateSchemaKey(sub_graph);
     if (reusable_fused_schema_map_.count(schema_key) == 0) {
@@ -4019,69 +4022,424 @@ Node& Graph::FuseSubGraph(const IndexedSubGraph& sub_graph,
   return fused_node;
 }
 
+Status Graph::AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& node_proto,
+                                            std::optional<std::string_view> new_name) {
+  const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
+  ORT_RETURN_IF_ERROR(utils::ConstantNodeProtoToTensorProto(node_proto, ModelPath(), *tensor, node_proto.output(0)));
+
+  if (new_name.has_value()) {
+    tensor->set_name(std::string(new_name.value()));
+  }
+
+  auto insert_result = name_to_initial_tensor_.emplace(tensor->name(), tensor);
+  ORT_ENFORCE(insert_result.second, "Constant node name: ", tensor->name(),
+              " conflicts with graph initializer. Check that the node names have been made unique.");
+  if (GetNodeArg(tensor->name()) == nullptr) {
+    TypeProto t{TypeProtoFromTensorProto(*tensor)};
+    ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor->name(), &t));
+  }
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+  if (node_proto.attribute(0).type() == AttributeProto_AttributeType_SPARSE_TENSOR) {
+    ORT_IGNORE_RETURN_VALUE(sparse_tensor_names_.emplace(tensor->name()));
+  }
+#endif
+
+  return Status::OK();
+}
+
+static void ReassignSubgraphDependentNodeArgs(const InlinedHashMap<std::string, NodeArg*>& name_to_nodearg,
+                                              Graph& graph) {
+  for (auto& node : graph.Nodes()) {
+    if (node.ContainsSubgraph()) {
+      for (auto& [name, subgraph] : node.GetAttributeNameToMutableSubgraphMap()) {
+        ReassignSubgraphDependentNodeArgs(name_to_nodearg, *subgraph);
+      }
+    }
+
+    // NodeArgs need to be updated
+    for (auto& input_def : node.MutableInputDefs()) {
+      if (input_def->Exists()) {
+        auto hit = name_to_nodearg.find(input_def->Name());
+        if (hit != name_to_nodearg.cend()) {
+          // Make sure we create a local to this subgraph definition
+          const auto* new_name_arg = hit->second;
+          input_def = &graph.GetOrCreateNodeArg(new_name_arg->Name(), input_def->TypeAsProto());
+        }
+      }
+    }
+  }
+}
+
+Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const logging::Logger& logger) {
+  static const std::string then_branch{"then_branch"};
+  static const std::string else_branch{"else_branch"};
+  Graph* sub_graph;
+  if (condition_value) {
+    sub_graph = if_node.GetMutableGraphAttribute(then_branch);
+  } else {
+    sub_graph = if_node.GetMutableGraphAttribute(else_branch);
+  }
+
+  if (sub_graph == nullptr) {
+    auto str = MakeString("Unable to constant fold If node: '", if_node.Name(), "' Unable to fetch: ",
+                          (condition_value ? then_branch : else_branch));
+    LOGS(logger, WARNING) << str;
+    return Status::OK();
+  }
+
+  Graph& graph_to_inline = *sub_graph;
+
+  std::string unique_id{"_if_"};
+  if (condition_value) {
+    unique_id.append(then_branch);
+  } else {
+    unique_id.append(else_branch);
+  }
+
+  unique_id = GenerateNodeName(unique_id);
+
+  auto make_unique = [&unique_id](const std::string& name) {
+    return unique_id + '_' + name;
+  };
+
+  // Check if the name is an input or implicit input.
+  // These are not renamed, and we do not need to adjust subgraphs for them.
+  // Implicit inputs would cover both If node input and implicit inputs.
+  // Reason: there are no explicit inputs to the subgraphs, and the subgraph's
+  // implicit inputs must be covered by the implicit inputs of the If node.
+  InlinedHashMap<std::string_view, NodeArg*> outer_scope_values;
+  const auto& if_implicit_inputs = if_node.MutableImplicitInputDefs();
+  outer_scope_values.reserve(if_implicit_inputs.size());
+
+  for (auto* input : if_implicit_inputs) {
+    const auto& name = input->Name();
+    ORT_IGNORE_RETURN_VALUE(outer_scope_values.emplace(name, input));
+  }
+
+  // Name mapping from the graph to inline to the graph we are inlining into
+  // we also use this to process any subgraphs in the graph we are inlining
+  InlinedHashMap<std::string, NodeArg*> name_to_nodearg;
+
+  // We are going to map the outputs of the graph to inline to the outputs of the If node.
+  // They are assumed to be in the same order.
+  const auto& node_output_defs = if_node.MutableOutputDefs();
+  const auto& graph_output_defs = graph_to_inline.GetOutputs();
+  for (size_t i = 0; i < graph_output_defs.size(); ++i) {
+    name_to_nodearg.emplace(graph_output_defs[i]->Name(), node_output_defs[i]);
+  }
+
+  // Move initializers from the subgraph to the destination graph.
+  for (int i = 0, limit = graph_to_inline.graph_proto_->initializer_size(); i < limit; ++i) {
+    auto* initializer = graph_to_inline.graph_proto_->mutable_initializer(i);
+    const std::string src_name = initializer->name();
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+    bool has_sparse_origin = false;
+    if (!graph_to_inline.sparse_tensor_names_.empty()) {
+      auto hit = graph_to_inline.sparse_tensor_names_.find(src_name);
+      if (hit != graph_to_inline.sparse_tensor_names_.cend()) {
+        has_sparse_origin = true;
+        // Erase the entry that will be invalidated
+        graph_to_inline.sparse_tensor_names_.erase(hit);
+      }
+    }
+#endif
+
+    graph_to_inline.name_to_initial_tensor_.erase(src_name);
+    const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
+    *tensor = std::move(*initializer);
+
+    // Check if this is an output of the graph
+    auto hit = name_to_nodearg.find(src_name);
+    if (hit != name_to_nodearg.cend()) {
+      // We rename it to If node output.
+      tensor->set_name(hit->second->Name());
+    } else {
+      NodeArg* node_arg = graph_to_inline.GetNodeArg(src_name);
+      assert(node_arg != nullptr);
+      auto new_name = GenerateNodeArgName(make_unique(src_name));
+      NodeArg& new_arg = GetOrCreateNodeArg(new_name, node_arg->TypeAsProto());
+      ORT_IGNORE_RETURN_VALUE(name_to_nodearg.emplace(src_name, &new_arg));
+      tensor->set_name(std::move(new_name));
+    }
+
+    auto insert_result = name_to_initial_tensor_.emplace(tensor->name(), tensor);
+    ORT_ENFORCE(insert_result.second, "Initializer name: ", tensor->name(), " from graph: ",
+                graph_to_inline.Name(), " conflicts with graph initializer. Check name generation above.");
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+    if (has_sparse_origin) {
+      ORT_IGNORE_RETURN_VALUE(sparse_tensor_names_.emplace(tensor->name()));
+    }
+#endif
+  }
+
+  // Look up nodes that would be providing input to our nodes (implicit and explicit)
+  // and any nodes that take the output of our nodes (used to be If output)
+  // Map of NodeArg name to pair of Node* and input index in the destination node
+  using NodeAndIndex = std::pair<gsl::not_null<Node*>, int>;
+  using ArgNameToNodeMap = InlinedHashMap<std::string_view, NodeAndIndex>;
+  ArgNameToNodeMap input_args;
+  // Map of NodeArg name to pair of Node* and output index in the source node.
+  ArgNameToNodeMap output_args;
+
+  auto map_defs = [](Node& node, ArgNameToNodeMap& map, bool input) {
+    const auto defs = (input) ? node.InputDefs() : node.OutputDefs();
+    map.reserve(map.size() + defs.size());
+    int arg_pos = -1;
+    for (auto* node_arg : defs) {
+      ++arg_pos;
+      if (node_arg->Exists()) {
+        map.emplace(node_arg->Name(), std::make_pair(&node, arg_pos));
+      }
+    }
+  };
+
+  const bool is_this_main_graph = (parent_graph_ == nullptr);
+  // Map the inputs and outputs of the If node to the nodes in the graph to inline.
+  if (!is_this_main_graph) {
+    for (auto& node : Nodes()) {
+      if (node.Index() == if_node.Index()) {
+        continue;
+      }
+      map_defs(node, input_args, true);
+      map_defs(node, output_args, false);
+    }
+  }
+
+  auto* non_existing_arg = &GetOrCreateNodeArg(std::string(), nullptr);
+  // We want to make sure we get nodes in topological order
+  // because Constant folding may cause the nodes appear in
+  // a different order.
+  InlinedVector<Node*> new_nodes;
+  GraphViewer graph(graph_to_inline);
+  for (const auto node_idx : graph.GetNodesInTopologicalOrder()) {
+    // GraphViewer filters out nullptrs
+    auto* node = graph_to_inline.GetNode(node_idx);
+    assert(node->OpType() != kConstant);
+
+    // Inputs
+    // Chop off trailing non-existing defs, but preserve non-existing in the middle
+    auto& input_defs = node->MutableInputDefs();
+    auto last_existing = std::find_if(input_defs.rbegin(), input_defs.rend(),
+                                      [](const NodeArg* node_arg) { return node_arg->Exists(); });
+    input_defs.resize(std::distance(input_defs.begin(), last_existing.base()));
+
+    InlinedVector<NodeArg*> new_input_defs;
+    for (auto* input_def : node->InputDefs()) {
+      if (input_def->Exists()) {
+        // Check if this is one of the implicit graph inputs
+        // then re-assign the def to the outer scope value.
+        const auto& input_name = input_def->Name();
+        auto outer_hit = outer_scope_values.find(input_name);
+        if (outer_hit != outer_scope_values.cend()) {
+          // get/create local definition
+          NodeArg* outer_arg = outer_hit->second;
+          auto& this_scope_arg = GetOrCreateNodeArg(outer_arg->Name(), input_def->TypeAsProto());
+          new_input_defs.push_back(&this_scope_arg);
+        } else {
+          auto hit = name_to_nodearg.find(input_name);
+          if (hit != name_to_nodearg.cend()) {
+            // This is other node output in the dest graph,
+            // constant node or initializer that was renamed.
+            new_input_defs.push_back(hit->second);
+          } else {
+            ORT_THROW("Node's: ", node->Name(), " input: ", input_name,
+                      " is not If node's input or previous node output in this subgraph");
+          }
+        }
+      } else {
+        new_input_defs.push_back(non_existing_arg);
+      }
+    }
+
+    // Outputs
+    // Chop off trailing non-existing defs
+    auto& output_defs = node->MutableOutputDefs();
+    last_existing = std::find_if(output_defs.rbegin(), output_defs.rend(),
+                                 [](const NodeArg* node_arg) { return node_arg->Exists(); });
+    output_defs.resize(std::distance(output_defs.begin(), last_existing.base()));
+
+    InlinedVector<NodeArg*> new_output_defs;
+    for (auto* output_def : node->OutputDefs()) {
+      if (output_def->Exists()) {
+        const auto& output_name = output_def->Name();
+        auto hit = name_to_nodearg.find(output_name);
+        if (hit != name_to_nodearg.cend()) {
+          // This is one of the If node outputs, simply reassign the def.
+          // If node defs are already in the destination graph
+          new_output_defs.push_back(hit->second);
+        } else {
+          // We generate an output to downstream nodes.
+          auto new_name = GenerateNodeArgName(make_unique(output_name));
+          NodeArg& new_arg = GetOrCreateNodeArg(new_name, output_def->TypeAsProto());
+          new_output_defs.push_back(&new_arg);
+          ORT_IGNORE_RETURN_VALUE(name_to_nodearg.emplace(output_name, &new_arg));
+        }
+      } else {
+        new_output_defs.push_back(non_existing_arg);
+      }
+    }
+
+    const auto new_node_name = GenerateNodeName(make_unique(node->OpType()));
+    Node& new_node = AddNode(new_node_name, node->OpType(), node->Description(),
+                             new_input_defs,
+                             new_output_defs,
+                             nullptr,
+                             node->Domain());
+
+    new_node.SetSinceVersion(node->SinceVersion());
+    new_node.op_ = node->op_;
+
+    if (!is_this_main_graph) {
+      map_defs(new_node, input_args, true);
+      map_defs(new_node, output_args, false);
+      new_nodes.push_back(&new_node);
+    }
+
+    if (node->ContainsSubgraph()) {
+      auto& subgraphs = node->MutableSubgraphs();
+
+      // Check if any of this node implicit inputs of this graph is in the renaming map
+      // that would mean they come from the destination graph, not from the parent
+      // of the destination graph.
+      int renames_subgraph_names = 0;
+      auto& implicit_defs = node->MutableImplicitInputDefs();
+      for (auto& input_def : implicit_defs) {
+        auto hit = name_to_nodearg.find(input_def->Name());
+        if (hit != name_to_nodearg.cend()) {
+          input_def = hit->second;
+          ++renames_subgraph_names;
+        }
+      }
+
+      for (auto& subgraph : subgraphs) {
+        if (renames_subgraph_names > 0) {
+          // We need to rename the subgraph node names
+          // because they may refer to the implicit inputs
+          // that were renamed.
+          ReassignSubgraphDependentNodeArgs(name_to_nodearg, *subgraph);
+        }
+        subgraph->parent_node_ = &new_node;
+        subgraph->parent_graph_ = this;
+      }
+
+      new_node.MutableSubgraphs() = std::move(subgraphs);
+      new_node.GetMutableMapOfAttributeNameToSubgraph() = std::move(node->GetMutableMapOfAttributeNameToSubgraph());
+      new_node.MutableImplicitInputDefs() = std::move(implicit_defs);
+    }
+
+    new_node.GetMutableAttributes() = std::move(node->GetMutableAttributes());
+  }
+
+  // Let's rebuild local connections, so next time a GraphViewer is able to perform topological sort.
+  // We only need to do so if this graph is not the main graph, because the main graph is going to resolve
+  // and it is not possible to inline the same nodes again.
+  if (!is_this_main_graph) {
+    for (auto* node : new_nodes) {
+      int arg_pos = -1;
+      for (auto* input_def : node->InputDefs()) {
+        ++arg_pos;
+        auto hit = output_args.find(input_def->Name());
+        if (hit != output_args.cend()) {
+          // The input to this node is an output from a previous node in this graph.
+          // Create relationship between this node (node), and the node providing the output (output_node).
+          const auto& [producer, src_idx] = hit->second;
+          AddEdge(producer->Index(), node->Index(), src_idx, arg_pos);
+        }
+      }
+
+      // Check if any of the outputs for inlined nodes are inputs to other nodes in the graph.
+      // (outputs of If node)
+      arg_pos = -1;
+      for (auto& output_def : node->OutputDefs()) {
+        ++arg_pos;
+        auto hit = input_args.find(output_def->Name());
+        if (hit != input_args.cend()) {
+          // The output of this node is an input to another node in this graph.
+          // Create relationship between this node (node), and the node using the input (input_node).
+          const auto& [consumer, dst_idx] = hit->second;
+          AddEdge(node->Index(), consumer->Index(), arg_pos, dst_idx);
+        }
+      }
+    }
+  }
+
+  LOGS(logger, INFO) << "Constant folded (inlined) " << (condition_value ? then_branch : else_branch)
+                     << " for If node: " << if_node.Name();
+
+  return Status::OK();
+}
+
+Status Graph::InlineFunctionProto(const ONNX_NAMESPACE::FunctionProto& func_to_inline) {
+  auto to_node_arg = [this](const std::string& name) {
+    return &this->GetOrCreateNodeArg(name, nullptr);
+  };
+
+  // Process constant nodes first and create NodeArg for these as they become initializers
+  // It is important for the initializers to have NodeArg created, first they are needed
+  // if the initializer is unused and removed, second if the node depends on the initializer,
+  // we can have Type attached to it.
+  InlinedVector<const NodeProto*> non_constant_nodes;
+  non_constant_nodes.reserve(func_to_inline.node_size());
+  for (const auto& inlined_node : func_to_inline.node()) {
+    if (inlined_node.op_type() == kConstant) {
+      // Copy constant nodes _value to name_to_initial_tensor_
+      ORT_RETURN_IF_ERROR(AddConstantProtoAsInitializer(inlined_node, std::nullopt));
+    } else {
+      non_constant_nodes.push_back(&inlined_node);
+    }
+  }
+
+  for (const auto* inlined_node : non_constant_nodes) {
+    InlinedVector<onnxruntime::NodeArg*> inputs;
+    InlinedVector<onnxruntime::NodeArg*> outputs;
+
+    for (const auto& tensor_name : inlined_node->input())
+      inputs.push_back(to_node_arg(tensor_name));
+
+    for (const auto& tensor_name : inlined_node->output())
+      outputs.push_back(to_node_arg(tensor_name));
+
+    onnxruntime::NodeAttributes new_attr_map;
+    new_attr_map.reserve(inlined_node->attribute_size());
+    for (const auto& node_attr : inlined_node->attribute()) {
+      new_attr_map.insert_or_assign(node_attr.name(), node_attr);
+    }
+    ORT_IGNORE_RETURN_VALUE(AddNode(inlined_node->name(), inlined_node->op_type(),
+                                    inlined_node->doc_string(), inputs, outputs,
+                                    &new_attr_map, inlined_node->domain()));
+  }
+
+  return Status::OK();
+}
+
 Status Graph::InlineFunction(Node& callnode) {
-  const auto& model_path = ModelPath();
-  auto output_edges = callnode.GetRelationships().output_edges;
+  // Remove output edges. Requirement for RemoveNode() below.
+  auto output_edges = callnode.GetRelationships().output_edges;  // copy so RemoveEdge doesn't invalidate iterator
   for (const auto& output_edge : output_edges) {
     RemoveEdge(callnode.Index(), output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
   }
 
   // create a uniq_identifier to append to every node name and intermediate input\outputs
   // to make sure there are no unintended duplicates
-  std::stringstream ss;
-  ss << "_inline_" << callnode.OpType();
-  auto uniq_identifier = GenerateNodeName(ss.str());
+  std::string base_uniq_identifier{"_inlfunc_"};
+  base_uniq_identifier.append(callnode.OpType());
+  const auto uniq_identifier = GenerateNodeName(base_uniq_identifier);
+
   // Replace a (function-call) node by an inlined graph.
   if (!callnode.GetFunctionBody()) {
     // This is the normal use-case: inlining a FunctionProto (representing
     // a model-local function or a schema-defined function).
-    FunctionProto inlined_fp;
+    ONNX_NAMESPACE::FunctionProto inlined_fp;
     ORT_ENFORCE(callnode.TryGetFunctionProto(inlined_fp), "Node has no function body and cannot be inlined.");
+
+    // Make all the names unique and resolve nested graphs inputs to the outer scope.
     function_utils::Specialize(inlined_fp, callnode, uniq_identifier);
 
-    auto to_node_arg = [this](const std::string& name) {
-      return &this->GetOrCreateNodeArg(name, nullptr);
-    };
-
-    // Process constant nodes first and create NodeArg for these as they become initializers
-    // It is important for the initializers to have NodeArg created, first they are needed
-    // if the initializer is unused and removed, second if the node depends on the initializer,
-    // we can have Type attached to it.
-    for (const auto& inlined_node : inlined_fp.node()) {
-      if (inlined_node.op_type() == kConstant) {
-        // Copy constant nodes _value to name_to_initial_tensor_
-        const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
-        ORT_RETURN_IF_ERROR(utils::ConstantNodeProtoToTensorProto(inlined_node, model_path, *tensor, inlined_node.output(0)));
-        auto insert_result = name_to_initial_tensor_.emplace(tensor->name(), tensor);
-        ORT_ENFORCE(insert_result.second, "Constant node name: ", tensor->name(), " in inlined function: ",
-                    inlined_fp.name(), " conflicts with graph initializer. Check Specializing code.");
-        TypeProto t{TypeProtoFromTensorProto(*tensor)};
-        ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor->name(), &t));
-      }
-    }
-
-    for (const auto& inlined_node : inlined_fp.node()) {
-      if (inlined_node.op_type() != kConstant) {
-        InlinedVector<onnxruntime::NodeArg*> inputs;
-        InlinedVector<onnxruntime::NodeArg*> outputs;
-
-        for (const auto& tensor_name : inlined_node.input())
-          inputs.push_back(to_node_arg(tensor_name));
-
-        for (const auto& tensor_name : inlined_node.output())
-          outputs.push_back(to_node_arg(tensor_name));
-
-        onnxruntime::NodeAttributes new_attr_map;
-        new_attr_map.reserve(inlined_node.attribute_size());
-        for (const auto& node_attr : inlined_node.attribute()) {
-          onnx::AttributeProto attr_copy = node_attr;
-          new_attr_map[node_attr.name()] = std::move(attr_copy);
-        }
-        AddNode(inlined_node.name(), inlined_node.op_type(),
-                inlined_node.doc_string(), inputs, outputs, &new_attr_map, inlined_node.domain());
-      }
-    }
-
+    // In this case, global Resolve() will take care of everything.
+    ORT_RETURN_IF_ERROR(InlineFunctionProto(inlined_fp));
   } else {
     // Uncommon scenario. Inlining a node representing a fused sub-graph.
     // TODO: Unclear that this feature is needed. Can this be removed?
@@ -4115,15 +4473,7 @@ Status Graph::InlineFunction(Node& callnode) {
         // Copy constant nodes _value to name_to_initial_tensor_
         ONNX_NAMESPACE::NodeProto subgraph_node_proto{};
         subgraph_node.ToProto(subgraph_node_proto);
-        const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
-        ORT_RETURN_IF_ERROR(utils::ConstantNodeProtoToTensorProto(subgraph_node_proto, model_path, *tensor, subgraph_node_proto.output(0)));
-        auto insert_result = name_to_initial_tensor_.emplace(tensor->name(), tensor);
-        ORT_ENFORCE(insert_result.second, "Constant node name: ", tensor->name(), " in inlined subgraph: ",
-                    subgraph.Name(), " conflicts with graph initializer. Check Specializing code.");
-        if (GetNodeArg(tensor->name()) == nullptr) {
-          TypeProto t{TypeProtoFromTensorProto(*tensor)};
-          ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor->name(), &t));
-        }
+        ORT_RETURN_IF_ERROR(AddConstantProtoAsInitializer(subgraph_node_proto, std::nullopt));
       }
     }
 
@@ -4144,8 +4494,6 @@ Status Graph::InlineFunction(Node& callnode) {
   RemoveNode(callnode.Index());
 
   // std::cout << "Graph after inlining\n\n" << *this << std::endl << std::flush;
-
-  ORT_RETURN_IF_ERROR(this->Resolve());
 
   return Status::OK();
 }

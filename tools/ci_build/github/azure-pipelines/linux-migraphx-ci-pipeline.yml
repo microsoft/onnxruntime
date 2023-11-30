@@ -36,7 +36,7 @@ variables:
   - name: render
     value: 109
   - name: RocmVersion
-    value: 5.6
+    value: 5.7
 
 jobs:
 - job: Linux_Build
@@ -99,6 +99,7 @@ jobs:
             ccache -s; \
             python tools/ci_build/build.py \
               --config Release \
+              --enable_training \
               --cmake_extra_defines \
                 CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
                 onnxruntime_BUILD_KERNEL_EXPLORER=OFF \
@@ -181,7 +182,7 @@ jobs:
           /bin/bash -c "
             set -ex; \
             cd /build/Release && xargs -a /build/Release/perms.txt chmod a+x; \
-            bash /onnxruntime_src/tools/ci_build/github/pai/migraphx_test_launcher.sh"
+            bash /onnxruntime_src/tools/ci_build/github/pai/pai_test_launcher.sh"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run onnxruntime unit tests'
 

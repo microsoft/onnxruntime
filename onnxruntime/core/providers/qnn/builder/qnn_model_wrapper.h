@@ -18,9 +18,9 @@
 namespace onnxruntime {
 namespace qnn {
 
-// POD struct that stores information about an ONNX input.
-// Filled out by QnnModelWrapper::GetOnnxInputInfo()
-struct OnnxInputInfo {
+// Stores information about an ONNX input or output tensor.
+// Filled out by QnnModelWrapper::GetTensorInfo()
+struct TensorInfo {
   std::vector<uint32_t> shape;
   Qnn_DataType_t qnn_data_type;
   Qnn_QuantizeParams_t quant_param;
@@ -117,7 +117,7 @@ class QnnModelWrapper {
     return input_index_map_.find(tensor_name) != input_index_map_.end();
   }
 
-  Status GetOnnxInputInfo(const NodeUnitIODef& input, OnnxInputInfo& input_info) const;
+  Status GetTensorInfo(const NodeUnitIODef& input, TensorInfo& input_info) const;
 
   Status AddReshapeNode(const std::string& input_name,
                         const std::string& output_name,
@@ -179,6 +179,8 @@ class QnnModelWrapper {
                                std::vector<uint8_t>& unpacked_tensor) const;
 
   QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
+
+  const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
 
  private:
   bool CreateQnnInputOutputTensors(const std::string& qnn_node_name,

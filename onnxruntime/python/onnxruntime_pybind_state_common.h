@@ -60,11 +60,11 @@ struct OrtStatus {
 #elif OPENVINO_CONFIG_GPU_FP16
 #define BACKEND_OPENVINO "-OPENVINO_GPU_FP16"
 
-#elif OPENVINO_CONFIG_VPUX_FP16
-#define BACKEND_OPENVINO "-OPENVINO_VPUX_FP16"
+#elif OPENVINO_CONFIG_NPU_FP16
+#define BACKEND_OPENVINO "-OPENVINO_NPU_FP16"
 
-#elif OPENVINO_CONFIG_VPUX_U8
-#define BACKEND_OPENVINO "-OPENVINO_VPUX_U8"
+#elif OPENVINO_CONFIG_NPU_U8
+#define BACKEND_OPENVINO "-OPENVINO_NPU_U8"
 
 #elif OPENVINO_CONFIG_MULTI
 #define BACKEND_OPENVINO "-OPENVINO_MULTI"
@@ -177,6 +177,13 @@ extern onnxruntime::cuda::TunableOpInfo tunable_op;
 extern onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info;
 extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace python
+}  // namespace onnxruntime
+#endif
+
+#ifdef USE_TENSORRT
+namespace onnxruntime {
+ProviderInfo_TensorRT* TryGetProviderInfo_TensorRT();
+ProviderInfo_TensorRT& GetProviderInfo_TensorRT();
 }  // namespace onnxruntime
 #endif
 

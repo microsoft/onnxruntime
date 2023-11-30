@@ -1,5 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
+// This header is to expose a context for cuda custom ops.
+// By the context, a custom cuda operator could fetch existing resources,
+// such as cuda stream and cudnn handle, for reusing.
+
+// For concrete usage, pls find page here:
+// https://onnxruntime.ai/docs/reference/operators/add-custom-op.html#custom-ops-for-cuda-and-rocm
+
 #pragma once
 
 #define ORT_CUDA_CTX
@@ -19,8 +27,9 @@ struct CudaContext : public CustomOpContext {
   cudaStream_t cuda_stream = {};
   cudnnHandle_t cudnn_handle = {};
   cublasHandle_t cublas_handle = {};
+  OrtAllocator* deferred_cpu_allocator = {};
 
-  void Init(const OrtKernelContext& kernel_ctx) override {
+  void Init(const OrtKernelContext& kernel_ctx) {
     const auto& ort_api = Ort::GetApi();
     void* resource = {};
     OrtStatus* status = nullptr;
@@ -44,6 +53,36 @@ struct CudaContext : public CustomOpContext {
       ORT_CXX_API_THROW("failed to fetch cublas handle", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
     }
     cublas_handle = reinterpret_cast<cublasHandle_t>(resource);
+
+    resource = {};
+    status = ort_api.KernelContext_GetResource(&kernel_ctx, ORT_CUDA_RESOUCE_VERSION, CudaResource::deferred_cpu_allocator_t, &resource);
+    if (status) {
+      ORT_CXX_API_THROW("failed to fetch deferred cpu allocator", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+    }
+    deferred_cpu_allocator = reinterpret_cast<OrtAllocator*>(resource);
+  }
+
+  void* AllocDeferredCpuMem(size_t size) const {
+    if (0 == size) {
+      return {};
+    }
+    const auto& ort_api = Ort::GetApi();
+    void* mem = {};
+    auto status = ort_api.AllocatorAlloc(deferred_cpu_allocator, size, &mem);
+    if (status) {
+      ORT_CXX_API_THROW("failed to allocate deferred cpu memory", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+    }
+    return mem;
+  }
+
+  void FreeDeferredCpuMem(void* mem) const {
+    if (mem) {
+      const auto& ort_api = Ort::GetApi();
+      auto status = ort_api.AllocatorFree(deferred_cpu_allocator, mem);
+      if (status) {
+        ORT_CXX_API_THROW("failed to free deferred cpu memory", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+      }
+    }
   }
 };
 

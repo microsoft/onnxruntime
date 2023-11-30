@@ -566,28 +566,30 @@ class TestQDQFormatConvRelu(TestQDQFormat):
 
         onnx.save(model, output_model_path)
 
-    def verify(self, per_channel, is_quant_type_int8):
+    def verify_qdq(self, per_channel, activation_type, weight_type, extra_options=None):
         np.random.seed(1)
         model_fp32_path = str(Path(self._tmp_model_dir.name) / f"conv_relu_fp32.{per_channel}.onnx")
-        model_int8_qdq_path = str(Path(self._tmp_model_dir.name) / f"conv_relu_quant_qdq.{per_channel}.onnx")
-        model_int8_qop_path = str(Path(self._tmp_model_dir.name) / f"conv_relu_quant_qop.{per_channel}.onnx")
+        model_qdq_path = str(
+            Path(self._tmp_model_dir.name) / f"conv_relu_quant_qdq.{activation_type}.{weight_type}.{per_channel}.onnx"
+        )
         data_reader = self.input_feeds(1, {"input": [1, 8, 33, 33]})
         self.construct_model_conv_relu(model_fp32_path, [1, 8, 33, 33], [16, 8, 3, 3], [1, 16, 31, 31])
         quantize_static(
             model_fp32_path,
-            model_int8_qdq_path,
+            model_qdq_path,
             data_reader,
             quant_format=QuantFormat.QDQ,
             per_channel=per_channel,
             reduce_range=per_channel,
-            activation_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
-            weight_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
+            activation_type=activation_type,
+            weight_type=weight_type,
+            extra_options=extra_options,
         )
         data_reader.rewind()
         # topo sort check
         check_op_type_order(
             self,
-            model_int8_qdq_path,
+            model_qdq_path,
             [
                 "DequantizeLinear",
                 "QuantizeLinear",
@@ -597,9 +599,15 @@ class TestQDQFormatConvRelu(TestQDQFormat):
                 "DequantizeLinear",
             ],
         )
-        check_model_correctness(self, model_fp32_path, model_int8_qdq_path, data_reader.get_next())
+        check_model_correctness(self, model_fp32_path, model_qdq_path, data_reader.get_next())
 
-        data_reader.rewind()
+    def verify_qop(self, per_channel, is_quant_type_int8):
+        np.random.seed(1)
+        model_fp32_path = str(Path(self._tmp_model_dir.name) / f"conv_relu_fp32.{per_channel}.onnx")
+        model_int8_qop_path = str(Path(self._tmp_model_dir.name) / f"conv_relu_quant_qop.{per_channel}.onnx")
+        data_reader = self.input_feeds(1, {"input": [1, 8, 33, 33]})
+        self.construct_model_conv_relu(model_fp32_path, [1, 8, 33, 33], [16, 8, 3, 3], [1, 16, 31, 31])
+
         quantize_static(
             model_fp32_path,
             model_int8_qop_path,
@@ -617,10 +625,25 @@ class TestQDQFormatConvRelu(TestQDQFormat):
 
     def test_quantize_conv_without_bias(self):
         # only test cases per_channel=True and reduce_range=True to avoid saturation on avx2 and avx512 for weight type int8
-        self.verify(True, True)  # per_channel:False, is_quant_type_int8:True
+        self.verify_qdq(True, QuantType.QInt8, QuantType.QInt8)  # per_channel:True
+        self.verify_qop(True, True)  # per_channel:True, is_quant_type_int8:True
 
-        self.verify(False, False)  # per_channel:False, is_quant_type_int8:False
-        self.verify(True, False)  # per_channel:True, is_quant_type_int8:False
+        self.verify_qdq(False, QuantType.QUInt8, QuantType.QUInt8)  # per_channel:False
+        self.verify_qop(False, False)  # per_channel:False, is_quant_type_int8:False
+
+        self.verify_qdq(True, QuantType.QUInt8, QuantType.QUInt8)  # per_channel:True
+        self.verify_qop(True, False)  # per_channel:True, is_quant_type_int8:False
+
+        # 16-bit QDQ via contrib ops
+        self.verify_qdq(False, QuantType.QUInt16, QuantType.QUInt16, {"UseQDQContribOps": True})
+        self.verify_qdq(False, QuantType.QInt16, QuantType.QInt16, {"UseQDQContribOps": True})
+        self.verify_qdq(False, QuantType.QUInt16, QuantType.QUInt8, {"UseQDQContribOps": True})
+        self.verify_qdq(False, QuantType.QInt16, QuantType.QInt8, {"UseQDQContribOps": True})
+
+        self.verify_qdq(True, QuantType.QUInt16, QuantType.QUInt16, {"UseQDQContribOps": True})
+        self.verify_qdq(True, QuantType.QInt16, QuantType.QInt16, {"UseQDQContribOps": True})
+        self.verify_qdq(True, QuantType.QUInt16, QuantType.QUInt8, {"UseQDQContribOps": True})
+        self.verify_qdq(True, QuantType.QInt16, QuantType.QInt8, {"UseQDQContribOps": True})
 
     def test_quantize_relu_conv(self):
         float_model_path = str(Path(self._tmp_model_dir.name) / "float_relu_convs_model.onnx")

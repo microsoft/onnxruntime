@@ -4,6 +4,7 @@ parameters:
 
 - name: EnvSetupScript
   type: string
+  default: setup_env.bat
 
 - name: job_name_suffix
   type: string
@@ -31,11 +32,6 @@ parameters:
 
 - name: RunOnnxRuntimeTests
   displayName: Run Tests?
-  type: boolean
-  default: true
-
-- name: RunStaticCodeAnalysis
-  displayName: Run Static Code Analysis
   type: boolean
   default: true
 
@@ -102,7 +98,7 @@ jobs:
 
   - task: NodeTool@0
     inputs:
-      versionSpec: '16.x'
+      versionSpec: '18.x'
       force32bit: ${{ parameters.isX86 }}
 
   # Our build machine doesn't have java x86
@@ -174,16 +170,21 @@ jobs:
   - task: MSBuild@1
     displayName: 'Restore NuGet Packages'
     inputs:
-      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
       platform: 'Any CPU'
       configuration: '${{ parameters.BuildConfig }}'
       msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
+  - script: |
+      python3 tools\ValidateNativeDelegateAttributes.py
+    displayName: 'Validate C# native delegates'
+    workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
   - task: MSBuild@1
     displayName: 'Build C#'
     inputs:
-      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
       configuration: '${{ parameters.BuildConfig }}'
       platform: 'Any CPU'
       msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
@@ -202,7 +203,7 @@ jobs:
           command: test
           projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp.csproj'
           configuration: '${{ parameters.BuildConfig }}'
-          arguments: '--configuration ${{ parameters.BuildConfig }} -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) --blame'
+          arguments: '--configuration ${{ parameters.BuildConfig }} -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IncludeMobileTargets=false --blame'
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - ${{ if eq(parameters.EnablePython, true) }}:
@@ -220,49 +221,6 @@ jobs:
         workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
         displayName: 'Run tests'
 
-
-  - ${{ if eq(parameters.RunStaticCodeAnalysis, true) }}:
-      - task: DeleteFiles@1
-        displayName: 'Delete binaries files from $(Build.BinariesDirectory)\RelWithDebInfo'
-        inputs:
-          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-          Contents: |
-           **/*.obj
-           **/*.pdb
-           **/*.dll
-
-
-      # Manually set msBuildCommandline so that we can also set CAExcludePath
-      # build_dir must be a sub folder of $(Build.SourcesDirectory)
-      # TODO: move this step to a CPU-only machine to save GPU resources.
-      - task: SDLNativeRules@3
-        displayName: 'Run the PREfast SDL Native Rules for MSBuild'
-        inputs:
-          msBuildArchitecture: amd64
-          setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --build_dir $(Build.SourcesDirectory)\b --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }} --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON onnxruntime_ENABLE_LTO=OFF'
-          msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.SourcesDirectory)\b\RelWithDebInfo\onnxruntime.sln" /p:RunCodeAnalysis=true /p:platform=${{ parameters.msbuildPlatform }} /p:configuration=RelWithDebInfo /p:VisualStudioVersion="17.0" /m /p:PreferredToolArchitecture=x64'
-          excludedPaths: '$(Build.SourcesDirectory)\b#$(Build.SourcesDirectory)\cmake#C:\program files#C:\program files (x86)#C:\program files'
-          rulesetName: Custom
-          customRuleset: $(Build.SourcesDirectory)\cmake\Sdl.ruleset
-          publishXML: true
-
-      - task: SdtReport@2
-        displayName: 'Create Security Analysis Report'
-        inputs:
-          SDLNativeRules: true
-
-      - task: PublishSecurityAnalysisLogs@3
-        displayName: 'Publish Security Analysis Logs'
-        continueOnError: true
-
-      - task: PostAnalysis@2
-        displayName: 'Guardian Break v2'
-        inputs:
-          GdnBreakGdnToolSDLNativeRulesSeverity: Note
-          GdnBreakGdnToolSDLNativeRules: true
-
-
-  - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
       - task: PublishTestResults@2
         displayName: 'Publish unit test results'
         inputs:

@@ -64,16 +64,3 @@ index 0aab3e26..0f859267 100644
 +#endif
 +
  #endif // ! ONNX_ONNX_PB_H
-diff --git a/onnx/checker.cc b/onnx/checker.cc
-index 8fdaf037..1beb1b88 100644
---- a/onnx/checker.cc
-+++ b/onnx/checker.cc
-@@ -190,7 +190,7 @@ void check_tensor(const TensorProto& tensor, const CheckerContext& ctx) {
-         }
-         std::string data_path = path_join(ctx.get_model_dir(), relative_path);
-         // use stat64 to check whether the file exists
--#ifdef __APPLE__
-+#if defined(__APPLE__) || defined(__wasm__)
-         struct stat buffer; // APPLE does not have stat64
-         if (stat((data_path).c_str(), &buffer) != 0) {
- #else

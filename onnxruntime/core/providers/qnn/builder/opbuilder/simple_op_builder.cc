@@ -22,42 +22,123 @@ class SimpleOpBuilder : public BaseOpBuilder {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SimpleOpBuilder);
 
  protected:
+  Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                       const NodeUnit& node_unit,
+                       const logging::Logger& logger,
+                       std::vector<std::string>& input_names,
+                       bool do_op_validation) const override ORT_MUST_USE_RESULT;
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
+  Status OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                  const NodeUnit& node_unit,
+                                  const logging::Logger& logger,
+                                  const std::vector<std::string>& input_names,
+                                  size_t output_index,
+                                  Qnn_DataType_t qnn_data_type,
+                                  Qnn_QuantizeParams_t& quant_param) const override ORT_MUST_USE_RESULT;
 
  private:
-  Status ExplicitOpCheck(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const;
+  Status ExplicitOpCheck(const NodeUnit& node_unit) const;
+  Status ProcessSigmoidOrTanhOutput(QnnModelWrapper& qnn_model_wrapper,
+                                    const NodeUnit& node_unit,
+                                    std::vector<std::string>&& input_names,
+                                    std::vector<std::string>&& param_tensor_names,
+                                    const logging::Logger& logger,
+                                    bool do_op_validation) const ORT_MUST_USE_RESULT;
 
   static constexpr std::array<std::string_view, 2> gridsample_supported_modes = {"bilinear", "nearest"};
   static constexpr std::array<std::string_view, 3> gridsample_supported_padding_modes = {"zeros", "border", "reflection"};
 };
 
-static int32_t GetDefaultAxisAttribute(const std::string& op_type, int opset_version) {
-  if (op_type == "Softmax" || op_type == "LogSoftmax") {
-    // Default axis changed from 1 to -1 in opset 13.
-    return opset_version < 13 ? 1 : -1;
-  }
+// Move to qnn_utils if it's re-usable
+Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
+                       const std::string& convert_input_name,
+                       const std::string& convert_output_name,
+                       Qnn_DataType_t input_qnn_data_type,
+                       Qnn_DataType_t output_qnn_data_type,
+                       int32_t input_offset,
+                       float input_scale,
+                       const std::vector<uint32_t>& output_shape,
+                       bool do_op_validation) {
+  // Assume input is already handled.
+  float qmin = 0.0f;
+  float qmax = 255.0f;
+  ORT_RETURN_IF_ERROR(qnn::utils::GetQminQmax(input_qnn_data_type, qmin, qmax));
+  double value_min = qnn::utils::Dequantize(input_offset, input_scale, qmin);
+  double value_max = qnn::utils::Dequantize(input_offset, input_scale, qmax);
 
-  return 0;
+  Qnn_QuantizeParams_t convert_output_quant_param = QNN_QUANTIZE_PARAMS_INIT;
+  convert_output_quant_param.encodingDefinition = QNN_DEFINITION_DEFINED;
+  convert_output_quant_param.quantizationEncoding = QNN_QUANTIZATION_ENCODING_SCALE_OFFSET;
+  ORT_RETURN_IF_ERROR(qnn::utils::GetQuantParams(static_cast<float>(value_min),
+                                                 static_cast<float>(value_max),
+                                                 output_qnn_data_type,
+                                                 convert_output_quant_param.scaleOffsetEncoding.scale,
+                                                 convert_output_quant_param.scaleOffsetEncoding.offset));
+
+  std::vector<uint32_t> output_shape_copy = output_shape;
+  QnnTensorWrapper convert_output_tensorwrapper(convert_output_name,
+                                                QNN_TENSOR_TYPE_NATIVE,
+                                                output_qnn_data_type,
+                                                convert_output_quant_param,
+                                                std::move(output_shape_copy));
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(convert_output_tensorwrapper)), "Failed to add tensor.");
+
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(convert_output_name,
+                                                    QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                    "Convert",
+                                                    {convert_input_name},
+                                                    {convert_output_name},
+                                                    {},
+                                                    do_op_validation),
+                    "Failed to add node.");
+  return Status::OK();
 }
 
-Status SimpleOpBuilder::ExplicitOpCheck(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
+Status SimpleOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                                      const NodeUnit& node_unit,
+                                      const logging::Logger& logger,
+                                      std::vector<std::string>& input_names,
+                                      bool do_op_validation) const {
   const std::string& op_type = node_unit.OpType();
+  ORT_RETURN_IF_ERROR(BaseOpBuilder::ProcessInputs(qnn_model_wrapper, node_unit, logger, input_names, do_op_validation));
 
-  // QNN Softmax and LogSoftmax only support an axis value equal to input_rank - 1 (i.e., same as -1).
-  if (op_type == "Softmax" || op_type == "LogSoftmax") {
-    int32_t axis = GetDefaultAxisAttribute(op_type, node_unit.SinceVersion());
-    Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
-    ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, axis));
-    std::vector<uint32_t> input_shape;
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(node_unit.Inputs()[0].node_arg, input_shape),
-                      "QNN EP: Cannot get shape for Softmax input");
-    ORT_RETURN_IF(axis != static_cast<int32_t>(input_shape.size() - 1),
-                  "QNN ", op_type.c_str(), " only supports an `axis` attribute equal to input_rank-1 (or -1)");
+  if (op_type == "MatMul") {
+    const auto& inputs = node_unit.Inputs();
+    TensorInfo input0_info = {};
+    TensorInfo input1_info = {};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[0], input0_info));
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[1], input1_info));
+    // Need to insert Convert op if both inputs are dynamic inputs and are ufixed_16
+    if (!input0_info.is_initializer && !input1_info.is_initializer &&
+        input0_info.qnn_data_type == input1_info.qnn_data_type &&
+        input0_info.qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16) {
+      // insert Convert op after input1
+      std::string convert_input_name = input_names.back();
+      input_names.pop_back();
+      const std::string& matmul_output_name = node_unit.Outputs()[0].node_arg.Name();
+      std::string convert_output_name = convert_input_name + "_convert_" + matmul_output_name;
+      ORT_RETURN_IF_ERROR(InsertConvertOp(qnn_model_wrapper,
+                                          convert_input_name,
+                                          convert_output_name,
+                                          input1_info.qnn_data_type,
+                                          QNN_DATATYPE_UFIXED_POINT_8,
+                                          input1_info.quant_param.scaleOffsetEncoding.offset,
+                                          input1_info.quant_param.scaleOffsetEncoding.scale,
+                                          input1_info.shape,
+                                          do_op_validation));
+      input_names.push_back(convert_output_name);
+    }
   }
+
+  return Status::OK();
+}
+
+Status SimpleOpBuilder::ExplicitOpCheck(const NodeUnit& node_unit) const {
+  const std::string& op_type = node_unit.OpType();
 
   if (op_type == "GridSample") {
     NodeAttrHelper node_helper(node_unit);
@@ -118,9 +199,9 @@ Status ProcessModeAttribute(QnnModelWrapper& qnn_model_wrapper,
   Qnn_Scalar_t mode_qnn_scalar = QNN_SCALAR_INIT;
   mode_qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
   if ("DCR" == mode) {
-    mode_qnn_scalar.uint32Value = 0;
+    mode_qnn_scalar.uint32Value = QNN_OP_DEPTH_TO_SPACE_MODE_DCR;
   } else if ("CRD" == mode) {
-    mode_qnn_scalar.uint32Value = 1;  // CRD mode
+    mode_qnn_scalar.uint32Value = QNN_OP_DEPTH_TO_SPACE_MODE_CRD;  // CRD mode
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DepthToSpace mode only support DCR & CRD.");
   }
@@ -225,22 +306,46 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   const std::string& op_type = node_unit.OpType();
 
   if (do_op_validation) {
-    ORT_RETURN_IF_ERROR(ExplicitOpCheck(qnn_model_wrapper, node_unit));
+    ORT_RETURN_IF_ERROR(ExplicitOpCheck(node_unit));
     // Skip the op validation for DepthToSpace & SpaceToDepth if it's not NHWC data layout
     if (node_unit.Domain() != kMSInternalNHWCDomain && (op_type == "DepthToSpace" || op_type == "SpaceToDepth" || op_type == "GridSample")) {
       return Status::OK();
+    }
+
+    // Explicitly skip the Op validation for Q & DQ node with 5D because of QNN bug.
+    // TODO (hecli), remove once QNN v2.17 is ready
+    if (op_type == "QuantizeLinear" || op_type == "DequantizeLinear") {
+      std::vector<uint32_t> input_shape;
+      ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(node_unit.Inputs()[0].node_arg, input_shape),
+                        "QNN EP: Cannot get input shape");
+      if (input_shape.size() == 5) {
+        return Status::OK();
+      }
     }
   }
 
   std::vector<std::string> param_tensor_names;
   // Add attribute
-  if (op_type == "LogSoftmax" || op_type == "Softmax" || op_type == "Concat") {
-    int32_t default_axis = GetDefaultAxisAttribute(op_type, node_unit.SinceVersion());
+  if (op_type == "Concat") {
+    int32_t default_axis = 0;
     Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
     ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, default_axis));
     QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), QNN_OP_SOFTMAX_PARAM_AXIS, axis_qnn_scalar);
     param_tensor_names.push_back(axis_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
+  }
+
+  if (op_type == "LpNormalization") {
+    int32_t default_axis = -1;
+    Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
+    ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, default_axis));
+    QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), QNN_OP_L2_NORM_PARAM_AXIS, axis_qnn_scalar);
+    param_tensor_names.push_back(axis_param.GetParamTensorName());
+    qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
+
+    NodeAttrHelper node_helper(node_unit);
+    int64_t norm_p_order = node_helper.Get("p", static_cast<int64_t>(2));
+    ORT_RETURN_IF(norm_p_order != 2, "QNN EP only supports LpNormalization with 'p' attribute equal to 2.");
   }
 
   if (op_type == "MatMul") {
@@ -279,10 +384,96 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     ORT_RETURN_IF_ERROR(ProcessGridSampleAttributes(qnn_model_wrapper, node_unit, param_tensor_names));
   }
 
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
-                                     std::move(input_names),
-                                     std::move(param_tensor_names),
-                                     logger, do_op_validation, GetQnnOpType(op_type)));
+  return ProcessOutputs(qnn_model_wrapper, node_unit,
+                        std::move(input_names),
+                        std::move(param_tensor_names),
+                        logger, do_op_validation, GetQnnOpType(op_type));
+}
+
+/**
+ * Overrides offset and scale quantization parameters for operators (e.g., Sigmoid or Tanh) that require
+ * specific values. Returns true if the quantization parameters were overridden.
+ *
+ * \param op_type The ONNX operator type.
+ * \param qnn_data_type The QNN tensor data type.
+ * \param quant_params Output scale/offset parameter that may be overridden.
+ * \return True if the offset and scale were overridden.
+ */
+static bool OverrideQuantParams(const std::string& op_type, Qnn_DataType_t qnn_data_type,
+                                Qnn_ScaleOffset_t& quant_params) {
+  const int32_t orig_offset = quant_params.offset;
+  const float orig_scale = quant_params.scale;
+
+  if (op_type == "Sigmoid") {
+    switch (qnn_data_type) {
+      case QNN_DATATYPE_UFIXED_POINT_16:
+        quant_params.offset = 0;
+        quant_params.scale = 1.0f / 65536.0f;
+        break;
+      case QNN_DATATYPE_SFIXED_POINT_16:
+        quant_params.offset = 0;
+        quant_params.scale = 1.0f / 32768.0f;
+        break;
+      default:
+        break;  // Do nothing.
+    }
+  }
+
+  if (op_type == "Tanh") {
+    switch (qnn_data_type) {
+      case QNN_DATATYPE_UFIXED_POINT_16:
+        quant_params.offset = -32768;
+        quant_params.scale = 1.0f / 32768.0f;
+        break;
+      case QNN_DATATYPE_SFIXED_POINT_16:
+        quant_params.offset = 0;
+        quant_params.scale = 1.0f / 32768.0f;
+        break;
+      default:
+        break;  // Do nothing.
+    }
+  }
+
+  return quant_params.offset != orig_offset || quant_params.scale != orig_scale;
+}
+
+Status SimpleOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                                 const NodeUnit& node_unit,
+                                                 const logging::Logger& logger,
+                                                 const std::vector<std::string>& input_names,
+                                                 size_t output_index,
+                                                 Qnn_DataType_t qnn_data_type,
+                                                 Qnn_QuantizeParams_t& quant_param) const {
+  ORT_UNUSED_PARAMETER(input_names);
+  const std::string& op_type = node_unit.OpType();
+
+  // Override output quantization parameters for uint16 QDQ Sigmoid or Tanh.
+  // QNN requires 16-bit QDQ Sigmoid and Tanh to use specific output scale and zero-point values
+  // regardless of floating-point range.
+  if (op_type == "Sigmoid" || op_type == "Tanh") {
+    const auto& outputs = node_unit.Outputs();
+    ORT_RETURN_IF_NOT(output_index < outputs.size(),
+                      "Invalid output index in OverrideOutputQuantParam for op ", op_type.c_str());
+
+    const auto& output = node_unit.Outputs()[0];
+    const std::string& output_name = output.node_arg.Name();
+
+    if (quant_param.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET) {
+      if (OverrideQuantParams(op_type, qnn_data_type, quant_param.scaleOffsetEncoding)) {
+        const int32_t offset = quant_param.scaleOffsetEncoding.offset;
+        const float scale = quant_param.scaleOffsetEncoding.scale;
+
+        LOGS(logger, VERBOSE) << "QNN requires that 16-bit quantized " << op_type
+                              << " operators use offset/scale values "
+                              << "of <" << offset << ", " << scale
+                              << ">. QNN EP will override the original values for output " << output_name;
+        ORT_RETURN_IF(qnn_model_wrapper.IsQnnTensorWrapperExist(output_name),
+                      "QNN EP is unable to override output quantization parameters for ", op_type.c_str(),
+                      " operator. Node name: ", node_unit.Name().c_str(), ", output name: ", output_name.c_str());
+      }
+    }
+  }
+
   return Status::OK();
 }
 

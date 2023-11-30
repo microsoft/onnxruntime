@@ -19,7 +19,13 @@ fi
 export ONNX_ML=1
 export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
 
+# This may install PyTorch, which will be overrided by the PyTorch local build below.
 /opt/python/cp39-cp39/bin/python3.9 -m pip install transformers
+
+# beartype is installed here so that onnxscript installation step won't
+# install a version PyTorch doesn't like. Once beartype fixes this problem.
+# We can remove this line.
+/opt/python/cp39-cp39/bin/python3.9 -m pip install beartype==0.15.0
 
 cd /usr/local/
 echo "Cloning ONNX Script"

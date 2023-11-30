@@ -75,6 +75,19 @@ const setExecutionProviders =
                   checkLastError(`Can't set a session config entry: 'deviceType' - ${webnnOptions.deviceType}.`);
                 }
               }
+              if (webnnOptions?.numThreads) {
+                let numThreads = webnnOptions.numThreads;
+                // Just ignore invalid webnnOptions.numThreads.
+                if (typeof numThreads != 'number' || !Number.isInteger(numThreads) || numThreads < 0) {
+                  numThreads = 0;
+                }
+                const keyDataOffset = allocWasmString('numThreads', allocs);
+                const valueDataOffset = allocWasmString(numThreads.toString(), allocs);
+                if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
+                    0) {
+                  checkLastError(`Can't set a session config entry: 'numThreads' - ${webnnOptions.numThreads}.`);
+                }
+              }
               if (webnnOptions?.powerPreference) {
                 const keyDataOffset = allocWasmString('powerPreference', allocs);
                 const valueDataOffset = allocWasmString(webnnOptions.powerPreference, allocs);
@@ -88,6 +101,21 @@ const setExecutionProviders =
             break;
           case 'webgpu':
             epName = 'JS';
+            if (typeof ep !== 'string') {
+              const webgpuOptions = ep as InferenceSession.WebGpuExecutionProviderOption;
+              if (webgpuOptions?.preferredLayout) {
+                if (webgpuOptions.preferredLayout !== 'NCHW' && webgpuOptions.preferredLayout !== 'NHWC') {
+                  throw new Error(`preferredLayout must be either 'NCHW' or 'NHWC': ${webgpuOptions.preferredLayout}`);
+                }
+                const keyDataOffset = allocWasmString('preferredLayout', allocs);
+                const valueDataOffset = allocWasmString(webgpuOptions.preferredLayout, allocs);
+                if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
+                    0) {
+                  checkLastError(
+                      `Can't set a session config entry: 'preferredLayout' - ${webgpuOptions.preferredLayout}.`);
+                }
+              }
+            }
             break;
           case 'wasm':
           case 'cpu':
@@ -141,6 +169,21 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
 
     if (sessionOptions.executionProviders) {
       setExecutionProviders(sessionOptionsHandle, sessionOptions.executionProviders, allocs);
+    }
+
+    if (sessionOptions.freeDimensionOverrides) {
+      for (const [name, value] of Object.entries(sessionOptions.freeDimensionOverrides)) {
+        if (typeof name !== 'string') {
+          throw new Error(`free dimension override name must be a string: ${name}`);
+        }
+        if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+          throw new Error(`free dimension override value must be a non-negative integer: ${value}`);
+        }
+        const nameOffset = allocWasmString(name, allocs);
+        if (wasm._OrtAddFreeDimensionOverride(sessionOptionsHandle, nameOffset, value) !== 0) {
+          checkLastError(`Can't set a free dimension override: ${name} - ${value}.`);
+        }
+      }
     }
 
     if (sessionOptions.extra !== undefined) {

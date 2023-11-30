@@ -145,7 +145,8 @@ DEFAULT_OP_BLOCK_LIST = [
 
 
 # Some operators has data type fixed as float for some inputs. Key is op_type, value is list of input indices
-ALWAYS_FLOAT_INPUTS = {"Resize": [2], "GroupNorm": [1, 2]}
+# Note that DirectML allows float16 gamma and beta in GroupNorm. Use force_fp16_inputs parameter could overwrite this.
+ALWAYS_FLOAT_INPUTS = {"Resize": [2], "GroupNorm": [1, 2], "SkipGroupNorm": [1, 2]}
 
 
 class InitializerTracker:
@@ -402,7 +403,7 @@ def convert_float_to_float16(
 
         queue = next_level
 
-    for _key, value in fp32_initializers.items():
+    for value in fp32_initializers.values():
         # By default, to avoid precision loss, do not convert an initializer to fp16 when it is used only by fp32 nodes.
         if force_fp16_initializers or value.fp16_nodes:
             value.initializer = convert_tensor_float_to_float16(value.initializer, min_positive_val, max_finite_val)

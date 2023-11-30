@@ -26,7 +26,14 @@ pr:
     - 'js/web'
     - 'onnxruntime/core/providers/js'
 #### end trigger ####
-
+parameters:
+  - name: CudaVersion
+    displayName: CUDA version
+    type: string
+    default: '11.8'
+    values:
+      - 11.8
+      - 12.2
 resources:
   repositories:
   - repository: manylinux
@@ -34,7 +41,17 @@ resources:
     endpoint: Microsoft
     name: pypa/manylinux
     ref: 5eda9aded5462201e6310105728d33016e637ea7
-
+variables:
+  - name: docker_base_image
+    ${{ if eq(parameters.CudaVersion, '11.8') }}:
+      value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+    ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      value: nvidia/cuda:12.2.2-cudnn8-devel-ubi8
+  - name: linux_trt_version
+    ${{ if eq(parameters.CudaVersion, '11.8') }}:
+      value: 8.6.1.6-1.cuda11.8
+    ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      value: 8.6.1.6-1.cuda12.0
 jobs:
 - job: Linux_Build
   timeoutInMinutes: 180
@@ -57,9 +74,14 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda11_8_tensorrt8_6
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--network=host --build-arg POLICY=manylinux_2_28 --build-arg PLATFORM=x86_64 --build-arg PREPEND_PATH=/usr/local/cuda/bin --build-arg LD_LIBRARY_PATH_ARG=/usr/local/lib64 --build-arg DEVTOOLSET_ROOTPATH=/usr --build-arg BUILD_UID=$( id -u )"
+      DockerBuildArgs: "
+      --network=host
+      --build-arg BASEIMAGE=${{ variables.docker_base_image }}
+      --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
+      --build-arg BUILD_UID=$( id -u )
+      "
       Repository: onnxruntimetensorrt86gpubuild
 
   - template: templates/linux-build-step-with-cache.yml
@@ -94,7 +116,8 @@ jobs:
                       --build_shared_lib \
                       --parallel \
                       --build_wheel \
-                      --enable_onnx_tests --use_cuda --cuda_version=11.8 --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8 \
+                      --enable_onnx_tests \
+                      --use_cuda --cuda_home=/usr/local/cuda-${{ parameters.CudaVersion }} --cudnn_home=/usr/local/cuda-${{ parameters.CudaVersion }} \
                       --enable_pybind --build_java \
                       --use_tensorrt --tensorrt_home /usr \
                       --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75 \

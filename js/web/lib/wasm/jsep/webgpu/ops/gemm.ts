@@ -1,13 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor';
+import {TensorView} from '../../tensor-view';
 import {GemmUtil, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
-import {ShaderHelper} from './common';
+import {ShaderHelper, tensorTypeToWsglStorageType} from './common';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs) {
@@ -20,11 +19,6 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
   // 'C' can be of dimensionality 0, 1 or 2 only
   if (inputs.length === 3 && inputs[2].dims.length > 2) {
     throw new Error('Invalid input shape of C');
-  }
-
-  if ((inputs[0].dataType !== DataType.float) || (inputs[1].dataType !== DataType.float) ||
-      (inputs.length === 3 && inputs[2].dataType !== DataType.float)) {
-    throw new Error('Invalid input type.');
   }
 
   if ((inputs[0].dataType !== inputs[1].dataType) ||
@@ -59,39 +53,38 @@ const offsetC = (m: number, n: number, dims: readonly number[]): string => {
   return offset;
 };
 
-const createGemmProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: GemmAttributes): ProgramInfo => {
-      const aShape = inputs[0].dims.slice();
-      const bShape = inputs[1].dims.slice();
-      const [M, N, K] = GemmUtil.getShapeOfGemmResult(
-          aShape, attributes.transA, bShape, attributes.transB, inputs.length === 3 ? inputs[2].dims : undefined);
-      const outputShape = [M, N];
-      if (!outputShape) {
-        throw new Error('Can\'t use gemm on the given tensors');
-      }
-      const outputSize = ShapeUtil.size(outputShape);
-      let line = '';
-      if (attributes.transA && attributes.transB) {
-        line = 'value += a[k * M + m] * b[n * K + k];';
-      } else if (attributes.transA && !attributes.transB) {
-        line = 'value += a[k * M + m] * b[k * N + n];';
-      } else if (!attributes.transA && attributes.transB) {
-        line = 'value += a[m * K + k] * b[n * K + k];';
-      } else if (!attributes.transA && !attributes.transB) {
-        line = 'value += a[m * K + k] * b[k * N + n];';
-      }
+const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAttributes): ProgramInfo => {
+  const aShape = inputs[0].dims.slice();
+  const bShape = inputs[1].dims.slice();
+  const [M, N, K] = GemmUtil.getShapeOfGemmResult(
+      aShape, attributes.transA, bShape, attributes.transB, inputs.length === 3 ? inputs[2].dims : undefined);
+  const outputShape = [M, N];
+  if (!outputShape) {
+    throw new Error('Can\'t use gemm on the given tensors');
+  }
+  const outputSize = ShapeUtil.size(outputShape);
+  let line = '';
+  if (attributes.transA && attributes.transB) {
+    line = 'value += a[k * M + m] * b[n * K + k];';
+  } else if (attributes.transA && !attributes.transB) {
+    line = 'value += a[k * M + m] * b[k * N + n];';
+  } else if (!attributes.transA && attributes.transB) {
+    line = 'value += a[m * K + k] * b[n * K + k];';
+  } else if (!attributes.transA && !attributes.transB) {
+    line = 'value += a[m * K + k] * b[k * N + n];';
+  }
 
-      const dataType = 'f32';  // TODO: support other data type
-      const calculateAlpha = attributes.alpha === 1 ? '' : 'value *= alpha;';
-      const calculateC = inputs.length === 3 ? `value += beta * c[${offsetC(M, N, inputs[2].dims)}];` : '';
-      const inputStorageBuffersDeclarations = [
-        `@group(0) @binding(0) var<storage, read> a : array<${dataType}>;`,
-        `@group(0) @binding(1) var<storage, read> b : array<${dataType}>;`
-      ];
-      if (inputs.length === 3) {
-        inputStorageBuffersDeclarations.push(`@group(0) @binding(2) var<storage, read> c : array<${dataType}>;`);
-      }
-      const getShaderSource = (shaderHelper: ShaderHelper) => `
+  const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
+  const calculateAlpha = attributes.alpha === 1 ? '' : 'value *= alpha;';
+  const calculateC = inputs.length === 3 ? `value += beta * c[${offsetC(M, N, inputs[2].dims)}];` : '';
+  const inputStorageBuffersDeclarations = [
+    `@group(0) @binding(0) var<storage, read> a : array<${dataType}>;`,
+    `@group(0) @binding(1) var<storage, read> b : array<${dataType}>;`
+  ];
+  if (inputs.length === 3) {
+    inputStorageBuffersDeclarations.push(`@group(0) @binding(2) var<storage, read> c : array<${dataType}>;`);
+  }
+  const getShaderSource = (shaderHelper: ShaderHelper) => `
   const M: u32 = ${M}u;
   const N: u32 = ${N}u;
   const K: u32 = ${K}u;
@@ -117,28 +110,20 @@ const createGemmProgramInfo =
     output[global_id.x] = value;
 
   }`;
-      return {
-        ...metadata,
-        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
-        getShaderSource,
-        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
-      };
-    };
-
-const createGemmProgramInfoLoader = (inputs: readonly TensorView[], attributes: GemmAttributes): ProgramInfoLoader => {
-  const metadata = {
+  return {
     name: 'Gemm',
-    inputTypes: inputs.length === 3 ? [GpuDataType.default, GpuDataType.default, GpuDataType.default] :
-                                      [GpuDataType.default, GpuDataType.default],
-    cacheHint: attributes.cacheKey
+    shaderCache: {hint: attributes.cacheKey},
+    getRunData: () => ({
+      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
+      dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
+    }),
+    getShaderSource,
   };
-
-  return {...metadata, get: () => createGemmProgramInfo(metadata, inputs, attributes)};
 };
 
 export const gemm = (context: ComputeContext, attributes: GemmAttributes): void => {
   validateInputs(context.inputs);
-  context.compute(createGemmProgramInfoLoader(context.inputs, attributes));
+  context.compute(createGemmProgramInfo(context.inputs, attributes));
 };
 
 export const parseGemmAttributes = (attributes: Record<string, unknown>): GemmAttributes =>

@@ -168,6 +168,7 @@ def _combine_input_buffers_initializers(
     kwargs: Mapping[str, ORTModelInputOutputType],
     device: torch.device,
     rt_inspector: RuntimeInspector,
+    zero_stage3_offload_param_map: Optional[Dict[str, torch.nn.parameter.Parameter]],
 ):
     """Creates forward `*inputs` list from user input and PyTorch initializers
 
@@ -205,10 +206,11 @@ def _combine_input_buffers_initializers(
     _expand_inputs(inputs, non_none_inputs)
     flattened_kwargs_inputs = {}
     _expand_inputs(kwargs, flattened_kwargs_inputs)
-    buffer_names_dict = {buffer_name: inp for buffer_name, inp in named_buffer}
+    buffer_names_dict = None
     result = []
     embed_sparsity_results = OrderedDict()
     label_sparsity_results = OrderedDict()
+    onnx_input_to_value_map = OrderedDict()
 
     for input_idx, name in enumerate(onnx_input_names):
         inp = None
@@ -231,6 +233,8 @@ def _combine_input_buffers_initializers(
 
         if inp is None:
             # Registered buffers are translated to user_input+initializer in ONNX
+            if buffer_names_dict is None:
+                buffer_names_dict = {buffer_name: i for buffer_name, i in named_buffer}
             try:  # noqa: SIM105
                 inp = buffer_names_dict[name]
             except KeyError:
@@ -248,13 +252,24 @@ def _combine_input_buffers_initializers(
                 if label_density < 100:
                     label_sparsity_results[name] = label_density
             result.append(inp)
+
+            onnx_input_to_value_map[name] = inp
         else:
             raise wrap_exception(
                 ORTModuleONNXModelException, RuntimeError(f"Input is present in ONNX graph but not provided: {name}.")
             )
 
     # params is a list of all initializers known to the onnx graph
-    result.extend(params)
+    if zero_stage3_offload_param_map:
+        for p in params:
+            if p not in zero_stage3_offload_param_map.values():
+                result.append(p)
+    else:
+        result.extend(params)
+
+    if rt_inspector.memory_ob.is_enabled() and not rt_inspector.memory_ob.symbolic_dim_collecting_completed:
+        rt_inspector.memory_ob.collect_symbolic_dim_values(input_info.dynamic_axes, onnx_input_to_value_map)
+        rt_inspector.memory_ob.symbolic_dim_collecting_completed = True
 
     return result, embed_sparsity_results, label_sparsity_results
 

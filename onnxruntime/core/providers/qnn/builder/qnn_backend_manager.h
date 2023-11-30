@@ -25,14 +25,18 @@ class QnnModel;
 
 class QnnBackendManager {
  public:
-  QnnBackendManager(std::string backend_path,
+  QnnBackendManager(std::string&& backend_path,
                     ProfilingLevel profiling_level,
                     uint32_t rpc_control_latency,
-                    HtpPerformanceMode htp_performance_mode)
+                    HtpPerformanceMode htp_performance_mode,
+                    ContextPriority context_priority,
+                    std::string&& qnn_saver_path)
       : backend_path_(backend_path),
         profiling_level_(profiling_level),
         rpc_control_latency_(rpc_control_latency),
-        htp_performance_mode_(htp_performance_mode) {
+        htp_performance_mode_(htp_performance_mode),
+        context_priority_(context_priority),
+        qnn_saver_path_(qnn_saver_path) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
 
@@ -69,13 +73,9 @@ class QnnBackendManager {
     return CreateContext();
   }
 
-  Status DumpQnnContext(const std::string& model_name, const std::string& graph_name);
+  std::unique_ptr<unsigned char[]> GetContextBinaryBuffer(uint64_t& written_buffer_size);
 
-  Status LoadCachedQnnContext(QnnModel& qnn_model);
-
-  Status GetMetadataFromOrtContextFile();
-
-  Status ValidateWithContextFile(const std::string& model_name, const std::string& graph_name);
+  Status LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length, QnnModel& qnn_model);
 
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context);
 
@@ -88,14 +88,6 @@ class QnnBackendManager {
   const Qnn_BackendHandle_t& GetQnnBackendHandle() { return backend_handle_; }
 
   const Qnn_ProfileHandle_t& GetQnnProfileHandle() { return profile_backend_handle_; }
-
-  std::string GetBackendBuildId() {
-    char* backend_build_id{nullptr};
-    if (QNN_SUCCESS != qnn_interface_.backendGetBuildId((const char**)&backend_build_id)) {
-      LOGS(*logger_, ERROR) << "Unable to get build Id from the backend.";
-    }
-    return (backend_build_id == nullptr ? std::string("") : std::string(backend_build_id));
-  }
 
   void SetLogger(const logging::Logger* logger) {
     if (logger_ == nullptr) {
@@ -125,22 +117,24 @@ class QnnBackendManager {
   void Split(std::vector<std::string>& split_string, const std::string& tokenized_string, const char separator);
 
   Status ExtractBackendProfilingInfo();
-  Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id);
-  Status ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id);
+  Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id, std::ofstream& outfile, bool backendSupportsExtendedEventData);
+  Status ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel, std::ofstream& outfile, bool backendSupportsExtendedEventData);
 
   void SetQnnBackendType(uint32_t backend_id);
   QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
 
-  bool IsContextCacheFileExists(const std::string& customer_context_cache_path,
-                                const std::string& model_description,
-                                const onnxruntime::PathString& model_pathstring);
+  const std::string& GetSdkVersion() { return sdk_build_version_; }
 
  private:
   void* LoadLib(const char* file_name, int flags, std::string& error_msg);
 
   Status LoadQnnSystemLib();
 
+  Status LoadQnnSaverBackend();
+
   Status UnloadLib(void* handle);
+
+  Status DestroyHTPPowerConfigID();
 
   void* LibFunction(void* handle, const char* symbol, std::string& error_msg);
 
@@ -155,11 +149,11 @@ class QnnBackendManager {
   }
 
   template <typename F, class T>
-  Status GetQnnInterfaceProviders(const char* lib_path,
-                                  const char* interface_provider_name,
-                                  void** backend_lib_handle,
-                                  T*** interface_providers,
-                                  uint32_t& num_providers);
+  Status GetQnnInterfaceProvider(const char* lib_path,
+                                 const char* interface_provider_name,
+                                 void** backend_lib_handle,
+                                 Qnn_Version_t req_version,
+                                 T** interface_provider);
 
   bool IsDevicePropertySupported();
 
@@ -173,6 +167,22 @@ class QnnBackendManager {
     return ret;
   }
 
+  std::string GetBackendBuildId() {
+    char* backend_build_id{nullptr};
+    if (QNN_SUCCESS != qnn_interface_.backendGetBuildId((const char**)&backend_build_id)) {
+      LOGS(*logger_, ERROR) << "Unable to get build Id from the backend.";
+    }
+    return (backend_build_id == nullptr ? std::string("") : std::string(backend_build_id));
+  }
+
+  Status ExtractProfilingEventBasic(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel, std::ofstream& outfile);
+  Status ExtractProfilingEventExtended(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel, std::ofstream& outfile);
+  static const std::string& GetUnitString(QnnProfile_EventUnit_t unitType);
+  static const std::unordered_map<QnnProfile_EventUnit_t, std::string>& GetUnitStringMap();
+  static const std::string GetEventTypeString(QnnProfile_EventType_t eventType);
+  static const std::string ExtractQnnScalarValue(const Qnn_Scalar_t& scalar);
+  const char* QnnProfileErrorToString(QnnProfile_Error_t error);
+
  private:
   const std::string backend_path_;
   const logging::Logger* logger_ = nullptr;
@@ -185,7 +195,6 @@ class QnnBackendManager {
   Qnn_LogHandle_t log_handle_ = nullptr;
   Qnn_DeviceHandle_t device_handle_ = nullptr;
   Qnn_ContextHandle_t context_ = nullptr;
-  QnnContext_Config_t** context_config_ = nullptr;
   ProfilingLevel profiling_level_;
   bool backend_initialized_ = false;
   bool device_created_ = false;
@@ -197,19 +206,13 @@ class QnnBackendManager {
   std::vector<std::string> op_package_paths_;
   uint32_t rpc_control_latency_ = 0;
   HtpPerformanceMode htp_performance_mode_;
-  std::string model_name_from_ctx_cache_ = "";
-  std::string graph_name_from_ctx_cache_ = "";
-  std::string model_description_from_ctx_cache_ = "";
-  std::string model_description_ = "";
-  std::string context_cache_path_ = "";
-  bool ctx_file_exists_ = false;
-  bool ctx_metadata_tried_ = false;
-  bool ort_generated_ctx_cache_ = false;
-  bool get_capability_round_2_ = false;
-  uint16_t ort_ctx_metadata_length_ = 0;
+  ContextPriority context_priority_;
+  std::string sdk_build_version_ = "";
 #ifdef _WIN32
   std::set<HMODULE> mod_handles_;
 #endif
+  const std::string qnn_saver_path_;
+  uint32_t htp_power_config_client_id_ = 0;
 };
 
 }  // namespace qnn

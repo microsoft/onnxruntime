@@ -141,7 +141,7 @@ stages:
       clean: all
     # we need to use the 2022 pool to create the nuget package with both pre-net6+Xamarin and net6 targets.
     # VS2019 has no support for net6 and we need to use msbuild (from the VS install) to do the packing
-    pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
+    pool: 'Onnxruntime-Win-CPU-2022'
     variables:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
@@ -222,44 +222,29 @@ stages:
         versionSpec: 6.2.1
 
     - task: PowerShell@2
-      displayName: Install .NET 6 workloads
+      displayName: Install mobile workloads
       inputs:
         targetType: 'inline'
         script: |
           dotnet workload install android
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-    - task: PowerShell@2
-      displayName: Build Microsoft.ML.OnnxRuntime .NET 6 targets using dotnet
-      inputs:
-        targetType: 'inline'
-        # we don't specify 'Any CPU' as the platform here because if we do it gets added to the output path
-        #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\Any CPU\RelWithDebInfo\net6.0-ios\
-        # which is inconsistent with the msbuild output path for the pre-.net6 targets
-        #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\monoandroid11.0
-        # and makes it harder to do the packing
-        #
-        # 'Any CPU' is the default (first 'mixed' platform specified in the csproj) so this should be fine.
-        script: |
-          dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:SelectedTargets=Net6  -p:Configuration=RelWithDebInfo -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
     - task: MSBuild@1
-      displayName: 'Restore NuGet Packages and create project.assets.json for pre-.net6 targets'
+      displayName: 'Restore NuGet Packages and create project.assets.json'
       inputs:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
         platform: 'Any CPU'
         configuration: RelWithDebInfo
-        msbuildArguments: '-t:restore -p:SelectedTargets=PreNet6 -p:OrtPackageId=$(OrtPackageId)'
+        msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
-      displayName: 'Build C# for pre-.net6 targets'
+      displayName: 'Build C# bindings'
       inputs:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
         platform: 'Any CPU'
         configuration: RelWithDebInfo
-        msbuildArguments: '-p:SelectedTargets=PreNet6 -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
+        msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - ${{ if eq(parameters.DoEsrp, true) }}:
@@ -268,15 +253,6 @@ stages:
           FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
           DisplayName: 'ESRP - Sign C# dlls'
           DoEsrp: ${{ parameters.DoEsrp }}
-
-    - task: MSBuild@1
-      displayName: Update projects.assets.json with combined list of all target frameworks
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj'
-        platform: 'Any CPU'
-        configuration: RelWithDebInfo
-        msbuildArguments: '-t:restore -p:SelectedTargets=All -p:OrtPackageId=$(OrtPackageId)'
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: MSBuild@1
       displayName: 'Build Nuget Packages'

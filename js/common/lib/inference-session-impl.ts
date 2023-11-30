@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import {resolveBackend} from './backend-impl.js';
-import {SessionHandler} from './backend.js';
+import {InferenceSessionHandler} from './backend.js';
 import {InferenceSession as InferenceSessionInterface} from './inference-session.js';
 import {OnnxValue} from './onnx-value.js';
 import {Tensor} from './tensor.js';
@@ -14,7 +14,7 @@ type FetchesType = InferenceSessionInterface.FetchesType;
 type ReturnType = InferenceSessionInterface.ReturnType;
 
 export class InferenceSession implements InferenceSessionInterface {
-  private constructor(handler: SessionHandler) {
+  private constructor(handler: InferenceSessionHandler) {
     this.handler = handler;
   }
   run(feeds: FeedsType, options?: RunOptions): Promise<ReturnType>;
@@ -195,7 +195,7 @@ export class InferenceSession implements InferenceSessionInterface {
     const eps = options.executionProviders || [];
     const backendHints = eps.map(i => typeof i === 'string' ? i : i.name);
     const backend = await resolveBackend(backendHints);
-    const handler = await backend.createSessionHandler(filePathOrUint8Array, options);
+    const handler = await backend.createInferenceSessionHandler(filePathOrUint8Array, options);
     return new InferenceSession(handler);
   }
 
@@ -213,5 +213,5 @@ export class InferenceSession implements InferenceSessionInterface {
     return this.handler.outputNames;
   }
 
-  private handler: SessionHandler;
+  private handler: InferenceSessionHandler;
 }
