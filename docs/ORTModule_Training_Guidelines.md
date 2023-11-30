@@ -281,7 +281,7 @@ data sparsity based performance optimizations.
 #### ORTMODULE_MEMORY_OPT_LEVEL
 
 - **Feature Area**: *ORTMODULE/Optimizations*
-- **Description**: By default, the level is 0. This env var can be used for enabling recomputation for reducing memory peak requirement. Setting the level to be 0 means all detected subgraphs generating stashed activations will be recomputed. This is conceptually equivalent to PyTorch gradient checkpoint. When level is not 0, check Check [Memory Optimizer for ONNX Runtime Training](Memory_Optimizer.md) for more details.
+- **Description**: By default, the level is 0. This env var can be used for enabling recomputation for reducing memory peak requirement. Setting the level to be 0 means all detected subgraphs with each transformer-based model layer generating stashed activations will be recomputed. This is conceptually equivalent to PyTorch's gradient checkpoint. When level is not 0, check Check [Memory Optimizer for ONNX Runtime Training](Memory_Optimizer.md) for more details.
 
     ```bash
     export ORTMODULE_MEMORY_OPT_LEVEL=0

@@ -175,7 +175,7 @@ Status ResetNodeBackwardPassAttribute(Graph& graph, bool& modified) {
   for (auto& node : graph.Nodes()) {
     if (node.OpType() == "YieldOp") {
       yield_op_node = &node;
-      break;
+      return Status::OK();
     }
   }
 

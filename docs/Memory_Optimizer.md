@@ -31,13 +31,13 @@ Integrate models using `ORTModule`.
 
 There are two modes to enable the memory optimizations:
 - Aggressively Recompute All Within Each Transformer Layer, enabled by `export ORTMODULE_MEMORY_OPT_LEVEL=1`. This will recompute all detected subgraphs within each Transformer Attention+MLP layer. It is easy to enable, but be noted this recompute plan may NOT be the best one. In this mode, `ORTMODULE_MEMORY_OPT_CONFIG` env values passed by users are not respected.
-- User Specified Subgraph Recompute, enabled by `export ORTMODULE_MEMORY_OPT_LEVEL=0` and `export ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,...`. This is an advanced usage, allows users to find the most suitable graphs to recompute, at the cost of overhead to look for the best plans.
+- User Specified Subgraph Recompute, enabled by `export ORTMODULE_MEMORY_OPT_LEVEL=0` and `export ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,...`. This is an advanced usage, that allows users to find the most suitable graphs to recompute, at the cost of overhead to look for the best plans.
 
 ### Mode 1 - Simple Usage (Aggressively Recompute All Within Each Transformer Layer)
 
 
 1. Set memory optimization level to be TRANSFORMER_LAYERWISE_RECOMPUTE, by `export ORTMODULE_MEMORY_OPT_LEVEL=1`
-2. Run the training as usual; check the logs, you could find something like this:
+2. Run the training as usual; check the logs, you could find something like this if the current log level <= LogLevel.INFO:
 	```
 	Memory Optimizer     :  ON   :  Memory Optimization Level: [TRANSFORMER_LAYERWISE_RECOMPUTE], Optimization Config: [Reshape+Where+:1:-1,BiasSoftmax+:1:-1,Cast+:1:-1,BiasGelu+:1:-1,FusedMatMul+:1:-1,Add+:1:-1,Reshape+Unsqueeze+Unsqueeze+Cast+Sub+Mul+Cast+:1:-1]
 									Configs                                              Freq  Max Saving(Bytes)  Saving Symbolic(Bytes)
@@ -56,7 +56,7 @@ There are two modes to enable the memory optimizations:
 ### Mode 2 -  Advanced Usage (User Selected Subgraph Recompute)
 
 1. Be noted `ORTMODULE_MEMORY_OPT_LEVEL` is by default be 0. Run the training as usual; then stop it after training a few steps.
-2. Check the logs, you could find something like this:
+2. Check the logs, you could find something like this if the current log level <= LogLevel.INFO::
 	```
 	Memory Optimizer     :  OFF  :  Enable with env ORTMODULE_MEMORY_OPT_LEVEL=1 or ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,...
 									Configs                                              Freq  Max Saving(Bytes)  Saving Symbolic(Bytes)
