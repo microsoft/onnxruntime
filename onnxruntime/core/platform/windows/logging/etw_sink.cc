@@ -66,12 +66,12 @@ EtwRegistrationManager& EtwRegistrationManager::Instance() {
 }
 
 bool EtwRegistrationManager::IsEnabled() const {
-    std::lock_guard<std::mutex> lock(provider_change_mutex_);
+    std::lock_guard<OrtMutex> lock(provider_change_mutex_);
     return is_enabled_;
 }
 
 UCHAR EtwRegistrationManager::Level() const {
-    std::lock_guard<std::mutex> lock(provider_change_mutex_);
+    std::lock_guard<OrtMutex> lock(provider_change_mutex_);
     return level_;
 }
 
@@ -88,7 +88,7 @@ Severity EtwRegistrationManager::MapLevelToSeverity() {
 }
 
 ULONGLONG EtwRegistrationManager::Keyword() const {
-    std::lock_guard<std::mutex> lock(provider_change_mutex_);
+    std::lock_guard<OrtMutex> lock(provider_change_mutex_);
     return keyword_;
 }
 
@@ -97,7 +97,7 @@ HRESULT EtwRegistrationManager::Status() const {
 }
 
 void EtwRegistrationManager::RegisterInternalCallback(const EtwInternalCallback& callback) {
-    std::lock_guard<std::mutex> lock(callbacks_mutex_);
+    std::lock_guard<OrtMutex> lock(callbacks_mutex_);
     callbacks_.push_back(callback);
 }
 
@@ -112,7 +112,7 @@ void NTAPI EtwRegistrationManager::ORT_TL_EtwEnableCallback(
 {
     auto& manager = EtwRegistrationManager::Instance();
     {
-        std::lock_guard<std::mutex> lock(manager.provider_change_mutex_);
+        std::lock_guard<OrtMutex> lock(manager.provider_change_mutex_);
         manager.is_enabled_ = (IsEnabled != 0);
         manager.level_ = Level;
         manager.keyword_ = MatchAnyKeyword;
@@ -129,7 +129,7 @@ EtwRegistrationManager::EtwRegistrationManager() {
 
 void EtwRegistrationManager::LazyInitialize() {
     if (!initialized_) {
-        std::lock_guard<std::mutex> lock(init_mutex_);
+        std::lock_guard<OrtMutex> lock(init_mutex_);
         if (!initialized_) {  // Double-check locking pattern
             initialized_ = true;
             etw_status_ = ::TraceLoggingRegisterEx(etw_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
@@ -141,7 +141,7 @@ void EtwRegistrationManager::LazyInitialize() {
 }
 
 void EtwRegistrationManager::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext) {
-    std::lock_guard<std::mutex> lock(callbacks_mutex_);
+    std::lock_guard<OrtMutex> lock(callbacks_mutex_);
     for (const auto& callback : callbacks_) {
         callback(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
     }
@@ -173,7 +173,7 @@ void EtwSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id,
 #define ETW_EVENT_NAME "ONNXRuntimeLogEvent"
 #define TRACE_LOG_WRITE(level)                                                             \
   TraceLoggingWrite(etw_provider_handle, ETW_EVENT_NAME,                                   \
-                    TraceLoggingKeyword(static_cast<ULONGLONG>(Keyword::Logs)),            \
+                    TraceLoggingKeyword(static_cast<ULONGLONG>(onnxruntime::logging::TLKeyword::Logs)),            \
                     TraceLoggingLevel(level),                                              \
                     TraceLoggingString(logger_id.c_str(), "logger"),                       \
                     TraceLoggingString(message.Category(), "category"),                    \

@@ -4,12 +4,13 @@
 #include "qnn_execution_provider.h"
 
 #include <filesystem>
-#include "core/providers/common.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/kernel_registry.h"
+#include "core/platform/env.h"
+#include "core/providers/common.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/partitioning_utils.h"
@@ -146,11 +147,12 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 
   static const std::string PROFILING_LEVEL = "profiling_level";
   qnn::ProfilingLevel profiling_level = qnn::ProfilingLevel::OFF;
-  auto& manager = logging::EtwRegistrationManager::Instance();
-  if (manager.IsEnabled()) {
-      auto level = manager.Level();
-      auto keyword = manager.Keyword();
-    if ((manager.Keyword() & static_cast<ULONGLONG>(logging::Keyword::EP)) != 0) {
+  const Env& env = Env::Default();
+  auto& provider = env.GetTelemetryProvider();
+  if (provider.IsEnabled()) {
+    auto level = provider.Level();
+    auto keyword = provider.Keyword();
+    if ((keyword & static_cast<unsigned long long>(onnxruntime::logging::TLKeyword::EP)) != 0) {
         if (level != 0) {
           if (level == 1) {
               ParseProfilingLevel("basic", profiling_level);
@@ -161,7 +163,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     }
   }
   else {
-  auto profiling_level_pos = provider_options_map.find(PROFILING_LEVEL);
+    auto profiling_level_pos = provider_options_map.find(PROFILING_LEVEL);
     if (profiling_level_pos != provider_options_map.end()) {
       ParseProfilingLevel(profiling_level_pos->second, profiling_level);
     }

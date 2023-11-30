@@ -75,6 +75,14 @@ struct Category {
   // TODO: What other high level categories are meaningful? Model? Optimizer? Execution?
 };
 
+enum class TLKeyword : unsigned long long {
+    Logs = 0x1,
+    Reserved1 = 0x2,
+    Reserved2 = 0x4,
+    Reserved3 = 0x8,
+    EP = 0x10
+};
+
 class ISink;
 class Logger;
 class Capture;

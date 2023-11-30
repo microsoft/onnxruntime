@@ -12,6 +12,20 @@ void LogRuntimeError(uint32_t sessionId, const common::Status& status, const cha
   env.GetTelemetryProvider().LogRuntimeError(sessionId, status, file, function, line);
 }
 
+bool Telemetry::IsEnabled() const {
+  return false;
+}
+
+// Get the current logging level
+unsigned char Telemetry::Level() const {
+  return 0;
+}
+
+// Get the current keyword
+unsigned long long Telemetry::Keyword() const {
+  return 0;
+}
+
 void Telemetry::EnableTelemetryEvents() const {
 }
 

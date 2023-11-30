@@ -24,17 +24,10 @@
 
 #include "core/common/logging/capture.h"
 #include "core/common/logging/isink.h"
+#include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
 namespace logging {
-
-enum class Keyword : unsigned long long {
-    Logs = 0x1,
-    Reserved1 = 0x2,
-    Reserved2 = 0x4,
-    Reserved3 = 0x8,
-    EP = 0x10
-};
 
 class EtwSink : public ISink {
  public:
@@ -100,9 +93,9 @@ class EtwRegistrationManager {
         _In_opt_ PVOID CallbackContext);
 
       std::vector<EtwInternalCallback> callbacks_;
-      std::mutex callbacks_mutex_;
-      mutable std::mutex provider_change_mutex_;
-      std::mutex init_mutex_;
+      OrtMutex callbacks_mutex_;
+      mutable OrtMutex provider_change_mutex_;
+      OrtMutex init_mutex_;
       bool initialized_ = false;
       bool is_enabled_;
       UCHAR level_;

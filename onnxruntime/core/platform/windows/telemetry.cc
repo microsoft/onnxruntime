@@ -55,15 +55,18 @@ TRACELOGGING_DEFINE_PROVIDER(telemetry_provider_handle, "Microsoft.ML.ONNXRuntim
 #endif
 
 OrtMutex WindowsTelemetry::mutex_;
+OrtMutex WindowsTelemetry::provider_change_mutex_;
 uint32_t WindowsTelemetry::global_register_count_ = 0;
 bool WindowsTelemetry::enabled_ = true;
 uint32_t WindowsTelemetry::projection_ = 0;
+UCHAR WindowsTelemetry::level_ = 0;
+ULONGLONG WindowsTelemetry::keyword_ = 0;
 
 WindowsTelemetry::WindowsTelemetry() {
   std::lock_guard<OrtMutex> lock(mutex_);
   if (global_register_count_ == 0) {
     // TraceLoggingRegister is fancy in that you can only register once GLOBALLY for the whole process
-    HRESULT hr = TraceLoggingRegister(telemetry_provider_handle);
+    HRESULT hr = TraceLoggingRegisterEx(telemetry_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
     if (SUCCEEDED(hr)) {
       global_register_count_ += 1;
     }
@@ -78,6 +81,45 @@ WindowsTelemetry::~WindowsTelemetry() {
       TraceLoggingUnregister(telemetry_provider_handle);
     }
   }
+}
+
+bool WindowsTelemetry::IsEnabled() const {
+    std::lock_guard<OrtMutex> lock(provider_change_mutex_);
+    return enabled_;
+}
+
+UCHAR WindowsTelemetry::Level() const {
+    std::lock_guard<OrtMutex> lock(provider_change_mutex_);
+    return level_;
+}
+
+ULONGLONG WindowsTelemetry::Keyword() const {
+    std::lock_guard<OrtMutex> lock(provider_change_mutex_);
+    return keyword_;
+}
+
+// HRESULT WindowsTelemetry::Status() {
+//     return etw_status_;
+// }
+
+void NTAPI WindowsTelemetry::ORT_TL_EtwEnableCallback(
+    _In_ LPCGUID SourceId,
+    _In_ ULONG IsEnabled,
+    _In_ UCHAR Level,
+    _In_ ULONGLONG MatchAnyKeyword,
+    _In_ ULONGLONG MatchAllKeyword,
+    _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
+    _In_opt_ PVOID CallbackContext)
+{
+    (void)SourceId;
+    (void)MatchAllKeyword;
+    (void)FilterData;
+    (void)CallbackContext;
+
+    std::lock_guard<OrtMutex> lock(provider_change_mutex_);
+    enabled_ = (IsEnabled != 0);
+    level_ = Level;
+    keyword_ = MatchAnyKeyword;
 }
 
 void WindowsTelemetry::EnableTelemetryEvents() const {

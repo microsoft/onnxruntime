@@ -38,6 +38,14 @@ class Telemetry {
   virtual void DisableTelemetryEvents() const;
   virtual void SetLanguageProjection(uint32_t projection) const;
 
+  virtual bool IsEnabled() const;
+
+  // Get the current logging level
+  virtual unsigned char Level() const;
+
+  // Get the current keyword
+  virtual unsigned long long Keyword() const;
+
   virtual void LogProcessInfo() const;
 
   virtual void LogSessionCreationStart() const;
