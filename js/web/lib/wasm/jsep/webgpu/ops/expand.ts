@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
@@ -44,34 +45,51 @@ const createExpandProgramInfo = (inputs: readonly TensorView[]): ProgramInfo => 
   const inputShape = inputs[0].dims;
   const shape = Array.from(inputs[1].getBigInt64Array(), Number);
   const outputShape: number[] = calculateOutputShape(inputShape, shape);
-  const outputSize = ShapeUtil.size(outputShape);
-
   const dataType = inputs[0].dataType;
-  const enableInputShapeUniform = enableShapesUniforms(inputShape.length);
-  const inputShapeOrRank = enableInputShapeUniform ? inputShape.length : inputShape;
-  const input = inputVariable('input', dataType, inputShapeOrRank);
-  const enableOutputShapeUniform = enableShapesUniforms(outputShape.length);
-  const outputShapeOrRank = enableOutputShapeUniform ? outputShape.length : outputShape;
-  const output = outputVariable('output', dataType, outputShapeOrRank);
+  const components = dataType === DataType.bool ? 4 : 1;
+  const outputSize = ShapeUtil.size(outputShape) / components;
 
-  const getShaderSource = (shaderHelper: ShaderHelper) => `
-  const inputShape = ${input.indices(...inputShape)};
-  ${shaderHelper.registerUniform('vec_size', 'u32').declareVariables(input, output)}
-  ${shaderHelper.mainStart()}
-  ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.vec_size')}
-    let outputIndices = ${output.offsetToIndices('global_idx')};
-    var inputIndices: ${input.type.indices};
-    for (var i = 0; i < ${inputShape.length}; i++) {
-      if (${input.indicesGet('inputShape', 'i')} == 1) {
-        ${input.indicesSet('inputIndices', 'i', 0)}
-      } else {
-        ${
-      input.indicesSet(
-          'inputIndices', 'i', output.indicesGet('outputIndices', `i + ${outputShape.length - inputShape.length}`))}
-      }
+  const enableInputShapeUniform = enableShapesUniforms(inputShape.length);
+  const enableOutputShapeUniform = enableShapesUniforms(outputShape.length);
+
+
+  const getShaderSource = (shaderHelper: ShaderHelper) => {
+    const inputShapeOrRank = enableInputShapeUniform ? inputShape.length : inputShape;
+    const outputShapeOrRank = enableOutputShapeUniform ? outputShape.length : outputShape;
+    const input = inputVariable('input', dataType, inputShapeOrRank, components);
+    const output = outputVariable('output', dataType, outputShapeOrRank, components);
+    let assignment: string;
+    if (dataType === DataType.bool) {
+      const singleAssignment = (resStr: string, x: number, typeCast = '') => `
+          let outputIndices${x} = ${output.offsetToIndices(`outputOffset + ${x}u`)};
+          let offset${x} = ${input.broadcastedIndicesToOffset(`outputIndices${x}`, output)};
+          let index${x} = offset${x} / 4u;
+          let component${x} = offset${x} % 4u;
+          ${resStr}[${x}] = ${typeCast}(${input.getByOffset(`index${x}`)}[component${x}]);
+        `;
+      assignment = `
+        let outputOffset = global_idx * ${components};
+        var data = vec4<u32>(0);
+        ${singleAssignment('data', 0, 'u32')}
+        ${singleAssignment('data', 1, 'u32')}
+        ${singleAssignment('data', 2, 'u32')}
+        ${singleAssignment('data', 3, 'u32')}
+        ${output.setByOffset('global_idx', 'data')}
+      }`;
+    } else {
+      assignment = `
+        let outputIndices = ${output.offsetToIndices('global_idx')};
+        let inputOffset = ${input.broadcastedIndicesToOffset('outputIndices', output)};
+        ${output.setByOffset('global_idx', input.getByOffset('inputOffset'))}
+      }`;
     }
-    ${output.setByOffset('global_idx', input.getByIndices('inputIndices'))}
-  }`;
+    return `
+    ${shaderHelper.registerUniform('vec_size', 'u32').declareVariables(input, output)}
+    ${shaderHelper.mainStart()}
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.vec_size')}
+    ${assignment}`;
+  };
+
   const programUniforms: ProgramUniform[] = [{type: 'uint32', data: outputSize}];
   if (enableInputShapeUniform) {
     programUniforms.push(...createTensorShapeVariables(inputShape));
@@ -81,7 +99,7 @@ const createExpandProgramInfo = (inputs: readonly TensorView[]): ProgramInfo => 
   }
   return {
     name: 'Expand',
-    shaderCache: {hint: `${outputShape}`, inputDependencies: [enableInputShapeUniform ? 'rank' : 'dims']},
+    shaderCache: {hint: `${outputShape.length}`, inputDependencies: [enableInputShapeUniform ? 'rank' : 'dims']},
     getShaderSource,
     getRunData: () => ({
       outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
