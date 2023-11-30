@@ -339,7 +339,7 @@ export class WebGpuBackend {
     if (programUniforms) {
       let currentOffset = 0;
       const offsets: number[] = [];
-      const maxAlignmentOfField = 16;
+
       programUniforms.forEach(v => {
         const data = typeof v.data === 'number' ? [v.data] : v.data;
         if (data.length === 0) {
@@ -355,7 +355,9 @@ export class WebGpuBackend {
         currentOffset += data.length > 4 ? Math.ceil(data.length / 4) * 16 : data.length * 4;
       });
 
-      currentOffset = Math.ceil(currentOffset / maxAlignmentOfField) * maxAlignmentOfField;
+      // Buffer requires 16 bytes alignment.
+      const align16 = 16;
+      currentOffset = Math.ceil(currentOffset / align16) * align16;
       const arrayBuffer = new ArrayBuffer(currentOffset);
       programUniforms.forEach((v, i) => {
         const offset = offsets[i];
