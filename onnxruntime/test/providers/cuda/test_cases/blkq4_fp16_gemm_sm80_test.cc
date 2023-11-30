@@ -11,6 +11,8 @@
  *   well with CUTLASS headers.
  */
 
+#if USE_CUTLASS
+
 #include <random>
 
 #include "core/framework/float16.h"
@@ -407,3 +409,5 @@ TEST(BlkQ4_GEMM, Sm80Test) {
 
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif  // USE_CUTLASS

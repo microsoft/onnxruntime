@@ -11,6 +11,8 @@
  *   well with gtest headers.
  */
 
+#if USE_CUTLASS
+
 #include "core/mickey/blk_q4/f16_gemm_sm80.h"
 
 #include "cutlass/util/host_tensor.h"
@@ -487,3 +489,5 @@ template void run_blkq4_gemm<64, false, true, false>(int m, int n, int k);
 }  // namespace test
 }  // namespace cuda
 }  // namespace onnxruntime
+
+#endif  // USE_CUTLASS
