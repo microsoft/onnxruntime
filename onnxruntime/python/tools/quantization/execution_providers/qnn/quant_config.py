@@ -22,7 +22,11 @@ def get_qnn_qdq_config(
     calibrate_method=CalibrationMethod.MinMax,
     activation_type=QuantType.QUInt8,
     weight_type=QuantType.QUInt8,
+    per_channel=False,
 ):
+    if per_channel:
+        raise ValueError("QNN EP does not yet support per-channel quantization.")
+
     # Process model nodes to setup overrides.
     model = onnx.load_model(model_input)
 
@@ -40,7 +44,7 @@ def get_qnn_qdq_config(
             # Override initializers to use the weight_type
             for input_name in node.input:
                 if input_name in name_to_initializer:
-                    tensor_quant_overrides[input_name] = {"quant_type": weight_type, "symmetric": weight_symmetric}
+                    tensor_quant_overrides[input_name] = [{"quant_type": weight_type, "symmetric": weight_symmetric}]
         elif node.op_type == "LayerNormalization" and activation_type in Q16_TYPES and weight_type in Q8_TYPES:
             weight_symmetric = weight_type == QuantType.QInt8
 
@@ -48,17 +52,17 @@ def get_qnn_qdq_config(
             for i in range(2):
                 input_name = node.input[i]
                 if input_name in name_to_initializer:
-                    tensor_quant_overrides[input_name] = {"quant_type": weight_type, "symmetric": weight_symmetric}
+                    tensor_quant_overrides[input_name] = [{"quant_type": weight_type, "symmetric": weight_symmetric}]
         elif node.op_type == "Sigmoid":
             if activation_type == QuantType.QUInt16:
-                tensor_quant_overrides[node.output[0]] = {"scale": 1.0 / 65536.0, "zero_point": 0}
+                tensor_quant_overrides[node.output[0]] = [{"scale": 1.0 / 65536.0, "zero_point": 0}]
             elif activation_type == QuantType.QInt16:
-                tensor_quant_overrides[node.output[0]] = {"scale": 1.0 / 32768.0, "zero_point": 0}
+                tensor_quant_overrides[node.output[0]] = [{"scale": 1.0 / 32768.0, "zero_point": 0}]
         elif node.op_type == "Tanh":
             if activation_type == QuantType.QUInt16:
-                tensor_quant_overrides[node.output[0]] = {"scale": 1.0 / 32768.0, "zero_point": 32768}
+                tensor_quant_overrides[node.output[0]] = [{"scale": 1.0 / 32768.0, "zero_point": 32768}]
             elif activation_type == QuantType.QInt16:
-                tensor_quant_overrides[node.output[0]] = {"scale": 1.0 / 32768.0, "zero_point": 0}
+                tensor_quant_overrides[node.output[0]] = [{"scale": 1.0 / 32768.0, "zero_point": 0}]
 
     extra_options = {
         "MinimumRealRange": 0.0001,
