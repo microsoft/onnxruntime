@@ -7,7 +7,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo, ProgramUniform, TensorInfo} from '../types';
 
-import {createTensorShapeVariables, getArrayVec4Index, IndicesHelper, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
+import {createTensorShapeVariables, getUniformElementAt, IndicesHelper, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
 
 export interface SliceAttributes extends AttributeWithCacheKey {
   readonly starts: number[];
@@ -82,10 +82,10 @@ const calculateInputIndicesImpl =
           var inputIndices: ${input.type.indices};
           var carry = 0u;
           for (var i = ${inputShape.length}; i >= 0; i--) {
-            let input_shape_i = uniforms.input_shape${getArrayVec4Index(inputShape.length, 'i')};
-            let steps_i = uniforms.steps${getArrayVec4Index(inputShape.length, 'i')};
-            let signs_i = uniforms.signs${getArrayVec4Index(inputShape.length, 'i')};
-            let starts_i = uniforms.starts${getArrayVec4Index(inputShape.length, 'i')};
+            let input_shape_i = uniforms.input_shape${getUniformElementAt(inputShape.length, 'i')};
+            let steps_i = uniforms.steps${getUniformElementAt(inputShape.length, 'i')};
+            let signs_i = uniforms.signs${getUniformElementAt(inputShape.length, 'i')};
+            let starts_i = uniforms.starts${getUniformElementAt(inputShape.length, 'i')};
             var outputIndex = ${outputShape.length === 1 ? 'outputIndices' : 'outputIndices[i]'};
             var inputIndex = outputIndex * steps_i + starts_i + carry;
             carry = inputIndex / input_shape_i;

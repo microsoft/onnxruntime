@@ -339,34 +339,14 @@ export class WebGpuBackend {
     if (programUniforms) {
       let currentOffset = 0;
       const offsets: number[] = [];
-      let maxAlignmentOfField = 1;
+      const maxAlignmentOfField = 16;
       programUniforms.forEach(v => {
         const data = typeof v.data === 'number' ? [v.data] : v.data;
         if (data.length === 0) {
           return;
         }
         // https://www.w3.org/TR/WGSL/#alignof
-        let baseAlignment: number;
-        switch (data.length) {
-          case 1:
-            baseAlignment = 4;
-            break;
-          case 2:
-            baseAlignment = 8;
-            break;
-          case 3:
-            baseAlignment = 16;
-            break;
-          case 4:
-            baseAlignment = 16;
-            break;
-          default:
-            baseAlignment = 16;
-        }
-
-        if (baseAlignment > maxAlignmentOfField) {
-          maxAlignmentOfField = baseAlignment;
-        }
+        const baseAlignment = data.length <= 2 ? data.length * 4 : 16;
         currentOffset = Math.ceil(currentOffset / baseAlignment) * baseAlignment;
         offsets.push(currentOffset);
         // When data.length > 4, the uniform variable is of type array<vec4<i32|u32|f32>,N>, where N =
