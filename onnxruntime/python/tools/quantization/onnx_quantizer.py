@@ -37,6 +37,7 @@ from .quant_utils import (
     model_has_infer_metadata,
     ms_domain,
     quantize_data,
+    quantize_nparray,
     save_and_reload_model_with_shape_infer,
     tensor_proto_to_array,
 )
@@ -176,7 +177,6 @@ class ONNXQuantizer:
             initializer_names = self.model.get_initializer_name_set()
             value_info_names = set(self.value_infos.keys())
             keys_unsupported_with_scale_zp = {"symmetric", "reduce_range", "rmax", "rmin"}
-            keys_unsupported_for_initializers = {"rmax", "rmin", "scale", "zero_point"}
 
             for tensor_name, quant_overrides in tensor_quant_overrides.items():
                 if tensor_name not in initializer_names and tensor_name not in value_info_names:
@@ -184,12 +184,6 @@ class ONNXQuantizer:
 
                 has_scale = "scale" in quant_overrides
                 has_zero_point = "zero_point" in quant_overrides
-                is_initializer = tensor_name in initializer_names
-
-                if is_initializer:
-                    for key in keys_unsupported_for_initializers:
-                        if key in quant_overrides:
-                            raise ValueError(f"Tensor override option '{key}' is invalid for initializers")
 
                 if (has_scale and not has_zero_point) or (has_zero_point and not has_scale):
                     raise ValueError("Must provide both 'scale' and 'zero_point' if one of the overrides is provided")
@@ -1023,27 +1017,29 @@ class ONNXQuantizer:
                 quantized_value.scale_name,
             )
 
-        # Use quantization overrides if provided by the user.
-        quant_overrides = self.tensor_quant_overrides.get(weight.name, {})
-        if "quant_type" in quant_overrides:
-            quant_type = quant_overrides["quant_type"].tensor_type
-        symmetric = quant_overrides.get("symmetric", self.is_weight_symmetric)
-        reduce_range = quant_overrides.get("reduce_range", self.reduce_range and reduce_range)
-
         q_weight_name = weight.name + TENSOR_NAME_QUANT_SUFFIX
         zp_name = weight.name + "_zero_point"
         scale_name = weight.name + "_scale"
 
-        # Update packed weight, zero point, and scale initializers
+        # Quantize weight data. Use quantization overrides if provided by the user.
         weight_data = tensor_proto_to_array(weight)
-        w_data = weight_data.flatten().tolist()
-        _, _, zero_point, scale, q_weight_data = quantize_data(
-            w_data,
-            quant_type,
-            symmetric,
-            reduce_range,
-            self.min_real_range,
-        )
+        quant_overrides = self.tensor_quant_overrides.get(weight.name, {})
+        if "quant_type" in quant_overrides:
+            quant_type = quant_overrides["quant_type"].tensor_type
+
+        if "scale" in quant_overrides and "zero_point" in quant_overrides:
+            zero_point, scale = quant_overrides["zero_point"], quant_overrides["scale"]
+            q_weight_data = quantize_nparray(quant_type, weight_data.flatten(), scale, zero_point)
+        else:
+            _, _, zero_point, scale, q_weight_data = quantize_data(
+                weight_data.flatten().tolist(),
+                quant_type,
+                quant_overrides.get("symmetric", self.is_weight_symmetric),
+                reduce_range=quant_overrides.get("reduce_range", self.reduce_range and reduce_range),
+                min_real_range=self.min_real_range,
+                rmin_override=quant_overrides.get("rmin"),
+                rmax_override=quant_overrides.get("rmax"),
+            )
 
         if quant_type in {
             onnx.TensorProto.FLOAT8E4M3FN,

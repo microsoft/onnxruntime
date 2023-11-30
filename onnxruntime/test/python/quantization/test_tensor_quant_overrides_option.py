@@ -210,6 +210,45 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         self.assertEqual(sig_out_zp.int32_data[0], new_sigmoid_zp)
         self.assertEqual(sig_out_sc.float_data[0], np.float32(new_sigmoid_sc))
 
+    def test_qdq_overrides3(self):
+        """
+        Test overriding rmin and rmax for Conv weight
+        """
+        wgt_rmin, wgt_rmax = 0.0, 1.0
+        _, _, _, _, wgt_zp, wgt_sc, _, _, _, _ = self.perform_qdq_quantization(
+            "model_quant_overrides3.onnx",
+            tensor_quant_overrides={
+                "WGT": {"rmin": wgt_rmin, "rmax": wgt_rmax},
+            },
+        )
+
+        # Weight should have different zero_point and scale
+        self.assertEqual(wgt_zp.data_type, self.default_wgt_qtype)
+        self.assertNotEqual(wgt_rmin, np.min(self.weight))
+        self.assertNotEqual(wgt_rmax, np.max(self.weight))
+
+        wgt_qmin, wgt_qmax = get_qmin_qmax_for_qType(wgt_zp.data_type)
+        new_wgt_zp, new_wgt_sc = compute_scale_zp(wgt_rmin, wgt_rmax, wgt_qmin, wgt_qmax)
+        self.assertEqual(wgt_zp.int32_data[0], new_wgt_zp)
+        self.assertEqual(wgt_sc.float_data[0], np.float32(new_wgt_sc))
+
+    def test_qdq_overrides4(self):
+        """
+        Test overriding scale and zero_point for Conv weight
+        """
+        wgt_zp_val, wgt_scale_val = 4, 0.5
+        _, _, _, _, wgt_zp, wgt_sc, _, _, _, _ = self.perform_qdq_quantization(
+            "model_quant_overrides4.onnx",
+            tensor_quant_overrides={
+                "WGT": {"zero_point": wgt_zp_val, "scale": wgt_scale_val},
+            },
+        )
+
+        # Weight should have have the expected zero_point and scale
+        self.assertEqual(wgt_zp.data_type, self.default_wgt_qtype)
+        self.assertEqual(wgt_zp.int32_data[0], wgt_zp_val)
+        self.assertEqual(wgt_sc.float_data[0], np.float32(wgt_scale_val))
+
     def test_override_validation_nonexisting_tensor(self):
         """
         Test that specifying a non-existing tensor should fail.
@@ -269,42 +308,6 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
             )
 
         self.assertIn("option 'reduce_range' is invalid with 'scale' and 'zero_point'", str(context.exception))
-
-    def test_override_invalid_for_initializer(self):
-        """
-        Test that specifying a scale, zero_point, rmin, rmax for initializers should fail.
-        """
-        with self.assertRaises(ValueError) as context:
-            self.perform_qdq_quantization(
-                "model_validation.onnx",
-                tensor_quant_overrides={"WGT": {"scale": 0.0}},
-            )
-
-        self.assertIn("option 'scale' is invalid for initializers", str(context.exception))
-
-        with self.assertRaises(ValueError) as context:
-            self.perform_qdq_quantization(
-                "model_validation.onnx",
-                tensor_quant_overrides={"WGT": {"zero_point": 0}},
-            )
-
-        self.assertIn("option 'zero_point' is invalid for initializers", str(context.exception))
-
-        with self.assertRaises(ValueError) as context:
-            self.perform_qdq_quantization(
-                "model_validation.onnx",
-                tensor_quant_overrides={"WGT": {"rmin": 0.0}},
-            )
-
-        self.assertIn("option 'rmin' is invalid for initializers", str(context.exception))
-
-        with self.assertRaises(ValueError) as context:
-            self.perform_qdq_quantization(
-                "model_validation.onnx",
-                tensor_quant_overrides={"WGT": {"rmax": 0.0}},
-            )
-
-        self.assertIn("option 'rmax' is invalid for initializers", str(context.exception))
 
 
 if __name__ == "__main__":
