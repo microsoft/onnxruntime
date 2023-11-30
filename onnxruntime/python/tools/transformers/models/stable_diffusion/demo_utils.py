@@ -79,8 +79,8 @@ def parse_arguments(is_xl: bool, parser):
     parser.add_argument(
         "--scheduler",
         type=str,
-        default="DDIM",
-        choices=["DDIM", "UniPC", "LCM"] if is_xl else ["DDIM", "EulerA", "UniPC", "LCM"],
+        default="EulerA" if is_xl else "DDIM",
+        choices=["DDIM", "EulerA", "UniPC", "LCM"],
         help="Scheduler for diffusion process" + " of base" if is_xl else "",
     )
 
@@ -132,8 +132,8 @@ def parse_arguments(is_xl: bool, parser):
         parser.add_argument(
             "--refiner-scheduler",
             type=str,
-            default="DDIM",
-            choices=["DDIM", "UniPC"],
+            default="EulerA",
+            choices=["DDIM", "EulerA", "UniPC"],
             help="Scheduler for diffusion process of refiner.",
         )
 
@@ -533,7 +533,7 @@ def add_controlnet_arguments(parser, is_xl: bool = False):
         nargs="*",
         type=float,
         default=[],
-        help="The outputs of the controlnet are multiplied by `controlnet_scale` before they are added to the residual in the original unet. Default is 0.35 for SDXL, or 1.0 for SD 1.5",
+        help="The outputs of the controlnet are multiplied by `controlnet_scale` before they are added to the residual in the original unet. Default is 0.5 for SDXL, or 1.0 for SD 1.5",
     )
 
 

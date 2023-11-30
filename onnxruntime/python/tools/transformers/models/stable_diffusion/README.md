@@ -94,14 +94,14 @@ python3 demo_txt2img_xl.py --lcm --disable-refiner "an astronaut riding a rainbo
 
 #### Generate an image with SDXL Turbo model guided by a text prompt
 ```
-python3 demo_txt2img_xl.py --version xl-turbo --height 512 --width 512 --denoising-steps 1 --scheduler UniPC "little cute gremlin sitting on a bed, cinematic"
+python3 demo_txt2img_xl.py --version xl-turbo --height 512 --width 512 --denoising-steps 4 "little cute gremlin sitting on a bed, cinematic"
 ```
 
 #### Generate an image with a text prompt using a control net
 ```
 python3 demo_txt2img.py "Stormtrooper's lecture in beautiful lecture hall" --controlnet-type depth --controlnet-scale 1.0
 
-python3 demo_txt2img_xl.py "young Mona Lisa" --controlnet-type canny --controlnet-scale 0.5 --scheduler UniPC --disable-refiner
+python3 demo_txt2img_xl.py "portrait of young Mona Lisa with mountain, river and forest in the background" --version xl-turbo --denoising-steps 4 --controlnet-type canny --controlnet-scale 0.5
 ```
 ## Optimize Stable Diffusion ONNX models for Hugging Face Diffusers or Optimum
 

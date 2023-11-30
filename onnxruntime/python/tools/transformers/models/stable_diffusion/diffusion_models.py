@@ -211,7 +211,7 @@ class PipelineInfo:
             raise ValueError(f"Invalid version {self.version}")
 
     def clipwithproj_embedding_dim(self):
-        if self.is_xl_base_or_turbo():
+        if self.is_xl():
             return 1280
         else:
             raise ValueError(f"Invalid version {self.version}")
