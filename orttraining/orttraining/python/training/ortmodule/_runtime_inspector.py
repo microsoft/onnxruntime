@@ -160,7 +160,7 @@ class InputDensityObserver:
             if not (
                 node.domain == "org.pytorch.aten"
                 and node.op_type == "ATen"
-                and node.input[1] in user_input_names
+                #and node.input[1] in user_input_names
                 and len(node.input) >= 3
             ):
                 continue
@@ -194,10 +194,25 @@ class InputDensityObserver:
             if padding_idx < 0:
                 continue
 
-            if node.input[1] not in self._embedding_graph_input_to_padding_idx_map:
-                self._embedding_graph_input_to_padding_idx_map[node.input[1]] = set()
+            # Check embedding inputs
+            def get_embedding_graph_input(node_arg):
+                if node_arg in user_input_names:
+                    return node_arg
+                input_node = self._try_get_node_from_its_output(node_arg)
+                if input_node.op_type == "Cast":
+                    return get_embedding_graph_input(input_node.input[0])
+                else:
+                    self._logger.warning(f"Cannot find embedding input {node_arg}")
+                    return None
 
-            self._embedding_graph_input_to_padding_idx_map[node.input[1]].add(padding_idx)
+            embedding_graph_input = get_embedding_graph_input(node.input[1])
+            if embedding_graph_input is None:
+                continue
+
+            if embedding_graph_input not in self._embedding_graph_input_to_padding_idx_map:
+                self._embedding_graph_input_to_padding_idx_map[embedding_graph_input] = set()
+
+            self._embedding_graph_input_to_padding_idx_map[embedding_graph_input].add(padding_idx)
 
     def _initialize_loss_label_padding_inspector(self, model, user_input_names):
         """Register loss label input padding inspector.
