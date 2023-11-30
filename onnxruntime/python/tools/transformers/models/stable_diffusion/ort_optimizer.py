@@ -8,6 +8,8 @@ ONNX Model Optimizer for Stable Diffusion
 """
 
 import logging
+import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -33,23 +35,32 @@ class OrtStableDiffusionOptimizer:
             "clip": ClipOnnxModel,
         }
 
-    def optimize_by_ort(self, onnx_model, use_external_data_format=False):
+    def _optimize_by_ort(self, onnx_model, use_external_data_format, tmp_dir):
+        # Save to a temporary file so that we can load it with Onnx Runtime.
+        logger.info("Saving a temporary model to run OnnxRuntime graph optimizations...")
+        tmp_model_path = Path(tmp_dir) / "model.onnx"
+        onnx_model.save_model_to_file(str(tmp_model_path), use_external_data_format=use_external_data_format)
+        ort_optimized_model_path = Path(tmp_dir) / "optimized.onnx"
+        optimize_by_onnxruntime(
+            str(tmp_model_path),
+            use_gpu=True,
+            optimized_model_path=str(ort_optimized_model_path),
+            save_as_external_data=use_external_data_format,
+            external_data_filename="optimized.onnx_data",
+        )
+        model = onnx.load(str(ort_optimized_model_path), load_external_data=True)
+        return self.model_type_class_mapping[self.model_type](model)
+
+    def optimize_by_ort(self, onnx_model, use_external_data_format=False, tmp_dir=None):
         # Use this step to see the final graph that executed by Onnx Runtime.
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            # Save to a temporary file so that we can load it with Onnx Runtime.
-            logger.info("Saving a temporary model to run OnnxRuntime graph optimizations...")
-            tmp_model_path = Path(tmp_dir) / "model.onnx"
-            onnx_model.save_model_to_file(str(tmp_model_path), use_external_data_format=use_external_data_format)
-            ort_optimized_model_path = Path(tmp_dir) / "optimized.onnx"
-            optimize_by_onnxruntime(
-                str(tmp_model_path),
-                use_gpu=True,
-                optimized_model_path=str(ort_optimized_model_path),
-                save_as_external_data=use_external_data_format,
-                external_data_filename="optimized.onnx_data",
-            )
-            model = onnx.load(str(ort_optimized_model_path), load_external_data=True)
-            return self.model_type_class_mapping[self.model_type](model)
+        if tmp_dir is None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                return self._optimize_by_ort(onnx_model, use_external_data_format, temp_dir)
+        else:
+            os.makedirs(tmp_dir, exist_ok=True)
+            model = self._optimize_by_ort(onnx_model, use_external_data_format, tmp_dir)
+            shutil.rmtree(tmp_dir)
+            return model
 
     def optimize(
         self,
@@ -62,6 +73,7 @@ class OrtStableDiffusionOptimizer:
         optimize_by_ort=True,
         optimize_by_fusion=True,
         final_target_float16=True,
+        tmp_dir=None,
     ):
         """Optimize onnx model using ONNX Runtime transformers optimizer"""
         logger.info(f"Optimize {input_fp32_onnx_path}...")
@@ -104,7 +116,7 @@ class OrtStableDiffusionOptimizer:
         from onnxruntime import __version__ as ort_version
 
         if optimize_by_ort and (version.parse(ort_version) >= version.parse("1.16.0") or not use_external_data_format):
-            m = self.optimize_by_ort(m, use_external_data_format=use_external_data_format)
+            m = self.optimize_by_ort(m, use_external_data_format=use_external_data_format, tmp_dir=tmp_dir)
 
         if float16:
             logger.info("Convert to float16 ...")

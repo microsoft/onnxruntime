@@ -19,22 +19,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # --------------------------------------------------------------------------
-
 import argparse
-from typing import Any, Dict
+import os
+import sys
+from importlib.metadata import PackageNotFoundError, version
+from io import BytesIO
+from typing import Any, Dict, List
 
+import controlnet_aux
+import cv2
+import numpy as np
+import requests
 import torch
+from diffusers.utils import load_image
 from diffusion_models import PipelineInfo
 from engine_builder import EngineType, get_engine_paths
+from PIL import Image
 
 
 class RawTextArgumentDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter):
     pass
 
 
-def parse_arguments(is_xl: bool, description: str):
-    parser = argparse.ArgumentParser(description=description, formatter_class=RawTextArgumentDefaultsHelpFormatter)
+def arg_parser(description: str):
+    return argparse.ArgumentParser(description=description, formatter_class=RawTextArgumentDefaultsHelpFormatter)
 
+
+def parse_arguments(is_xl: bool, parser):
     engines = ["ORT_CUDA", "ORT_TRT", "TRT"]
 
     parser.add_argument(
@@ -69,7 +80,7 @@ def parse_arguments(is_xl: bool, description: str):
         "--scheduler",
         type=str,
         default="DDIM",
-        choices=["DDIM", "UniPC", "LCM"] if is_xl else ["DDIM", "EulerA", "UniPC"],
+        choices=["DDIM", "UniPC", "LCM"] if is_xl else ["DDIM", "EulerA", "UniPC", "LCM"],
         help="Scheduler for diffusion process" + " of base" if is_xl else "",
     )
 
@@ -106,6 +117,11 @@ def parse_arguments(is_xl: bool, description: str):
         help="Higher guidance scale encourages to generate images that are closely linked to the text prompt.",
     )
 
+    parser.add_argument(
+        "--lora-scale", type=float, default=1, help="Scale of LoRA weights, default 1 (must between 0 and 1)"
+    )
+    parser.add_argument("--lora-weights", type=str, default="", help="LoRA weights to apply in the base model")
+
     if is_xl:
         parser.add_argument(
             "--lcm",
@@ -140,6 +156,10 @@ def parse_arguments(is_xl: bool, description: str):
             type=float,
             default=0.3,
             help="A value between 0 and 1. The higher the value less the final image similar to the seed image.",
+        )
+
+        parser.add_argument(
+            "--disable-refiner", action="store_true", help="Disable refiner and only run base for XL pipeline."
         )
 
     # ONNX export
@@ -181,10 +201,6 @@ def parse_arguments(is_xl: bool, description: str):
     parser.add_argument("--nvtx-profile", action="store_true", help="Enable NVTX markers for performance profiling.")
     parser.add_argument("--seed", type=int, default=None, help="Seed for random generator to get consistent results.")
     parser.add_argument("--disable-cuda-graph", action="store_true", help="Disable cuda graph.")
-
-    parser.add_argument(
-        "--disable-refiner", action="store_true", help="Disable refiner and only run base for XL pipeline."
-    )
 
     group = parser.add_argument_group("Options for ORT_CUDA engine only")
     group.add_argument("--enable-vae-slicing", action="store_true", help="True will feed only one image to VAE once.")
@@ -228,25 +244,39 @@ def parse_arguments(is_xl: bool, description: str):
         args.onnx_opset = 14 if args.engine == "ORT_CUDA" else 17
 
     if is_xl:
-        if args.lcm:
-            if args.guidance > 1.0:
-                print("[I] Use --guidance=1.0 for base since LCM is used.")
-                args.guidance = 1.0
-            if args.scheduler != "LCM":
-                print("[I] Use --scheduler=LCM for base since LCM is used.")
-                args.scheduler = "LCM"
-            if args.denoising_steps > 16:
-                print("[I] Use --denoising_steps=8 (no more than 16) for base since LCM is used.")
-                args.denoising_steps = 8
+        if args.lcm and args.scheduler != "LCM":
+            print("[I] Use --scheduler=LCM for base since LCM is used.")
+            args.scheduler = "LCM"
+
         assert args.strength > 0.0 and args.strength < 1.0
+
+        assert not (args.lcm and args.lora_weights), "it is not supported to use both lcm unet and Lora together"
+
+    if args.scheduler == "LCM":
+        if args.guidance > 1.0:
+            print("[I] Use --guidance=1.0 for base since LCM is used.")
+            args.guidance = 1.0
+        if args.denoising_steps > 16:
+            print("[I] Use --denoising_steps=8 (no more than 16) for base since LCM is used.")
+            args.denoising_steps = 8
 
     print(args)
 
     return args
 
 
+def max_batch(args):
+    do_classifier_free_guidance = args.guidance > 1.0
+    batch_multiplier = 2 if do_classifier_free_guidance else 1
+    max_batch_size = 32 // batch_multiplier
+    if args.engine != "ORT_CUDA" and (args.build_dynamic_shape or args.height > 512 or args.width > 512):
+        max_batch_size = 8 // batch_multiplier
+    return max_batch_size
+
+
 def get_metadata(args, is_xl: bool = False) -> Dict[str, Any]:
     metadata = {
+        "command": " ".join(['"' + x + '"' if " " in x else x for x in sys.argv]),
         "args.prompt": args.prompt,
         "args.negative_prompt": args.negative_prompt,
         "args.batch_size": args.batch_size,
@@ -256,6 +286,14 @@ def get_metadata(args, is_xl: bool = False) -> Dict[str, Any]:
         "vae_slicing": args.enable_vae_slicing,
         "engine": args.engine,
     }
+
+    if args.lora_weights:
+        metadata["lora_weights"] = args.lora_weights
+        metadata["lora_scale"] = args.lora_scale
+
+    if args.controlnet_type:
+        metadata["controlnet_type"] = args.controlnet_type
+        metadata["controlnet_scale"] = args.controlnet_scale
 
     if is_xl and not args.disable_refiner:
         metadata["base.scheduler"] = args.scheduler
@@ -269,6 +307,27 @@ def get_metadata(args, is_xl: bool = False) -> Dict[str, Any]:
         metadata["scheduler"] = args.scheduler
         metadata["denoising_steps"] = args.denoising_steps
         metadata["guidance"] = args.guidance
+
+    # Version of installed python packages
+    packages = ""
+    for name in [
+        "onnxruntime-gpu",
+        "torch",
+        "tensorrt",
+        "transformers",
+        "diffusers",
+        "onnx",
+        "onnx-graphsurgeon",
+        "polygraphy",
+        "controlnet_aux",
+    ]:
+        try:
+            packages += (" " if packages else "") + f"{name}=={version(name)}"
+        except PackageNotFoundError:
+            continue
+    metadata["packages"] = packages
+    metadata["device"] = torch.cuda.get_device_name()
+    metadata["torch.version.cuda"] = torch.version.cuda
 
     return metadata
 
@@ -318,6 +377,7 @@ def init_pipeline(
             engine_dir=engine_dir,
             framework_model_dir=framework_model_dir,
             onnx_dir=onnx_dir,
+            tmp_dir=os.path.join(args.work_dir or ".", engine_type.name, pipeline_info.short_name(), "tmp"),
             force_engine_rebuild=args.force_engine_build,
             device_id=torch.cuda.current_device(),
         )
@@ -361,3 +421,248 @@ def init_pipeline(
         )
 
     return pipeline
+
+
+def get_depth_image(image):
+    """
+    Create depth map for SDXL depth control net.
+    """
+    from transformers import DPTFeatureExtractor, DPTForDepthEstimation
+
+    depth_estimator = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas").to("cuda")
+    feature_extractor = DPTFeatureExtractor.from_pretrained("Intel/dpt-hybrid-midas")
+
+    image = feature_extractor(images=image, return_tensors="pt").pixel_values.to("cuda")
+    with torch.no_grad(), torch.autocast("cuda"):
+        depth_map = depth_estimator(image).predicted_depth
+
+    depth_map = torch.nn.functional.interpolate(
+        depth_map.unsqueeze(1),
+        size=(1024, 1024),
+        mode="bicubic",
+        align_corners=False,
+    )
+    depth_min = torch.amin(depth_map, dim=[1, 2, 3], keepdim=True)
+    depth_max = torch.amax(depth_map, dim=[1, 2, 3], keepdim=True)
+    depth_map = (depth_map - depth_min) / (depth_max - depth_min)
+    image = torch.cat([depth_map] * 3, dim=1)
+
+    image = image.permute(0, 2, 3, 1).cpu().numpy()[0]
+    image = Image.fromarray((image * 255.0).clip(0, 255).astype(np.uint8))
+    return image
+
+
+def get_canny_image(image) -> Image.Image:
+    """
+    Create canny image for SDXL control net.
+    """
+    image = np.array(image)
+    image = cv2.Canny(image, 100, 200)
+    image = image[:, :, None]
+    image = np.concatenate([image, image, image], axis=2)
+    image = Image.fromarray(image)
+    return image
+
+
+def process_controlnet_images_xl(args) -> List[Image.Image]:
+    """
+    Process control image for SDXL control net.
+    """
+    image = None
+    if args.controlnet_image:
+        image = Image.open(args.controlnet_image[0])
+    else:
+        # If no image is provided, download an image for demo purpose.
+        if args.controlnet_type[0] == "canny":
+            image = load_image(
+                "https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png"
+            )
+        elif args.controlnet_type[0] == "depth":
+            image = load_image(
+                "https://huggingface.co/lllyasviel/sd-controlnet-depth/resolve/main/images/stormtrooper.png"
+            )
+
+    controlnet_images = []
+    if args.controlnet_type[0] == "canny":
+        controlnet_images.append(get_canny_image(image))
+    elif args.controlnet_type[0] == "depth":
+        controlnet_images.append(get_depth_image(image))
+    else:
+        raise ValueError(f"The controlnet is not supported for SDXL: {args.controlnet_type}")
+
+    return controlnet_images
+
+
+def add_controlnet_arguments(parser, is_xl: bool = False):
+    """
+    Add control net related arguments.
+    """
+    group = parser.add_argument_group("Options for ControlNet (only supports SD 1.5 or XL).")
+
+    group.add_argument(
+        "--controlnet-image",
+        nargs="*",
+        type=str,
+        default=[],
+        help="Path to the input regular RGB image/images for controlnet",
+    )
+    group.add_argument(
+        "--controlnet-type",
+        nargs="*",
+        type=str,
+        default=[],
+        choices=list(PipelineInfo.supported_controlnet("xl-1.0" if is_xl else "1.5").keys()),
+        help="A list of controlnet type",
+    )
+    group.add_argument(
+        "--controlnet-scale",
+        nargs="*",
+        type=float,
+        default=[],
+        help="The outputs of the controlnet are multiplied by `controlnet_scale` before they are added to the residual in the original unet. Default is 0.35 for SDXL, or 1.0 for SD 1.5",
+    )
+
+
+def download_image(url) -> Image.Image:
+    response = requests.get(url)
+    return Image.open(BytesIO(response.content)).convert("RGB")
+
+
+def controlnet_demo_images(controlnet_list: List[str], height, width) -> List[Image.Image]:
+    """
+    Return demo images of control net v1.1 for Stable Diffusion 1.5.
+    """
+    control_images = []
+    shape = (height, width)
+    for controlnet in controlnet_list:
+        if controlnet == "canny":
+            canny_image = download_image(
+                "https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png"
+            )
+            canny_image = controlnet_aux.CannyDetector()(canny_image)
+            control_images.append(canny_image.resize(shape))
+        elif controlnet == "normalbae":
+            normal_image = download_image(
+                "https://huggingface.co/lllyasviel/sd-controlnet-normal/resolve/main/images/toy.png"
+            )
+            normal_image = controlnet_aux.NormalBaeDetector.from_pretrained("lllyasviel/Annotators")(normal_image)
+            control_images.append(normal_image.resize(shape))
+        elif controlnet == "depth":
+            depth_image = download_image(
+                "https://huggingface.co/lllyasviel/sd-controlnet-depth/resolve/main/images/stormtrooper.png"
+            )
+            depth_image = controlnet_aux.LeresDetector.from_pretrained("lllyasviel/Annotators")(depth_image)
+            control_images.append(depth_image.resize(shape))
+        elif controlnet == "mlsd":
+            mlsd_image = download_image(
+                "https://huggingface.co/lllyasviel/sd-controlnet-mlsd/resolve/main/images/room.png"
+            )
+            mlsd_image = controlnet_aux.MLSDdetector.from_pretrained("lllyasviel/Annotators")(mlsd_image)
+            control_images.append(mlsd_image.resize(shape))
+        elif controlnet == "openpose":
+            openpose_image = download_image(
+                "https://huggingface.co/lllyasviel/sd-controlnet-openpose/resolve/main/images/pose.png"
+            )
+            openpose_image = controlnet_aux.OpenposeDetector.from_pretrained("lllyasviel/Annotators")(openpose_image)
+            control_images.append(openpose_image.resize(shape))
+        elif controlnet == "scribble":
+            scribble_image = download_image(
+                "https://huggingface.co/lllyasviel/sd-controlnet-scribble/resolve/main/images/bag.png"
+            )
+            scribble_image = controlnet_aux.HEDdetector.from_pretrained("lllyasviel/Annotators")(
+                scribble_image, scribble=True
+            )
+            control_images.append(scribble_image.resize(shape))
+        elif controlnet == "seg":
+            seg_image = download_image(
+                "https://huggingface.co/lllyasviel/sd-controlnet-seg/resolve/main/images/house.png"
+            )
+            seg_image = controlnet_aux.SamDetector.from_pretrained(
+                "ybelkada/segment-anything", subfolder="checkpoints"
+            )(seg_image)
+            control_images.append(seg_image.resize(shape))
+        else:
+            raise ValueError(f"There is no demo image of this controlnet: {controlnet}")
+    return control_images
+
+
+def process_controlnet_image(controlnet_type: str, image: Image.Image, height, width):
+    """
+    Process control images of control net v1.1 for Stable Diffusion 1.5.
+    """
+    control_image = None
+    shape = (height, width)
+    image = image.convert("RGB")
+    if controlnet_type == "canny":
+        canny_image = controlnet_aux.CannyDetector()(image)
+        control_image = canny_image.resize(shape)
+    elif controlnet_type == "normalbae":
+        normal_image = controlnet_aux.NormalBaeDetector.from_pretrained("lllyasviel/Annotators")(image)
+        control_image = normal_image.resize(shape)
+    elif controlnet_type == "depth":
+        depth_image = controlnet_aux.LeresDetector.from_pretrained("lllyasviel/Annotators")(image)
+        control_image = depth_image.resize(shape)
+    elif controlnet_type == "mlsd":
+        mlsd_image = controlnet_aux.MLSDdetector.from_pretrained("lllyasviel/Annotators")(image)
+        control_image = mlsd_image.resize(shape)
+    elif controlnet_type == "openpose":
+        openpose_image = controlnet_aux.OpenposeDetector.from_pretrained("lllyasviel/Annotators")(image)
+        control_image = openpose_image.resize(shape)
+    elif controlnet_type == "scribble":
+        scribble_image = controlnet_aux.HEDdetector.from_pretrained("lllyasviel/Annotators")(image, scribble=True)
+        control_image = scribble_image.resize(shape)
+    elif controlnet_type == "seg":
+        seg_image = controlnet_aux.SamDetector.from_pretrained("ybelkada/segment-anything", subfolder="checkpoints")(
+            image
+        )
+        control_image = seg_image.resize(shape)
+    else:
+        raise ValueError(f"There is no demo image of this controlnet_type: {controlnet_type}")
+    return control_image
+
+
+def process_controlnet_arguments(args):
+    """
+    Process control net arguments, and returns a list of control images and a tensor of control net scales.
+    """
+    assert isinstance(args.controlnet_type, list)
+    assert isinstance(args.controlnet_scale, list)
+    assert isinstance(args.controlnet_image, list)
+    if args.version not in ["1.5", "xl-1.0"]:
+        raise ValueError("This demo only supports ControlNet in Stable Diffusion 1.5 or XL.")
+
+    is_xl = args.version == "xl-1.0"
+    if is_xl and len(args.controlnet_type) > 1:
+        raise ValueError("This demo only support one ControlNet for Stable Diffusion XL.")
+
+    if len(args.controlnet_image) != 0 and len(args.controlnet_image) != len(args.controlnet_scale):
+        raise ValueError(
+            f"Numbers of ControlNets {len(args.controlnet_image)} should be equal to number of ControlNet scales {len(args.controlnet_scale)}."
+        )
+
+    if len(args.controlnet_type) == 0:
+        return None, None
+
+    if len(args.controlnet_scale) == 0:
+        args.controlnet_scale = [0.5 if is_xl else 1.0] * len(args.controlnet_type)
+    elif len(args.controlnet_type) != len(args.controlnet_scale):
+        raise ValueError(
+            f"Numbers of ControlNets {len(args.controlnet_type)} should be equal to number of ControlNet scales {len(args.controlnet_scale)}."
+        )
+
+    # Convert controlnet scales to tensor
+    controlnet_scale = torch.FloatTensor(args.controlnet_scale)
+
+    if is_xl:
+        images = process_controlnet_images_xl(args)
+    else:
+        images = []
+        if len(args.controlnet_image) > 0:
+            for i, image in enumerate(args.controlnet_image):
+                images.append(
+                    process_controlnet_image(args.controlnet_type[i], Image.open(image), args.height, args.width)
+                )
+        else:
+            images = controlnet_demo_images(args.controlnet_type, args.height, args.width)
+
+    return images, controlnet_scale

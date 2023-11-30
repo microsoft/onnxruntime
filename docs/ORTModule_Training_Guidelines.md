@@ -388,6 +388,30 @@ Check [FP16_Optimizer implementation](../orttraining/orttraining/python/training
     export ORTMODULE_USE_TRITON=1
     ```
 
+#### ORTMODULE_TRITON_CONFIG_FILE
+
+- **Feature Area**: *ORTMODULE/TritonOp*
+- **Description**: Triton codegen currently supported some Ops such as some elementwise Ops and some reduction Ops. If Triton optimization is enabled, all these supported Ops will be optimized by default if possible. User can provide a customized JSON config file to control which Ops to optimize and how to optimize them. Below is a sample of config JSON. For each Op, Opset version list and domain is needed. Currently "conditions" field can be used to control axis/axes attribute or input, by specify the real value, or "single" means it contains only one dimension, or "constant" means it must be constant tensor. Save the JSON as a file somewhere and assign its path to below env variable to enable the customized config.
+
+    ```json
+    {
+		"ops": {
+			"Add": {"versions": [13, 14]},
+			"Sub": {"versions": [13, 14]},
+			"Identity": {"versions": [13], "is_no_op": True},
+			"ReduceSum": {"versions": [13], "conditions": {"axes": "[-1]"}},
+			"Softmax": {"versions": [13]},
+			"SoftmaxGrad_13": {"domain": "com.microsoft", "versions": [1]}
+		},
+		"initializer": "scalar",
+		"min_nodes": 2
+	}
+	```
+
+    ```bash
+    export ORTMODULE_TRITON_CONFIG_FILE=triton_config.json
+    ```
+
 #### ORTMODULE_ENABLE_TUNING
 
 - **Feature Area**: *ORTMODULE/TritonOp*
