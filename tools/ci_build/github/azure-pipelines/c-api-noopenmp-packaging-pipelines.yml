@@ -341,7 +341,6 @@ stages:
       clean: all
     pool: 'onnxruntime-Win-CPU-2022'
 
-
     steps:
     - checkout: self
       submodules: false
@@ -423,7 +422,7 @@ stages:
         modifyEnvironment: true
         workingFolder: '$(Build.BinariesDirectory)'
 
-    - template: template\flex-downloadPipelineArtifact.yml
+    - template: templates\flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Final Jar'
         ArtifactName: onnxruntime-java-gpu
@@ -431,7 +430,7 @@ stages:
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
-    - template: template\flex-downloadPipelineArtifact.yml
+    - template: templates\flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Jar Tools'
         ArtifactName: onnxruntime-java-tools
