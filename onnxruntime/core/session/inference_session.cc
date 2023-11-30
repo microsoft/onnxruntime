@@ -333,10 +333,12 @@ void InferenceSession::SetLoggingManager(const SessionOptions& session_options,
   if (session_options.user_logging_function) {
     sink = std::make_unique<UserLoggingSink>(session_options.user_logging_function,
                                                session_options.user_logging_param);
-    sink = EnhanceLoggerWithEtw(std::move(sink));
+    auto sessionSeverity = GetSeverity(session_options);
+    auto etwOverrideSeverity = logging::OverrideLevelWithEtw(sessionSeverity);
+    sink = EnhanceLoggerWithEtw(std::move(sink), sessionSeverity, etwOverrideSeverity);
 
     user_logging_manager_ = std::make_unique<logging::LoggingManager>(std::move(sink),
-                                                                      GetSeverity(session_options),
+                                                                      etwOverrideSeverity,
                                                                       false,
                                                                       logging::LoggingManager::InstanceType::Temporal,
                                                                       &session_options.session_logid);

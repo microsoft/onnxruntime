@@ -246,13 +246,13 @@ unsigned int GetProcessId() {
 }
 
 
-std::unique_ptr<ISink> EnhanceLoggerWithEtw(std::unique_ptr<ISink> existingLogger) {
+std::unique_ptr<ISink> EnhanceLoggerWithEtw(std::unique_ptr<ISink> existingLogger, logging::Severity originalSeverity, logging::Severity etwSeverity) {
 #ifdef _WIN32
     auto& manager = EtwRegistrationManager::Instance();
     if (manager.IsEnabled()) {
         auto compositeSink = std::make_unique<CompositeSink>();
-        compositeSink->AddSink(std::move(existingLogger));
-        compositeSink->AddSink(std::make_unique<EtwSink>());
+        compositeSink->AddSink(std::move(existingLogger), originalSeverity);
+        compositeSink->AddSink(std::make_unique<EtwSink>(), etwSeverity);
         return compositeSink;
     } else {
         return existingLogger;

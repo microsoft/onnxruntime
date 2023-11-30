@@ -64,6 +64,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool context_cache_enabled_ = false;
   std::string context_cache_path_cfg_ = "";
   bool disable_cpu_ep_fallback_ = false;  // True if CPU EP fallback has been disabled for this session.
+  bool tracelogging_provider_ep_enabled_ = false;
   bool qnn_context_embed_mode_ = true;
   int32_t vtcm_size_in_mb_ = 0;
 };
