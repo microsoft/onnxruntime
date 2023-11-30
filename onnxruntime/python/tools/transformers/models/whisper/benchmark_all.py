@@ -321,6 +321,7 @@ def save_results(results, filename):
         records.append(record)
 
     BenchmarkRecord.save_as_csv(filename, records)
+    BenchmarkRecord.save_as_json(filename.replace(".csv", ".json"), records)
     # df.to_csv(filename, index=False)
     logger.info(f"Results saved in {filename}!")
 

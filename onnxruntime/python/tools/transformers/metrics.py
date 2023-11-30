@@ -9,9 +9,7 @@ import hashlib
 import json
 import pandas as pd
 
-from abc import ABC
-
-class BaseObject(ABC):
+class BaseObject:
     def __init__(self):
         self.customized = {}
 
@@ -19,6 +17,11 @@ class BaseObject(ABC):
         default_values = self.__dict__.copy()
         default_values.pop('customized', None)
         default_values.update(self.customized)
+
+        for k, v in default_values.items():
+            if isinstance(v, BaseObject):
+                default_values[k] = v.to_dict()
+
         return {k: v for k, v in default_values.items() if v}
 
 class ModelInfo(BaseObject):
@@ -33,6 +36,16 @@ class ModelInfo(BaseObject):
         self.is_text_generation = is_text_generation
         self.short_name = short_name
         self.input_shape = []
+
+class BackendOptions(BaseObject):
+    def __init__(self,
+                 enable_profiling: bool = False,
+                 execution_provider: str = None,
+                 use_io_binding: bool = False):
+        super().__init__()
+        self.enable_profiling = enable_profiling
+        self.execution_provider = execution_provider
+        self.use_io_binding = use_io_binding
 
 class Config(BaseObject):
     def __init__(self,
@@ -49,16 +62,8 @@ class Config(BaseObject):
         self.precision = precision
         self.warmup_runs = warmup_runs
         self.measured_runs = measured_runs
-
-class BackendOptions(BaseObject):
-    def __init__(self,
-                 enable_profiling: bool = False,
-                 execution_provider: str = None,
-                 use_io_binding: bool = False):
-        super().__init__()
-        self.enable_profiling = enable_profiling
-        self.execution_provider = execution_provider
-        self.use_io_binding = use_io_binding
+        self.model_info = ModelInfo()
+        self.backend_options = BackendOptions()
 
 class Metadata(BaseObject):
     def __init__(self,
@@ -98,12 +103,10 @@ class BenchmarkRecord:
                  trigger_date: str = None):
         self.config = Config()
         self.metrics = Metrics()
-        self.model_info = ModelInfo()
         self.metadata = Metadata()
-        self.backend_options = BackendOptions()
         self.trigger_date = trigger_date or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        self.model_info.full_name = model_name
+        self.config.model_info.full_name = model_name
         self.config.precision = precision
         self.config.backend = backend
         self.config.batch_size = batch_size
@@ -113,33 +116,9 @@ class BenchmarkRecord:
         self.metadata.package_name = package_name
         self.metadata.package_version = package_version
 
-    def __calculate_hash(self, input: str) -> str:
-        hash_object = hashlib.md5()
-        hash_object.update(input.encode("utf-8"))
-        return hash_object.hexdigest()
-
     def to_dict(self) -> dict:
-        self.config_hash = self.__calculate_hash(json.dumps(self.config.to_dict(), default=str))
-        self.run_hash = self.__calculate_hash(json.dumps(self.config.to_dict(), default=str) + json.dumps(self.metadata.to_dict(), default=str))
-
-        if self.model_info:
-            if self.model_info.full_name:
-                self.model_full_name = self.model_info.full_name
-            elif self.model_info.short_name:
-                self.model_full_name = self.model_info.short_name
-            else:
-                raise ValueError("model_info.full_name and model_info.short_name cannot be both empty")
-        
-        self.backend = self.config.backend
-        self.batch_size = self.config.batch_size
-        self.seq_length = self.config.seq_length
-        self.precision = self.config.precision
-        self.device = self.metadata.device
-
         return {
-            'model_info': self.model_info.to_dict(),
             'config': self.config.to_dict(),
-            'backend_options': self.backend_options.to_dict(),
             'metadata': self.metadata.to_dict(),
             'metrics': self.metrics.to_dict(),
             'trigger_date': self.trigger_date
@@ -156,3 +135,11 @@ class BenchmarkRecord:
         rds = [record.to_dict() for record in records]
         df = pd.json_normalize(rds)
         df.to_csv(file_name, index=False)
+
+    @classmethod
+    def save_as_json(self, file_name: str, records: list = None) -> None:
+        if records is None or len(records) == 0:
+            return
+        rds = [record.to_dict() for record in records]
+        with open(file_name, 'w') as f:
+            json.dump(rds, f, indent=4, default=str)
