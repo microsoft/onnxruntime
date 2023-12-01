@@ -322,7 +322,7 @@ logging::Severity GetSeverity(const SessionOptions& session_options) {
                 session_options.session_log_severity_level);
     severity = static_cast<logging::Severity>(session_options.session_log_severity_level);
   }
-  return logging::OverrideLevelWithEtw(severity);
+  return severity;
 }
 
 void InferenceSession::SetLoggingManager(const SessionOptions& session_options,
