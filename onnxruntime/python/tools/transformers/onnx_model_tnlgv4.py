@@ -107,6 +107,7 @@ class FusionTNLGV4Attention(Fusion):
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
         # note: this is not an exact match. experiment purpose only.
+        #node: /module/module/language_model/transformer/layers.0/attention/MatMul
         stem_nodes = self.model.match_parent_path(
             node,
             ['Reshape', 'Transpose', 'Reshape', 'MatMul', 'Reshape', 'Softmax', 'Where', 'Reshape', 'Add', 'Mul', 'MatMul']
@@ -114,7 +115,7 @@ class FusionTNLGV4Attention(Fusion):
         if stem_nodes is None:
             return
 
-        qk_matmul_node = stem_nodes[-1]
+        qk_matmul_node = stem_nodes[-1]  #/module/module/language_model/transformer/layers.0/attention/query_key_value/MatMul
 
         qkv_matmul_nodes = self.model.match_parent_path(
             qk_matmul_node,
@@ -147,6 +148,29 @@ class FusionTNLGV4Attention(Fusion):
         concat_node_2 = self.model.find_first_child_by_type(unsqueeze_node, 'Concat')
         if concat_node_2 is None:
             return
+
+        print(f'node: {node}')
+
+        print(f'stem_nodes: ', '*'*30)
+        for temp_node in stem_nodes:
+            print(f'stem_node: {temp_node}')
+        print(f'stem_nodes: ', '*'*30)
+
+        print(f'qk_matmul_node name: {qk_matmul_node}')
+
+        print(f'qkv_matmul_nodes: ', '*'*30)
+        for temp_node in qkv_matmul_nodes:
+            print(f'qkv_matmul_node: {temp_node}')
+        print(f'qkv_matmul_nodes: ', '*'*30)
+
+        print(f'attn_mask_nodes: ', '*'*30)
+        for temp_node in attn_mask_nodes:
+            print(f'attn_mask_node: {temp_node}')
+        print(f'attn_mask_nodes: ', '*'*30)
+
+        print(f'attn_mask: {attn_mask_nodes[-1]}')
+        print(f'qkv_matmul_nodes[-1]: {qkv_matmul_nodes[-1]}')
+        print(f'qkv_matmul_nodes[-2]: {qkv_matmul_nodes[-2]}')
 
         input = qkv_matmul_nodes[-1].input[0]
         attn_mask = attn_mask_nodes[-1].input[0]
