@@ -3,21 +3,13 @@
 
 import {TensorView} from '../../tensor-view';
 
-import {createMatmulProgramInfo} from './3rd-party/matmul_packed_webgpu';
+//import {createMatmulProgramInfo} from './3rd-party/matmul_packed_webgpu';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, ProgramInfo} from '../types';
 
-import {getBroadcastDims, IndicesHelper, inputVariable, outputVariable, ShaderHelper,} from './common';
+import {getBroadcastDims, getMaxComponents, IndicesHelper, inputVariable, outputVariable, ShaderHelper,} from './common';
 import {getActivationSnippet, InternalActivationAttributes} from './fuse-utils';
 
-const getMaxComponents = (size: number): 1|2|3|4 => {
-  if (size % 4 === 0) {
-    return 4;
-  } else if (size % 2 === 0) {
-    return 2;
-  }
-  return 1;
-};
 export const createNaiveMatmulProgramInfo =
     (inputs: readonly TensorView[], activationAttributes: InternalActivationAttributes,
      outputShape: readonly number[], reshapedOutputShape?: readonly number[],
@@ -148,5 +140,5 @@ export const matMul = (context: ComputeContext): void => {
   if (!outputShape) {
     throw new Error('Can\'t use matmul on the given tensors');
   }
-  context.compute(createMatmulProgramInfo(context.inputs, {activation: '', activationCacheKey: ''}, outputShape));
+  context.compute(createNaiveMatmulProgramInfo(context.inputs, {activation: '', activationCacheKey: ''}, outputShape));
 };
