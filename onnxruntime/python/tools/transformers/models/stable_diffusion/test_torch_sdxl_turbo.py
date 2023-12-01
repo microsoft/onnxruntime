@@ -66,6 +66,7 @@ def test(pipeline, batch_size=1, steps=4, warmup_runs=10, test_runs=10, seed=123
 
 
 def main():
+    torch.set_grad_enabled(False)
     pipeline = load_pipeline()
     for batch_size in (1, 4, 8):
         for steps in (1, 4):
