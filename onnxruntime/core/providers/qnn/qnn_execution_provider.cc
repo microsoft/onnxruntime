@@ -22,8 +22,8 @@ namespace onnxruntime {
 
 constexpr const char* QNN = "QNN";
 
-void ParseProfilingLevel(std::string profiling_level_string,
-                         qnn::ProfilingLevel& profiling_level) {
+static void ParseProfilingLevel(std::string profiling_level_string,
+                                qnn::ProfilingLevel& profiling_level) {
   std::transform(profiling_level_string.begin(),
                  profiling_level_string.end(),
                  profiling_level_string.begin(),
@@ -40,8 +40,8 @@ void ParseProfilingLevel(std::string profiling_level_string,
   }
 }
 
-void ParseHtpPerformanceMode(std::string htp_performance_mode_string,
-                             qnn::HtpPerformanceMode& htp_performance_mode) {
+static void ParseHtpPerformanceMode(std::string htp_performance_mode_string,
+                                    qnn::HtpPerformanceMode& htp_performance_mode) {
   std::transform(htp_performance_mode_string.begin(),
                  htp_performance_mode_string.end(),
                  htp_performance_mode_string.begin(),
@@ -70,7 +70,7 @@ void ParseHtpPerformanceMode(std::string htp_performance_mode_string,
   }
 }
 
-void ParseQnnContextPriority(std::string context_priority_string, qnn::ContextPriority& context_priority) {
+static void ParseQnnContextPriority(std::string context_priority_string, qnn::ContextPriority& context_priority) {
   std::transform(context_priority_string.begin(),
                  context_priority_string.end(),
                  context_priority_string.begin(),
