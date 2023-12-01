@@ -44,7 +44,7 @@ common::Status SetConvBaseOptions(ModelBuilder& model_builder,
                                   const Node& node, emscripten::val& options,
                                   const std::vector<int32_t>& strides,
                                   const std::vector<int32_t>& dilations,
-                                  const std::vector<int32_t>& pads,
+                                  std::vector<int32_t>& pads,
                                   const logging::Logger& logger) {
   NodeAttrHelper helper(node);
   const auto group = helper.Get("group", static_cast<int32_t>(1));
@@ -55,29 +55,25 @@ common::Status SetConvBaseOptions(ModelBuilder& model_builder,
   options.set("dilations", emscripten::val::array(dilations));
   options.set("groups", group);
   // Add Padding.
-  // Usually using autopadding is more efficient than using explicit padding.
-  // Try to see if we can map explicit padding to auto padding.
   std::vector<int64_t> input_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
-  AutoPadType auto_pad_type;
-  ORT_RETURN_IF_ERROR(HandleAutoPad(input_shape, weight_shape[2], weight_shape[3],
-                                    helper.Get("pads", std::vector<int64_t>{0, 0, 0, 0}),
-                                    helper.Get("strides", std::vector<int64_t>{1, 1}),
-                                    helper.Get("dilations", std::vector<int64_t>{1, 1}),
-                                    StringToAutoPadType(helper.Get("auto_pad", "NOTSET")),
-                                    auto_pad_type));
+  AutoPadType auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
   if (AutoPadType::SAME_UPPER == auto_pad_type || AutoPadType::SAME_LOWER == auto_pad_type) {
-    if (AutoPadType::SAME_LOWER == auto_pad_type) {  // default is SAME_UPPER
-      options.set("autoPad", emscripten::val("same-lower"));
-    } else {
-      options.set("autoPad", emscripten::val("same-upper"));
-    }
-  } else {
-    // Permute the ONNX's pads, which is [beginning_height, beginning_width, ending_height, ending_width],
-    // while WebNN's padding is [beginning_height, ending_height, beginning_width, ending_width].
-    const std::vector<int32_t> padding{pads[0], pads[2], pads[1], pads[3]};
-    options.set("padding", emscripten::val::array(padding));
+    std::vector<int64_t> pads_out;
+    ORT_RETURN_IF_ERROR(HandleAutoPad(input_shape, weight_shape[2], weight_shape[3],
+                                      helper.Get("pads", std::vector<int64_t>{0, 0, 0, 0}),
+                                      helper.Get("strides", std::vector<int64_t>{1, 1}),
+                                      helper.Get("dilations", std::vector<int64_t>{1, 1}),
+                                      auto_pad_type,
+                                      pads_out,
+                                      model_builder.GetPreferredLayout() == DataLayout::NCHW));
+    std::transform(pads_out.begin(), pads_out.end(), pads.begin(),
+                   [](int64_t pad) -> int32_t { return static_cast<int32_t>(pad); });
   }
+  // Permute the ONNX's pads, which is [beginning_height, beginning_width, ending_height, ending_width],
+  // while WebNN's padding is [beginning_height, ending_height, beginning_width, ending_width].
+  const std::vector<int32_t> padding{pads[0], pads[2], pads[1], pads[3]};
+  options.set("padding", emscripten::val::array(padding));
 
   // Add bias if present.
   if (input_defs.size() > 2) {
@@ -264,11 +260,19 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
                                output_padding[i] + ((kernel_shape[i] - 1) * dilations[i] + 1) - output_shape[i];
           }
         }
-        pads[0] = total_padding[0] - (total_padding[0] / 2);
-        pads[1] = total_padding[0] / 2;
-        pads[2] = total_padding[1] - (total_padding[1] / 2);
-        pads[3] = total_padding[1] / 2;
-        options.set("padding", emscripten::val::array(pads));
+        AutoPadType auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
+        if (AutoPadType::SAME_UPPER == auto_pad_type || AutoPadType::SAME_LOWER == auto_pad_type) {
+          pads[0] = total_padding[0] / 2;
+          pads[1] = total_padding[0] - pads[0];
+          pads[2] = total_padding[1] / 2;
+          pads[3] = total_padding[1] - pads[2];
+          if(AutoPadType::SAME_LOWER == auto_pad_type){
+            std::swap(pads[0], pads[1]);
+            std::swap(pads[2], pads[3]);
+          }
+          options.set("padding", emscripten::val::array(pads));
+        }
+
       }
       options.set("outputSizes", emscripten::val::array(output_shape));
     } else {
