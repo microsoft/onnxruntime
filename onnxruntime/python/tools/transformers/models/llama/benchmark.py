@@ -79,7 +79,7 @@ def get_inputs(args: argparse.Namespace, ort_model_inputs_len: int):
             return_dict=True,
         )
 
-    elif args.benchmark_type == "hf-ort":
+    elif args.benchmark_type in {"hf-ort"}:
         if ort_model_inputs_len == 3:  # [input_ids, attention_mask, position_ids]
             # Using split models in Optimum (e.g. created by Optimum export)
             init_inputs = get_sample_inputs(
@@ -190,7 +190,7 @@ def get_model(args: argparse.Namespace):
 
     # There are multiple sources that the model could come from:
     # 1) Benchmark LLaMA-2 from unofficial source on Hugging Face
-    # 2) Benchmark LLaMA-2 from official source on Hugging Face, which requires an authentication token
+    # 2) Benchmark LLaMA-2 from official source on Hugging Face, which r?equires an authentication token
     # 3) Benchmark LLaMA-2 from local download of model
     # 4) Benchmark LLaMA-2 from Microsoft (already optimized, available at https://github.com/microsoft/Llama-2-Onnx)
     # 5) Benchmark LLaMA-2 from convert_to_onnx
@@ -529,7 +529,13 @@ def get_args(rank=0):
         "--benchmark-type",
         type=str,
         required=True,
-        choices=["hf-pt-eager", "hf-pt-compile", "hf-ort", "ort-msft", "ort-convert-to-onnx"],
+        choices=[
+            "hf-pt-eager",
+            "hf-pt-compile",
+            "hf-ort",
+            "ort-msft",
+            "ort-convert-to-onnx",
+        ],
     )
     parser.add_argument(
         "-m",

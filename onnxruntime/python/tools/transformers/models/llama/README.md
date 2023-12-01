@@ -372,3 +372,37 @@ python3 -m models.llama.benchmark_all \
     --num-runs 1000 \
     --timeout 60  # number of minutes before moving to the next benchmark
 ```
+
+# Mistral
+
+## Introduction
+
+These tools for LLAMA also allow the quantization and optimizaton of Mistral in ORT. 
+
+## Exporting Mistral
+
+There is currently one supported way to export Mistral to ONNX format:
+
+### [Hugging Face Optimum](https://github.com/huggingface/optimum)
+
+
+The following command will export Mistral in full precision:
+```
+python -m optimum.exporters.onnx -m mistralai/Mistral-7B-v0.1 --library-name transformers /path/to/model/directory
+```
+
+## Optimizing & Quantizing Mistral
+
+To quantize Mistral to FP16 and apply fusion optimizations, you can run the following command:
+```
+python models/llama/convert_to_onnx.py -i /path/to/model/directory -o /path/to/optimized_model/directory -p fp16 --optimize_optimum -m mistralai/Mistral-7B-v0.1
+```
+
+## Benchmark Mistral
+The benchmarking script in the llama directory (`models/llama/benchmark.py`) directory support Mistral benchmarking by including the flags `-bt mistral-ort` for benchmarking the ONNX model produced by the above, or `-bt mistral-hf`, which will benchmark the HuggingFace implementation of Mistral. For example, to benchmark the ORT and HF versions respectively, you can run: 
+
+```
+python models/llama/benchmark.py -bt ort-convert-to-onnx -p fp16 -m mistralai/Mistral-7B-v0.1 --ort-model-path /dev_data/petermca/mistral/model_opt/model.quant.onnx
+python models/llama/benchmark.py -bt hf-pt-eager -p fp16 -m mistralai/Mistral-7B-v0.1
+```
+

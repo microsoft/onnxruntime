@@ -16,7 +16,7 @@ from llama_torch import setup_torch_model
 from onnx_model import OnnxModel
 from optimizer import optimize_model
 from packaging import version
-from transformers import AutoConfig, AutoModelForCausalLM
+from transformers import AutoConfig, AutoModelForCausalLM, LlamaConfig, LlamaForCausalLM, PretrainedConfig
 
 from onnxruntime import quantization as ort_quantization
 from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
@@ -391,7 +391,7 @@ def run_torchscript_merged_export(
 
 
 # Optimize the model as FP32
-def optimize_export(config: AutoConfig, input_path: str, output_path: str):
+def optimize_export(config: AutoConfig, input_path: str, output_path: str, remove_model=True):
     from fusion_options import FusionOptions
 
     optimization_options = FusionOptions("gpt2")
@@ -407,7 +407,8 @@ def optimize_export(config: AutoConfig, input_path: str, output_path: str):
     )
     model_opt.save_model_to_file(output_path, use_external_data_format=True)
     logger.info(f"The ONNX model at {input_path} has been successfully optimized and saved at {output_path}!")
-    remove_existing_model(input_path)
+    if remove_model:
+        remove_existing_model(input_path)
 
 
 def convert_to_float16(
@@ -438,7 +439,7 @@ def convert_to_float16(
     return new_paths
 
 
-def use_group_query_attention(config: AutoConfig, fp16_model_opt: OnnxModel, world_size: int = 1):
+def use_group_query_attention(config: AutoConfig, fp16_model_opt: OnnxModel, world_size: int = 1, window_size = 0):
     # Replace MultiHeadAttention with GroupQueryAttention
     fp16_model_opt = replace_mha_with_gqa(fp16_model_opt, "attention_mask", config.num_key_value_heads, world_size)
     fp16_model_opt.prune_graph()
@@ -539,6 +540,23 @@ def remove_existing_files(output_path: str):
             logger.warning(f"Removed {filepath}")
 
 
+def optimize_optimum(config: PretrainedConfig, args):
+    tmp_file = os.path.join(args.output, args.model_name + ".tmp.onnx")
+    output_file = os.path.join(args.output, args.model_name + ".onnx")
+    optimize_export(config, args.input, tmp_file, remove_model=False)
+    logger.info(f"Model successfully optimized to {tmp_file}")
+    opt_model = OnnxModel(onnx.load_model(tmp_file, load_external_data=True))
+    if args.precision == Precision.FLOAT16:
+        opt_model.convert_float_to_float16(keep_io_types=False)
+        window_size = 0 if not hasattr(config, "sliding_window") else config.sliding_window
+        opt_model = use_group_query_attention(config, opt_model, args.world_size, window_size)
+        logger.info("Model successfully fused and quantized to FP16!")
+    opt_model.save_model_to_file(output_file, use_external_data_format=True)
+    logger.info(f"Output model successfully saved to {output_file}")
+    logger.info(f"Removing {tmp_file}")
+    remove_existing_model(tmp_file)
+
+
 def get_args():
     parser = argparse.ArgumentParser()
 
@@ -554,7 +572,7 @@ def get_args():
         "--input",
         required=False,
         default=os.path.join("."),
-        help="Directory path to PyTorch model and associated files if saved on disk",
+        help="Directory path to PyTorch model and associated files if saved on disk, or ONNX model file location if only_optimize is passed.",
     )
 
     parser.add_argument(
@@ -720,6 +738,13 @@ def get_args():
         help="model cache dir to override default HF cache dir to avoid overflood the /home dir",
     )
 
+    parser.add_argument(
+        "--optimize_optimum",
+        action="store_true",
+        help="Avoid exporting model, only apply quantizations and optimizations to existing model exported from optimum.",
+    )
+    parser.set_defaults(only_optimize=False)
+
     args = parser.parse_args()
     return args
 
@@ -728,8 +753,8 @@ def main():
     if version.parse(torch.__version__) < version.parse("2.2.0") and "2.2.0.dev" not in torch.__version__:
         # Second predicate is for comparing nightly (ex: 2.2.0.dev20230920 vs 2.2.0) since first predicate is false
         # in that scenario. It can be removed when torch v2.2.0 is released in stable.
-        logger.error(f"Detected PyTorch version {torch.__version__}. Please upgrade and use v2.2.0 or newer.")
-        return
+        logger.warning(f"Detected PyTorch version {torch.__version__}. Please upgrade and use v2.2.0 or newer.")
+        # return
 
     args = get_args()
     setup_logger(args.verbose)
@@ -740,6 +765,7 @@ def main():
 
     world_size = get_size()
     rank = get_rank()
+    args.world_size = world_size
 
     # Load model and config
     use_auth_token = args.input == os.path.join(".")
@@ -754,7 +780,12 @@ def main():
 
     location = args.original_model_name if use_auth_token else args.input
 
-    # Use CUDA for LLaMA-2-70B to speed up export and CPU for other models
+    if args.optimize_optimum:
+        config = AutoConfig.from_pretrained(args.original_model_name)
+        optimize_optimum(config, args)
+        return
+
+    # use cuda for Llama-2-70b to speedup export, other models use CPU by default
     l_config, llama = setup_torch_model(
         args, location, use_auth_token, device=args.device if args.model_name == "Llama-2-70b-hf" else None
     )
