@@ -2,6 +2,7 @@
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+import hashlib
 import os
 from enum import Enum
 
@@ -68,8 +69,18 @@ class EngineBuilder:
         self.torch_models = {}
         self.use_vae_slicing = False
 
+        self.torch_sdpa = getattr(torch.nn.functional, "scaled_dot_product_attention", None)
+
     def enable_vae_slicing(self):
         self.use_vae_slicing = True
+
+    def disable_torch_spda(self):
+        if hasattr(torch.nn.functional, "scaled_dot_product_attention"):
+            delattr(torch.nn.functional, "scaled_dot_product_attention")
+
+    def enable_torch_spda(self):
+        if (not hasattr(torch.nn.functional, "scaled_dot_product_attention")) and self.torch_sdpa:
+            torch.nn.functional.scaled_dot_product_attention = self.torch_sdpa
 
     def teardown(self):
         for engine in self.engines.values():
@@ -77,25 +88,82 @@ class EngineBuilder:
         self.engines = {}
 
     def get_cached_model_name(self, model_name):
+        hash_source = []
+        if model_name in ["clip", "clip2", "unet", "unetxl"] and self.pipeline_info.lora_weights:
+            if self.pipeline_info.lora_weights in [
+                "latent-consistency/lcm-lora-sdxl",
+                "latent-consistency/lcm-lora-sdv1-5",
+            ]:
+                if model_name in ["unet", "unetxl"]:
+                    model_name = model_name + "_lcm-lora"
+            else:
+                model_name = model_name + "_lora"
+                hash_source.append(self.pipeline_info.lora_weights)
+
+        # TODO(tianleiwu): save custom model to a directory named by its original model.
+        if model_name == "unetxl" and self.pipeline_info.custom_unet():
+            model_name = model_name + "_lcm"
+
+        if model_name in ["unet", "unetxl"] and self.pipeline_info.controlnet:
+            model_name = model_name + "_" + "_".join(self.pipeline_info.controlnet)
+
+        if hash_source:
+            model_name += "_" + hashlib.md5("\t".join(hash_source).encode("utf-8")).digest().hex()[:8]
+
+        # TODO: When we support original VAE, we shall save custom VAE to another directory.
+
         if self.pipeline_info.is_inpaint():
             model_name += "_inpaint"
         return model_name
 
-    def get_onnx_path(self, model_name, onnx_dir, opt=True, suffix=""):
+    def get_model_dir(self, model_name, root_dir, opt=True, suffix="", create=True):
         engine_name = self.engine_type.name.lower()
         directory_name = self.get_cached_model_name(model_name) + (f".{engine_name}" if opt else "") + suffix
-        onnx_model_dir = os.path.join(onnx_dir, directory_name)
-        os.makedirs(onnx_model_dir, exist_ok=True)
+        onnx_model_dir = os.path.join(root_dir, directory_name)
+        if create:
+            os.makedirs(onnx_model_dir, exist_ok=True)
+        return onnx_model_dir
+
+    def get_onnx_path(self, model_name, onnx_dir, opt=True, suffix=""):
+        onnx_model_dir = self.get_model_dir(model_name, onnx_dir, opt=opt, suffix=suffix)
         return os.path.join(onnx_model_dir, "model.onnx")
 
     def get_engine_path(self, engine_dir, model_name, profile_id):
         return os.path.join(engine_dir, self.get_cached_model_name(model_name) + profile_id)
 
-    def load_models(self, framework_model_dir: str):
-        # Disable torch SDPA since torch 2.0.* cannot export it to ONNX
-        if hasattr(torch.nn.functional, "scaled_dot_product_attention"):
-            delattr(torch.nn.functional, "scaled_dot_product_attention")
+    def load_pipeline_with_lora(self):
+        """Load text encoders and UNet with diffusers pipeline"""
+        from diffusers import DiffusionPipeline
 
+        pipeline = DiffusionPipeline.from_pretrained(
+            self.pipeline_info.name(),
+            variant="fp16",
+            torch_dtype=torch.float16,
+        )
+        pipeline.load_lora_weights(self.pipeline_info.lora_weights)
+        pipeline.fuse_lora(lora_scale=self.pipeline_info.lora_scale)
+
+        del pipeline.vae
+        pipeline.vae = None
+        return pipeline
+
+    def get_or_load_model(self, pipeline, model_name, model_obj, framework_model_dir):
+        if model_name in ["clip", "clip2", "unet", "unetxl"] and pipeline:
+            if model_name == "clip":
+                model = pipeline.text_encoder
+                pipeline.text_encoder = None
+            elif model_name == "clip2":
+                model = pipeline.text_encoder_2
+                pipeline.text_encoder_2 = None
+            else:
+                model = pipeline.unet
+                pipeline.unet = None
+        else:
+            model = model_obj.load_model(framework_model_dir, self.hf_token)
+
+        return model.to(self.torch_device)
+
+    def load_models(self, framework_model_dir: str):
         # For TRT or ORT_TRT, we will export fp16 torch model for UNet.
         # For ORT_CUDA, we export fp32 model first, then optimize to fp16.
         export_fp16_unet = self.engine_type in [EngineType.ORT_TRT, EngineType.TRT]
@@ -191,6 +259,7 @@ def get_engine_paths(work_dir: str, pipeline_info: PipelineInfo, engine_type: En
     onnx_dir = os.path.join(root_dir, engine_type.name, short_name, "onnx")
     engine_dir = os.path.join(root_dir, engine_type.name, short_name, "engine")
     output_dir = os.path.join(root_dir, engine_type.name, short_name, "output")
+
     timing_cache = os.path.join(root_dir, engine_type.name, "timing_cache")
     framework_model_dir = os.path.join(root_dir, engine_type.name, "torch_model")
 

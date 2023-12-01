@@ -15,9 +15,11 @@ do case "${parameter_Option}"
 in
 #GPU or CPU.
 d) BUILD_DEVICE=${OPTARG};;
-p) PYTHON_EXES=(${OPTARG});;
-x) EXTRA_ARG=(${OPTARG});;
+p) PYTHON_EXES=${OPTARG};;
+x) EXTRA_ARG=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
+*) echo "Usage: $0 -d <GPU|CPU> [-p <python_exe_path>] [-x <extra_build_arg>] [-c <build_config>]"
+   exit 1;;
 esac
 done
 
@@ -48,7 +50,7 @@ if [ "$ARCH" == "x86_64" ] && [ "$GCC_VERSION" -ge 9 ]; then
 fi
 
 echo "EXTRA_ARG:"
-echo $EXTRA_ARG
+echo "$EXTRA_ARG"
 
 if [ "$EXTRA_ARG" != "" ]; then
     BUILD_ARGS+=("$EXTRA_ARG")
@@ -60,19 +62,19 @@ if [ "$ARCH" == "x86_64" ]; then
 fi
 
 if [ "$BUILD_DEVICE" == "GPU" ]; then
+    SHORT_CUDA_VERSION=$(echo $CUDA_VERSION | sed   's/\([[:digit:]]\+\.[[:digit:]]\+\)\.[[:digit:]]\+/\1/')
     #Enable CUDA and TRT EPs.
-    ONNXRUNTIME_CUDA_VERSION="11.8"
-    BUILD_ARGS+=("--nvcc_threads=1" "--use_cuda" "--use_tensorrt" "--cuda_version=$ONNXRUNTIME_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$ONNXRUNTIME_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$ONNXRUNTIME_CUDA_VERSION" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80")
+    BUILD_ARGS+=("--nvcc_threads=1" "--use_cuda" "--use_tensorrt" "--cuda_version=$SHORT_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80")
 fi
 
 export CFLAGS
 export CXXFLAGS
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
-  rm -rf /build/$BUILD_CONFIG
+  rm -rf /build/"$BUILD_CONFIG"
   ${PYTHON_EXE} /onnxruntime_src/tools/ci_build/build.py "${BUILD_ARGS[@]}"
 
-  cp /build/$BUILD_CONFIG/dist/*.whl /build/dist
+  cp /build/"$BUILD_CONFIG"/dist/*.whl /build/dist
 done
 
 which ccache && ccache -sv && ccache -z

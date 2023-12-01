@@ -3,6 +3,7 @@
 
 import {argMax, argMin, parseArgMinMaxAttributes} from './ops/argminmax';
 import {attention, parseAttentionAttributes} from './ops/attention';
+import {batchNorm} from './ops/batch-norm';
 import {biasAdd} from './ops/bias-add';
 import {biasSplitGelu} from './ops/bias-split-gelu';
 import * as binaryOps from './ops/binary-op';
@@ -51,11 +52,11 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Attention', [attention, parseAttentionAttributes]],
   // TODO: support new attributes for AveragePool-10
   ['AveragePool', [pool.averagePool, pool.parseAveragePoolAttributes]],
+  ['BatchNormalization', [batchNorm]],
   ['BiasAdd', [biasAdd]],
   ['BiasSplitGelu', [biasSplitGelu]],
   ['Cast', [unaryOps.cast, unaryOps.parseCastAttributes]],
   ['Ceil', [unaryOps.ceil]],
-  ['ClipV10', [unaryOps.clipV10]],
   ['Clip', [unaryOps.clip]],
   ['Concat', [concat, parseConcatAttributes]],
   ['Conv', [conv, parseConvAttributes]],

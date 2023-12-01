@@ -83,6 +83,22 @@ For example:
 
 If you do not provide prompt, the script will generate different image sizes for a list of prompts for demonstration.
 
+### Generate an image guided by a text prompt using LCM LoRA
+```
+python3 demo_txt2img_xl.py "Self-portrait oil painting, a beautiful cyborg with golden hair, 8k" --scheduler LCM --lora-weights latent-consistency/lcm-lora-sdxl --denoising-steps 4
+```
+#### Generate an image with SDXL LCM model guided by a text prompt
+```
+python3 demo_txt2img_xl.py --lcm --disable-refiner "an astronaut riding a rainbow unicorn, cinematic, dramatic"
+```
+
+#### Generate an image with a text prompt using a control net
+```
+python3 demo_txt2img.py "Stormtrooper's lecture in beautiful lecture hall" --controlnet-type depth --controlnet-scale 1.0
+
+python3 demo_txt2img_xl.py "young Mona Lisa" --controlnet-type canny --controlnet-scale 0.5 --scheduler UniPC --disable-refiner
+```
+
 ## Optimize Stable Diffusion ONNX models for Hugging Face Diffusers or Optimum
 
 If you are able to run the above demo with docker, you can use the docker and skip the following setup and fast forward to [Export ONNX pipeline](#export-onnx-pipeline).
@@ -479,7 +495,7 @@ Most ROCm kernel optimizations are from [composable kernel](https://github.com/R
 Some kernels are enabled by MIOpen. We hereby thank for the AMD developers' collaboration.
 
 ### Future Works
-* Update demo to support inpainting, LoRA Weights and Control Net.
+* Update demo to support inpainting.
 * Support flash attention in Windows.
 * Integration with UI.
 * Optimization for H100 GPU.

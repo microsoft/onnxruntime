@@ -189,7 +189,28 @@ class OrtTensorrtEngineBuilder(EngineBuilder):
         if not os.path.isdir(onnx_dir):
             os.makedirs(onnx_dir)
 
+        # Load lora only when we need export text encoder or UNet to ONNX.
+        load_lora = False
+        if self.pipeline_info.lora_weights:
+            for model_name, model_obj in self.models.items():
+                if model_name not in ["clip", "clip2", "unet", "unetxl"]:
+                    continue
+                profile_id = model_obj.get_profile_id(
+                    opt_batch_size, opt_image_height, opt_image_width, static_batch, static_image_shape
+                )
+                engine_path = self.get_engine_path(engine_dir, model_name, profile_id)
+                if not self.has_engine_file(engine_path):
+                    onnx_path = self.get_onnx_path(model_name, onnx_dir, opt=False)
+                    onnx_opt_path = self.get_onnx_path(model_name, onnx_dir, opt=True)
+                    if not os.path.exists(onnx_opt_path):
+                        if not os.path.exists(onnx_path):
+                            load_lora = True
+                            break
+
         # Export models to ONNX
+        self.disable_torch_spda()
+        pipe = self.load_pipeline_with_lora() if load_lora else None
+
         for model_name, model_obj in self.models.items():
             if model_name == "vae" and self.vae_torch_fallback:
                 continue
@@ -204,7 +225,8 @@ class OrtTensorrtEngineBuilder(EngineBuilder):
                 if not os.path.exists(onnx_opt_path):
                     if not os.path.exists(onnx_path):
                         logger.info(f"Exporting model: {onnx_path}")
-                        model = model_obj.load_model(framework_model_dir, self.hf_token)
+                        model = self.get_or_load_model(pipe, model_name, model_obj, framework_model_dir)
+
                         with torch.inference_mode(), torch.autocast("cuda"):
                             inputs = model_obj.get_sample_input(opt_batch_size, opt_image_height, opt_image_width)
                             torch.onnx.export(
@@ -230,6 +252,7 @@ class OrtTensorrtEngineBuilder(EngineBuilder):
                         model_obj.optimize_trt(onnx_path, onnx_opt_path)
                     else:
                         logger.info("Found cached optimized model: %s", onnx_opt_path)
+        self.enable_torch_spda()
 
         built_engines = {}
         for model_name, model_obj in self.models.items():

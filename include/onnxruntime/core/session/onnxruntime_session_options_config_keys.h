@@ -80,13 +80,13 @@ static const char* const kOrtSessionOptionsDisableAheadOfTimeFunctionInlining = 
 #ifdef ENABLE_TRAINING
 // Specifies a list of op types for memory footprint reduction.
 // The value should be a ","-delimited list of pair of
-// <subgraph string : optimization strategy : number of subgraph to apply>.
+// <subgraph string: optimization strategy: number of subgraph to apply>.
 // For example, "Gelu+Cast+:1:0,Dropout+:1:1".
 //   A valid "subgraph string" should be one subgraph representation output by ORT graph transformations.
 //   "optimization strategy" currently has valid values: 0 - disabled, 1 - recompute.
 //   "number of subgraph to apply" is used to control how many subgraphs to apply optimization, to avoid "oversaving"
 //   the memory.
-static const char* const kOrtSessionOptionsMemoryOptimizerEnabler = "optimization.enable_memory_optimizer";
+static const char* const kOrtSessionOptionsMemoryOptimizerEnabler = "optimization.memory_optimizer_config";
 
 // Specifies the level for detecting subgraphs for memory footprint reduction.
 // The value should be an integer. The default value is 0.

@@ -30,6 +30,11 @@ enum class WebnnDeviceType {
   GPU,
 };
 
+typedef struct {
+  std::string opName;
+  bool isCpuSupported;  // The WebNN CPU backend XNNPack supports it (not about the CPU EP).
+} WebnnOpInfo;
+
 bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger);
 
 template <typename T>
@@ -128,90 +133,107 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
                                                       const emscripten::val& wnn_builder_,
                                                       const WebnnDeviceType device_type,
                                                       const logging::Logger& logger);
-static const InlinedHashMap<std::string, std::string> op_map = {
-    {"Abs", "abs"},
-    {"Add", "add"},
-    {"ArgMax", "argMax"},
-    {"ArgMin", "argMin"},
-    {"AveragePool", "averagePool2d"},
-    {"BatchNormalization", "meanVarianceNormalization"},
-    {"Cast", "cast"},
-    {"Ceil", "ceil"},
-    {"Clip", "clamp"},
-    {"Concat", "concat"},
-    {"Conv", "conv2d"},
-    {"ConvTranspose", "convTranspose2d"},
-    {"Cos", "cos"},
-    {"Div", "div"},
-    {"Elu", "elu"},
-    {"Equal", "equal"},
-    {"Erf", "erf"},
-    {"Exp", "exp"},
-    {"Expand", "expand"},
-    {"Flatten", "flattenTo2d"},
-    {"Floor", "floor"},
-    {"Gather", "gather"},
-    {"Gemm", "gemm"},
-    {"GlobalAveragePool", "averagePool2d"},
-    {"GlobalMaxPool", "maxPool2d"},
-    {"GlobalLpPool", "l2Pool2d"},
-    {"Greater", "greater"},
-    {"GreaterOrEqual", "greaterOrEqual"},
-    {"GroupNormalization", "meanVarianceNormalization"},
-    {"HardSigmoid", "hardSigmoid"},
-    {"HardSwish", "hardSwish"},
-    {"Identity", "identity"},
-    {"InstanceNormalization", "meanVarianceNormalization"},
-    {"LayerNormalization", "meanVarianceNormalization"},
-    {"LeakyRelu", "leakyRelu"},
-    {"Less", "lesser"},
-    {"LessOrEqual", "lesserOrEqual"},
-    {"Log", "log"},
-    {"LpPool", "l2Pool2d"},
-    {"MatMul", "matmul"},
-    {"Max", "max"},
-    {"MaxPool", "maxPool2d"},
-    {"Min", "min"},
-    {"Mul", "mul"},
-    {"Neg", "neg"},
-    {"Not", "logicalNot"},
-    {"Pad", "pad"},
-    {"Pow", "pow"},
-    {"PRelu", "prelu"},
-    {"Reciprocal", "reciprocal"},
-    {"ReduceL1", "reduceL1"},
-    {"ReduceL2", "reduceL2"},
-    {"ReduceLogSum", "reduceLogSum"},
-    {"ReduceLogSumExp", "reduceLogSumExp"},
-    {"ReduceMax", "reduceMax"},
-    {"ReduceMean", "reduceMean"},
-    {"ReduceMin", "reduceMin"},
-    {"ReduceProd", "reduceProduct"},
-    {"ReduceSum", "reduceSum"},
-    {"ReduceSumSquare", "reduceSumSquare"},
-    {"Relu", "relu"},
-    {"Reshape", "reshape"},
-    {"Resize", "resample2d"},
-    {"Shape", "slice"},
-    {"Sigmoid", "sigmoid"},
-    {"Softplus", "softplus"},
-    {"Softsign", "softsign"},
-    {"Sin", "sin"},
-    {"Slice", "slice"},
-    {"Softmax", "softmax"},
-    {"Split", "split"},
-    {"Sqrt", "sqrt"},
-    {"Squeeze", "squeeze"},
-    {"Sub", "sub"},
-    {"Tan", "tan"},
-    {"Tanh", "tanh"},
-    {"Transpose", "transpose"},
-    {"Unsqueeze", "unsqueeze"},
-    {"Where", "elementwiseIf"},
+static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
+    {"Abs", {"abs", true}},
+    {"Add", {"add", true}},
+    {"ArgMax", {"argMax", false}},
+    {"ArgMin", {"argMin", false}},
+    {"AveragePool", {"averagePool2d", true}},
+    {"BatchNormalization", {"meanVarianceNormalization", false}},
+    {"Cast", {"cast", false}},
+    {"Ceil", {"ceil", true}},
+    {"Clip", {"clamp", true}},
+    {"Concat", {"concat", true}},
+    {"Conv", {"conv2d", true}},
+    {"ConvTranspose", {"convTranspose2d", true}},
+    {"Cos", {"cos", false}},
+    {"Div", {"div", true}},
+    {"Elu", {"elu", true}},
+    {"Equal", {"equal", false}},
+    {"Erf", {"erf", false}},
+    {"Exp", {"exp", false}},
+    {"Expand", {"expand", false}},
+    {"Flatten", {"reshape", true}},
+    {"Floor", {"floor", true}},
+    {"Gather", {"gather", false}},
+    {"Gemm", {"gemm", true}},
+    {"GlobalAveragePool", {"averagePool2d", true}},
+    {"GlobalMaxPool", {"maxPool2d", true}},
+    {"GlobalLpPool", {"l2Pool2d", false}},
+    {"Greater", {"greater", false}},
+    {"GreaterOrEqual", {"greaterOrEqual", false}},
+    {"GroupNormalization", {"meanVarianceNormalization", false}},
+    {"HardSigmoid", {"hardSigmoid", false}},
+    {"HardSwish", {"hardSwish", true}},
+    {"Identity", {"identity", false}},
+    {"InstanceNormalization", {"meanVarianceNormalization", false}},
+    {"LayerNormalization", {"meanVarianceNormalization", false}},
+    {"LeakyRelu", {"leakyRelu", true}},
+    {"Less", {"lesser", false}},
+    {"LessOrEqual", {"lesserOrEqual", false}},
+    {"Log", {"log", false}},
+    {"LpPool", {"l2Pool2d", false}},
+    {"MatMul", {"matmul", false}},
+    {"Max", {"max", true}},
+    {"MaxPool", {"maxPool2d", true}},
+    {"Min", {"min", true}},
+    {"Mul", {"mul", true}},
+    {"Neg", {"neg", true}},
+    {"Not", {"logicalNot", false}},
+    {"Pad", {"pad", true}},
+    {"Pow", {"pow", true}},
+    {"PRelu", {"prelu", true}},
+    {"Reciprocal", {"reciprocal", false}},
+    {"ReduceL1", {"reduceL1", false}},
+    {"ReduceL2", {"reduceL2", false}},
+    {"ReduceLogSum", {"reduceLogSum", false}},
+    {"ReduceLogSumExp", {"reduceLogSumExp", false}},
+    {"ReduceMax", {"reduceMax", false}},
+    {"ReduceMean", {"reduceMean", true}},
+    {"ReduceMin", {"reduceMin", false}},
+    {"ReduceProd", {"reduceProduct", false}},
+    {"ReduceSum", {"reduceSum", true}},
+    {"ReduceSumSquare", {"reduceSumSquare", false}},
+    {"Relu", {"relu", true}},
+    {"Reshape", {"reshape", true}},
+    {"Resize", {"resample2d", true}},
+    {"Shape", {"slice", true}},
+    {"Sigmoid", {"sigmoid", true}},
+    {"Softplus", {"softplus", false}},
+    {"Softsign", {"softsign", false}},
+    {"Sin", {"sin", false}},
+    {"Slice", {"slice", true}},
+    {"Softmax", {"softmax", true}},
+    {"Split", {"split", true}},
+    {"Sqrt", {"sqrt", false}},
+    {"Squeeze", {"reshape", true}},
+    {"Sub", {"sub", true}},
+    {"Tan", {"tan", false}},
+    {"Tanh", {"tanh", true}},
+    {"Transpose", {"transpose", true}},
+    {"Unsqueeze", {"reshape", true}},
+    {"Where", {"elementwiseIf", false}},
 };
 
-inline bool CheckSingleOp(const std::string& op_type, const emscripten::val& wnn_builder_) {
-  return op_map.find(op_type) != op_map.end() && wnn_builder_[op_map.find(op_type)->second].as<bool>();
+inline bool CheckSingleOp(const std::string& op_type, const emscripten::val& wnn_builder_,
+                          const WebnnDeviceType device_type) {
+  // Returns false if the op_type is not listed in the op_map.
+  if (op_map.find(op_type) == op_map.end()) {
+    return false;
+  }
+  // Returns false if the WebNN op has not been implemented in MLGraphBuilder in current browser.
+  if (!wnn_builder_[op_map.find(op_type)->second.opName].as<bool>()) {
+    return false;
+  }
+  // The current WebNN CPU (XNNPack) backend supports a limited op list, and we'd rather
+  // fall back early to the ORT CPU EP rather than fail in the WebNN "cpu" deviceType.
+  // This is a workaround because the op may be included in MLGraphBuilder for DirectML
+  // backend but without XNNPack implementation in Chromium.
+  if (!op_map.find(op_type)->second.isCpuSupported && device_type == WebnnDeviceType::CPU) {
+    return false;
+  }
+
+  return true;
 }
 
 constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 1> supported_cpu_data_types = {

@@ -1542,7 +1542,6 @@ TEST(OptimizerTest, LambOptimizerTestLarge) {
     std::vector<float> m(size);
     std::vector<float> v(size);
 
-    std::random_device random_device;
     std::mt19937 random_engine(0);
     std::uniform_real_distribution<float> dist(0.1f, 1.0f);
     for (int i = 0; i < size; ++i) {
@@ -1581,7 +1580,6 @@ TEST(OptimizerTest, LambOptimizerTestLarge) {
 
 TEST(OptimizerTest, LambOptimizerMultiTensorRatio) {
   constexpr int group_count = 127;
-  std::random_device random_device;
   std::mt19937 random_engine(0);
   std::uniform_real_distribution<float> dist(0.1f, 1.0f);
   std::uniform_int_distribution<int64_t> dist_int(1, 1228);

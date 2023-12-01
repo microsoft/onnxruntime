@@ -1,0 +1,161 @@
+parameters:
+- name: CudaVersion
+  type: string
+  default: '11.8'
+- name: docker_base_image
+  type: string
+- name: linux_trt_version
+  type: string
+
+stages:
+  # Linux CUDA without TensorRT Packaging
+- stage: Linux_C_API_Packaging_GPU_x64
+  dependsOn: []
+  jobs:
+  - job:
+    workspace:
+      clean: all
+    timeoutInMinutes: 120
+    pool: 'Onnxruntime-Linux-GPU'
+    variables:
+      - name: CUDA_VERSION_MAJOR
+        ${{ if eq(parameters.CudaVersion, '11.8') }}:
+          value: '11'
+        ${{ if eq(parameters.CudaVersion, '12.2') }}:
+          value: '12'
+      - name: CUDA_VERSION
+        value: ${{ parameters.CudaVersion }}
+    steps:
+    - template: ../templates/set-version-number-variables-step.yml
+    - template: ../templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/inference/x64/default/gpu/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/x64/default/gpu
+        DockerBuildArgs: "
+        --build-arg BUILD_UID=$( id -u )
+        --build-arg BASEIMAGE=${{ parameters.docker_base_image }}
+        "
+        Repository: onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}build
+
+    - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
+      workingDirectory: $(Build.SourcesDirectory)
+      displayName: 'Build and Test'
+
+    - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
+      parameters:
+        buildConfig: 'Release'
+        artifactName: 'onnxruntime-linux-x64-cuda-$(OnnxRuntimeVersion)'
+        artifactNameNoVersionString: 'onnxruntime-linux-x64-cuda'
+        libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
+
+    - template: ../templates/component-governance-component-detection-steps.yml
+      parameters:
+        condition: 'succeeded'
+    - template: ../templates/clean-agent-build-directory-step.yml
+# Linux CUDA with TensorRT Packaging
+- template: ../templates/linux-gpu-tensorrt-packaging-pipeline.yml
+  parameters:
+    artifactName: 'onnxruntime-linux-x64-tensorrt-$(OnnxRuntimeVersion)'
+    artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt'
+    buildJava: false
+    buildJavaOption: '--build_java'
+    buildNodejs: false
+    buildNodejsOption: '--build_nodejs'
+    CudaVersion: ${{ parameters.CudaVersion }}
+# Linux CUDA Combined Testing and Publishing
+- stage: Linux_Packaging_combined_GPU
+  dependsOn:
+    - Linux_C_API_Packaging_GPU_x64
+    - Linux_C_API_Packaging_GPU_TensorRT_x64
+  condition: succeeded()
+  jobs:
+    - job:
+      workspace:
+        clean: all
+      pool: 'Onnxruntime-Linux-GPU'
+
+      steps:
+        - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
+          submodules: false
+        - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
+          submodules: false
+        - checkout: manylinux                      # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/manylinux
+          submodules: false
+
+        - script: |
+            set -e -x
+            cd $(Build.SourcesDirectory)
+            mv manylinux onnxruntime
+            ls
+
+        - template: ../templates/with-container-registry-steps.yml
+          parameters:
+            Steps:
+              - script: |
+                  tools/ci_build/get_docker_image.py \
+                    --dockerfile tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda \
+                    --context tools/ci_build/github/linux/docker \
+                    --docker-build-args "--network=host --build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg TRT_VERSION=${{ parameters.linux_trt_version }} --build-arg BUILD_UID=$( id -u )" \
+                    --container-registry onnxruntimebuildcache \
+                    --multiple_repos \
+                    --repository onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}xtrt86build
+                displayName: "Get onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}xtrt86build image for tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda"
+                workingDirectory: $(Build.SourcesDirectory)/onnxruntime
+            ContainerRegistry: onnxruntimebuildcache
+
+        - template: ../templates/set-version-number-variables-step.yml
+          parameters:
+            versionFileDirectory: '$(Build.SourcesDirectory)/onnxruntime'
+            workingDirectory: '$(Build.SourcesDirectory)/onnxruntime'
+        - task: DownloadPipelineArtifact@2
+          displayName: 'Download Pipeline Artifact - Combined GPU'
+          inputs:
+            artifactName: 'onnxruntime-linux-x64-cuda'
+            targetPath: '$(Build.BinariesDirectory)/tgz-artifacts'
+
+        - task: DownloadPipelineArtifact@2
+          displayName: 'Download Pipeline Artifact - Combined GPU'
+          inputs:
+            artifactName: 'onnxruntime-linux-x64-tensorrt'
+            targetPath: '$(Build.BinariesDirectory)/tgz-artifacts'
+
+        - task: ShellScript@2
+          displayName: 'Shell Script'
+          inputs:
+            scriptPath: 'onnxruntime/tools/ci_build/github/linux/extract_and_bundle_gpu_package.sh'
+            args: '-a $(Build.BinariesDirectory)/tgz-artifacts'
+            workingDirectory: '$(Build.BinariesDirectory)/tgz-artifacts'
+
+        - task: ArchiveFiles@2
+          inputs:
+            rootFolderOrFile: '$(Build.BinariesDirectory)/tgz-artifacts/onnxruntime-linux-x64-gpu'
+            includeRootFolder: false
+            archiveType: 'tar' # Options: zip, 7z, tar, wim
+            tarCompression: 'gz'
+            archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
+            replaceExistingArchive: true
+
+        - template: ../templates/validate-package.yml
+          parameters:
+            PackageType: 'tarball'
+            PackagePath: '$(Build.ArtifactStagingDirectory)'
+            PackageName: 'onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
+            ScriptPath: '$(Build.SourcesDirectory)/onnxruntime/tools/nuget/validate_package.py'
+            PlatformsSupported: 'linux-x64'
+            VerifyNugetSigning: false
+            workingDirectory: '$(Build.ArtifactStagingDirectory)'
+
+
+        - task: CmdLine@2
+          displayName: 'Test C API application for GPU package'
+          inputs:
+            script: |
+              docker run --gpus all -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/src_dir \
+              --volume $(Build.ArtifactStagingDirectory):/artifact_src -e NIGHTLY_BUILD onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}xtrt86build \
+              /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet/run_capi_application.sh -o /src_dir/onnxruntime -p /artifact_src/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz -w /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet
+            workingDirectory: '$(Build.ArtifactStagingDirectory)'
+
+        - task: PublishPipelineArtifact@1
+          inputs:
+            targetPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
+            artifactName: 'onnxruntime-linux-x64-gpu'

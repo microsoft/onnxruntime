@@ -105,8 +105,8 @@ export class ProgramManager {
           outputShapes += `output[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
         });
         // eslint-disable-next-line no-console
-        console.log(`[profiling] kernel "${kernelId}|${kernelName}" ${inputShapes}${outputShapes}execution time: ${
-            endTime - startTime} ns`);
+        console.log(`[profiling] kernel "${kernelId}|${kernelName}|${buildArtifact.programInfo.name}" ${inputShapes}${
+            outputShapes}execution time: ${endTime - startTime} ns`);
       });
     }
 
