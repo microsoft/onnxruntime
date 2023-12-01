@@ -153,8 +153,6 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
     AllocatorPtr allocator;
     auto status = ctx->GetTempSpaceAllocator(&allocator);
     ORT_RETURN_IF_ERROR(status);
-    // workspace for activation process(dynamic quantization and others)
-    auto ws_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K) * std::max(M, size_t(16)));
     for (size_t i = 0; i < max_len; i++) {
       gemm_params[i].A = a_data + helper.LeftOffsets()[i];
       gemm_params[i].lda = lda;
@@ -162,8 +160,11 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
       gemm_params[i].C = y_data + helper.OutputOffsets()[i];
       gemm_params[i].ldc = N;
     }
-    MlasSQNBitsGemmBatchPackedB(M, N, K, max_len, gemm_params.data(), reinterpret_cast<int8_t*>(ws_ptr.get()),
-                              thread_pool);
+    auto ws_size = MlasSQNBitsGemmBatchWorkspaceSize(M, N, K, max_len, gemm_params.data());
+    // workspace for activation process(dynamic quantization and others)
+    auto ws_ptr = IAllocator::MakeUniquePtr<int8_t>(allocator, ws_size);
+    MlasSQNBitsGemmBatchPackedB(M, N, K, max_len, gemm_params.data(), ws_ptr.get(),
+                                thread_pool);
     return Status::OK();
   }
 

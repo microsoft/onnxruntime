@@ -170,6 +170,25 @@ MlasNBitsGemmUnPackB(
 );
 
 /**
+ * @brief Get the workspace size required by computation.
+ *
+ * @param[in]  M       row size of matrix A and C
+ * @param[in]  N       column size of matrix B and C
+ * @param[in]  K       column size of matrix A and row size of matrix B
+ * @param[in]  BatchN  number of batches
+ * @param[inout]  DataParams  An array (size BatchN) of parameter blocks
+ * @return     Workspace size in bytes
+ */
+size_t MLASCALL
+MlasSQNBitsGemmBatchWorkspaceSize(
+    const size_t M,
+    const size_t N,
+    const size_t K,
+    const size_t BatchN,
+    const MLAS_SQNBITS_GEMM_DATA_PACKED_PARAMS* DataParams
+);
+
+/**
  * @brief Batched GEMM:  C = A * B
  *        A, C must be a float32 matrix
  *        B must be a packed nbits blob
@@ -190,6 +209,6 @@ MlasSQNBitsGemmBatchPackedB(
     const size_t K,
     const size_t BatchN,
     const MLAS_SQNBITS_GEMM_DATA_PACKED_PARAMS* DataParams,
-    int8_t* WorkSpace,
+    void* WorkSpace,
     MLAS_THREADPOOL* ThreadPool = nullptr
 );

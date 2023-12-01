@@ -221,6 +221,25 @@ MlasNBitsGemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, s
     (void)(ThreadPool);
 }
 
+size_t MLASCALL
+MlasSQNBitsGemmBatchWorkspaceSize(
+    const size_t M,
+    const size_t N,
+    const size_t K,
+    const size_t BatchN,
+    const MLAS_SQNBITS_GEMM_DATA_PACKED_PARAMS* DataParams
+)
+{
+#ifdef MLAS_JBLAS
+    return JblasSQ4GemmBatchWorkspaceSize(M, N, K, BatchN, DataParams);
+#endif
+    (void)(M);
+    (void)(N);
+    (void)(K);
+    (void)(BatchN);
+    (void)(DataParams);
+}
+
 void MLASCALL
 MlasSQNBitsGemmBatchPackedB(
     const size_t M,
@@ -228,13 +247,13 @@ MlasSQNBitsGemmBatchPackedB(
     const size_t K,
     const size_t BatchN,
     const MLAS_SQNBITS_GEMM_DATA_PACKED_PARAMS* DataParams,
-    int8_t* WorkSpace,
+    void* WorkSpace,
     MLAS_THREADPOOL* ThreadPool
 )
 {
     GetMlasPlatform();
 #ifdef MLAS_JBLAS
-    if (JblasSQ4GemmBatchDriver(M, N, K, BatchN, DataParams, WorkSpace, ThreadPool)) {
+    if (JblasSQ4GemmBatchDriver(M, N, K, BatchN, DataParams, reinterpret_cast<int8_t*>(WorkSpace), ThreadPool)) {
         // PackedWeight is created by jblas
         return;
     }
