@@ -25,7 +25,7 @@ def load_pipeline(compile=True):
     return pipeline
 
 
-def test(pipeline, batch_size=1, steps=4, warmup_runs=5, test_runs=10, seed=123):
+def test(pipeline, batch_size=1, steps=4, warmup_runs=10, test_runs=10, seed=123, verbose=False):
     warmup_prompt = "warm up"
     for _ in range(warmup_runs):
         image = pipeline(
@@ -44,7 +44,7 @@ def test(pipeline, batch_size=1, steps=4, warmup_runs=5, test_runs=10, seed=123)
     image = None
     for _ in range(test_runs):
         torch.cuda.synchronize()
-        start_time = time.time()
+        start_time = time.perf_counter()
         image = pipeline(
             prompt=[prompt] * batch_size,
             negative_prompt=[""] * batch_size,
@@ -53,10 +53,12 @@ def test(pipeline, batch_size=1, steps=4, warmup_runs=5, test_runs=10, seed=123)
             generator=generator,
         ).images[0]
         torch.cuda.synchronize()
-        seconds = time.time() - start_time
+        seconds = time.perf_counter() - start_time
         latency_list.append(seconds)
 
-    print(latency_list)
+    if verbose:
+        print(latency_list)
+
     print(f"batch_size={batch_size}, steps={steps}, average_latency_in_ms={mean(latency_list) * 1000:.1f}")
 
     if image:
