@@ -122,7 +122,7 @@ MlasNBitsGemmPackBSize(
 );
 
 /**
- * @brief Prepack tensor data from MatMulNBits operator
+ * @brief Prepack tensor data from n-bit quantized data, scale and zero point buffers.
  *
  * @param PackedBuf     packed data buffer
  * @param QData         quantized data buffer
