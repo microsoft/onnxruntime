@@ -31,7 +31,8 @@ const createCumsumProgramInfo =
         programUniforms.push(...tmpProgramUniform);  // For input
         programUniforms.push(...tmpProgramUniform);  // For output
       }
-      var lowerLimit: string, upperLimit: string;
+      let lowerLimit: string;
+      let upperLimit: string;
       if (attributes.reverse === 1) {
         lowerLimit = `i32(${input.indicesGet('inputIndices', 'uniforms.axis')})`;
         upperLimit = inputShape.length === 1 ? 'i32(uniforms.input_shape)' : 'i32(uniforms.input_shape[uniforms.axis])';
