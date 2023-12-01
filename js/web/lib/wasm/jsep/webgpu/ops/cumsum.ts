@@ -15,39 +15,36 @@ export interface CumSumAttributes extends AttributeWithCacheKey {
   readonly reverse: number;
 }
 const createCumsumProgramInfo =
-    (inputType: number, inputShape: readonly number[], axisInput: TensorView,
-     attributes: CumSumAttributes): ProgramInfo => {
-      const outputSize = ShapeUtil.size(inputShape);  // outputShape is same as inputShape.
-      const enableShapeUniforms = enableShapesUniforms(inputShape.length);
-      const shapeOrRank = enableShapeUniforms ? inputShape.length : inputShape;
-      const input = inputVariable('input', inputType, shapeOrRank);
-      const output = outputVariable('output', inputType, shapeOrRank);
-      const axisValue = axisInput.dataType === DataType.int32 ? axisInput.getInt32Array()[0] :
-                                                                Number(axisInput.getBigInt64Array()[0]);
-      const axis = axisValue >= 0 ? axisValue : axisValue + inputShape.length;
-      const programUniforms: ProgramUniform[] = [{type: 'uint32', data: outputSize}, {type: 'int32', data: axis}];
-      if (enableShapeUniforms) {
-        const tmpProgramUniform = createTensorShapeVariables(inputShape);
-        programUniforms.push(...tmpProgramUniform);  // For input
-        programUniforms.push(...tmpProgramUniform);  // For output
-      }
-      let lowerLimit: string;
-      let upperLimit: string;
-      if (attributes.reverse === 1) {
-        lowerLimit = `i32(${input.indicesGet('inputIndices', 'uniforms.axis')})`;
-        upperLimit = inputShape.length === 1 ? 'i32(uniforms.input_shape)' : 'i32(uniforms.input_shape[uniforms.axis])';
-      } else {
-        lowerLimit = '0';
-        upperLimit = `i32(${input.indicesGet('inputIndices', 'uniforms.axis')} + 1)`;
-      }
-      if (attributes.exclusive === 1) {
-        if (attributes.reverse === 1) {
-          lowerLimit = lowerLimit + ' + 1';
-        } else {
-          upperLimit = upperLimit + ' - 1';
-        }
-      }
-      const getShaderSource = (shaderHelper: ShaderHelper) => `
+    (inputType: number, inputShape: readonly number[], axisInput: TensorView, attributes: CumSumAttributes):
+        ProgramInfo => {
+          const outputSize = ShapeUtil.size(inputShape);  // outputShape is same as inputShape.
+          const enableShapeUniforms = enableShapesUniforms(inputShape.length);
+          const shapeOrRank = enableShapeUniforms ? inputShape.length : inputShape;
+          const input = inputVariable('input', inputType, shapeOrRank);
+          const output = outputVariable('output', inputType, shapeOrRank);
+          const axisValue = axisInput.dataType === DataType.int32 ? axisInput.getInt32Array()[0] :
+                                                                    Number(axisInput.getBigInt64Array()[0]);
+          const axis = axisValue >= 0 ? axisValue : axisValue + inputShape.length;
+          const programUniforms: ProgramUniform[] = [{type: 'uint32', data: outputSize}, {type: 'int32', data: axis}];
+          if (enableShapeUniforms) {
+            const tmpProgramUniform = createTensorShapeVariables(inputShape);
+            programUniforms.push(...tmpProgramUniform);  // For input
+            programUniforms.push(...tmpProgramUniform);  // For output
+          }
+          const index = `i32(${input.indicesGet('inputIndices', 'uniforms.axis')})`
+          const max = enableShapeUniforms ?
+              (inputShape.length === 1 ? 'i32(uniforms.input_shape)' : 'i32(uniforms.input_shape[uniforms.axis])') :
+              (inputShape.length === 1 ? 'i32(input_shape)' : 'i32(input_shape[uniforms.axis])');
+          let lowerLimit = attributes.reverse === 1 ? index : '0';
+          let upperLimit = attributes.reverse === 1 ? max : index + ' + 1';
+          if (attributes.exclusive === 1) {
+            if (attributes.reverse === 1) {
+              lowerLimit = lowerLimit + ' + 1';
+            } else {
+              upperLimit = upperLimit + ' - 1';
+            }
+          }
+          const getShaderSource = (shaderHelper: ShaderHelper) => `
 ${shaderHelper.registerUniform('outputSize', 'u32').registerUniform('axis', 'u32').declareVariables(input, output)}
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
@@ -61,17 +58,17 @@ ${shaderHelper.registerUniform('outputSize', 'u32').registerUniform('axis', 'u32
     }
     ${output.setByOffset('global_idx', 'sum')};
   }`;
-      return {
-        name: 'CumSum',
-        shaderCache: {hint: attributes.cacheKey, inputDependencies: [enableShapeUniforms ? 'rank' : 'dims']},
-        getRunData: () => ({
-          outputs: [{dims: inputShape, dataType: inputType}],
-          dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
-          programUniforms
-        }),
-        getShaderSource
-      };
-    };
+          return {
+            name: 'CumSum',
+            shaderCache: {hint: attributes.cacheKey, inputDependencies: [enableShapeUniforms ? 'rank' : 'dims']},
+            getRunData: () => ({
+              outputs: [{dims: inputShape, dataType: inputType}],
+              dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
+              programUniforms
+            }),
+            getShaderSource
+          };
+        };
 
 
 export const cumsum = (context: ComputeContext, attributes: CumSumAttributes): void => {
