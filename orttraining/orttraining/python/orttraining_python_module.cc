@@ -45,7 +45,7 @@ void addObjectMethodsForEager(py::module& m);
 #ifdef ENABLE_LAZY_TENSOR
 void addObjectMethodsForLazyTensor(py::module& m);
 #endif
-void InitArray();
+bool InitArray();
 
 bool GetDyanmicExecutionProviderHash(
     const std::string& ep_shared_lib_path,
@@ -225,7 +225,7 @@ class TrainingEnvInitialzer {
 
  private:
   TrainingEnvInitialzer() {
-    InitArray();
+    ORT_ENFORCE(InitArray());
     Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
     ort_training_env_ = std::make_unique<ORTTrainingPythonEnv>();
   }
