@@ -36,7 +36,11 @@ Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   int64_t rank = input_shape.size();
   NodeAttrHelper helper(node);
   int64_t axis = helper.Get("axis", 1);
-  axis = HandleNegativeAxis(axis, rank);
+  ORT_ENFORCE(axis >= -rank && axis <= rank, "axis ", axis,
+              " is not in valid range [-", rank, ",", rank, "]");
+  if (axis < 0) {
+    axis += rank;
+  }
 
   // Use WebNN's reshape to implement Flatten.
   int64_t num_pre_axis_elements = std::accumulate(
