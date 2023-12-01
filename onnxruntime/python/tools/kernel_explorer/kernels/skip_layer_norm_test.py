@@ -51,6 +51,7 @@ def simplified_skip_layer_norm(input_x, skip, bias, gamma, epsilon):
     return output, val
 
 
+@ke.dispatchable(pattern_arg=4)
 def run_skip_layer_norm(
     batch_size: int, seq_len: int, hidden_size: int, dtype: str, func, simplified=False, has_optional_output=False
 ):
@@ -130,6 +131,7 @@ class SkipLayerNormMetric(ke.BandwidthMetric):
         return "not supported          " + common
 
 
+@ke.dispatchable(pattern_arg=4)
 def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func, has_optional_output):
     np.random.seed(0)
     input_x = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
@@ -175,6 +177,7 @@ def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func, 
     ke.report(SkipLayerNormMetric(func, dtype, duration_ms, total_bytes, batch_size, seq_len, hidden_size))
 
 
+@ke.dispatchable
 def profile_with_args(batch_size, seq_len, hidden_size, dtype, has_optional_output=False, simplified=False):
     with ke.benchmark():
         for func in dtype_to_funcs(dtype, simplified):
@@ -202,7 +205,7 @@ if __name__ == "__main__":
         profile()
     else:
         args = parser.parse_args()
-        args.func(
+        args.dispatch(
             args.batch_size,
             args.seq_len,
             args.hidden_size,

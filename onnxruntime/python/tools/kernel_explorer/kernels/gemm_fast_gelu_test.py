@@ -120,6 +120,7 @@ class GemmFastGeluMetric(ke.ComputeMetric):
         return f"{self.duration:>6.2f} us {self.tflops:>5.2f} tflops " + common
 
 
+@ke.dispatchable(pattern_arg=0)
 def profile_gemmfastgelu_func(my_func, dtype: str, m: int, n: int, k: int, transa: bool, transb: bool):
     a_shape = (k, m) if transa else (m, k)
     b_shape = (n, k) if transb else (k, n)
@@ -153,6 +154,7 @@ def profile_gemmfastgelu_func(my_func, dtype: str, m: int, n: int, k: int, trans
         ke.report(GemmFastGeluMetric(impl, dtype, duration_ms, floating_point_operations, transa, transb, m, n, k))
 
 
+@ke.dispatchable
 def profile_with_args(transa, transb, dtype, m, n, k):
     dtype_suffix = "_" + dtype_to_suffix(dtype)
     transab_suffix = "_" + transab_to_suffix((transa, transb))
@@ -191,4 +193,4 @@ if __name__ == "__main__":
         profile()
     else:
         args = parser.parse_args()
-        args.func(args.transa == "T", args.transb == "T", args.dtype, args.m, args.n, args.k)
+        args.dispatch(args.transa == "T", args.transb == "T", args.dtype, args.m, args.n, args.k)

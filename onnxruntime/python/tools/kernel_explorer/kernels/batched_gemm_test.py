@@ -23,6 +23,7 @@ def dtype_to_suffix(dtype):
     }[dtype]
 
 
+@ke.dispatchable
 def _test_batched_gemm(
     func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int, batch: int, alpha=1.0, beta=0.0
 ):
@@ -148,6 +149,7 @@ class BatchedGemmMetric(ke.ComputeMetric):
         return f"{self.duration:>6.2f} us {self.tflops:>5.2f} tflops " + common
 
 
+@ke.dispatchable(pattern_arg=0)
 def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int, batch: int):
     a_shape = (k, m) if transa else (m, k)
     b_shape = (n, k) if transb else (k, n)
@@ -177,6 +179,7 @@ def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int,
         ke.report(BatchedGemmMetric(impl, dtype, duration_ms, flops, transa, transb, m, n, k, batch))
 
 
+@ke.dispatchable
 def profile_with_args(dtype, transa, transb, m, n, k, batch):
     dtype_suffix = "_" + dtype_to_suffix(dtype)
     transab_suffix = "_" + transab_to_suffix((transa, transb))
@@ -210,4 +213,4 @@ if __name__ == "__main__":
         profile()
     else:
         args = parser.parse_args()
-        args.func(args.dtype, args.transa == "T", args.transb == "T", args.m, args.n, args.k, args.batch)
+        args.dispatch(args.dtype, args.transa == "T", args.transb == "T", args.m, args.n, args.k, args.batch)

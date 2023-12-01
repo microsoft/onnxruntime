@@ -4,6 +4,8 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/embed.h>
 #include <pybind11/numpy.h>
+#include <pybind11/stl.h>
+
 #include "python/tools/kernel_explorer/device_array.h"
 #include "python/tools/kernel_explorer/kernel_explorer_interface.h"
 
@@ -12,6 +14,10 @@ namespace py = pybind11;
 namespace onnxruntime {
 
 static py::module::module_def _kernel_explorer_module_def;
+
+bool TuningInfo::collect_enabled_{true};
+std::vector<TuningResults> TuningInfo::collected_tuning_results_ = {};
+std::optional<int> TuningInfo::max_tuning_duration_ms_ = {};
 
 py::module GetKernelExplorerModule() {
   static pybind11::module_ m = []() {
@@ -35,6 +41,22 @@ KE_REGISTER(m) {
       .def(py::init<size_t, ssize_t, ssize_t>())
       .def("UpdateHostNumpyArray", &DeviceArray::UpdateHostNumpyArray)
       .def("UpdateDeviceArray", &DeviceArray::UpdateDeviceArray);
+
+  m.def("collect_tuning_results", TuningInfo::EnableCollect);
+
+  m.def("max_tuning_duration_ms", TuningInfo::SetMaxTuningDurationMs);
+
+  m.def("get_collected_tuning_results", []() {
+    py::list ret;
+    for (const auto& trs : TuningInfo::GetCollectedTuningResults()) {
+      py::dict py_trs;
+      py_trs["ep"] = trs.ep;
+      py_trs["results"] = trs.results;
+      py_trs["validators"] = trs.validators;
+      ret.append(std::move(py_trs));
+    }
+    return ret;
+  });
 
   m.def("is_composable_kernel_available", []() {
 #ifdef USE_COMPOSABLE_KERNEL

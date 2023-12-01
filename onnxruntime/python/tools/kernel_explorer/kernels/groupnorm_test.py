@@ -181,6 +181,7 @@ class GroupNormNHWCMetric(ke.BandwidthMetric):
         return "not supported          " + common
 
 
+@ke.dispatchable(pattern_arg=8)
 def profile_group_norm_func(
     batch_size: int,
     height: int,
@@ -308,7 +309,7 @@ if __name__ == "__main__":
         profile()
     else:
         args = parser.parse_args()
-        args.func(
+        args.dispatch(
             args.batch_size,
             args.height,
             args.width,

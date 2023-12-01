@@ -57,6 +57,7 @@ dtypes = ["float16", "float32"]
 
 @pytest.mark.parametrize("batch_count, softmax_elements, is_log_softmax", get_test_sizes())
 @pytest.mark.parametrize("dtype", dtypes)
+@ke.dispatchable
 def test_softmax(batch_count, softmax_elements, is_log_softmax, dtype):
     for f in dtype_to_funcs(dtype):
         _test_softmax(batch_count, softmax_elements, is_log_softmax, dtype, f)
@@ -64,6 +65,7 @@ def test_softmax(batch_count, softmax_elements, is_log_softmax, dtype):
 
 @pytest.mark.parametrize("batch_count, softmax_elements, is_log_softmax", get_test_sizes())
 @pytest.mark.parametrize("dtype", dtypes)
+@ke.dispatchable
 def test_ck_softmax(batch_count, softmax_elements, is_log_softmax, dtype):
     ck_f_name = "CKSoftmax_" + dtype_to_suffix(dtype)
     _test_softmax(batch_count, softmax_elements, is_log_softmax, dtype, ck_f_name)
@@ -82,6 +84,7 @@ class SoftmaxMetric(ke.BandwidthMetric):
         return "not supported        " + common
 
 
+@ke.dispatchable(pattern_arg=4)
 def profile_softmax_func(batch_count, softmax_elements, is_log_softmax, dtype, func):
     np.random.seed(0)
     x = np.random.rand(batch_count, softmax_elements).astype(dtype)
@@ -104,6 +107,7 @@ def profile_softmax_func(batch_count, softmax_elements, is_log_softmax, dtype, f
         ke.report(SoftmaxMetric(impl, dtype, duration_ms, total_bytes, batch_count, softmax_elements, is_log_softmax))
 
 
+@ke.dispatchable
 def profile_with_args(batch_count, softmax_elements, is_log_softmax, dtype):
     with ke.benchmark():
         for func in dtype_to_funcs(dtype):
@@ -135,4 +139,4 @@ if __name__ == "__main__":
         profile()
     else:
         args = parser.parse_args()
-        args.func(args.batch_count, args.softmax_elements, args.is_log_softmax, args.dtype)
+        args.dispatch(args.batch_count, args.softmax_elements, args.is_log_softmax, args.dtype)

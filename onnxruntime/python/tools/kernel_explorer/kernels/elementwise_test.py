@@ -90,6 +90,7 @@ class ElementwiseMetric(ke.BandwidthMetric):
         return "not supported        " + common
 
 
+@ke.dispatchable(pattern_arg=4)
 def profile_elementwise_func(batch_size, seq_len, hidden_size, dtype, func):
     x_size = [batch_size, seq_len, hidden_size]
     bias_size = hidden_size
@@ -112,6 +113,7 @@ def profile_elementwise_func(batch_size, seq_len, hidden_size, dtype, func):
     ke.report(ElementwiseMetric(func, dtype, duration_ms, total_bytes, batch_size, seq_len, hidden_size))
 
 
+@ke.dispatchable
 def profile_with_args(batch_size, seq_len, hidden_size, fn_name, dtype):
     with ke.benchmark():
         for func in dtype_to_funcs(fn_name, dtype):
@@ -138,4 +140,4 @@ if __name__ == "__main__":
         profile()
     else:
         args = parser.parse_args()
-        args.func(args.batch_size, args.seq_len, args.hidden_size, args.fn_name, args.dtype)
+        args.dispatch(args.batch_size, args.seq_len, args.hidden_size, args.fn_name, args.dtype)

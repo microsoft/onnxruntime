@@ -50,6 +50,7 @@ class MatrixFpInt4Metric(MatrixMulMetric):
         return f"{self.duration:6.2f} us {self.gbps:5.2f} GB/s {self.dtype} m={self.m} n={self.n} k={self.k} is_symmetric={self.is_symmetric} {self.name}"
 
 
+@ke.dispatchable(pattern_arg=4)
 def profile_matmul_fp_int4_func(m, n, k, dtype, func, is_symmetric):
     np.random.seed(0)
     output = np.random.rand(m, n).astype(dtype)
@@ -76,6 +77,7 @@ def profile_matmul_fp_int4_func(m, n, k, dtype, func, is_symmetric):
     ke.report(MatrixFpInt4Metric(func, dtype, duration_ms, total_bytes, m, n, k, is_symmetric))
 
 
+@ke.dispatchable(pattern_arg=4)
 def profile_gemm_func(m, n, k, dtype, func):
     np.random.seed(0)
     output = np.random.rand(m, n).astype(dtype)
@@ -93,6 +95,7 @@ def profile_gemm_func(m, n, k, dtype, func):
     ke.report(MatrixMulMetric(func, dtype, duration_ms, total_bytes, m, n, k))
 
 
+@ke.dispatchable
 def profile_with_args(m, n, k, dtype):
     with ke.benchmark():
         for func in dtype_to_funcs(dtype):
@@ -133,4 +136,4 @@ if __name__ == "__main__":
         profile()
     else:
         args = parser.parse_args()
-        args.func(args.m, args.n, args.k, args.dtype)
+        args.dispatch(args.m, args.n, args.k, args.dtype)

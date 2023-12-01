@@ -23,6 +23,7 @@ def dtype_to_suffix(dtype):
     }[dtype]
 
 
+@ke.dispatchable
 def _test_strided_batched_gemm(
     func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int, batch: int, alpha=1.0, beta=0.0
 ):
@@ -101,6 +102,7 @@ all_transabs = list(product([True, False], repeat=2))
 @pytest.mark.parametrize("m, n, k", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)
+@ke.dispatchable
 def test_rocblas_gemm_all_cases(dtype, transa, transb, m, n, k, batch):
     wrapper_name = "RocBlasStridedBatchedGemm_" + dtype_to_suffix(dtype)
     _test_strided_batched_gemm(getattr(ke, wrapper_name), dtype, transa, transb, m, n, k, batch)
@@ -111,6 +113,7 @@ def test_rocblas_gemm_all_cases(dtype, transa, transb, m, n, k, batch):
 @pytest.mark.parametrize("m, n, k", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)
+@ke.dispatchable
 def test_ck_gemm_all_cases(dtype, transa, transb, m, n, k, batch):
     wrapper_name = f"CKStridedBatchedGemm_{dtype_to_suffix(dtype)}_{transab_to_suffix((transa, transb))}"
     _test_strided_batched_gemm(getattr(ke, wrapper_name), dtype, transa, transb, m, n, k, batch)
@@ -121,6 +124,7 @@ def test_ck_gemm_all_cases(dtype, transa, transb, m, n, k, batch):
 @pytest.mark.parametrize("m, n, k", get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)
+@ke.dispatchable
 def test_gemm_tunable_bert_cases(dtype, transa, transb, m, n, k, batch):
     wrapper_name = f"StridedBatchedGemmTunable_{dtype_to_suffix(dtype)}_{transab_to_suffix((transa, transb))}"
     _test_strided_batched_gemm(getattr(ke, wrapper_name), dtype, transa, transb, m, n, k, batch)
@@ -177,6 +181,7 @@ class StridedBatchedGemmMetric(ke.ComputeMetric):
         return f"{self.duration:>6.2f} us {self.tflops:>5.2f} tflops " + common
 
 
+@ke.dispatchable(pattern_arg=0)
 def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int, batch: int):
     a_shape = (k, m) if transa else (m, k)
     b_shape = (n, k) if transb else (k, n)
@@ -209,6 +214,7 @@ def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int,
         ke.report(StridedBatchedGemmMetric(impl, dtype, duration_ms, FLOPs, transa, transb, m, n, k, batch))
 
 
+@ke.dispatchable
 def profile_with_args(dtype, transa, transb, m, n, k, batch):
     dtype_suffix = "_" + dtype_to_suffix(dtype)
     transab_suffix = "_" + transab_to_suffix((transa, transb))
@@ -248,4 +254,4 @@ if __name__ == "__main__":
         profile()
     else:
         args = parser.parse_args()
-        args.func(args.dtype, args.transa == "T", args.transb == "T", args.m, args.n, args.k, args.batch)
+        args.dispatch(args.dtype, args.transa == "T", args.transb == "T", args.m, args.n, args.k, args.batch)

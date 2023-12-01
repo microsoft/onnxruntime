@@ -43,6 +43,7 @@ dtypes = ["float16", "float32"]
 
 @pytest.mark.parametrize("size", [1, 3, 4, 16, 124, 125, 126, 127, 128, 129, 130, 131, 132, 1024])
 @pytest.mark.parametrize("dtype", dtypes)
+@ke.dispatchable
 def test_vector_add(size, dtype):
     for dtype in dtypes:
         for f in dtype_to_funcs(dtype):
@@ -57,6 +58,7 @@ class VectorAddMetric(ke.BandwidthMetric):
         return f"{self.duration:6.2f} us {self.gbps:5.2f} GB/s {self.dtype} size={self.size:<4} {self.name}"
 
 
+@ke.dispatchable(pattern_arg=2)
 def profile_vector_add_func(size, dtype, func):
     np.random.seed(0)
     x = np.random.rand(size).astype(dtype)
@@ -74,6 +76,7 @@ def profile_vector_add_func(size, dtype, func):
     ke.report(VectorAddMetric(func, dtype, duration_ms, total_bytes, size))
 
 
+@ke.dispatchable
 def profile_with_args(size, dtype):
     with ke.benchmark():
         for func in dtype_to_funcs(dtype):
@@ -98,4 +101,4 @@ if __name__ == "__main__":
         profile()
     else:
         args = parser.parse_args()
-        args.func(args.size, args.dtype)
+        args.dispatch(args.size, args.dtype)
