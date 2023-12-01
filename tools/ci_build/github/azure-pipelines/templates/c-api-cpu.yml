@@ -379,7 +379,7 @@ stages:
     - template: flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download iOS Pipeline Artifact'
-        ArtifactName: 'onnxruntime-ios-full-xcframework'
+        ArtifactName: 'onnxruntime-apple-full-xcframework'
         TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
