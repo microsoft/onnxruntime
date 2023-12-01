@@ -568,7 +568,7 @@ def can_module_be_deep_cloned(module: torch.nn.Module, device: Optional[torch.de
         device: The device to be used for cloning.
     """
 
-    if device is None:
+    if device is None or device.type != "cuda":
         return True
 
     total_size = calculate_total_parameter_size_in_bytes(module)
