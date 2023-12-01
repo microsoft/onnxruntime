@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {env} from 'onnxruntime-common';
 import {TensorView} from '../../tensor-view';
 import {PoolConvUtil, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
@@ -15,7 +16,7 @@ import {createTensorShapeVariables, getUniformElementAt, IndicesHelper, inputVar
 // - [MaxPool] output[1]       "test_maxpool_with_argmax_2d_precomputed_pads"
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
-  if (!inputs || inputs.length !== 1) {
+  if (env.webgpu.validateInputContent && (!inputs || inputs.length !== 1)) {
     throw new Error('Pool ops requires 1 input.');
   }
 };
@@ -77,7 +78,6 @@ const getUniformAndPadInfo = <AttributeType extends AveragePoolAttributes|MaxPoo
         {type: 'uint32', data: pwEnd},
         {type: 'uint32', data: dimIdxW},
     );
-
     uniforms.push(
         {name: 'kw', type: 'u32'}, {name: 'sw', type: 'u32'}, {name: 'pwStart', type: 'u32'},
         {name: 'pwEnd', type: 'u32'}, {name: 'dimIdxW', type: 'u32'});
@@ -108,7 +108,6 @@ const getUniformAndPadInfo = <AttributeType extends AveragePoolAttributes|MaxPoo
     programUniforms.push(
         {type: 'uint32', data: kernelStrides}, {type: 'uint32', data: attributes.pads},
         {type: 'uint32', data: attributes.strides});
-
     uniforms.push(
         {name: 'kernelStrides', type: 'u32', length: kernelStrides.length},
         {name: 'pads', type: 'u32', length: attributes.pads.length},
@@ -371,7 +370,7 @@ const createMaxPoolProgramInfo =
       const op2 = '';
       const x = inputVariable('x', input.dataType, input.dims.length);
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank'];
-      const start = -100000;
+      const start = -1e5;
       const [programUniforms, uniforms, hasPads, pwStartEnd, phStartEnd] =
           getUniformAndPadInfo(input.dims, outputShape, x.type.value, start, 'int32', adjustedAttributes);
       programUniforms.push(...createTensorShapeVariables(input.dims));
