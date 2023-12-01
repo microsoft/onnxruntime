@@ -157,12 +157,7 @@ class InputDensityObserver:
         self._embedding_graph_input_to_padding_idx_map.clear()
 
         for node in model.graph.node:
-            if not (
-                node.domain == "org.pytorch.aten"
-                and node.op_type == "ATen"
-                #and node.input[1] in user_input_names
-                and len(node.input) >= 3
-            ):
+            if not (node.domain == "org.pytorch.aten" and node.op_type == "ATen" and len(node.input) >= 3):
                 continue
 
             found = [attr for attr in node.attribute if attr.name == "operator"]
@@ -194,18 +189,22 @@ class InputDensityObserver:
             if padding_idx < 0:
                 continue
 
-            # Check embedding inputs
-            def get_embedding_graph_input(node_arg):
+            # Given the input arg of embedding node, find the corresponding user input that feeds into the data.
+            # Will iterate the args recursively if some graph pattern is found between the input and the embedding,
+            # such as Input -> Cast -> Cast -> Embedding.
+            # TODO: This is a workaround for the case that the input of embedding is a list of Cast nodes which is found
+            # in Llama-2. We need to find a general way to handle all graph parttern between input and embedding.
+            def _get_embedding_graph_input(node_arg):
                 if node_arg in user_input_names:
                     return node_arg
                 input_node = self._try_get_node_from_its_output(node_arg)
                 if input_node.op_type == "Cast":
-                    return get_embedding_graph_input(input_node.input[0])
+                    return _get_embedding_graph_input(input_node.input[0])
                 else:
                     self._logger.warning(f"Cannot find embedding input {node_arg}")
                     return None
 
-            embedding_graph_input = get_embedding_graph_input(node.input[1])
+            embedding_graph_input = _get_embedding_graph_input(node.input[1])
             if embedding_graph_input is None:
                 continue
 
