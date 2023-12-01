@@ -42,10 +42,7 @@ Initializer::Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const 
   // This must be pre-allocated
   Tensor w(DataTypeImpl::TensorTypeFromONNXEnum(proto_data_type)->GetElementType(), proto_shape,
            std::make_shared<CPUAllocator>());
-  auto status = utils::TensorProtoToTensor(Env::Default(), model_path.ToPathString().c_str(), tensor_proto, w);
-  if (!status.IsOK()) {
-    ORT_THROW("Deserializing initializer: `", name_, "` failed with error: ", status.ErrorMessage());
-  }
+  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), model_path.ToPathString().c_str(), tensor_proto, w));
   data_ = std::move(w);
 }
 
