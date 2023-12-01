@@ -136,7 +136,11 @@ MlasNBitsGemmPackBSize(
  * @param nbits         number of bits used for weight quantization (default 4)
  * @param is_asym       flag for asymmetric quantization
  * @param comp_type     specify input data type and accumulator data type
- * @param last_call     flag to activate the epilogue process of packB
+ * @param last_call     flag to activate the epilogue process of packB. OpKernel::PrePack will query input tensor
+ * one by one: QData, Scale, Zp (if is_asym is true). But kernel prefers to pack all tensors into one blob data where
+ * they can share the common attributes like: block_size. Meanwhile, kernel has some pre-computations to speed up
+ * inference which require that all blob data are ready. So, you need to set this flag to true when passing Scale 
+ * (is_asym is false) and Zp(is_asym is true).
  * @param thread_pool
  */
 void MLASCALL
