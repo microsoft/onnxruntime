@@ -116,17 +116,17 @@ void Q4GEMM_Jblas(benchmark::State& state, int block_size, bool is_asym, MLAS_CO
   MlasNBitsGemmPackB(B1_packed.data(), B1.data(), B_scale.data(), is_asym ? B_zp.data() : nullptr, N, K, K, block_size,
                      4, is_asym, true, cmp_type, tp.get());
 
-  MLAS_NBITS_GEMM_DATA_PACKED_PARAMS params1;
+  MLAS_SQNBITS_GEMM_DATA_PACKED_PARAMS params1;
   params1.A = A1.data();
   params1.lda = K;
   params1.C = C1.data();
   params1.ldc = N;
   params1.B = B1_packed.data();
   std::vector<int8_t> workspace(static_cast<size_t>(M <= 32 ? 32 : M) * K * 4);
-  MlasNBitsGemmBatchPackedB(M, N, K, 1, &params1, workspace.data(), tp.get());
+  MlasSQNBitsGemmBatchPackedB(M, N, K, 1, &params1, workspace.data(), tp.get());
 
   for (auto _ : state) {
-    MlasNBitsGemmBatchPackedB(M, N, K, 1, &params1, workspace.data(), tp.get());
+    MlasSQNBitsGemmBatchPackedB(M, N, K, 1, &params1, workspace.data(), tp.get());
   }
 }
 

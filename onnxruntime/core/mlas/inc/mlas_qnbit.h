@@ -96,7 +96,7 @@ typedef enum {
  *        B must be a packed nbits blob
  *        All except C are [in] parameters
  */
-struct MLAS_NBITS_GEMM_DATA_PACKED_PARAMS {
+struct MLAS_SQNBITS_GEMM_DATA_PACKED_PARAMS {
     const float* A = nullptr; /**< address of A (float32 matrix)*/
     const void* B = nullptr;  /**< address of B (packed nbits blob)*/
     float* C = nullptr;       /**< address of result matrix */
@@ -184,12 +184,12 @@ MlasNBitsGemmUnPackB(
  * @return
  */
 void MLASCALL
-MlasNBitsGemmBatchPackedB(
+MlasSQNBitsGemmBatchPackedB(
     const size_t M,
     const size_t N,
     const size_t K,
     const size_t BatchN,
-    const MLAS_NBITS_GEMM_DATA_PACKED_PARAMS* DataParams,
+    const MLAS_SQNBITS_GEMM_DATA_PACKED_PARAMS* DataParams,
     int8_t* WorkSpace,
     MLAS_THREADPOOL* ThreadPool = nullptr
 );

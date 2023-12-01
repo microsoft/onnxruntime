@@ -116,12 +116,12 @@ JblasQ4GemmCompInt8(
 }
 
 bool
-JblasQ4GemmBatchDriver(
+JblasSQ4GemmBatchDriver(
     const size_t M,
     const size_t N,
     const size_t K,
     const size_t BatchN,
-    const MLAS_NBITS_GEMM_DATA_PACKED_PARAMS* DataParams,
+    const MLAS_SQNBITS_GEMM_DATA_PACKED_PARAMS* DataParams,
     int8_t* WorkSpace,
     MLAS_THREADPOOL* ThreadPool
 )

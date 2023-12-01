@@ -149,7 +149,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
     const size_t N = static_cast<size_t>(helper.N());
     const size_t K = static_cast<size_t>(helper.K());
     const size_t lda = helper.Lda(false);
-    std::vector<MLAS_NBITS_GEMM_DATA_PACKED_PARAMS> gemm_params(max_len);
+    std::vector<MLAS_SQNBITS_GEMM_DATA_PACKED_PARAMS> gemm_params(max_len);
     AllocatorPtr allocator;
     auto status = ctx->GetTempSpaceAllocator(&allocator);
     ORT_RETURN_IF_ERROR(status);
@@ -162,7 +162,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
       gemm_params[i].C = y_data + helper.OutputOffsets()[i];
       gemm_params[i].ldc = N;
     }
-    MlasNBitsGemmBatchPackedB(M, N, K, max_len, gemm_params.data(), reinterpret_cast<int8_t*>(ws_ptr.get()),
+    MlasSQNBitsGemmBatchPackedB(M, N, K, max_len, gemm_params.data(), reinterpret_cast<int8_t*>(ws_ptr.get()),
                               thread_pool);
     return Status::OK();
   }

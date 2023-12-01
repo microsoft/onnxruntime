@@ -222,19 +222,19 @@ MlasNBitsGemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, s
 }
 
 void MLASCALL
-MlasNBitsGemmBatchPackedB(
+MlasSQNBitsGemmBatchPackedB(
     const size_t M,
     const size_t N,
     const size_t K,
     const size_t BatchN,
-    const MLAS_NBITS_GEMM_DATA_PACKED_PARAMS* DataParams,
+    const MLAS_SQNBITS_GEMM_DATA_PACKED_PARAMS* DataParams,
     int8_t* WorkSpace,
     MLAS_THREADPOOL* ThreadPool
 )
 {
     GetMlasPlatform();
 #ifdef MLAS_JBLAS
-    if (JblasQ4GemmBatchDriver(M, N, K, BatchN, DataParams, WorkSpace, ThreadPool)) {
+    if (JblasSQ4GemmBatchDriver(M, N, K, BatchN, DataParams, WorkSpace, ThreadPool)) {
         // PackedWeight is created by jblas
         return;
     }
