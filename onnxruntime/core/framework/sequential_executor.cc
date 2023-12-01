@@ -179,9 +179,9 @@ Status SequentialExecutor::Execute(const SessionState& session_state, gsl::span<
   VLOGS(logger, 1) << "Size of execution plan vector: " << exec_plan_vec.size();
 
 // Enable TRACE_EXECUTION compile flag to dump execution plan
-#if defined(TRACE_EXECUTION)
+// #if defined(TRACE_EXECUTION)
   std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
-#endif
+// #endif
 
   const auto& graph_viewer = session_state.GetGraphViewer();
 
