@@ -190,10 +190,10 @@ class InputDensityObserver:
                 continue
 
             # Given the input arg of embedding node, find the corresponding user input that feeds into the data.
-            # Will iterate the args recursively if some graph pattern is found between the input and the embedding,
+            # Will iterate the args recursively if some subgraph pattern is found between the input and the embedding,
             # such as Input -> Cast -> Cast -> Embedding.
             # TODO: This is a workaround for the case that the input of embedding is a list of Cast nodes which is found
-            # in Llama-2. We need to find a general way to handle all graph parttern between input and embedding.
+            # in Llama-2. We need to find a general way to handle all types of subgraph parttern between input and embedding.
             def _get_embedding_graph_input(node_arg):
                 if node_arg in user_input_names:
                     return node_arg
