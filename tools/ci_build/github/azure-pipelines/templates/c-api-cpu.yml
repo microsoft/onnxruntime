@@ -153,7 +153,6 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: CPU_x86_${{ parameters.BuildVariant }}
-    EnvSetupScript: setup_env_x86.bat
     buildArch: x86
     msbuildPlatform: Win32
     packageName: x86
@@ -167,7 +166,6 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: CPU_arm_${{ parameters.BuildVariant }}
-    EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: arm
     packageName: arm
@@ -182,7 +180,6 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: CPU_arm64_${{ parameters.BuildVariant }}
-    EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: arm64
     packageName: arm64
@@ -196,7 +193,6 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: CPU_x64_${{ parameters.BuildVariant }}
-    EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64
