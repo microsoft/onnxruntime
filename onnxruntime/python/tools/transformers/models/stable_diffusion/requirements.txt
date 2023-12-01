@@ -1,5 +1,5 @@
-diffusers==0.23.1
-transformers==4.35.1
+diffusers==0.24.0
+transformers==4.35.2
 numpy>=1.24.1
 accelerate
 onnx==1.14.1
@@ -11,7 +11,7 @@ psutil
 sympy
 controlnet_aux
 # The following are for SDXL
-optimum==1.13.1
+optimum==1.14.1
 safetensors
 invisible_watermark
 # newer version of opencv-python migth encounter module 'cv2.dnn' has no attribute 'DictValue' error

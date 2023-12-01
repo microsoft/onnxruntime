@@ -213,6 +213,7 @@ stages:
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
+  - Download_Java_Tools
   condition: succeeded()
   jobs:
   - job:
@@ -225,40 +226,45 @@ stages:
       submodules: false
     - template: set-version-number-variables-step.yml
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - Win x64'
-      inputs:
-        buildType: 'current'
-        artifactName: 'drop-onnxruntime-java-win-x64'
-        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - Win x64'
+        ArtifactName: 'drop-onnxruntime-java-win-x64'
+        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - Linux x64'
-      inputs:
-        buildType: 'current'
-        artifactName: 'drop-onnxruntime-java-linux-x64'
-        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - Linux x64'
+        ArtifactName: 'drop-onnxruntime-java-linux-x64'
+        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - Linux AARCH64'
-      inputs:
-        buildType: 'current'
-        artifactName: 'drop-onnxruntime-java-linux-aarch64'
-        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-aarch64'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - Linux AARCH64'
+        ArtifactName: 'drop-onnxruntime-java-linux-aarch64'
+        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-aarch64'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - MacOS x64'
-      inputs:
-        buildType: 'current'
-        artifactName: 'drop-onnxruntime-java-osx-x86_64'
-        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-x86_64'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - MacOS x64'
+        ArtifactName: 'drop-onnxruntime-java-osx-x86_64'
+        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-x86_64'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - MacOS ARM64'
-      inputs:
-        buildType: 'current'
-        artifactName: 'drop-onnxruntime-java-osx-arm64'
-        targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-arm64'
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - MacOS ARM64'
+        ArtifactName: 'drop-onnxruntime-java-osx-arm64'
+        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-arm64'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
     - task: PowerShell@2
       displayName: 'PowerShell Script'
@@ -804,133 +810,24 @@ stages:
 - template: ../nodejs/templates/test_macos.yml
   parameters:
     StageSuffix : 'macOS_CPU_x64'
-- stage: Final_Jar_Testing_Windows
-  dependsOn:
-    Jar_Packaging
-  jobs:
-  - job:
-    workspace:
-      clean: all
-    pool: 'onnxruntime-Win-CPU-2022'
-    timeoutInMinutes: 60
-    variables:
-    - name: runCodesignValidationInjection
-      value: false
 
-    steps:
-    - template: set-version-number-variables-step.yml
+- template: final-jar-testing.yml
+  parameters:
+    OS: Windows
+    BuildId: ${{ parameters.BuildId }}
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    PoolName: 'onnxruntime-Win-CPU-2022'
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Final Jar'
-      inputs:
-          buildType: 'current'
-          artifactName: 'onnxruntime-java'
-          targetPath: '$(Build.BinariesDirectory)\final-jar'
+- template: final-jar-testing.yml
+  parameters:
+    OS: Linux
+    BuildId: ${{ parameters.BuildId }}
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
 
-    - task: CmdLine@2
-      inputs:
-        script: |
-          mkdir test
-          pushd test
-          jar xf $(Build.BinariesDirectory)\final-jar\testing.jar
-          popd
-          powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -OutFile junit-platform-console-standalone-1.6.2.jar"
-          powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.21.7/protobuf-java-3.21.7.jar -OutFile protobuf-java-3.21.7.jar"
-          java -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.21.7.jar;onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
-        workingDirectory: '$(Build.BinariesDirectory)\final-jar'
-
-    - template: component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
-- stage: Final_Jar_Testing_Linux
-  dependsOn:
-    Jar_Packaging
-  jobs:
-  - job:
-    workspace:
-      clean: all
-    pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
-    variables:
-    - name: runCodesignValidationInjection
-      value: false
-    timeoutInMinutes: 60
-
-    steps:
-    - template: set-version-number-variables-step.yml
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Final Jar'
-      inputs:
-        buildType: 'current'
-        artifactName: 'onnxruntime-java'
-        targetPath: '$(Build.BinariesDirectory)/final-jar'
-
-    - task: CmdLine@2
-      inputs:
-        script: |
-          echo "Java Version"
-          java --version
-          mkdir test
-          pushd test
-          jar xf $(Build.BinariesDirectory)/final-jar/testing.jar
-          popd
-          wget https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
-          wget https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.21.7/protobuf-java-3.21.7.jar -P ./
-          LD_LIBRARY_PATH=./test:${LD_LIBRARY_PATH}
-          java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.21.7.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
-        workingDirectory: '$(Build.BinariesDirectory)/final-jar'
-
-    - template: component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
-- stage: Final_Jar_Testing_MacOs
-  dependsOn:
-    Jar_Packaging
-  jobs:
-  - job:
-    workspace:
-      clean: all
-    pool:
-      vmImage: 'macOS-13'
-    variables:
-    - name: runCodesignValidationInjection
-      value: false
-    timeoutInMinutes: 60
-    steps:
-    - template: set-version-number-variables-step.yml
-
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Final Jar'
-      inputs:
-        buildType: 'current'
-        artifactName: 'onnxruntime-java'
-        targetPath: '$(Build.BinariesDirectory)/final-jar'
-
-    - template: use-xcode-version.yml
-
-    - task: CmdLine@2
-      inputs:
-          script: |
-            echo "Java Version"
-            java --version
-            mkdir test
-            pushd test
-            jar xf $(Build.BinariesDirectory)/final-jar/testing.jar
-            popd
-            wget https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
-            wget https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.21.7/protobuf-java-3.21.7.jar -P ./
-            DYLD_LIBRARY_PATH=./test:${DYLD_LIBRARY_PATH}
-            java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.21.7.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
-          workingDirectory: '$(Build.BinariesDirectory)/final-jar'
-
-    - template: component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
+- template: final-jar-testing.yml
+  parameters:
+    OS: MacOS
+    BuildId: ${{ parameters.BuildId }}
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    PoolName: 'macOS-13'
