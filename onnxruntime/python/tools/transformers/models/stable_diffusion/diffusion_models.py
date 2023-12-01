@@ -120,17 +120,23 @@ class PipelineInfo:
     def is_xl(self) -> bool:
         return "xl" in self.version
 
+    def is_xl_turbo(self) -> bool:
+        return self.version == "xl-turbo"
+
     def is_xl_base(self) -> bool:
-        return self.is_xl() and not self._is_refiner
+        return self.version == "xl-1.0" and not self._is_refiner
+
+    def is_xl_base_or_turbo(self) -> bool:
+        return self.is_xl_base() or self.is_xl_turbo()
 
     def is_xl_refiner(self) -> bool:
-        return self.is_xl() and self._is_refiner
+        return self.version == "xl-1.0" and self._is_refiner
 
     def use_safetensors(self) -> bool:
         return self.is_xl()
 
     def stages(self) -> List[str]:
-        if self.is_xl_base():
+        if self.is_xl_base_or_turbo():
             return ["clip", "clip2", "unetxl"] + (["vae"] if self._use_vae else [])
 
         if self.is_xl_refiner():
@@ -153,7 +159,7 @@ class PipelineInfo:
 
     @staticmethod
     def supported_versions(is_xl: bool):
-        return ["xl-1.0"] if is_xl else ["1.4", "1.5", "2.0-base", "2.0", "2.1", "2.1-base"]
+        return ["xl-1.0", "xl-turbo"] if is_xl else ["1.4", "1.5", "2.0-base", "2.0", "2.1", "2.1-base"]
 
     def name(self) -> str:
         if self.version == "1.4":
@@ -185,6 +191,8 @@ class PipelineInfo:
                 return "stabilityai/stable-diffusion-xl-refiner-1.0"
             else:
                 return "stabilityai/stable-diffusion-xl-base-1.0"
+        elif self.version == "xl-turbo":
+            return "stabilityai/sdxl-turbo"
 
         raise ValueError(f"Incorrect version {self.version}")
 
@@ -197,13 +205,13 @@ class PipelineInfo:
             return 768
         elif self.version in ("2.0", "2.0-base", "2.1", "2.1-base"):
             return 1024
-        elif self.version in ("xl-1.0") and self.is_xl_base():
+        elif self.is_xl_base_or_turbo():
             return 768
         else:
             raise ValueError(f"Invalid version {self.version}")
 
     def clipwithproj_embedding_dim(self):
-        if self.version in ("xl-1.0"):
+        if self.is_xl():
             return 1280
         else:
             raise ValueError(f"Invalid version {self.version}")
@@ -213,9 +221,9 @@ class PipelineInfo:
             return 768
         elif self.version in ("2.0", "2.0-base", "2.1", "2.1-base"):
             return 1024
-        elif self.version in ("xl-1.0") and self.is_xl_base():
+        elif self.is_xl_base_or_turbo():
             return 2048
-        elif self.version in ("xl-1.0") and self.is_xl_refiner():
+        elif self.is_xl_refiner():
             return 1280
         else:
             raise ValueError(f"Invalid version {self.version}")
@@ -227,7 +235,7 @@ class PipelineInfo:
         return self._max_image_size
 
     def default_image_size(self):
-        if self.is_xl():
+        if self.version == "xl-1.0":
             return 1024
         if self.version in ("2.0", "2.1"):
             return 768
@@ -235,7 +243,7 @@ class PipelineInfo:
 
     @staticmethod
     def supported_controlnet(version="1.5"):
-        if version == "xl-1.0":
+        if version in ("xl-1.0", "xl-turbo"):
             return {
                 "canny": "diffusers/controlnet-canny-sdxl-1.0",
                 "depth": "diffusers/controlnet-depth-sdxl-1.0",

@@ -40,7 +40,7 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
             pipeline_info (PipelineInfo):
                 Version and Type of stable diffusion pipeline.
         """
-        assert pipeline_info.is_xl_base()
+        assert pipeline_info.is_xl_base_or_turbo()
 
         super().__init__(pipeline_info, *args, **kwargs)
 
