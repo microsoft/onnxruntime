@@ -86,7 +86,7 @@ BENCHMARK(SQNBITGEMM<4, 256, false>)->Apply(GemmSizeProducts)->UseRealTime();
 BENCHMARK(SQNBITGEMM<4, 256, true>)->Apply(GemmSizeProducts)->UseRealTime();
 
 #ifdef MLAS_JBLAS
-void Q4GEMM_Jblas(benchmark::State& state, int block_size, bool is_asym, MLAS_COMPUTE_TYPE cmp_type) {
+void Q4GEMM_Jblas(benchmark::State& state, int block_size, bool is_asym, MLAS_SQNBIT_COMPUTE_TYPE cmp_type) {
   if (state.range(0) <= 0) throw std::invalid_argument("M must greater than 0!");
   if (state.range(1) <= 0) throw std::invalid_argument("N must greater than 0!");
   if (state.range(2) <= 0) throw std::invalid_argument("K must greater than 0!");
