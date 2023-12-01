@@ -212,7 +212,7 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Tanh", {"tanh", true}},
     {"Transpose", {"transpose", true}},
     {"Unsqueeze", {"reshape", true}},
-    {"Where", {"elementwiseIf", false}},
+    {"Where", {"where", false}},
 };
 
 inline bool CheckSingleOp(const std::string& op_type, const emscripten::val& wnn_builder_,
