@@ -111,7 +111,7 @@ struct MLAS_SQNBITS_GEMM_DATA_PACKED_PARAMS {
  * @param K      the number of rows of matrix B.
  * @param block_size    size of the block to quantize, elements from the same block share the same
  * scale and zero point
- * @param nbits  number of bits used for weight quantization (default 4)
+ * @param nbits  number of bits used for weight quantization
  * @param is_asym  flag for asymmetric quantization
  * @param comp_type  specify input data type and accumulator data type
  * @return size of the packing buffer, 0 if the operation is not yet supported.
@@ -124,7 +124,7 @@ MlasNBitsGemmPackBSize(
 /**
  * @brief Prepack tensor data from MatMulNBits operator
  *
- * @param PackedBuf     pakced data buffer
+ * @param PackedBuf     packed data buffer
  * @param QData         quantized data buffer
  * @param Scale         scale pointer
  * @param Zp            zero point pointer
@@ -163,8 +163,8 @@ MlasNBitsGemmPackB(
 /**
  * @brief Unpack and dequantize to fp32
  *
- * @param FpData     unpakced float32 data
- * @param PackedBuf  int4 quantized and packed data
+ * @param FpData     unpacked float32 data
+ * @param PackedBuf  quantized and packed data
  * @param N          the number of columns of matrix B.
  * @param K          the number of rows of matrix B.
  * @param ldb        leading dimension of B
