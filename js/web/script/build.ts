@@ -44,7 +44,7 @@ const SOURCE_ROOT_FOLDER = path.join(__dirname, '../..');  // <ORT_ROOT>/js/
 const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_WEBGL': 'false',
   'BUILD_DEFS.DISABLE_WEBGPU': 'false',
-  'BUILD_DEFS.DISABLE_WEBNN': 'true',  // Disable WebNN until CI is ready.
+  'BUILD_DEFS.DISABLE_WEBNN': 'false',
   'BUILD_DEFS.DISABLE_WASM': 'false',
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
   'BUILD_DEFS.DISABLE_WASM_THREAD': 'false',
@@ -360,6 +360,7 @@ async function main() {
         ...DEFAULT_DEFINE,
         'BUILD_DEFS.DISABLE_WEBGPU': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
+        'BUILD_DEFS.DISABLE_WEBNN': 'true',
         'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
         'BUILD_DEFS.DISABLE_WASM_THREAD': 'true',
       },
@@ -371,7 +372,7 @@ async function main() {
     await addBuildTask(buildOrt({
       outputBundleName: 'ort.all',
       format: 'iife',
-      define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBNN': 'false'}
+      define: {...DEFAULT_DEFINE}
     }));
   }
 
@@ -396,7 +397,7 @@ async function main() {
     // ort.webgpu[.min].js
     await addAllWebBuildTasks({
       outputBundleName: 'ort.webgpu',
-      define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true'},
+      define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true', 'BUILD_DEFS.DISABLE_WEBNN': 'true'},
     });
     // ort.wasm[.min].js
     await addAllWebBuildTasks({
@@ -406,7 +407,12 @@ async function main() {
     // ort.webgl[.min].js
     await addAllWebBuildTasks({
       outputBundleName: 'ort.webgl',
-      define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGPU': 'true', 'BUILD_DEFS.DISABLE_WASM': 'true'},
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_WEBGPU': 'true',
+        'BUILD_DEFS.DISABLE_WASM': 'true',
+        'BUILD_DEFS.DISABLE_WEBNN': 'true',
+      },
     });
     // ort.wasm-core[.min].js
     await addAllWebBuildTasks({
@@ -415,6 +421,7 @@ async function main() {
         ...DEFAULT_DEFINE,
         'BUILD_DEFS.DISABLE_WEBGPU': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
+        'BUILD_DEFS.DISABLE_WEBNN': 'true',
         'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
         'BUILD_DEFS.DISABLE_WASM_THREAD': 'true',
       },
@@ -427,6 +434,7 @@ async function main() {
         'BUILD_DEFS.DISABLE_TRAINING': 'false',
         'BUILD_DEFS.DISABLE_WEBGPU': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
+        'BUILD_DEFS.DISABLE_WEBNN': 'true',
       },
     });
   }
