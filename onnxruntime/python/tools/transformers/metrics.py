@@ -81,11 +81,11 @@ class Metadata(BaseObject):
 
 class Metrics(BaseObject):
     def __init__(self,
-                 avg_run_latency_ms: float = 0.0,
+                 latency_ms_mean: float = 0.0,
                  throughput_qps: float = 0.0,
                  max_memory_usage_GB: float = 0.0):
         super().__init__()
-        self.avg_run_latency_ms = avg_run_latency_ms
+        self.latency_ms_mean = latency_ms_mean
         self.throughput_qps = throughput_qps
         self.max_memory_usage_GB = max_memory_usage_GB
 

@@ -314,7 +314,7 @@ def save_results(results, filename):
         record.metrics.customized["per_token_latency_ms"] = row["Per Token Latency (ms/token)"]
         record.metrics.customized["rtf"] = row["Real Time Factor (RTF)"]
 
-        record.metrics.avg_run_latency_ms = row["Latency (s)"] * 1000
+        record.metrics.latency_ms_mean = row["Latency (s)"] * 1000
         record.metrics.throughput_qps = row["Throughput (qps)"]
         record.metrics.max_memory_usage_GB = row["Memory (GB)"]
 
