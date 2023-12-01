@@ -54,8 +54,12 @@ def load_pipelines(args, batch_size):
     # For TensorRT,  performance of engine built with dynamic shape is very sensitive to the range of image size.
     # Here, we reduce the range of image size for TensorRT to trade-off flexibility and performance.
     # This range can cover most frequent shape of landscape (832x1216), portrait (1216x832) or square (1024x1024).
-    min_image_size = 832 if args.engine != "ORT_CUDA" else 512
-    max_image_size = 1216 if args.engine != "ORT_CUDA" else 2048
+    if args.version == "xl-turbo":
+        min_image_size = 512
+        max_image_size = 768 if args.engine != "ORT_CUDA" else 1024
+    else:
+        min_image_size = 832 if args.engine != "ORT_CUDA" else 512
+        max_image_size = 1216 if args.engine != "ORT_CUDA" else 2048
 
     # No VAE decoder in base when it outputs latent instead of image.
     base_info = PipelineInfo(
@@ -239,12 +243,12 @@ def run_dynamic_shape_demo(args):
         "close-up photography of old man standing in the rain at night, in a street lit by lamps, leica 35mm",
     ]
 
-    # refiner, batch size, height, width, scheduler, steps, prompt, seed, guidance, refiner scheduler, refiner steps, refiner strength
+    # batch size, height, width, scheduler, steps, prompt, seed, guidance, refiner scheduler, refiner steps, refiner strength
     configs = [
         (1, 832, 1216, "UniPC", 8, prompts[0], None, 5.0, "UniPC", 10, 0.3),
         (1, 1024, 1024, "DDIM", 24, prompts[1], None, 5.0, "DDIM", 30, 0.3),
-        (1, 1216, 832, "UniPC", 16, prompts[2], None, 5.0, "UniPC", 10, 0.3),
-        (1, 1344, 768, "DDIM", 24, prompts[3], None, 5.0, "UniPC", 20, 0.3),
+        (1, 1216, 832, "EulerA", 16, prompts[2], 1716921396712843, 5.0, "EulerA", 10, 0.3),
+        (1, 1344, 768, "EulerA", 24, prompts[3], 123698071912362, 5.0, "EulerA", 20, 0.3),
         (2, 640, 1536, "UniPC", 16, prompts[4], 4312973633252712, 5.0, "UniPC", 10, 0.3),
         (2, 1152, 896, "DDIM", 24, prompts[5], 1964684802882906, 5.0, "UniPC", 20, 0.3),
     ]

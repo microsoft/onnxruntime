@@ -268,7 +268,7 @@ stages:
   dependsOn: []
   jobs:
   - job: IosDynamicFramework
-
+    timeoutInMinutes: 120
     pool:
       vmImage: "macOS-13"
 

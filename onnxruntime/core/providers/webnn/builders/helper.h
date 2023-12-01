@@ -229,7 +229,7 @@ inline bool CheckSingleOp(const std::string& op_type, const emscripten::val& wnn
   // fall back early to the ORT CPU EP rather than fail in the WebNN "cpu" deviceType.
   // This is a workaround because the op may be included in MLGraphBuilder for DirectML
   // backend but without XNNPack implementation in Chromium.
-  if (!op_map.find(op_type)->second.isCpuSupported) {
+  if (!op_map.find(op_type)->second.isCpuSupported && device_type == WebnnDeviceType::CPU) {
     return false;
   }
 

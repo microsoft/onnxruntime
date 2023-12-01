@@ -326,6 +326,20 @@ export const sumVector = (name: string, components: number) => {
 };
 
 /**
+ * A helper function that returns uniform element at index.
+ * @param name - the name of uniform element.
+ * @param index - the index of uniform element.
+ * @param length - the length of uniform element.
+ */
+export const getUniformElementAt = (name: string, index: number|string, length: number): string => {
+  if (typeof (index) === 'string') {
+    return length > 4 ? `${name}[(${index}) / 4][(${index}) % 4]` : length > 1 ? `${name}[${index}]` : name;
+  } else {
+    return length > 4 ? `${name}[${Math.floor(index / 4)}][${index % 4}]` : length > 1 ? `${name}[${index}]` : name;
+  }
+};
+
+/**
  * A helper function to get a IndicesHelper for a given input or output.
  *
  * @param name - the name of the input or output.
@@ -362,11 +376,12 @@ const createIndicesHelper =
       const uniformPrefix = useUniform ? 'uniforms.' : '';
       const shape = `${uniformPrefix}${name}_shape`;
       const strides = `${uniformPrefix}${name}_strides`;
+
       let o2iSnippet = '';
       for (let i = 0; i < rank - 1; i++) {
         o2iSnippet += `
-    let dim${i} = current / ${strides}[${i}];
-    let rest${i} = current % ${strides}[${i}];
+    let dim${i} = current / ${getUniformElementAt(strides, i, rank)};
+    let rest${i} = current % ${getUniformElementAt(strides, i, rank)};
     indices[${i}] = dim${i};
     current = rest${i};
     `;
@@ -389,7 +404,7 @@ const createIndicesHelper =
       const offsets: string[] = [];
       if (rank >= 2) {
         for (let i = rank - 1; i >= 0; i--) {
-          offsets.push(`${strides}[${i}] * (indices[${i}])`);
+          offsets.push(`${getUniformElementAt(strides, i, rank)} * (indices[${i}])`);
         }
       }
 
@@ -660,7 +675,8 @@ export const internalVariable =
     (name: string, type: number, shapeOrRank: number|readonly number[], components: 1|2|3|4 = 1): IndicesHelper =>
         createIndicesHelper(name, type, shapeOrRank, 'internal', components);
 
-export type UniformsArrayType = Array<{name: string; type: string}>;
+export type UniformDataElementType = 'u32'|'f32'|'i32';
+export type UniformsArrayType = Array<{name: string; type: UniformDataElementType; length?: number}>;
 
 /**
  * A ShaderHelper is a helper class for generating WGSL code.
@@ -714,8 +730,9 @@ export interface ShaderHelper {
    *
    * @param name - the name of the uniform.
    * @param type - the type of the uniform.
+   * @param length - the length of the uniform, default to 1 when it is not provided.
    */
-  registerUniform(name: string, type: string): ShaderHelper;
+  registerUniform(name: string, type: string, length?: number): ShaderHelper;
 
   /**
    * A helper function to register multiple uniforms. Can be called multiple times to register multiple uniforms.
@@ -769,10 +786,10 @@ class ShaderHelperImpl implements ShaderHelper {
   private appendVariableUniforms(variable: IndicesHelper): void {
     if (variable.rank !== 0) {
       if (variable.shape.startsWith('uniforms.')) {
-        this.uniforms.push({name: variable.shape.replace('uniforms.', ''), type: variable.type.indices});
+        this.uniforms.push({name: variable.shape.replace('uniforms.', ''), type: 'u32', length: variable.rank});
       }
       if (variable.strides.startsWith('uniforms.')) {
-        this.uniforms.push({name: variable.strides.replace('uniforms.', ''), type: variable.type.indices});
+        this.uniforms.push({name: variable.strides.replace('uniforms.', ''), type: 'u32', length: variable.rank});
       }
     }
   }
@@ -808,8 +825,8 @@ class ShaderHelperImpl implements ShaderHelper {
     return this;
   }
 
-  registerUniform(name: string, type: string): ShaderHelper {
-    this.uniforms.push({name, type});
+  registerUniform(name: string, type: UniformDataElementType, length = 1): ShaderHelper {
+    this.uniforms.push({name, type, length});
     return this;
   }
 
@@ -827,8 +844,13 @@ class ShaderHelperImpl implements ShaderHelper {
     }
 
     const uniformSnippets: string[] = [];
-    for (const {name, type} of this.uniforms) {
-      uniformSnippets.push(`${name}:${type}`);
+    for (const {name, type, length} of this.uniforms) {
+      if (length && length > 4) {
+        uniformSnippets.push(`${name}:array<vec4<${type}>, ${Math.ceil(length / 4)}>`);
+      } else {
+        const typeTemp = length == null || length === 1 ? type : `vec${length}<${type}>`;
+        uniformSnippets.push(`${name}:${typeTemp}`);
+      }
     }
 
     return `
@@ -872,5 +894,5 @@ export const getBroadcastDims = (inShape: readonly number[], outShape: readonly 
   return dims;
 };
 
-// TODO: remove this limitation once >4D dims are supported by uniform.
-export const enableShapesUniforms = (rank: number): boolean => rank <= 4;
+// TODO: remove this when all related uses have been removed.
+export const enableShapesUniforms = (_rank: number): boolean => true;

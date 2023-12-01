@@ -3356,16 +3356,27 @@ TEST(QDQTransformerTests, QDQPropagation_GH11605_Opset12_19) {
     // Original: DQ -> Tr -> SoftM -> Tr
     // QDQ Prop inserts a Q/DQ pair to create a QDQ node group for the Transpose: DQ -> Tr -> Q -> DQ -> SoftM -> Tr
     // Transpose opt phase 1 moves the Tr down until it blocks on the SoftMax: DQ -> Q -> DQ -> Tr -> SoftM -> Tr
-    // Transpose opt phase 2 repairs the QDQ node units: DQ -> Q -> DQ -> Tr -> Q -> DQ -> SoftM -> TR
+    // Transpose opt phase 2 repairs the QDQ node units: DQ -> Q -> DQ -> Tr -> Q -> DQ -> SoftM -> Tr
     // and removes the unnecessary DQ/Q pair at the start: DQ -> Tr -> Q -> DQ -> SoftM -> Tr
-    // The L2 CPU EP QDQ handling converts the DQ -> Tr -> Q to a Transpose with 8-bit data.
+    // The L2 CPU EP QDQ handling converts the DQ -> Tr -> Q to a Transpose with 8-bit data: Tr -> DQ -> SoftM -> Tr
+    //   Note: This L2 CPU EP QDQ handling is currently only enabled when contrib ops are enabled.
     auto check_graph = [&](InferenceSessionWrapper& session) {
       const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+#if !defined(DISABLE_CONTRIB_OPS)
       std::vector<std::string> expected_op_types_in_order{
           "Transpose",
           qdq_keys.dequantize_linear,
           "Softmax",
           "Transpose"};
+#else
+      std::vector<std::string> expected_op_types_in_order{
+          qdq_keys.dequantize_linear,
+          "Transpose",
+          qdq_keys.quantize_linear,
+          qdq_keys.dequantize_linear,
+          "Softmax",
+          "Transpose"};
+#endif
 
       const auto& graph = session.GetGraph();
       GraphViewer graph_viewer(graph);
