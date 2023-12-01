@@ -20,10 +20,10 @@ class MatMulNBits final : public OpKernel {
         K_{narrow<size_t>(info.GetAttr<int64_t>("K"))},
         N_{narrow<size_t>(info.GetAttr<int64_t>("N"))},
         block_size_{narrow<size_t>(info.GetAttr<int64_t>("block_size"))},
-        nbits_{narrow<size_t>(info.GetAttr<int64_t>("bits"))} {
+        nbits_{narrow<size_t>(info.GetAttr<int64_t>("bits"))},
+        accuracy_level_{info.GetAttr<int64_t>("accuracy_level")} {
     ORT_ENFORCE(nbits_ == 4,
                 "Only 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
-    info.GetAttrOrDefault<int64_t>("accuracy_level", &accuracy_level_, 0);
     is_asym_ = info.GetInputCount() >= 4;
     const Tensor* tensor_B = nullptr;
     const Tensor* tensor_scale = nullptr;
@@ -49,12 +49,12 @@ class MatMulNBits final : public OpKernel {
   const size_t N_;
   const size_t block_size_;
   const size_t nbits_;
+  const int64_t accuracy_level_;
   const bool column_wise_quant_{true};
   IAllocatorUniquePtr<void> packed_b_;
   size_t packed_b_size_{0};
   bool is_asym_{false};
   bool all_constant_{false};
-  int64_t accuracy_level_{0};
 };
 
 Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
