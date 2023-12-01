@@ -1300,7 +1300,7 @@
     },
     "cases": [
       {
-        "name": "CumSum 5-D; axis = 0; exclusive = 1, reverse = 1",
+        "name": "CumSum 5-D; axis = 0; exclusive = 0, reverse = 0",
         "inputs": [
           {
             "data": [1, 2, 3, 4, 5],

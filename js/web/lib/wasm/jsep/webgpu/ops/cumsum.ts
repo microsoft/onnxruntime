@@ -31,7 +31,7 @@ const createCumsumProgramInfo =
             programUniforms.push(...tmpProgramUniform);  // For input
             programUniforms.push(...tmpProgramUniform);  // For output
           }
-          const index = `i32(${input.indicesGet('inputIndices', 'uniforms.axis')})`
+          const index = `i32(${input.indicesGet('inputIndices', 'uniforms.axis')})`;
           const max = enableShapeUniforms ?
               (inputShape.length === 1 ? 'i32(uniforms.input_shape)' : 'i32(uniforms.input_shape[uniforms.axis])') :
               (inputShape.length === 1 ? 'i32(input_shape)' : 'i32(input_shape[uniforms.axis])');
