@@ -294,18 +294,9 @@ def optimize_model(
     """
     assert opt_level is None or opt_level in [0, 1, 2, 99]
 
-    # Auto detect if input model has external data
-    has_external_data_file = False
-    original_model = load_model(input, load_external_data=False)
-    for initializer in original_model.graph.initializer:
-        if initializer.HasField("data_location") and initializer.data_location == TensorProto.EXTERNAL:
-            has_external_data_file = True
-            break
-    del original_model
-
     if model_type not in MODEL_TYPES:
         logger.warning(f"Unsupported model type: {model_type} for optimization, directly return model.")
-        return OnnxModel(load_model(input, load_external_data=has_external_data_file))
+        return OnnxModel(load_model(input))
 
     (optimizer_class, _producer, default_opt_level) = MODEL_TYPES[model_type]
 
@@ -320,6 +311,15 @@ def optimize_model(
     temp_dir = tempfile.TemporaryDirectory()
     optimized_model_name = "model_o{}_{}.onnx".format(opt_level, "gpu" if use_gpu else "cpu")
     optimized_model_path = os.path.join(temp_dir.name, optimized_model_name)
+
+    # Auto detect if input model has external data
+    has_external_data_file = False
+    original_model = load_model(input, load_external_data=False)
+    for initializer in original_model.graph.initializer:
+        if initializer.HasField("data_location") and initializer.data_location == TensorProto.EXTERNAL:
+            has_external_data_file = True
+            break
+    del original_model
 
     if opt_level > 1:
         # Disable some optimizers that might cause failure in symbolic shape inference or attention fusion.
