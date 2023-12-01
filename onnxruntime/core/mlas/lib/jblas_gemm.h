@@ -18,7 +18,7 @@ Abstract:
 #include "mlas_qnbit.h"
 
 size_t
-JblasQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, MLAS_COMPUTE_TYPE CompType);
+JblasQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, MLAS_SQNBIT_COMPUTE_TYPE CompType);
 
 bool
 JblasQ4GemmPackB(
@@ -32,12 +32,13 @@ JblasQ4GemmPackB(
     size_t BlkSize,
     bool isAsym,
     bool lastCall,
-    MLAS_COMPUTE_TYPE CompType,
+    MLAS_SQNBIT_COMPUTE_TYPE CompType,
     MLAS_THREADPOOL* ThreadPool
 );
 
 bool
-JblasQ4GemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb, MLAS_THREADPOOL* ThreadPool);
+JblasQ4GemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb
+	, MLAS_THREADPOOL* ThreadPool);
 
 bool
 JblasSQ4GemmBatchDriver(

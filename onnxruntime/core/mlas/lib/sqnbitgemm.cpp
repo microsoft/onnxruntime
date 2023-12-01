@@ -147,7 +147,9 @@ MlasIsSQNBitGemmAvailable(
 }
 
 size_t MLASCALL
-MlasNBitsGemmPackBSize(size_t N, size_t K, size_t BlkSize, int nbits, bool isAsym, MLAS_COMPUTE_TYPE CompType)
+MlasNBitsGemmPackBSize(
+    size_t N, size_t K, size_t BlkSize, int nbits, bool isAsym, MLAS_SQNBIT_COMPUTE_TYPE CompType
+)
 {
 #ifdef MLAS_JBLAS
     if (nbits == 4) {
@@ -179,7 +181,7 @@ MlasNBitsGemmPackB(
     int nbits,
     bool isAsym,
     bool lastCall,
-    MLAS_COMPUTE_TYPE CompType,
+    MLAS_SQNBIT_COMPUTE_TYPE CompType,
     MLAS_THREADPOOL* ThreadPool
 )
 {
@@ -206,7 +208,8 @@ MlasNBitsGemmPackB(
 }
 
 void MLASCALL
-MlasNBitsGemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb, MLAS_THREADPOOL* ThreadPool)
+MlasNBitsGemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb
+	, MLAS_THREADPOOL* ThreadPool)
 {
 #ifdef MLAS_JBLAS
     if (JblasQ4GemmUnPackB(FpData, PackedBuf, N, K, ldb, ThreadPool)) {

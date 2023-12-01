@@ -87,7 +87,7 @@ typedef enum {
     CompFp16 = 2,  /*!< input fp16, accumulator fp16 */
     CompBf16 = 3,  /*!< input bf16, accumulator fp32 */
     CompInt8 = 4   /*!< input int8, accumulator int32 */
-} MLAS_COMPUTE_TYPE;
+} MLAS_SQNBIT_COMPUTE_TYPE;
 
 /**
  * @brief Data parameters for NBits GEMM routine
@@ -117,7 +117,9 @@ struct MLAS_SQNBITS_GEMM_DATA_PACKED_PARAMS {
  * @return size of the packing buffer, 0 if the operation is not yet supported.
  */
 size_t MLASCALL
-MlasNBitsGemmPackBSize(size_t N, size_t K, size_t block_size, int nbits, bool is_asym, MLAS_COMPUTE_TYPE comp_type);
+MlasNBitsGemmPackBSize(
+    size_t N, size_t K, size_t block_size, int nbits, bool is_asym, MLAS_SQNBIT_COMPUTE_TYPE comp_type
+);
 
 /**
  * @brief Prepack tensor data from MatMulNBits operator
@@ -150,7 +152,7 @@ MlasNBitsGemmPackB(
     int nbits,
     bool is_asym,
     bool last_call,
-    MLAS_COMPUTE_TYPE comp_type,
+    MLAS_SQNBIT_COMPUTE_TYPE comp_type,
     MLAS_THREADPOOL* thread_pool
 );
 

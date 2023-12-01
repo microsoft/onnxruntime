@@ -64,7 +64,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
   if (!all_constant_) {
     return Status::OK();
   }
-  auto compt_type = static_cast<MLAS_COMPUTE_TYPE>(accuracy_level_);
+  auto compt_type = static_cast<MLAS_SQNBIT_COMPUTE_TYPE>(accuracy_level_);
   MLAS_THREADPOOL* pool = NULL;
   if (input_idx == 1) {
     packed_b_size_ = MlasNBitsGemmPackBSize(N_, K_, block_size_, static_cast<int>(nbits_), is_asym_, compt_type);

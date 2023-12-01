@@ -23,7 +23,7 @@
 namespace onnxruntime {
 namespace test {
 
-void MlasJblasQ4Test(int64_t M, int64_t N, int64_t K, int block_size, bool is_asym, MLAS_COMPUTE_TYPE acc_lvl,
+void MlasJblasQ4Test(int64_t M, int64_t N, int64_t K, int block_size, bool is_asym, MLAS_SQNBIT_COMPUTE_TYPE acc_lvl,
                      float err = 0.1f) {
   // (M x K) X (K x N)
 
