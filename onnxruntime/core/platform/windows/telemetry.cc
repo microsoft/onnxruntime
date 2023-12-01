@@ -84,18 +84,18 @@ WindowsTelemetry::~WindowsTelemetry() {
 }
 
 bool WindowsTelemetry::IsEnabled() const {
-    std::lock_guard<OrtMutex> lock(provider_change_mutex_);
-    return enabled_;
+  std::lock_guard<OrtMutex> lock(provider_change_mutex_);
+  return enabled_;
 }
 
 UCHAR WindowsTelemetry::Level() const {
-    std::lock_guard<OrtMutex> lock(provider_change_mutex_);
-    return level_;
+  std::lock_guard<OrtMutex> lock(provider_change_mutex_);
+  return level_;
 }
 
 ULONGLONG WindowsTelemetry::Keyword() const {
-    std::lock_guard<OrtMutex> lock(provider_change_mutex_);
-    return keyword_;
+  std::lock_guard<OrtMutex> lock(provider_change_mutex_);
+  return keyword_;
 }
 
 // HRESULT WindowsTelemetry::Status() {
@@ -109,17 +109,16 @@ void NTAPI WindowsTelemetry::ORT_TL_EtwEnableCallback(
     _In_ ULONGLONG MatchAnyKeyword,
     _In_ ULONGLONG MatchAllKeyword,
     _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
-    _In_opt_ PVOID CallbackContext)
-{
-    (void)SourceId;
-    (void)MatchAllKeyword;
-    (void)FilterData;
-    (void)CallbackContext;
+    _In_opt_ PVOID CallbackContext) {
+  (void)SourceId;
+  (void)MatchAllKeyword;
+  (void)FilterData;
+  (void)CallbackContext;
 
-    std::lock_guard<OrtMutex> lock(provider_change_mutex_);
-    enabled_ = (IsEnabled != 0);
-    level_ = Level;
-    keyword_ = MatchAnyKeyword;
+  std::lock_guard<OrtMutex> lock(provider_change_mutex_);
+  enabled_ = (IsEnabled != 0);
+  level_ = Level;
+  keyword_ = MatchAnyKeyword;
 }
 
 void WindowsTelemetry::EnableTelemetryEvents() const {

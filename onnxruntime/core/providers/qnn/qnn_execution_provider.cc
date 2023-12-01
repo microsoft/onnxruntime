@@ -155,14 +155,13 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     if ((keyword & static_cast<unsigned long long>(onnxruntime::logging::TLKeyword::EP)) != 0) {
       if (level != 0) {
         if (level == 1) {
-            ParseProfilingLevel("basic", profiling_level);
+          ParseProfilingLevel("basic", profiling_level);
         } else {
-            ParseProfilingLevel("detailed", profiling_level);
+          ParseProfilingLevel("detailed", profiling_level);
         }
       }
     }
-  }
-  else {
+  } else {
     auto profiling_level_pos = provider_options_map.find(PROFILING_LEVEL);
     if (profiling_level_pos != provider_options_map.end()) {
       ParseProfilingLevel(profiling_level_pos->second, profiling_level);

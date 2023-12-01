@@ -879,8 +879,7 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
     if (!tracelogging_provider_ep_enabled) {
       outfile.close();
       LOGS(*logger_, INFO) << "Wrote QNN profiling events (" << num_events << ") to qnn-profiling-data.csv";
-    }
-    else {
+    } else {
       LOGS(*logger_, INFO) << "Wrote QNN profiling events (" << num_events << ") to ETW";
     }
   }
@@ -950,17 +949,15 @@ Status QnnBackendManager::ExtractProfilingEventBasic(
             << ","
             << eventLevel << ","
             << (event_data.identifier ? event_data.identifier : "NULL") << "\n";
-  }
-  else {
+  } else {
     LogQnnProfileEventAsTraceLogging(
-      (uint64_t) 0,
-      message,
-      std::to_string(event_data.value),
-      unit,
-      "BACKEND",
-      eventLevel,
-      (event_data.identifier ? event_data.identifier : "NULL")
-      );
+        (uint64_t)0,
+        message,
+        std::to_string(event_data.value),
+        unit,
+        "BACKEND",
+        eventLevel,
+        (event_data.identifier ? event_data.identifier : "NULL"));
   }
 
   return Status::OK();
@@ -990,43 +987,40 @@ Status QnnBackendManager::ExtractProfilingEventExtended(
               << eventLevel << ","
               << (event_data_extended.v1.identifier ? event_data_extended.v1.identifier : "NULL") << "\n";
     }
-  }
-  else {
+  } else {
     LogQnnProfileEventAsTraceLogging(
-      event_data_extended.v1.timestamp,
-      message,
-      ExtractQnnScalarValue(event_data_extended.v1.value),
-      unit,
-      "BACKEND",
-      eventLevel,
-      (event_data_extended.v1.identifier ? event_data_extended.v1.identifier : "NULL")
-      );
+        event_data_extended.v1.timestamp,
+        message,
+        ExtractQnnScalarValue(event_data_extended.v1.value),
+        unit,
+        "BACKEND",
+        eventLevel,
+        (event_data_extended.v1.identifier ? event_data_extended.v1.identifier : "NULL"));
   }
 
   return Status::OK();
 }
 
 void QnnBackendManager::LogQnnProfileEventAsTraceLogging(
-  uint64_t timestamp,
-  const std::string& message,
-  const std::string& qnnScalarValue,
-  const std::string& unit,
-  const std::string& timingSource,
-  const std::string& eventLevel,
-  const char* eventIdentifier) {
-    TraceLoggingWrite(
+    uint64_t timestamp,
+    const std::string& message,
+    const std::string& qnnScalarValue,
+    const std::string& unit,
+    const std::string& timingSource,
+    const std::string& eventLevel,
+    const char* eventIdentifier) {
+  TraceLoggingWrite(
       telemetry_provider_handle,
       "QNNProfilingEvent",
       TraceLoggingKeyword(static_cast<unsigned long long>(onnxruntime::logging::TLKeyword::EP)),
-      //TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+      // TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
       TraceLoggingValue(timestamp, "Timestamp"),
       TraceLoggingString(message.c_str(), "Message"),
       TraceLoggingString(qnnScalarValue.c_str(), "Value"),
       TraceLoggingString(unit.c_str(), "Unit of Measurement"),
       TraceLoggingString(timingSource.c_str(), "Timing Source"),
       TraceLoggingString(eventLevel.c_str(), "Event Level"),
-      TraceLoggingString(eventIdentifier, "Event Identifier")
-    );
+      TraceLoggingString(eventIdentifier, "Event Identifier"));
 }
 
 const std::string& QnnBackendManager::GetUnitString(QnnProfile_EventUnit_t unitType) {

@@ -183,13 +183,13 @@ class QnnBackendManager {
   static const std::string ExtractQnnScalarValue(const Qnn_Scalar_t& scalar);
   const char* QnnProfileErrorToString(QnnProfile_Error_t error);
   void LogQnnProfileEventAsTraceLogging(
-    uint64_t timestamp,
-    const std::string& message,
-    const std::string& qnnScalarValue,
-    const std::string& unit,
-    const std::string& timingSource,
-    const std::string& eventLevel,
-    const char* eventIdentifier);
+      uint64_t timestamp,
+      const std::string& message,
+      const std::string& qnnScalarValue,
+      const std::string& unit,
+      const std::string& timingSource,
+      const std::string& eventLevel,
+      const char* eventIdentifier);
 
  private:
   const std::string backend_path_;

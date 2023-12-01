@@ -69,13 +69,13 @@ class WindowsTelemetry : public Telemetry {
   static ULONGLONG keyword_;
 
   static void NTAPI ORT_TL_EtwEnableCallback(
-    _In_ LPCGUID SourceId,
-    _In_ ULONG IsEnabled,
-    _In_ UCHAR Level,
-    _In_ ULONGLONG MatchAnyKeyword,
-    _In_ ULONGLONG MatchAllKeyword,
-    _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
-    _In_opt_ PVOID CallbackContext);
+      _In_ LPCGUID SourceId,
+      _In_ ULONG IsEnabled,
+      _In_ UCHAR Level,
+      _In_ ULONGLONG MatchAnyKeyword,
+      _In_ ULONGLONG MatchAllKeyword,
+      _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
+      _In_opt_ PVOID CallbackContext);
 };
 
 }  // namespace onnxruntime

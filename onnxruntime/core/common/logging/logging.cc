@@ -245,32 +245,30 @@ unsigned int GetProcessId() {
 #endif
 }
 
-
 std::unique_ptr<ISink> EnhanceLoggerWithEtw(std::unique_ptr<ISink> existingLogger, logging::Severity originalSeverity, logging::Severity etwSeverity) {
 #ifdef _WIN32
-    auto& manager = EtwRegistrationManager::Instance();
-    if (manager.IsEnabled()) {
-        auto compositeSink = std::make_unique<CompositeSink>();
-        compositeSink->AddSink(std::move(existingLogger), originalSeverity);
-        compositeSink->AddSink(std::make_unique<EtwSink>(), etwSeverity);
-        return compositeSink;
-    } else {
-        return existingLogger;
-    }
-#else
-    // On non-Windows platforms, just return the existing logger
+  auto& manager = EtwRegistrationManager::Instance();
+  if (manager.IsEnabled()) {
+    auto compositeSink = std::make_unique<CompositeSink>();
+    compositeSink->AddSink(std::move(existingLogger), originalSeverity);
+    compositeSink->AddSink(std::make_unique<EtwSink>(), etwSeverity);
+    return compositeSink;
+  } else {
     return existingLogger;
-#endif // _WIN32
+  }
+#else
+  // On non-Windows platforms, just return the existing logger
+  return existingLogger;
+#endif  // _WIN32
 }
 
 Severity OverrideLevelWithEtw(Severity originalSeverity) {
 #ifdef _WIN32
   auto& manager = logging::EtwRegistrationManager::Instance();
   if (manager.IsEnabled() && (manager.Keyword() & static_cast<ULONGLONG>(onnxruntime::logging::TLKeyword::Logs)) != 0) {
-      return manager.MapLevelToSeverity();
-      // LOGS(*session_logger_, INFO) << "Overriding ...."
+    return manager.MapLevelToSeverity();
   }
-#endif // _WIN32
+#endif  // _WIN32
   return originalSeverity;
 }
 

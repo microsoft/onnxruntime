@@ -76,11 +76,11 @@ struct Category {
 };
 
 enum class TLKeyword : unsigned long long {
-    Logs = 0x1,
-    Reserved1 = 0x2,
-    Reserved2 = 0x4,
-    Reserved3 = 0x8,
-    EP = 0x10
+  Logs = 0x1,
+  Reserved1 = 0x2,
+  Reserved2 = 0x4,
+  Reserved3 = 0x8,
+  EP = 0x10
 };
 
 class ISink;

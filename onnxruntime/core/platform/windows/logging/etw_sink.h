@@ -31,7 +31,6 @@ namespace logging {
 
 class EtwSink : public ISink {
  public:
-
   EtwSink() = default;
   ~EtwSink() = default;
 
@@ -48,59 +47,59 @@ class EtwSink : public ISink {
 };
 
 class EtwRegistrationManager {
-  public:
-      using EtwInternalCallback = std::function<void(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext)>;
+ public:
+  using EtwInternalCallback = std::function<void(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext)>;
 
-      // Singleton instance access
-      static EtwRegistrationManager& Instance();
+  // Singleton instance access
+  static EtwRegistrationManager& Instance();
 
-      // Check if ETW logging is enabled
-      bool IsEnabled() const;
+  // Check if ETW logging is enabled
+  bool IsEnabled() const;
 
-      // Get the current logging level
-      UCHAR Level() const;
+  // Get the current logging level
+  UCHAR Level() const;
 
-      Severity MapLevelToSeverity();
+  Severity MapLevelToSeverity();
 
-      // Get the current keyword
-      ULONGLONG Keyword() const;
+  // Get the current keyword
+  ULONGLONG Keyword() const;
 
-      // Get the ETW registration status
-      HRESULT Status() const;
+  // Get the ETW registration status
+  HRESULT Status() const;
 
-      void RegisterInternalCallback(const EtwInternalCallback& callback);
+  void RegisterInternalCallback(const EtwInternalCallback& callback);
 
-  private:
-      EtwRegistrationManager();
-      ~EtwRegistrationManager();
-      void LazyInitialize();
+ private:
+  EtwRegistrationManager();
+  ~EtwRegistrationManager();
+  void LazyInitialize();
 
-      // Copy and move constructors/operators are disabled
-      EtwRegistrationManager(const EtwRegistrationManager&) = delete;
-      EtwRegistrationManager& operator=(const EtwRegistrationManager&) = delete;
-      EtwRegistrationManager(EtwRegistrationManager&&) = delete;
-      EtwRegistrationManager& operator=(EtwRegistrationManager&&) = delete;
+  // Copy and move constructors/operators are disabled
+  EtwRegistrationManager(const EtwRegistrationManager&) = delete;
+  EtwRegistrationManager& operator=(const EtwRegistrationManager&) = delete;
+  EtwRegistrationManager(EtwRegistrationManager&&) = delete;
+  EtwRegistrationManager& operator=(EtwRegistrationManager&&) = delete;
 
-      void InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext);
+  void InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext);
 
-      static void NTAPI ORT_TL_EtwEnableCallback(
-        _In_ LPCGUID SourceId,
-        _In_ ULONG IsEnabled,
-        _In_ UCHAR Level,
-        _In_ ULONGLONG MatchAnyKeyword,
-        _In_ ULONGLONG MatchAllKeyword,
-        _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
-        _In_opt_ PVOID CallbackContext);
+  static void NTAPI ORT_TL_EtwEnableCallback(
+      _In_ LPCGUID SourceId,
+      _In_ ULONG IsEnabled,
+      _In_ UCHAR Level,
+      _In_ ULONGLONG MatchAnyKeyword,
+      _In_ ULONGLONG MatchAllKeyword,
+      _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
+      _In_opt_ PVOID CallbackContext);
 
-      std::vector<EtwInternalCallback> callbacks_;
-      OrtMutex callbacks_mutex_;
-      mutable OrtMutex provider_change_mutex_;
-      OrtMutex init_mutex_;
-      bool initialized_ = false;
-      bool is_enabled_;
-      UCHAR level_;
-      ULONGLONG keyword_;
-      HRESULT etw_status_;
+  std::vector<EtwInternalCallback> callbacks_;
+  OrtMutex callbacks_mutex_;
+  mutable OrtMutex provider_change_mutex_;
+  OrtMutex init_mutex_;
+  bool initialized_ = false;
+  bool is_enabled_;
+  UCHAR level_;
+  ULONGLONG keyword_;
+  HRESULT etw_status_;
 };
 
 }  // namespace logging
