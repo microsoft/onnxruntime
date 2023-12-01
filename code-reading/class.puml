@@ -1,0 +1,331 @@
+@startuml
+!theme toy
+!define key_class #header:LightBlue
+!define key_objects <color:red>
+!$show_note = %false()
+!$show_refer_to = %false()
+
+' Class Definitions
+!$session_link="https://github.com/microsoft/onnxruntime/blob/454f77cd94901cb95c92b20c60565408b2be045c/onnxruntime/core/session/inference_session.h#L80"
+class InferenceSession [[$session_link]]{
+    SessionOptions session_options_;
+    SessionState session_state_
+    ExecutionProviders execution_providers_
+    unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_
+    DataTransferManager data_transfer_mgr_
+
+    Run()
+}
+
+class  SessionOptions{
+    string optimized_model_filepath doc="path to optimized graph"
+}
+class SequentialExecutor{
+    const bool only_execute_path_to_fetches_
+    Execute(const SessionState& session_state)
+}
+
+class IExecutionFrame{
+    NodeIndexInfo& node_index_info_
+    InlinedVector<OrtValue> key_objects all_values_
+    const OrtValueNameIdxMap& ort_value_idx_map_
+    const SessionState& session_state_
+    const MemoryPatternGroup* mem_patterns_
+    GetOrCreateNodeOutputMLValue(int ort_value_idx)
+    CreateNodeOutputMLValueImpl()
+    AllocateAsPerAllocationPlan()
+}
+
+class NodeIndexInfo{
+    InlinedVector<int> node_offsets_
+    int GetNodeOffset(NodeIndex node_index)
+}
+
+
+class SessionState key_class{
+    OrtValueNameIdxMap ort_value_name_idx_map_
+    const ExecutionProviders& execution_providers_
+    Graph& key_objects graph_
+    unordered_map <NodeIndex, const KernelCreateInfo*> key_objects kernel_create_info_map_
+    mutable NodeHashMap<int64_t, MemoryPatternGroup> mem_patterns_
+    optional<SequentialExecutionPlan> $key_objects p_seq_exec_plan_
+    vector<unique_ptr<OpKernel>> key_objects session_kernels_
+    concurrency::ThreadPool* const inter_op_thread_pool_
+    CreateKernels(const KernelRegistryManager& kernel_registry_manager)
+    const OpKernel* GetKernel(node_index)
+}
+
+class KernelCreateInfo{
+    unique_ptr<KernelDef> kernel_def
+    KernelCreateFn kernel_create_func
+}
+
+class KernelDef{
+    string op_name_
+    string op_domain_
+    int op_since_version_start_
+    string provider_type_
+    input_memory_type_args_
+    output_memory_type_args_
+    enabled_type_constraints_
+    inplace_map_
+    alias_map_
+    exec_queue_id_
+}
+
+class ExecutionProviders{
+    vector<shared_ptr<IExecutionProvider>> exec_providers_
+    vector<string> exec_provider_ids_
+    ProviderOptionsMap exec_provider_options_
+    unordered_map<string, size_t> provider_idx_map_
+}
+
+class OrtValueNameIdxMap{
+    InlinedHashMap<string, int> map_
+    InlinedHashMap<int, string> idx_name_map_
+}
+
+struct OrtValue{
+    shared_ptr<void> data_
+    onnxruntime::MLDataType type_
+    bool IsAllocated()
+}
+
+struct SequentialExecutionPlan key_class{
+    execution_plan
+    vector<AllocPlanPerValue> allocation_plan
+    release_actions
+    vector<vector<size_t>> node_release_list
+}
+
+class Graph key_class{
+    vector< unique_ptr< Node >> key_objects nodes_
+    unordered_map< string, unique_ptr< NodeArg >> key_objects node_args_
+    const Node * parent_node_
+
+    unordered_map< string, NodeIndex > node_arg_to_producer_node_
+    unordered_map< string, unordered_set< NodeIndex >> node_arg_to_consumer_nodes_
+    vector< NodeIndex > nodes_in_topological_order_
+}
+
+class NodeArg{
+    name
+    shape
+    dtype
+}
+
+class Node{
+    string name_, op_type_, domain_
+    int since_version
+    onnx::OpSchema * op_
+    NodeAttributes attributes_
+    NodeIndex index_
+    Graph *graph
+    Definitions definitions_
+    Relationships relationships_
+    string execution_provider_type_
+    int priority_
+}
+
+class Definitions{
+    vector< NodeArg* > input_defs
+    vector< int > input_arg_count
+    vector< NodeArg* > output_defs
+    vector< NodeArg* > implicit_input_defs
+}
+
+class Relationships{
+    EdgeSet input_edges
+    EdgeSet output_edges
+}
+
+class EdgeEnd{
+    const Node * node_
+    const int src_arg_index_
+    const int dst_arg_index_
+}
+
+class OpKernel key_class{
+    unique_ptr< OpKernelInfo > op_kernel_info_
+    Compute( OpKernelContext *context)
+}
+
+class OpKernelContext{
+    IExecutionFrame* const execution_frame_
+    OpKernel* const kernel_
+    int node_input_start_index_{-1}
+    int node_implicit_input_start_index_{-1}
+    int node_output_start_index_{-1}
+    const OrtValue* Input(int index)
+    const OrtValue* Output(int index)
+    RecycleNodeInputs(node_index)
+}
+
+class OpKernelInfo{
+    const onnxruntime::Node & node_
+    const KernelDef & kernel_def_
+    gsl::not_null< const ::onnxruntime::IExecutionProvider * > execution_provider_
+    const OrtValueNameIdxMap & ort_value_name_idx_map_
+}
+
+!$src_link="https://github.com/microsoft/onnxruntime/blob/a83a9ed6b01374a5e1e07b46dbf2fb8e3c407483/include/onnxruntime/core/framework/execution_provider.h#L57"
+class IExecutionProvider [[$src_link]] key_class{
+    const string type_
+    AllocatorMap allocators_
+
+    Compile()
+    GetAllocator()
+    GetCapability()
+    GetComputeStream()
+    GetDataTransfer()
+    OnRunEnd()
+    Sync()
+
+}
+
+class CUDAExecutionProvider{
+    cudaStream_t stream_ = nullptr
+    CUDAExecutionProviderInfo info_
+    GetKernelRegistry()
+    GetComputeStream()
+    SetComputeStream()
+    GetDataTransfer()
+}
+
+class GPUDataTransfer{
+    bool do_copy_in_default_stream_
+    cudaStream_t streams_[kTotalCudaStreams]
+}
+
+class CUDAExecutionProviderInfo{
+
+}
+class KernelRegistry key_class{
+    multimap<string, KernelCreateInfo> kernel_creator_fn_map_
+}
+
+class AllocKind{
+    kAllocateStatically
+    kAllocateOutput
+    kAllocateInputOutput
+    kAllocateInput
+    kShare
+    kPreExisting
+    kNotSet
+}
+
+class AllocPlanPerValue{
+    AllocKind alloc_kind
+    MLDataType value_type
+    OrtDevice location
+    OrtValueIndex reused_buffer
+}
+
+
+
+' Notes
+
+!if $show_note
+    note left of IExecutionFrame
+        一个node的output可能是另一个node的input, 所以需要一个map来记录node的output
+    end note
+    note left of NodeIndexInfo::node_offsets_
+        Index to the first argument of the given Node
+        The Node will have (num inputs + num implicit inputs + num outputs) entries, in that order, starting at the offset that is returned
+        ort_value_idx == nodeargs id
+    end note
+    note left of OpKernelContext::Input
+        形参index表示node的第几个input
+        NodeIndexInfo把node index转成 node_input_start_index_
+        NodeIndex=node_input_start_index_ + index
+        all_values_[ort_value_idx]得到对应的ortvalue
+        OrtValueNameIdxMap 得到对应的string name
+    end note
+
+    note left of SessionState
+        把graph和执行graph所需的大多数object都集中在一起
+    end note
+
+    note left of AllocPlanPerValue::alloc_kind
+        不同kind有不同的ownership
+    end note
+
+    note left of Definitions::input_arg_count
+        onnx op的一个input可能对应多个nodeArg, input_arg_count记录每个input对应的nodeArg个数
+        比如[4, 6], 那么意味着第一个input对应4个nodeArg, 第二个input对应6个nodeArg
+    end note
+
+    note left of OpKernel
+        真正执行op计算的基类, 比如softmax/relu/matmul
+    end note
+
+    note left of KernelRegistry::kernel_creator_fn_map_
+        string "key" == GetMapKey(*create_info.kernel_def)
+    end note
+    note left of GPUDataTransfer::streams_
+        streams_有多个, 但是如果do_copy_in_default_stream_为true, 那么都指向同一个stream
+        streams_[0]来自于CUDAExecutionProvider的compute steam
+    end note
+    note left of Kerneldef::alias_map_
+        alias_map只是记录了ith input就是jth output
+        可以在kernel实现里, 通过tensor offset来实现一个input对应多个output
+        refer to "https://github.com/microsoft/onnxruntime/pull/16624/files"
+    end note
+    note left of SessionState::session_kernels_
+        vector的index就是node_index
+    end note
+    note left of KernelRegistry
+    kernel class要call ONNX_OPERATOR_KERNEL_EX来注册, 原理是:
+        该macro会生成template >> KernelCreateInfo BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name)>, 该函数含有该kernel class的ctor pointers
+        provider里的GetKernelRegistry被call时会通过ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name)即可找到该template function的pointer
+    end note
+!endif
+
+' Class Relationships
+IExecutionProvider <|-- CUDAExecutionProvider
+' has-a
+InferenceSession *-- SessionState
+InferenceSession *-- SessionOptions
+Graph *-- Node
+Node *-- Definitions
+Node *-- Relationships
+Definitions *-- NodeArg
+Relationships *-- EdgeEnd
+InferenceSession *-- ExecutionProviders
+SessionState *-- Graph
+SessionState *-- OrtValueNameIdxMap
+SessionState *-- SequentialExecutionPlan
+ExecutionProviders *-- IExecutionProvider
+KernelCreateInfo *-- KernelDef
+OpKernel *-- OpKernelInfo
+AllocPlanPerValue *-- AllocKind
+SessionState *-- OpKernel
+SequentialExecutionPlan *-- AllocPlanPerValue
+IExecutionFrame *-- OrtValue
+CUDAExecutionProvider *-- CUDAExecutionProviderInfo
+OpKernel::compute *-- OpKernelContext
+OpKernel::compute *-- IExecutionFrame
+InferenceSession::data_transfer_mgr_ *-- GPUDataTransfer
+InferenceSession::Run *-- SequentialExecutor
+CUDAExecutionProvider *-- KernelRegistry
+KernelRegistry *-- KernelCreateInfo
+' refer-to
+!if $show_refer_to
+    EdgeEnd o-- Node
+    OpKernelInfo o-- Node
+    OpKernelInfo o-- KernelDef
+    OpKernelContext o-- IExecutionFrame
+    IExecutionFrame o-- NodeIndexInfo
+    OpKernelContext::Output o-- OrtValue
+    OrtValue o-- AllocPlanPerValue
+    OpKernel::Compute --> OpKernelContext: get in/out Ortvalue
+    OpKernel::Compute --> CUDAExecutionProvider::GetComputeStream
+
+    CUDAExecutionProvider::GetDataTransfer --> GPUDataTransfer: create
+    SequentialExecutionPlan::allocation_plan --> KernelDef::alias_map_
+    SequentialExecutionPlan::allocation_plan --> KernelDef::inplace_map_
+    SessionState::CreateKernels --> KernelRegistryManager : to create session_kernels_
+    KernelCreateInfo::kernel_create_func --> OpKernel: opkernel = KernelCreateFn(OpKernelInfo)
+
+!endif
+@enduml

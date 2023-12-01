@@ -1,0 +1,24 @@
+@startuml
+' for SequentialExecutor.Execute
+!$src_link="https://github.com/microsoft/onnxruntime/blob/49ee9c0cc2015649eeb9958b9d7938d8e7212504/onnxruntime/core/framework/sequential_executor.cc#L144"
+group  [[$src_link Execute]]
+    :frame=ExecutionFrame;
+    :to_be_executed_nodes=GetToBeExecutedNodes(fetch_mlvalue_idxs);
+    :seq_exec_plan = session_state.GetExecutionPlan();
+    repeat : node_exec_plan in seq_exec_plan;
+        :node_index = node_exec_plan.node_index;
+        if (node_index in to_be_executed_nodes) then (yes)
+            :p_op_kernel = session_state.GetKernel(node_index);
+            :OpKernelContextInternal op_kernel_context(...);
+            :queue_id = p_op_kernel->KernelDef().ExecQueueId();
+            :<color:red>sync</color>_logic1 by queue_id;
+            :p_op_kernel-><color:red>Compute</color>(&op_kernel_context);
+            :<color:red>sync</color>_logic2 by queue_id;
+            :<color:red>ReleaseNodeMLValues</color>();
+        else
+            :continue;
+        endif
+    repeat while(more node plans)
+end group
+:case1;
+@enduml
