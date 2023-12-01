@@ -425,7 +425,11 @@ const createIndicesHelper =
         if (rank < 2) {
           return `${varIndices}`;
         } else {
-          return `${varIndices}[${idx}]`;
+          if (varIndices.startsWith('uniforms.')) {
+            return `${getUniformElementAt(varIndices, idx, rank)}`;
+          } else {
+            return `${varIndices}[${idx}]`;
+          }
         }
       };
 
@@ -433,7 +437,11 @@ const createIndicesHelper =
         if (rank < 2) {
           return `${varIndices}=${value};`;
         } else {
-          return `${varIndices}[${idx}]=${value};`;
+          if (varIndices.startsWith('uniforms.')) {
+            return `${getUniformElementAt(varIndices, idx, rank)}=${value};`;
+          } else {
+            return `${varIndices}[${idx}]=${value};`;
+          }
         }
       };
 
