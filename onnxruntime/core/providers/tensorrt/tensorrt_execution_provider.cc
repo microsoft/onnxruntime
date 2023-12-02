@@ -2487,12 +2487,17 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name, builder_.get(),
             &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
-            input_shape_ranges_[context->node_name], sync_stream_after_enqueue_, &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
-            dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
-            runtime_.get(), profiles_[context->node_name], context_memory_sharing_enable_, &max_ctx_mem_size_,
-            dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
-            global_cache_path_, force_timing_cache_match_, detailed_build_log_, build_heuristics_enable_, sparsity_enable_,
-            builder_optimization_level_, auxiliary_streams_, !tactic_sources_.empty(), tactics};
+            input_shape_ranges_[context->node_name], &tensorrt_mu_,
+            &max_workspace_size_, trt_node_name_with_precision,
+            runtime_.get(), profiles_[context->node_name], &max_ctx_mem_size_,
+            dynamic_range_map, engine_decryption_, engine_encryption_,
+            builder_optimization_level_, auxiliary_streams_, !tactic_sources_.empty(), tactics,
+            // Below: class private members
+            sync_stream_after_enqueue_, fp16_enable_, int8_enable_, int8_calibration_cache_available_, dla_enable_,
+            dla_core_, engine_cache_enable_, cache_path_, context_memory_sharing_enable_, engine_decryption_enable_, 
+            timing_cache_enable_, global_cache_path_, force_timing_cache_match_, detailed_build_log_, 
+            detailed_build_log_, build_heuristics_enable_, sparsity_enable_, cuda_graph_enable_
+      };
       *state = p.release();
       return 0;
     };
