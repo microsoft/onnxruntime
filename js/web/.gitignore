@@ -9,6 +9,7 @@ tsconfig.tsbuildinfo
 !lib/build-def.d.ts
 
 lib/**/*.js
+!lib/wasm/binding/*.js
 lib/**/*.js.map
 test/**/*.js
 test/**/*.js.map
