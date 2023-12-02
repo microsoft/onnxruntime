@@ -1176,6 +1176,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                         "Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam."
                                         "Shape is (max_length - sequence_length, batch_size, num_beams, vocab_size)",
                                         "S", OpSchema::Optional)
+                                .Output(3, "all_scores", "Total beam scores of generated sequences. Shape is (batch_size * num_beams, max_length - sequence_length)", "S", OpSchema::Optional)
+                                .Output(4, "all_beam_idx", "Total indices of the beams from which the while sequences were generated. Shape is (batch_size * num_beams, max_length - sequence_length)", "I", OpSchema::Optional)
                                 .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain to float tensors.")
                                 .TypeConstraint("F", {"tensor(float)", "tensor(int32)", "tensor(float16)"}, "Constrain input type to float or int tensors.")
                                 .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")

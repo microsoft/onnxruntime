@@ -128,8 +128,16 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   TensorShape scores_shape(&scores_dims[0], sizeof(scores_dims) / sizeof(scores_dims[0]));
   Tensor* output_scores = this->context_.Output(2, scores_shape);
 
+  int64_t scores_with_beam_idx_dims[] = {
+      parameters->batch_size * parameters->num_beams,
+      static_cast<int64_t>(parameters->max_length) - static_cast<int64_t>(parameters->sequence_length)};
+  TensorShape scores_with_beam_idx_shape(&scores_with_beam_idx_dims[0], sizeof(scores_with_beam_idx_dims) / sizeof(scores_with_beam_idx_dims[0]));
+  Tensor* all_scores = this->context_.Output(3, scores_with_beam_idx_shape);
+  Tensor* all_beam_idx = this->context_.Output(4, scores_with_beam_idx_shape);
+
   // Update the flag to indicate whether scores exists in output
   this->parameters_->output_scores = (output_scores != nullptr);
+  this->parameters_->output_scores_with_beam_idx = (all_scores != nullptr && all_beam_idx != nullptr);
 
   // ------------------------------------
   // Call encoder subgraph.
@@ -411,6 +419,17 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     gsl::span<const float> source = beam_state.scores;
     assert(target.size() == source.size());
     ORT_RETURN_IF_ERROR(this->device_copy_func_(target, source, nullptr, DeviceCopyDirection::deviceToDevice));
+  }
+
+  if (this->parameters_->output_scores_with_beam_idx) {
+    gsl::span<float> target_0 = all_scores->MutableDataAsSpan<float>();
+    gsl::span<const float> source_0 = beam_state.all_scores;
+    assert(target.size() == source.size());
+    ORT_RETURN_IF_ERROR(this->device_copy_func_(target_0, source_0, nullptr, DeviceCopyDirection::deviceToDevice));
+    gsl::span<int32_t> target_1 = all_beam_idx->MutableDataAsSpan<int32_t>();
+    gsl::span<const int32_t> source_1 = beam_state.all_beam_idx;
+    assert(target.size() == source.size());
+    ORT_RETURN_IF_ERROR(this->device_copy_int32_func_(target_1, source_1, nullptr, DeviceCopyDirection::deviceToDevice));
   }
 
   return status;

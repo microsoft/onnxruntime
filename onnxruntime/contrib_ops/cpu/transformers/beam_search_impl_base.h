@@ -49,6 +49,12 @@ struct BeamSearchState : IBeamSearchState<T> {
       this->remaining_scores = this->scores;
     }
 
+    if (parameters.output_scores_with_beam_idx) {
+      size_t elements = SafeInt<size_t>(parameters.max_length - parameters.sequence_length) * parameters.batch_size * parameters.num_beams;
+      this->all_scores = AllocateBuffer<float>(allocator, all_scores_buffer_, elements, stream);
+      this->all_beam_idx = AllocateBuffer<int32_t>(allocator, all_beam_idx_buffer_, elements, stream);
+    }
+
     if (has_decoder_masked_attention) {
       // We need a temp staging buffer to do the past 'K' state re-ordering that is needed
       // when using DecoderMaskedSelfAttention
@@ -79,6 +85,8 @@ struct BeamSearchState : IBeamSearchState<T> {
   IAllocatorUniquePtr<void> scores_buffer_;
   IAllocatorUniquePtr<void> topk_temp_buffer_;
   IAllocatorUniquePtr<void> sequences_device_buffer_;
+  IAllocatorUniquePtr<void> all_scores_buffer_;
+  IAllocatorUniquePtr<void> all_beam_idx_buffer_;
 };
 
 struct BeamSearchCpuState : IBeamSearchCpuState {
@@ -264,6 +272,22 @@ Status BeamSearchBase<T>::GenerateNextToken(
 
   if (this->IsCuda()) {
     auto beam_scores = beam_scorer_->GetNextScores();
+    auto beam_indices = beam_scorer_->GetNextIndicesGPU();
+
+    if (parameters_->output_scores_with_beam_idx) {
+      size_t bb = SafeInt<size_t>(parameters_->batch_size) * parameters_->num_beams;
+      // Copy scores with beam index to output buffer
+      ORT_RETURN_IF_ERROR(device_copy_func_(beam_state.all_scores.subspan((counter - 1) * bb, bb),
+                                            beam_scores,
+                                            ort_stream_,
+                                            DeviceCopyDirection::deviceToDevice));
+      // Copy beam indices to output buffer
+      ORT_RETURN_IF_ERROR(device_copy_int32_func_(beam_state.all_beam_idx.subspan((counter - 1) * bb, bb),
+                                                  beam_indices,
+                                                  ort_stream_,
+                                                  DeviceCopyDirection::deviceToDevice));
+    }
+
     // It is optional to clone beam_scores. Change it to use same buffer also works:
     //    beam_state.beam_scores = beam_scores
     // Here we make a copy to reduce the coupling with little cost (the buffer size is small).

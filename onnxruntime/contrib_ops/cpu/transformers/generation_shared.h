@@ -38,6 +38,8 @@ struct IBeamSearchState {
                                        //   temp token: (batch_size * num_beams, 2 * num_beams)
                                        // in total, it will be:
                                        // 2 * (batch_size * num_beams * (parts_vocab + 1), 2 * num_beams)
+  gsl::span<float> all_scores;         // (batch_size * num_beams, max_length - sequence_length)
+  gsl::span<int32_t> all_beam_idx;     // (batch_size * num_beams, max_length - sequence_length)
 
   gsl::span<int32_t> sequences_device;  // shape (2 * batch_size * max_length)
 
@@ -161,6 +163,7 @@ struct IGenerationParameters {
 
   // Parameters from outputs.
   bool output_scores;  // whether scores existed in output
+  bool output_scores_with_beam_idx;
 
   // Parameters from subgraph.
   int vocab_size;
