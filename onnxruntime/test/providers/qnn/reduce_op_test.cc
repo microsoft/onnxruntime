@@ -366,7 +366,7 @@ static void RunReduceOpQDQTest(const std::string& op_type,
                                bool keepdims,
                                int opset,
                                ExpectedEPNodeAssignment expected_ep_assignment,
-                               float fp32_abs_err = 1e-4f) {
+                               QDQTolerance tolerance = QDQTolerance()) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -384,7 +384,7 @@ static void RunReduceOpQDQTest(const std::string& op_type,
                        provider_options,
                        opset,
                        expected_ep_assignment,
-                       fp32_abs_err);
+                       tolerance);
 }
 
 //
@@ -670,8 +670,7 @@ TEST_F(QnnHTPBackendTests, ReduceMeanS8Opset18) {
                              {0, 1, 2, 3},  // axes
                              true,          // keepdims
                              18,            // opset
-                             ExpectedEPNodeAssignment::All,
-                             0.0016f);  // TODO: Remove additional tolerance needed for inaccuracy
+                             ExpectedEPNodeAssignment::All);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

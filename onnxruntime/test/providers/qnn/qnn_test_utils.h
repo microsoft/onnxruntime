@@ -239,6 +239,21 @@ void InferenceModel(const std::string& model_data, const char* log_id,
  */
 void TryEnableQNNSaver(ProviderOptions& qnn_options);
 
+struct QDQTolerance {
+  // By default, QDQ models are allowed to be 2% off from the corresponding float32 model results.
+  static constexpr float DEFAULT_PERCENT_FP32_ERR = 0.02f;
+
+  // By default, QDQ models are allowed to be 1 quantization unit from corresponding QDQ model on CPU EP.
+  static constexpr float DEFAULT_NUM_QUANT_UNITS = 1.0f;
+
+  QDQTolerance() : num_quant_units_(DEFAULT_NUM_QUANT_UNITS), percent_fp32_err_(DEFAULT_PERCENT_FP32_ERR) {}
+  QDQTolerance(float num_quant_units, float percent_fp32_err)
+      : num_quant_units_(num_quant_units), percent_fp32_err_(percent_fp32_err) {}
+
+  float num_quant_units_;
+  float percent_fp32_err_;
+};
+
 /**
  * Tests the accuracy of a QDQ model on QNN EP by runnning 3 inferences:
  *
@@ -254,13 +269,17 @@ void TryEnableQNNSaver(ProviderOptions& qnn_options);
  * \param qnn_options QNN EP provider options.
  * \param opset_version The opset version.
  * \param expected_ep_assignment Describes "which nodes" should be assigned to the EP.
- * \param fp32_abs_err Small tolerance used for floating-point comparisons.
+ * \param error_tolerance The percent tolerance (as fraction) QNN EP results are allowed to differ from float32 model.
+ *                        Default is 2%.
+ * \param quant_unit_tolerance The number of quantization units the QNN EP results are allowed to differ from the
+ *                             QDQ model results on CPU EP. Default is 1.
  * \param log_severity The logger's severity setting.
  */
 template <typename QuantType>
 inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTestQDQModelFn<QuantType>& qdq_model_fn,
                                  ProviderOptions qnn_options, int opset_version,
-                                 ExpectedEPNodeAssignment expected_ep_assignment, float fp32_abs_err = 1e-4f,
+                                 ExpectedEPNodeAssignment expected_ep_assignment,
+                                 QDQTolerance tolerance = QDQTolerance(),
                                  logging::Severity log_severity = logging::Severity::kERROR,
                                  const std::string& qnn_ctx_model_path = "") {
   // Add kMSDomain to cover contrib op like Gelu
@@ -379,14 +398,16 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
 
           // Case 1 (qnn_err <= cpu_err): QNN EP is *more* accurate, which makes (qnn_err - cpu_err) zero or
           //                              a negative value.
-          // Case 2 (qnn_err > cpu_err):  QNN EP is less accurate, but the error difference is within 1
-          //                              quantization unit (i.e., scale). This can occur due to rounding differences.
-          const bool is_as_accurate_as_cpu_qdq = (qnn_err - cpu_err) <= (output_qparams[i].scale + fp32_abs_err);
-          if (!is_as_accurate_as_cpu_qdq) {
+          // Case 2 (qnn_err > cpu_err):  QNN EP is less accurate, but the error difference is within the
+          //                              allowed number of quantization units (i.e., scale).
+          bool is_as_accurate_as_cpu_qdq = (qnn_err - cpu_err) <= (tolerance.num_quant_units_ * output_qparams[i].scale);
+          bool is_within_fp32_tolerance = (qnn_err / (std::fabs(expected_val) + 1e-9f)) <= tolerance.percent_fp32_err_;
+          bool pass_test = is_as_accurate_as_cpu_qdq || is_within_fp32_tolerance;
+          if (!pass_test) {
             ++error_count;
           }
 
-          EXPECT_TRUE(is_as_accurate_as_cpu_qdq)
+          EXPECT_TRUE(pass_test)
               << "Inaccuracy detected for output '" << debug_output_name
               << "', element " << j
               << ".\nOutput quant params: scale=" << output_qparams[i].scale
@@ -396,7 +417,7 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
               << "CPU QDQ val: " << cpu_qdq_val << " (err " << cpu_err << ")";
         }
       } else {
-        VerifyOutput(debug_output_name, cpu_f32_outputs[i].Get<Tensor>(), qnn_qdq_tensor, fp32_abs_err);
+        VerifyOutput(debug_output_name, cpu_f32_outputs[i].Get<Tensor>(), qnn_qdq_tensor, 1e-4f);
       }
     }
   }

@@ -186,8 +186,8 @@ static void RunQDQGemmTestOnHTP(const std::vector<TestInputDef<float>>& input_de
                                 const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                                 ExpectedEPNodeAssignment expected_ep_assignment,
                                 int opset = 13,
-                                float f32_abs_err = 1e-4f,
-                                bool use_contrib_qdq = false) {
+                                bool use_contrib_qdq = false,
+                                QDQTolerance tolerance = QDQTolerance()) {
   ProviderOptions provider_options;
 
 #if defined(_WIN32)
@@ -202,7 +202,7 @@ static void RunQDQGemmTestOnHTP(const std::vector<TestInputDef<float>>& input_de
                                     provider_options,
                                     opset,
                                     expected_ep_assignment,
-                                    f32_abs_err);
+                                    tolerance);
 }
 
 // Test 8-bit QDQ Gemm with dynamic inputs A and Bias. The B input is an initializer.
@@ -233,7 +233,6 @@ TEST_F(QnnHTPBackendTests, DISABLED_Gemm_Dynamic_A_Static_B_Dynamic_Bias_U16) {
                                           {},
                                           ExpectedEPNodeAssignment::All,
                                           13,     // opset
-                                          1e-4f,  // f32_abs_err
                                           true);  // Use com.microsoft Q/DQ ops
 }
 
@@ -254,7 +253,6 @@ TEST_F(QnnHTPBackendTests, Gemm_Dynamic_A_Static_B_Dynamic_Bias_U16Act_U8Weight)
                                          {},
                                          ExpectedEPNodeAssignment::All,
                                          13,     // opset
-                                         0.15f,  // f32_abs_err
                                          true);  // Use com.microsoft Q/DQ ops
 }
 
@@ -318,7 +316,6 @@ TEST_F(QnnHTPBackendTests, Gemm_TransAB_Static_B_And_Bias_U16Act_U8Weight) {
                                           utils::MakeAttribute("transB", static_cast<int64_t>(1))},
                                          ExpectedEPNodeAssignment::All,
                                          13,     // opset
-                                         0.15f,  // f32_abs_err
                                          true);  // Use com.microsoft Q/DQ ops
 }
 

@@ -85,8 +85,7 @@ static void RunWhereQDQTest(const TestInputDef<bool>& condition_def,
                        BuildQDQWhereTestCase<QuantType>(condition_def, x_def, y_def),
                        provider_options,
                        18,
-                       expected_ep_assignment,
-                       1e-5f);
+                       expected_ep_assignment);
 }
 
 // Check that QNN compiles DQ -> Where -> Q as a single unit.

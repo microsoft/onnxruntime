@@ -84,7 +84,7 @@ template <typename QuantType>
 static void RunQDQLRNOpTest(const TestInputDef<float>& input_def, int64_t size,
                             ExpectedEPNodeAssignment expected_ep_assignment,
                             float alpha = 0.0001f, float beta = 0.75f, float bias = 1.0f,
-                            int opset = 13) {
+                            int opset = 13, QDQTolerance tolerance = QDQTolerance()) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -97,7 +97,7 @@ static void RunQDQLRNOpTest(const TestInputDef<float>& input_def, int64_t size,
                        provider_options,
                        opset,
                        expected_ep_assignment,
-                       1e-5f);
+                       tolerance);
 }
 
 //

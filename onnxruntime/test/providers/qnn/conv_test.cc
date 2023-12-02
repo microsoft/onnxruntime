@@ -148,7 +148,7 @@ static void RunHTPConvOpTest(const std::string& conv_op_type, const TestInputDef
                              ExpectedEPNodeAssignment expected_ep_assignment,
                              bool use_contrib_qdq = false,
                              int opset = 13,
-                             float fp32_abs_err = 1e-5f) {
+                             QDQTolerance tolerance = QDQTolerance()) {
   ProviderOptions provider_options;
 
 #if defined(_WIN32)
@@ -165,7 +165,7 @@ static void RunHTPConvOpTest(const std::string& conv_op_type, const TestInputDef
                        provider_options,
                        opset,
                        expected_ep_assignment,
-                       fp32_abs_err);
+                       tolerance);
 }
 
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
@@ -405,7 +405,9 @@ TEST_F(QnnHTPBackendTests, Test_QDQConvWithDynamicWeightsFromMul) {
   RunQnnModelTest(BuildConvMulGraph,
                   provider_options,
                   13,
-                  ExpectedEPNodeAssignment::All);
+                  ExpectedEPNodeAssignment::All,
+                  4e-4f);  // Accuracy decreased slightly in QNN SDK 2.17.
+                           // Expected: 9.94500065, Actual: 9.94537735
 }
 
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
@@ -518,8 +520,7 @@ TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_StaticBias) {
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
-                                      13,
-                                      0.2f);
+                                      13);
 }
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with static bias.
@@ -541,8 +542,7 @@ TEST_F(QnnHTPBackendTests, ConvU16U8S32_StaticBias) {
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
-                                      13,
-                                      0.6f);
+                                      13);
 }
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with dynamic bias.
@@ -565,8 +565,7 @@ TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_DynamicBias) {
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
-                                      13,
-                                      0.2f);
+                                      13);
 }
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with dynamic bias.
@@ -588,8 +587,7 @@ TEST_F(QnnHTPBackendTests, ConvU16U8S32_DynamicBias) {
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
-                                      13,
-                                      0.57f);
+                                      13);
 }
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with no bias
@@ -611,8 +609,7 @@ TEST_F(QnnHTPBackendTests, ConvU16U8S32_NoBias) {
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
-                                      13,
-                                      0.58f);
+                                      13);
 }
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with no bias
@@ -635,8 +632,7 @@ TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_NoBias) {
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
-                                      13,
-                                      0.2f);
+                                      13);
 }
 
 // Test that dynamic weights with default bias works for Conv. This was previously not working

@@ -84,7 +84,7 @@ static void RunQDQMatMulOpOpTest(const TestInputDef<float>& input1_def,
                                  ExpectedEPNodeAssignment expected_ep_assignment,
                                  int opset = 18,
                                  bool use_contrib_qdq = false,
-                                 float fp32_abs_err = 1e-4f) {
+                                 QDQTolerance tolerance = QDQTolerance()) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -98,7 +98,7 @@ static void RunQDQMatMulOpOpTest(const TestInputDef<float>& input1_def,
                        provider_options,
                        opset,
                        expected_ep_assignment,
-                       fp32_abs_err);
+                       tolerance);
 }
 
 //
@@ -149,8 +149,7 @@ TEST_F(QnnHTPBackendTests, MatMulOp_HTP_A16_W8Static) {
                                                     TestInputDef<float>({3, 2}, true, input1_data),
                                                     ExpectedEPNodeAssignment::All,
                                                     18,
-                                                    true,  // Use com.microsoft Q/DQ ops
-                                                    7e-3f);
+                                                    true);  // Use com.microsoft Q/DQ ops
 }
 
 // Test QDQ MatMul with uint16 activation uint16 weights, both dynamic
@@ -166,8 +165,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_MatMulOp_HTP_A16_W16Dynamic) {
                                                      TestInputDef<float>({3, 2}, false, input1_data),
                                                      ExpectedEPNodeAssignment::All,
                                                      18,
-                                                     true,  // Use com.microsoft Q/DQ ops
-                                                     7e-3f);
+                                                     true);  // Use com.microsoft Q/DQ ops
 }
 
 // Test QDQ MatMul with uint16 activation uint16 weights, both dynamic
@@ -183,8 +181,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_MatMulOp_HTP_A16_W16DynamicLarge) {
                                                      TestInputDef<float>({1, 12, 512, 96}, false, input1_data),
                                                      ExpectedEPNodeAssignment::All,
                                                      18,
-                                                     true,  // Use com.microsoft Q/DQ ops
-                                                     7e-3f);
+                                                     true);  // Use com.microsoft Q/DQ ops
 }
 
 // Test 16-bit QDQ MatMul with static weights

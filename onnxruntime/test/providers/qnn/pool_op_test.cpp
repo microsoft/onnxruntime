@@ -84,8 +84,7 @@ static void RunQDQPoolOpTest(const std::string& op_type,
                        BuildPoolQDQTestCase<QuantType>(op_type, input_def, attrs),
                        provider_options,
                        opset,
-                       expected_ep_assignment,
-                       1e-5f);
+                       expected_ep_assignment);
 }
 
 //
