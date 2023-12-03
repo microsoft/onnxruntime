@@ -64,7 +64,7 @@ def load_pipelines(args, batch_size):
     # No VAE decoder in base when it outputs latent instead of image.
     base_info = PipelineInfo(
         args.version,
-        use_vae=args.disable_refiner,
+        use_vae=not args.enable_refiner,
         min_image_size=min_image_size,
         max_image_size=max_image_size,
         use_lcm=args.lcm,
@@ -94,9 +94,10 @@ def load_pipelines(args, batch_size):
     )
 
     refiner = None
-    if not args.disable_refiner:
+    if args.enable_refiner:
+        refiner_version = "xl-1.0"  # Allow SDXL Turbo to use refiner.
         refiner_info = PipelineInfo(
-            args.version, is_refiner=True, min_image_size=min_image_size, max_image_size=max_image_size
+            refiner_version, is_refiner=True, min_image_size=min_image_size, max_image_size=max_image_size
         )
         refiner = init_pipeline(
             Img2ImgXLPipeline,
@@ -163,7 +164,7 @@ def run_pipelines(
             image_height,
             image_width,
             warmup=warmup,
-            denoising_steps=args.refiner_steps,
+            denoising_steps=args.refiner_denoising_steps,
             strength=args.strength,
             guidance=args.refiner_guidance,
             seed=seed,
@@ -228,8 +229,6 @@ def run_dynamic_shape_demo(args):
     """Run demo of generating images with different settings with ORT CUDA provider."""
     args.engine = "ORT_CUDA"
     args.disable_cuda_graph = True
-    if args.lcm:
-        args.disable_refiner = True
     base, refiner = load_pipelines(args, 1)
 
     prompts = [
@@ -283,7 +282,7 @@ def run_dynamic_shape_demo(args):
         seed,
         guidance,
         refiner_scheduler,
-        refiner_steps,
+        refiner_denoising_steps,
         strength,
     ) in configs:
         args.prompt = [example_prompt]
@@ -295,7 +294,7 @@ def run_dynamic_shape_demo(args):
         args.seed = seed
         args.guidance = guidance
         args.refiner_scheduler = refiner_scheduler
-        args.refiner_steps = refiner_steps
+        args.refiner_denoising_steps = refiner_denoising_steps
         args.strength = strength
         base.set_scheduler(scheduler)
         if refiner:

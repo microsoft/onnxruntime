@@ -264,23 +264,25 @@ class StableDiffusionPipeline:
 
         if not self.pipeline_info.is_xl():
             images = [
-                (np.array(i.convert("RGB")).astype(np.float32) / 255.0)[..., None]
-                .transpose(3, 2, 0, 1)
-                .repeat(batch_size, axis=0)
-                for i in images
+                torch.from_numpy(
+                    (np.array(image.convert("RGB")).astype(np.float32) / 255.0)[..., None].transpose(3, 2, 0, 1)
+                )
+                .to(device=self.device, dtype=torch.float16)
+                .repeat_interleave(batch_size, dim=0)
+                for image in images
             ]
-            if do_classifier_free_guidance:
-                images = [torch.cat([torch.from_numpy(i).to(self.device).float()] * 2) for i in images]
-            else:
-                images = [torch.from_numpy(i).to(self.device).float() for i in images]
-            images = torch.cat([image[None, ...] for image in images], dim=0)
-            images = images.to(dtype=torch.float16)
         else:
-            images = self.control_image_processor.preprocess(images, height=height, width=width).to(dtype=torch.float32)
-            images = images.repeat_interleave(batch_size, dim=0)
-            images = images.to(device=self.device, dtype=torch.float16)
-            if do_classifier_free_guidance:
-                images = torch.cat([images] * 2)
+            images = [
+                self.control_image_processor.preprocess(image, height=height, width=width)
+                .to(device=self.device, dtype=torch.float16)
+                .repeat_interleave(batch_size, dim=0)
+                for image in images
+            ]
+
+        if do_classifier_free_guidance:
+            images = [torch.cat([i] * 2) for i in images]
+        images = torch.cat([image[None, ...] for image in images], dim=0)
+
         self.stop_profile("preprocess")
         return images
 

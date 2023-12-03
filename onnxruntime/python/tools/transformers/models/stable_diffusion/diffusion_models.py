@@ -234,12 +234,16 @@ class PipelineInfo:
     def max_image_size(self):
         return self._max_image_size
 
-    def default_image_size(self):
-        if self.version == "xl-1.0":
+    @staticmethod
+    def default_resolution(version: str) -> int:
+        if version == "xl-1.0":
             return 1024
-        if self.version in ("2.0", "2.1"):
+        if version in ("2.0", "2.1"):
             return 768
         return 512
+
+    def default_image_size(self) -> int:
+        return PipelineInfo.default_resolution(self.version)
 
     @staticmethod
     def supported_controlnet(version="1.5"):

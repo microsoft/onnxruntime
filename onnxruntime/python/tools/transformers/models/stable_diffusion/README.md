@@ -76,35 +76,43 @@ For example:
 `--work-dir WORK_DIR` can be used to load or save models under the given directory. You can download the [optimized ONNX models of Stable Diffusion XL 1.0](https://huggingface.co/tlwu/stable-diffusion-xl-1.0-onnxruntime#usage-example) to save time in running the XL demo.
 
 #### Generate an image guided by a text prompt
-```python3 demo_txt2img.py "astronaut riding a horse on mars"```
+```
+python3 demo_txt2img.py "astronaut riding a horse on mars"
+```
 
 #### Generate an image with Stable Diffusion XL guided by a text prompt
-```python3 demo_txt2img_xl.py "starry night over Golden Gate Bridge by van gogh"```
+```
+python3 demo_txt2img_xl.py "starry night over Golden Gate Bridge by van gogh"
+python3 demo_txt2img_xl.py --enable-refiner "starry night over Golden Gate Bridge by van gogh"
+```
 
 If you do not provide prompt, the script will generate different image sizes for a list of prompts for demonstration.
 
 ### Generate an image guided by a text prompt using LCM LoRA
 ```
-python3 demo_txt2img_xl.py "Self-portrait oil painting, a beautiful cyborg with golden hair, 8k" --scheduler LCM --lora-weights latent-consistency/lcm-lora-sdxl --denoising-steps 4 --disable-refiner
+python3 demo_txt2img_xl.py --scheduler LCM --lora-weights latent-consistency/lcm-lora-sdxl --denoising-steps 4 "Self-portrait oil painting, a beautiful cyborg with golden hair, 8k"
 ```
+
 #### Generate an image with SDXL LCM model guided by a text prompt
 ```
-python3 demo_txt2img_xl.py --lcm --disable-refiner "an astronaut riding a rainbow unicorn, cinematic, dramatic"
+python3 demo_txt2img_xl.py --lcm "an astronaut riding a rainbow unicorn, cinematic, dramatic"
 ```
 
 #### Generate an image with SDXL Turbo model guided by a text prompt
-It is recommended to use LCM or EuerA scheduler to run SDXL Turbo model.
+It is recommended to use LCM or EulerA scheduler to run SDXL Turbo model.
 ```
-python3 demo_txt2img_xl.py --version xl-turbo --height 512 --width 512 --denoising-steps 4 --scheduler LCM "little cute gremlin wearing a jacket, cinematic, vivid colors, intricate masterpiece, golden ratio, highly detailed"
+python3 demo_txt2img_xl.py --version xl-turbo "little cute gremlin wearing a jacket, cinematic, vivid colors, intricate masterpiece, golden ratio, highly detailed"
 ```
 
 #### Generate an image with a text prompt using a control net
 Control Net is supported for 1.5, SD XL and Turbo models in this demo.
 
 ```
-python3 demo_txt2img.py "Stormtrooper's lecture in beautiful lecture hall" --controlnet-type depth --controlnet-scale 1.0
+wget https://huggingface.co/lllyasviel/sd-controlnet-depth/resolve/main/images/stormtrooper.png
+python3 demo_txt2img_xl.py --controlnet-image stormtrooper.png --controlnet-type depth --controlnet-scale 0.5 --version xl-turbo "Stormtrooper's lecture in beautiful lecture hall"
 
-python3 demo_txt2img_xl.py --controlnet-type canny --controlnet-scale 0.5 --version xl-turbo --denoising-steps 2 --scheduler LCM --height 768 --width 768 "portrait of young Mona Lisa with mountain, river and forest in the background"
+wget https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png
+python3 demo_txt2img_xl.py --controlnet-type canny --controlnet-scale 0.5 --controlnet-image input_image_vermeer.png --version xl-turbo --height 1024 --width 1024 "portrait of young Mona Lisa with mountain, river and forest in the background"
 ```
 
 ## Optimize Stable Diffusion ONNX models for Hugging Face Diffusers or Optimum
