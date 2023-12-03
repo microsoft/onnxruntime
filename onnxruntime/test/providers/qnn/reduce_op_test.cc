@@ -407,7 +407,7 @@ TEST_F(QnnHTPBackendTests, ReduceSumU8Opset13) {
 TEST_F(QnnHTPBackendTests, ReduceSumU8Opset13_LastAxis) {
   const std::vector<float> input_data = {3.21289f, -5.9981f, -1.72799f, 6.27263f};
   RunReduceOpQDQTest<uint8_t>("ReduceSum",
-                              TestInputDef<float>({2, 2}, false, input_data).OverrideValueRange(-10.0f, 10.0f),
+                              TestInputDef<float>({2, 2}, false, input_data),
                               {1},   // axes
                               true,  // keepdims
                               13,    // opset
@@ -605,7 +605,7 @@ TEST_F(QnnHTPBackendTests, ReduceMeanU8Opset18) {
 TEST_F(QnnHTPBackendTests, ReduceMeanU8Opset18_LastAxis) {
   const std::vector<float> input_data = {3.21289f, -5.9981f, -1.72799f, 6.27263f};
   RunReduceOpQDQTest<uint8_t>("ReduceMean",
-                              TestInputDef<float>({2, 2}, false, input_data).OverrideValueRange(-10.0f, 10.0f),
+                              TestInputDef<float>({2, 2}, false, input_data),
                               {1},   // axes
                               true,  // keepdims
                               18,    // opset
