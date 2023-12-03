@@ -297,12 +297,7 @@ TEST_F(QnnCPUBackendTests, Resize2xLinearAlignCorners_scales) {
 }
 
 // Test Resize downsample with mode: "linear", coordinate_transformation_mode: "align_corners"
-// TODO: Enable ResizeOpTest.ResizeOpLinearDownSampleTest_4DBilinear_align_corners in cpu resize_op tests when fixed.
-//
-// Input f32[1,1,2,4]: 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0
-// Expected output f32[1, 1, 1, 2]: 1.0, 4.0
-// Actual output f32[1, 1, 1, 2]: NaN, NaN
-TEST_F(QnnCPUBackendTests, DISABLED_Resize_DownSample_Linear_AlignCorners_scales) {
+TEST_F(QnnCPUBackendTests, Resize_DownSample_Linear_AlignCorners_scales) {
   std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
   RunCPUResizeOpTestWithScales(TestInputDef<float>({1, 1, 2, 4}, false, input_data),
                                {1.0f, 1.0f, 0.6f, 0.6f}, "linear", "align_corners", "",
@@ -310,12 +305,7 @@ TEST_F(QnnCPUBackendTests, DISABLED_Resize_DownSample_Linear_AlignCorners_scales
 }
 
 // Test Resize downsample with mode: "linear", coordinate_transformation_mode: "half_pixel"
-// TODO: Enable ResizeOpTest.ResizeOpLinearDownSampleTest_4DBilinear cpu resize_op tests when fixed.
-//
-// Input f32[1,1,2,4]: 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0
-// Expected output f32[1, 1, 1, 2]: 2.6666 4.3333
-// Actual output f32[1, 1, 1, 2]: NaN, NaN
-TEST_F(QnnCPUBackendTests, DISABLED_Resize_DownSample_Linear_HalfPixel_scales) {
+TEST_F(QnnCPUBackendTests, Resize_DownSample_Linear_HalfPixel_scales) {
   std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
   RunCPUResizeOpTestWithScales(TestInputDef<float>({1, 1, 2, 4}, false, input_data),
                                {1.0f, 1.0f, 0.6f, 0.6f}, "linear", "half_pixel", "",
