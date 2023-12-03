@@ -72,7 +72,8 @@ static void RunQDQPoolOpTest(const std::string& op_type,
                              const TestInputDef<float>& input_def,
                              const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                              ExpectedEPNodeAssignment expected_ep_assignment,
-                             int opset = 18) {
+                             int opset = 18,
+                             QDQTolerance tolerance = QDQTolerance()) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -84,7 +85,8 @@ static void RunQDQPoolOpTest(const std::string& op_type,
                        BuildPoolQDQTestCase<QuantType>(op_type, input_def, attrs),
                        provider_options,
                        opset,
-                       expected_ep_assignment);
+                       expected_ep_assignment,
+                       tolerance);
 }
 
 //
@@ -182,7 +184,10 @@ TEST_F(QnnHTPBackendTests, MaxPool_Large_Input_HTP_u8) {
                              utils::MakeAttribute("ceil_mode", static_cast<int64_t>(0)),
                              utils::MakeAttribute("storage_order", static_cast<int64_t>(0)),
                              utils::MakeAttribute("auto_pad", "NOTSET")},
-                            ExpectedEPNodeAssignment::All);
+                            ExpectedEPNodeAssignment::All,
+                            18,  // opset
+                            // Need a tolerance of 0.417% of output range after QNN SDK 2.17
+                            QDQTolerance(0.00417f));
 }
 
 TEST_F(QnnHTPBackendTests, MaxPool_Ceil_HTP_u8) {
@@ -228,7 +233,10 @@ TEST_F(QnnHTPBackendTests, MaxPool_LargeInput_1Pads) {
                              utils::MakeAttribute("ceil_mode", static_cast<int64_t>(0)),
                              utils::MakeAttribute("storage_order", static_cast<int64_t>(0)),
                              utils::MakeAttribute("auto_pad", "NOTSET")},
-                            ExpectedEPNodeAssignment::All);
+                            ExpectedEPNodeAssignment::All,
+                            18,  // opset
+                            // Need a tolerance of 0.417% of output range after QNN SDK 2.17
+                            QDQTolerance(0.00417f));
 }
 
 // QDQ GlobalMaxPool test

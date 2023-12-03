@@ -130,13 +130,25 @@ TEST_F(QnnCPUBackendTests, LRN_size_larger_than_channel) {
 TEST_F(QnnHTPBackendTests, LRNSize3) {
   RunQDQLRNOpTest<uint8_t>(TestInputDef<float>({1, 128, 4, 5}, false, -10.0f, 10.0f),
                            3,  // Size
-                           ExpectedEPNodeAssignment::All);
+                           ExpectedEPNodeAssignment::All,
+                           0.0001f,  // alpha
+                           0.75f,    // beta
+                           1.0f,     // bias
+                           13,       // opset
+                           // Need to use tolerance of 0.405% of output range after QNN SDK 2.17
+                           QDQTolerance(0.00405f));
 }
 
 TEST_F(QnnHTPBackendTests, LRNSize5) {
   RunQDQLRNOpTest<uint8_t>(TestInputDef<float>({1, 128, 4, 5}, false, -10.0f, 10.0f),
                            5,  // Size
-                           ExpectedEPNodeAssignment::All);
+                           ExpectedEPNodeAssignment::All,
+                           0.0001f,  // alpha
+                           0.75f,    // beta
+                           1.0f,     // bias
+                           13,       // opset
+                           // Need to use tolerance of 0.407% of output range after QNN SDK 2.17
+                           QDQTolerance(0.00407f));
 }
 
 TEST_F(QnnHTPBackendTests, LRN_size_larger_than_channel) {

@@ -421,7 +421,11 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_bias_dynamic_input) {
                                      {0, 0, 0, 0},                                            // Pads
                                      {1, 1},                                                  // Dilations
                                      "NOTSET",
-                                     ExpectedEPNodeAssignment::All);
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_qdq_contrib_ops
+                                     13,     // opset
+                                     // Need tolerance of 0.413% of output range after QNN SDK 2.17
+                                     QDQTolerance(0.00413f));
 }
 
 // Tests 16-bit QDQ Conv with dynamic weights and bias (uses QNN's Conv2d)
@@ -674,7 +678,11 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_bias_initializer) {
                                      {0, 0, 0, 0},                                            // Pads
                                      {1, 1},                                                  // Dilations
                                      "NOTSET",
-                                     ExpectedEPNodeAssignment::All);
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_qdq_contrib_ops
+                                     13,     // opset
+                                     // Need tolerance of 0.413% of output range after QNN SDK 2.17
+                                     QDQTolerance(0.00413f));
 }
 
 // Tests 1D Conv with bias as an initializer.
@@ -823,7 +831,11 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_large_input1_padding_bias_initializer) {
                                      {1, 1, 1, 1},
                                      {1, 1},
                                      "NOTSET",
-                                     ExpectedEPNodeAssignment::All);
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_qdq_contrib_ops
+                                     13,     // opset
+                                     // Need tolerance of 0.73% of output range after QNN SDK 2.17
+                                     QDQTolerance(0.00730f));
 }
 
 TEST_F(QnnHTPBackendTests, ConvU8U8S32_large_input2_bias_initializer) {

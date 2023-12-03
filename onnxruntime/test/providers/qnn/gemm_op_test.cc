@@ -186,8 +186,7 @@ static void RunQDQGemmTestOnHTP(const std::vector<TestInputDef<float>>& input_de
                                 const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                                 ExpectedEPNodeAssignment expected_ep_assignment,
                                 int opset = 13,
-                                bool use_contrib_qdq = false,
-                                QDQTolerance tolerance = QDQTolerance()) {
+                                bool use_contrib_qdq = false) {
   ProviderOptions provider_options;
 
 #if defined(_WIN32)
@@ -201,8 +200,7 @@ static void RunQDQGemmTestOnHTP(const std::vector<TestInputDef<float>>& input_de
                                     qdq_model_builder,
                                     provider_options,
                                     opset,
-                                    expected_ep_assignment,
-                                    tolerance);
+                                    expected_ep_assignment);
 }
 
 // Test 8-bit QDQ Gemm with dynamic inputs A and Bias. The B input is an initializer.

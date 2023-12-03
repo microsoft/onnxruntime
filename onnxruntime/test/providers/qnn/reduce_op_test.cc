@@ -365,8 +365,7 @@ static void RunReduceOpQDQTest(const std::string& op_type,
                                const std::vector<int64_t>& axes,
                                bool keepdims,
                                int opset,
-                               ExpectedEPNodeAssignment expected_ep_assignment,
-                               QDQTolerance tolerance = QDQTolerance()) {
+                               ExpectedEPNodeAssignment expected_ep_assignment) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -383,8 +382,7 @@ static void RunReduceOpQDQTest(const std::string& op_type,
                                                            noop_with_empty_axes),
                        provider_options,
                        opset,
-                       expected_ep_assignment,
-                       tolerance);
+                       expected_ep_assignment);
 }
 
 //
@@ -443,7 +441,8 @@ TEST_F(QnnHTPBackendTests, ReduceSumU8Opset11) {
 // - Uses int8 as the quantization type.
 // - Uses opset 13, which has "axes" as an input.
 TEST_F(QnnHTPBackendTests, ReduceSumS8Opset13) {
-  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 9);
+  // non-symmetrical input range so output sum is not trivially zero.
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 20.0f, 9);
 
   RunReduceOpQDQTest<int8_t>("ReduceSum",
                              TestInputDef<float>({3, 3}, false, input_data),
@@ -656,14 +655,8 @@ TEST_F(QnnHTPBackendTests, ReduceMeanU8Opset13) {
 //
 // - Uses int8 as the quantization type.
 // - Uses opset 18, which has "axes" as an input.
-//
-// TODO(adrianlizarraga): Inaccuracy detected for output 'output', element 0.
-// Output quant params: scale=0.0007829521200619638, zero_point=127.
-// Expected val: -0.19965279102325439
-// QNN QDQ val: -0.19730393588542938 (err 0.0023488551378250122)
-// CPU QDQ val: -0.19965279102325439 (err 0)
 TEST_F(QnnHTPBackendTests, ReduceMeanS8Opset18) {
-  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 48);
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 20.0f, 48);
 
   RunReduceOpQDQTest<int8_t>("ReduceMean",
                              TestInputDef<float>({1, 3, 4, 4}, false, input_data),

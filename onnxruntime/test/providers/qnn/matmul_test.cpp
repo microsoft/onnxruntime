@@ -83,8 +83,7 @@ static void RunQDQMatMulOpOpTest(const TestInputDef<float>& input1_def,
                                  const TestInputDef<float>& input2_def,
                                  ExpectedEPNodeAssignment expected_ep_assignment,
                                  int opset = 18,
-                                 bool use_contrib_qdq = false,
-                                 QDQTolerance tolerance = QDQTolerance()) {
+                                 bool use_contrib_qdq = false) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -97,8 +96,7 @@ static void RunQDQMatMulOpOpTest(const TestInputDef<float>& input1_def,
                                                                                        use_contrib_qdq),
                        provider_options,
                        opset,
-                       expected_ep_assignment,
-                       tolerance);
+                       expected_ep_assignment);
 }
 
 //
