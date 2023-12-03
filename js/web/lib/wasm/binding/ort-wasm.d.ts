@@ -24,7 +24,7 @@ export interface OrtWasmModule extends EmscriptenModule {
   // #endregion
 
   // #region ORT APIs
-  _OrtInit(numThreads: number, loggingLevel: number): number;
+  _OrtInit(numThreads: number, loggingLevel: number): Promise<number>;
 
   _OrtGetLastError(errorCodeOffset: number, errorMessageOffset: number): void;
 

@@ -44,6 +44,7 @@ const onProxyWorkerMessage = (ev: MessageEvent<OrtWasmMessage>): void => {
       }
       break;
     case 'init-ort':
+      console.log('message init-ort received');
       if (ev.data.err) {
         initOrtCallbacks[1](ev.data.err);
       } else {
@@ -65,6 +66,7 @@ const onProxyWorkerMessage = (ev: MessageEvent<OrtWasmMessage>): void => {
       }
       break;
     case 'create':
+      console.log('message create received');
       if (ev.data.err) {
         createSessionCallbacks.shift()![1](ev.data.err);
       } else {
@@ -139,6 +141,7 @@ export const initializeRuntime = async(env: Env): Promise<void> => {
     ensureWorker();
     return new Promise<void>((resolve, reject) => {
       initOrtCallbacks = [resolve, reject];
+      console.log('message init-ort send');
       const message: OrtWasmMessage = {type: 'init-ort', in : env};
       proxyWorker!.postMessage(message);
     });
@@ -180,6 +183,7 @@ export const createSession =
     ensureWorker();
     return new Promise<SerializableSessionMetadata>((resolve, reject) => {
       createSessionCallbacks.push([resolve, reject]);
+      console.log('message create send');
       const message: OrtWasmMessage = {type: 'create', in : {model, options}};
       proxyWorker!.postMessage(message, [model.buffer]);
     });

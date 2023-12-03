@@ -35,8 +35,8 @@ const getSessionInputOutputCount = (sessionHandle: number): [number, number] => 
  * @param numThreads SetGlobalIntraOpNumThreads(numThreads)
  * @param loggingLevel CreateEnv(static_cast<OrtLoggingLevel>(logging_level))
  */
-const initOrt = (numThreads: number, loggingLevel: number): void => {
-  const errorCode = getInstance()._OrtInit(numThreads, loggingLevel);
+const initOrt = async (numThreads: number, loggingLevel: number): Promise<void> => {
+  const errorCode = await getInstance()._OrtInit(numThreads, loggingLevel);
   if (errorCode !== 0) {
     checkLastError('Can\'t initialize onnxruntime.');
   }
@@ -48,7 +48,7 @@ const initOrt = (numThreads: number, loggingLevel: number): void => {
  */
 export const initRuntime = async(env: Env): Promise<void> => {
   // init ORT
-  initOrt(env.wasm.numThreads!, logLevelStringToEnum(env.logLevel));
+  await initOrt(env.wasm.numThreads!, logLevelStringToEnum(env.logLevel));
 
   if (!BUILD_DEFS.DISABLE_WEBGPU) {
     // init JSEP if available

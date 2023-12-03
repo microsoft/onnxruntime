@@ -367,6 +367,7 @@ var ortWasmThreaded = (() => {
         cb: (a) =>
           new Promise((b) => {
             a.onmessage = (g) => {
+              console.log(g);
               g = g.data;
               var k = g.cmd;
               if (g.targetThread && g.targetThread != X()) {
@@ -392,8 +393,11 @@ var ortWasmThreaded = (() => {
                   V.Ia.splice(V.Ia.indexOf(k), 1),
                   (k.Ha = 0);
               else if ("cancelThread" === k) V.Fa[g.thread].postMessage({ cmd: "cancel" });
-              else if ("loaded" === k) (a.loaded = !0), b(a);
-              else if ("alert" === k) alert("Thread " + g.threadId + ": " + g.text);
+              else if ("loaded" === k) {
+                handleWasmThreadLoad();
+                a.loaded = !0;
+                b(a);
+              } else if ("alert" === k) alert("Thread " + g.threadId + ": " + g.text);
               else if ("setimmediate" === g.target) a.postMessage(g);
               else if ("callHandler" === k) w[g.handler](...g.args);
               else k && I("worker sent an unknown command " + k);
@@ -479,6 +483,7 @@ var ortWasmThreaded = (() => {
       return D ? W(3, 1, a, b, c, e) : Ya(a, b, c, e);
     }
     function Ya(a, b, c, e) {
+      console.log('___pthread_create_js')
       a >>>= 0;
       b >>>= 0;
       c >>>= 0;
@@ -1138,7 +1143,27 @@ var ortWasmThreaded = (() => {
       }).catch(x);
       return {};
     })();
-    w._OrtInit = (a, b) => (w._OrtInit = L.X)(a, b);
+
+    var resolveOrtInitCallback;
+    var ortInitThreadsLoadedCount = 0;
+    var ortInitExpectedThreadsCount = 0;
+    var ortInitReturnCode;
+
+    var handleWasmThreadLoad = () => {
+      ortInitThreadsLoadedCount++;
+      if (typeof resolveOrtInitCallback === "function" && ortInitThreadsLoadedCount === ortInitExpectedThreadsCount) {
+        resolveOrtInitCallback(ortInitReturnCode);
+      }
+    };
+
+    w._OrtInit = (numThreads, loggingLevel) => {
+      ortInitExpectedThreadsCount = numThreads - 1;
+      return new Promise((resolve, reject) => {
+        ortInitReturnCode = L.X(numThreads, loggingLevel);
+        resolveOrtInitCallback = resolve;
+      });
+    };
+
     w._OrtGetLastError = (a, b) => (w._OrtGetLastError = L.Y)(a, b);
     w._OrtCreateSessionOptions = (a, b, c, e, h, g, k, t, C, v) =>
       (w._OrtCreateSessionOptions = L.Z)(a, b, c, e, h, g, k, t, C, v);
