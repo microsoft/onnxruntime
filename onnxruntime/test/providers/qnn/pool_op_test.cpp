@@ -254,14 +254,7 @@ TEST_F(QnnHTPBackendTests, GlobalMaxPool_Large_Input_u8) {
                             ExpectedEPNodeAssignment::All);
 }
 
-// initial_sequencer_dp.cc:156:ERROR:A single op, "q::MaxPool_valid.tcm" (Op ID: 277700000016), requires 0x6c0800 bytes of TCM, which is greater than the TCM size of 0x400000!
-// QnnDsp <E> graph prepare failed 13
-// QnnDsp <E> Failed to finalize graph QNN_983391626356502531_0 with err: 1002
-// QnnDsp <E> Failed to finalize graph (id: 1) with err 1002
-// QnnDsp <V> Wake up free backend 1 thread(s)
-// QnnDsp <I> QnnGraph_finalize done. status 0x3ea
-// Failed to finalize QNN graph.
-TEST_F(QnnHTPBackendTests, DISABLED_GlobalMaxPool_LargeInput2_u8) {
+TEST_F(QnnHTPBackendTests, GlobalMaxPool_LargeInput2_u8) {
   RunQDQPoolOpTest<uint8_t>("GlobalMaxPool",
                             TestInputDef<float>({1, 64, 384, 576}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
                             {},
