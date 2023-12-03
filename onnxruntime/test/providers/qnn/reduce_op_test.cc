@@ -465,14 +465,7 @@ TEST_F(QnnHTPBackendTests, ReduceSumS8Opset13_NoKeepDims) {
 }
 
 // Test rank 5 ReduceSum (s8 quant) with axes = [0, 1, 2, 3, 4], keep_dims = true
-// TODO: QNN 2.15.1 Graph finalization error:
-// graph_prepare.cc:234:ERROR:could not create op: q::Sum
-// graph_prepare.cc:1093:ERROR:Op 0x102500000011 preparation failed with err:-1
-// Completed stage: Graph Transformations and Optimizations (17163 us)
-// QnnDsp <E> "node_token_3" generated: could not create op
-// QnnDsp <E> RouterWindows graph prepare failed 12
-// QnnDsp <E> Failed to finalize graph (id: 1) with err 1002{}
-TEST_F(QnnHTPBackendTests, DISABLED_ReduceSumS8Opset13_Rank5) {
+TEST_F(QnnHTPBackendTests, ReduceSumS8Opset13_Rank5) {
   RunReduceOpQDQTest<int8_t>("ReduceSum",
                              TestInputDef<float>({1, 3, 4, 4, 2}, false, GetFloatDataInRange(-10.0f, 10.0f, 96)),
                              {0, 1, 2, 3, 4},  // axes
@@ -492,8 +485,7 @@ TEST_F(QnnHTPBackendTests, ReduceSumS8Opset13_Rank6_Unsupported) {
 }
 
 // Test rank 5 ReduceSum (u8 quant) with axes = [-1], keep_dims = false
-// TODO: Enable on QNN 2.15.1 (works fine)
-TEST_F(QnnHTPBackendTests, DISABLED_ReduceSumU8Opset13_Rank5_LastAxis) {
+TEST_F(QnnHTPBackendTests, ReduceSumU8Opset13_Rank5_LastAxis) {
   constexpr size_t num_elems = 2ULL * 12 * 124 * 2 * 4;
   std::vector<float> input_data = GetFloatDataInRange(-100.0f, 100.0f, num_elems);
   RunReduceOpQDQTest<uint8_t>("ReduceSum",
