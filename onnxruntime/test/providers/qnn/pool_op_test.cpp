@@ -124,7 +124,7 @@ TEST_F(QnnCPUBackendTests, MaxPool_Large_Input) {
 }
 
 // QNN v2.13, backendValidateOpConfig() failed for node `MaxPool` of type `PoolMax2d` with error code 4003
-TEST_F(QnnCPUBackendTests, DISABLED_MaxPool_Ceil) {
+TEST_F(QnnCPUBackendTests, MaxPool_Ceil) {
   RunPoolOpTest("MaxPool",
                 TestInputDef<float>({1, 2, 3, 3}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
                 {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
@@ -138,7 +138,7 @@ TEST_F(QnnCPUBackendTests, DISABLED_MaxPool_Ceil) {
 }
 
 // QNN v2.13, backendValidateOpConfig() failed for node `MaxPool` of type `PoolMax2d` with error code 4003
-TEST_F(QnnCPUBackendTests, DISABLED_MaxPool_Large_Input2_Ceil) {
+TEST_F(QnnCPUBackendTests, MaxPool_Large_Input2_Ceil) {
   RunPoolOpTest("MaxPool",
                 TestInputDef<float>({1, 128, 16, 113}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
                 {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2}),
