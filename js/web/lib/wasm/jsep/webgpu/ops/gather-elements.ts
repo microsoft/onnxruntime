@@ -89,7 +89,7 @@ const createGatherElementsProgramInfo =
 
       return {
         name: 'GatherElements',
-        shaderCache: {hint: attributes.cacheKey, inputDependencies},
+        shaderCache: {inputDependencies},
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
