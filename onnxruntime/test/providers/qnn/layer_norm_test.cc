@@ -129,8 +129,7 @@ TEST_F(QnnHTPBackendTests, LayerNorm1D_Axis0_Unsupported) {
                                         ExpectedEPNodeAssignment::None);
 }
 
-// Test accuracy of 8-bit QDQ LayerNorm with a static scale input. This used to fail on QNN DK 2.13,
-// but was fixed in QNN SDK 2.14.
+// Test accuracy of 8-bit QDQ LayerNorm with a static scale input.
 TEST_F(QnnHTPBackendTests, LayerNorm1D_LastAxis_StaticScale) {
   RunLayerNormQDQTest<uint8_t, uint8_t>(TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRange(0.0f, 10.0f, 6)),
                                         TestInputDef<float>({3}, true, GetFloatDataInRange(0.0f, 1.0f, 3)),  // Static
@@ -139,11 +138,7 @@ TEST_F(QnnHTPBackendTests, LayerNorm1D_LastAxis_StaticScale) {
 }
 
 // Test accuracy of 8-bit QDQ LayerNorm with a dynamic scale input.
-// TODO(adrianlizarraga): Investigate graph finalization error in QNN SDK 2.14.1
-// Failed QNN FinalizeGraphs: QnnDsp <E> Failed to finalize graph (id: 1) with err 1002
-// C:\qnn_src\QNN\HTP\HTP\src\hexagon\prepare\graph_prepare.cc:232:ERROR:could not create op: q::flat_from_vtcm
-// C:\qnn_src\QNN\HTP\HTP\src\hexagon\prepare\graph_prepare.cc:1021:ERROR:Op 0x103d00000002 preparation failed with err:-1
-TEST_F(QnnHTPBackendTests, DISABLED_LayerNorm1D_LastAxis_DynamicScale) {
+TEST_F(QnnHTPBackendTests, LayerNorm1D_LastAxis_DynamicScale) {
   RunLayerNormQDQTest<uint8_t, uint8_t>(TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRange(0.0f, 10.0f, 6)),
                                         TestInputDef<float>({3}, false, GetFloatDataInRange(0.0f, 1.0f, 3)),  // Dynamic
                                         {utils::MakeAttribute("axis", static_cast<int64_t>(-1))},             // Last axis
