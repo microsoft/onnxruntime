@@ -215,11 +215,12 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo &info) {
 }
 
 Napi::Value InferenceSessionWrap::Dispose(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
 
-  this.defaultRunOptions_.reset(nullptr);
-  this.session_.reset(nullptr);
+  this->defaultRunOptions_.reset(nullptr);
+  this->session_.reset(nullptr);
 
   this->disposed_ = true;
 }
