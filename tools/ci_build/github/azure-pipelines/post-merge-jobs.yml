@@ -21,7 +21,6 @@ stages:
     DoCompliance: false
     DoEsrp: false
     stage_name_suffix: CPU_x86_default
-    EnvSetupScript: setup_env_x86.bat
     buildArch: x86
     msbuildPlatform: Win32
     packageName: x86
@@ -36,7 +35,6 @@ stages:
     DoCompliance: false
     DoEsrp: false
     stage_name_suffix: CPU_arm64_default
-    EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: arm64
     packageName: arm64
@@ -51,7 +49,6 @@ stages:
     DoCompliance: false
     DoEsrp: false
     stage_name_suffix: CPU_x64_default
-    EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64
@@ -268,7 +265,7 @@ stages:
   dependsOn: []
   jobs:
   - job: IosDynamicFramework
-
+    timeoutInMinutes: 120
     pool:
       vmImage: "macOS-13"
 

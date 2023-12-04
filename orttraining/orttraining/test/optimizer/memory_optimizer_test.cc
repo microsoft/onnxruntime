@@ -92,7 +92,8 @@ TEST(MemoryOptimizerTests, GeluRecompute) {
   ASSERT_EQ(original_gelu_node->Priority(), static_cast<int>(ExecutionPriority::DEFAULT));
 }
 
-TEST(MemoryOptimizerTests, TileRecompute) {
+// Disable this UT for now. It has strong dependency on graph topological order, which is not correct logically.
+TEST(MemoryOptimizerTests, DISABLED_TileRecompute) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
   auto model_uri = MODEL_FOLDER "recompute_tile.onnx";
   std::shared_ptr<Model> model;
