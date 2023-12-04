@@ -3,7 +3,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <Platforms>AnyCPU;x86</Platforms>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFramework>net6.0</TargetFramework>
     <OnnxRuntimeCsharpRoot>$(ProjectDir)..\..</OnnxRuntimeCsharpRoot>
     <SignAssembly>false</SignAssembly>
     <Configurations>Debug;Release;RelWithDebInfo</Configurations>

@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFramework>net6.0</TargetFramework>
     <Platforms>AnyCPU;x86</Platforms>
     <OnnxRuntimeCsharpRoot>$(ProjectDir)..\..\..</OnnxRuntimeCsharpRoot>
     <Configurations>Debug;Release;RelWithDebInfo</Configurations>
