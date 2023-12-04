@@ -7,7 +7,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
 
-import {createTensorShapeVariables, enableShapesUniforms, inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper} from './common';
 
 
 export interface CumSumAttributes extends AttributeWithCacheKey {
@@ -18,32 +18,20 @@ const createCumsumProgramInfo =
     (inputType: number, inputShape: readonly number[], axisInput: TensorView, attributes: CumSumAttributes):
         ProgramInfo => {
           const outputSize = ShapeUtil.size(inputShape);  // outputShape is same as inputShape.
-          const enableShapeUniforms = enableShapesUniforms(inputShape.length);
-          const shapeOrRank = enableShapeUniforms ? inputShape.length : inputShape;
-          const input = inputVariable('input', inputType, shapeOrRank);
-          const output = outputVariable('output', inputType, shapeOrRank);
+          const rank = inputShape.length;                 // input/output rank
+          const input = inputVariable('input', inputType, rank);
+          const output = outputVariable('output', inputType, rank);
           const axisValue = axisInput.dataType === DataType.int32 ? axisInput.getInt32Array()[0] :
                                                                     Number(axisInput.getBigInt64Array()[0]);
-          const axis = axisValue >= 0 ? axisValue : axisValue + inputShape.length;
+          const axis = axisValue >= 0 ? axisValue : axisValue + rank;
           const programUniforms: ProgramUniform[] = [{type: 'uint32', data: outputSize}, {type: 'int32', data: axis}];
-          if (enableShapeUniforms) {
-            const tmpProgramUniform = createTensorShapeVariables(inputShape);
-            programUniforms.push(...tmpProgramUniform);  // For input
-            programUniforms.push(...tmpProgramUniform);  // For output
-          }
+          const tmpProgramUniform = createTensorShapeVariables(inputShape);
+          programUniforms.push(...tmpProgramUniform);  // For input
+          programUniforms.push(...tmpProgramUniform);  // For output
           const index = `i32(${input.indicesGet('inputIndices', 'uniforms.axis')})`;
-          const max = enableShapeUniforms ?
-              (inputShape.length === 1 ? 'i32(uniforms.input_shape)' : 'i32(uniforms.input_shape[uniforms.axis])') :
-              (inputShape.length === 1 ? 'i32(input_shape)' : 'i32(input_shape[uniforms.axis])');
-          let lowerLimit = attributes.reverse === 1 ? index : '0';
-          let upperLimit = attributes.reverse === 1 ? max : index + ' + 1';
-          if (attributes.exclusive === 1) {
-            if (attributes.reverse === 1) {
-              lowerLimit = lowerLimit + ' + 1';
-            } else {
-              upperLimit = upperLimit + ' - 1';
-            }
-          }
+          const max = rank === 1 ? 'i32(uniforms.input_shape)' : 'i32(uniforms.input_shape[uniforms.axis])';
+          const lowerLimit = attributes.reverse === 1 ? index + (attributes.exclusive === 1 ? ' + 1' : '') : '0';
+          const upperLimit = attributes.reverse === 1 ? max : index + (attributes.exclusive === 1 ? '' : ' + 1');
           const getShaderSource = (shaderHelper: ShaderHelper) => `
 ${shaderHelper.registerUniform('outputSize', 'u32').registerUniform('axis', 'u32').declareVariables(input, output)}
   ${shaderHelper.mainStart()}
@@ -60,7 +48,7 @@ ${shaderHelper.registerUniform('outputSize', 'u32').registerUniform('axis', 'u32
   }`;
           return {
             name: 'CumSum',
-            shaderCache: {hint: attributes.cacheKey, inputDependencies: [enableShapeUniforms ? 'rank' : 'dims']},
+            shaderCache: {hint: attributes.cacheKey, inputDependencies: ['rank']},
             getRunData: () => ({
               outputs: [{dims: inputShape, dataType: inputType}],
               dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
