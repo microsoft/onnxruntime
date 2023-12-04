@@ -326,16 +326,20 @@ export const sumVector = (name: string, components: number) => {
 };
 
 /**
- * A helper function that returns uniform element at index.
- * @param name - the name of uniform element.
- * @param index - the index of uniform element.
- * @param length - the length of uniform element.
+ * A helper function that returns variable element at index.
+ * @param name - the name of variable.
+ * @param index - the index of variable element.
+ * @param length - the length of variable.
  */
-export const getUniformElementAt = (name: string, index: number|string, length: number): string => {
-  if (typeof (index) === 'string') {
-    return length > 4 ? `${name}[(${index}) / 4][(${index}) % 4]` : length > 1 ? `${name}[${index}]` : name;
+export const getElementAt = (name: string, index: number|string, length: number): string => {
+  if (name.startsWith('uniforms.') && length > 4) {
+    if (typeof (index) === 'string') {
+      return `${name}[(${index}) / 4][(${index}) % 4]`;
+    } else {
+      return `${name}[${Math.floor(index / 4)}][${index % 4}]`;
+    }
   } else {
-    return length > 4 ? `${name}[${Math.floor(index / 4)}][${index % 4}]` : length > 1 ? `${name}[${index}]` : name;
+    return length > 1 ? `${name}[${index}]` : name;
   }
 };
 
@@ -380,8 +384,8 @@ const createIndicesHelper =
       let o2iSnippet = '';
       for (let i = 0; i < rank - 1; i++) {
         o2iSnippet += `
-    let dim${i} = current / ${getUniformElementAt(strides, i, rank)};
-    let rest${i} = current % ${getUniformElementAt(strides, i, rank)};
+    let dim${i} = current / ${getElementAt(strides, i, rank)};
+    let rest${i} = current % ${getElementAt(strides, i, rank)};
     indices[${i}] = dim${i};
     current = rest${i};
     `;
@@ -404,7 +408,7 @@ const createIndicesHelper =
       const offsets: string[] = [];
       if (rank >= 2) {
         for (let i = rank - 1; i >= 0; i--) {
-          offsets.push(`${getUniformElementAt(strides, i, rank)} * (indices[${i}])`);
+          offsets.push(`${getElementAt(strides, i, rank)} * (indices[${i}])`);
         }
       }
 
@@ -425,7 +429,7 @@ const createIndicesHelper =
         if (rank < 2) {
           return `${varIndices}`;
         } else {
-          return `${varIndices}[${idx}]`;
+          return `${getElementAt(varIndices, idx, rank)}`;
         }
       };
 
@@ -433,7 +437,7 @@ const createIndicesHelper =
         if (rank < 2) {
           return `${varIndices}=${value};`;
         } else {
-          return `${varIndices}[${idx}]=${value};`;
+          return `${getElementAt(varIndices, idx, rank)}=${value};`;
         }
       };
 
