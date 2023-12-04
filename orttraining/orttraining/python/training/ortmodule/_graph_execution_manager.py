@@ -327,11 +327,11 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # Setup dynamic axes for onnx model
         self._input_info = _io.parse_inputs_for_onnx_export(self._module_parameters, None, input_schema, inputs, kwargs)
-        do_deep_copy = self._runtime_options.do_deepcopy_during_model_export and _io.can_module_be_deep_cloned(
+        do_deep_copy = self._runtime_options.do_deepcopy_before_model_export and _io.can_module_be_deep_cloned(
             self._original_module, self._device
         )
         if not do_deep_copy:
-            if self._runtime_options.do_deepcopy_during_model_export:
+            if self._runtime_options.do_deepcopy_before_model_export:
                 self._logger.warning(
                     "This model will NOT be deep copied (or pickled) as the user requested, "
                     "Compute will continue, but unexpected results may occur!"
