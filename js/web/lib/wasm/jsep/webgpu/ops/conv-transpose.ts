@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 import {TensorView} from '../../tensor-view';
-import {createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext} from '../types';
 
 import {createConv2DTransposeMatMulProgramInfo} from './3rd-party/conv_backprop_mm_webgpu';
@@ -96,11 +95,7 @@ const getAdjustedConvTransposeAttributes =
 
       // always return a new object so does not modify the original attributes
       const newAttributes: T = Object.assign({}, attributes);
-      const cacheKey = attributes.cacheKey + [
-        kernelShape.join('n,'), pads.join(','), strides.join(','), outputPadding.join(','), outputShape.join(','),
-        dilations.join(',')
-      ].join('_');
-      Object.assign(newAttributes, {kernelShape, pads, outputPadding, outputShape, dilations, strides, cacheKey});
+      Object.assign(newAttributes, {kernelShape, pads, outputPadding, outputShape, dilations, strides});
       return newAttributes;
     };
 
@@ -119,7 +114,7 @@ export const parseConvTransposeAttributes = (attributes: Record<string, unknown>
   const wIsConst = (attributes.wIsConst as () => boolean)();
   const outputPadding = attributes.outputPadding as [number, number, number, number];
   const outputShape = attributes.outputShape as [number, number];
-  return createAttributeWithCacheKey({
+  return {
     autoPad,
     format,
     dilations,
@@ -131,7 +126,7 @@ export const parseConvTransposeAttributes = (attributes: Record<string, unknown>
     strides,
     wIsConst,
     ...activationAttributes
-  });
+  };
 };
 
 const validateInputs = (inputs: readonly TensorView[], attributes: ConvTransposeAttributes): void => {

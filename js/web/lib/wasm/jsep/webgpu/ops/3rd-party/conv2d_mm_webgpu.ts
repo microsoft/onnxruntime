@@ -21,8 +21,8 @@
 
 import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor-view';
-import {ProgramInfo, ProgramUniform} from '../../types';
-import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from '../common';
+import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../../types';
+import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from '../common';
 import {ConvAttributes} from '../conv';
 import {getActivationSnippet} from '../fuse-utils';
 
@@ -88,10 +88,10 @@ const conv2dCommonSnippet =
     let outRow = ${row} / outWidth;
     let outCol = ${row} % outWidth;
 
-    let WRow = ${col} / (filterDims[1] * inChannels);
-    let WCol = ${col} / inChannels % filterDims[1];
-    let xRow = outRow * stride[0] + dilation[0] * WRow - pad[0];
-    let xCol = outCol * stride[1] + dilation[1] * WCol - pad[1];
+    let WRow = ${col} / (i32(uniforms.w_shape[1]) * inChannels);
+    let WCol = ${col} / inChannels % i32(uniforms.w_shape[1]);
+    let xRow = outRow * uniforms.stride[0] + uniforms.dilation[0] * WRow - uniforms.pad[0];
+    let xCol = outCol * uniforms.stride[1] + uniforms.dilation[1] * WCol - uniforms.pad[1];
     let xCh = ${col} % inChannels;
     var resData = ${typeSnippet(innerElementSizeX, dataType)}(0.0);
     // The bounds checking is always needed since we use it to pad zero for
@@ -195,15 +195,19 @@ export const createConv2DMatMulProgramInfo =
 
       // TODO: support component 2, 3.
       const components = isVec4 ? 4 : 1;
-      const programUniforms: ProgramUniform[] =
-          [{type: 'int32', data: dimAOuter}, {type: 'int32', data: dimBOuter}, {type: 'int32', data: dimInner}];
+      const programUniforms: ProgramUniform[] = [
+        {type: 'int32', data: dimAOuter}, {type: 'int32', data: dimBOuter}, {type: 'int32', data: dimInner},
+        {type: 'int32', data: [attributes.pads[0], attributes.pads[1]]}, {type: 'int32', data: attributes.strides},
+        {type: 'int32', data: attributes.dilations}
+      ];
       const x =
           inputVariable('x', inputs[0].dataType, inputs[0].dims.length, innerElementSize === 3 ? 1 : innerElementSize);
       const w = inputVariable('w', inputs[1].dataType, inputs[1].dims.length, components);
       const inputVariables = [x, w];
 
-      programUniforms.push(...createTensorShapeVariables(inputs[0].dims));
-      programUniforms.push(...createTensorShapeVariables(inputs[1].dims));
+      programUniforms.push(
+          ...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(inputs[1].dims));
+      const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
 
       let declareFunctions = `
       fn setOutputAtIndex(flatIndex : i32, value : ${isVec4 ? `vec4<${t}>` : t}) {
@@ -218,6 +222,7 @@ export const createConv2DMatMulProgramInfo =
         inputVariables.push(bias);
 
         programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
+        inputDependencies.push('rank');
 
         declareFunctions += `
         fn getBiasByOutputCoords(coords : vec4<i32>) -> ${isVec4 ? `vec4<${t}>` : t} {
@@ -226,9 +231,16 @@ export const createConv2DMatMulProgramInfo =
       }
       const output = outputVariable('result', inputs[0].dataType, outputShape.length, components);
       programUniforms.push(...createTensorShapeVariables(outputShape));
+
+      const uniforms: UniformsArrayType = [
+        {name: 'dimAOuter', type: 'i32'}, {name: 'dimBOuter', type: 'i32'}, {name: 'dimInner', type: 'i32'},
+        {name: 'pad', type: 'i32', length: 2}, {name: 'stride', type: 'i32', length: 2},
+        {name: 'dilation', type: 'i32', length: 2}
+      ];
       return {
         name: 'Conv2DMatMul',
-        shaderCache: {hint: attributes.cacheKey},
+        shaderCache:
+            {hint: `${attributes.format};${innerElementSize};${fitAOuter};${fitBOuter};${fitInner}`, inputDependencies},
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
           dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]},
@@ -239,15 +251,7 @@ export const createConv2DMatMulProgramInfo =
         //struct Uniforms { xShape : vec4<i32>, wShape : vec4<i32>, outShape : vec4<i32>,
         //  outShapeStrides: vec3<i32>, filterDims : vec2<i32>, pad : vec2<i32>, stride : vec2<i32>,
         //  dilation : vec2<i32>, dimAOuter : i32, dimBOuter : i32, dimInner : i32 };
-        ${
-            shaderHelper.registerUniform('dimAOuter', 'i32')
-                .registerUniform('dimBOuter', 'i32')
-                .registerUniform('dimInner', 'i32')
-                .declareVariables(...inputVariables, output)}
-        const filterDims : vec2<i32> = vec2<i32>(${attributes.kernelShape[0]}, ${attributes.kernelShape[1]});
-        const pad : vec2<i32> = vec2<i32>(${attributes.pads[0]}, ${attributes.pads[1]});
-        const stride : vec2<i32> = vec2<i32>(${attributes.strides[0]}, ${attributes.strides[1]});
-        const dilation : vec2<i32> = vec2<i32>(${attributes.dilations[0]}, ${attributes.dilations[1]});
+        ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVariables, output)}
         ${declareFunctions}
         ${
             conv2dCommonSnippet(

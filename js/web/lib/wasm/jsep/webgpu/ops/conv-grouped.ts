@@ -3,9 +3,9 @@
 
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
-import {ProgramInfo} from '../types';
+import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
 
-import {inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
 import {calculateOutputShape, ConvAttributes} from './conv';
 import {getActivationSnippet} from './fuse-utils';
 
@@ -27,46 +27,62 @@ export const createGroupedConvProgramInfo =
           xShape, wShape, attributes.dilations, attributes.pads, attributes.strides, isChannelLast);
       const outputSize = ShapeUtil.size(outputShape);
 
-      const output = outputVariable('output', inputs[0].dataType, outputShape);
+      const output = outputVariable('output', inputs[0].dataType, outputShape.length);
       const {activationFunction, applyActivation} = getActivationSnippet(attributes, output.type.value);
-      const x = inputVariable('x', inputs[0].dataType, xShape);
-      const w = inputVariable('w', inputs[1].dataType, wShape);
+      const x = inputVariable('x', inputs[0].dataType, xShape.length);
+      const w = inputVariable('w', inputs[1].dataType, wShape.length);
       const inputVars = [x, w];
+      const programUniforms: ProgramUniform[] = [
+        {type: 'uint32', data: outputSize}, {type: 'uint32', data: attributes.dilations},
+        {type: 'uint32', data: [attributes.strides[0], attributes.strides[1]]},
+        {type: 'uint32', data: [attributes.pads[0], attributes.pads[1]]}, {type: 'uint32', data: outputChannelsPerGroup}
+      ];
+      programUniforms.push(
+          ...createTensorShapeVariables(xShape), ...createTensorShapeVariables(wShape),
+          ...createTensorShapeVariables(outputShape));
+      const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
       if (hasBias) {
         inputVars.push(inputVariable('b', inputs[2].dataType, inputs[2].dims));
+        programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
+        inputDependencies.push('rank');
       }
+      programUniforms.push(...createTensorShapeVariables(outputShape));
+
+      const uniforms: UniformsArrayType = [
+        {name: 'outputSize', type: 'u32'}, {name: 'dilations', type: 'u32', length: attributes.dilations.length},
+        {name: 'strides', type: 'u32', length: 2}, {name: 'pads', type: 'u32', length: 2},
+        {name: 'outputChannelsPerGroup', type: 'u32'}
+      ];
 
       const getShaderSource = (shaderHelper: ShaderHelper) => `
-  const strides: vec2<u32> = vec2(${attributes.strides[0]}u, ${attributes.strides[1]}u);
-  const pads: vec2<u32> = vec2(${attributes.pads[0]}u, ${attributes.pads[1]}u);
 
-  ${shaderHelper.declareVariables(...inputVars, output)}
+  ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVars, output)}
 
   ${activationFunction}
 
   ${shaderHelper.mainStart()}
-    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
 
     let outputIndices = ${output.offsetToIndices('global_idx')};
     let batch: u32 = outputIndices[0];
     let output_channel: u32 = outputIndices[${isChannelLast ? 3 : 1}];
     let xRCCorner: vec2<u32> = vec2<u32>(outputIndices[${isChannelLast ? 1 : 2}], outputIndices[${
-          isChannelLast ? 2 : 3}]) * strides - pads;
-    let group_id: u32 = output_channel / ${outputChannelsPerGroup}u;
+          isChannelLast ? 2 : 3}]) * uniforms.strides - uniforms.pads;
+    let group_id: u32 = output_channel / uniforms.outputChannelsPerGroup;
 
     var value: ${output.type.value} = ${output.type.value}(0);
-    for (var wInChannel: u32 = 0u; wInChannel < ${wShape[1]}u; wInChannel++) {
-      let input_channel = group_id * ${wShape[1]}u + wInChannel;
-      for (var wHeight: u32 = 0u; wHeight < ${wShape[2]}u; wHeight++) {
-        let xHeight = xRCCorner.x + wHeight * ${attributes.dilations[0]}u;
+    for (var wInChannel: u32 = 0u; wInChannel < uniforms.w_shape[1]; wInChannel++) {
+      let input_channel = group_id * uniforms.w_shape[1] + wInChannel;
+      for (var wHeight: u32 = 0u; wHeight < uniforms.w_shape[2]; wHeight++) {
+        let xHeight = xRCCorner.x + wHeight * uniforms.dilations[0];
 
-        if (xHeight < 0u || xHeight >= ${xShape[isChannelLast ? 1 : 2]}u) {
+        if (xHeight < 0u || xHeight >= uniforms.x_shape[${isChannelLast ? 1 : 2}]) {
           continue;
         }
 
-        for (var wWidth: u32 = 0u; wWidth < ${wShape[3]}u; wWidth++) {
-          let xWidth = xRCCorner.y + wWidth * ${attributes.dilations[1]}u;
-          if (xWidth < 0u || xWidth >= ${xShape[isChannelLast ? 2 : 3]}u) {
+        for (var wWidth: u32 = 0u; wWidth < uniforms.w_shape[3]; wWidth++) {
+          let xWidth = xRCCorner.y + wWidth * uniforms.dilations[1];
+          if (xWidth < 0u || xWidth >= uniforms.x_shape[${isChannelLast ? 2 : 3}]) {
             continue;
           }
 
@@ -84,13 +100,14 @@ export const createGroupedConvProgramInfo =
   }`;
       return {
         name: 'GroupedConv',
-        shaderCache: {hint: attributes.cacheKey},
+        shaderCache: {hint: `${isChannelLast}`, inputDependencies},
         getRunData: () => ({
           outputs: [{
             dims: squeezeOutputShapeFunction ? squeezeOutputShapeFunction(outputShape) : outputShape,
             dataType: inputs[0].dataType
           }],
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
+          programUniforms
         }),
         getShaderSource,
       };
