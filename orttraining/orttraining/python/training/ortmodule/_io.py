@@ -581,27 +581,23 @@ def parse_outputs_for_onnx_export_and_extract_schema(
     kwargs: Mapping[str, ORTModelInputOutputType],
     logger: Logger,
     device: Optional[torch.device],
+    do_module_clone: bool,
 ):
     # Perform a forward call to grab outputs
     output_names = None
     output_dynamic_axes = None
     is_deepcopy = False
-    can_deepcopied = can_module_be_deep_cloned(module, device)
     logger.info("Running model forward to infer output schema and dynamic axes...")
     with torch.no_grad():
         # Deepcopy inputs, since input values may change after model run.
         sample_args_copy, sample_kwargs_copy = deepcopy_model_input(*args, **kwargs)
         try:
-            if can_deepcopied:
+            if do_module_clone:
                 # Deepcopy model, in case model is stateful and changes after model run.
                 model_copy = copy.deepcopy(module)
                 is_deepcopy = True
             else:
                 model_copy = module
-                logger.warning(
-                    "This model cannot be deep copied (or pickled), because GPU memory restriction."
-                    " Compute will continue, but unexpected results may occur!"
-                )
         except Exception:
             model_copy = module
             logger.warning(

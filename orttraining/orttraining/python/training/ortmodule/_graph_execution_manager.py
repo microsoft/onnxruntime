@@ -327,12 +327,27 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # Setup dynamic axes for onnx model
         self._input_info = _io.parse_inputs_for_onnx_export(self._module_parameters, None, input_schema, inputs, kwargs)
+        do_deep_copy = self._runtime_options.do_deepcopy_during_model_export and _io.can_module_be_deep_cloned(
+            self._original_module, self._device
+        )
+        if not do_deep_copy:
+            if self._runtime_options.do_deepcopy_during_model_export:
+                self._logger.warning(
+                    "This model will NOT be deep copied (or pickled) as the user requested, "
+                    "Compute will continue, but unexpected results may occur!"
+                )
+            else:
+                self._logger.warning(
+                    "This model CANNOT be deep copied (or pickled), because of GPU memory restriction. "
+                    "Compute will continue, but unexpected results may occur!"
+                )
+
         (
             output_names,
             output_dynamic_axes,
             self._module_output_schema,
         ) = _io.parse_outputs_for_onnx_export_and_extract_schema(
-            self._original_module, inputs, kwargs, self._logger, self._device
+            self._original_module, inputs, kwargs, self._logger, self._device, do_deep_copy
         )
         self._input_info.dynamic_axes.update(output_dynamic_axes)
 
