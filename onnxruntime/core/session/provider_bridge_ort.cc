@@ -1449,8 +1449,12 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
   ov_options_converted_map["context"] = context_string.str();
 
   ov_options_converted_map["enable_opencl_throttling"] = legacy_ov_options->enable_opencl_throttling;
-  ov_options_converted_map["enable_dynamic_shapes"] = legacy_ov_options->enable_dynamic_shapes;
-
+  std::string enable_dynamic_shapes = reinterpret_cast<const char*> (legacy_ov_options->enable_dynamic_shapes);
+  if(enable_dynamic_shapes=="true" || enable_dynamic_shapes=="True"){
+    ov_options_converted_map["disable_dynamic_shapes"] = "false";
+  }else if(enable_dynamic_shapes=="false" || enable_dynamic_shapes=="False"){
+    ov_options_converted_map["disable_dynamic_shapes"] = "true";
+  }
   // Add new provider option below
   ov_options_converted_map["num_streams"] = "1";
   return ov_options_converted_map;
