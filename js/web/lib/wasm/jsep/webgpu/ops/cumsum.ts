@@ -23,36 +23,41 @@ const createCumsumProgramInfo =
           const output = outputVariable('output', inputType, rank);
           const axisValue = axisInput.dataType === DataType.int32 ? axisInput.getInt32Array()[0] :
                                                                     Number(axisInput.getBigInt64Array()[0]);
-          const axis = axisValue >= 0 ? axisValue : axisValue + rank;
-          const programUniforms: ProgramUniform[] = [{type: 'uint32', data: outputSize}, {type: 'int32', data: axis}];
-          const tmpProgramUniform = createTensorShapeVariables(inputShape);
-          programUniforms.push(...tmpProgramUniform);  // For input
-          programUniforms.push(...tmpProgramUniform);  // For output
-          const index = `i32(${input.indicesGet('inputIndices', 'uniforms.axis')})`;
-          const max = rank === 1 ? 'i32(uniforms.input_shape)' : 'i32(uniforms.input_shape[uniforms.axis])';
-          const lowerLimit = attributes.reverse === 1 ? index + (attributes.exclusive === 1 ? ' + 1' : '') : '0';
-          const upperLimit = attributes.reverse === 1 ? max : index + (attributes.exclusive === 1 ? '' : ' + 1');
-          const getShaderSource = (shaderHelper: ShaderHelper) => `
-${shaderHelper.registerUniform('outputSize', 'u32').registerUniform('axis', 'u32').declareVariables(input, output)}
-  ${shaderHelper.mainStart()}
-    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
-    var inputIndices = ${output.offsetToIndices('global_idx')};
-    var sum = 0.0;
-    let first : i32 = ${lowerLimit};
-    let last : i32 = ${upperLimit};
-    for (var i : i32 = first; i < last; i++) {
-      ${input.indicesSet('inputIndices', 'uniforms.axis', 'u32(i)')};
-      sum = sum + ${input.getByIndices('inputIndices')};
-    }
-    ${output.setByOffset('global_idx', 'sum')};
-  }`;
+          const axis = ShapeUtil.normalizeAxis(axisValue, rank);
+          const getShaderSource = (shaderHelper: ShaderHelper) => {
+            const index = ` i32(${input.indicesGet('inputIndices', 'uniforms.axis')}) `;
+            const max = rank === 1 ? 'i32(uniforms.input_shape)' : 'i32(uniforms.input_shape[uniforms.axis])';
+            const lowerLimit = attributes.reverse === 1 ? index + (attributes.exclusive === 1 ? ' + 1' : '') : '0';
+            const upperLimit = attributes.reverse === 1 ? max : index + (attributes.exclusive === 1 ? '' : ' + 1');
+            return `
+                ${
+                shaderHelper.registerUniform('outputSize', 'u32')
+                    .registerUniform('axis', 'u32')
+                    .declareVariables(input, output)}
+                ${shaderHelper.mainStart()}
+                  ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
+                  var inputIndices = ${output.offsetToIndices('global_idx')};
+                  var sum = 0.0;
+                  let first : i32 = ${lowerLimit};
+                  let last : i32 = ${upperLimit};
+                  for (var i : i32 = first; i < last; i++) {
+                    ${input.indicesSet('inputIndices', 'uniforms.axis', 'u32(i)')};
+                    sum = sum + ${input.getByIndices('inputIndices')};
+                  }
+                  ${output.setByOffset('global_idx', 'sum')};
+                }`;
+          };
           return {
             name: 'CumSum',
             shaderCache: {hint: attributes.cacheKey, inputDependencies: ['rank']},
             getRunData: () => ({
               outputs: [{dims: inputShape, dataType: inputType}],
               dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
-              programUniforms
+              programUniforms: [
+                {type: 'uint32', data: outputSize}, {type: 'int32', data: axis},
+                ...createTensorShapeVariables(inputShape), ...createTensorShapeVariables(inputShape)
+              ]
+
             }),
             getShaderSource
           };
