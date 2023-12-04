@@ -8,29 +8,25 @@
 namespace onnxruntime {
 namespace js {
 
-ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     CumSum,
     kOnnxDomain,
     11, 13,
-    float,
     kJsExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("T", JsepSupportedFloatTypes())
-        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                      DataTypeImpl::GetTensorType<int64_t>()})
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<TypeList<float, int32_t, uint32_t>>())
+        .TypeConstraint("T2", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>())
         .InputMemoryType(OrtMemTypeCPU, 1),
     CumSum);
 
-ONNX_OPERATOR_TYPED_KERNEL_EX(
+ONNX_OPERATOR_KERNEL_EX(
     CumSum,
     kOnnxDomain,
     14,
-    float,
     kJsExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("T", JsepSupportedFloatTypes())
-        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
-                                                      DataTypeImpl::GetTensorType<int64_t>()})
+        .TypeConstraint("T", JsepSupportedDataTypes())
+        .TypeConstraint("T2", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>())
         .InputMemoryType(OrtMemTypeCPU, 1),
     CumSum);
 
