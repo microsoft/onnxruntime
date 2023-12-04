@@ -35,7 +35,13 @@ static void RunLayerNormCpuTest(const TestInputDef<float>& input_def,
                   expected_ep_assignment);
 }
 
+#ifdef __linux__
+// This CPU test fails on Linux, QNN SDK 2.17
+// the value pair (-1.75661933, 0) at index #1 don't match, which is 1.75662 from -1.75662
+TEST_F(QnnCPUBackendTests, DISABLED_LayerNorm) {
+#else
 TEST_F(QnnCPUBackendTests, LayerNorm) {
+#endif
   RunLayerNormCpuTest(TestInputDef<float>({2, 3}, false, GetFloatDataInRange(0.0f, 10.0f, 6)),
                       TestInputDef<float>({2, 3}, false, GetFloatDataInRange(0.0f, 10.0f, 6)),
                       {utils::MakeAttribute("axis", static_cast<int64_t>(0))},

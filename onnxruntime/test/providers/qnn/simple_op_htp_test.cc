@@ -93,6 +93,22 @@ TEST_F(QnnCPUBackendTests, DISABLED_SpaceToDepth_Flaky2) {
   }
 }
 
+// Test f32 Relu on the CPU backend.
+// TODO: When this is fixed, enable ActivationOpTest.Relu test in cpu/activation/activation_op_test tests.
+// Disabled because QNN SDK 2.17 Relu treats inf as FLT_MAX.
+// Log: the value pair (inf, 3.40282347e+38) at index #12 don't match
+TEST_F(QnnCPUBackendTests, DISABLED_UnaryOp_Relu) {
+  std::vector<float> input_data{-1.0f, 0, 1.0f,
+                                100.0f, -100.0f, 1000.0f, -1000.0f,
+                                FLT_MIN, FLT_MIN / 10, -FLT_MIN / 10,
+                                FLT_MAX, -FLT_MAX, std::numeric_limits<float>::infinity()};
+  RunOpTestOnCPU("Relu",
+                 {TestInputDef<float>({13}, false, input_data)},
+                 {},
+                 14,
+                 ExpectedEPNodeAssignment::All);
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Tests the accuracy of a QDQ model on QNN EP by comparing to CPU EP, which runs both the fp32 model

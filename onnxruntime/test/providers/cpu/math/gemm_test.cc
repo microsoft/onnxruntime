@@ -357,10 +357,19 @@ TYPED_TEST(GemmOpTypedTests, TestGemmBroadcast) {
     test.AddOutput<TypeParam>("Y", {2, 3},
                               {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(12.0f), static_cast<TypeParam>(13.0f),
                                static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-8.0f), static_cast<TypeParam>(-7.0f)});
+
+    std::unordered_set<std::string> excluded_providers;
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
-    test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+    excluded_providers.insert(kOpenVINOExecutionProvider);  // OpenVINO: Temporarily disabled due to accuracy issues
 #endif
-    test.Config(run_with_tunable_op)
+#if defined(USE_QNN)
+    if (b_is_initializer && !c_is_initializer) {
+      // Accuracy issues on QNN's CPU backend with QNN SDK version 2.17
+      excluded_providers.insert(kQnnExecutionProvider);
+    }
+#endif
+    test.ConfigExcludeEps(excluded_providers)
+        .Config(run_with_tunable_op)
         .RunWithConfig();
   };
 

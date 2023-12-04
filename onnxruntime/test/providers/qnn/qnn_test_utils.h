@@ -247,7 +247,7 @@ struct QDQTolerance {
                                                           // or 262 int16 quantization units.
 
   QDQTolerance() : value(DEFAULT_QDQ_TOLERANCE) {}
-  QDQTolerance(float tolerance) : value(tolerance) {}
+  explicit QDQTolerance(float tolerance) : value(tolerance) {}
 
   float value;
 };
@@ -436,10 +436,12 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
         }
 
         if (print_accuracy_warning) {
-          std::cerr << "Output " << i << " required larger tolerance to pass accuracy checks\n"
-                    << "Max normalized error against f32@CPU_EP = " << max_f32_err * 100.0f << "%\n"
-                    << "Max normalized error against qdq@CPU_EP = " << max_qdq_err * 100.0f << "%\n"
-                    << "Default tolerance = " << QDQTolerance::DEFAULT_QDQ_TOLERANCE * 100.0f << "%\n"
+          std::cerr << std::endl
+                    << "[WARNING]: Output " << i
+                    << " required larger tolerance to pass accuracy checks" << std::endl
+                    << "Max normalized error against f32@CPU_EP = " << max_f32_err * 100.0f << "%" << std::endl
+                    << "Max normalized error against qdq@CPU_EP = " << max_qdq_err * 100.0f << "%" << std::endl
+                    << "Default tolerance = " << QDQTolerance::DEFAULT_QDQ_TOLERANCE * 100.0f << "%" << std::endl
                     << "Tolerance used = " << tolerance.value * 100.0f << "%" << std::endl;
         }
       } else {

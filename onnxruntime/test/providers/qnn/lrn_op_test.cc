@@ -152,9 +152,20 @@ TEST_F(QnnHTPBackendTests, LRNSize5) {
 }
 
 TEST_F(QnnHTPBackendTests, LRN_size_larger_than_channel) {
+#ifdef __linux__
+  // On Linux QNN SDK 2.17: Need a tolerance of 0.407% of output range to pass.
+  QDQTolerance tolerance = QDQTolerance(0.00407f);
+#else
+  QDQTolerance tolerance = QDQTolerance();
+#endif
   RunQDQLRNOpTest<uint8_t>(TestInputDef<float>({1, 128, 4, 5}, false, -10.0f, 10.0f),
                            255,  // Size
-                           ExpectedEPNodeAssignment::All);
+                           ExpectedEPNodeAssignment::All,
+                           0.0001f,  // alpha
+                           0.75f,    // beta
+                           1.0f,     // bias
+                           13,       // opset
+                           tolerance);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

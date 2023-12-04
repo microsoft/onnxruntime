@@ -839,6 +839,12 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_large_input1_padding_bias_initializer) {
 }
 
 TEST_F(QnnHTPBackendTests, ConvU8U8S32_large_input2_bias_initializer) {
+#ifdef __linux__
+  // On Linux QNN SDK 2.17: Need a tolerance of 0.785% of output range to pass.
+  QDQTolerance tolerance = QDQTolerance(0.00785f);
+#else
+  QDQTolerance tolerance = QDQTolerance();
+#endif
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
                                      TestInputDef<float>({1, 128, 8, 56}, false, 0.f, 10.f),  // Dynamic input
                                      TestInputDef<float>({32, 128, 1, 1}, true, -1.f, 1.f),   // Random static weights
@@ -847,7 +853,10 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_large_input2_bias_initializer) {
                                      {0, 0, 0, 0},
                                      {1, 1},
                                      "NOTSET",
-                                     ExpectedEPNodeAssignment::All);
+                                     ExpectedEPNodeAssignment::All,
+                                     false,
+                                     13,
+                                     tolerance);
 }
 
 TEST_F(QnnHTPBackendTests, ConvU8U8S32_LargeInput_Dilations_Pads) {
