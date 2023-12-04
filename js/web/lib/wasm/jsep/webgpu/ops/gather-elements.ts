@@ -6,7 +6,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
 
-import {createTensorShapeVariables, enableShapesUniforms, inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper} from './common';
 
 export interface GatherElementsAttributes extends AttributeWithCacheKey {
   axis: number;
@@ -40,27 +40,18 @@ const createGatherElementsProgramInfo =
 
       const outputShape = indicesShape.slice(0);
       const outputSize = ShapeUtil.size(outputShape);
-      const enableInputShapesUniforms = enableShapesUniforms(inputShape.length);
-      const inputShapeOrRank = enableInputShapesUniforms ? inputShape.length : inputShape;
-      const enableIndicesOutputShapesUniforms = enableShapesUniforms(indicesShape.length);
-      const indicesOrOutputShapeOrRank = enableIndicesOutputShapesUniforms ? indicesShape.length : indicesShape;
 
-      const input = inputVariable('input', inputOutputDataType, inputShapeOrRank);
-      const indices = inputVariable('indicesInput', indicesDataType, indicesOrOutputShapeOrRank);
-      const output = outputVariable('output', inputOutputDataType, indicesOrOutputShapeOrRank);
+      const input = inputVariable('input', inputOutputDataType, inputRank);
+      const indices = inputVariable('indicesInput', indicesDataType, indicesShape.length);
+      const output = outputVariable('output', inputOutputDataType, outputShape.length);
 
 
       const programUniforms: ProgramUniform[] =
           [{type: 'uint32', data: outputSize}, {type: 'int32', data: axisDimLimit}, {type: 'uint32', data: axis}];
-      if (enableInputShapesUniforms) {
-        programUniforms.push(...createTensorShapeVariables(inputShape));
-      }
-      if (enableIndicesOutputShapesUniforms) {
-        programUniforms.push(...createTensorShapeVariables(indicesShape));
-        programUniforms.push(...createTensorShapeVariables(outputShape));
-      }
-      const inputDependencies: ProgramInputTensorInfoDependency[] =
-          [enableInputShapesUniforms ? 'rank' : 'dims', enableIndicesOutputShapesUniforms ? 'rank' : 'dims'];
+      programUniforms.push(...createTensorShapeVariables(inputShape));
+      programUniforms.push(...createTensorShapeVariables(indicesShape));
+      programUniforms.push(...createTensorShapeVariables(outputShape));
+      const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
 
       // int64 indices would be treated as little endian i32 with assumption they fall in i32 limits
       // That assumption is safe as it's not possible to allocate >2gb buffer for input tensor
