@@ -353,3 +353,11 @@ def dispatchable(f: Callable | None = None, *, pattern_arg: int | None = None):
             return wrap_dispatch(f, *args, **kwargs)
 
         return wrapper
+
+
+def set_dispatchable_pattern(p: str = "*"):
+    _ke_context.pattern = p
+
+
+def set_return_tuning_results(b: bool = True):
+    _ke_context.return_tuning_results = b
