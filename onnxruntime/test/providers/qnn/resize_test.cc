@@ -306,6 +306,11 @@ TEST_F(QnnCPUBackendTests, Resize_DownSample_Linear_AlignCorners_scales) {
 
 // Test Resize downsample with mode: "linear", coordinate_transformation_mode: "half_pixel"
 // Fails on QNN v2.17, the value pair (2.66666651, 3.5) at index #0 don't match, which is 0.833333 from 2.66667
+// TODO: Enable ResizeOpTest.ResizeOpLinearDownSampleTest_4DBilinear cpu resize_op tests when fixed.
+//
+// Input f32[1,1,2,4]: 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0
+// Expected output f32[1, 1, 1, 2]: 2.6666 4.3333
+// Actual output f32[1, 1, 1, 2]: 3.5, 5.5
 TEST_F(QnnCPUBackendTests, DISABLED_Resize_DownSample_Linear_HalfPixel_scales) {
   std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
   RunCPUResizeOpTestWithScales(TestInputDef<float>({1, 1, 2, 4}, false, input_data),
