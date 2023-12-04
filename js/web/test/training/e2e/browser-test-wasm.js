@@ -8,4 +8,14 @@ describe('Browser E2E testing for training package', function() {
     ort.env.wasm.numThreads = 1;
     await testInferenceFunction(ort, {executionProviders: ['wasm']});
   });
+
+  it('Check training functionality, all options', async function() {
+    ort.env.wasm.numThreads = 1;
+    await testTrainingFunctionAll(ort, {executionProviders: ['wasm']});
+  });
+
+  it('Check training functionality, minimum options', async function() {
+    ort.env.wasm.numThreads = 1;
+    await testTrainingFunctionMin(ort, {executionProviders: ['wasm']});
+  });
 });
