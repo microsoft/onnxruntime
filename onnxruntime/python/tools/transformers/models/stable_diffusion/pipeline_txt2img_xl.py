@@ -127,6 +127,7 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
                     height=image_height,
                     width=image_width,
                 )
+                assert controlnet_images is not None and controlnet_scales is not None
                 add_kwargs.update(
                     {
                         "controlnet_images": controlnet_images,
