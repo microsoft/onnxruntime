@@ -44,7 +44,7 @@ After launching the docker, you can build and install onnxruntime-gpu wheel like
 ```
 export CUDACXX=/usr/local/cuda-12.2/bin/nvcc
 git config --global --add safe.directory '*'
-sh build.sh --config Release  --build_shared_lib --parallel 4 --nvcc_threads 1 --use_cuda --cuda_version 12.2 \
+sh build.sh --config Release  --build_shared_lib --parallel --use_cuda --cuda_version 12.2 \
             --cuda_home /usr/local/cuda-12.2 --cudnn_home /usr/lib/x86_64-linux-gnu/ --build_wheel --skip_tests \
             --use_tensorrt --tensorrt_home /usr/src/tensorrt \
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF \
@@ -54,7 +54,8 @@ python3 -m pip install --upgrade pip
 python3 -m pip install build/Linux/Release/dist/onnxruntime_gpu-1.17.0-cp310-cp310-linux_x86_64.whl --force-reinstall
 ```
 
-If the GPU is not A100, change `CMAKE_CUDA_ARCHITECTURES=80` in the command line according to the GPU compute capacity.
+If the GPU is not A100, change `CMAKE_CUDA_ARCHITECTURES=80` in the command line according to the GPU compute capacity (like 89 for RTX 4090, or 86 for RTX 3090).
+If your machine has less than 64GB memory, replace `--parallel` by `--parallel 4 --nvcc_threads 1 ` to avoid out of memory.
 
 #### Install required packages
 ```

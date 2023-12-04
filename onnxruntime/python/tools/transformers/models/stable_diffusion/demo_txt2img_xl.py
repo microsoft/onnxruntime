@@ -119,8 +119,8 @@ def load_pipelines(args, batch_size):
 
     if engine_type == EngineType.ORT_CUDA:
         enable_vae_slicing = args.enable_vae_slicing
-        if batch_size > 4 and not enable_vae_slicing:
-            print("Updating enable_vae_slicing to be True to avoid cuDNN error for batch size > 4.")
+        if batch_size > 4 and not enable_vae_slicing and (args.height >= 1024 and args.width >= 1024):
+            print("Updating enable_vae_slicing to be True to avoid cuDNN error for batch size > 4 and resolution >= 1024.")
             enable_vae_slicing = True
         if enable_vae_slicing:
             (refiner or base).backend.enable_vae_slicing()
