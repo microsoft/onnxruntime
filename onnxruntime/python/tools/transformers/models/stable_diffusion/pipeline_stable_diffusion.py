@@ -29,6 +29,7 @@ import numpy as np
 import nvtx
 import torch
 from cuda import cudart
+from diffusers import DPMSolverSinglestepScheduler
 from diffusion_models import PipelineInfo, get_tokenizer
 from diffusion_schedulers import DDIMScheduler, EulerAncestralDiscreteScheduler, LCMScheduler, UniPCMultistepScheduler
 from engine_builder import EngineType
@@ -65,7 +66,7 @@ class StableDiffusionPipeline:
             max_batch_size (int):
                 Maximum batch size for dynamic batch engine.
             scheduler (str):
-                The scheduler to guide the denoising process. Must be one of [DDIM, EulerA, UniPC, LCM].
+                The scheduler to guide the denoising process. Must be one of [DDIM, EulerA, UniPC, LCM, DPMSK].
             device (str):
                 PyTorch device to run inference. Default: 'cuda'
             output_dir (str):
@@ -174,17 +175,23 @@ class StableDiffusionPipeline:
             self.scheduler = UniPCMultistepScheduler(device=self.device, **sched_opts)
         elif scheduler == "LCM":
             self.scheduler = LCMScheduler(device=self.device, **sched_opts)
+        elif scheduler == "DPMSK":  # corresponding to "DPM++ SDE Karras" in A1111
+            self.scheduler = DPMSolverSinglestepScheduler(
+                use_karras_sigmas=True, beta_schedule="scaled_linear", **sched_opts
+            )
         else:
-            raise ValueError("Scheduler should be either DDIM, EulerA, UniPC or LCM")
+            raise ValueError("Scheduler should be either DDIM, EulerA, UniPC, LCM or DPMSK")
 
         self.current_scheduler = scheduler
         self.denoising_steps = None
 
     def set_denoising_steps(self, denoising_steps: int):
-        if not (self.denoising_steps == denoising_steps and isinstance(self.scheduler, DDIMScheduler)):
+        if self.current_scheduler == "DPMSK":
+            self.scheduler.set_timesteps(denoising_steps, device=self.device)
+        elif not (self.denoising_steps == denoising_steps and isinstance(self.scheduler, DDIMScheduler)):
             self.scheduler.set_timesteps(denoising_steps)
             self.scheduler.configure()
-            self.denoising_steps = denoising_steps
+        self.denoising_steps = denoising_steps
 
     def load_resources(self, image_height, image_width, batch_size):
         # If engine is built with static input shape, call this only once after engine build.
@@ -421,9 +428,9 @@ class StableDiffusionPipeline:
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                 noise_pred = noise_pred_uncond + guidance * (noise_pred_text - noise_pred_uncond)
 
-            if type(self.scheduler) == UniPCMultistepScheduler:
+            if isinstance(self.scheduler, (UniPCMultistepScheduler, DPMSolverSinglestepScheduler)):
                 latents = self.scheduler.step(noise_pred, timestep, latents, return_dict=False)[0]
-            elif type(self.scheduler) == LCMScheduler:
+            elif isinstance(self.scheduler, LCMScheduler):
                 latents = self.scheduler.step(noise_pred, timestep, latents, generator=self.generator)[0]
             else:
                 latents = self.scheduler.step(noise_pred, latents, step_offset + step_index, timestep)

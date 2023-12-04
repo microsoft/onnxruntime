@@ -104,7 +104,7 @@ def parse_arguments(is_xl: bool, parser):
         "--scheduler",
         type=str,
         default=None if is_xl else "DDIM",
-        choices=["DDIM", "EulerA", "UniPC", "LCM"],
+        choices=["DDIM", "EulerA", "UniPC", "LCM", "DPMSK"],
         help="Scheduler for diffusion process" + " of base" if is_xl else "",
     )
 
@@ -124,6 +124,7 @@ def parse_arguments(is_xl: bool, parser):
         default=[""],
         help="Optional negative prompt(s) to guide the image generation.",
     )
+
     parser.add_argument(
         "-b",
         "--batch-size",
@@ -166,7 +167,7 @@ def parse_arguments(is_xl: bool, parser):
             "--refiner-scheduler",
             type=str,
             default="EulerA",
-            choices=["DDIM", "EulerA", "UniPC"],
+            choices=["DDIM", "EulerA", "UniPC", "DPMSK"],
             help="Scheduler for diffusion process of refiner.",
         )
 
