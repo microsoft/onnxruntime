@@ -1714,12 +1714,15 @@ class TestInferenceSession(unittest.TestCase):
         ort_arena_cfg_kvp = onnxrt.OrtArenaCfg(expected_kvp_allocator)
         verify_allocator(ort_arena_cfg_kvp, expected_kvp_allocator)
 
-    def test_iobinding_multiple_devices(self):
+    def test_multiple_devices(self):
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
             cuda_lib = self.load_cuda_lib()
             cuda_devices = self.cuda_device_count(cuda_lib)
             if cuda_devices <= 1:
                 return
+
+            # https://github.com/microsoft/onnxruntime/issues/18432. Make sure device Id is properly set
+            # Scenario 1, 3 sessions created with differnt device Id under IOBinding
             sessions = []
             for i in range(3):
                 sessions.append(
@@ -1739,6 +1742,20 @@ class TestInferenceSession(unittest.TestCase):
                 binding.synchronize_inputs()
                 sessions[i].run_with_iobinding(binding)
                 binding.synchronize_outputs()
+
+            # Scenario 2, 2 normal sessions created with different device Id
+            device0_session = onnxrt.InferenceSession(
+                get_name("mnist.onnx"), providers=[("CUDAExecutionProvider", {"device_id": 0})]
+            )
+            device1_session = onnxrt.InferenceSession(
+                get_name("mnist.onnx"), providers=[("CUDAExecutionProvider", {"device_id": 1})]
+            )
+            image = {
+                "Input3": np.ones([1, 1, 28, 28], np.float32),
+            }
+            device0_session.run(output_names=["Plus214_Output_0"], input_feed=image)
+            device1_session.run(output_names=["Plus214_Output_0"], input_feed=image)
+            device0_session.run(output_names=["Plus214_Output_0"], input_feed=image)
 
 
 if __name__ == "__main__":
