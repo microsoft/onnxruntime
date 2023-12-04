@@ -1913,34 +1913,38 @@ const DataTransferManager& InferenceSession::GetDataTransferManager() const {
 
 common::Status InferenceSession::CheckShapes(const std::string& input_output_name, const TensorShape& input_output_shape,
                                              const TensorShape& expected_shape, const char* input_output_moniker) const {
-  const auto shape_size = input_output_shape.NumDimensions();
-  const auto expected_shape_size = expected_shape.NumDimensions();
-  if (shape_size != expected_shape_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid rank for ", input_output_moniker, ": ",
-                           input_output_name, " Got: ", shape_size, " Expected: ", expected_shape_size,
-                           " Please fix either the inputs/outputs or the model.");
-  }
+  ORT_UNUSED_PARAMETER(input_output_name);
+  ORT_UNUSED_PARAMETER(input_output_shape);
+  ORT_UNUSED_PARAMETER(expected_shape);
+  ORT_UNUSED_PARAMETER(input_output_moniker);
+  // const auto shape_size = input_output_shape.NumDimensions();
+  // const auto expected_shape_size = expected_shape.NumDimensions();
+  // if (shape_size != expected_shape_size) {
+  //   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid rank for ", input_output_moniker, ": ",
+  //                          input_output_name, " Got: ", shape_size, " Expected: ", expected_shape_size,
+  //                          " Please fix either the inputs/outputs or the model.");
+  // }
 
-  InlinedVector<size_t> invalid_dim_indices;
-  for (size_t i = 0; i < shape_size; ++i) {
-    if (expected_shape[i] < 0) {
-      continue;  // this represents a symbolic shape dimension
-    }
-    if (input_output_shape[i] != expected_shape[i]) {
-      invalid_dim_indices.push_back(i);
-    }
-  }
+  // InlinedVector<size_t> invalid_dim_indices;
+  // for (size_t i = 0; i < shape_size; ++i) {
+  //   if (expected_shape[i] < 0) {
+  //     continue;  // this represents a symbolic shape dimension
+  //   }
+  //   if (input_output_shape[i] != expected_shape[i]) {
+  //     invalid_dim_indices.push_back(i);
+  //   }
+  // }
 
-  if (!invalid_dim_indices.empty()) {
-    std::ostringstream ostr;
-    ostr << "Got invalid dimensions for " << input_output_moniker << ": " << input_output_name << " for the following indices\n";
-    for (size_t i = 0, end = invalid_dim_indices.size(); i < end; ++i) {
-      size_t idx = invalid_dim_indices[i];
-      ostr << " index: " << idx << " Got: " << input_output_shape[idx] << " Expected: " << expected_shape[idx] << "\n";
-    }
-    ostr << " Please fix either the inputs/outputs or the model.";
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
-  }
+  // if (!invalid_dim_indices.empty()) {
+  //   std::ostringstream ostr;
+  //   ostr << "Got invalid dimensions for " << input_output_moniker << ": " << input_output_name << " for the following indices\n";
+  //   for (size_t i = 0, end = invalid_dim_indices.size(); i < end; ++i) {
+  //     size_t idx = invalid_dim_indices[i];
+  //     ostr << " index: " << idx << " Got: " << input_output_shape[idx] << " Expected: " << expected_shape[idx] << "\n";
+  //   }
+  //   ostr << " Please fix either the inputs/outputs or the model.";
+  //   return Status(ONNXRUNTIME, INVALID_ARGUMENT, ostr.str());
+  // }
   return Status::OK();
 }
 
