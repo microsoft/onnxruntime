@@ -20,6 +20,9 @@
 # limitations under the License.
 # --------------------------------------------------------------------------
 
+import json
+import os
+
 import coloredlogs
 from cuda import cudart
 from demo_utils import (
@@ -225,6 +228,64 @@ def run_demo(args):
         refiner.teardown()
 
 
+def run_json(args, json_file="demo_txt2img_turbo.json"):
+    """Run demo of generating images with different settings with ORT CUDA provider."""
+    if not os.path.exists(json_file):
+        return False
+
+    with open(json_file) as read_file:
+        data = json.load(read_file)
+        pipeline = data["pipeline"]
+        args.engine = pipeline["engine"]
+        args.disable_cuda_graph = pipeline["disable_cuda_graph"]
+        args.version = pipeline["base"]["version"]
+        args.guidance = pipeline["base"]["guidance"]
+        args.controlnet_image = pipeline["base"]["controlnet_image"]
+        args.controlnet_type = pipeline["base"]["controlnet_type"]
+        args.controlnet_scale = pipeline["base"]["controlnet_scale"]
+        args.enable_refiner = pipeline["refiner"]["enable"]
+        args.refiner_guidance = pipeline["refiner"]["guidance"]
+        args.num_warmup_runs = 0
+
+        controlnet_image, controlnet_scale = process_controlnet_arguments(args)
+        base, refiner = load_pipelines(args, 1)
+
+        tasks = data["tasks"]
+        for _i, task in enumerate(tasks):
+            print(task)
+            args.batch_size = task["batch_size"]
+            args.height = task["height"]
+            args.width = task["width"]
+            args.scheduler = task["base"]["scheduler"]
+            args.denoising_steps = task["base"]["steps"]
+            args.prompt = task["base"]["prompt"]
+            args.negative_prompt = task["base"]["negative_prompt"]
+            args.seed = task["base"]["seed"]
+            if "guidance" in task["base"]:
+                assert (args.guidance > 1.0) == (task["base"]["guidance"] > 1.0)
+                args.guidance = task["base"]["guidance"]
+            if args.enable_refiner:
+                args.refiner_scheduler = task["refiner"]["scheduler"]
+                if "guidance" in task["refiner"]:
+                    assert (args.refiner_guidance > 1.0) == (task["refiner"]["guidance"] > 1.0)
+                    args.refiner_guidance = task["refiner"]["guidance"]
+                args.refiner_denoising_steps = task["refiner"]["steps"]
+                args.strength = task["refiner"]["strength"]
+
+            base.set_scheduler(args.scheduler)
+            if refiner:
+                refiner.set_scheduler(args.refiner_scheduler)
+
+            prompt, negative_prompt = repeat_prompt(args)
+            run_pipelines(args, base, refiner, prompt, negative_prompt, controlnet_image, controlnet_scale, is_warm_up=False)
+
+        if base:
+            base.teardown()
+        if refiner:
+            refiner.teardown()
+    return True
+
+
 def run_dynamic_shape_demo(args):
     """Run demo of generating images with different settings with ORT CUDA provider."""
     args.engine = "ORT_CUDA"
@@ -316,6 +377,7 @@ if __name__ == "__main__":
 
     no_prompt = isinstance(args.prompt, list) and len(args.prompt) == 1 and not args.prompt[0]
     if no_prompt:
-        run_dynamic_shape_demo(args)
+        if not run_json(args):
+            run_dynamic_shape_demo(args)
     else:
         run_demo(args)
