@@ -44,7 +44,7 @@ After launching the docker, you can build and install onnxruntime-gpu wheel like
 ```
 export CUDACXX=/usr/local/cuda-12.2/bin/nvcc
 git config --global --add safe.directory '*'
-sh build.sh --config Release  --build_shared_lib --parallel --use_cuda --cuda_version 12.2 \
+sh build.sh --config Release  --build_shared_lib --parallel 4 --nvcc_threads 1 --use_cuda --cuda_version 12.2 \
             --cuda_home /usr/local/cuda-12.2 --cudnn_home /usr/lib/x86_64-linux-gnu/ --build_wheel --skip_tests \
             --use_tensorrt --tensorrt_home /usr/src/tensorrt \
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF \
@@ -83,6 +83,7 @@ python3 demo_txt2img.py "astronaut riding a horse on mars"
 #### Generate an image with Stable Diffusion XL guided by a text prompt
 ```
 python3 demo_txt2img_xl.py "starry night over Golden Gate Bridge by van gogh"
+
 python3 demo_txt2img_xl.py --enable-refiner "starry night over Golden Gate Bridge by van gogh"
 ```
 
@@ -98,14 +99,16 @@ python3 demo_txt2img_xl.py --scheduler LCM --lora-weights latent-consistency/lcm
 python3 demo_txt2img_xl.py --lcm "an astronaut riding a rainbow unicorn, cinematic, dramatic"
 ```
 
-#### Generate an image with SDXL Turbo model guided by a text prompt
-It is recommended to use LCM or EulerA scheduler to run SDXL Turbo model.
+#### Generate an image with SD-Turbo or SDXL-Turbo model guided by a text prompt
+It is recommended to use LCM or EulerA scheduler to run SD-Turbo or SDXL-Turbo model.
 ```
+python3 demo_txt2img.py --version sd-turbo "little cute gremlin wearing a jacket, cinematic, vivid colors, intricate masterpiece, golden ratio, highly detailed"
+
 python3 demo_txt2img_xl.py --version xl-turbo "little cute gremlin wearing a jacket, cinematic, vivid colors, intricate masterpiece, golden ratio, highly detailed"
 ```
 
 #### Generate an image with a text prompt using a control net
-Control Net is supported for 1.5, SD XL and Turbo models in this demo.
+Control Net is supported for 1.5, SDXL base and SDXL-Turbo models in this demo.
 
 ```
 wget https://huggingface.co/lllyasviel/sd-controlnet-depth/resolve/main/images/stormtrooper.png
