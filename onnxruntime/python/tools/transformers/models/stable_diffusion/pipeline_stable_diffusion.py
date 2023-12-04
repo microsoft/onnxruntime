@@ -349,22 +349,22 @@ class StableDiffusionPipeline:
                     uncond_hidden_states = outputs["hidden_states"]
 
             # Concatenate the unconditional and text embeddings into a single batch to avoid doing two forward passes for classifier free guidance
-            text_embeddings = torch.cat([uncond_embeddings, text_embeddings]).to(dtype=torch.float16)
+            text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
 
         if pooled_outputs:
             pooled_output = text_embeddings
 
         if output_hidden_states:
             if do_classifier_free_guidance:
-                text_embeddings = torch.cat([uncond_hidden_states, hidden_states]).to(dtype=torch.float16)
+                text_embeddings = torch.cat([uncond_hidden_states, hidden_states])
             else:
-                text_embeddings = hidden_states.to(dtype=torch.float16)
+                text_embeddings = hidden_states
 
         self.stop_profile("clip")
 
         if pooled_outputs:
-            return text_embeddings, pooled_output
-        return text_embeddings
+            return text_embeddings.to(dtype=torch.float16), pooled_output.to(dtype=torch.float16)
+        return text_embeddings.to(dtype=torch.float16)
 
     def denoise_latent(
         self,

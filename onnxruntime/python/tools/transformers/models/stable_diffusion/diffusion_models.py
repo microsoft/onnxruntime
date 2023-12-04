@@ -133,7 +133,7 @@ class PipelineInfo:
         return self.version == "xl-1.0" and self._is_refiner
 
     def use_safetensors(self) -> bool:
-        return self.is_xl()
+        return self.is_xl() or self.version in ["sd-turbo"]
 
     def stages(self) -> List[str]:
         if self.is_xl_base_or_turbo():
@@ -159,7 +159,7 @@ class PipelineInfo:
 
     @staticmethod
     def supported_versions(is_xl: bool):
-        return ["xl-1.0", "xl-turbo"] if is_xl else ["1.4", "1.5", "2.0-base", "2.0", "2.1", "2.1-base"]
+        return ["xl-1.0", "xl-turbo"] if is_xl else ["1.4", "1.5", "2.0-base", "2.0", "2.1", "2.1-base", "sd-turbo"]
 
     def name(self) -> str:
         if self.version == "1.4":
@@ -193,6 +193,8 @@ class PipelineInfo:
                 return "stabilityai/stable-diffusion-xl-base-1.0"
         elif self.version == "xl-turbo":
             return "stabilityai/sdxl-turbo"
+        elif self.version == "sd-turbo":
+            return "stabilityai/sd-turbo"
 
         raise ValueError(f"Incorrect version {self.version}")
 
@@ -203,7 +205,7 @@ class PipelineInfo:
         # TODO: can we read from config instead
         if self.version in ("1.4", "1.5"):
             return 768
-        elif self.version in ("2.0", "2.0-base", "2.1", "2.1-base"):
+        elif self.version in ("2.0", "2.0-base", "2.1", "2.1-base", "sd-turbo"):
             return 1024
         elif self.is_xl_base_or_turbo():
             return 768
@@ -219,7 +221,7 @@ class PipelineInfo:
     def unet_embedding_dim(self):
         if self.version in ("1.4", "1.5"):
             return 768
-        elif self.version in ("2.0", "2.0-base", "2.1", "2.1-base"):
+        elif self.version in ("2.0", "2.0-base", "2.1", "2.1-base", "sd-turbo"):
             return 1024
         elif self.is_xl_base_or_turbo():
             return 2048
@@ -809,16 +811,19 @@ class UNet(BaseModel):
         self.controlnet = pipeline_info.controlnet_name()
 
     def load_model(self, framework_model_dir, hf_token, subfolder="unet"):
-        options = {"variant": "fp16", "torch_dtype": torch.float16} if self.fp16 else {}
+        options = {"variant": "fp16", "torch_dtype": torch.float16}
 
         model = self.from_pretrained(UNet2DConditionModel, framework_model_dir, hf_token, subfolder, **options)
 
         if self.controlnet:
-            cnet_model_opts = {"torch_dtype": torch.float16} if self.fp16 else {}
+            cnet_model_opts = {"torch_dtype": torch.float16}
             controlnets = torch.nn.ModuleList(
                 [ControlNetModel.from_pretrained(name, **cnet_model_opts).to(self.device) for name in self.controlnet]
             )
             model = UNet2DConditionControlNetModel(model, controlnets)
+
+        if not self.fp16:
+            model = model.to(torch.float32)
 
         return model
 
@@ -958,8 +963,8 @@ class UNetXL(BaseModel):
         self.custom_unet = pipeline_info.custom_unet()
         self.controlnet = pipeline_info.controlnet_name()
 
-    def load_model(self, framework_model_dir, hf_token, subfolder="unet"):
-        options = {"variant": "fp16", "torch_dtype": torch.float16} if self.fp16 else {}
+    def load_model(self, framework_model_dir, hf_token, subfolder="unet", always_download_fp16=True):
+        options = {"variant": "fp16", "torch_dtype": torch.float16} if self.fp16 or always_download_fp16 else {}
 
         if self.custom_unet:
             model_dir = os.path.join(framework_model_dir, self.custom_unet, subfolder)
@@ -972,12 +977,18 @@ class UNetXL(BaseModel):
         else:
             model = self.from_pretrained(UNet2DConditionModel, framework_model_dir, hf_token, subfolder, **options)
 
+        if always_download_fp16 and not self.fp16:
+            model = model.to(torch.float32)
+
         if self.controlnet:
-            cnet_model_opts = {"torch_dtype": torch.float16} if self.fp16 else {}
+            cnet_model_opts = {"torch_dtype": torch.float16} if self.fp16 or always_download_fp16 else {}
             controlnets = torch.nn.ModuleList(
                 [ControlNetModel.from_pretrained(path, **cnet_model_opts).to(self.device) for path in self.controlnet]
             )
             model = UNet2DConditionXLControlNetModel(model, controlnets)
+
+        if always_download_fp16 and not self.fp16:
+            model = model.to(torch.float32)
 
         return model
 
