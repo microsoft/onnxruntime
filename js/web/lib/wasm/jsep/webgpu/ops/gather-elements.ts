@@ -76,7 +76,7 @@ const createGatherElementsProgramInfo =
 
       let outputIndices = ${output.offsetToIndices('global_idx')};
 
-      var idx = ${indices.getByIndices('outputIndices')};
+      var idx = ${indices.getByOffset('global_idx')};
       if (idx < 0) {
         idx = idx + uniforms.axisDimLimit;
       }
