@@ -5,7 +5,7 @@ import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
+import {ComputeContext, ProgramInfo} from '../types';
 
 import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper} from './common';
 
