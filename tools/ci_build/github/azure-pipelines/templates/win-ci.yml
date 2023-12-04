@@ -9,10 +9,6 @@ parameters:
   type: boolean
   default: false
 
-- name: EnvSetupScript
-  type: string
-  default: ''
-
 - name: buildArch
   type: string
 
@@ -116,14 +112,8 @@ stages:
         condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
         inputs:
           versionSpec: '18.x'
-      - ${{ if ne(parameters.EnvSetupScript, '') }}:
-        - template: jobs/set-winenv.yml
-          parameters:
-            EnvSetupScript: ${{ parameters.EnvSetupScript }}
-            ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
-              DownloadCUDA: true
 
-      - ${{ if eq(parameters.EnvSetupScript, '') }}:
+      - ${{ if ne(parameters.CudaVersion, '') }}:
         - template: jobs/download_win_gpu_library.yml
           parameters:
             CudaVersion: ${{ parameters.CudaVersion }}
