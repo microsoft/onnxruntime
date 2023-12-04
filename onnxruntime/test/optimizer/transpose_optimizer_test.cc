@@ -4393,7 +4393,7 @@ TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue12151) {
               testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
 }
 
-// These tests uses internal testing EP with static kernels which requires a full build,
+// These tests use the internal testing EP with static kernels which requires a full build and contrib ops,
 // and the NHWC Conv which requires contrib ops
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 
@@ -4528,6 +4528,52 @@ TEST(TransposeOptimizerTests, QnnResizeOpset11) {
   // And the post-Resize Transpose should have been pushed all the way to the end
   GraphViewer viewer(graph);
   EXPECT_EQ(graph.GetNode(viewer.GetNodesInTopologicalOrder().back())->OpType(), "Transpose");
+}
+
+// model where layout transform results in transposing a non-const input that is broadcast.
+// this inserts Unsqueeze -> Transpose between the input and the node.
+// test that QDQ node units are created for Unsqueeze and Transpose by inserting Q->DQ pairs after them
+TEST(TransposeOptimizerTests, QnnTransposeNonConstBroadcastInput) {
+  Status status;
+  auto model_uri = ORT_TSTR("testdata/layout_transform_nonconst_broadcast_input.onnx");
+
+  SessionOptions so;
+
+  // ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+
+  // set the test EP to support all ops in the model so that the layout transform applies to all nodes
+  const std::unordered_set<std::string> empty_set;
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NHWC);
+  internal_testing_ep->EnableStaticKernels().TakeAllNodes();
+
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(internal_testing_ep)));
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& graph = session.GetGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  ASSERT_EQ(op_to_count["Transpose"], 3) << "Should have Transpose on 2 inputs and one on output.";
+
+  // all nodes should be assigned to the internal testing EP, which also means they should be in NHWC layout
+  std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
+  for (const auto& node : graph.Nodes()) {
+    EXPECT_EQ(node.GetExecutionProviderType(), expected_ep) << node.OpType() << " node named '" << node.Name()
+                                                            << "' was not assigned to the internal testing EP.";
+    // all nodes should be in QDQ node units except the Cast on an input which was not in a QDQ unit
+    if (node.OpType() != "QuantizeLinear" && node.OpType() != "DequantizeLinear" && node.OpType() != "Cast") {
+      for (auto cur_input = node.InputNodesBegin(), end = node.InputNodesEnd(); cur_input != end; ++cur_input) {
+        EXPECT_EQ(cur_input->OpType(), "DequantizeLinear");
+      }
+
+      for (auto cur_output = node.OutputNodesBegin(), end = node.OutputNodesEnd(); cur_output != end; ++cur_output) {
+        EXPECT_EQ(cur_output->OpType(), "QuantizeLinear");
+      }
+    }
+  }
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 
@@ -4705,52 +4751,6 @@ TEST(TransposeOptimizerTests, SharedInitializerHandlingBroadcast2) {
 
   ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),
               testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
-}
-
-// model where layout transform results in transposing a non-const input that is broadcast.
-// this inserts Unsqueeze -> Transpose between the input and the node.
-// test that QDQ node units are created for Unsqueeze and Transpose by inserting Q->DQ pairs after them
-TEST(TransposeOptimizerTests, QnnTransposeNonConstBroadcastInput) {
-  Status status;
-  auto model_uri = ORT_TSTR("testdata/layout_transform_nonconst_broadcast_input.onnx");
-
-  SessionOptions so;
-
-  // ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
-
-  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
-
-  // set the test EP to support all ops in the model so that the layout transform applies to all nodes
-  const std::unordered_set<std::string> empty_set;
-  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NHWC);
-  internal_testing_ep->EnableStaticKernels().TakeAllNodes();
-
-  InferenceSessionWrapper session{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(internal_testing_ep)));
-  ASSERT_STATUS_OK(session.Load(model_uri));
-  ASSERT_STATUS_OK(session.Initialize());
-
-  const auto& graph = session.GetGraph();
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-
-  ASSERT_EQ(op_to_count["Transpose"], 3) << "Should have Transpose on 2 inputs and one on output.";
-
-  // all nodes should be assigned to the internal testing EP, which also means they should be in NHWC layout
-  std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
-  for (const auto& node : graph.Nodes()) {
-    EXPECT_EQ(node.GetExecutionProviderType(), expected_ep) << node.OpType() << " node named '" << node.Name()
-                                                            << "' was not assigned to the internal testing EP.";
-    // all nodes should be in QDQ node units except the Cast on an input which was not in a QDQ unit
-    if (node.OpType() != "QuantizeLinear" && node.OpType() != "DequantizeLinear" && node.OpType() != "Cast") {
-      for (auto cur_input = node.InputNodesBegin(), end = node.InputNodesEnd(); cur_input != end; ++cur_input) {
-        EXPECT_EQ(cur_input->OpType(), "DequantizeLinear");
-      }
-
-      for (auto cur_output = node.OutputNodesBegin(), end = node.OutputNodesEnd(); cur_output != end; ++cur_output) {
-        EXPECT_EQ(cur_output->OpType(), "QuantizeLinear");
-      }
-    }
-  }
 }
 }  // namespace test
 }  // namespace onnxruntime

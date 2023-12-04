@@ -85,18 +85,26 @@ If you do not provide prompt, the script will generate different image sizes for
 
 ### Generate an image guided by a text prompt using LCM LoRA
 ```
-python3 demo_txt2img_xl.py "Self-portrait oil painting, a beautiful cyborg with golden hair, 8k" --scheduler LCM --lora-weights latent-consistency/lcm-lora-sdxl --denoising-steps 4
+python3 demo_txt2img_xl.py "Self-portrait oil painting, a beautiful cyborg with golden hair, 8k" --scheduler LCM --lora-weights latent-consistency/lcm-lora-sdxl --denoising-steps 4 --disable-refiner
 ```
 #### Generate an image with SDXL LCM model guided by a text prompt
 ```
 python3 demo_txt2img_xl.py --lcm --disable-refiner "an astronaut riding a rainbow unicorn, cinematic, dramatic"
 ```
 
+#### Generate an image with SDXL Turbo model guided by a text prompt
+It is recommended to use LCM or EuerA scheduler to run SDXL Turbo model.
+```
+python3 demo_txt2img_xl.py --version xl-turbo --height 512 --width 512 --denoising-steps 4 --scheduler LCM "little cute gremlin wearing a jacket, cinematic, vivid colors, intricate masterpiece, golden ratio, highly detailed"
+```
+
 #### Generate an image with a text prompt using a control net
+Control Net is supported for 1.5, SD XL and Turbo models in this demo.
+
 ```
 python3 demo_txt2img.py "Stormtrooper's lecture in beautiful lecture hall" --controlnet-type depth --controlnet-scale 1.0
 
-python3 demo_txt2img_xl.py "young Mona Lisa" --controlnet-type canny --controlnet-scale 0.5 --scheduler UniPC --disable-refiner
+python3 demo_txt2img_xl.py --controlnet-type canny --controlnet-scale 0.5 --version xl-turbo --denoising-steps 2 --scheduler LCM --height 768 --width 768 "portrait of young Mona Lisa with mountain, river and forest in the background"
 ```
 
 ## Optimize Stable Diffusion ONNX models for Hugging Face Diffusers or Optimum
