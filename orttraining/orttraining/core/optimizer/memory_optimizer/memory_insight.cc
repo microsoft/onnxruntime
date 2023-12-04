@@ -175,11 +175,13 @@ Status ResetNodeBackwardPassAttribute(Graph& graph, bool& modified) {
   for (auto& node : graph.Nodes()) {
     if (node.OpType() == "YieldOp") {
       yield_op_node = &node;
-      return Status::OK();
+      break;
     }
   }
 
-  ORT_RETURN_IF_NOT(yield_op_node != nullptr, "Cannot find YieldOp node in the graph.");
+  if (yield_op_node == nullptr) {
+    return Status::OK();
+  }
 
   // Reverse BFS from YieldOp to find all "forward" nodes.
   std::vector<const Node*> fw_nodes;
@@ -785,7 +787,7 @@ std::string GetSerializedORTModuleMemoryStat(const GraphViewer& graph_viewer,
   NodeToClusterApplyContextMap node_to_apply_context_map;
 
   if (!memory_optimization_config.empty()) {
-    ORT_ENFORCE(ParseConfigFromString(memory_optimization_config, cluster_id_to_config_map)
+    ORT_ENFORCE(ParseOptimizationConfigFromString(memory_optimization_config, cluster_id_to_config_map)
                     .IsOK());
     InlinedHashMap<const Node*, std::shared_ptr<NodeOptimizationPlanBase>> node_to_opt_plan_map;
     ORT_ENFORCE(memory_opt_planner.FinalizeNodePlansFromUserConfig(cluster_id_to_config_map,

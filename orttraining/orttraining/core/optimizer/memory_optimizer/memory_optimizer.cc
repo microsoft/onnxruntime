@@ -30,11 +30,11 @@ constexpr bool IsForwardPassOperator(ptrdiff_t op_order_in_topological_sort,
 
 }  // namespace
 
-Status MemoryOptimizer::ParseConfigFromString(const std::string& memory_optimizer_config,
-                                              const std::string& recompute_probe_config) {
+Status MemoryOptimizer::ParseOptimizationConfigFromString(const std::string& memory_optimizer_config,
+                                                          const std::string& recompute_probe_config) {
   optimizer_config_ = memory_optimizer_config;
 
-  ORT_RETURN_IF_ERROR(optimizer::memory_optimizer::ParseConfigFromString(
+  ORT_RETURN_IF_ERROR(optimizer::memory_optimizer::ParseOptimizationConfigFromString(
       memory_optimizer_config,
       pattern_subgraph_to_user_optimizer_config_map_));
 
@@ -124,6 +124,7 @@ bool MemoryOptimizer::ModifyGraph(Graph& graph,
 
 Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& logger)
     const {
+  // Reset the backward pass attribute for all nodes.
   ORT_RETURN_IF_ERROR(optimizer::memory_optimizer::ResetNodeBackwardPassAttribute(graph, modified));
 
   LOGS(logger, VERBOSE) << "Memory optimization config: " << optimizer_config_ << ", probe level: "

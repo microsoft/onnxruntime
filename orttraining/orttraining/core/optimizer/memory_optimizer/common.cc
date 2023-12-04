@@ -114,8 +114,8 @@ int ParseIntValueFromString(std::string_view str) {
   return int_value;
 }
 
-Status ParseConfigFromString(std::string_view memory_optimization_config,
-                             InlinedHashMap<std::string, UserConfig>& cluster_id_to_config_map) {
+Status ParseOptimizationConfigFromString(std::string_view memory_optimization_config,
+                                         InlinedHashMap<std::string, UserConfig>& cluster_id_to_config_map) {
   if (!memory_optimization_config.empty()) {
     const auto user_config_strs = utils::SplitString(memory_optimization_config, ",");
     for (const auto& user_config_str : user_config_strs) {

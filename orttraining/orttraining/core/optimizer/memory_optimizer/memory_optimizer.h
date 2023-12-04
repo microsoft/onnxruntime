@@ -32,7 +32,7 @@ class MemoryOptimizer : public GraphTransformer {
   MemoryOptimizer(const std::string& memory_optimizer_config, const std::string& recompute_probe_config)
       : GraphTransformer("MemoryOptimizer") {
     // Parse user-defined configs.
-    ORT_ENFORCE(ParseConfigFromString(memory_optimizer_config, recompute_probe_config).IsOK());
+    ORT_ENFORCE(ParseOptimizationConfigFromString(memory_optimizer_config, recompute_probe_config).IsOK());
   }
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
@@ -40,7 +40,7 @@ class MemoryOptimizer : public GraphTransformer {
   bool ShouldOnlyApplyOnce() const override { return true; }
 
  private:
-  Status ParseConfigFromString(const std::string& memory_optimizer_config, const std::string& recompute_probe_config);
+  Status ParseOptimizationConfigFromString(const std::string& memory_optimizer_config, const std::string& recompute_probe_config);
 
   /**
    * @brief Apply graph modifications based on user configs.

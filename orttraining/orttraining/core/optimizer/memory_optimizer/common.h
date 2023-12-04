@@ -70,7 +70,7 @@ std::string GetTensorElemCountInSymbolicString(const Node* node, size_t output_i
 
 int ParseIntValueFromString(std::string_view str);
 
-Status ParseConfigFromString(std::string_view memory_optimization_config,
-                             InlinedHashMap<std::string, UserConfig>& cluster_id_to_config_map);
+Status ParseOptimizationConfigFromString(std::string_view memory_optimization_config,
+                                         InlinedHashMap<std::string, UserConfig>& cluster_id_to_config_map);
 
 }  // namespace onnxruntime::optimizer::memory_optimizer

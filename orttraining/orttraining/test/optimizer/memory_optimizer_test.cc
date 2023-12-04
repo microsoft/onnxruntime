@@ -177,7 +177,7 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
   for (auto it = cluster_id_combinations_to_saved_symbolic_byte_map.begin();
        it != cluster_id_combinations_to_saved_symbolic_byte_map.end(); ++it) {
     std::string cluster_id = it->first;
-    ORT_ENFORCE(optimizer::memory_optimizer::ParseConfigFromString(cluster_id, cluster_id_to_config_map)
+    ORT_ENFORCE(optimizer::memory_optimizer::ParseOptimizationConfigFromString(cluster_id, cluster_id_to_config_map)
                     .IsOK());
   }
   std::ostringstream oss;
