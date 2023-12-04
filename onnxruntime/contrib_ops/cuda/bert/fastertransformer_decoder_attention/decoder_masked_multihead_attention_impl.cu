@@ -344,52 +344,147 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   bool has_beams = params.cache_indir != nullptr && !params.is_cross_attention;
   const int* beam_indices = has_beams ? &params.cache_indir[bi_max_seq_length] : nullptr;
 
-  for (int ti = ko; ti < ti_end; ti += K_PER_ITER) {
-    bool is_masked = (params.mask != nullptr) && (params.mask[bi_total_seq_length + ti] == 0);
+  if (!params.kv_data_in_flight) {
+    for (int ti = ko; ti < ti_end; ti += K_PER_ITER) {
+      bool is_masked = (params.mask != nullptr) && (params.mask[bi_total_seq_length + ti] == 0);
 
-    // The keys loaded from the key cache.
-    K_vec_k k_vec[K_VECS_PER_THREAD];
-    if (ti < tlength) {
+      // The keys loaded from the key cache.
+      K_vec_k k_vec[K_VECS_PER_THREAD];
+      if (ti < tlength) {
+        if (has_beams) {
+          const int beam_offset = beam_indices[ti] * params.num_heads * params.max_sequence_length * head_size;
+
+#pragma unroll
+          for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+            int jj = ii * params.max_sequence_length + ti;
+
+            k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
+                (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B])));
+          }
+        } else {
+#pragma unroll
+          for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+            int jj = ii * params.max_sequence_length + ti;
+
+            k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
+                (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[jj * QK_ELTS_IN_16B])));
+          }
+        }
+      }
+
+      // Perform the dot product and normalize qk.
+      // WARNING: ALL THE THREADS OF A WARP MUST ENTER!!!
+      float qk = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec) * inv_sqrt_dh;
+
+      // This is a deviation from FasterTransformer kernel implementation
+      // but this aligns with ORT's other Attention kernels which strives to
+      // mimic PyTorch when dealing with mask filter values
+      if (is_masked) {
+        qk += params.mask_filter_value;
+      }
+
+      // Store the product to shared memory. There's one qk value per timestep. Update the max.
+      if (ti < tlength && tidx % THREADS_PER_KEY == 0) {
+        if (params.relative_attention_bias != nullptr) {
+          qk = add_vec(qk,
+                       reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length * params.total_sequence_length + ti]);
+        }
+        qk_max = fmaxf(qk_max, qk);
+        qk_smem[ti] = qk;
+      }
+    }
+  } else {
+    constexpr int K_CACHE_DATA_LOAD_UNROLL = 4;
+
+    for (int ti = ko; ti < ti_end; ti += (K_CACHE_DATA_LOAD_UNROLL * K_PER_ITER)) {
+      int is_masked[K_CACHE_DATA_LOAD_UNROLL];
+      int beam_offset[K_CACHE_DATA_LOAD_UNROLL];
+      int time_step[K_CACHE_DATA_LOAD_UNROLL];
+      bool time_bounds_cond[K_CACHE_DATA_LOAD_UNROLL];
+
+#pragma unroll
+      for (int k_unroll = 0; k_unroll < K_CACHE_DATA_LOAD_UNROLL; ++k_unroll) {
+        is_masked[k_unroll] = 1;
+        beam_offset[k_unroll] = 0;
+        time_step[k_unroll] = ti + k_unroll * K_PER_ITER;
+        time_bounds_cond[k_unroll] = (time_step[k_unroll] < tlength);
+      }
+
+#pragma unroll
+      for (int k_unroll = 0; k_unroll < K_CACHE_DATA_LOAD_UNROLL; ++k_unroll) {
+        if (time_bounds_cond[k_unroll] && params.mask != nullptr) {
+          is_masked[k_unroll] = params.mask[bi_total_seq_length + time_step[k_unroll]];
+        }
+      }
+
       if (has_beams) {
-        const int beam_offset = beam_indices[ti] * params.num_heads * params.max_sequence_length * head_size;
+        int head_maxlength_headsize_prod = params.num_heads * params.max_sequence_length * head_size;
 
 #pragma unroll
-        for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
-          int jj = ii * params.max_sequence_length + ti;
-
-          k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
-              (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B])));
+        for (int k_unroll = 0; k_unroll < K_CACHE_DATA_LOAD_UNROLL; ++k_unroll) {
+          if (time_bounds_cond[k_unroll]) {
+            beam_offset[k_unroll] = beam_indices[time_step[k_unroll]] * head_maxlength_headsize_prod;
+          }
         }
-      } else {
+      }
+
+      // The keys loaded from the key cache.
+      K_vec_k k_vec[K_CACHE_DATA_LOAD_UNROLL][K_VECS_PER_THREAD];
+
 #pragma unroll
-        for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
-          int jj = ii * params.max_sequence_length + ti;
+      for (int k_unroll = 0; k_unroll < K_CACHE_DATA_LOAD_UNROLL; ++k_unroll) {
+        if (time_bounds_cond[k_unroll]) {
+          if (has_beams) {
 
-          k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
-              (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[jj * QK_ELTS_IN_16B])));
+#pragma unroll
+            for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+              int jj = ii * params.max_sequence_length + time_step[k_unroll];
+
+              k_vec[k_unroll][ii] = vec_conversion<K_vec_k, K_vec_m>(
+                  (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset[k_unroll] + jj * QK_ELTS_IN_16B])));
+            }
+          } else {
+#pragma unroll
+            for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+              int jj = ii * params.max_sequence_length + time_step[k_unroll];
+
+              k_vec[k_unroll][ii] = vec_conversion<K_vec_k, K_vec_m>(
+                  (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[jj * QK_ELTS_IN_16B])));
+            }
+          }
         }
       }
-    }
 
-    // Perform the dot product and normalize qk.
-    // WARNING: ALL THE THREADS OF A WARP MUST ENTER!!!
-    float qk = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec) * inv_sqrt_dh;
-
-    // This is a deviation from FasterTransformer kernel implementation
-    // but this aligns with ORT's other Attention kernels which strives to
-    // mimic PyTorch when dealing with mask filter values
-    if (is_masked) {
-      qk += params.mask_filter_value;
-    }
-
-    // Store the product to shared memory. There's one qk value per timestep. Update the max.
-    if (ti < tlength && tidx % THREADS_PER_KEY == 0) {
-      if (params.relative_attention_bias != nullptr) {
-        qk = add_vec(qk,
-                     reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length * params.total_sequence_length + ti]);
+      // Perform the dot product and normalize qk.
+      // WARNING: ALL THE THREADS OF A WARP MUST ENTER!!!
+      float qk[K_CACHE_DATA_LOAD_UNROLL];
+#pragma unroll
+      for (int k_unroll = 0; k_unroll < K_CACHE_DATA_LOAD_UNROLL; ++k_unroll) {
+        qk[k_unroll] = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec[k_unroll]) * inv_sqrt_dh;
       }
-      qk_max = fmaxf(qk_max, qk);
-      qk_smem[ti] = qk;
+
+// This is a deviation from FasterTransformer kernel implementation
+// but this aligns with ORT's other Attention kernels which strives to
+// mimic PyTorch when dealing with mask filter values
+#pragma unroll
+      for (int k_unroll = 0; k_unroll < K_CACHE_DATA_LOAD_UNROLL; ++k_unroll) {
+        if (time_bounds_cond[k_unroll] && is_masked[k_unroll] == 0) {
+          qk[k_unroll] += params.mask_filter_value;
+        }
+      }
+
+// Store the product to shared memory. There's one qk value per timestep. Update the max.
+#pragma unroll
+      for (int k_unroll = 0; k_unroll < K_CACHE_DATA_LOAD_UNROLL; ++k_unroll) {
+        if (time_bounds_cond[k_unroll] && (tidx % THREADS_PER_KEY == 0)) {
+          if (params.relative_attention_bias != nullptr) {
+            qk[k_unroll] = add_vec(qk[k_unroll],
+                                   reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length * params.total_sequence_length + time_step[k_unroll]]);
+          }
+          qk_max = fmaxf(qk_max, qk[k_unroll]);
+          qk_smem[time_step[k_unroll]] = qk[k_unroll];
+        }
+      }
     }
   }
 
@@ -504,18 +599,77 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   V_vec_acum out;
   zero(out);
 
-  // Loop over the timesteps to compute the partial outputs.
-  for (int ti = vo; ti < tlength; ti += V_PER_ITER) {
-    // Fetch offset based on cache_indir when beam sampling
-    const int beam_src = has_beams ? params.cache_indir[bi_max_seq_length + ti] : 0;
-    const int beam_offset = has_beams ? beam_src * params.num_heads * params.max_sequence_length * head_size : 0;
+  if (!params.kv_data_in_flight) {
+    // Loop over the timesteps to compute the partial outputs.
+    for (int ti = vo; ti < tlength; ti += V_PER_ITER) {
+      // Fetch offset based on cache_indir when beam sampling
+      const int beam_src = has_beams ? params.cache_indir[bi_max_seq_length + ti] : 0;
+      const int beam_offset = has_beams ? beam_src * params.num_heads * params.max_sequence_length * head_size : 0;
 
-    // Load the values from the cache.
-    V_vec_k v = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]));
+      // Load the values from the cache.
+      V_vec_k v = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset + ti * head_size]));
 
-    // Load the logits from shared memory.
-    T logit = logits_smem[ti];
-    out = fma(logit, v, out);
+      // Load the logits from shared memory.
+      T logit = logits_smem[ti];
+      out = fma(logit, v, out);
+    }
+  } else {
+    // Loop over the timesteps to compute the partial outputs.
+    constexpr int V_CACHE_DATA_LOAD_UNROLL = 8;
+
+    for (int ti = vo; ti < tlength; ti += V_CACHE_DATA_LOAD_UNROLL * V_PER_ITER) {
+      int beam_src[V_CACHE_DATA_LOAD_UNROLL];
+      int beam_offset[V_CACHE_DATA_LOAD_UNROLL];
+      int time_step[V_CACHE_DATA_LOAD_UNROLL];
+      bool time_bounds_cond[V_CACHE_DATA_LOAD_UNROLL];
+
+#pragma unroll
+      for (int v_unroll = 0; v_unroll < V_CACHE_DATA_LOAD_UNROLL; ++v_unroll) {
+        beam_src[v_unroll] = 0;
+        beam_offset[v_unroll] = 0;
+        time_step[v_unroll] = ti + v_unroll * V_PER_ITER;
+        time_bounds_cond[v_unroll] = (time_step[v_unroll] < tlength);
+      }
+
+      int head_maxlength_headsize_prod = params.num_heads * params.max_sequence_length * head_size;
+
+      if (has_beams) {
+// Do the global memory read and corresponding compute in separate unrolled loops
+#pragma unroll
+        for (int v_unroll = 0; v_unroll < V_CACHE_DATA_LOAD_UNROLL; ++v_unroll) {
+          if (time_bounds_cond[v_unroll]) {
+            beam_src[v_unroll] = params.cache_indir[bi_max_seq_length + time_step[v_unroll]];
+          }
+        }
+
+#pragma unroll
+        for (int v_unroll = 0; v_unroll < V_CACHE_DATA_LOAD_UNROLL; ++v_unroll) {
+          if (time_bounds_cond[v_unroll]) {
+            beam_offset[v_unroll] = beam_src[v_unroll] * head_maxlength_headsize_prod;
+          }
+        }
+      }
+
+      // Load the values from the V-cache and logits from shared memory.
+      V_vec_k v[V_CACHE_DATA_LOAD_UNROLL];
+      T logits[V_CACHE_DATA_LOAD_UNROLL];
+
+// Do the global memory read and compute in separate unrolled loops
+#pragma unroll
+      for (int v_unroll = 0; v_unroll < V_CACHE_DATA_LOAD_UNROLL; ++v_unroll) {
+        if (time_bounds_cond[v_unroll]) {
+          v[v_unroll] = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&v_cache_batch[beam_offset[v_unroll] + time_step[v_unroll] * head_size]));
+          logits[v_unroll] = logits_smem[time_step[v_unroll]];
+        }
+      }
+
+#pragma unroll
+      for (int v_unroll = 0; v_unroll < V_CACHE_DATA_LOAD_UNROLL; ++v_unroll) {
+        if (time_bounds_cond[v_unroll]) {
+          out = fma(logits[v_unroll], v[v_unroll], out);
+        }
+      }
+    }
   }
 
   // One group of threads computes the product(s) for the current timestep.

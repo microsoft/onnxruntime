@@ -52,6 +52,9 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
 
   auto& device_prop = GetDeviceProp();
   DecoderMaskedMultiHeadAttentionParams parameters;
+
+  parameters.kv_data_in_flight = ParseEnvironmentVariableWithDefault<bool>(attention::kDecoderMaskedAttentionLoadKVDataInFlight, false);
+
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
                                   weights->Shape(),
                                   bias->Shape(),
