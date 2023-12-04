@@ -238,8 +238,14 @@ class GraphExecutionManager(GraphExecutionInterface):
         session_options.enable_mem_pattern = False
         session_options.enable_mem_reuse = False
         session_options.use_deterministic_compute = _are_deterministic_algorithms_enabled()
-        # default to PRIORITY_BASED execution order
-        session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
+        # DEFAULT order is reversed DFS order, while PRIORITY_BASED order is forward BFS order.
+        # DEFAULT order is likely to be better than PRIORITY_BASED order on memory. However, our recompute feature
+        # requires PRIORITY_BASED order to work properly. So we use PRIORITY_BASED order when recompute is enabled.
+        session_options.execution_order = (
+            onnxruntime.ExecutionOrder.PRIORITY_BASED
+            if self._runtime_options.memory_optimizer_config != ""
+            else onnxruntime.ExecutionOrder.DEFAULT
+        )
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = int(self._debug_options.logging.log_level)
 

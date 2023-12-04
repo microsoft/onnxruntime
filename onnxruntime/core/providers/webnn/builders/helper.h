@@ -153,7 +153,7 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Erf", {"erf", false}},
     {"Exp", {"exp", false}},
     {"Expand", {"expand", false}},
-    {"Flatten", {"flattenTo2d", false}},
+    {"Flatten", {"reshape", true}},
     {"Floor", {"floor", true}},
     {"Gather", {"gather", false}},
     {"Gemm", {"gemm", true}},
@@ -206,12 +206,12 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Softmax", {"softmax", true}},
     {"Split", {"split", true}},
     {"Sqrt", {"sqrt", false}},
-    {"Squeeze", {"squeeze", false}},
+    {"Squeeze", {"reshape", true}},
     {"Sub", {"sub", true}},
     {"Tan", {"tan", false}},
     {"Tanh", {"tanh", true}},
     {"Transpose", {"transpose", true}},
-    {"Unsqueeze", {"unsqueeze", false}},
+    {"Unsqueeze", {"reshape", true}},
     {"Where", {"elementwiseIf", false}},
 };
 
@@ -229,7 +229,7 @@ inline bool CheckSingleOp(const std::string& op_type, const emscripten::val& wnn
   // fall back early to the ORT CPU EP rather than fail in the WebNN "cpu" deviceType.
   // This is a workaround because the op may be included in MLGraphBuilder for DirectML
   // backend but without XNNPack implementation in Chromium.
-  if (!op_map.find(op_type)->second.isCpuSupported) {
+  if (!op_map.find(op_type)->second.isCpuSupported && device_type == WebnnDeviceType::CPU) {
     return false;
   }
 
