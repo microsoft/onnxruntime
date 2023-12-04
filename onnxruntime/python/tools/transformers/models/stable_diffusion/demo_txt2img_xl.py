@@ -277,7 +277,9 @@ def run_json(args, json_file="demo_txt2img_turbo.json"):
                 refiner.set_scheduler(args.refiner_scheduler)
 
             prompt, negative_prompt = repeat_prompt(args)
-            run_pipelines(args, base, refiner, prompt, negative_prompt, controlnet_image, controlnet_scale, is_warm_up=False)
+            run_pipelines(
+                args, base, refiner, prompt, negative_prompt, controlnet_image, controlnet_scale, is_warm_up=False
+            )
 
         if base:
             base.teardown()
