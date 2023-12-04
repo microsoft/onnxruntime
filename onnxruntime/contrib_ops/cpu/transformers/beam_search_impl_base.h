@@ -274,6 +274,9 @@ Status BeamSearchBase<T>::GenerateNextToken(
     auto beam_scores = beam_scorer_->GetNextScores();
     auto beam_indices = beam_scorer_->GetNextIndicesGPU();
 
+    // cuda_dumper_->Print("ToCopy:beam_scores from scorer", beam_scores.data(), parameters_->batch_size, parameters_->num_beams);
+    // cuda_dumper_->Print("ToCopy:beam_indices", beam_indices.data(), parameters_->batch_size, parameters_->num_beams);
+
     if (parameters_->output_scores_with_beam_idx) {
       size_t bb = SafeInt<size_t>(parameters_->batch_size) * parameters_->num_beams;
       // Copy scores with beam index to output buffer
@@ -299,10 +302,10 @@ Status BeamSearchBase<T>::GenerateNextToken(
     beam_next_tokens = beam_scorer_->GetNextTokens();
 
 #ifdef DEBUG_GENERATION
-    auto beam_indices = beam_scorer_->GetNextIndicesGPU();
+    // auto beam_indices = beam_scorer_->GetNextIndicesGPU();
     cuda_dumper_->Print("beam_scores from scorer", beam_state.beam_scores.data(), parameters_->batch_size, parameters_->num_beams);
     cuda_dumper_->Print("beam_next_tokens", beam_next_tokens.data(), parameters_->batch_size, parameters_->num_beams);
-    cuda_dumper_->Print("beam_indices", beam_indices.data(), parameters_->batch_size, parameters_->num_beams);
+    // cuda_dumper_->Print("beam_indices", beam_indices.data(), parameters_->batch_size, parameters_->num_beams);
 #endif
 
     // the Cuda beam scorer does the AppendNextTokenSequences, all that's left for Cuda is a this small step

@@ -129,8 +129,9 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   Tensor* output_scores = this->context_.Output(2, scores_shape);
 
   int64_t scores_with_beam_idx_dims[] = {
-      parameters->batch_size * parameters->num_beams,
-      static_cast<int64_t>(parameters->max_length) - static_cast<int64_t>(parameters->sequence_length)};
+      parameters->batch_size * parameters->num_beams *
+      (static_cast<int64_t>(parameters->max_length) -
+       static_cast<int64_t>(parameters->sequence_length))};
   TensorShape scores_with_beam_idx_shape(&scores_with_beam_idx_dims[0], sizeof(scores_with_beam_idx_dims) / sizeof(scores_with_beam_idx_dims[0]));
   Tensor* all_scores = this->context_.Output(3, scores_with_beam_idx_shape);
   Tensor* all_beam_idx = this->context_.Output(4, scores_with_beam_idx_shape);
