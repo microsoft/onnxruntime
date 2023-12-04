@@ -329,12 +329,18 @@ class BaseModel:
     def get_model(self):
         return self.model
 
-    def from_pretrained(self, model_class, framework_model_dir, hf_token, subfolder, **kwargs):
-        model_dir = os.path.join(framework_model_dir, self.pipeline_info.name(), subfolder)
+    def from_pretrained(self, model_class, framework_model_dir, hf_token, subfolder=None, model_name=None, **kwargs):
+        if model_name is None:
+            model_name = self.pipeline_info.name()
+
+        if subfolder:
+            model_dir = os.path.join(framework_model_dir, model_name, subfolder)
+        else:
+            model_dir = os.path.join(framework_model_dir, model_name)
 
         if not os.path.exists(model_dir):
             model = model_class.from_pretrained(
-                self.pipeline_info.name(),
+                model_name,
                 subfolder=subfolder,
                 use_safetensors=self.pipeline_info.use_safetensors(),
                 use_auth_token=hf_token,
@@ -816,11 +822,19 @@ class UNet(BaseModel):
         model = self.from_pretrained(UNet2DConditionModel, framework_model_dir, hf_token, subfolder, **options)
 
         if self.controlnet:
-            cnet_model_opts = {"torch_dtype": torch.float16}
-            controlnets = torch.nn.ModuleList(
-                [ControlNetModel.from_pretrained(name, **cnet_model_opts).to(self.device) for name in self.controlnet]
-            )
-            model = UNet2DConditionControlNetModel(model, controlnets)
+            controlnet_list = []
+            for name in self.controlnet:
+                controlnet = self.from_pretrained(
+                    ControlNetModel,
+                    framework_model_dir,
+                    hf_token,
+                    subfolder=None,
+                    model_name=name,
+                    torch_dtype=torch.float16,
+                )
+                controlnet_list.append(controlnet)
+
+            model = UNet2DConditionControlNetModel(model, torch.nn.ModuleList(controlnet_list))
 
         if not self.fp16:
             model = model.to(torch.float32)
