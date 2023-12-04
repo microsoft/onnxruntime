@@ -8,7 +8,7 @@ import {PoolConvUtil, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
 
-import {createTensorShapeVariables, getUniformElementAt, IndicesHelper, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
+import {createTensorShapeVariables, getElementAt, IndicesHelper, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
 
 // TODO: support:
 // - ceil_mode                 "test_maxpool_2d_ceil"
@@ -226,17 +226,16 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
               for (var i: u32 = 0u; i < uniforms.kernelSize; i++) {
                 var offset = i;
                 for (var j = 0u; j < ${stridesRank - 1}u; j++) {
-                  offsets[j] = offset / ${getUniformElementAt('uniforms.kernelStrides', 'j', stridesRank)};
-                  offset -= offsets[j] * ${getUniformElementAt('uniforms.kernelStrides', 'j', stridesRank)};
+                  offsets[j] = offset / ${getElementAt('uniforms.kernelStrides', 'j', stridesRank)};
+                  offset -= offsets[j] * ${getElementAt('uniforms.kernelStrides', 'j', stridesRank)};
                 }
                 offsets[${stridesRank - 1}] = offset;
 
                 isPad = false;
                 for (var j = ${rank - stridesRank}u; j < ${rank}u; j++) {
                   xIndices[j] = indices[j] * ${
-        getUniformElementAt('uniforms.strides', `j - ${rank - stridesRank}u`, stridesRank)}
-                    + offsets[j - ${rank - stridesRank}u] - ${
-        getUniformElementAt('uniforms.pads', 'j - 2u', padsRank)};
+        getElementAt('uniforms.strides', `j - ${rank - stridesRank}u`, stridesRank)}
+                    + offsets[j - ${rank - stridesRank}u] - ${getElementAt('uniforms.pads', 'j - 2u', padsRank)};
                   ${padCode}
               }
               ${op2}
