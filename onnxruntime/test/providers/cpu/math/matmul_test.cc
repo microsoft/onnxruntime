@@ -169,10 +169,8 @@ void RunMatMulTest(int32_t opset_version, bool is_a_constant, bool is_b_constant
       excluded_providers.insert(kNnapiExecutionProvider);
     }
 
-    if ("test padding and broadcast A > B" == t.name || "test 2D empty input" == t.name) {
-      // QNN can't handle 0 shap
-      excluded_providers.insert(kQnnExecutionProvider);
-    }
+    // QNN can't handle 0 shape. QNN SDK 2.17 throws error.
+    excluded_providers.insert(kQnnExecutionProvider);
     test.ConfigExcludeEps(excluded_providers)
         .Config(run_with_tunable_op)
         .RunWithConfig();
