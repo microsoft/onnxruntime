@@ -278,15 +278,15 @@ data sparsity based performance optimizations.
     export ORTMODULE_USE_EFFICIENT_ATTENTION=1
     ```
 
-#### ORTMODULE_DO_DEEPCOPY_BEFORE_MODEL_EXPORT
+#### ORTMODULE_DEEPCOPY_BEFORE_MODEL_EXPORT
 
 - **Feature Area**: *ORTMODULE/Optimizations*
 - **Description**: By default, this is enabled. This env var can be used for enabling or disabling the module deep copy when preparing output data which will be used by ONNX export.
 A classical usage of disabling the deep copy: when the deep copy before module export bring the memory peak, then we should disable it and have a try.
 
 	```bash
-	export ORTMODULE_DO_DEEPCOPY_BEFORE_MODEL_EXPORT=1 # Enable
-	export ORTMODULE_DO_DEEPCOPY_BEFORE_MODEL_EXPORT=0 # Disable
+	export ORTMODULE_DEEPCOPY_BEFORE_MODEL_EXPORT=1 # Enable
+	export ORTMODULE_DEEPCOPY_BEFORE_MODEL_EXPORT=0 # Disable
 	```
 
 ### 2.2 Memory Optimization

@@ -327,27 +327,30 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # Setup dynamic axes for onnx model
         self._input_info = _io.parse_inputs_for_onnx_export(self._module_parameters, None, input_schema, inputs, kwargs)
-        do_deep_copy = self._runtime_options.do_deepcopy_before_model_export and _io.can_module_be_deep_cloned(
+        need_deep_copy = self._runtime_options.deepcopy_before_model_export and _io.can_module_be_deep_cloned(
             self._original_module, self._device
         )
-        if not do_deep_copy:
-            if self._runtime_options.do_deepcopy_before_model_export:
+        if not need_deep_copy:
+            if self._runtime_options.deepcopy_before_model_export:
                 self._logger.warning(
-                    "This model will NOT be deep copied (or pickled) as the user requested, "
-                    "Compute will continue, but unexpected results may occur!"
+                    "Since the user requested not to deep copy this model, "
+                    "the initial weights may not be preserved and could change slightly during the forward run. "
+                    "This could cause a minor difference between the ORTModule and the PyTorch run for the "
+                    "first iteration. The computation will proceed as normal, but this should be noted."
                 )
             else:
                 self._logger.warning(
-                    "This model CANNOT be deep copied (or pickled), because of GPU memory restriction. "
-                    "Compute will continue, but unexpected results may occur!"
+                    "Due to the limited GPU memory execution manager does not create a deep copy of this model. "
+                    "Therefore, the initial weights might be slightly altered during the forward run. "
+                    "This could result in a minor discrepancy between the ORTModule and the PyTorch run for the "
+                    "first iteration. The computation will continue as usual, but this should be noted."
                 )
-
         (
             output_names,
             output_dynamic_axes,
             self._module_output_schema,
         ) = _io.parse_outputs_for_onnx_export_and_extract_schema(
-            self._original_module, inputs, kwargs, self._logger, self._device, do_deep_copy
+            self._original_module, inputs, kwargs, self._logger, self._device, need_deep_copy
         )
         self._input_info.dynamic_axes.update(output_dynamic_axes)
 

@@ -581,21 +581,21 @@ def parse_outputs_for_onnx_export_and_extract_schema(
     kwargs: Mapping[str, ORTModelInputOutputType],
     logger: Logger,
     device: Optional[torch.device],
-    do_module_clone: bool,
+    clone_module: bool,
 ):
     # Perform a forward call to grab outputs
     output_names = None
     output_dynamic_axes = None
-    is_deepcopy = False
+    deep_copied = False
     logger.info("Running model forward to infer output schema and dynamic axes...")
     with torch.no_grad():
         # Deepcopy inputs, since input values may change after model run.
         sample_args_copy, sample_kwargs_copy = deepcopy_model_input(*args, **kwargs)
         try:
-            if do_module_clone:
+            if clone_module:
                 # Deepcopy model, in case model is stateful and changes after model run.
                 model_copy = copy.deepcopy(module)
-                is_deepcopy = True
+                deep_copied = True
             else:
                 model_copy = module
         except Exception:
@@ -612,7 +612,7 @@ def parse_outputs_for_onnx_export_and_extract_schema(
         output_names, output_dynamic_axes = _parse_outputs_and_extract_names_and_dynamic_axes(sample_outputs)
 
     output_schema = _extract_schema(sample_outputs, device)
-    if is_deepcopy:
+    if deep_copied:
         del model_copy
         gc.collect()
         if torch.cuda.is_available():
