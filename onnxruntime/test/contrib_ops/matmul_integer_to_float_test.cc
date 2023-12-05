@@ -32,20 +32,34 @@ void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
                               bool has_zp = true,
                               bool has_bias = false) {
   // create rand inputs
+  //RandomValueGenerator random{0};
   RandomValueGenerator random{};
 
   std::vector<IType> A_data;
   std::vector<int> tmp_A_data = random.Uniform<int32_t>(A_dims,
-                                                        std::numeric_limits<WType>::lowest(),
-                                                        std::numeric_limits<WType>::max());
-  std::transform(tmp_A_data.begin(), tmp_A_data.end(), std::back_inserter(A_data), [](int32_t v) -> WType {
+//#if defined(USE_DML)
+//                                                        (constexpr(std::is_same_v<IType, int8_t>) ? -2 : 1),
+//                                                        5);
+//#else
+                                                        std::numeric_limits<IType>::lowest(),
+                                                        std::numeric_limits<IType>::max());
+//#endif
+  std::transform(tmp_A_data.begin(), tmp_A_data.end(), std::back_inserter(A_data), [](int32_t v) -> IType {
     return static_cast<IType>(v);
   });
 
   std::vector<WType> B_data;
+
+#if defined(USE_DML)
+    std::vector<int> tmp_B_data = random.Uniform<int32_t>(B_dims,
+                                                            (constexpr(std::is_same_v<WType, int8_t>) ? -2 : 1),
+                                                            5);
+#else
   std::vector<int> tmp_B_data = random.Uniform<int32_t>(B_dims,
                                                         std::numeric_limits<WType>::lowest(),
                                                         std::numeric_limits<WType>::max());
+#endif
+
   std::transform(tmp_B_data.begin(), tmp_B_data.end(), std::back_inserter(B_data), [](int32_t v) -> WType {
     return static_cast<WType>(v);
   });
@@ -77,7 +91,7 @@ void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
     test.AddInput<IType>("a_zero_point", {1}, A_zero_point);
     test.AddInput<WType>("b_zero_point", {b_scale_zp_size}, B_zero_point);
   } else {
-    test.AddOptionalInputEdge<WType>();
+    test.AddOptionalInputEdge<IType>();
     test.AddOptionalInputEdge<WType>();
   }
 
@@ -126,7 +140,7 @@ void RunMatMulIntegerToFloatTest(const string& model_path) {
                                          HasZeroPoint, /*has_zp*/
                                          HasBias       /*has_bias*/
   );
-
+  
   TestMatMulIntegerToFloat<IType, WType, OType>(
                                          A_dims,
                                          B_dims,
@@ -136,7 +150,7 @@ void RunMatMulIntegerToFloatTest(const string& model_path) {
                                          HasZeroPoint, /*has_zp*/
                                          HasBias       /*has_bias*/
   );
-
+  
   TestMatMulIntegerToFloat<IType, WType, OType>(
                                          A_dims,
                                          B_dims,
