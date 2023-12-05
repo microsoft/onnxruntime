@@ -403,6 +403,9 @@ The benchmarking script in the llama directory (`models/llama/benchmark.py`) dir
 
 ```
 python models/llama/benchmark.py -bt ort-convert-to-onnx -p fp16 -m mistralai/Mistral-7B-v0.1 --ort-model-path /dev_data/petermca/mistral/model_opt/model.quant.onnx
-python models/llama/benchmark.py -bt hf-pt-eager -p fp16 -m mistralai/Mistral-7B-v0.1
+python -m models.llama.benchmark \
+    -bt hf-pt-eager \
+    -p fp16 \
+    -m mistralai/Mistral-7B-v0.1
 ```
 
