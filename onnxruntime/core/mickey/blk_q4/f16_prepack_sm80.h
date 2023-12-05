@@ -19,6 +19,7 @@
 #pragma once
 
 #include "core/common/common.h"
+#include "core/framework/float16.h"
 #include "core/util/matrix_layout.h"
 
 namespace onnxruntime {
@@ -320,6 +321,64 @@ struct BlockwiseQuantization {
     }
   }
 };
+
+static inline bool IsSm80WithWholeBlocks(
+  int weight_rows, [[maybe_unused]] int weight_cols,
+  int major, [[maybe_unused]] int minor) {
+  if (major < 8) {
+    return false;
+  }
+
+  // Kernel implementation detail:
+  // K must be aligned with thread block tile (64) due to the way
+  // predicate iterator works, it loads the partial tile
+  // in the first iteration and then the full tile in the
+  // remaining iterations. This will cause the blockwise
+  // quantization parameters to go out of step with the
+  // weights.
+  // To fix this, we need to write our own predicate iterator
+  // that loads the full tile in the first iterations and
+  // then the partial tile in the last iteration.
+  return (weight_rows % 64 == 0);
+}
+
+template<typename ElementT, int block_size, bool col_blocking>
+inline
+bool BlkQuantGemmSm80Supported(int weight_rows, int weight_cols, int major, int minor) {
+  using Base = BlockwiseQuantization<ElementT, block_size, 4, col_blocking>;
+  if (weight_cols % Base::QuantBlocking::kColumn != 0) {
+    return false;
+  }
+  if (weight_rows % Base::QuantBlocking::kRow != 0) {
+    return false;
+  }
+  return IsSm80WithWholeBlocks(weight_rows, weight_cols, major, minor);
+}
+
+static inline bool BlkQuantGemmSm80Supported(int block_size, bool col_blocking, int weight_rows, int weight_cols, int major, int minor) {
+  switch (block_size)
+  {
+  case 16:
+    if (col_blocking) {
+      return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 16, true>(weight_rows, weight_cols, major, minor);
+    } else {
+      return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 16, false>(weight_rows, weight_cols, major, minor);
+    }
+  case 32:
+    if (col_blocking) {
+      return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 32, true>(weight_rows, weight_cols, major, minor);
+    } else {
+      return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 32, false>(weight_rows, weight_cols, major, minor);
+    }
+  case 64:
+    if (col_blocking) {
+      return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 64, true>(weight_rows, weight_cols, major, minor);
+    } else {
+      return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 64, false>(weight_rows, weight_cols, major, minor);
+    }
+  }
+  return false;
+}
 
 }  // namespace cuda
 }  // namespace onnxruntime

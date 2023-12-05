@@ -192,7 +192,7 @@ void run_blkq4_gemm(int m, int n, int k) {
   std::vector<ElementQScale> q_scales;
   std::vector<ElementQOffset> q_zp;
   std::vector<ElementDequant> dequants;
-  onnxruntime::cuda::test::blkq4_weights_gen<ElementDequant, block_size, column_wise_blocking, has_offsets>(
+  onnxruntime::test::blkq4_weights_gen<ElementDequant, block_size, column_wise_blocking, has_offsets>(
       problem_size.k(), problem_size.n(), dequants, q_weights, q_scales, q_zp);
 
   using PrepackT = onnxruntime::cuda::BlockwiseQuantization<

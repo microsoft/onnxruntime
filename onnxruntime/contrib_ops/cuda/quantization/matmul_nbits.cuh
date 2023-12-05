@@ -22,6 +22,16 @@ bool TryMatMul4Bits(
     int shared_mem_per_block,
     cudaStream_t stream);
 
+Status blkq4_fp16_gemm_sm80_dispatch(
+  int block_size,
+  bool column_wise_blocking,
+  int m, int n, int k, cudaStream_t stream,
+  gsl::span<half const> a,
+  gsl::span<uint8_t const> weights,
+  gsl::span<half const> scales,
+  gsl::span<uint8_t const> offsets,
+  gsl::span<half> output);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

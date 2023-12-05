@@ -26,7 +26,29 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 /** Returns the attribute of a Node with a given name. */
-const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name);
+static inline
+const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name) {
+  const auto& attrs = node.GetAttributes();
+  const auto iter = attrs.find(attr_name);
+  return iter == attrs.end() ? nullptr : &iter->second;
+}
+
+template <typename T>
+inline Status TryGetNodeAttribute(const Node& node, const std::string& attr_name, T& value);
+
+template <>
+inline Status TryGetNodeAttribute<int64_t>(const Node& node, const std::string& attr_name, int64_t& value) {
+  const auto* attr = GetNodeAttribute(node, attr_name);
+  if (!attr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node attribute '", attr_name, "' is not set.");
+  }
+  if (!attr->has_i()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node attribute '", attr_name, "' is not an integer.");
+  }
+  value = attr->i();
+  return Status::OK();
+}
+
 
 /** Add a new initializer to 'graph'.
 Checks that new_initializer does not already exist in 'graph' before adding it.
