@@ -42,6 +42,19 @@ std::vector<float> GetFloatDataInRange(float min_val, float max_val, size_t num_
   return data;
 }
 
+std::vector<float> GetSequentialFloatData(size_t count, float start, float step) {
+  std::vector<float> data;
+  data.reserve(count);
+
+  float val = start;
+  for (size_t i = 0; i < count; i++) {
+    data.push_back(val);
+    val += step;
+  }
+
+  return data;
+}
+
 void TryEnableQNNSaver(ProviderOptions& qnn_options) {
   // Allow dumping QNN API calls to file by setting an environment variable that enables the QNN Saver backend.
   constexpr auto kEnableQNNSaverEnvironmentVariableName = "ORT_UNIT_TEST_ENABLE_QNN_SAVER";

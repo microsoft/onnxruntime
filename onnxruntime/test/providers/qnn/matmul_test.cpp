@@ -126,6 +126,19 @@ TEST_F(QnnCPUBackendTests, DISABLED_MatMulOp_Broadcast) {
                     ExpectedEPNodeAssignment::All, 18, 0.0004f);
 }
 
+#if defined(__linux__)
+TEST_F(QnnCPUBackendTests, MatMulOp_PaddingAndBroadcast_BLargerThanA) {
+#else
+// TODO: When fixed, enable MathOpTest.MatMulFloatType from cpu/mat/matmul_test.cc
+// QNN SDK 2.17: Accuracy errors
+TEST_F(QnnCPUBackendTests, DISABLED_MatMulOp_PaddingAndBroadcast_BLargerThanA) {
+#endif
+  std::vector<float> input_data = GetSequentialFloatData(12);
+  RunMatMulOpOpTest(TestInputDef<float>({2, 3, 2}, false, input_data),
+                    TestInputDef<float>({3, 2, 2, 1}, false, input_data),
+                    ExpectedEPNodeAssignment::All, 7);
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 //
 // HTP tests:
