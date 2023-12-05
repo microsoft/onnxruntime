@@ -48,7 +48,9 @@
 #include "core/platform/Barrier.h"
 #include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
+#ifdef _WIN32
 #include "core/platform/tracing.h"
+#endif
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
@@ -461,6 +463,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 void InferenceSession::TraceSessionOptions(const SessionOptions& session_options) {
   LOGS(*session_logger_, INFO) << session_options;
 
+#ifdef _WIN32
   TraceLoggingWrite(telemetry_provider_handle,
                     "SessionOptions",
                     TraceLoggingUInt8(static_cast<UINT8>(session_options.execution_mode), "execution_mode"),
@@ -498,6 +501,8 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
         TraceLoggingString(config_pair.first.c_str(), "Key"),
         TraceLoggingString(config_pair.second.c_str(), "Value"));
   }
+#endif
+
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env)
