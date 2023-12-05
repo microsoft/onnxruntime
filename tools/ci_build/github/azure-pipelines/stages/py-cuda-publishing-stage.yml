@@ -7,33 +7,35 @@ parameters:
     default: 'https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-12-nightly/pypi/upload'
 
 stages:
-- stage: Python_Publishing
-  dependsOn: [Python_Packaging]
-  variables:
-    - name: artifact_feed
-      ${{ if ne(parameters.nightly, '1') }}:
-        value: onnxruntime-cuda-12
-      ${{ else }}:
-        value: ort-cuda-12-nightly
-  jobs:
-  - task: DownloadPipelineArtifact@2
-    inputs:
-      artifact: 'onnxruntime-gpu'
-      targetPath: '$(Build.SourcesDirectory)'
-    DisplayName: 'Download Pipeline Artifact - onnxruntime-gpu'
-  - task: UsePythonVersion@0
-    displayName: 'Use Python 3.x'
-  - script: 'pip install twine==3.4.2'
-    displayName: 'Install Twine'
-  - task: TwineAuthenticate@1
-    displayName: 'Twine Authenticate '
-    inputs:
-      artifactFeed: PublicPackages/$(artifact_feed)
-  - script: 'twine upload 
-              -r $(artifact_feed)  
-              --repository-url ${{ parameters.repository-url }}
-              onnxruntime-gpu/*.whl
-              '
-    workingDirectory: '$(Build.SourcesDirectory)'
-    displayName: 'Uploading wheels to $(artifact_feed)'
-    retryCountOnTaskFailure: 3
+  - stage: Python_Publishing
+    dependsOn: [ Python_Packaging ]
+    variables:
+      - name: artifact_feed
+        ${{ if ne(parameters.nightly, '1') }}:
+          value: onnxruntime-cuda-12
+        ${{ else }}:
+          value: ort-cuda-12-nightly
+    jobs:
+      - job:
+        steps:
+          - task: DownloadPipelineArtifact@2
+            inputs:
+              artifact: 'onnxruntime-gpu'
+              targetPath: '$(Build.SourcesDirectory)'
+            DisplayName: 'Download Pipeline Artifact - onnxruntime-gpu'
+          - task: UsePythonVersion@0
+            displayName: 'Use Python 3.x'
+          - script: 'pip install twine==3.4.2'
+            displayName: 'Install Twine'
+          - task: TwineAuthenticate@1
+            displayName: 'Twine Authenticate '
+            inputs:
+              artifactFeed: PublicPackages/$(artifact_feed)
+          - script: 'twine upload 
+                    -r $(artifact_feed)  
+                    --repository-url ${{ parameters.repository-url }}
+                    onnxruntime-gpu/*.whl
+                    '
+            workingDirectory: '$(Build.SourcesDirectory)'
+            displayName: 'Uploading wheels to $(artifact_feed)'
+            retryCountOnTaskFailure: 3
