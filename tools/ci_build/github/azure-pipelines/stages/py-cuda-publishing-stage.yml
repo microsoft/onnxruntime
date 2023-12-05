@@ -33,7 +33,7 @@ stages:
             displayName: 'Twine Authenticate '
             inputs:
               artifactFeed: PublicPackages/$(artifact_feed)
-          - script: 'twine upload -r $(artifact_feed)  --repository-url $(artifact_feed_url) onnxruntime-gpu/*.whl'
+          - script: ' python -m twine upload -r $(artifact_feed)  --repository-url $(artifact_feed_url) onnxruntime-gpu/*.whl'
             workingDirectory: '$(Build.SourcesDirectory)'
             displayName: 'Uploading wheels to $(artifact_feed)'
             retryCountOnTaskFailure: 3
