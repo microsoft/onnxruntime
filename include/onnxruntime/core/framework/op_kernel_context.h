@@ -186,14 +186,14 @@ class OpKernelContext {
   */
   AllocatorPtr GetAllocator(const OrtDevice& device) const;
 
-#if defined(ENABLE_ATEN) || defined(USE_TENSORRT)
-  Status SetOutputMLValue(int index, const OrtValue& ort_value);
-#endif
-
  protected:
   OpKernelContext(concurrency::ThreadPool* threadpool, const logging::Logger& logger, Stream* stream);
 
   onnxruntime::NodeIndex GetNodeIndex() const;
+
+#ifdef ENABLE_ATEN
+  Status SetOutputMLValue(int index, const OrtValue& ort_value);
+#endif
 
   virtual const OrtValue* GetInputMLValue(int index) const;
   const OrtValue* GetImplicitInputMLValue(int index) const;

@@ -50,7 +50,7 @@ IExecutionFrame::IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
 
 IExecutionFrame::~IExecutionFrame() = default;
 
-#if defined(ENABLE_ATEN) || defined(USE_TENSORRT)
+#ifdef ENABLE_ATEN
 Status IExecutionFrame::SetOutputMLValue(int index, const OrtValue& ort_value) {
   int ort_value_idx = GetNodeIdxToMLValueIdx(index);
   if (ort_value_idx == NodeIndexInfo::kInvalidEntry || static_cast<size_t>(ort_value_idx) >= all_values_size_) {
