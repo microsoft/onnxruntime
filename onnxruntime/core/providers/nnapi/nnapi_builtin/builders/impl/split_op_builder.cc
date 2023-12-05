@@ -135,7 +135,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
       if (num_outputs != SafeInt<uint32_t>(node_unit.Outputs().size()) || num_outputs > split_dims_at_axis) {
         LOGS_DEFAULT(VERBOSE) << "Invalid num_outputs provided.\n."
                               << "The value should be smaller or equal to the size of dimension being split.\n"
-                              << "Or equal to the number of output nodes size. Current num_outputs: "
+                              << "And align with the size of output nodes. Current num_outputs: "
                               << num_outputs;
         return false;
       }
