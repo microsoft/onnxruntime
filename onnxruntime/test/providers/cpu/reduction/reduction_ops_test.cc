@@ -1086,7 +1086,7 @@ TEST(ReductionOpTest, ReduceMax_int32) {
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          // TensorRT: axis must be 0
 #endif
 }
 
@@ -1107,7 +1107,7 @@ TEST(ReductionOpTest, ReduceMax_int64) {
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          // TensorRT: axis must be 0
 #endif
 }
 
@@ -2818,7 +2818,17 @@ TEST(ReductionOpTest, ArgMax) {
                           {1, 1,
                            1, 1,
                            1, 1});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
+  std::unordered_set<std::string> excluded_providers;
+
+  // TensorRT: axis must be 0
+  excluded_providers.insert(kTensorrtExecutionProvider);
+
+#if defined(_WIN32)
+  // QNN: FreeLibrary() call to unload QnnCpu.dll faults on QNN SDK 2.17 on x64 windows (output is accurate).
+  excluded_providers.insert(kQnnExecutionProvider);
+#endif
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 
 TEST(ReductionOpTest, ArgMax_Double_Type) {
@@ -2858,7 +2868,17 @@ TEST(ReductionOpTest, ArgMax_do_not_keepdims) {
                           {1, 1,
                            1, 1,
                            1, 1});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
+  std::unordered_set<std::string> excluded_providers;
+
+  // TensorRT: axis must be 0
+  excluded_providers.insert(kTensorrtExecutionProvider);
+
+#if defined(_WIN32)
+  // QNN: FreeLibrary() call to unload QnnCpu.dll faults on QNN SDK 2.17 on x64 windows (output is accurate).
+  excluded_providers.insert(kQnnExecutionProvider);
+#endif
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 
 TEST(ReductionOpTest, ArgMax_do_not_keepdims_2) {
@@ -2869,7 +2889,17 @@ TEST(ReductionOpTest, ArgMax_do_not_keepdims_2) {
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<int64_t>("reduced", {},
                           {2});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: node1: at least 2 dimensions are required for input
+  std::unordered_set<std::string> excluded_providers;
+
+  // TensorRT: node1: at least 2 dimensions are required for input
+  excluded_providers.insert(kTensorrtExecutionProvider);
+
+#if defined(_WIN32)
+  // QNN: FreeLibrary() call to unload QnnCpu.dll faults on QNN SDK 2.17 on x64 windows (output is accurate).
+  excluded_providers.insert(kQnnExecutionProvider);
+#endif
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 
 TEST(ReductionOpTest, ArgMax_int32) {
@@ -2889,7 +2919,14 @@ TEST(ReductionOpTest, ArgMax_int32) {
                           {1, 1,
                            1, 1,
                            1, 1});
-  test.Run();
+  std::unordered_set<std::string> excluded_providers;
+
+#if defined(_WIN32)
+  // QNN: FreeLibrary() call to unload QnnCpu.dll faults on QNN SDK 2.17 on x64 windows (output is accurate).
+  excluded_providers.insert(kQnnExecutionProvider);
+#endif
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 
 TEST(ReductionOpTest, ArgMax_int32_last_index_nodups) {
@@ -2954,7 +2991,14 @@ TEST(ReductionOpTest, ArgMax_int32_neg_axis) {
                            1, 1,
                            1, 1});
 
-  test.Run();
+  std::unordered_set<std::string> excluded_providers;
+
+#if defined(_WIN32)
+  // QNN: FreeLibrary() call to unload QnnCpu.dll faults on QNN SDK 2.17 on x64 windows (output is accurate).
+  excluded_providers.insert(kQnnExecutionProvider);
+#endif
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 
 TEST(ReductionOpTest, ArgMax_int8) {
@@ -3009,7 +3053,17 @@ TEST(ReductionOpTest, ArgMax2D) {
                         9.0f, 10.0f});
   test.AddOutput<int64_t>("reduced", {3, 1},
                           {1, 0, 1});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
+  std::unordered_set<std::string> excluded_providers;
+
+  // TensorRT: axis must be 0
+  excluded_providers.insert(kTensorrtExecutionProvider);
+
+#if defined(_WIN32)
+  // QNN: FreeLibrary() call to unload QnnCpu.dll faults on QNN SDK 2.17 on x64 windows (output is accurate).
+  excluded_providers.insert(kQnnExecutionProvider);
+#endif
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 
 TEST(ReductionOpTest, ArgMax2D_select_last) {
@@ -3035,7 +3089,17 @@ TEST(ReductionOpTest, ArgMax2D_dim1) {
                         9.0f});
   test.AddOutput<int64_t>("reduced", {3, 1},
                           {0, 0, 0});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  std::unordered_set<std::string> excluded_providers;
+
+  // TensorRT: axis must be 0
+  excluded_providers.insert(kTensorrtExecutionProvider);
+
+#if defined(_WIN32)
+  // QNN: FreeLibrary() call to unload QnnCpu.dll faults on QNN SDK 2.17 on x64 windows (output is accurate).
+  excluded_providers.insert(kQnnExecutionProvider);
+#endif
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 
 TEST(ReductionOpTest, ArgMin) {
@@ -3054,7 +3118,14 @@ TEST(ReductionOpTest, ArgMin) {
   test.AddOutput<int64_t>("reduced", {1, 2, 2},
                           {0, 0,
                            0, 0});
-  test.Run();
+  std::unordered_set<std::string> excluded_providers;
+
+#if defined(_WIN32)
+  // QNN: FreeLibrary() call to unload QnnCpu.dll faults on QNN SDK 2.17 on x64 windows (output is accurate).
+  excluded_providers.insert(kQnnExecutionProvider);
+#endif
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 
 TEST(ReductionOpTest, ArgMin_Double_Type) {
@@ -3113,7 +3184,14 @@ TEST(ReductionOpTest, ArgMin_do_not_keepdims) {
   test.AddOutput<int64_t>("reduced", {2, 2},
                           {0, 0,
                            0, 0});
-  test.Run();
+  std::unordered_set<std::string> excluded_providers;
+
+#if defined(_WIN32)
+  // QNN: FreeLibrary() call to unload QnnCpu.dll faults on QNN SDK 2.17 on x64 windows (output is accurate).
+  excluded_providers.insert(kQnnExecutionProvider);
+#endif
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 
 TEST(ReductionOpTest, ArgMin_do_not_keepdims_2) {
@@ -3123,7 +3201,17 @@ TEST(ReductionOpTest, ArgMin_do_not_keepdims_2) {
   test.AddInput<float>("data", {3},
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<int64_t>("reduced", {}, {0});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: node1: at least 2 dimensions are required for input
+  std::unordered_set<std::string> excluded_providers;
+
+  // TensorRT: node1: at least 2 dimensions are required for input
+  excluded_providers.insert(kTensorrtExecutionProvider);
+
+#if defined(_WIN32)
+  // QNN: FreeLibrary() call to unload QnnCpu.dll faults on QNN SDK 2.17 on x64 windows (output is accurate).
+  excluded_providers.insert(kQnnExecutionProvider);
+#endif
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 
 TEST(ReductionOpTest, ArgMin_do_not_keepdims_2_select_last) {
@@ -3153,7 +3241,14 @@ TEST(ReductionOpTest, ArgMin_int32) {
   test.AddOutput<int64_t>("reduced", {2, 2},
                           {0, 0,
                            0, 0});
-  test.Run();
+  std::unordered_set<std::string> excluded_providers;
+
+#if defined(_WIN32)
+  // QNN: FreeLibrary() call to unload QnnCpu.dll faults on QNN SDK 2.17 on x64 windows (output is accurate).
+  excluded_providers.insert(kQnnExecutionProvider);
+#endif
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 
 TEST(ReductionOpTest, ArgMin_int32_select_last) {
@@ -3194,7 +3289,14 @@ TEST(ReductionOpTest, ArgMin_int32_neg_axis) {
                           {0, 0,
                            0, 0});
 
-  test.Run();
+  std::unordered_set<std::string> excluded_providers;
+
+#if defined(_WIN32)
+  // QNN: FreeLibrary() call to unload QnnCpu.dll faults on QNN SDK 2.17 on x64 windows (output is accurate).
+  excluded_providers.insert(kQnnExecutionProvider);
+#endif
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
 }
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero1) {
