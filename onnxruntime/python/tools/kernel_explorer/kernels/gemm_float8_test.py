@@ -43,6 +43,7 @@ def cast_and_scale(a, dtype: str):
         raise ValueError(dtype)
 
 
+@ke.dispatchable(pattern_arg=0)
 def _test_gemm(
     func, dta: str, dtb: str, dtc: str, transa: bool, transb: bool, m: int, n: int, k: int, alpha=1.0, beta=0.0
 ):
@@ -154,6 +155,7 @@ all_transabs = [(False, False), (False, True)]
 )
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dta, dtb, dtc", dtypes)
+@ke.dispatchable
 def test_ck_gemm(dta, dtb, dtc, transa, transb, m, n, k):
     if dtb == "float16" and transb:
         pytest.skip("Only supports transb when b is fp8")
@@ -206,6 +208,7 @@ class GemmMetric(ke.BandwidthMetric, ke.ComputeMetric):
         return f"{self.duration:>6.2f} us {self.tflops:>5.2f} tflops {self.gbps:5.2f} GB/s " + common
 
 
+@ke.dispatchable(pattern_arg=0)
 def profile_gemm_func(
     func, dta: str, dtb: str, dtc: str, transa: bool, transb: bool, m: int, n: int, k: int, alpha=1.0, beta=0.0
 ):
@@ -264,10 +267,11 @@ def profile_gemm_func(
         ke.report(GemmMetric(impl, f"{dta}_{dtb}_{dtc}", duration_ms, FLOPs, total_bytes, transa, transb, m, n, k))
 
 
-def profile_with_args(dta, dtb, dtc, transa, transb, m, n, k, sort):
+@ke.dispatchable
+def profile_with_args(dta, dtb, dtc, transa, transb, m, n, k):
     dtype_suffix = "_" + dtype_to_suffix(dta) + "_" + dtype_to_suffix(dtb) + "_" + dtype_to_suffix(dtc)
     transab_suffix = "_" + transab_to_suffix((transa, transb))
-    with ke.benchmark(sort):
+    with ke.benchmark():
         profile_gemm_func(
             getattr(ke, "GemmFloat8CK" + dtype_suffix + transab_suffix), dta, dtb, dtc, transa, transb, m, n, k
         )
@@ -280,14 +284,12 @@ def profile_with_args(dta, dtb, dtc, transa, transb, m, n, k, sort):
 def profile():
     for dta, dtb, dtc in dtypes:
         for m, n, k in get_gemm_bert_sizes(full=True):
-            profile_with_args(dta, dtb, dtc, False, False, m, n, k, True)
+            profile_with_args(dta, dtb, dtc, False, False, m, n, k)
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    group = parser.add_argument_group("profile with args")
+    parser = ke.get_argument_parser()
+    group = parser.add_argument_group()
     group.add_argument("dta", choices=["float8_e4m3fn", "float8_e4m3fnuz", "float16"])
     group.add_argument("dtb", choices=["float8_e4m3fn", "float8_e4m3fnuz", "float16"])
     group.add_argument("dtc", choices=["float8_e4m3fn", "float8_e4m3fnuz", "float16"])
@@ -296,12 +298,9 @@ if __name__ == "__main__":
     group.add_argument("m", type=int)
     group.add_argument("n", type=int)
     group.add_argument("k", type=int)
-    group.add_argument("--sort", action="store_true")
 
-    if len(sys.argv) == 1:
+    if not ke.has_args():
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(
-            args.dta, args.dtb, args.dtc, args.transa == "T", args.transb == "T", args.m, args.n, args.k, args.sort
-        )
+        args.dispatch(args.dta, args.dtb, args.dtc, args.transa == "T", args.transb == "T", args.m, args.n, args.k)
