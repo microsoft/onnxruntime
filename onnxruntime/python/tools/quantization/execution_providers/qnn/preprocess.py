@@ -8,8 +8,8 @@ from pathlib import Path
 
 import onnx
 
-from ...onnx_model import ONNXModel
 from ...fusions import FusionGelu, FusionLayerNormalization
+from ...onnx_model import ONNXModel
 from .fusion_lpnorm import FusionLpNormalization
 
 
