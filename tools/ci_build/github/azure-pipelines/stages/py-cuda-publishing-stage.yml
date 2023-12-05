@@ -30,10 +30,6 @@ stages:
           - task: TwineAuthenticate@1
             displayName: 'Twine Authenticate '
             inputs:
-              artifactFeed: PublicPackages/ORT
-          - task: TwineAuthenticate@1
-            displayName: 'Twine Authenticate '
-            inputs:
               artifactFeed: PublicPackages/$(artifact_feed)
           - script: 'twine upload 
                       -r $(artifact_feed)  
