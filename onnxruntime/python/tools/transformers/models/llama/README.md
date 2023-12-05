@@ -377,7 +377,7 @@ python3 -m models.llama.benchmark_all \
 
 ## Introduction
 
-These tools for LLAMA also allow the quantization and optimizaton of Mistral in ORT. 
+These tools for LLaMA-2 also allow the quantization and optimization of Mistral in ORT. 
 
 ## Exporting Mistral
 
