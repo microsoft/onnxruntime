@@ -1108,7 +1108,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
       break;
     }
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
-      // The allocation buffer holds the FLOAT output data since TRT doesn't support DOULBE but FLOAT.
+      // The allocation buffer holds the FLOAT output data since TRT doesn't support DOUBLE but FLOAT.
       // So, we need to cast the data from FLOAT to DOUBEL and then set DOUBLE output data to kernel context.
       SafeInt<int> output_dim_size(1);
       for (int i = 0; i < shape.size(); ++i) {
