@@ -500,6 +500,15 @@ def parse_arguments():
         type=_openvino_verify_device_type,
         help="Build with OpenVINO for specific hardware.",
     )
+    parser.add_argument(
+        "--dnnl_aarch64_runtime", action="store", default="", type=str.lower, help="e.g. --dnnl_aarch64_runtime acl"
+    )
+    parser.add_argument(
+        "--dnnl_acl_root",
+        action="store",
+        default="",
+        help='Path to ACL ROOT DIR. e.g. --dnnl_acl_root "$HOME/ComputeLibrary/"',
+    )
     parser.add_argument("--use_coreml", action="store_true", help="Build with CoreML support.")
     parser.add_argument("--use_webnn", action="store_true", help="Build with WebNN support.")
     parser.add_argument("--use_snpe", action="store_true", help="Build with SNPE support.")
@@ -1087,6 +1096,8 @@ def generate_build_tree(
     if args.use_dnnl:
         cmake_args.append("-Donnxruntime_DNNL_GPU_RUNTIME=" + args.dnnl_gpu_runtime)
         cmake_args.append("-Donnxruntime_DNNL_OPENCL_ROOT=" + args.dnnl_opencl_root)
+        cmake_args.append("-Donnxruntime_DNNL_AARCH64_RUNTIME=" + args.dnnl_aarch64_runtime)
+        cmake_args.append("-Donnxruntime_DNNL_ACL_ROOT=" + args.dnnl_acl_root)
     if args.build_wasm:
         cmake_args.append("-Donnxruntime_ENABLE_WEBASSEMBLY_SIMD=" + ("ON" if args.enable_wasm_simd else "OFF"))
     if args.use_migraphx:
