@@ -266,7 +266,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
           pads[1] = total_padding[0] - pads[0];
           pads[2] = total_padding[1] / 2;
           pads[3] = total_padding[1] - pads[2];
-          if(AutoPadType::SAME_LOWER == auto_pad_type){
+          if (AutoPadType::SAME_LOWER == auto_pad_type) {
             std::swap(pads[0], pads[1]);
             std::swap(pads[2], pads[3]);
           }
