@@ -412,7 +412,11 @@ python -m models.llama.convert_to_onnx -i /path/to/model/directory -o /path/to/o
 The benchmarking scripts in the LLaMA directory support Mistral benchmarking. To benchmark the ORT and HF versions respectively, you can run: 
 
 ```
-python models/llama/benchmark.py -bt ort-convert-to-onnx -p fp16 -m mistralai/Mistral-7B-v0.1 --ort-model-path /dev_data/petermca/mistral/model_opt/model.quant.onnx
+python -m models.llama.benchmark \
+    -bt ort-convert-to-onnx \
+    -p fp16 \
+    -m mistralai/Mistral-7B-v0.1 \
+    --ort-model-path /path/to/model.onnx
 python -m models.llama.benchmark \
     -bt hf-pt-eager \
     -p fp16 \
