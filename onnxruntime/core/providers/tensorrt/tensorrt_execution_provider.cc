@@ -2214,7 +2214,16 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         TensorrtLogger& trt_logger = GetTensorrtLogger();
         auto trt_builder = GetBuilder();
         const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-        auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
+        uint32_t strongTyped = 0;
+        if (strong_typing_enable_) {
+#if NV_TENSORRT_MINOR > 1 && NV_TENSORRT_MAJOR >= 9
+          strongTyped = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
+#else
+          LOGS_DEFAULT(WARNING) << "[TensorRT EP] It is not possible to strictly obey ONNX precison in TRT before verision 9.2."
+                                << "The network will default to fp32 execution if not otherwise specified via precsion flags.";
+#endif
+        }
+        auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch | strongTyped));
 
         auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
         trt_parser->supportsModel(string_buf.data(), string_buf.size(), parser_nodes_list, model_path_);
@@ -2603,7 +2612,16 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   TensorrtLogger& trt_logger = GetTensorrtLogger();
   auto trt_builder = GetBuilder();
   const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-  auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
+  uint32_t strongTyped = 0;
+  if (strong_typing_enable_) {
+#if NV_TENSORRT_MINOR > 1 && NV_TENSORRT_MAJOR >= 9
+    strongTyped = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
+#else
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] It is not possible to strictly obey ONNX precison in TRT before verision 9.2."
+                          << "The network will default to fp32 execution if not otherwise specified via precsion flags.";
+#endif
+  }
+  auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch | strongTyped));
   auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
   auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
   trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
@@ -2787,15 +2805,18 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   if (fp16_enable_ && int8_enable_) {
     trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
     trt_node_name_with_precision += "_fp16_int8";
-    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 and INT8 mode is enabled";
+    strong_typing_enable_ = false;LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 and INT8 mode is enabled";
   } else if (fp16_enable_) {
     trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
     trt_node_name_with_precision += "_fp16";
-    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled";
+    strong_typing_enable_ = false;LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled";
   } else if (int8_enable_) {
     trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
-    trt_node_name_with_precision += "_int8";
+    trt_node_name_with_precision += "_int8";strong_typing_enable_ = false;
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] INT8 mode is enabled";
+  } else {
+      strong_typing_enable_ = true;
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] The network will obey precision given in ONNX model.";
   }
 
   // Set DLA
@@ -3140,7 +3161,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name, builder_.get(),
           &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name],
           &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
-          input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
+          input_shape_ranges_[context->node_name], &tensorrt_mu_,
+            fp16_enable_, int8_enable_, strong_typing_enable_, int8_calibration_cache_available_,
           dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
           runtime_.get(), profiles_[context->node_name], context_memory_sharing_enable_, &max_ctx_mem_size_,
           dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
@@ -3307,10 +3329,13 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       // Set precision
       if (trt_state->fp16_enable && trt_state->int8_enable) {
         trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
-      } else if (trt_state->fp16_enable) {
+      trt_state->strong_typing_enable = false;} else if (trt_state->fp16_enable) {
         trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
-      } else if (trt_state->int8_enable) {
+      trt_state->strong_typing_enable = false;} else if (trt_state->int8_enable) {
         trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
+      trt_state->strong_typing_enable = false;
+      } else {
+        trt_state->strong_typing_enable = true;
       }
 
       // Set DLA (DLA can only run with FP16 or INT8)

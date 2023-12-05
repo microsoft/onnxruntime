@@ -152,6 +152,7 @@ struct TensorrtFuncState {
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool fp16_enable = false;
   bool int8_enable = false;
+  bool strong_typing_enable = true;
   bool int8_calibration_cache_available = false;
   bool dla_enable = false;
   int dla_core = 0;
@@ -261,6 +262,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   size_t max_workspace_size_ = 1 << 30;  // 1GB
   bool fp16_enable_ = false;
   bool int8_enable_ = false;
+  bool strong_typing_enable_ = false;
   bool dla_enable_ = false;
   int dla_core_ = 0;
   bool force_sequential_engine_build_ = false;
