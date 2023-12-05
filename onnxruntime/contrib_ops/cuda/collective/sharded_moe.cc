@@ -3,6 +3,7 @@
 
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "contrib_ops/cuda/bert/transformer_cuda_common.h"
 #include "sharded_moe.h"
 
 using namespace onnxruntime::cuda;
@@ -52,7 +53,9 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
   // Create a {Rank, ExpertsStartIndex} map on Host.
-  ORT_RETURN_IF_ERROR(SynchronizeExpertsStartIndex(allocator, context));
+  AutoDestoryCudaEvent cuda_event;
+  cudaEvent_t& copy_event = cuda_event.Get();
+  ORT_RETURN_IF_ERROR(SynchronizeExpertsStartIndex(allocator, context, copy_event));
 
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
@@ -117,6 +120,9 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   size_t stride_bytes = stride_count * sizeof(CudaT);
   int64_t total_past_rows = 0;
   int64_t total_covered_rows = 0;
+  if (copy_event != nullptr) {
+    CUDA_RETURN_IF_ERROR(cudaEventSynchronize(copy_event));
+  }
   NCCL_RETURN_IF_ERROR(ncclGroupStart());
   for (int rank = 0; rank < nccl_->Size(); ++rank) {
     int64_t experts_start_index = rank_to_experts_start_index_[rank];
@@ -150,7 +156,9 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
 }
 
 template <typename T>
-Status ShardedMoE<T>::SynchronizeExpertsStartIndex(AllocatorPtr& allocator, OpKernelContext* context) const {
+Status ShardedMoE<T>::SynchronizeExpertsStartIndex(AllocatorPtr& allocator,
+                                                   OpKernelContext* context,
+                                                   cudaEvent_t& cuda_event) const {
   if (rank_to_experts_start_index_[0] != std::numeric_limits<int64_t>::min()) {
     return Status::OK();
   }
@@ -177,13 +185,15 @@ Status ShardedMoE<T>::SynchronizeExpertsStartIndex(AllocatorPtr& allocator, OpKe
                                      GetNcclDataType(DataTypeImpl::GetType<IndexType>()),
                                      nccl_->Comm(),
                                      Stream(context)));
+  // The const_cast<> violates the const modifier to make sure the synchronization happens only once per session.
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(const_cast<int64_t*>(rank_to_experts_start_index_.data()),
                                        rank_to_experts_start_index_d.get(),
                                        nccl_->Size() * IndexTypeSize,
                                        cudaMemcpyDeviceToHost,
                                        Stream(context)));
 
-  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(Stream(context)));
+  CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&cuda_event, cudaEventDisableTiming));
+  CUDA_RETURN_IF_ERROR(cudaEventRecord(cuda_event, Stream(context)));
 
   return Status::OK();
 }

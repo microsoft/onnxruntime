@@ -22,6 +22,7 @@
 #include <cuda_runtime_api.h>
 
 #include "core/common/common.h"
+#include "contrib_ops/cuda/bert/transformer_cuda_common.h"
 
 using namespace onnxruntime;
 
@@ -130,14 +131,8 @@ class CutlassMoeFCRunner {
   void dispatch_activations(int64_t* total_rows_before_expert, int num_experts, int local_num_experts,
                             int local_experts_start_index, cudaStream_t stream);
 
-  void get_total_rows_info(int64_t experts_start_index, int64_t local_num_experts, int64_t& total_past_rows, int64_t& total_covered_rows) {
-    int64_t experts_end_index = experts_start_index + local_num_experts - 1;
-    total_past_rows = 0;
-    if (experts_start_index > 0) {
-      total_past_rows = total_rows_before_expert_host_[experts_start_index - 1];
-    }
-    total_covered_rows = total_rows_before_expert_host_[experts_end_index] - total_past_rows;
-  }
+  void get_total_rows_info(int64_t experts_start_index, int64_t local_num_experts, int64_t& total_past_rows,
+                           int64_t& total_covered_rows);
 
  private:
   void configure_ws_ptrs(char* ws_ptr, int num_rows, int hidden_size, int inter_size, int num_experts, int k);
@@ -158,8 +153,12 @@ class CutlassMoeFCRunner {
 
   T* fc1_result_;
 
+  // Cuda events
+  contrib::cuda::AutoDestoryCudaEvent cuda_event_;
+
   int64_t total_past_rows_;
   int64_t total_covered_rows_;
+  // TODO: use pinned memory
   std::vector<int64_t> total_rows_before_expert_host_;
 };
 

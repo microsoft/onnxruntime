@@ -682,16 +682,34 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::dispatch_activations(int64_t* to
   total_rows_before_expert_host_.resize(num_experts);
   cudaMemcpyAsync(total_rows_before_expert_host_.data(), total_rows_before_expert, num_experts * sizeof(int64_t),
                   cudaMemcpyDeviceToHost, stream);
-  // TODO: use cuda event
-  cudaStreamSynchronize(stream);
 
   const int threads = std::min(1024, num_experts);
   const int blocks = (num_experts + threads - 1) / threads;
+
+  cudaEvent_t& copy_event = cuda_event_.Get();
+  cudaEventCreateWithFlags(&copy_event, cudaEventDisableTiming);
+  cudaEventRecord(copy_event, stream);
 
   dispatch_activations_kernel<<<blocks, threads, 0, stream>>>(total_rows_before_expert, num_experts,
                                                               local_num_experts, local_experts_start_index);
 
   get_total_rows_info(local_experts_start_index, local_num_experts, total_past_rows_, total_covered_rows_);
+}
+
+template <typename T, typename WeightType, typename Enable>
+void CutlassMoeFCRunner<T, WeightType, Enable>::get_total_rows_info(int64_t experts_start_index,
+                                                                    int64_t local_num_experts,
+                                                                    int64_t& total_past_rows,
+                                                                    int64_t& total_covered_rows) {
+  int64_t experts_end_index = experts_start_index + local_num_experts - 1;
+  total_past_rows = 0;
+
+  cudaEventSynchronize(cuda_event_.Get());
+
+  if (experts_start_index > 0) {
+    total_past_rows = total_rows_before_expert_host_[experts_start_index - 1];
+  }
+  total_covered_rows = total_rows_before_expert_host_[experts_end_index] - total_past_rows;
 }
 
 // ========================== Permutation things =======================================
