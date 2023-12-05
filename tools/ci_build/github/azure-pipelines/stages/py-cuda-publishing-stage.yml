@@ -22,7 +22,7 @@ stages:
             inputs:
               artifact: 'onnxruntime-gpu'
               targetPath: '$(Build.SourcesDirectory)'
-            DisplayName: 'Download Pipeline Artifact - onnxruntime-gpu'
+            displayName: 'Download Pipeline Artifact - onnxruntime-gpu'
           - task: UsePythonVersion@0
             displayName: 'Use Python 3.x'
           - script: 'pip install twine==3.4.2'
