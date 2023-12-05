@@ -26,13 +26,13 @@
                             '$(IncludeMobileTargets)' == 'true' AND
                             Exists('$(MSBuildExtensionsPath)\Xamarin\Android') AND
                             Exists('$(MSBuildExtensionsPath)\Xamarin\iOS')">
-    <MobileTargets>xamarinios10;monoandroid11.0</MobileTargets>
+    <MobileTargets>xamarinios10;monoandroid12.0</MobileTargets>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Training' AND
                             '$(IncludeMobileTargets)' == 'true' AND
                             Exists('$(MSBuildExtensionsPath)\Xamarin\Android')">
-    <MobileTargets>monoandroid11.0</MobileTargets>
+    <MobileTargets>monoandroid12.0</MobileTargets>
   </PropertyGroup>
 
   <!-- add MAUI targets if building ORT package -->

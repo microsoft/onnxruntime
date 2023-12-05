@@ -234,8 +234,8 @@ def generate_dependencies(xml_text, package_name, version):
             xml_text.append(dml_dependency)
         xml_text.append("</group>")
         if package_name == "Microsoft.ML.OnnxRuntime":
-            # Support monoandroid11.0
-            xml_text.append('<group targetFramework="monoandroid11.0">')
+            # Support monoandroid12.0
+            xml_text.append('<group targetFramework="monoandroid12.0">')
             xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
             xml_text.append("</group>")
             # Support xamarinios10
