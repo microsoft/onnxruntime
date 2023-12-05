@@ -126,7 +126,7 @@ stages:
         BuildStep:
           - script: |
               set -e -x
-              python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
+              python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
                 --build-dir "$(Build.BinariesDirectory)/ios_framework_full" \
                 --staging-dir "$(Build.BinariesDirectory)/staging" \
                 --variant Full \
@@ -134,7 +134,7 @@ stages:
                 -b="--path_to_protoc_exe" -b "$(Build.BinariesDirectory)/installed/bin/protoc"
 
             # Mobile build:
-            #  python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
+            #  python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
             #    --build_dir $(Build.BinariesDirectory)/ios_framework_mobile \
             #    --staging-dir "$(Build.BinariesDirectory)/staging" \
             #    --include_ops_by_config $(Build.SourcesDirectory)/tools/ci_build/github/android/mobile_package.required_operators.config \

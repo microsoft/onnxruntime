@@ -14,10 +14,13 @@ import parameterized
 from numpy.testing import assert_allclose
 from onnx import TensorProto
 from onnx.checker import check_model
+from onnx.defs import onnx_opset_version
 from onnx.helper import make_graph, make_model, make_node, make_opsetid, make_tensor_value_info
 from onnx.numpy_helper import from_array
 
-from onnxruntime import InferenceSession
+from onnxruntime import InferenceSession, get_available_providers
+
+available_providers = [provider for provider in get_available_providers()]
 
 
 class TestFloat8Gemm8(unittest.TestCase):
@@ -89,7 +92,10 @@ class TestFloat8Gemm8(unittest.TestCase):
         ]
         nodes = [n for n in nodes if n is not None]
         graph = make_graph(nodes, "gemm", inputs, [d], inits)
-        onnx_model = make_model(graph, opset_imports=[make_opsetid("", 19)], ir_version=9)
+        opset_imports = [make_opsetid("", onnx_opset_version() - 1)]
+        if domain == "com.microsoft":
+            opset_imports.append(make_opsetid("com.microsoft", 1))
+        onnx_model = make_model(graph, opset_imports=opset_imports, ir_version=9)
         if domain != "com.microsoft":
             check_model(onnx_model)
         return onnx_model
@@ -192,21 +198,27 @@ class TestFloat8Gemm8(unittest.TestCase):
         self.assertEqual(expected.shape, y.shape)
         self.assertEqual(expected.dtype, y.dtype)
 
+    @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running without CUDA.")
     def test_model_gemm_float(self):
         self.common_test_model_gemm("FLOAT", transA=1, rtol=1e-3)
 
+    @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running without CUDA.")
     def test_model_gemm_float_default_values(self):
         self.common_test_model_gemm("FLOAT", transA=1, rtol=1e-3, activation=None)
 
+    @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running without CUDA.")
     def test_model_gemm_float_relu(self):
         self.common_test_model_gemm("FLOAT", transA=1, rtol=1e-3, activation="RELU")
 
+    @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running without CUDA.")
     def test_model_gemm_float_gelu(self):
         self.common_test_model_gemm("FLOAT", transA=1, rtol=1e-3, activation="GELU")
 
+    @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running without CUDA.")
     def test_model_gemm_float_bias(self):
         self.common_test_model_gemm("FLOAT", transA=1, beta=1.0, rtol=1e-3)
 
+    @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running without CUDA.")
     def test_model_gemm_float16(self):
         self.common_test_model_gemm(
             "FLOAT16",
@@ -215,6 +227,8 @@ class TestFloat8Gemm8(unittest.TestCase):
             transB=1,
         )
 
+    @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running without CUDA.")
+    @unittest.skipIf(not hasattr(TensorProto, "FLOAT8E4M3FN"), reason="needs onnx>=1.14.0")
     def test_model_gemm_float8_e4m3(self):
         self.common_test_model_gemm(
             "FLOAT8E4M3FN",
@@ -226,6 +240,7 @@ class TestFloat8Gemm8(unittest.TestCase):
         )
 
     @parameterized.parameterized.expand(list(itertools.product([0, 1], [0, 1])))
+    @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running without CUDA.")
     def test_combinations_square_matrices(self, transA, transB):
         self.common_test_model_gemm("FLOAT", transA=transA, transB=transB, rtol=1e-3)
 
@@ -237,6 +252,7 @@ class TestFloat8Gemm8(unittest.TestCase):
             ((2, 3), (2, 5), 1, 0),
         ]
     )
+    @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running without CUDA.")
     def test_combinations(self, shapeA, shapeB, transA, transB):
         model = make_model(
             make_graph(
@@ -256,7 +272,8 @@ class TestFloat8Gemm8(unittest.TestCase):
                     make_tensor_value_info("B", TensorProto.FLOAT, [None, None]),
                 ],
                 [make_tensor_value_info("Y", TensorProto.FLOAT, [None, None])],
-            )
+            ),
+            opset_imports=[make_opsetid("", 19), make_opsetid("com.microsoft", 1)],
         )
 
         sess = InferenceSession(model.SerializeToString(), providers=["CUDAExecutionProvider", "CPUExecutionProvider"])

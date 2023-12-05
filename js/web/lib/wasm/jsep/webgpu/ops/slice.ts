@@ -5,9 +5,9 @@ import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, ProgramInfo, TensorInfo} from '../types';
+import {ComputeContext, ProgramInfo, ProgramUniform, TensorInfo} from '../types';
 
-import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, getElementAt, IndicesHelper, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
 
 export interface SliceAttributes extends AttributeWithCacheKey {
   readonly starts: number[];
@@ -82,12 +82,16 @@ const calculateInputIndicesImpl =
           var inputIndices: ${input.type.indices};
           var carry = 0u;
           for (var i = ${inputShape.length}; i >= 0; i--) {
+            let input_shape_i = ${getElementAt('uniforms.input_shape', 'i', inputShape.length)};
+            let steps_i = ${getElementAt('uniforms.steps', 'i', inputShape.length)};
+            let signs_i = ${getElementAt('uniforms.signs', 'i', inputShape.length)};
+            let starts_i = ${getElementAt('uniforms.starts', 'i', inputShape.length)};
             var outputIndex = ${outputShape.length === 1 ? 'outputIndices' : 'outputIndices[i]'};
-            var inputIndex = outputIndex * steps[i] + starts[i] + carry;
-            carry = inputIndex / inputShape[i];
-            inputIndex = inputIndex % inputShape[i];
-            if (signs[i] < 0) {
-              inputIndex = inputShape[i] - inputIndex - 1u + starts[i];
+            var inputIndex = outputIndex * steps_i + starts_i + carry;
+            carry = inputIndex / input_shape_i;
+            inputIndex = inputIndex % input_shape_i;
+            if (signs_i < 0) {
+              inputIndex = input_shape_i - inputIndex - 1u + starts_i;
             }
             ${inputShape.length === 1 ? 'inputIndices' : 'inputIndices[i]'} = inputIndex;
           }
@@ -110,6 +114,10 @@ const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: Slice
 
   const ends = attributes.ends.map((end, i) => fixStartEndValues(end, i, inputShape, axes, steps));
 
+  if (axes.length !== starts.length || axes.length !== ends.length) {
+    throw new Error('start, ends and axes should have the same number of elements');
+  }
+
   if (axes.length !== inputShape.length) {
     for (let i = 0; i < inputShape.length; ++i) {
       if (!axes.includes(i)) {
@@ -131,40 +139,44 @@ const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: Slice
       array[i] = -step;
     }
   });
-
+  // Output rank is expected to be less than or equal to the input rank.
   const outputShape = inputShape.slice(0);
   axes.forEach((axis, _) => {
     outputShape[axis] = Math.ceil((ends[axis] - starts[axis]) / steps[axis]);
   });
-
   const outputTensorInfo: TensorInfo = {dims: outputShape, dataType: inputs[0].dataType};
 
-  const output = outputVariable('output', inputs[0].dataType, outputShape);
-  const input = inputVariable('input', inputs[0].dataType, inputShape);
+  const output = outputVariable('output', inputs[0].dataType, outputShape.length);
+  const input = inputVariable('input', inputs[0].dataType, inputs[0].dims.length);
   const outputSize = ShapeUtil.size(outputShape);
+  const uniforms: UniformsArrayType = [
+    {name: 'outputSize', type: 'u32'}, {name: 'starts', type: 'u32', length: starts.length},
+    {name: 'signs', type: 'i32', length: signs.length}, {name: 'steps', type: 'u32', length: steps.length}
+  ];
+
+  const programUniforms: ProgramUniform[] = [
+    {type: 'uint32', data: outputSize}, {type: 'uint32', data: starts}, {type: 'int32', data: signs},
+    {type: 'uint32', data: steps}, ...createTensorShapeVariables(inputs[0].dims),
+    ...createTensorShapeVariables(outputShape)
+  ];
 
   const getShaderSource = (shaderHelper: ShaderHelper) => `
-      ${shaderHelper.declareVariables(input, output)}
-        const signs = array<i32, ${signs.length}>(${signs.map(i => `${i}i`).join(',')});
-        const starts = array<u32, ${starts.length}>(${starts.map(i => `${i}u`).join(',')});
-        const ends = array<u32, ${ends.length}>(${ends.map(i => `${i}u`).join(',')});
-        const steps = array<u32, ${steps.length}>(${steps.map(i => `${i}u`).join(',')});
-        const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
-
+      ${shaderHelper.registerUniforms(uniforms).declareVariables(input, output)}
         ${calculateInputIndicesImpl(input, output, inputShape, outputShape)}
         ${shaderHelper.mainStart()}
-          ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
+          ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
           let outputIndices = ${output.offsetToIndices('global_idx')};
           let inputIndices = calculateInputIndices(outputIndices);
           ${output.setByOffset('global_idx', input.getByIndices('inputIndices'))}
       }`;
   return {
     name: 'Slice',
-    shaderCache: {hint: `${attributes.cacheKey}|${inputs[4]?.dims ?? ''}`},
+    shaderCache: {hint: `${signs.length}_${starts.length}_${steps.length}`, inputDependencies: ['rank']},
     getShaderSource,
     getRunData: () => ({
       outputs: [outputTensorInfo],
       dispatchGroup: {x: Math.ceil(inputSize / 64 /* workgroup size */)},
+      programUniforms
     })
   };
 };

@@ -1,3 +1,13 @@
+# Contents
+ - [LLaMA-2](#llama-2)
+   - [Exporting LLaMA-2](#exporting-llama-2)
+   - [Benchmarking LLaMA-2](#benchmark-llama-2)
+ - [Mistral](#mistral)
+   - [Exporting Mistral](#exporting-mistral)
+   - [Optimizing and Quantizing Mistral](#optimizing-and-quantizing-mistral)
+   - [Benchmarking Mistral](#benchmark-mistral)
+
+
 # LLaMA-2
 
 ## Prerequisites
@@ -135,7 +145,7 @@ $ python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output l
 $ python3 -m onnxruntime.transformers.models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --use_gqa
 ```
 
-Note: GroupQueryAttention currently runs on Linux for FP16 CUDA and INT4 CUDA models, and it can provide faster inference than MultiHeadAttention, especially for large sequence lengths (e.g. 1024 or larger). For the best performance, you should pre-allocate the KV cache buffers to have size `(batch_size, num_heads, max_sequence_length, head_size)` so that the past KV and present KV caches share the same memory. You also need to bind them with ONNX Runtime's [IO binding](https://onnxruntime.ai/docs/api/python/api_summary.html#iobinding).
+Note: GroupQueryAttention currently works with the FP16 CUDA and INT4 CUDA models, and it can provide faster inference than MultiHeadAttention, especially for large sequence lengths (e.g. 1024 or larger). For the best performance, you should pre-allocate the KV cache buffers to have size `(batch_size, num_heads, max_sequence_length, head_size)` so that the past KV and present KV caches share the same memory. You also need to bind them with ONNX Runtime's [IO binding](https://onnxruntime.ai/docs/api/python/api_summary.html#iobinding).
 
 Here is an example of how you can bind directly to `torch.tensor` objects:
 ```
@@ -340,6 +350,18 @@ CUDA_VISIBLE_DEVICES=4 python3 -m models.llama.benchmark \
     --device cuda
 ```
 
+9. ONNX Runtime, FP16, convert_to_onnx, LLaMA-2 70B shard to 4 GPUs
+```
+CUDA_VISIBLE_DEVICES=4,5,6,7 bash benchmark_70b_model.sh 4 \
+    --benchmark-type ort-convert-to-onnx \
+    --ort-model-path ./llama2-70b-dis/rank_{}_Llama-2-70b-hf_decoder_merged_model_fp16.onnx \
+    --model-name meta-llama/Llama-2-70b-hf \
+    --precision fp16 \
+    --device cuda \
+    --warmup-runs 5 \
+    --num-runs 100
+```
+
 You can profile a variant by adding the `--profile` flag and providing one batch size and sequence length combination.
 
 ### Benchmark All
@@ -360,3 +382,58 @@ python3 -m models.llama.benchmark_all \
     --num-runs 1000 \
     --timeout 60  # number of minutes before moving to the next benchmark
 ```
+
+# Mistral
+
+## Introduction
+
+These tools for LLaMA-2 also allow the quantization and optimization of Mistral in ORT. 
+
+## Exporting Mistral
+
+There is currently one supported way to export Mistral to ONNX format:
+
+### [Hugging Face Optimum](https://github.com/huggingface/optimum)
+
+
+The following command will export Mistral in full precision:
+```
+python -m optimum.exporters.onnx -m mistralai/Mistral-7B-v0.1 --library-name transformers /path/to/model/directory
+```
+
+## Optimizing and Quantizing Mistral
+
+To quantize Mistral to FP16 and apply fusion optimizations, you can run the following command:
+```
+python -m models.llama.convert_to_onnx -i /path/to/model/directory -o /path/to/optimized_model/directory -p fp16 --optimize_optimum -m mistralai/Mistral-7B-v0.1
+```
+
+## Benchmark Mistral
+The benchmarking scripts in the LLaMA directory support Mistral benchmarking. To benchmark the ORT version, you can run: 
+
+```
+python -m models.llama.benchmark \
+    -bt ort-convert-to-onnx \
+    -p fp16 \
+    -m mistralai/Mistral-7B-v0.1 \
+    --ort-model-path /path/to/model.onnx
+```
+
+To benchmark the Hugging Face implementation without `torch.compile`:
+
+```
+python -m models.llama.benchmark \
+    -bt hf-pt-eager \
+    -p fp16 \
+    -m mistralai/Mistral-7B-v0.1
+```
+
+And to benchmark the Hugging Face implementation with `torch.compile`:
+
+```
+python -m models.llama.benchmark \
+    -bt hf-pt-compile \
+    -p fp16 \
+    -m mistralai/Mistral-7B-v0.1
+```
+

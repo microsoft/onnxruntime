@@ -34,17 +34,17 @@ constexpr int NumReduceDim = 3;
 
 template <typename T, typename AccT, bool WithSwish>
 auto GetCKGroupNormNHWCTypeStringAndOps() {
-  using InDataType = typename CKDataTypeAdaptor<T>::type;
-  using OutDataType = typename CKDataTypeAdaptor<T>::type;
-  using AccDataType = typename CKDataTypeAdaptor<AccT>::type;
+  using XDataType = typename CKDataTypeAdaptor<T>::type;
+  using YDataType = typename CKDataTypeAdaptor<T>::type;
+  using SaveMeanInvStdDataType = typename CKDataTypeAdaptor<AccT>::type;
   using GammaDataType = float;
   using BetaDataType = float;
 
   using Activation = std::conditional_t<WithSwish, Swish, Pass>;
 
   std::vector<std::pair<std::string, onnxruntime::rocm::tunable::Op<GroupNormNHWCParams<T>>>> ret;
-  for (auto&& impl : internal::GetDeviceGroupNormInstances<InDataType, GammaDataType, BetaDataType, AccDataType,
-                                                           OutDataType, Activation, Rank, NumReduceDim>()) {
+  for (auto&& impl : internal::GetDeviceGroupNormInstances<XDataType, GammaDataType, BetaDataType, YDataType,
+                                                           SaveMeanInvStdDataType, Activation, Rank, NumReduceDim>()) {
     std::string swish_suffix = WithSwish ? "_Swish" : "_Pass";
     auto type_string = onnxruntime::MakeString(impl->GetTypeString()) + swish_suffix;
     auto invoker = impl->MakeInvokerPointer();
@@ -69,6 +69,8 @@ auto GetCKGroupNormNHWCTypeStringAndOps() {
                                            gamma_beta_strides,  // gammaStrides
                                            gamma_beta_strides,  // betaStrides
                                            in_out_strides,      // yStrides
+                                           {0, 0},              // saveMeanStrides
+                                           {0, 0},              // saveInvStdStrides
                                            reduce_dims,         // reduceDims
                                            params->epsilon,
                                            params->src,

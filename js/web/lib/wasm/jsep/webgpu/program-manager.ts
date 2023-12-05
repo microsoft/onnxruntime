@@ -68,7 +68,7 @@ export class ProgramManager {
           this.backend.querySetCount * 8, GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST);
 
       this.backend.endComputePass();
-      this.backend.getCommandEncoder().resolveQuerySet(this.backend.querySet, 0, 2, this.backend.queryData.buffer, 0);
+      this.backend.getCommandEncoder().resolveQuerySet(this.backend.querySet!, 0, 2, this.backend.queryData.buffer, 0);
       this.backend.getCommandEncoder().copyBufferToBuffer(
           this.backend.queryData.buffer, 0, syncData.buffer, 0, this.backend.querySetCount * 8);
       this.backend.flush();
@@ -77,7 +77,7 @@ export class ProgramManager {
       const kernelInfo = this.backend.kernels.get(kernelId)!;
       const kernelName = `[${kernelInfo[0]}] ${kernelInfo[1]}`;
 
-      syncData.buffer.mapAsync(GPUMapMode.READ).then(() => {
+      void syncData.buffer.mapAsync(GPUMapMode.READ).then(() => {
         const mappedData = new BigUint64Array(syncData.buffer.getMappedRange());
         const startTimeU64 = mappedData[0];
         const endTimeU64 = mappedData[1];
@@ -105,8 +105,8 @@ export class ProgramManager {
           outputShapes += `output[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
         });
         // eslint-disable-next-line no-console
-        console.log(`[profiling] kernel "${kernelId}|${kernelName}" ${inputShapes}${outputShapes}execution time: ${
-            endTime - startTime} ns`);
+        console.log(`[profiling] kernel "${kernelId}|${kernelName}|${buildArtifact.programInfo.name}" ${inputShapes}${
+            outputShapes}execution time: ${endTime - startTime} ns`);
       });
     }
 
