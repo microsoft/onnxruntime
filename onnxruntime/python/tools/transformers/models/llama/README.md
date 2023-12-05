@@ -1,3 +1,13 @@
+# Contents
+ - [LLaMA-2](#llama-2)
+   - [Exporting LLaMa-2](#exporting-llama-2)
+   - [Benchmarking LLaMa-2](#benchmark-llama-2)
+ - [Mistral](#mistral)
+   - [Exporting Mistral](#exporting-mistral)
+   - [Optimizing and Quantizing Mistral](#optimizing-and-quantizing-mistral)
+   - [Benchmarking Mistral](#benchmark-mistral)
+
+
 # LLaMA-2
 
 ## Prerequisites
@@ -391,7 +401,7 @@ The following command will export Mistral in full precision:
 python -m optimum.exporters.onnx -m mistralai/Mistral-7B-v0.1 --library-name transformers /path/to/model/directory
 ```
 
-## Optimizing & Quantizing Mistral
+## Optimizing and Quantizing Mistral
 
 To quantize Mistral to FP16 and apply fusion optimizations, you can run the following command:
 ```
