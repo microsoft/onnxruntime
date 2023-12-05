@@ -1,6 +1,6 @@
 # Contents
  - [LLaMA-2](#llama-2)
-   - [Exporting LLaMa-2](#exporting-llama-2)
+   - [Exporting LLaMA-2](#exporting-llama-2)
    - [Benchmarking LLaMa-2](#benchmark-llama-2)
  - [Mistral](#mistral)
    - [Exporting Mistral](#exporting-mistral)
