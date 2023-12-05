@@ -190,7 +190,7 @@ def get_model(args: argparse.Namespace):
 
     # There are multiple sources that the model could come from:
     # 1) Benchmark LLaMA-2 from unofficial source on Hugging Face
-    # 2) Benchmark LLaMA-2 from official source on Hugging Face, which r?equires an authentication token
+    # 2) Benchmark LLaMA-2 from official source on Hugging Face, which requires an authentication token
     # 3) Benchmark LLaMA-2 from local download of model
     # 4) Benchmark LLaMA-2 from Microsoft (already optimized, available at https://github.com/microsoft/Llama-2-Onnx)
     # 5) Benchmark LLaMA-2 from convert_to_onnx

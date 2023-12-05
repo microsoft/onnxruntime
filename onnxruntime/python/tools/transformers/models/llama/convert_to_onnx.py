@@ -572,7 +572,7 @@ def get_args():
         "--input",
         required=False,
         default=os.path.join("."),
-        help="Directory path to PyTorch model and associated files if saved on disk, or ONNX model file location if only_optimize is passed.",
+        help="Directory path to PyTorch model and associated files if saved on disk, or ONNX model file location if optimize_optimum is passed.",
     )
 
     parser.add_argument(
@@ -743,7 +743,7 @@ def get_args():
         action="store_true",
         help="Avoid exporting model, only apply quantizations and optimizations to existing model exported from optimum.",
     )
-    parser.set_defaults(only_optimize=False)
+    parser.set_defaults(optimize_optimum=False)
 
     args = parser.parse_args()
     return args
@@ -753,8 +753,8 @@ def main():
     if version.parse(torch.__version__) < version.parse("2.2.0") and "2.2.0.dev" not in torch.__version__:
         # Second predicate is for comparing nightly (ex: 2.2.0.dev20230920 vs 2.2.0) since first predicate is false
         # in that scenario. It can be removed when torch v2.2.0 is released in stable.
-        logger.warning(f"Detected PyTorch version {torch.__version__}. Please upgrade and use v2.2.0 or newer.")
-        # return
+        logger.error(f"Detected PyTorch version {torch.__version__}. Please upgrade and use v2.2.0 or newer.")
+        return
 
     args = get_args()
     setup_logger(args.verbose)
