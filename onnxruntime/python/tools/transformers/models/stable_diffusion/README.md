@@ -54,7 +54,8 @@ python3 -m pip install --upgrade pip
 python3 -m pip install build/Linux/Release/dist/onnxruntime_gpu-1.17.0-cp310-cp310-linux_x86_64.whl --force-reinstall
 ```
 
-If the GPU is not A100, change `CMAKE_CUDA_ARCHITECTURES=80` in the command line according to the GPU compute capacity.
+If the GPU is not A100, change `CMAKE_CUDA_ARCHITECTURES=80` in the command line according to the GPU compute capacity (like 89 for RTX 4090, or 86 for RTX 3090).
+If your machine has less than 64GB memory, replace `--parallel` by `--parallel 4 --nvcc_threads 1 ` to avoid out of memory.
 
 #### Install required packages
 ```
@@ -76,27 +77,46 @@ For example:
 `--work-dir WORK_DIR` can be used to load or save models under the given directory. You can download the [optimized ONNX models of Stable Diffusion XL 1.0](https://huggingface.co/tlwu/stable-diffusion-xl-1.0-onnxruntime#usage-example) to save time in running the XL demo.
 
 #### Generate an image guided by a text prompt
-```python3 demo_txt2img.py "astronaut riding a horse on mars"```
+```
+python3 demo_txt2img.py "astronaut riding a horse on mars"
+```
 
 #### Generate an image with Stable Diffusion XL guided by a text prompt
-```python3 demo_txt2img_xl.py "starry night over Golden Gate Bridge by van gogh"```
+```
+python3 demo_txt2img_xl.py "starry night over Golden Gate Bridge by van gogh"
+
+python3 demo_txt2img_xl.py --enable-refiner "starry night over Golden Gate Bridge by van gogh"
+```
 
 If you do not provide prompt, the script will generate different image sizes for a list of prompts for demonstration.
 
 ### Generate an image guided by a text prompt using LCM LoRA
 ```
-python3 demo_txt2img_xl.py "Self-portrait oil painting, a beautiful cyborg with golden hair, 8k" --scheduler LCM --lora-weights latent-consistency/lcm-lora-sdxl --denoising-steps 4
+python3 demo_txt2img_xl.py --scheduler LCM --lora-weights latent-consistency/lcm-lora-sdxl --denoising-steps 4 "Self-portrait oil painting, a beautiful cyborg with golden hair, 8k"
 ```
+
 #### Generate an image with SDXL LCM model guided by a text prompt
 ```
-python3 demo_txt2img_xl.py --lcm --disable-refiner "an astronaut riding a rainbow unicorn, cinematic, dramatic"
+python3 demo_txt2img_xl.py --lcm "an astronaut riding a rainbow unicorn, cinematic, dramatic"
+```
+
+#### Generate an image with SD-Turbo or SDXL-Turbo model guided by a text prompt
+It is recommended to use LCM or EulerA scheduler to run SD-Turbo or SDXL-Turbo model.
+```
+python3 demo_txt2img.py --version sd-turbo "little cute gremlin wearing a jacket, cinematic, vivid colors, intricate masterpiece, golden ratio, highly detailed"
+
+python3 demo_txt2img_xl.py --version xl-turbo "little cute gremlin wearing a jacket, cinematic, vivid colors, intricate masterpiece, golden ratio, highly detailed"
 ```
 
 #### Generate an image with a text prompt using a control net
-```
-python3 demo_txt2img.py "Stormtrooper's lecture in beautiful lecture hall" --controlnet-type depth --controlnet-scale 1.0
+Control Net is supported for 1.5, SDXL base and SDXL-Turbo models in this demo.
 
-python3 demo_txt2img_xl.py "young Mona Lisa" --controlnet-type canny --controlnet-scale 0.5 --scheduler UniPC --disable-refiner
+```
+wget https://huggingface.co/lllyasviel/sd-controlnet-depth/resolve/main/images/stormtrooper.png
+python3 demo_txt2img_xl.py --controlnet-image stormtrooper.png --controlnet-type depth --controlnet-scale 0.5 --version xl-turbo "Stormtrooper's lecture in beautiful lecture hall"
+
+wget https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png
+python3 demo_txt2img_xl.py --controlnet-type canny --controlnet-scale 0.5 --controlnet-image input_image_vermeer.png --version xl-turbo --height 1024 --width 1024 "portrait of young Mona Lisa with mountain, river and forest in the background"
 ```
 
 ## Optimize Stable Diffusion ONNX models for Hugging Face Diffusers or Optimum

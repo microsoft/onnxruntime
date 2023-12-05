@@ -1,0 +1,84 @@
+parameters:
+- name: OS
+  displayName: Opserating System
+  type: string
+
+- name: SpecificArtifact
+  displayName: Specific Artifact
+  type: string
+  default: ''
+
+- name: BuildId
+  displayName: Build Id
+  type: string
+  default: ''
+
+- name: PoolName
+  type: string
+
+stages:
+- stage: Final_Jar_Testing_${{parameters.OS}}
+  dependsOn:
+    Jar_Packaging
+  jobs:
+  - job:
+    workspace:
+      clean: all
+    ${{ if eq(parameters.OS, 'MacOS') }}:
+      pool:
+        vmImage: ${{ parameters.PoolName }}
+    ${{ else }}:
+      pool: ${{ parameters.PoolName }}
+    variables:
+    - name: runCodesignValidationInjection
+      value: false
+    timeoutInMinutes: 60
+
+    steps:
+    - template: set-version-number-variables-step.yml
+
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Final Jar'
+        ArtifactName: onnxruntime-java
+        TargetPath: '$(Build.BinariesDirectory)/final-jar'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Jar Tools'
+        ArtifactName: onnxruntime-java-tools
+        TargetPath: '$(Build.BinariesDirectory)/final-jar'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+
+    - task: Bash@3
+      inputs:
+        targetType: 'inline'
+        script: |
+          echo "Java Version"
+          java --version
+          mkdir test
+          pushd test
+          jar xf '$(Build.BinariesDirectory)/final-jar/testing.jar'
+          popd
+          # if you want to run the tests in the power shell, you need to replace ':' to ';', that is,  "-cp .;.\test;protobuf-java-3.21.7.jar;onnxruntime-$(OnnxRuntimeVersion).jar"
+          java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.21.7.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
+        workingDirectory: '$(Build.BinariesDirectory)/final-jar'
+      env:
+        ${{ if eq(parameters.OS, 'MacOS') }}:
+          DYLD_LIBRARY_PATH: '$(Build.BinariesDirectory)/final-jar/test:$(DYLD_LIBRARY_PATH)'
+        ${{ if eq(parameters.OS, 'Linux') }}:
+          LD_LIBRARY_PATH: '$(Build.BinariesDirectory)/final-jar/test:$(LD_LIBRARY_PATH)'
+
+    - ${{ if eq(parameters['OS'], 'MacOS') }}:
+      - template: use-xcode-version.yml
+
+    - template: component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
+
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()

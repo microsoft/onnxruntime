@@ -39,11 +39,43 @@ export interface TrainingSession {
    * @param feeds - Representation of the model input.
    * @param fetches - Representation of the model output.
    * detail.
-   * @param options - Optional. A set of options that controls the behavior of model inference.
+   * @param options - Optional. A set of options that controls the behavior of model training.
    * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding
    values.
    */
   runTrainStep(
+      feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
+      options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
+
+  /**
+   * Runs a single optimizer step, which performs weight updates for the trainable parameters using the optimizer model.
+   *
+   * @param options - Optional. A set of options that controls the behavior of model optimizing.
+   */
+  runOptimizerStep(options?: InferenceSession.RunOptions): Promise<void>;
+
+  /**
+   * Run a single eval step with the given inputs and options using the eval model.
+   *
+   * @param feeds - Representation of the model input.
+   * @param options - Optional. A set of options that controls the behavior of model eval step.
+   * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding
+   values.
+   */
+  runEvalStep(feeds: InferenceSession.FeedsType, options?: InferenceSession.RunOptions):
+      Promise<InferenceSession.ReturnType>;
+
+  /**
+   * Run a single eval step with the given inputs and options using the eval model.
+   *
+   * @param feeds - Representation of the model input.
+   * @param fetches - Representation of the model output.
+   * detail.
+   * @param options - Optional. A set of options that controls the behavior of model eval step.
+   * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding
+   values.
+   */
+  runEvalStep(
       feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
       options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
 
@@ -90,14 +122,25 @@ export interface TrainingSession {
   // #region metadata
 
   /**
-   * Get input names of the loaded model.
+   * Get input names of the loaded training model.
    */
-  readonly inputNames: readonly string[];
+  readonly trainingInputNames: readonly string[];
 
   /**
-   * Get output names of the loaded model.
+   * Get output names of the loaded training model.
    */
-  readonly outputNames: readonly string[];
+  readonly trainingOutputNames: readonly string[];
+
+  /**
+   * Get input names of the loaded eval model. Is an empty array if no eval model is loaded.
+   */
+  readonly evalInputNames: readonly string[];
+
+  /**
+   * Get output names of the loaded eval model. Is an empty array if no eval model is loaded.
+   */
+  readonly evalOutputNames: readonly string[];
+
   // #endregion
 }
 
