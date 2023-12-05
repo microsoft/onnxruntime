@@ -16,7 +16,7 @@ from llama_torch import setup_torch_model
 from onnx_model import OnnxModel
 from optimizer import optimize_model
 from packaging import version
-from transformers import AutoConfig, AutoModelForCausalLM, LlamaConfig, LlamaForCausalLM, PretrainedConfig
+from transformers import AutoConfig, AutoModelForCausalLM, PretrainedConfig
 
 from onnxruntime import quantization as ort_quantization
 from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
