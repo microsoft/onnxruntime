@@ -1053,42 +1053,61 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
                         size_t output_index,
                         size_t output_type,
                         std::vector<IAllocatorUniquePtr<void>>& scratch_buffers,
-                        std::unordered_map<char const*, void*>& buffers,
                         OrtAllocator* alloc,
                         cudaStream_t stream) {
   auto allocator = allocator_map[output_name];
   auto& shape = allocator->getOutputShape();
   OrtValue* out = nullptr;
 
+  auto& output_tensor = ctx.GetOutput(output_index, shape);
+
   switch (output_type) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
-      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, allocator->getBuffer(), allocator->getSize(),
-                                                                     shape.data(), shape.size(), Ort::TypeToTensorType<float>::type, &out));
+      auto output_tensor_ptr = output_tensor.GetTensorMutableData<float>();
+      if (output_tensor_ptr == nullptr) {
+        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(float)));
+      }
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), allocator->getSize(), cudaMemcpyDeviceToDevice, stream));
       break;
     }
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
-      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, allocator->getBuffer(), allocator->getSize(),
-                                                                     shape.data(), shape.size(), Ort::TypeToTensorType<uint16_t>::type, &out));
+      auto output_tensor_ptr = output_tensor.GetTensorMutableData<uint16_t>();
+      if (output_tensor_ptr == nullptr) {
+        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(uint16_t)));
+      }
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), allocator->getSize(), cudaMemcpyDeviceToDevice, stream));
       break;
     }
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
-      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, allocator->getBuffer(), allocator->getSize(),
-                                                                     shape.data(), shape.size(), Ort::TypeToTensorType<bool>::type, &out));
+      auto output_tensor_ptr = output_tensor.GetTensorMutableData<bool>();
+      if (output_tensor_ptr == nullptr) {
+        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(bool)));
+      }
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), allocator->getSize(), cudaMemcpyDeviceToDevice, stream));
       break;
     }
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
-      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, allocator->getBuffer(), allocator->getSize(),
-                                                                     shape.data(), shape.size(), Ort::TypeToTensorType<int8_t>::type, &out));
+      auto output_tensor_ptr = output_tensor.GetTensorMutableData<int8_t>();
+      if (output_tensor_ptr == nullptr) {
+        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(int8_t)));
+      }
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), allocator->getSize(), cudaMemcpyDeviceToDevice, stream));
       break;
     }
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
-      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, allocator->getBuffer(), allocator->getSize(),
-                                                                     shape.data(), shape.size(), Ort::TypeToTensorType<uint8_t>::type, &out));
+      auto output_tensor_ptr = output_tensor.GetTensorMutableData<uint8_t>();
+      if (output_tensor_ptr == nullptr) {
+        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(uint8_t)));
+      }
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), allocator->getSize(), cudaMemcpyDeviceToDevice, stream));
       break;
     }
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
-      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, allocator->getBuffer(), allocator->getSize(),
-                                                                     shape.data(), shape.size(), Ort::TypeToTensorType<int32_t>::type, &out));
+      auto output_tensor_ptr = output_tensor.GetTensorMutableData<int32_t>();
+      if (output_tensor_ptr == nullptr) {
+        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(int32_t)));
+      }
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), allocator->getSize(), cudaMemcpyDeviceToDevice, stream));
       break;
     }
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
@@ -1103,11 +1122,11 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
           output_dim_size *= shape[i];
         }
       }
-      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, output_dim_size * sizeof(int64_t)));
-      auto data = scratch_buffers.back().get();
-      cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(allocator->getBuffer()), reinterpret_cast<int64_t*>(data), output_dim_size);
-      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, data, output_dim_size * sizeof(int64_t),
-                                                                     shape.data(), shape.size(), Ort::TypeToTensorType<int64_t>::type, &out));
+      auto output_tensor_ptr = output_tensor.GetTensorMutableData<int64_t>();
+      if (output_tensor_ptr == nullptr) {
+        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(int64_t)));
+      }
+      cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(allocator->getBuffer()), reinterpret_cast<int64_t*>(output_tensor_ptr), output_dim_size);
       break;
     }
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
@@ -1122,11 +1141,11 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
           output_dim_size *= shape[i];
         }
       }
-      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, output_dim_size * sizeof(double)));
-      auto data = scratch_buffers.back().get();
-      cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(allocator->getBuffer()), reinterpret_cast<double*>(data), output_dim_size);
-      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, data, output_dim_size * sizeof(double),
-                                                                     shape.data(), shape.size(), Ort::TypeToTensorType<double>::type, &out));
+      auto output_tensor_ptr = output_tensor.GetTensorMutableData<double>();
+      if (output_tensor_ptr == nullptr) {
+        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(double)));
+      }
+      cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(allocator->getBuffer()), reinterpret_cast<double*>(output_tensor_ptr), output_dim_size);
       break;
     }
     default: {
@@ -1134,7 +1153,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
                              "TensorRT EP output tensor data type: " + std::to_string(output_type) + " not supported.");
     }
   }
-  ctx.SetOutput(output_index, *out);
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
   return Status::OK();
 }
 
@@ -3381,7 +3400,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           if (index_iter != output_indexes.end()) {
             output_index = index_iter->second;
           }
-          auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type, scratch_buffers, buffers, alloc, stream);
+          auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type, scratch_buffers, alloc, stream);
           if (status != Status::OK()) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
           }
