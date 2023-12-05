@@ -132,7 +132,8 @@ constexpr const char* kMinSeqLenForFlashAttentionPackedQKV = "ORT_MIN_SEQ_LEN_FL
 // Default value for the above setting.
 constexpr int kDefaultMinSeqLenForFlashAttentionPackedQKV = 513;
 
-// Environment variable to enable loading more KV data in flight in DecoderMaskedMultiHeadAttention/DecoderMaskedSelfAttention kernels
+// Environment variable to enable loading more KV data in flight in 
+// DecoderMaskedMultiHeadAttention/DecoderMaskedSelfAttention kernels
 constexpr const char* kDecoderMaskedAttentionLoadKVDataInFlight = "ORT_DECODER_MASKED_ATTENTION_LOAD_KV_DATA_IN_FLIGHT";
 
 }  // namespace attention

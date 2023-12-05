@@ -742,6 +742,14 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp32) {
         std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
         execution_providers.push_back(DefaultCudaExecutionProvider());
         tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+        // Test alternate kernel path of loading more KV data "in flight"
+        {
+          ScopedEnvironmentVariables scoped_env_vars{
+              EnvVarMap{{onnxruntime::contrib::attention::kDecoderMaskedAttentionLoadKVDataInFlight, "1"}}};
+
+          tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+        }
       }
     }
   }
@@ -856,6 +864,14 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp16) {
         std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
         execution_providers.push_back(DefaultCudaExecutionProvider());
         tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+        // Test alternate kernel path of loading more KV data "in flight"
+        {
+          ScopedEnvironmentVariables scoped_env_vars{
+              EnvVarMap{{onnxruntime::contrib::attention::kDecoderMaskedAttentionLoadKVDataInFlight, "1"}}};
+
+          tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+        }
       }
     }
   }

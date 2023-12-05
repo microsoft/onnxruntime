@@ -665,7 +665,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
 #pragma unroll
       for (int v_unroll = 0; v_unroll < V_CACHE_DATA_LOAD_UNROLL; ++v_unroll) {
-        if (time_bounds_cond[v_unroll]) {
+        if (time_bounds_cond[v_unroll] && v_unroll == 0) {
           out = fma(logits[v_unroll], v[v_unroll], out);
         }
       }
