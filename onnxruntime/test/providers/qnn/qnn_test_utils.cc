@@ -42,12 +42,21 @@ std::vector<float> GetFloatDataInRange(float min_val, float max_val, size_t num_
   return data;
 }
 
-std::vector<float> GetSequentialFloatData(size_t count, float start, float step) {
+std::vector<float> GetSequentialFloatData(const std::vector<int64_t>& shape, float start, float step) {
+  if (shape.empty()) {
+    return {};
+  }
+
+  int64_t count = 1;
+  for (auto dim : shape) {
+    count *= dim;
+  }
+
   std::vector<float> data;
-  data.reserve(count);
+  data.reserve(static_cast<size_t>(count));
 
   float val = start;
-  for (size_t i = 0; i < count; i++) {
+  for (int64_t i = 0; i < count; i++) {
     data.push_back(val);
     val += step;
   }

@@ -87,12 +87,12 @@ std::vector<float> GetFloatDataInRange(float min_val, float max_val, size_t num_
 /**
  * Returns a float vector with sequential data.
  *
- * \param count The number of data values.
+ * \param shape The tensor shape used to determine the number of values.
  * \param start The starting value.
  * \param step The step size.
  * \return A vector of sequential floats.
  */
-std::vector<float> GetSequentialFloatData(size_t count, float start = 0.0f, float step = 1.0f);
+std::vector<float> GetSequentialFloatData(const std::vector<int64_t>& shape, float start = 0.0f, float step = 1.0f);
 
 // Class that defines an input that can be created with ModelTestBuilder.
 // Defines whether the input is an initializer and if the data should be randomized or if

@@ -133,9 +133,10 @@ TEST_F(QnnCPUBackendTests, DISABLED_MatMulOp_PaddingAndBroadcast_BLargerThanA) {
 // QNN SDK 2.17: Accuracy errors
 TEST_F(QnnCPUBackendTests, MatMulOp_PaddingAndBroadcast_BLargerThanA) {
 #endif
-  std::vector<float> input_data = GetSequentialFloatData(12);
-  RunMatMulOpOpTest(TestInputDef<float>({2, 3, 2}, false, input_data),
-                    TestInputDef<float>({3, 2, 2, 1}, false, input_data),
+  std::vector<int64_t> input0_shape = {2, 3, 2};
+  std::vector<int64_t> input1_shape = {3, 2, 2, 1};
+  RunMatMulOpOpTest(TestInputDef<float>(input0_shape, false, GetSequentialFloatData(input0_shape)),
+                    TestInputDef<float>(input1_shape, false, GetSequentialFloatData(input1_shape)),
                     ExpectedEPNodeAssignment::All, 7);
 }
 

@@ -362,12 +362,12 @@ TYPED_TEST(GemmOpTypedTests, TestGemmBroadcast) {
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
     excluded_providers.insert(kOpenVINOExecutionProvider);  // OpenVINO: Temporarily disabled due to accuracy issues
 #endif
-#if defined(USE_QNN)
+
     if (b_is_initializer && !c_is_initializer) {
       // Accuracy issues on QNN's CPU backend with QNN SDK version 2.17
       excluded_providers.insert(kQnnExecutionProvider);
     }
-#endif
+
     test.ConfigExcludeEps(excluded_providers)
         .Config(run_with_tunable_op)
         .RunWithConfig();
