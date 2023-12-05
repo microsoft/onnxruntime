@@ -118,6 +118,7 @@ class EngineBuilder:
 
     def get_model_dir(self, model_name, root_dir, opt=True, suffix="", create=True):
         engine_name = self.engine_type.name.lower()
+        # TODO: Need not add engine name for ORT_CUDA
         directory_name = self.get_cached_model_name(model_name) + (f".{engine_name}" if opt else "") + suffix
         onnx_model_dir = os.path.join(root_dir, directory_name)
         if create:
@@ -261,6 +262,9 @@ def get_engine_paths(work_dir: str, pipeline_info: PipelineInfo, engine_type: En
     output_dir = os.path.join(root_dir, engine_type.name, short_name, "output")
 
     timing_cache = os.path.join(root_dir, engine_type.name, "timing_cache")
-    framework_model_dir = os.path.join(root_dir, engine_type.name, "torch_model")
+
+    # Shared among ORT_CUDA, ORT_TRT and TRT engines, and need use load_model(..., always_download_fp16=True)
+    # So that the shared model is always fp16.
+    framework_model_dir = os.path.join(root_dir, "torch_model")
 
     return onnx_dir, engine_dir, output_dir, framework_model_dir, timing_cache
