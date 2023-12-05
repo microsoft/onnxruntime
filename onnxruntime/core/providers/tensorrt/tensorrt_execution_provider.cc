@@ -1095,7 +1095,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
       // The allocation buffer holds the INT32 output data since TRT doesn't support INT64 but INT32.
       // So, we need to cast the data from INT32 to INT64 and then set INT64 output data to kernel context.
       SafeInt<int> output_dim_size(1);
-      for (int i = 0; i < shape.size(); ++i) {
+      for (size_t i = 0; i < shape.size(); ++i) {
         if (shape[i] == 0) {
           output_dim_size = 1;
           break;
@@ -1104,9 +1104,9 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
         }
       }
       scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, output_dim_size * sizeof(int64_t)));
-      buffers[output_name] = scratch_buffers.back().get();
-      cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(allocator->getBuffer()), reinterpret_cast<int64_t*>(buffers[output_name]), output_dim_size);
-      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, buffers[output_name], output_dim_size * sizeof(int64_t),
+      auto data = scratch_buffers.back().get();
+      cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(allocator->getBuffer()), reinterpret_cast<int64_t*>(data), output_dim_size);
+      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, data, output_dim_size * sizeof(int64_t),
                                                                      shape.data(), shape.size(), Ort::TypeToTensorType<int64_t>::type, &out));
       break;
     }
@@ -1114,7 +1114,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
       // The allocation buffer holds the FLOAT output data since TRT doesn't support DOUBLE but FLOAT.
       // So, we need to cast the data from FLOAT to DOUBEL and then set DOUBLE output data to kernel context.
       SafeInt<int> output_dim_size(1);
-      for (int i = 0; i < shape.size(); ++i) {
+      for (size_t i = 0; i < shape.size(); ++i) {
         if (shape[i] == 0) {
           output_dim_size = 1;
           break;
@@ -1123,9 +1123,9 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
         }
       }
       scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, output_dim_size * sizeof(double)));
-      buffers[output_name] = scratch_buffers.back().get();
-      cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(allocator->getBuffer()), reinterpret_cast<double*>(buffers[output_name]), output_dim_size);
-      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, buffers[output_name], output_dim_size * sizeof(double),
+      auto data = scratch_buffers.back().get();
+      cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(allocator->getBuffer()), reinterpret_cast<double*>(data), output_dim_size);
+      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, data, output_dim_size * sizeof(double),
                                                                      shape.data(), shape.size(), Ort::TypeToTensorType<double>::type, &out));
       break;
     }
@@ -1658,6 +1658,13 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
     // This code is same as OrtApis::ReleaseAllocator defined in allocator_adapters.cc.
     // We can't get api inside destructor so that's why we duplicate the code here.
     delete static_cast<OrtAllocatorImpl*>(alloc_);
+  }
+
+  for (auto iter_outer = dds_output_allocator_map_.begin(); iter_outer != dds_output_allocator_map_.end(); ++iter_outer) {
+    auto inner_map = iter_outer->second;
+    for (auto iter_inner = inner_map.begin(); iter_inner != inner_map.end(); ++iter_inner) {
+      delete iter_inner->second;
+    }
   }
 }
 
