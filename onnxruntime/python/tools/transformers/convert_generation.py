@@ -1272,7 +1272,9 @@ def find_past_seq_len_usage(subg: GraphProto):
     return tensor_names_to_rename, nodes_to_remove
 
 
-def replace_mha_with_gqa(model: OnnxModel, attn_mask: str, kv_num_heads: int = 0, world_size: int = 1, window_size: int = 0):
+def replace_mha_with_gqa(
+    model: OnnxModel, attn_mask: str, kv_num_heads: int = 0, world_size: int = 1, window_size: int = 0
+):
     # Insert attention_mask subgraph to calculate shared inputs for all GroupQueryAttention nodes
     #
     #                attention_mask

@@ -2,7 +2,7 @@ from typing import List, Tuple
 
 import numpy as np
 import torch
-from transformers import PretrainedConfig, AutoConfig
+from transformers import AutoConfig, PretrainedConfig
 
 from onnxruntime import InferenceSession, OrtValue
 
