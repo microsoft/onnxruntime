@@ -60,7 +60,7 @@ void SplitOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const No
 
 Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& input = node_unit.Inputs()[0].node_arg.Name();
-  const auto& output = node_unit.Outputs();
+  const auto& outputs = node_unit.Outputs();
 
   NodeAttrHelper helper(node_unit);
   const auto axis = helper.Get("axis", 0);
@@ -72,13 +72,13 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     num_outputs = SafeInt<int32_t>(node_unit.Outputs().size());
   }
 
-  std::vector<std::string> outputs;
-  outputs.reserve(num_outputs);
+  std::vector<std::string> output_names;
+  output_names.reserve(num_outputs);
   for (int32_t i = 0; i < num_outputs; ++i) {
-    outputs.push_back(output[i].node_arg.Name());
+    output_names.push_back(outputs[i].node_arg.Name());
   }
 
-  ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiSplit(model_builder, input, axis, outputs));
+  ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiSplit(model_builder, input, axis, output_names));
 
   return Status::OK();
 }
@@ -98,18 +98,20 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   const auto split_dims_at_axis = input_shape[HandleNegativeAxis(axis, input_shape.size())];
   if (input_defs.size() > 1 && input_defs[1].node_arg.Exists()) {
     // if optional input `split` is provided
-    if (!Contains(initializers, input_defs[1].node_arg.Name())) {
-      LOGS_DEFAULT(VERBOSE) << "New shape of reshape must be known";
+    auto split_initializer_it = initializers.find(input_defs[1].node_arg.Name());
+    if (split_initializer_it == initializers.end()) {
+      LOGS_DEFAULT(VERBOSE) << "Optional input 'split' must be initializer if provided.";
       return false;
     }
-    const auto& splits_tensor = *initializers.at(input_defs[1].node_arg.Name());
+    const auto& splits_tensor = *split_initializer_it->second;
     Initializer unpacked_tensor(splits_tensor);
     auto splits_span = unpacked_tensor.DataAsSpan<int64_t>();
-    uint32_t sum_of_splits = SafeInt<uint32_t>(std::accumulate(splits_span.begin(), splits_span.end(), 0));
+    uint32_t sum_of_splits = std::accumulate(splits_span.begin(), splits_span.end(), SafeInt<int32_t>(0));
     if (sum_of_splits != split_dims_at_axis) {
-      LOGS_DEFAULT(VERBOSE) << "Mismatch between the sum of 'split'. Expected: "
+      LOGS_DEFAULT(VERBOSE) << "Sum of the 'split' input values must be equal to the dim value at 'axis' specified.\n"
+                            << "dim value at 'axis' specified: "
                             << split_dims_at_axis
-                            << "Actual: "
+                            << "sum of 'split' input values: "
                             << sum_of_splits;
       return false;
     }
@@ -124,19 +126,16 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   } else {
     uint32_t num_outputs;
     if (node_unit.SinceVersion() >= 18) {
-      if (!helper.GetInt("num_outputs").has_value()) {
+      auto num_outputs_init = helper.GetInt("num_outputs");
+      if (!num_outputs_init.has_value()) {
         LOGS_DEFAULT(VERBOSE) << "No 'num_outputs' provided. For split 18+, num_outputs is a required attribute.";
         return false;
       }
-      num_outputs = SafeInt<uint32_t>(helper.GetInt("num_outputs").value());
-      if (num_outputs < 2) {
-        LOGS_DEFAULT(VERBOSE) << "Invalid num_outputs. The value cannot be lower than 2.\n"
-                              << "CoreML SplitND requires at least 2 outputs. num_outputs: " << num_outputs;
-        return false;
-      }
+      num_outputs = SafeInt<uint32_t>(num_outputs_init.value());
       if (num_outputs != SafeInt<uint32_t>(node_unit.Outputs().size()) || num_outputs > split_dims_at_axis) {
         LOGS_DEFAULT(VERBOSE) << "Invalid num_outputs provided.\n."
-                              << "The value should be smaller or equal to the size of dimension being split. num_outputs: "
+                              << "The value should be smaller or equal to the size of dimension being split.\n"
+                              << "Or equal to the number of output nodes size. Current num_outputs: "
                               << num_outputs;
         return false;
       }
@@ -145,7 +144,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
     }
     // NNAPI only supports the case where axis can be evenly divided by num of splits
     if (split_dims_at_axis % num_outputs != 0) {
-      LOGS_DEFAULT(VERBOSE) << "count: " << num_outputs << "doesn't evenly divide dimension: "
+      LOGS_DEFAULT(VERBOSE) << "split count: " << num_outputs << "doesn't evenly divide split dimension: "
                             << split_dims_at_axis;
       return false;
     }

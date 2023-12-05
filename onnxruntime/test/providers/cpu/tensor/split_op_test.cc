@@ -734,6 +734,7 @@ TEST(SplitOperatorTest, Split18_NumOutputs_UnevenSplit) {
   outputs.push_back({{1, 2}, {9.f, 10.f}});
 
   int64_t num_outputs = 3;
+
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true, num_outputs, true);
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true, num_outputs, false);
 }
