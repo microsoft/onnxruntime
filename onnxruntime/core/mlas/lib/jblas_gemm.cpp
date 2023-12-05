@@ -59,7 +59,7 @@ JblasSQ4GemmCompF32(
             kernel.mProA.reduce({A, K}, &reduceA, M, K, &single);
         }
         typename Launcher::BEpiParam blkargs{
-            B->template SPtr<int8_t>(),    B->mScaT,   B->mCStep, B->template ZPtr<int8_t>(),
+            B->template SPtr<int8_t>(), B->mScaT, B->mCStep, B->template ZPtr<int8_t>(),
             reduceA.template get<float>(), reduceA.lda};
 
         typename Launcher::Param args{M, N, K, B->mBlockSize, {A, K}, {B}, blkargs, {C, N}};
@@ -341,7 +341,7 @@ JblasQ4BuSize(int block_size, size_t N, size_t K, bool isAsym)
     auto stor = launcher.mProB.createStorage(
         N, K, block_size, JBLAS_DTYPE::S4_CLIP, JBLAS_DTYPE::F32, JBLAS_DTYPE::BF16, isAsym
     );
-    // TODO(Yu) support more S4 quant type, scale dtype
+    // TODO(Yu) support more scale dtype
     return stor.mSize;
 }
 
@@ -349,6 +349,9 @@ size_t
 JblasQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, MLAS_SQNBIT_COMPUTE_TYPE CompType)
 {
     GetCPUDevice();
+    if (K % BlkSize != 0) {
+        return 0;
+    }
     // from low precision to high precision
     switch (CompType) {
         case CompInt8:
@@ -423,7 +426,7 @@ JblasQ4GemmPackB(
 )
 {
     GetCPUDevice();
-	// explicit statement fall through.
+    // explicit statement fall through.
     switch (CompType) {
         case CompInt8:
             if (_cd->AMX_INT8() && BlkSize % tAMX_INT8_SS::KTILE == 0) {
