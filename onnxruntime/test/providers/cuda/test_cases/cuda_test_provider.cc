@@ -43,6 +43,12 @@ struct ProviderInfo_CUDA_TestImpl : ProviderInfo_CUDA {
     return nullptr;
   }
 
+  virtual OrtStatus* GetCurrentGpuDeviceVersion(_Out_ int* major, _Out_ int* minor) override {
+    *major = 0;
+    *minor = 0;
+    return nullptr;
+  }
+
   std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t, const char*) override {
     return nullptr;
   }

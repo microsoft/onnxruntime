@@ -2915,6 +2915,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>number of bits used for weight quantization (default 4)</dd>
 <dt><tt>block_size</tt> : int (required)</dt>
 <dd>number of groupsize used for weight quantization,(default 128). It needs to be a power of 2 and not smaller than 16.</dd>
+<dt><tt>column_wise_blocking</tt> : int</dt>
+<dd>whether to quantize weight columnwise (value 1, default), or rowwise (value 0)</dd>
+<dt><tt>prepacked</tt> : int</dt>
+<dd>
+Indicates whether the weight matrix is prepacked (value 1), or not (value 0, default).
+This property should NEVER be set by user. It is set by ONNX Runtime internally during
+model loading time.
+</dd>
 </dl>
 
 #### Inputs (3 - 6)

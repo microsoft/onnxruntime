@@ -428,18 +428,18 @@ class MatrixRef {
   /// Returns a reference to the element at a given Coord
   ORT_FORCEINLINE
   Reference at(MatCoord const& coord) const {
-    return data_[offset(coord)];
+    return data_[static_cast<size_t>(offset(coord))];
   }
 
   ORT_FORCEINLINE
   Reference at(int row, int col) const {
-    return data_[offset(make_Position(row, col))];
+    return data_[static_cast<size_t>(offset(make_Position(row, col)))];
   }
 
   /// Returns a reference to the element at a given Coord
   ORT_FORCEINLINE
   Reference operator[](MatCoord const& coord) const {
-    return data_[offset(coord)];
+    return data_[static_cast<size_t>(offset(coord))];
   }
 };
 

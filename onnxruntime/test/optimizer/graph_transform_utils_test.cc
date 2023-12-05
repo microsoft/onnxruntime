@@ -35,10 +35,15 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
   std::string l1_transformer = "ConstantFolding";
   std::string l2_transformer = "ConvActivationFusion";
   InlinedHashSet<std::string> disabled = {l1_rule1, l1_transformer, l2_transformer};
-  CPUExecutionProvider cpu_ep(CPUExecutionProviderInfo{});
+  std::shared_ptr<IExecutionProvider> e =
+      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  ExecutionProviders execution_providers;
+  auto status = execution_providers.Add(kCpuExecutionProvider, std::move(e));
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  auto all_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, {}, cpu_ep);
-  auto filtered_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, {}, cpu_ep, disabled);
+  auto all_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, {}, execution_providers);
+  auto filtered_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, {},
+                                                                     execution_providers, disabled);
 
   // check ConstantFolding transformer was removed
   ASSERT_TRUE(filtered_transformers.size() == all_transformers.size() - 1);
@@ -61,8 +66,9 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
 
 #ifndef DISABLE_CONTRIB_OPS
   // check that ConvActivationFusion was removed
-  all_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, cpu_ep);
-  filtered_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, cpu_ep, disabled);
+  all_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, execution_providers);
+  filtered_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {},
+                                                                execution_providers, disabled);
   ASSERT_TRUE(filtered_transformers.size() == all_transformers.size() - 1);
 #endif
 }

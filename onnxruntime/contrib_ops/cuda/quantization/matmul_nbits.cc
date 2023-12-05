@@ -14,23 +14,43 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-using namespace onnxruntime::cuda;
+
+#ifndef USE_ROCM
+template <>
+Status MatMulNBits<MLFloat16>::PrepackedGemm(
+    cudaStream_t stream,
+    int M,
+    const Tensor* a,
+    const Tensor* b,
+    const Tensor* scales,
+    const Tensor* zero_points,
+    Tensor* Y) const {
+  uint8_t const* zero_points_ptr = nullptr;
+  size_t zero_points_size = 0;
+  if (zero_points != nullptr) {
+    zero_points_ptr = zero_points->Data<uint8_t>();
+    zero_points_size = zero_points->Shape().Size();
+  }
+
+  return blkq4_fp16_gemm_sm80_dispatch<MLFloat16>(
+      int(block_size_), column_wise_quant_blk_, int(M), int(N_), int(K_), stream,
+      a->Data<MLFloat16>(), a->Shape().Size(),
+      b->Data<uint8_t>(), b->Shape().Size(),
+      scales->Data<MLFloat16>(), scales->Shape().Size(),
+      zero_points_ptr, zero_points_size,
+      Y->MutableData<MLFloat16>(), Y->Shape().Size());
+}
+#endif  // !USE_ROCM
 
 template <typename T>
 Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
+  using CudaT = typename ToCudaType<T>::MappedType;
+
   const Tensor* a = ctx->Input<Tensor>(0);
   const Tensor* b = ctx->Input<Tensor>(1);
   const Tensor* scales = ctx->Input<Tensor>(2);
   const Tensor* zero_points = ctx->Input<Tensor>(3);
   const Tensor* reorder_idx = ctx->Input<Tensor>(4);
-
-  const auto* a_data = a->Data<T>();
-  const uint8_t* blob_data = b->Data<uint8_t>();
-  const auto* scales_data = scales->Data<T>();
-  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
-  const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
-
-  typedef typename ToCudaType<T>::MappedType CudaT;
 
   constexpr bool transa = false;
   constexpr bool transb = true;
@@ -42,6 +62,26 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   Tensor* Y = ctx->Output(0, helper.OutputShape());
   // Bail out early if the output is going to be empty
   if (Y->Shape().Size() == 0) return Status::OK();
+
+  if (prepack_ > 0) {
+#ifndef USE_ROCM
+    ORT_RETURN_IF(reorder_idx != nullptr,
+                  "Internal Error: Prepacked gemm does not support reorder index. Fix the prepacking logic!");
+    ORT_RETURN_IF(zero_points != nullptr && zero_points->IsDataType<T>(),
+                  "Internal Error: Prepacked gemm does not support zero points of type T. Fix the prepacking logic!");
+    return PrepackedGemm(
+        static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle()),
+        static_cast<int>(helper.M()), a, b, scales, zero_points, Y);
+#else
+    ORT_RETURN_IF(true, "Prepacked gemm is not supported for MatMulNBits op.");
+#endif  // !USE_ROCM
+  }
+
+  const auto* a_data = a->Data<T>();
+  const uint8_t* blob_data = b->Data<uint8_t>();
+  const auto* scales_data = scales->Data<T>();
+  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
+  const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
 
   bool is_4bit_done = (reorder_idx_data == nullptr) &&
                       (!zero_points || !zero_points->IsDataType<T>()) &&

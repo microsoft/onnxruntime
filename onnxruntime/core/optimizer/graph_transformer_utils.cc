@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <variant>
 
+#include "core/framework/execution_providers.h"
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/matmul_nbits_fusion.h"
 #include "core/optimizer/nhwc_transformer.h"
@@ -43,6 +44,7 @@
 #include "core/optimizer/gemm_activation_fusion.h"
 #include "core/optimizer/gemm_sum_fusion.h"
 #include "core/optimizer/gemm_transpose_fusion.h"
+#include "core/optimizer/gpu_ops_prepack.h"
 #include "core/optimizer/identical_children_consolidation.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/label_encoder_fusion.h"
@@ -186,8 +188,11 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(
 InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     TransformerLevel level,
     const SessionOptions& session_options,
-    const IExecutionProvider& cpu_execution_provider, /*required by constant folding*/
+    const ExecutionProviders& execution_providers, /*required by constant folding*/
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable) {
+  // CPU EP required to run constant folding
+  const IExecutionProvider& cpu_execution_provider = *execution_providers.Get(onnxruntime::kCpuExecutionProvider);
+
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   const bool disable_quant_qdq =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
@@ -387,7 +392,16 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // PR #6351 implemented similar fusion-pattern for CUDA only, and can only fuse conv-add-relu,
       // while we can fuse more activation.
       transformers.emplace_back(std::make_unique<ConvAddActivationFusion>(cpu_ep));
-#endif
+
+#if defined(USE_CUDA) && !defined(USE_ROCM)
+      // Cuda weight prepacking.
+      auto* cuda_ep = execution_providers.Get(onnxruntime::kCudaExecutionProvider);
+      if (cuda_ep != nullptr) {
+        transformers.emplace_back(std::make_unique<GpuOpsPrepack>());
+      }
+#endif  // USE_CUDA && !USE_ROCM
+
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 
     } break;
 
@@ -408,8 +422,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
     TransformerLevel level,
     const SessionOptions& session_options,
     const SatApplyContextVariant& apply_context,
-    const IExecutionProvider& cpu_execution_provider,
+    const ExecutionProviders& execution_providers,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable) {
+  const auto& cpu_execution_provider = *execution_providers.Get(onnxruntime::kCpuExecutionProvider);
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   const bool saving = std::holds_alternative<SatRuntimeOptimizationSaveContext>(apply_context);
 

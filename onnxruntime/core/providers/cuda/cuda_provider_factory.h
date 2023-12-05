@@ -22,7 +22,8 @@ class NvtxRangeCreator;
 
 struct ProviderInfo_CUDA {
   virtual OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) = 0;
-  virtual OrtStatus* GetCurrentGpuDeviceId(_In_ int* device_id) = 0;
+  virtual OrtStatus* GetCurrentGpuDeviceId(_Out_ int* device_id) = 0;
+  virtual OrtStatus* GetCurrentGpuDeviceVersion(_Out_ int* major, _Out_ int* minor) = 0;
 
   virtual std::unique_ptr<onnxruntime::IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<onnxruntime::IAllocator> CreateCUDAPinnedAllocator(const char* name) = 0;

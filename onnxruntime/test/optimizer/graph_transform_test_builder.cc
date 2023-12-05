@@ -170,6 +170,7 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
       add_session_options(session_options);
     }
     InferenceSessionWrapper session{session_options, GetEnvironment()};
+
     ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
     if (transformer) {
       ASSERT_STATUS_OK(session.RegisterGraphTransformer(std::move(transformer), level));

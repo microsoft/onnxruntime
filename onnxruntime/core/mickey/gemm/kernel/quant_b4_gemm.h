@@ -386,9 +386,9 @@ struct QuantB4Gemm {
 
     if constexpr (kSplitK > 1){
       // TODO! Use thread block shape
-      if (params.gemm_k_size_ < WarpShape::kK * kStages * 2) {
+      if (params.gemm_k_size_ < WarpShape::kK * kStages) {
         // spliting too small, may not get enough iterations to rampup pipeline
-        std::cerr << "QuantB4Gemm validation fail: split k too big, each k segment: " << params.gemm_k_size_ << " is smaller than " << (WarpShape::kK * kStages * 2) << std::endl;
+        std::cerr << "QuantB4Gemm validation fail: split k too big, each k segment: " << params.gemm_k_size_ << " is smaller than " << (WarpShape::kK * kStages) << std::endl;
         return cutlass::Status::kErrorNotSupported;
       }
     }
@@ -534,21 +534,6 @@ struct QuantB4Gemm {
 
     // Wait until we have at least one committed global fetch stage. (#uncommitted = Base::kStages - 1 - #committed)
     cutlass::arch::cp_async_wait<kStages - 2>();
-    //__syncthreads(); is this necessary since the loader is warp based?
-    // if constexpr(kDebugPrintA) {
-    //   if (lane_idx == 0) {
-    //     printf("Prologue, warp: %d, WarpPtr: %p\n",
-    //       warp_idx, a_shared_ptr);
-    //     printf("\n********Dumping the shared memory of Warp %d*******\n\n", warp_idx);
-
-    //     for (int i = 0; i < MainLoopSharedBuffer::kASize; i += 8) {
-    //       for (int j = 0; j < 8; ++j) {
-    //         printf("%f, ", float(a_shared_ptr[i + j]));
-    //       }
-    //       printf("\n");
-    //     }
-    //   }
-    // }
 
     //
     // Prefix of the Mainloop, pre-loading the double buffer in registers
@@ -678,11 +663,10 @@ struct QuantB4Gemm {
           a_tile_loader.load_to_smem_split(lane_idx, a_smem_write_ptr, next_iter * kAGloadsPerIter + i);
         }
         if constexpr (kDebugPrintA) {
-          const int lane_id = threadIdx.x % 32;
-          if (lane_id == 0) {
-            printf("====  A tiles =======\n");
+          if (lane_idx == 0) {
+            printf("===== Warp %d A tiles =======\n", warp_idx);
           }
-          const char* const format = (lane_id == 31) ? "%f, %f\n\n" : ((lane_id % 4) == 3) ? "%f, %f\n" : "%f, %f, ";
+          const char* const format = (lane_idx == 31) ? "%f, %f\n\n" : ((lane_idx % 4) == 3) ? "%f, %f\n" : "%f, %f, ";
           const ElementT* a_ptr = fragment_a[iter2 % 2].data();
           for (int m2_tile = 0; m2_tile < (WarpShape::kM / InstructionShape::kM); ++m2_tile, a_ptr += 8) {
             printf(format, float(a_ptr[0]), float(a_ptr[1]));

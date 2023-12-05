@@ -19,6 +19,7 @@
 #pragma once
 
 #include "core/common/common.h"
+#include "core/framework/float16.h"
 #include "core/util/matrix_layout.h"
 
 namespace onnxruntime {
@@ -79,6 +80,23 @@ struct BlockwiseQuantization {
     return make_Position(rows / QuantBlocking::kRow, columns / QuantBlocking::kColumn);
   }
 
+  static inline bool weight_dimension_supported(int rows, int columns) {
+    // prepacking works on a 16x16 block, so the dimensions must be multiples of 16
+    if (((rows % 16) != 0) || ((columns % 16) != 0)) {
+      return false;
+    }
+
+    // verify the dimensions are multiples of the block size
+    if (((rows % QuantBlocking::kRow) != 0) || ((columns % QuantBlocking::kColumn) != 0)) {
+      return false;
+    }
+
+    // All the above restrictions can be relaxed by adding more logic to the prepack
+    // and gemm implementation to support edge cases. But for now, these restrictions
+    // does not affect LLM weight dimensions, so we keep it simple.
+    return true;
+  }
+
   /**
    * @brief Prepack weight matrix to facilitate matrix loading, depending on MMA
    * instruction layout.
@@ -113,10 +131,10 @@ struct BlockwiseQuantization {
       gsl::span<uint8_t const> weights,     // <- int4 weights, column major
       gsl::span<uint8_t> weights_prepacked  // <- int4 prepacked weights tensor, same size buffer
   ) {
-    ORT_ENFORCE((rows % 16) == 0 && (columns % 16) == 0 &&
-                    (rows % QuantBlocking::kRow) == 0 &&
-                    (columns % QuantBlocking::kColumn) == 0,
-                "Does not support odd number of rows or columns!");
+#ifndef NDEBUG
+    ORT_ENFORCE(weight_dimension_supported(rows, columns),
+                "This function must be guarded by weight_dimension_supported()!");
+#endif
     ORT_ENFORCE(weights.size() == size_t(rows * columns / 2),
                 "Weight tensor shape mismatch!");
     ORT_ENFORCE(weights_prepacked.size() == weights.size(),
@@ -174,6 +192,10 @@ struct BlockwiseQuantization {
       gsl::span<ElementT const> scales,     // <- quant scales, column major layout
       gsl::span<ElementT> scales_prepacked  // <- quant scales prepacked, same size buffer
   ) {
+#ifndef NDEBUG
+    ORT_ENFORCE(weight_dimension_supported(static_cast<int>(rows), static_cast<int>(columns)),
+                "This function must be guarded by weight_dimension_supported()!");
+#endif
     auto meta_shape = get_quant_meta_shape(static_cast<int>(rows), static_cast<int>(columns));
     ORT_ENFORCE(scales.size() == size_t(meta_shape.product()),
                 "Quantization scale tensor shape mismatch!");
@@ -244,8 +266,11 @@ struct BlockwiseQuantization {
       gsl::span<uint8_t const> offsets,     // <- quant offsets, int4, column major layout
       gsl::span<uint8_t> offsets_prepacked  // <- quant offsets prepacked, double size buffer
   ) {
+#ifndef NDEBUG
+    ORT_ENFORCE(weight_dimension_supported(static_cast<int>(rows), static_cast<int>(columns)),
+                "This function must be guarded by weight_dimension_supported()!");
+#endif
     auto meta_shape = get_quant_meta_shape(static_cast<int>(rows), static_cast<int>(columns));
-
     ORT_ENFORCE((rows % 16) == 0 && (columns % 16) == 0,
                 "Does not support odd number of rows or columns!");
     ORT_ENFORCE(offsets_prepacked.size() == size_t(meta_shape.product()),
@@ -320,6 +345,59 @@ struct BlockwiseQuantization {
     }
   }
 };
+
+static inline bool IsSm80WithWholeBlocks(
+    int weight_rows, [[maybe_unused]] int weight_cols,
+    int major, [[maybe_unused]] int minor) {
+  if (major < 8) {
+    return false;
+  }
+
+  // Kernel implementation detail:
+  // K must be aligned with thread block tile (64) due to the way
+  // predicate iterator works, it loads the partial tile
+  // in the first iteration and then the full tile in the
+  // remaining iterations. This will cause the blockwise
+  // quantization parameters to go out of step with the
+  // weights.
+  // To fix this, we need to write our own predicate iterator
+  // that loads the full tile in the first iterations and
+  // then the partial tile in the last iteration.
+  return (weight_rows % 64 == 0);
+}
+
+template <typename ElementT, int block_size, bool col_blocking>
+inline bool BlkQuantGemmSm80Supported(int weight_rows, int weight_cols, int major, int minor) {
+  using Base = BlockwiseQuantization<ElementT, block_size, 4, col_blocking>;
+  if (!Base::weight_dimension_supported(weight_rows, weight_cols)) {
+    return false;
+  }
+  return IsSm80WithWholeBlocks(weight_rows, weight_cols, major, minor);
+}
+
+static inline bool BlkQuantGemmSm80Supported(int block_size, bool col_blocking, int weight_rows, int weight_cols, int major, int minor) {
+  switch (block_size) {
+    case 16:
+      if (col_blocking) {
+        return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 16, true>(weight_rows, weight_cols, major, minor);
+      } else {
+        return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 16, false>(weight_rows, weight_cols, major, minor);
+      }
+    case 32:
+      if (col_blocking) {
+        return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 32, true>(weight_rows, weight_cols, major, minor);
+      } else {
+        return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 32, false>(weight_rows, weight_cols, major, minor);
+      }
+    case 64:
+      if (col_blocking) {
+        return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 64, true>(weight_rows, weight_cols, major, minor);
+      } else {
+        return onnxruntime::cuda::BlkQuantGemmSm80Supported<MLFloat16, 64, false>(weight_rows, weight_cols, major, minor);
+      }
+  }
+  return false;
+}
 
 }  // namespace cuda
 }  // namespace onnxruntime

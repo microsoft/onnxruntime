@@ -5,7 +5,6 @@
 // extra code in the core of CUDA EP and that code may
 //  1. slow down performance critical applications and
 //  2. increase binary size of ORT.
-
 #include "gtest/gtest.h"
 #include <iostream>
 

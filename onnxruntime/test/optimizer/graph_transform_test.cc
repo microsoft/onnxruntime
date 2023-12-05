@@ -14,6 +14,7 @@
 
 #include "core/common/span_utils.h"
 #include "core/framework/data_types.h"
+#include "core/framework/execution_providers.h"
 #include "core/framework/ort_value.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
@@ -826,12 +827,15 @@ static void VerifyConstantFoldingWithDequantizeLinear(const std::unordered_map<s
                                                       Graph& graph,
                                                       SessionOptions& session_options,
                                                       const Logger& logger) {
-  std::unique_ptr<CPUExecutionProvider> e =
-      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  std::shared_ptr<CPUExecutionProvider> e =
+      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  ExecutionProviders execution_providers;
+  ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(e)));
 
   bool has_constant_folding = false;
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, session_options, *e.get(), {});
+  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, session_options,
+                                                            execution_providers, {});
   for (auto& transformer : transformers) {
     if (transformer->Name() == "ConstantFolding") {
       ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), TransformerLevel::Level1));
@@ -4636,11 +4640,14 @@ TEST_F(GraphTransformationTests, BiasGeluSwitchedInputOrder) {
 }
 
 static void VerifyGeluApproximation(bool is_enabled, SessionOptions& session_options) {
-  std::unique_ptr<CPUExecutionProvider> e =
-      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  std::shared_ptr<IExecutionProvider> e =
+      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  ExecutionProviders execution_providers;
+  ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(e)));
 
   bool has_gelu_approximation = false;
-  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, session_options, *e.get(), {});
+  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, session_options,
+                                                            execution_providers, {});
   for (auto& transformer : transformers) {
     if (transformer->Name() == "GeluApproximation") {
       has_gelu_approximation = true;
@@ -4653,9 +4660,13 @@ static void VerifyGeluApproximation(bool is_enabled, SessionOptions& session_opt
 // Test session option configuration for DoubleQDQPairsRemover
 TEST_F(GraphTransformationTests, DoubleQDQRemover_SessionOptionConfig) {
   auto verify_session_config = [&](bool is_enabled, SessionOptions& session_option) {
-    std::unique_ptr<CPUExecutionProvider> cpu_ep = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    std::shared_ptr<CPUExecutionProvider> cpu_ep = std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    ExecutionProviders execution_providers;
+    ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(cpu_ep)));
+
     bool has_double_qdq_remover = false;
-    auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, session_option, *cpu_ep.get(), {});
+    auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, session_option,
+                                                              execution_providers, {});
     for (auto& transformer : transformers) {
       if (transformer->Name() == "DoubleQDQPairsRemover") {
         has_double_qdq_remover = true;

@@ -71,11 +71,28 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
     return nullptr;
   }
 
-  OrtStatus* GetCurrentGpuDeviceId(_In_ int* device_id) override {
+  OrtStatus* GetCurrentGpuDeviceId(_Out_ int* device_id) override {
     auto cuda_err = cudaGetDevice(device_id);
     if (cuda_err != cudaSuccess) {
       return CreateStatus(ORT_FAIL, "Failed to get device id.");
     }
+    return nullptr;
+  }
+
+  OrtStatus* GetCurrentGpuDeviceVersion(_Out_ int* major, _Out_ int* minor) override {
+    int device_id;
+    auto cuda_err = cudaGetDevice(&device_id);
+    if (cuda_err != cudaSuccess) {
+      return CreateStatus(ORT_FAIL, "Failed to get device id.");
+    }
+    cudaDeviceProp prop;
+    cuda_err = cudaGetDeviceProperties(&prop, device_id);
+    if (cuda_err != cudaSuccess) {
+      return CreateStatus(ORT_FAIL, "Failed to get device properties.");
+    }
+    *major = prop.major;
+    *minor = prop.minor;
+
     return nullptr;
   }
 

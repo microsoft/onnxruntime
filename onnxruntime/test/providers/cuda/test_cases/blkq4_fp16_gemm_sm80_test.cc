@@ -33,6 +33,9 @@ void testPrepack(int rows, int columns) {
       4,
       col_blocking>;
 
+  EXPECT_TRUE(Base::weight_dimension_supported(rows, columns))
+      << "Test setup problem, unsupported weight dimension: [" << rows << ", " << columns << "]";
+
   using QuantBlocking = typename Base::QuantBlocking;
   using ElementW = typename Base::ElementW;
   using LayoutWPack = typename Base::LayoutWPack;
@@ -276,8 +279,8 @@ TEST(BlkQ4_GEMM, Sm80RowBlockingTest) {
   onnxruntime::cuda::test::run_blkq4_gemm<32, false, false, false>(32, 96, 64);
   onnxruntime::cuda::test::run_blkq4_gemm<32, false, false, true>(32, 96, 64);
 
-  onnxruntime::cuda::test::run_blkq4_gemm<32, false, false, false>(32, 96, 192);
-  onnxruntime::cuda::test::run_blkq4_gemm<32, false, false, true>(32, 96, 192);
+  onnxruntime::cuda::test::run_blkq4_gemm<32, false, false, false>(64, 96, 192);
+  onnxruntime::cuda::test::run_blkq4_gemm<32, false, false, true>(64, 96, 192);
 
   onnxruntime::cuda::test::run_blkq4_gemm<32, false, false, false>(256, 672, 576);
   onnxruntime::cuda::test::run_blkq4_gemm<32, false, false, true>(256, 672, 576);
@@ -316,8 +319,8 @@ TEST(BlkQ4_GEMM, Sm80SmallMTest) {
   onnxruntime::cuda::test::run_blkq4_gemm<16, false, true, false>(16, 704, 576);
   onnxruntime::cuda::test::run_blkq4_gemm<16, false, true, true>(16, 704, 576);
 
-  onnxruntime::cuda::test::run_blkq4_gemm<64, false, true, false>(16, 1024, 576);
-  onnxruntime::cuda::test::run_blkq4_gemm<64, false, true, true>(16, 1024, 576);
+  onnxruntime::cuda::test::run_blkq4_gemm<64, false, true, false>(32, 1024, 576);
+  onnxruntime::cuda::test::run_blkq4_gemm<64, false, true, true>(32, 1024, 576);
 
   onnxruntime::cuda::test::run_blkq4_gemm<16, true, true, false>(16, 672, 576);
   onnxruntime::cuda::test::run_blkq4_gemm<16, true, true, true>(16, 672, 576);
