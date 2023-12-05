@@ -409,7 +409,7 @@ python -m models.llama.convert_to_onnx -i /path/to/model/directory -o /path/to/o
 ```
 
 ## Benchmark Mistral
-The benchmarking scripts in the LLaMA directory support Mistral benchmarking. To benchmark the ORT and HF versions respectively, you can run: 
+The benchmarking scripts in the LLaMA directory support Mistral benchmarking. To benchmark the ORT version respectively, you can run: 
 
 ```
 python -m models.llama.benchmark \
@@ -417,8 +417,22 @@ python -m models.llama.benchmark \
     -p fp16 \
     -m mistralai/Mistral-7B-v0.1 \
     --ort-model-path /path/to/model.onnx
+```
+
+And to benchmark the Huggingface implementation:
+
+```
 python -m models.llama.benchmark \
     -bt hf-pt-eager \
+    -p fp16 \
+    -m mistralai/Mistral-7B-v0.1
+```
+
+or 
+
+```
+python -m models.llama.benchmark \
+    -bt hf-pt-compile \
     -p fp16 \
     -m mistralai/Mistral-7B-v0.1
 ```
