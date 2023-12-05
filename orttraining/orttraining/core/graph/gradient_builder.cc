@@ -494,6 +494,42 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
   return result;
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetMatmulBnb4Gradient) {
+  auto attributes = SrcNodeAttributes();
+  std::vector<AttributeProto> attrs;
+  bool find_transB = false;
+  for (auto& attr : attributes) {
+    if (attr.first == "transB") {
+      int64_t transB_value = attr.second.i();
+      transB_value = (transB_value + 1) % 2;  // revert the transpose
+      attrs.push_back(MakeAttribute("transB", transB_value));
+      find_transB = true;
+    } else {
+      attrs.push_back(attr.second);
+    }
+  }
+
+  if (!find_transB) {
+    attrs.push_back(MakeAttribute("transB", int64_t(0)));  // default is 1, so we need to set it to 0
+  }
+
+  std::vector<NodeDef> result;
+  // Y =  A * B
+  // dA = dY * B', dB = A' * dY
+  if (IsGradientRequiredForSrcNodeInput(0)) {
+    // B is 1-D, so don't need transpose here.
+    result.push_back(NodeDef(OpDef{"MatMulBnb4", kMSDomain, 1},
+                             {GO(0), I(1), I(2)},
+                             {GI(0)},
+                             attrs));
+  }
+
+  ORT_ENFORCE(!IsGradientRequiredForSrcNodeInput(1), "Gradient propagation to B is not supported yet.");
+  ORT_ENFORCE(!IsGradientRequiredForSrcNodeInput(2), "Gradient propagation to absmax is not supported yet.");
+
+  return result;
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetSplitGradient) {
   std::vector<NodeDef> result = {};
   std::vector<ArgDef> input_args;
@@ -755,13 +791,16 @@ IMPLEMENT_GRADIENT_BUILDER(GetGatherGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetPadAndUnflattenGradient) {
   return std::vector<NodeDef>{
-      NodeDef(OpDef("Reshape"),
-              {GO(0), O(1)},
-              {IA("GO_reshaped")}),
-      NodeDef(OpDef{"Gather", kOnnxDomain, 1},
-              {IA("GO_reshaped"), I(1)},
-              {GI(0)},
-              SrcNodeAttributes())};
+      NodeDef(OpDef{"FlattenAndUnpad", kMSDomain, 1},
+              {GO(0), I(1)},
+              {GI(0), IA("Unflatten_dims")})};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetFlattenAndUnpadGradient) {
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"PadAndUnflatten", kMSDomain, 1},
+              {GO(0), I(1), O(1)},
+              {GI(0)})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetShrunkenGatherGradient) {

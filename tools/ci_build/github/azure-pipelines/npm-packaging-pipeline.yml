@@ -41,9 +41,14 @@ stages:
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     IsReleasePipeline: true
-    PoolName: 'Azure-Pipelines-EO-Windows2022-aiinfra'
+    PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
     PackageName: 'onnxruntime-web'
     ExtraBuildArgs: ''
+    UseWebPoolName: true
+    RunWebGpuTestsForDebugBuild: false
+    RunWebGpuTestsForReleaseBuild: true
+    WebGpuPoolName: 'onnxruntime-Win2022-webgpu-A10'
+    WebCpuPoolName: 'Onnxruntime-Win-CPU-2022'
 
 - template: templates/react-native-ci.yml
   parameters:
@@ -60,7 +65,7 @@ stages:
   - Build_web_Debug
   jobs:
   - job: Download_Node_Package_And_Publish_Validation_Script
-    pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
+    pool: 'Onnxruntime-Win-CPU-2022'
     variables:
       runCodesignValidationInjection: false
     timeoutInMinutes: 10

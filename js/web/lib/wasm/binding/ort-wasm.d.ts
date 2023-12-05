@@ -102,6 +102,11 @@ export interface OrtWasmModule extends EmscriptenModule {
   _OrtTrainingCopyParametersFromBuffer?
       (trainingHandle: number, parametersBuffer: number, parameterCount: number, trainableOnly: boolean): number;
 
+  _OrtTrainingGetModelInputOutputCount?
+      (trainingHandle: number, inputCount: number, outputCount: number, isEvalModel: boolean): number;
+  _OrtTrainingGetModelInputOutputName?
+      (trainingHandle: number, index: number, isInput: boolean, isEvalModel: boolean): number;
+
   _OrtTrainingReleaseSession?(trainingHandle: number): void;
   // #endregion
 

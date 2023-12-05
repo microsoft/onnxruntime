@@ -278,7 +278,7 @@ class ThreadPoolProfiler {
   int num_threads_;
 #ifdef _MSC_VER
 #pragma warning(push)
-// C4324: structure was padded due to alignment specifier
+  // C4324: structure was padded due to alignment specifier
 #pragma warning(disable : 4324)
 #endif  // _MSC_VER
   struct ORT_ALIGN_TO_AVOID_FALSE_SHARING ChildThreadStat {
