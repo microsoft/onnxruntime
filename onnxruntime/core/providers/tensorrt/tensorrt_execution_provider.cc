@@ -3374,18 +3374,18 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           if (status != Status::OK()) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
           }
-        }
-
-        auto& output_tensor = output_tensors[i];
-        if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
-          auto output_tensor_ptr = output_tensor.GetTensorMutableData<int64_t>();
-          if (output_tensor_ptr != nullptr) {
-            cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
-          }
-        } else if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
-          auto output_tensor_ptr = output_tensor.GetTensorMutableData<double>();
-          if (output_tensor_ptr != nullptr) {
-            cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
+        } else {
+          auto& output_tensor = output_tensors[i];
+          if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
+            auto output_tensor_ptr = output_tensor.GetTensorMutableData<int64_t>();
+            if (output_tensor_ptr != nullptr) {
+              cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
+            }
+          } else if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
+            auto output_tensor_ptr = output_tensor.GetTensorMutableData<double>();
+            if (output_tensor_ptr != nullptr) {
+              cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
+            }
           }
         }
       }
