@@ -738,15 +738,20 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp32) {
 
         tester.AddOutput<float>("present", past_dims, present);
 
-        // Run
-        std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-        execution_providers.push_back(DefaultCudaExecutionProvider());
-        tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+        // Run - Regular kernel execution path
+        {
+          std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+          execution_providers.push_back(DefaultCudaExecutionProvider());
+          tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+        }
 
         // Test alternate kernel path of loading more KV data "in flight"
         {
           ScopedEnvironmentVariables scoped_env_vars{
               EnvVarMap{{onnxruntime::contrib::attention::kDecoderMaskedAttentionLoadKVDataInFlight, "1"}}};
+
+          std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+          execution_providers.push_back(DefaultCudaExecutionProvider());
 
           tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
         }
@@ -860,16 +865,20 @@ TEST(DecoderMaskedSelfAttentionTest, Test_fp16) {
 
         tester.AddOutput<MLFloat16>("present", past_dims, present);
 
-        // Run
-        std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-        execution_providers.push_back(DefaultCudaExecutionProvider());
-        tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+        // Run - Regular kernel execution path
+        {
+          std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+          execution_providers.push_back(DefaultCudaExecutionProvider());
+          tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+        }
 
         // Test alternate kernel path of loading more KV data "in flight"
         {
           ScopedEnvironmentVariables scoped_env_vars{
               EnvVarMap{{onnxruntime::contrib::attention::kDecoderMaskedAttentionLoadKVDataInFlight, "1"}}};
 
+          std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+          execution_providers.push_back(DefaultCudaExecutionProvider());
           tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
         }
       }
