@@ -195,18 +195,21 @@ auto CreateOp(float scale, const float* dev_scale) {
   }
 }
 
-template <typename TA, typename TB, typename TC, typename ALayout, typename BLayout>
+template <typename TA, typename TB, typename TC, BlasOp LayoutOpA, BlasOp LayoutOpB>
 auto GetCKF8SplitKGemmTypeStringAndOps() {
   using CKTA = typename CKDataTypeAdaptor<TA>::type;
   using CKTB = typename CKDataTypeAdaptor<TB>::type;
   using CKTC = typename CKDataTypeAdaptor<TC>::type;
+
+  using CKLayoutA = typename CKBlasOpAdaptor<LayoutOpA>::type;
+  using CKLayoutB = typename CKBlasOpAdaptor<LayoutOpB>::type;
 
   using OpA = std::conditional_t<std::is_same_v<CKTA, ck::f8_t>, Scale<TA>, Nop>;
   using OpB = std::conditional_t<std::is_same_v<CKTB, ck::f8_t>, Scale<TB>, Nop>;
   using OpC = std::conditional_t<std::is_same_v<CKTC, ck::f8_t>, Scale<TC>, Nop>;
 
   using DeviceGemm = ck::tensor_operation::device::DeviceGemmSplitK<
-      ALayout, BLayout, Row,
+      CKLayoutA, CKLayoutB, Row,
       CKTA, CKTB, CKTC,
       OpA, OpB, OpC>;
 
@@ -215,16 +218,16 @@ auto GetCKF8SplitKGemmTypeStringAndOps() {
   for (auto num_split : {1, 4, 16, 64}) {
     std::vector<std::unique_ptr<DeviceGemm>> instances{};
     if constexpr (std::is_same_v<CKTA, ck::f8_t> && std::is_same_v<CKTB, ck::half_t> && std::is_same_v<CKTC, ck::half_t> &&
-                  std::is_same_v<ALayout, Row> && std::is_same_v<BLayout, Row>) {
+                  std::is_same_v<CKLayoutA, Row> && std::is_same_v<CKLayoutB, Row>) {
       add_device_gemm_xdl_splitk_f8_f16_f16_mk_kn_mn_instances(instances);
     } else if constexpr (std::is_same_v<CKTA, ck::half_t> && std::is_same_v<CKTB, ck::f8_t> && std::is_same_v<CKTC, ck::half_t> &&
-                         std::is_same_v<ALayout, Row> && std::is_same_v<BLayout, Row>) {
+                         std::is_same_v<CKLayoutA, Row> && std::is_same_v<CKLayoutB, Row>) {
       add_device_gemm_xdl_splitk_f16_f8_f16_mk_kn_mn_instances(instances);
     } else if constexpr (std::is_same_v<CKTA, ck::half_t> && std::is_same_v<CKTB, ck::f8_t> && std::is_same_v<CKTC, ck::half_t> &&
-                         std::is_same_v<ALayout, Row> && std::is_same_v<BLayout, Col>) {
+                         std::is_same_v<CKLayoutA, Row> && std::is_same_v<CKLayoutB, Col>) {
       add_device_gemm_xdl_splitk_f16_f8_f16_mk_nk_mn_instances(instances);
     } else {
-      static_assert(always_false<CKTA, CKTB, CKTC, ALayout, BLayout>, "no instances for the type combination");
+      static_assert(always_false<CKTA, CKTB, CKTC, CKLayoutA, CKLayoutB>, "no instances for the type combination");
       LOGS_DEFAULT(FATAL) << "no instances for the type combination";
     }
     for (auto&& impl : instances) {
@@ -257,9 +260,7 @@ class GemmFloat8TunableOp : public TunableOp<GemmFloat8Params<TA, TB, TC>> {
  public:
   GemmFloat8TunableOp() {
 #if defined(USE_COMPOSABLE_KERNEL) && !defined(DISABLE_FLOAT8_TYPES)
-    using ALayout = std::conditional_t<OpA == BlasOp::NonTrans, Row, Col>;
-    using BLayout = std::conditional_t<OpB == BlasOp::NonTrans, Row, Col>;
-    for (auto&& [_, op] : GetCKF8SplitKGemmTypeStringAndOps<TA, TB, TC, ALayout, BLayout>()) {
+    for (auto&& [_, op] : GetCKF8SplitKGemmTypeStringAndOps<TA, TB, TC, OpA, OpB>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }

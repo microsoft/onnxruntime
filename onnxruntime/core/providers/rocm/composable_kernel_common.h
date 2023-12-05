@@ -5,15 +5,24 @@
 
 #ifdef USE_COMPOSABLE_KERNEL
 #include "ck/utility/data_type.hpp"
+#include "ck/tensor_operation/gpu/device/tensor_layout.hpp"
 #endif
 
 #include "core/framework/float8.h"
 #include "core/providers/rocm/rocm_common.h"
+#include "core/providers/rocm/tunable/gemm_common.h"
 
 namespace onnxruntime {
 namespace rocm {
 
 #ifdef USE_COMPOSABLE_KERNEL
+template <tunable::blas::BlasOp Op>
+struct CKBlasOpAdaptor {
+  using type = std::conditional_t<Op == tunable::blas::BlasOp::NonTrans,
+                                  ck::tensor_layout::gemm::RowMajor,
+                                  ck::tensor_layout::gemm::ColumnMajor>;
+};
+
 template <typename T>
 struct CKDataTypeAdaptor {
   using type = T;

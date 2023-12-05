@@ -174,6 +174,19 @@ def test_ck_gemm_alpha_beta(dta, dtb, dtc, transa, transb, m, n, k, alpha, beta)
     _test_gemm(getattr(ke, wrapper_name), dta, dtb, dtc, transa, transb, m, n, k, alpha, beta)
 
 
+@pytest.mark.skipif(not ke.is_float8_available(), reason="float8 is not enabled")
+@pytest.mark.skipif(not ke.is_composable_kernel_available(), reason="ck is not enabled")
+@pytest.mark.parametrize("alpha, beta", [(1.5, 0.0), [2.0, 0.0]])
+@pytest.mark.parametrize("m, n, k", [(256, 256, 256)])
+@pytest.mark.parametrize("transa, transb", all_transabs)
+@pytest.mark.parametrize("dta, dtb, dtc", dtypes)
+def test_tunable_gemm(dta, dtb, dtc, transa, transb, m, n, k, alpha, beta):
+    if dtb == "float16" and transb:
+        pytest.skip("Only supports transb when b is fp8")
+    wrapper_name = f"GemmFloat8Tunable_{dtype_to_suffix(dta)}_{dtype_to_suffix(dtb)}_{dtype_to_suffix(dtc)}_{transab_to_suffix((transa, transb))}"
+    _test_gemm(getattr(ke, wrapper_name), dta, dtb, dtc, transa, transb, m, n, k, alpha, beta)
+
+
 @dataclass
 class GemmMetric(ke.BandwidthMetric, ke.ComputeMetric):
     transa: bool
@@ -258,7 +271,9 @@ def profile_with_args(dta, dtb, dtc, transa, transb, m, n, k, sort):
         profile_gemm_func(
             getattr(ke, "GemmFloat8CK" + dtype_suffix + transab_suffix), dta, dtb, dtc, transa, transb, m, n, k
         )
-        # profile_gemm_func(getattr(ke, "GemmTunable" + dtype_suffix + transab_suffix), dtype, transa, transb, m, n, k)
+        profile_gemm_func(
+            getattr(ke, "GemmFloat8Tunable" + dtype_suffix + transab_suffix), dta, dtb, dtc, transa, transb, m, n, k
+        )
     print()
 
 
