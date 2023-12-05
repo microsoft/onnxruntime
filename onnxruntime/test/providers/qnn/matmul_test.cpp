@@ -127,11 +127,11 @@ TEST_F(QnnCPUBackendTests, DISABLED_MatMulOp_Broadcast) {
 }
 
 #if defined(__linux__)
-TEST_F(QnnCPUBackendTests, MatMulOp_PaddingAndBroadcast_BLargerThanA) {
+TEST_F(QnnCPUBackendTests, DISABLED_MatMulOp_PaddingAndBroadcast_BLargerThanA) {
 #else
 // TODO: When fixed, enable MathOpTest.MatMulFloatType from cpu/mat/matmul_test.cc
 // QNN SDK 2.17: Accuracy errors
-TEST_F(QnnCPUBackendTests, DISABLED_MatMulOp_PaddingAndBroadcast_BLargerThanA) {
+TEST_F(QnnCPUBackendTests, MatMulOp_PaddingAndBroadcast_BLargerThanA) {
 #endif
   std::vector<float> input_data = GetSequentialFloatData(12);
   RunMatMulOpOpTest(TestInputDef<float>({2, 3, 2}, false, input_data),
