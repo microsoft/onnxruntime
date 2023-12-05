@@ -15,25 +15,25 @@ stages:
         value: onnxruntime-cuda-12
       ${{ else }}:
         value: ort-cuda-12-nightly
-  steps:
-    - task: DownloadPipelineArtifact@2
-      inputs:
-        artifact: 'onnxruntime-gpu'
-        targetPath: '$(Build.SourcesDirectory)'
-      DisplayName: 'Download Pipeline Artifact - onnxruntime-gpu'
-    - task: UsePythonVersion@0
-      displayName: 'Use Python 3.x'
-    - script: 'pip install twine==3.4.2'
-      displayName: 'Install Twine'
-    - task: TwineAuthenticate@1
-      displayName: 'Twine Authenticate '
-      inputs:
-        artifactFeed: PublicPackages/$(artifact_feed)
-    - script: 'twine upload 
-                -r $(artifact_feed)  
-                --repository-url ${{ parameters.repository-url }}
-                onnxruntime-gpu/*.whl
-                '
-      workingDirectory: '$(Build.SourcesDirectory)'
-      displayName: 'Uploading wheels to $(artifact_feed)'
-      retryCountOnTaskFailure: 3
+  jobs:
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      artifact: 'onnxruntime-gpu'
+      targetPath: '$(Build.SourcesDirectory)'
+    DisplayName: 'Download Pipeline Artifact - onnxruntime-gpu'
+  - task: UsePythonVersion@0
+    displayName: 'Use Python 3.x'
+  - script: 'pip install twine==3.4.2'
+    displayName: 'Install Twine'
+  - task: TwineAuthenticate@1
+    displayName: 'Twine Authenticate '
+    inputs:
+      artifactFeed: PublicPackages/$(artifact_feed)
+  - script: 'twine upload 
+              -r $(artifact_feed)  
+              --repository-url ${{ parameters.repository-url }}
+              onnxruntime-gpu/*.whl
+              '
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Uploading wheels to $(artifact_feed)'
+    retryCountOnTaskFailure: 3
