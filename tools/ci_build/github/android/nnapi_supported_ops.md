@@ -45,6 +45,7 @@ Keep in sync with doco generated from /docs/execution-providers/NNAPI-ExecutionP
 |ai.onnx:Sin||
 |ai.onnx:Slice||
 |ai.onnx:Softmax||
+|ai.onnx:Split|Only even splitting is supported.|
 |ai.onnx:Sqrt||
 |ai.onnx:Squeeze|Input axes should be constant.|
 |ai.onnx:Sub||
