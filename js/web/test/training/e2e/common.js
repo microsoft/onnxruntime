@@ -8,9 +8,6 @@ const TRAININGDATA_TRAIN_MODEL = DATA_FOLDER + 'training_model.onnx';
 const TRAININGDATA_OPTIMIZER_MODEL = DATA_FOLDER + 'adamw.onnx';
 const TRAININGDATA_EVAL_MODEL = DATA_FOLDER + 'eval_model.onnx';
 const TRAININGDATA_CKPT = DATA_FOLDER + 'checkpoint.ckpt';
-const TRAININGDATA_IN_FILE = DATA_FOLDER + 'input-0.in';
-const TRAININGDATA_LOSSONE_FILE = DATA_FOLDER + 'loss_1.out';
-const TRAININGDATA_LOSSTWO_FILE = DATA_FOLDER + 'loss_2.out';
 
 const trainingSessionAllOptions = {
   checkpointState: TRAININGDATA_CKPT,
@@ -181,6 +178,10 @@ var testTrainingFunctionMin = async function(ort, options) {
   const labels = new ort.Tensor('int32', [2, 1], [2]);
   const feeds = {"input-0": input0, "labels": labels};
 
+  // check getParametersSize
+  const paramsSize = await trainingSession.getParametersSize();
+  assertStrictEquals(paramsSize, 397510);
+
   // check getContiguousParameters
   const originalParams = await trainingSession.getContiguousParameters();
   assertStrictEquals(originalParams.dims.length, 1);
@@ -201,6 +202,10 @@ var testTrainingFunctionAll = async function(ort, options) {
   const labels = new ort.Tensor('int32', [2, 1], [2]);
   let feeds = {"input-0": input0, "labels": labels};
 
+  // check getParametersSize
+  const paramsSize = await trainingSession.getParametersSize();
+  assertStrictEquals(paramsSize, 397510);
+
   // check getContiguousParameters
   const originalParams = await trainingSession.getContiguousParameters();
   assertStrictEquals(originalParams.dims.length, 1);
@@ -219,7 +224,7 @@ var testTrainingFunctionAll = async function(ort, options) {
   const results2 = await runTrainStepAndCheck(trainingSession, feeds);
 
   // check that loss decreased after optimizer step and training again
-  assert(results2['onnx::loss::21273'].data < results['onnx::loss::21273'].data)
+  assert(results2['onnx::loss::21273'].data < results['onnx::loss::21273'].data);
 
   await loadParametersBufferAndCheck(trainingSession, 397510, -1.2, optimizedParams);
 }
