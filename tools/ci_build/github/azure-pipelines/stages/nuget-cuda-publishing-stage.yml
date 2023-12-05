@@ -1,0 +1,10 @@
+stages:
+  - stage: NuGet_Publishing_GPU
+    dependsOn: [ NuGet_Packaging_GPU ]
+    jobs:
+      - job:
+          steps:
+            - task: DownloadPipelineArtifact@2
+              inputs:
+                artifact: 'onnxruntime-nuget-gpu'
+                targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
