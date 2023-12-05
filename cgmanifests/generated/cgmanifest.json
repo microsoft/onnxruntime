@@ -6,7 +6,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "a896e3d066448b3530dbcaa48869fafefd738f57",
+          "commitHash": "e2627e265d940db5ea58dffa63e490375bfc92e5",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"
@@ -316,7 +316,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "a4f72a314a85732ed67d5aa8d1088d207a7e0e61",
+          "commitHash": "5356c4a943a35e74d7cdc69486afcb8703b9a59a",
           "repositoryUrl": "https://github.com/ROCmSoftwarePlatform/composable_kernel.git"
         },
         "comments": "composable_kernel"
