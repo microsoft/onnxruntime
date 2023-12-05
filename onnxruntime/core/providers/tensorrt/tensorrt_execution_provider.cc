@@ -1052,6 +1052,8 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
                         char const* output_name,
                         size_t output_index,
                         size_t output_type,
+                        std::vector<IAllocatorUniquePtr<void>>& scratch_buffers,
+                        std::unordered_map<char const*, void*>& buffers,
                         OrtAllocator* alloc,
                         cudaStream_t stream) {
   auto allocator = allocator_map[output_name];
@@ -1101,9 +1103,10 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
           output_dim_size *= shape[i];
         }
       }
-      IAllocatorUniquePtr<int64_t> buffer = IAllocator::MakeUniquePtrFromOrtAllocator<int64_t>(alloc, output_dim_size * sizeof(int64_t));
-      cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(allocator->getBuffer()), buffer.get(), output_dim_size);
-      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, buffer.get(), output_dim_size * sizeof(int64_t),
+      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, output_dim_size * sizeof(int64_t)));
+      buffers[output_name] = scratch_buffers.back().get();
+      cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(allocator->getBuffer()), reinterpret_cast<int64_t*>(buffers[output_name]), output_dim_size);
+      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, buffers[output_name], output_dim_size * sizeof(int64_t),
                                                                      shape.data(), shape.size(), Ort::TypeToTensorType<int64_t>::type, &out));
       break;
     }
@@ -1119,9 +1122,10 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
           output_dim_size *= shape[i];
         }
       }
-      IAllocatorUniquePtr<double> buffer = IAllocator::MakeUniquePtrFromOrtAllocator<double>(alloc, output_dim_size * sizeof(double));
-      cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(allocator->getBuffer()), buffer.get(), output_dim_size);
-      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, buffer.get(), output_dim_size * sizeof(double),
+      scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, output_dim_size * sizeof(double)));
+      buffers[output_name] = scratch_buffers.back().get();
+      cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(allocator->getBuffer()), reinterpret_cast<double*>(buffers[output_name]), output_dim_size);
+      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, buffers[output_name], output_dim_size * sizeof(double),
                                                                      shape.data(), shape.size(), Ort::TypeToTensorType<double>::type, &out));
       break;
     }
@@ -3354,7 +3358,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
       // Assign TRT output back to ORT output
       // (1) Bind TRT DDS output to ORT kernel context output. (It needs to wait until enqueueV3 is finished)
-      // (2) Cast TRT INT32 output to ORT INT64 output or TRT double output to float output
+      // (2) Cast TRT INT32 output to ORT INT64 output or TRT float output to double output
       for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
         char const* output_name = output_binding_names[i];
 
@@ -3370,7 +3374,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           if (index_iter != output_indexes.end()) {
             output_index = index_iter->second;
           }
-          auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type, alloc, stream);
+          auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type, scratch_buffers, buffers, alloc, stream);
           if (status != Status::OK()) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
           }
