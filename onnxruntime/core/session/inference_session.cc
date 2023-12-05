@@ -502,7 +502,6 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
         TraceLoggingString(config_pair.second.c_str(), "Value"));
   }
 #endif
-
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env)
