@@ -785,7 +785,7 @@ def main():
         optimize_optimum(config, args)
         return
 
-    # use cuda for Llama-2-70b to speedup export, other models use CPU by default
+    # Use CUDA for LLaMA-2-70B to speed up export and CPU for other models
     l_config, llama = setup_torch_model(
         args, location, use_auth_token, device=args.device if args.model_name == "Llama-2-70b-hf" else None
     )
