@@ -130,17 +130,31 @@ class ComputeContextImpl implements ComputeContext {
   }
 }
 
+/**
+ * Initialize JSEP with WebGPU backend.
+ *
+ * This function will be called only once after the WebAssembly module is loaded and initialized ("_OrtInit" is called).
+ * This function is expected to be only available when WebGPU is enabled in build (BUILD_DEFS.DISABLE_WEBGPU === false).
+ * If WebGPU is not available in current environment, this function should not throw, but simply return.
+ *
+ * @param module - the ORT WebAssembly module
+ * @param env - the ORT environment variable (ort.env)
+ */
 export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
-  const init = module.jsepInit;
-  if (init && navigator.gpu) {
+  const jsepInit = module.jsepInit;
+  if (!jsepInit) {
+    return;
+  }
+  const gpuAdapter = await navigator.gpu?.requestAdapter();
+  if (gpuAdapter) {
     if (!env.wasm.simd) {
       throw new Error(
           'Not supported for WebGPU=ON and SIMD=OFF. Please set `env.wasm.simd` to true when using WebGPU EP');
     }
     const backend = new WebGpuBackend();
-    await backend.initialize(env);
+    await backend.initialize(env, gpuAdapter);
 
-    init(
+    jsepInit(
         // backend
         backend,
 

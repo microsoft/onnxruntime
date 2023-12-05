@@ -33,9 +33,29 @@ export const initializeFlags = (): void => {
 };
 
 export class OnnxruntimeWebAssemblyBackend implements Backend {
-  async init(): Promise<void> {
+  /**
+   * This function initializes the WebAssembly backend.
+   *
+   * This function will be called only once for each backend name. It will be called the first time when
+   * `ort.InferenceSession.create()` is called with a registered backend name.
+   *
+   * @param backendName - the registered backend name.
+   */
+  async init(backendName: string): Promise<void> {
     // populate wasm flags
     initializeFlags();
+
+    // perform WebGPU availability check
+    if (!BUILD_DEFS.DISABLE_WEBGPU && backendName === 'webgpu') {
+      if (typeof navigator === 'undefined' || !navigator.gpu) {
+        throw new Error('WebGPU is not supported in current environment');
+      }
+
+      if (!await navigator.gpu.requestAdapter()) {
+        throw new Error(
+            'Failed to get GPU adapter. You may need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.');
+      }
+    }
 
     // init wasm
     await initializeWebAssemblyInstance();
