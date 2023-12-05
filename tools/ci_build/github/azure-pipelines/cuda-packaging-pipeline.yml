@@ -172,4 +172,4 @@ stages:
       BuildId: ${{ parameters.BuildId }}
 
 ## Win/Linux GPU Combined Publishing
-#- template: templates/publish-nuget.yml
+  - template: stages/nuget-cuda-publishing-stage.yml

@@ -1,10 +1,26 @@
+
 stages:
   - stage: NuGet_Publishing_GPU
     dependsOn: [ NuGet_Packaging_GPU ]
     jobs:
-      - job:
-          steps:
-            - task: DownloadPipelineArtifact@2
-              inputs:
-                artifact: 'onnxruntime-nuget-gpu'
-                targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+      - job: Download_NuGet_Package
+        steps:
+          - task: DownloadPipelineArtifact@2
+            displayName: Download NuGet Package
+            inputs:
+              artifact: drop-signed-nuget-GPU
+              targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
+
+          - template: ../nuget/templates/get-nuget-package-version-as-variable.yml
+            parameters:
+              packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
+
+          - task: NuGetCommand@2
+            displayName: 'NuGet push onnxruntime'
+            inputs:
+              command: push
+              packagesToPush: $(Build.BinariesDirectory)/nuget-artifact/final-package/*.nupkg'
+              publishVstsFeed: PublicPackages/onnxruntime-cuda-12
+
+
+
