@@ -7,6 +7,7 @@
 ONNX Model Optimizer for Stable Diffusion
 """
 
+import gc
 import logging
 import os
 import shutil
@@ -40,6 +41,10 @@ class OrtStableDiffusionOptimizer:
         logger.info("Saving a temporary model to run OnnxRuntime graph optimizations...")
         tmp_model_path = Path(tmp_dir) / "model.onnx"
         onnx_model.save_model_to_file(str(tmp_model_path), use_external_data_format=use_external_data_format)
+
+        del onnx_model
+        gc.collect()
+
         ort_optimized_model_path = Path(tmp_dir) / "optimized.onnx"
         optimize_by_onnxruntime(
             str(tmp_model_path),

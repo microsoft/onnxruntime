@@ -33,6 +33,7 @@ Do not modify directly.*
 | ConvTranspose | ai.onnx(1-10,11+); com.ms.internal.nhwc(1-10,11+) | need perf optimization; ConvTranspose3d is not supported; need implementing activation |
 | Cos | ai.onnx(7+) |  |
 | Cosh | ai.onnx(9+) |  |
+| CumSum | ai.onnx(11-13,14+) |  |
 | Div | ai.onnx(7-12,13,14+) |  |
 | Einsum | ai.onnx(12+) |  |
 | Elu | ai.onnx(6+) |  |

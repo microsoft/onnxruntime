@@ -85,11 +85,22 @@ class QLinearSoftmax(QuantOperatorBase):
 class QDQSoftmax(QDQOperatorBase):
     def quantize(self):
         super().quantize()
-        symmetric = self.quantizer.is_activation_symmetric
+        output_name = self.node.output[0]
+        quant_overrides = self.quantizer.get_per_tensor_quant_overrides(output_name)
 
-        # Enforce Softmax range: 0.0 to 1.0
-        rmin, rmax = 0.0, 1.0
-        qmin, qmax = get_qmin_qmax_for_qType(self.quantizer.activation_qType, symmetric=symmetric)
-        out_zero_point, out_scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=symmetric)
+        quant_type = self.quantizer.activation_qType
+        if "quant_type" in quant_overrides:
+            quant_type = quant_overrides["quant_type"].tensor_type
 
-        self.quantizer.set_quant_scale_zp(self.node.output[0], (out_scale, out_zero_point))
+        if "scale" in quant_overrides and "zero_point" in quant_overrides:
+            out_zero_point, out_scale = quant_overrides["zero_point"], quant_overrides["scale"]
+        else:
+            # Unless overridden by the user, force Softmax to range from 0.0 to 1.0
+            rmin = quant_overrides.get("rmin", 0.0)
+            rmax = quant_overrides.get("rmax", 1.0)
+            symmetric = quant_overrides.get("symmetric", self.quantizer.is_activation_symmetric)
+            reduce_range = quant_overrides.get("reduce_range", False)
+            qmin, qmax = get_qmin_qmax_for_qType(quant_type, reduce_range=reduce_range, symmetric=symmetric)
+            out_zero_point, out_scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=symmetric)
+
+        self.quantizer.set_quant_scale_zp(output_name, (out_scale, out_zero_point))
