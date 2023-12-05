@@ -121,31 +121,6 @@ TEST_F(QnnCPUBackendTests, ArgMaxMin_DefaultAttrs) {
                      ExpectedEPNodeAssignment::All, 13);
 }
 
-// TODO: Enable the following tests in cpu/reduction/reduction_op_tests.cc:
-//       - ReductionOpTest.ArgMax
-//       - ReductionOpTest.ArgMax_do_not_keepdims
-//       - ReductionOpTest.ArgMax_do_not_keepdims_2
-//       - ReductionOpTest.ArgMax_int32
-//       - ReductionOpTest.ArgMax_int32_neg_axis
-//       - ReductionOpTest.ArgMax_2D
-//       - ReductionOpTest.ArgMax_2D_dim1
-//       - ReductionOpTest.ArgMin
-//       - ReductionOpTest.ArgMin_do_not_keepdims
-//       - ReductionOpTest.ArgMin_do_not_keepdims_2
-//       - ReductionOpTest.ArgMin_int32
-//       - ReductionOpTest.ArgMin_int32_neg_axis
-//       - ResizeOpTest.ResizeOpLinearDownSampleTest_4DBilinear1
-// QNN SDK 2.17.0: FreeLibrary() call to unload QnnCpu.dll faults on x64 windows. Frustratingly, this test doesn't
-//                 reproduce the issue in the original ReductionOpTest.ArgMax test, but is here to document the issue.
-TEST_F(QnnCPUBackendTests, ArgMax_Rank3_MiddleAxis) {
-  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
-  RunCPUArgMxxOpTest("ArgMax",
-                     TestInputDef<float>({3, 2, 2}, false, input_data),
-                     {utils::MakeAttribute("axis", static_cast<int64_t>(1)),
-                      utils::MakeAttribute("keepdims", static_cast<int64_t>(1))},
-                     ExpectedEPNodeAssignment::All, 7);
-}
-
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 //
 // HTP tests:

@@ -1352,6 +1352,9 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"gridsample_volumetric_nearest_align_corners_0", "unknown version"});
     broken_tests->insert({"gridsample_volumetric_nearest_align_corners_1", "unknown version"});
     broken_tests->insert({"spacetodepth", "result differs"});
+    // Fails with QNN SDK 2.17.0:
+    // expected 7.70947 (40f6b3f3), got 7.84096 (40fae920), diff: 0.131491, tol=0.00870947 idx=419. 100 of 1715 differ
+    broken_tests->insert({"facedetection_op8_qdq", "result differs"});
   }
 
 #ifdef DISABLE_CONTRIB_OPS
