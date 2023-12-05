@@ -11,8 +11,8 @@ import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper}
 
 
 export interface CumSumAttributes extends AttributeWithCacheKey {
-  readonly exclusive: number;
-  readonly reverse: number;
+  readonly exclusive: boolean;
+  readonly reverse: boolean;
 }
 const createCumsumProgramInfo =
     (inputType: number, inputShape: readonly number[], axisInput: TensorView, attributes: CumSumAttributes):
@@ -27,8 +27,8 @@ const createCumsumProgramInfo =
           const getShaderSource = (shaderHelper: ShaderHelper) => {
             const index = ` i32(${input.indicesGet('inputIndices', 'uniforms.axis')}) `;
             const max = rank === 1 ? 'i32(uniforms.input_shape)' : 'i32(uniforms.input_shape[uniforms.axis])';
-            const lowerLimit = attributes.reverse === 1 ? index + (attributes.exclusive === 1 ? ' + 1' : '') : '0';
-            const upperLimit = attributes.reverse === 1 ? max : index + (attributes.exclusive === 1 ? '' : ' + 1');
+            const lowerLimit = attributes.reverse ? index + (attributes.exclusive ? ' + 1' : '') : '0';
+            const upperLimit = attributes.reverse ? max : index + (attributes.exclusive ? '' : ' + 1');
             return `
                 ${
                 shaderHelper.registerUniform('outputSize', 'u32')
@@ -72,7 +72,7 @@ export const cumsum = (context: ComputeContext, attributes: CumSumAttributes): v
 };
 
 export const parseCumSumAttributes = (attributes: Record<string, unknown>): CumSumAttributes => {
-  const exclusive = attributes.exclusive as number;
-  const reverse = attributes.reverse as number;
+  const exclusive = attributes.exclusive as number === 1;
+  const reverse = attributes.reverse as number === 1;
   return createAttributeWithCacheKey({exclusive, reverse});
 };
