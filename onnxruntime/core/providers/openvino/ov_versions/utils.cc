@@ -180,12 +180,12 @@ void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
                                const std::unordered_set<std::string>& ng_required_initializers,
                                /*out*/ std::vector<std::string>& cluster_graph_inputs,
                                /*out*/ std::vector<std::string>& cluster_inputs,
-                               /*out*/ std::vector<std::string>& constant_inputs,
                                /*out*/ std::vector<std::string>& cluster_outputs) {
   std::unordered_set<std::string> input_args;
   std::vector<std::string> ordered_input_args;
   std::unordered_set<std::string> output_args;
   std::unordered_set<std::string> external_output_args;
+  std::vector<std::string> constant_inputs;
 
   for (const auto& node_idx : cluster) {
     const auto& node = graph_viewer.GetNode(node_idx);
