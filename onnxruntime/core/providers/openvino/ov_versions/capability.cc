@@ -146,26 +146,15 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
       // If subgraph has less then three, graph is considered trivial
       if (this_cluster.size() < 3) {
         continue;
-      } else {
-        // If subgraph only has Identity node, EyeLike or Dropout, OpenVINO EP doesn't support it.
-        if (this_cluster.size() == 1) {
-          const auto& node = graph_viewer_.GetNode(this_cluster[0]);
-          if (IsOpSupportedOnlyInModel(node->OpType()))
-            continue;
-          // If reshape is not an intermediate node, shape needs to be an initializer
-          if (data_ops_->SpecialConditionForClusterSizeOne(ng_required_initializers, node))
-            continue;
-        }
       }
 
-      std::vector<std::string> cluster_graph_inputs, cluster_inputs, const_inputs, cluster_outputs;
+      std::vector<std::string> cluster_graph_inputs, cluster_inputs, cluster_outputs;
 
       GetInputsOutputsOfCluster(graph_viewer_,
                                 this_cluster,
                                 ng_required_initializers,
                                 cluster_graph_inputs,
                                 cluster_inputs,
-                                const_inputs,
                                 cluster_outputs);
 
       bool omit_subgraph = false;

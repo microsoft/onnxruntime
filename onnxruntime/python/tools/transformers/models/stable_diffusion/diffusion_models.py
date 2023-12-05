@@ -29,7 +29,7 @@ from typing import Dict, List, Optional
 import onnx
 import onnx_graphsurgeon as gs
 import torch
-from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
 from onnx import GraphProto, ModelProto, shape_inference
 from ort_optimizer import OrtStableDiffusionOptimizer
 from polygraphy.backend.onnx.loader import fold_constants
@@ -92,6 +92,10 @@ class PipelineInfo:
         max_image_size=1024,
         use_fp16_vae=True,
         use_lcm=False,
+        do_classifier_free_guidance=True,
+        controlnet=None,
+        lora_weights=None,
+        lora_scale=1.0,
     ):
         self.version = version
         self._is_inpaint = is_inpaint
@@ -101,6 +105,11 @@ class PipelineInfo:
         self._max_image_size = max_image_size
         self._use_fp16_vae = use_fp16_vae
         self._use_lcm = use_lcm
+        self.do_classifier_free_guidance = do_classifier_free_guidance and not use_lcm
+        self.controlnet = controlnet  # A list of control net type
+        self.lora_weights = lora_weights
+        self.lora_scale = lora_scale
+
         if is_refiner:
             assert not use_lcm
             assert self.is_xl()
@@ -111,17 +120,23 @@ class PipelineInfo:
     def is_xl(self) -> bool:
         return "xl" in self.version
 
+    def is_xl_turbo(self) -> bool:
+        return self.version == "xl-turbo"
+
     def is_xl_base(self) -> bool:
-        return self.is_xl() and not self._is_refiner
+        return self.version == "xl-1.0" and not self._is_refiner
+
+    def is_xl_base_or_turbo(self) -> bool:
+        return self.is_xl_base() or self.is_xl_turbo()
 
     def is_xl_refiner(self) -> bool:
-        return self.is_xl() and self._is_refiner
+        return self.version == "xl-1.0" and self._is_refiner
 
     def use_safetensors(self) -> bool:
-        return self.is_xl()
+        return self.is_xl() or self.version in ["sd-turbo"]
 
     def stages(self) -> List[str]:
-        if self.is_xl_base():
+        if self.is_xl_base_or_turbo():
             return ["clip", "clip2", "unetxl"] + (["vae"] if self._use_vae else [])
 
         if self.is_xl_refiner():
@@ -144,7 +159,7 @@ class PipelineInfo:
 
     @staticmethod
     def supported_versions(is_xl: bool):
-        return ["xl-1.0"] if is_xl else ["1.4", "1.5", "2.0-base", "2.0", "2.1", "2.1-base"]
+        return ["xl-1.0", "xl-turbo"] if is_xl else ["1.4", "1.5", "2.0-base", "2.0", "2.1", "2.1-base", "sd-turbo"]
 
     def name(self) -> str:
         if self.version == "1.4":
@@ -176,6 +191,10 @@ class PipelineInfo:
                 return "stabilityai/stable-diffusion-xl-refiner-1.0"
             else:
                 return "stabilityai/stable-diffusion-xl-base-1.0"
+        elif self.version == "xl-turbo":
+            return "stabilityai/sdxl-turbo"
+        elif self.version == "sd-turbo":
+            return "stabilityai/sd-turbo"
 
         raise ValueError(f"Incorrect version {self.version}")
 
@@ -186,15 +205,15 @@ class PipelineInfo:
         # TODO: can we read from config instead
         if self.version in ("1.4", "1.5"):
             return 768
-        elif self.version in ("2.0", "2.0-base", "2.1", "2.1-base"):
+        elif self.version in ("2.0", "2.0-base", "2.1", "2.1-base", "sd-turbo"):
             return 1024
-        elif self.version in ("xl-1.0") and self.is_xl_base():
+        elif self.is_xl_base_or_turbo():
             return 768
         else:
             raise ValueError(f"Invalid version {self.version}")
 
     def clipwithproj_embedding_dim(self):
-        if self.version in ("xl-1.0"):
+        if self.is_xl():
             return 1280
         else:
             raise ValueError(f"Invalid version {self.version}")
@@ -202,11 +221,11 @@ class PipelineInfo:
     def unet_embedding_dim(self):
         if self.version in ("1.4", "1.5"):
             return 768
-        elif self.version in ("2.0", "2.0-base", "2.1", "2.1-base"):
+        elif self.version in ("2.0", "2.0-base", "2.1", "2.1-base", "sd-turbo"):
             return 1024
-        elif self.version in ("xl-1.0") and self.is_xl_base():
+        elif self.is_xl_base_or_turbo():
             return 2048
-        elif self.version in ("xl-1.0") and self.is_xl_refiner():
+        elif self.is_xl_refiner():
             return 1280
         else:
             raise ValueError(f"Invalid version {self.version}")
@@ -217,12 +236,51 @@ class PipelineInfo:
     def max_image_size(self):
         return self._max_image_size
 
-    def default_image_size(self):
-        if self.is_xl():
+    @staticmethod
+    def default_resolution(version: str) -> int:
+        if version == "xl-1.0":
             return 1024
-        if self.version in ("2.0", "2.1"):
+        if version in ("2.0", "2.1"):
             return 768
         return 512
+
+    def default_image_size(self) -> int:
+        return PipelineInfo.default_resolution(self.version)
+
+    @staticmethod
+    def supported_controlnet(version="1.5"):
+        if version in ("xl-1.0", "xl-turbo"):
+            return {
+                "canny": "diffusers/controlnet-canny-sdxl-1.0",
+                "depth": "diffusers/controlnet-depth-sdxl-1.0",
+            }
+        elif version == "1.5":
+            return {
+                "canny": "lllyasviel/control_v11p_sd15_canny",
+                "depth": "lllyasviel/control_v11f1p_sd15_depth",
+                "openpose": "lllyasviel/control_v11p_sd15_openpose",
+                # "tile": "lllyasviel/control_v11f1e_sd15_tile",
+                # "lineart": "lllyasviel/control_v11p_sd15_lineart",
+                # "inpaint": "lllyasviel/control_v11p_sd15_inpaint",
+                # "softedge": "lllyasviel/control_v11p_sd15_softedge",
+                "mlsd": "lllyasviel/control_v11p_sd15_mlsd",
+                "scribble": "lllyasviel/control_v11p_sd15_scribble",
+                # "ip2p": "lllyasviel/control_v11e_sd15_ip2p",
+                "normalbae": "lllyasviel/control_v11p_sd15_normalbae",
+                "seg": "lllyasviel/control_v11p_sd15_seg",
+                # "shuffle": "lllyasviel/control_v11e_sd15_shuffle",
+                # "lineart_anime": "lllyasviel/control_v11p_sd15s2_lineart_anime",
+            }
+        return None
+
+    def controlnet_name(self):
+        """Return a list of controlnet name"""
+        if not self.controlnet:
+            return None
+        controlnet_map = PipelineInfo.supported_controlnet(self.version)
+        if controlnet_map is None:
+            return None
+        return [controlnet_map[controlnet] for controlnet in self.controlnet]
 
 
 class BaseModel:
@@ -254,6 +312,9 @@ class BaseModel:
         self.embedding_dim = embedding_dim
         self.text_maxlen = text_maxlen
 
+    def get_batch_multiplier(self):
+        return 2 if self.pipeline_info.do_classifier_free_guidance else 1
+
     def get_ort_optimizer(self):
         model_name_to_model_type = {
             "CLIP": "clip",
@@ -268,12 +329,18 @@ class BaseModel:
     def get_model(self):
         return self.model
 
-    def from_pretrained(self, model_class, framework_model_dir, hf_token, subfolder, **kwargs):
-        model_dir = os.path.join(framework_model_dir, self.pipeline_info.name(), subfolder)
+    def from_pretrained(self, model_class, framework_model_dir, hf_token, subfolder=None, model_name=None, **kwargs):
+        if model_name is None:
+            model_name = self.pipeline_info.name()
+
+        if subfolder:
+            model_dir = os.path.join(framework_model_dir, model_name, subfolder)
+        else:
+            model_dir = os.path.join(framework_model_dir, model_name)
 
         if not os.path.exists(model_dir):
             model = model_class.from_pretrained(
-                self.pipeline_info.name(),
+                model_name,
                 subfolder=subfolder,
                 use_safetensors=self.pipeline_info.use_safetensors(),
                 use_auth_token=hf_token,
@@ -316,7 +383,10 @@ class BaseModel:
             _,
         ) = self.get_minmax_dims(batch_size, image_height, image_width, static_batch, static_image_shape)
 
-        profile_id = f"_b_{batch_size}" if static_batch else f"_b_{min_batch}_{max_batch}"
+        if (self.name in ["UNet", "UNetXL"]) and (self.get_batch_multiplier() == 1):
+            profile_id = f"_b1_{batch_size}" if static_batch else f"_b1_{min_batch}_{max_batch}"
+        else:
+            profile_id = f"_b_{batch_size}" if static_batch else f"_b_{min_batch}_{max_batch}"
 
         if self.name != "CLIP":
             if static_image_shape:
@@ -348,6 +418,7 @@ class BaseModel:
         fp32_op_list=None,
         optimize_by_ort=True,
         optimize_by_fusion=True,
+        tmp_dir=None,
     ):
         optimizer = self.get_ort_optimizer()
         optimizer.optimize(
@@ -358,6 +429,7 @@ class BaseModel:
             fp32_op_list=fp32_op_list,
             optimize_by_ort=optimize_by_ort,
             optimize_by_fusion=optimize_by_fusion,
+            tmp_dir=tmp_dir,
         )
 
     def optimize_trt(self, input_onnx_path, optimized_onnx_path):
@@ -525,6 +597,7 @@ class CLIP(BaseModel):
         fp32_op_list=None,
         optimize_by_ort=True,
         optimize_by_fusion=True,
+        tmp_dir=None,
     ):
         optimizer = self.get_ort_optimizer()
 
@@ -538,6 +611,7 @@ class CLIP(BaseModel):
                 keep_outputs=["text_embeddings"],
                 optimize_by_ort=optimize_by_ort,
                 optimize_by_fusion=optimize_by_fusion,
+                tmp_dir=tmp_dir,
             )
         elif optimize_by_fusion:
             with tempfile.TemporaryDirectory() as tmp_dir:
@@ -556,6 +630,7 @@ class CLIP(BaseModel):
                     keep_outputs=["text_embeddings", "hidden_states"],
                     optimize_by_ort=optimize_by_ort,
                     optimize_by_fusion=optimize_by_fusion,
+                    tmp_dir=tmp_dir,
                 )
         else:  # input is optimized model, there is no need to add hidden states.
             optimizer.optimize(
@@ -567,6 +642,7 @@ class CLIP(BaseModel):
                 keep_outputs=["text_embeddings", "hidden_states"],
                 optimize_by_ort=optimize_by_ort,
                 optimize_by_fusion=optimize_by_fusion,
+                tmp_dir=tmp_dir,
             )
 
     def optimize_trt(self, input_onnx_path, optimized_onnx_path):
@@ -622,6 +698,100 @@ class CLIPWithProj(CLIP):
         return output
 
 
+class UNet2DConditionControlNetModel(torch.nn.Module):
+    def __init__(self, unet, controlnets: ControlNetModel):
+        super().__init__()
+        self.unet = unet
+        self.controlnets = controlnets
+
+    def forward(self, sample, timestep, encoder_hidden_states, controlnet_images, controlnet_scales):
+        for i, (controlnet_image, conditioning_scale, controlnet) in enumerate(
+            zip(controlnet_images, controlnet_scales, self.controlnets)
+        ):
+            down_samples, mid_sample = controlnet(
+                sample,
+                timestep,
+                encoder_hidden_states=encoder_hidden_states,
+                controlnet_cond=controlnet_image,
+                return_dict=False,
+            )
+
+            down_samples = [down_sample * conditioning_scale for down_sample in down_samples]
+            mid_sample *= conditioning_scale
+
+            # merge samples
+            if i == 0:
+                down_block_res_samples, mid_block_res_sample = down_samples, mid_sample
+            else:
+                down_block_res_samples = [
+                    samples_prev + samples_curr
+                    for samples_prev, samples_curr in zip(down_block_res_samples, down_samples)
+                ]
+                mid_block_res_sample += mid_sample
+
+        noise_pred = self.unet(
+            sample,
+            timestep,
+            encoder_hidden_states=encoder_hidden_states,
+            down_block_additional_residuals=down_block_res_samples,
+            mid_block_additional_residual=mid_block_res_sample,
+        )
+        return noise_pred[0]
+
+
+# Modified from convert_stable_diffusion_controlnet_to_onnx.py in diffusers
+class UNet2DConditionXLControlNetModel(torch.nn.Module):
+    def __init__(self, unet, controlnets: ControlNetModel):
+        super().__init__()
+        self.unet = unet
+        self.controlnets = controlnets
+
+    def forward(
+        self,
+        sample,
+        timestep,
+        encoder_hidden_states,
+        text_embeds,
+        time_ids,
+        controlnet_images,
+        controlnet_scales,
+    ):
+        added_cond_kwargs = {"text_embeds": text_embeds, "time_ids": time_ids}
+        for i, (controlnet_image, conditioning_scale, controlnet) in enumerate(
+            zip(controlnet_images, controlnet_scales, self.controlnets)
+        ):
+            down_samples, mid_sample = controlnet(
+                sample,
+                timestep,
+                encoder_hidden_states=encoder_hidden_states,
+                controlnet_cond=controlnet_image,
+                conditioning_scale=conditioning_scale,
+                added_cond_kwargs=added_cond_kwargs,
+                return_dict=False,
+            )
+
+            # merge samples
+            if i == 0:
+                down_block_res_samples, mid_block_res_sample = down_samples, mid_sample
+            else:
+                down_block_res_samples = [
+                    samples_prev + samples_curr
+                    for samples_prev, samples_curr in zip(down_block_res_samples, down_samples)
+                ]
+                mid_block_res_sample += mid_sample
+
+        noise_pred = self.unet(
+            sample,
+            timestep,
+            encoder_hidden_states=encoder_hidden_states,
+            down_block_additional_residuals=down_block_res_samples,
+            mid_block_additional_residual=mid_block_res_sample,
+            added_cond_kwargs=added_cond_kwargs,
+            return_dict=False,
+        )
+        return noise_pred[0]
+
+
 class UNet(BaseModel):
     def __init__(
         self,
@@ -642,71 +812,139 @@ class UNet(BaseModel):
             embedding_dim=pipeline_info.unet_embedding_dim(),
             text_maxlen=text_maxlen,
         )
+
         self.unet_dim = unet_dim
+        self.controlnet = pipeline_info.controlnet_name()
 
     def load_model(self, framework_model_dir, hf_token, subfolder="unet"):
-        options = {"variant": "fp16", "torch_dtype": torch.float16} if self.fp16 else {}
-        return self.from_pretrained(UNet2DConditionModel, framework_model_dir, hf_token, subfolder, **options)
+        options = {"variant": "fp16", "torch_dtype": torch.float16}
+
+        model = self.from_pretrained(UNet2DConditionModel, framework_model_dir, hf_token, subfolder, **options)
+
+        if self.controlnet:
+            controlnet_list = []
+            for name in self.controlnet:
+                controlnet = self.from_pretrained(
+                    ControlNetModel,
+                    framework_model_dir,
+                    hf_token,
+                    subfolder=None,
+                    model_name=name,
+                    torch_dtype=torch.float16,
+                )
+                controlnet_list.append(controlnet)
+
+            model = UNet2DConditionControlNetModel(model, torch.nn.ModuleList(controlnet_list))
+
+        if not self.fp16:
+            model = model.to(torch.float32)
+
+        return model
 
     def get_input_names(self):
-        return ["sample", "timestep", "encoder_hidden_states"]
+        if not self.controlnet:
+            return ["sample", "timestep", "encoder_hidden_states"]
+        else:
+            return ["sample", "timestep", "encoder_hidden_states", "controlnet_images", "controlnet_scales"]
 
     def get_output_names(self):
         return ["latent"]
 
     def get_dynamic_axes(self):
-        return {
-            "sample": {0: "2B", 2: "H", 3: "W"},
-            "encoder_hidden_states": {0: "2B"},
-            "latent": {0: "2B", 2: "H", 3: "W"},
+        b = "2B" if self.get_batch_multiplier() == 2 else "B"
+        output = {
+            "sample": {0: b, 2: "H", 3: "W"},
+            "encoder_hidden_states": {0: b},
+            "latent": {0: b, 2: "H", 3: "W"},
         }
+        if self.controlnet:
+            output.update(
+                {
+                    "controlnet_images": {1: b, 3: "8H", 4: "8W"},
+                }
+            )
+        return output
 
     def get_input_profile(self, batch_size, image_height, image_width, static_batch, static_image_shape):
         latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
         (
             min_batch,
             max_batch,
-            _,
-            _,
-            _,
-            _,
+            min_image_height,
+            max_image_height,
+            min_image_width,
+            max_image_width,
             min_latent_height,
             max_latent_height,
             min_latent_width,
             max_latent_width,
         ) = self.get_minmax_dims(batch_size, image_height, image_width, static_batch, static_image_shape)
-        return {
+        m = self.get_batch_multiplier()
+        output = {
             "sample": [
-                (2 * min_batch, self.unet_dim, min_latent_height, min_latent_width),
-                (2 * batch_size, self.unet_dim, latent_height, latent_width),
-                (2 * max_batch, self.unet_dim, max_latent_height, max_latent_width),
+                (m * min_batch, self.unet_dim, min_latent_height, min_latent_width),
+                (m * batch_size, self.unet_dim, latent_height, latent_width),
+                (m * max_batch, self.unet_dim, max_latent_height, max_latent_width),
             ],
             "encoder_hidden_states": [
-                (2 * min_batch, self.text_maxlen, self.embedding_dim),
-                (2 * batch_size, self.text_maxlen, self.embedding_dim),
-                (2 * max_batch, self.text_maxlen, self.embedding_dim),
+                (m * min_batch, self.text_maxlen, self.embedding_dim),
+                (m * batch_size, self.text_maxlen, self.embedding_dim),
+                (m * max_batch, self.text_maxlen, self.embedding_dim),
             ],
         }
 
+        if self.controlnet:
+            output.update(
+                {
+                    "controlnet_images": [
+                        (len(self.controlnet), m * min_batch, 3, min_image_height, min_image_width),
+                        (len(self.controlnet), m * batch_size, 3, image_height, image_width),
+                        (len(self.controlnet), m * max_batch, 3, max_image_height, max_image_width),
+                    ]
+                }
+            )
+        return output
+
     def get_shape_dict(self, batch_size, image_height, image_width):
         latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
-        return {
-            "sample": (2 * batch_size, self.unet_dim, latent_height, latent_width),
+        m = self.get_batch_multiplier()
+        output = {
+            "sample": (m * batch_size, self.unet_dim, latent_height, latent_width),
             "timestep": [1],
-            "encoder_hidden_states": (2 * batch_size, self.text_maxlen, self.embedding_dim),
-            "latent": (2 * batch_size, 4, latent_height, latent_width),
+            "encoder_hidden_states": (m * batch_size, self.text_maxlen, self.embedding_dim),
+            "latent": (m * batch_size, 4, latent_height, latent_width),
         }
+
+        if self.controlnet:
+            output.update(
+                {
+                    "controlnet_images": (len(self.controlnet), m * batch_size, 3, image_height, image_width),
+                    "controlnet_scales": [len(self.controlnet)],
+                }
+            )
+        return output
 
     def get_sample_input(self, batch_size, image_height, image_width):
         latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
         dtype = torch.float16 if self.fp16 else torch.float32
-        return (
+        m = self.get_batch_multiplier()
+        output = (
             torch.randn(
-                2 * batch_size, self.unet_dim, latent_height, latent_width, dtype=torch.float32, device=self.device
+                m * batch_size, self.unet_dim, latent_height, latent_width, dtype=torch.float32, device=self.device
             ),
             torch.tensor([1.0], dtype=torch.float32, device=self.device),
-            torch.randn(2 * batch_size, self.text_maxlen, self.embedding_dim, dtype=dtype, device=self.device),
+            torch.randn(m * batch_size, self.text_maxlen, self.embedding_dim, dtype=dtype, device=self.device),
         )
+
+        if self.controlnet:
+            output = (
+                *output,
+                torch.randn(
+                    len(self.controlnet), m * batch_size, 3, image_height, image_width, dtype=dtype, device=self.device
+                ),
+                torch.randn(len(self.controlnet), dtype=dtype, device=self.device),
+            )
+        return output
 
     def fp32_input_output_names(self) -> List[str]:
         return ["sample", "timestep"]
@@ -737,11 +975,10 @@ class UNetXL(BaseModel):
         self.time_dim = time_dim
 
         self.custom_unet = pipeline_info.custom_unet()
-        self.do_classifier_free_guidance = not (self.custom_unet and "lcm" in self.custom_unet)
-        self.batch_multiplier = 2 if self.do_classifier_free_guidance else 1
+        self.controlnet = pipeline_info.controlnet_name()
 
-    def load_model(self, framework_model_dir, hf_token, subfolder="unet"):
-        options = {"variant": "fp16", "torch_dtype": torch.float16} if self.fp16 else {}
+    def load_model(self, framework_model_dir, hf_token, subfolder="unet", always_download_fp16=True):
+        options = {"variant": "fp16", "torch_dtype": torch.float16} if self.fp16 or always_download_fp16 else {}
 
         if self.custom_unet:
             model_dir = os.path.join(framework_model_dir, self.custom_unet, subfolder)
@@ -750,49 +987,68 @@ class UNetXL(BaseModel):
                 unet.save_pretrained(model_dir)
             else:
                 unet = UNet2DConditionModel.from_pretrained(model_dir, **options)
-            return unet.to(self.device)
+            model = unet.to(self.device)
+        else:
+            model = self.from_pretrained(UNet2DConditionModel, framework_model_dir, hf_token, subfolder, **options)
 
-        return self.from_pretrained(UNet2DConditionModel, framework_model_dir, hf_token, subfolder, **options)
+        if always_download_fp16 and not self.fp16:
+            model = model.to(torch.float32)
+
+        if self.controlnet:
+            cnet_model_opts = {"torch_dtype": torch.float16} if self.fp16 or always_download_fp16 else {}
+            controlnets = torch.nn.ModuleList(
+                [ControlNetModel.from_pretrained(path, **cnet_model_opts).to(self.device) for path in self.controlnet]
+            )
+            model = UNet2DConditionXLControlNetModel(model, controlnets)
+
+        if always_download_fp16 and not self.fp16:
+            model = model.to(torch.float32)
+
+        return model
 
     def get_input_names(self):
-        return ["sample", "timestep", "encoder_hidden_states", "text_embeds", "time_ids"]
+        input_names = ["sample", "timestep", "encoder_hidden_states", "text_embeds", "time_ids"]
+        if self.controlnet:
+            return [*input_names, "controlnet_images", "controlnet_scales"]
+        return input_names
 
     def get_output_names(self):
         return ["latent"]
 
     def get_dynamic_axes(self):
-        if self.do_classifier_free_guidance:
-            return {
-                "sample": {0: "2B", 2: "H", 3: "W"},
-                "encoder_hidden_states": {0: "2B"},
-                "latent": {0: "2B", 2: "H", 3: "W"},
-                "text_embeds": {0: "2B"},
-                "time_ids": {0: "2B"},
-            }
-        return {
-            "sample": {0: "B", 2: "H", 3: "W"},
-            "encoder_hidden_states": {0: "B"},
-            "latent": {0: "B", 2: "H", 3: "W"},
-            "text_embeds": {0: "B"},
-            "time_ids": {0: "B"},
+        b = "2B" if self.get_batch_multiplier() == 2 else "B"
+        output = {
+            "sample": {0: b, 2: "H", 3: "W"},
+            "encoder_hidden_states": {0: b},
+            "text_embeds": {0: b},
+            "time_ids": {0: b},
+            "latent": {0: b, 2: "H", 3: "W"},
         }
+
+        if self.controlnet:
+            output.update(
+                {
+                    "controlnet_images": {1: b, 3: "8H", 4: "8W"},
+                }
+            )
+        return output
 
     def get_input_profile(self, batch_size, image_height, image_width, static_batch, static_image_shape):
         latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
         (
             min_batch,
             max_batch,
-            _,
-            _,
-            _,
-            _,
+            min_image_height,
+            max_image_height,
+            min_image_width,
+            max_image_width,
             min_latent_height,
             max_latent_height,
             min_latent_width,
             max_latent_width,
         ) = self.get_minmax_dims(batch_size, image_height, image_width, static_batch, static_image_shape)
-        m = self.batch_multiplier
-        return {
+        m = self.get_batch_multiplier()
+        output = {
             "sample": [
                 (m * min_batch, self.unet_dim, min_latent_height, min_latent_width),
                 (m * batch_size, self.unet_dim, latent_height, latent_width),
@@ -811,35 +1067,72 @@ class UNetXL(BaseModel):
             ],
         }
 
+        if self.controlnet:
+            output.update(
+                {
+                    "controlnet_images": [
+                        (len(self.controlnet), m * min_batch, 3, min_image_height, min_image_width),
+                        (len(self.controlnet), m * batch_size, 3, image_height, image_width),
+                        (len(self.controlnet), m * max_batch, 3, max_image_height, max_image_width),
+                    ],
+                }
+            )
+        return output
+
     def get_shape_dict(self, batch_size, image_height, image_width):
         latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
-        m = self.batch_multiplier
-        return {
+        m = self.get_batch_multiplier()
+        output = {
             "sample": (m * batch_size, self.unet_dim, latent_height, latent_width),
             "timestep": (1,),
             "encoder_hidden_states": (m * batch_size, self.text_maxlen, self.embedding_dim),
-            "latent": (m * batch_size, 4, latent_height, latent_width),
             "text_embeds": (m * batch_size, 1280),
             "time_ids": (m * batch_size, self.time_dim),
+            "latent": (m * batch_size, 4, latent_height, latent_width),
         }
+
+        if self.controlnet:
+            output.update(
+                {
+                    "controlnet_images": (len(self.controlnet), m * batch_size, 3, image_height, image_width),
+                    "controlnet_scales": [len(self.controlnet)],
+                }
+            )
+        return output
 
     def get_sample_input(self, batch_size, image_height, image_width):
         latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
         dtype = torch.float16 if self.fp16 else torch.float32
-        m = self.batch_multiplier
-        return (
-            torch.randn(
-                m * batch_size, self.unet_dim, latent_height, latent_width, dtype=torch.float32, device=self.device
-            ),
-            torch.tensor([1.0], dtype=torch.float32, device=self.device),
-            torch.randn(m * batch_size, self.text_maxlen, self.embedding_dim, dtype=dtype, device=self.device),
-            {
-                "added_cond_kwargs": {
-                    "text_embeds": torch.randn(m * batch_size, 1280, dtype=dtype, device=self.device),
-                    "time_ids": torch.randn(m * batch_size, self.time_dim, dtype=dtype, device=self.device),
-                }
-            },
-        )
+        m = self.get_batch_multiplier()
+        if not self.controlnet:
+            return (
+                torch.randn(
+                    m * batch_size, self.unet_dim, latent_height, latent_width, dtype=torch.float32, device=self.device
+                ),
+                torch.tensor([1.0], dtype=torch.float32, device=self.device),
+                torch.randn(m * batch_size, self.text_maxlen, self.embedding_dim, dtype=dtype, device=self.device),
+                {
+                    "added_cond_kwargs": {
+                        "text_embeds": torch.randn(m * batch_size, 1280, dtype=dtype, device=self.device),
+                        "time_ids": torch.randn(m * batch_size, self.time_dim, dtype=dtype, device=self.device),
+                    }
+                },
+            )
+        else:
+            # sample, timestep, encoder_hidden_states, text_embeds, time_ids, controlnet_images, controlnet_scales,
+            return (
+                torch.randn(
+                    m * batch_size, self.unet_dim, latent_height, latent_width, dtype=torch.float32, device=self.device
+                ),
+                torch.tensor([1.0], dtype=torch.float32, device=self.device),
+                torch.randn(m * batch_size, self.text_maxlen, self.embedding_dim, dtype=dtype, device=self.device),
+                torch.randn(m * batch_size, 1280, dtype=dtype, device=self.device),
+                torch.randn(m * batch_size, self.time_dim, dtype=dtype, device=self.device),
+                torch.randn(
+                    len(self.controlnet), m * batch_size, 3, image_height, image_width, dtype=dtype, device=self.device
+                ),
+                torch.randn(len(self.controlnet), dtype=dtype, device=self.device),
+            )
 
     def fp32_input_output_names(self) -> List[str]:
         return ["sample", "timestep"]

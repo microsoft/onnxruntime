@@ -32,13 +32,13 @@ def parse_args():
     parser.add_argument(
         "--build-dir",
         type=pathlib.Path,
-        default=REPO_DIR / "build" / "ios_framework",
+        default=REPO_DIR / "build" / "apple_framework",
         help="The build directory. This will contain the iOS framework build output.",
     )
     parser.add_argument(
         "--staging-dir",
         type=pathlib.Path,
-        default=REPO_DIR / "build" / "ios_pod_staging",
+        default=REPO_DIR / "build" / "apple_pod_staging",
         help="The staging directory. This will contain the iOS pod package files. "
         "The pod package files do not have dependencies on files in the build directory.",
     )
@@ -60,20 +60,20 @@ def parse_args():
 
     build_framework_group = parser.add_argument_group(
         title="iOS framework build arguments",
-        description="See the corresponding arguments in build_ios_framework.py for details.",
+        description="See the corresponding arguments in build_apple_framework.py for details.",
     )
 
     build_framework_group.add_argument("--include-ops-by-config")
     build_framework_group.add_argument(
-        "--build-settings-file", required=True, help="The positional argument of build_ios_framework.py."
+        "--build-settings-file", required=True, help="The positional argument of build_apple_framework.py."
     )
     build_framework_group.add_argument(
         "-b",
-        "--build-ios-framework-arg",
+        "--build-apple-framework-arg",
         action="append",
-        dest="build_ios_framework_extra_args",
+        dest="build_apple_framework_extra_args",
         default=[],
-        help="Pass an argument through to build_ios_framework.py. This may be specified multiple times.",
+        help="Pass an argument through to build_apple_framework.py. This may be specified multiple times.",
     )
 
     args = parser.parse_args()
@@ -101,27 +101,27 @@ def main():
 
     # build framework
     package_variant = PackageVariant[args.variant]
-    framework_info_file = build_dir / "framework_info.json"
+    framework_info_file = build_dir / "xcframework_info.json"
 
-    log.info("Building iOS framework.")
+    log.info("Building Apple framework.")
 
-    build_ios_framework_args = [
+    build_apple_framework_args = [
         sys.executable,
-        str(SCRIPT_DIR / "build_ios_framework.py"),
-        *args.build_ios_framework_extra_args,
+        str(SCRIPT_DIR / "build_apple_framework.py"),
+        *args.build_apple_framework_extra_args,
     ]
 
     if args.include_ops_by_config is not None:
-        build_ios_framework_args += ["--include_ops_by_config", args.include_ops_by_config]
+        build_apple_framework_args += ["--include_ops_by_config", args.include_ops_by_config]
 
-    build_ios_framework_args += ["--build_dir", str(build_dir), args.build_settings_file]
+    build_apple_framework_args += ["--build_dir", str(build_dir), args.build_settings_file]
 
-    run(build_ios_framework_args)
+    run(build_apple_framework_args)
 
     if args.test:
-        test_ios_packages_args = [
+        test_apple_packages_args = [
             sys.executable,
-            str(SCRIPT_DIR / "test_ios_packages.py"),
+            str(SCRIPT_DIR / "test_apple_packages.py"),
             "--fail_if_cocoapods_missing",
             "--framework_info_file",
             str(framework_info_file),
@@ -131,7 +131,7 @@ def main():
             package_variant.name,
         ]
 
-        run(test_ios_packages_args)
+        run(test_apple_packages_args)
 
     # assemble pods and then move them to their target locations (staging_dir/<pod_name>)
     staging_dir.mkdir(parents=True, exist_ok=True)

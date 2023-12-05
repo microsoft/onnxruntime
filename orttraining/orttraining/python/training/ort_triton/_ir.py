@@ -91,13 +91,16 @@ class OffsetCalculator:
         self.autotune_configs: AutotuneConfigs = AutotuneConfigs(
             self.x_numel, self.r_numel, not self.is_reduction or self.reduce_axes[-1] == self.rank - 1
         )
-        self.requires_x_mask: bool = not self.x_numel.is_number or any(
-            int(self.x_numel) % config[0] != 0 for config in self.autotune_configs.configs
+        simplified_x_numel = self.x_numel.subs({symbol: sympy.Integer(1) for symbol in self.x_numel.free_symbols})
+        self.requires_x_mask: bool = any(
+            simplified_x_numel % sympy.Integer(config[0]) != 0 for config in self.autotune_configs.configs
         )
-        self.requires_r_mask: bool = not self.r_numel.is_number or any(
-            int(self.r_numel) % config[1] != 0 for config in self.autotune_configs.configs
+        simplified_r_numel = self.r_numel.subs({symbol: sympy.Integer(1) for symbol in self.r_numel.free_symbols})
+        self.requires_r_mask: bool = any(
+            simplified_r_numel % sympy.Integer(config[1]) != 0 for config in self.autotune_configs.configs
         )
         self.reduced_args: Set[str] = set()
+        self.symbolic_shape_variables: Set[str] = set()
 
     def get_input_strides(self, name: str) -> List[sympy.Expr]:
         assert name in self.input_strides
@@ -151,14 +154,32 @@ class OffsetCalculator:
             else:
                 strides.insert(0, sympy.Integer(0))
         self.input_strides[tensor_arg.name] = strides
+        x_input_strides = self.get_x_input_strides(tensor_arg.name)
         if not self.is_same_x_shape(tensor_arg.name):
-            for idx, dim in enumerate(self.get_x_input_strides(tensor_arg.name)):
+            for idx, dim in enumerate(x_input_strides):
                 if dim != sympy.Integer(0):
                     self.x_compute_dims.add(idx)
+                    if idx != self.x_rank - 1:
+                        self.symbolic_shape_variables.update(
+                            [symbol.name for symbol in self.x_strides[idx].free_symbols]
+                        )
+                    if idx != 0:
+                        self.symbolic_shape_variables.update([symbol.name for symbol in self.x_dims[idx].free_symbols])
+        elif len(x_input_strides) > 0 and x_input_strides[-1] != sympy.Integer(1):
+            self.symbolic_shape_variables.update([symbol.name for symbol in x_input_strides[-1].free_symbols])
+        r_input_strides = self.get_r_input_strides(tensor_arg.name)
         if not self.is_same_r_shape(tensor_arg.name):
-            for idx, dim in enumerate(self.get_r_input_strides(tensor_arg.name)):
+            for idx, dim in enumerate(r_input_strides):
                 if dim != sympy.Integer(0):
                     self.r_compute_dims.add(idx)
+                    if idx != self.r_rank - 1:
+                        self.symbolic_shape_variables.update(
+                            [symbol.name for symbol in self.r_strides[idx].free_symbols]
+                        )
+                    if idx != 0:
+                        self.symbolic_shape_variables.update([symbol.name for symbol in self.r_dims[idx].free_symbols])
+        elif len(r_input_strides) > 0 and r_input_strides[-1] != sympy.Integer(1):
+            self.symbolic_shape_variables.update([symbol.name for symbol in r_input_strides[-1].free_symbols])
 
     def is_x_reduced(self, name: str) -> bool:
         strides = self.get_input_strides(name)
@@ -288,7 +309,6 @@ class KernelNode(IRNode):
         self.target_shape: List[sympy.Expr] = target_shape
         self.sub_nodes: List[IRNode] = []
         self.var_map: Dict[str, str] = dict()
-        self.symbolic_shape_variables: List[str] = []
         self.has_dropout: bool = False
         self.offset_calc: OffsetCalculator = OffsetCalculator(target_shape, reduce_axes)
 
@@ -313,11 +333,6 @@ class KernelNode(IRNode):
                     variable_name = self.var_map[name]
                     assert variable_name not in self.var_map
                     self.var_map[variable_name] = str(np.array(value.item(), value.dtype))
-        seen = set()
-        for dim in self.target_shape:
-            if dim.is_symbol and dim not in seen:
-                seen.add(dim)
-                self.symbolic_shape_variables.append(str(dim))
 
 
 class ElementwiseKernelNode(KernelNode):

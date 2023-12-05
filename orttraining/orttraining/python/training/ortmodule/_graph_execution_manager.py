@@ -238,8 +238,14 @@ class GraphExecutionManager(GraphExecutionInterface):
         session_options.enable_mem_pattern = False
         session_options.enable_mem_reuse = False
         session_options.use_deterministic_compute = _are_deterministic_algorithms_enabled()
-        # default to PRIORITY_BASED execution order
-        session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
+        # DEFAULT order is reversed DFS order, while PRIORITY_BASED order is forward BFS order.
+        # DEFAULT order is likely to be better than PRIORITY_BASED order on memory. However, our recompute feature
+        # requires PRIORITY_BASED order to work properly. So we use PRIORITY_BASED order when recompute is enabled.
+        session_options.execution_order = (
+            onnxruntime.ExecutionOrder.PRIORITY_BASED
+            if self._runtime_options.memory_optimizer_config != ""
+            else onnxruntime.ExecutionOrder.DEFAULT
+        )
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = int(self._debug_options.logging.log_level)
 
@@ -321,12 +327,30 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # Setup dynamic axes for onnx model
         self._input_info = _io.parse_inputs_for_onnx_export(self._module_parameters, None, input_schema, inputs, kwargs)
+        need_deep_copy = self._runtime_options.deepcopy_before_model_export and _io.can_module_be_deep_cloned(
+            self._original_module, self._device
+        )
+        if not need_deep_copy:
+            if self._runtime_options.deepcopy_before_model_export:
+                self._logger.warning(
+                    "Since the user requested not to deep copy this model, "
+                    "the initial weights may not be preserved and could change slightly during the forward run. "
+                    "This could cause a minor difference between the ORTModule and the PyTorch run for the "
+                    "first iteration. The computation will proceed as normal, but this should be noted."
+                )
+            else:
+                self._logger.warning(
+                    "Due to the limited GPU memory execution manager does not create a deep copy of this model. "
+                    "Therefore, the initial weights might be slightly altered during the forward run. "
+                    "This could result in a minor discrepancy between the ORTModule and the PyTorch run for the "
+                    "first iteration. The computation will continue as usual, but this should be noted."
+                )
         (
             output_names,
             output_dynamic_axes,
             self._module_output_schema,
         ) = _io.parse_outputs_for_onnx_export_and_extract_schema(
-            self._original_module, inputs, kwargs, self._logger, self._device
+            self._original_module, inputs, kwargs, self._logger, self._device, need_deep_copy
         )
         self._input_info.dynamic_axes.update(output_dynamic_axes)
 
