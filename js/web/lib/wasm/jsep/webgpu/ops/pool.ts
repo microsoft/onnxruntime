@@ -51,7 +51,7 @@ const getAdjustedPoolAttributesAndOutputShape = <AttributeType extends AveragePo
 };
 
 const getUniformAndPadInfo = <AttributeType extends AveragePoolAttributes|MaxPoolAttributes>(
-    xShape: readonly number[], outputShape: readonly number[],
+    outputShape: readonly number[],
     attributes: AttributeType): [ProgramUniform[], UniformsArrayType, boolean, boolean, boolean] => {
   const isChannelsLast = attributes.format === 'NHWC';
   const outputSize = ShapeUtil.size(outputShape);
@@ -286,7 +286,7 @@ const createAveragePoolProgramInfo =
         op2 += `value /= ${dataType}(i32(uniforms.kernelSize) - pad);`;
       }
       const [programUniforms, uniforms, hasPads, pwStartEnd, phStartEnd] =
-          getUniformAndPadInfo(input.dims, outputShape, adjustedAttributes);
+          getUniformAndPadInfo(outputShape, adjustedAttributes);
       programUniforms.push(...createTensorShapeVariables(input.dims));
       programUniforms.push(...createTensorShapeVariables(outputShape));
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank'];
@@ -362,7 +362,7 @@ const createMaxPoolProgramInfo =
       const x = inputVariable('x', input.dataType, input.dims.length);
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank'];
       const [programUniforms, uniforms, hasPads, pwStartEnd, phStartEnd] =
-          getUniformAndPadInfo(input.dims, outputShape, adjustedAttributes);
+          getUniformAndPadInfo(outputShape, adjustedAttributes);
       programUniforms.push(...createTensorShapeVariables(input.dims));
       programUniforms.push(...createTensorShapeVariables(outputShape));
       return {
