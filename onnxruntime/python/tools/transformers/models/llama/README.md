@@ -419,7 +419,7 @@ python -m models.llama.benchmark \
     --ort-model-path /path/to/model.onnx
 ```
 
-To benchmark the Huggingface implementation without `torch.compile`:
+To benchmark the Hugging Face implementation without `torch.compile`:
 
 ```
 python -m models.llama.benchmark \
@@ -428,7 +428,7 @@ python -m models.llama.benchmark \
     -m mistralai/Mistral-7B-v0.1
 ```
 
-And to benchmark the Huggingface implementation with `torch.compile`:
+And to benchmark the Hugging Face implementation with `torch.compile`:
 
 ```
 python -m models.llama.benchmark \
