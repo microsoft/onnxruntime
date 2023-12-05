@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import onnx
 
-from ...onnx_model import ONNXModel
+from ..onnx_model import ONNXModel
 
 
 class Fusion:
