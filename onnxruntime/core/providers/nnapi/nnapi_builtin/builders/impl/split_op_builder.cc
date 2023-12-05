@@ -106,7 +106,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
     const auto& splits_tensor = *split_initializer_it->second;
     Initializer unpacked_tensor(splits_tensor);
     auto splits_span = unpacked_tensor.DataAsSpan<int64_t>();
-    uint32_t sum_of_splits = std::accumulate(splits_span.begin(), splits_span.end(), SafeInt<int32_t>(0));
+    uint32_t sum_of_splits = std::accumulate(splits_span.begin(), splits_span.end(), SafeInt<uint32_t>(0));
     if (sum_of_splits != split_dims_at_axis) {
       LOGS_DEFAULT(VERBOSE) << "Sum of the 'split' input values must be equal to the dim value at 'axis' specified.\n"
                             << "dim value at 'axis' specified: "
