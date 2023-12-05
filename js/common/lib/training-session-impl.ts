@@ -192,6 +192,10 @@ export class TrainingSession implements TrainingSessionInterface {
     return returnValue;
   }
 
+  async lazyResetGrad(): Promise<void> {
+    await this.handler.lazyResetGrad();
+  }
+
   runTrainStep(feeds: FeedsType, options?: RunOptions): Promise<ReturnType>;
   runTrainStep(feeds: FeedsType, fetches: FetchesType, options?: RunOptions): Promise<ReturnType>;
   async runTrainStep(feeds: FeedsType, arg1?: FetchesType|RunOptions, arg2?: RunOptions): Promise<ReturnType> {

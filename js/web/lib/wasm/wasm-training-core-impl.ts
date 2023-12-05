@@ -253,6 +253,18 @@ const moveOutputToTensorMetadataArr =
       return output;
     };
 
+export const lazyResetGrad = async(trainingSessionId: number):
+    Promise<void> => {
+      const wasm = getInstance();
+
+      if (wasm._OrtTrainingLazyResetGrad) {
+        const errorCode = wasm._OrtTrainingLazyResetGrad(trainingSessionId);
+        ifErrCodeCheckLastError(errorCode, 'Can\'t call lazyResetGrad.');
+      } else {
+        throw new Error(NO_TRAIN_FUNCS_MSG);
+      }
+    }
+
 export const runTrainStep = async(
     trainingSessionId: number, inputIndices: number[], inputTensors: TensorMetadata[], outputIndices: number[],
     outputTensors: Array<TensorMetadata|null>, options: InferenceSession.RunOptions): Promise<TensorMetadata[]> => {
