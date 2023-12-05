@@ -41,7 +41,7 @@ class SplitOpBuilder : public BaseOpBuilder {
   // Split opset 13- uses "split" as attribute. Currently it's not supported.
   int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 13; }
 
-  // NNAPI Split is availabel since NNAPI feature level 3
+  // NNAPI Split is available since NNAPI feature level 3
   int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
                                            const OpSupportCheckParams& /* params */) const override {
     return ANEURALNETWORKS_FEATURE_LEVEL_3;
@@ -78,7 +78,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     outputs.push_back(output[i].node_arg.Name());
   }
 
-  ORT_RETURN_IF_ERROR(AddNnapiSplit(model_builder, input, axis, outputs));
+  ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiSplit(model_builder, input, axis, outputs));
 
   return Status::OK();
 }
