@@ -2,9 +2,6 @@ parameters:
   - name: nightly
     type: string
     default: '1'
-  - name: repository_url
-    type: string
-    default: 'https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-12-nightly/pypi/upload'
 
 stages:
   - stage: Python_Publishing
@@ -15,6 +12,11 @@ stages:
           value: onnxruntime-cuda-12
         ${{ else }}:
           value: ort-cuda-12-nightly
+      - name: artifact_feed_url
+        ${{ if ne(parameters.nightly, '1') }}:
+          value: https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple
+        ${{ else }}:
+          value: https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-12-nightly/pypi/simple
     jobs:
       - job:
         steps:
@@ -31,7 +33,7 @@ stages:
             displayName: 'Twine Authenticate '
             inputs:
               artifactFeed: PublicPackages/$(artifact_feed)
-          - script: 'twine upload -r $(artifact_feed)  --repository-url ${{ parameters.repository_url }} onnxruntime-gpu/*.whl'
+          - script: 'twine upload -r $(artifact_feed)  --repository-url $(artifact_feed_url) onnxruntime-gpu/*.whl'
             workingDirectory: '$(Build.SourcesDirectory)'
             displayName: 'Uploading wheels to $(artifact_feed)'
             retryCountOnTaskFailure: 3
