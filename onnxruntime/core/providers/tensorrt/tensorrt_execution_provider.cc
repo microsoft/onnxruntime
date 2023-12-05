@@ -1057,9 +1057,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
                         cudaStream_t stream) {
   auto allocator = allocator_map[output_name];
   auto& shape = allocator->getOutputShape();
-  OrtValue* out = nullptr;
-
-  auto& output_tensor = ctx.GetOutput(output_index, shape);
+  auto output_tensor = ctx.GetOutput(output_index, shape);
 
   switch (output_type) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
