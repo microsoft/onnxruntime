@@ -93,14 +93,17 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
 
   auto original = std::move(nodes_in_topological_order_);
   nodes_in_topological_order_.reserve(original.size());
+  InlinedHashSet<NodeIndex> visited;
   for (auto& node : original) {
-    if (shape_size_nodes.find(node) != shape_size_nodes.end()) {
+    if (visited.find(node) != visited.end()) {
       continue;
     }
     nodes_in_topological_order_.push_back(node);
+    visited.insert(node);
     if (shape_size_parents.find(node) != shape_size_parents.end()) {
       for (auto& following_node : shape_size_parents[node]) {
         nodes_in_topological_order_.push_back(following_node);
+        visited.insert(following_node);
       }
     }
   }
