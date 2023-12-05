@@ -912,7 +912,7 @@ Status BindContextOutput(Ort::KernelContext& ctx,
   // (Please note that we take strategy A mentioned in https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#dynamic-shaped-output,
   //  which we defer allocation until the size is known and don't call IExecution::setTensorAddress)
   //
-  // Otherwise, if the shape of the output tensor is known prioir to the runtime, ORT will pre-allocate memory buffer for the output tensor for enqueueV3.
+  // Otherwise, if the shape of the output tensor is known prior to the runtime, ORT will pre-allocate memory buffer for the output tensor for enqueueV3.
   if (is_dds_output) {
     if (dds_output_allocator_map.find(output_name) == dds_output_allocator_map.end()) {
       auto allocator = new OutputAllocator(alloc);
@@ -1051,7 +1051,9 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
                         DDSOutputAllocatorMap& allocator_map,
                         char const* output_name,
                         size_t output_index,
-                        size_t output_type) {
+                        size_t output_type,
+                        OrtAllocator* alloc,
+                        cudaStream_t stream) {
   auto allocator = allocator_map[output_name];
   auto& shape = allocator->getOutputShape();
   OrtValue* out = nullptr;
@@ -1088,12 +1090,38 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
       break;
     }
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
-      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, allocator->getBuffer(), allocator->getSize(),
+      // The allocation buffer holds the INT32 output data since TRT doesn't support INT64 but INT32.
+      // So, we need to cast the data from INT32 to INT64 and then set INT64 output data to kernel context.
+      SafeInt<int> output_dim_size(1);
+      for (int i = 0; i < shape.size(); ++i) {
+        if (shape[i] == 0) {
+          output_dim_size = 1;
+          break;
+        } else {
+          output_dim_size *= shape[i];
+        }
+      }
+      IAllocatorUniquePtr<int64_t> buffer = IAllocator::MakeUniquePtrFromOrtAllocator<int64_t>(alloc, output_dim_size * sizeof(int64_t));
+      cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(allocator->getBuffer()), buffer.get(), output_dim_size);
+      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, buffer.get(), output_dim_size * sizeof(int64_t),
                                                                      shape.data(), shape.size(), Ort::TypeToTensorType<int64_t>::type, &out));
       break;
     }
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
-      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, allocator->getBuffer(), allocator->getSize(),
+      // The allocation buffer holds the FLOAT output data since TRT doesn't support DOULBE but FLOAT.
+      // So, we need to cast the data from FLOAT to DOUBEL and then set DOUBLE output data to kernel context.
+      SafeInt<int> output_dim_size(1);
+      for (int i = 0; i < shape.size(); ++i) {
+        if (shape[i] == 0) {
+          output_dim_size = 1;
+          break;
+        } else {
+          output_dim_size *= shape[i];
+        }
+      }
+      IAllocatorUniquePtr<double> buffer = IAllocator::MakeUniquePtrFromOrtAllocator<double>(alloc, output_dim_size * sizeof(double));
+      cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(allocator->getBuffer()), buffer.get(), output_dim_size);
+      Ort::ThrowOnError(Ort::GetApi().CreateTensorWithDataAsOrtValue(mem_info, buffer.get(), output_dim_size * sizeof(double),
                                                                      shape.data(), shape.size(), Ort::TypeToTensorType<double>::type, &out));
       break;
     }
@@ -3342,7 +3370,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           if (index_iter != output_indexes.end()) {
             output_index = index_iter->second;
           }
-          auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type);
+          auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type, alloc, stream);
           if (status != Status::OK()) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
           }
