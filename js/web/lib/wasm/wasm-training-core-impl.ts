@@ -263,7 +263,7 @@ export const lazyResetGrad = async(trainingSessionId: number):
       } else {
         throw new Error(NO_TRAIN_FUNCS_MSG);
       }
-    }
+    };
 
 export const runTrainStep = async(
     trainingSessionId: number, inputIndices: number[], inputTensors: TensorMetadata[], outputIndices: number[],
