@@ -391,7 +391,7 @@ def run_torchscript_merged_export(
 
 
 # Optimize the model as FP32
-def optimize_export(config: AutoConfig, input_path: str, output_path: str, remove_model=True):
+def optimize_export(config: AutoConfig, input_path: str, output_path: str, remove_model: bool = True):
     from fusion_options import FusionOptions
 
     optimization_options = FusionOptions("gpt2")
