@@ -1168,7 +1168,9 @@ if (onnxruntime_USE_DNNL)
 endif()
 
 if (onnxruntime_USE_JBLAS)
-  add_compile_definitions(MLAS_JBLAS)
+  if (onnxruntime_target_platform STREQUAL "x86" OR onnxruntime_target_platform STREQUAL "x86_64")
+    add_compile_definitions(MLAS_JBLAS)
+  endif()
 endif()
 
 # TVM EP
