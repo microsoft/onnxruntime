@@ -46,7 +46,7 @@ class FusionTNLGV4Attention(Fusion):
         weight_shape = weight_array.shape
         bias_shape = bias_array.shape
 
-        hidden_size = weight_shape[0] // 2
+        hidden_size = weight_shape[0] // 4
 
         weight_array_2 = np.transpose(np.transpose(np.transpose(weight_array).reshape(self.num_heads, 3, -1), (1, 0, 2)).reshape(3 * hidden_size, -1))
         bias_array_2 = np.transpose(bias_array.reshape(self.num_heads, 3, -1), (1, 0, 2))
