@@ -14,6 +14,7 @@ stages:
           value: ort-cuda-12-nightly
     jobs:
       - job:
+        pool: 'onnxruntime-Win-CPU-2022'
         steps:
           - task: DownloadPipelineArtifact@2
             inputs:
@@ -28,7 +29,7 @@ stages:
             displayName: 'Twine Authenticate '
             inputs:
               artifactFeed: PublicPackages/$(artifact_feed)
-          - script: ' python -m twine upload -r $(artifact_feed) onnxruntime-gpu/*.whl'
+          - script: 'python -m twine upload -r $(artifact_feed) onnxruntime-gpu/*.whl'
             workingDirectory: '$(Build.SourcesDirectory)'
             displayName: 'Uploading wheels to $(artifact_feed)'
             retryCountOnTaskFailure: 3
