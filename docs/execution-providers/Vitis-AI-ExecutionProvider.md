@@ -122,7 +122,7 @@ Both C++ and Python APIs are supported.  The following instructions assume that 
 - Visual Studio = 2019
 - cmake (version >= 3.26)
 - python (version >= 3.9) (Python 3.9.13 64bit recommended)
-- AMD IPU driver = 10.1109.8.99 installed
+- AMD IPU driver = 10.1109.8.100 installed
 
 **2. Prepare the files for installation:**
 
