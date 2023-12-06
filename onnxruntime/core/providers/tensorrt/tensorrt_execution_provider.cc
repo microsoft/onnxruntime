@@ -2487,7 +2487,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name, builder_.get(),
             &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
-            input_shape_ranges_[context->node_name], &tensorrt_mu_, &max_workspace_size_, 
+            input_shape_ranges_[context->node_name], &tensorrt_mu_, &max_workspace_size_,
             trt_node_name_with_precision, runtime_.get(), profiles_[context->node_name], &max_ctx_mem_size_,
             dynamic_range_map, !tactic_sources_.empty(), tactics};
       *state = p.release();
