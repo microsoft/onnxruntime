@@ -2855,37 +2855,44 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         switch (input_type) {
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
             auto input_tensor_ptr = input_tensor.GetTensorData<float>();
+	    ORT_ENFORCE(input_tensor_ptr, "null");
             buffers[binding_index] = const_cast<float*>(input_tensor_ptr);
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
             auto input_tensor_ptr = input_tensor.GetTensorData<uint16_t>();
+	    ORT_ENFORCE(input_tensor_ptr, "null");
             buffers[binding_index] = const_cast<uint16_t*>(input_tensor_ptr);
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
             auto input_tensor_ptr = input_tensor.GetTensorData<bool>();
+	    ORT_ENFORCE(input_tensor_ptr, "null");
             buffers[binding_index] = const_cast<bool*>(input_tensor_ptr);
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
             auto input_tensor_ptr = input_tensor.GetTensorData<int8_t>();
+	    ORT_ENFORCE(input_tensor_ptr, "null");
             buffers[binding_index] = const_cast<int8_t*>(input_tensor_ptr);
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
             auto input_tensor_ptr = input_tensor.GetTensorData<uint8_t>();
+	    ORT_ENFORCE(input_tensor_ptr, "null");
             buffers[binding_index] = const_cast<uint8_t*>(input_tensor_ptr);
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
             auto input_tensor_ptr = input_tensor.GetTensorData<int32_t>();
+	    ORT_ENFORCE(input_tensor_ptr, "null");
             buffers[binding_index] = const_cast<int32_t*>(input_tensor_ptr);
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
             // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
             auto input_tensor_ptr = input_tensor.GetTensorData<int64_t>();
+	    ORT_ENFORCE(input_tensor_ptr, "null");
             SafeInt<int> input_dim_size = 1;
             for (int j = 0, end = nb_dims; j < end; ++j) {
               if (tensor_shapes[j] == 0) {
@@ -2903,6 +2910,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
             // Cast DOUBLE input to FLOAT because TensorRT doesn't fully support INT64
             auto input_tensor_ptr = input_tensor.GetTensorData<double>();
+	    ORT_ENFORCE(input_tensor_ptr, "null");
             SafeInt<int> input_dim_size = 1;
             for (int j = 0, end = nb_dims; j < end; ++j) {
               if (tensor_shapes[j] == 0) {
@@ -2960,31 +2968,37 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         switch (output_type) {
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<float>();
+	    ORT_ENFORCE(output_tensor_ptr, "output null");
             buffers[binding_index] = output_tensor_ptr;
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<uint16_t>();
+	    ORT_ENFORCE(output_tensor_ptr, "output null");
             buffers[binding_index] = output_tensor_ptr;
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<bool>();
+	    ORT_ENFORCE(output_tensor_ptr, "output null");
             buffers[binding_index] = output_tensor_ptr;
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<int8_t>();
+	    ORT_ENFORCE(output_tensor_ptr, "output null");
             buffers[binding_index] = output_tensor_ptr;
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<uint8_t>();
+	    ORT_ENFORCE(output_tensor_ptr, "output null");
             buffers[binding_index] = output_tensor_ptr;
             break;
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<int32_t>();
+	    ORT_ENFORCE(output_tensor_ptr, "output null");
             buffers[binding_index] = output_tensor_ptr;
             break;
           }
@@ -3066,9 +3080,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         auto& output_tensor = output_tensors[i];
         if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
           auto output_tensor_ptr = output_tensor.GetTensorMutableData<int64_t>();
+	  ORT_ENFORCE(output_tensor_ptr, "output null");
           cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(buffers[binding_index]), output_tensor_ptr, output_dim_sizes[i]);
         } else if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
           auto output_tensor_ptr = output_tensor.GetTensorMutableData<double>();
+	  ORT_ENFORCE(output_tensor_ptr, "output null");
           cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(buffers[binding_index]), output_tensor_ptr, output_dim_sizes[i]);
         }
       }
