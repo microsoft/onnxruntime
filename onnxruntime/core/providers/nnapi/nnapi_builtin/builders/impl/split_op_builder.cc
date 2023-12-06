@@ -120,7 +120,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
       return a != b;
     });
     if (it != splits_span.end()) {
-      LOGS_DEFAULT(VERBOSE) << "NNAPI only supports even splitting case.";
+      LOGS_DEFAULT(VERBOSE) << "NNAPI only supports the case that number of splits evenly divides split axis size";
       return false;
     }
   } else {
