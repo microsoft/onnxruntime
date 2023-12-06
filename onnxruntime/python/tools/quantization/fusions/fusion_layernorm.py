@@ -60,7 +60,7 @@ class FusionLayerNormalization(Fusion):
 
         div_node = None
         for child in children:
-            div_node = self.model.find_first_child_by_type(child, "Div", input_name_to_nodes, recursive=False)
+            div_node = self.find_first_child_by_type(child, "Div", input_name_to_nodes, recursive=False)
             if div_node is not None:
                 break
         if div_node is None:
