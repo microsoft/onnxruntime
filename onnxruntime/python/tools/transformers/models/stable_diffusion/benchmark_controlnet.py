@@ -101,7 +101,6 @@ def load_pipeline(name, engine, use_control_net=False, use_nhwc=False, enable_cu
             name,
             vae=vae,
             scheduler=scheduler,
-            controlnet=None,
             variant="fp16",
             use_safetensors=True,
             torch_dtype=torch.float16,
