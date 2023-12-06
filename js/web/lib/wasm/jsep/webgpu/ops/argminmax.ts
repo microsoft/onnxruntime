@@ -48,8 +48,8 @@ export const argMin = (context: ComputeContext, attributes: ArgMinMaxAttributes)
 
   context.compute(
       createReduceProgramInfo(
-          'ArgMin', {hint: attributes.cacheKey}, [context.inputs[0]], argMinMaxOp, [attributes.axis], DataType.int64,
-          attributes.keepDims),
+          'ArgMin', {hint: attributes.cacheKey, inputDependencies: ['rank']}, [context.inputs[0]], argMinMaxOp,
+          [attributes.axis], DataType.int64, attributes.keepDims),
       {inputs: [0]});
 };
 
@@ -74,8 +74,8 @@ export const argMax = (context: ComputeContext, attributes: ArgMinMaxAttributes)
 
   context.compute(
       createReduceProgramInfo(
-          'argMax', {hint: attributes.cacheKey}, [context.inputs[0]], argMinMaxOp, [attributes.axis], DataType.int64,
-          attributes.keepDims),
+          'argMax', {hint: attributes.cacheKey, inputDependencies: ['rank']}, [context.inputs[0]], argMinMaxOp,
+          [attributes.axis], DataType.int64, attributes.keepDims),
       {inputs: [0]});
 };
 

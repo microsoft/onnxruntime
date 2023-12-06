@@ -7,7 +7,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo, ProgramShaderCacheInfo} from '../types';
 
-import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 import {reduceL1Shared, reduceL2Shared, reduceLogSumExpShared, reduceLogSumShared, reduceMaxShared, reduceMeanShared, reduceMinShared, reduceProdShared, reduceSumShared, reduceSumSquareShared} from './reduce-shared';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
@@ -36,8 +36,8 @@ export const createReduceProgramInfo =
      axesInput: number[], outputDataType: DataType, keepDims = false, noopWithEmptyAxes = false): ProgramInfo => {
       const outputShape: number[] = [];
       const inputShape = inputs[0].dims;
-
-      const axes = ShapeUtil.normalizeAxes(axesInput, inputs[0].dims.length);
+      const inputRank = inputShape.length;
+      const axes = ShapeUtil.normalizeAxes(axesInput, inputRank);
       const reduceOnAllAxes = !noopWithEmptyAxes && axes.length === 0;
       inputShape.forEach((d, i) => {
         if (reduceOnAllAxes || axes.indexOf(i) >= 0) {
@@ -48,42 +48,43 @@ export const createReduceProgramInfo =
           outputShape.push(d);
         }
       });
+      const outputRank = outputShape.length;
+      const outputSize = ShapeUtil.size(outputShape);
+      const getShaderSource = (shaderHelper: ShaderHelper) => {
+        const idxCopy: string[] = [];  // copy output indexes to input indexes
 
-      const idxCopy: string[] = [];  // copy output indexes to input indexes
+        const input = inputVariable('_A', inputs[0].dataType, inputRank);
+        const output = outputVariable('output', outputDataType, outputRank);
+        const ops = reduceOp(input, output, axes);
+        const inputOffsetAssignment = `inputOffset = ${input.indicesToOffset('inputIndices')};`;
+        const initinputOffsetLet = `let ${inputOffsetAssignment};`;
+        const initinputOffsetVar = `var ${inputOffsetAssignment};`;
+        const initinputOffset = (ops[1] === '') ? '' : initinputOffsetVar;
+        let reduceOps = ((ops[1] === '') ? initinputOffsetLet : inputOffsetAssignment) + '\n' + ops[2];
 
-      const input = inputVariable('_A', inputs[0].dataType, inputShape);
-      const output = outputVariable('output', outputDataType, outputShape);
-      const ops = reduceOp(input, output, axes);
-      const inputOffsetAssignment = `inputOffset = ${input.indicesToOffset('inputIndices')};`;
-      const initinputOffsetLet = `let ${inputOffsetAssignment};`;
-      const initinputOffsetVar = `var ${inputOffsetAssignment};`;
-      const initinputOffset = (ops[1] === '') ? '' : initinputOffsetVar;
-      let reduceOps = ((ops[1] === '') ? initinputOffsetLet : inputOffsetAssignment) + '\n' + ops[2];
-
-      for (let k = 0, l = 0; k < inputs[0].dims.length; k++) {
-        // if this axis is reduced
-        if (reduceOnAllAxes || axes.indexOf(k) >= 0) {
-          if (keepDims) {
+        for (let k = 0, l = 0; k < inputRank; k++) {
+          // if this axis is reduced
+          if (reduceOnAllAxes || axes.indexOf(k) >= 0) {
+            if (keepDims) {
+              l++;
+            }
+            // loop over the d-th axis
+            reduceOps = `for(var j${k}: u32 = 0; j${k} < ${inputShape[k]}; j${k}++) {
+                  ${ops[2].includes('lastIndex') ? `let lastIndex = j${k};` : ''}
+                  ${input.indicesSet('inputIndices', k, `j${k}`)}
+                  ${reduceOps}
+                }`;
+          } else {
+            idxCopy.push(`${input.indicesSet('inputIndices', k, output.indicesGet('outputIndices', l))};`);
             l++;
           }
-          // loop over the d-th axis
-          reduceOps = `for(var j${k}: u32 = 0; j${k} < ${inputs[0].dims[k]}; j${k}++) {
-                ${ops[2].includes('lastIndex') ? `let lastIndex = j${k};` : ''}
-                ${input.indicesSet('inputIndices', k, `j${k}`)}
-                ${reduceOps}
-              }`;
-        } else {
-          idxCopy.push(`${input.indicesSet('inputIndices', k, output.indicesGet('outputIndices', l))};`);
-          l++;
         }
-      }
+        return `
 
-      const outputSize = ShapeUtil.size(outputShape);
-      const getShaderSource = (shaderHelper: ShaderHelper) => `
-        ${shaderHelper.declareVariables(input, output)}
+        ${shaderHelper.registerUniform('outputSize', 'u32').declareVariables(input, output)}
 
         ${shaderHelper.mainStart()}
-          ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
+          ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
           var inputIndices: ${input.type.indices};
           let outputIndices = ${output.offsetToIndices('global_idx')};
 
@@ -95,6 +96,7 @@ export const createReduceProgramInfo =
           ${ops[3]}
           ${ops.length === 4 ? output.setByOffset('global_idx', 'value') : ops.slice(4).join('\n')}
         }`;
+      };
 
       return {
         name,
@@ -102,7 +104,11 @@ export const createReduceProgramInfo =
         getShaderSource,
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: outputDataType}],
-          dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
+          dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
+          programUniforms: [
+            {type: 'uint32', data: outputSize}, ...createTensorShapeVariables(inputShape),
+            ...createTensorShapeVariables(outputShape)
+          ]
         }),
       };
     };
@@ -125,7 +131,7 @@ const runReduceProgram =
 
       context.compute(
           createReduceProgramInfo(
-              name, {hint: updatedAttributes.cacheKey}, [inputs[0]],
+              name, {hint: updatedAttributes.cacheKey, inputDependencies: ['rank']}, [inputs[0]],
               updatedAttributes.noopWithEmptyAxes && updatedAttributes.axes.length === 0 ? noOp : reduceOp,
               updatedAttributes.axes, inputs[0].dataType, updatedAttributes.keepDims,
               updatedAttributes.noopWithEmptyAxes),
@@ -273,7 +279,7 @@ const reduceSumSquareNaive = (context: ComputeContext, attributes: ReduceAttribu
 const useNaiveReduceMethod =
     (shape: readonly number[], axes: readonly number[], noopWithEmptyAxes: boolean): boolean => {
       if (axes.length === 0) {
-        return noopWithEmptyAxes ? true : false;
+        return noopWithEmptyAxes;
       }
 
       let outputSize = 1;
@@ -289,7 +295,7 @@ const useNaiveReduceMethod =
       // The condition data is very rough, although considering the count of Execution Unit (EU), the potential
       // work groups in a EU and the counts of loops in the naive and shared methods, also doing experiments
       // on some machines.
-      return reduceSize < 32 && outputSize > 1024 ? true : false;
+      return reduceSize < 32 && outputSize > 1024;
     };
 
 export const reduceMean = (context: ComputeContext, attributes: ReduceAttributes): void => {
