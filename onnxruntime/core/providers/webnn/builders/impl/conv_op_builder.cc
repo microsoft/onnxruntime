@@ -272,7 +272,6 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
           }
           options.set("padding", emscripten::val::array(pads));
         }
-
       }
       options.set("outputSizes", emscripten::val::array(output_shape));
     } else {
