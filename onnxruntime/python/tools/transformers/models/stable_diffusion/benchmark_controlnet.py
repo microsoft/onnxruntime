@@ -13,10 +13,9 @@ from diffusers import (
 )
 
 """
-Benchmark script for SDXL-Turbo or SD-Turbo with PyTorch or Stable Fast.
-For SDXL-Turbo, we can also benchmark canny control net with --use_control_net flag.
+Benchmark script for SDXL-Turbo with control net for engines like PyTorch or Stable Fast.
 
-Setup for Stable Fast:
+Setup for Stable Fast (see https://github.com/chengzeyi/stable-fast/blob/main/README.md for more info):
     git clone https://github.com/chengzeyi/stable-fast.git
     cd stable-fast
     git submodule update --init
