@@ -82,7 +82,7 @@ static inline void convert_s4_s8_16_sse(int8_t* dstptr, int8_t* srcptr) {
 
 template <typename T>
 static inline void convert_s8_fp_v8(T* dstptr, int8_t* srcptr) {
-  auto xmm = _mm_loadu_si64(srcptr);
+  auto xmm = _mm_loadl_epi64(reinterpret_cast<__m128i*>(srcptr));
   auto ymm = _mm256_cvtepi8_epi32(xmm);
   auto ymm1 = _mm256_cvtepi32_ps(ymm);
   if constexpr (std::is_same_v<T, utils::bf16>) {
@@ -510,7 +510,7 @@ static inline JBLAS_CODE decompress_kblock_bit4_packrow1(utils::bit4x2* srcptr, 
         vscales[iv] = _mm256_loadu_ps(scales + (k_offset + irow) / kblock * NPad + iv * 8);
         if constexpr (!_IS_SYM) {
           auto tmp =
-              _mm_loadu_si64(reinterpret_cast<__m128i*>(zero_points + (k_offset + irow) / kblock * NPad + iv * 8));
+              _mm_loadl_epi64(reinterpret_cast<__m128i*>(zero_points + (k_offset + irow) / kblock * NPad + iv * 8));
           vzps[iv] = _mm256_cvtepi8_epi32(tmp);
         }
       }
@@ -537,7 +537,7 @@ static inline JBLAS_CODE decompress_kblock_bit4_packrow1(utils::bit4x2* srcptr, 
         vscales[iv] = _mm256_loadu_ps(scales + (k_offset + irow) / kblock * NPad + iv * 8);
         if constexpr (!_IS_SYM) {
           auto tmp =
-              _mm_loadu_si64(reinterpret_cast<__m128i*>(zero_points + (k_offset + irow) / kblock * NPad + iv * 8));
+              _mm_loadl_epi64(reinterpret_cast<__m128i*>(zero_points + (k_offset + irow) / kblock * NPad + iv * 8));
           vzps[iv] = _mm256_cvtepi8_epi32(tmp);
         }
       }
@@ -553,7 +553,7 @@ static inline JBLAS_CODE decompress_kblock_bit4_packrow1(utils::bit4x2* srcptr, 
         vscales[iv] = _mm256_loadu_ps(scales + (k_offset + irow) / kblock * NPad + iv * 8);
         if constexpr (!_IS_SYM) {
           auto tmp =
-              _mm_loadu_si64(reinterpret_cast<__m128i*>(zero_points + (k_offset + irow) / kblock * NPad + iv * 8));
+              _mm_loadl_epi64(reinterpret_cast<__m128i*>(zero_points + (k_offset + irow) / kblock * NPad + iv * 8));
           vzps[iv] = _mm256_cvtepi8_epi32(tmp);
         }
       }
