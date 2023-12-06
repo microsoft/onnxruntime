@@ -223,6 +223,7 @@ Napi::Value InferenceSessionWrap::Dispose(const Napi::CallbackInfo &info) {
   this->session_.reset(nullptr);
 
   this->disposed_ = true;
+  return env.Undefined();
 }
 
 Napi::Value InferenceSessionWrap::ListSupportedBackends(const Napi::CallbackInfo &info) {
