@@ -5,9 +5,11 @@
 # --------------------------------------------------------------------------
 
 import datetime
-import hashlib
 import json
 import pandas as pd
+
+from typing import Optional
+
 
 class BaseObject:
     def __init__(self):
@@ -26,10 +28,10 @@ class BaseObject:
 
 class ModelInfo(BaseObject):
     def __init__(self,
-                 full_name: str = None,
-                 is_huggingface: bool = False,
-                 is_text_generation: bool = False,
-                 short_name: str = None):
+                 full_name: Optional[str] = None,
+                 is_huggingface: Optional[bool] = False,
+                 is_text_generation: Optional[bool] = False,
+                 short_name: Optional[str] = None):
         super().__init__()
         self.full_name = full_name
         self.is_huggingface = is_huggingface
@@ -39,9 +41,9 @@ class ModelInfo(BaseObject):
 
 class BackendOptions(BaseObject):
     def __init__(self,
-                 enable_profiling: bool = False,
-                 execution_provider: str = None,
-                 use_io_binding: bool = False):
+                 enable_profiling: Optional[bool] = False,
+                 execution_provider: Optional[str] = None,
+                 use_io_binding: Optional[bool] = False):
         super().__init__()
         self.enable_profiling = enable_profiling
         self.execution_provider = execution_provider
@@ -49,12 +51,12 @@ class BackendOptions(BaseObject):
 
 class Config(BaseObject):
     def __init__(self,
-                    backend: str = "onnxruntime",
-                    batch_size: int = 1,
-                    seq_length: int = 0,
-                    precision: str = "fp32",
-                    warmup_runs: int = 1,
-                    measured_runs: int = 10):
+                    backend: Optional[str] = "onnxruntime",
+                    batch_size: Optional[int] = 1,
+                    seq_length: Optional[int] = 0,
+                    precision: Optional[str] = "fp32",
+                    warmup_runs: Optional[int] = 1,
+                    measured_runs: Optional[int] = 10):
         super().__init__()
         self.backend = backend
         self.batch_size = batch_size
@@ -67,11 +69,11 @@ class Config(BaseObject):
 
 class Metadata(BaseObject):
     def __init__(self,
-                 device: str = None,
-                 package_name: str = None,
-                 package_version: str = None,
-                 platform: str = None,
-                 python_version: str = None):
+                 device: Optional[str] = None,
+                 package_name: Optional[str] = None,
+                 package_version: Optional[str] = None,
+                 platform: Optional[str] = None,
+                 python_version: Optional[str] = None):
         super().__init__()
         self.device = device
         self.package_name = package_name
@@ -81,9 +83,9 @@ class Metadata(BaseObject):
 
 class Metrics(BaseObject):
     def __init__(self,
-                 latency_ms_mean: float = 0.0,
-                 throughput_qps: float = 0.0,
-                 max_memory_usage_GB: float = 0.0):
+                 latency_ms_mean: Optional[float] = 0.0,
+                 throughput_qps: Optional[float] = 0.0,
+                 max_memory_usage_GB: Optional[float] = 0.0):
         super().__init__()
         self.latency_ms_mean = latency_ms_mean
         self.throughput_qps = throughput_qps
@@ -97,10 +99,10 @@ class BenchmarkRecord:
                  device: str,
                  package_name: str,
                  package_version: str,
-                 batch_size: int = 1,
-                 warmup_runs: int = 1,
-                 measured_runs: int = 10,
-                 trigger_date: str = None):
+                 batch_size: Optional[int] = 1,
+                 warmup_runs: Optional[int] = 1,
+                 measured_runs: Optional[int] = 10,
+                 trigger_date: Optional[str] = None):
         self.config = Config()
         self.metrics = Metrics()
         self.metadata = Metadata()
@@ -129,7 +131,7 @@ class BenchmarkRecord:
 
 
     @classmethod
-    def save_as_csv(self, file_name: str, records: list = None) -> None:
+    def save_as_csv(self, file_name: str, records: list) -> None:
         if records is None or len(records) == 0:
             return
         rds = [record.to_dict() for record in records]
@@ -137,7 +139,7 @@ class BenchmarkRecord:
         df.to_csv(file_name, index=False)
 
     @classmethod
-    def save_as_json(self, file_name: str, records: list = None) -> None:
+    def save_as_json(self, file_name: str, records: list) -> None:
         if records is None or len(records) == 0:
             return
         rds = [record.to_dict() for record in records]
