@@ -2,7 +2,6 @@
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
-from collections import deque
 from pathlib import Path
 
 import onnx
@@ -122,8 +121,8 @@ class ONNXModel:
     def set_opset_import(self, domain, version):
         for opset in self.model.opset_import:
             if opset.domain == domain:
-                self.model.opset_import.remove(opset)
-                break
+                opset.version = version
+                return
 
         self.model.opset_import.extend([onnx_helper.make_opsetid(domain, version)])
 
@@ -151,14 +150,6 @@ class ONNXModel:
         for tensor in self.model.graph.initializer:
             if tensor.name == name:
                 return tensor
-        return None
-
-    @staticmethod
-    def get_node_attribute(node: onnx.NodeProto, attribute_name: str):
-        for attr in node.attribute:
-            if attr.name == attribute_name:
-                value = onnx_helper.get_attribute_value(attr)
-                return value
         return None
 
     def find_graph_input(self, input_name):
@@ -189,19 +180,6 @@ class ONNXModel:
 
         return None
 
-    @staticmethod
-    def tensor_shape_to_list(tensor_type):
-        """Convert tensor shape to list"""
-        shape_list = []
-        for d in tensor_type.shape.dim:
-            if d.HasField("dim_value"):
-                shape_list.append(d.dim_value)  # known dimension
-            elif d.HasField("dim_param"):
-                shape_list.append(d.dim_param)  # unknown dimension with symbolic name
-            else:
-                shape_list.append("?")  # shall not happen
-        return shape_list
-
     def get_constant_value(self, output_name):
         for node in self.model.graph.node:
             if node.op_type == "Constant":
@@ -216,34 +194,6 @@ class ONNXModel:
             return onnx_numpy_helper.to_array(initializer)
 
         return None
-
-    def get_constant_input(self, node):
-        for i, inp in enumerate(node.input):
-            value = self.get_constant_value(inp)
-            if value is not None:
-                return i, value
-
-        return None, None
-
-    def find_constant_input(self, node, expected_value, delta=0.000001):
-        i, value = self.get_constant_input(node)
-        if value is not None and value.size == 1 and abs(value - expected_value) < delta:
-            return i
-
-        return -1
-
-    def is_constant_with_specified_dimension(self, output_name, dimensions):
-        value = self.get_constant_value(output_name)
-        if value is None:
-            return False  # Not an initializer
-
-        if len(value.shape) != dimensions:
-            return False  # Wrong dimensions
-
-        return True
-
-    def has_constant_input(self, node, expected_value, delta=0.000001):
-        return self.find_constant_input(node, expected_value, delta) >= 0
 
     def get_initializer_name_set(self):
         return {initializer.name for initializer in self.model.graph.initializer}
@@ -298,15 +248,6 @@ class ONNXModel:
                     children.append(node)  # noqa: PERF402
         return children
 
-    @staticmethod
-    def input_index(node_output, child_node):
-        index = 0
-        for input in child_node.input:
-            if input == node_output:
-                return index
-            index += 1
-        return -1
-
     def get_parents(self, node, output_name_to_node=None):
         if output_name_to_node is None:
             output_name_to_node = self.output_name_to_node()
@@ -329,150 +270,6 @@ class ONNXModel:
             return None
 
         return output_name_to_node[input]
-
-    def match_first_parent(self, node, parent_op_type, output_name_to_node=None, exclude=[]):  # noqa: B006
-        """
-        Find parent node based on constraints on op_type.
-
-        Args:
-            node (str): current node name.
-            parent_op_type (str): constraint of parent node op_type.
-            output_name_to_node (dict): dictionary with output name as key, and node as value.
-            exclude (list): list of nodes that are excluded (not allowed to match as parent).
-
-        Returns:
-            parent: The matched parent node. None if not found.
-            index: The input index of matched parent node. None if not found.
-        """
-        if output_name_to_node is None:
-            output_name_to_node = self.output_name_to_node()
-
-        for i, inp in enumerate(node.input):
-            if inp in output_name_to_node:
-                parent = output_name_to_node[inp]
-                if parent.op_type == parent_op_type and parent not in exclude:
-                    return parent, i
-
-        return None, None
-
-    def match_parent(
-        self,
-        node,
-        parent_op_type,
-        input_index=None,
-        output_name_to_node=None,
-        exclude=[],  # noqa: B006
-        return_indice=None,
-    ):
-        """
-        Find parent node based on constraints on op_type and index.
-        When input_index is None, we will find the first parent node based on constraints,
-        and return_indice will be appended the corresponding input index.
-
-        Args:
-            node (str): current node name.
-            parent_op_type (str): constraint of parent node op_type.
-            input_index (int or None): only check the parent given input index of current node.
-            output_name_to_node (dict): dictionary with output name as key, and node as value.
-            exclude (list): list of nodes that are excluded (not allowed to match as parent).
-            return_indice (list): a list to append the input index when input_index is None.
-
-        Returns:
-            parent: The matched parent node.
-        """
-        assert node is not None
-        assert input_index is None or input_index >= 0
-
-        if output_name_to_node is None:
-            output_name_to_node = self.output_name_to_node()
-
-        if input_index is None:
-            parent, index = self.match_first_parent(node, parent_op_type, output_name_to_node, exclude)
-            if return_indice is not None:
-                return_indice.append(index)
-            return parent
-
-        if input_index >= len(node.input):
-            # Input index out of bounds.
-            return None
-
-        parent = self.get_parent(node, input_index, output_name_to_node)
-        if parent is not None and parent.op_type == parent_op_type and parent not in exclude:
-            return parent
-
-        return None
-
-    def match_parent_path(
-        self,
-        node,
-        parent_op_types,
-        parent_input_index=None,
-        output_name_to_node=None,
-        return_indice=None,
-    ):
-        """
-        Find a sequence of input edges based on constraints on parent op_type and index.
-        When input_index is None, we will find the first parent node based on constraints,
-        and return_indice will be appended the corresponding input index.
-
-        Args:
-            node (str): current node name.
-            parent_op_types (str): constraint of parent node op_type of each input edge.
-            parent_input_index (list): constraint of input index of each input edge. None means no constraint.
-            output_name_to_node (dict): dictionary with output name as key, and node as value.
-            return_indice (list): a list to append the input index
-                                  When there is no constraint on input index of an edge.
-
-        Returns:
-            parents: a list of matched parent node.
-        """
-        if parent_input_index is not None:
-            assert len(parent_input_index) == len(parent_op_types)
-
-        if output_name_to_node is None:
-            output_name_to_node = self.output_name_to_node()
-
-        current_node = node
-        matched_parents = []
-        for i, op_type in enumerate(parent_op_types):
-            matched_parent = self.match_parent(
-                current_node,
-                op_type,
-                parent_input_index[i] if parent_input_index is not None else None,
-                output_name_to_node,
-                exclude=[],
-                return_indice=return_indice,
-            )
-            if matched_parent is None:
-                return None
-
-            matched_parents.append(matched_parent)
-            current_node = matched_parent
-
-        return matched_parents
-
-    def match_parent_paths(self, node, paths, output_name_to_node):
-        for i, path in enumerate(paths):
-            return_indice = []
-            matched = self.match_parent_path(node, path[0], path[1], output_name_to_node, return_indice)
-            if matched:
-                return i, matched, return_indice
-        return -1, None, None
-
-    def find_first_child_by_type(self, node, child_type, input_name_to_nodes=None, recursive=True):
-        children = self.get_children(node, input_name_to_nodes)
-        dq = deque(children)
-        while len(dq) > 0:
-            current_node = dq.pop()
-            if current_node.op_type == child_type:
-                return current_node
-
-            if recursive:
-                children = self.get_children(current_node, input_name_to_nodes)
-                for child in children:
-                    dq.appendleft(child)
-
-        return None
 
     def find_node_by_name(self, node_name, new_nodes_list, graph):
         """Find out if a node exists in a graph or a node is in the

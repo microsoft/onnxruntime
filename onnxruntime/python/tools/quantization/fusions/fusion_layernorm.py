@@ -66,7 +66,7 @@ class FusionLayerNormalization(Fusion):
         if div_node is None:
             return
 
-        path_id, parent_nodes, _ = self.model.match_parent_paths(
+        path_id, parent_nodes, _ = self.match_parent_paths(
             div_node,
             [
                 (["Sqrt", "Add", "ReduceMean", "Pow", "Sub"], [1, 0, 0, 0, 0]),
@@ -85,13 +85,13 @@ class FusionLayerNormalization(Fusion):
             return
 
         second_add_node = parent_nodes[1]
-        i, add_weight = self.model.get_constant_input(second_add_node)
+        i, add_weight = self.get_constant_input(second_add_node)
         if add_weight is None or add_weight <= 0 or add_weight > 1.0e-4:
             # Skip fusion since epsilon value is not expected.
             return
 
         pow_node = parent_nodes[3]
-        if self.model.find_constant_input(pow_node, 2.0) != 1:
+        if self.find_constant_input(pow_node, 2.0) != 1:
             return
 
         mul_node = input_name_to_nodes[div_node.output[0]][0]
@@ -115,12 +115,12 @@ class FusionLayerNormalization(Fusion):
         ):
             return
 
-        weight_input = mul_node.input[1 - self.model.input_index(div_node.output[0], mul_node)]
-        if not self.model.is_constant_with_specified_dimension(weight_input, 1):
+        weight_input = mul_node.input[1 - self.input_index(div_node.output[0], mul_node)]
+        if not self.is_constant_with_specified_rank(weight_input, 1):
             return
 
-        bias_input = last_add_node.input[1 - self.model.input_index(mul_node.output[0], last_add_node)]
-        if not self.model.is_constant_with_specified_dimension(bias_input, 1):
+        bias_input = last_add_node.input[1 - self.input_index(mul_node.output[0], last_add_node)]
+        if not self.is_constant_with_specified_rank(bias_input, 1):
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)

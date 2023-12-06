@@ -64,7 +64,7 @@ class FusionGelu(Fusion):
             return False
         add_after_erf = children[0]
 
-        if not self.model.has_constant_input(add_after_erf, 1):
+        if not self.has_constant_input(add_after_erf, 1):
             return False
 
         if add_after_erf.output[0] not in input_name_to_nodes:
@@ -76,11 +76,11 @@ class FusionGelu(Fusion):
 
         mul_after_erf = children[0]
 
-        div = self.model.match_parent(erf_node, "Div", 0, output_name_to_node)
+        div = self.match_parent(erf_node, "Div", 0, output_name_to_node)
         if div is None:
             return False
 
-        if self.model.find_constant_input(div, 1.4142, delta=0.001) != 1:
+        if self.find_constant_input(div, 1.4142, delta=0.001) != 1:
             return False
 
         subgraph_input = div.input[0]
@@ -91,15 +91,15 @@ class FusionGelu(Fusion):
             if len(children) != 1 or children[0].op_type != "Mul":
                 return False
             mul_half = children[0]
-            if not self.model.has_constant_input(mul_half, 0.5):
+            if not self.has_constant_input(mul_half, 0.5):
                 return False
             subgraph_output = mul_half.output[0]
         else:  # pattern 1
-            mul_half = self.model.match_parent(mul_after_erf, "Mul", another, output_name_to_node)
+            mul_half = self.match_parent(mul_after_erf, "Mul", another, output_name_to_node)
             if mul_half is None:
                 return False
 
-            if not self.model.has_constant_input(mul_half, 0.5):
+            if not self.has_constant_input(mul_half, 0.5):
                 return False
 
             if subgraph_input not in mul_half.input:
@@ -141,7 +141,7 @@ class FusionGelu(Fusion):
             return False
         add_after_erf = children[0]
 
-        if not self.model.has_constant_input(add_after_erf, 1):
+        if not self.has_constant_input(add_after_erf, 1):
             return False
 
         if add_after_erf.output[0] not in input_name_to_nodes:
@@ -151,7 +151,7 @@ class FusionGelu(Fusion):
             return False
         mul_after_erf = children[0]
 
-        if not self.model.has_constant_input(mul_after_erf, 0.5):
+        if not self.has_constant_input(mul_after_erf, 0.5):
             return False
 
         if mul_after_erf.output[0] not in input_name_to_nodes:
@@ -161,16 +161,16 @@ class FusionGelu(Fusion):
             return False
         mul = children[0]
 
-        div = self.model.match_parent(erf_node, "Div", 0, output_name_to_node)
+        div = self.match_parent(erf_node, "Div", 0, output_name_to_node)
         if div is None:
             return False
 
         sqrt_node = None
-        if self.model.find_constant_input(div, 1.4142, delta=0.001) != 1:
-            sqrt_node = self.model.match_parent(div, "Sqrt", 1, output_name_to_node)
+        if self.find_constant_input(div, 1.4142, delta=0.001) != 1:
+            sqrt_node = self.match_parent(div, "Sqrt", 1, output_name_to_node)
             if sqrt_node is None:
                 return False
-            if not self.model.has_constant_input(sqrt_node, 2.0):
+            if not self.has_constant_input(sqrt_node, 2.0):
                 return False
 
         root_node = self.model.get_parent(div, 0, output_name_to_node)
@@ -218,7 +218,7 @@ class FusionGelu(Fusion):
             return False
         add_after_erf = children[0]
 
-        if not self.model.has_constant_input(add_after_erf, 1):
+        if not self.has_constant_input(add_after_erf, 1):
             return False
 
         if add_after_erf.output[0] not in input_name_to_nodes:
@@ -228,14 +228,14 @@ class FusionGelu(Fusion):
             return False
         mul_half = children[0]
 
-        if not self.model.has_constant_input(mul_half, 0.5):
+        if not self.has_constant_input(mul_half, 0.5):
             return False
 
-        first_mul = self.model.match_parent(erf_node, "Mul", 0, output_name_to_node)
+        first_mul = self.match_parent(erf_node, "Mul", 0, output_name_to_node)
         if first_mul is None:
             return False
 
-        i = self.model.find_constant_input(first_mul, 0.7071067690849304, delta=0.001)
+        i = self.find_constant_input(first_mul, 0.7071067690849304, delta=0.001)
         if i < 0:
             return False
 

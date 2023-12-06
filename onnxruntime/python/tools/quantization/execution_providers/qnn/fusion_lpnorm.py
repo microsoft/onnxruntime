@@ -47,7 +47,7 @@ class FusionLpNormalization(Fusion):
             return
 
         # ReduceL2 must have keepdims == True
-        keepdims = self.model.get_node_attribute(reduce_node, "keepdims")
+        keepdims = self.get_node_attribute(reduce_node, "keepdims")
         if not keepdims:
             return
 
@@ -57,11 +57,11 @@ class FusionLpNormalization(Fusion):
         if not reduce_input_ttype:
             return
 
-        reduce_input_shape = self.model.tensor_shape_to_list(reduce_input_ttype)
+        reduce_input_shape = self.tensor_shape_to_list(reduce_input_ttype)
         if not reduce_input_shape:
             return
 
-        axes = self.model.get_node_attribute(reduce_node, "axes")
+        axes = self.get_node_attribute(reduce_node, "axes")
         if not axes and len(reduce_node.input) > 1:
             axes = self.model.get_constant_value(reduce_node.input[1])
 
@@ -74,11 +74,11 @@ class FusionLpNormalization(Fusion):
 
         # Clip node must have a min attribute approximately equal to 1e-12
         clip_node = children[0]
-        clip_min = self.model.get_node_attribute(clip_node, "min")
+        clip_min = self.get_node_attribute(clip_node, "min")
         if clip_min is None and len(clip_node.input) > 1:
             clip_min = self.model.get_constant_value(clip_node.input[1])
 
-        clip_max = self.model.get_node_attribute(clip_node, "max")  # TODO: clip_max could be FLOAT_MAX
+        clip_max = self.get_node_attribute(clip_node, "max")  # TODO: clip_max could be FLOAT_MAX
         if clip_max is None and len(clip_node.input) > 2:
             clip_max = self.model.get_constant_value(clip_node.input[2])
 
