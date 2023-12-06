@@ -38,17 +38,6 @@ export class ProgramManager {
     const device = this.backend.device;
 
     const computePassEncoder = this.backend.getComputePassEncoder();
-    const webgpuEnv = this.backend.env.webgpu;
-    const profilingEnabled = this.backend.supportTimestampQuery &&
-        (webgpuEnv.profiling?.mode === 'default' ||
-         (!webgpuEnv.profiling?.mode && webgpuEnv.profilingMode === 'default'));
-    if (profilingEnabled) {
-      // profiling write start timestamp
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (computePassEncoder as any).writeTimestamp(this.backend.profilingQuerySet, 0);
-    }
-
     computePassEncoder.setPipeline(buildArtifact.computePipeline);
     const entries = [];
     for (const input of inputs) {
@@ -130,7 +119,7 @@ export class ProgramManager {
             outputShapes += `output[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
           });
           // eslint-disable-next-line no-console
-          console.log(`[profiling] kernel "${kernelId}|[${kernelType}] ${kernelName}" ${inputShapes}${
+          console.log(`[profiling] kernel "${kernelId}|${kernelName}|${buildArtifact.programInfo.name}" ${inputShapes}${
               outputShapes}execution time: ${endTime - startTime} ns`);
         }
       });
