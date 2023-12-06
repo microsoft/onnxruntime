@@ -2990,7 +2990,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
             // Allocate INT32 CUDA memory for INT64 output type because TensorRT doesn't fully support INT64
-            auto output_tensor_ptr = output_tensor.GetTensorMutableData<int64_t>();
             SafeInt<int> output_dim_size(output_dim_sizes[i]);
             for (int j = 0, end = nb_dims; j < end; ++j) {
               if (dimensions.d[j] == 0) {
@@ -3007,7 +3006,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
             // Allocate FLOAT CUDA memory for DOUBLE output type because TensorRT doesn't fully support DOUBLE
-            auto output_tensor_ptr = output_tensor.GetTensorMutableData<double>();
             SafeInt<int> output_dim_size(output_dim_sizes[i]);
             for (int j = 0, end = nb_dims; j < end; ++j) {
               if (dimensions.d[j] == 0) {
