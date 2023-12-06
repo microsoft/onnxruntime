@@ -3,6 +3,7 @@ scikit-learn
 numpy==1.21.6 ; python_version < '3.11'
 numpy==1.24.2 ; python_version >= '3.11'
 transformers==v4.30.0
+accelerate
 rsa==4.9
 tensorboard==2.13.0
 h5py
