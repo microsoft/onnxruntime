@@ -208,8 +208,7 @@ MlasNBitsGemmPackB(
 }
 
 void MLASCALL
-MlasNBitsGemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb
-	, MLAS_THREADPOOL* ThreadPool)
+MlasNBitsGemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb, MLAS_THREADPOOL* ThreadPool)
 {
 #ifdef MLAS_JBLAS
     if (JblasQ4GemmUnPackB(FpData, PackedBuf, N, K, ldb, ThreadPool)) {
@@ -241,6 +240,7 @@ MlasSQNBitsGemmBatchWorkspaceSize(
     (void)(K);
     (void)(BatchN);
     (void)(DataParams);
+    return 0;
 }
 
 void MLASCALL
