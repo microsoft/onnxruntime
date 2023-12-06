@@ -114,6 +114,45 @@ void EmbedLayerNormalizationShapeInference(::ONNX_NAMESPACE::InferenceContext& c
   }
 }
 
+void SkipLayerNormalizationShapeInference(::ONNX_NAMESPACE::InferenceContext& ctx) {
+  propagateShapeAndTypeFromFirstInput(ctx);
+
+  auto stash_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+  if (ctx.getNumOutputs() > 1) {
+    auto output_type = ctx.getOutputType(1);
+    output_type->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(stash_type));
+  }
+  if (ctx.getNumOutputs() > 2) {
+    auto output_type = ctx.getOutputType(2);
+    output_type->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(stash_type));
+  }
+  if (ctx.getNumOutputs() > 3) {
+    propagateElemTypeFromInputToOutput(ctx, 0, 3);
+  }
+  if (!hasNInputShapes(ctx, 1)) {
+    return;
+  }
+  auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
+  int64_t input_ndim = input_shape.dim_size();
+  int axis = static_cast<int>(input_ndim - 1);
+
+  if (ctx.getNumOutputs() > 1) {
+    auto mean_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
+    mean_shape->CopyFrom(input_shape);
+    mean_shape->mutable_dim(axis)->set_dim_value(1);
+  }
+
+  if (ctx.getNumOutputs() > 2) {
+    auto inv_std_dev_shape = ctx.getOutputType(2)->mutable_tensor_type()->mutable_shape();
+    inv_std_dev_shape->CopyFrom(input_shape);
+    inv_std_dev_shape->mutable_dim(axis)->set_dim_value(1);
+  }
+
+  if (ctx.getNumOutputs() > 3) {
+    propagateShapeFromInputToOutput(ctx, 0, 3);
+  }
+}
+
 // Shape inference for Attention and QAttention
 void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_input_index) {
   // Input 0, 1, 2 are input, weights and bias.
