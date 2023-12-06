@@ -191,13 +191,13 @@ class OpKernelContext {
 
   onnxruntime::NodeIndex GetNodeIndex() const;
 
-#ifdef ENABLE_ATEN
-  Status SetOutputMLValue(int index, const OrtValue& ort_value);
-#endif
-
   virtual const OrtValue* GetInputMLValue(int index) const;
   const OrtValue* GetImplicitInputMLValue(int index) const;
   OrtValue* GetOutputMLValue(int index);
+
+#ifdef ENABLE_ATEN
+  Status SetOutputMLValue(int index, const OrtValue& ort_value);
+#endif
 
   // Creates the OrtValue* based on the shape, if it does not exist
   virtual OrtValue* OutputMLValue(int index, const TensorShape& shape);
