@@ -138,7 +138,6 @@ def get_args():
 
     setattr(args, "model_size", args.model_name.split("/")[-1].replace(".", "-"))  # noqa: B010
     log_folder_name = f"./{args.model_size}-{args.precision}"
-    # setattr(args, "log_folder", log_folder_name)  # noqa: B010
     if not args.log_folder:
         args.log_folder = log_folder_name
     os.makedirs(args.log_folder, exist_ok=True)
@@ -285,7 +284,7 @@ def save_results(results, filename):
     # get pakcage name and version
     import pkg_resources
     installed_packages = pkg_resources.working_set
-    installed_packages_list = sorted(["%s==%s" % (i.key, i.version) for i in installed_packages if i.key in ['ort-nightly-gpu', 'ort-nightly', "onnxruntime", "onnxruntime-gpu"]])
+    installed_packages_list = sorted([f"{i.key}=={i.version}" for i in installed_packages if i.key in ['ort-nightly-gpu', 'ort-nightly', "onnxruntime", "onnxruntime-gpu"]])
 
     ort_pkg_name = ""
     ort_pkg_version = ""

@@ -131,7 +131,7 @@ class BenchmarkRecord:
 
 
     @classmethod
-    def save_as_csv(self, file_name: str, records: list) -> None:
+    def save_as_csv(cls, file_name: str, records: list) -> None:
         if records is None or len(records) == 0:
             return
         rds = [record.to_dict() for record in records]
@@ -139,7 +139,7 @@ class BenchmarkRecord:
         df.to_csv(file_name, index=False)
 
     @classmethod
-    def save_as_json(self, file_name: str, records: list) -> None:
+    def save_as_json(cls, file_name: str, records: list) -> None:
         if records is None or len(records) == 0:
             return
         rds = [record.to_dict() for record in records]
