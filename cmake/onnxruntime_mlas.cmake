@@ -209,9 +209,6 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/q4gemm_avx512.cpp
       )
     endif()
-    if(onnxruntime_USE_JBLAS)
-        add_jblas()
-    endif()
   else()
     target_sources(onnxruntime_mlas PRIVATE
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
@@ -575,9 +572,6 @@ else()
             )
           set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
           set_source_files_properties(${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
-	      if(onnxruntime_USE_JBLAS)
-            add_jblas()
-          endif()
         endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
@@ -594,6 +588,10 @@ else()
           "${MLAS_SRC_DIR}/scalar/*.cpp")
     endif()
     target_sources(onnxruntime_mlas PRIVATE ${mlas_platform_srcs})
+endif()
+
+if(USE_JBLAS)
+  add_jblas()
 endif()
 
 foreach(mlas_target ${ONNXRUNTIME_MLAS_LIBS})
