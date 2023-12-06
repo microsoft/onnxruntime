@@ -120,10 +120,6 @@ struct TensorrtFuncState {
   std::vector<nvinfer1::IOptimizationProfile*> profiles;
   size_t* max_context_mem_size_ptr = nullptr;
   std::unordered_map<std::string, float> dynamic_range_map;
-  int (*engine_decryption)(const char*, char*, size_t*) = nullptr;
-  int (*engine_encryption)(const char*, char*, size_t) = nullptr;
-  int builder_optimization_level = 3;
-  int auxiliary_streams = -1;
   bool filter_tactic_sources = false;
   nvinfer1::TacticSources tactic_sources;
   // Below: class private members
@@ -137,12 +133,16 @@ struct TensorrtFuncState {
   std::string engine_cache_path;
   bool context_memory_sharing_enable = false;
   bool engine_decryption_enable = false;
+  int (*engine_decryption)(const char*, char*, size_t*) = nullptr;
+  int (*engine_encryption)(const char*, char*, size_t) = nullptr;
   bool timing_cache_enable = true;
   std::string timing_cache_path;
   bool force_timing_cache = false;
   bool detailed_build_log = false;
   bool build_heuristics_enable = false;
   bool sparsity_enable = false;
+  int builder_optimization_level = 3;
+  int auxiliary_streams = -1;
   bool cuda_graph_enable = 0;
 };
 
