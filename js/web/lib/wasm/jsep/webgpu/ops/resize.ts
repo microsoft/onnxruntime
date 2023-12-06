@@ -7,7 +7,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo} from '../types';
 
-import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
 type CoordinateTransformMode = 'half_pixel'|'asymmetric'|'pytorch_half_pixel'|'tf_half_pixel_for_nn'|'align_corners'|
     'tf_crop_and_resize'|'half_pixel_symmetric';
@@ -450,8 +450,8 @@ const createResizeProgramInfo =
           outputShape = adjustOutputShape(inputShape, scales, attributes);
         }
       }
-      const output = outputVariable('output', inputTensor.dataType, outputShape);
-      const input = inputVariable('input', inputTensor.dataType, inputShape);
+      const output = outputVariable('output', inputTensor.dataType, outputShape.length);
+      const input = inputVariable('input', inputTensor.dataType, inputShape.length);
       const outputSize = ShapeUtil.size(outputShape);
       const noScale = inputShape.length === outputShape.length && inputShape.every((d, i) => d === outputShape[i]);
       const useExtrapolation = attributes.coordinateTransformMode === 'tf_crop_and_resize';
@@ -488,9 +488,9 @@ const createResizeProgramInfo =
         }
       })()};
       `}
-      ${shaderHelper.declareVariables(input, output)}
+      ${shaderHelper.registerUniform('outputSize', 'u32').declareVariables(input, output)}
       ${shaderHelper.mainStart()}
-        ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
+        ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
         ${noScale ? 'output[global_idx] = input[global_idx];' : `
         let outputIndices = ${output.offsetToIndices('global_idx')};
         var inputIndices: ${input.type.indices};
@@ -518,12 +518,18 @@ const createResizeProgramInfo =
         name: 'Resize',
         shaderCache: {
           hint: `${attributes.cacheKey}|${opsetVersion}|${scales.length > 0 ? scales : ''}|${
-              sizes.length > 0 ? sizes : ''}|${noScale}`
+              sizes.length > 0 ? sizes : ''}|${noScale}`,
+          inputDependencies: ['rank']
         },
         getShaderSource,
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: inputTensor.dataType}],
-          dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
+          dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
+          programUniforms: [
+            {type: 'uint32', data: outputSize},
+            ...createTensorShapeVariables(inputShape),
+            ...createTensorShapeVariables(outputShape),
+          ]
         })
       };
     };
