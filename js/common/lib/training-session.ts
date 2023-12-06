@@ -23,7 +23,7 @@ export interface TrainingSession {
   // #region run()
 
   /**
-   * Lazily resets the gradients of all trainable parameters to zero. Should happen before the invocation of the next
+   * Lazily resets the gradients of all trainable parameters to zero. Should happen after the invocation of runOptimizerStep. 
    * runTrainStep().
    */
   lazyResetGrad(): Promise<void>;
