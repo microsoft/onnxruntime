@@ -4,7 +4,9 @@
 #include <dxcore.h>
 #include <vector>
 
-#include <DirectML.h>
+// TODO (pavignol): Revert
+// #include <DirectML.h>
+#include "core/providers/dml/DirectML2.h"
 #ifndef _GAMING_XBOX
 #include <dxgi1_4.h>
 #endif

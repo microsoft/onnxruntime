@@ -2665,6 +2665,50 @@ namespace OperatorHelper
         m_numHeads = gsl::narrow_cast<uint32_t>(kernelInformation.GetAttributes().GetAttribute<int64_t>(AttrName::NumHeads));
     }
 
+    std::vector<EdgeShapes> GroupQueryAttentionHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() >= 2);
+
+        const auto queryShape = shapeInfo.GetInputTensorShape(0);
+        ML_CHECK_VALID_ARGUMENT(queryShape.size() == 3);
+        const uint32_t batchSize = queryShape[0];
+        const uint32_t sequenceLength = queryShape[1];
+        const uint32_t hiddenSize = queryShape[2];
+
+        const auto keyShape = shapeInfo.GetInputTensorShape(1);
+        ML_CHECK_VALID_ARGUMENT(keyShape.size() == 3);
+        const uint32_t kvHiddenSize = keyShape[2];
+        const uint32_t kvHeadSize = kvHiddenSize / m_kvNumHeads;
+
+        uint32_t pastSequenceLength = 0;
+
+        if (shapeInfo.IsInputValid(3))
+        {
+            const auto pastKeyShape = shapeInfo.GetInputTensorShape(3);
+            ML_CHECK_VALID_ARGUMENT(pastKeyShape.size() == 4);
+            pastSequenceLength = pastKeyShape[2];
+        }
+
+        const uint32_t presentSequenceLength = std::max(pastSequenceLength, m_totalSequenceLength);
+
+        std::vector<EdgeShapes> outputShapes(3);
+        outputShapes[0] = EdgeShapes({batchSize, sequenceLength, hiddenSize});
+        outputShapes[1] = EdgeShapes({batchSize, m_kvNumHeads, presentSequenceLength, kvHeadSize});
+        outputShapes[2] = EdgeShapes({batchSize, m_kvNumHeads, presentSequenceLength, kvHeadSize});
+
+        return outputShapes;
+    }
+
+    void GroupQueryAttentionHelper::Initialize(const IKernelInformationAdapter& kernelInformation)
+    {
+        m_kvNumHeads = gsl::narrow_cast<uint32_t>(kernelInformation.GetAttributes().GetAttribute<int64_t>(AttrName::KvNumHeads));
+
+        std::vector<int32_t> totalSequenceLength;
+        ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(6), /*out*/ totalSequenceLength);
+        ML_CHECK_VALID_ARGUMENT(totalSequenceLength.size() == 1, "total_sequence_length must be a scalar.");
+        m_totalSequenceLength = totalSequenceLength[0];
+    }
+
     std::vector<EdgeShapes> AttentionHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() >= 2);

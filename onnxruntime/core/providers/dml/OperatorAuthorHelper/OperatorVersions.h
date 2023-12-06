@@ -430,6 +430,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_QLinearSigmoid = 1;
         static const int sc_sinceVer_Attention = 1;
         static const int sc_sinceVer_MultiHeadAttention = 1;
+        static const int sc_sinceVer_GroupQueryAttention = 1;
         static const int sc_sinceVer_SkipLayerNormalization = 1;
         static const int sc_sinceVer_EmbedLayerNormalization = 1;
         static const int sc_sinceVer_BiasSplitGelu = 1;
