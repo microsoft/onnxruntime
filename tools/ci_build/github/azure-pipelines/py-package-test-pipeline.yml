@@ -62,7 +62,7 @@ stages:
     - Linux_Test_CPU_aarch64_stage
     - Packages_Somking_Test
   jobs:
-  - template: templates/py-packaging-linux-test-cuda.yml
+  - template: stages/py-linux-cuda-package-test-stage.yml
     parameters:
       arch: 'x86_64'
       machine_pool: 'Onnxruntime-Linux-GPU'
