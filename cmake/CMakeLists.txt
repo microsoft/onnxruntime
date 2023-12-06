@@ -1168,7 +1168,7 @@ if (onnxruntime_USE_DNNL)
 endif()
 
 set(USE_JBLAS FALSE)
-if (onnxruntime_USE_JBLAS)
+if (onnxruntime_USE_JBLAS AND NOT onnxruntime_MINIMAL_BUILD)
   if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" AND onnxruntime_target_platform STREQUAL "x86_64")
     add_compile_definitions(MLAS_JBLAS)
     set(USE_JBLAS TRUE)
