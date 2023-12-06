@@ -17,7 +17,7 @@ stages:
         steps:
           - task: DownloadPipelineArtifact@2
             inputs:
-              artifact: 'onnxruntime-gpu'
+              artifact: 'onnxruntime_gpu'
               targetPath: '$(Build.SourcesDirectory)'
             displayName: 'Download Pipeline Artifact - onnxruntime-gpu'
           - task: UsePythonVersion@0
