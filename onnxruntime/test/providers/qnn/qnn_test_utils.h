@@ -633,7 +633,9 @@ inline GetTestQDQModelFn<QuantType> BuildQDQOpTestCase(const std::string& op_typ
  */
 void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
-                     float fp32_abs_err = 1e-5f, logging::Severity log_severity = logging::Severity::kERROR);
+                     float fp32_abs_err = 1e-5f,
+                     logging::Severity log_severity = logging::Severity::kERROR,
+                     bool verify_outputs = true);
 
 enum class BackendSupport {
   SUPPORT_UNKNOWN,

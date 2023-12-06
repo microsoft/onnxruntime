@@ -81,7 +81,7 @@ void TryEnableQNNSaver(ProviderOptions& qnn_options) {
 
 void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
-                     float fp32_abs_err, logging::Severity log_severity) {
+                     float fp32_abs_err, logging::Severity log_severity, bool verify_outputs) {
   EPVerificationParams verification_params;
   verification_params.ep_node_assignment = expected_ep_assignment;
   verification_params.fp32_abs_err = fp32_abs_err;
@@ -106,7 +106,7 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions prov
   TryEnableQNNSaver(provider_options);
   RunAndVerifyOutputsWithEP(AsByteSpan(model_data.data(), model_data.size()), "QNN_EP_TestLogID",
                             QnnExecutionProviderWithOptions(provider_options),
-                            helper.feeds_, verification_params);
+                            helper.feeds_, verification_params, {}, verify_outputs);
 }
 
 void InferenceModel(const std::string& model_data, const char* log_id,
