@@ -7,6 +7,7 @@ parameters:
   NuPackScript : ''
   ArtifactName: 'drop-nuget'
   DoNodejsPack: 'false'
+  BuildNodejs: 'true'
   DoEsrp: 'false'
   DoTestCoverage: 'false'
   BuildArch: 'x64' # Optional. Options: x86, x64
@@ -136,7 +137,7 @@ stages:
       - task: MSBuild@1
         displayName: 'Restore NuGet Packages'
         inputs:
-          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
           platform: 'Any CPU'
           configuration: '$(BuildConfig)'
           msbuildArguments: '-t:restore -p:OrtPackageId=${{ parameters.OrtPackageId }}'
@@ -145,7 +146,7 @@ stages:
       - task: MSBuild@1
         displayName: 'Build C#'
         inputs:
-          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
           configuration: '$(BuildConfig)'
           platform: 'Any CPU'
           msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }} -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
@@ -230,6 +231,15 @@ stages:
               searchPattern: '**/*.pdb'
               symbolServerType: teamServices
 
+      - ${{ if eq(parameters['DoCompliance'], 'true') }}:
+        - template: ../../templates/compliance.yml
+          parameters :
+            msbuildPlatform: ${{ parameters.sln_platform }}
+
+      - template: ../../templates/component-governance-component-detection-steps.yml
+        parameters :
+          condition : 'succeeded'
+
       # Node.js Publish
       - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:
         - task: BatchScript@1
@@ -266,14 +276,23 @@ stages:
           displayName: 'Unzip package to test'
           workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
-      - ${{ if eq(parameters['DoCompliance'], 'true') }}:
-        - template: ../../templates/compliance.yml
-          parameters :
-            msbuildPlatform: ${{ parameters.sln_platform }}
-
-      - template: ../../templates/component-governance-component-detection-steps.yml
-        parameters :
-          condition : 'succeeded'
+      - ${{ if eq(parameters.BuildNodejs, 'true') }}:
+        - task: CopyFiles@2
+          displayName: 'Copy DirectML binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.sln_platform }}'
+          inputs:
+            SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+            Contents: 'DirectML.dll'
+            TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.sln_platform }}'
+        - template: ../../templates/win-esrp-dll.yml
+          parameters:
+            FolderPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.sln_platform }}'
+            DisplayName: 'ESRP - Sign Node.js binding binaries'
+            DoEsrp: ${{ parameters.DoEsrp }}
+            Pattern: '*.node'
+        - task: PublishPipelineArtifact@1
+          inputs:
+            targetPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.sln_platform }}'
+            artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.sln_platform }}-dml'
 
       - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
         displayName: 'Clean Agent Directories'

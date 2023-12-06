@@ -365,13 +365,20 @@ namespace OperatorHelper
     }
 
     // Creates a kernel that spans the entire spatial dimensions of the input.
-    KernelArgs InitializeGlobalKernel(gsl::span<const DimensionType> inputDimensions)
+    KernelArgs InitializeGlobalKernel(
+        const MLOperatorAttributes& kernelInfo,
+        gsl::span<const DimensionType> inputDimensions)
     {
         ML_CHECK_VALID_ARGUMENT(inputDimensions.size() > NonspatialDimensionCount); // Must be at least 1D convolution (in 3D tensor)
         uint32_t spatialDimensionCount = gsl::narrow_cast<uint32_t>(inputDimensions.size()) - NonspatialDimensionCount;
         ML_CHECK_VALID_ARGUMENT(spatialDimensionCount <= NcdhwSpatialDimensionCount); // Support up to 3D convolution (in 5D tensor).
 
         KernelArgs args(spatialDimensionCount);
+        args.useCeilingOutputShape = kernelInfo.GetOptionalAttribute<bool>(AttrName::CeilMode, 0);
+        args.channelsLast = kernelInfo.GetOptionalAttribute<bool>(AttrName::ChannelsLast, 0);
+        // For Global Pooling, kernel size equal to the spatial dimension of input tensor
+        // NHWC layout need to offset by one dim to acount for channel placed at the end
+        int dimOffset = args.channelsLast ? 1 : 0;
 
         for (size_t dim = 0; dim < spatialDimensionCount; ++dim)
         {
@@ -379,7 +386,7 @@ namespace OperatorHelper
             args.dilations[dim] = 1;
             args.startPadding[dim] = 0;
             args.endPadding[dim] = 0;
-            args.windowSize[dim] = gsl::narrow_cast<uint32_t>(inputDimensions[inputDimensions.size() - spatialDimensionCount + dim]);
+            args.windowSize[dim] = gsl::narrow_cast<uint32_t>(inputDimensions[inputDimensions.size() - spatialDimensionCount + dim - dimOffset]);
         }
 
         return args;
@@ -495,6 +502,7 @@ namespace OperatorHelper
         }
 
         args.useCeilingOutputShape = kernelInfo.GetOptionalAttribute<bool>(AttrName::CeilMode, 0);
+        args.channelsLast = kernelInfo.GetOptionalAttribute<bool>(AttrName::ChannelsLast, 0);
 
         return args;
     }
@@ -1873,7 +1881,7 @@ namespace OperatorHelper
         ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(2), /*out*/ tensor);
         m_blockShape.resize(tensor.size());
         std::transform(tensor.begin(), tensor.end(), m_blockShape.begin(), [](auto& x){ return (uint32_t)x; });
-         
+
         const uint32_t dimCount = gsl::narrow_cast<uint32_t>(m_blockShape.size());
         m_dilations = {dimCount, 1};
         m_pads = {dimCount * 2, 0};
@@ -1902,7 +1910,7 @@ namespace OperatorHelper
             std::transform(tensor.begin(), tensor.end(), m_strides.begin(), [](auto& x){ return (uint32_t)x; });
             ML_CHECK_VALID_ARGUMENT(m_strides.size() == dimCount);
         }
-        
+
         m_inputShape = shapeInformation.GetInputTensorShape(0);
 
         auto blockShapeProduct = std::accumulate(m_blockShape.begin(), m_blockShape.end(), 1, std::multiplies<uint32_t>());
@@ -1920,7 +1928,7 @@ namespace OperatorHelper
         return { EdgeShapes(m_outputShape) };
     }
 
-    void ConcatHelper::Initialize(
+    void ConcatHelperBase::Initialize(
         const MLOperatorAttributes& operatorAttributes,
         gsl::span<const DimensionType> inputDimensions
         )
@@ -1930,13 +1938,13 @@ namespace OperatorHelper
         ML_CHECK_VALID_ARGUMENT(m_axis < static_cast<int>(inputDimensions.size()));
     }
 
-    std::vector<EdgeShapes> ConcatHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    std::vector<EdgeShapes> ConcatHelperBase::GetOutputShapes(const MLShapeInferenceContext& shapeInfo, uint32_t firstInputIndex, uint32_t step) const
     {
-        auto outputShape = shapeInfo.GetInputTensorShape(0);
+        auto outputShape = shapeInfo.GetInputTensorShape(firstInputIndex);
 
         uint32_t inputCount = shapeInfo.GetInputCount();
 
-        for (uint32_t i = 1; i < inputCount; ++i)
+        for (uint32_t i = firstInputIndex + step; i < inputCount; i += step)
         {
             auto inputShape = shapeInfo.GetInputTensorShape(i);
             for (size_t j = 0; j < outputShape.size(); ++j)
@@ -1949,6 +1957,16 @@ namespace OperatorHelper
         }
 
         return { EdgeShapes(outputShape) };
+    }
+
+    std::vector<EdgeShapes> ConcatHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        return ConcatHelperBase::GetOutputShapes(shapeInfo, 0, 1);
+    }
+
+    std::vector<EdgeShapes> QLinearConcatHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        return ConcatHelperBase::GetOutputShapes(shapeInfo, 2, 3);
     }
 
     void CropHelper::Initialize(
@@ -2052,6 +2070,36 @@ namespace OperatorHelper
         // MaxPool may have both an output and an indices tensor (both the same size).
         const uint32_t outputCount = shapeInfo.GetOutputCount();
         assert(outputCount == 1 || outputCount == 2);
+
+        std::vector<EdgeShapes> outputShapes;
+        for (uint32_t i = 0; i < outputCount; ++i)
+        {
+            outputShapes.push_back(outputDimensions);
+        }
+        return outputShapes;
+    }
+
+    std::vector<EdgeShapes> QLinearAveragePoolingHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        auto inputShape = shapeInfo.GetInputTensorShape(0);
+        std::vector<DimensionType> outputDimensions = InitializeKernelOutputDimensions(inputShape, m_kernel, m_kernel.channelsLast);
+
+        const uint32_t outputCount = shapeInfo.GetOutputCount();
+
+        std::vector<EdgeShapes> outputShapes;
+        for (uint32_t i = 0; i < outputCount; ++i)
+        {
+            outputShapes.push_back(outputDimensions);
+        }
+        return outputShapes;
+    }
+
+    std::vector<EdgeShapes> QLinearGlobalAveragePoolingHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        auto inputShape = shapeInfo.GetInputTensorShape(0);
+        std::vector<DimensionType> outputDimensions = InitializeKernelOutputDimensions(inputShape, m_kernel, m_kernel.channelsLast);
+
+        const uint32_t outputCount = shapeInfo.GetOutputCount();
 
         std::vector<EdgeShapes> outputShapes;
         for (uint32_t i = 0; i < outputCount; ++i)
@@ -2460,8 +2508,7 @@ namespace OperatorHelper
             {
                 float scale = m_scales[i];
                 ML_CHECK_VALID_ARGUMENT(scale > FLT_EPSILON, "Scale values should be positive.");
-                float roiRange = m_regionOfInterest.empty() ? 1.0f : m_regionOfInterest[i + rank] - m_regionOfInterest[i];
-                m_outputDimensions.push_back(gsl::narrow_cast<uint32_t>(floor(m_inputDimensions[i] * roiRange * scale)));
+                m_outputDimensions.push_back(gsl::narrow_cast<uint32_t>(floor(m_inputDimensions[i] * scale)));
             }
         }
         else
@@ -2752,6 +2799,48 @@ namespace OperatorHelper
     void AttentionHelper::Initialize(const IKernelInformationAdapter& kernelInformation)
     {
         m_qkvHiddenSizes = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::QkvHiddenSizes);
+    }
+
+    std::vector<EdgeShapes> QAttentionHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() >= 5);
+
+        auto queryShape = shapeInfo.GetInputTensorShape(0);
+        ML_CHECK_VALID_ARGUMENT(queryShape.size() == 3);
+
+        auto weightShape = shapeInfo.GetInputTensorShape(1);
+        ML_CHECK_VALID_ARGUMENT(weightShape.size() == 2);
+        ML_CHECK_VALID_ARGUMENT(weightShape[1] % 3 == 0);
+
+        const uint32_t batchSize = queryShape[0];
+        const uint32_t sequenceLength = queryShape[1];
+        const uint32_t hiddenSize = weightShape[1] / 3;
+        const uint32_t headSize = hiddenSize / m_numHeads;
+
+        std::vector<EdgeShapes> outputShapes(2);
+
+        outputShapes[0] = EdgeShapes({batchSize, sequenceLength, hiddenSize});
+
+        uint32_t totalSequenceLength = sequenceLength;
+        if (shapeInfo.IsInputValid(8))
+        {
+            ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputTensorDimensionCount(8) == 5);
+            const uint32_t pastSequenceLength = shapeInfo.GetInputTensorShape(8)[3];
+            totalSequenceLength += pastSequenceLength;
+        }
+
+        if (shapeInfo.IsOutputValid(1))
+        {
+            ML_CHECK_VALID_ARGUMENT(shapeInfo.IsInputValid(8));
+            outputShapes[1] = EdgeShapes({2, batchSize, m_numHeads, totalSequenceLength, headSize});
+        }
+
+        return outputShapes;
+    }
+
+    void QAttentionHelper::Initialize(const IKernelInformationAdapter& kernelInformation)
+    {
+        m_numHeads = gsl::narrow_cast<uint32_t>(kernelInformation.GetAttributes().GetAttribute<int64_t>(AttrName::NumHeads));
     }
 
     std::vector<EdgeShapes> SkipLayerNormHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const

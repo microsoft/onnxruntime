@@ -1,24 +1,27 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index d53c48aa1..4c987bd7a 100755
+index dba9b4687..bcaa18ad7 100755
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -105,7 +105,7 @@ ENDIF()
- 
+@@ -122,7 +122,7 @@ ENDIF()
+ # ---[ Build flags
  IF(NOT CMAKE_SYSTEM_NAME)
    MESSAGE(FATAL_ERROR "CMAKE_SYSTEM_NAME not defined")
--ELSEIF(NOT CMAKE_SYSTEM_NAME MATCHES "^(Darwin|Linux|Android|Windows|CYGWIN|MSYS)$")
-+ELSEIF(NOT CMAKE_SYSTEM_NAME MATCHES "^(Darwin|Linux|Android|Windows|CYGWIN|MSYS|Emscripten|iOS)$")
-   MESSAGE(FATAL_ERROR "Unrecognized CMAKE_SYSTEM_NAME = ${CMAKE_SYSTEM_NAME}")
+-ELSEIF(NOT CMAKE_SYSTEM_NAME MATCHES "^(Android|Darwin|iOS|Linux|Windows|CYGWIN|MSYS|QURT)$")
++ELSEIF(NOT CMAKE_SYSTEM_NAME MATCHES "^(Android|Darwin|iOS|Linux|Windows|CYGWIN|MSYS|QURT|Emscripten|iOS)$")
+   MESSAGE(FATAL_ERROR "Unrecognized CMAKE_SYSTEM_NAME value \"${CMAKE_SYSTEM_NAME}\"")
  ENDIF()
- 
-@@ -7108,6 +7108,10 @@ IF(MSVC)
-   SET_PROPERTY(SOURCE ${ALL_MICROKERNEL_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS "$<$<NOT:$<CONFIG:Debug>>: /O2 >")
-   SET_PROPERTY(SOURCE ${HOT_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS "$<$<NOT:$<CONFIG:Debug>>: /O2 >")
-   SET_PROPERTY(SOURCE ${COLD_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS "$<$<NOT:$<CONFIG:Debug>>: /O1 >")
-+ELSEIF(CMAKE_GENERATOR STREQUAL Xcode)
-+  TARGET_COMPILE_OPTIONS(all_microkernels PRIVATE $<$<NOT:$<CONFIG:Debug>>: -O2 >)
-+  TARGET_COMPILE_OPTIONS(XNNPACK PRIVATE $<$<NOT:$<CONFIG:Debug>>: -O2 >)
-+  TARGET_COMPILE_OPTIONS(XNNPACK PRIVATE $<$<NOT:$<CONFIG:Debug>>: -Os >)
- ELSE()
-   SET_PROPERTY(SOURCE ${ALL_MICROKERNEL_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS "$<$<NOT:$<CONFIG:Debug>>: -O2 >")
-   SET_PROPERTY(SOURCE ${HOT_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS "$<$<NOT:$<CONFIG:Debug>>: -O2 >")
+ IF(CMAKE_SYSTEM_NAME MATCHES "Windows")
+@@ -534,7 +534,12 @@ IF(XNNPACK_BUILD_LIBRARY)
+   TARGET_LINK_LIBRARIES(operator-utils PRIVATE logging)
+   TARGET_LINK_LIBRARIES(post-operation PRIVATE logging)
+   TARGET_LINK_LIBRARIES(subgraph PRIVATE allocator logging memory mutex operators operator-run)
+-  TARGET_LINK_LIBRARIES(XNNPACK PRIVATE allocator cache hardware-config indirection jit logging memory microkernel-utils microparams-init mutex normalization operators operator-run operator-utils packing post-operation microkernels-prod subgraph)
++  IF(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
++    # omit microkernels-prod as the list is manually created by ORT in cmake/external/xnnpack.cmake
++    TARGET_LINK_LIBRARIES(XNNPACK PRIVATE allocator cache hardware-config indirection jit logging memory microkernel-utils microparams-init mutex normalization operators operator-run operator-utils packing post-operation subgraph)
++  ELSE()
++    TARGET_LINK_LIBRARIES(XNNPACK PRIVATE allocator cache hardware-config indirection jit logging memory microkernel-utils microparams-init mutex normalization operators operator-run operator-utils packing post-operation microkernels-prod subgraph)
++  ENDIF()
+   SET_TARGET_PROPERTIES(XNNPACK PROPERTIES C_EXTENSIONS YES)
+ ENDIF()
+ IF(NOT MSVC)

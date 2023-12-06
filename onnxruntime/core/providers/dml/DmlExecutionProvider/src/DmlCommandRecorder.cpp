@@ -251,6 +251,24 @@ void DmlCommandRecorder::ExecuteCommandList(
     _Out_ uint64_t* completionValue
     )
 {
+    if (!m_operationsRecordedInCurrentCommandList)
+    {
+        // The caller can re-use relevant resources after the next set of work to be
+        // flushed has completed.  Its command list hasn't been executed yet, just batched.
+        GpuEvent gpuEvent = m_queue->GetNextCompletionEvent();
+        gpuEvent.fence.CopyTo(fence);
+        *completionValue = gpuEvent.fenceValue;
+
+        m_queue->ExecuteCommandLists(
+        gsl::span<ID3D12CommandList*>(reinterpret_cast<ID3D12CommandList**>(&commandList), 1));
+
+        // Fail early if something horrifying happens
+        ORT_THROW_IF_FAILED(m_dmlDevice->GetDeviceRemovedReason());
+        ORT_THROW_IF_FAILED(m_d3dDevice->GetDeviceRemovedReason());
+
+        return;
+    }
+
     ORT_THROW_IF_FAILED(m_currentCommandList->Close());
 
     if (m_operationsRecordedInCurrentCommandList)

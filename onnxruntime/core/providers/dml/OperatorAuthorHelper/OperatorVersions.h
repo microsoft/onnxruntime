@@ -435,7 +435,9 @@ namespace OperatorHelper
         static const int sc_sinceVer_FusedMatMul = 1;
         static const int sc_sinceVer_FusedMatMulActivation = 1;
         static const int sc_sinceVer_QLinearSigmoid = 1;
+        static const int sc_sinceVer_QAttention = 1;
         static const int sc_sinceVer_Attention = 1;
+        static const int sc_sinceVer_MatMulIntegerToFloat = 1;
         static const int sc_sinceVer_MultiHeadAttention = 1;
         static const int sc_sinceVer_SkipLayerNormalization = 1;
         static const int sc_sinceVer_EmbedLayerNormalization = 1;
@@ -444,6 +446,11 @@ namespace OperatorHelper
         static const int sc_sinceVer_BiasAdd = 1;
         static const int sc_sinceVer_QuickGelu = 1;
         static const int sc_sinceVer_GroupNorm = 1;
+        static const int sc_sinceVer_DynamicQuantizeMatMul = 1;
+        static const int sc_sinceVer_QLinearConcat = 1;
+        static const int sc_sinceVer_QLinearAveragePool = 1;
+        static const int sc_sinceVer_QLinearGlobalAveragePool = 1;
+        static const int sc_sinceVer_RotaryEmbedding = 1;
     } // namespace MsftOperatorSet1
 
 } // namespace OperatorHelper

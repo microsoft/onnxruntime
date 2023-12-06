@@ -189,16 +189,16 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
   TensorShape input_shape = X->Shape().Slice(2);
   ORT_RETURN_IF_ERROR(conv_attrs_.InferPadsAndOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
   auto* Y = context->Output(0, Y_dims);
-  auto* y_data = Y->MutableData<float>();
+  auto y_data = Y->MutableDataAsSpan<float>();
 
   // Check for the optional Conv/Sum fusion.
   if (Sum != nullptr) {
     const auto& sum_shape = Sum->Shape();
     ORT_RETURN_IF_NOT(Y->Shape() == sum_shape, "output and sum shape must match");
     // If the output was not allocated inplace with the sum tensor, then copy here.
-    const auto* sum_data = Sum->Data<float>();
-    if (y_data != sum_data) {
-      memcpy(y_data, sum_data, SafeInt<size_t>(sum_shape.Size()) * sizeof(float));
+    auto sum_data = Sum->DataAsSpan<float>();
+    if (y_data.data() != sum_data.data()) {
+      gsl::copy(sum_data, y_data);
     }
   }
 
@@ -213,7 +213,7 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
       X->Data<float>(),
       W->Data<float>(),
       B != nullptr ? B->Data<float>() : nullptr,
-      y_data,
+      y_data.data(),
       &activation_,
       Sum == nullptr,
       context->GetOperatorThreadPool());

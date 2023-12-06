@@ -147,14 +147,14 @@ namespace Dml::GraphDescBuilder
         const uint8_t* isConstGpuGraphInput,
         const size_t isConstGpuGraphInputCount,
         const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
-        const onnxruntime::Graph& graph,
-        const onnxruntime::IndexedSubGraph& indexedSubGraph,
         const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
         IDMLDevice* device,
-        const void* executionHandle)
+        const ExecutionProviderImpl* executionHandle,
+        const onnxruntime::Path& modelPath,
+        gsl::span<const onnxruntime::Node* const> subgraphNodes,
+        gsl::span<const onnxruntime::NodeArg* const> subgraphInputs,
+        gsl::span<const onnxruntime::NodeArg* const> subgraphOutputs)
     {
-        const gsl::span<const std::string> subGraphInputArgNames = indexedSubGraph.GetMetaDef()->inputs;
-        const gsl::span<const std::string> subGraphOutputArgNames = indexedSubGraph.GetMetaDef()->outputs;
         struct NodeAndIndex
         {
             uint32_t nodeIndex; // The index of the node itself
@@ -164,12 +164,14 @@ namespace Dml::GraphDescBuilder
         // Map from Lotus node argument names to the new node and index where it will be produced
         std::unordered_map<std::string, NodeAndIndex> nameToNodeAndIndexMap;
 
+        std::unordered_map<std::string, EdgeShapes> nodeOutputShapes;
+
         // Map from Lotus node argument names to input indices of the fused kernel node.
         std::unordered_map<std::string, uint32_t> nameToDmlFusedNodeInputIndex;
 
-        for (size_t inputIndex = 0; inputIndex < subGraphInputArgNames.size(); ++inputIndex)
+        for (size_t inputIndex = 0; inputIndex < subgraphInputs.size(); ++inputIndex)
         {
-            const onnxruntime::NodeArg* graphInput = graph.GetNodeArg(subGraphInputArgNames[inputIndex]);
+            const onnxruntime::NodeArg* graphInput = subgraphInputs[inputIndex];
 
             if (!graphInput)
             {
@@ -196,12 +198,10 @@ namespace Dml::GraphDescBuilder
         const uint32_t minNodeCountToReuseCommandList = 5;
         bool reuseCommandList = false;
 
-        if (indexedSubGraph.nodes.size() >= minNodeCountToReuseCommandList)
+        if (subgraphNodes.size() >= minNodeCountToReuseCommandList || executionHandle->IsMcdmDevice())
         {
             reuseCommandList = true;
         }
-
-        auto modelPath = graph.ModelPath();
 
         auto constantCpuGraphInputGetter = [&isInitializerTransferable, &modelPath](const std::string& argName)
         {
@@ -219,9 +219,11 @@ namespace Dml::GraphDescBuilder
 
         // Iterate through each node and create a corresponding node in the new graph
         // We can iterate the nodes in any order because the edge connectivity will take care of the topological order
-        for (size_t sortedNodeIndex : indexedSubGraph.nodes)
+        std::unordered_map<std::string, std::vector<uint32_t>> inferredOutputShapes;
+
+        for (const onnxruntime::Node* subgraphNode : subgraphNodes)
         {
-            const onnxruntime::Node& node = *graph.GetNode(sortedNodeIndex);
+            const onnxruntime::Node& node = *subgraphNode;
 
             const GraphNodeProperties& graphNodeProps = graphNodePropertyMap.find(GetUniqueNodeName(node))->second;
             const auto& requiredConstantCpuInputs = graphNodeProps.internalRegInfo->requiredConstantCpuInputs;
@@ -230,32 +232,72 @@ namespace Dml::GraphDescBuilder
             {
                 ComPtr<IMLOperatorTensor> tensor = nullptr;
 
-                // Check whether this specific node requested support for constant CPU inputs
-                if (std::find(requiredConstantCpuInputs.begin(), requiredConstantCpuInputs.end(), inputIndex) != requiredConstantCpuInputs.end())
+                auto inputDefs = node.InputDefs();
+
+                if (inputIndex < inputDefs.size())
                 {
-                    auto inputDefs = node.InputDefs();
-                    if (inputIndex < inputDefs.size())
+                    const onnxruntime::NodeArg* arg = inputDefs[inputIndex];
+                    tensor = constantCpuGraphInputGetter(arg->Name());
+
+                    if (tensor == nullptr)
                     {
-                        const onnxruntime::NodeArg* arg = inputDefs[inputIndex];
-                        tensor = constantCpuGraphInputGetter(arg->Name());
+                        bool inputRequiredAsConstant = std::find(
+                            requiredConstantCpuInputs.begin(),
+                            requiredConstantCpuInputs.end(),
+                            inputIndex) != requiredConstantCpuInputs.end();
+
+                        // This shouldn't happen since kernel creation is deferred and repeated when required constant inputs are not present.
+                        ORT_THROW_HR_IF(E_UNEXPECTED, inputRequiredAsConstant);
                     }
                 }
 
                 return tensor;
             };
 
+            EdgeShapes inputShapesOverrides(node.InputDefs().size());
+
+            // Override the input shapes with shapes that were previously inferred
+            for (int inputIndex = 0; inputIndex < node.InputDefs().size(); ++inputIndex)
+            {
+                auto inputDef = node.InputDefs()[inputIndex];
+
+                auto outputShapesIter = inferredOutputShapes.find(inputDef->Name());
+                if (outputShapesIter != inferredOutputShapes.end())
+                {
+                    inputShapesOverrides.GetMutableShape(inputIndex) = outputShapesIter->second;
+                }
+                else if (inputDef->HasTensorOrScalarShape())
+                {
+                    for (int i = 0; i < inputDef->Shape()->dim_size(); ++i)
+                    {
+                        ORT_THROW_HR_IF(E_INVALIDARG, !inputDef->Shape()->dim(i).has_dim_value());
+                        inputShapesOverrides.GetMutableShape(inputIndex).push_back(gsl::narrow_cast<uint32_t>(inputDef->Shape()->dim(i).dim_value()));
+                    }
+                }
+            }
+
+            EdgeShapes outputShapes;
             DmlGraphNodeCreateInfo graphNodeCreateInfo;
             graphNodeProps.internalRegInfo->graphNodeFactoryRegistration->factory(
                 node,
                 constantCpuNodeInputGetter,
                 executionHandle,
+                &inputShapesOverrides,
+                /*out*/ &outputShapes,
                 /*out*/ &graphNodeCreateInfo
             );
+
+            ORT_THROW_HR_IF(E_UNEXPECTED, outputShapes.EdgeCount() != node.OutputDefs().size());
+            for (int i = 0; i < node.OutputDefs().size(); ++i)
+            {
+                inferredOutputShapes[node.OutputDefs()[i]->Name()] = outputShapes.GetShape(i);
+            }
 
             // Create a map between operatorGraphNodeIndex to mainGraphNodeIndex.
             std::unordered_map<uint32_t, uint32_t> operatorGraphNodeIndexToMainGraphNodeIndexMap;
             uint32_t graphNodeCount = gsl::narrow_cast<uint32_t>(graphNodes.size());
             const bool isNodeAsOpDesc = graphNodeCreateInfo.nodesAsOperatorDesc.size() > 0;
+            size_t firstOpDescGraphNodeIndex = graphNodes.size();
 
             if (isNodeAsOpDesc)
             {
@@ -265,6 +307,8 @@ namespace Dml::GraphDescBuilder
                     ORT_THROW_HR_IF(E_UNEXPECTED, !graphNodeCreateInfo.nodesAsOperatorDesc[nodeIndex]);
                     operatorGraphNodeIndexToMainGraphNodeIndexMap.emplace(nodeIndex, graphNodeCount++);
                 }
+
+                graphNodes.resize(graphNodes.size() + graphNodeCreateInfo.nodeCount);
             }
             else
             {
@@ -273,7 +317,7 @@ namespace Dml::GraphDescBuilder
                     ORT_THROW_HR_IF(E_UNEXPECTED, !graphNodeCreateInfo.nodesAsIDMLOperator[nodeIndex].Get());
                     operatorGraphNodeIndexToMainGraphNodeIndexMap.emplace(nodeIndex, graphNodeCount++);
                     NodeInfo nodeInfo = {};
-                    nodeInfo.op = std::move(graphNodeCreateInfo.nodesAsIDMLOperator[nodeIndex]);
+                    nodeInfo.nodeDef = std::move(graphNodeCreateInfo.nodesAsIDMLOperator[nodeIndex]);
                     graphNodes.push_back(std::move(nodeInfo));
                 }
             }
@@ -295,21 +339,59 @@ namespace Dml::GraphDescBuilder
 
                         const uint32_t dmlFusedNodeInputIndex = iter->second;
 
-                        DML_INPUT_GRAPH_EDGE_DESC edge = {};
-                        edge.GraphInputIndex = dmlFusedNodeInputIndex;
-                        edge.ToNodeIndex = mainGraphNodeIndex;
-                        edge.ToNodeInputIndex = operatorGraphInputEdge.ToNodeInputIndex;  // ?? might need to point inputIndex
-                        graphInputEdges.push_back(edge);
-
                         // If this is a constant input, set the appropriate flags on the desc
                         if (isNodeAsOpDesc &&
                             dmlFusedNodeInputIndex < isConstGpuGraphInputCount &&
                             isConstGpuGraphInput[dmlFusedNodeInputIndex])
                         {
-                            auto& graphInputNode = graphNodeCreateInfo.nodesAsOperatorDesc[operatorGraphInputEdge.ToNodeIndex];
-                            std::vector<DmlBufferTensorDesc*> toNodeInputTensorDescs = graphInputNode->GetInputTensors();
-                            DmlBufferTensorDesc* tensorDesc = toNodeInputTensorDescs[operatorGraphInputEdge.ToNodeInputIndex];
-                            tensorDesc->flags |= DML_TENSOR_FLAG_OWNED_BY_DML;
+                            // This is a highly inefficient approach to generating constant nodes.  It duplicates constant data 
+                            // across the graph input as well as every consumer's unique constant node.  However it is currently 
+                            // only used for small inputs.
+                            
+                            // TODO: Rework this to create DML constant nodes with the minimum data size actually used by consuming
+                            // nodes.  This would allow this size to be reduced while handling the case that 1D scale and zero point
+                            // values that have been de-duplicated with conversion to scalars in kernels.
+                            uint32_t c_maxConstNodeDataSize = 1024 * 1024;
+
+                            ComPtr<OnnxTensorWrapper> constantInput = constantCpuGraphInputGetter(arg->Name());
+
+                            if (constantInput && constantInput->GetTensorByteSize() < c_maxConstNodeDataSize)
+                            {
+                                auto data = static_cast<const uint8_t*>(constantInput->GetData());
+                                std::vector<uint8_t> tensorData(data, data + constantInput->GetTensorByteSize());
+                                    
+                                NodeInfo nodeInfo = {};
+                                nodeInfo.nodeDef = std::move(tensorData);
+                                graphNodes.push_back(std::move(nodeInfo));
+
+                                DML_INTERMEDIATE_GRAPH_EDGE_DESC edge = {};
+                                edge.FromNodeIndex = static_cast<UINT>(graphNodes.size() - 1);
+                                edge.FromNodeOutputIndex = 0;
+                                edge.ToNodeIndex = mainGraphNodeIndex;
+                                edge.ToNodeInputIndex = operatorGraphInputEdge.ToNodeInputIndex;
+                                graphIntermediateEdges.push_back(edge);
+                            }
+                            else
+                            {
+                                DML_INPUT_GRAPH_EDGE_DESC edge = {};
+                                edge.GraphInputIndex = dmlFusedNodeInputIndex;
+                                edge.ToNodeIndex = mainGraphNodeIndex;
+                                edge.ToNodeInputIndex = operatorGraphInputEdge.ToNodeInputIndex;
+                                graphInputEdges.push_back(edge);
+
+                                auto& graphInputNode = graphNodeCreateInfo.nodesAsOperatorDesc[operatorGraphInputEdge.ToNodeIndex];
+                                std::vector<DmlBufferTensorDesc*> toNodeInputTensorDescs = graphInputNode->GetInputTensors();
+                                DmlBufferTensorDesc* tensorDesc = toNodeInputTensorDescs[operatorGraphInputEdge.ToNodeInputIndex];
+                                tensorDesc->flags |= DML_TENSOR_FLAG_OWNED_BY_DML;
+                            }
+                        }
+                        else
+                        {
+                            DML_INPUT_GRAPH_EDGE_DESC edge = {};
+                            edge.GraphInputIndex = dmlFusedNodeInputIndex;
+                            edge.ToNodeIndex = mainGraphNodeIndex;
+                            edge.ToNodeInputIndex = operatorGraphInputEdge.ToNodeInputIndex;
+                            graphInputEdges.push_back(edge);
                         }
                     }
                     else
@@ -347,30 +429,45 @@ namespace Dml::GraphDescBuilder
                         operatorGraphNodeIndexToMainGraphNodeIndexMap[operatorGraphOutputEdge.FromNodeIndex],
                         operatorGraphOutputEdge.FromNodeOutputIndex
                     };
+
+                    nodeOutputShapes[arg->Name()] = outputShapes;
                 }
             }
 
             if (isNodeAsOpDesc)
             {
-                for (auto& opDesc : graphNodeCreateInfo.nodesAsOperatorDesc)
+                for (size_t i = 0; i < graphNodeCreateInfo.nodesAsOperatorDesc.size(); ++i)
                 {
+                    auto& opDesc = graphNodeCreateInfo.nodesAsOperatorDesc[i];
+
                     DML_OPERATOR_DESC dmlDesc = SchemaHelpers::ConvertOperatorDesc(*opDesc, &allocator);
+
+                    // TODO: Change as new header is ingested
+                    if (dmlDesc.Type == (DML_OPERATOR_TYPE) DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING)
+                        dmlDesc.Type = (DML_OPERATOR_TYPE) 169;
+                
+                    // TODO: Change as new header is ingested
+                    if (dmlDesc.Type == (DML_OPERATOR_TYPE) DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT)
+                        dmlDesc.Type = (DML_OPERATOR_TYPE) 170;
+
                     ComPtr<IDMLOperator> op;
                     ORT_THROW_IF_FAILED(device->CreateOperator(&dmlDesc, IID_PPV_ARGS(&op)));
                     allocator.Reset();
 
                     NodeInfo nodeInfo = {};
-                    nodeInfo.op = std::move(op);
+                    nodeInfo.nodeDef = std::move(op);
                     nodeInfo.name = node.Name();
-                    graphNodes.push_back(std::move(nodeInfo));
+                    graphNodes[firstOpDescGraphNodeIndex + i] = std::move(nodeInfo);
                 }
             }
         }
 
+        EdgeShapes graphOutputShapes(subgraphOutputs.size());
+
         // Add graph output nodes, which might be in a different order from the encapsulating node
-        for (size_t outputIndex = 0; outputIndex < subGraphOutputArgNames.size(); ++outputIndex)
+        for (size_t outputIndex = 0; outputIndex < subgraphOutputs.size(); ++outputIndex)
         {
-            const onnxruntime::NodeArg* graphOutput = graph.GetNodeArg(subGraphOutputArgNames[outputIndex]);
+            const onnxruntime::NodeArg* graphOutput = subgraphOutputs[outputIndex];
 
             ORT_THROW_HR_IF_NULL_MSG(E_POINTER, graphOutput, "FusedNode's nodeArgList does not contain one of the nodeArg");
             const auto& outputNodeAndIndex = nameToNodeAndIndexMap.at(graphOutput->Name());
@@ -380,6 +477,7 @@ namespace Dml::GraphDescBuilder
             edge.FromNodeOutputIndex = outputNodeAndIndex.targetIndex;
             edge.GraphOutputIndex = gsl::narrow_cast<uint32_t>(outputIndex);
             graphOutputEdges.push_back(edge);
+            graphOutputShapes.GetMutableShape(outputIndex) = nodeOutputShapes[graphOutput->Name()].GetShape(outputNodeAndIndex.targetIndex);
         }
 
         RemoveUnconnectedNodes(graphNodes, graphInputEdges, graphIntermediateEdges, graphOutputEdges);
@@ -390,6 +488,7 @@ namespace Dml::GraphDescBuilder
         graphDesc.outputEdges = std::move(graphOutputEdges);
         graphDesc.intermediateEdges = std::move(graphIntermediateEdges);
         graphDesc.reuseCommandList = reuseCommandList;
+        graphDesc.outputShapes = std::move(graphOutputShapes);
         return graphDesc;
     }
 }

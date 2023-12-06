@@ -24,7 +24,8 @@ namespace openvino_ep {
 
 // Constructor
 GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string device_type_param,
-                             const std::string version_param) : graph_viewer_(graph_viewer_param), device_type_(device_type_param) {
+                             const std::string version_param)
+    : graph_viewer_(graph_viewer_param), device_type_(device_type_param) {
   if (version_param == "V_2022_1") {
     data_ops_ = new DataOps(graph_viewer_, V_2022_1, device_type_);
   } else if (version_param == "V_2022_2") {
@@ -33,8 +34,10 @@ GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string 
     data_ops_ = new DataOps(graph_viewer_, V_2022_3, device_type_);
   } else if (version_param == "V_2023_0") {
     data_ops_ = new DataOps(graph_viewer_, V_2023_0, device_type_);
+  } else if (version_param == "V_2023_1") {
+    data_ops_ = new DataOps(graph_viewer_, V_2023_1, device_type_);
   } else {
-    data_ops_ = new DataOps(graph_viewer_, V_2023_0, device_type_);
+    data_ops_ = new DataOps(graph_viewer_, V_2023_1, device_type_);
   }
 }
 
@@ -76,11 +79,15 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
 
     const auto& nodes = graph_viewer_.GetNodesInTopologicalOrder();
 
+    const auto& node = graph_viewer_.GetNode(nodes[0]);
+
     // Handle cases where lone, reoccuring Ops in smaller models cannot be supported in OpenVINO
     // If only a node of the same lone,unsupported type is present, then do not proceed with the subgraph
-    const auto& node = graph_viewer_.GetNode(nodes[0]);
-    if (data_ops_->IsOpSupportedOnlyInModel(node->OpType()))
-      return result;
+    if (nodes.size() <= 3) {
+      if (data_ops_->IsOpSupportedOnlyInModel(node->OpType())) {
+        return result;
+      }
+    }
 
     // Nodes that work well in models but not as a single node
     if (nodes.size() == 1) {
@@ -108,11 +115,11 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     }
     openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph = true;
 
-  } else {  // unsupported_nodes_idx.empty()
-
+  } else {                                     // unsupported_nodes_idx.empty()
 #if defined(OPENVINO_DISABLE_GRAPH_PARTITION)  // disables graph partition at build time
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] DISABLE_GRAPH_PARTITION option is set";
-    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model is not fully supported by OpenVINO, so making the full model fall back to default CPU Execution Provider";
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model is not fully supported by OpenVINO, "
+                       << "so making the full model fall back to default CPU Execution Provider";
     return result;
 #endif
 
@@ -153,7 +160,13 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
 
       std::vector<std::string> cluster_graph_inputs, cluster_inputs, const_inputs, cluster_outputs;
 
-      GetInputsOutputsOfCluster(graph_viewer_, this_cluster, ng_required_initializers, cluster_graph_inputs, cluster_inputs, const_inputs, cluster_outputs);
+      GetInputsOutputsOfCluster(graph_viewer_,
+                                this_cluster,
+                                ng_required_initializers,
+                                cluster_graph_inputs,
+                                cluster_inputs,
+                                const_inputs,
+                                cluster_outputs);
 
       bool omit_subgraph = false;
       // Omitting zero dim subgraphs

@@ -136,22 +136,30 @@ class DebugOptions:
     @property
     def torch_exporter_filter(self):
         """Accessor for the filter export logs configuration."""
-        if self.log_level >= LogLevel.INFO and get_runtime_pytorch_version() < version.parse("2.0"):
+        torch_version = get_runtime_pytorch_version()
+        if self.log_level >= LogLevel.INFO:
+            if torch_version < version.parse("2.0"):
+                return [
+                    # WARNING: The shape inference of com.microsoft::SoftmaxCrossEntropyLossInternal type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
+                    # WARNING: The shape inference of com.microsoft::PythonOp type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
+                    # WARNING: The shape inference of org.pytorch.aten::ATen type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
+                    # WARNING: The shape inference of prim::Constant type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
+                    "type is missing, so it may result in wrong shape inference",
+                    # Warning: Checker does not support models with experimental ops: ATen
+                    "Checker does not support models with experimental ops:",
+                    "Dropout is a training op and should not be exported in inference mode.",
+                    # Warning: Shape inference does not support models with experimental operators: ATen
+                    "Shape inference does not support models with experimental operators:",
+                    # Warning: Unsupported operator Trilu. No schema registered for this operator.
+                    # Warning: Unsupported operator ATen. No schema registered for this operator.
+                    # Warning: Unsupported operator SoftmaxCrossEntropyLossInternal. No schema registered for this operator.
+                    "No schema registered for this operator.",
+                ]
             return [
-                # WARNING: The shape inference of com.microsoft::SoftmaxCrossEntropyLossInternal type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
-                # WARNING: The shape inference of com.microsoft::PythonOp type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
-                # WARNING: The shape inference of org.pytorch.aten::ATen type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
-                # WARNING: The shape inference of prim::Constant type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
+                # [W shape_type_inference.cpp:1974] Warning: The shape inference of com.microsoft::PythonOp type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function. (function UpdateReliable)
                 "type is missing, so it may result in wrong shape inference",
-                # Warning: Checker does not support models with experimental ops: ATen
-                "Checker does not support models with experimental ops:",
-                "Dropout is a training op and should not be exported in inference mode.",
-                # Warning: Shape inference does not support models with experimental operators: ATen
-                "Shape inference does not support models with experimental operators:",
-                # Warning: Unsupported operator Trilu. No schema registered for this operator.
-                # Warning: Unsupported operator ATen. No schema registered for this operator.
-                # Warning: Unsupported operator SoftmaxCrossEntropyLossInternal. No schema registered for this operator.
-                "No schema registered for this operator.",
+                #  diagnostics [WARNING] - None
+                "[WARNING] - None",
             ]
 
         return None
@@ -159,11 +167,6 @@ class DebugOptions:
     @property
     def onnxruntime_log_filter(self):
         """Accessor for the filter onnxruntime logs configuration."""
-        if self.log_level >= LogLevel.INFO:
-            return [
-                "CleanUnusedInitializersAndNodeArgs] Removing initializer",
-                "Serializing optimized model with Graph Optimization level greater than ORT_ENABLE_EXTENDED",
-            ]
         return None
 
 
@@ -277,6 +280,12 @@ class _RuntimeOptions:
         self.max_tuning_duration_ms = 0
         self.tuning_results_path = ""
 
+        # Cache exported model
+        self.ortmodule_cache_dir = ""
+
+        # Experimental features.
+        self.enable_zero_stage3_support = False  # Once enabled, cannot be disabled.
+
         # Override the feature config if it exists in os env.
         self._override_from_env_vars()
 
@@ -349,3 +358,12 @@ class _RuntimeOptions:
                 self.max_tuning_duration_ms = max_tuning_duration_ms
         if "ORTMODULE_TUNING_RESULTS_PATH" in os.environ:
             self.tuning_results_path = os.getenv("ORTMODULE_TUNING_RESULTS_PATH")
+
+        # Cache exported model
+        if "ORTMODULE_CACHE_DIR" in os.environ:
+            self._logger.warning("ORTModule optimization for caching exported model is ON.")
+            self.ortmodule_cache_dir = os.getenv("ORTMODULE_CACHE_DIR")
+
+        # Experimental features.
+        if "ORTMODULE_ENABLE_ZERO_STAGE3" in os.environ and int(os.getenv("ORTMODULE_ENABLE_ZERO_STAGE3")) == 1:
+            self.enable_zero_stage3_support = True

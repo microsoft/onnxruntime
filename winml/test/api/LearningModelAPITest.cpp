@@ -242,14 +242,16 @@ static void CloseModelCheckMetadata() {
 }
 
 static void CheckLearningModelPixelRange() {
-  std::vector<std::wstring> modelPaths = {      // NominalRange_0_255 and image output
+  std::vector<std::wstring> modelPaths = {// NominalRange_0_255 and image output
                                           L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_255.onnx",
-      // Normalized_0_1 and image output
+                                          // Normalized_0_1 and image output
                                           L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",
-      // Normalized_1_1 and image output
-                                          L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx"};
+                                          // Normalized_1_1 and image output
+                                          L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx"
+  };
   std::vector<LearningModelPixelRange> pixelRanges = {
-    LearningModelPixelRange::ZeroTo255, LearningModelPixelRange::ZeroToOne, LearningModelPixelRange::MinusOneToOne};
+    LearningModelPixelRange::ZeroTo255, LearningModelPixelRange::ZeroToOne, LearningModelPixelRange::MinusOneToOne
+  };
   for (uint32_t model_i = 0; model_i < modelPaths.size(); model_i++) {
     LearningModel learningModel = nullptr;
     WINML_EXPECT_NO_THROW(APITest::LoadModel(modelPaths[model_i], learningModel));
@@ -329,7 +331,8 @@ const LearningModelApiTestsApi& getapi() {
     CloseModelCheckEval,
     CloseModelNoNewSessions,
     CheckMetadataCaseInsensitive,
-    CreateCorruptModel};
+    CreateCorruptModel
+  };
 
   if (RuntimeParameterExists(L"noVideoFrameTests")) {
     api.CloseModelCheckEval = SkipTest;

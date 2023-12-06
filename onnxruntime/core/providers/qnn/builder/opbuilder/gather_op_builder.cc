@@ -13,7 +13,6 @@
 namespace onnxruntime {
 namespace qnn {
 
-// Operator which only need to hanle node inputs & outputs, no attributes or no need to handle attributes
 class GatherOpBuilder : public BaseOpBuilder {
  public:
   GatherOpBuilder() : BaseOpBuilder("GatherOpBuilder") {}
@@ -23,7 +22,6 @@ class GatherOpBuilder : public BaseOpBuilder {
   Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
                        const logging::Logger& logger,
-                       bool is_quantized_model,
                        std::vector<std::string>& input_names,
                        bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
@@ -31,20 +29,17 @@ class GatherOpBuilder : public BaseOpBuilder {
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
-                                     bool is_quantized_model,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 };
 
 Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                       const NodeUnit& node_unit,
                                       const logging::Logger& logger,
-                                      bool is_quantized_model,
                                       std::vector<std::string>& input_names,
                                       bool do_op_validation) const {
-  ORT_UNUSED_PARAMETER(do_op_validation);
   const auto& inputs = node_unit.Inputs();
   ORT_RETURN_IF(inputs.size() != 2, "Gather should has 2 inputs at least!");
-  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, is_quantized_model, input_names));
+  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names));
 
   // Process indices
   const auto& input_name = inputs[1].node_arg.Name();
@@ -63,7 +58,9 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   std::vector<uint8_t> gather_indices;
   bool is_initializer_input = qnn_model_wrapper.IsInitializerInput(input_name);
 
-  ORT_RETURN_IF(is_quantized_model && qnn_data_type == QNN_DATATYPE_INT_64 && !is_initializer_input,
+  // Gather input 0 is quantized tensor, input 1 (indices) is int64, this is not supported by QNN
+  bool is_quantized_tensor = inputs[0].quant_param.has_value();
+  ORT_RETURN_IF(is_quantized_tensor && qnn_data_type == QNN_DATATYPE_INT_64 && !is_initializer_input,
                 "HTP backend doesn't support any int64 data type.");
 
   if (is_initializer_input) {
@@ -103,7 +100,7 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                    std::move(cast_output_shape));
       ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_output)), "Failed to add tensor.");
       ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(indices_input_name,
-                                                        qnn_def::package_name,
+                                                        QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                         "Cast",
                                                         {input_name},
                                                         {indices_input_name},
@@ -122,14 +119,13 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                                                     const NodeUnit& node_unit,
                                                     std::vector<std::string>&& input_names,
                                                     const logging::Logger& logger,
-                                                    bool is_quantized_model,
                                                     bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(logger);
   std::vector<std::string> param_tensor_names;
   int32_t axis_value = 0;
   Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
   ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, axis_value));
-  QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), qnn_def::axis, axis_qnn_scalar);
+  QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), QNN_OP_GATHER_PARAM_AXIS, axis_qnn_scalar);
   param_tensor_names.push_back(axis_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
 
@@ -162,11 +158,12 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   const auto& output_name = gather_output.node_arg.Name();
 
   Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-  utils::InitializeQuantizeParam(quantize_param, is_quantized_model);
+  bool is_quantized_tensor = gather_output.quant_param.has_value();
+  utils::InitializeQuantizeParam(quantize_param, is_quantized_tensor);
 
   const auto* type_proto = gather_output.node_arg.TypeAsProto();
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
-  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_model, type_proto, qnn_data_type));
+  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_tensor, type_proto, qnn_data_type));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(gather_output.quant_param,
                                                                    quantize_param.scaleOffsetEncoding.scale,
                                                                    quantize_param.scaleOffsetEncoding.offset),
@@ -184,7 +181,7 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(gather_output_wrapper)), "Failed to add tensor.");
 
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
-                                                    qnn_def::package_name,
+                                                    QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                     GetQnnOpType(node_unit.OpType()),
                                                     std::move(input_names),
                                                     {gather_output_name},
@@ -200,7 +197,7 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(reshape_output)), "Failed to add tensor.");
     const static std::string qnn_node_type = "Reshape";
     ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(output_name,
-                                                      qnn_def::package_name,
+                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                       qnn_node_type,
                                                       {gather_output_name},
                                                       {output_name},

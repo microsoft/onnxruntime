@@ -1,3 +1,34 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'js/node'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'js/node'
+    - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
 jobs:
 - template: templates/linux-ci.yml
   parameters:
@@ -5,5 +36,3 @@ jobs:
     JobName: 'Linux_CI_Multi_GPU_TensorRT_Dev'
     # The latest TensorRT container only supports ubuntu20.04 and python 3.8
     RunDockerBuildArgs: '-o ubuntu20.04 -d tensorrt -x "--enable_multi_device_test"'
-    DoNugetPack:  'false'
-    ArtifactName: 'drop-linux'

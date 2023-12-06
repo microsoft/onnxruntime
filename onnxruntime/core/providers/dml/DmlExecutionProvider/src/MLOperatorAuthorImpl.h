@@ -4,6 +4,7 @@
 #pragma once
 #include "core/providers/dml/DmlExecutionProvider/inc/IWinmlExecutionProvider.h"
 #include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorHelper.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlEdgeShapes.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/customregistry.h"
 #include "core/framework/tensorprotoutils.h"
@@ -92,42 +93,6 @@ public:
 };
 
 using AttributeMap = std::map<std::string, AttributeValue>;
-
-// Encapsulation of shapes across different edges of an operator.    Non-tensor
-// edges and unused edges have an empty array of dimensions.
-class EdgeShapes
-{
-public:
-    EdgeShapes() = default;
-
-    EdgeShapes(size_t count) : m_shapes(count) {}
-
-    const std::vector<uint32_t>& GetShape(size_t edgeIndex) const
-    {
-        return m_shapes[edgeIndex];
-    }
-
-    std::vector<uint32_t>& GetMutableShape(size_t edgeIndex)
-    {
-        return m_shapes[edgeIndex];
-    }
-
-    size_t EdgeCount() const { return m_shapes.size(); }
-
-    void Reset(size_t edge_count)
-    {
-        m_shapes.clear();
-        m_shapes.resize(edge_count);
-    }
-
-    bool operator!=(const EdgeShapes& other) const noexcept
-    {
-        return (m_shapes != other.m_shapes);
-    }
-
- private:
-    std::vector<std::vector<uint32_t>> m_shapes;
-};
 
 // Base class for ABI objects which may be "Closed", at which point calls will predictably
 // fail or return a dummy value.  This is used for transient ABI context objects which
@@ -239,6 +204,11 @@ class OpNodeInfoWrapper : public Base1_t, public Base2_t, public Closable
         _Outptr_ IMLOperatorTensor** tensor
         ) const noexcept;
 
+    HRESULT STDMETHODCALLTYPE TryGetConstantInputTensor(
+        uint32_t inputIndex,
+        _Outptr_ IMLOperatorTensor** tensor
+        ) const noexcept;
+
  protected:
     // Lifetime is managed by the caller and guaranteed to outlive this class
     const onnxruntime::OpNodeProtoHelper<NodeInfoImpl_t>* m_impl = nullptr;
@@ -333,6 +303,8 @@ class OnnxTensorWrapper : public WRL::Base<IMLOperatorTensor>, public Closable
 
     const onnxruntime::Tensor* GetInterface() const { return nullptr; }
     onnxruntime::Tensor* GetInterface() { return nullptr; }
+
+    size_t GetTensorByteSize() const { return m_tensorByteSize; }
 
  private:
     size_t m_tensorByteSize = 0;
@@ -434,6 +406,7 @@ class DmlGraphOpKernelInfoWrapper : public OpNodeInfoWrapper<
         const onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> * protoHelper,
         const void* executionHandle,
         bool isInternalOperator,
+        const EdgeShapes* inputShapesOverrides,
         const EdgeShapes* inferredOutputShapes,
         const AttributeMap* defaultAttributes,
         DmlGraphNodeCreateInfo* graphNodeCreateInfo,
@@ -510,6 +483,8 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext, IMLOpe
 
     std::vector<IMLOperatorTensor*> GetInputTensors();
     std::vector<IMLOperatorTensor*> GetOutputTensors(const EdgeShapes& outputShapes);
+
+    onnxruntime::OpKernelContext* GetOpKernelContext() { return m_impl; }
 
  protected:
     void ClearTempAllocations();

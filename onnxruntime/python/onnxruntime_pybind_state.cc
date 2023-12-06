@@ -36,6 +36,8 @@
 #include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
 
+#include <pybind11/functional.h>
+
 // Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
 // GCC 4.x doesn't seem to define this and it breaks the pipelines based on CentOS as it uses
 // GCC 4.x.
@@ -51,6 +53,7 @@ namespace onnxruntime {
 #endif  // _MSC_VER
 
 #include <iterator>
+#include <algorithm>
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4267 4996 4503 4003)
@@ -73,6 +76,92 @@ static Env& platform_env = Env::Default();
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #endif
+
+using PyCallback = std::function<void(std::vector<py::object>, py::object user_data, std::string)>;
+
+struct AsyncResource {
+  std::vector<OrtValue> feeds;
+  std::vector<const OrtValue*> feeds_raw;
+
+  std::vector<std::string> feed_names;
+  std::vector<const char*> feed_names_raw;
+
+  std::vector<OrtValue*> fetches_raw;  // will be released during destruction
+
+  std::vector<std::string> fetch_names;
+  std::vector<const char*> fetch_names_raw;
+
+  RunOptions default_run_option;
+  PyCallback callback;
+  py::object user_data;
+
+  void ReserveFeeds(size_t sz) {
+    feeds.reserve(sz);
+    feeds_raw.reserve(sz);
+    feed_names.reserve(sz);
+    feed_names_raw.reserve(sz);
+  }
+
+  void ReserveFetches(size_t sz) {
+    fetches_raw.reserve(sz);
+    fetch_names.reserve(sz);
+    fetch_names_raw.reserve(sz);
+  }
+
+  ~AsyncResource() {
+    std::for_each(fetches_raw.begin(), fetches_raw.end(), [](const OrtValue* fetch) {
+      if (fetch) {
+        std::unique_ptr<const OrtValue> fetch_recycler(fetch);
+      }
+    });
+    fetches_raw.clear();
+  }
+};
+
+void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr ort_status) {
+  ORT_ENFORCE(user_data, "user data must not be NULL for callback in python");
+
+  auto invoke_callback = [&]() {
+    std::unique_ptr<AsyncResource> async_resource{reinterpret_cast<AsyncResource*>(user_data)};
+    Ort::Status status(ort_status);
+
+    // return on error
+    if (!status.IsOK()) {
+      async_resource->callback({}, async_resource->user_data, status.GetErrorMessage());
+      return;
+    }
+
+    std::vector<py::object> rfetch;
+    rfetch.reserve(num_outputs);
+    size_t pos = 0;
+    for (size_t ith = 0; ith < num_outputs; ++ith) {
+      const auto& fet = *outputs[ith];
+      if (fet.IsAllocated()) {
+        if (fet.IsTensor()) {
+          rfetch.push_back(AddTensorAsPyObj(fet, nullptr, nullptr));
+        } else if (fet.IsSparseTensor()) {
+          rfetch.push_back(GetPyObjectFromSparseTensor(pos, fet, nullptr));
+        } else {
+          rfetch.push_back(AddNonTensorAsPyObj(fet, nullptr, nullptr));
+        }
+      } else {
+        rfetch.push_back(py::none());
+      }
+      ++pos;
+    }
+    async_resource->callback(rfetch, async_resource->user_data, "");
+  };
+
+  if (PyGILState_Check()) {
+    invoke_callback();
+  } else {
+    // acquire GIL to safely:
+    // 1) invoke python callback
+    // 2) create, manipulate, and destory python objects
+    py::gil_scoped_acquire acquire;
+    invoke_callback();
+  }
+}
 
 template <typename T>
 static py::object AddNonTensor(const OrtValue& val,
@@ -148,7 +237,11 @@ const char* GetDeviceName(const OrtDevice& device) {
     case OrtDevice::CPU:
       return CPU;
     case OrtDevice::GPU:
+#ifdef USE_DML
+      return DML;
+#else
       return CUDA;
+#endif
     case OrtDevice::FPGA:
       return "FPGA";
     case OrtDevice::NPU:
@@ -337,6 +430,38 @@ const ROCMExecutionProviderInfo GetRocmExecutionProviderInfo(ProviderInfo_ROCM* 
 }
 #endif
 
+#ifdef USE_TENSORRT
+void RegisterTensorRTPluginsAsCustomOps(PySessionOptions& so, const ProviderOptions& options) {
+  if (auto* tensorrt_provider_info = TryGetProviderInfo_TensorRT()) {
+    auto is_already_in_domains = [&](std::string& domain_name, std::vector<OrtCustomOpDomain*>& domains) {
+      for (auto ptr : domains) {
+        if (domain_name == ptr->domain_) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    std::string trt_extra_plugin_lib_paths = "";
+    const auto it = options.find("trt_extra_plugin_lib_paths");
+    if (it != options.end()) {
+      trt_extra_plugin_lib_paths = it->second;
+    }
+    std::vector<OrtCustomOpDomain*> domain_list;
+    tensorrt_provider_info->GetTensorRTCustomOpDomainList(domain_list, trt_extra_plugin_lib_paths);
+    for (auto ptr : domain_list) {
+      if (!is_already_in_domains(ptr->domain_, so.custom_op_domains_)) {
+        so.custom_op_domains_.push_back(ptr);
+      } else {
+        LOGS_DEFAULT(WARNING) << "The custom op domain name " << ptr->domain_ << " is already in session option.";
+      }
+    }
+  } else {
+    ORT_THROW("Please install TensorRT libraries as mentioned in the GPU requirements page, make sure they're in the PATH or LD_LIBRARY_PATH, and that your GPU is supported.");
+  }
+}
+#endif
+
 std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     const SessionOptions& session_options,
     const std::string& type,
@@ -350,43 +475,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     // If the environment variable 'ORT_TENSORRT_UNAVAILABLE' exists, then we do not load TensorRT. This is set by _ld_preload for the manylinux case
     // as in that case, trying to load the library itself will result in a crash due to the way that auditwheel strips dependencies.
     if (Env::Default().GetEnvironmentVar("ORT_TENSORRT_UNAVAILABLE").empty()) {
-      std::string calibration_table, cache_path, lib_path, min_profile, max_profile, opt_profile;
+      // provider_options_map is just a reference to the ProviderOptionsMap instance, so it can be released anytime from application.
+      // So we need these std::string variables defined here as they will be kept alive for the lifetime of TRT EP and we can still access them from OrtTensorRTProviderOptionsV2 instance.
+      // (The reason is string copy is involved, for example params.trt_engine_cache_path = cache_path.c_str() and those std::string variable is referenced by OrtTensorRTProviderOptionsV2 instance
+      // and TRT EP instance, so it won't be released.)
+      std::string calibration_table, cache_path, timing_cache_path, lib_path, trt_tactic_sources, trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
-        OrtTensorRTProviderOptionsV2 params{
-            0,
-            0,
-            nullptr,
-            1000,
-            1,
-            1 << 30,
-            0,
-            0,
-            nullptr,
-            0,
-            0,
-            0,
-            0,
-            0,
-            nullptr,
-            0,
-            nullptr,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            2,
-            -1,
-            nullptr,
-            nullptr,
-            nullptr,
-            nullptr,
-            nullptr,
-            0};
+        OrtTensorRTProviderOptionsV2 params;
         for (auto option : it->second) {
           if (option.first == "device_id") {
             if (!option.second.empty()) {
@@ -527,6 +623,13 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_timing_cache_enable' should be 'True' or 'False'. Default value is 'False'.\n");
             }
+          } else if (option.first == "trt_timing_cache_path") {
+            if (!option.second.empty()) {
+              timing_cache_path = option.second;
+              params.trt_timing_cache_path = timing_cache_path.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_timing_cache_path' should be a path string i.e. 'cache_folder/'.\n");
+            }
           } else if (option.first == "trt_force_timing_cache") {
             if (option.second == "True" || option.second == "true") {
               params.trt_force_timing_cache = true;
@@ -573,13 +676,15 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             }
           } else if (option.first == "trt_tactic_sources") {
             if (!option.second.empty()) {
-              params.trt_tactic_sources = option.second.c_str();
+              trt_tactic_sources = option.second;
+              params.trt_tactic_sources = trt_tactic_sources.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_tactic_sources' should be a string. e.g. \"-CUDNN,+CUBLAS\" available keys: \"CUBLAS\"|\"CUBLAS_LT\"|\"CUDNN\"|\"EDGE_MASK_CONVOLUTIONS\".\n");
             }
           } else if (option.first == "trt_extra_plugin_lib_paths") {
             if (!option.second.empty()) {
-              params.trt_extra_plugin_lib_paths = option.second.c_str();
+              trt_extra_plugin_lib_paths = option.second;
+              params.trt_extra_plugin_lib_paths = trt_extra_plugin_lib_paths.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_extra_plugin_lib_paths' should be a path string.\n");
             }
@@ -625,33 +730,115 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         }
       }
     }
-    LOGS_DEFAULT(WARNING) << "Failed to create " << type << ". Please reference https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements to ensure all dependencies are met.";
+    LOGS_DEFAULT(WARNING) << "Failed to create "
+                          << type
+                          << ". Please reference "
+                          << "https://onnxruntime.ai/docs/execution-providers/"
+                          << "TensorRT-ExecutionProvider.html#requirements to ensure all dependencies are met.";
 #endif
   } else if (type == kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
-    return onnxruntime::MIGraphXProviderFactoryCreator::Create(0)->CreateProvider();
+    std::string calibration_table;
+    auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      OrtMIGraphXProviderOptions params{
+          0,
+          0,
+          0,
+          0,
+          nullptr};
+      for (auto option : it->second) {
+        if (option.first == "device_id") {
+          if (!option.second.empty()) {
+            params.device_id = std::stoi(option.second);
+          } else {
+            ORT_THROW("[ERROR] [MIGraphX] The value for the key 'device_id' should be a number i.e. '0'.\n");
+          }
+        } else if (option.first == "migraphx_fp16_enable") {
+          if (option.second == "True" || option.second == "true") {
+            params.migraphx_fp16_enable = true;
+          } else if (option.second == "False" || option.second == "false") {
+            params.migraphx_fp16_enable = false;
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'trt_fp16_enable' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else if (option.first == "migraphx_int8_enable") {
+          if (option.second == "True" || option.second == "true") {
+            params.migraphx_int8_enable = true;
+          } else if (option.second == "False" || option.second == "false") {
+            params.migraphx_int8_enable = false;
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_int8_enable' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else if (option.first == "migraphx_int8_calibration_table_name") {
+          if (!option.second.empty()) {
+            calibration_table = option.second;
+            params.migraphx_int8_calibration_table_name = calibration_table.c_str();
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_int8_calibration_table_name' should be a "
+                "file name i.e. 'cal_table'.\n");
+          }
+        } else if (option.first == "migraphx_use_native_calibration_table") {
+          if (option.second == "True" || option.second == "true") {
+            params.migraphx_use_native_calibration_table = true;
+          } else if (option.second == "False" || option.second == "false") {
+            params.migraphx_use_native_calibration_table = false;
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_int8_use_native_calibration_table' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else {
+          ORT_THROW("Invalid MIGraphX EP option: ", option.first);
+        }
+      }
+      if (std::shared_ptr<IExecutionProviderFactory> migraphx_provider_factory =
+              onnxruntime::MIGraphXProviderFactoryCreator::Create(&params)) {
+        return migraphx_provider_factory->CreateProvider();
+      }
+    } else {
+      if (std::shared_ptr<IExecutionProviderFactory> migraphx_provider_factory =
+              onnxruntime::MIGraphXProviderFactoryCreator::Create(cuda_device_id)) {
+        return migraphx_provider_factory->CreateProvider();
+      }
+    }
 #endif
   } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-    // If the environment variable 'CUDA_UNAVAILABLE' exists, then we do not load cuda. This is set by _ld_preload for the manylinux case
-    // as in that case, trying to load the library itself will result in a crash due to the way that auditwheel strips dependencies.
+    // If the environment variable 'CUDA_UNAVAILABLE' exists, then we do not load cuda.
+    // This is set by _ld_preload for the manylinux case as in that case,
+    // trying to load the library itself will result in a crash due to the way that auditwheel strips dependencies.
     if (Env::Default().GetEnvironmentVar("ORT_CUDA_UNAVAILABLE").empty()) {
       if (auto* cuda_provider_info = TryGetProviderInfo_CUDA()) {
         const CUDAExecutionProviderInfo info = GetCudaExecutionProviderInfo(cuda_provider_info,
                                                                             provider_options_map);
 
-        // This variable is never initialized because the APIs by which it should be initialized are deprecated, however they still
-        // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
-        // since FromProviderOptions might contain external CUDA allocator.
+        // This variable is never initialized because the APIs by which it should be initialized are deprecated,
+        // however they still exist are are in-use. Neverthless, it is used to return CUDAAllocator,
+        // hence we must try to initialize it here if we can since FromProviderOptions might contain
+        // external CUDA allocator.
         external_allocator_info = info.external_allocator_info;
         return cuda_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
       } else {
         if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
-          ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded. Please install the correct version of CUDA and cuDNN as mentioned in the GPU requirements page (https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements), make sure they're in the PATH, and that your GPU is supported.");
+          ORT_THROW(
+              "CUDA_PATH is set but CUDA wasnt able to be loaded. Please install the correct version of CUDA and"
+              "cuDNN as mentioned in the GPU requirements page "
+              " (https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements), "
+              " make sure they're in the PATH, and that your GPU is supported.");
         }
       }
     }
-    LOGS_DEFAULT(WARNING) << "Failed to create " << type << ". Please reference https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements to ensure all dependencies are met.";
+    LOGS_DEFAULT(WARNING) << "Failed to create "
+                          << type
+                          << ". Please reference "
+                          << "https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements"
+                          << "to ensure all dependencies are met.";
 #endif
   } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
@@ -701,56 +888,53 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
-    OrtOpenVINOProviderOptions params;
-    params.device_type = openvino_device_type.c_str();
-    std::string cache_dir;
-
+    ProviderOptions OV_provider_options_map;
     auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
       for (auto option : it->second) {
         if (option.first == "device_type") {
-          openvino_device_type = option.second;
-          params.device_type = openvino_device_type.c_str();
-        } else if (option.first == "enable_vpu_fast_compile") {
-          if (option.second == "True") {
-            params.enable_vpu_fast_compile = true;
-          } else if (option.second == "False") {
-            params.enable_vpu_fast_compile = false;
-          } else {
-            ORT_THROW("Invalid value passed for enable_vpu_fast_compile: ", option.second);
+          OV_provider_options_map[option.first] = option.second;
+          continue;
+        } else if (option.first == "enable_npu_fast_compile") {
+          if (!(option.second == "True" || option.second == "true" ||
+                option.second == "False" || option.second == "false")) {
+            ORT_THROW("Invalid value passed for enable_npu_fast_compile: ", option.second);
           }
-
+          OV_provider_options_map[option.first] = option.second;
         } else if (option.first == "enable_opencl_throttling") {
-          if (option.second == "True") {
-            params.enable_opencl_throttling = true;
-          } else if (option.second == "False") {
-            params.enable_opencl_throttling = false;
-          } else {
+          if (!(option.second == "True" || option.second == "true" ||
+                option.second == "False" || option.second == "false")) {
             ORT_THROW("Invalid value passed for enable_opencl_throttling: ", option.second);
           }
+          OV_provider_options_map[option.first] = option.second;
         } else if (option.first == "enable_dynamic_shapes") {
-          if (option.second == "True") {
-            params.enable_dynamic_shapes = true;
-          } else if (option.second == "False") {
-            params.enable_dynamic_shapes = false;
-          } else {
+          if (!(option.second == "True" || option.second == "true" ||
+                option.second == "False" || option.second == "false")) {
             ORT_THROW("Invalid value passed for enable_dynamic_shapes: ", option.second);
           }
+          OV_provider_options_map[option.first] = option.second;
         } else if (option.first == "device_id") {
-          params.device_id = option.second.c_str();
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else if (option.first == "num_of_threads") {
-          params.num_of_threads = std::stoi(option.second);
+          OV_provider_options_map[option.first] = option.second;
+          continue;
+        } else if (option.first == "num_streams") {
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else if (option.first == "cache_dir") {
-          cache_dir = option.second;
-          params.cache_dir = cache_dir.c_str();
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else if (option.first == "context") {
-          params.context = (void*)(option.second.c_str());
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else {
           ORT_THROW("Invalid OpenVINO EP option: ", option.first);
         }
       }
     }
-    if (std::shared_ptr<IExecutionProviderFactory> openvino_provider_factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(&params)) {
+    if (std::shared_ptr<IExecutionProviderFactory> openvino_provider_factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(
+            &OV_provider_options_map)) {
       auto p = openvino_provider_factory->CreateProvider();
       // Reset global variables config to avoid it being accidentally passed on to the next session
       openvino_device_type.clear();
@@ -797,18 +981,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kDmlExecutionProvider) {
 #ifdef USE_DML
-    int device_id = 0;
-    auto it = provider_options_map.find(type);
-    if (it != provider_options_map.end()) {
-      for (auto option : it->second) {
-        if (option.first == "device_id") {
-          if (!option.second.empty()) {
-            device_id = std::stoi(option.second);
-          }
-        }
-      }
-    }
-    return onnxruntime::DMLProviderFactoryCreator::Create(device_id)->CreateProvider();
+    auto cit = provider_options_map.find(type);
+    return onnxruntime::DMLProviderFactoryCreator::CreateFromProviderOptions(
+               cit == provider_options_map.end() ? ProviderOptions{} : cit->second)
+        ->CreateProvider();
 #endif
   } else if (type == kNnapiExecutionProvider) {
 #if defined(USE_NNAPI)
@@ -1119,16 +1295,22 @@ void addGlobalMethods(py::module& m) {
   });
 #endif
 
+#ifdef USE_TENSORRT
+  m.def(
+      "register_tensorrt_plugins_as_custom_ops", [](PySessionOptions& so, const ProviderOptions& options) { RegisterTensorRTPluginsAsCustomOps(so, options); },
+      "Register TensorRT plugins as custom ops.");
+#endif
+
 #ifdef ENABLE_ATEN
   m.def("register_aten_op_executor",
-        [](const std::string& is_tensor_argument_address_str, const std::string& aten_op_executor_address_str) -> void {
-          size_t is_tensor_argument_address_int, aten_op_executor_address_int;
+        [](const std::string& is_cpu_argument_address_str, const std::string& aten_op_executor_address_str) -> void {
+          size_t is_cpu_argument_address_int, aten_op_executor_address_int;
           ORT_THROW_IF_ERROR(
-              ParseStringWithClassicLocale(is_tensor_argument_address_str, is_tensor_argument_address_int));
+              ParseStringWithClassicLocale(is_cpu_argument_address_str, is_cpu_argument_address_int));
           ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(aten_op_executor_address_str, aten_op_executor_address_int));
-          void* p_is_tensor_argument = reinterpret_cast<void*>(is_tensor_argument_address_int);
+          void* p_is_cpu_argument = reinterpret_cast<void*>(is_cpu_argument_address_int);
           void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
-          contrib::aten_ops::ATenOperatorExecutor::Instance().Initialize(p_is_tensor_argument, p_aten_op_executor);
+          contrib::aten_ops::ATenOperatorExecutor::Instance().Initialize(p_is_cpu_argument, p_aten_op_executor);
         });
 #endif
 }
@@ -1168,6 +1350,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def_static("cann", []() { return OrtDevice::NPU; })
       .def_static("fpga", []() { return OrtDevice::FPGA; })
       .def_static("npu", []() { return OrtDevice::NPU; })
+      .def_static("dml", []() { return OrtDevice::GPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
@@ -1678,6 +1861,53 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                ++pos;
              }
              return rfetch;
+           })
+      .def("run_async",
+           [](PyInferenceSession* sess,
+              std::vector<std::string> output_names,
+              std::map<std::string, py::object> pyfeeds,
+              PyCallback callback, py::object user_data = {},
+              RunOptions* run_options = nullptr)
+               -> void {
+             std::unique_ptr<AsyncResource> async_resource = std::make_unique<AsyncResource>();
+             async_resource->callback = callback;
+             async_resource->user_data = user_data;
+             // prepare feeds
+             async_resource->ReserveFeeds(pyfeeds.size());
+             for (auto feed : pyfeeds) {
+               if (!feed.second.is(py::none())) {
+                 OrtValue ml_value;
+                 auto px = sess->GetSessionHandle()->GetModelInputs();
+                 if (!px.first.IsOK() || !px.second) {
+                   throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
+                 }
+                 CreateGenericMLValue(px.second, GetAllocator(), feed.first, feed.second, &ml_value);
+                 ThrowIfPyErrOccured();
+                 async_resource->feeds.push_back(ml_value);
+                 async_resource->feeds_raw.push_back(&async_resource->feeds.back());
+                 async_resource->feed_names.push_back(feed.first);
+                 async_resource->feed_names_raw.push_back(async_resource->feed_names.back().c_str());
+               }
+             }
+             // prepare fetches
+             async_resource->ReserveFetches(output_names.size());
+             for (auto& output_name : output_names) {
+               async_resource->fetch_names.push_back(output_name);
+               async_resource->fetch_names_raw.push_back(async_resource->fetch_names.back().c_str());
+               async_resource->fetches_raw.push_back({});
+             }
+             const RunOptions* run_async_option = run_options ? run_options : &async_resource->default_run_option;
+             common::Status status = sess->GetSessionHandle()->RunAsync(run_async_option,
+                                                                        gsl::span(async_resource->feed_names_raw.data(), async_resource->feed_names_raw.size()),
+                                                                        gsl::span(async_resource->feeds_raw.data(), async_resource->feeds_raw.size()),
+                                                                        gsl::span(async_resource->fetch_names_raw.data(), async_resource->fetch_names_raw.size()),
+                                                                        gsl::span(async_resource->fetches_raw.data(), async_resource->fetches_raw.size()),
+                                                                        AsyncCallback,
+                                                                        async_resource.get());
+             if (status.IsOK()) {
+               async_resource.release();
+             }
+             OrtPybindThrowIfError(status);
            })
       /// This method accepts a dictionary of feeds (name -> OrtValue) and the list of output_names
       /// and returns a list of python objects representing OrtValues. Each name may represent either

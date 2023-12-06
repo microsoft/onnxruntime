@@ -4,11 +4,30 @@
 
 /dist/**/*.report.html
 
+# We remove some of the files in NPM packages because restrictions in jsdelivr:
+#
+# "Packages larger than 150 MB or single files larger than 20 MB (in the case of GitHub) are not supported"
+#
+# from https://www.jsdelivr.com/documentation
+#
+# We only include development build in the NPM package for the following targets:
+# - /dist/ort.js
+# - /dist/ort.all.js
+#
+/dist/cjs/ort.js
+/dist/esm/ort.js
+/dist/cjs/ort.all.js
+/dist/esm/ort.all.js
+/dist/**/ort.wasm.js
+/dist/**/ort.wasm-core.js
+/dist/**/ort.webgl.js
+/dist/**/ort.webgpu.js
+/dist/**/ort.training.wasm.js
+
 /types/
 
 karma.conf.js
 tsconfig.json
 tsconfig.tsbuildinfo
-webpack.config.js
 
 *.tgz
