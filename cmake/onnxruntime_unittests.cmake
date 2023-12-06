@@ -41,7 +41,7 @@ function(AddTest)
   if (MSVC)
     target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd6330>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6330>")
-    #Abseil has a lot of C4127/C4324 warnings. 
+    #Abseil has a lot of C4127/C4324 warnings.
     target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4127>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4127>")
     target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4324>"
@@ -201,8 +201,18 @@ function(AddTest)
           list(APPEND TEST_NODE_FLAGS "--experimental-wasm-simd")
         endif()
 
+        # prefer Node from emsdk so the version is more deterministic
+        if (DEFINED ENV{EMSDK_NODE})
+          set(NODE_EXECUTABLE $ENV{EMSDK_NODE})
+        else()
+          # warning as we don't know what node version is being used and whether things like the TEST_NODE_FLAGS
+          # will be valid. e.g. "--experimental-wasm-simd" is not valid with node v20 or later.
+          message(WARNING "EMSDK_NODE environment variable was not set. Falling back to system `node`.")
+          set(NODE_EXECUTABLE node)
+        endif()
+
         add_test(NAME ${_UT_TARGET}
-          COMMAND node ${TEST_NODE_FLAGS} ${_UT_TARGET}.js ${TEST_ARGS}
+          COMMAND ${NODE_EXECUTABLE} ${TEST_NODE_FLAGS} ${_UT_TARGET}.js ${TEST_ARGS}
           WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
         )
       endif()
@@ -374,6 +384,13 @@ if (onnxruntime_USE_CUDA AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_R
     "${TEST_SRC_DIR}/providers/cuda/*"
     )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_src})
+
+  if (onnxruntime_USE_CUDA_NHWC_OPS)
+    file(GLOB onnxruntime_test_providers_cuda_nhwc_src CONFIGURE_DEPENDS
+      "${TEST_SRC_DIR}/providers/cuda/nhwc/*.cc"
+    )
+    list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_nhwc_src})
+  endif()
 endif()
 
 if (onnxruntime_USE_CANN)
@@ -766,7 +783,7 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
   onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_ut ${onnxruntime_test_providers_cuda_ut_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
   config_cuda_provider_shared_module(onnxruntime_providers_cuda_ut)
   onnxruntime_add_include_to_target(onnxruntime_providers_cuda_ut GTest::gtest GTest::gmock)
-  target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE GTest::gtest GTest::gmock)
+  target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda_ut)
 endif()
 
@@ -851,7 +868,7 @@ if (HAS_SHORTEN_64_TO_32 AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
 endif()
 
 if (UNIX AND onnxruntime_USE_TENSORRT)
-    # The test_main.cc includes NvInfer.h where it has many deprecated declarations  
+    # The test_main.cc includes NvInfer.h where it has many deprecated declarations
     # simply ignore them for TensorRT EP build
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
 endif()
@@ -889,7 +906,7 @@ if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 endif()
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set_target_properties(onnxruntime_test_all PROPERTIES LINK_DEPENDS ${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js)
-  set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s STACK_SIZE=5242880 -s ALLOW_MEMORY_GROWTH=1 --pre-js \"${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js\" -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1 -s DEMANGLE_SUPPORT=1")
+  set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s STACK_SIZE=5242880 -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4294967296 --pre-js \"${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js\" -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1 -s DEMANGLE_SUPPORT=1")
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s DEFAULT_PTHREAD_STACK_SIZE=131072 -s PROXY_TO_PTHREAD=1")
   endif()
@@ -1294,7 +1311,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     endif()
 
     if (UNIX AND onnxruntime_USE_TENSORRT)
-        # The test_main.cc includes NvInfer.h where it has many deprecated declarations  
+        # The test_main.cc includes NvInfer.h where it has many deprecated declarations
         # simply ignore them for TensorRT EP build
         set_property(TARGET onnxruntime_shared_lib_test APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
     endif()
@@ -1583,7 +1600,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     endif()
 
     if (UNIX AND onnxruntime_USE_TENSORRT)
-        # The test_main.cc includes NvInfer.h where it has many deprecated declarations  
+        # The test_main.cc includes NvInfer.h where it has many deprecated declarations
         # simply ignore them for TensorRT EP build
         set_property(TARGET onnxruntime_customopregistration_test APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
     endif()

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/naming-convention */
+/* eslint-disable @typescript-eslint/naming-convention */
 
 /**
  * The interface BuildDefinitions contains a set of flags which are defined at build time.
@@ -30,6 +30,10 @@ interface BuildDefinitions {
    * defines whether to disable multi-threading feature in WebAssembly backend in the build.
    */
   readonly DISABLE_WASM_THREAD: boolean;
+  /**
+   * defines whether to disable training APIs in WebAssembly backend.
+   */
+  readonly DISABLE_TRAINING: boolean;
 }
 
 declare const BUILD_DEFS: BuildDefinitions;

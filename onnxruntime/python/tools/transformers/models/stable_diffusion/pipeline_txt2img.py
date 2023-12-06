@@ -51,8 +51,10 @@ class Txt2ImgPipeline(StableDiffusionPipeline):
         denoising_steps=50,
         guidance=7.5,
         seed=None,
+        controlnet_images=None,
+        controlnet_scales=None,
         warmup=False,
-        return_type="latents",
+        return_type="latent",
     ):
         assert len(prompt) == len(negative_prompt)
         batch_size = len(prompt)
@@ -73,22 +75,37 @@ class Txt2ImgPipeline(StableDiffusionPipeline):
             e2e_tic = time.perf_counter()
 
             # CLIP text encoder
-            text_embeddings = self.encode_prompt(prompt, negative_prompt)
+            do_classifier_free_guidance = guidance > 1.0
+            text_embeddings = self.encode_prompt(
+                prompt,
+                negative_prompt,
+                do_classifier_free_guidance=do_classifier_free_guidance,
+            )
+
+            add_kwargs = None
+            if self.pipeline_info.controlnet:
+                controlnet_images = self.preprocess_controlnet_images(
+                    latents.shape[0], controlnet_images, do_classifier_free_guidance=do_classifier_free_guidance
+                )
+                add_kwargs = {
+                    "controlnet_images": controlnet_images,
+                    "controlnet_scales": controlnet_scales.to(controlnet_images.dtype).to(controlnet_images.device),
+                }
 
             # UNet denoiser
-            latents = self.denoise_latent(latents, text_embeddings, guidance=guidance)
+            latents = self.denoise_latent(latents, text_embeddings, guidance=guidance, add_kwargs=add_kwargs)
 
             # VAE decode latent
-            images = self.decode_latent(latents)
+            images = self.decode_latent(latents / self.vae_scaling_factor)
 
             torch.cuda.synchronize()
             e2e_toc = time.perf_counter()
 
+            perf_data = None
             if not warmup:
-                self.print_summary(e2e_tic, e2e_toc, batch_size)
-                self.save_images(images, "txt2img", prompt)
+                perf_data = self.print_summary(e2e_tic, e2e_toc, batch_size)
 
-            return images, (e2e_toc - e2e_tic) * 1000.0
+            return images, perf_data
 
     def run(
         self,
@@ -99,8 +116,10 @@ class Txt2ImgPipeline(StableDiffusionPipeline):
         denoising_steps=30,
         guidance=7.5,
         seed=None,
+        controlnet_images=None,
+        controlnet_scales=None,
         warmup=False,
-        return_type="images",
+        return_type="image",
     ):
         """
         Run the diffusion pipeline.
@@ -123,7 +142,7 @@ class Txt2ImgPipeline(StableDiffusionPipeline):
             warmup (bool):
                 Indicate if this is a warmup run.
             return_type (str):
-                type of return. The value can be "latents" or "images".
+                type of return. The value can be "latent" or "image".
         """
         if self.is_backend_tensorrt():
             import tensorrt as trt
@@ -138,6 +157,8 @@ class Txt2ImgPipeline(StableDiffusionPipeline):
                     denoising_steps=denoising_steps,
                     guidance=guidance,
                     seed=seed,
+                    controlnet_images=controlnet_images,
+                    controlnet_scales=controlnet_scales,
                     warmup=warmup,
                     return_type=return_type,
                 )
@@ -150,6 +171,8 @@ class Txt2ImgPipeline(StableDiffusionPipeline):
                 denoising_steps=denoising_steps,
                 guidance=guidance,
                 seed=seed,
+                controlnet_images=controlnet_images,
+                controlnet_scales=controlnet_scales,
                 warmup=warmup,
                 return_type=return_type,
             )

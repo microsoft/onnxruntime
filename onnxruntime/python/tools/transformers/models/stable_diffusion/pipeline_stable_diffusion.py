@@ -23,12 +23,14 @@
 import os
 import pathlib
 import random
+from typing import Any, Dict, List
 
+import numpy as np
 import nvtx
 import torch
 from cuda import cudart
 from diffusion_models import PipelineInfo, get_tokenizer
-from diffusion_schedulers import DDIMScheduler, EulerAncestralDiscreteScheduler, UniPCMultistepScheduler
+from diffusion_schedulers import DDIMScheduler, EulerAncestralDiscreteScheduler, LCMScheduler, UniPCMultistepScheduler
 from engine_builder import EngineType
 from engine_builder_ort_cuda import OrtCudaEngineBuilder
 from engine_builder_ort_trt import OrtTensorrtEngineBuilder
@@ -63,7 +65,7 @@ class StableDiffusionPipeline:
             max_batch_size (int):
                 Maximum batch size for dynamic batch engine.
             scheduler (str):
-                The scheduler to guide the denoising process. Must be one of [DDIM, EulerA, UniPC].
+                The scheduler to guide the denoising process. Must be one of [DDIM, EulerA, UniPC, LCM].
             device (str):
                 PyTorch device to run inference. Default: 'cuda'
             output_dir (str):
@@ -102,33 +104,16 @@ class StableDiffusionPipeline:
         self.verbose = verbose
         self.nvtx_profile = nvtx_profile
 
-        # Scheduler options
-        sched_opts = {"num_train_timesteps": 1000, "beta_start": 0.00085, "beta_end": 0.012}
-        if self.version in ("2.0", "2.1"):
-            sched_opts["prediction_type"] = "v_prediction"
-        else:
-            sched_opts["prediction_type"] = "epsilon"
-
-        if scheduler == "DDIM":
-            self.scheduler = DDIMScheduler(device=self.device, **sched_opts)
-        elif scheduler == "EulerA":
-            self.scheduler = EulerAncestralDiscreteScheduler(device=self.device, **sched_opts)
-        elif scheduler == "UniPC":
-            self.scheduler = UniPCMultistepScheduler(device=self.device)
-        else:
-            raise ValueError("Scheduler should be either DDIM, EulerA or UniPC")
-
-        self.stages = pipeline_info.stages()
-
-        self.vae_torch_fallback = self.pipeline_info.is_sd_xl()
-
         self.use_cuda_graph = use_cuda_graph
 
         self.tokenizer = None
         self.tokenizer2 = None
 
-        self.generator = None
-        self.denoising_steps = None
+        self.generator = torch.Generator(device="cuda")
+        self.actual_steps = None
+
+        self.current_scheduler = None
+        self.set_scheduler(scheduler)
 
         # backend engine
         self.engine_type = engine_type
@@ -142,14 +127,22 @@ class StableDiffusionPipeline:
             raise RuntimeError(f"Backend engine type {engine_type.name} is not supported")
 
         # Load text tokenizer
-        if not self.pipeline_info.is_sd_xl_refiner():
+        if not self.pipeline_info.is_xl_refiner():
             self.tokenizer = get_tokenizer(
                 self.pipeline_info, self.framework_model_dir, self.hf_token, subfolder="tokenizer"
             )
 
-        if self.pipeline_info.is_sd_xl():
+        if self.pipeline_info.is_xl():
             self.tokenizer2 = get_tokenizer(
                 self.pipeline_info, self.framework_model_dir, self.hf_token, subfolder="tokenizer_2"
+            )
+
+        self.control_image_processor = None
+        if self.pipeline_info.is_xl() and self.pipeline_info.controlnet:
+            from diffusers.image_processor import VaeImageProcessor
+
+            self.control_image_processor = VaeImageProcessor(
+                vae_scale_factor=8, do_convert_rgb=True, do_normalize=False
             )
 
         # Create CUDA events
@@ -157,14 +150,38 @@ class StableDiffusionPipeline:
         for stage in ["clip", "denoise", "vae", "vae_encoder"]:
             for marker in ["start", "stop"]:
                 self.events[stage + "-" + marker] = cudart.cudaEventCreate()[1]
+        self.markers = {}
 
     def is_backend_tensorrt(self):
         return self.engine_type == EngineType.TRT
 
+    def set_scheduler(self, scheduler: str):
+        if scheduler == self.current_scheduler:
+            return
+
+        # Scheduler options
+        sched_opts = {"num_train_timesteps": 1000, "beta_start": 0.00085, "beta_end": 0.012}
+        if self.version in ("2.0", "2.1"):
+            sched_opts["prediction_type"] = "v_prediction"
+        else:
+            sched_opts["prediction_type"] = "epsilon"
+
+        if scheduler == "DDIM":
+            self.scheduler = DDIMScheduler(device=self.device, **sched_opts)
+        elif scheduler == "EulerA":
+            self.scheduler = EulerAncestralDiscreteScheduler(device=self.device, **sched_opts)
+        elif scheduler == "UniPC":
+            self.scheduler = UniPCMultistepScheduler(device=self.device, **sched_opts)
+        elif scheduler == "LCM":
+            self.scheduler = LCMScheduler(device=self.device, **sched_opts)
+        else:
+            raise ValueError("Scheduler should be either DDIM, EulerA, UniPC or LCM")
+
+        self.current_scheduler = scheduler
+        self.denoising_steps = None
+
     def set_denoising_steps(self, denoising_steps: int):
-        if self.denoising_steps != denoising_steps:
-            assert self.denoising_steps is None  # TODO(tianleiwu): support changing steps in different runs
-            # Pre-compute latent input scales and linear multistep coefficients
+        if not (self.denoising_steps == denoising_steps and isinstance(self.scheduler, DDIMScheduler)):
             self.scheduler.set_timesteps(denoising_steps)
             self.scheduler.configure()
             self.denoising_steps = denoising_steps
@@ -175,8 +192,13 @@ class StableDiffusionPipeline:
         self.backend.load_resources(image_height, image_width, batch_size)
 
     def set_random_seed(self, seed):
-        # Initialize noise generator. Usually, it is done before a batch of inference.
-        self.generator = torch.Generator(device="cuda").manual_seed(seed) if isinstance(seed, int) else None
+        if isinstance(seed, int):
+            self.generator.manual_seed(seed)
+        else:
+            self.generator.seed()
+
+    def get_current_seed(self):
+        return self.generator.initial_seed()
 
     def teardown(self):
         for e in self.events.values():
@@ -205,28 +227,80 @@ class StableDiffusionPipeline:
         timesteps = self.scheduler.timesteps[t_start:].to(self.device)
         return timesteps, t_start
 
-    def preprocess_images(self, batch_size, images=()):
+    def start_profile(self, name, color="blue"):
         if self.nvtx_profile:
-            nvtx_image_preprocess = nvtx.start_range(message="image_preprocess", color="pink")
+            self.markers[name] = nvtx.start_range(message=name, color=color)
+        event_name = name + "-start"
+        if event_name in self.events:
+            cudart.cudaEventRecord(self.events[event_name], 0)
+
+    def stop_profile(self, name):
+        event_name = name + "-stop"
+        if event_name in self.events:
+            cudart.cudaEventRecord(self.events[event_name], 0)
+        if self.nvtx_profile:
+            nvtx.end_range(self.markers[name])
+
+    def preprocess_images(self, batch_size, images=()):
+        self.start_profile("preprocess", color="pink")
         init_images = []
         for i in images:
             image = i.to(self.device).float()
             if image.shape[0] != batch_size:
                 image = image.repeat(batch_size, 1, 1, 1)
             init_images.append(image)
-        if self.nvtx_profile:
-            nvtx.end_range(nvtx_image_preprocess)
+        self.stop_profile("preprocess")
         return tuple(init_images)
 
+    def preprocess_controlnet_images(
+        self, batch_size, images=None, do_classifier_free_guidance=True, height=1024, width=1024
+    ):
+        """
+        Process a list of PIL.Image.Image as control images, and return a torch tensor.
+        """
+        if images is None:
+            return None
+        self.start_profile("preprocess", color="pink")
+
+        if not self.pipeline_info.is_xl():
+            images = [
+                torch.from_numpy(
+                    (np.array(image.convert("RGB")).astype(np.float32) / 255.0)[..., None].transpose(3, 2, 0, 1)
+                )
+                .to(device=self.device, dtype=torch.float16)
+                .repeat_interleave(batch_size, dim=0)
+                for image in images
+            ]
+        else:
+            images = [
+                self.control_image_processor.preprocess(image, height=height, width=width)
+                .to(device=self.device, dtype=torch.float16)
+                .repeat_interleave(batch_size, dim=0)
+                for image in images
+            ]
+
+        if do_classifier_free_guidance:
+            images = [torch.cat([i] * 2) for i in images]
+        images = torch.cat([image[None, ...] for image in images], dim=0)
+
+        self.stop_profile("preprocess")
+        return images
+
     def encode_prompt(
-        self, prompt, negative_prompt, encoder="clip", tokenizer=None, pooled_outputs=False, output_hidden_states=False
+        self,
+        prompt,
+        negative_prompt,
+        encoder="clip",
+        tokenizer=None,
+        pooled_outputs=False,
+        output_hidden_states=False,
+        force_zeros_for_empty_prompt=False,
+        do_classifier_free_guidance=True,
     ):
         if tokenizer is None:
             tokenizer = self.tokenizer
 
-        if self.nvtx_profile:
-            nvtx_clip = nvtx.start_range(message="clip", color="green")
-        cudart.cudaEventRecord(self.events["clip-start"], 0)
+        self.start_profile("clip", color="green")
 
         # Tokenize prompt
         text_input_ids = (
@@ -247,40 +321,50 @@ class StableDiffusionPipeline:
         if output_hidden_states:
             hidden_states = outputs["hidden_states"].clone()
 
-        # Tokenize negative prompt
-        uncond_input_ids = (
-            tokenizer(
-                negative_prompt,
-                padding="max_length",
-                max_length=tokenizer.model_max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
-            .input_ids.type(torch.int32)
-            .to(self.device)
-        )
+        # Note: negative prompt embedding is not needed for SD XL when guidance <= 1
+        if do_classifier_free_guidance:
+            # For SD XL base, handle force_zeros_for_empty_prompt
+            is_empty_negative_prompt = all([not i for i in negative_prompt])
+            if force_zeros_for_empty_prompt and is_empty_negative_prompt:
+                uncond_embeddings = torch.zeros_like(text_embeddings)
+                if output_hidden_states:
+                    uncond_hidden_states = torch.zeros_like(hidden_states)
+            else:
+                # Tokenize negative prompt
+                uncond_input_ids = (
+                    tokenizer(
+                        negative_prompt,
+                        padding="max_length",
+                        max_length=tokenizer.model_max_length,
+                        truncation=True,
+                        return_tensors="pt",
+                    )
+                    .input_ids.type(torch.int32)
+                    .to(self.device)
+                )
 
-        outputs = self.run_engine(encoder, {"input_ids": uncond_input_ids})
-        uncond_embeddings = outputs["text_embeddings"]
-        if output_hidden_states:
-            uncond_hidden_states = outputs["hidden_states"]
+                outputs = self.run_engine(encoder, {"input_ids": uncond_input_ids})
+                uncond_embeddings = outputs["text_embeddings"]
+                if output_hidden_states:
+                    uncond_hidden_states = outputs["hidden_states"]
 
-        # Concatenate the unconditional and text embeddings into a single batch to avoid doing two forward passes for classifier free guidance
-        text_embeddings = torch.cat([uncond_embeddings, text_embeddings]).to(dtype=torch.float16)
+            # Concatenate the unconditional and text embeddings into a single batch to avoid doing two forward passes for classifier free guidance
+            text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
 
         if pooled_outputs:
             pooled_output = text_embeddings
 
         if output_hidden_states:
-            text_embeddings = torch.cat([uncond_hidden_states, hidden_states]).to(dtype=torch.float16)
+            if do_classifier_free_guidance:
+                text_embeddings = torch.cat([uncond_hidden_states, hidden_states])
+            else:
+                text_embeddings = hidden_states
 
-        cudart.cudaEventRecord(self.events["clip-stop"], 0)
-        if self.nvtx_profile:
-            nvtx.end_range(nvtx_clip)
+        self.stop_profile("clip")
 
         if pooled_outputs:
-            return text_embeddings, pooled_output
-        return text_embeddings
+            return text_embeddings.to(dtype=torch.float16), pooled_output.to(dtype=torch.float16)
+        return text_embeddings.to(dtype=torch.float16)
 
     def denoise_latent(
         self,
@@ -292,29 +376,25 @@ class StableDiffusionPipeline:
         mask=None,
         masked_image_latents=None,
         guidance=7.5,
-        image_guidance=1.5,
         add_kwargs=None,
     ):
-        assert guidance > 1.0, "Guidance has to be > 1.0"
-        assert image_guidance > 1.0, "Image guidance has to be > 1.0"
+        do_classifier_free_guidance = guidance > 1.0
 
-        cudart.cudaEventRecord(self.events["denoise-start"], 0)
+        self.start_profile("denoise", color="blue")
+
         if not isinstance(timesteps, torch.Tensor):
             timesteps = self.scheduler.timesteps
-        for step_index, timestep in enumerate(timesteps):
-            if self.nvtx_profile:
-                nvtx_latent_scale = nvtx.start_range(message="latent_scale", color="pink")
 
+        for step_index, timestep in enumerate(timesteps):
             # Expand the latents if we are doing classifier free guidance
-            latent_model_input = torch.cat([latents] * 2)
+            latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+
             latent_model_input = self.scheduler.scale_model_input(
                 latent_model_input, step_offset + step_index, timestep
             )
 
             if isinstance(mask, torch.Tensor):
                 latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
-            if self.nvtx_profile:
-                nvtx.end_range(nvtx_latent_scale)
 
             # Predict the noise residual
             if self.nvtx_profile:
@@ -322,11 +402,12 @@ class StableDiffusionPipeline:
 
             timestep_float = timestep.float() if timestep.dtype != torch.float32 else timestep
 
-            sample_inp = latent_model_input
-            timestep_inp = timestep_float
-            embeddings_inp = text_embeddings
+            params = {
+                "sample": latent_model_input,
+                "timestep": timestep_float,
+                "encoder_hidden_states": text_embeddings,
+            }
 
-            params = {"sample": sample_inp, "timestep": timestep_inp, "encoder_hidden_states": embeddings_inp}
             if add_kwargs:
                 params.update(add_kwargs)
 
@@ -335,98 +416,114 @@ class StableDiffusionPipeline:
             if self.nvtx_profile:
                 nvtx.end_range(nvtx_unet)
 
-            if self.nvtx_profile:
-                nvtx_latent_step = nvtx.start_range(message="latent_step", color="pink")
-
-            # Perform guidance
-            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-            noise_pred = noise_pred_uncond + guidance * (noise_pred_text - noise_pred_uncond)
+            # perform guidance
+            if do_classifier_free_guidance:
+                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                noise_pred = noise_pred_uncond + guidance * (noise_pred_text - noise_pred_uncond)
 
             if type(self.scheduler) == UniPCMultistepScheduler:
                 latents = self.scheduler.step(noise_pred, timestep, latents, return_dict=False)[0]
+            elif type(self.scheduler) == LCMScheduler:
+                latents = self.scheduler.step(noise_pred, timestep, latents, generator=self.generator)[0]
             else:
                 latents = self.scheduler.step(noise_pred, latents, step_offset + step_index, timestep)
 
-            if self.nvtx_profile:
-                nvtx.end_range(nvtx_latent_step)
+        # The actual number of steps. It might be different from denoising_steps.
+        self.actual_steps = len(timesteps)
 
-        latents = 1.0 / self.vae_scaling_factor * latents
-        cudart.cudaEventRecord(self.events["denoise-stop"], 0)
+        self.stop_profile("denoise")
         return latents
 
     def encode_image(self, init_image):
-        if self.nvtx_profile:
-            nvtx_vae = nvtx.start_range(message="vae_encoder", color="red")
-        cudart.cudaEventRecord(self.events["vae_encoder-start"], 0)
+        self.start_profile("vae_encoder", color="red")
         init_latents = self.run_engine("vae_encoder", {"images": init_image})["latent"]
-        cudart.cudaEventRecord(self.events["vae_encoder-stop"], 0)
-        if self.nvtx_profile:
-            nvtx.end_range(nvtx_vae)
-
         init_latents = self.vae_scaling_factor * init_latents
+        self.stop_profile("vae_encoder")
         return init_latents
 
     def decode_latent(self, latents):
-        if self.nvtx_profile:
-            nvtx_vae = nvtx.start_range(message="vae", color="red")
-        cudart.cudaEventRecord(self.events["vae-start"], 0)
+        self.start_profile("vae", color="red")
         images = self.backend.vae_decode(latents)
-        cudart.cudaEventRecord(self.events["vae-stop"], 0)
-        if self.nvtx_profile:
-            nvtx.end_range(nvtx_vae)
+        self.stop_profile("vae")
         return images
 
-    def print_summary(self, tic, toc, batch_size, vae_enc=False):
-        print("|------------|--------------|")
-        print("| {:^10} | {:^12} |".format("Module", "Latency"))
-        print("|------------|--------------|")
+    def print_summary(self, tic, toc, batch_size, vae_enc=False) -> Dict[str, Any]:
+        throughput = batch_size / (toc - tic)
+        latency_clip = cudart.cudaEventElapsedTime(self.events["clip-start"], self.events["clip-stop"])[1]
+        latency_unet = cudart.cudaEventElapsedTime(self.events["denoise-start"], self.events["denoise-stop"])[1]
+        latency_vae = cudart.cudaEventElapsedTime(self.events["vae-start"], self.events["vae-stop"])[1]
+        latency_vae_encoder = (
+            cudart.cudaEventElapsedTime(self.events["vae_encoder-start"], self.events["vae_encoder-stop"])[1]
+            if vae_enc
+            else None
+        )
+        latency = (toc - tic) * 1000.0
+
+        print("|----------------|--------------|")
+        print("| {:^14} | {:^12} |".format("Module", "Latency"))
+        print("|----------------|--------------|")
         if vae_enc:
-            print(
-                "| {:^10} | {:>9.2f} ms |".format(
-                    "VAE-Enc",
-                    cudart.cudaEventElapsedTime(self.events["vae_encoder-start"], self.events["vae_encoder-stop"])[1],
-                )
-            )
+            print("| {:^14} | {:>9.2f} ms |".format("VAE-Enc", latency_vae_encoder))
+        print("| {:^14} | {:>9.2f} ms |".format("CLIP", latency_clip))
         print(
-            "| {:^10} | {:>9.2f} ms |".format(
-                "CLIP", cudart.cudaEventElapsedTime(self.events["clip-start"], self.events["clip-stop"])[1]
+            "| {:^14} | {:>9.2f} ms |".format(
+                "UNet" + ("+CNet" if self.pipeline_info.controlnet else "") + " x " + str(self.actual_steps),
+                latency_unet,
             )
         )
-        print(
-            "| {:^10} | {:>9.2f} ms |".format(
-                "UNet x " + str(self.denoising_steps),
-                cudart.cudaEventElapsedTime(self.events["denoise-start"], self.events["denoise-stop"])[1],
-            )
-        )
-        print(
-            "| {:^10} | {:>9.2f} ms |".format(
-                "VAE-Dec", cudart.cudaEventElapsedTime(self.events["vae-start"], self.events["vae-stop"])[1]
-            )
-        )
-        print("|------------|--------------|")
-        print("| {:^10} | {:>9.2f} ms |".format("Pipeline", (toc - tic) * 1000.0))
-        print("|------------|--------------|")
-        print(f"Throughput: {batch_size / (toc - tic):.2f} image/s")
+        print("| {:^14} | {:>9.2f} ms |".format("VAE-Dec", latency_vae))
+
+        print("|----------------|--------------|")
+        print("| {:^14} | {:>9.2f} ms |".format("Pipeline", latency))
+        print("|----------------|--------------|")
+        print(f"Throughput: {throughput:.2f} image/s")
+
+        perf_data = {
+            "latency_clip": latency_clip,
+            "latency_unet": latency_unet,
+            "latency_vae": latency_vae,
+            "latency": latency,
+            "throughput": throughput,
+        }
+        if vae_enc:
+            perf_data["latency_vae_encoder"] = latency_vae_encoder
+        return perf_data
 
     @staticmethod
     def to_pil_image(images):
         images = (
             ((images + 1) * 255 / 2).clamp(0, 255).detach().permute(0, 2, 3, 1).round().type(torch.uint8).cpu().numpy()
         )
+
         from PIL import Image
 
         return [Image.fromarray(images[i]) for i in range(images.shape[0])]
 
-    def save_images(self, images, pipeline, prompt):
-        image_name_prefix = (
-            pipeline + "".join(set(["-" + prompt[i].replace(" ", "_")[:10] for i in range(len(prompt))])) + "-"
-        )
+    def metadata(self) -> Dict[str, Any]:
+        return {
+            "actual_steps": self.actual_steps,
+            "seed": self.get_current_seed(),
+            "name": self.pipeline_info.name(),
+            "custom_vae": self.pipeline_info.custom_fp16_vae(),
+            "custom_unet": self.pipeline_info.custom_unet(),
+        }
 
+    def save_images(self, images: List, prompt: List[str], negative_prompt: List[str], metadata: Dict[str, Any]):
         images = self.to_pil_image(images)
-        random_session_id = str(random.randint(1000, 9999))
+        session_id = str(random.randint(1000, 9999))
         for i, image in enumerate(images):
-            image_path = os.path.join(
-                self.output_dir, image_name_prefix + str(i + 1) + "-" + random_session_id + ".png"
-            )
+            seed = str(self.get_current_seed())
+            prefix = "".join(x for x in prompt[i] if x.isalnum() or x in ", -").replace(" ", "_")[:20]
+            parts = [prefix, session_id, str(i + 1), str(seed), self.current_scheduler, str(self.actual_steps)]
+            image_path = os.path.join(self.output_dir, "-".join(parts) + ".png")
             print(f"Saving image {i+1} / {len(images)} to: {image_path}")
-            image.save(image_path)
+
+            from PIL import PngImagePlugin
+
+            info = PngImagePlugin.PngInfo()
+            for k, v in metadata.items():
+                info.add_text(k, str(v))
+            info.add_text("prompt", prompt[i])
+            info.add_text("negative_prompt", negative_prompt[i])
+
+            image.save(image_path, "PNG", pnginfo=info)

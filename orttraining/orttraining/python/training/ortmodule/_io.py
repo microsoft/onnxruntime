@@ -206,10 +206,11 @@ def _combine_input_buffers_initializers(
     _expand_inputs(inputs, non_none_inputs)
     flattened_kwargs_inputs = {}
     _expand_inputs(kwargs, flattened_kwargs_inputs)
-    buffer_names_dict = {buffer_name: inp for buffer_name, inp in named_buffer}
+    buffer_names_dict = None
     result = []
     embed_sparsity_results = OrderedDict()
     label_sparsity_results = OrderedDict()
+    onnx_input_to_value_map = OrderedDict()
 
     for input_idx, name in enumerate(onnx_input_names):
         inp = None
@@ -232,6 +233,8 @@ def _combine_input_buffers_initializers(
 
         if inp is None:
             # Registered buffers are translated to user_input+initializer in ONNX
+            if buffer_names_dict is None:
+                buffer_names_dict = {buffer_name: i for buffer_name, i in named_buffer}
             try:  # noqa: SIM105
                 inp = buffer_names_dict[name]
             except KeyError:
@@ -249,6 +252,8 @@ def _combine_input_buffers_initializers(
                 if label_density < 100:
                     label_sparsity_results[name] = label_density
             result.append(inp)
+
+            onnx_input_to_value_map[name] = inp
         else:
             raise wrap_exception(
                 ORTModuleONNXModelException, RuntimeError(f"Input is present in ONNX graph but not provided: {name}.")
@@ -261,6 +266,10 @@ def _combine_input_buffers_initializers(
                 result.append(p)
     else:
         result.extend(params)
+
+    if rt_inspector.memory_ob.is_enabled() and not rt_inspector.memory_ob.symbolic_dim_collecting_completed:
+        rt_inspector.memory_ob.collect_symbolic_dim_values(input_info.dynamic_axes, onnx_input_to_value_map)
+        rt_inspector.memory_ob.symbolic_dim_collecting_completed = True
 
     return result, embed_sparsity_results, label_sparsity_results
 
@@ -534,25 +543,61 @@ def parse_inputs_for_onnx_export(
     )
 
 
+def calculate_total_parameter_size_in_bytes(module: torch.nn.Module) -> int:
+    """Calculate the total parameter size in bytes"""
+    total_size = 0
+    for p in module.parameters():
+        total_size += p.numel() * p.element_size()
+    return total_size
+
+
+def can_module_be_deep_cloned(module: torch.nn.Module, device: Optional[torch.device]) -> bool:
+    """Check if the module can be cloned
+
+    If the 2 times total module parameter size >= device memory, the module cannot be cloned.
+    > Initially there is one set of parameters;
+    >  parse_outputs_for_onnx_export_and_extract_schema want to clone the full module including the frozen weight;
+    > PyTorch ONNX exporter will clone the trainable parameters;
+
+    So as long as the module can be cloned in parse_outputs_for_onnx_export_and_extract_schema, it is safe
+    to export the model without OOM. Here we return whether can clone the module in
+    parse_outputs_for_onnx_export_and_extract_schema.
+
+    Args:
+        module: The module to be cloned.
+        device: The device to be used for cloning.
+    """
+
+    if device is None or device.type != "cuda":
+        return True
+
+    total_size = calculate_total_parameter_size_in_bytes(module)
+    return total_size * 2 < torch.cuda.get_device_properties(device).total_memory * 0.90  # give a 10% buffer
+
+
 def parse_outputs_for_onnx_export_and_extract_schema(
     module,
     args: Sequence[ORTModelInputOutputType],
     kwargs: Mapping[str, ORTModelInputOutputType],
     logger: Logger,
     device: Optional[torch.device],
+    clone_module: bool,
 ):
     # Perform a forward call to grab outputs
     output_names = None
     output_dynamic_axes = None
-    is_deepcopy = False
+    deep_copied = False
     logger.info("Running model forward to infer output schema and dynamic axes...")
     with torch.no_grad():
         # Deepcopy inputs, since input values may change after model run.
         sample_args_copy, sample_kwargs_copy = deepcopy_model_input(*args, **kwargs)
         try:
-            # Deepcopy model, in case model is stateful and changes after model run.
-            model_copy = copy.deepcopy(module)
-            is_deepcopy = True
+            if clone_module:
+                # Deepcopy model, in case model is stateful and changes after model run.
+                model_copy = copy.deepcopy(module)
+                deep_copied = True
+            else:
+                model_copy = module
         except Exception:
             model_copy = module
             logger.warning(
@@ -567,7 +612,7 @@ def parse_outputs_for_onnx_export_and_extract_schema(
         output_names, output_dynamic_axes = _parse_outputs_and_extract_names_and_dynamic_axes(sample_outputs)
 
     output_schema = _extract_schema(sample_outputs, device)
-    if is_deepcopy:
+    if deep_copied:
         del model_copy
         gc.collect()
         if torch.cuda.is_available():

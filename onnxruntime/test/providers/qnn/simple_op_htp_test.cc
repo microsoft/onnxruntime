@@ -447,8 +447,9 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Log_U16) {
 // Check that QNN compiles DQ -> Softmax -> Q as a single unit.
 // Test that the default axis (-1) for SoftMax opset 13 works.
 TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_DefaultAxis) {
+  const std::vector<float> input_data = GetFloatDataInRange(-5.0f, 5.0f, 6);
   RunQDQOpTest<uint8_t>("Softmax",
-                        {TestInputDef<float>({1, 2, 3}, false, -5.0f, 5.0f)},
+                        {TestInputDef<float>({1, 2, 3}, false, input_data)},
                         {},  // Uses default axis of -1 for opset 13
                         13,
                         ExpectedEPNodeAssignment::All);
@@ -466,14 +467,43 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_U16_DefaultAxis) {
                          true);        // Use com.microsoft domain for Q/DQ ops
 }
 
-// Check that QNN compiles DQ -> Softmax -> Q as a single unit.
-// Test that an axis != -1 is not supported.
-TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_UnsupportedAxis) {
+// Test that 8-bit QDQ Softmax (opset 13) with axis != -1 is supported by QNN EP.
+// QNN EP will wrap the operator with transposes.
+TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_NonLastAxis) {
+  const std::vector<float> input_data = {0.0f, 1.0f, 2.0f, 10.0f, 11.0f, 12.0f, 100.0f, 110.0f, 120.0f,
+                                         1.0856307f, 0.99734545f, 0.2829785f, 1.5062947f, 0.5786002f, 1.6514366f,
+                                         2.4266791f, 0.42891264f, 1.2659363f};
   RunQDQOpTest<uint8_t>("Softmax",
-                        {TestInputDef<float>({1, 2, 3}, false, -5.0f, 5.0f)},
+                        {TestInputDef<float>({1, 2, 3, 3}, false, input_data)},
                         {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
                         13,
-                        ExpectedEPNodeAssignment::None);
+                        ExpectedEPNodeAssignment::All);
+}
+
+// Test that 8-bit QDQ Softmax (opset 13) with axis != -1 is supported by QNN EP.
+// QNN EP will wrap the operator with transposes.
+// This is a configuration used in one of our partner's models.
+TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_NonLastAxis_LargeInput) {
+  const std::vector<float> input_data = GetFloatDataInRange(-50.0f, 50.0f, 124);
+  RunQDQOpTest<uint8_t>("Softmax",
+                        {TestInputDef<float>({1, 124, 1}, false, input_data)},
+                        {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
+                        13,
+                        ExpectedEPNodeAssignment::All);
+}
+
+// Test that 16-bit QDQ Softmax (opset 13) with axis != -1 is supported by QNN EP.
+// QNN EP will wrap the operator with transposes.
+// This is a configuration used in one of our partner's models.
+TEST_F(QnnHTPBackendTests, UnaryOp_Softmax13_U16_NonLastAxis_LargeInput) {
+  const std::vector<float> input_data = GetFloatDataInRange(-50.0f, 50.0f, 124);
+  RunQDQOpTest<uint16_t>("Softmax",
+                         {TestInputDef<float>({1, 124, 1}, false, input_data)},
+                         {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
+                         13,
+                         ExpectedEPNodeAssignment::All,
+                         kOnnxDomain,
+                         true);
 }
 
 // Check that QNN compiles DQ -> Softmax -> Q as a single unit.
@@ -507,15 +537,15 @@ TEST_F(QnnHTPBackendTests, UnaryOp_LogSoftmax13_DefaultAxis) {
                         ExpectedEPNodeAssignment::All);
 }
 
-// Check that QNN compiles DQ -> LogSoftmax -> Q as a single unit.
-// Test that an axis != -1 is not supported.
-TEST_F(QnnHTPBackendTests, UnaryOp_LogSoftmax13_UnsupportedAxis) {
+// Test that 8-bit QDQ LogSoftmax (opset 13) with axis != -1 is supported by QNN EP.
+// QNN EP will wrap the operator with transposes.
+TEST_F(QnnHTPBackendTests, UnaryOp_LogSoftmax13_NonLastAxis) {
   std::vector<float> input_data = GetFloatDataInRange(-5.0f, 5.0f, 6);
   RunQDQOpTest<uint8_t>("LogSoftmax",
                         {TestInputDef<float>({1, 2, 3}, false, input_data)},
                         {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
                         13,
-                        ExpectedEPNodeAssignment::None);
+                        ExpectedEPNodeAssignment::All);
 }
 
 // Check that QNN compiles DQ -> LogSoftmax -> Q as a single unit.
@@ -756,7 +786,7 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCacheNonEmbedModeTest) {
   // Check the Onnx skeleton file is generated
   EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
   // Check the Qnn context cache binary file is generated
-  EXPECT_TRUE(std::filesystem::exists("qnn_context_cache_non_embed.onnx_QNN_8283143575221199085_1.bin"));
+  EXPECT_TRUE(std::filesystem::exists("qnn_context_cache_non_embed.onnx_QNNExecutionProvider_QNN_8283143575221199085_1_0.bin"));
 
   // 2nd run loads and run from QDQ model + Onnx skeleton file + Qnn context cache binary file
   TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
@@ -774,6 +804,62 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCacheNonEmbedModeTest) {
                        1e-4f,
                        logging::Severity::kERROR,
                        context_binary_file);
+}
+
+// Run QDQ model on HTP 2 times
+// 1st run will generate the Onnx skeleton file + Qnn context cache binary file
+// Then delete the context bin file to make the 2nd sesssion.Initialize() return the status with code INVALID_GRAPH
+TEST_F(QnnHTPBackendTests, ContextBinaryCache_InvalidGraph) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["qnn_context_cache_enable"] = "1";
+  const std::string context_binary_file = "./qnn_context_cache_non_embed.onnx";
+  provider_options["qnn_context_cache_path"] = context_binary_file;
+  provider_options["qnn_context_embed_mode"] = "0";
+
+  const TestInputDef<float> input_def({1, 2, 3}, false, -10.0f, 10.0f);
+  const std::string op_type = "Atan";
+
+  // Runs model with DQ-> Atan-> Q and compares the outputs of the CPU and QNN EPs.
+  // 1st run will generate the Onnx skeleton file + Qnn context cache binary file
+  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
+                       BuildQDQOpTestCase<uint8_t>(op_type, {input_def}, {}, {}),
+                       provider_options,
+                       14,
+                       ExpectedEPNodeAssignment::All);
+
+  // Check the Onnx skeleton file is generated
+  EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
+  // Check the Qnn context cache binary file is generated
+  std::filesystem::path context_bin = "qnn_context_cache_non_embed.onnx_QNNExecutionProvider_QNN_8283143575221199085_1_0.bin";
+  EXPECT_TRUE(std::filesystem::exists(context_bin));
+  // Delete the Qnn context cache binary file
+  EXPECT_TRUE(std::filesystem::remove(context_bin));
+
+  // loads and run from Onnx skeleton file + Qnn context cache binary file
+  onnx::ModelProto model_proto;
+  onnxruntime::Model qnn_ctx_model;
+  // Load the QNN context cache model from path specified
+  ASSERT_STATUS_OK(qnn_ctx_model.Load(ToPathString(context_binary_file), model_proto));
+  std::string qnn_ctx_model_data;
+  model_proto.SerializeToString(&qnn_ctx_model_data);
+
+  SessionOptions so;
+  so.session_logid = "qnn_ctx_model_logger";
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+
+  std::string provider_type = kCpuExecutionProvider;
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options)));
+  ASSERT_STATUS_OK(session_object.Load(qnn_ctx_model_data.data(), static_cast<int>(qnn_ctx_model_data.size())));
+  // Verify the return status with code INVALID_GRAPH
+  ASSERT_TRUE(session_object.Initialize().Code() == common::StatusCode::INVALID_GRAPH);
 }
 
 // Run QDQ model on HTP with 2 inputs
@@ -1188,6 +1274,28 @@ TEST_F(QnnHTPBackendTests, VariadicOp_Concat_2Inputs_2ndAxis) {
                         {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
                         13,
                         ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnHTPBackendTests, LpNormalization_u8_rank4) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 8);
+  RunQDQOpTest<uint8_t>("LpNormalization",
+                        {TestInputDef<float>({1, 2, 2, 2}, false, input_data)},
+                        {utils::MakeAttribute("axis", static_cast<int64_t>(-1)),  // Last axis
+                         utils::MakeAttribute("p", static_cast<int64_t>(2))},     // Order 2 to map to QNN's L2Norm operator
+                        13,
+                        ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnHTPBackendTests, LpNormalization_u16_rank4) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 8);
+  RunQDQOpTest<uint16_t>("LpNormalization",
+                         {TestInputDef<float>({1, 2, 2, 2}, false, input_data)},
+                         {utils::MakeAttribute("axis", static_cast<int64_t>(-1)),  // Last axis
+                          utils::MakeAttribute("p", static_cast<int64_t>(2))},     // Order 2 to map to QNN's L2Norm operator
+                         13,
+                         ExpectedEPNodeAssignment::All,
+                         kOnnxDomain,
+                         true);
 }
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 

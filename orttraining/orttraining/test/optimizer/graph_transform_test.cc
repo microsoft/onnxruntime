@@ -18,6 +18,7 @@
 #include "orttraining/core/optimizer/concat_replacement.h"
 #include "orttraining/core/optimizer/batchnorm_replacement.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
+#include "orttraining/core/optimizer/transpose_replacement.h"
 #include "test/optimizer/graph_transform_test_builder.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/util/include/default_providers.h"
@@ -34,6 +35,7 @@
 #ifdef ENABLE_TRITON
 #include "orttraining/core/optimizer/triton_fusion.h"
 #endif
+#include "orttraining/core/optimizer/conv1d_replacement.h"
 
 #include <random>
 
@@ -549,6 +551,46 @@ TEST_F(GraphTransformationTests, ConcatReplacement) {
 
   ASSERT_EQ(op_to_count["Concat"], 0);
   ASSERT_EQ(op_to_count["com.microsoft.ConcatTraining"], 1);
+}
+
+TEST_F(GraphTransformationTests, TransposeReplacement) {
+  {
+    auto model_uri = MODEL_FOLDER "transpose_to_reshape_valid.onnx";
+    std::shared_ptr<Model> p_model;
+    ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
+    Graph& graph = p_model->MainGraph();
+
+    auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("TransposeReplacement");
+    ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<TransposeReplacement>()));
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+    ASSERT_EQ(op_to_count["Transpose"], 0);
+    ASSERT_EQ(op_to_count["Reshape"], 1);
+  }
+
+  {
+    auto model_uri = MODEL_FOLDER "transpose_to_reshape_invalid.onnx";
+    std::shared_ptr<Model> p_model;
+    ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
+    Graph& graph = p_model->MainGraph();
+
+    auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("TransposeReplacement");
+    ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<TransposeReplacement>()));
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+    ASSERT_EQ(op_to_count["Transpose"], 1);
+    ASSERT_EQ(op_to_count["Reshape"], 0);
+  }
 }
 
 TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
@@ -1156,6 +1198,103 @@ TEST_P(QDQFusionTestsParameterized, CheckModelComposition) {
   ASSERT_EQ(op_to_count_post_fusion["QuantizeLinear"], 0);
   ASSERT_EQ(op_to_count_post_fusion["DequantizeLinear"], 0);
   ASSERT_EQ(op_to_count_post_fusion["com.microsoft.FakeQuant"], 1);
+}
+
+TEST_F(GraphTransformationTests, Conv1dReplacement) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_count_map = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_map["Conv"] == 1);
+    return Status::OK();
+  };
+
+  for (auto opset : {11, 12, 13, 14, 15, 16, 17, 18}) {
+    for (auto group : {1, 2}) {
+      auto build_test_case = [&](ModelTestBuilder& builder) {
+        auto [batch_size, in_channel, in_length] = std::make_tuple(8, 16, 128);
+        auto out_channel = 64;
+        auto* data_arg = builder.MakeInput<float>({{batch_size, in_channel, in_length}});
+
+        auto* weight_arg = builder.MakeInitializer<float>({out_channel, in_channel / group, 1}, {-1.0f, 1.0f});
+        auto* conv_output = builder.MakeOutput();
+
+        auto& conv_node = builder.AddNode("Conv", {data_arg, weight_arg}, {conv_output});
+        conv_node.AddAttribute("dilations", std::vector<int64_t>{1});
+        conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{1});
+        conv_node.AddAttribute("strides", std::vector<int64_t>{1});
+        conv_node.AddAttribute("group", static_cast<int64_t>(group));
+      };
+
+      auto post_graph_checker = [&](Graph& graph) {
+        auto op_count_map = CountOpsInGraph(graph);
+        TEST_RETURN_IF_NOT(op_count_map["Conv"] == 0);
+        // after graph transformation, the graph should have 1 squeeze, 2 split, group matmul, 1 concat
+        TEST_RETURN_IF_NOT(op_count_map["Squeeze"] == 1);
+        TEST_RETURN_IF_NOT(op_count_map["Split"] == 2);
+        TEST_RETURN_IF_NOT(op_count_map["MatMul"] == group);
+        TEST_RETURN_IF_NOT(op_count_map["Concat"] == 1);
+        return Status::OK();
+      };
+
+      std::unique_ptr<GraphTransformer> transformer = std::make_unique<Conv1dReplacement>();
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer),
+                                            TransformerLevel::Level1, 1,
+                                            pre_graph_checker, post_graph_checker));
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, Conv1dReplacement_NoTakeEffect) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_count_map = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_map["Conv"] == 1);
+    return Status::OK();
+  };
+
+  // "group" is 3 so conv not replaced
+  for (auto opset : {11, 12, 13, 14, 15, 16, 17, 18}) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto [batch_size, in_channel, in_length] = std::make_tuple(8, 16, 128);
+      auto out_channel = 64;
+      auto* data_arg = builder.MakeInput<float>({{batch_size, in_channel, in_length}});
+
+      auto* weight_arg = builder.MakeInitializer<float>({out_channel, in_channel / 3, 1}, {-1.0f, 1.0f});
+      auto* conv_output = builder.MakeOutput();
+
+      auto& conv_node = builder.AddNode("Conv", {data_arg, weight_arg}, {conv_output});
+      conv_node.AddAttribute("dilations", std::vector<int64_t>{1});
+      conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{1});
+      conv_node.AddAttribute("strides", std::vector<int64_t>{1});
+      conv_node.AddAttribute("group", static_cast<int64_t>(3));
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<Conv1dReplacement>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1,
+                                          pre_graph_checker, pre_graph_checker));
+  }
+
+  // "kernel_shape" is not 1 so conv not replaced
+  for (auto opset : {11, 12, 13, 14, 15, 16, 17, 18}) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto [batch_size, in_channel, in_length] = std::make_tuple(8, 16, 128);
+      auto out_channel = 64;
+      auto* data_arg = builder.MakeInput<float>({{batch_size, in_channel, in_length}});
+
+      auto* weight_arg = builder.MakeInitializer<float>({out_channel, in_channel, 1}, {-1.0f, 1.0f});
+      auto* conv_output = builder.MakeOutput();
+
+      auto& conv_node = builder.AddNode("Conv", {data_arg, weight_arg}, {conv_output});
+      conv_node.AddAttribute("dilations", std::vector<int64_t>{1});
+      conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+      conv_node.AddAttribute("strides", std::vector<int64_t>{1});
+      conv_node.AddAttribute("group", static_cast<int64_t>(1));
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<Conv1dReplacement>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1,
+                                          pre_graph_checker, pre_graph_checker));
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(

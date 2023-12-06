@@ -9,8 +9,9 @@
 #include "core/framework/utils.h"
 #include "core/graph/graph.h"
 #include "core/providers/xnnpack/xnnpack_execution_provider.h"
-#include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
@@ -214,8 +215,13 @@ static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* gr
   NameMLValMap feeds;
   feeds.insert(std::make_pair("input", ml_value_x));
 
+  // XNNPACK supports int8 data
+  std::function<void(SessionOptions&)> so_updater = [](SessionOptions& so) {
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQIsInt8Allowed, "1"));
+  };
+
   auto ep = DefaultXnnpackExecutionProvider();
-  RunAndVerifyOutputsWithEP(ort_model_path, graph_name, std::move(ep), feeds, params);
+  RunAndVerifyOutputsWithEP(ort_model_path, graph_name, std::move(ep), feeds, params, so_updater);
 }
 
 TEST(XnnpackEP, DISABLED_TestQDQConvU8U8) {  //  [ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for QuantizeLinear(19) node with name 'node_token_12'
@@ -254,8 +260,7 @@ TEST(XnnpackEP, DISABLED_TestQDQConvS8S8) {  //  [ONNXRuntimeError] : 9 : NOT_IM
 
 TEST(XnnpackEP, TestQDQConvS8S8_per_channel) {
   std::function<void(const Graph&)> graph_verify = [](const Graph& graph) -> void {
-    ASSERT_EQ(graph.NumberOfNodes(), 5) << "Transpose*2 + dq +q +qlinearconv "
-                                           "leaving 5 nodes.";
+    ASSERT_EQ(graph.NumberOfNodes(), 5) << "-> Q -> Transpose -> QLinearConv -> Transpose -> DQ.";
   };
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv_qdq_s8s8_perchannel.onnx";
   RunModelTestWithPath(ort_model_path, "xnnpack_qdq_test_graph_conv_s8s8_perchannel", graph_verify, 0.2f);

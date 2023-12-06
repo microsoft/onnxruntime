@@ -2,34 +2,17 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <iosfwd>
-#include <vector>
+
 #include <algorithm>
-#include <string>
 #include <cstring>
+#include <iosfwd>
+#include <string>
+#include <vector>
+
 #include "core/common/gsl.h"
-#include "onnxruntime_config.h"
-
-#ifndef DISABLE_ABSEIL
-// Need to include abseil inlined_vector.h header directly here
-// as hash tables cause CUDA 10.2 compilers to fail. inlined_vector.h is fine.
-#ifdef _MSC_VER
-#pragma warning(push)
-// C4127: conditional expression is constant
-#pragma warning(disable : 4127)
-// C4324: structure was padded due to alignment specifier
-// Usage of alignas causes some internal padding in places.
-#pragma warning(disable : 4324)
-#endif
-
-#include <absl/container/inlined_vector.h>
-
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
-#endif  // DISABLE_ABSEIL
-
+#include "core/common/inlined_containers_fwd.h"
 #include "core/common/span_utils.h"
+#include "onnxruntime_config.h"
 
 namespace onnxruntime {
 #ifdef __GNUC__
@@ -41,18 +24,10 @@ namespace onnxruntime {
 
 constexpr size_t kTensorShapeSmallBufferElementsSize = 5;
 
-#ifndef DISABLE_ABSEIL
 // Use this type to build a shape and then create TensorShape.
-using TensorShapeVector = absl::InlinedVector<int64_t, kTensorShapeSmallBufferElementsSize>;
-#else
-class TensorShapeVector : public std::vector<int64_t> {
-  using Base = std::vector<int64_t>;
-
- public:
-  using Base::Base;
-};
-
-#endif  // DISABLE_ABSEIL
+// We opt to re-use a common instantiation instead of a typedef with kTensorShapeSmallBufferElementsSize
+// To reduce on binary size.
+using TensorShapeVector = InlinedVector<int64_t>;
 
 inline TensorShapeVector ToShapeVector(const gsl::span<const int64_t>& span) {
   TensorShapeVector out;
@@ -194,9 +169,7 @@ class TensorShape {
 
   friend struct ProviderHostImpl;  // So that the shared provider interface can access Allocate
 };
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#endif
+
 // operator<< to nicely output to a stream
 std::ostream& operator<<(std::ostream& out, const TensorShape& shape);
 

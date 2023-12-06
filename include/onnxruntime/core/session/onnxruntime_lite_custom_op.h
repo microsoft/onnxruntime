@@ -399,6 +399,15 @@ struct TensorArray : public ArgBase {
 
 using Variadic = TensorArray;
 
+/*
+Note:
+OrtLiteCustomOp inherits from OrtCustomOp to bridge tween a custom func/struct and ort core.
+The lifetime of an OrtLiteCustomOp instance is managed by customer code, not ort, so:
+1. DO NOT cast OrtLiteCustomOp to OrtCustomOp and release since there is no virtual destructor in the hierachy.
+2. OrtLiteCustomFunc and OrtLiteCustomStruct, as two sub-structs, can be released in form of OrtLiteCustomOp since all members are kept in the OrtLiteCustomOp,
+   hence memory could still be recycled properly.
+Further, OrtCustomOp is a c struct bearing no v-table, so offspring structs are by design to be of zero virtual functions to maintain cast safety.
+*/
 struct OrtLiteCustomOp : public OrtCustomOp {
   using ConstOptionalFloatTensor = std::optional<const Custom::Tensor<float>&>;
   using OptionalFloatTensor = std::optional<Custom::Tensor<float>>;
@@ -773,8 +782,14 @@ struct OrtLiteCustomOp : public OrtCustomOp {
   PARSE_ARGS(Ort::Float8E5M2FNUZ_t, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ)
 
   OrtLiteCustomOp(const char* op_name,
-                  const char* execution_provider) : op_name_(op_name),
-                                                    execution_provider_(execution_provider) {
+                  const char* execution_provider,
+                  ShapeInferFn shape_infer_fn,
+                  int start_ver = 1,
+                  int end_ver = MAX_CUSTOM_OP_END_VER) : op_name_(op_name),
+                                                         execution_provider_(execution_provider),
+                                                         shape_infer_fn_(shape_infer_fn),
+                                                         start_ver_(start_ver),
+                                                         end_ver_(end_ver) {
     OrtCustomOp::version = ORT_API_VERSION;
 
     OrtCustomOp::GetName = [](const OrtCustomOp* op) { return static_cast<const OrtLiteCustomOp*>(op)->op_name_.c_str(); };
@@ -835,6 +850,18 @@ struct OrtLiteCustomOp : public OrtCustomOp {
     OrtCustomOp::CreateKernelV2 = {};
     OrtCustomOp::KernelComputeV2 = {};
     OrtCustomOp::KernelCompute = {};
+
+    OrtCustomOp::InferOutputShapeFn = {};
+
+    OrtCustomOp::GetStartVersion = [](const OrtCustomOp* op) {
+      auto self = reinterpret_cast<const OrtLiteCustomOp*>(op);
+      return self->start_ver_;
+    };
+
+    OrtCustomOp::GetEndVersion = [](const OrtCustomOp* op) {
+      auto self = reinterpret_cast<const OrtLiteCustomOp*>(op);
+      return self->end_ver_;
+    };
   }
 
   const std::string op_name_;
@@ -842,6 +869,14 @@ struct OrtLiteCustomOp : public OrtCustomOp {
 
   std::vector<ONNXTensorElementDataType> input_types_;
   std::vector<ONNXTensorElementDataType> output_types_;
+
+  ShapeInferFn shape_infer_fn_ = {};
+
+  int start_ver_ = 1;
+  int end_ver_ = MAX_CUSTOM_OP_END_VER;
+
+  void* compute_fn_ = {};
+  void* compute_fn_return_status_ = {};
 };
 
 //////////////////////////// OrtLiteCustomFunc ////////////////////////////////
@@ -870,8 +905,11 @@ struct OrtLiteCustomFunc : public OrtLiteCustomOp {
 
   OrtLiteCustomFunc(const char* op_name,
                     const char* execution_provider,
-                    ComputeFn compute_fn) : OrtLiteCustomOp(op_name, execution_provider),
-                                            compute_fn_(compute_fn) {
+                    ComputeFn compute_fn,
+                    ShapeInferFn shape_infer_fn = {},
+                    int start_ver = 1,
+                    int end_ver = MAX_CUSTOM_OP_END_VER) : OrtLiteCustomOp(op_name, execution_provider, shape_infer_fn, start_ver, end_ver) {
+    compute_fn_ = reinterpret_cast<void*>(compute_fn);
     ParseArgs<Args...>(input_types_, output_types_);
 
     OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) {
@@ -883,7 +921,8 @@ struct OrtLiteCustomFunc : public OrtLiteCustomOp {
 
     OrtCustomOp::CreateKernel = [](const OrtCustomOp* this_, const OrtApi* ort_api, const OrtKernelInfo* info) {
       auto kernel = std::make_unique<Kernel>();
-      kernel->compute_fn_ = static_cast<const MyType*>(this_)->compute_fn_;
+      auto me = static_cast<const MyType*>(this_);
+      kernel->compute_fn_ = reinterpret_cast<ComputeFn>(me->compute_fn_);
       Ort::ThrowOnError(ort_api->KernelInfo_GetInputCount(info, &kernel->num_input_));
       Ort::ThrowOnError(ort_api->KernelInfo_GetOutputCount(info, &kernel->num_output_));
       auto self = static_cast<const OrtLiteCustomFunc*>(this_);
@@ -894,12 +933,23 @@ struct OrtLiteCustomFunc : public OrtLiteCustomOp {
     OrtCustomOp::KernelDestroy = [](void* op_kernel) {
       delete reinterpret_cast<Kernel*>(op_kernel);
     };
+
+    if (shape_infer_fn_) {
+      OrtCustomOp::InferOutputShapeFn = [](const OrtCustomOp* op, OrtShapeInferContext* ort_ctx) -> OrtStatusPtr {
+        auto shape_info_fn = static_cast<const MyType*>(op)->shape_infer_fn_;
+        ShapeInferContext ctx(&GetApi(), ort_ctx);
+        return shape_info_fn(ctx);
+      };
+    }
   }
 
   OrtLiteCustomFunc(const char* op_name,
                     const char* execution_provider,
-                    ComputeFnReturnStatus compute_fn_return_status) : OrtLiteCustomOp(op_name, execution_provider),
-                                                                      compute_fn_return_status_(compute_fn_return_status) {
+                    ComputeFnReturnStatus compute_fn_return_status,
+                    ShapeInferFn shape_infer_fn = {},
+                    int start_ver = 1,
+                    int end_ver = MAX_CUSTOM_OP_END_VER) : OrtLiteCustomOp(op_name, execution_provider, shape_infer_fn, start_ver, end_ver) {
+    compute_fn_return_status_ = reinterpret_cast<void*>(compute_fn_return_status);
     ParseArgs<Args...>(input_types_, output_types_);
 
     OrtCustomOp::KernelComputeV2 = [](void* op_kernel, OrtKernelContext* context) -> OrtStatusPtr {
@@ -911,7 +961,8 @@ struct OrtLiteCustomFunc : public OrtLiteCustomOp {
 
     OrtCustomOp::CreateKernel = [](const OrtCustomOp* this_, const OrtApi* ort_api, const OrtKernelInfo* info) {
       auto kernel = std::make_unique<Kernel>();
-      kernel->compute_fn_return_status_ = static_cast<const MyType*>(this_)->compute_fn_return_status_;
+      auto me = static_cast<const MyType*>(this_);
+      kernel->compute_fn_return_status_ = reinterpret_cast<ComputeFnReturnStatus>(me->compute_fn_return_status_);
       Ort::ThrowOnError(ort_api->KernelInfo_GetInputCount(info, &kernel->num_input_));
       Ort::ThrowOnError(ort_api->KernelInfo_GetOutputCount(info, &kernel->num_output_));
       auto self = static_cast<const OrtLiteCustomFunc*>(this_);
@@ -922,10 +973,15 @@ struct OrtLiteCustomFunc : public OrtLiteCustomOp {
     OrtCustomOp::KernelDestroy = [](void* op_kernel) {
       delete reinterpret_cast<Kernel*>(op_kernel);
     };
-  }
 
-  ComputeFn compute_fn_ = {};
-  ComputeFnReturnStatus compute_fn_return_status_ = {};
+    if (shape_infer_fn_) {
+      OrtCustomOp::InferOutputShapeFn = [](const OrtCustomOp* op, OrtShapeInferContext* ort_ctx) -> OrtStatusPtr {
+        auto shape_info_fn = static_cast<const MyType*>(op)->shape_infer_fn_;
+        ShapeInferContext ctx(&GetApi(), ort_ctx);
+        return shape_info_fn(ctx);
+      };
+    }
+  }
 };  // struct OrtLiteCustomFunc
 
 /////////////////////////// OrtLiteCustomStruct ///////////////////////////
@@ -962,9 +1018,10 @@ struct OrtLiteCustomStruct : public OrtLiteCustomOp {
   };
 
   OrtLiteCustomStruct(const char* op_name,
-                      const char* execution_provider) : OrtLiteCustomOp(op_name,
-                                                                        execution_provider) {
-    init(&CustomOp::Compute);
+                      const char* execution_provider,
+                      int start_ver = 1,
+                      int end_ver = MAX_CUSTOM_OP_END_VER) : OrtLiteCustomOp(op_name, execution_provider, {}, start_ver, end_ver) {
+    SetCompute(&CustomOp::Compute);
 
     OrtCustomOp::CreateKernel = [](const OrtCustomOp* this_, const OrtApi* ort_api, const OrtKernelInfo* info) {
       auto kernel = std::make_unique<Kernel>();
@@ -979,10 +1036,12 @@ struct OrtLiteCustomStruct : public OrtLiteCustomOp {
     OrtCustomOp::KernelDestroy = [](void* op_kernel) {
       delete reinterpret_cast<Kernel*>(op_kernel);
     };
+
+    SetShapeInfer<CustomOp>(0);
   }
 
   template <typename... Args>
-  void init(CustomComputeFn<Args...>) {
+  void SetCompute(CustomComputeFn<Args...>) {
     ParseArgs<Args...>(input_types_, output_types_);
     OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) {
       auto kernel = reinterpret_cast<Kernel*>(op_kernel);
@@ -993,7 +1052,7 @@ struct OrtLiteCustomStruct : public OrtLiteCustomOp {
   }
 
   template <typename... Args>
-  void init(CustomComputeFnReturnStatus<Args...>) {
+  void SetCompute(CustomComputeFnReturnStatus<Args...>) {
     ParseArgs<Args...>(input_types_, output_types_);
     OrtCustomOp::KernelComputeV2 = [](void* op_kernel, OrtKernelContext* context) -> OrtStatusPtr {
       auto kernel = reinterpret_cast<Kernel*>(op_kernel);
@@ -1002,6 +1061,20 @@ struct OrtLiteCustomStruct : public OrtLiteCustomOp {
       return std::apply([kernel](Args const&... t_args) { Status status = kernel->custom_op_->Compute(t_args...); return status.release(); }, t);
     };
   }
+
+  template <typename C>
+  decltype(&C::InferOutputShape) SetShapeInfer(decltype(&C::InferOutputShape)) {
+    OrtCustomOp::InferOutputShapeFn = [](const OrtCustomOp*, OrtShapeInferContext* ort_ctx) -> OrtStatusPtr {
+      ShapeInferContext ctx(&GetApi(), ort_ctx);
+      return C::InferOutputShape(ctx);
+    };
+    return {};
+  }
+
+  template <typename C>
+  void SetShapeInfer(...) {
+    OrtCustomOp::InferOutputShapeFn = {};
+  }
 };  // struct OrtLiteCustomStruct
 
 /////////////////////////// CreateLiteCustomOp ////////////////////////////
@@ -1009,24 +1082,32 @@ struct OrtLiteCustomStruct : public OrtLiteCustomOp {
 template <typename... Args>
 OrtLiteCustomOp* CreateLiteCustomOp(const char* op_name,
                                     const char* execution_provider,
-                                    void (*custom_compute_fn)(Args...)) {
+                                    void (*custom_compute_fn)(Args...),
+                                    Status (*shape_infer_fn)(ShapeInferContext&) = {},
+                                    int start_ver = 1,
+                                    int end_ver = MAX_CUSTOM_OP_END_VER) {
   using LiteOp = OrtLiteCustomFunc<Args...>;
-  return std::make_unique<LiteOp>(op_name, execution_provider, custom_compute_fn).release();
+  return std::make_unique<LiteOp>(op_name, execution_provider, custom_compute_fn, shape_infer_fn, start_ver, end_ver).release();
 }
 
 template <typename... Args>
 OrtLiteCustomOp* CreateLiteCustomOp(const char* op_name,
                                     const char* execution_provider,
-                                    Status (*custom_compute_fn_v2)(Args...)) {
+                                    Status (*custom_compute_fn_v2)(Args...),
+                                    Status (*shape_infer_fn)(ShapeInferContext&) = {},
+                                    int start_ver = 1,
+                                    int end_ver = MAX_CUSTOM_OP_END_VER) {
   using LiteOp = OrtLiteCustomFunc<Args...>;
-  return std::make_unique<LiteOp>(op_name, execution_provider, custom_compute_fn_v2).release();
+  return std::make_unique<LiteOp>(op_name, execution_provider, custom_compute_fn_v2, shape_infer_fn, start_ver, end_ver).release();
 }
 
 template <typename CustomOp>
 OrtLiteCustomOp* CreateLiteCustomOp(const char* op_name,
-                                    const char* execution_provider) {
+                                    const char* execution_provider,
+                                    int start_ver = 1,
+                                    int end_ver = MAX_CUSTOM_OP_END_VER) {
   using LiteOp = OrtLiteCustomStruct<CustomOp>;
-  return std::make_unique<LiteOp>(op_name, execution_provider).release();
+  return std::make_unique<LiteOp>(op_name, execution_provider, start_ver, end_ver).release();
 }
 
 }  // namespace Custom
