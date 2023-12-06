@@ -59,7 +59,7 @@ void SplitOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const No
 }
 
 Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  const auto& input = node_unit.Inputs()[0].node_arg.Name();
+  const auto& input_name = node_unit.Inputs()[0].node_arg.Name();
   const auto& outputs = node_unit.Outputs();
 
   NodeAttrHelper helper(node_unit);
@@ -67,7 +67,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
   int32_t num_outputs;
   if (node_unit.SinceVersion() >= 18) {
-    num_outputs = SafeInt<int32_t>(helper.GetInt("num_outputs").value());
+    num_outputs = SafeInt<int32_t>(*helper.GetInt("num_outputs"));
   } else {
     num_outputs = SafeInt<int32_t>(node_unit.Outputs().size());
   }
@@ -78,7 +78,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     output_names.push_back(outputs[i].node_arg.Name());
   }
 
-  ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiSplit(model_builder, input, axis, output_names));
+  ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiSplit(model_builder, input_name, axis, output_names));
 
   return Status::OK();
 }
@@ -126,16 +126,16 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   } else {
     uint32_t num_outputs;
     if (node_unit.SinceVersion() >= 18) {
-      auto num_outputs_init = helper.GetInt("num_outputs");
-      if (!num_outputs_init.has_value()) {
+      auto num_outputs_attr = helper.GetInt("num_outputs");
+      if (!num_outputs_attr.has_value()) {
         LOGS_DEFAULT(VERBOSE) << "No 'num_outputs' provided. For split 18+, num_outputs is a required attribute.";
         return false;
       }
-      num_outputs = SafeInt<uint32_t>(num_outputs_init.value());
+      num_outputs = SafeInt<uint32_t>(*num_outputs_attr);
       if (num_outputs != SafeInt<uint32_t>(node_unit.Outputs().size()) || num_outputs > split_dims_at_axis) {
         LOGS_DEFAULT(VERBOSE) << "Invalid num_outputs provided.\n."
-                              << "The value should be smaller or equal to the size of dimension being split.\n"
-                              << "And align with the size of output nodes. Current num_outputs: "
+                              << "The value should be smaller or equal to the size of dimension being split"
+                              << "and align with the size of output nodes. Current num_outputs: "
                               << num_outputs;
         return false;
       }
