@@ -111,7 +111,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
       LOGS_DEFAULT(VERBOSE) << "Sum of the 'split' input values must equal to the dim value at 'axis' specified.\n"
                             << "dim value at 'axis' specified: "
                             << split_dims_at_axis
-                            << "sum of 'split' input values: "
+                            << ", sum of 'split' input values: "
                             << sum_of_splits;
       return false;
     }
