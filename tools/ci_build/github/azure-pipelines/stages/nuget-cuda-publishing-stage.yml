@@ -10,7 +10,9 @@ stages:
             inputs:
               artifact: drop-signed-nuget-GPU
               targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
-
+          - script: |
+              echo $(Build.BinariesDirectory)/nuget-artifact/final-package
+            displayName: List Downloaded Package
           - template: ../nuget/templates/get-nuget-package-version-as-variable.yml
             parameters:
               packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
@@ -20,7 +22,7 @@ stages:
             inputs:
               command: push
               packagesToPush: $(Build.BinariesDirectory)/nuget-artifact/final-package/*.nupkg'
-              publishVstsFeed: PublicPackages/onnxruntime-cuda-12
+              publishVstsFeed: onnxruntime-cuda-12
 
 
 
