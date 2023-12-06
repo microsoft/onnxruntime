@@ -108,14 +108,14 @@ jobs:
       --build-arg BUILD_UID=$( id -u )
       --build-arg PLATFORM=${{ parameters.arch }}
       "
-      Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
+      Repository: onnxruntimecuda${{ replace(parameters.CudaVersion, '.', '') }}xtrt86build${{ parameters.arch }}
 
   - task: Bash@3
     displayName: 'Bash Script'
     inputs:
       targetType: filePath
       filePath: tools/ci_build/github/linux/run_python_dockertest.sh
-      arguments: -d GPU -c ${{parameters.cmake_build_type}} -i onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
+      arguments: -d GPU -c ${{parameters.cmake_build_type}} -i onnxruntimecuda${{ replace(parameters.CudaVersion, '.', '') }}xtrt86build${{ parameters.arch }}
 
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
