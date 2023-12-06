@@ -369,7 +369,6 @@ static GetTestModelFn BuildCastAddTestCase() {
 
 // Test that models with 2 inputs which has different data type can still generate the context binary
 TEST_F(QnnHTPBackendTests, QnnContextBinaryGeneration2InputTypes) {
-
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -408,7 +407,6 @@ TEST_F(QnnHTPBackendTests, DISABLED_CastAddHTPAccuracyTest) {
                   13,  // opset
                   ExpectedEPNodeAssignment::All);
 }
-
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 #endif  // !defined(ORT_MINIMAL_BUILD)
