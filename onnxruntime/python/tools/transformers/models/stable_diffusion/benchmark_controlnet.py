@@ -1,3 +1,8 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------------------
+
 import gc
 import importlib.util
 import time
@@ -161,6 +166,7 @@ def test(pipeline, batch_size=1, steps=4, control_image=None, warmup_runs=3, tes
 
     return image, latency_list
 
+
 def arguments():
     import argparse
 
@@ -221,7 +227,11 @@ def main():
 
     with torch.no_grad():
         pipeline = load_pipeline(
-            args.name, args.engine, use_control_net=args.use_control_net, use_nhwc=args.use_nhwc, enable_cuda_graph=args.enable_cuda_graph
+            args.name,
+            args.engine,
+            use_control_net=args.use_control_net,
+            use_nhwc=args.use_nhwc,
+            enable_cuda_graph=args.enable_cuda_graph,
         )
 
         canny_image = get_canny_image()
@@ -236,17 +246,20 @@ def main():
 
         # Save the first output image to inspect the result.
         if image:
-            image.save(f"{args.engine}_{args.name.replace('/', '_')}_{args.batch_size}_{args.steps}_c{int(args.use_control_net)}.png")
+            image.save(
+                f"{args.engine}_{args.name.replace('/', '_')}_{args.batch_size}_{args.steps}_c{int(args.use_control_net)}.png"
+            )
 
         result = {
             "engine": args.engine,
             "batch_size": args.batch_size,
-            "steps" : args.steps,
-            "control_net" : args.use_control_net,
+            "steps": args.steps,
+            "control_net": args.use_control_net,
             "nhwc": args.use_nhwc,
             "enable_cuda_graph": args.enable_cuda_graph,
-            "average_latency_in_ms": mean(latency_list) * 1000
+            "average_latency_in_ms": mean(latency_list) * 1000,
         }
         print(result)
+
 
 main()
