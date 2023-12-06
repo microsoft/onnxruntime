@@ -394,6 +394,8 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
       }
     }
   } else {
+    // TODO(hasesh): Tune this value for different workloads. Currently, it is tuned for Whisper model
+    // Also tune it for different architectures. This works best for Whisper on 80GB A100.
     constexpr int K_CACHE_DATA_LOAD_UNROLL = 4;
 
     for (int ti = ko; ti < ti_end; ti += (K_CACHE_DATA_LOAD_UNROLL * K_PER_ITER)) {
@@ -435,7 +437,6 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
       for (int k_unroll = 0; k_unroll < K_CACHE_DATA_LOAD_UNROLL; ++k_unroll) {
         if (time_bounds_cond[k_unroll]) {
           if (has_beams) {
-
 #pragma unroll
             for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
               int jj = ii * params.max_sequence_length + time_step[k_unroll];
@@ -615,6 +616,9 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     }
   } else {
     // Loop over the timesteps to compute the partial outputs.
+
+    // TODO(hasesh): Tune this value for different workloads. Currently, it is tuned for Whisper model
+    // Also tune it for different architectures. This works best for Whisper on 80GB A100.
     constexpr int V_CACHE_DATA_LOAD_UNROLL = 8;
 
     for (int ti = vo; ti < tlength; ti += V_CACHE_DATA_LOAD_UNROLL * V_PER_ITER) {
