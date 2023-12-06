@@ -64,9 +64,10 @@ def compile_stable_fast(pipeline, enable_cuda_graph=True):
 
 
 def compile_torch(pipeline, use_nhwc=False):
-    pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead", fullgraph=True)
     if use_nhwc:
         pipeline.unet.to(memory_format=torch.channels_last)
+
+    pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead", fullgraph=True)
 
     if hasattr(pipeline, "controlnet"):
         if use_nhwc:
@@ -100,7 +101,7 @@ def load_pipeline(name, engine, use_control_net=False, use_nhwc=False, enable_cu
             name,
             vae=vae,
             scheduler=scheduler,
-            controlnet=controlnet,
+            controlnet=None,
             variant="fp16",
             use_safetensors=True,
             torch_dtype=torch.float16,
@@ -170,7 +171,7 @@ def test(pipeline, batch_size=1, steps=4, control_image=None, warmup_runs=3, tes
 def arguments():
     import argparse
 
-    parser = argparse.ArgumentParser(description="benchmark stable fast")
+    parser = argparse.ArgumentParser(description="Benchmark Stable Diffusion pipeline (optional control net for SDXL)")
     parser.add_argument(
         "--engine",
         type=str,
@@ -183,13 +184,34 @@ def arguments():
         "--name",
         type=str,
         default="stabilityai/sdxl-turbo",
-        help="stable diffusion model name. Default is stabilityai/sdxl-turbo",
+        help="Stable diffusion model name. Default is stabilityai/sdxl-turbo",
     )
 
     parser.add_argument(
         "--use_control_net",
         action="store_true",
-        help="test control net diffusers/controlnet-canny-sdxl-1.0",
+        help="Use control net diffusers/controlnet-canny-sdxl-1.0",
+    )
+
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=1,
+        help="Batch size",
+    )
+
+    parser.add_argument(
+        "--steps",
+        type=int,
+        default=1,
+        help="Denoising steps",
+    )
+
+    parser.add_argument(
+        "--warmup_runs",
+        type=int,
+        default=3,
+        help="Number of warmup runs before measurement",
     )
 
     parser.add_argument(
@@ -205,17 +227,9 @@ def arguments():
     )
 
     parser.add_argument(
-        "--batch_size",
-        type=int,
-        default=1,
-        help="batch size",
-    )
-
-    parser.add_argument(
-        "--steps",
-        type=int,
-        default=1,
-        help="unet steps",
+        "--verbose",
+        action="store_true",
+        help="print more information",
     )
 
     args = parser.parse_args()
@@ -240,9 +254,23 @@ def main():
             from sfast.utils.compute_precision import low_compute_precision
 
             with low_compute_precision():
-                image, latency_list = test(pipeline, args.batch_size, args.steps, control_image=canny_image)
+                image, latency_list = test(
+                    pipeline,
+                    args.batch_size,
+                    args.steps,
+                    control_image=canny_image,
+                    warmup_runs=args.warmup_runs,
+                    verbose=args.verbose,
+                )
         else:
-            image, latency_list = test(pipeline, args.batch_size, args.steps, control_image=canny_image)
+            image, latency_list = test(
+                pipeline,
+                args.batch_size,
+                args.steps,
+                control_image=canny_image,
+                warmup_runs=args.warmup_runs,
+                verbose=args.verbose,
+            )
 
         # Save the first output image to inspect the result.
         if image:
