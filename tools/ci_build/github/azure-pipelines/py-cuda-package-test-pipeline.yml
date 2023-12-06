@@ -4,7 +4,13 @@ resources:
     source: 'Python-CUDA-Packaging-Pipeline'
     trigger: true
     branch: main # branch to pick the artifact, Used only for manual triggered pipeline runs for testing the pipeline itself
-
+  #TODO: Remove the following dependency. Running python tests should not need to use manylinux.
+  repositories:
+  - repository: manylinux # The name used to reference this repository in the checkout step
+    type: Github
+    endpoint: Microsoft
+    name: pypa/manylinux
+    ref: 5eda9aded5462201e6310105728d33016e637ea7
 stages:
 # ****The following Stage depend on all previous tags. ***
 # GPU resources are very limited,
