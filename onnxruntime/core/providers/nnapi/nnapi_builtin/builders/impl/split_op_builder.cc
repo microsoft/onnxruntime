@@ -144,7 +144,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
     }
     // NNAPI only supports the case where axis can be evenly divided by num of splits
     if (split_dims_at_axis % num_outputs != 0) {
-      LOGS_DEFAULT(VERBOSE) << "split count: " << num_outputs << "doesn't evenly divide split dimension: "
+      LOGS_DEFAULT(VERBOSE) << "split count: " << num_outputs << " doesn't evenly divide split dimension: "
                             << split_dims_at_axis;
       return false;
     }
