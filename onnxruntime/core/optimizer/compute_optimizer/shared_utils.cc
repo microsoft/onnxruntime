@@ -199,7 +199,7 @@ NodeArg* InsertNodesForValidIndices(Graph& graph,
   InlinedVector<NodeArg*> sub_input_args{input_to_filter, invalid_value};
 
   InlinedVector<NodeArg*> sub_output_args{&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("sub_result"),
-                                                                    input_to_filter->TypeAsProto())};
+                                                                    &(*input_to_filter->TypeAsProto()))};
 
   Node& sub_node = graph.AddNode(graph.GenerateNodeName("sub_invalid_value"), "Sub", "sub invalid value", sub_input_args,
                                  sub_output_args, nullptr, kOnnxDomain);
@@ -207,7 +207,7 @@ NodeArg* InsertNodesForValidIndices(Graph& graph,
   sub_node.SetExecutionProviderType(execution_provider_type);
 
   auto non_zero_out_arg = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("filter_valid_result"),
-                                                    input_to_filter->TypeAsProto());
+                                                    &(*input_to_filter->TypeAsProto()));
 
   Node& non_zero_node = graph.AddNode(graph.GenerateNodeName("filter_valid_value"), "NonZero",
                                       "filtering valid value",
@@ -239,7 +239,7 @@ NodeArg* InsertNodesForValidIndices(Graph& graph,
   }
 
   auto squeeze_out_arg = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("squeeze_adaptor"),
-                                                   non_zero_out_arg->TypeAsProto());
+                                                   &(*non_zero_out_arg->TypeAsProto()));
   Node& squeeze_node = graph.AddNode(graph.GenerateNodeName("squeeze_adaptor"), "Squeeze", "nonzero_squeezer",
                                      squeeze_input_args, {squeeze_out_arg}, &attributes, kOnnxDomain);
   ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(squeeze_node),

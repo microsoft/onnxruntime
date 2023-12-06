@@ -17,7 +17,7 @@ namespace onnxruntime {
 namespace {
 
 // TODO(pengwa): remove this once customized PythonOp shape inference is supported.
-constexpr const char* kInspectActivationFuncName = "onnxruntime.training.utils.hooks._subscriber_manager._InspectActivation";
+constexpr const char* kInspectActivationFuncName = "onnxruntime.training.utils.hooks._statistics_subscriber._InspectActivation";
 constexpr const char* kIncrementStepFuncName = "onnxruntime.training.utils.hooks._subscriber_manager._IncrementStep";
 
 void PushAllOutputNode(Graph& graph, std::queue<Node*>& q, Node* node, std::unordered_set<Node*>& visited) {
@@ -214,6 +214,8 @@ void IterateSubgraphFromNode(Graph& graph,
                              std::unordered_set<NodeArg*>& subgraph,
                              std::unordered_set<Node*>& candidate_inputs,
                              std::unordered_set<Node*>& candidate_outputs,
+                             bool apply_padding_removal,
+                             InlinedHashMap<const Node*, size_t>& inspect_activation_node_ptr_to_its_output_rank,
                              const logging::Logger& logger) {
   std::queue<Node*> to_visit;
   std::unordered_set<Node*> visited;
@@ -311,9 +313,36 @@ void IterateSubgraphFromNode(Graph& graph,
         candidate_outputs.insert(cur);
         continue;
       }
-      auto func_name = static_cast<std::string>(cur->GetAttributes().at("name").s());
+      auto func_name = static_cast<std::string>(cur->GetAttributes().at("func_name").s());
+      if (func_name == kInspectActivationFuncName) {
+        auto out_shape = cur->OutputDefs()[0]->Shape();
+        if (out_shape) {
+          inspect_activation_node_ptr_to_its_output_rank.insert({cur, out_shape->dim_size()});
+        }
+      }
+
       if (func_name == kInspectActivationFuncName || func_name == kIncrementStepFuncName) {
         subgraph.insert(cur->MutableOutputDefs()[1]);
+
+        if (apply_padding_removal) {
+          auto& attributes = cur->GetMutableAttributes();
+          // Append the rank to the attribute `input_tensor_ranks`.
+          ORT_ENFORCE(attributes.find("input_tensor_ranks") != attributes.end());
+          auto& origin_tensor_ranks = attributes.at("input_tensor_ranks").ints();
+          std::vector<int64_t> input_tensor_ranks{origin_tensor_ranks.cbegin(), origin_tensor_ranks.cend()};
+          ORT_ENFORCE(input_tensor_ranks.size() == 1 && input_tensor_ranks[0] >= 2);
+          input_tensor_ranks[0] -= 1;
+          attributes["input_tensor_ranks"] = ONNX_NAMESPACE::MakeAttribute("input_tensor_ranks", input_tensor_ranks);
+
+          // Append the rank to the attribute `output_tensor_ranks`.
+          ORT_ENFORCE(attributes.find("output_tensor_ranks") != attributes.end());
+          auto& origin_output_tensor_ranks = attributes.at("output_tensor_ranks").ints();
+          std::vector<int64_t> output_tensor_ranks{origin_output_tensor_ranks.cbegin(), origin_output_tensor_ranks.cend()};
+          ORT_ENFORCE(output_tensor_ranks.size() == 1 && output_tensor_ranks[0] >= 2);
+          output_tensor_ranks[0] -= 1;
+          attributes["output_tensor_ranks"] = ONNX_NAMESPACE::MakeAttribute("output_tensor_ranks", output_tensor_ranks);
+        }
+
         PushAllOutputNode(graph, to_visit, cur, visited);
       } else {
         candidate_outputs.insert(cur);
@@ -433,7 +462,19 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
     }
   }
 
-  IterateSubgraphFromNode(graph, embedding_node, subgraph, candidate_inputs, candidate_outputs, logger);
+  InlinedHashMap<const Node*, size_t> inspect_activation_node_ptr_to_its_output_rank;
+
+  IterateSubgraphFromNode(graph, embedding_node, subgraph, candidate_inputs, candidate_outputs, enable_,
+                          inspect_activation_node_ptr_to_its_output_rank, logger);
+
+  if (!enable_ && inspect_activation_node_ptr_to_its_output_rank.size() == 0) {
+    LOG_DEBUG_INFO(logger,
+                   "Exit PaddingElimination optimization. enable stat: " +
+                       std::to_string(enable_) +
+                       "inspect_activation_node_ptr_to_its_output_rank.size()" +
+                       std::to_string(inspect_activation_node_ptr_to_its_output_rank.size()));
+    return Status::OK();
+  }
 
   // Add Reshape + Sub + NonZero + Squeeze to get the not padding index to be gathered
   InlinedVector<NodeArg*> reshape_input_args;
@@ -453,7 +494,28 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
 
   InlinedVector<NodeArg*> reshape_output_args;
   reshape_output_args.push_back(
-      &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("flattened_input_ids"), nullptr));
+      &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("flattened_input_ids"), &(*input_ids_arg->TypeAsProto())));
+  reshape_output_args[0]->ClearShape();
+
+  ONNX_NAMESPACE::TensorShapeProto flattened_output_shape;
+  auto& dim_0 = input_ids_shape->dim(0);
+  auto& dim_1 = input_ids_shape->dim(1);
+  bool dim_0_has_value = dim_0.has_dim_value();
+  bool dim_1_has_value = dim_1.has_dim_value();
+  if (dim_0_has_value && dim_1_has_value) {
+    flattened_output_shape.add_dim()->set_dim_value(dim_0.dim_value() * dim_1.dim_value());
+  } else {
+    std::ostringstream oss;
+    oss << dim_0_has_value ? std::to_string(dim_0.dim_value()) : dim_0.dim_param();
+    oss << "*";
+    oss << dim_1_has_value ? std::to_string(dim_1.dim_value()) : dim_1.dim_param();
+    flattened_output_shape.add_dim()->set_dim_param(oss.str());
+  }
+  for (int k = 2; k < input_ids_shape->dim_size(); k++) {
+    flattened_output_shape.add_dim()->set_dim_value(input_ids_shape->dim(k).dim_value());
+  }
+
+  reshape_output_args[0]->SetShape(flattened_output_shape);
 
   Node& reshape_node = graph.AddNode(graph.GenerateNodeName("inputs_reshape"),
                                      "Reshape",
@@ -466,7 +528,99 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   reshape_node.SetExecutionProviderType(embedding_node->GetExecutionProviderType());
 
   NodeArg* squeeze_out_arg = InsertNodesForValidIndices(
-      graph, reshape_output_args[0], embedding_node->MutableInputDefs()[2], embedding_node->GetExecutionProviderType());
+      graph,
+      reshape_output_args[0],  // embedding input ids, [batch * sequence_length]
+      embedding_node->MutableInputDefs()[2],
+      embedding_node->GetExecutionProviderType());
+
+  if (!enable_) {
+    // Iterate all PythonOp node inspect_activation_node_ptr_to_its_output_rank, replace them with
+    // new created PythonOp of type _InspectUnpadActivation, which takes one additional input - slice_index.
+    GraphViewer graph_viewer(graph);
+    const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+    for (auto node_index : node_topology_list) {
+      Node* origin_inspect_activation_node = graph.GetNode(node_index);
+      if (origin_inspect_activation_node == nullptr) {
+        continue;
+      }
+      if (inspect_activation_node_ptr_to_its_output_rank.find(origin_inspect_activation_node) ==
+          inspect_activation_node_ptr_to_its_output_rank.end()) {
+        continue;
+      }
+
+      auto& attributes = origin_inspect_activation_node->GetMutableAttributes();
+      // Modify the origin_inspect_activation_node's attribute `func_name` to be _InspectUnpadActivation
+      attributes["func_name"] =
+          ONNX_NAMESPACE::MakeAttribute("func_name",
+                                        std::string("onnxruntime.training.utils.hooks._statistics_subscriber._InspectUnpadActivation"));
+
+      // Append one more `d` to the attribute `input_convention`.
+      ORT_ENFORCE(attributes.find("input_convention") != attributes.end());
+      std::string input_convention = attributes.at("input_convention").s();
+      input_convention += "d";
+      attributes["input_convention"] = ONNX_NAMESPACE::MakeAttribute("input_convention", input_convention);
+
+      // Append one more `0` to the attribute `input_requires_grads`.
+      if (attributes.find("input_requires_grads") != attributes.end()) {
+        auto& origin_requires_grads = attributes.at("input_requires_grads").ints();
+        std::vector<int64_t> input_requires_grads{origin_requires_grads.cbegin(), origin_requires_grads.cend()};
+        input_requires_grads.push_back(0);
+        attributes["input_requires_grads"] = ONNX_NAMESPACE::MakeAttribute("input_requires_grads", input_requires_grads);
+      }
+      std::cout << "44444" << std::endl;
+      // Get the ONNX data type from input_ids_arg as an int64_t
+      int64_t data_type = static_cast<int64_t>(squeeze_out_arg->TypeAsProto()->tensor_type().elem_type());
+      // Append the data type to the attribute `input_tensor_types`.
+      ORT_ENFORCE(attributes.find("input_tensor_types") != attributes.end());
+      auto& origin_tensor_types = attributes.at("input_tensor_types").ints();
+      std::vector<int64_t> input_tensor_types{origin_tensor_types.cbegin(), origin_tensor_types.cend()};
+      input_tensor_types.push_back(data_type);
+      attributes["input_tensor_types"] = ONNX_NAMESPACE::MakeAttribute("input_tensor_types", input_tensor_types);
+
+      // Get the rank from input_ids_arg
+      int64_t rank = static_cast<int64_t>(squeeze_out_arg->Shape()->dim_size());
+      ORT_ENFORCE(rank == 1, " rank of squeeze_out_arg should be 1, but got ", rank, ".");
+      // Append the rank to the attribute `input_tensor_ranks`.
+      ORT_ENFORCE(attributes.find("input_tensor_ranks") != attributes.end());
+      auto& origin_tensor_ranks = attributes.at("input_tensor_ranks").ints();
+      std::vector<int64_t> input_tensor_ranks{origin_tensor_ranks.cbegin(), origin_tensor_ranks.cend()};
+      input_tensor_ranks.push_back(rank);
+      attributes["input_tensor_ranks"] = ONNX_NAMESPACE::MakeAttribute("input_tensor_ranks", input_tensor_ranks);
+
+      InlinedVector<NodeArg*> new_input_args;
+      new_input_args.push_back(origin_inspect_activation_node->MutableInputDefs()[0]);
+      // Add a new input arg `slice_index` to the origin_inspect_activation_node
+      new_input_args.push_back(squeeze_out_arg);
+      InlinedVector<NodeArg*> new_output_args{
+          &graph.GetOrCreateNodeArg(
+              graph.GenerateNodeArgName("python_op_ctx"),
+              &(*origin_inspect_activation_node->MutableOutputDefs()[0]->TypeAsProto())),
+          &graph.GetOrCreateNodeArg(
+              graph.GenerateNodeArgName("python_op_out"),
+              &(*origin_inspect_activation_node->MutableInputDefs()[0]->TypeAsProto()))};
+
+      Node& new_node = graph.AddNode(graph.GenerateNodeName("inspect_unpad_activation"),
+                                     origin_inspect_activation_node->OpType(),
+                                     origin_inspect_activation_node->Description(),
+                                     new_input_args,
+                                     new_output_args,
+                                     &origin_inspect_activation_node->GetAttributes(),
+                                     origin_inspect_activation_node->Domain());
+      ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(new_node), "Failed to set op schema for " + new_node.Name());
+      new_node.SetExecutionProviderType(origin_inspect_activation_node->GetExecutionProviderType());
+
+      // Replace downstream nodes' input arg from origin_inspect_activation_node's 1st output to new_node's 1st output.
+      graph_utils::ReplaceDownstreamNodeInput(graph, *origin_inspect_activation_node, 0, new_node, 0);
+      graph_utils::ReplaceDownstreamNodeInput(graph, *origin_inspect_activation_node, 1, new_node, 1);
+
+      graph_utils::RemoveNodeOutputEdges(graph, *origin_inspect_activation_node);
+      graph.RemoveNode(origin_inspect_activation_node->Index());
+
+      modified = true;
+    }
+
+    return Status::OK();
+  }
 
   // Get the first two dims value of input_ids which is [batch_size, seq_len]
   NodeArg* first_two_dims_arg = GetDimsValue(graph,

@@ -128,14 +128,17 @@ namespace onnxruntime {
 class PaddingElimination : public GraphTransformer {
  public:
   PaddingElimination(const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
-                     const std::vector<std::string>& sparse_embedding_input_names = {}) noexcept
+                     const std::vector<std::string>& sparse_embedding_input_names = {},
+                     bool enable = false) noexcept
       : GraphTransformer("PaddingElimination", compatible_execution_providers),
-        sparse_embedding_input_names_{sparse_embedding_input_names} {}
+        sparse_embedding_input_names_{sparse_embedding_input_names},
+        enable_{enable} {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
  private:
   std::vector<std::string> sparse_embedding_input_names_;
+  bool enable_;
 };
 
 }  // namespace onnxruntime

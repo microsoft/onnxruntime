@@ -601,12 +601,16 @@ class GraphExecutionManager(GraphExecutionInterface):
                         [f"{k}:{v:.0f}%" for k, v in label_sparsity_results.items()]
                     )
 
-                if self._runtime_options.enable_embedding_sparse_optimizer and len(embed_sparsity_results) > 0:
+                if len(embed_sparsity_results) > 0:
                     graph_transformer_config.sparse_embedding_input_names = list(embed_sparsity_results.keys())
                     self._logger.info("Embedding sparsity-based optimization is ON for %s", embed_sparsity_results)
                     self._runtime_options.embed_sparsity_ratio = ",".join(
                         [f"{k}:{v:.0f}%" for k, v in embed_sparsity_results.items()]
                     )
+
+                graph_transformer_config.enable_padding_removal = (
+                    self._runtime_options.enable_embedding_sparse_optimizer
+                )
 
             # If users don't want to print input density, disable the input density observer to avoid overhead
             # when looping through inputs during training.
@@ -707,7 +711,12 @@ class GraphExecutionManager(GraphExecutionInterface):
 
             if len(self._runtime_options.embed_sparsity_ratio) > 0:
                 _add_record(
-                    tbl, [" - EmbedSparsityOpt", True, f"Input density: {self._runtime_options.embed_sparsity_ratio}"]
+                    tbl,
+                    [
+                        " - EmbedSparsityOpt",
+                        self._runtime_options.enable_embedding_sparse_optimizer,
+                        f"Input density: {self._runtime_options.embed_sparsity_ratio}",
+                    ],
                 )
 
         # Add fallback

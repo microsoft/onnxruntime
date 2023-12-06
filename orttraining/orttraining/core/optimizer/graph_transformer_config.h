@@ -27,6 +27,7 @@ struct TrainingGraphTransformerConfiguration : public GraphTransformerConfigurat
 
   // Enable embedding sparsity compute optimization for the input names in the below list.
   std::vector<std::string> sparse_embedding_input_names;
+  bool enable_padding_removal{false};
 
   // Enable label sparsity compute optimization for the input names in the below list.
   std::vector<std::string> sparse_label_input_names;

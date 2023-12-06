@@ -1801,6 +1801,12 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
   auto src_attrs = SrcNodeAttributes();
   std::vector<AttributeProto> attrs;
   ORT_ENFORCE(src_attrs.count("func_name") > 0, "func_name attribute is missing.");
+  ORT_ENFORCE(src_attrs.count("input_convention") > 0, "input_convention attribute is missing.");
+  ORT_ENFORCE(src_attrs.count("output_tensor_types") > 0, "output_tensor_types attribute is missing.");
+  ORT_ENFORCE(src_attrs.count("output_tensor_ranks") > 0, "output_tensor_ranks attribute is missing.");
+  ORT_ENFORCE(src_attrs.count("input_tensor_types") > 0, "input_tensor_types attribute is missing.");
+  ORT_ENFORCE(src_attrs.count("input_tensor_ranks") > 0, "input_tensor_ranks attribute is missing.");
+
   ORT_ENFORCE(utils::HasString(src_attrs.at("func_name")));
   attrs.push_back(MakeAttribute("func_name", src_attrs.at("func_name").s()));
   attrs.push_back(MakeAttribute("output_convention", src_attrs.at("input_convention").s()));

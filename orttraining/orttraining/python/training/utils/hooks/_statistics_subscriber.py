@@ -62,7 +62,7 @@ class _InspectActivation(torch.autograd.Function):
         ctx.depth = depth
         ctx.module_pre_backward = module_pre_backward
 
-        module_post_forward(input_tensor_copied, depth, activation_name, ctx.current_step)
+        module_post_forward(input_tensor_copied, depth, activation_name, ctx.current_step, None)
 
         return input_tensor.detach() if input_tensor is not None else None
 
@@ -74,7 +74,7 @@ class _InspectActivation(torch.autograd.Function):
         else:
             val = grad_output.detach().clone()
 
-        ctx.module_pre_backward(val, ctx.depth, ctx.name, ctx.current_step)
+        ctx.module_pre_backward(val, ctx.depth, ctx.name, ctx.current_step, None)
 
         return (
             None,
@@ -97,6 +97,94 @@ class _InspectActivation(torch.autograd.Function):
     def alias_input(node_proto_str: str):
         fw_alias_map = [3]
         bw_alias_map = [-1] * 6
+        bw_alias_map[3] = 0
+        return fw_alias_map, bw_alias_map
+
+
+class _InspectUnpadActivation(torch.autograd.Function):
+    """
+    This class is used to run the subscriber's forward and backward functions.
+    The function will be called by two kinds of callers:
+        1. SubscriberManager calls it for each registered nn.Module.
+        2. Users who want to inspect the activation tensor at any place of model definition code.
+    """
+
+    @staticmethod
+    def forward(
+        ctx,
+        activation_name: str,
+        module_idx: Optional[int],
+        run_ctx: RuntimeStates,
+        input_tensor: torch.Tensor,
+        module_post_forward,
+        module_pre_backward,
+        indices: torch.Tensor,
+    ):
+        """
+        Args:
+            ctx: context object to store intermediate information.
+            activation_name: the name of the activation tensor.
+            module_idx: unit id of the module (address of the module instance).
+            run_ctx: runtime context.
+                For call case 2 - need retrieve the runtime state from GlobalSubscriberManager.
+            input_tensor: the activation tensor.
+
+        Make sure there is a same number of `tensor` type inputs and outputs.
+        This is enforced by ORT's PythonOp's schema check.
+        """
+        depth = -1
+        if module_idx is not None:
+            depth = run_ctx.global_states.module_index_to_depth[module_idx]
+
+        input_tensor_copied = None
+        if input_tensor is None or not isinstance(input_tensor, torch.Tensor):
+            input_tensor_copied = input_tensor
+        else:
+            input_tensor_copied = input_tensor.detach().clone()
+
+        ctx.current_step = run_ctx.global_states.execution_step
+        ctx.name = activation_name
+        ctx.id = module_idx
+        ctx.depth = depth
+        ctx.module_pre_backward = module_pre_backward
+        ctx.indices = indices.detach().clone()
+
+        module_post_forward(input_tensor_copied, depth, activation_name, ctx.current_step, indices)
+
+        return input_tensor.detach() if input_tensor is not None else None
+
+    @staticmethod
+    def backward(ctx, grad_output: torch.Tensor):
+        val = None
+        if grad_output is None or not isinstance(grad_output, torch.Tensor):
+            val = grad_output
+        else:
+            val = grad_output.detach().clone()
+
+        ctx.module_pre_backward(val, ctx.depth, ctx.name, ctx.current_step, ctx.indices)
+
+        return (
+            None,
+            None,
+            None,
+            grad_output.detach() if grad_output is not None else None,
+            None,
+            None,
+            None,
+        )
+
+    @staticmethod
+    def infer_shape(
+        node: onnx.NodeProto,
+        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
+        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
+    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        return tensor_input_shapes, tensor_input_dtypes
+
+    @staticmethod
+    def alias_input(node_proto_str: str):
+        fw_alias_map = [3]
+        bw_alias_map = [-1] * 7
         bw_alias_map[3] = 0
         return fw_alias_map, bw_alias_map
 
@@ -164,15 +252,27 @@ class StatisticsSubscriber(SubscriberBase):
             name, module_index, run_rtx, tensor, self.module_post_forward_impl, self.module_pre_backward_impl
         )
 
-    def module_post_forward_impl(self, activation: torch.Tensor, depth: int, name: str, step: int):
+    def module_post_forward_impl(
+        self, activation: torch.Tensor, depth: int, name: str, step: int, indices: Optional[torch.Tensor]
+    ):
         output_file_path = os.path.join(f"{self._output_dir}", f"step_{step}")
-        return self._summarize_activations(activation, depth, name, output_file_path, True)
+        return self._summarize_activations(activation, indices, depth, name, output_file_path, True)
 
-    def module_pre_backward_impl(self, activation: torch.Tensor, depth: int, name: str, step: int):
+    def module_pre_backward_impl(
+        self, activation: torch.Tensor, depth: int, name: str, step: int, indices: Optional[torch.Tensor]
+    ):
         output_file_path = os.path.join(f"{self._output_dir}", f"step_{step}")
-        return self._summarize_activations(activation, depth, name, output_file_path, False)
+        return self._summarize_activations(activation, indices, depth, name, output_file_path, False)
 
-    def _summarize_activations(self, tensor: torch.Tensor, depth: int, name: str, step_folder: str, is_forward: bool):
+    def _summarize_activations(
+        self,
+        tensor: torch.Tensor,
+        indices: Optional[torch.Tensor],
+        depth: int,
+        name: str,
+        step_folder: str,
+        is_forward: bool,
+    ):
         display_name = name + " forward run" if is_forward is True else name + " backward run"
         output_file_name = name + "_forward" if is_forward is True else name + "_backward"
 
@@ -190,7 +290,10 @@ class StatisticsSubscriber(SubscriberBase):
             f.write(f"{output_file_name}\n")
 
         with tensor_file_path.open(mode="w", encoding="utf-8") as f:
-            _summarize_tensor(display_name, tensor, f, depth, self._run_on_cpu, self._bucket_size)
+            # If indices is given, we flatten the first two dims of tensor, and slice the tensor with indices.
+            # Otherwise, we reuse the original tensor.
+            tensor_to_analyze = tensor.flatten(start_dim=0, end_dim=1)[indices, ...] if indices is not None else tensor
+            _summarize_tensor(display_name, tensor_to_analyze, f, depth, self._run_on_cpu, self._bucket_size)
 
 
 def _summarize_tensor(

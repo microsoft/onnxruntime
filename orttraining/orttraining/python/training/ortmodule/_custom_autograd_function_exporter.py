@@ -393,6 +393,11 @@ def post_process_enabling_autograd_function(exported_model: ModelProto) -> Model
             node.name = f"{op_name_prefix}_id_{index}"
         index += 1
 
+    from onnxruntime.training.utils.hooks._statistics_subscriber import _InspectUnpadActivation
+
+    register_torch_autograd_function(get_fully_qualified_class_name(_InspectUnpadActivation), _InspectUnpadActivation)
+    register_custom_function_schema_supplementary(_InspectUnpadActivation)
+
     return exported_model
 
 
