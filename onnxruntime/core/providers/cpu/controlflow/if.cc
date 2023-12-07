@@ -248,7 +248,12 @@ Status If::Compute(OpKernelContext* ctx) const {
 
   auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
 
-  auto condition = *ctx->Input<Tensor>(0)->Data<bool>();
+  const auto& condition_tensor = *ctx->Input<Tensor>(0);
+
+  ORT_RETURN_IF_NOT(condition_tensor.Shape().Size() == 1,
+                    "If nodes condition input must have exactly one element");
+
+  auto condition = *condition_tensor.Data<bool>();
 
   auto attribute = condition ? "then_branch" : "else_branch";
   auto* session_state = ctx_internal->SubgraphSessionState(attribute);
