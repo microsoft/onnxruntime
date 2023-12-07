@@ -286,6 +286,8 @@ class _RuntimeOptions:
         # Experimental features.
         self.enable_zero_stage3_support = False  # Once enabled, cannot be disabled.
 
+        self.deepcopy_before_model_export = True
+
         # Override the feature config if it exists in os env.
         self._override_from_env_vars()
 
@@ -367,3 +369,6 @@ class _RuntimeOptions:
         # Experimental features.
         if "ORTMODULE_ENABLE_ZERO_STAGE3" in os.environ and int(os.getenv("ORTMODULE_ENABLE_ZERO_STAGE3")) == 1:
             self.enable_zero_stage3_support = True
+
+        if "ORTMODULE_DEEPCOPY_BEFORE_MODEL_EXPORT" in os.environ:
+            self.deepcopy_before_model_export = int(os.getenv("ORTMODULE_DEEPCOPY_BEFORE_MODEL_EXPORT")) == 1

@@ -282,7 +282,8 @@ void IterateSubgraphFromNode(Graph& graph,
       ORT_ENFORCE(subgraph.find(cur->MutableInputDefs()[0]) != subgraph.end());
       subgraph.insert(cur->MutableOutputDefs()[0]);
       PushAllOutputNode(graph, to_visit, cur, visited);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "MatMul", {1, 9, 13})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "MatMul", {1, 9, 13}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "MatMulBnb4", {1}, kMSDomain)) {
       if (subgraph.find(cur->MutableInputDefs()[0]) != subgraph.end()) {
         // If shape of [batch_size, seqlen, ...] is propagated from the first argument of MatMul.
         // The dim size of the first argument must be larger than 2 to propagate the first two dims to the output.

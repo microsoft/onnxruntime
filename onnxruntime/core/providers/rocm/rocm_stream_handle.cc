@@ -181,6 +181,7 @@ void RegisterRocmStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
   stream_handle_registry.RegisterWaitFn(device_type, OrtDevice::CPU, WaitRocmNotificationOnHost);
   if (!use_existing_stream)
     stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator, release_cpu_buffer_on_rocm_stream](const OrtDevice& device) {
+      HIP_CALL_THROW(hipSetDevice(device.Id()));
       hipStream_t stream = nullptr;
       HIP_CALL_THROW(hipStreamCreateWithFlags(&stream, hipStreamNonBlocking));
       return std::make_unique<RocmStream>(stream, device, cpu_allocator, release_cpu_buffer_on_rocm_stream, true, nullptr, nullptr);
