@@ -600,6 +600,11 @@ def parse_arguments():
         "--use_telemetry", action="store_true", help="Only official builds can set this flag to enable telemetry."
     )
     parser.add_argument("--enable_wcos", action="store_true", help="Build for Windows Core OS.")
+    # Do not enable LTO when the compiler is MSVC and the flag for generating debug symbols is set to /Z7 and training
+    # is also enabled. Because both LTO and /Zi could significantly increase *.obj/*.lib files' size, and on Windows
+    # there is a 4GB per file limit(ERROR LNK1248). We may solve the issue by splitting the big static libs to smaller
+    # ones. Before the refactoring work is done, we should avoid enabling LTO and ccache at the same time because ccache
+    # needs /Z7.
     parser.add_argument("--enable_lto", action="store_true", help="Enable Link Time Optimization")
     parser.add_argument("--enable_transformers_tool_test", action="store_true", help="Enable transformers tool test")
     parser.add_argument(
@@ -1405,6 +1410,17 @@ def generate_build_tree(
     if args.use_lock_free_queue:
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_LOCK_FREE_QUEUE", "ON")
 
+    if is_windows():
+        if args.use_cache:
+            add_default_definition(
+                cmake_extra_defines, "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT", "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>"
+            )
+        else:
+            # Always enable debug info even in release build. The debug information is in separated *.pdb files that
+            # can be easily discarded when debug symbols are not needed. We enable it by default because many auditting
+            # tools need to use the symbols.
+            add_default_definition(cmake_extra_defines, "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT", "ProgramDatabase")
+
     cmake_args += [f"-D{define}" for define in cmake_extra_defines]
 
     cmake_args += cmake_extra_args
@@ -1444,8 +1460,68 @@ def generate_build_tree(
                     f"-DVERSION_PRIVATE_PART={MM}{DD}",
                     f"-DVERSION_STRING={ort_major}.{ort_minor}.{build_number}.{source_version[0:7]}",
                 ]
-
+    cflags = None
+    cxxflags = None
     for config in configs:
+        if "CFLAGS" not in os.environ and "CXXFLAGS" not in os.environ:
+            if is_windows():
+                cflags = [
+                    "/MP",
+                    "/guard:cf",
+                    "/DWIN32",
+                    "/D_WINDOWS",
+                    "/DWINVER=0x0A00",
+                    "/D_WIN32_WINNT=0x0A00",
+                    "/DNTDDI_VERSION=0x0A000000",
+                ]
+                if config == "Release":
+                    cflags += ["/O2", "/Ob2", "/DNDEBUG"]
+                elif config == "RelWithDebInfo":
+                    cflags += ["/O2", "/Ob1", "/DNDEBUG"]
+                elif config == "Debug":
+                    cflags += ["/Ob0", "/Od", "/RTC1", "/fsanitize=address"]
+                    if platform.architecture()[0] != "32bit":
+                        cflags += ["/fsanitize=address"]
+                elif config == "MinSizeRel":
+                    cflags += ["/O1", "/Ob1", "/DNDEBUG"]
+                if args.enable_lto:
+                    cflags += ["/Gw", "/GL"]
+                cxxflags = cflags.copy()
+                cxxflags += ["/EHsc"]
+            elif is_linux() or is_macOS():
+                if config == "Release":
+                    cflags = [
+                        "-DNDEBUG",
+                        "-Wp,-D_FORTIFY_SOURCE=2",
+                        "-Wp,-D_GLIBCXX_ASSERTIONS",
+                        "-fstack-protector-strong",
+                        "-O3",
+                        "-pipe",
+                        "-Wl,--strip-all",
+                    ]
+                elif config == "RelWithDebInfo":
+                    cflags = [
+                        "-DNDEBUG",
+                        "-Wp,-D_FORTIFY_SOURCE=2",
+                        "-Wp,-D_GLIBCXX_ASSERTIONS",
+                        "-fstack-protector-strong",
+                        "-O3",
+                        "-pipe",
+                        "-ggdb3",
+                    ]
+                elif config == "Debug":
+                    cflags = ["-ggdb3", "-O0"]
+                elif config == "MinSizeRel":
+                    cflags = [
+                        "-DNDEBUG",
+                        "-Wp,-D_FORTIFY_SOURCE=2",
+                        "-Wp,-D_GLIBCXX_ASSERTIONS",
+                        "-fstack-protector-strong",
+                        "-Os",
+                        "-pipe",
+                        "-ggdb3",
+                    ]
+
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
         if args.use_tvm:
@@ -1459,20 +1535,15 @@ def generate_build_tree(
                 + os.environ["PATH"]
             )
         preinstalled_dir = Path(build_dir) / config
+        temp_cmake_args = cmake_args.copy()
+        if cflags is not None and cxxflags is not None:
+            temp_cmake_args += [
+                "-DCMAKE_C_FLAGS=%s" % (" ".join(cflags)),
+                "-DCMAKE_CXX_FLAGS=%s" % (" ".join(cxxflags)),
+            ]
         run_subprocess(
             [
-                *cmake_args,
-                "-Donnxruntime_ENABLE_MEMLEAK_CHECKER="
-                + (
-                    "ON"
-                    if config.lower() == "debug"
-                    and not args.use_tvm
-                    and not args.use_openvino
-                    and not args.use_gdk
-                    and not args.enable_msvc_static_runtime
-                    and not args.disable_memleak_checker
-                    else "OFF"
-                ),
+                *temp_cmake_args,
                 f"-DCMAKE_BUILD_TYPE={config}",
                 f"-DCMAKE_PREFIX_PATH={build_dir}/{config}/installed"
                 if preinstalled_dir.exists() and not (args.arm64 or args.arm64ec or args.arm)

@@ -74,11 +74,6 @@ if (onnxruntime_MINIMAL_BUILD)
   endif()
 
   if (MSVC)
-    # turn on LTO (which adds some compiler flags and turns on LTCG) unless it's a Debug build to minimize binary size
-    if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-      set(onnxruntime_ENABLE_LTO ON)
-    endif()
-
     # undocumented internal flag to allow analysis of a minimal build binary size
     if (ADD_DEBUG_INFO_TO_MINIMAL_BUILD)
       string(APPEND CMAKE_CXX_FLAGS " /Zi")
@@ -271,11 +266,6 @@ if (MSVC)
     add_compile_definitions(WINAPI_FAMILY=100) # Desktop app
     message("Building ONNX Runtime for Windows 10 and newer")
     add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00 NTDDI_VERSION=0x0A000000)
-  endif()
-  if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
-    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
-    set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /Gw /GL")
   endif()
 
   # The WinML build tool chain builds ARM/ARM64, and the internal tool chain does not have folders for spectre mitigation libs.
