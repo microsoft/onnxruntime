@@ -19,9 +19,9 @@
 NS_ASSUME_NONNULL_BEGIN
 
 @implementation ORTTrainingSession {
-  std::optional<Ort::TrainingSession> _session;
-  ORTCheckpoint* _checkpoint;
   ORTEnv* _env;  // keep a strong reference so the ORTEnv doesn't get destroyed before this does
+  ORTCheckpoint* _checkpoint;
+  std::optional<Ort::TrainingSession> _session;
 }
 
 - (Ort::TrainingSession&)CXXAPIOrtTrainingSession {
@@ -50,6 +50,8 @@ NS_ASSUME_NONNULL_BEGIN
     std::optional<std::string> evalPath = utils::toStdOptionalString(evalModelPath);
     std::optional<std::string> optimizerPath = utils::toStdOptionalString(optimizerModelPath);
 
+    _env = env;
+    _checkpoint = checkpoint;
     _session = Ort::TrainingSession{
         [env CXXAPIOrtEnv],
         [sessionOptions CXXAPIOrtSessionOptions],
@@ -57,8 +59,6 @@ NS_ASSUME_NONNULL_BEGIN
         trainModelPath.UTF8String,
         evalPath,
         optimizerPath};
-    _checkpoint = checkpoint;
-    _env = env;
 
     return self;
   }
