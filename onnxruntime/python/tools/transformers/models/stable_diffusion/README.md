@@ -21,7 +21,7 @@ These optimizations are firstly carried out on CUDA EP. They may not work on oth
 | [demo_txt2img.py](./demo_txt2img.py)           | Demo of text to image generation using Stable Diffusion models except XL.                 |
 | [optimize_pipeline.py](./optimize_pipeline.py) | Optimize Stable Diffusion ONNX models exported from Huggingface diffusers or optimum      |
 | [benchmark.py](./benchmark.py)                 | Benchmark latency and memory of OnnxRuntime, xFormers or PyTorch 2.0 on stable diffusion. |
-
+| [benchmark_turbo.py](./benchmark_controlnet.py)| Benchmark latency of PyTorch or Stable-Fast with canny control net.                       |
 
 ## Run demo with docker
 
