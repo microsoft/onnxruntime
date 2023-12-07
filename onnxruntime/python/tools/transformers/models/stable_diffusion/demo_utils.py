@@ -237,6 +237,7 @@ def parse_arguments(is_xl: bool, parser):
         action="store_true",
         help="Build TensorRT engines to support dynamic image sizes.",
     )
+    parser.add_argument("--max-batch-size", type=int, default=None, choices=[1, 2, 4, 8, 16, 32], help="Max batch size")
 
     # Inference related options
     parser.add_argument(
@@ -316,11 +317,14 @@ def parse_arguments(is_xl: bool, parser):
 
 
 def max_batch(args):
-    do_classifier_free_guidance = args.guidance > 1.0
-    batch_multiplier = 2 if do_classifier_free_guidance else 1
-    max_batch_size = 32 // batch_multiplier
-    if args.engine != "ORT_CUDA" and (args.build_dynamic_shape or args.height > 512 or args.width > 512):
-        max_batch_size = 8 // batch_multiplier
+    if args.max_batch_size:
+        max_batch_size = args.max_batch_size
+    else:
+        do_classifier_free_guidance = args.guidance > 1.0
+        batch_multiplier = 2 if do_classifier_free_guidance else 1
+        max_batch_size = 32 // batch_multiplier
+        if args.engine != "ORT_CUDA" and (args.build_dynamic_shape or args.height > 512 or args.width > 512):
+            max_batch_size = 8 // batch_multiplier
     return max_batch_size
 
 
