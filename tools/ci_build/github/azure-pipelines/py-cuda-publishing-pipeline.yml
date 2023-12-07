@@ -1,0 +1,24 @@
+parameters:
+  - name: nightly
+    type: string
+    default: '1'
+  - name: build_id
+    type: string
+    default: 'latest'
+  - name: project
+    type: string
+    default: 'Lotus'
+  - name: pipeline
+    type: string
+    default: 'Python-CUDA-Packaging-Pipeline'
+
+stages:
+- template: stages/py-cuda-publishing-stage.yml
+  parameters:
+    build_id: $(build_id)
+    project: $(project)
+    pipeline: $(pipeline)
+    ${{ if ne(parameters.nightly, '1') }}:
+      artifact_feed: onnxruntime-cuda-12
+    ${{ else }}:
+      artifact_feed: ort-cuda-12-nightly

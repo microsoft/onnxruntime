@@ -1,17 +1,20 @@
 parameters:
-  - name: nightly
+  - name: build_id
     type: string
-    default: '1'
+  - name: project
+    type: string
+  - name: pipeline
+    type: string
+  - name: artifact_feed
+    type: string
+    default: 'onnxruntime-cuda-12'
+  - name: depends_on
+    type: string
+    default: ''
 
 stages:
   - stage: Python_Publishing
-    dependsOn: [ Python_Packaging ]
-    variables:
-      - name: artifact_feed
-        ${{ if ne(parameters.nightly, '1') }}:
-          value: onnxruntime-cuda-12
-        ${{ else }}:
-          value: ort-cuda-12-nightly
+    dependsOn: [ ${{ parameters.depends_on }} ]
     jobs:
       - job:
         pool: 'onnxruntime-Win-CPU-2022'
@@ -20,7 +23,12 @@ stages:
             inputs:
               artifact: 'onnxruntime_gpu'
               targetPath: '$(Build.SourcesDirectory)'
-            displayName: 'Download Pipeline Artifact - onnxruntime-gpu'
+              ${{ if eq(parameters.build_id, 'latest') }}:
+                buildType: 'specific'
+                project: '$(project)'
+                pipeline: '$(pipeline)'
+                buildVersionToDownload: '$(build_id)'
+            displayName: 'Download Build Artifacts - onnxruntime-gpu'
           - task: UsePythonVersion@0
             displayName: 'Use Python 3.x'
           - script: 'pip install twine==3.4.2'
