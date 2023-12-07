@@ -195,4 +195,4 @@ Package.pins
 Package.resolved
 .build/
 .swiftpm/
-build-*/
+repros/
