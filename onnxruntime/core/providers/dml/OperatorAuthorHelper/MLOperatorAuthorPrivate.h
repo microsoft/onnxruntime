@@ -171,11 +171,12 @@ IMLOperatorRegistryPrivate : public IUnknown
         _In_opt_ IMLOperatorShapeInferrer* shapeInferrer,
         _In_opt_ IMLOperatorSupportQueryPrivate* supportQuery,
         bool isInternalOperator,
-        bool canAliasFirstInput,
         bool supportsGraph,
         const uint32_t* requiredInputCountForGraph = nullptr,
         _In_reads_(constantCpuInputCount) const uint32_t* constantCpuInputs = nullptr,
-        uint32_t constantCpuInputCount = 0
+        uint32_t constantCpuInputCount = 0,
+        _In_reads_(aliasCount) const std::pair<uint32_t, uint32_t>* aliases = nullptr,
+        uint32_t aliasCount = 0
         ) const noexcept PURE;
 };
 
