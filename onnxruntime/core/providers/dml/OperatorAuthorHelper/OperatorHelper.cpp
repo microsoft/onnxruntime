@@ -258,7 +258,7 @@ namespace OperatorHelper
     }
 
     template <typename T>
-    void DowncastDimensions(gsl::span<const T> inputDimensions, std::vector<DimensionType>& outputDimensions)
+    void DowncastDimensions(gsl::span<T> inputDimensions, std::vector<DimensionType>& outputDimensions)
     {
         outputDimensions.reserve(inputDimensions.size());
         outputDimensions.clear();
@@ -1878,10 +1878,10 @@ namespace OperatorHelper
         std::vector<int> tensor;
         ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(1), /*out*/ tensor);
         m_imageShape.resize(tensor.size());
-        DowncastDimensions(gsl::make_span<const int>(tensor.data(), tensor.size()), /*out*/ m_imageShape);
+        DowncastDimensions(gsl::span(tensor), /*out*/ m_imageShape);
         ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(2), /*out*/ tensor);
         m_blockShape.resize(tensor.size());
-        DowncastDimensions(gsl::make_span<const int>(tensor.data(), tensor.size()), /*out*/ m_blockShape);
+        DowncastDimensions(gsl::span(tensor), /*out*/ m_blockShape);
 
         const uint32_t dimCount = gsl::narrow_cast<uint32_t>(m_blockShape.size());
         m_dilations = {dimCount, 1};
@@ -1892,7 +1892,7 @@ namespace OperatorHelper
         {
             tensor = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Dilations);
             m_dilations.resize(tensor.size());
-            DowncastDimensions(gsl::make_span<const int>(tensor.data(), tensor.size()), /*out*/ m_dilations);
+            DowncastDimensions(gsl::span(tensor), /*out*/ m_dilations);
             ML_CHECK_VALID_ARGUMENT(m_dilations.size() == dimCount);
         }
 
@@ -1900,7 +1900,7 @@ namespace OperatorHelper
         {
             tensor = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Pads);
             m_pads.resize(tensor.size());
-            DowncastDimensions(gsl::make_span<const int>(tensor.data(), tensor.size()), /*out*/ m_pads);
+            DowncastDimensions(gsl::span(tensor), /*out*/ m_pads);
             ML_CHECK_VALID_ARGUMENT(m_pads.size() == dimCount * 2);
         }
 
@@ -1908,7 +1908,7 @@ namespace OperatorHelper
         {
             tensor = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Strides);
             m_strides.resize(tensor.size());
-            DowncastDimensions(gsl::make_span<const int>(tensor.data(), tensor.size()), /*out*/ m_strides);
+            DowncastDimensions(gsl::span(tensor), /*out*/ m_strides);
             ML_CHECK_VALID_ARGUMENT(m_strides.size() == dimCount);
         }
 
@@ -2172,7 +2172,7 @@ namespace OperatorHelper
         {
             std::vector<int64_t> outputDimensions64bit = shapeInfo.GetAttributeVector<int64_t>(AttrName::OutputShape);
             ML_CHECK_VALID_ARGUMENT(outputDimensions64bit.size() == m_inputShape.size(), "Input dimensions and output_shape must have same rank.");
-            DowncastDimensions(gsl::make_span<const int64_t>(outputDimensions64bit.data(), outputDimensions64bit.size()), /*out*/ outputDimensions);
+            DowncastDimensions(gsl::span(outputDimensions64bit), /*out*/ outputDimensions);
         }
         else
         {
