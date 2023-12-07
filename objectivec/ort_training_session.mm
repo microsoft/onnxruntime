@@ -29,7 +29,7 @@ NS_ASSUME_NONNULL_BEGIN
 }
 
 - (nullable instancetype)initWithEnv:(ORTEnv*)env
-                      sessionOptions:(ORTSessionOptions*)sessionOptions
+                      sessionOptions:(nullable ORTSessionOptions*)sessionOptions
                           checkpoint:(ORTCheckpoint*)checkpoint
                       trainModelPath:(NSString*)trainModelPath
                        evalModelPath:(nullable NSString*)evalModelPath
