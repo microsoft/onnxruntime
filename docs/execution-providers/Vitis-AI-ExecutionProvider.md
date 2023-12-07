@@ -35,12 +35,12 @@ The following table lists AMD targets that are supported by the Vitis AI ONNX Ru
 AMD Adaptable SoC developers can also leverage the Vitis AI ONNX Runtime Execution Provider to support custom (chip-down) designs.
 
 ## Ryzen AI Demo
-A [demonstration](https://github.com/amd/RyzenAI-cloud-to-client-demo) is available that showcases one potential application of AMD's XDNA technology.  New users are encouraged to test it out.
+A [demonstration](https://github.com/amd/RyzenAI-SW/tree/main/demo/cloud-to-client) is available that showcases one potential application of AMD's XDNA technology.  New users are encouraged to test it out.
 
 ## Install
 
 ### AMD Adaptable SoC Installation
-For AMD Adaptable SoC targets, a pre-built package is provided to deploy ONNX models on embedded Linux.  Users should refer to the standard Vitis AI [Target Setup Instructions](https://xilinx.github.io/Vitis-AI/3.0/html/docs/workflow.html) to enable Vitis AI on the target.  Once Vitis AI has been enabled on the target, the developer can refer to [this section](https://docs.xilinx.com/r/en-US/ug1414-vitis-ai/Programming-with-VOE) of the Vitis AI documentation for installation and API details.
+For AMD Adaptable SoC targets, a pre-built package is provided to deploy ONNX models on embedded Linux.  Users should refer to the standard Vitis AI [Target Setup Instructions](https://xilinx.github.io/Vitis-AI/3.5/html/docs/workflow.html) to enable Vitis AI on the target.  Once Vitis AI has been enabled on the target, the developer can refer to [this section](https://docs.xilinx.com/r/en-US/ug1414-vitis-ai/Programming-with-VOE) of the Vitis AI documentation for installation and API details.
 
 For more complete examples, developers should refer to [ONNX Runtime Vitis AI Execution Provider examples](https://github.com/Xilinx/Vitis-AI/tree/master/examples/vai_library/samples_onnx).
 
@@ -48,25 +48,69 @@ For more complete examples, developers should refer to [ONNX Runtime Vitis AI Ex
 
 To enable the Vitis AI ONNX Runtime Execution Provider in Microsoft Windows, a .zip archive is provided.
 
+The developers can refer to the installation section of [Ryzen AI Documentation](https://ryzenai.docs.amd.com/en/latest/inst.html) for more detailed instruction.
+
 The contents of this archive are as follows:
 
 ```
-voe-3.5-win_amd64.zip
-	│
-	├── Examples  
-	│    │    
-	│    └── resnet50_python                               # ONNX ResNet50 ILSVRC2012
-	├── voe-0.1.0-cp39-cp39-win_amd64                      # Folder containing DLLs for C++ API
-	│    │    
-	│    ├── onnxruntime.dll                                    
-	│    ├── onnxruntime_vitisai_ep.dll                            
-	├── vaip_config.json                       	       # Runtime configuration file
-        ├── installer.py                                       # Python script to copy dlls 
-        ├── voe-0.1.0-cp39-cp39-win_amd64.whl      	       # Python installation package
-        ├── onnxruntime_vitisai-1.15.1-cp39-cp39-win_amd64.whl # Python installation package
-        ├── 1x4.xclbin                                         # IPU Execution Provider executable file
-        ├── 5x4.xclbin                                         # IPU Execution Provider executable file
-	│    
+ryzen-ai-sw-1.0.zip
+├── env.yaml
+├── install.bat
+├── quicktest
+│   ├── image_0.png
+│   ├── quicktest.py
+│   ├── quicktest_random.py
+│   ├── README.md
+│   ├── requirements.txt
+│   └── test_model.onnx
+├── requirements_ryzenai_voe.txt
+├── vai_q_onnx-1.16.0+be3c70b-py2.py3-none-any.whl
+└── voe-4.0-win_amd64
+    ├── 1x4.xclbin
+    ├── 4x4.xclbin
+    ├── aieml_gemm_asr.json
+    ├── aieml_gemm_asr_qdq.json
+    ├── aieml_gemm_asr_qdq.xclbin
+    ├── aieml_gemm_asr.xclbin
+    ├── aieml_gemm_vm_phx_4x4_bf16.json
+    ├── aieml_gemm_vm_phx_4x4_bf16.xclbin
+    ├── aieml_gemm_vm_phx_4x4.json
+    ├── aieml_gemm_vm_phx_4x4.xclbin
+    ├── flexml_vaiep
+    │   ├── binary-modules
+    │   │   └── ResNet.flexml
+    │   │       ├── 0
+    │   │       │   ├── ctrl_pkt0.bin
+    │   │       │   ├── ctrlPktPatch.json
+    │   │       │   ├── ctrl_pkts.xclbin
+    │   │       │   ├── flexmlrt-hsi.json
+    │   │       │   ├── ml_txn.bin
+    │   │       │   └── wts32.txt
+    │   │       ├── flexml_bm.signature
+    │   │       ├── libflexml_usermodel.dll
+    │   │       └── partition-info.json
+    │   ├── demo
+    │   │   ├── imagenet-classes.txt
+    │   │   ├── requirements.txt
+    │   │   ├── setup.bat
+    │   │   ├── test-single-image.py
+    │   │   ├── utils
+    │   │   │   ├── image_utils.py
+    │   │   │   ├── __init__.py
+    │   │   │   └── onnx.py
+    │   │   └── YellowLabradorLooking_new.jpg
+    │   ├── lib
+    │   │   └── flexmlrt.dll
+    │   ├── onnx-models
+    │   │   └── resnet50_v1_3_vaiq.onnx
+    │   └── README.md
+    ├── installer.py
+    ├── onnxruntime_vitisai-1.15.1-cp39-cp39-win_amd64.whl
+    ├── vaip_config.json
+    ├── voe-0.1.0-cp39-cp39-win_amd64
+    │   ├── onnxruntime.dll
+    │   └── onnxruntime_vitisai_ep.dll
+    └── voe-0.1.0-cp39-cp39-win_amd64.whl
 ```
 
 **_NOTE:_** Ryzen AI Linux support is not enabled in this release.
@@ -75,21 +119,22 @@ Both C++ and Python APIs are supported.  The following instructions assume that 
 
 **1. Verify Pre-requisites:**
 
-- Visual Studio = 2022
+- Visual Studio = 2019
 - cmake (version >= 3.26)
 - python (version >= 3.9) (Python 3.9.13 64bit recommended)
-- AMD IPU driver >= 10.105.5.38 installed
+- AMD IPU driver = 10.1109.8.100 installed
 
 **2. Prepare the files for installation:**
 
-- Download the [Ryzen AI ONNX Runtime Package](https://account.amd.com/en/forms/downloads/ryzen-ai-software-platform-xef.html?filename=voe-3.5-win_amd64.zip).  
-- Unzip `voe-[version]-win_amd64.zip`.  
+- Download the [Ryzen AI Software Package](https://account.amd.com/en/forms/downloads/ryzen-ai-software-platform-xef.html?filename=ryzen-ai-sw-1.0.zip).  
+- Unzip `ryzen-ai-sw-1.0.zip`.
+- Enter the `voe-4.0-win_amd64` ONNX runtime folder.
 
 **3. Install the C++ Libraries:**
 
 **_NOTE:_** This is an optional step which is only required if you intend to use the C++ APIs.
 
-- Copy the DLL files from the bin subdirectory of the extracted archive to `C:\Program Files\onnxruntime\bin`, (ie `copy bin\*.dll C:\Program Files\onnxruntime\bin`).  This will install the Vitis AI ONNX Runtime Engine libraries.  
+- Copy the DLL files from the `voe-0.1.0-cp39-cp39-win_amd64` subdirectory of the extracted archive to `C:\Program Files\onnxruntime\bin`, (ie `copy voe-0.1.0-cp39-cp39-win_amd64\*.dll C:\Program Files\onnxruntime\bin`).  This will install the Vitis AI ONNX Runtime Engine libraries.  
 
 **4. Set the XLNX_VART_FIRMWARE environmental variable:**
 
@@ -109,7 +154,7 @@ pip install voe-[version]-cp39-cp39-win_amd64.whl
 
 **4. Run the ResNet50 example:**
 
-- Leverage the scripts in the `Examples\resnet50_python` folder to test your installation.  
+- Leverage the scripts in the `quicktest` folder to test your installation.  
 
 
 ## Build
@@ -126,7 +171,7 @@ The current release of the Vitis AI Execution Provider ingests quantized ONNX mo
  
 [Pytorch](https://hub.docker.com/r/amdih/ryzen-ai-pytorch), [Tensorflow 2.x](https://hub.docker.com/r/amdih/ryzen-ai-tensorflow2) and [Tensorflow 1.x](https://hub.docker.com/r/amdih/ryzen-ai-tensorflow) dockers are avaialable to support quantization of PyTorch and TensorFlow models.  To support the Vitis AI ONNX Runtime Execution Provider, an option is provided in the Vitis AI Quantizer to export a quantized model in ONNX format, post quantization.
 
-[ONNX Quantizer python wheel](https://www.xilinx.com/bin/public/openDownload?filename=vai_q_onnx-1.14.0-py2.py3-none-any.whl) is available to parse and quantize ONNX models, enabling an end-to-end ONNX model -> ONNX Runtime workflow.  Also, in a future release, the Vitis AI ONNX Runtime Execution Provider will support on-the-fly quantization, enabling direct deployment of FP32 ONNX models.
+**ONNX Quantizer python wheel** is available to parse and quantize ONNX models, enabling an end-to-end ONNX model -> ONNX Runtime workflow which is provided in the [Ryzen AI Software Package](https://account.amd.com/en/forms/downloads/ryzen-ai-software-platform-xef.html?filename=ryzen-ai-sw-1.0.zip) as well.  Also, in a future release, the Vitis AI ONNX Runtime Execution Provider will support on-the-fly quantization, enabling direct deployment of FP32 ONNX models.
 
 See [Model Quantization](https://xilinx.github.io/Vitis-AI/3.5/html/docs/workflow-model-development.html#model-quantization) for details.
 
