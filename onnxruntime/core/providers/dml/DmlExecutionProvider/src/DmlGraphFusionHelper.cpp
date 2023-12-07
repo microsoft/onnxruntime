@@ -36,7 +36,7 @@ namespace DmlGraphFusionHelper
             &heapProperties,
             D3D12_HEAP_FLAG_NONE,
             &resourceDesc,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_COMMON,
             nullptr,
             IID_GRAPHICS_PPV_ARGS(buffer.GetAddressOf())));
 
@@ -74,7 +74,7 @@ namespace DmlGraphFusionHelper
             &heapProperties,
             D3D12_HEAP_FLAG_NONE,
             &resourceDesc,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_COMMON,
             nullptr,
             IID_GRAPHICS_PPV_ARGS(buffer.GetAddressOf())));
 
@@ -302,7 +302,7 @@ namespace DmlGraphFusionHelper
         for (size_t i = 0; i < graphDesc.nodes.size(); ++i)
         {
             auto& nodeInfo = graphDesc.nodes[i];
-            
+
             if (std::holds_alternative<Microsoft::WRL::ComPtr<IDMLOperator>>(nodeInfo.nodeDef))
             {
                 dmlOperatorGraphNodes[i] = DML_OPERATOR_GRAPH_NODE_DESC{std::get<Microsoft::WRL::ComPtr<IDMLOperator>>(nodeInfo.nodeDef).Get(), nodeInfo.name.data()};
