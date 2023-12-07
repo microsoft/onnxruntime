@@ -218,18 +218,27 @@ def generate_dependencies(xml_text, package_name, version):
         # Support .Net Core
         xml_text.append('<group targetFramework="NETCOREAPP">')
         xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        if package_name == "Microsoft.ML.OnnxRuntime.Gpu":
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu-win"' + ' version="' + version + '"/>')
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu-linux"' + ' version="' + version + '"/>')
         if include_dml:
             xml_text.append(dml_dependency)
         xml_text.append("</group>")
         # Support .Net Standard
         xml_text.append('<group targetFramework="NETSTANDARD">')
         xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        if package_name == "Microsoft.ML.OnnxRuntime.Gpu":
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu-win"' + ' version="' + version + '"/>')
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu-linux"' + ' version="' + version + '"/>')
         if include_dml:
             xml_text.append(dml_dependency)
         xml_text.append("</group>")
         # Support .Net Framework
         xml_text.append('<group targetFramework="NETFRAMEWORK">')
         xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        if package_name == "Microsoft.ML.OnnxRuntime.Gpu":
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu-win"' + ' version="' + version + '"/>')
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu-linux"' + ' version="' + version + '"/>')
         if include_dml:
             xml_text.append(dml_dependency)
         xml_text.append("</group>")
