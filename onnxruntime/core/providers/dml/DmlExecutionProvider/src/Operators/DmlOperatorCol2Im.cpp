@@ -20,11 +20,7 @@ public:
         std::vector<uint32_t> inputTensorShape = tensorShapeDescription.GetInputTensorShape(0);
         std::vector<uint32_t> outputTensorShape = tensorShapeDescription.GetOutputTensorShape(0);
 
-        ML_CHECK_VALID_ARGUMENT(outputTensorShape.size() == m_outputShape.size());
-        for (uint32_t i = 0; i < outputTensorShape.size(); i++)
-        {
-            ML_CHECK_VALID_ARGUMENT(outputTensorShape[i] == m_outputShape[i]);
-        }
+        ML_CHECK_VALID_ARGUMENT(outputTensorShape == m_outputShape);
 
         std::vector<std::optional<uint32_t>> inputIndices = { 0 };
         gsl::span<const uint32_t> inputShapes[1] = { m_inputShape };
