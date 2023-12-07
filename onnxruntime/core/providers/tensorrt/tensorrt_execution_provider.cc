@@ -2493,8 +2493,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             // Below: class private members
             sync_stream_after_enqueue_, fp16_enable_, int8_enable_, int8_calibration_cache_available_, dla_enable_,
             dla_core_, engine_cache_enable_, cache_path_, context_memory_sharing_enable_, engine_decryption_enable_,
-            engine_decryption_, engine_encryption_, timing_cache_enable_, global_cache_path_, force_timing_cache_match_,
-            detailed_build_log_, build_heuristics_enable_, sparsity_enable_, builder_optimization_level_, auxiliary_streams_, cuda_graph_enable_
+            engine_decryption_, engine_encryption_, timing_cache_enable_, global_cache_path_
       };
       *state = p.release();
       return 0;

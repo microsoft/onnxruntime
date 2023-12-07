@@ -137,13 +137,6 @@ struct TensorrtFuncState {
   int (*engine_encryption)(const char*, char*, size_t) = nullptr;
   bool timing_cache_enable = true;
   std::string timing_cache_path;
-  bool force_timing_cache = false;
-  bool detailed_build_log = false;
-  bool build_heuristics_enable = false;
-  bool sparsity_enable = false;
-  int builder_optimization_level = 3;
-  int auxiliary_streams = -1;
-  bool cuda_graph_enable = 0;
 };
 
 // Holds important information for building valid ORT graph.
