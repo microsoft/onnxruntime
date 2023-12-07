@@ -78,7 +78,7 @@ struct OpenVINO_Provider : Provider {
                                             // with this value at runtime.
     bool enable_opencl_throttling = false;  // [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU
                                             // device (Reduces CPU Utilization when using GPU)
-    bool disable_dynamic_shapes = false;     // [disable_dynamic_shapes]:  Execute model with default static shape for optimal performance.
+    bool disable_dynamic_shapes = false;    // [disable_dynamic_shapes]:  Execute model with default static shape for optimal performance.
     void* context = nullptr;
 
     if (provider_options_map.find("device_type") != provider_options_map.end()) {
