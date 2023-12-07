@@ -1876,13 +1876,13 @@ namespace OperatorHelper
         const IKernelInformationAdapter& kernelInformation,
         const IShapeInformationAdapter& shapeInformation)
     {
-        std::vector<int> tensor;
-        ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(1), /*out*/ tensor);
-        m_imageShape.resize(tensor.size());
-        DowncastDimensions(gsl::span(tensor), /*out*/ m_imageShape);
-        ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(2), /*out*/ tensor);
-        m_blockShape.resize(tensor.size());
-        DowncastDimensions(gsl::span(tensor), /*out*/ m_blockShape);
+        std::vector<int> shapeData;
+        ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(1), /*out*/ shapeData);
+        m_imageShape.resize(shapeData.size());
+        DowncastDimensions(gsl::span(shapeData), /*out*/ m_imageShape);
+        ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(2), /*out*/ shapeData);
+        m_blockShape.resize(shapeData.size());
+        DowncastDimensions(gsl::span(shapeData), /*out*/ m_blockShape);
 
         const uint32_t dimCount = gsl::narrow_cast<uint32_t>(m_blockShape.size());
         m_dilations = {dimCount, 1};
@@ -1891,25 +1891,25 @@ namespace OperatorHelper
 
         if (kernelInformation.HasAttribute(AttrName::Dilations, MLOperatorAttributeType::IntArray))
         {
-            tensor = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Dilations);
-            m_dilations.resize(tensor.size());
-            DowncastDimensions(gsl::span(tensor), /*out*/ m_dilations);
+            shapeData = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Dilations);
+            m_dilations.resize(shapeData.size());
+            DowncastDimensions(gsl::span(shapeData), /*out*/ m_dilations);
             ML_CHECK_VALID_ARGUMENT(m_dilations.size() == dimCount);
         }
 
         if (kernelInformation.HasAttribute(AttrName::Pads, MLOperatorAttributeType::IntArray))
         {
-            tensor = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Pads);
-            m_pads.resize(tensor.size());
-            DowncastDimensions(gsl::span(tensor), /*out*/ m_pads);
+            shapeData = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Pads);
+            m_pads.resize(shapeData.size());
+            DowncastDimensions(gsl::span(shapeData), /*out*/ m_pads);
             ML_CHECK_VALID_ARGUMENT(m_pads.size() == dimCount * 2);
         }
 
         if (kernelInformation.HasAttribute(AttrName::Strides, MLOperatorAttributeType::IntArray))
         {
-            tensor = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Strides);
-            m_strides.resize(tensor.size());
-            DowncastDimensions(gsl::span(tensor), /*out*/ m_strides);
+            shapeData = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Strides);
+            m_strides.resize(shapeData.size());
+            DowncastDimensions(gsl::span(shapeData), /*out*/ m_strides);
             ML_CHECK_VALID_ARGUMENT(m_strides.size() == dimCount);
         }
 
