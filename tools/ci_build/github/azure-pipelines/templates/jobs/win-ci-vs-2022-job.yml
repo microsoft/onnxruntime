@@ -76,7 +76,10 @@ jobs:
       PY_CACHE_ARG: '--use_cache'
   workspace:
     clean: all
-  pool: ${{ parameters.MachinePool }}
+  pool: 
+    name: ${{ parameters.MachinePool }}
+    demands:
+      - ImageOverride -equals Onnxruntime-Win2022-VS2022-DirectML-A10-beta
   timeoutInMinutes:  300
   steps:
   - checkout: self
