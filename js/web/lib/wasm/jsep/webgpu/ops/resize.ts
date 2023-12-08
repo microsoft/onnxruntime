@@ -280,7 +280,7 @@ const calculateInputIndicesFromOutputIndices =
           input_index = u32(output_index);
         } else {
           var roi_low = ${getElementAt('uniforms.roi', 'i', roiLength)};
-          var roi_hi = ${getElementAt('uniforms.roi', 'i', roiLength + inputShape.length)};
+          var roi_hi = ${getElementAt('uniforms.roi', `i + ${inputShape.length}`, roiLength)};
           var input_shape_i = ${output.type.value}(${getElementAt('uniforms.input_shape', 'i', inputShape.length)});
           var output_shape_i = ${output.type.value}(${getElementAt('uniforms.output_shape', 'i', outputShape.length)});
           var original_idx = getOriginalCoordinateFromResizedCoordinate(output_index, scale, output_shape_i,
