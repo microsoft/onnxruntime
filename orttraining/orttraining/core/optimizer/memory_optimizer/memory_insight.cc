@@ -256,7 +256,7 @@ Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
                                                      logger));
 
   InlinedHashSet<const Node*> layer_boundary_ln_nodes;
-  FindLayerBoundaryLayerNodeNodes(graph_viewer, logger, layer_boundary_ln_nodes);
+  FindLayerBoundaryLayerNormNodes(graph_viewer, logger, layer_boundary_ln_nodes);
 
   // The first pass - find the candidate subgraphs.
   for (int i = static_cast<int>(node_ids.size()) - 1; i >= 0; --i) {

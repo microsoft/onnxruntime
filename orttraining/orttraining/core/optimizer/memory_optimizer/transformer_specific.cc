@@ -16,7 +16,7 @@
 
 namespace onnxruntime::optimizer::memory_optimizer {
 
-void FindLayerBoundaryLayerNodeNodes(
+void FindLayerBoundaryLayerNormNodes(
     const GraphViewer& graph_viewer,
     const logging::Logger&,
     InlinedHashSet<const Node*>& layer_boundary_ln_nodes) {
