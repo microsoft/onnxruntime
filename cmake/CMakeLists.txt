@@ -97,6 +97,7 @@ option(onnxruntime_USE_LLVM "Build TVM with LLVM" OFF)
 
 cmake_dependent_option(onnxruntime_USE_FLASH_ATTENTION "Build flash attention kernel for scaled dot product attention" ON "NOT WIN32; onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON)
+option(onnxruntime_USE_CUTLASS "Build with Cutlass support" OFF)
 
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
 option(onnxruntime_USE_AVX "Use AVX instructions" OFF)
@@ -713,11 +714,13 @@ if (onnxruntime_USE_CUDA)
 
     if (onnxruntime_USE_FLASH_ATTENTION)
       message( STATUS "Enable flash attention for CUDA EP")
+      set(onnxruntime_USE_CUTLASS ON) # Flash attention requires cutlass
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_FLASH_ATTENTION=1)
       list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_FLASH_ATTENTION=1)
     endif()
     if (onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION)
       message( STATUS "Enable memory efficient attention for CUDA EP")
+      set(onnxruntime_USE_CUTLASS ON) # Memory efficient attention requires cutlass
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_MEMORY_EFFICIENT_ATTENTION=1)
       list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_MEMORY_EFFICIENT_ATTENTION=1)
     endif()
@@ -886,6 +889,11 @@ function(onnxruntime_set_compile_flags target_name)
     if (onnxruntime_ENABLE_ATEN)
       target_compile_definitions(${target_name} PRIVATE ENABLE_ATEN)
     endif()
+
+    if (onnxruntime_USE_CUTLASS)
+      target_compile_definitions(${target_name} PRIVATE USE_CUTLASS)
+    endif()
+
     set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
     if (onnxruntime_USE_CUDA)
       # Suppress a "conversion_function_not_usable" warning in gsl/span
