@@ -280,7 +280,7 @@ Status GemmFloat8::ComputeGemm(
     CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
         operationDesc, CUBLASLT_MATMUL_DESC_D_SCALE_POINTER, &p_scale_y,
         sizeof(p_scale_b)));
-#endif 
+#endif
 
     // float 8
 #if !defined(DISABLE_FLOAT8_TYPES)
