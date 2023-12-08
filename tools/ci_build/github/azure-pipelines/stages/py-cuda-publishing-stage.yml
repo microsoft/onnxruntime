@@ -22,11 +22,12 @@ stages:
       - job:
         pool: 'onnxruntime-Win-CPU-2022'
         steps:
+          - checkout: none
           - script: |
-                echo "Build ID: $(build_id)"
-                echo "Project: $(project)"
-                echo "Pipeline: $(pipeline)"
-                echo "Artifact Feed: $(artifact_feed)"
+                echo "Build ID: ${{ parameters.build_id }}"
+                echo "Project: ${{ parameters.project }}"
+                echo "Pipeline: ${{ parameters.pipeline }}"
+                echo "Artifact Feed: ${{ parameters.artifact_feed }}"
             displayName: 'Print Build.SourcesDirectory'
           - task: DownloadPipelineArtifact@2
             inputs:
@@ -34,9 +35,9 @@ stages:
               targetPath: '$(Build.SourcesDirectory)'
               ${{ if ne(parameters.build_id, 'latest') }}:
                 buildType: 'specific'
-                project: '$(project)'
-                pipeline: '$(pipeline)'
-                buildVersionToDownload: '$(build_id)'
+                project: '${{ parameters.project }}'
+                pipeline: '${{ parameters.pipeline }}'
+                buildVersionToDownload: '${{ parameters.build_id }}'
             displayName: 'Download Build Artifacts - onnxruntime-gpu'
           - task: UsePythonVersion@0
             displayName: 'Use Python 3.x'
@@ -45,8 +46,8 @@ stages:
           - task: TwineAuthenticate@1
             displayName: 'Twine Authenticate '
             inputs:
-              artifactFeed: PublicPackages/$(artifact_feed)
-          - script: 'python -m twine upload -r $(artifact_feed) onnxruntime-gpu/*.whl'
+              artifactFeed: PublicPackages/${{ parameters.artifact_feed }}
+          - script: 'python -m twine upload -r ${{ parameters.artifact_feed }} onnxruntime-gpu/*.whl'
             workingDirectory: '$(Build.SourcesDirectory)'
-            displayName: 'Uploading wheels to $(artifact_feed)'
+            displayName: 'Uploading wheels to ${{ parameters.artifact_feed }}'
             retryCountOnTaskFailure: 3
