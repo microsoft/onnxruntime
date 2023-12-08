@@ -14,7 +14,8 @@ parameters:
 
 stages:
   - stage: Python_Publishing
-    dependsOn: [ ${{ parameters.depends_on }} ]
+    ${{ if ne(parameters.depends_on, '') }}:
+      dependsOn: [ ${{ parameters.depends_on }} ]
     jobs:
       - job:
         pool: 'onnxruntime-Win-CPU-2022'
