@@ -166,7 +166,7 @@ constexpr int kWarpSize = 32;
 // Each thread block computes [1, K] x [kColsPerThreadBlock, (K + block_size - 1)/block_size, blob],
 //     i.e., computing kColsPerThreadBlock per block and a warp reduce (1, K) x (K)
 template <class T, int block_size>
-__global__ void MatMulFloatInt4Kernel(
+__global__ void __launch_bounds__(kWarpSize*kColsPerThreadBlock) MatMulFloatInt4Kernel(
     T* output,
     const T* a_data,
     const uint8_t* b_data_quant,
@@ -179,12 +179,9 @@ __global__ void MatMulFloatInt4Kernel(
   const int n_block_id = blockIdx.x;
   const int m_id = blockIdx.y;
   const int lane_id = threadIdx.x;
-  const int lane_id_x8 = lane_id * 8;  // k offset
   const int warp_id = WarpUniform(threadIdx.y);
   const int n_id = n_block_id * kColsPerThreadBlock + warp_id;
-  const int thread_id = warp_id * kWarpSize + lane_id;
   constexpr int k_per_iter = 256;
-  const int block_per_iter = k_per_iter / block_size;
 
   // blocks_per_k is the number of scales and zero points on the k dim
   const int b_zp_k = (blocks_per_K + 1) / 2;
@@ -195,12 +192,12 @@ __global__ void MatMulFloatInt4Kernel(
   T* b_scale_vec = (T*)shared_buffer;
   uint8_t* b_zp_vec = reinterpret_cast<uint8_t*>(b_scale_vec + kColsPerThreadBlock * blocks_per_K);
   int offset = n_block_id * kColsPerThreadBlock * blocks_per_K;
-  for (int i = thread_id; i < kColsPerThreadBlock * blocks_per_K; i += kColsPerThreadBlock * kWarpSize) {
+  for (int i = warp_id * kWarpSize + lane_id; i < kColsPerThreadBlock * blocks_per_K; i += kColsPerThreadBlock * kWarpSize) {
     b_scale_vec[i] = scales_data[offset + i];
   }
 
   int zp_offset = n_block_id * kColsPerThreadBlock * b_zp_k;
-  for (int i = thread_id; i < kColsPerThreadBlock * b_zp_k; i += kColsPerThreadBlock * kWarpSize) {
+  for (int i = warp_id * kWarpSize + lane_id; i < kColsPerThreadBlock * b_zp_k; i += kColsPerThreadBlock * kWarpSize) {
     b_zp_vec[i] = zero_points != nullptr ? zero_points[zp_offset + i] : uint8_t(0x88);
   }
   __syncthreads();
@@ -213,19 +210,19 @@ __global__ void MatMulFloatInt4Kernel(
 
   T sums[8] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
   int k_id = 0;
-  int t_meta_k = lane_id_x8 / block_size;
+  int t_meta_k = lane_id * 8 / block_size;
   for (; k_id < (k & 0xffffff00); k_id += k_per_iter) {
     uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant));
     T scale = b_scale_vec[scale_col_offset + t_meta_k];
     uint8_t zp = b_zp_vec[zp_col_offset + t_meta_k / 2];
     zp = (t_meta_k & 0x01) ? (zp >> 4) : (zp & 0x0f);
     AccumulateEightElements(value, scale, zp, a_data + k_id + (lane_id << 3), sums);
-    t_meta_k += block_per_iter;  // k index for this thread, points to the scale and zero point
+    t_meta_k += k_per_iter / block_size;  // k index for this thread, points to the scale and zero point
     b_data_quant += k_per_iter/2;
   }
 
   // handle reminder
-  if (k_id + lane_id_x8 < k) {
+  if (k_id + lane_id * 8 < k) {
     uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant));
     T scale = b_scale_vec[scale_col_offset + t_meta_k];
     uint8_t zp = b_zp_vec[zp_col_offset + t_meta_k / 2];
