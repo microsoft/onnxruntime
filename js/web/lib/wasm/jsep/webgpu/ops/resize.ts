@@ -321,13 +321,13 @@ const bilinearInterpolation =
       return `
     fn getInputValue(batch: u32, channel: u32, row: u32, col: u32) -> ${dType} {
       var input_indices: ${input.type.indices};
-      input_indices[${heightIdx}] = max(0, min(row, ${inputShape[heightIdx]} - 1));
-      input_indices[${widthIdx}] = max(0, min(col, ${inputShape[widthIdx]} - 1));
+      ${input.indicesSet('input_indices', heightIdx, `max(0, min(row, ${inputShape[heightIdx]} - 1))`)};
+      ${input.indicesSet('input_indices', widthIdx, `max(0, min(col, ${inputShape[widthIdx]} - 1))`)};
       if (${inputShape.length} > 2) {
-        input_indices[${channelIdx}] = channel;
-        input_indices[${batchIdx}] = batch;
+        ${input.indicesSet('input_indices', channelIdx, 'channel')};
+        ${input.indicesSet('input_indices', batchIdx, 'batch')};
       };
-      return input[${input.indicesToOffset('input_indices')}];
+      return ${input.getByIndices('input_indices')};
     }
 
     fn bilinearInterpolation(output_indices: ${output.type.indices}) -> ${dType} {
@@ -396,9 +396,10 @@ const bicubicInterpolation =
             }
           }
           var input_indices_copy: ${input.type.indices} = input_indices;
-          input_indices_copy[${idx}] = u32(${direction});
-          data[i + 1] = ${idx === heightIdx ? `input[${input.indicesToOffset('input_indices_copy')}];` : `
-                                               rowCubicInterpolation(input_indices_copy, output_indices);`}
+          ${input.indicesSet('input_indices_copy', idx, `u32(${direction}`)};
+          data[i + 1] = ${
+            idx === heightIdx ? input.getByIndices('input_indices_copy') :
+                                'rowCubicInterpolation(input_indices_copy, output_indices)'};
         }
         return cubicInterpolation1D(data, coefs);
       }`;
@@ -501,7 +502,7 @@ const createResizeProgramInfo =
           case 'nearest':
             return `input_indices = calculateInputIndicesFromOutputIndices(output_indices);
                 if (checkInputIndices(input_indices)) {
-                  output[global_idx] = input[${input.indicesToOffset('input_indices')}];
+                  output[global_idx] = ${input.getByIndices('input_indices')};
                 } else {
                   output[global_idx] = ${attributes.extrapolationValue};
                 }`;
