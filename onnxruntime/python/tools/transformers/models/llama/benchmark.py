@@ -374,7 +374,8 @@ def measure_fn(args, fn, inputs):
     # Measure memory usage
     gc.collect()
     torch.cuda.empty_cache()
-    measure_memory(is_gpu=(args.device != "cpu"), func=lambda: fn(inputs))
+    # Disable measure memory fn as it is not working with pytorch
+    # measure_memory(is_gpu=(args.device != "cpu"), func=lambda: fn(inputs))
 
     # Flush output so memory usage is printed
     sys.stdout.flush()
