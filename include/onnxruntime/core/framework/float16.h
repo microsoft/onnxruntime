@@ -89,11 +89,7 @@ struct MLFloat16 : onnxruntime_float16::Float16Impl<MLFloat16> {
 struct BFloat16 : onnxruntime_float16::BFloat16Impl<BFloat16> {
   using Base = onnxruntime_float16::BFloat16Impl<BFloat16>;
 
-#if defined(__HIP__)
   ORT_HOST_DEVICE BFloat16() = default;
-#else
-  BFloat16() = default;
-#endif
 
   struct FromBitsT {};
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() noexcept { return FromBitsT(); }
