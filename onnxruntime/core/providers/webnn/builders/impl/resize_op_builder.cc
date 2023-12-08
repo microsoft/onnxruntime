@@ -123,11 +123,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const bool isNhwc = model_builder.GetPreferredLayout() == DataLayout::NHWC;
   if (input_defs.size() == 3) {  // Use scales.
     ORT_RETURN_IF_NOT(GetResizeScales(initializers, node, scales, logger), "Error getting resize scales");
-    if (isNhwc) {
-      scales_hw = {scales[1], scales[2]};
-    } else {
-      scales_hw = {scales[2], scales[3]};
-    }
+    scales_hw = {scales[2], scales[3]};
     options.set("scales", emscripten::val::array(scales_hw));
   } else {  // We already checked number of inputs in IsOpSupportedImpl.
     std::vector<int64_t> output_sizes;
@@ -136,11 +132,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     std::transform(output_sizes.cbegin(), output_sizes.cend(),
                    std::back_inserter(sizes),
                    [](int64_t dim) -> int32_t { return SafeInt<int32_t>(dim); });
-    if (isNhwc) {
-      sizes_hw = {sizes[1], sizes[2]};
-    } else {
-      sizes_hw = {sizes[2], sizes[3]};
-    }
+    sizes_hw = {sizes[2], sizes[3]};
     options.set("sizes", emscripten::val::array(sizes_hw));
   }
 
