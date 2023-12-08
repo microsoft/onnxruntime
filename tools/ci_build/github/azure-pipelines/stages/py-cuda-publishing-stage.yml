@@ -48,8 +48,8 @@ stages:
             displayName: 'Download Build Artifacts - onnxruntime-gpu'
           - task: UsePythonVersion@0
             displayName: 'Use Python 3.x'
-          - script: 'pip install twine==3.4.2'
-            displayName: 'Install Twine'
+          - script: 'pip install twine keyring artifacts-keyring'
+            displayName: 'Install Twine and Keyring'
           - task: TwineAuthenticate@1
             displayName: 'Twine Authenticate '
             inputs:
