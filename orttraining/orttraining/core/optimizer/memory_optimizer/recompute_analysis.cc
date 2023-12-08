@@ -56,7 +56,7 @@ struct AllowedRecomputeNodeConfig {
   InlinedVector<int> input_arg_indices;  // input index to iterate further (bottom up)
 };
 
-// The op types that are supported are predefined.
+// The supported op types are predefined.
 
 const InlinedHashMap<std::string, AllowedRecomputeNodeConfig>& GetAllowedRecomputeOps(int probe_op_level) {
   static InlinedHashMap<int, InlinedHashMap<std::string, AllowedRecomputeNodeConfig>> recomputable_op_table_map;

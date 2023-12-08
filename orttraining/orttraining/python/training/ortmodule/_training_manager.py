@@ -452,8 +452,6 @@ class TrainingManager(GraphExecutionManager):
                 execution_agent, self._runtime_options
             )
 
-            self._logger.debug("Completed find_memory_optimization_opportunity.")
-
             # Release it as early as possible.
             del execution_agent
 

@@ -584,6 +584,7 @@ class MemoryObserver:
             for cluster_id in self.cluster_id_combination_to_saving_symbolics_map:
                 config_values = cluster_id.split(":")
                 opt_type = int(config_values[1])
+                # TODO(pengwa): use enum instead of 1 here.
                 if opt_type != 1:
                     continue
 

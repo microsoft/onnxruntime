@@ -197,10 +197,6 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *logger));
 
-  // Save the graph
-  std::string model_save_path = "3layer_bloom_optimized_training_recompute1128.onnx";
-  ASSERT_STATUS_OK(Model::Save(*model, model_save_path));
-
   std::vector<const Node*> bw_nodes_in_expected_order;
   const Node* yield_op_node = nullptr;
   for (auto& node : graph.Nodes()) {

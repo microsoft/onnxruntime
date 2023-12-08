@@ -137,6 +137,8 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
     return Status::OK();
   }
 
+  size_t recomputed_node_count = 0;
+
   ptrdiff_t yield_op_order_in_topological_sort;
   InlinedHashMap<const Node*, InlinedVector<size_t>> candidate_output_args_map;
   InlinedHashMap<NodeIndex, ptrdiff_t> node_index_to_its_order_in_topological_sort_map;
@@ -186,7 +188,15 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
                                       node_to_apply_context_map[p_node]);
     }
 
+    if (has_been_modified) {
+      recomputed_node_count += 1;
+    }
+
     modified = modified || has_been_modified;
+  }
+
+  if (recomputed_node_count > 0) {
+    LOGS(logger, INFO) << "Total number of recomputed nodes: " << recomputed_node_count;
   }
 
   PrintSummary(memory_opt_planner, node_to_apply_context_map, logger);
