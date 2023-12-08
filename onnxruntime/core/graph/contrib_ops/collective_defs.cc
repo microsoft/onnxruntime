@@ -80,6 +80,60 @@ void RegisterCollectiveOps() {
         propagateShapeAndTypeFromFirstInput(ctx);
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ShardedMoE)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("activation_type",
+            "Activation function to use. Choose from relu, gelu, silu and identity. Default is relu",
+            AttributeProto::STRING,
+            std::string("relu"))
+      .Attr("k",
+            "Number of top experts to select from expert pool",
+            AttributeProto::INT,
+            static_cast<int64_t>(1))
+      .Attr("local_experts_start_index",
+            "The start index of local experts",
+            AttributeProto::INT,
+            static_cast<int64_t>(-1))
+      .Input(0,
+             "input",
+             "2D input tensor with shape (num_rows, hidden_size) or "
+             "3D input tensor with shape (batch_size, sequence_length, hidden_size)",
+             "T")
+      .Input(1,
+             "router_probs",
+             "2D input tensor with shape (num_rows, num_experts)",
+             "T")
+      .Input(2,
+             "fc1_experts_weights",
+             "3D input tensor with shape (local_num_experts, hidden_size, inter_size)",
+             "T")
+      .Input(3,
+             "fc2_experts_weights",
+             "3D input tensor with shape (local_num_experts, inter_size, hidden_size)",
+             "T")
+      .Input(4,
+             "fc1_experts_bias",
+             "2D optional input tensor with shape (local_num_experts, inter_size)",
+             "T",
+             OpSchema::Optional)
+      .Input(5,
+             "fc2_experts_bias",
+             "2D optional input tensor with shape (num_experts, hidden_size)",
+             "T",
+             OpSchema::Optional)
+      .Output(0,
+              "output",
+              "2D input tensor with shape (num_rows, hidden_size) or "
+              "3D input tensor with shape (batch_size, sequence_length, hidden_size)",
+              "T")
+      .TypeConstraint("T",
+                      {"tensor(float)", "tensor(float16)"},
+                      "Constrain input and output types to float or float16 tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(DistributedMatMul)
       .SetDomain(kMSDomain)
       .SinceVersion(1)

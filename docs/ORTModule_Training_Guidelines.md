@@ -146,7 +146,6 @@ Check [DebugOptions implementation](../orttraining/orttraining/python/training/o
 	export ORTMODULE_ONNX_OPSET_VERSION=14
 	```
 
-
 #### ORTMODULE_FALLBACK_POLICY
 
 - **Feature Area**: *ORTMODULE/FallbackToPytorch*
@@ -154,7 +153,6 @@ Check [DebugOptions implementation](../orttraining/orttraining/python/training/o
 	```bash
 	export ORTMODULE_FALLBACK_POLICY="FALLBACK_DISABLE"
 	```
-
 
 #### ORTMODULE_LOG_LEVEL
 
@@ -182,7 +180,6 @@ The output directory of the onnx models by default is set to the current working
 	> On the other hand, if the wrapped computation graph is small, it is reasonable to allow it.
 	> Overall users should be aware that ORT performance boost might be trivial when they explicitly allow it.
 
-
 #### ORTMODULE_ENABLE_CUSTOM_AUTOGRAD
 
 - **Feature Area**: *ORTMODULE/PythonOp (torch.autograd.Function)*
@@ -198,8 +195,6 @@ The output directory of the onnx models by default is set to the current working
 	from onnxruntime.training.ortmodule._custom_autograd_function import enable_custom_autograd_support
 	enable_custom_autograd_support(False)
 	```
-
-
 
 #### ORTMODULE_ENABLE_COMPUTE_OPTIMIZER
 
@@ -277,6 +272,17 @@ data sparsity based performance optimizations.
     ```bash
     export ORTMODULE_USE_EFFICIENT_ATTENTION=1
     ```
+
+#### ORTMODULE_DEEPCOPY_BEFORE_MODEL_EXPORT
+
+- **Feature Area**: *ORTMODULE/Optimizations*
+- **Description**: By default, this is enabled. This env var can be used for enabling or disabling the module deep copy when preparing output data which will be used by ONNX export.
+A classical usage of disabling the deep copy: when the deep copy before module export bring the memory peak, then we should disable it and have a try.
+
+	```bash
+	export ORTMODULE_DEEPCOPY_BEFORE_MODEL_EXPORT=1 # Enable
+	export ORTMODULE_DEEPCOPY_BEFORE_MODEL_EXPORT=0 # Disable
+	```
 
 #### ORTMODULE_MEMORY_OPT_LEVEL
 
