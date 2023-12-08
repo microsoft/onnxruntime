@@ -374,12 +374,7 @@ def measure_fn(args, fn, inputs):
     # Measure memory usage
     gc.collect()
     torch.cuda.empty_cache()
-    # measure memory fn is not working with pytorch so adding a try catch block
-    try:
-        measure_memory(is_gpu=(args.device != "cpu"), func=lambda: fn(inputs))
-    except RuntimeError as e:
-        logger.exception(e)
-        print("Memasure memory function is not working correctly, continuing")
+    measure_memory(is_gpu=(args.device != "cpu"), func=lambda: fn(inputs))
 
     # Flush output so memory usage is printed
     sys.stdout.flush()

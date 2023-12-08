@@ -412,7 +412,7 @@ python -m models.llama.convert_to_onnx -i /path/to/model/directory -o /path/to/o
 The benchmarking scripts in the LLaMA directory support Mistral benchmarking. To benchmark the ORT version, you can run: 
 
 ```
-python -m models.llama.benchmark \
+CUDA_VISIBLE_DEVICES=0 python -m models.llama.benchmark \
     -bt ort-convert-to-onnx \
     -p fp16 \
     -m mistralai/Mistral-7B-v0.1 \
@@ -422,7 +422,7 @@ python -m models.llama.benchmark \
 To benchmark the Hugging Face implementation without `torch.compile`:
 
 ```
-python -m models.llama.benchmark \
+CUDA_VISIBLE_DEVICES=0 python -m models.llama.benchmark \
     -bt hf-pt-eager \
     -p fp16 \
     -m mistralai/Mistral-7B-v0.1
@@ -431,7 +431,7 @@ python -m models.llama.benchmark \
 And to benchmark the Hugging Face implementation with `torch.compile`:
 
 ```
-python -m models.llama.benchmark \
+CUDA_VISIBLE_DEVICES=0 python -m models.llama.benchmark \
     -bt hf-pt-compile \
     -p fp16 \
     -m mistralai/Mistral-7B-v0.1
