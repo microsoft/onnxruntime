@@ -287,6 +287,32 @@ void CudaCall<cudnnStatus_t, true>(cudnnStatus_t retCode, const char* exprString
   return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg, file, line);
 }
 
+void* OutputAllocator::reallocateOutput(
+  char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment) noexcept {
+  // Some memory allocators return nullptr when allocating zero bytes, but TensorRT requires a non-null ptr
+  // even for empty tensors, so allocate a dummy byte.
+  size = std::max(size, static_cast<uint64_t>(1));
+  if (size > allocated_size) {
+    cudaFree(outputPtr);
+    outputPtr = nullptr;
+    allocated_size = 0;
+    if (cudaMalloc(&outputPtr, size) == cudaSuccess)
+    {
+      allocated_size = size;
+    }
+  }
+  // if cudaMalloc fails, returns nullptr.
+  return outputPtr;
+}
+
+void OutputAllocator::notifyShape(char const* tensorName, nvinfer1::Dims const& dims) noexcept {
+  output_shapes.clear();
+  output_shapes.reserve(dims.nbDims);
+  for (int i = 0; i < dims.nbDims; i++) {
+    output_shapes.push_back(dims.d[i]);
+  }
+}
+
 class Memcpy final : public OpKernel {
  public:
   Memcpy(const OpKernelInfo& info) : OpKernel(info) {}
@@ -915,7 +941,7 @@ Status BindContextOutput(Ort::KernelContext& ctx,
   // Otherwise, if the shape of the output tensor is known prior to the runtime, ORT will pre-allocate memory buffer for the output tensor for enqueueV3.
   if (is_dds_output) {
     if (dds_output_allocator_map.find(output_name) == dds_output_allocator_map.end()) {
-      auto allocator = new OutputAllocator(alloc);
+      auto allocator = new OutputAllocator();
       trt_context->setOutputAllocator(output_name, allocator);
       dds_output_allocator_map[output_name] = allocator;
     }
@@ -1058,54 +1084,49 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
   auto allocator = allocator_map[output_name];
   auto& shape = allocator->getOutputShape();
   auto output_tensor = ctx.GetOutput(output_index, shape);
+  auto elem_cnt = output_tensor.GetTensorTypeAndShapeInfo().GetElementCount();
 
   switch (output_type) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
       auto output_tensor_ptr = output_tensor.GetTensorMutableData<float>();
-      if (output_tensor_ptr == nullptr) {
-        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(float)));
+      if (output_tensor_ptr != nullptr) {
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), elem_cnt * sizeof(float), cudaMemcpyDeviceToDevice, stream));
       }
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), allocator->getSize(), cudaMemcpyDeviceToDevice, stream));
       break;
     }
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
       auto output_tensor_ptr = output_tensor.GetTensorMutableData<uint16_t>();
-      if (output_tensor_ptr == nullptr) {
-        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(uint16_t)));
+      if (output_tensor_ptr != nullptr) {
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), elem_cnt * sizeof(uint16_t), cudaMemcpyDeviceToDevice, stream));
       }
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), allocator->getSize(), cudaMemcpyDeviceToDevice, stream));
       break;
     }
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
       auto output_tensor_ptr = output_tensor.GetTensorMutableData<bool>();
-      if (output_tensor_ptr == nullptr) {
-        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(bool)));
+      if (output_tensor_ptr != nullptr) {
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), elem_cnt * sizeof(bool), cudaMemcpyDeviceToDevice, stream));
       }
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), allocator->getSize(), cudaMemcpyDeviceToDevice, stream));
       break;
     }
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
       auto output_tensor_ptr = output_tensor.GetTensorMutableData<int8_t>();
-      if (output_tensor_ptr == nullptr) {
-        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(int8_t)));
+      if (output_tensor_ptr != nullptr) {
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), elem_cnt * sizeof(int8_t), cudaMemcpyDeviceToDevice, stream));
       }
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), allocator->getSize(), cudaMemcpyDeviceToDevice, stream));
       break;
     }
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
       auto output_tensor_ptr = output_tensor.GetTensorMutableData<uint8_t>();
-      if (output_tensor_ptr == nullptr) {
-        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(uint8_t)));
+      if (output_tensor_ptr != nullptr) {
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), elem_cnt * sizeof(uint8_t), cudaMemcpyDeviceToDevice, stream));
       }
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), allocator->getSize(), cudaMemcpyDeviceToDevice, stream));
       break;
     }
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
       auto output_tensor_ptr = output_tensor.GetTensorMutableData<int32_t>();
-      if (output_tensor_ptr == nullptr) {
-        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(int32_t)));
+      if (output_tensor_ptr != nullptr) {
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), elem_cnt * sizeof(int32_t), cudaMemcpyDeviceToDevice, stream));
       }
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output_tensor_ptr, allocator->getBuffer(), allocator->getSize(), cudaMemcpyDeviceToDevice, stream));
       break;
     }
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
@@ -1121,10 +1142,9 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
         }
       }
       auto output_tensor_ptr = output_tensor.GetTensorMutableData<int64_t>();
-      if (output_tensor_ptr == nullptr) {
-        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(int64_t)));
+      if (output_tensor_ptr != nullptr) {
+        cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(allocator->getBuffer()), reinterpret_cast<int64_t*>(output_tensor_ptr), output_dim_size);
       }
-      cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(allocator->getBuffer()), reinterpret_cast<int64_t*>(output_tensor_ptr), output_dim_size);
       break;
     }
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
@@ -1140,10 +1160,9 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
         }
       }
       auto output_tensor_ptr = output_tensor.GetTensorMutableData<double>();
-      if (output_tensor_ptr == nullptr) {
-        scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(double)));
+      if (output_tensor_ptr != nullptr) {
+        cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(allocator->getBuffer()), reinterpret_cast<double*>(output_tensor_ptr), output_dim_size);
       }
-      cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(allocator->getBuffer()), reinterpret_cast<double*>(output_tensor_ptr), output_dim_size);
       break;
     }
     default: {
