@@ -520,7 +520,7 @@ const createResizeProgramInfo =
         name: 'Resize',
         shaderCache: {
           hint: `${attributes.cacheKey}|${opsetVersion}|${scales.length > 0 ? scales : ''}|${
-              sizes.length > 0 ? sizes : ''}|${noScale}`,
+              sizes.length > 0 ? sizes : ''}|${roi.length > 0 ? roi : ''}|${noScale}`,
           inputDependencies: ['rank']
         },
         getShaderSource,
