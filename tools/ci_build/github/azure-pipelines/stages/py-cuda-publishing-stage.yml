@@ -28,8 +28,6 @@ stages:
     jobs:
       - job:
         pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
-        env:
-          SYSTEM_ACCESSTOKEN: $(System.AccessToken)
         steps:
           - checkout: none
           - script: |
