@@ -98,9 +98,9 @@ stages:
           --pod-version "$(ortPodVersion)" \
           --test \
           --variant ${{ parameters.packageVariant }} \
-          --platform-arch  ${{ parameters.Platform }} ${{ parameters.Arch }} \
           --build-settings-file "${{ variables.buildSettingsFile }}" \
           ${{ variables.optionalIncludeOpsByConfigOption }} \
+          -b="--platform_arch=${{ parameters.Platform }} ${{ parameters.Arch }}" \
           -b="--path_to_protoc_exe=$(Build.BinariesDirectory)/protobuf_install/bin/protoc"
       displayName: "Build macOS/iOS framework and assemble pod package files"
 

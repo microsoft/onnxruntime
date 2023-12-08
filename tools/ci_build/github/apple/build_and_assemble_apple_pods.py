@@ -25,7 +25,7 @@ log = logging.getLogger(SCRIPT_PATH.stem)
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Builds an iOS framework and uses it to assemble iOS pod package files.",
+        description="Builds an iOS/MacOS framework and uses it to assemble apple pod package files.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
@@ -54,15 +54,6 @@ def parse_args():
         choices=PackageVariant.release_variant_names(),
         default=PackageVariant.Mobile.name,
         help="Pod package variant.",
-    )
-
-    parser.add_argument(
-        "--platform-arch",
-        nargs=2,
-        action="append",
-        metavar=("PLATFORM", "ARCH"),
-        help="Specify a platform/arch pair to build. Repeat to specify multiple pairs. "
-        "If no pairs are specified, all default supported pairs will be built.",
     )
 
     parser.add_argument("--test", action="store_true", help="Run tests on the framework and pod package files.")
@@ -107,7 +98,6 @@ def main():
 
     build_dir = args.build_dir.resolve()
     staging_dir = args.staging_dir.resolve()
-    platform_arch = args.platform_arch.resolve()
 
     # build framework
     package_variant = PackageVariant[args.variant]
@@ -127,8 +117,6 @@ def main():
     build_apple_framework_args += [
         "--build_dir",
         str(build_dir),
-        "--platform_arch",
-        platform_arch,
         args.build_settings_file,
     ]
 
@@ -198,5 +186,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
     main()
