@@ -39,7 +39,9 @@ def get_package_name(os, cpu_arch, ep, is_training_package):
 # Currently we take onnxruntime_providers_cuda from CUDA build
 # And onnxruntime, onnxruntime_providers_shared and
 # onnxruntime_providers_tensorrt from tensorrt build
-def is_this_file_needed(ep, filename):
+def is_this_file_needed(ep, filename, package_name):
+    if package_name == "Microsoft.ML.OnnxRuntime.Gpu":
+        return False
     return (ep != "cuda" or "cuda" in filename) and (ep != "tensorrt" or "cuda" not in filename)
 
 
@@ -47,7 +49,7 @@ def is_this_file_needed(ep, filename):
 # ep: cuda, tensorrt, None
 # files_list: a list of xml string pieces to append
 # This function has no return value. It updates files_list directly
-def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs, is_training_package):
+def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs, is_training_package, package_name):
     for child in nuget_artifacts_dir.iterdir():
         if not child.is_dir():
             continue
@@ -57,7 +59,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                 child = child / "lib"  # noqa: PLW2901
                 for child_file in child.iterdir():
                     suffixes = [".dll", ".lib", ".pdb"] if include_pdbs else [".dll", ".lib"]
-                    if child_file.suffix in suffixes and is_this_file_needed(ep, child_file.name):
+                    if child_file.suffix in suffixes and is_this_file_needed(ep, child_file.name, package_name):
                         files_list.append(
                             '<file src="' + str(child_file) + '" target="runtimes/win-%s/native"/>' % cpu_arch
                         )
@@ -83,7 +85,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                 for child_file in child.iterdir():
                     if not child_file.is_file():
                         continue
-                    if child_file.suffix == ".so" and is_this_file_needed(ep, child_file.name):
+                    if child_file.suffix == ".so" and is_this_file_needed(ep, child_file.name, package_name):
                         files_list.append(
                             '<file src="' + str(child_file) + '" target="runtimes/linux-%s/native"/>' % cpu_arch
                         )
@@ -333,6 +335,8 @@ def generate_files(line_list, args):
     ]
     is_mklml_package = args.package_name == "Microsoft.ML.OnnxRuntime.MKLML"
     is_cuda_gpu_package = args.package_name == "Microsoft.ML.OnnxRuntime.Gpu"
+    is_cuda_gpu_win_package = args.package_name == "Microsoft.ML.OnnxRuntime.Gpu-win"
+    is_cuda_gpu_linux_package = args.package_name == "Microsoft.ML.OnnxRuntime.Gpu-Linux"
     is_rocm_gpu_package = args.package_name == "Microsoft.ML.OnnxRuntime.ROCm"
     is_dml_package = args.package_name == "Microsoft.ML.OnnxRuntime.DirectML"
     is_windowsai_package = args.package_name == "Microsoft.AI.MachineLearning"
@@ -398,23 +402,25 @@ def generate_files(line_list, args):
     runtimes = f'{runtimes_target}{args.target_architecture}\\{runtimes_native_folder}"'
 
     # Process headers
+    build_dir = "buildTransitive" if "Microsoft.ML.OnnxRuntime.Gpu" in args.package_name else "build"
+    include_dir = f"{build_dir}\\native\\include"
     files_list.append(
         "<file src="
         + '"'
         + os.path.join(args.sources_path, "include\\onnxruntime\\core\\session\\onnxruntime_*.h")
-        + '" target="build\\native\\include" />'
+        + '" target="' + include_dir + '" />'
     )
     files_list.append(
         "<file src="
         + '"'
         + os.path.join(args.sources_path, "include\\onnxruntime\\core\\framework\\provider_options.h")
-        + '" target="build\\native\\include" />'
+        + '" target="' + include_dir + '" />'
     )
     files_list.append(
         "<file src="
         + '"'
         + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\cpu\\cpu_provider_factory.h")
-        + '" target="build\\native\\include" />'
+        + '" target="' + include_dir + '" />'
     )
 
     if is_training_package:
@@ -547,7 +553,7 @@ def generate_files(line_list, args):
             else:
                 ep_list = [None]
             for ep in ep_list:
-                generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs, is_training_package)
+                generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs, is_training_package, args.package_name)
             is_ado_packaging_build = True
         else:
             # Code path for local dev build
@@ -741,7 +747,8 @@ def generate_files(line_list, args):
                         + '\\native" />'
                     )
 
-    if args.execution_provider == "cuda" or is_cuda_gpu_package and not is_ado_packaging_build:
+    if args.execution_provider == "cuda" or is_cuda_gpu_win_package and not is_ado_packaging_build:
+        print(f"is_cuda_gpu_win_package is {is_cuda_gpu_win_package}")
         files_list.append(
             "<file src="
             + '"'
@@ -847,7 +854,7 @@ def generate_files(line_list, args):
         windowsai_rules = "Microsoft.AI.MachineLearning.Rules.Project.xml"
         windowsai_native_rules = os.path.join(args.sources_path, "csharp", "src", windowsai_src, windowsai_rules)
         windowsai_native_targets = os.path.join(args.sources_path, "csharp", "src", windowsai_src, windowsai_targets)
-        build = "build\\native"
+        build = f"{build_dir}\\native"
         files_list.append("<file src=" + '"' + windowsai_native_props + '" target="' + build + '" />')
         # Process native targets
         files_list.append("<file src=" + '"' + windowsai_native_targets + '" target="' + build + '" />')
@@ -886,9 +893,10 @@ def generate_files(line_list, args):
             args.package_name + ".props",
         )
         os.system(copy_command + " " + source_props + " " + target_props)
-        files_list.append("<file src=" + '"' + target_props + '" target="build\\native" />')
+        files_list.append("<file src=" + '"' + target_props + '" target="' + build_dir + '\\native" +  />')
         if not is_snpe_package and not is_qnn_package:
-            files_list.append("<file src=" + '"' + target_props + '" target="build\\netstandard2.0" />')
+            files_list.append("<file src=" + '"' + target_props + '" target="' + build_dir + '\\netstandard2.0" +  />')
+            files_list.append("<file src=" + '"' + target_props + '" target="' + build_dir + '\\netstandard2.1" +  />')
 
         # Process targets file
         source_targets = os.path.join(
@@ -904,9 +912,10 @@ def generate_files(line_list, args):
             args.package_name + ".targets",
         )
         os.system(copy_command + " " + source_targets + " " + target_targets)
-        files_list.append("<file src=" + '"' + target_targets + '" target="build\\native" />')
+        files_list.append("<file src=" + '"' + target_targets + '" target="' + build_dir + '\\native" +  />')
         if not is_snpe_package and not is_qnn_package:
-            files_list.append("<file src=" + '"' + target_targets + '" target="build\\netstandard2.0" />')
+            files_list.append("<file src=" + '"' + target_targets + '" target="' + build_dir + '\\netstandard2.0" +  />')
+            files_list.append("<file src=" + '"' + target_targets + '" target="' + build_dir + '\\netstandard2.1" +  />')
 
         # Process xamarin targets files
         if args.package_name == "Microsoft.ML.OnnxRuntime":
