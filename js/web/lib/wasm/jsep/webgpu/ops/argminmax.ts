@@ -37,9 +37,9 @@ export const argMin = (context: ComputeContext, attributes: ArgMinMaxAttributes)
       }
     }
     return [
-      `${idxZero.join('\n')}`, `var value = ${input.getByOffset('input_offset')};\nvar best_index : i32 = 0;`,
-      `if (${input.getByOffset('input_offset')} ${attributes.selectLastIndex > 0 ? '<=' : '<'} value) {
-         value = ${input.getByOffset('input_offset')};
+      `${idxZero.join('\n')}`, `var value = ${input.getByIndices('input_indices')};\nvar best_index : i32 = 0;`,
+      `if (${input.getByIndices('input_indices')} ${attributes.selectLastIndex > 0 ? '<=' : '<'} value) {
+         value = ${input.getByIndices('input_indices')};
          best_index = i32(last_index);
        }`,
       '', output.setByOffset('global_idx', 'best_index')
@@ -63,9 +63,9 @@ export const argMax = (context: ComputeContext, attributes: ArgMinMaxAttributes)
       }
     }
     return [
-      `${idxZero.join('\n')}`, `var value = ${input.getByOffset('input_offset')};\nvar best_index : i32 = 0;`,
-      `if (${input.getByOffset('input_offset')} ${attributes.selectLastIndex > 0 ? '>=' : '>'} value) {
-         value = ${input.getByOffset('input_offset')};
+      `${idxZero.join('\n')}`, `var value = ${input.getByIndices('input_indices')};\nvar best_index : i32 = 0;`,
+      `if (${input.getByIndices('input_indices')} ${attributes.selectLastIndex > 0 ? '>=' : '>'} value) {
+         value = ${input.getByIndices('input_indices')};
          best_index = i32(last_index);
        }`,
       '', output.setByOffset('global_idx', 'best_index')

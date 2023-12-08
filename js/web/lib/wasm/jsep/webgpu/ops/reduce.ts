@@ -30,7 +30,7 @@ export type ReduceOp =
     (input: IndicesHelper, output: IndicesHelper,
      axes: readonly number[]) => [string, string, string, string, ...string[]];
 
-const noOp: ReduceOp = (input) => ['', '', `var value = ${input.getByOffset('input_offset')};`, ''];
+const noOp: ReduceOp = (input) => ['', '', `var value = ${input.getByIndices('input_indices')};`, ''];
 export const createReduceProgramInfo =
     (name: string, shaderCache: ProgramShaderCacheInfo, inputs: readonly TensorView[], reduceOp: ReduceOp,
      axesInput: number[], outputDataType: DataType, keepDims = false, noopWithEmptyAxes = false): ProgramInfo => {
@@ -56,11 +56,7 @@ export const createReduceProgramInfo =
         const input = inputVariable('_A', inputs[0].dataType, inputRank);
         const output = outputVariable('output', outputDataType, outputRank);
         const ops = reduceOp(input, output, axes);
-        const inputOffsetAssignment = `input_offset = ${input.indicesToOffset('input_indices')};`;
-        const initinputOffsetLet = `let ${inputOffsetAssignment};`;
-        const initinputOffsetVar = `var ${inputOffsetAssignment};`;
-        const initinputOffset = (ops[1] === '') ? '' : initinputOffsetVar;
-        let reduceOps = ((ops[1] === '') ? initinputOffsetLet : inputOffsetAssignment) + '\n' + ops[2];
+        let reduceOps = ops[2];
 
         for (let k = 0, l = 0; k < inputRank; k++) {
           // if this axis is reduced
@@ -90,7 +86,6 @@ export const createReduceProgramInfo =
 
           ${idxCopy.join('\n')}
           ${ops[0]}       // init ops for reduce max/min
-          ${initinputOffset}
           ${ops[1]}
           ${reduceOps}
           ${ops[3]}
@@ -143,7 +138,7 @@ const reduceLogSumNaive = (context: ComputeContext, attributes: ReduceAttributes
   const reduceOp: ReduceOp = (input, output) =>
       [`var value = ${output.type.storage}(0);`,
        '',
-       `value += ${input.getByOffset('input_offset')};`,
+       `value += ${input.getByIndices('input_indices')};`,
        'value = log(value);',
   ];
   runReduceProgram(context, 'ReduceLogSum', attributes, reduceOp);
@@ -154,7 +149,7 @@ const reduceL1Naive = (context: ComputeContext, attributes: ReduceAttributes): v
   const reduceOp: ReduceOp = (input, output) =>
       [`var value = ${output.type.storage}(0);`,
        '',
-       `value += abs(${input.getByOffset('input_offset')});`,
+       `value += abs(${input.getByIndices('input_indices')});`,
        '',
   ];
   runReduceProgram(context, 'ReduceL1', attributes, reduceOp);
@@ -165,7 +160,7 @@ const reduceL2Naive = (context: ComputeContext, attributes: ReduceAttributes): v
   const reduceOp: ReduceOp = (input, output) =>
       [`var t = ${output.type.value}(0); var value = ${output.type.value}(0);`,
        '',
-       `t = ${input.getByOffset('input_offset')}; value += (t * t);`,
+       `t = ${input.getByIndices('input_indices')}; value += (t * t);`,
        'value = sqrt(value);',
   ];
   runReduceProgram(context, 'ReduceL2', attributes, reduceOp);
@@ -176,7 +171,7 @@ const reduceLogSumExpNaive = (context: ComputeContext, attributes: ReduceAttribu
   const reduceOp: ReduceOp = (input, output) =>
       [`var value = ${output.type.storage}(0);`,
        '',
-       `value += exp(${input.getByOffset('input_offset')});`,
+       `value += exp(${input.getByIndices('input_indices')});`,
        'value = log(value);',
   ];
   runReduceProgram(context, 'ReduceLogSumExp', attributes, reduceOp);
@@ -194,8 +189,8 @@ const reduceMaxNaive = (context: ComputeContext, attributes: ReduceAttributes): 
 
     return [
       `${idxZero.join('\n')}`,
-      `var value = ${input.getByOffset('input_offset')};`,
-      `value = max(value, ${input.getByOffset('input_offset')});`,
+      `var value = ${input.getByIndices('input_indices')};`,
+      `value = max(value, ${input.getByIndices('input_indices')});`,
       '',
     ];
   };
@@ -216,7 +211,7 @@ const reduceMeanNaive = (context: ComputeContext, attributes: ReduceAttributes):
     return [
       'var sum = f32(0);',
       '',
-      `sum += f32(${input.getByOffset('input_offset')});`,
+      `sum += f32(${input.getByIndices('input_indices')});`,
       `let value = ${output.type.value}(sum / ${size});`,
     ];
   };
@@ -235,8 +230,8 @@ const reduceMinNaive = (context: ComputeContext, attributes: ReduceAttributes): 
 
     return [
       `${idxZero.join('\n')}`,
-      `var value = ${input.getByOffset('input_offset')};`,
-      `value = min(value, ${input.getByOffset('input_offset')});`,
+      `var value = ${input.getByIndices('input_indices')};`,
+      `value = min(value, ${input.getByIndices('input_indices')});`,
       '',
     ];
   };
@@ -248,7 +243,7 @@ const reduceProdNaive = (context: ComputeContext, attributes: ReduceAttributes):
   const reduceOp: ReduceOp = (input, output) =>
       [`var value = ${output.type.storage}(1);`,
        '',
-       `value *= ${input.getByOffset('input_offset')};`,
+       `value *= ${input.getByIndices('input_indices')};`,
        '',
   ];
   runReduceProgram(context, 'ReduceProd', attributes, reduceOp);
@@ -259,7 +254,7 @@ const reduceSumNaive = (context: ComputeContext, attributes: ReduceAttributes): 
   const reduceOp: ReduceOp = (input, output) =>
       [`var value = ${output.type.storage}(0);`,
        '',
-       `value += ${input.getByOffset('input_offset')};`,
+       `value += ${input.getByIndices('input_indices')};`,
        '',
   ];
   runReduceProgram(context, 'ReduceSum', attributes, reduceOp);
@@ -270,7 +265,7 @@ const reduceSumSquareNaive = (context: ComputeContext, attributes: ReduceAttribu
   const reduceOp: ReduceOp = (input, output) =>
       [`var t = ${output.type.value}(0); var value = ${output.type.value}(0);`,
        '',
-       `t = ${input.getByOffset('input_offset')}; value += t * t;`,
+       `t = ${input.getByIndices('input_indices')}; value += t * t;`,
        '',
   ];
   runReduceProgram(context, 'ReduceSumSquare', attributes, reduceOp);
