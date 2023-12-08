@@ -17,7 +17,10 @@ stages:
 #    ${{ if ne(parameters.depends_on, 'none') }}:
 #      dependsOn: [ ${{ parameters.depends_on }} ]
 #    ${{ else }}:
-#      dependsOn: [ ]
+#      dependsOn:
+#        - Linux_Packaging_combined_GPU
+    variables:
+      repository-url: https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-12-nightly/pypi/upload/
     jobs:
       - job:
         pool: 'onnxruntime-Win-CPU-2022'
@@ -48,7 +51,7 @@ stages:
             displayName: 'Twine Authenticate '
             inputs:
               artifactFeed: PublicPackages/${{ parameters.artifact_feed }}
-          - script: 'python -m twine upload -r ${{ parameters.artifact_feed }} onnxruntime-gpu/*.whl'
+          - script: 'python -m twine upload -r ${{ parameters.artifact_feed }} --repository-url $(repository-url) onnxruntime-gpu/*.whl'
             workingDirectory: '$(Build.SourcesDirectory)'
             displayName: 'Uploading wheels to ${{ parameters.artifact_feed }}'
             retryCountOnTaskFailure: 3

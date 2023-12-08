@@ -37,7 +37,4 @@ stages:
       enable_windows_gpu: ${{ parameters.enable_windows_gpu }}
       cmake_build_type: ${{ parameters.cmake_build_type }}
       cuda_version: ${{ parameters.cuda_version }}
-  - template: stages/py-cuda-publishing-stage.yml
-    parameters:
-      nightly: $(NIGHTLY_BUILD)
 
