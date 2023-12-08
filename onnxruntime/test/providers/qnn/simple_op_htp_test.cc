@@ -93,6 +93,22 @@ TEST_F(QnnCPUBackendTests, DISABLED_SpaceToDepth_Flaky2) {
   }
 }
 
+// Test f32 Relu on the CPU backend.
+// TODO: When this is fixed, enable ActivationOpTest.Relu test in cpu/activation/activation_op_test tests.
+// Disabled because QNN SDK 2.17 Relu treats inf as FLT_MAX.
+// Log: the value pair (inf, 3.40282347e+38) at index #12 don't match
+TEST_F(QnnCPUBackendTests, DISABLED_UnaryOp_Relu) {
+  std::vector<float> input_data{-1.0f, 0, 1.0f,
+                                100.0f, -100.0f, 1000.0f, -1000.0f,
+                                FLT_MIN, FLT_MIN / 10, -FLT_MIN / 10,
+                                FLT_MAX, -FLT_MAX, std::numeric_limits<float>::infinity()};
+  RunOpTestOnCPU("Relu",
+                 {TestInputDef<float>({13}, false, input_data)},
+                 {},
+                 14,
+                 ExpectedEPNodeAssignment::All);
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Tests the accuracy of a QDQ model on QNN EP by comparing to CPU EP, which runs both the fp32 model
@@ -105,7 +121,7 @@ static void RunQDQOpTest(const std::string& op_type,
                          ExpectedEPNodeAssignment expected_ep_assignment,
                          const std::string& op_domain = kOnnxDomain,
                          bool use_contrib_qdq = false,
-                         float fp32_abs_err = 1e-4f) {
+                         QDQTolerance tolerance = QDQTolerance()) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -118,7 +134,7 @@ static void RunQDQOpTest(const std::string& op_type,
                        provider_options,
                        opset_version,
                        expected_ep_assignment,
-                       fp32_abs_err);
+                       tolerance);
 }
 
 // Runs a non-QDQ model on HTP and compares output to CPU EP.
@@ -208,8 +224,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Gelu_U16) {
                          11,
                          ExpectedEPNodeAssignment::All,
                          kMSDomain,  // GeLu is a contrib op.
-                         true,       // Use MS domain Q/DQ ops.
-                         0.0025f);   // TODO(adrianlizarraga): Accuracy
+                         true);      // Use MS domain Q/DQ ops.
 }
 
 // Check that QNN compiles DQ -> Elu -> Q as a single unit.
@@ -280,8 +295,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_HardSwish_U16) {
                          14,
                          ExpectedEPNodeAssignment::All,
                          kOnnxDomain,
-                         true,
-                         0.001f);  // TODO(adrianlizarraga): Remove additional tolerance needed for inaccuracy
+                         true);
 }
 
 // Check that QNN compiles DQ -> Atan -> Q as a single unit.
@@ -308,8 +322,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Atan_U16) {
                          14,
                          ExpectedEPNodeAssignment::All,
                          kOnnxDomain,  // Atan domain
-                         true,         // Q/DQ op domain is com.microsoft
-                         1.8e-4f);
+                         true);        // Q/DQ op domain is com.microsoft
 }
 
 // Check that QNN compiles DQ -> Asin -> Q as a single unit.
@@ -751,7 +764,7 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCacheEmbedModeTest) {
                        provider_options,
                        14,
                        ExpectedEPNodeAssignment::All,
-                       1e-4f,
+                       QDQTolerance(),
                        logging::Severity::kERROR,
                        context_binary_file);
 }
@@ -801,7 +814,7 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCacheNonEmbedModeTest) {
                        provider_options,
                        14,
                        ExpectedEPNodeAssignment::All,
-                       1e-4f,
+                       QDQTolerance(),
                        logging::Severity::kERROR,
                        context_binary_file);
 }
@@ -905,7 +918,7 @@ TEST_F(QnnHTPBackendTests, ContextBinary2InputsTest) {
                        provider_options,
                        14,
                        ExpectedEPNodeAssignment::All,
-                       1e-4f,
+                       QDQTolerance(),
                        logging::Severity::kERROR,
                        context_binary_file);
 }
@@ -1147,7 +1160,7 @@ TEST_F(QnnHTPBackendTests, BinaryOp_HTP_Or_Unsupported) {
                    TestInputDef<bool>({1, 4}, false, {false, true, false, true})},
                   {},
                   17,
-                  ExpectedEPNodeAssignment::None);
+                  ExpectedEPNodeAssignment::All);
 }
 
 // Test 8-bit QDQ GridSample with bilinear

@@ -1599,14 +1599,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs (1 - &#8734;)
 
 <dl>
-<dt><tt>inputs</tt> (variadic) : T</dt>
+<dt><tt>inputs</tt> (variadic, heterogeneous) : T</dt>
 <dd>List of tensors for inputs</dd>
 </dl>
 
 #### Outputs (1 - &#8734;)
 
 <dl>
-<dt><tt>outputs</tt> (variadic) : T</dt>
+<dt><tt>outputs</tt> (variadic, heterogeneous) : T</dt>
 <dd>One or more outputs, list of tensors for outputs</dd>
 </dl>
 
