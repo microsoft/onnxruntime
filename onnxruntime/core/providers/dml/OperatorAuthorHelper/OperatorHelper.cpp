@@ -265,8 +265,9 @@ namespace OperatorHelper
 
         for (T dim : inputDimensions)
         {
-            outputDimensions.push_back(gsl::narrow_cast<uint32_t>(std::clamp<T>(dim,
-                std::numeric_limits<T>::min(), std::numeric_limits<T>::max())));
+            ML_CHECK_VALID_ARGUMENT(dim >= std::numeric_limits<DimensionType>::min());
+            ML_CHECK_VALID_ARGUMENT(dim < std::numeric_limits<DimensionType>::max());
+            outputDimensions.push_back(gsl::narrow_cast<DimensionType>(dim));
         }
     }
 
