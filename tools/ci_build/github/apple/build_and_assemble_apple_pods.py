@@ -56,6 +56,15 @@ def parse_args():
         help="Pod package variant.",
     )
 
+    parser.add_argument(
+        "--platform-arch",
+        nargs=2,
+        action="append",
+        metavar=("PLATFORM", "ARCH"),
+        help="Specify a platform/arch pair to build. Repeat to specify multiple pairs. "
+        "If no pairs are specified, all default supported pairs will be built.",
+    )
+
     parser.add_argument("--test", action="store_true", help="Run tests on the framework and pod package files.")
 
     build_framework_group = parser.add_argument_group(
@@ -98,6 +107,7 @@ def main():
 
     build_dir = args.build_dir.resolve()
     staging_dir = args.staging_dir.resolve()
+    platform_arch = args.platform_arch.resolve()
 
     # build framework
     package_variant = PackageVariant[args.variant]
@@ -114,7 +124,13 @@ def main():
     if args.include_ops_by_config is not None:
         build_apple_framework_args += ["--include_ops_by_config", args.include_ops_by_config]
 
-    build_apple_framework_args += ["--build_dir", str(build_dir), args.build_settings_file]
+    build_apple_framework_args += [
+        "--build_dir",
+        str(build_dir),
+        "--platform_arch",
+        platform_arch,
+        args.build_settings_file,
+    ]
 
     run(build_apple_framework_args)
 
@@ -182,4 +198,5 @@ def main():
 
 
 if __name__ == "__main__":
+    main()
     main()

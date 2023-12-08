@@ -28,8 +28,6 @@ def _parse_build_settings(args):
 
     build_settings = {}
 
-    build_settings["build_osx_archs"] = build_settings_data.get("build_osx_archs", DEFAULT_BUILD_OSX_ARCHS)
-
     if "build_params" in build_settings_data:
         build_settings["build_params"] = build_settings_data["build_params"]
     else:
@@ -38,10 +36,10 @@ def _parse_build_settings(args):
     return build_settings
 
 
-# Build fat framework for all archs of a single sysroot
+# Build fat framework for all archs of a specified platform
 # For example, arm64 and x86_64 for iphonesimulator
-def _build_for_apple_sysroot(
-    build_config, intermediates_dir, base_build_command, sysroot, archs, build_dynamic_framework
+def _build_for_apple_platform_and_arch(
+    build_config, intermediates_dir, base_build_command, platform, archs, build_dynamic_framework
 ):
     # paths of the onnxruntime libraries for different archs
     ort_libs = []
@@ -49,10 +47,10 @@ def _build_for_apple_sysroot(
 
     # Build binary for each arch, one by one
     for current_arch in archs:
-        build_dir_current_arch = os.path.join(intermediates_dir, sysroot + "_" + current_arch)
+        build_dir_current_arch = os.path.join(intermediates_dir, platform + "_" + current_arch)
         build_command = [
             *base_build_command,
-            "--apple_sysroot=" + sysroot,
+            "--apple_sysroot=" + platform,
             "--osx_arch=" + current_arch,
             "--build_dir=" + build_dir_current_arch,
         ]
@@ -64,7 +62,7 @@ def _build_for_apple_sysroot(
         framework_dir = os.path.join(
             build_dir_current_arch,
             build_config,
-            build_config + "-" + sysroot,
+            build_config + "-" + platform,
             "onnxruntime.framework"
             if build_dynamic_framework
             else os.path.join("static_framework", "onnxruntime.framework"),
@@ -78,7 +76,7 @@ def _build_for_apple_sysroot(
             headers = glob.glob(os.path.join(framework_dir, "Headers", "*.h"))
 
     # manually create the fat framework
-    framework_dir = os.path.join(intermediates_dir, "frameworks", sysroot, "onnxruntime.framework")
+    framework_dir = os.path.join(intermediates_dir, "frameworks", platform, "onnxruntime.framework")
     # remove the existing framework if any
     if os.path.exists(framework_dir):
         shutil.rmtree(framework_dir)
@@ -119,19 +117,27 @@ def _build_package(args):
     build_settings = _parse_build_settings(args)
     build_dir = os.path.abspath(args.build_dir)
 
+    platform_archs = args.platform_archs
+
+    assert len(platform_archs) > 0, "no platforms specified"
+
+    for platform, archs in platform_archs.items():
+        assert len(archs) > 0, f"no arch specified for platform {platform}"
+
     # Temp dirs to hold building results
     intermediates_dir = os.path.join(build_dir, "intermediates")
     build_config = args.config
 
-    # build framework for individual sysroot
+    # build framework for individual platform
     framework_dirs = []
     framework_info_files_to_merge = []
     public_headers_path = ""
-    for sysroot in build_settings["build_osx_archs"]:
+
+    for platform in platform_archs.keys():
         base_build_command = (
             [sys.executable, BUILD_PY]
             + build_settings["build_params"]["base"]
-            + build_settings["build_params"][sysroot]
+            + build_settings["build_params"][platform]
             + ["--config=" + build_config]
         )
 
@@ -141,12 +147,12 @@ def _build_package(args):
         if args.path_to_protoc_exe is not None:
             base_build_command += ["--path_to_protoc_exe=" + str(args.path_to_protoc_exe.resolve())]
 
-        framework_dir = _build_for_apple_sysroot(
+        framework_dir = _build_for_apple_platform_and_arch(
             build_config,
             intermediates_dir,
             base_build_command,
-            sysroot,
-            build_settings["build_osx_archs"][sysroot],
+            platform,
+            platform_archs[platform],
             args.build_dynamic_framework,
         )
         framework_dirs.append(framework_dir)
@@ -154,7 +160,7 @@ def _build_package(args):
         curr_framework_info_path = os.path.join(os.path.dirname(framework_dir), "framework_info.json")
         framework_info_files_to_merge.append(curr_framework_info_path)
 
-        # headers for each sysroot are the same, pick one of them
+        # headers for each platform are the same, pick one of them
         if not public_headers_path:
             public_headers_path = os.path.join(os.path.dirname(framework_dir), "onnxruntime.framework", "Headers")
 
@@ -203,6 +209,16 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--platform_arch",
+        nargs=2,
+        action="append",
+        metavar=("PLATFORM", "ARCH"),
+        dest="platform_archs",
+        help="Specify a platform/arch pair to build. Repeat to specify multiple pairs. "
+        "If no pairs are specified, all supported pairs will be built.",
+    )
+
+    parser.add_argument(
         "--config",
         type=str,
         default="Release",
@@ -231,6 +247,29 @@ def parse_args():
         include_ops_by_config_file = args.include_ops_by_config.resolve()
         if not include_ops_by_config_file.is_file():
             raise FileNotFoundError(f"Include ops config file {include_ops_by_config_file} is not a file.")
+
+    # convert from [[platform1, arch1], [platform1, arch2], ...] to {platform1: [arch1, arch2, ...], ...}
+    def platform_archs_from_args(platform_archs_arg: list[list[str]] | None) -> dict[str, list[str]]:
+        if not platform_archs_arg:
+            return DEFAULT_BUILD_OSX_ARCHS.copy()
+
+        platform_archs = {}
+        for platform, arch in platform_archs_arg:
+            assert (
+                platform in DEFAULT_BUILD_OSX_ARCHS.keys()
+            ), f"Unsupported platform: '{platform}'. Valid values are {list(DEFAULT_BUILD_OSX_ARCHS.keys())}"
+            assert arch in DEFAULT_BUILD_OSX_ARCHS[platform], (
+                f"Unsupported arch for platform '{platform}': '{arch}'. "
+                f"Valid values are {DEFAULT_BUILD_OSX_ARCHS[platform]}"
+            )
+
+            archs = platform_archs.setdefault(platform, [])
+            if arch not in archs:
+                archs.append(arch)
+
+        return platform_archs
+
+    args.platform_archs = platform_archs_from_args(args.platform_archs)
 
     return args
 

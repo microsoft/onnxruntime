@@ -92,11 +92,77 @@ stages:
 - template: templates/stages/mac-ios-packaging-build-stage.yml
   parameters:
     packageVariant: Mobile
+    Platform: 'iphoneos'
+    Arch: 'arm64'
+
+- template: templates/stages/mac-ios-packaging-build-stage.yml
+  parameters:
+    packageVariant: Mobile
+    Platform: 'iphonesimulator'
+    Arch: 'x86_64'
+
+- template: templates/stages/mac-ios-packaging-build-stage.yml
+  parameters:
+    packageVariant: Mobile
+    Platform: 'iphonesimulator'
+    Arch: 'arm64'
 
 - template: templates/stages/mac-ios-packaging-build-stage.yml
   parameters:
     packageVariant: Full
+    Platform: 'iphoneos'
+    Arch: 'arm64'
+
+- template: templates/stages/mac-ios-packaging-build-stage.yml
+  parameters:
+    packageVariant: Full
+    Platform: 'iphonesimulator'
+    Arch: 'x86_64'
+
+- template: templates/stages/mac-ios-packaging-build-stage.yml
+  parameters:
+    packageVariant: Full
+    Platform: 'iphonesimulator'
+    Arch: 'arm64'
+
+- template: templates/stages/mac-ios-packaging-build-stage.yml
+  parameters:
+    packageVariant: Full
+    Platform: 'macosx'
+    Arch: 'x86_64'
+
+- template: templates/stages/mac-ios-packaging-build-stage.yml
+  parameters:
+    packageVariant: Full
+    Platform: 'macosx'
+    Arch: 'arm64'
 
 - template: templates/stages/mac-ios-packaging-build-stage.yml
   parameters:
     packageVariant: Training
+    Platform: 'iphoneos'
+    Arch: 'arm64'
+
+- template: templates/stages/mac-ios-packaging-build-stage.yml
+  parameters:
+    packageVariant: Training
+    Platform: 'iphonesimulator'
+    Arch: 'x86_64'
+
+- template: templates/stages/mac-ios-packaging-build-stage.yml
+  parameters:
+    packageVariant: Training
+    Platform: 'iphonesimulator'
+    Arch: 'arm64'
+
+- template: templates/stages/mac-ios-packaging-build-stage.yml
+  parameters:
+    packageVariant: Training
+    Platform: 'macosx'
+    Arch: 'x86_64'
+
+- template: templates/stages/mac-ios-packaging-build-stage.yml
+  parameters:
+    packageVariant: Training
+    Platform: 'macosx'
+    Arch: 'arm64'

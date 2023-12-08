@@ -6,8 +6,16 @@ parameters:
   - Full
   - Training
 
+- name: Platform
+  displayName: Apple Platform
+  type: string
+
+- name: Arch
+  displayName: Arch
+  type: string
+
 stages:
-- stage: IosPackaging_Build_${{ parameters.packageVariant }}
+- stage: IosPackaging_Build_${{ parameters.packageVariant }}_${{ parameters.Platform }}_${{ parameters.Arch }}
   dependsOn:
   - IosPackaging_SetCommonVariables
 
@@ -34,7 +42,7 @@ stages:
         objcPodName: onnxruntime-objc
 
       ${{ if eq(parameters.packageVariant, 'Training') }}:
-        buildSettingsFile: "tools/ci_build/github/apple/default_training_ios_framework_build_settings.json"
+        buildSettingsFile: "tools/ci_build/github/apple/default_training_apple_framework_build_settings.json"
         cPodName: onnxruntime-training-c
         objcPodName: onnxruntime-training-objc
 
@@ -90,6 +98,7 @@ stages:
           --pod-version "$(ortPodVersion)" \
           --test \
           --variant ${{ parameters.packageVariant }} \
+          --platform-arch  ${{ parameters.Platform }} ${{ parameters.Arch }} \
           --build-settings-file "${{ variables.buildSettingsFile }}" \
           ${{ variables.optionalIncludeOpsByConfigOption }} \
           -b="--path_to_protoc_exe=$(Build.BinariesDirectory)/protobuf_install/bin/protoc"
