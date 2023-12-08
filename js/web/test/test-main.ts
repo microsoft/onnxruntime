@@ -56,7 +56,7 @@ if (options.globalEnvFlags) {
     ort.env.wasm.initTimeout = flags.wasm.initTimeout;
   }
   if (flags.webgpu?.profilingMode !== undefined) {
-    ort.env.webgpu.profilingMode = flags.webgpu.profilingMode;
+    ort.env.webgpu.profiling = {mode: flags.webgpu.profilingMode};
   }
   if (flags.webgpu?.validateInputContent !== undefined) {
     ort.env.webgpu.validateInputContent = flags.webgpu.validateInputContent;

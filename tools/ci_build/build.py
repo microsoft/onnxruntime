@@ -346,6 +346,11 @@ def parse_arguments():
         help="[cross-compiling] Create ARM64EC makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed",
     )
+    parser.add_argument(
+        "--buildasx",
+        action="store_true",
+        help="[cross-compiling] Create ARM64X Binary.",
+    )
     parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
     parser.add_argument("--windows_sdk_version", help="Windows SDK version to use. e.g. 10.0.19041.0")
     parser.add_argument("--android", action="store_true", help="Build for Android")
@@ -499,6 +504,15 @@ def parse_arguments():
         const="CPU_FP32",
         type=_openvino_verify_device_type,
         help="Build with OpenVINO for specific hardware.",
+    )
+    parser.add_argument(
+        "--dnnl_aarch64_runtime", action="store", default="", type=str.lower, help="e.g. --dnnl_aarch64_runtime acl"
+    )
+    parser.add_argument(
+        "--dnnl_acl_root",
+        action="store",
+        default="",
+        help='Path to ACL ROOT DIR. e.g. --dnnl_acl_root "$HOME/ComputeLibrary/"',
     )
     parser.add_argument("--use_coreml", action="store_true", help="Build with CoreML support.")
     parser.add_argument("--use_webnn", action="store_true", help="Build with WebNN support.")
@@ -1087,6 +1101,8 @@ def generate_build_tree(
     if args.use_dnnl:
         cmake_args.append("-Donnxruntime_DNNL_GPU_RUNTIME=" + args.dnnl_gpu_runtime)
         cmake_args.append("-Donnxruntime_DNNL_OPENCL_ROOT=" + args.dnnl_opencl_root)
+        cmake_args.append("-Donnxruntime_DNNL_AARCH64_RUNTIME=" + args.dnnl_aarch64_runtime)
+        cmake_args.append("-Donnxruntime_DNNL_ACL_ROOT=" + args.dnnl_acl_root)
     if args.build_wasm:
         cmake_args.append("-Donnxruntime_ENABLE_WEBASSEMBLY_SIMD=" + ("ON" if args.enable_wasm_simd else "OFF"))
     if args.use_migraphx:
@@ -2506,8 +2522,12 @@ def main():
                     cmake_extra_args = ["-A", "ARM"]
                 elif args.arm64:
                     cmake_extra_args = ["-A", "ARM64"]
+                    if args.buildasx:
+                        cmake_extra_args += ["-D", "BUILD_AS_ARM64X=ARM64"]
                 elif args.arm64ec:
                     cmake_extra_args = ["-A", "ARM64EC"]
+                    if args.buildasx:
+                        cmake_extra_args += ["-D", "BUILD_AS_ARM64X=ARM64EC"]
                 cmake_extra_args += ["-G", args.cmake_generator]
                 # Cannot test on host build machine for cross-compiled
                 # builds (Override any user-defined behaviour for test if any)
@@ -2542,6 +2562,7 @@ def main():
                 cmake_extra_args = ["-A", target_arch, "-T", toolset, "-G", args.cmake_generator]
             if args.enable_wcos:
                 cmake_extra_defines.append("CMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake")
+
         elif args.cmake_generator is not None:
             cmake_extra_args += ["-G", args.cmake_generator]
 

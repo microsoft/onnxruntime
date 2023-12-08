@@ -18,16 +18,35 @@ const noBackendErrMsg: string = 'Training backend could not be resolved. ' +
     'Make sure you\'re using the correct configuration & WebAssembly files.';
 
 export class TrainingSession implements TrainingSessionInterface {
-  private constructor(handler: TrainingSessionHandler) {
+  private constructor(handler: TrainingSessionHandler, hasOptimizerModel: boolean, hasEvalModel: boolean) {
     this.handler = handler;
+    this.hasOptimizerModel = hasOptimizerModel;
+    this.hasEvalModel = hasEvalModel;
   }
   private handler: TrainingSessionHandler;
+  private hasOptimizerModel: boolean;
+  private hasEvalModel: boolean;
 
-  get inputNames(): readonly string[] {
+  get trainingInputNames(): readonly string[] {
     return this.handler.inputNames;
   }
-  get outputNames(): readonly string[] {
+  get trainingOutputNames(): readonly string[] {
     return this.handler.outputNames;
+  }
+
+  get evalInputNames(): readonly string[] {
+    if (this.hasEvalModel) {
+      return this.handler.evalInputNames;
+    } else {
+      throw new Error('This training session has no evalModel loaded.');
+    }
+  }
+  get evalOutputNames(): readonly string[] {
+    if (this.hasEvalModel) {
+      return this.handler.evalOutputNames;
+    } else {
+      throw new Error('This training session has no evalModel loaded.');
+    }
   }
 
   static async create(trainingOptions: TrainingSessionCreateOptions, sessionOptions?: SessionOptions):
@@ -43,7 +62,7 @@ export class TrainingSession implements TrainingSessionInterface {
     if (backend.createTrainingSessionHandler) {
       const handler = await backend.createTrainingSessionHandler(
           trainingOptions.checkpointState, trainingOptions.trainModel, evalModel, optimizerModel, options);
-      return new TrainingSession(handler);
+      return new TrainingSession(handler, !!trainingOptions.optimizerModel, !!trainingOptions.evalModel);
     } else {
       throw new Error(noBackendErrMsg);
     }
@@ -53,13 +72,18 @@ export class TrainingSession implements TrainingSessionInterface {
    * Helper function for runTrainStep and future runStep methods that handles the type-narrowing conversion from
    * the given parameters to SessionHandler.FetchesType and RunOptions.
    *
+   * @param inputNames the feeds object is checked that they contain all input names in the provided list of input
+   * names.
+   * @param outputNames the fetches object is checked that their keys match up with valid names in the list of output
+   * names.
    * @param feeds the required input
    * @param arg1 narrowed & converted into the SessionHandler.FetchesType or RunOptions object
    * @param arg2 optional RunOptions object.
    * @returns
    */
-  typeNarrowingForRunStep(feeds: FeedsType, arg1?: FetchesType|RunOptions, arg2?: RunOptions):
-      [SessionHandler.FetchesType, RunOptions] {
+  typeNarrowingForRunStep(
+      inputNames: readonly string[], outputNames: readonly string[], feeds: FeedsType, arg1?: FetchesType|RunOptions,
+      arg2?: RunOptions): [SessionHandler.FetchesType, RunOptions] {
     const fetches: {[name: string]: OnnxValue|null} = {};
     let options: RunOptions = {};
     // check inputs
@@ -88,7 +112,7 @@ export class TrainingSession implements TrainingSessionInterface {
           if (typeof name !== 'string') {
             throw new TypeError('\'fetches\' must be a string array or an object.');
           }
-          if (this.outputNames.indexOf(name) === -1) {
+          if (outputNames.indexOf(name) === -1) {
             throw new RangeError(`'fetches' contains invalid output name: ${name}.`);
           }
           fetches[name] = null;
@@ -104,7 +128,7 @@ export class TrainingSession implements TrainingSessionInterface {
         // if any output name is present and its value is valid OnnxValue, we consider it fetches
         let isFetches = false;
         const arg1Keys = Object.getOwnPropertyNames(arg1);
-        for (const name of this.outputNames) {
+        for (const name of outputNames) {
           if (arg1Keys.indexOf(name) !== -1) {
             const v = (arg1 as InferenceSession.NullableOnnxValueMapType)[name];
             if (v === null || v instanceof Tensor) {
@@ -130,7 +154,7 @@ export class TrainingSession implements TrainingSessionInterface {
     }
 
     // check if all inputs are in feed
-    for (const name of this.inputNames) {
+    for (const name of inputNames) {
       if (typeof feeds[name] === 'undefined') {
         throw new Error(`input '${name}' is missing in 'feeds'.`);
       }
@@ -138,7 +162,7 @@ export class TrainingSession implements TrainingSessionInterface {
 
     // if no fetches is specified, we use the full output names list
     if (isFetchesEmpty) {
-      for (const name of this.outputNames) {
+      for (const name of outputNames) {
         fetches[name] = null;
       }
     }
@@ -171,9 +195,31 @@ export class TrainingSession implements TrainingSessionInterface {
   runTrainStep(feeds: FeedsType, options?: RunOptions): Promise<ReturnType>;
   runTrainStep(feeds: FeedsType, fetches: FetchesType, options?: RunOptions): Promise<ReturnType>;
   async runTrainStep(feeds: FeedsType, arg1?: FetchesType|RunOptions, arg2?: RunOptions): Promise<ReturnType> {
-    const [fetches, options] = this.typeNarrowingForRunStep(feeds, arg1, arg2);
+    const [fetches, options] =
+        this.typeNarrowingForRunStep(this.trainingInputNames, this.trainingOutputNames, feeds, arg1, arg2);
     const results = await this.handler.runTrainStep(feeds, fetches, options);
     return this.convertHandlerReturnTypeToMapOfTensors(results);
+  }
+
+  async runOptimizerStep(options?: InferenceSession.RunOptions|undefined): Promise<void> {
+    if (this.hasOptimizerModel) {
+      await this.handler.runOptimizerStep(options || {});
+    } else {
+      throw new Error('This TrainingSession has no OptimizerModel loaded.');
+    }
+  }
+
+  runEvalStep(feeds: FeedsType, options?: RunOptions|undefined): Promise<ReturnType>;
+  runEvalStep(feeds: FeedsType, fetches: FetchesType, options?: RunOptions|undefined): Promise<ReturnType>;
+  async runEvalStep(feeds: FeedsType, arg1?: FetchesType|RunOptions, arg2?: RunOptions): Promise<ReturnType> {
+    if (this.hasEvalModel) {
+      const [fetches, options] =
+          this.typeNarrowingForRunStep(this.evalInputNames, this.evalOutputNames, feeds, arg1, arg2);
+      const results = await this.handler.runEvalStep(feeds, fetches, options);
+      return this.convertHandlerReturnTypeToMapOfTensors(results);
+    } else {
+      throw new Error('This TrainingSession has no EvalModel loaded.');
+    }
   }
 
   async getParametersSize(trainableOnly = true): Promise<number> {

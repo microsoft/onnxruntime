@@ -1160,16 +1160,21 @@ Status QnnBackendManager::UnloadLib(void* handle) {
 
 #ifdef _WIN32
   HMODULE mod = static_cast<HMODULE>(handle);
+
+// TODO: QNN SDK 2.17 crashes for some models/tests on Windows x64 when unloading library.
+// Example: ReductionOpTest.ArgMax
+#if !defined(_M_AMD64)
   if (FreeLibrary(mod) == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to free library.");
   }
+#endif  // !defined(_M_AMD64)
   mod_handles_.erase(mod);
 #else
   auto rt = ::dlclose(handle);
   if (rt != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to free library.");
   }
-#endif
+#endif  // defined(_WIN32)
 
   return Status::OK();
 }
