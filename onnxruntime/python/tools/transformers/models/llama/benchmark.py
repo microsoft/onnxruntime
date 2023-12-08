@@ -11,7 +11,7 @@ import numpy as np
 import onnx
 import psutil
 import torch
-from benchmark_helper import measure_memory, setup_logger
+from benchmark_helper import setup_logger
 from dist_settings import get_rank, get_size
 from llama_inputs import (
     add_io_bindings,
@@ -375,6 +375,7 @@ def measure_fn(args, fn, inputs):
     gc.collect()
     torch.cuda.empty_cache()
     # Disable measure memory fn as it is not working with pytorch
+    # from benchmark_helper import measure_memory
     # measure_memory(is_gpu=(args.device != "cpu"), func=lambda: fn(inputs))
 
     # Flush output so memory usage is printed
