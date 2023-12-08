@@ -567,7 +567,6 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
         input_requires_grads.push_back(0);
         attributes["input_requires_grads"] = ONNX_NAMESPACE::MakeAttribute("input_requires_grads", input_requires_grads);
       }
-      std::cout << "44444" << std::endl;
       // Get the ONNX data type from input_ids_arg as an int64_t
       int64_t data_type = static_cast<int64_t>(squeeze_out_arg->TypeAsProto()->tensor_type().elem_type());
       // Append the data type to the attribute `input_tensor_types`.

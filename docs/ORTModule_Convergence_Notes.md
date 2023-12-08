@@ -7,13 +7,14 @@ Convergence issues can be identified by:
 - Runtime failures (for example when the loss scaler reaches the minimum, triggering an exception).
 
 Before looking into this further, we should clarify a few things (if possible):
-- If we change the seed for the baseline run, whether the metric diff is big?
+- If we change the seed for the baseline run, whether the metric difference big?
   (Make sure the discrepancy is not introduced by randomness)
 - What are the very first steps we see obvious divergence?
 - Still reproducible once randomness is removed?
 - Set same seeds
 - Set the dropout ratio to 0
 - Set compute to be deterministic and torch-comparable (TODO(pengwa): need a flag for this).
+- Does running with FP32 resolve the issue?
 
 
 ## 2. Collect Activation Statistics
@@ -85,11 +86,11 @@ Arguments:
 
 ### 2.2 Use `inspect_activation` to collect intermediate tensors in a `nn.Module` forward()
 
-The limitation of `GlobalSubscriberManager` is, only 'nn.Module's forward output tensors will be dumped, if you want to
+The limitation of `GlobalSubscriberManager` is, that only 'nn.Module's forward output tensors will be dumped if you want to
 dump the intermediate tensors in a `nn.Module`'s forward function, refer to the following example:
 
 ```diff
-+   from onnxruntime.training.utils import inspect_activation
++   from onnxruntime.training.utils.hooks import inspect_activation
 class BloomForCausalLM(BloomPreTrainedModel):
   def __init__(self, config: BloomConfig):
     ...
@@ -120,7 +121,7 @@ stat file using the activation name will be overwritten by the last write. The d
 
 ### 2.3 Collect on multiple ranks
 
-`GlobalSubscriberManager` does not explicitly handle the racing condition when multiple ranks write into the same file path,
+`GlobalSubscriberManager` does not explicitly handle the racing condition when multiple ranks are written into the same file path,
 here is the example if you want to collect statistics on multiple ranks:
 
 ```python

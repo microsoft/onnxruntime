@@ -293,7 +293,7 @@ class StatisticsSubscriber(SubscriberBase):
             # If indices is given, we flatten the first two dims of tensor, and slice the tensor with indices.
             # Otherwise, we reuse the original tensor.
             tensor_to_analyze = tensor.flatten(start_dim=0, end_dim=1)[indices, ...] if indices is not None else tensor
-            _summarize_tensor(display_name, tensor_to_analyze, f, depth, self._run_on_cpu, self._bucket_size)
+            _summarize_tensor(display_name, tensor_to_analyze, f, depth, self._run_on_cpu, self._bucket_size, indices is not None)
 
 
 def _summarize_tensor(
@@ -303,6 +303,7 @@ def _summarize_tensor(
     depth: int = 0,
     run_on_cpu: bool = False,
     bucket_size: int = 1024 * 1024 * 1024 // 2,
+    unpaded: bool = False,
 ):
     # This is to try the best effort to align the count of numbers per line for easier comparison in diff views,
     # though it does not always guarantee to do this way.
@@ -314,7 +315,7 @@ def _summarize_tensor(
 
     if run_on_cpu:
         flatten_array = flatten_array.to("cpu")
-
+    element_count = flatten_array.numel()
     if run_on_cpu:
         num_nan = torch.isnan(flatten_array).sum()
         num_inf = torch.isinf(flatten_array).sum()
@@ -328,7 +329,7 @@ def _summarize_tensor(
     else:
         # Split the calculation for each bucket, then do another round of calculation on the bucket results.
         # This can at the best effort reduce the peak memory impact.
-        element_count = flatten_array.numel()
+
         ceil_bucket_count = (element_count + bucket_size - 1) // (bucket_size)
         nan_buckets = torch.zeros(ceil_bucket_count, dtype=torch.int64, device=flatten_array.device)
         inf_buckets = torch.zeros(ceil_bucket_count, dtype=torch.int64, device=flatten_array.device)
@@ -375,11 +376,12 @@ def _summarize_tensor(
         std_value = torch.sqrt(s.sum() / (element_count - 1))
 
     f.write(
-        f"{'>'*max(0, depth) + display_name} shape: {tensor_shape} dtype: {tensor_dtype} size: {flatten_array.size()} \n"
+        f"{'>'*max(0, depth) + display_name} shape: {tensor_shape} dtype: {tensor_dtype} size: {flatten_array.size()} unpad: {unpaded} \n"
         f"min: {min_value} max: {max_value}, mean: {mean_value}, "
         f"std: {std_value} \n"
         f"nan: {num_nan}, inf: {num_inf}\n"
     )
-    f.write(f"samples(top 128): {flatten_array[:128]}\n")
+    f.write(f"samples(top 64): {flatten_array[:64]}\n")
+    f.write(f"samples(strided 64): {flatten_array[::(element_count + 64 - 1) // (64)]}\n")
     f.write(f"neg: {num_neg}, pos: {num_pos}, zero: {num_zero},\n")
     f.write(f"{'='*16}\n")
