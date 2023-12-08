@@ -65,4 +65,6 @@ stages:
           - script: 'python -m twine upload -r ${{ parameters.artifact_feed }} --config-file $(PYPIRC_PATH) --non-interactive --skip-existing *.whl'
             workingDirectory: '$(Build.SourcesDirectory)/onnxruntime-gpu'
             displayName: 'Uploading wheels to ${{ parameters.artifact_feed }}'
-            retryCountOnTaskFailure: 3
+            retryCountOnTaskFailure:
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
