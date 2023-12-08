@@ -20,7 +20,12 @@ stages:
 #      dependsOn:
 #        - Linux_Packaging_combined_GPU
     variables:
-      repository-url: https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-12-nightly/pypi/upload/
+      ${{ if eq(parameters.artifact_feed, 'ort-cuda-12-nightly') }}:
+        repository-url: https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-12-nightly/pypi/upload/
+      ${{ if eq(parameters.artifact_feed, 'onnxruntime-cuda-12') }}:
+        repository-url: https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/upload/
+      ${{ else }}:
+        repository-url: invalid
     jobs:
       - job:
         pool: 'onnxruntime-Win-CPU-2022'
@@ -35,7 +40,7 @@ stages:
           - task: DownloadPipelineArtifact@2
             inputs:
               artifact: 'onnxruntime_gpu'
-              targetPath: '$(Build.SourcesDirectory)'
+              targetPath: '$(Build.SourcesDirectory)/onnxruntime-gpu'
               ${{ if ne(parameters.build_id, 'latest') }}:
                 buildType: 'specific'
                 project: '${{ parameters.project }}'
@@ -51,7 +56,7 @@ stages:
             displayName: 'Twine Authenticate '
             inputs:
               artifactFeed: PublicPackages/${{ parameters.artifact_feed }}
-          - script: 'python -m twine upload -r ${{ parameters.artifact_feed }} --repository-url $(repository-url) onnxruntime-gpu/*.whl'
-            workingDirectory: '$(Build.SourcesDirectory)'
+          - script: 'python -m twine upload -r ${{ parameters.artifact_feed }} --repository-url $(repository-url) *.whl'
+            workingDirectory: '$(Build.SourcesDirectory)/onnxruntime-gpu'
             displayName: 'Uploading wheels to ${{ parameters.artifact_feed }}'
             retryCountOnTaskFailure: 3
