@@ -28,7 +28,7 @@ stages:
                 echo "Project: ${{ parameters.project }}"
                 echo "Pipeline: ${{ parameters.pipeline }}"
                 echo "Artifact Feed: ${{ parameters.artifact_feed }}"
-            displayName: 'Print Build.SourcesDirectory'
+            displayName: 'Print Parameters'
           - task: DownloadPipelineArtifact@2
             inputs:
               artifact: 'onnxruntime_gpu'
@@ -37,7 +37,8 @@ stages:
                 buildType: 'specific'
                 project: '${{ parameters.project }}'
                 pipeline: '${{ parameters.pipeline }}'
-                buildVersionToDownload: '${{ parameters.build_id }}'
+                buildVersionToDownload: 'specific'
+                buildId: '${{ parameters.build_id }}'
             displayName: 'Download Build Artifacts - onnxruntime-gpu'
           - task: UsePythonVersion@0
             displayName: 'Use Python 3.x'
