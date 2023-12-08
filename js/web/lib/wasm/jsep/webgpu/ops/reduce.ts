@@ -372,6 +372,3 @@ export const reduceLogSum = (context: ComputeContext, attributes: ReduceAttribut
     reduceLogSumShared(context, attributes);
   }
 };
-
-export const parseReduceAttributes = (attributes: Record<string, unknown>): ReduceAttributes =>
-    createAttributeWithCacheKey(attributes as Omit<ReduceAttributes, keyof AttributeWithCacheKey>);
