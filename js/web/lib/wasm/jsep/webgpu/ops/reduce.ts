@@ -81,10 +81,10 @@ export const createReduceProgramInfo =
         }
         return `
 
-        ${shaderHelper.registerUniform('outputSize', 'u32').declareVariables(input, output)}
+        ${shaderHelper.registerUniform('output_size', 'u32').declareVariables(input, output)}
 
         ${shaderHelper.mainStart()}
-          ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
+          ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
           var inputIndices: ${input.type.indices};
           let outputIndices = ${output.offsetToIndices('global_idx')};
 
