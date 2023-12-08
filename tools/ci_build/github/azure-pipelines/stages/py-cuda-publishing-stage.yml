@@ -68,4 +68,6 @@ stages:
             workingDirectory: '$(Build.SourcesDirectory)/onnxruntime-gpu'
             displayName: 'Uploading wheels to ${{ parameters.artifact_feed }}'
             retryCountOnTaskFailure: 3
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
