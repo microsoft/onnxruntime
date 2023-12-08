@@ -22,6 +22,12 @@ stages:
       - job:
         pool: 'onnxruntime-Win-CPU-2022'
         steps:
+          - script: |
+                echo "Build ID: $(build_id)"
+                echo "Project: $(project)"
+                echo "Pipeline: $(pipeline)"
+                echo "Artifact Feed: $(artifact_feed)"
+            displayName: 'Print Build.SourcesDirectory'
           - task: DownloadPipelineArtifact@2
             inputs:
               artifact: 'onnxruntime_gpu'
