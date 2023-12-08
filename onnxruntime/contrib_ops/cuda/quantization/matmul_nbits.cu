@@ -90,26 +90,19 @@ __device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, 
   // Convert elt_67
   asm volatile("fma.rn.f16x2 %0, %1, %2, %3;\n" : "=r"(h[3]) : "r"(h[3]), "r"(ONE_SIXTEENTH), "r"(NEG_64));
 
-  constexpr uint32_t kLowHalf2 = 0x5410;
-  constexpr uint32_t kHighHalf2 = 0x7632;
+  half2 v0 = elements[0] * scale_half2 + zp_adjust2;
+  half2 v1 = elements[1] * scale_half2 + zp_adjust2;
+  half2 v2 = elements[2] * scale_half2 + zp_adjust2;
+  half2 v3 = elements[3] * scale_half2 + zp_adjust2;
 
-  half2 values[4];
-  uint32_t* h_right_orders = reinterpret_cast<uint32_t*>(&values);
-  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(h_right_orders[0]) : "r"(h[0]), "r"(h[1]), "r"(kLowHalf2));
-  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(h_right_orders[1]) : "r"(h[2]), "r"(h[3]), "r"(kLowHalf2));
-  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(h_right_orders[2]) : "r"(h[0]), "r"(h[1]), "r"(kHighHalf2));
-  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(h_right_orders[3]) : "r"(h[2]), "r"(h[3]), "r"(kHighHalf2));
-
-  values[0] = values[0] * scale_half2 + zp_adjust2;
-  values[1] = values[1] * scale_half2 + zp_adjust2;
-  values[2] = values[2] * scale_half2 + zp_adjust2;
-  values[3] = values[3] * scale_half2 + zp_adjust2;
-
-  half2* sums_half2 = (reinterpret_cast<half2*>(sums));
-  sums_half2[0] += values[0] * (*(reinterpret_cast<half2*>(&(vec_a.x))));
-  sums_half2[1] += values[1] * (*(reinterpret_cast<half2*>(&(vec_a.y))));
-  sums_half2[2] += values[2] * (*(reinterpret_cast<half2*>(&(vec_a.z))));
-  sums_half2[3] += values[3] * (*(reinterpret_cast<half2*>(&(vec_a.w))));
+  sums[0] += (v0.x * ((*(reinterpret_cast<half2*>(&(vec_a.x)))).x));
+  sums[1] += (v1.x * ((*(reinterpret_cast<half2*>(&(vec_a.x)))).y));
+  sums[2] += (v2.x * ((*(reinterpret_cast<half2*>(&(vec_a.y)))).x));
+  sums[3] += (v3.x * ((*(reinterpret_cast<half2*>(&(vec_a.y)))).y));
+  sums[4] += (v0.y * ((*(reinterpret_cast<half2*>(&(vec_a.z)))).x));
+  sums[5] += (v1.y * ((*(reinterpret_cast<half2*>(&(vec_a.z)))).y));
+  sums[6] += (v2.y * ((*(reinterpret_cast<half2*>(&(vec_a.w)))).x));
+  sums[7] += (v3.y * ((*(reinterpret_cast<half2*>(&(vec_a.w)))).y));
 }
 
 __device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, float scale, uint8_t zp, const float* a, float* sums) {
