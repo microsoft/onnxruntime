@@ -701,7 +701,7 @@ else()
   set(onnxruntime_USE_CUTLASS OFF)
 endif()
 
-if (not onnxruntime_USE_CUTLASS or onnxruntime_DISABLE_CONTRIB_OPS)
+if (NOT onnxruntime_USE_CUTLASS OR onnxruntime_DISABLE_CONTRIB_OPS)
     if (onnxruntime_DISABLE_CONTRIB_OPS)
       message( STATUS "Turn off flash attention/memory efficient attention since contrib ops are disabled")
     else()
