@@ -84,6 +84,8 @@ export const initRuntime = async(env: Env): Promise<void> => {
   }
 };
 
+// #endregion Initializations
+
 /**
  * valid data locations for input/output tensors.
  */
