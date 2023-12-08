@@ -114,11 +114,7 @@ def main():
     if args.include_ops_by_config is not None:
         build_apple_framework_args += ["--include_ops_by_config", args.include_ops_by_config]
 
-    build_apple_framework_args += [
-        "--build_dir",
-        str(build_dir),
-        args.build_settings_file,
-    ]
+    build_apple_framework_args += ["--build_dir", str(build_dir), args.build_settings_file]
 
     run(build_apple_framework_args)
 
