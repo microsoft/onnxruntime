@@ -15,10 +15,16 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", "..", ".."))
 BUILD_PY = os.path.join(REPO_DIR, "tools", "ci_build", "build.py")
 
-# We by default will build below 3 archs
+# We by default will build below 2 platforms and corresponding archs
 DEFAULT_BUILD_OSX_ARCHS = {
     "iphoneos": ["arm64"],
     "iphonesimulator": ["arm64", "x86_64"],
+}
+
+ALL_SUPPORTED_BUILD_OSX_ARCHS = {
+    "iphoneos": ["arm64"],
+    "iphonesimulator": ["arm64", "x86_64"],
+    "macosx": ["arm64", "x86_64"],
 }
 
 
@@ -256,11 +262,11 @@ def parse_args():
         platform_archs = {}
         for platform, arch in platform_archs_arg:
             assert (
-                platform in DEFAULT_BUILD_OSX_ARCHS.keys()
-            ), f"Unsupported platform: '{platform}'. Valid values are {list(DEFAULT_BUILD_OSX_ARCHS.keys())}"
-            assert arch in DEFAULT_BUILD_OSX_ARCHS[platform], (
+                platform in ALL_SUPPORTED_BUILD_OSX_ARCHS.keys()
+            ), f"Unsupported platform: '{platform}'. Valid values are {list(ALL_SUPPORTED_BUILD_OSX_ARCHS.keys())}"
+            assert arch in ALL_SUPPORTED_BUILD_OSX_ARCHS[platform], (
                 f"Unsupported arch for platform '{platform}': '{arch}'. "
-                f"Valid values are {DEFAULT_BUILD_OSX_ARCHS[platform]}"
+                f"Valid values are {ALL_SUPPORTED_BUILD_OSX_ARCHS[platform]}"
             )
 
             archs = platform_archs.setdefault(platform, [])
