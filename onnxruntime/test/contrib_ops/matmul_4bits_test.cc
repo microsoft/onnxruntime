@@ -53,14 +53,14 @@ void QuantizeDequantize(std::vector<float>& raw_vals,
   // Note that input1_f_vals is NxK after dequant
   MlasDequantizeBlockwise<float, 4>(
       raw_vals.data(),                       // dequantized output
-                                    quant_vals.data(),                     // quantized input
-                                    scales.data(),                         // quantization scales
-                                    zp != nullptr ? zp->data() : nullptr,  // quantization zero points
-                                    block_size,                            // quantization block size
-                                    true,                                  // columnwise quantization
-                                    K,                                     // number of rows
-                                    N,                                     // number of columns
-                                    tp.get());
+      quant_vals.data(),                     // quantized input
+      scales.data(),                         // quantization scales
+      zp != nullptr ? zp->data() : nullptr,  // quantization zero points
+      block_size,                            // quantization block size
+      true,                                  // columnwise quantization
+      K,                                     // number of rows
+      N,                                     // number of columns
+      tp.get());
 }
 
 void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, MLAS_SQNBIT_COMPUTE_TYPE comp_type,
