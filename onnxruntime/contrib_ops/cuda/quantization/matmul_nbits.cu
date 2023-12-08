@@ -58,19 +58,19 @@ __device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, 
 }
 */
 
-__device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, half scale, uint8_t zp, const half* a) {
+__device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, half scale, uint8_t zp, const half* a, half* sums) {
   half2 scale_half2 = {scale, scale};
   half zp_adjust = -scale * __short2half_rn(zp);
   half2 zp_adjust2 = {zp_adjust, zp_adjust};
   uint4 vec_a = *(reinterpret_cast<const uint4*>(a));
 
-  half2 elements[4];
-  uint32_t*      h   = reinterpret_cast<uint32_t*>(&elements);
+  half2 elements[4];  // [04, 15, 26, 37]
+  uint32_t* h = reinterpret_cast<uint32_t*>(&elements);
 
   // First, we extract the i4s and construct an intermediate fp16 number.
-  static constexpr uint32_t immLut                = (0xf0 & 0xcc) | 0xaa;
-  static constexpr uint32_t BOTTOM_MASK           = 0x000f000f;
-  static constexpr uint32_t TOP_MASK              = 0x00f000f0;
+  static constexpr uint32_t immLut = (0xf0 & 0xcc) | 0xaa;
+  static constexpr uint32_t BOTTOM_MASK = 0x000f000f;
+  static constexpr uint32_t TOP_MASK = 0x00f000f0;
   static constexpr uint32_t I4s_TO_F16s_MAGIC_NUM = 0x64006400;
 
   // Note that the entire sequence only requires 1 shift instruction. This is thanks to the register packing
@@ -83,55 +83,57 @@ __device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, 
   const uint32_t top_i4s = values_quant >> 8;
   // Extract elt_01 - (i4s & 0x000f000f) | 0x64006400
   asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
-                : "=r"(h[0])
-                : "r"(values_quant), "n"(BOTTOM_MASK), "n"(I4s_TO_F16s_MAGIC_NUM), "n"(immLut));
+               : "=r"(h[0])
+               : "r"(values_quant), "n"(BOTTOM_MASK), "n"(I4s_TO_F16s_MAGIC_NUM), "n"(immLut));
   // Extract elt_23 (i4s & 0x00f000f0) | 0x64006400
   asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
-                : "=r"(h[1])
-                : "r"(values_quant), "n"(TOP_MASK), "n"(I4s_TO_F16s_MAGIC_NUM), "n"(immLut));
+               : "=r"(h[1])
+               : "r"(values_quant), "n"(TOP_MASK), "n"(I4s_TO_F16s_MAGIC_NUM), "n"(immLut));
   // Extract elt_45 (top_i4s & 0x000f000f) | 0x64006400
   asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
-                : "=r"(h[2])
-                : "r"(top_i4s), "n"(BOTTOM_MASK), "n"(I4s_TO_F16s_MAGIC_NUM), "n"(immLut));
+               : "=r"(h[2])
+               : "r"(top_i4s), "n"(BOTTOM_MASK), "n"(I4s_TO_F16s_MAGIC_NUM), "n"(immLut));
   // Extract elt_67 (top_i4s & 0x00f000f0) | 0x64006400
   asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
-                : "=r"(h[3])
-                : "r"(top_i4s), "n"(TOP_MASK), "n"(I4s_TO_F16s_MAGIC_NUM), "n"(immLut));
+               : "=r"(h[3])
+               : "r"(top_i4s), "n"(TOP_MASK), "n"(I4s_TO_F16s_MAGIC_NUM), "n"(immLut));
 
   // I use inline PTX below because I am not sure if the compiler will emit float2half instructions if I use the
   // half2 ctor. In this case, I chose performance reliability over code readability.
 
-  // This is the half2 {1032, 1032} represented as an integer.
-  static constexpr uint32_t FP16_TOP_MAGIC_NUM = 0x64086408;
+  // This is the half2 {1024, 1024} represented as an integer.
+  static constexpr uint32_t FP16_TOP_MAGIC_NUM = 0x64006400;
   // This is the half2 {1 / 16, 1 / 16} represented as an integer.
   static constexpr uint32_t ONE_SIXTEENTH = 0x2c002c00;
-  // This is the half2 {-72, -72} represented as an integer.
-  static constexpr uint32_t NEG_72 = 0xd480d480;
+  // This is the half2 {-64, -64} represented as an integer.
+  static constexpr uint32_t NEG_64 = 0xd400d400;
 
   // Finally, we construct the output numbers.
   // Convert elt_01
   asm volatile("sub.f16x2 %0, %1, %2;\n" : "=r"(h[0]) : "r"(h[0]), "r"(FP16_TOP_MAGIC_NUM));
   // Convert elt_23
-  asm volatile("fma.rn.f16x2 %0, %1, %2, %3;\n" : "=r"(h[1]) : "r"(h[1]), "r"(ONE_SIXTEENTH), "r"(NEG_72));
+  asm volatile("fma.rn.f16x2 %0, %1, %2, %3;\n" : "=r"(h[1]) : "r"(h[1]), "r"(ONE_SIXTEENTH), "r"(NEG_64));
   // Convert elt_45
   asm volatile("sub.f16x2 %0, %1, %2;\n" : "=r"(h[2]) : "r"(h[2]), "r"(FP16_TOP_MAGIC_NUM));
   // Convert elt_67
-  asm volatile("fma.rn.f16x2 %0, %1, %2, %3;\n" : "=r"(h[3]) : "r"(h[3]), "r"(ONE_SIXTEENTH), "r"(NEG_72));
+  asm volatile("fma.rn.f16x2 %0, %1, %2, %3;\n" : "=r"(h[3]) : "r"(h[3]), "r"(ONE_SIXTEENTH), "r"(NEG_64));
 
   half2 v0 = elements[0] * scale_half2 + zp_adjust2;
   half2 v1 = elements[1] * scale_half2 + zp_adjust2;
   half2 v2 = elements[2] * scale_half2 + zp_adjust2;
   half2 v3 = elements[3] * scale_half2 + zp_adjust2;
 
-  v0 = v0 * (*(reinterpret_cast<half2*>(&(vec_a.x))));
-  v1 = v1 * (*(reinterpret_cast<half2*>(&(vec_a.y))));
-  v2 = v2 * (*(reinterpret_cast<half2*>(&(vec_a.z)))) + v0;
-  v3 = v3 * (*(reinterpret_cast<half2*>(&(vec_a.w)))) + v1;
-  v3 = v2 + v3;
-  return float(v3.x) + float(v3.y);
+  sums[0] += (v0.x * ((*(reinterpret_cast<half2*>(&(vec_a.x)))).x));
+  sums[1] += (v1.x * ((*(reinterpret_cast<half2*>(&(vec_a.x)))).y));
+  sums[2] += (v2.x * ((*(reinterpret_cast<half2*>(&(vec_a.y)))).x));
+  sums[3] += (v3.x * ((*(reinterpret_cast<half2*>(&(vec_a.y)))).y));
+  sums[4] += (v0.y * ((*(reinterpret_cast<half2*>(&(vec_a.z)))).x));
+  sums[5] += (v1.y * ((*(reinterpret_cast<half2*>(&(vec_a.z)))).y));
+  sums[6] += (v2.y * ((*(reinterpret_cast<half2*>(&(vec_a.w)))).x));
+  sums[7] += (v3.y * ((*(reinterpret_cast<half2*>(&(vec_a.w)))).y));
 }
 
-__device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, float scale, uint8_t zp, const float* a) {
+__device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, float scale, uint8_t zp, const float* a, float* sums) {
   float4 a_vec_0 = *(reinterpret_cast<const float4*>(a));
   float4 a_vec_1 = *(reinterpret_cast<const float4*>(a + 4));
 
@@ -145,15 +147,14 @@ __device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, 
   float v6 = float((values_quant >> 24) & 0xF) * scale + zp_adjust;
   float v7 = float((values_quant >> 28) & 0xF) * scale + zp_adjust;
 
-  v0 = v0 * a_vec_0.x;
-  v1 = v1 * a_vec_0.y;
-  v2 = v2 * a_vec_0.z;
-  v3 = v3 * a_vec_0.w;
-  v4 = v4 * a_vec_1.x + v0;
-  v5 = v5 * a_vec_1.y + v1;
-  v6 = v6 * a_vec_1.z + v2;
-  v7 = v7 * a_vec_1.w + v3;
-  return v4 + v5 + v6 + v7;
+  sums[0] += v0 * a_vec_0.x;
+  sums[1] += v1 * a_vec_0.y;
+  sums[2] += v2 * a_vec_0.z;
+  sums[3] += v3 * a_vec_0.w;
+  sums[4] += v4 * a_vec_1.x;
+  sums[5] += v5 * a_vec_1.y;
+  sums[6] += v6 * a_vec_1.z;
+  sums[7] += v7 * a_vec_1.w;
 }
 
 constexpr int kColsPerThreadBlock = 8;
@@ -175,17 +176,18 @@ __global__ void MatMulFloatInt4Kernel(
     int n,
     int k,
     int blocks_per_K) {
-  int n_block_id = blockIdx.x;
-  int m_id = blockIdx.y;
-  int lane_id = threadIdx.x;
-  int warp_id = WarpUniform(threadIdx.y);
-  int n_id = n_block_id * kColsPerThreadBlock + warp_id;
-  int thread_id = warp_id * kWarpSize + lane_id;
+  const int n_block_id = blockIdx.x;
+  const int m_id = blockIdx.y;
+  const int lane_id = threadIdx.x;
+  const int lane_id_x8 = lane_id * 8;  // k offset
+  const int warp_id = WarpUniform(threadIdx.y);
+  const int n_id = n_block_id * kColsPerThreadBlock + warp_id;
+  const int thread_id = warp_id * kWarpSize + lane_id;
   constexpr int k_per_iter = 256;
-  int k_iter = k / k_per_iter;
+  const int block_per_iter = k_per_iter / block_size;
 
   // blocks_per_k is the number of scales and zero points on the k dim
-  const int b_zp_k = (blocks_per_K + 1)/ 2;
+  const int b_zp_k = (blocks_per_K + 1) / 2;
 
   extern __shared__ char shared_buffer[];
 
@@ -204,34 +206,34 @@ __global__ void MatMulFloatInt4Kernel(
   __syncthreads();
 
   a_data += m_id * k;
-  b_data_quant += n_id * blocks_per_K * (block_size / 2);
+  b_data_quant += n_id * blocks_per_K * (block_size / 2) + lane_id * 4;
 
   const int scale_col_offset = warp_id * blocks_per_K;
   const int zp_col_offset = warp_id * b_zp_k;
 
-  float sum = 0.f;
+  T sums[8] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
   int k_id = 0;
+  int t_meta_k = lane_id_x8 / block_size;
   for (; k_id < (k & 0xffffff00); k_id += k_per_iter) {
-    const int t_k = k_id + (lane_id << 3);  // k index for this thread
-    const int t_meta_k = t_k / block_size;  // k index for this thread, points to the scale and zero point
-    uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + (t_k >> 1)));
+    uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant));
     T scale = b_scale_vec[scale_col_offset + t_meta_k];
-    uint8_t zp = b_zp_vec[zp_col_offset + t_meta_k/2];
+    uint8_t zp = b_zp_vec[zp_col_offset + t_meta_k / 2];
     zp = (t_meta_k & 0x01) ? (zp >> 4) : (zp & 0x0f);
-    sum += AccumulateEightElements(value, scale, zp, a_data + k_id + (lane_id << 3));
+    AccumulateEightElements(value, scale, zp, a_data + k_id + (lane_id << 3), sums);
+    t_meta_k += block_per_iter;  // k index for this thread, points to the scale and zero point
+    b_data_quant += k_per_iter/2;
   }
 
   // handle reminder
-  if (k_id + lane_id * 8 < k) {
-    const int t_k = k_id + (lane_id << 3);  // k index for this thread
-    const int t_meta_k = t_k / block_size;  // k index for this thread, points to the scale and zero point
-    uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + k_iter * 128 + lane_id * 4));
+  if (k_id + lane_id_x8 < k) {
+    uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant));
     T scale = b_scale_vec[scale_col_offset + t_meta_k];
-    uint8_t zp = b_zp_vec[zp_col_offset + t_meta_k/2];
+    uint8_t zp = b_zp_vec[zp_col_offset + t_meta_k / 2];
     zp = (t_meta_k & 0x01) ? (zp >> 4) : (zp & 0x0f);
-    sum += AccumulateEightElements(value, scale, zp, a_data + k_id + (lane_id << 3));
+    AccumulateEightElements(value, scale, zp, a_data + k_id + (lane_id << 3), sums);
   }
 
+  float sum = (float)(sums[0] + sums[1] + sums[2] + sums[3] + sums[4] + sums[5] + sums[6] + sums[7]);
   // warp reduction
   for (int i = 16; i > 0; i = i / 2) {
     sum += __shfl_down_sync(0xffffffff, sum, i);
