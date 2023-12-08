@@ -10,12 +10,14 @@ parameters:
     default: 'onnxruntime-cuda-12'
   - name: depends_on
     type: string
-    default: ''
+    default: 'none'
 
 stages:
   - stage: Python_Publishing
-    ${{ if ne(parameters.depends_on, '') }}:
+    ${{ if ne(parameters.depends_on, 'none') }}:
       dependsOn: [ ${{ parameters.depends_on }} ]
+    ${{ else }}:
+      dependsOn: [ ]
     jobs:
       - job:
         pool: 'onnxruntime-Win-CPU-2022'
