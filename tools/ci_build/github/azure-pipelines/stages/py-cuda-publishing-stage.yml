@@ -27,7 +27,9 @@ stages:
       PYPIRC_PATH: $(Build.SourcesDirectory)/.pypirc
     jobs:
       - job:
-        pool: 'onnxruntime-Win-CPU-2022'
+        pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
+        env:
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)
         steps:
           - checkout: none
           - script: |
@@ -62,9 +64,8 @@ stages:
 #                echo "Repository = $(repository-url)" >> $(PYPIRC_PATH)
 #                cat $(PYPIRC_PATH)
 #            displayName: 'Install Python Packages'
-          - script: 'python -m twine upload -r ${{ parameters.artifact_feed }} --repository-url $(repository-url) -u $(System.AccessToken) --non-interactive --skip-existing *.whl'
+          - script: 'python -m twine upload -r ${{ parameters.artifact_feed }} --repository-url $(repository-url) --non-interactive --skip-existing *.whl'
             workingDirectory: '$(Build.SourcesDirectory)/onnxruntime-gpu'
             displayName: 'Uploading wheels to ${{ parameters.artifact_feed }}'
             retryCountOnTaskFailure: 3
-            env:
-              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
