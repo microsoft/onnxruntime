@@ -1,3 +1,10 @@
+parameter:
+  - name: build_id
+    type: string
+    default: 'latest'
+  - name: project
+    type: string
+    default: 'onnxruntime'
 
 stages:
   - stage: NuGet_Publishing_GPU
