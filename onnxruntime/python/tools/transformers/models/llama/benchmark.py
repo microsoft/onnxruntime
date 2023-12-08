@@ -380,7 +380,6 @@ def measure_fn(args, fn, inputs):
     except RuntimeError as e:
         logger.exception(e)
         print("Memasure memory function is not working correctly, continuing")
-        continue
 
     # Flush output so memory usage is printed
     sys.stdout.flush()
