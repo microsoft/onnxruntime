@@ -396,7 +396,7 @@ const bicubicInterpolation =
             }
           }
           var input_indices_copy: ${input.type.indices} = input_indices;
-          ${input.indicesSet('input_indices_copy', idx, `u32(${direction}`)};
+          ${input.indicesSet('input_indices_copy', idx, `u32(${direction})`)};
           data[i + 1] = ${
             idx === heightIdx ? input.getByIndices('input_indices_copy') :
                                 'rowCubicInterpolation(input_indices_copy, output_indices)'};
