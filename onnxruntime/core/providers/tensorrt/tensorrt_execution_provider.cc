@@ -287,8 +287,7 @@ void CudaCall<cudnnStatus_t, true>(cudnnStatus_t retCode, const char* exprString
   return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg, file, line);
 }
 
-void* OutputAllocator::reallocateOutput(
-  char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment) noexcept {
+void* OutputAllocator::reallocateOutput(char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment) noexcept {
   // Some memory allocators return nullptr when allocating zero bytes, but TensorRT requires a non-null ptr
   // even for empty tensors, so allocate a dummy byte.
   size = std::max(size, static_cast<uint64_t>(1));
@@ -296,8 +295,7 @@ void* OutputAllocator::reallocateOutput(
     cudaFree(outputPtr);
     outputPtr = nullptr;
     allocated_size = 0;
-    if (cudaMalloc(&outputPtr, size) == cudaSuccess)
-    {
+    if (cudaMalloc(&outputPtr, size) == cudaSuccess) {
       allocated_size = size;
     }
   }

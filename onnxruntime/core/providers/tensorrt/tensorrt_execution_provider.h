@@ -103,7 +103,6 @@ using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
 //
 class OutputAllocator : public nvinfer1::IOutputAllocator {
  public:
-
   void* reallocateOutput(char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment) noexcept override;
 
   void notifyShape(char const* tensorName, nvinfer1::Dims const& dims) noexcept override;
@@ -120,8 +119,7 @@ class OutputAllocator : public nvinfer1::IOutputAllocator {
     return allocated_size;
   }
 
-  ~OutputAllocator() override
-  {
+  ~OutputAllocator() override {
     cudaFree(outputPtr);
   }
 
