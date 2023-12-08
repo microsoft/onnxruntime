@@ -3,6 +3,9 @@
 
 import type {Env, InferenceSession, Tensor} from 'onnxruntime-common';
 
+/**
+ * Among all the tensor locations, only 'cpu' is serializable.
+ */
 export type SerializableTensorMetadata =
     [dataType: Tensor.Type, dims: readonly number[], data: Tensor.DataType, location: 'cpu'];
 
@@ -12,15 +15,28 @@ export type GpuBufferMetadata = {
   dispose?: () => void;
 };
 
+/**
+ * Tensors on location 'cpu-pinned' and 'gpu-buffer' are not serializable.
+ */
 export type UnserializableTensorMetadata =
     [dataType: Tensor.Type, dims: readonly number[], data: GpuBufferMetadata, location: 'gpu-buffer']|
     [dataType: Tensor.Type, dims: readonly number[], data: Tensor.DataType, location: 'cpu-pinned'];
 
+/**
+ * Tensor metadata is a tuple of [dataType, dims, data, location], where
+ * - dataType: tensor data type
+ * - dims: tensor dimensions
+ * - data: tensor data, which can be one of the following depending on the location:
+ *   - cpu: Uint8Array
+ *   - cpu-pinned: Uint8Array
+ *   - gpu-buffer: GpuBufferMetadata
+ * - location: tensor data location
+ */
 export type TensorMetadata = SerializableTensorMetadata|UnserializableTensorMetadata;
 
 export type SerializableSessionMetadata = [sessionHandle: number, inputNames: string[], outputNames: string[]];
 
-export type SerializableModeldata = [modelDataOffset: number, modelDataLength: number];
+export type SerializableInternalBuffer = [bufferOffset: number, bufferLength: number];
 
 interface MessageError {
   err?: string;
@@ -36,27 +52,22 @@ interface MessageInitOrt extends MessageError {
   in ?: Env;
 }
 
-interface MessageCreateSessionAllocate extends MessageError {
-  type: 'create_allocate';
-  in ?: {model: Uint8Array};
-  out?: SerializableModeldata;
-}
-
-interface MessageCreateSessionFinalize extends MessageError {
-  type: 'create_finalize';
-  in ?: {modeldata: SerializableModeldata; options?: InferenceSession.SessionOptions};
-  out?: SerializableSessionMetadata;
+interface MessageCopyFromExternalBuffer extends MessageError {
+  type: 'copy_from';
+  in ?: {buffer: Uint8Array};
+  out?: SerializableInternalBuffer;
 }
 
 interface MessageCreateSession extends MessageError {
   type: 'create';
-  in ?: {model: Uint8Array; options?: InferenceSession.SessionOptions};
+  in ?: {model: SerializableInternalBuffer|Uint8Array; options?: InferenceSession.SessionOptions};
   out?: SerializableSessionMetadata;
 }
 
 interface MessageReleaseSession extends MessageError {
   type: 'release';
   in ?: number;
+  out?: void;
 }
 
 interface MessageRun extends MessageError {
@@ -71,12 +82,8 @@ interface MessageRun extends MessageError {
 interface MesssageEndProfiling extends MessageError {
   type: 'end-profiling';
   in ?: number;
+  out?: void;
 }
 
-interface MessageIsOrtEnvInitialized extends MessageError {
-  type: 'is-ort-env-initialized';
-  out?: boolean;
-}
-
-export type OrtWasmMessage = MessageInitWasm|MessageInitOrt|MessageCreateSessionAllocate|MessageCreateSessionFinalize|
-    MessageCreateSession|MessageReleaseSession|MessageRun|MesssageEndProfiling|MessageIsOrtEnvInitialized;
+export type OrtWasmMessage = MessageInitWasm|MessageInitOrt|MessageCopyFromExternalBuffer|MessageCreateSession|
+    MessageReleaseSession|MessageRun|MesssageEndProfiling;

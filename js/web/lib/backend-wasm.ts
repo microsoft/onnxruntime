@@ -4,7 +4,7 @@
 import {cpus} from 'node:os';
 import {Backend, env, InferenceSession, InferenceSessionHandler} from 'onnxruntime-common';
 
-import {initializeWebAssemblyInstance} from './wasm/proxy-wrapper';
+import {initializeRuntime, initializeWebAssemblyInstance} from './wasm/proxy-wrapper';
 import {OnnxruntimeWebAssemblySessionHandler} from './wasm/session-handler-inference';
 
 /**
@@ -39,6 +39,9 @@ export class OnnxruntimeWebAssemblyBackend implements Backend {
 
     // init wasm
     await initializeWebAssemblyInstance();
+
+    // init ORT
+    await initializeRuntime(env);
   }
   createInferenceSessionHandler(path: string, options?: InferenceSession.SessionOptions):
       Promise<InferenceSessionHandler>;

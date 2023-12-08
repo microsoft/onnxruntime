@@ -3,37 +3,60 @@
 
 import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
 
-import {SerializableModeldata, SerializableSessionMetadata, SerializableTensorMetadata, TensorMetadata} from './proxy-messages';
+import {SerializableInternalBuffer, SerializableSessionMetadata, SerializableTensorMetadata, TensorMetadata} from './proxy-messages';
 import {setRunOptions} from './run-options';
 import {setSessionOptions} from './session-options';
 import {dataLocationStringToEnum, getTensorElementSize, isGpuBufferSupportedType, logLevelStringToEnum, tensorDataTypeEnumToString, tensorDataTypeStringToEnum, tensorTypeToTypedArrayConstructor} from './wasm-common';
 import {getInstance} from './wasm-factory';
 import {allocWasmString, checkLastError} from './wasm-utils';
 
-let ortEnvInitialized = false;
+// #region Initializations
 
 /**
- * get the input/output count of the session.
- * @param sessionHandle the handle representing the session. should be non-zero.
- * @returns a tuple including 2 numbers, representing the input count and output count.
+ * There are 4 different "initialization" steps for ORT. They happen in different places and different time.
+ *
+ * 1. JavaScript initialization for onnxruntime-common and onnxruntime-web.
+ *    This is the first initialization step. In this step, onnxruntime-web calls onnxruntime-common's registerBackend()
+ * function multiple times to register all the available backends. The backend registration is very fast. It only
+ * registers the backend name with the uninitialized backend object. No heavy initialization is done in this step.
+ *    Refer to web/lib/index.ts for the backend registration.
+ *
+ * 2. WebAssembly artifact initialization.
+ *    This happens when any registered wasm backend is used for the first time (ie. `ort.InferenceSession.create()` or
+ * `ort.TrainingSession.create()` is called). In this step, onnxruntime-web does the followings:
+ *     - create a proxy worker and make sure the proxy worker is ready to receive messages, if proxy is enabled.
+ *     - perform feature detection, locate correct WebAssembly artifact path and call the Emscripten generated
+ * JavaScript code to initialize the WebAssembly runtime.
+ *         - if proxy is enabled, this step happens in the proxy worker using message 'init-wasm'.
+ *         - downloading the 'ort-wasm{...}.wasm' file is done in this step.
+ *         - if multi-thread is enabled, one or more webworker will be created to initialize the PThread threadpool.
+ *
+ * 3. ORT environment initialization.
+ *    This happens after step 2. In this step, onnxruntime-web performs ONNX Runtime environment initialization.
+ * Function `_OrtInit()` is called in this step.
+ *     - if proxy is enabled, this step happens in the proxy worker using message 'init-ort'.
+ *     - logging level (ort.env.logLevel) and thread number (ort.env.wasm.numThreads) are set in this step.
+ *
+ * 4. Session initialization.
+ *    This happens when `ort.InferenceSession.create()` or `ort.TrainingSession.create()` is called. Unlike the first 3
+ * steps (they only called once), this step will be done for each session. In this step, onnxruntime-web does the
+ * followings:
+ *    If the parameter is a URL:
+ *    - download the model data from the URL.
+ *    - copy the model data to the WASM heap. (proxy: 'copy_from')
+ *    - dereference the model buffer. This step allows the original ArrayBuffer to be garbage collected.
+ *    - call `_OrtCreateSession()` to create the session. (proxy: 'create')
+ *
+ *    If the parameter is a Uint8Array object:
+ *    - copy the model data to the WASM heap. (proxy: 'copy_from')
+ *    - call `_OrtCreateSession()` to create the session. (proxy: 'create')
+ *
+ *
  */
-const getSessionInputOutputCount = (sessionHandle: number): [number, number] => {
-  const wasm = getInstance();
-  const stack = wasm.stackSave();
-  try {
-    const dataOffset = wasm.stackAlloc(8);
-    const errorCode = wasm._OrtGetInputOutputCount(sessionHandle, dataOffset, dataOffset + 4);
-    if (errorCode !== 0) {
-      checkLastError('Can\'t get session input/output count.');
-    }
-    return [wasm.HEAP32[dataOffset / 4], wasm.HEAP32[dataOffset / 4 + 1]];
-  } finally {
-    wasm.stackRestore(stack);
-  }
-};
 
 /**
  * initialize ORT environment.
+ *
  * @param numThreads SetGlobalIntraOpNumThreads(numThreads)
  * @param loggingLevel CreateEnv(static_cast<OrtLoggingLevel>(logging_level))
  */
@@ -59,8 +82,6 @@ export const initRuntime = async(env: Env): Promise<void> => {
     const initJsep = require('./jsep/init').init;
     await initJsep(getInstance(), env);
   }
-
-  ortEnvInitialized = true;
 };
 
 /**
@@ -97,13 +118,33 @@ type SessionMetadata = [
 
 const activeSessions = new Map<number, SessionMetadata>();
 
-export const isOrtEnvInitialized = (): boolean => ortEnvInitialized;
+/**
+ * get the input/output count of the session.
+ * @param sessionHandle the handle representing the session. should be non-zero.
+ * @returns a tuple including 2 numbers, representing the input count and output count.
+ */
+const getSessionInputOutputCount = (sessionHandle: number): [number, number] => {
+  const wasm = getInstance();
+  const stack = wasm.stackSave();
+  try {
+    const dataOffset = wasm.stackAlloc(8);
+    const errorCode = wasm._OrtGetInputOutputCount(sessionHandle, dataOffset, dataOffset + 4);
+    if (errorCode !== 0) {
+      checkLastError('Can\'t get session input/output count.');
+    }
+    return [wasm.HEAP32[dataOffset / 4], wasm.HEAP32[dataOffset / 4 + 1]];
+  } finally {
+    wasm.stackRestore(stack);
+  }
+};
 
 /**
- * allocate the memory and memcpy the model bytes, preparing for creating an instance of InferenceSession.
+ * allocate the memory and memcpy the external buffer.
+ *
+ * @param model - the external buffer containing the model data. Must not be the same buffer as the WASM heap.
  * @returns a 2-elements tuple - the pointer and size of the allocated buffer
  */
-export const createSessionAllocate = (model: Uint8Array): [number, number] => {
+export const copyFromExternalBuffer = (model: Uint8Array): [number, number] => {
   const wasm = getInstance();
   const modelDataOffset = wasm._malloc(model.byteLength);
   if (modelDataOffset === 0) {
@@ -114,14 +155,29 @@ export const createSessionAllocate = (model: Uint8Array): [number, number] => {
 };
 
 /**
- * create an inference session using the prepared buffer containing the model data.
- * @param modelData a 2-elements tuple containing the pointer and size of the model data buffer.
+ * create an inference session from a model data buffer.
+ *
+ * @param modelData - either a Uint8Array object representing the model data, or a 2-elements tuple containing the
+ *     pointer and size of the model data buffer.
  * @param options an optional session options object.
  * @returns a 3-elements tuple containing [session handle, input names, output names]
  */
-export const createSessionFinalize =
-    (modelData: SerializableModeldata, options?: InferenceSession.SessionOptions): SerializableSessionMetadata => {
+export const createSession =
+    (modelData: Uint8Array|SerializableInternalBuffer,
+     options?: InferenceSession.SessionOptions): SerializableSessionMetadata => {
+      let modelDataOffset: number, modelDataLength: number;
       const wasm = getInstance();
+
+      if (Array.isArray(modelData)) {
+        // if model data is an array, it must be a 2-elements tuple containing the pointer and size of the model data
+        [modelDataOffset, modelDataLength] = modelData;
+      } else if (modelData.buffer === wasm.HEAPU8.buffer) {
+        // if model data uses the same buffer as the WASM heap, we don't need to copy it.
+        [modelDataOffset, modelDataLength] = [modelData.byteOffset, modelData.byteLength];
+      } else {
+        // otherwise, copy the model data to the WASM heap.
+        [modelDataOffset, modelDataLength] = copyFromExternalBuffer(modelData);
+      }
 
       let sessionHandle = 0;
       let sessionOptionsHandle = 0;
@@ -133,7 +189,7 @@ export const createSessionFinalize =
       try {
         [sessionOptionsHandle, allocs] = setSessionOptions(options);
 
-        sessionHandle = wasm._OrtCreateSession(modelData[0], modelData[1], sessionOptionsHandle);
+        sessionHandle = wasm._OrtCreateSession(modelDataOffset, modelDataLength, sessionOptionsHandle);
         if (sessionHandle === 0) {
           checkLastError('Can\'t create a session.');
         }
@@ -201,23 +257,12 @@ export const createSessionFinalize =
         }
         throw e;
       } finally {
-        wasm._free(modelData[0]);
+        wasm._free(modelDataOffset);
         if (sessionOptionsHandle !== 0) {
           wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
         }
         allocs.forEach(alloc => wasm._free(alloc));
       }
-    };
-
-
-/**
- * create an instance of InferenceSession.
- * @returns the metadata of InferenceSession. 0-value handle for failure.
- */
-export const createSession =
-    (model: Uint8Array, options?: InferenceSession.SessionOptions): SerializableSessionMetadata => {
-      const modelData: SerializableModeldata = createSessionAllocate(model);
-      return createSessionFinalize(modelData, options);
     };
 
 export const releaseSession = (sessionId: number): void => {
