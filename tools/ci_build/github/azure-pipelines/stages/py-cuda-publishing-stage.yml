@@ -24,8 +24,6 @@ stages:
         repository-url: https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-12-nightly/pypi/upload/
       ${{ if eq(parameters.artifact_feed, 'onnxruntime-cuda-12') }}:
         repository-url: https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/upload/
-      ${{ else }}:
-        repository-url: invalid
     jobs:
       - job:
         pool: 'onnxruntime-Win-CPU-2022'
