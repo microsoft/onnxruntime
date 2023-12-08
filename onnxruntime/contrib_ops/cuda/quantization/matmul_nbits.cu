@@ -30,34 +30,6 @@ __device__ __forceinline__ T WarpUniform(T value) {
   return p.value;
 }
 
-/*
-__device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, half scale, uint8_t zp, const half* a) {
-  half2 scale_half2 = {scale, scale};
-  half zp_adjust = -scale * __short2half_rn(zp);
-  half2 zp_adjust2 = {zp_adjust, zp_adjust};
-  uint4 vec_a = *(reinterpret_cast<const uint4*>(a));
-
-  half2 element01 = __halves2half2(__uint2half_rn(values_quant & 0xF), __uint2half_rn((values_quant >> 4) & 0xF));
-  half2 v0 = element01 * scale_half2 + zp_adjust2;
-
-  half2 element23 = __halves2half2(__uint2half_rn((values_quant >> 8) & 0xF), __uint2half_rn((values_quant >> 12) & 0xF));
-  half2 v1 = element23 * scale_half2 + zp_adjust2;
-
-  half2 element45 = __halves2half2(__uint2half_rn((values_quant >> 16) & 0xF), __uint2half_rn((values_quant >> 20) & 0xF));
-  half2 v2 = element45 * scale_half2 + zp_adjust2;
-
-  half2 element67 = __halves2half2(__uint2half_rn((values_quant >> 24) & 0xF), __uint2half_rn((values_quant >> 28) & 0xF));
-  half2 v3 = element67 * scale_half2 + zp_adjust2;
-
-  v0 = v0 * (*(reinterpret_cast<half2*>(&(vec_a.x))));
-  v1 = v1 * (*(reinterpret_cast<half2*>(&(vec_a.y))));
-  v2 = v2 * (*(reinterpret_cast<half2*>(&(vec_a.z)))) + v0;
-  v3 = v3 * (*(reinterpret_cast<half2*>(&(vec_a.w)))) + v1;
-  v3 = v2 + v3;
-  return float(v3.x) + float(v3.y);
-}
-*/
-
 __device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, half scale, uint8_t zp, const half* a, half* sums) {
   half2 scale_half2 = {scale, scale};
   half zp_adjust = -scale * __short2half_rn(zp);
@@ -118,19 +90,26 @@ __device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, 
   // Convert elt_67
   asm volatile("fma.rn.f16x2 %0, %1, %2, %3;\n" : "=r"(h[3]) : "r"(h[3]), "r"(ONE_SIXTEENTH), "r"(NEG_64));
 
-  half2 v0 = elements[0] * scale_half2 + zp_adjust2;
-  half2 v1 = elements[1] * scale_half2 + zp_adjust2;
-  half2 v2 = elements[2] * scale_half2 + zp_adjust2;
-  half2 v3 = elements[3] * scale_half2 + zp_adjust2;
+  constexpr uint32_t kLowHalf2 = 0x5410;
+  constexpr uint32_t kHighHalf2 = 0x7632;
 
-  sums[0] += (v0.x * ((*(reinterpret_cast<half2*>(&(vec_a.x)))).x));
-  sums[1] += (v1.x * ((*(reinterpret_cast<half2*>(&(vec_a.x)))).y));
-  sums[2] += (v2.x * ((*(reinterpret_cast<half2*>(&(vec_a.y)))).x));
-  sums[3] += (v3.x * ((*(reinterpret_cast<half2*>(&(vec_a.y)))).y));
-  sums[4] += (v0.y * ((*(reinterpret_cast<half2*>(&(vec_a.z)))).x));
-  sums[5] += (v1.y * ((*(reinterpret_cast<half2*>(&(vec_a.z)))).y));
-  sums[6] += (v2.y * ((*(reinterpret_cast<half2*>(&(vec_a.w)))).x));
-  sums[7] += (v3.y * ((*(reinterpret_cast<half2*>(&(vec_a.w)))).y));
+  half2 values[4];
+  uint32_t* h_right_orders = reinterpret_cast<uint32_t*>(&values);
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(h_right_orders[0]) : "r"(h[0]), "r"(h[1]), "r"(kLowHalf2));
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(h_right_orders[1]) : "r"(h[2]), "r"(h[3]), "r"(kLowHalf2));
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(h_right_orders[2]) : "r"(h[0]), "r"(h[1]), "r"(kHighHalf2));
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(h_right_orders[3]) : "r"(h[2]), "r"(h[3]), "r"(kHighHalf2));
+
+  values[0] = values[0] * scale_half2 + zp_adjust2;
+  values[1] = values[1] * scale_half2 + zp_adjust2;
+  values[2] = values[2] * scale_half2 + zp_adjust2;
+  values[3] = values[3] * scale_half2 + zp_adjust2;
+
+  half2* sums_half2 = (reinterpret_cast<half2*>(sums));
+  sums_half2[0] += values[0] * (*(reinterpret_cast<half2*>(&(vec_a.x))));
+  sums_half2[1] += values[1] * (*(reinterpret_cast<half2*>(&(vec_a.y))));
+  sums_half2[2] += values[2] * (*(reinterpret_cast<half2*>(&(vec_a.z))));
+  sums_half2[3] += values[3] * (*(reinterpret_cast<half2*>(&(vec_a.w))));
 }
 
 __device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, float scale, uint8_t zp, const float* a, float* sums) {
@@ -166,7 +145,7 @@ constexpr int kWarpSize = 32;
 // Each thread block computes [1, K] x [kColsPerThreadBlock, (K + block_size - 1)/block_size, blob],
 //     i.e., computing kColsPerThreadBlock per block and a warp reduce (1, K) x (K)
 template <class T, int block_size>
-__global__ void __launch_bounds__(kWarpSize*kColsPerThreadBlock) MatMulFloatInt4Kernel(
+__global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt4Kernel(
     T* output,
     const T* a_data,
     const uint8_t* b_data_quant,
@@ -218,7 +197,7 @@ __global__ void __launch_bounds__(kWarpSize*kColsPerThreadBlock) MatMulFloatInt4
     zp = (t_meta_k & 0x01) ? (zp >> 4) : (zp & 0x0f);
     AccumulateEightElements(value, scale, zp, a_data + k_id + (lane_id << 3), sums);
     t_meta_k += k_per_iter / block_size;  // k index for this thread, points to the scale and zero point
-    b_data_quant += k_per_iter/2;
+    b_data_quant += k_per_iter / 2;
   }
 
   // handle reminder
