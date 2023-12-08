@@ -1,0 +1,69 @@
+	:Ç
+›
+input
+weight
+bias
+input_scale
+weight_scale
+input_zero_point
+weight_zero_point
+pastpresentoutput
+QAttention"
+QAttention*
+unidirectional 
+QAttentionZ?
+input6
+40
+
+batch_size
+sequence_length
+hidden_sizeZ2
+weight(
+&"
+hidden_size
+3 * hidden_sizeZ!
+bias
+
+
+3 * hidden_sizeZ
+input_scale
+
+
+
+Z
+weight_scale
+
+
+
+Z
+input_zero_point
+	
+1Z 
+weight_zero_point
+	
+1ZX
+pastP
+N
+J
+
+
+batch_size
+number_of_heads
+past_sequence_length
+	head_sizebm
+presentb
+`
+\
+
+
+batch_size
+number_of_heads
+(&past_sequence_length + sequence_length
+	head_sizeb@
+output6
+4
+0
+
+batch_size
+sequence_length
+hidden_sizeB

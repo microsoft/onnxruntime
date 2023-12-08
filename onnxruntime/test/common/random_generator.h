@@ -151,6 +151,16 @@ class RandomValueGenerator {
     return val;
   }
 
+  // Gaussian distribution for Integer and Clamp to [value]
+  template <typename TInt>
+  inline std::vector<TInt> fill(const std::vector<int64_t>& dims, TInt value) {
+    std::vector<TInt> val(detail::SizeFromDims(dims));
+    for (size_t i = 0; i < val.size(); ++i) {
+      val[i] = value;
+    }
+    return val;
+  }
+
   template <class T>
   inline std::vector<T> OneHot(const std::vector<int64_t>& dims, int64_t stride) {
     std::vector<T> val(detail::SizeFromDims(dims), T(0));
