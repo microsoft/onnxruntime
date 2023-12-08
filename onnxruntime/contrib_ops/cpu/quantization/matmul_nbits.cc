@@ -74,6 +74,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     if (packed_b_ == nullptr) {
       return Status::OK();
     }
+    std::memset(packed_b_.get(), 0, packed_b_size_);
     MlasNBitsGemmPackB(packed_b_.get(), qptr, nullptr, nullptr, N_, K_, K_, block_size_, static_cast<int>(nbits_),
                        is_asym_, false, compt_type, pool);
     if (prepacked_weights) {
