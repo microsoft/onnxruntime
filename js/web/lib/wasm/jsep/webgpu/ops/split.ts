@@ -34,7 +34,7 @@ const createSplitAttributesFromInputs =
 const calculateOutputIndexImpl = (numberOfTensors: number): string => `
 fn calculateOutputIndex(index: u32) -> u32 {
     for (var i: u32 = 0u; i < ${numberOfTensors}u; i += 1u ) {
-    if (index < ${getElementAt('uniforms.size_in_concat_axis', 'i', numberOfTensors)}) {
+    if (index < ${getElementAt('uniforms.size_in_split_axis', 'i', numberOfTensors)}) {
         return i;
     }
     }
@@ -68,29 +68,29 @@ const createSplitProgramInfo = (inputs: readonly TensorView[], attributes: Split
   const axis = ShapeUtil.normalizeAxis(attributes.axis, inputShape.length);
   const outputs = new Array<IndicesHelper>(attributes.numOutputs);
   const input = inputVariable('input', dataType, inputShape);
-  const sizeInConcatAxis = new Array<number>(attributes.numOutputs);
+  const sizeInSplitAxis = new Array<number>(attributes.numOutputs);
   const outputsTensorInfo: TensorInfo[] = [];
   const outputShapes: number[][] = [];
   let previousSum = 0;
   const programUniforms: ProgramUniform[] = [{type: 'uint32', data: inputSize}];
   for (let i = 0; i < attributes.numOutputs; i++) {
     previousSum += attributes.splitSizes[i];
-    sizeInConcatAxis[i] = previousSum;
+    sizeInSplitAxis[i] = previousSum;
     const outputShape = inputShape.slice();
     outputShape[attributes.axis] = attributes.splitSizes[i];
     outputShapes.push(outputShape);
     outputs[i] = outputVariable(`output${i}`, dataType, outputShape);
     outputsTensorInfo.push({dims: outputShapes[i], dataType: inputs[0].dataType});
   }
-  programUniforms.push({type: 'uint32', data: sizeInConcatAxis});
+  programUniforms.push({type: 'uint32', data: sizeInSplitAxis});
   programUniforms.push(...createTensorShapeVariables(inputShape));
   outputShapes.forEach((outputShape) => programUniforms.push(...createTensorShapeVariables(outputShape)));
   const getShaderSource = (shaderHelper: ShaderHelper) => `
   ${
       shaderHelper.registerUniform('input_size', 'u32')
-          .registerUniform('size_in_concat_axis', 'u32', sizeInConcatAxis.length)
+          .registerUniform('size_in_split_axis', 'u32', sizeInSplitAxis.length)
           .declareVariables(input, ...outputs)}
-  ${calculateOutputIndexImpl(sizeInConcatAxis.length)}
+  ${calculateOutputIndexImpl(sizeInSplitAxis.length)}
   ${writeBufferDataImpl(outputs)}
 
   ${shaderHelper.mainStart()}
@@ -100,7 +100,7 @@ const createSplitProgramInfo = (inputs: readonly TensorView[], attributes: Split
     var index = ${input.indicesGet('indices', axis)};
     let output_number = calculateOutputIndex(index);
     if (output_number != 0) {
-      index -= ${getElementAt('uniforms.size_in_concat_axis', 'output_number - 1u', sizeInConcatAxis.length)};
+      index -= ${getElementAt('uniforms.size_in_split_axis', 'output_number - 1u', sizeInSplitAxis.length)};
       ${input.indicesSet('indices', axis, 'index')};
     }
     writeBufferData(output_number, indices, global_idx);
