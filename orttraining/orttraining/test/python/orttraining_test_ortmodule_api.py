@@ -6423,6 +6423,7 @@ def test_bert_result_with_layerwise_recompute():
 
     execution_mgr = ort_model_with_reompute._torch_module._execution_manager._training_manager
     from onnxruntime.training.ortmodule._onnx_models import _get_onnx_file_name
+
     # Keep the logic aligned with _graph_execution_manager.py
     path = os.path.join(
         execution_mgr._debug_options.save_onnx_models.path,
