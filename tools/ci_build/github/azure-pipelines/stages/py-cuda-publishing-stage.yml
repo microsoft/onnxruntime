@@ -32,7 +32,7 @@ stages:
             inputs:
               artifact: 'onnxruntime_gpu'
               targetPath: '$(Build.SourcesDirectory)'
-              ${{ if eq(parameters.build_id, 'latest') }}:
+              ${{ if ne(parameters.build_id, 'latest') }}:
                 buildType: 'specific'
                 project: '$(project)'
                 pipeline: '$(pipeline)'
