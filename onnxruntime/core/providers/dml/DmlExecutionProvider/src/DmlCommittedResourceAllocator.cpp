@@ -16,7 +16,7 @@ namespace Dml
             unmove_ptr(CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT)),
             D3D12_HEAP_FLAG_NONE,
             &buffer,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_COMMON,
             nullptr,
             IID_GRAPHICS_PPV_ARGS(resource.GetAddressOf())
         ));
