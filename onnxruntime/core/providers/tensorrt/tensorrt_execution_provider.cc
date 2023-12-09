@@ -912,7 +912,7 @@ Status BindContextOutput(Ort::KernelContext& ctx,
                          std::unordered_map<size_t, Ort::UnownedValue>& output_tensors,
                          std::unordered_map<size_t, int>& output_dim_sizes,
                          std::unordered_set<char const*>& dds_output_set,
-                         std::unordered_map<char const*, OutputAllocator*>& dds_output_allocator_map,
+                         DDSOutputAllocatorMap& dds_output_allocator_map,
                          std::vector<IAllocatorUniquePtr<void>>& scratch_buffers,
                          OrtAllocator* alloc,
                          std::unordered_map<char const*, void*>& buffers) {
@@ -939,9 +939,9 @@ Status BindContextOutput(Ort::KernelContext& ctx,
   // Otherwise, if the shape of the output tensor is known prior to the runtime, ORT will pre-allocate memory buffer for the output tensor for enqueueV3.
   if (is_dds_output) {
     if (dds_output_allocator_map.find(output_name) == dds_output_allocator_map.end()) {
-      auto allocator = new OutputAllocator();
-      trt_context->setOutputAllocator(output_name, allocator);
-      dds_output_allocator_map[output_name] = allocator;
+      auto allocatorPtr = std::make_unique<OutputAllocator>();
+      trt_context->setOutputAllocator(output_name, allocatorPtr.get());
+      dds_output_allocator_map[output_name] = std::move(allocatorPtr);
     }
   } else {
     output_tensors[i] = ctx.GetOutput(output_index, output_shapes);
@@ -1079,7 +1079,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
                         std::vector<IAllocatorUniquePtr<void>>& scratch_buffers,
                         OrtAllocator* alloc,
                         cudaStream_t stream) {
-  auto allocator = allocator_map[output_name];
+  auto allocator = allocator_map[output_name].get();
   auto& shape = allocator->getOutputShape();
   auto output_tensor = ctx.GetOutput(output_index, shape);
   auto elem_cnt = output_tensor.GetTensorTypeAndShapeInfo().GetElementCount();
@@ -1692,13 +1692,6 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
     // This code is same as OrtApis::ReleaseAllocator defined in allocator_adapters.cc.
     // We can't get api inside destructor so that's why we duplicate the code here.
     delete static_cast<OrtAllocatorImpl*>(alloc_);
-  }
-
-  for (auto iter_outer = dds_output_allocator_map_.begin(); iter_outer != dds_output_allocator_map_.end(); ++iter_outer) {
-    auto inner_map = iter_outer->second;
-    for (auto iter_inner = inner_map.begin(); iter_inner != inner_map.end(); ++iter_inner) {
-      delete iter_inner->second;
-    }
   }
 }
 
@@ -2981,7 +2974,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name, builder_.get(),
             &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
-            input_shape_ranges_[context->node_name], sync_stream_after_enqueue_, dds_output_allocator_map_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
+            input_shape_ranges_[context->node_name], sync_stream_after_enqueue_, &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
             runtime_.get(), profiles_[context->node_name], context_memory_sharing_enable_, &max_ctx_mem_size_,
             dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
@@ -3012,7 +3005,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       bool sync_stream_after_enqueue = trt_state->sync_stream_after_enqueue;
       auto fused_node_name = trt_state->fused_node_name;
       auto& shape_ranges = trt_state->input_shape_ranges;
-      auto& dds_output_allocator_map = trt_state->dds_output_allocator_map;
       auto trt_builder = trt_state->builder;
       auto trt_engine = trt_state->engine->get();
       auto trt_context = trt_state->context->get();
@@ -3347,6 +3339,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       std::unordered_map<size_t, int> output_dim_sizes;
       output_dim_sizes.reserve(num_outputs);
       std::unordered_set<char const*> dds_output_set;
+      DDSOutputAllocatorMap dds_output_allocator_map;
 
       for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
         char const* output_name = output_binding_names[i];
