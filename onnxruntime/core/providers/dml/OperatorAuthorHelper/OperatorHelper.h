@@ -1213,6 +1213,34 @@ protected:
     std::vector<int> m_axes;
 };
 
+class Col2ImHelper
+{
+public:
+    void Initialize(
+        const IKernelInformationAdapter& kernelInformation,
+        const IShapeInformationAdapter& shapeInformation);
+
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
+    template <typename Info_t, typename Shape_t>
+    Col2ImHelper(const Info_t& info, const Shape_t& shape)
+    {
+        Initialize(KernelInformationAdapter(info), ShapeInformationAdapter(shape));
+    }
+
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+protected:
+    std::vector<uint32_t> m_dilations;
+    std::vector<uint32_t> m_pads;
+    std::vector<uint32_t> m_strides;
+    std::vector<uint32_t> m_imageShape;
+    std::vector<uint32_t> m_blockShape;
+    std::vector<uint32_t> m_inputShape;
+    std::vector<uint32_t> m_outputShape;
+};
+
+
 class UnsqueezeHelper
 {
 public:
@@ -1595,6 +1623,7 @@ using ShapeInferenceHelper_Unsqueeze11 = VersionedOpsetHelper<UnsqueezeHelper, 1
 using ShapeInferenceHelper_Unsqueeze13 = VersionedOpsetHelper<UnsqueezeHelper, 13>;
 using ShapeInferenceHelper_EyeLike = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Trilu = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Col2Im = Col2ImHelper;
 
 using ShapeInferenceHelper_Expand = ExpandHelper;
 using ShapeInferenceHelper_Reshape7 = ReshapeHelper;

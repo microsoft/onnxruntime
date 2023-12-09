@@ -72,12 +72,11 @@ else()
   if (dml_EXTERNAL_PROJECT)
     set(dml_preset_config $<IF:$<CONFIG:Debug>,debug,release>)
     set(dml_preset_name ${onnxruntime_target_platform}-win-redist-${dml_preset_config})
-    target_compile_definitions(DirectML INTERFACE DML_TARGET_VERSION_USE_LATEST=1)
     include(ExternalProject)
     ExternalProject_Add(
         directml_repo
         GIT_REPOSITORY https://dev.azure.com/microsoft/WindowsAI/_git/DirectML
-        GIT_TAG d460f0f46967bea878786f1bed69487692c779bf
+        GIT_TAG a5312f72c51864b4d705ac62d25d08bcd88c4fb1
         GIT_SHALLOW OFF # not allowed when GIT_TAG is a commit SHA, which is preferred (it's stable, unlike branches)
         GIT_PROGRESS ON
         BUILD_IN_SOURCE ON
@@ -94,6 +93,7 @@ else()
     target_link_libraries(DirectML INTERFACE ${directml_install_path}/lib/DirectML.lib)
     add_dependencies(DirectML directml_repo-install)
     include_directories(BEFORE ${directml_install_path}/include)
+    target_compile_definitions(DirectML INTERFACE DML_TARGET_VERSION_USE_LATEST=1)
   else()
     include_directories(BEFORE ${dml_INCLUDE_DIR})
     set(DML_PACKAGE_DIR ${dml_INCLUDE_DIR}/..)
