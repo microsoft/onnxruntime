@@ -13,9 +13,9 @@ const createWhereOpProgramShader =
      typeOutput: number) => {
 
       const output = outputVariable('outputData', typeOutput, dimsOutput, 4);
-      const a = inputVariable('aData', inputs[1].dataType, inputs[1].dims, 4);
-      const b = inputVariable('bData', inputs[2].dataType, inputs[2].dims, 4);
-      const c = inputVariable('cData', inputs[0].dataType, inputs[0].dims, 4);
+      const a = inputVariable('aData', inputs[1].dataType, inputs[1].dims.length, 4);
+      const b = inputVariable('bData', inputs[2].dataType, inputs[2].dims.length, 4);
+      const c = inputVariable('cData', inputs[0].dataType, inputs[0].dims.length, 4);
 
       let assignment: string;
       const expression = (a: string, b: string, c: string) => `select(${b}, ${a}, ${c})`;
@@ -61,7 +61,7 @@ const createWhereOpProgramShader =
       }
 
       return `
-        ${shaderHelper.declareVariables(c, a, b, output)}
+        ${shaderHelper.registerUniform('vec_size', 'u32').declareVariables(c, a, b, output)}
         ${shaderHelper.mainStart()}
         ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.vec_size')}
         ${assignment}
