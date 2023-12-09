@@ -13,6 +13,10 @@
 #include "onnx/onnx_pb.h"
 #endif
 
+namespace onnx {
+class ModelProto;
+}
+
 namespace onnxruntime {
 /// <summary>
 /// Enum of DataTypes using standard ONNX values. Casting to/from int32_t is encouraged.
@@ -212,6 +216,11 @@ class GraphViewRef {
 #ifdef INTREE_EP
   virtual onnx::ModelProto ToModelProto() const = 0;
 #endif
+
+  virtual onnx::ModelProto* ToModelProto2() const = 0;
+
+  virtual std::string_view SerializeModelProtoToString() const = 0;
+
   virtual ~GraphViewRef(){};
 };
 }

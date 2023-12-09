@@ -4,6 +4,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/graph_proto_serializer.h"
+#include "onnx/onnx_pb.h"
 
 namespace onnxruntime {
 const onnx::TensorShapeProto* GetNodeArgShape(const NodeArg* node_arg) {
@@ -335,4 +336,37 @@ onnx::ModelProto ApiGraphView::ToModelProto() const {
   return ret;
 }
 #endif
+
+onnx::ModelProto* ApiGraphView::ToModelProto2() const {
+  GraphViewer graph_viewer(graph_, isg_);
+  Model model(graph_viewer.Name(), true, ModelMetaData(), PathString(),
+#if defined(ORT_MINIMAL_BUILD)
+    IOnnxRuntimeOpSchemaRegistryList(),
+#else
+    IOnnxRuntimeOpSchemaRegistryList({graph_viewer.GetSchemaRegistry()}),
+#endif
+    graph_viewer.DomainToVersionMap(), std::vector<onnx::FunctionProto>(), graph_viewer.GetGraph().GetLogger()
+  );
+  std::unique_ptr<onnx::ModelProto> ret = std::make_unique<onnx::ModelProto>(model.ToProto());
+  GraphViewerToProto(graph_viewer, *(ret->mutable_graph()), true, true);
+  return ret.release();
+}
+
+std::string_view ApiGraphView::SerializeModelProtoToString() const {
+  GraphViewer graph_viewer(graph_, isg_);
+  Model model(graph_viewer.Name(), true, ModelMetaData(), PathString(),
+#if defined(ORT_MINIMAL_BUILD)
+    IOnnxRuntimeOpSchemaRegistryList(),
+#else
+    IOnnxRuntimeOpSchemaRegistryList({graph_viewer.GetSchemaRegistry()}),
+#endif
+    graph_viewer.DomainToVersionMap(), std::vector<onnx::FunctionProto>(), graph_viewer.GetGraph().GetLogger()
+  );
+  onnx::ModelProto model_proto = model.ToProto();
+  GraphViewerToProto(graph_viewer, *model_proto.mutable_graph(), true, true);
+  std::string ret;
+  model_proto.SerializeToString(&ret);
+  return ret;
+}
+
 }

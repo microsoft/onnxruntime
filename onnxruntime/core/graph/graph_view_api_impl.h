@@ -111,6 +111,8 @@ class ApiGraphView : virtual public interface::GraphViewRef {
 #ifdef INTREE_EP
   onnx::ModelProto ToModelProto() const override;
 #endif
+  onnx::ModelProto* ToModelProto2() const override;
+  std::string_view SerializeModelProtoToString() const override;
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiGraphView);
 };
