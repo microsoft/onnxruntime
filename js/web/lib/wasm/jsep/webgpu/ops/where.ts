@@ -12,10 +12,10 @@ const createWhereOpProgramShader =
     (shaderHelper: ShaderHelper, inputs: readonly TensorView[], dimsOutput: readonly number[], isBroadcast: boolean,
      typeOutput: number) => {
 
-      const output = outputVariable('outputData', typeOutput, dimsOutput, 4);
-      const a = inputVariable('aData', inputs[1].dataType, inputs[1].dims.length, 4);
-      const b = inputVariable('bData', inputs[2].dataType, inputs[2].dims.length, 4);
-      const c = inputVariable('cData', inputs[0].dataType, inputs[0].dims.length, 4);
+      const output = outputVariable('output_data', typeOutput, dimsOutput, 4);
+      const a = inputVariable('a_data', inputs[1].dataType, inputs[1].dims.length, 4);
+      const b = inputVariable('b_data', inputs[2].dataType, inputs[2].dims.length, 4);
+      const c = inputVariable('c_data', inputs[0].dataType, inputs[0].dims.length, 4);
 
       let assignment: string;
       const expression = (a: string, b: string, c: string) => `select(${b}, ${a}, ${c})`;
@@ -25,20 +25,20 @@ const createWhereOpProgramShader =
             expression(a.getByOffset('global_idx'), b.getByOffset('global_idx'), c.getByOffset('global_idx')));
       } else {
         const singleAssignment = (resStr: string, x: number, typeCast = '') => {
-          const expressionA = `aData[indexA${x}][componentA${x}]`;
-          const expressionB = `bData[indexB${x}][componentB${x}]`;
+          const expressionA = `a_data[index_a${x}][component_a${x}]`;
+          const expressionB = `b_data[index_b${x}][component_b${x}]`;
           // eslint-disable-next-line no-bitwise
-          const expressionC = `bool(cData[indexC${x}] & ${0xff000000 >>> ((3 - x) * 8)}u)`;
+          const expressionC = `bool(c_data[index_c${x}] & ${0xff000000 >>> ((3 - x) * 8)}u)`;
           return `
-            let outputIndices${x} = ${output.offsetToIndices(`global_idx * 4u + ${x}u`)};
-            let offsetA${x} = ${a.broadcastedIndicesToOffset(`outputIndices${x}`, output)};
-            let offsetB${x} = ${b.broadcastedIndicesToOffset(`outputIndices${x}`, output)};
-            let offsetC${x} = ${c.broadcastedIndicesToOffset(`outputIndices${x}`, output)};
-            let indexA${x} = offsetA${x} / 4u;
-            let indexB${x} = offsetB${x} / 4u;
-            let indexC${x} = offsetC${x} / 4u;
-            let componentA${x} = offsetA${x} % 4u;
-            let componentB${x} = offsetB${x} % 4u;
+            let output_indices${x} = ${output.offsetToIndices(`global_idx * 4u + ${x}u`)};
+            let offset_a${x} = ${a.broadcastedIndicesToOffset(`output_indices${x}`, output)};
+            let offset_b${x} = ${b.broadcastedIndicesToOffset(`output_indices${x}`, output)};
+            let offset_c${x} = ${c.broadcastedIndicesToOffset(`output_indices${x}`, output)};
+            let index_a${x} = offset_a${x} / 4u;
+            let index_b${x} = offset_b${x} / 4u;
+            let index_c${x} = offset_c${x} / 4u;
+            let component_a${x} = offset_a${x} % 4u;
+            let component_b${x} = offset_b${x} % 4u;
             ${resStr}[${x}] = ${typeCast}(${expression(expressionA, expressionB, expressionC)});
           `;
         };
@@ -49,13 +49,13 @@ const createWhereOpProgramShader =
             ${singleAssignment('data', 1, 'u32')}
             ${singleAssignment('data', 2, 'u32')}
             ${singleAssignment('data', 3, 'u32')}
-            outputData[global_idx] = dot(vec4<u32>(0x1, 0x100, 0x10000, 0x1000000), vec4<u32>(data));`;
+            output_data[global_idx] = dot(vec4<u32>(0x1, 0x100, 0x10000, 0x1000000), vec4<u32>(data));`;
         } else {
           assignment = `
-            ${singleAssignment('outputData[global_idx]', 0)}
-            ${singleAssignment('outputData[global_idx]', 1)}
-            ${singleAssignment('outputData[global_idx]', 2)}
-            ${singleAssignment('outputData[global_idx]', 3)}
+            ${singleAssignment('output_data[global_idx]', 0)}
+            ${singleAssignment('output_data[global_idx]', 1)}
+            ${singleAssignment('output_data[global_idx]', 2)}
+            ${singleAssignment('output_data[global_idx]', 3)}
           `;
         }
       }
