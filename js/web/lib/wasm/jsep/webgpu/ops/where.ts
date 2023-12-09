@@ -6,13 +6,11 @@ import {TensorView} from '../../tensor-view';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, ProgramInfo} from '../types';
 
-import {inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper} from './common';
 
 const createWhereOpProgramShader =
     (shaderHelper: ShaderHelper, inputs: readonly TensorView[], dimsOutput: readonly number[], isBroadcast: boolean,
      typeOutput: number) => {
-      const outputSize = ShapeUtil.size(dimsOutput);
-      const vecSize = Math.ceil(outputSize / 4);
 
       const output = outputVariable('outputData', typeOutput, dimsOutput, 4);
       const a = inputVariable('aData', inputs[1].dataType, inputs[1].dims, 4);
@@ -65,7 +63,7 @@ const createWhereOpProgramShader =
       return `
         ${shaderHelper.declareVariables(c, a, b, output)}
         ${shaderHelper.mainStart()}
-        ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(vecSize)}
+        ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.vec_size')}
         ${assignment}
       }`;
     };
@@ -79,6 +77,7 @@ const createWhereOpProgramInfo = (inputs: readonly TensorView[]): ProgramInfo =>
   const isBroadcast = !(ShapeUtil.areEqual(dimsA, dimsB) && ShapeUtil.areEqual(dimsB, dimsC));
   let outputShape = dimsA;
   let outputSize = ShapeUtil.size(dimsA);
+  const vecSize = Math.ceil(outputSize / 4);
   // TODO: deal with zero-sized tensors (eg. dims=[1,0])
 
   if (isBroadcast) {
@@ -92,11 +91,16 @@ const createWhereOpProgramInfo = (inputs: readonly TensorView[]): ProgramInfo =>
 
   return {
     name: 'Where',
+    shaderCache: {inputDependencies: ['rank', 'rank', 'rank']},
     getShaderSource: (shaderHelper) =>
         createWhereOpProgramShader(shaderHelper, inputs, outputShape, isBroadcast, outputDataType),
     getRunData: () => ({
       outputs: [{dims: outputShape, dataType: outputDataType}],
-      dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */ / 4 /* vec size */)}
+      dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */ / 4 /* vec size */)},
+      programUniforms: [
+        {type: 'uint32', data: vecSize}, ...createTensorShapeVariables(dimsC), ...createTensorShapeVariables(dimsA),
+        ...createTensorShapeVariables(dimsB)
+      ],
     }),
   };
 };
