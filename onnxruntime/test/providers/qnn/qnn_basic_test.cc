@@ -336,6 +336,78 @@ TEST_F(QnnHTPBackendTests, QnnContextPriorityHigh) {
                      "high");  // qnn_context_priority
 }
 
+// Create a model with Case + Add (quantized)
+// cast_input -> Cast -> Q -> DQ \
+//                                Add -> Q -> DQ -> output
+//             input2 -> Q -> DQ /
+static GetTestModelFn BuildCastAddTestCase() {
+  return [](ModelTestBuilder& builder) {
+    // Creat Cast node int32 -> float32
+    NodeArg* cast_input = MakeTestInput(builder, TestInputDef<int32_t>({2, 3}, false, {0, 1, 0, 1, 0, 1}));
+
+    auto* cast_output = builder.MakeIntermediate();
+    Node& cast_node = builder.AddNode("Cast", {cast_input}, {cast_output});
+    cast_node.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT));
+
+    // Create Add node
+    std::vector<float> data = {0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f};
+    gsl::span<float> data_range = gsl::make_span(data);
+    QuantParams<uint8_t> q_parameter = GetDataQuantParams<uint8_t>(data_range);
+    auto* add_input1_qdq = AddQDQNodePair<uint8_t>(builder, cast_output, q_parameter.scale, q_parameter.zero_point);
+
+    NodeArg* add_input2 = MakeTestInput(builder, TestInputDef<float>({2, 3}, false, data));
+    auto* add_input2_qdq = AddQDQNodePair<uint8_t>(builder, add_input2, q_parameter.scale, q_parameter.zero_point);
+
+    auto* add_output = builder.MakeIntermediate();
+
+    builder.AddNode("Add", {add_input1_qdq, add_input2_qdq}, {add_output});
+
+    // add_output -> Q -> DQ -> output
+    AddQDQNodePairWithOutputAsGraphOutput<uint8_t>(builder, add_output, q_parameter.scale, q_parameter.zero_point);
+  };
+}
+
+// Test that models with 2 inputs which has different data type can still generate the context binary
+TEST_F(QnnHTPBackendTests, QnnContextBinaryGeneration2InputTypes) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["qnn_context_cache_enable"] = "1";
+  const std::string context_binary_file = "./qnn_context_binary_int32_fp32_inputs_test.onnx";
+  provider_options["qnn_context_cache_path"] = context_binary_file;
+
+  RunQnnModelTest(BuildCastAddTestCase(),
+                  provider_options,
+                  13,  // opset
+                  ExpectedEPNodeAssignment::All,
+                  1e-5f,
+                  logging::Severity::kERROR,
+                  false);
+
+  // Make sure the Qnn context cache binary file is generated
+  EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
+}
+
+// A repro of QC case 06838696, accuracy issue for Cast + Op (quantized)
+// the value pair(1, 0.00392156886) at index #1 don't match,
+// which is -0.996078 from 1
+TEST_F(QnnHTPBackendTests, DISABLED_CastAddHTPAccuracyTest) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  RunQnnModelTest(BuildCastAddTestCase(),
+                  provider_options,
+                  13,  // opset
+                  ExpectedEPNodeAssignment::All);
+}
+
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

@@ -36,7 +36,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "29bf8085f3bf17b84d30e34b3d7ff8248fda404e",
+          "commitHash": "3abf3298b6b43acc8556b1342ffb6de4a85fb30f",
           "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
         },
         "comments": "abseil_cpp"
@@ -126,7 +126,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "f8d7d77c06936315286eb55f8de22cd23c188571",
+          "commitHash": "b3a9ba2b8e975550799838332803d468797ae2e1",
           "repositoryUrl": "https://github.com/google/googletest.git"
         },
         "comments": "googletest"
@@ -316,7 +316,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "a4f72a314a85732ed67d5aa8d1088d207a7e0e61",
+          "commitHash": "5356c4a943a35e74d7cdc69486afcb8703b9a59a",
           "repositoryUrl": "https://github.com/ROCmSoftwarePlatform/composable_kernel.git"
         },
         "comments": "composable_kernel"

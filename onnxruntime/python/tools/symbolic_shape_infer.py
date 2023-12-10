@@ -467,6 +467,7 @@ class SymbolicShapeInference:
             "PythonOp",
             "MultiHeadAttention",
             "GroupNorm",
+            "SkipGroupNorm",
             "BiasSplitGelu",
             "BiasAdd",
             "NhwcConv",

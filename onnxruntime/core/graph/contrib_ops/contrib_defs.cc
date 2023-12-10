@@ -3248,7 +3248,7 @@ void RegisterContribSchemas() {
           "List of tensors for inputs",
           "T",
           OpSchema::Variadic,
-          true,
+          false,
           1,
           OpSchema::NonDifferentiable)
       .Output(
@@ -3257,7 +3257,7 @@ void RegisterContribSchemas() {
           "One or more outputs, list of tensors for outputs",
           "T",
           OpSchema::Variadic,
-          true,
+          false,
           1,
           OpSchema::NonDifferentiable)
       .TypeConstraint(
@@ -3273,11 +3273,7 @@ void RegisterContribSchemas() {
            "tensor(float16)",
            "tensor(float)",
            "tensor(double)"},
-          "Constrain input and output types.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        // Type inference
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-      });
+          "Constrain input and output types.");
 
   static const char* BitmaskDropout_ver1_doc = R"DOC(
 BitmaskDropout takes an input floating-point tensor, an optional input ratio (floating-point scalar) and an optional input training_mode (boolean scalar).
@@ -3431,7 +3427,7 @@ MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4
       .Input(1, "B", "1-dimensional quantized data for weight", "T2")
       .Input(2, "absmax", "quantization constants", "T1")
       .Output(0, "Y", "tensor. The output tensor has the same rank as the input. ", "T1")
-      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float/half_float tensors.")
+      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float/half_float/brain_float tensors.")
       .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain quantized weight types to uint8.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Type inference
