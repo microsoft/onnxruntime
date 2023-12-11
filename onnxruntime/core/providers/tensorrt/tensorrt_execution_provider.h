@@ -123,7 +123,6 @@ struct TensorrtFuncState {
   bool filter_tactic_sources = false;
   nvinfer1::TacticSources tactic_sources;
   // Below: class private members
-  bool sync_stream_after_enqueue = false;
   bool fp16_enable = false;
   bool int8_enable = false;
   bool int8_calibration_cache_available = false;
@@ -131,12 +130,6 @@ struct TensorrtFuncState {
   int dla_core = 0;
   bool engine_cache_enable = false;
   std::string engine_cache_path;
-  bool context_memory_sharing_enable = false;
-  bool engine_decryption_enable = false;
-  int (*engine_decryption)(const char*, char*, size_t*) = nullptr;
-  int (*engine_encryption)(const char*, char*, size_t) = nullptr;
-  bool timing_cache_enable = true;
-  std::string timing_cache_path;
 };
 
 // Holds important information for building valid ORT graph.
@@ -227,7 +220,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool engine_decryption_enable_ = false;
   int (*engine_decryption_)(const char*, char*, size_t*) = nullptr;
   int (*engine_encryption_)(const char*, char*, size_t) = nullptr;
-  bool timing_cache_enable_ = false;
+  bool timing_cache_enable_ = true;
   bool force_timing_cache_match_ = false;
   bool detailed_build_log_ = false;
   bool cuda_graph_enable_ = false;

@@ -2491,9 +2491,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             trt_node_name_with_precision, runtime_.get(), profiles_[context->node_name], &max_ctx_mem_size_,
             dynamic_range_map, !tactic_sources_.empty(), tactics,
             // Below: class private members
-            sync_stream_after_enqueue_, fp16_enable_, int8_enable_, int8_calibration_cache_available_, dla_enable_,
-            dla_core_, engine_cache_enable_, cache_path_, context_memory_sharing_enable_, engine_decryption_enable_,
-            engine_decryption_, engine_encryption_, timing_cache_enable_, global_cache_path_
+            fp16_enable_, int8_enable_, int8_calibration_cache_available_, dla_enable_,
+            dla_core_, engine_cache_enable_, cache_path_
       };
       *state = p.release();
       return 0;
@@ -2517,7 +2516,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       const std::unordered_map<std::string, size_t>& input_indexes = (trt_state->input_info)[0];
       const std::unordered_map<std::string, size_t>& output_indexes = (trt_state->output_info)[0];
       const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
-      bool sync_stream_after_enqueue = trt_state->sync_stream_after_enqueue;
       auto fused_node_name = trt_state->fused_node_name;
       auto& shape_ranges = trt_state->input_shape_ranges;
       auto trt_builder = trt_state->builder;
@@ -2708,7 +2706,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
         // Load timing cache from file. Create a fresh cache if the file doesn't exist
         std::unique_ptr<nvinfer1::ITimingCache> timing_cache = nullptr;
-        if (trt_state->timing_cache_enable) {
+        if (timing_cache_enable_) {
           std::vector<char> loaded_timing_cache = loadTimingCacheFile(timing_cache_path);
           timing_cache.reset(trt_config->createTimingCache(static_cast<const void*>(loaded_timing_cache.data()), loaded_timing_cache.size()));
           if (timing_cache == nullptr) {
@@ -2749,8 +2747,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           size_t engine_size = serializedModel->size();
           if (trt_state->engine_decryption_enable) {
             // Encrypt engine. The library is not always deployed with the encrypt function, so check if it is available first.
-            if (trt_state->engine_encryption != nullptr) {
-              if (!trt_state->engine_encryption(encrypted_engine_cache_path.c_str(), reinterpret_cast<char*>(serializedModel->data()), engine_size)) {
+            if (engine_encryption_ != nullptr) {
+              if (!engine_encryption_(encrypted_engine_cache_path.c_str(), reinterpret_cast<char*>(serializedModel->data()), engine_size)) {
                 return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                        "TensorRT EP could not call engine encryption function encrypt");
               }
@@ -2766,7 +2764,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         }
 
         // serialize and save timing cache
-        if (trt_state->timing_cache_enable) {
+        if (timing_cache_enable_) {
           auto timing_cache = trt_config->getTimingCache();
           std::unique_ptr<nvinfer1::IHostMemory> timingCacheHostData{timing_cache->serialize()};
           if (timingCacheHostData == nullptr) {
@@ -2782,7 +2780,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       }
 
       if (context_update) {
-        if (trt_state->context_memory_sharing_enable) {
+        if (context_memory_sharing_enable_) {
           *(trt_state->context) = std::unique_ptr<nvinfer1::IExecutionContext>(
               trt_state->engine->get()->createExecutionContextWithoutDeviceMemory());
         } else {
@@ -3113,7 +3111,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       }
 
       // Set execution context memory
-      if (trt_state->context_memory_sharing_enable) {
+      if (context_memory_sharing_enable_) {
         size_t mem_size = trt_engine->getDeviceMemorySize();
         if (mem_size > *max_context_mem_size_ptr) {
           *max_context_mem_size_ptr = mem_size;
@@ -3135,7 +3133,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
       }
 
-      if (sync_stream_after_enqueue) {
+      if (sync_stream_after_enqueue_) {
         cudaStreamSynchronize(stream);
       }
 
