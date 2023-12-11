@@ -22,7 +22,7 @@ stages:
     ${{ if eq(parameters.dependencies, 'none') }}:
       dependsOn: [ ]
     jobs:
-      - job: Publish_NuGet_Package
+      - job:
         pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
         steps:
           - checkout: none
