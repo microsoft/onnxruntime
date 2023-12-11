@@ -9,7 +9,7 @@ import copy
 import importlib
 import logging
 import os
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 import numpy as np
 import numpy.typing as npt
@@ -118,7 +118,7 @@ class MatMul4BitsQuantizer:
 
     def __init__(
         self,
-        model: ModelProto,
+        model: Union[ModelProto, str],
         block_size: int,
         is_symmetric: bool,
         nodes_to_exclude=None,
@@ -126,7 +126,8 @@ class MatMul4BitsQuantizer:
     ):
         if nodes_to_exclude is None:
             nodes_to_exclude = []
-        self.model = ONNXModel(model)
+        self.model = ONNXModel(onnx.load(model)) if isinstance(model, str) else ONNXModel(model)
+        self.model_path = model if isinstance(model, str) else None
         self.block_size = block_size
         self.is_symmetric = is_symmetric
         self.nodes_to_exclude = set(nodes_to_exclude)
@@ -267,7 +268,7 @@ class MatMul4BitsQuantizer:
         """Generate weight only quant configuration for nodes."""
         q4_node_config = {}
         template_config_q4 = {"bits": 4, "group_size": self.block_size, "scheme": "sym" if self.is_symmetric else "asym"}
-        template_config_fp32 = 'fp32'
+        template_config_fp32 = "fp32"
         for node in self.model.model.graph.node:
             if node.op_type in ["MatMul"]:
                 if not all([self.model.get_initializer(i) is None for i in node.input]):
@@ -297,7 +298,7 @@ class MatMul4BitsQuantizer:
             ratios = self.algo_config.ratios
 
             self.model = rtn_quantize(
-                model=self.model.model,
+                model=self.model_path if self.model_path is not None else self.model.model,
                 weight_config=weight_only_node_config,
                 ratios=ratios,
                 accuracy_level=accuracy_level,
@@ -313,7 +314,7 @@ class MatMul4BitsQuantizer:
             dataloader = inc_dataloader()
 
             self.model = gptq_quantize(
-                model=self.model.model,
+                model=self.model_path if self.model_path is not None else self.model.model,
                 weight_config=weight_only_node_config,
                 dataloader=dataloader,
                 n_samples=-1,
