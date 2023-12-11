@@ -6395,7 +6395,7 @@ def test_conv_transpose_gradient_with_strides_padding_and_dilation(conv_algo_sea
 
 def test_bert_result_with_layerwise_recompute():
     original_val = os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] if "ORTMODULE_MEMORY_OPT_LEVEL" in os.environ else None
-    # create pytorch model with dropout disabled
+    # Create PyTorch model with dropout disabled.
     pt_model = _get_bert_for_sequence_classification_model(
         "cuda", is_training=True, hidden_dropout_prob=0.0, attention_probs_dropout_prob=0.0
     )
@@ -6442,7 +6442,7 @@ def test_bert_result_with_layerwise_recompute():
 
     assert recompute_nodes > 0, "No Recompute nodes are found"
 
-    # Make sure envrionment variable is restored to its original value after the run completed.
+    # Make sure environment variable is restored to its original value after the run is completed.
     torch.cuda.synchronize()
     if original_val is not None:
         os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = original_val
