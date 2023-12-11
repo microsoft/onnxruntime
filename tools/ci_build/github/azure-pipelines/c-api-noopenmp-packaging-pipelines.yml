@@ -829,7 +829,7 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         configuration: RelWithDebInfo
         platform: 'Any CPU'
-        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu-win -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
+        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu-linux -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: BatchScript@1
