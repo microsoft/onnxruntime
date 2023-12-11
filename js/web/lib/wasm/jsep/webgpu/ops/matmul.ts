@@ -38,7 +38,7 @@ export const createNaiveMatmulProgramInfo =
       programUniforms.push(...createTensorShapeVariables(outputShapeInShader));
 
       const getShaderSource = (shaderHelper: ShaderHelper) => {
-        const batchDims = internalVariable('batchDims', inputs[0].dataType, outerDims.length);
+        const batchDims = internalVariable('batch_dims', inputs[0].dataType, outerDims.length);
         const a = inputVariable('a', inputs[0].dataType, aShape.length, aComponents);
         const b = inputVariable('b', inputs[1].dataType, bShape.length, components);
         const output = outputVariable('output', inputs[0].dataType, outputShapeInShader.length, components);
@@ -61,33 +61,34 @@ export const createNaiveMatmulProgramInfo =
           const rank = variable.rank;
           const name = variable.name;
           if (rank === 2) {
-            return `var ${name}Indices = ${variable.type.indices}(0u, 0u);`;
+            return `var ${name}_indices = ${variable.type.indices}(0u, 0u);`;
           }
           const batchRank = batchDims.rank;
-          let resStr = `var ${name}Indices: ${variable.type.indices};`;
+          let resStr = `var ${name}_indices: ${variable.type.indices};`;
           for (let i = rank - 2 - 1, j = batchRank - 1; i >= 0; i--, j--) {
-            resStr += `\n${name}Indices[${i}] = ${batchRank > 1 ? `batchIndices[${j}]` : 'batchIndices'};`;
+            resStr += `\n${name}_indices[${i}] = ${batchRank > 1 ? `batch_indices[${j}]` : 'batch_indices'};`;
           }
           broadCastDims.forEach(i => {
-            resStr += `\n${name}Indices[${i}] = 0;`;
+            resStr += `\n${name}_indices[${i}] = 0;`;
           });
-          resStr += `${name}Indices[${rank - 2}] = 0u;
-                     ${name}Indices[${rank - 1}] = 0u;`;
+          resStr += `${name}_indices[${rank - 2}] = 0u;
+                     ${name}_indices[${rank - 1}] = 0u;`;
           return resStr;
         };
 
         const calcResult = (): string => {
-          let calcStr = `var aData: ${a.type.value};`;
+          let calcStr = `var a_data: ${a.type.value};`;
           for (let i = 0; i < aComponents; i++) {
             calcStr += `
-              let bData${i} = b[(offsetB + (k + ${i}) * uniforms.N + col) / ${components}];`;
+              let b_data${i} = b[(b_offset + (k + ${i}) * uniforms.N + col) / ${components}];`;
           }
           for (let i = 0; i < outputNumber; i++) {
-            calcStr += `aData = a[(offsetA + (row + ${i}) * uniforms.K + k) / ${aComponents}];`;
+            calcStr += `a_data = a[(a_offset + (row + ${i}) * uniforms.K + k) / ${aComponents}];`;
 
             for (let j = 0; j < aComponents; j++) {
               calcStr += `
-            values[${i}] = fma(${b.type.value}(aData${aComponents === 1 ? '' : `[${j}]`}), bData${j}, values[${i}]);\n`;
+            values[${i}] = fma(${b.type.value}(a_data${aComponents === 1 ? '' : `[${j}]`}), b_data${j}, values[${
+                  i}]);\n`;
             }
           }
           return calcStr;
@@ -110,11 +111,11 @@ export const createNaiveMatmulProgramInfo =
     let row = (index1 % stride1) * ${outputNumber};
     let batch = index1 / stride1;
 
-    ${outputShape.length === 2 ? '' : `let batchIndices = ${batchDims.offsetToIndices('batch')};`}
+    ${outputShape.length === 2 ? '' : `let batch_indices = ${batchDims.offsetToIndices('batch')};`}
     ${getIndices(a, broadCastADims)}
-    let offsetA = ${a.indicesToOffset('aIndices')};
+    let a_offset = ${a.indicesToOffset('a_indices')};
     ${getIndices(b, broadCastBDims)}
-    let offsetB = ${b.indicesToOffset('bIndices')};
+    let b_offset = ${b.indicesToOffset('b_indices')};
     var values: array<${output.type.value}, ${outputNumber}>;
     for (var k: u32 = 0u; k < uniforms.K; k = k + ${aComponents}) {
       ${calcResult()}
@@ -123,8 +124,8 @@ export const createNaiveMatmulProgramInfo =
       var value = values[i];
       ${processBias}
       ${applyActivation}
-      let curIndices = ${output.type.indices}(batch, row + i, col);
-      let offset = ${output.indicesToOffset('curIndices')};
+      let cur_indices = ${output.type.indices}(batch, row + i, col);
+      let offset = ${output.indicesToOffset('cur_indices')};
       ${output.setByOffset(`offset / ${components}`, 'value')};
     }
   }
