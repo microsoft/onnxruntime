@@ -41,7 +41,11 @@ stages:
                 buildVersionToDownload: 'specific'
                 buildId: '${{ parameters.build_id }}'
           - script: |
-              echo $(Build.BinariesDirectory)/nuget-artifact/final-package
+              ls $(Build.BinariesDirectory)/nuget-artifact/final-package
+              echo -------
+              ls $(Build.BinariesDirectory)/nuget-artifact/final-package/**/*.nupkg
+              echo -------
+              ls $(Build.BinariesDirectory)/nuget-artifact/final-package/drop-signed-nuget-GPU/*.nupkg
             displayName: List Downloaded Package
           - template: ../nuget/templates/get-nuget-package-version-as-variable.yml
             parameters:
@@ -51,7 +55,7 @@ stages:
             displayName: 'NuGet push onnxruntime'
             inputs:
               command: push
-              packagesToPush: $(Build.BinariesDirectory)/nuget-artifact/final-package/*.nupkg'
+              packagesToPush: $(Build.BinariesDirectory)/nuget-artifact/final-package/**/*.nupkg'
               publishVstsFeed: ${{ parameters.artifact_feed }}
 
 
