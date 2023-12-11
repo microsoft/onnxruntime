@@ -10,7 +10,7 @@ parameters:
     default: 'Lotus'
   - name: pipeline
     type: string
-    default: 'Nuget CUDA 12 Packaging Pipeline'
+    default: 'onnxruntime/Nuget CUDA 12 Packaging Pipeline'
 
 stages:
 - template: stages/nuget-cuda-publishing-stage.yml

@@ -4,7 +4,7 @@ parameters:
     default: 'latest'
   - name: project
     type: string
-    default: 'onnxruntime'
+    default: 'Lotus'
   - name: pipeline
     type: string
     default: 'Nuget CUDA 12 Packaging Pipeline'
@@ -25,6 +25,13 @@ stages:
       - job: Publish_NuGet_Package
         steps:
           - checkout: none
+          - script: |
+              echo ${{ parameters.build_id }}
+              echo ${{ parameters.project }}
+              echo ${{ parameters.pipeline }}
+              echo ${{ parameters.artifact_feed }}
+
+            displayName: List Downloaded Package
           - task: DownloadPipelineArtifact@2
             displayName: Download NuGet Package
             inputs:
@@ -48,7 +55,7 @@ stages:
             inputs:
               command: push
               packagesToPush: $(Build.BinariesDirectory)/nuget-artifact/final-package/*.nupkg'
-              publishVstsFeed: onnxruntime-cuda-12
+              publishVstsFeed: ${{ parameters.artifact_feed }}
 
 
 
