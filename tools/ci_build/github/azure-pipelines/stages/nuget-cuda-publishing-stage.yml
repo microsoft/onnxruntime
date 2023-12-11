@@ -48,7 +48,7 @@ stages:
               packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
 
           - task: NuGetCommand@2
-            displayName: 'NuGet push onnxruntime'
+            displayName: 'NuGet push ${{ parameters.artifact_feed }}'
             inputs:
               command: push
               packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/*.nupkg'
