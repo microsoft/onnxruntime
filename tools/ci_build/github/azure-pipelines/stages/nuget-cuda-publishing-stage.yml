@@ -17,7 +17,7 @@ stages:
     ${{ if ne(parameters.dependencies, 'none') }}:
       dependsOn:
     ${{ if eq(parameters.dependencies, 'none') }}:
-      dependsOn: [ ]
+      dependsOn: []
     jobs:
       - job:
         pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
@@ -42,10 +42,6 @@ stages:
                 buildId: '${{ parameters.build_id }}'
           - script: |
               ls $(Build.BinariesDirectory)/nuget-artifact/final-package
-              echo -------
-              ls $(Build.BinariesDirectory)/nuget-artifact/final-package/**/*.nupkg
-              echo -------
-              ls $(Build.BinariesDirectory)/nuget-artifact/final-package/drop-signed-nuget-GPU/*.nupkg
             displayName: List Downloaded Package
           - template: ../nuget/templates/get-nuget-package-version-as-variable.yml
             parameters:
@@ -55,7 +51,7 @@ stages:
             displayName: 'NuGet push onnxruntime'
             inputs:
               command: push
-              packagesToPush: $(Build.BinariesDirectory)/nuget-artifact/final-package/**/*.nupkg'
+              packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/*.nupkg'
               publishVstsFeed: ${{ parameters.artifact_feed }}
 
 
