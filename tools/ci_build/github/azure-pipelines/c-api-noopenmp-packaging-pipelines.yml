@@ -806,12 +806,30 @@ stages:
         DoEsrp: ${{ parameters.DoEsrp }}
 
     - task: MSBuild@1
-      displayName: 'Build Nuget Packages'
+      displayName: 'Build Primary Nuget Packages Microsoft.ML.OnnxRuntime.Gpu'
       inputs:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         configuration: RelWithDebInfo
         platform: 'Any CPU'
         msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - task: MSBuild@1
+      displayName: 'Build Nuget Packages Microsoft.ML.OnnxRuntime.Gpu-win'
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+        configuration: RelWithDebInfo
+        platform: 'Any CPU'
+        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu-win -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - task: MSBuild@1
+      displayName: 'Build Nuget Packages Microsoft.ML.OnnxRuntime.Gpu-linux'
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+        configuration: RelWithDebInfo
+        platform: 'Any CPU'
+        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu-win -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: BatchScript@1
