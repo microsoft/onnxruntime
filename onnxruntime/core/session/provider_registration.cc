@@ -13,8 +13,6 @@
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
 
 #ifdef _WIN32
-#include <Windows.h>  // For some reason, including tracing.h is having compile errors without this
-
 #include "core/platform/tracing.h"
 #endif
 

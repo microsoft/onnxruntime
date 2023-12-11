@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <windows.h>
 #include <TraceLoggingProvider.h>
 
 TRACELOGGING_DECLARE_PROVIDER(telemetry_provider_handle);
