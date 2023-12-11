@@ -24,6 +24,7 @@ stages:
     jobs:
       - job: Download_NuGet_Package
         steps:
+          - checkout: none
           - task: DownloadPipelineArtifact@2
             displayName: Download NuGet Package
             inputs:
