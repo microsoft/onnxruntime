@@ -2560,7 +2560,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       if (trt_state->engine_cache_enable && trt_engine == nullptr) {
         std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
         std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
-        if (engine_file && !trt_state->engine_decryption_enable && profile_file) {
+        if (engine_file && !engine_decryption_enable_ && profile_file) {
           // Deserialize profile
           shape_ranges = DeserializeProfileV2(profile_file);
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
@@ -2584,17 +2584,17 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
           trt_engine = trt_state->engine->get();
           context_update = true;
-        } else if (trt_state->engine_decryption_enable && std::filesystem::exists(encrypted_engine_cache_path) && profile_file) {
+        } else if (engine_decryption_enable_ && std::filesystem::exists(encrypted_engine_cache_path) && profile_file) {
           shape_ranges = DeserializeProfileV2(profile_file);
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
           // Decrypt engine
           size_t engine_size = 0;
-          if (!trt_state->engine_decryption(encrypted_engine_cache_path.c_str(), nullptr, &engine_size)) {
+          if (!engine_decryption_(encrypted_engine_cache_path.c_str(), nullptr, &engine_size)) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                    "TensorRT EP could not get engine buffer size");
           }
           std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-          if (!trt_state->engine_decryption(encrypted_engine_cache_path.c_str(), &engine_buf[0], &engine_size)) {
+          if (!engine_decryption_(encrypted_engine_cache_path.c_str(), &engine_buf[0], &engine_size)) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                    "TensorRT EP could not call engine decryption function decrypt");
           }
@@ -2745,7 +2745,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           // Serialize engine
           std::unique_ptr<nvinfer1::IHostMemory> serializedModel(trt_engine->serialize());
           size_t engine_size = serializedModel->size();
-          if (trt_state->engine_decryption_enable) {
+          if (engine_decryption_enable_) {
             // Encrypt engine. The library is not always deployed with the encrypt function, so check if it is available first.
             if (engine_encryption_ != nullptr) {
               if (!engine_encryption_(encrypted_engine_cache_path.c_str(), reinterpret_cast<char*>(serializedModel->data()), engine_size)) {
