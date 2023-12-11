@@ -84,13 +84,37 @@ struct SparseToDenseCsr {
     const auto& b_dims = B.Shape().GetDims();
     const auto& out_dims = output.Shape().GetDims();
     auto csr_view = A.AsCsr();
-
-    ConstSparseMatrixMap<T> map_A(a_dims[0], a_dims[1], A.NumValues(),
-                                  csr_view.Outer().Data<int64_t>(),
-                                  csr_view.Inner().Data<int64_t>(),
+    const Eigen::Index* inner_index_pointer = nullptr;
+    const Eigen::Index* outer_index_pointer = nullptr;
+    std::unique_ptr<Eigen::Index[]> buffer_holder_inner, buffer_holder_outer;
+    if constexpr (std::is_same<Eigen::Index, int64_t>::value) {
+      // On macOS the following reinterpret_cast is necessary because Eigen::Index is an alias of `long` but int64_t is `long long`. Though they have the same size, compilers still do not allow an implicit casting between them.
+      inner_index_pointer = reinterpret_cast<const Eigen::Index*>(csr_view.Inner().Data<int64_t>());
+      outer_index_pointer = reinterpret_cast<const Eigen::Index*>(csr_view.Outer().Data<int64_t>());
+    } else {
+      const size_t inner_size = narrow<size_t>(csr_view.Inner().Shape().Size());
+      const size_t outer_size = narrow<size_t>(csr_view.Outer().Shape().Size());
+      buffer_holder_inner.reset(new Eigen::Index[inner_size]);
+      buffer_holder_outer.reset(new Eigen::Index[outer_size]);
+      inner_index_pointer = buffer_holder_inner.get();
+      outer_index_pointer = buffer_holder_outer.get();
+#ifdef _WIN32
+#pragma warning(push)
+// The copy below may loss precision. Ignore the warnings for now
+#pragma warning(disable : 4244)
+#endif
+      std::copy_n<const int64_t*, size_t, Eigen::Index*>(csr_view.Inner().Data<int64_t>(), inner_size, buffer_holder_inner.get());
+      std::copy_n<const int64_t*, size_t, Eigen::Index*>(csr_view.Outer().Data<int64_t>(), outer_size, buffer_holder_outer.get());
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
+    }
+    ConstSparseMatrixMap<T> map_A(narrow<Eigen::Index>(a_dims[0]), narrow<Eigen::Index>(a_dims[1]), narrow<Eigen::Index>(A.NumValues()),
+                                  outer_index_pointer,
+                                  inner_index_pointer,
                                   A.Values().Data<T>());
-    ConstEigenMatrixMapRowMajor<T> map_B(B.Data<T>(), b_dims[0], b_dims[1]);
-    EigenMatrixMapRowMajor<T> output_map(output.MutableData<T>(), out_dims[0], out_dims[1]);
+    ConstEigenMatrixMapRowMajor<T> map_B(B.Data<T>(), narrow<Eigen::Index>(b_dims[0]), narrow<Eigen::Index>(b_dims[1]));
+    EigenMatrixMapRowMajor<T> output_map(output.MutableData<T>(), narrow<Eigen::Index>(out_dims[0]), narrow<Eigen::Index>(out_dims[1]));
     // XXX: Consider re-writing it as a parallel loop as Eigen requires it to use OpenMP
     // XXX: Consider vectorization
     SparseDenseMatMulImpl(ctx, map_A, map_B, output_map);
