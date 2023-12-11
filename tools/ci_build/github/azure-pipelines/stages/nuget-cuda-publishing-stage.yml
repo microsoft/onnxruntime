@@ -1,16 +1,13 @@
 parameters:
   - name: build_id
     type: string
-    default: 'latest'
   - name: project
     type: string
-    default: 'Lotus'
   - name: pipeline
     type: string
-    default: 'Nuget-CUDA-Packaging-Pipeline'
   - name: artifact_feed
     type: string
-    default: 'none'
+    default: 'onnxruntime-cuda-12'
   - name: dependencies
     type: string
     default: 'none'
@@ -27,12 +24,11 @@ stages:
         steps:
           - checkout: none
           - script: |
-              echo ${{ parameters.build_id }}
-              echo ${{ parameters.project }}
-              echo ${{ parameters.pipeline }}
-              echo ${{ parameters.artifact_feed }}
-
-            displayName: List Downloaded Package
+                echo "Build ID: ${{ parameters.build_id }}"
+                echo "Project: ${{ parameters.project }}"
+                echo "Pipeline: ${{ parameters.pipeline }}"
+                echo "Artifact Feed: ${{ parameters.artifact_feed }}"
+            displayName: 'Print Parameters'
           - task: DownloadPipelineArtifact@2
             displayName: Download NuGet Package
             inputs:
