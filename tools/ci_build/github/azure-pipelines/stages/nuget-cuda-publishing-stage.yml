@@ -5,10 +5,22 @@ parameter:
   - name: project
     type: string
     default: 'onnxruntime'
+  - name: pipeline
+    type: string
+    default: 'Nuget CUDA 12 Packaging Pipeline'
+  - name: artifact_feed
+    type: string
+    default: 'none'
+  - name: dependencies
+    type: string
+    default: 'none'
 
 stages:
   - stage: NuGet_Publishing_GPU
-    dependsOn: [ NuGet_Packaging_GPU ]
+    ${{ if ne(parameters.dependencies, 'none') }}:
+      dependsOn:
+    ${{ if eq(parameters.dependencies, 'none') }}:
+      dependsOn: []
     jobs:
       - job: Download_NuGet_Package
         steps:

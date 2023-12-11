@@ -15,9 +15,9 @@ parameters:
 stages:
 - template: stages/nuget-cuda-publishing-stage.yml
   parameters:
-    build_id: $(build_id)
-    project: $(project)
-    pipeline: $(pipeline)
+    build_id: $ {{ parameters.build_id }}
+    project: ${{ parameters.project }}
+    pipeline: ${{ parameters.pipeline }}
     ${{ if ne(parameters.nightly, '1') }}:
       artifact_feed: onnxruntime-cuda-12
     ${{ else }}:
