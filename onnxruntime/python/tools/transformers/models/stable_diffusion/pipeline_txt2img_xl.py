@@ -40,7 +40,7 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
             pipeline_info (PipelineInfo):
                 Version and Type of stable diffusion pipeline.
         """
-        assert pipeline_info.is_xl_base()
+        assert pipeline_info.is_xl_base_or_turbo()
 
         super().__init__(pipeline_info, *args, **kwargs)
 
@@ -58,11 +58,13 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
         denoising_steps=30,
         guidance=5.0,
         seed=None,
+        controlnet_images=None,
+        controlnet_scales=None,
         warmup=False,
         return_type="image",
     ):
         assert len(prompt) == len(negative_prompt)
-
+        do_classifier_free_guidance = guidance > 1.0
         original_size = (image_height, image_width)
         crops_coords_top_left = (0, 0)
         target_size = (image_height, image_width)
@@ -91,6 +93,7 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
                 tokenizer=self.tokenizer,
                 output_hidden_states=True,
                 force_zeros_for_empty_prompt=True,
+                do_classifier_free_guidance=do_classifier_free_guidance,
             )
             # CLIP text encoder 2
             text_embeddings2, pooled_embeddings2 = self.encode_prompt(
@@ -101,6 +104,7 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
                 pooled_outputs=True,
                 output_hidden_states=True,
                 force_zeros_for_empty_prompt=True,
+                do_classifier_free_guidance=do_classifier_free_guidance,
             )
 
             # Merged text embeddings
@@ -111,9 +115,24 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
                 original_size, crops_coords_top_left, target_size, dtype=text_embeddings.dtype
             )
             add_time_ids = add_time_ids.repeat(batch_size, 1)
-            add_time_ids = torch.cat([add_time_ids, add_time_ids], dim=0).to(self.device)
+            if do_classifier_free_guidance:
+                add_time_ids = torch.cat([add_time_ids, add_time_ids], dim=0)
 
-            add_kwargs = {"text_embeds": pooled_embeddings2, "time_ids": add_time_ids}
+            add_kwargs = {"text_embeds": pooled_embeddings2, "time_ids": add_time_ids.to(self.device)}
+            if self.pipeline_info.controlnet:
+                controlnet_images = self.preprocess_controlnet_images(
+                    latents.shape[0],
+                    controlnet_images,
+                    do_classifier_free_guidance=do_classifier_free_guidance,
+                    height=image_height,
+                    width=image_width,
+                )
+                add_kwargs.update(
+                    {
+                        "controlnet_images": controlnet_images,
+                        "controlnet_scales": controlnet_scales.to(controlnet_images.dtype).to(controlnet_images.device),
+                    }
+                )
 
             # UNet denoiser
             latents = self.denoise_latent(
@@ -133,13 +152,12 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
             torch.cuda.synchronize()
             e2e_toc = time.perf_counter()
 
+            perf_data = None
             if not warmup:
                 print("SD-XL Base Pipeline")
-                self.print_summary(e2e_tic, e2e_toc, batch_size)
-                if return_type != "latent":
-                    self.save_images(images, "txt2img-xl", prompt)
+                perf_data = self.print_summary(e2e_tic, e2e_toc, batch_size)
 
-            return images, (e2e_toc - e2e_tic) * 1000.0
+            return images, perf_data
 
     def run(
         self,
@@ -150,6 +168,8 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
         denoising_steps=30,
         guidance=5.0,
         seed=None,
+        controlnet_images=None,
+        controlnet_scales=None,
         warmup=False,
         return_type="image",
     ):
@@ -190,6 +210,8 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
                     denoising_steps=denoising_steps,
                     guidance=guidance,
                     seed=seed,
+                    controlnet_images=controlnet_images,
+                    controlnet_scales=controlnet_scales,
                     warmup=warmup,
                     return_type=return_type,
                 )
@@ -202,6 +224,8 @@ class Txt2ImgXLPipeline(StableDiffusionPipeline):
                 denoising_steps=denoising_steps,
                 guidance=guidance,
                 seed=seed,
+                controlnet_images=controlnet_images,
+                controlnet_scales=controlnet_scales,
                 warmup=warmup,
                 return_type=return_type,
             )

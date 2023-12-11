@@ -83,8 +83,7 @@ static void RunQDQMatMulOpOpTest(const TestInputDef<float>& input1_def,
                                  const TestInputDef<float>& input2_def,
                                  ExpectedEPNodeAssignment expected_ep_assignment,
                                  int opset = 18,
-                                 bool use_contrib_qdq = false,
-                                 float fp32_abs_err = 1e-4f) {
+                                 bool use_contrib_qdq = false) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -97,8 +96,7 @@ static void RunQDQMatMulOpOpTest(const TestInputDef<float>& input1_def,
                                                                                        use_contrib_qdq),
                        provider_options,
                        opset,
-                       expected_ep_assignment,
-                       fp32_abs_err);
+                       expected_ep_assignment);
 }
 
 //
@@ -128,6 +126,20 @@ TEST_F(QnnCPUBackendTests, DISABLED_MatMulOp_Broadcast) {
                     ExpectedEPNodeAssignment::All, 18, 0.0004f);
 }
 
+#if defined(__linux__)
+TEST_F(QnnCPUBackendTests, DISABLED_MatMulOp_PaddingAndBroadcast_BLargerThanA) {
+#else
+// TODO: When fixed, enable MathOpTest.MatMulFloatType from cpu/mat/matmul_test.cc
+// QNN SDK 2.17: Accuracy errors
+TEST_F(QnnCPUBackendTests, MatMulOp_PaddingAndBroadcast_BLargerThanA) {
+#endif
+  std::vector<int64_t> input0_shape = {2, 3, 2};
+  std::vector<int64_t> input1_shape = {3, 2, 2, 1};
+  RunMatMulOpOpTest(TestInputDef<float>(input0_shape, false, GetSequentialFloatData(input0_shape)),
+                    TestInputDef<float>(input1_shape, false, GetSequentialFloatData(input1_shape)),
+                    ExpectedEPNodeAssignment::All, 7);
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 //
 // HTP tests:
@@ -142,11 +154,6 @@ TEST_F(QnnHTPBackendTests, MatMulOp_HTP_u8) {
 }
 
 // Test QDQ MatMul with 16-bit act, 8-bit weights (static)
-// TODO: (SLIGHT) Inaccuracy detected for output 'output', element 0.
-// Output quant params: scale=0.0015259021893143654, zero_point=0.
-// Expected val: 98
-// QNN QDQ val: 97.720298767089844 (err 0.27970123291015625)
-// CPU QDQ val: 97.726402282714844 (err 0.27359771728515625)
 TEST_F(QnnHTPBackendTests, MatMulOp_HTP_A16_W8Static) {
   std::vector<float> input0_data = {-10.0f, -4.0f, -2.0f, 0.0f, 5.0f, 10.0f};
   std::vector<float> input1_data = {-10.0f, -6.0f, -1.0f, 0.0f, 3.0f, 10.0f};
@@ -154,8 +161,39 @@ TEST_F(QnnHTPBackendTests, MatMulOp_HTP_A16_W8Static) {
                                                     TestInputDef<float>({3, 2}, true, input1_data),
                                                     ExpectedEPNodeAssignment::All,
                                                     18,
-                                                    true,  // Use com.microsoft Q/DQ ops
-                                                    7e-3f);
+                                                    true);  // Use com.microsoft Q/DQ ops
+}
+
+// Test QDQ MatMul with uint16 activation uint16 weights, both dynamic
+// Inaccuracy detected for output 'output_0', element 1.
+// Output quant params: scale=0.0015259021893143654, zero_point=0.
+// Expected val: 40
+// QNN QDQ val: 39.681087493896484 (err 0.31891250610351562)
+// CPU QDQ val: 39.99847412109375 (err 0.00152587890625)
+TEST_F(QnnHTPBackendTests, DISABLED_MatMulOp_HTP_A16_W16Dynamic) {
+  std::vector<float> input0_data = {-10.0f, -4.0f, -2.0f, 0.0f, 5.0f, 10.0f};
+  std::vector<float> input1_data = {-10.0f, -6.0f, -1.0f, 0.0f, 3.0f, 10.0f};
+  RunQDQMatMulOpOpTest<uint16_t, uint16_t, uint16_t>(TestInputDef<float>({2, 3}, false, input0_data),
+                                                     TestInputDef<float>({3, 2}, false, input1_data),
+                                                     ExpectedEPNodeAssignment::All,
+                                                     18,
+                                                     true);  // Use com.microsoft Q/DQ ops
+}
+
+// Test QDQ MatMul with uint16 activation uint16 weights, both dynamic
+// Inaccuracy detected for output 'output_0', element 1.
+// Output quant params: scale=0.71908456087112427, zero_point=1.
+// Expected val: 46848.41015625
+// QNN QDQ val: 46844.04296875 (err 4.3671875)
+// CPU QDQ val: 46848.359375 (err 0.05078125)
+TEST_F(QnnHTPBackendTests, DISABLED_MatMulOp_HTP_A16_W16DynamicLarge) {
+  std::vector<float> input0_data = GetFloatDataInRange(-10.0f, 10.0f, 12 * 96 * 512);
+  std::vector<float> input1_data = GetFloatDataInRange(-10.0f, 10.0f, 12 * 96 * 512);
+  RunQDQMatMulOpOpTest<uint16_t, uint16_t, uint16_t>(TestInputDef<float>({1, 12, 96, 512}, false, input0_data),
+                                                     TestInputDef<float>({1, 12, 512, 96}, false, input1_data),
+                                                     ExpectedEPNodeAssignment::All,
+                                                     18,
+                                                     true);  // Use com.microsoft Q/DQ ops
 }
 
 // Test 16-bit QDQ MatMul with static weights

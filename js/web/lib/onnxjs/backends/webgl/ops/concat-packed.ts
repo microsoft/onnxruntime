@@ -12,7 +12,7 @@ import {getChannels, unpackFromChannel} from './packing-utils';
 
 const createPackedConcatProgramMetadata = (inputCount: number, cacheHint: string) => ({
   name: 'Concat (packed)',
-  inputNames: Array.from({length: inputCount}, (v, i) => `X${i}`),
+  inputNames: Array.from({length: inputCount}, (_v, i) => `X${i}`),
   inputTypes: Array(inputCount).fill(TextureType.packed),
   cacheHint
 });

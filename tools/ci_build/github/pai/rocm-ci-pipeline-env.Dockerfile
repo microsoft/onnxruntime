@@ -80,7 +80,6 @@ RUN ln -sf /usr/lib/x86_64-linux-gnu/libstdc++.so.6 ${CONDA_ENVIRONMENT_PATH}/bi
 RUN pip install torch==2.0.1 torchvision==0.15.2 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-${ROCM_VERSION}/ && \
     pip install torch-ort --no-dependencies
 
-
 ##### Install Cupy to decrease CPU utilization
 # Install non dev openmpi
 RUN wget https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.bz2 && \
@@ -128,7 +127,11 @@ RUN pip install \
     dill==0.3.4 \
     pytorch_lightning==1.6.0 \
     pytest-xdist \
-    pytest-rerunfailures
+    pytest-rerunfailures \
+    ml_dtypes==0.3.0
+
+# Install migraphx
+RUN apt update && apt install -y migraphx
 
 ENV ORTMODULE_ONNX_OPSET_VERSION=15
 

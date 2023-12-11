@@ -10,6 +10,8 @@
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include "onnx/defs/parser.h"
+#include "onnx/defs/printer.h"
 
 #include "asserts.h"
 #include "core/common/span_utils.h"
@@ -1020,6 +1022,314 @@ TEST_F(GraphTransformationTests, ConstantFoldingStringInitializer) {
   op_to_count = CountOpsInGraph(graph);
 
   ASSERT_EQ(op_to_count.size(), 0U) << "Identity node should have been removed";
+}
+
+TEST_F(GraphTransformationTests, ConstantFoldingIfConstantInlining) {
+  // This test covers the following necessary cases:
+  // The input refers to the explicit or implicit inputs of If node.
+  // The output of the node is the output of the subgraph being inlined.
+  // Constant nodes and initializers are promoted to the outer graph.
+  // The initializer or a constant node is the output of the subgraph being inlined.
+  // Nested subgraphs names are renamed as appropriate.
+  // In all If node is constant folded twice. The last If node is not constant
+  // folded because the input is indirectly dependent on the size of the input.
+  // XXX: Can we constant fold Size() if the graph input shape is fixed?
+
+  const char* code = R"(
+  <
+  ir_version: 8,
+  opset_import: [ "" : 16, "local" : 1 ]
+  >
+  agraph (float[128] x, float[128] x1) => (float[N] y)
+  {
+      y = local.aten_gather <dim: int = 1, sparse_grad: int = 0> (x, x1)
+  }
+  <
+    opset_import: [ "" : 16, "local" : 1],
+    domain: "local"
+  >
+  aten_gather <dim>(self, index) => (result_16)
+  {
+     tmp = Shape (index)
+     tmp_0 = Size (tmp)
+     int64_0 = Constant <value: tensor = int64 int64_0 {0}> ()
+     int64_0_cast = CastLike (int64_0, tmp_0)
+     cond = Equal (tmp_0, int64_0_cast)
+     result_16 = If (cond) <then_branch: graph = thenGraph_10 () => ( result) {
+        result = Identity (self)
+     }, else_branch: graph = elseGraph_10 () => ( result_15) {
+        tmp_1 = Shape (self)
+        tmp_2 = Size (tmp_1)
+        int64_0_3 = Constant <value: tensor = int64 int64_0_3 {0}> ()
+        int64_0_3_cast = CastLike (int64_0_3, tmp_2)
+        cond_4 = Equal (tmp_2, int64_0_3_cast)
+        self_8 = If (cond_4) <then_branch: graph = thenGraph_13 () => ( self_6) {
+           tmp_5 = Constant <value_ints: ints = [-1]> ()
+           self_6 = Reshape (self, tmp_5)
+        }, else_branch: graph = elseGraph_13 () => ( self_7) {
+           self_7 = Identity (self)
+        }>
+        tmp_9 = Size (index)
+        int64_0_10 = Constant <value: tensor = int64 int64_0_10 {0}> ()
+        int64_0_10_cast = CastLike (int64_0_10, tmp_9)
+        cond_11 = Equal (tmp_9, int64_0_10_cast)
+        result_15 = If (cond_11) <then_branch: graph = thenGraph_15 () => ( result_12) {
+           result_12 = CastLike (index, self_8)
+        }, else_branch: graph = elseGraph_15 () => ( result_14) {
+           index_13 = Cast <to: int = 7> (index)
+           result_14 = GatherElements <axis: int = @dim> (self_8, index_13)
+        }>
+     }>
+  }
+)";
+
+  ONNX_NAMESPACE::OnnxParser parser(code);
+  ONNX_NAMESPACE::ModelProto model_proto;
+  auto parse_status = parser.Parse(model_proto);
+  ASSERT_TRUE(parse_status.IsOK()) << parse_status.ErrorMessage();
+  ASSERT_TRUE(parser.EndOfInput()) << "Extra unparsed input unexpected.";
+
+  {
+    // Test that the model is loadable and check the function call node.
+    std::shared_ptr<Model> p_model;
+    ASSERT_STATUS_OK(Model::Load(std::move(model_proto), p_model, nullptr, *logger_));
+    Graph& graph = p_model->MainGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["local.aten_gather"], 1);
+    model_proto = p_model->ToProto();
+  }
+
+  std::string serialized_model;
+  const bool serialization_status = model_proto.SerializeToString(&serialized_model);
+  ASSERT_TRUE(serialization_status) << "Failed to serialize proto to string";
+
+  // AOT inlining is necessary in this case, so the If nodes within the function
+  // are brought out to the outer scope. So we load this into a session object.
+
+  SessionOptions session_options;
+  InferenceSessionWrapper session_object{session_options, GetEnvironment()};
+
+  std::stringstream sstr(serialized_model);
+  ASSERT_STATUS_OK(session_object.Load(sstr));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // const auto resulting_model_proto = session_object.GetModel().ToProto();
+  // std::string printed_model = ONNX_NAMESPACE::ProtoToString(resulting_model_proto);
+  // ASSERT_FALSE(printed_model.empty());
+  // std::cout << printed_model << std::endl;
+
+  // This is the resulting model proto.
+  // The remaining If node is not constant foldable because Size() does not constant fold
+  // although the shape is fixed.
+  /*
+    <
+       ir_version: 8,
+       opset_import: ["" : 16, "local" : 1,
+         "com.microsoft.nchwc" : 1,
+          "ai.onnx.ml" : 4,
+          "com.ms.internal.nhwc" : 20,
+          "ai.onnx.training" : 1,
+          "ai.onnx.preview.training" : 1,
+          "com.microsoft" : 1,
+          "com.microsoft.experimental" : 1,
+          "org.pytorch.aten" : 1]
+    >
+    agraph (float[128] x, float[128] x1) => (float[128] y) {
+       _if_elseGraph_10__inlfunc_aten_gather_tmp_9 = Size (x1)
+       _if_elseGraph_10__inlfunc_aten_gather_cond_11 =
+                                  Equal (_if_elseGraph_10__inlfunc_aten_gather_tmp_9, ortshared_7_0_1_0_token_10)
+       y = If (_if_elseGraph_10__inlfunc_aten_gather_cond_11) <then_branch: graph = thenGraph_15 () => (float[128] _inlfunc_aten_gather_result_12) {
+          _inlfunc_aten_gather_result_12 = Cast <to: int = 1> (x1)
+       }, else_branch: graph = elseGraph_15 () => (float[128] _inlfunc_aten_gather_result_14) {
+          _inlfunc_aten_gather_index_13 = Cast <to: int = 7> (x1)
+          _inlfunc_aten_gather_result_14 = GatherElements <axis: int = 1> (x, _inlfunc_aten_gather_index_13)
+       }>
+    }
+  */
+
+  auto& graph = session_object.GetModel().MainGraph();
+  auto op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["local.aten_gather"], 0);
+  ASSERT_EQ(op_to_count["If"], 1);
+}
+
+TEST_F(GraphTransformationTests, ConstantFoldingIfConstantInliningRebuildEdges) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "transform_nested_ifs_toplogical_sorted_nodes.onnx";
+
+  SessionOptions so;
+  so.session_logid = "GraphTransformationTests.ConstantFoldingIfConstantInliningRebuildEdges";
+
+  SessionOptions session_options;
+  InferenceSessionWrapper session_object{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  auto& graph = session_object.GetModel().MainGraph();
+  auto op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["pkg.onnxscript.torch_lib._aten_linalg_vector_norm_no_dim_onnx"], 0);
+  ASSERT_EQ(op_to_count["If"], 0);
+  ASSERT_EQ(op_to_count["Reshape"], 1);
+  ASSERT_EQ(op_to_count["Abs"], 1);
+  ASSERT_EQ(op_to_count["Mul"], 1);
+  ASSERT_EQ(op_to_count["ReduceSum"], 1);
+  ASSERT_EQ(op_to_count["Sqrt"], 1);
+  ASSERT_EQ(op_to_count["Cast"], 2);
+}
+
+TEST_F(GraphTransformationTests, ConstantFoldingIfConstantInliningEdgesWithMiddleArgNonExisting) {
+  // This model has a Resize() call with a middle argument non-existing.
+  // We want to make sure that the input edges for that Resize() node
+  // are properly rebuilt with a middle argument non-existing
+  // during If constant folding
+  // This test is only valid if Resize() node resides in the nested subgraph which gets inlined
+  // however, the destination graph must not be the main graph. Then we test that the edges are rebuild
+  // properly. Also Resize() should not be the first node in the resulting subgraph, so it has edges
+  const char* code = R"(
+  <
+  ir_version: 8,
+  opset_import: [ "" : 16, "local" : 1 ]
+  >
+  agraph (float[128] x, float[128] x1) => (float[N] y)
+  {
+      y = local.aten_gather <dim: int = 1, sparse_grad: int = 0> (x, x1)
+  }
+  <
+    opset_import: [ "" : 16, "local" : 1],
+    domain: "local"
+  >
+  aten_gather <dim>(self, index) => (result_16)
+  {
+     resize_scales = Constant <value_floats: floats = [1.5]> ()
+     tmp_0 = Size (index)
+     int64_0 = Constant <value: tensor = int64 int64_0 {0}> ()
+     int64_0_cast = CastLike (int64_0, tmp_0)
+     cond = Equal (tmp_0, int64_0_cast)
+     result_16 = If (cond) <then_branch: graph = thenGraph_10 () => ( result) {
+        result = Identity (self)
+     }, else_branch: graph = elseGraph_10 () => ( result_15) {
+        tmp_1 = Shape (self)
+        tmp_2 = Size (tmp_1)
+        int64_0_3 = Constant <value: tensor = int64 int64_0_3 {0}> ()
+        int64_0_3_cast = CastLike (int64_0_3, tmp_2)
+        cond_4 = Equal (tmp_2, int64_0_3_cast)
+        self_8 = If (cond_4) <then_branch: graph = thenGraph_13 () => ( self_6) {
+           tmp_5 = Constant <value_ints: ints = [-1]> ()
+           self_6 = Reshape (self, tmp_5)
+        }, else_branch: graph = elseGraph_13 () => ( self_7) {
+           self_71 = Mul(self, self)
+           float_size = CastLike (tmp_0, resize_scales)
+           non_constant_resize_scales = Mul(float_size, resize_scales)
+           self_7 = Resize(self_71,, non_constant_resize_scales)
+        }>
+        tmp_9 = Size (index)
+        int64_0_10 = Constant <value: tensor = int64 int64_0_10 {0}> ()
+        int64_0_10_cast = CastLike (int64_0_10, tmp_9)
+        cond_11 = Equal (tmp_9, int64_0_10_cast)
+        result_15 = If (cond_11) <then_branch: graph = thenGraph_15 () => ( result_12) {
+           result_12 = CastLike (index, self_8)
+        }, else_branch: graph = elseGraph_15 () => ( result_14) {
+           index_13 = Cast <to: int = 7> (index)
+           result_14 = GatherElements <axis: int = @dim> (self_8, index_13)
+        }>
+     }>
+  }
+  )";
+
+  /** Optimized model graph
+  <
+     ir_version: 8,
+     opset_import: ["" : 16,
+     "local" : 1,
+     "com.microsoft.nchwc" : 1,
+     "ai.onnx.ml" : 4,
+     "ai.onnx.training" : 1,
+     "ai.onnx.preview.training" : 1,
+     "com.microsoft" : 1,
+     "com.microsoft.experimental" : 1, "org.pytorch.aten" : 1]
+  >
+  agraph (float[128] x, float[128] x1) => (float[128] y)
+     <float[1] _inlfunc_aten_gather_resize_scales =  {1.5}, int64 ortshared_7_0_1_0_token_8 =  {0}>
+  {
+     _inlfunc_aten_gather_tmp_0 = Size (x1)
+     _inlfunc_aten_gather_cond = Equal (_inlfunc_aten_gather_tmp_0, ortshared_7_0_1_0_token_8)
+      y = If (_inlfunc_aten_gather_cond) <then_branch: graph = thenGraph_10 () =>
+          (float[128] _inlfunc_aten_gather_result) {
+        _inlfunc_aten_gather_result = Identity (x)
+     }, else_branch: graph = elseGraph_10 () => (float[128] _inlfunc_aten_gather_result_15)
+        <int64 _inlfunc_aten_gather_int64_0_10 =  {0}>
+  {
+        _if_else_branch__inlfunc_aten_gather_self_71 = Mul (x, x)
+        _if_else_branch__inlfunc_aten_gather_float_size = Cast <to: int = 1> (_inlfunc_aten_gather_tmp_0)
+        _if_else_branch__inlfunc_aten_gather_non_constant_resize_scales = Mul (
+          _if_else_branch__inlfunc_aten_gather_float_size, _inlfunc_aten_gather_resize_scales)
+        _inlfunc_aten_gather_self_8 = Resize <exclude_outside: int = 0, coordinate_transformation_mode:
+                string = "half_pixel", cubic_coeff_a: float = -0.75, extrapolation_value: float = 0, mode:
+                string = "nearest", nearest_mode: string = "round_prefer_floor"> (
+                    _if_else_branch__inlfunc_aten_gather_self_71, ,
+                    _if_else_branch__inlfunc_aten_gather_non_constant_resize_scales)
+        _inlfunc_aten_gather_tmp_9 = Size (x1)
+        _inlfunc_aten_gather_cond_11 = Equal (_inlfunc_aten_gather_tmp_9, _inlfunc_aten_gather_int64_0_10)
+        _inlfunc_aten_gather_result_15 = If (_inlfunc_aten_gather_cond_11) <then_branch: graph = thenGraph_15 () =>
+              (float[128] _inlfunc_aten_gather_result_12) {
+           _inlfunc_aten_gather_result_12 = Cast <to: int = 1> (x1)
+        }, else_branch: graph = elseGraph_15 () => (float[128] _inlfunc_aten_gather_result_14) {
+           _inlfunc_aten_gather_index_13 = Cast <to: int = 7> (x1)
+           _inlfunc_aten_gather_result_14 = GatherElements <axis: int = 1> (
+                          _inlfunc_aten_gather_self_8, _inlfunc_aten_gather_index_13)
+        }>
+     }>
+  }
+
+  */
+
+  ONNX_NAMESPACE::OnnxParser parser(code);
+  ONNX_NAMESPACE::ModelProto model_proto;
+  auto parse_status = parser.Parse(model_proto);
+  ASSERT_TRUE(parse_status.IsOK()) << parse_status.ErrorMessage();
+  ASSERT_TRUE(parser.EndOfInput()) << "Extra unparsed input unexpected.";
+
+  std::string serialized_model;
+  const bool serialization_status = model_proto.SerializeToString(&serialized_model);
+  ASSERT_TRUE(serialization_status) << "Failed to serialize proto to string";
+
+  // AOT inlining is necessary in this case, so the If nodes within the function
+  // are brought out to the outer scope. So we load this into a session object.
+  SessionOptions session_options;
+  InferenceSessionWrapper session_object{session_options, GetEnvironment()};
+  std::stringstream sstr(serialized_model);
+  ASSERT_STATUS_OK(session_object.Load(sstr));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // Let's verify the correctness of the rebuild edges in the Resize node that still
+  // resides within an if else subgraph.
+  auto& graph = session_object.GetModel().MainGraph();
+  auto op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["If"], 2);
+  ASSERT_EQ(op_to_count["Resize"], 1);
+
+  auto if_node = std::find_if(graph.Nodes().begin(), graph.Nodes().end(),
+                              [](const auto& node) { return node.OpType() == "If"; });
+  ASSERT_NE(graph.Nodes().cend(), if_node);
+  // Resize is in the else branch
+  auto subgraph_map = if_node->GetAttributeNameToSubgraphMap();
+  auto branch = subgraph_map.find("else_branch");
+  ASSERT_NE(subgraph_map.cend(), branch);
+
+  auto resize_node = std::find_if(branch->second->Nodes().begin(), branch->second->Nodes().end(),
+                                  [](const auto& node) { return node.OpType() == "Resize"; });
+  ASSERT_NE(branch->second->Nodes().cend(), resize_node);
+
+  // Check the edges
+  ASSERT_EQ(2U, resize_node->GetInputEdgesCount());
+  // Should have input edges with arg_pos 0 and 2
+  // With 1 is missing
+  InlinedHashSet<size_t> dest_edges;
+  auto zero_edge = resize_node->InputEdgesBegin();
+  dest_edges.insert(zero_edge->GetDstArgIndex());
+  ++zero_edge;
+  dest_edges.insert(zero_edge->GetDstArgIndex());
+  ASSERT_TRUE(dest_edges.find(0) != dest_edges.end());
+  ASSERT_TRUE(dest_edges.find(2) != dest_edges.end());
 }
 
 // Check transformations in the case of a subgraph with constant inputs.
@@ -6756,7 +7066,10 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion) {
     builder.AddNode("Transpose", {gather_out_3}, {transpose_out_3}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
   };
 
-  auto pre_graph_checker = [&](Graph& graph) { TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 3); return Status::OK(); };
+  auto pre_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 3);
+    return Status::OK();
+  };
 
   // OpSet-12
   {
@@ -6779,8 +7092,8 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // OpSet-14
@@ -6808,8 +7121,8 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // OpSet-18
@@ -6837,8 +7150,8 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -6869,7 +7182,10 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion_NoSqueeze) {
     builder.AddNode("Transpose", {gather_out_3}, {transpose_out_3}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
   };
 
-  auto pre_graph_checker = [&](Graph& graph) { TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 3); return Status::OK(); };
+  auto pre_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 3);
+    return Status::OK();
+  };
 
   // OpSet-12
   {
@@ -6888,8 +7204,8 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion_NoSqueeze) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // OpSet-14
@@ -6909,8 +7225,8 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion_NoSqueeze) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // OpSet-18
@@ -6930,13 +7246,180 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion_NoSqueeze) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 }
 
+TEST_F(GraphTransformationTests, GatherToSplitFusion_Consume_Input) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* data_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
+    auto* gather_index_1 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(0)});
+    auto* gather_index_2 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
+    auto* gather_index_3 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(2)});
+    auto* gather_out_1 = builder.MakeIntermediate();
+    auto* gather_out_2 = builder.MakeIntermediate();
+    auto* gather_out_3 = builder.MakeIntermediate();
+    auto* transpose_out_1 = builder.MakeOutput();
+    auto* transpose_out_2 = builder.MakeOutput();
+    auto* transpose_out_3 = builder.MakeOutput();
+
+    builder.AddNode("Gather", {data_arg, gather_index_1}, {gather_out_1}).AddAttribute("axis", static_cast<int64_t>(2));
+    builder.AddNode("Gather", {data_arg, gather_index_2}, {gather_out_2})
+        .AddAttribute("axis", static_cast<int64_t>(-2));
+    builder.AddNode("Gather", {data_arg, gather_index_3}, {gather_out_3}).AddAttribute("axis", static_cast<int64_t>(2));
+    builder.AddNode("Transpose", {gather_out_1}, {transpose_out_1}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+    builder.AddNode("Transpose", {gather_out_2}, {transpose_out_2}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+    builder.AddNode("Transpose", {gather_out_3}, {transpose_out_3}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+  };
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 3);
+    return Status::OK();
+  };
+
+  // OpSet-12
+  {
+    auto post_graph_checker = [&](Graph& graph) {
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 0);
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Split"] == 1);
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Squeeze"] == 3);
+      for (auto& node : graph.Nodes()) {
+        if (node.OpType() == "Split") {
+          auto& attrs = node.GetAttributes();
+          TEST_RETURN_IF_NOT(attrs.find("axis") != attrs.end());
+          TEST_RETURN_IF_NOT(2 == static_cast<int>(attrs.at("axis").i()));
+        } else if (node.OpType() == "Squeeze") {
+          auto& attrs = node.GetAttributes();
+          TEST_RETURN_IF_NOT(attrs.find("axes") != attrs.end());
+          TEST_RETURN_IF_NOT(2 == static_cast<int>(attrs.at("axes").ints().at(0)));
+        }
+      }
+      return Status::OK();
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+  }
+
+  // OpSet-14
+  {
+    auto post_graph_checker = [&](Graph& graph) {
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 0);
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Split"] == 1);
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Squeeze"] == 3);
+      for (auto& node : graph.Nodes()) {
+        if (node.OpType() == "Split") {
+          auto& attrs = node.GetAttributes();
+          TEST_RETURN_IF_NOT(attrs.find("axis") != attrs.end());
+          TEST_RETURN_IF_NOT(2 == static_cast<int>(attrs.at("axis").i()));
+        } else if (node.OpType() == "Squeeze") {
+          const NodeArg& input_arg = *(node.InputDefs()[1]);
+          const ONNX_NAMESPACE::TensorProto* tensor_proto =
+              graph_utils::GetConstantInitializer(graph, input_arg.Name());
+          TEST_RETURN_IF_NOT(tensor_proto != nullptr);
+          Initializer init_const{*tensor_proto, graph.ModelPath()};
+          TEST_RETURN_IF_NOT(tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64);
+          TEST_RETURN_IF_NOT(2 == static_cast<int>(*(init_const.data<int64_t>())));
+        }
+      }
+      return Status::OK();
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+  }
+
+  // OpSet-18
+  {
+    auto post_graph_checker = [&](Graph& graph) {
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 0);
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Split"] == 1);
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Squeeze"] == 3);
+      for (auto& node : graph.Nodes()) {
+        if (node.OpType() == "Split") {
+          auto& attrs = node.GetAttributes();
+          TEST_RETURN_IF_NOT(attrs.find("axis") != attrs.end());
+          TEST_RETURN_IF_NOT(2 == static_cast<int>(attrs.at("axis").i()));
+        } else if (node.OpType() == "Squeeze") {
+          const NodeArg& input_arg = *(node.InputDefs()[1]);
+          const ONNX_NAMESPACE::TensorProto* tensor_proto =
+              graph_utils::GetConstantInitializer(graph, input_arg.Name());
+          TEST_RETURN_IF_NOT(tensor_proto != nullptr);
+          Initializer init_const{*tensor_proto, graph.ModelPath()};
+          TEST_RETURN_IF_NOT(tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64);
+          TEST_RETURN_IF_NOT(2 == static_cast<int>(*(init_const.data<int64_t>())));
+        }
+      }
+      return Status::OK();
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+  }
+}
+
+TEST_F(GraphTransformationTests, GatherToSplitFusion_Consume_Initializer) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* data_arg = builder.MakeInitializer<float>({2, 3, 3, 3}, std::vector<float>(54));
+    auto* gather_index_1 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(0)});
+    auto* gather_index_2 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
+    auto* gather_index_3 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(2)});
+    auto* gather_out_1 = builder.MakeIntermediate();
+    auto* gather_out_2 = builder.MakeIntermediate();
+    auto* gather_out_3 = builder.MakeIntermediate();
+    auto* transpose_out_1 = builder.MakeOutput();
+    auto* transpose_out_2 = builder.MakeOutput();
+    auto* transpose_out_3 = builder.MakeOutput();
+
+    builder.AddNode("Gather", {data_arg, gather_index_1}, {gather_out_1}).AddAttribute("axis", static_cast<int64_t>(2));
+    builder.AddNode("Gather", {data_arg, gather_index_2}, {gather_out_2})
+        .AddAttribute("axis", static_cast<int64_t>(-2));
+    builder.AddNode("Gather", {data_arg, gather_index_3}, {gather_out_3}).AddAttribute("axis", static_cast<int64_t>(2));
+    builder.AddNode("Transpose", {gather_out_1}, {transpose_out_1}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+    builder.AddNode("Transpose", {gather_out_2}, {transpose_out_2}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+    builder.AddNode("Transpose", {gather_out_3}, {transpose_out_3}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+  };
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 3);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Split"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Squeeze"] == 3);
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "Split") {
+        auto& attrs = node.GetAttributes();
+        TEST_RETURN_IF_NOT(attrs.find("axis") != attrs.end());
+        TEST_RETURN_IF_NOT(2 == static_cast<int>(attrs.at("axis").i()));
+      } else if (node.OpType() == "Squeeze") {
+        const NodeArg& input_arg = *(node.InputDefs()[1]);
+        const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, input_arg.Name());
+        TEST_RETURN_IF_NOT(tensor_proto != nullptr);
+        Initializer init_const{*tensor_proto, graph.ModelPath()};
+        TEST_RETURN_IF_NOT(tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64);
+        TEST_RETURN_IF_NOT(2 == static_cast<int>(*(init_const.data<int64_t>())));
+      }
+    }
+    return Status::OK();
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
 TEST_F(GraphTransformationTests, GatherToSplitFusion_Invalid) {
-  auto pre_graph_checker = [&](Graph& graph) { TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 3); return Status::OK(); };
+  auto pre_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 3);
+    return Status::OK();
+  };
   auto post_graph_checker = [&](Graph& graph) {
     TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 3);
     TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Split"] == 0);
@@ -6976,8 +7459,8 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion_Invalid) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // Invalid Gather indices.
@@ -7012,8 +7495,8 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion_Invalid) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // Invalid Gather axis.
@@ -7048,8 +7531,8 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion_Invalid) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 }
 
@@ -7096,8 +7579,8 @@ TEST_F(GraphTransformationTests, GatherToSliceFusion) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSliceFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 
   // OpSet-14, Tind is int64.
@@ -7135,8 +7618,8 @@ TEST_F(GraphTransformationTests, GatherToSliceFusion) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSliceFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
 }
 

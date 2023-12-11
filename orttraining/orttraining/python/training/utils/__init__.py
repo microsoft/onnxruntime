@@ -3,6 +3,7 @@
 # __init__.py
 
 
+from onnxruntime.training.utils.ptable import PTable
 from onnxruntime.training.utils.torch_io_helper import (
     ORTModelInputOutputSchemaType,
     ORTModelInputOutputType,
@@ -33,4 +34,5 @@ __all__ = [
     "pytorch_type_to_onnx_dtype",
     "onnx_dtype_to_pytorch_dtype",
     "pytorch_scalar_type_to_pytorch_dtype",
+    "PTable",
 ]

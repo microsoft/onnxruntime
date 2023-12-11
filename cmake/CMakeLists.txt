@@ -526,7 +526,21 @@ if(NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
   find_package(Iconv REQUIRED)
   set(ICONV_LIB Iconv::Iconv)
 endif()
+
 find_package(Patch)
+if (WIN32 AND NOT Patch_FOUND)
+    # work around CI machines missing patch from the git install by falling back to the binary in this repo.
+    # replicate what happens in https://github.com/Kitware/CMake/blob/master/Modules/FindPatch.cmake but without
+    # the hardcoded suffixes in the path to the patch binary.
+    find_program(Patch_EXECUTABLE NAMES patch PATHS ${PROJECT_SOURCE_DIR}/external/git.Win32.2.41.03.patch)
+    if(Patch_EXECUTABLE)
+      set(Patch_FOUND 1)
+      if (NOT TARGET Patch::patch)
+        add_executable(Patch::patch IMPORTED)
+        set_property(TARGET Patch::patch PROPERTY IMPORTED_LOCATION ${Patch_EXECUTABLE})
+      endif()
+    endif()
+endif()
 if(Patch_FOUND)
   message("Patch found: ${Patch_EXECUTABLE}")
 endif()
@@ -1573,6 +1587,13 @@ set(VERSION_STRING       "Internal Build" CACHE STRING "String representation of
 if (WIN32)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SYS_PATH_LIB})
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES debug Dbghelp)
+  # In a onecore build the umbrella libs already contains references to the APIs in advapi32, so in onecore build we do not need to link to advapi32
+  # In a non-onecore build, usually we also do not need to link to advapi32 because VC++ by default should have provide everything we need, except when the build target is Windows ARM32.
+  # In the future we will add a build option to allow users disabling all API uses from advapi32 because some Windows environments do not have these APIs. For example, some Windows do not have
+  # Windows Registry so we cannot query Registry values.
+  if(onnxruntime_target_platform STREQUAL "ARM" AND CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES advapi32)
+  endif()
 else()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync::nsync_cpp)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ICONV_LIB} ${CMAKE_DL_LIBS} Threads::Threads)
@@ -1761,4 +1782,9 @@ if(TARGET onnxruntime)
     "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
     "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
+endif()
+
+if(DEFINED BUILD_AS_ARM64X)
+  set(ARM64X_TARGETS onnxruntime)
+  include("${CMAKE_SOURCE_DIR}/arm64x.cmake")
 endif()

@@ -20,7 +20,9 @@ Do not modify directly.*
 | Asinh | ai.onnx(9+) |  |
 | Atan | ai.onnx(7+) |  |
 | Atanh | ai.onnx(9+) |  |
+| Attention | com.microsoft(1+) | need implementing mask and past/present |
 | AveragePool | ai.onnx(7-9,10,11+); com.ms.internal.nhwc(7-9,10,11+) | need perf optimization; need implementing activation |
+| BatchNormalization | ai.onnx(7-8,9-13,14,15+); com.ms.internal.nhwc(7-8,9-13,14,15+) |  |
 | BiasAdd | com.microsoft(1+) |  |
 | BiasSplitGelu | com.microsoft(1+) |  |
 | Cast | ai.onnx(6-8,9-12,13-18,19+) |  |
@@ -31,6 +33,7 @@ Do not modify directly.*
 | ConvTranspose | ai.onnx(1-10,11+); com.ms.internal.nhwc(1-10,11+) | need perf optimization; ConvTranspose3d is not supported; need implementing activation |
 | Cos | ai.onnx(7+) |  |
 | Cosh | ai.onnx(9+) |  |
+| CumSum | ai.onnx(11-13,14+) |  |
 | Div | ai.onnx(7-12,13,14+) |  |
 | Einsum | ai.onnx(12+) |  |
 | Elu | ai.onnx(6+) |  |
@@ -61,6 +64,7 @@ Do not modify directly.*
 | MemcpyFromHost | ai.onnx(1+) |  |
 | MemcpyToHost | ai.onnx(1+) |  |
 | Mul | ai.onnx(7-12,13,14+) |  |
+| MultiHeadAttention | com.microsoft(1+) | need implementing mask and past/present |
 | Neg | ai.onnx(6-12,13+) |  |
 | Not | ai.onnx(1+) |  |
 | Pad | ai.onnx(2-10,11-12,13-17,18,19+) |  |
