@@ -68,6 +68,15 @@ def parse_args():
         "--build-settings-file", required=True, help="The positional argument of build_apple_framework.py."
     )
     build_framework_group.add_argument(
+        "--platform-arch",
+        nargs=2,
+        action="append",
+        metavar=("PLATFORM", "ARCH"),
+        dest="platform_archs",
+        help="Specify a platform/arch pair to build. Repeat to specify multiple pairs. "
+        "If no pairs are specified, all supported pairs will be built.",
+    )
+    build_framework_group.add_argument(
         "-b",
         "--build-apple-framework-arg",
         action="append",
@@ -115,6 +124,12 @@ def main():
         build_apple_framework_args += ["--include_ops_by_config", args.include_ops_by_config]
 
     build_apple_framework_args += ["--build_dir", str(build_dir), args.build_settings_file]
+
+    # add platform_arch argument
+    platform_archs = args.platform_archs
+    for i in range(len(platform_archs)):
+        curr_platform_arch = platform_archs[i]
+        build_apple_framework_args += ["--platform_arch", str(curr_platform_arch[0]), str(curr_platform_arch[1])]
 
     run(build_apple_framework_args)
 
