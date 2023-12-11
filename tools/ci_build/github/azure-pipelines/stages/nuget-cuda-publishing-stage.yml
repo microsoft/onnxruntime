@@ -20,7 +20,7 @@ stages:
       dependsOn: []
     jobs:
       - job:
-        pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
+        pool: 'onnxruntime-Win-CPU-2022'
         steps:
           - checkout: none
           - script: |
@@ -46,8 +46,7 @@ stages:
           - template: ../nuget/templates/get-nuget-package-version-as-variable.yml
             parameters:
               packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
-          - task: NuGetToolInstaller@1
-            displayName: 'Install Mono'
+          #This task must be run on a Windows machine
           - task: NuGetCommand@2
             displayName: 'NuGet push ${{ parameters.artifact_feed }}'
             inputs:
