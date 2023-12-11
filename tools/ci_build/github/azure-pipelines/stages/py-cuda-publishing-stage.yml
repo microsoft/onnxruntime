@@ -8,33 +8,22 @@ parameters:
   - name: artifact_feed
     type: string
     default: 'onnxruntime-cuda-12'
-  - name: depends_on
+  - name: dependencies
     type: string
     default: 'none'
+  -
 
 stages:
   - stage: Python_Publishing
-#    ${{ if ne(parameters.depends_on, 'none') }}:
-#      dependsOn: [ ${{ parameters.depends_on }} ]
-#    ${{ else }}:
-#      dependsOn:
-#        - Linux_Packaging_combined_GPU
-    variables:
-      ${{ if eq(parameters.artifact_feed, 'ort-cuda-12-nightly') }}:
-        repository-url: https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-12-nightly/pypi/upload/
-      ${{ if eq(parameters.artifact_feed, 'onnxruntime-cuda-12') }}:
-        repository-url: https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/upload/
+    ${{ if ne(parameters.dependencies, 'none') }}:
+      dependsOn: ${{ parameters.dependencies }}
+    ${{ if eq(parameters.dependencies, 'none') }}:
+      dependsOn: []
     jobs:
       - job:
         pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
         steps:
           - checkout: none
-          - script: |
-                echo "Build ID: ${{ parameters.build_id }}"
-                echo "Project: ${{ parameters.project }}"
-                echo "Pipeline: ${{ parameters.pipeline }}"
-                echo "Artifact Feed: ${{ parameters.artifact_feed }}"
-            displayName: 'Print Parameters'
           - task: DownloadPipelineArtifact@2
             inputs:
               artifact: 'onnxruntime_gpu'
