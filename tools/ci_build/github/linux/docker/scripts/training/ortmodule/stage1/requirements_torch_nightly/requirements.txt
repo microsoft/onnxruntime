@@ -1,4 +1,4 @@
 scikit-learn
 packaging==21.3
-transformers==v4.4.2
+transformers==v4.30.0
 wget
