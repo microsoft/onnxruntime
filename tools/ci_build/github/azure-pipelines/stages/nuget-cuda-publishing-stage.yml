@@ -51,8 +51,9 @@ stages:
             displayName: 'NuGet push ${{ parameters.artifact_feed }}'
             inputs:
               command: push
-              packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/*.nupkg'
-              publishVstsFeed: ${{ parameters.artifact_feed }}
+              packagesToPush: '$(System.DefaultWorkingDirectory)\source\**\*.nupkg'
+              publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/d3daa2b0-aa56-45ac-8145-2c3dc0661c87'
+              allowPackageConflicts: true
 
 
 
