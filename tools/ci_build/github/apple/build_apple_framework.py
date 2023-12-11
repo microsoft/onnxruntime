@@ -255,7 +255,7 @@ def parse_args():
             raise FileNotFoundError(f"Include ops config file {include_ops_by_config_file} is not a file.")
 
     # convert from [[platform1, arch1], [platform1, arch2], ...] to {platform1: [arch1, arch2, ...], ...}
-    def platform_archs_from_args(platform_archs_arg: list[str] | None) -> dict[str, list[str]]:
+    def platform_archs_from_args(platform_archs_arg: list[list[str]]) -> dict[str, list[str]]:
         if not platform_archs_arg:
             return DEFAULT_BUILD_OSX_ARCHS.copy()
 
