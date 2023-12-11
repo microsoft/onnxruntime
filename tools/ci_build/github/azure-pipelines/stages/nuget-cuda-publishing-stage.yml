@@ -1,9 +1,12 @@
 parameters:
-  - name: runId
-  - name: project
-    type: string
   - name: pipeline
     type: string
+  - name: runId
+    type: string
+    default: 'latest'
+  - name: project
+    type: string
+
   - name: artifact_feed
     type: string
     default: 'onnxruntime-cuda-12'
@@ -23,10 +26,10 @@ stages:
         steps:
           - checkout: none
           - script: |
-                echo "Build ID: ${{ parameters.runId }}"
-                echo "Project: ${{ parameters.project }}"
-                echo "Pipeline: ${{ parameters.pipeline }}"
-                echo "Artifact Feed: ${{ parameters.artifact_feed }}"
+              echo "Project: ${{ parameters.project }}"
+              echo "Build ID: ${{ parameters.runId }}"
+              echo "Pipeline: ${{ parameters.pipeline }}"
+              echo "Artifact Feed: ${{ parameters.artifact_feed }}"
             displayName: 'Print Parameters'
           - task: DownloadPipelineArtifact@2
             displayName: Download NuGet Package

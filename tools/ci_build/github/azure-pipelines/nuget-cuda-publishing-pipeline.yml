@@ -3,7 +3,7 @@ parameters:
     type: string
     default: '1'
   - name: runId
-    default: 'latest'
+    type: string
   - name: project
     type: string
     default: 'Lotus'
