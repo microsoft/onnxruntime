@@ -1,12 +1,10 @@
 parameters:
-  - name: pipeline
+  - name: build_id
     type: string
-  - name: runId
-    type: string
-    default: 'latest'
   - name: project
     type: string
-
+  - name: pipeline
+    type: string
   - name: artifact_feed
     type: string
     default: 'onnxruntime-cuda-12'
@@ -27,21 +25,21 @@ stages:
           - checkout: none
           - script: |
               echo "Project: ${{ parameters.project }}"
-              echo "Build ID: ${{ parameters.runId }}"
+              echo "Build ID: ${{ parameters.build_id }}"
               echo "Pipeline: ${{ parameters.pipeline }}"
               echo "Artifact Feed: ${{ parameters.artifact_feed }}"
             displayName: 'Print Parameters'
           - task: DownloadPipelineArtifact@2
-            displayName: Download NuGet Package
+            displayName: 'Download NuGet artifact drop-signed-nuget-GPU'
             inputs:
               artifact: drop-signed-nuget-GPU
               targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
-              ${{ if ne(parameters.runId, 'latest') }}:
+              ${{ if ne(parameters.build_id, 'latest') }}:
                 buildType: 'specific'
                 project: '${{ parameters.project }}'
                 pipeline: '${{ parameters.pipeline }}'
                 buildVersionToDownload: 'specific'
-                buildId: '${{ parameters.runId }}'
+                buildId: '${{ parameters.build_id }}'
           - script: |
               echo $(Build.BinariesDirectory)/nuget-artifact/final-package
             displayName: List Downloaded Package
