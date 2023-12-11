@@ -284,6 +284,8 @@ else()
           set(X86 TRUE)
         elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
           set(X86_64 TRUE)
+        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^loongarch64.*")
+          set(LOONGARCH64 TRUE)
         endif()
     endif()
 
@@ -572,6 +574,26 @@ else()
           list(APPEND ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas_x86_64)
           set(mlas_platform_srcs )
         else()
+          set(MLAS_SOURCE_IS_NOT_SET 0)
+        endif()
+    endif()
+    if(LOONGARCH64 AND MLAS_SOURCE_IS_NOT_SET)
+        set(mlas_platform_srcs
+          ${MLAS_SRC_DIR}/qgemm_kernel_lsx.cpp
+          ${MLAS_SRC_DIR}/loongarch64/SgemmKernelLasx.S
+          ${MLAS_SRC_DIR}/loongarch64/DgemmKernelLsx.S
+          ${MLAS_SRC_DIR}/loongarch64/DgemmKernelLasx.S
+          ${MLAS_SRC_DIR}/loongarch64/SgemmKernelLsx.S
+          ${MLAS_SRC_DIR}/loongarch64/SconvKernelLsx.S
+          ${MLAS_SRC_DIR}/loongarch64/SconvKernelLasx.S
+          ${MLAS_SRC_DIR}/loongarch64/SpoolKernelLSX.S
+          ${MLAS_SRC_DIR}/loongarch64/SpoolKernelLasx.S
+          ${MLAS_SRC_DIR}/loongarch64/SgemmTransposePackB16x4LSX.S
+          ${MLAS_SRC_DIR}/loongarch64/SgemmTransposePackB16x4Lasx.S
+          ${MLAS_SRC_DIR}/loongarch64/SoftmaxKernelLasx.S
+            )
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mlsx -mlasx")
+        if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
           set(MLAS_SOURCE_IS_NOT_SET 0)
         endif()
     endif()
