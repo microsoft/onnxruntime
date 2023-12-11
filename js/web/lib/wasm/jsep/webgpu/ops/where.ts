@@ -11,7 +11,6 @@ import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper}
 const createWhereOpProgramShader =
     (shaderHelper: ShaderHelper, inputs: readonly TensorView[], dimsOutput: readonly number[], isBroadcast: boolean,
      typeOutput: number) => {
-
       const output = outputVariable('output_data', typeOutput, dimsOutput.length, 4);
       const a = inputVariable('a_data', inputs[1].dataType, inputs[1].dims.length, 4);
       const b = inputVariable('b_data', inputs[2].dataType, inputs[2].dims.length, 4);
