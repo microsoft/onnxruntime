@@ -92,13 +92,15 @@ stages:
 
     # create and test mobile pods
     - script: |
-        python tools/ci_build/github/apple/build_apple_framework.py \
+        python tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
           --build-dir "$(Build.BinariesDirectory)/apple_framework" \
           --staging-dir "$(Build.BinariesDirectory)/staging" \
           --pod-version "$(ortPodVersion)" \
+          --test \
           --variant ${{ parameters.packageVariant }} \
+          --build-settings-file "${{ variables.buildSettingsFile }}" \
           --platform-arch  ${{ parameters.Platform }} ${{ parameters.Arch }} \
-          "${{ variables.buildSettingsFile }}" \
+          ${{ variables.optionalIncludeOpsByConfigOption }} \
           -b="--path_to_protoc_exe=$(Build.BinariesDirectory)/protobuf_install/bin/protoc"
       displayName: "Build macOS/iOS framework and assemble pod package files"
 
