@@ -2668,33 +2668,33 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         }
 
         // enable sparse weights
-        if (trt_state->sparsity_enable) {
+        if (sparsity_enable_) {
           trt_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Sparse weights are allowed";
         }
 
         // enable builder heuristics
-        if (trt_state->build_heuristics_enable) {
+        if (build_heuristics_enable_) {
           trt_config->setFlag(nvinfer1::BuilderFlag::kENABLE_TACTIC_HEURISTIC);
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder heuristics are enabled";
         }
 #if NV_TENSORRT_MINOR > 5 && NV_TENSORRT_MAJOR >= 8
         // switch optimizaion level
-        if (trt_state->builder_optimization_level != 3) {
-          trt_config->setBuilderOptimizationLevel(trt_state->builder_optimization_level);
+        if (builder_optimization_level_ != 3) {
+          trt_config->setBuilderOptimizationLevel(builder_optimization_level_);
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder optimization level is set to " << builder_optimization_level_;
         }
 
         // limit auxiliary streams
-        if (trt_state->auxiliary_streams >= 0) {
-          trt_config->setMaxAuxStreams(trt_state->auxiliary_streams);
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Auxiliary streams are se to " << trt_state->auxiliary_streams;
+        if (auxiliary_streams_ >= 0) {
+          trt_config->setMaxAuxStreams(auxiliary_streams_);
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Auxiliary streams are se to " << auxiliary_streams_;
         }
 #else
-        if (trt_state->builder_optimization_level != 3) {
+        if (builder_optimization_level_ != 3) {
           LOGS_DEFAULT(WARNING) << "[TensorRT EP] Builder optimization level can only be used on TRT 8.6 onwards!";
         }
-        if (trt_state->auxiliary_streams >= 0) {
+        if (auxiliary_streams_ >= 0) {
           LOGS_DEFAULT(WARNING) << "[TensorRT EP] Auxiliary streams can only be set on TRT 8.6 onwards!";
         }
 #endif
