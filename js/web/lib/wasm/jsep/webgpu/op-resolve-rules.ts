@@ -52,7 +52,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Atanh', [unaryOps.atanh]],
   ['Attention', [attention, parseAttentionAttributes]],
   // TODO: support new attributes for AveragePool-10
-  ['AveragePool', [pool.averagePool, pool.parseAveragePoolAttributes]],
+  ['AveragePool', [pool.averagePool]],
   ['BatchNormalization', [batchNorm]],
   ['BiasAdd', [biasAdd]],
   ['BiasSplitGelu', [biasSplitGelu]],

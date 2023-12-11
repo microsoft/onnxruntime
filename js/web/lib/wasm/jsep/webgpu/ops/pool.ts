@@ -245,7 +245,7 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
   }
 };
 
-export interface FormatAttributes {
+export interface FormatAttributes extends Record<string, unknown> {
   readonly format: 'NHWC'|'NCHW';
 }
 
@@ -309,7 +309,7 @@ const createAveragePoolProgramInfo =
       };
     };
 
-const parseAveragePoolAttributes = (attributes: Record<string, unknown>): AveragePoolAttributes => {
+const parseAveragePoolAttributes = (attributes: AveragePoolAttributes): AveragePoolAttributes => {
   const countIncludePad = (attributes.count_include_pad as number) === 0 ? false : true;
 
   const attr = parsePoolCommonAttributes(attributes);
@@ -320,7 +320,7 @@ const parseAveragePoolAttributes = (attributes: Record<string, unknown>): Averag
   return {countIncludePad, ...attr};
 };
 
-export const averagePool = (context: ComputeContext, attributes: Record<string, unknown>): void => {
+export const averagePool = (context: ComputeContext, attributes: AveragePoolAttributes): void => {
   validateInputs(context.inputs);
   context.compute(
       createAveragePoolProgramInfo('AveragePool', context.inputs[0], false, parseAveragePoolAttributes(attributes)));
@@ -380,7 +380,7 @@ const createMaxPoolProgramInfo =
       };
     };
 
-const parseMaxPoolAttributes = (attributes: Record<string, unknown>): MaxPoolAttributes => {
+const parseMaxPoolAttributes = (attributes: MaxPoolAttributes): MaxPoolAttributes => {
   const storageOrder = attributes.storage_order as number;
   const dilations = attributes.dilations as [number, number];
 
@@ -395,7 +395,7 @@ const parseMaxPoolAttributes = (attributes: Record<string, unknown>): MaxPoolAtt
   return {storageOrder, dilations, ...attr};
 };
 
-export const maxPool = (context: ComputeContext, attributes: Record<string, unknown>): void => {
+export const maxPool = (context: ComputeContext, attributes: MaxPoolAttributes): void => {
   validateInputs(context.inputs);
   context.compute(createMaxPoolProgramInfo('MaxPool', context.inputs[0], false, parseMaxPoolAttributes(attributes)));
 };
