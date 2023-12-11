@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#include <iomanip>
 #include "test_util.h"
 
 class MlasActivationTest : public MlasTestBase {

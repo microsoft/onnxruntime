@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {env, InferenceSession, OnnxValue, SessionHandler, Tensor, TrainingSessionHandler} from 'onnxruntime-common';
+import {InferenceSession, OnnxValue, SessionHandler, Tensor, TrainingSessionHandler} from 'onnxruntime-common';
 
-import {SerializableModeldata, TensorMetadata} from './proxy-messages';
+import {SerializableInternalBuffer, TensorMetadata} from './proxy-messages';
 import {decodeTensorMetadata, encodeTensorMetadata} from './session-handler-inference';
-import {createSessionAllocate, initRuntime, isOrtEnvInitialized} from './wasm-core-impl';
+import {copyFromExternalBuffer} from './wasm-core-impl';
 import {createCheckpointHandle, createTrainingSessionHandle, getContiguousParameters, getModelInputOutputNames, getParametersSize, loadParametersBuffer, releaseTrainingSessionAndCheckpoint, runEvalStep, runOptimizerStep, runTrainStep} from './wasm-training-core-impl';
 
 export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSessionHandler {
@@ -18,7 +18,7 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
   evalInputNames: string[] = [];
   evalOutputNames: string[] = [];
 
-  async uriOrBufferToHeap(uriOrBuffer: string|Uint8Array): Promise<SerializableModeldata> {
+  async uriOrBufferToHeap(uriOrBuffer: string|Uint8Array): Promise<SerializableInternalBuffer> {
     let buffer: Uint8Array;
     if (typeof uriOrBuffer === 'string') {
       const response = await fetch(uriOrBuffer);
@@ -27,21 +27,18 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
     } else {
       buffer = uriOrBuffer;
     }
-    return createSessionAllocate(buffer);
+    return copyFromExternalBuffer(buffer);
   }
 
   async createTrainingSession(
       checkpointStateUriOrBuffer: string|Uint8Array, trainModelUriOrBuffer: string|Uint8Array,
       evalModelUriOrBuffer: string|Uint8Array, optimizerModelUriOrBuffer: string|Uint8Array,
       options: InferenceSession.SessionOptions) {
-    if (!isOrtEnvInitialized()) {
-      await initRuntime(env);
-    }
-    const checkpointData: SerializableModeldata = await this.uriOrBufferToHeap(checkpointStateUriOrBuffer);
-    const trainModelData: SerializableModeldata = await this.uriOrBufferToHeap(trainModelUriOrBuffer);
+    const checkpointData: SerializableInternalBuffer = await this.uriOrBufferToHeap(checkpointStateUriOrBuffer);
+    const trainModelData: SerializableInternalBuffer = await this.uriOrBufferToHeap(trainModelUriOrBuffer);
     // 0 is supposed to be the nullptr
-    let evalModelData: SerializableModeldata = [0, 0];
-    let optimizerModelData: SerializableModeldata = [0, 0];
+    let evalModelData: SerializableInternalBuffer = [0, 0];
+    let optimizerModelData: SerializableInternalBuffer = [0, 0];
 
     if (evalModelUriOrBuffer !== '') {
       evalModelData = await this.uriOrBufferToHeap(evalModelUriOrBuffer);

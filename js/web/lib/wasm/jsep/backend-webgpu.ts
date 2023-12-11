@@ -244,11 +244,9 @@ export class WebGpuBackend {
   }
 
   isQueryEnabled(): boolean {
-    if (this.device.features.has('timestamp-query') && this.env.webgpu.profilingMode === 'default') {
-      return true;
-    } else {
-      return false;
-    }
+    return this.device.features.has('timestamp-query') &&
+        (this.env.webgpu.profiling?.mode === 'default' ||
+         (!this.env.webgpu.profiling?.mode && this.env.webgpu.profilingMode === 'default'));
   }
 
   /**

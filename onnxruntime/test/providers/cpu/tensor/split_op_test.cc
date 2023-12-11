@@ -706,9 +706,8 @@ TEST(SplitOperatorTest, Split18_NumOutputs_EvenSplit) {
                       7.f, 8.f}});
 
   int64_t num_outputs = 2;
-#ifdef USE_COREML
+
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true, num_outputs, true);
-#endif
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true, num_outputs, false);
 }
 
@@ -735,9 +734,8 @@ TEST(SplitOperatorTest, Split18_NumOutputs_UnevenSplit) {
   outputs.push_back({{1, 2}, {9.f, 10.f}});
 
   int64_t num_outputs = 3;
-#ifdef USE_COREML
+
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true, num_outputs, true);
-#endif
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true, num_outputs, false);
 }
 
@@ -763,10 +761,8 @@ TEST(SplitOperatorTest, Split18_InvalidNumOutputs) {
       };
   RunTest<float>(axis, {}, input, outputs, excluded_providers, true, true, num_outputs, false,
                  "Attribute `num_outputs` value cannot be lower than 1");
-#ifdef USE_COREML
   RunTest<float>(axis, {}, input, outputs, excluded_providers, true, true, num_outputs, true,
                  "Attribute `num_outputs` value cannot be lower than 1");
-#endif
 
   outputs.clear();
   outputs.push_back({{1, 2},
@@ -775,12 +771,11 @@ TEST(SplitOperatorTest, Split18_InvalidNumOutputs) {
                      {0.f, 0.f}});
 
   num_outputs = 3;
+
   RunTest<float>(axis, {}, input, outputs, excluded_providers, true, true, num_outputs, false,
                  "Invalid num_outputs value of 3. Size of dimension being split is 2");
-#ifdef USE_COREML
   RunTest<float>(axis, {}, input, outputs, excluded_providers, true, true, num_outputs, true,
                  "Invalid num_outputs value of 3. Size of dimension being split is 2");
-#endif
 }
 
 TEST(SplitOperatorTest, Split18_NumOutputsEvenSplitAxis1) {
@@ -798,9 +793,7 @@ TEST(SplitOperatorTest, Split18_NumOutputsEvenSplitAxis1) {
 
   int64_t num_outputs = 3;
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true, num_outputs, false);
-#ifdef USE_COREML
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true, num_outputs);
-#endif
 }
 
 TEST(SplitOperatorTest, Split18_NumOutputsUnevenSplitAxis1) {
@@ -818,9 +811,7 @@ TEST(SplitOperatorTest, Split18_NumOutputsUnevenSplitAxis1) {
   outputs.push_back({{2, 1}, {3.f, 6.f}});
 
   int64_t num_outputs = 2;
-#ifdef USE_COREML
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true, num_outputs);
-#endif
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true, num_outputs, false);
 }
 

@@ -36,7 +36,7 @@ declare global {
 }
 
 import {OrtWasmMessage, SerializableTensorMetadata} from '../proxy-messages';
-import {createSession, createSessionAllocate, createSessionFinalize, endProfiling, extractTransferableBuffers, initRuntime, isOrtEnvInitialized, releaseSession, run} from '../wasm-core-impl';
+import {createSession, copyFromExternalBuffer, endProfiling, extractTransferableBuffers, initRuntime, releaseSession, run} from '../wasm-core-impl';
 import {initializeWebAssembly} from '../wasm-factory';
 
 self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
@@ -61,22 +61,13 @@ self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
         postMessage({type: 'init-ort', err} as OrtWasmMessage);
       }
       break;
-    case 'create_allocate':
+    case 'copy_from':
       try {
-        const {model} = ev.data.in!;
-        const modeldata = createSessionAllocate(model);
-        postMessage({type: 'create_allocate', out: modeldata} as OrtWasmMessage);
+        const {buffer} = ev.data.in!;
+        const bufferData = copyFromExternalBuffer(buffer);
+        postMessage({type: 'copy_from', out: bufferData} as OrtWasmMessage);
       } catch (err) {
-        postMessage({type: 'create_allocate', err} as OrtWasmMessage);
-      }
-      break;
-    case 'create_finalize':
-      try {
-        const {modeldata, options} = ev.data.in!;
-        const sessionMetadata = createSessionFinalize(modeldata, options);
-        postMessage({type: 'create_finalize', out: sessionMetadata} as OrtWasmMessage);
-      } catch (err) {
-        postMessage({type: 'create_finalize', err} as OrtWasmMessage);
+        postMessage({type: 'copy_from', err} as OrtWasmMessage);
       }
       break;
     case 'create':
@@ -124,14 +115,6 @@ self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
         postMessage({type: 'end-profiling'} as OrtWasmMessage);
       } catch (err) {
         postMessage({type: 'end-profiling', err} as OrtWasmMessage);
-      }
-      break;
-    case 'is-ort-env-initialized':
-      try {
-        const ortEnvInitialized = isOrtEnvInitialized();
-        postMessage({type: 'is-ort-env-initialized', out: ortEnvInitialized} as OrtWasmMessage);
-      } catch (err) {
-        postMessage({type: 'is-ort-env-initialized', err} as OrtWasmMessage);
       }
       break;
     default:

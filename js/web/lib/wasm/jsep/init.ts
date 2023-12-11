@@ -189,8 +189,7 @@ export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
         // jsepCreateKernel
         (name: string, kernel: number, attribute: unknown) => backend.createKernel(
             name, kernel, attribute,
-            env.debug || env.webgpu.profilingMode === 'default' ? module.UTF8ToString(module._JsepGetNodeName(kernel)) :
-                                                                  `${kernel}`),
+            env.debug || backend.isQueryEnabled() ? module.UTF8ToString(module._JsepGetNodeName(kernel)) : `${kernel}`),
 
         // jsepReleaseKernel
         (kernel: number) => backend.releaseKernel(kernel),
