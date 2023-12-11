@@ -1,4 +1,4 @@
-parameter:
+parameters:
   - name: build_id
     type: string
     default: 'latest'
