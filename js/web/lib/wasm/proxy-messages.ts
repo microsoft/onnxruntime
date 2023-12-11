@@ -45,11 +45,13 @@ interface MessageError {
 interface MessageInitWasm extends MessageError {
   type: 'init-wasm';
   in ?: Env.WebAssemblyFlags;
+  out?: never;
 }
 
 interface MessageInitOrt extends MessageError {
   type: 'init-ort';
   in ?: Env;
+  out?: never;
 }
 
 interface MessageCopyFromExternalBuffer extends MessageError {
@@ -67,7 +69,7 @@ interface MessageCreateSession extends MessageError {
 interface MessageReleaseSession extends MessageError {
   type: 'release';
   in ?: number;
-  out?: void;
+  out?: never;
 }
 
 interface MessageRun extends MessageError {
@@ -82,7 +84,7 @@ interface MessageRun extends MessageError {
 interface MesssageEndProfiling extends MessageError {
   type: 'end-profiling';
   in ?: number;
-  out?: void;
+  out?: never;
 }
 
 export type OrtWasmMessage = MessageInitWasm|MessageInitOrt|MessageCopyFromExternalBuffer|MessageCreateSession|

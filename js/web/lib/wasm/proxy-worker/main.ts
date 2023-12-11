@@ -40,83 +40,68 @@ import {createSession, copyFromExternalBuffer, endProfiling, extractTransferable
 import {initializeWebAssembly} from '../wasm-factory';
 
 self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
-  switch (ev.data.type) {
-    case 'init-wasm':
-      try {
-        initializeWebAssembly(ev.data.in!)
-            .then(
-                () => postMessage({type: 'init-wasm'} as OrtWasmMessage),
-                err => postMessage({type: 'init-wasm', err} as OrtWasmMessage));
-      } catch (err) {
-        postMessage({type: 'init-wasm', err} as OrtWasmMessage);
-      }
-      break;
-    case 'init-ort':
-      try {
-        initRuntime(ev.data.in!).then(() => postMessage({type: 'init-ort'} as OrtWasmMessage), err => postMessage({
-                                                                                                 type: 'init-ort',
-                                                                                                 err
-                                                                                               } as OrtWasmMessage));
-      } catch (err) {
-        postMessage({type: 'init-ort', err} as OrtWasmMessage);
-      }
-      break;
-    case 'copy_from':
-      try {
-        const {buffer} = ev.data.in!;
+  const {type, in : message} = ev.data;
+  try {
+    switch (type) {
+      case 'init-wasm':
+        initializeWebAssembly(message!).then(
+            () => {
+              postMessage({type});
+            },
+            err => {
+              postMessage({type, err});
+            });
+        break;
+      case 'init-ort':
+        initRuntime(message!).then(
+            () => {
+              postMessage({type});
+            },
+            err => {
+              postMessage({type, err});
+            });
+        break;
+      case 'copy_from': {
+        const {buffer} = message!;
         const bufferData = copyFromExternalBuffer(buffer);
-        postMessage({type: 'copy_from', out: bufferData} as OrtWasmMessage);
-      } catch (err) {
-        postMessage({type: 'copy_from', err} as OrtWasmMessage);
+        postMessage({type, out: bufferData} as OrtWasmMessage);
+        break;
       }
-      break;
-    case 'create':
-      try {
-        const {model, options} = ev.data.in!;
+      case 'create': {
+        const {model, options} = message!;
         const sessionMetadata = createSession(model, options);
-        postMessage({type: 'create', out: sessionMetadata} as OrtWasmMessage);
-      } catch (err) {
-        postMessage({type: 'create', err} as OrtWasmMessage);
+        postMessage({type, out: sessionMetadata} as OrtWasmMessage);
+        break;
       }
-      break;
-    case 'release':
-      try {
-        releaseSession(ev.data.in!);
-        postMessage({type: 'release'} as OrtWasmMessage);
-      } catch (err) {
-        postMessage({type: 'release', err} as OrtWasmMessage);
-      }
-      break;
-    case 'run':
-      try {
-        const {sessionId, inputIndices, inputs, outputIndices, options} = ev.data.in!;
+      case 'release':
+        releaseSession(message!);
+        postMessage({type});
+        break;
+      case 'run': {
+        const {sessionId, inputIndices, inputs, outputIndices, options} = message!;
         run(sessionId, inputIndices, inputs, outputIndices, new Array(outputIndices.length).fill(null), options)
             .then(
                 outputs => {
                   if (outputs.some(o => o[3] !== 'cpu')) {
-                    postMessage({type: 'run', err: 'Proxy does not support non-cpu tensor location.'});
+                    postMessage({type, err: 'Proxy does not support non-cpu tensor location.'});
                   } else {
                     postMessage(
-                        {type: 'run', out: outputs} as OrtWasmMessage,
+                        {type, out: outputs} as OrtWasmMessage,
                         extractTransferableBuffers(outputs as SerializableTensorMetadata[]));
                   }
                 },
                 err => {
-                  postMessage({type: 'run', err} as OrtWasmMessage);
+                  postMessage({type, err});
                 });
-      } catch (err) {
-        postMessage({type: 'run', err} as OrtWasmMessage);
+        break;
       }
-      break;
-    case 'end-profiling':
-      try {
-        const handler = ev.data.in!;
-        endProfiling(handler);
-        postMessage({type: 'end-profiling'} as OrtWasmMessage);
-      } catch (err) {
-        postMessage({type: 'end-profiling', err} as OrtWasmMessage);
-      }
-      break;
-    default:
+      case 'end-profiling':
+        endProfiling(message!);
+        postMessage({type});
+        break;
+      default:
+    }
+  } catch (err) {
+    postMessage({type, err} as OrtWasmMessage);
   }
 };
