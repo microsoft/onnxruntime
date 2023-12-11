@@ -1,6 +1,5 @@
 parameters:
-  - name: build_id
-    type: string
+  - name: runId
   - name: project
     type: string
   - name: pipeline
@@ -24,7 +23,7 @@ stages:
         steps:
           - checkout: none
           - script: |
-                echo "Build ID: ${{ parameters.build_id }}"
+                echo "Build ID: ${{ parameters.runId }}"
                 echo "Project: ${{ parameters.project }}"
                 echo "Pipeline: ${{ parameters.pipeline }}"
                 echo "Artifact Feed: ${{ parameters.artifact_feed }}"
@@ -34,12 +33,12 @@ stages:
             inputs:
               artifact: drop-signed-nuget-GPU
               targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
-              ${{ if ne(parameters.build_id, 'latest') }}:
+              ${{ if ne(parameters.runId, 'latest') }}:
                 buildType: 'specific'
                 project: '${{ parameters.project }}'
                 pipeline: '${{ parameters.pipeline }}'
                 buildVersionToDownload: 'specific'
-                buildId: '${{ parameters.build_id }}'
+                buildId: '${{ parameters.runId }}'
           - script: |
               echo $(Build.BinariesDirectory)/nuget-artifact/final-package
             displayName: List Downloaded Package

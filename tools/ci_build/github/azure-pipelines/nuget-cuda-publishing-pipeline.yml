@@ -2,8 +2,7 @@ parameters:
   - name: nightly
     type: string
     default: '1'
-  - name: build_id
-    type: string
+  - name: runId
     default: 'latest'
   - name: project
     type: string
@@ -15,7 +14,7 @@ parameters:
 stages:
 - template: stages/nuget-cuda-publishing-stage.yml
   parameters:
-    build_id: $ {{ parameters.build_id }}
+    runId: $ {{ parameters.runId }}
     project: ${{ parameters.project }}
     pipeline: ${{ parameters.pipeline }}
     ${{ if ne(parameters.nightly, '1') }}:
