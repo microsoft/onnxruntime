@@ -22,7 +22,7 @@ stages:
     ${{ if eq(parameters.dependencies, 'none') }}:
       dependsOn: []
     jobs:
-      - job: Download_NuGet_Package
+      - job: Publish_NuGet_Package
         steps:
           - checkout: none
           - task: DownloadPipelineArtifact@2
