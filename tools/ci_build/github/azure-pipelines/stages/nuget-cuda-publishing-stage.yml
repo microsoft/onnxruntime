@@ -20,9 +20,10 @@ stages:
     ${{ if ne(parameters.dependencies, 'none') }}:
       dependsOn:
     ${{ if eq(parameters.dependencies, 'none') }}:
-      dependsOn: []
+      dependsOn: [ ]
     jobs:
       - job: Publish_NuGet_Package
+        pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
         steps:
           - checkout: none
           - script: |
