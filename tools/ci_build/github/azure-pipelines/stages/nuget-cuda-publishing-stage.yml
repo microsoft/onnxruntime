@@ -7,7 +7,7 @@ parameters:
     default: 'Lotus'
   - name: pipeline
     type: string
-    default: 'Nuget CUDA 12 Packaging Pipeline'
+    default: 'Nuget-CUDA-Packaging-Pipeline'
   - name: artifact_feed
     type: string
     default: 'none'
