@@ -46,7 +46,7 @@ stages:
           - template: ../nuget/templates/get-nuget-package-version-as-variable.yml
             parameters:
               packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
-          - task: MonoInstaller@1
+          - task: NuGetToolInstaller@1
             displayName: 'Install Mono'
           - task: NuGetCommand@2
             displayName: 'NuGet push ${{ parameters.artifact_feed }}'
