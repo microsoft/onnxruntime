@@ -36,6 +36,15 @@ __device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, 
   half2 zp_adjust2 = {zp_adjust, zp_adjust};
   uint4 vec_a = *(reinterpret_cast<const uint4*>(a));
 
+  constexpr uint32_t kLowHalf2 = 0x5410;
+  constexpr uint32_t kHighHalf2 = 0x7632;
+
+  uint4 vec_permuted;
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(vec_permuted.x) : "r"(vec_a.x), "r"(vec_a.z), "r"(kLowHalf2));
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(vec_permuted.y) : "r"(vec_a.x), "r"(vec_a.z), "r"(kHighHalf2));
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(vec_permuted.z) : "r"(vec_a.y), "r"(vec_a.w), "r"(kLowHalf2));
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(vec_permuted.w) : "r"(vec_a.y), "r"(vec_a.w), "r"(kHighHalf2));
+
   half2 elements[4];  // [04, 15, 26, 37]
   uint32_t* h = reinterpret_cast<uint32_t*>(&elements);
 
@@ -95,14 +104,11 @@ __device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, 
   half2 v2 = elements[2] * scale_half2 + zp_adjust2;
   half2 v3 = elements[3] * scale_half2 + zp_adjust2;
 
-  sums[0] += (v0.x * ((*(reinterpret_cast<half2*>(&(vec_a.x)))).x));
-  sums[1] += (v1.x * ((*(reinterpret_cast<half2*>(&(vec_a.x)))).y));
-  sums[2] += (v2.x * ((*(reinterpret_cast<half2*>(&(vec_a.y)))).x));
-  sums[3] += (v3.x * ((*(reinterpret_cast<half2*>(&(vec_a.y)))).y));
-  sums[4] += (v0.y * ((*(reinterpret_cast<half2*>(&(vec_a.z)))).x));
-  sums[5] += (v1.y * ((*(reinterpret_cast<half2*>(&(vec_a.z)))).y));
-  sums[6] += (v2.y * ((*(reinterpret_cast<half2*>(&(vec_a.w)))).x));
-  sums[7] += (v3.y * ((*(reinterpret_cast<half2*>(&(vec_a.w)))).y));
+  half2* sums_half2 = reinterpret_cast<half2*>(sums);
+  sums_half2[0] += v0 * (*(reinterpret_cast<half2*>(&(vec_permuted.x))));
+  sums_half2[1] += v1 * (*(reinterpret_cast<half2*>(&(vec_permuted.y))));
+  sums_half2[2] += v2 * (*(reinterpret_cast<half2*>(&(vec_permuted.z))));
+  sums_half2[3] += v3 * (*(reinterpret_cast<half2*>(&(vec_permuted.w))));
 }
 
 __device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, float scale, uint8_t zp, const float* a, float* sums) {
