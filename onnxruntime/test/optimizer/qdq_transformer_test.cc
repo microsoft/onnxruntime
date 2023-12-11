@@ -1187,21 +1187,32 @@ static void RunDoubleQDQWithoutLastNodeBeingOutput(int output_index, int expecte
 TEST(QDQTransformerTests, DoubleQDQ_Without_Last_Node_Being_Output) {
   constexpr bool use_contrib_qdq = true;  // For readability.
 
-  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(0, 2, 2);
-  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(0, 2, 2, use_contrib_qdq);
-  RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(0, 2, 2, use_contrib_qdq);
-  RunDoubleQDQWithoutLastNodeBeingOutput<int16_t>(0, 2, 2, use_contrib_qdq);
+  // the first node being a graph output doesn't prevent the DQ -> Q in the middle from being removed
+  // if they have matching type/scale/zp
+  // Q -> DQ -> Q -> DQ
+  //  `-> graph output
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(0, 1, 1);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(0, 1, 1, use_contrib_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(0, 1, 1, use_contrib_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<int16_t>(0, 1, 1, use_contrib_qdq);
 
-  // EnsureUniqueDQForNodeUnit will duplicate first DQ, so expected one more (3)
-  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(1, 2, 3);
-  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(1, 2, 3, use_contrib_qdq);
-  RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(1, 2, 3, use_contrib_qdq);
-  RunDoubleQDQWithoutLastNodeBeingOutput<int16_t>(1, 2, 3, use_contrib_qdq);
+  // EnsureUniqueDQForNodeUnit will duplicate first DQ, but after that the DQ -> Q in the middle can still be removed
+  // leaveing one Q and 2 DQ.
+  // Q -> DQ -> Q -> DQ
+  //       `-> graph output
+  // =>
+  // Q -> DQ -> Q -> DQ
+  //  `-> DQ -> graph output
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(1, 1, 2);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(1, 1, 2, use_contrib_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(1, 1, 2, use_contrib_qdq);
+  RunDoubleQDQWithoutLastNodeBeingOutput<int16_t>(1, 1, 2, use_contrib_qdq);
 
   RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(2, 2, 2);
   RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(2, 2, 2, use_contrib_qdq);
   RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(2, 2, 2, use_contrib_qdq);
 
+  // last node being a graph output doesn't prevent the DQ -> Q in the middle from being removed
   RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(3, 1, 1);
   RunDoubleQDQWithoutLastNodeBeingOutput<uint8_t>(3, 1, 1, use_contrib_qdq);
   RunDoubleQDQWithoutLastNodeBeingOutput<uint16_t>(3, 1, 1, use_contrib_qdq);
@@ -1320,12 +1331,15 @@ TEST(QDQTransformerTests, Where) {
 template <typename QuantType>
 static void RunDropQDQTransposeTestCase(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& perms,
                                         bool use_contrib_qdq = false) {
+  // model has DQ -> Mul -> Q -> DQ -> Transpose -> Q -> output
+  // post transform and optimization it should be DQ -> Mul -> Q -> Transpose(uint8) -> output
   auto check_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
     const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
     EXPECT_EQ(op_to_count["Transpose"], 1);
-    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
-    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+    EXPECT_EQ(op_to_count["Mul"], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+    EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
   };
 
   TransformerTester(BuildQDQTransposeTestCase<QuantType, QuantType>(input_shape, perms, use_contrib_qdq),
@@ -3092,29 +3106,54 @@ TEST(QDQTransformerTests, QDQPropagation_Per_Layer_No_Propagation) {
       transpose_node.AddAttribute("perm", perms);
     };
 
+    bool use_transpose_optimizer = false;
+
     auto check_graph = [&](InferenceSessionWrapper& session) {
-      // transpose optimization will change the order of the nodes,
-      // but as we're testing there's no propagation of the DQ what matters is the op counts.
-      auto op_counts = CountOpsInGraph(session.GetGraph());
       const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
-      EXPECT_EQ(op_counts[qdq_keys.dequantize_linear], 1);
-      EXPECT_EQ(op_counts["Transpose"], 1);
+
+      // if the transpose optimizer isn't used the DQ doesn't propagate past the Transpose
+      // TODO: Should it? It makes it easier for an EP to do a quantized Tranpose if it's in a QDQ node unit as it
+      // doesn't have to special-case looking for a solo Transpose.
+      std::vector<std::string> expected_op_types_in_order{qdq_keys.dequantize_linear,
+                                                          "Transpose"};
+      if (use_transpose_optimizer) {
+        // fixup of QDQ node units would have put the Transpose in a QDQ node unit for consistency IFF
+        // the scale and zero point inputs are constant (which they are here)
+        expected_op_types_in_order.push_back(qdq_keys.quantize_linear);
+        expected_op_types_in_order.push_back(qdq_keys.dequantize_linear);
+      }
+
+      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph(), true);
+      EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
+
+      if (use_transpose_optimizer) {
+        // the trailing Q/DQ should have updated axis based on the transpose. default axis of 1 moves to 3 with
+        // transpose of {0,2,3,1} (NCHW -> NHWC)
+        GraphViewer graph_viewer{session.GetGraph()};
+        const auto& ordered_nodes = graph_viewer.GetNodesInTopologicalOrder();
+        const auto& q_node = *graph_viewer.GetNode(ordered_nodes.back() - 1);
+        const auto& dq_node = *graph_viewer.GetNode(ordered_nodes.back());
+
+        EXPECT_EQ(graph_utils::GetNodeAttribute(q_node, std::string("axis"))->i(), 3);
+        EXPECT_EQ(graph_utils::GetNodeAttribute(dq_node, std::string("axis"))->i(), 3);
+      }
     };
 
-    TransformerTester(build_test_case,
-                      check_graph,
-                      TransformerLevel::Default,
-                      TransformerLevel::Level1);
-    TransformerTester(build_test_case,
-                      check_graph,
-                      TransformerLevel::Default,
-                      TransformerLevel::Level1,
-                      18);
-    TransformerTester(build_test_case,
-                      check_graph,
-                      TransformerLevel::Default,
-                      TransformerLevel::Level1,
-                      19);
+    auto run_test = [&](int opset) {
+      use_transpose_optimizer = true;
+      TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset);
+
+      use_transpose_optimizer = false;
+      TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset,
+                        // defaults that we're not overriding
+                        0.0, 0.0, nullptr, {},
+                        // disable generic L1 and CPU EP specific L2 TransposeOptimizer
+                        {"TransposeOptimizer", std::string("TransposeOptimizer_") + kCpuExecutionProvider});
+    };
+
+    run_test(12);
+    run_test(18);
+    run_test(19);
   };
 
   test_case({1, 13, 13, 23}, {0, 2, 3, 1}, false /*use_contrib_qdq*/);
@@ -3317,20 +3356,35 @@ TEST(QDQTransformerTests, QDQPropagation_GH11605_Opset12_19) {
     // Original: DQ -> Tr -> SoftM -> Tr
     // QDQ Prop inserts a Q/DQ pair to create a QDQ node group for the Transpose: DQ -> Tr -> Q -> DQ -> SoftM -> Tr
     // Transpose opt phase 1 moves the Tr down until it blocks on the SoftMax: DQ -> Q -> DQ -> Tr -> SoftM -> Tr
-    // Transpose opt phase 2 flips the Tr to prior to the DQ as it's not part of a QDQ node group at that point, as
-    // running the transpose on 8-bit data should be cheaper: DQ -> Q -> Tr -> DQ -> SoftM -> Tr
-    // QDQ cleanup in Level2 removes the unnecessary DQ/Q pair at the start: Tr -> DQ -> SoftM -> Tr
-    // this is the optimal result as the Transpose is using 8-bit data and we have no surplus Q/DQ pairs
+    // Transpose opt phase 2 repairs the QDQ node units: DQ -> Q -> DQ -> Tr -> Q -> DQ -> SoftM -> Tr
+    // and removes the unnecessary DQ/Q pair at the start: DQ -> Tr -> Q -> DQ -> SoftM -> Tr
+    // The L2 CPU EP QDQ handling converts the DQ -> Tr -> Q to a Transpose with 8-bit data: Tr -> DQ -> SoftM -> Tr
+    //   Note: This L2 CPU EP QDQ handling is currently only enabled when contrib ops are enabled.
     auto check_graph = [&](InferenceSessionWrapper& session) {
       const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+#if !defined(DISABLE_CONTRIB_OPS)
       std::vector<std::string> expected_op_types_in_order{
           "Transpose",
           qdq_keys.dequantize_linear,
           "Softmax",
           "Transpose"};
+#else
+      std::vector<std::string> expected_op_types_in_order{
+          qdq_keys.dequantize_linear,
+          "Transpose",
+          qdq_keys.quantize_linear,
+          qdq_keys.dequantize_linear,
+          "Softmax",
+          "Transpose"};
+#endif
 
-      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph(), true);
+      const auto& graph = session.GetGraph();
+      GraphViewer graph_viewer(graph);
+      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(graph, true);
       EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
+
+      auto first_node = graph_viewer.GetNode(graph_viewer.GetNodesInTopologicalOrder().front());
+      EXPECT_EQ(*first_node->InputDefs()[0]->Type(), "tensor(uint8)");
     };
 
     TransformerTester(build_test_case,

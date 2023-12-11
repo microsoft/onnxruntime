@@ -77,7 +77,6 @@
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
-#include "orttraining/core/optimizer/memory_optimizer.h"
 #endif
 #ifdef ENABLE_TRITON
 #include "orttraining/core/optimizer/triton_fusion.h"
@@ -353,18 +352,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their
       // fusions might be prevented if this one removes a Q/DQ node too early.
       transformers.emplace_back(std::make_unique<QDQFinalCleanupTransformer>(enable_quant_qdq_cleanup));
-
-#ifdef ENABLE_TRAINING
-      // Put memory optimization transformer at last (which is done after most of fusions are done) by intention.
-      // Known issue: after memory optimization is completed, if some fusion happens, it is possible that the
-      // node priority got changed. This may disorder the execution order of nodes to recompute.
-      // TODO(pengwa): need to fix this issue.
-      const std::string enable_memory_optimizer =
-          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerEnabler, "");
-      const std::string probe_level =
-          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerProbeLevel, "0");
-      transformers.emplace_back(std::make_unique<MemoryOptimizer>(enable_memory_optimizer, probe_level));
-#endif
 
     } break;
 

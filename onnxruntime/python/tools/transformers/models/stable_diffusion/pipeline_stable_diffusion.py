@@ -25,6 +25,7 @@ import pathlib
 import random
 from typing import Any, Dict, List
 
+import numpy as np
 import nvtx
 import torch
 from cuda import cudart
@@ -103,8 +104,6 @@ class StableDiffusionPipeline:
         self.verbose = verbose
         self.nvtx_profile = nvtx_profile
 
-        self.stages = pipeline_info.stages()
-
         self.use_cuda_graph = use_cuda_graph
 
         self.tokenizer = None
@@ -138,11 +137,20 @@ class StableDiffusionPipeline:
                 self.pipeline_info, self.framework_model_dir, self.hf_token, subfolder="tokenizer_2"
             )
 
+        self.control_image_processor = None
+        if self.pipeline_info.is_xl() and self.pipeline_info.controlnet:
+            from diffusers.image_processor import VaeImageProcessor
+
+            self.control_image_processor = VaeImageProcessor(
+                vae_scale_factor=8, do_convert_rgb=True, do_normalize=False
+            )
+
         # Create CUDA events
         self.events = {}
         for stage in ["clip", "denoise", "vae", "vae_encoder"]:
             for marker in ["start", "stop"]:
                 self.events[stage + "-" + marker] = cudart.cudaEventCreate()[1]
+        self.markers = {}
 
     def is_backend_tensorrt(self):
         return self.engine_type == EngineType.TRT
@@ -219,18 +227,64 @@ class StableDiffusionPipeline:
         timesteps = self.scheduler.timesteps[t_start:].to(self.device)
         return timesteps, t_start
 
-    def preprocess_images(self, batch_size, images=()):
+    def start_profile(self, name, color="blue"):
         if self.nvtx_profile:
-            nvtx_image_preprocess = nvtx.start_range(message="image_preprocess", color="pink")
+            self.markers[name] = nvtx.start_range(message=name, color=color)
+        event_name = name + "-start"
+        if event_name in self.events:
+            cudart.cudaEventRecord(self.events[event_name], 0)
+
+    def stop_profile(self, name):
+        event_name = name + "-stop"
+        if event_name in self.events:
+            cudart.cudaEventRecord(self.events[event_name], 0)
+        if self.nvtx_profile:
+            nvtx.end_range(self.markers[name])
+
+    def preprocess_images(self, batch_size, images=()):
+        self.start_profile("preprocess", color="pink")
         init_images = []
         for i in images:
             image = i.to(self.device).float()
             if image.shape[0] != batch_size:
                 image = image.repeat(batch_size, 1, 1, 1)
             init_images.append(image)
-        if self.nvtx_profile:
-            nvtx.end_range(nvtx_image_preprocess)
+        self.stop_profile("preprocess")
         return tuple(init_images)
+
+    def preprocess_controlnet_images(
+        self, batch_size, images=None, do_classifier_free_guidance=True, height=1024, width=1024
+    ):
+        """
+        Process a list of PIL.Image.Image as control images, and return a torch tensor.
+        """
+        if images is None:
+            return None
+        self.start_profile("preprocess", color="pink")
+
+        if not self.pipeline_info.is_xl():
+            images = [
+                torch.from_numpy(
+                    (np.array(image.convert("RGB")).astype(np.float32) / 255.0)[..., None].transpose(3, 2, 0, 1)
+                )
+                .to(device=self.device, dtype=torch.float16)
+                .repeat_interleave(batch_size, dim=0)
+                for image in images
+            ]
+        else:
+            images = [
+                self.control_image_processor.preprocess(image, height=height, width=width)
+                .to(device=self.device, dtype=torch.float16)
+                .repeat_interleave(batch_size, dim=0)
+                for image in images
+            ]
+
+        if do_classifier_free_guidance:
+            images = [torch.cat([i] * 2) for i in images]
+        images = torch.cat([image[None, ...] for image in images], dim=0)
+
+        self.stop_profile("preprocess")
+        return images
 
     def encode_prompt(
         self,
@@ -246,9 +300,7 @@ class StableDiffusionPipeline:
         if tokenizer is None:
             tokenizer = self.tokenizer
 
-        if self.nvtx_profile:
-            nvtx_clip = nvtx.start_range(message="clip", color="green")
-        cudart.cudaEventRecord(self.events["clip-start"], 0)
+        self.start_profile("clip", color="green")
 
         # Tokenize prompt
         text_input_ids = (
@@ -297,24 +349,22 @@ class StableDiffusionPipeline:
                     uncond_hidden_states = outputs["hidden_states"]
 
             # Concatenate the unconditional and text embeddings into a single batch to avoid doing two forward passes for classifier free guidance
-            text_embeddings = torch.cat([uncond_embeddings, text_embeddings]).to(dtype=torch.float16)
+            text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
 
         if pooled_outputs:
             pooled_output = text_embeddings
 
         if output_hidden_states:
             if do_classifier_free_guidance:
-                text_embeddings = torch.cat([uncond_hidden_states, hidden_states]).to(dtype=torch.float16)
+                text_embeddings = torch.cat([uncond_hidden_states, hidden_states])
             else:
-                text_embeddings = hidden_states.to(dtype=torch.float16)
+                text_embeddings = hidden_states
 
-        cudart.cudaEventRecord(self.events["clip-stop"], 0)
-        if self.nvtx_profile:
-            nvtx.end_range(nvtx_clip)
+        self.stop_profile("clip")
 
         if pooled_outputs:
-            return text_embeddings, pooled_output
-        return text_embeddings
+            return text_embeddings.to(dtype=torch.float16), pooled_output.to(dtype=torch.float16)
+        return text_embeddings.to(dtype=torch.float16)
 
     def denoise_latent(
         self,
@@ -330,14 +380,12 @@ class StableDiffusionPipeline:
     ):
         do_classifier_free_guidance = guidance > 1.0
 
-        cudart.cudaEventRecord(self.events["denoise-start"], 0)
+        self.start_profile("denoise", color="blue")
+
         if not isinstance(timesteps, torch.Tensor):
             timesteps = self.scheduler.timesteps
 
         for step_index, timestep in enumerate(timesteps):
-            if self.nvtx_profile:
-                nvtx_latent_scale = nvtx.start_range(message="latent_scale", color="pink")
-
             # Expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
@@ -347,8 +395,6 @@ class StableDiffusionPipeline:
 
             if isinstance(mask, torch.Tensor):
                 latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
-            if self.nvtx_profile:
-                nvtx.end_range(nvtx_latent_scale)
 
             # Predict the noise residual
             if self.nvtx_profile:
@@ -361,6 +407,7 @@ class StableDiffusionPipeline:
                 "timestep": timestep_float,
                 "encoder_hidden_states": text_embeddings,
             }
+
             if add_kwargs:
                 params.update(add_kwargs)
 
@@ -368,9 +415,6 @@ class StableDiffusionPipeline:
 
             if self.nvtx_profile:
                 nvtx.end_range(nvtx_unet)
-
-            if self.nvtx_profile:
-                nvtx_latent_step = nvtx.start_range(message="latent_step", color="pink")
 
             # perform guidance
             if do_classifier_free_guidance:
@@ -384,36 +428,23 @@ class StableDiffusionPipeline:
             else:
                 latents = self.scheduler.step(noise_pred, latents, step_offset + step_index, timestep)
 
-            if self.nvtx_profile:
-                nvtx.end_range(nvtx_latent_step)
-
-        cudart.cudaEventRecord(self.events["denoise-stop"], 0)
-
         # The actual number of steps. It might be different from denoising_steps.
         self.actual_steps = len(timesteps)
 
+        self.stop_profile("denoise")
         return latents
 
     def encode_image(self, init_image):
-        if self.nvtx_profile:
-            nvtx_vae = nvtx.start_range(message="vae_encoder", color="red")
-        cudart.cudaEventRecord(self.events["vae_encoder-start"], 0)
+        self.start_profile("vae_encoder", color="red")
         init_latents = self.run_engine("vae_encoder", {"images": init_image})["latent"]
-        cudart.cudaEventRecord(self.events["vae_encoder-stop"], 0)
-        if self.nvtx_profile:
-            nvtx.end_range(nvtx_vae)
-
         init_latents = self.vae_scaling_factor * init_latents
+        self.stop_profile("vae_encoder")
         return init_latents
 
     def decode_latent(self, latents):
-        if self.nvtx_profile:
-            nvtx_vae = nvtx.start_range(message="vae", color="red")
-        cudart.cudaEventRecord(self.events["vae-start"], 0)
+        self.start_profile("vae", color="red")
         images = self.backend.vae_decode(latents)
-        cudart.cudaEventRecord(self.events["vae-stop"], 0)
-        if self.nvtx_profile:
-            nvtx.end_range(nvtx_vae)
+        self.stop_profile("vae")
         return images
 
     def print_summary(self, tic, toc, batch_size, vae_enc=False) -> Dict[str, Any]:
@@ -428,18 +459,23 @@ class StableDiffusionPipeline:
         )
         latency = (toc - tic) * 1000.0
 
-        print("|------------|--------------|")
-        print("| {:^10} | {:^12} |".format("Module", "Latency"))
-        print("|------------|--------------|")
+        print("|----------------|--------------|")
+        print("| {:^14} | {:^12} |".format("Module", "Latency"))
+        print("|----------------|--------------|")
         if vae_enc:
-            print("| {:^10} | {:>9.2f} ms |".format("VAE-Enc", latency_vae_encoder))
-        print("| {:^10} | {:>9.2f} ms |".format("CLIP", latency_clip))
-        print("| {:^10} | {:>9.2f} ms |".format("UNet x " + str(self.actual_steps), latency_unet))
-        print("| {:^10} | {:>9.2f} ms |".format("VAE-Dec", latency_vae))
+            print("| {:^14} | {:>9.2f} ms |".format("VAE-Enc", latency_vae_encoder))
+        print("| {:^14} | {:>9.2f} ms |".format("CLIP", latency_clip))
+        print(
+            "| {:^14} | {:>9.2f} ms |".format(
+                "UNet" + ("+CNet" if self.pipeline_info.controlnet else "") + " x " + str(self.actual_steps),
+                latency_unet,
+            )
+        )
+        print("| {:^14} | {:>9.2f} ms |".format("VAE-Dec", latency_vae))
 
-        print("|------------|--------------|")
-        print("| {:^10} | {:>9.2f} ms |".format("Pipeline", latency))
-        print("|------------|--------------|")
+        print("|----------------|--------------|")
+        print("| {:^14} | {:>9.2f} ms |".format("Pipeline", latency))
+        print("|----------------|--------------|")
         print(f"Throughput: {throughput:.2f} image/s")
 
         perf_data = {
