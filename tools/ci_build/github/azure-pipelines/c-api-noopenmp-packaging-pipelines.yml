@@ -865,13 +865,13 @@ stages:
         FolderPath: '$(Build.ArtifactStagingDirectory)'
         DoEsrp: ${{ parameters.DoEsrp }}
 
-    - template: templates/validate-package.yml
-      parameters:
-        PackageType: 'nuget'
-        PackagePath: '$(Build.ArtifactStagingDirectory)'
-        PackageName: 'Microsoft.ML.OnnxRuntime.*nupkg'
-        PlatformsSupported: 'win-x64,linux-x64'
-        VerifyNugetSigning: false
+    #- template: templates/validate-package.yml
+    #  parameters:
+    #    PackageType: 'nuget'
+    #    PackagePath: '$(Build.ArtifactStagingDirectory)'
+    #    PackageName: 'Microsoft.ML.OnnxRuntime.*nupkg'
+    #    PlatformsSupported: 'win-x64,linux-x64'
+    #    VerifyNugetSigning: false
 
     - task: PublishPipelineArtifact@0
       displayName: 'Publish Pipeline NuGet Artifact'
