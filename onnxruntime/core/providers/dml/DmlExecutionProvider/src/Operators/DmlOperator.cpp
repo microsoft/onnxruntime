@@ -857,12 +857,8 @@ namespace Dml
             return;
         }
 
-        auto constExpTensor = kernelInfo.TryGetConstantInputTensor(kernelInputIndex);
+        auto constExpTensor = kernelInfo.TryGetConstantCpuInputTensor(kernelInputIndex);
         if (!constExpTensor)
-        {
-            return;
-        }
-        else if (!constExpTensor->IsCpuData())
         {
             return;
         }
