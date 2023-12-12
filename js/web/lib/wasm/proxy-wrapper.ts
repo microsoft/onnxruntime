@@ -9,9 +9,9 @@ import {initializeWebAssembly} from './wasm-factory';
 
 const isProxy = (): boolean => !!env.wasm.proxy && typeof document !== 'undefined';
 let proxyWorker: Worker|undefined;
-let proxyWasmInitializing = false;
-let proxyWasmInitialized = false;
-let proxyWasmAborted = false;
+let initializing = false;
+let initialized = false;
+let aborted = false;
 
 type PromiseCallbacks<T = void> = [resolve: (result: T) => void, reject: (reason: unknown) => void];
 let initWasmCallbacks: PromiseCallbacks;
@@ -27,7 +27,7 @@ const enqueueCallbacks = (type: OrtWasmMessage['type'], callbacks: PromiseCallba
 };
 
 const ensureWorker = (): void => {
-  if (proxyWasmInitializing || !proxyWasmInitialized || proxyWasmAborted || !proxyWorker) {
+  if (initializing || !initialized || aborted || !proxyWorker) {
     throw new Error('worker not ready');
   }
 };
@@ -35,12 +35,12 @@ const ensureWorker = (): void => {
 const onProxyWorkerMessage = (ev: MessageEvent<OrtWasmMessage>): void => {
   switch (ev.data.type) {
     case 'init-wasm':
-      proxyWasmInitializing = false;
+      initializing = false;
       if (ev.data.err) {
-        proxyWasmAborted = true;
+        aborted = true;
         initWasmCallbacks[1](ev.data.err);
       } else {
-        proxyWasmInitialized = true;
+        initialized = true;
         initWasmCallbacks[0]();
       }
       break;
@@ -65,19 +65,19 @@ const onProxyWorkerMessage = (ev: MessageEvent<OrtWasmMessage>): void => {
 const scriptSrc = typeof document !== 'undefined' ? (document?.currentScript as HTMLScriptElement)?.src : undefined;
 
 export const initializeWebAssemblyAndOrtRuntime = async(): Promise<void> => {
+  if (initialized) {
+    return;
+  }
+  if (initializing) {
+    throw new Error('multiple calls to \'initWasm()\' detected.');
+  }
+  if (aborted) {
+    throw new Error('previous call to \'initWasm()\' failed.');
+  }
+
+  initializing = true;
+
   if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
-    if (proxyWasmInitialized) {
-      return;
-    }
-    if (proxyWasmInitializing) {
-      throw new Error('multiple calls to \'initWasm()\' detected.');
-    }
-    if (proxyWasmAborted) {
-      throw new Error('previous call to \'initWasm()\' failed.');
-    }
-
-    proxyWasmInitializing = true;
-
     // overwrite wasm filepaths
     if (env.wasm.wasmPaths === undefined) {
       if (scriptSrc && scriptSrc.indexOf('blob:') !== 0) {
@@ -105,8 +105,14 @@ export const initializeWebAssemblyAndOrtRuntime = async(): Promise<void> => {
     });
 
   } else {
-    await initializeWebAssembly(env.wasm);
-    await core.initRuntime(env);
+    try {
+      await initializeWebAssembly(env.wasm);
+      await core.initRuntime(env);
+      initialized = true;
+    } finally {
+      initializing = false;
+      aborted = true;
+    }
   }
 };
 
