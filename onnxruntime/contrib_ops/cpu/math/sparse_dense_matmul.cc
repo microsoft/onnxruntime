@@ -64,7 +64,8 @@ inline void SparseDenseMatMulImpl(const ComputeCtx& ctx, const ConstSparseMatrix
 
 template <>
 inline void SparseDenseMatMulImpl<float>(const ComputeCtx& ctx, const ConstSparseMatrixMap<float>& map_A,
-                                         const ConstEigenMatrixMapRowMajor<float>& map_B, EigenMatrixMapRowMajor<float>& output_map) {
+                                         const ConstEigenMatrixMapRowMajor<float>& map_B,
+                                         EigenMatrixMapRowMajor<float>& output_map) {
   if (ctx.trans_A && ctx.trans_B) {
     output_map = map_A.transpose() * ctx.alpha * map_B.transpose();
   } else if (ctx.trans_A && !ctx.trans_B) {
@@ -88,7 +89,8 @@ struct SparseToDenseCsr {
     const Eigen::Index* outer_index_pointer = nullptr;
     std::unique_ptr<Eigen::Index[]> buffer_holder_inner, buffer_holder_outer;
     if constexpr (std::is_same<Eigen::Index, int64_t>::value) {
-      // On macOS the following reinterpret_cast is necessary because Eigen::Index is an alias of `long` but int64_t is `long long`. Though they have the same size, compilers still do not allow an implicit casting between them.
+      // On macOS the following reinterpret_cast is necessary because Eigen::Index is an alias of `long` but int64_t is
+      // `long long`. Though they have the same size, compilers still do not allow an implicit casting between them.
       inner_index_pointer = reinterpret_cast<const Eigen::Index*>(csr_view.Inner().Data<int64_t>());
       outer_index_pointer = reinterpret_cast<const Eigen::Index*>(csr_view.Outer().Data<int64_t>());
     } else {
@@ -103,18 +105,20 @@ struct SparseToDenseCsr {
 // The copy below may loss precision. Ignore the warnings for now
 #pragma warning(disable : 4244)
 #endif
-      std::copy_n<const int64_t*, size_t, Eigen::Index*>(csr_view.Inner().Data<int64_t>(), inner_size, buffer_holder_inner.get());
-      std::copy_n<const int64_t*, size_t, Eigen::Index*>(csr_view.Outer().Data<int64_t>(), outer_size, buffer_holder_outer.get());
+      std::copy_n<const int64_t*, size_t, Eigen::Index*>(csr_view.Inner().Data<int64_t>(), inner_size,
+                                                         buffer_holder_inner.get());
+      std::copy_n<const int64_t*, size_t, Eigen::Index*>(csr_view.Outer().Data<int64_t>(), outer_size,
+                                                         buffer_holder_outer.get());
 #ifdef _WIN32
 #pragma warning(pop)
 #endif
     }
-    ConstSparseMatrixMap<T> map_A(narrow<Eigen::Index>(a_dims[0]), narrow<Eigen::Index>(a_dims[1]), narrow<Eigen::Index>(A.NumValues()),
-                                  outer_index_pointer,
-                                  inner_index_pointer,
+    ConstSparseMatrixMap<T> map_A(narrow<Eigen::Index>(a_dims[0]), narrow<Eigen::Index>(a_dims[1]),
+                                  narrow<Eigen::Index>(A.NumValues()), outer_index_pointer, inner_index_pointer,
                                   A.Values().Data<T>());
     ConstEigenMatrixMapRowMajor<T> map_B(B.Data<T>(), narrow<Eigen::Index>(b_dims[0]), narrow<Eigen::Index>(b_dims[1]));
-    EigenMatrixMapRowMajor<T> output_map(output.MutableData<T>(), narrow<Eigen::Index>(out_dims[0]), narrow<Eigen::Index>(out_dims[1]));
+    EigenMatrixMapRowMajor<T> output_map(output.MutableData<T>(), narrow<Eigen::Index>(out_dims[0]),
+                                         narrow<Eigen::Index>(out_dims[1]));
     // XXX: Consider re-writing it as a parallel loop as Eigen requires it to use OpenMP
     // XXX: Consider vectorization
     SparseDenseMatMulImpl(ctx, map_A, map_B, output_map);
@@ -145,9 +149,11 @@ struct SparseToDenseCoo {
     auto coo_view = A.AsCoo();
     const auto& ind_dims = coo_view.Indices().Shape().GetDims();
     ORT_RETURN_IF_NOT(ind_dims.size() == 2, "COO indices must be 2-D, got: ", ind_dims.size());
-    ConstEigenMatrixMapRowMajor<int64_t> a_indicies_map(coo_view.Indices().Data<int64_t>(), narrow<size_t>(ind_dims[0]), narrow<size_t>(ind_dims[1]));
+    ConstEigenMatrixMapRowMajor<int64_t> a_indicies_map(coo_view.Indices().Data<int64_t>(), narrow<size_t>(ind_dims[0]),
+                                                        narrow<size_t>(ind_dims[1]));
     ConstEigenMatrixMapRowMajor<T> map_b(B.Data<T>(), narrow<size_t>(b_dims[0]), narrow<size_t>(b_dims[1]));
-    EigenMatrixMapRowMajor<T> output_map(output.MutableData<T>(), narrow<size_t>(out_dims[0]), narrow<size_t>(out_dims[1]));
+    EigenMatrixMapRowMajor<T> output_map(output.MutableData<T>(), narrow<size_t>(out_dims[0]),
+                                         narrow<size_t>(out_dims[1]));
     output_map.setZero();
 
     const auto rhs_right = (ctx.trans_B) ? b_dims[0] : b_dims[1];
@@ -164,7 +170,8 @@ struct SparseToDenseCoo {
       ORT_RETURN_IF_NOT(m < out_left, "COO m index: ", m, " is out of bounds of out_left: ", out_left);
       const T a_value = a_values[i];
       for (int64_t n = 0; n < rhs_right; ++n) {
-        const T b_value = (ctx.trans_B) ? map_b(narrow<size_t>(n), narrow<size_t>(k)) : map_b(narrow<size_t>(k), narrow<size_t>(n));
+        const T b_value =
+            (ctx.trans_B) ? map_b(narrow<size_t>(n), narrow<size_t>(k)) : map_b(narrow<size_t>(k), narrow<size_t>(n));
         output_map(narrow<size_t>(m), narrow<size_t>(n)) += Mul(a_value, ctx.alpha, b_value);
       }
     }
@@ -194,8 +201,9 @@ Status SparseToDenseMatMul::Compute(OpKernelContext* ctx) const {
   const auto inner_B = (trans_b_attr_) ? b_dims[1] : b_dims[0];
   const auto outer_B = (trans_b_attr_) ? b_dims[0] : b_dims[1];
 
-  ORT_RETURN_IF_NOT(inner_A == inner_B, "Can not multiply A and B as inner dimension does not match. inner_A: ",
-                    inner_A, " vs inner_B: ", inner_B);
+  ORT_RETURN_IF_NOT(inner_A == inner_B,
+                    "Can not multiply A and B as inner dimension does not match. inner_A: ", inner_A,
+                    " vs inner_B: ", inner_B);
 
   TensorShape output_shape{outer_A, outer_B};
   auto* output = ctx->Output(0, output_shape);
@@ -208,7 +216,8 @@ Status SparseToDenseMatMul::Compute(OpKernelContext* ctx) const {
     auto coo_view = A->AsCoo();
     const auto num_dims = coo_view.Indices().Shape().NumDimensions();
     ORT_RETURN_IF_NOT(num_dims == 2, "Expecting COO 2-D indices shape");
-    ORT_RETURN_IF_NOT(A->Values().Shape().Size() * 2 == coo_view.Indices().Shape().Size(), "Expecting 2xValues == indices");
+    ORT_RETURN_IF_NOT(A->Values().Shape().Size() * 2 == coo_view.Indices().Shape().Size(),
+                      "Expecting 2xValues == indices");
     auto status = t_disp.InvokeRet<Status, SparseToDenseCoo>(compute_ctx, *A, *B, *output);
     ORT_RETURN_IF_ERROR(status);
 // Eigen has a bug in x86 where it calculates reallocation size as -1
