@@ -337,10 +337,14 @@ const globalPoolAttributes = {
   cacheKey: ''
 };
 
+export const parseGlobalAveragePoolAttributes = (attributes: Record<string, unknown>): AveragePoolAttributes => {
+  const format = attributes.format as FormatAttributes['format'];
+  return {format, ...globalPoolAttributes};
+};
+
 export const globalAveragePool = (context: ComputeContext, attributes: AveragePoolAttributes): void => {
   validateInputs(context.inputs);
-  context.compute(createAveragePoolProgramInfo(
-      'GlobalAveragePool', context.inputs[0], true, {format: attributes.format, ...globalPoolAttributes}));
+  context.compute(createAveragePoolProgramInfo('GlobalAveragePool', context.inputs[0], true, attributes));
 };
 
 export interface MaxPoolAttributes extends PoolCommonAttributes {
@@ -399,8 +403,12 @@ export const parseMaxPoolAttributes = (attributes: Record<string, unknown>): Max
   return {storageOrder, dilations, ...attr};
 };
 
+export const parseGlobalMaxPoolAttributes = (attributes: Record<string, unknown>): MaxPoolAttributes => {
+  const format = attributes.format as FormatAttributes['format'];
+  return {format, ...globalPoolAttributes};
+};
+
 export const globalMaxPool = (context: ComputeContext, attributes: MaxPoolAttributes): void => {
   validateInputs(context.inputs);
-  context.compute(createMaxPoolProgramInfo(
-      'GlobalMaxPool', context.inputs[0], true, {format: attributes.format, ...globalPoolAttributes}));
+  context.compute(createMaxPoolProgramInfo('GlobalMaxPool', context.inputs[0], true, attributes));
 };
