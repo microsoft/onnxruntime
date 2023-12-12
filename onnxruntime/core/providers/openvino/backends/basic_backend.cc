@@ -162,7 +162,18 @@ void BasicBackend::EnableGPUThrottling(ov::AnyMap& device_config) {
 }
 
 void BasicBackend::EnableStreams() {
-  global_context_.ie_core.SetStreams(global_context_.device_type, global_context_.num_streams);
+  // Streams can be set only if the device is not one of AUTO, MULTI, or HETERO
+  // Throw an exception if the user tries to set num_streams for these devices
+  if ((global_context_.device_type.find("MULTI") != std::string::npos) ||
+      (global_context_.device_type.find("HETERO") != std::string::npos) ||
+      (global_context_.device_type.find("AUTO") != std::string::npos)) {
+    if (global_context_.num_streams != 1) {
+      throw(log_tag + "Cannot set NUM_STREAMS to " + std::to_string(global_context_.num_streams) + " for device " + global_context_.device_type);
+    }
+    // Do nothing
+  } else {
+    global_context_.ie_core.SetStreams(global_context_.device_type, global_context_.num_streams);
+  }
 }
 
 void BasicBackend::SetNumThreads(ov::AnyMap& device_config) {
