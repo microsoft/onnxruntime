@@ -160,8 +160,8 @@ ACT2FN = ClassInstantier(ACT2CLS)
 class MixtralConfig:
     def __init__(
         self,
-        hidden_size=4096,
-        intermediate_size=14336,
+        hidden_size=1024,
+        intermediate_size=2048,
         num_hidden_layers=32,
         num_attention_heads=32,
         num_key_value_heads=8,
