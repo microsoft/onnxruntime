@@ -2545,8 +2545,8 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       {
         auto status = Status::OK();
         ORT_TRY {
-            NodeProto node_proto;
-            node.ToProto(node_proto);
+          NodeProto node_proto;
+          node.ToProto(node_proto);
           checker::check_node(node_proto, ctx, lsc);
         }
         ORT_CATCH(const std::exception& ex) {
@@ -2619,7 +2619,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     NO_CHANGE_ON_SYNC_FLAG(ORT_RETURN_IF_ERROR(InferAndVerifyTypeMatch(node, *p_op, options)));
 
     // Accumulate output names of the iterated Node
-    for (const auto &output : node.OutputDefs()) {
+    for (const auto& output : node.OutputDefs()) {
       lsc.output_names.insert(output->Name());
     }
   }
