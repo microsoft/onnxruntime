@@ -47,7 +47,6 @@ struct ComputeCtx {
   float alpha;
 };
 
-#if !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
 template <typename T>
 inline void SparseDenseMatMulImpl(const ComputeCtx& ctx, const ConstSparseMatrixMap<T>& map_A,
                                   const ConstEigenMatrixMapRowMajor<T>& map_B, EigenMatrixMapRowMajor<T>& output_map) {
@@ -87,6 +86,7 @@ struct SparseToDenseCsr {
     auto csr_view = A.AsCsr();
     const Eigen::Index* inner_index_pointer = nullptr;
     const Eigen::Index* outer_index_pointer = nullptr;
+    // For auto-release the above two pointers when they are not NULL.
     std::unique_ptr<Eigen::Index[]> buffer_holder_inner, buffer_holder_outer;
     if constexpr (std::is_integral<Eigen::Index>::value &&
                   std::is_signed<Eigen::Index>::value &&
@@ -96,22 +96,22 @@ struct SparseToDenseCsr {
       inner_index_pointer = reinterpret_cast<const Eigen::Index*>(csr_view.Inner().Data<int64_t>());
       outer_index_pointer = reinterpret_cast<const Eigen::Index*>(csr_view.Outer().Data<int64_t>());
     } else {
-      const size_t inner_size = narrow<size_t>(csr_view.Inner().Shape().Size());
-      const size_t outer_size = narrow<size_t>(csr_view.Outer().Shape().Size());
-      buffer_holder_inner.reset(new Eigen::Index[inner_size]);
-      buffer_holder_outer.reset(new Eigen::Index[outer_size]);
+      // In a 32-bit build we need to cast the following two tensors to 32 bits
+      gsl::span<const int64_t> inner_data = csr_view.Inner().DataAsSpan<int64_t>();
+      gsl::span<const int64_t> outer_data = csr_view.Outer().DataAsSpan<int64_t>();
+      buffer_holder_inner.reset(new Eigen::Index[inner_data.size()]);
+      buffer_holder_outer.reset(new Eigen::Index[outer_data.size()]);
       inner_index_pointer = buffer_holder_inner.get();
       outer_index_pointer = buffer_holder_outer.get();
-      const int64_t* inner_begin = csr_view.Inner().Data<int64_t>();
-      const int64_t* outer_begin = csr_view.Outer().Data<int64_t>();
-      std::transform<const int64_t*, Eigen::Index*>(inner_begin, inner_begin + inner_size,
-                                                    buffer_holder_inner.get(), [](int64_t v) -> Eigen::Index {
-                                                      return narrow<Eigen::Index>(v);
-                                                    });
-      std::transform<const int64_t*, Eigen::Index*>(outer_begin, outer_begin + outer_size,
-                                                    buffer_holder_outer.get(), [](int64_t v) -> Eigen::Index {
-                                                      return narrow<Eigen::Index>(v);
-                                                    });
+
+      std::transform(inner_data.begin(), inner_data.end(),
+                     buffer_holder_inner.get(), [](int64_t v) -> Eigen::Index {
+                       return narrow<Eigen::Index>(v);
+                     });
+      std::transform(outer_data.begin(), outer_data.end(),
+                     buffer_holder_outer.get(), [](int64_t v) -> Eigen::Index {
+                       return narrow<Eigen::Index>(v);
+                     });
     }
     ConstSparseMatrixMap<T> map_A(narrow<Eigen::Index>(a_dims[0]), narrow<Eigen::Index>(a_dims[1]),
                                   narrow<Eigen::Index>(A.NumValues()), outer_index_pointer, inner_index_pointer,
@@ -124,8 +124,6 @@ struct SparseToDenseCsr {
     SparseDenseMatMulImpl(ctx, map_A, map_B, output_map);
   }
 };
-
-#endif  //! defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
 
 template <typename T>
 inline T Mul(T a_value, float, T b_value) {
@@ -220,9 +218,6 @@ Status SparseToDenseMatMul::Compute(OpKernelContext* ctx) const {
                       "Expecting 2xValues == indices");
     auto status = t_disp.InvokeRet<Status, SparseToDenseCoo>(compute_ctx, *A, *B, *output);
     ORT_RETURN_IF_ERROR(status);
-// Eigen has a bug in x86 where it calculates reallocation size as -1
-// and throws bad_alloc
-#if !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
   } else if (A->Format() == SparseFormat::kCsrc) {
     auto csr_view = A->AsCsr();
     ORT_RETURN_IF_NOT(A->Values().Shape().Size() == csr_view.Inner().Shape().Size(),
@@ -232,11 +227,6 @@ Status SparseToDenseMatMul::Compute(OpKernelContext* ctx) const {
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Currently support only COO and CSR(x64) formats");
   }
-#else
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "WASM and 32-bit builds support only COO format");
-  }
-#endif  //! defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
 
   return Status::OK();
 }
