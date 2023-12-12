@@ -260,7 +260,7 @@ export interface PoolCommonAttributes extends FormatAttributes {
 const createShaderKeyFromAttributes = (attributes: PoolCommonAttributes): string =>
     (`${attributes.format as string};${attributes.ceilMode};${attributes.autoPad};${attributes.kernelShape.length}`);
 
-const parsePoolCommonAttributes = (attributes: Record<string, unknown>): PoolCommonAttributes => ({
+const parsePoolCommonAttributes = (attributes: PoolCommonAttributes): PoolCommonAttributes => ({
   format: attributes.format as FormatAttributes['format'],
   autoPad: ['NOTSET', 'VALID', 'SAME_UPPER', 'SAME_LOWER'][attributes.auto_pad as number],
   ceilMode: attributes.ceil_mode as number,
