@@ -4,7 +4,7 @@
 import {cpus} from 'node:os';
 import {Backend, env, InferenceSession, InferenceSessionHandler} from 'onnxruntime-common';
 
-import {initializeRuntime, initializeWebAssemblyInstance} from './wasm/proxy-wrapper';
+import {initializeOrtEp, initializeWebAssemblyAndOrtRuntime} from './wasm/proxy-wrapper';
 import {OnnxruntimeWebAssemblySessionHandler} from './wasm/session-handler-inference';
 
 /**
@@ -45,23 +45,11 @@ export class OnnxruntimeWebAssemblyBackend implements Backend {
     // populate wasm flags
     initializeFlags();
 
-    // perform WebGPU availability check
-    if (!BUILD_DEFS.DISABLE_WEBGPU && backendName === 'webgpu') {
-      if (typeof navigator === 'undefined' || !navigator.gpu) {
-        throw new Error('WebGPU is not supported in current environment');
-      }
-
-      if (!await navigator.gpu.requestAdapter()) {
-        throw new Error(
-            'Failed to get GPU adapter. You may need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.');
-      }
-    }
-
     // init wasm
-    await initializeWebAssemblyInstance();
+    await initializeWebAssemblyAndOrtRuntime();
 
-    // init ORT
-    await initializeRuntime(env);
+    // performe EP specific initialization
+    await initializeOrtEp(backendName);
   }
   createInferenceSessionHandler(path: string, options?: InferenceSession.SessionOptions):
       Promise<InferenceSessionHandler>;

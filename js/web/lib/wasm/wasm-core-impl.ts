@@ -43,12 +43,12 @@ import {allocWasmString, checkLastError} from './wasm-utils';
  * followings:
  *    If the parameter is a URL:
  *    - download the model data from the URL.
- *    - copy the model data to the WASM heap. (proxy: 'copy_from')
+ *    - copy the model data to the WASM heap. (proxy: 'copy-from')
  *    - dereference the model buffer. This step allows the original ArrayBuffer to be garbage collected.
  *    - call `_OrtCreateSession()` to create the session. (proxy: 'create')
  *
  *    If the parameter is a Uint8Array object:
- *    - copy the model data to the WASM heap. (proxy: 'copy_from')
+ *    - copy the model data to the WASM heap. (proxy: 'copy-from')
  *    - call `_OrtCreateSession()` to create the session. (proxy: 'create')
  *
  *
@@ -74,8 +74,25 @@ const initOrt = (numThreads: number, loggingLevel: number): void => {
 export const initRuntime = async(env: Env): Promise<void> => {
   // init ORT
   initOrt(env.wasm.numThreads!, logLevelStringToEnum(env.logLevel));
+};
 
-  if (!BUILD_DEFS.DISABLE_WEBGPU) {
+/**
+ * perform EP specific initialization.
+ *
+ * @param env
+ * @param epName
+ */
+export const initEp = async(env: Env, epName: string): Promise<void> => {
+  if (!BUILD_DEFS.DISABLE_WEBGPU && epName === 'webgpu') {
+    // perform WebGPU availability check
+    if (typeof navigator === 'undefined' || !navigator.gpu) {
+      throw new Error('WebGPU is not supported in current environment');
+    }
+    if (!await navigator.gpu.requestAdapter()) {
+      throw new Error(
+          'Failed to get GPU adapter. You may need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.');
+    }
+
     // init JSEP if available
 
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires

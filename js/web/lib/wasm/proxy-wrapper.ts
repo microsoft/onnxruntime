@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Env, env, InferenceSession} from 'onnxruntime-common';
+import {env, InferenceSession} from 'onnxruntime-common';
 
 import {OrtWasmMessage, SerializableInternalBuffer, SerializableSessionMetadata, SerializableTensorMetadata, TensorMetadata} from './proxy-messages';
 import * as core from './wasm-core-impl';
@@ -15,7 +15,6 @@ let proxyWasmAborted = false;
 
 type PromiseCallbacks<T = void> = [resolve: (result: T) => void, reject: (reason: unknown) => void];
 let initWasmCallbacks: PromiseCallbacks;
-let initOrtCallbacks: PromiseCallbacks;
 const queuedCallbacks: Map<OrtWasmMessage['type'], Array<PromiseCallbacks<unknown>>> = new Map();
 
 const enqueueCallbacks = (type: OrtWasmMessage['type'], callbacks: PromiseCallbacks<unknown>): void => {
@@ -45,14 +44,8 @@ const onProxyWorkerMessage = (ev: MessageEvent<OrtWasmMessage>): void => {
         initWasmCallbacks[0]();
       }
       break;
-    case 'init-ort':
-      if (ev.data.err) {
-        initOrtCallbacks[1](ev.data.err);
-      } else {
-        initOrtCallbacks[0]();
-      }
-      break;
-    case 'copy_from':
+    case 'init-ep':
+    case 'copy-from':
     case 'create':
     case 'release':
     case 'run':
@@ -71,7 +64,7 @@ const onProxyWorkerMessage = (ev: MessageEvent<OrtWasmMessage>): void => {
 
 const scriptSrc = typeof document !== 'undefined' ? (document?.currentScript as HTMLScriptElement)?.src : undefined;
 
-export const initializeWebAssemblyInstance = async(): Promise<void> => {
+export const initializeWebAssemblyAndOrtRuntime = async(): Promise<void> => {
   if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
     if (proxyWasmInitialized) {
       return;
@@ -107,51 +100,26 @@ export const initializeWebAssemblyInstance = async(): Promise<void> => {
       proxyWorker.onmessage = onProxyWorkerMessage;
       URL.revokeObjectURL(workerUrl);
       initWasmCallbacks = [resolve, reject];
-      const message: OrtWasmMessage = {type: 'init-wasm', in : env.wasm};
+      const message: OrtWasmMessage = {type: 'init-wasm', in : env};
       proxyWorker.postMessage(message);
     });
 
   } else {
-    return initializeWebAssembly(env.wasm);
+    await initializeWebAssembly(env.wasm);
+    await core.initRuntime(env);
   }
 };
 
-let ortInitializing = false;
-let ortInitialized = false;
-let ortInitializePromise: Promise<void>|undefined;
-let ortAborted = false;
-
-export const initializeRuntime = async(env: Env): Promise<void> => {
-  if (!ortInitialized) {
-    if (ortAborted) {
-      throw new Error('previous call to \'initializeRuntime()\' failed.');
-    }
-
-    if (!ortInitializing) {
-      ortInitializing = true;
-      ortInitializePromise = new Promise<void>((resolve, reject) => {
-                               if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
-                                 ensureWorker();
-                                 initOrtCallbacks = [resolve, reject];
-                                 const message: OrtWasmMessage = {type: 'init-ort', in : env};
-                                 proxyWorker!.postMessage(message);
-                               } else {
-                                 core.initRuntime(env).then(resolve, reject);
-                               }
-                             })
-                                 .then(
-                                     () => {
-                                       ortInitialized = true;
-                                       ortInitializing = false;
-                                       ortInitializePromise = undefined;
-                                     },
-                                     () => {
-                                       ortAborted = true;
-                                       ortInitializing = false;
-                                       ortInitializePromise = undefined;
-                                     });
-    }
-    return ortInitializePromise;
+export const initializeOrtEp = async(epName: string): Promise<void> => {
+  if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
+    ensureWorker();
+    return new Promise<void>((resolve, reject) => {
+      enqueueCallbacks('init-ep', [resolve, reject]);
+      const message: OrtWasmMessage = {type: 'init-ep', in : {epName, env}};
+      proxyWorker!.postMessage(message);
+    });
+  } else {
+    await core.initEp(env, epName);
   }
 };
 
@@ -159,8 +127,8 @@ export const copyFromExternalBuffer = async(buffer: Uint8Array): Promise<Seriali
   if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
     ensureWorker();
     return new Promise<SerializableInternalBuffer>((resolve, reject) => {
-      enqueueCallbacks('copy_from', [resolve, reject]);
-      const message: OrtWasmMessage = {type: 'copy_from', in : {buffer}};
+      enqueueCallbacks('copy-from', [resolve, reject]);
+      const message: OrtWasmMessage = {type: 'copy-from', in : {buffer}};
       proxyWorker!.postMessage(message, [buffer.buffer]);
     });
   } else {

@@ -36,7 +36,7 @@ declare global {
 }
 
 import {OrtWasmMessage, SerializableTensorMetadata} from '../proxy-messages';
-import {createSession, copyFromExternalBuffer, endProfiling, extractTransferableBuffers, initRuntime, releaseSession, run} from '../wasm-core-impl';
+import {createSession, copyFromExternalBuffer, endProfiling, extractTransferableBuffers, initEp, initRuntime, releaseSession, run} from '../wasm-core-impl';
 import {initializeWebAssembly} from '../wasm-factory';
 
 self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
@@ -44,24 +44,34 @@ self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
   try {
     switch (type) {
       case 'init-wasm':
-        initializeWebAssembly(message!).then(
-            () => {
-              postMessage({type});
-            },
-            err => {
-              postMessage({type, err});
-            });
+        initializeWebAssembly(message!.wasm)
+            .then(
+                () => {
+                  initRuntime(message!).then(
+                      () => {
+                        postMessage({type});
+                      },
+                      err => {
+                        postMessage({type, err});
+                      });
+                },
+                err => {
+                  postMessage({type, err});
+                });
         break;
-      case 'init-ort':
-        initRuntime(message!).then(
-            () => {
-              postMessage({type});
-            },
-            err => {
-              postMessage({type, err});
-            });
+      case 'init-ep': {
+        const {epName, env} = message!;
+        initEp(env, epName)
+            .then(
+                () => {
+                  postMessage({type});
+                },
+                err => {
+                  postMessage({type, err});
+                });
         break;
-      case 'copy_from': {
+      }
+      case 'copy-from': {
         const {buffer} = message!;
         const bufferData = copyFromExternalBuffer(buffer);
         postMessage({type, out: bufferData} as OrtWasmMessage);

@@ -44,18 +44,18 @@ interface MessageError {
 
 interface MessageInitWasm extends MessageError {
   type: 'init-wasm';
-  in ?: Env.WebAssemblyFlags;
-  out?: never;
-}
-
-interface MessageInitOrt extends MessageError {
-  type: 'init-ort';
   in ?: Env;
   out?: never;
 }
 
+interface MessageInitEp extends MessageError {
+  type: 'init-ep';
+  in ?: {env: Env; epName: string};
+  out?: never;
+}
+
 interface MessageCopyFromExternalBuffer extends MessageError {
-  type: 'copy_from';
+  type: 'copy-from';
   in ?: {buffer: Uint8Array};
   out?: SerializableInternalBuffer;
 }
@@ -87,5 +87,5 @@ interface MesssageEndProfiling extends MessageError {
   out?: never;
 }
 
-export type OrtWasmMessage = MessageInitWasm|MessageInitOrt|MessageCopyFromExternalBuffer|MessageCreateSession|
+export type OrtWasmMessage = MessageInitWasm|MessageInitEp|MessageCopyFromExternalBuffer|MessageCreateSession|
     MessageReleaseSession|MessageRun|MesssageEndProfiling;
