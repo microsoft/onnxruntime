@@ -605,11 +605,11 @@ public:
         return MLOperatorTensor(tensor.Get());
     }
 
-    std::optional<MLOperatorTensor> TryGetConstantInputTensor(uint32_t inputIndex) const
+    std::optional<MLOperatorTensor> TryGetConstantCpuInputTensor(uint32_t inputIndex) const
     {
         Microsoft::WRL::ComPtr<IMLOperatorTensor> tensor;
         ORT_THROW_IF_FAILED(m_implPrivate->TryGetConstantInputTensor(inputIndex, &tensor));
-        if (tensor)
+        if (tensor && tensor->IsCpuData())
         {
             return MLOperatorTensor(tensor.Get());
         }
