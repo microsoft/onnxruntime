@@ -46,7 +46,7 @@ Status DequantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
     axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_shape.size()));
   }
   // Insert ones before and after the axis dimension for broadcasting of 1D scale tensor.
-  if (1 == scale_shape.size() && input_shape.size() > 1) {
+  if (1 == scale_shape.size() && 1 < input_shape.size()) {
     std::vector<int32_t> target_shape{static_cast<int>(input_shape[axis])};
     target_shape.insert(target_shape.begin(), axis, 1);
     target_shape.insert(target_shape.end(), input_shape.size() - axis - 1, 1);
