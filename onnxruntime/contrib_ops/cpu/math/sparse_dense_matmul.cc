@@ -102,18 +102,16 @@ struct SparseToDenseCsr {
       buffer_holder_outer.reset(new Eigen::Index[outer_size]);
       inner_index_pointer = buffer_holder_inner.get();
       outer_index_pointer = buffer_holder_outer.get();
-#ifdef _WIN32
-#pragma warning(push)
-// The copy below may loss precision. Ignore the warnings for now
-#pragma warning(disable : 4244)
-#endif
-      std::copy_n<const int64_t*, size_t, Eigen::Index*>(csr_view.Inner().Data<int64_t>(), inner_size,
-                                                         buffer_holder_inner.get());
-      std::copy_n<const int64_t*, size_t, Eigen::Index*>(csr_view.Outer().Data<int64_t>(), outer_size,
-                                                         buffer_holder_outer.get());
-#ifdef _WIN32
-#pragma warning(pop)
-#endif
+      const int64_t* inner_begin = csr_view.Inner().Data<int64_t>();
+      const int64_t* outer_begin = csr_view.Outer().Data<int64_t>();
+      std::transform<const int64_t*, Eigen::Index*>(inner_begin, inner_begin + inner_size,
+                                                    buffer_holder_inner.get(), [](int64_t v) -> Eigen::Index {
+                                                      return narrow<Eigen::Index>(v);
+                                                    });
+      std::transform<const int64_t*, Eigen::Index*>(outer_begin, outer_begin + outer_size,
+                                                    buffer_holder_outer.get(), [](int64_t v) -> Eigen::Index {
+                                                      return narrow<Eigen::Index>(v);
+                                                    });
     }
     ConstSparseMatrixMap<T> map_A(narrow<Eigen::Index>(a_dims[0]), narrow<Eigen::Index>(a_dims[1]),
                                   narrow<Eigen::Index>(A.NumValues()), outer_index_pointer, inner_index_pointer,
