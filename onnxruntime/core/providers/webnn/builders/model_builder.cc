@@ -428,6 +428,8 @@ void ModelBuilder::AddOperand(const std::string& name, const emscripten::val& op
 // Get the zero scalar constant.
 // Workaround for builer.constant(value, type) method since it has not been implemented now.
 // https://webmachinelearning.github.io/webnn/#api-mlgraphbuilder-constant-value-type
+// BTW, the spec is discussing if the builer.constant(value, type) should be dropped at
+// https://github.com/webmachinelearning/webnn/issues/475. Fix me according to the spec decision.
 const emscripten::val& ModelBuilder::GetZeroConstant(const std::string& data_type) {
   std::string name = "webnn_zero_constant_" + data_type;
   // If the operand does not exist, create it.
