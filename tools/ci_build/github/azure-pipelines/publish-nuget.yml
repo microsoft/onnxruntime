@@ -27,7 +27,7 @@ stages:
       displayName: 'Download Pipeline Artifact - Signed NuGet Package'
       artifact: 'drop-signed-nuget-CPU'
    
-    - script: move "$(Pipeline.Workspace)\drop-signed-nuget-CPU" "$(Build.BinariesDirectory)\nuget-artifact\final-package"
+    - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-CPU" "$(Build.BinariesDirectory)\nuget-artifact\final-package"
 
     - template: nuget/templates/get-nuget-package-version-as-variable.yml
       parameters:
@@ -74,17 +74,17 @@ stages:
       displayName: 'Download Pipeline Artifact - Signed NuGet Package'
       artifact: 'drop-signed-nuget-dml'
 
-    - script: move "$(Pipeline.Workspace)\drop-signed-nuget-dml" $(Build.BinariesDirectory)\nuget-artifact\final-package
+    - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-dml" $(Build.BinariesDirectory)\nuget-artifact\final-package
 
     - download: build
       displayName: 'Download Pipeline Artifact - Signed NuGet Package'
       artifact: 'drop-signed-nuget-Training-CPU'
-    - script: move "$(Pipeline.Workspace)\drop-signed-nuget-Training-CPU" $(Build.BinariesDirectory)\nuget-artifact\final-package
+    - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-Training-CPU" $(Build.BinariesDirectory)\nuget-artifact\final-package
 
     - download: build
       displayName: 'Download Pipeline Artifact - Signed NuGet Package'
       artifact: 'drop-signed-nuget-GPU'
-    - script: move "$(Pipeline.Workspace)\drop-signed-nuget-GPU" $(Build.BinariesDirectory)\nuget-artifact\final-package
+    - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-GPU" $(Build.BinariesDirectory)\nuget-artifact\final-package
 
     - download: build
       displayName: 'Download Pipeline Artifact - Signed NuGet ROCm Package'
