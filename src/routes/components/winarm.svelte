@@ -28,16 +28,12 @@
 			<p class="text-xl text-blue-500">Optimizing models for the NPU</p>
 			<a class="text-blue-500" href="https://onnx.ai/">ONNX</a> is a standard format for representing ML models authored in frameworks like PyTorch,
 			TensorFlow, and others. ONNX Runtime can run any ONNX model, however to make use of the NPU,
-			you currently need to use the following steps:
-			<ol class="list-disc ml-10">
-				<li>Run the tools provided in the SNPE SDK on your model to generate a binary file.</li>
-				<li>Include the contents of the binary file as a node in the ONNX graph.</li>
+			you currently need to quantize the ONNX model to QDQ model.
 				<br>
 				See our <a class="text-blue-500" href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/QNN_EP/mobilenetv2_classification">C# tutorial</a> for an example of how this is done.
-			</ol>
 			<br />
 			Many models can be optimized for the NPU using this process. Even if a model cannot be optimized
-			for NPU by the SNPE SDK, it can still be run by ONNX Runtime on the CPU.
+			for the NPU, it can still be run by ONNX Runtime on the CPU.
 			<br><br>
 			<p class="text-xl text-blue-500">Getting Help</p>
 			For help with ONNX Runtime, you can <a class="text-blue-500" href="https://github.com/microsoft/onnxruntime/discussions">start a discussion</a> on GitHub or <a class="text-blue-500" href="https://github.com/microsoft/onnxruntime/issues">file an issue</a>.
