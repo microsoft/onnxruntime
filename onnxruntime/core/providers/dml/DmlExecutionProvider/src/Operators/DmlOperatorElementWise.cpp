@@ -480,7 +480,7 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
 
         auto constExpTensor = kernelInfo.TryGetConstantInputTensor(1);
-        if (constExpTensor && constExpTensor->GetTotalElementCount() == 1)
+        if (constExpTensor && constExpTensor->IsCpuData() && constExpTensor->GetTotalElementCount() == 1)
         {
             std::vector<std::optional<uint32_t>> kernelInputIndices = {0};
 
