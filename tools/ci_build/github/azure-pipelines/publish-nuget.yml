@@ -20,13 +20,14 @@ stages:
     - checkout: self
       submodules: false
     - template: templates/set-version-number-variables-step.yml
-    - script: mkdir $(Build.BinariesDirectory)/nuget-artifact/final-package
+    
+    - script: mkdir "$(Build.BinariesDirectory)/nuget-artifact/final-package"
     
     - download: current
       displayName: 'Download Pipeline Artifact - Signed NuGet Package'
       artifact: 'drop-signed-nuget-CPU'
    
-    - script: move "$(Pipeline.Workspace)/drop-signed-nuget-CPU" $(Build.BinariesDirectory)/nuget-artifact/final-package
+    - script: move "$(Pipeline.Workspace)/drop-signed-nuget-CPU" "$(Build.BinariesDirectory)/nuget-artifact/final-package"
 
     - template: nuget/templates/get-nuget-package-version-as-variable.yml
       parameters:
