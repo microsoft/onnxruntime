@@ -6,7 +6,7 @@ import {InferenceSession, OnnxValue, SessionHandler, Tensor, TrainingSessionHand
 import {SerializableInternalBuffer, TensorMetadata} from './proxy-messages';
 import {decodeTensorMetadata, encodeTensorMetadata} from './session-handler-inference';
 import {copyFromExternalBuffer} from './wasm-core-impl';
-import {createCheckpointHandle, createTrainingSessionHandle, getContiguousParameters, getModelInputOutputNames, getParametersSize, loadParametersBuffer, releaseTrainingSessionAndCheckpoint, runEvalStep, runOptimizerStep, runTrainStep} from './wasm-training-core-impl';
+import {createCheckpointHandle, createTrainingSessionHandle, getContiguousParameters, getModelInputOutputNames, getParametersSize, lazyResetGrad, loadParametersBuffer, releaseTrainingSessionAndCheckpoint, runEvalStep, runOptimizerStep, runTrainStep} from './wasm-training-core-impl';
 
 export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSessionHandler {
   private sessionId: number;
@@ -100,6 +100,10 @@ export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSes
       resultMap[this.outputNames[outputIndices[i]]] = outputArray[i] ?? decodeTensorMetadata(results[i]);
     }
     return resultMap;
+  }
+
+  async lazyResetGrad(): Promise<void> {
+    await lazyResetGrad(this.sessionId);
   }
 
   async runTrainStep(

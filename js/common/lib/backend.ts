@@ -48,6 +48,7 @@ export interface TrainingSessionHandler extends SessionHandler {
   readonly evalInputNames: readonly string[];
   readonly evalOutputNames: readonly string[];
 
+  lazyResetGrad(): Promise<void>;
   runTrainStep(
       feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
       options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType>;
