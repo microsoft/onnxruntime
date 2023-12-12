@@ -88,7 +88,9 @@ struct SparseToDenseCsr {
     const Eigen::Index* inner_index_pointer = nullptr;
     const Eigen::Index* outer_index_pointer = nullptr;
     std::unique_ptr<Eigen::Index[]> buffer_holder_inner, buffer_holder_outer;
-    if constexpr (std::is_same<Eigen::Index, int64_t>::value) {
+    if constexpr (std::is_integral<Eigen::Index>::value &&
+                  std::is_signed<Eigen::Index>::value &&
+                  (sizeof(Eigen::Index) == sizeof(int64_t))) {
       // On macOS the following reinterpret_cast is necessary because Eigen::Index is an alias of `long` but int64_t is
       // `long long`. Though they have the same size, compilers still do not allow an implicit casting between them.
       inner_index_pointer = reinterpret_cast<const Eigen::Index*>(csr_view.Inner().Data<int64_t>());
