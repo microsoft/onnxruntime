@@ -23,7 +23,7 @@ stages:
     
     - script: mkdir "$(Build.BinariesDirectory)\nuget-artifact\final-package"
     
-    - download: current
+    - download: build
       displayName: 'Download Pipeline Artifact - Signed NuGet Package'
       artifact: 'drop-signed-nuget-CPU'
    
@@ -57,7 +57,7 @@ stages:
               )
             )
 
-    # Only report binary sizes to database if the current build was auto-triggered from the main branch
+    # Only report binary sizes to database if the build build was auto-triggered from the main branch
     - task: AzureCLI@2
       displayName: 'Azure CLI'
       condition: and (succeeded(), and(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.Reason'], 'ResourceTrigger')))
@@ -70,23 +70,23 @@ stages:
           python.exe $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=$(Build.SourceVersion) --size_data_file=binary_size_data.txt --build_project=Lotus --build_id=$(Build.BuildId)
         workingDirectory: '$(Build.BinariesDirectory)'
 
-    - download: current
+    - download: build
       displayName: 'Download Pipeline Artifact - Signed NuGet Package'
       artifact: 'drop-signed-nuget-dml'
 
     - script: move "$(Pipeline.Workspace)\drop-signed-nuget-dml" $(Build.BinariesDirectory)\nuget-artifact\final-package
 
-    - download: current
+    - download: build
       displayName: 'Download Pipeline Artifact - Signed NuGet Package'
       artifact: 'drop-signed-nuget-Training-CPU'
     - script: move "$(Pipeline.Workspace)\drop-signed-nuget-Training-CPU" $(Build.BinariesDirectory)\nuget-artifact\final-package
 
-    - download: current
+    - download: build
       displayName: 'Download Pipeline Artifact - Signed NuGet Package'
       artifact: 'drop-signed-nuget-GPU'
     - script: move "$(Pipeline.Workspace)\drop-signed-nuget-GPU" $(Build.BinariesDirectory)\nuget-artifact\final-package
 
-    - download: current
+    - download: build
       displayName: 'Download Pipeline Artifact - Signed NuGet ROCm Package'
       artifact: 'drop-signed-nuget-ROCm'
     - script: move "drop-signed-nuget-ROCm" $(Build.BinariesDirectory)\nuget-artifact\final-package
