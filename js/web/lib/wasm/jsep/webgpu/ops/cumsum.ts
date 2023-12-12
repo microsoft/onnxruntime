@@ -37,7 +37,7 @@ const createCumsumProgramInfo =
                 ${shaderHelper.mainStart()}
                   ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
                   var inputIndices = ${output.offsetToIndices('global_idx')};
-                  var sum = 0.0;
+                  var sum = ${output.type.value}(0);
                   let first : i32 = ${lowerLimit};
                   let last : i32 = ${upperLimit};
                   for (var i : i32 = first; i < last; i++) {
