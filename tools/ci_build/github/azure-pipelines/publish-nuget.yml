@@ -7,16 +7,6 @@ resources:
 
 stages:
 - stage: Publish_NuGet_Package_And_Report
-  dependsOn:
-  - NuGet_Test_Win_CPU
-  - NuGet_Test_Linux_CPU
-  - NuGet_Test_Win_GPU
-  - NuGet_Test_Linux_GPU
-  - NuGet_Test_Linux_ROCm
-  - NuGet_Test_MacOS
-  - NuGet_Packaging_DML
-  - NuGet_Test_Win_Training_CPU
-  - NuGet_Test_Linux_Training_CPU
   jobs:
   - job:
     workspace:
