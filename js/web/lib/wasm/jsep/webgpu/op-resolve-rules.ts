@@ -52,7 +52,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Atanh', [unaryOps.atanh]],
   ['Attention', [attention, parseAttentionAttributes]],
   // TODO: support new attributes for AveragePool-10
-  ['AveragePool', [pool.averagePool]],
+  ['AveragePool', [pool.averagePool, pool.parseAveragePoolAttributes]],
   ['BatchNormalization', [batchNorm]],
   ['BiasAdd', [biasAdd]],
   ['BiasSplitGelu', [biasSplitGelu]],
@@ -90,7 +90,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Log', [unaryOps.log]],
   ['MatMul', [matMul]],
   // TODO: support new attributes for MaxPool-8 and MaxPool-10
-  ['MaxPool', [pool.maxPool]],
+  ['MaxPool', [pool.maxPool, pool.parseMaxPoolAttributes]],
   ['Mul', [binaryOps.mul]],
   ['MultiHeadAttention', [multiHeadAttention, parseMultiHeadAttentionAttributes]],
   ['Neg', [unaryOps.neg]],
