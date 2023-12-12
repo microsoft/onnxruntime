@@ -333,8 +333,7 @@ const globalPoolAttributes = {
   strides: [],
   pads: [],
   storageOrder: 0,
-  dilations: [],
-  cacheKey: ''
+  dilations: []
 };
 
 export const parseGlobalAveragePoolAttributes = (attributes: Record<string, unknown>): AveragePoolAttributes => {
