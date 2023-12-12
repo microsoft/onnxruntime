@@ -24,7 +24,10 @@ namespace onnxruntime::optimizer::memory_optimizer {
 #ifdef MO_NEED_LOG_DEBUG_INFO
 #define MO_LOG_DEBUG_INFO(logger, message) LOGS(logger, WARNING) << message
 #else
-#define MO_LOG_DEBUG_INFO(logger, message) LOGS(logger, VERBOSE) << message
+#define MO_LOG_DEBUG_INFO(logger, message) \
+  ORT_UNUSED_PARAMETER(logger);            \
+  do {                                     \
+  } while (0)
 #endif
 #endif
 
@@ -58,9 +61,6 @@ struct UserConfig {
 
 /**
  * @brief Get total element count inn format of a symbolic string.
- * Be noted: this function is used to generate a unique string for a tensor shape.
- * For empty dim param, it is possible to have different symbolic string for the same shape, because there is
- * a static index_empty_dim used to generate empty dim param as a string.
  *
  * @param node The node to get element count.
  * @param output_index The output index of the node.
@@ -70,7 +70,7 @@ std::string GetTensorElemCountInSymbolicString(const Node* node, size_t output_i
 
 int ParseIntValueFromString(std::string_view str);
 
-Status ParseOptimizationConfigFromString(std::string_view memory_optimization_config,
-                                         InlinedHashMap<std::string, UserConfig>& cluster_id_to_config_map);
+Status ParseConfigFromString(std::string_view memory_optimization_config,
+                             InlinedHashMap<std::string, UserConfig>& cluster_id_to_config_map);
 
 }  // namespace onnxruntime::optimizer::memory_optimizer

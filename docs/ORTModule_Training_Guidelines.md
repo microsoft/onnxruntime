@@ -146,6 +146,7 @@ Check [DebugOptions implementation](../orttraining/orttraining/python/training/o
 	export ORTMODULE_ONNX_OPSET_VERSION=14
 	```
 
+
 #### ORTMODULE_FALLBACK_POLICY
 
 - **Feature Area**: *ORTMODULE/FallbackToPytorch*
@@ -153,6 +154,7 @@ Check [DebugOptions implementation](../orttraining/orttraining/python/training/o
 	```bash
 	export ORTMODULE_FALLBACK_POLICY="FALLBACK_DISABLE"
 	```
+
 
 #### ORTMODULE_LOG_LEVEL
 
@@ -180,6 +182,7 @@ The output directory of the onnx models by default is set to the current working
 	> On the other hand, if the wrapped computation graph is small, it is reasonable to allow it.
 	> Overall users should be aware that ORT performance boost might be trivial when they explicitly allow it.
 
+
 #### ORTMODULE_ENABLE_CUSTOM_AUTOGRAD
 
 - **Feature Area**: *ORTMODULE/PythonOp (torch.autograd.Function)*
@@ -195,6 +198,8 @@ The output directory of the onnx models by default is set to the current working
 	from onnxruntime.training.ortmodule._custom_autograd_function import enable_custom_autograd_support
 	enable_custom_autograd_support(False)
 	```
+
+
 
 #### ORTMODULE_ENABLE_COMPUTE_OPTIMIZER
 
@@ -283,15 +288,6 @@ A classical usage of disabling the deep copy: when the deep copy before module e
 	export ORTMODULE_DEEPCOPY_BEFORE_MODEL_EXPORT=1 # Enable
 	export ORTMODULE_DEEPCOPY_BEFORE_MODEL_EXPORT=0 # Disable
 	```
-
-#### ORTMODULE_MEMORY_OPT_LEVEL
-
-- **Feature Area**: *ORTMODULE/Optimizations*
-- **Description**: By default, the level is 0. This env var can be used for enabling recomputation for reducing memory peak requirement. Setting the level to be 0 means all detected subgraphs with each transformer-based model layer generating stashed activations will be recomputed. This is conceptually equivalent to PyTorch's gradient checkpoint. When level is not 0, check Check [Memory Optimizer for ONNX Runtime Training](Memory_Optimizer.md) for more details.
-
-    ```bash
-    export ORTMODULE_MEMORY_OPT_LEVEL=0
-    ```
 
 ### 2.2 Memory Optimization
 

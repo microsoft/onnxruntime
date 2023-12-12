@@ -16,6 +16,8 @@ namespace onnxruntime {
 /**
 @Class MemoryOptimizer
 
+(TODO) move to orttraining/orttraining/core/optimizer/memory_optimizer/ folder.
+
 Find recompute subgraphs and enable them according to user configs. The way we collect subgraphs
 (in orttraining/orttraining/core/optimizer/memory_optimizer/recompute_analysis.h) in brief is:
 1. Find all nodes that generate stashed activations.
@@ -29,10 +31,10 @@ Find recompute subgraphs and enable them according to user configs. The way we c
 class MemoryOptimizer : public GraphTransformer {
  private:
  public:
-  MemoryOptimizer(const std::string& memory_optimizer_config, const std::string& recompute_probe_config)
+  MemoryOptimizer(const std::string& memory_optimizer_config, const std::string& level)
       : GraphTransformer("MemoryOptimizer") {
-    // Parse user-defined configs.
-    ORT_ENFORCE(ParseOptimizationConfigFromString(memory_optimizer_config, recompute_probe_config).IsOK());
+    // Parse user defined configs.
+    ORT_ENFORCE(ParseConfigFromString(memory_optimizer_config, level).IsOK());
   }
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
@@ -40,7 +42,7 @@ class MemoryOptimizer : public GraphTransformer {
   bool ShouldOnlyApplyOnce() const override { return true; }
 
  private:
-  Status ParseOptimizationConfigFromString(const std::string& memory_optimizer_config, const std::string& recompute_probe_config);
+  Status ParseConfigFromString(const std::string& memory_optimizer_config, const std::string& level);
 
   /**
    * @brief Apply graph modifications based on user configs.
@@ -81,7 +83,7 @@ class MemoryOptimizer : public GraphTransformer {
                     const logging::Logger& logger) const;
 
   /**************************************************
-   ** Recompute-related function definition starts **
+   ** Recompute related function definition starts **
    *************************************************/
 
   /**
@@ -97,13 +99,13 @@ class MemoryOptimizer : public GraphTransformer {
                               Node*& recompute_subgraph_output_node) const;
 
   /**************************************************
-   ** Recompute-related function definition ends   **
+   ** Recompute related function definition ends   **
    *************************************************/
 
-  // User-enabled map of the subgraph string representation to the alleviation type.
+  // User enabled map of the subgraph string representation to the alleviation type.
   InlinedHashMap<std::string, optimizer::memory_optimizer::UserConfig> pattern_subgraph_to_user_optimizer_config_map_;
   std::string optimizer_config_;
-  optimizer::memory_optimizer::ProbeConfig recompute_probe_config_;
+  optimizer::memory_optimizer::ProbeLevel recompute_probe_level_;
 };
 
 }  // namespace onnxruntime

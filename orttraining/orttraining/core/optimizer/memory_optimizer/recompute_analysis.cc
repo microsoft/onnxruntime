@@ -9,11 +9,8 @@
 #include <utility>
 
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
-#include "orttraining/core/optimizer/memory_optimizer/transformer_specific.h"
 #include "orttraining/core/optimizer/memory_optimizer/recompute_analysis.h"
-#include "core/common/string_utils.h"
 #include "core/framework/data_types.h"
-#include "core/optimizer/utils.h"
 
 namespace onnxruntime::optimizer::memory_optimizer {
 
@@ -56,7 +53,7 @@ struct AllowedRecomputeNodeConfig {
   InlinedVector<int> input_arg_indices;  // input index to iterate further (bottom up)
 };
 
-// The supported op types are predefined.
+// The op types that are supported predefined.
 
 const InlinedHashMap<std::string, AllowedRecomputeNodeConfig>& GetAllowedRecomputeOps(int probe_op_level) {
   static InlinedHashMap<int, InlinedHashMap<std::string, AllowedRecomputeNodeConfig>> recomputable_op_table_map;
@@ -79,19 +76,16 @@ const InlinedHashMap<std::string, AllowedRecomputeNodeConfig>& GetAllowedRecompu
         /// The shape input is trivial whether it exists or not in backward.
         {"Reshape", AllowedRecomputeNodeConfig{{0}}},
         {"Squeeze", AllowedRecomputeNodeConfig{{0}}},
-        {"Transpose", AllowedRecomputeNodeConfig{{0}}},
         {"Unsqueeze", AllowedRecomputeNodeConfig{{0}}},
 
         // Unary elementwise
-        {"Dropout", AllowedRecomputeNodeConfig{{0}}},
-        {"BiasGelu", AllowedRecomputeNodeConfig{{0, 1}}},
         /// The ratio and mode input are trivial whether they exist or not in backward
         {"BitmaskDropout", AllowedRecomputeNodeConfig{{0}}},
         /// The axis input is trivial whether it exists or not in backward
         {"CumSum", AllowedRecomputeNodeConfig{{0}}},
-        {"Expand", AllowedRecomputeNodeConfig{{0}}},
-        {"FastGelu", AllowedRecomputeNodeConfig{{0}}},
+        {"Dropout", AllowedRecomputeNodeConfig{{0}}},
         {"Gelu", AllowedRecomputeNodeConfig{{0}}},
+        {"FastGelu", AllowedRecomputeNodeConfig{{0}}},
 
         // Ternary elementwise
         {"Where", AllowedRecomputeNodeConfig{{0, 1, 2}}},
@@ -99,16 +93,11 @@ const InlinedHashMap<std::string, AllowedRecomputeNodeConfig>& GetAllowedRecompu
         // Data copy
         {"Tile", AllowedRecomputeNodeConfig{{0}}},
         {"Cast", AllowedRecomputeNodeConfig{{0}}},
-        {"ConcatTraining", AllowedRecomputeNodeConfig{{0, 1}}},  // Input could be more than 2. But mostly 2.
-        {"Slice", AllowedRecomputeNodeConfig{{0}}},
-        {"Split", AllowedRecomputeNodeConfig{{0}}},
-        {"Gather", AllowedRecomputeNodeConfig{{0}}},
     });
   }
 
   if (probe_op_level >= static_cast<int>(ProbeLevel::Advanced)) {
     recomputable_op_table.insert({
-        {"LayerNormalization", AllowedRecomputeNodeConfig{{0, 1, 2}}},
         {"MatMul", AllowedRecomputeNodeConfig{{0, 1}}},
         {"FusedMatMul", AllowedRecomputeNodeConfig{{0, 1}}},
         {"Softmax", AllowedRecomputeNodeConfig{{0}}},
@@ -131,8 +120,7 @@ bool IsRecomputable(const Node& node, ProbeLevel probe_level) {
 /**
  * @brief Find recomputable subgraphs (has at least one nodes, at most MAXIMUM_RECOMPUTE_NODE_COUNT nodes).
  *
- * @param entry_node The entry node to start the subgraph matching (bottom-up), usually the last node of found subgraphs.
- * @param probe_config The probe config to control recomputable subgraph detecting.
+ * @param node The entry node to start the subgraph matching (bottom-up), usually the last node of found subgraphs.
  * @param node_output_index_candidates Candidate output indices of "node", which are consumed by both fw and bw ops.
  * @param fw_op_output_arg_used_map The activation usage (in fw and bw) mapping.
  * @param node_index_to_its_order_in_topological_sort_map The mapping of node index to its order in topological sort.
@@ -143,13 +131,13 @@ bool IsRecomputable(const Node& node, ProbeLevel probe_level) {
  * @param compromise_stashed_activation Whether to compromise stashed activation, e.g. if we cannot find a
  * recomputable subgraph to save a stashed activation, we can compromise to find a recomputable subgraph to reduce the
  * size of stashed activation.
- * @param can_compromise_stashed_activation A bool return value, to indicate there are opportunities for finding a
+ * @param can_compromise_stashed_activation A bool return value, to indicate there is opportunaties for finding a
  * compromised subgraph.
  * @param save_ratio The ratio of memory saving if we can find a recomputable subgraph.
  * @return Status
  */
 Status SelectRecomputeSubgraph(const Node& entry_node,
-                               const ProbeConfig& probe_config,
+                               const ProbeLevel probe_level,
                                const InlinedVector<size_t>& node_output_index_candidates,
                                const ActivationUsedMap& fw_op_output_arg_used_map,
                                const InlinedHashMap<NodeIndex, ptrdiff_t>&
@@ -159,13 +147,12 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
                                bool compromise_stashed_activation,
                                bool& can_compromise_stashed_activation,
                                float& save_ratio) {
-  const ProbeLevel probe_level = probe_config.probe_level;
   const auto& recomputable_op_table = GetAllowedRecomputeOps(static_cast<int>(probe_level));
 
   can_compromise_stashed_activation = false;
 
-  MO_LOG_DEBUG_INFO(logger, "Enter SelectRecomputeSubgraph for Node " + entry_node.Name() +
-                                "(" + entry_node.OpType() + ")");
+  LOGS(logger, VERBOSE) << "Enter SelectRecomputeSubgraph for Node " << entry_node.Name() << "("
+                        << entry_node.OpType() << ")";
   nodes.clear();
 
   std::deque<NodeOutputPort> q;
@@ -220,34 +207,33 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
         // (either of the above checks is true for entry node outputs)
         if (op_recompute_config_it == recomputable_op_table.end()) {
           early_stop = true;
-          MO_LOG_DEBUG_INFO(logger, "Entry Node " + curr_node->Name() + "(" + curr_node->OpType() +
-                                        ") is **NOT** in recompute op list, search terminates.");
+          LOGS(logger, VERBOSE) << "Entry Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is **NOT** "
+                                << "in recompute op list, search terminates.";
           break;
         }
       } else {
         if (op_recompute_config_it == recomputable_op_table.end()) {
           if (fw_op_output_arg_used_map.at(cur_output_arg_name).second) {
-            MO_LOG_DEBUG_INFO(logger, "Node " + curr_node->Name() + "(" + curr_node->OpType() +
-                                          ") is **NOT** in recompute op list, but its output [" +
-                                          cur_output_arg_name +
-                                          "] is used in backward, we don't need trace bottom-up further. Entry node: " +
-                                          entry_node.Name() + "(" + entry_node.OpType() + ")");
+            LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is **NOT** in "
+                                  << "recompute op list, but its output [" << cur_output_arg_name << "] is used in "
+                                  << "backward, we don't need trace bottom-up further. Entry node: "
+                                  << entry_node.Name() << "(" << entry_node.OpType() << ")";
             continue;
           } else {
             early_stop = true;
-            MO_LOG_DEBUG_INFO(logger, "Node " + curr_node->Name() + "(" + curr_node->OpType() + ") is **NOT** in " +
-                                          "recompute op list, and its output [" + cur_output_arg_name +
-                                          "] does not exist in backward, search terminates. Entry node: " +
-                                          entry_node.Name() + "(" + entry_node.OpType() + ")");
+            LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is **NOT** in "
+                                  << "recompute op list, and its output [" << cur_output_arg_name
+                                  << "] does not exist in backward, search terminates. Entry node: "
+                                  << entry_node.Name() << "(" << entry_node.OpType() << ")";
             break;
           }
         }
 
         if (fw_op_output_arg_used_map.at(cur_output_arg_name).second) {
-          MO_LOG_DEBUG_INFO(logger, "Node " + curr_node->Name() + "(" + curr_node->OpType() + ") " +
-                                        "is in recompute op list, while its output [" + cur_output_arg_name +
-                                        "] is used in backward, we don't need trace bottom-up further. Entry node: " +
-                                        entry_node.Name() + "(" + entry_node.OpType() + ")");
+          LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") "
+                                << "is in recompute op list, while its output [" << cur_output_arg_name
+                                << "] is used in backward, we don't need trace bottom-up further. Entry node: "
+                                << entry_node.Name() << "(" << entry_node.OpType() << ")";
           continue;
         }
       }
@@ -255,8 +241,8 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
       // Append node to the selected graph.
       if (std::find(nodes.begin(), nodes.end(), curr_node) == nodes.end()) {
         nodes.push_back(curr_node);
-        MO_LOG_DEBUG_INFO(logger, "Node " + curr_node->Name() + "(" + curr_node->OpType() +
-                                      ") is added in selected subgraph");
+        LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType()
+                              << ") is added in selected subgraph  ";
       }
 
       // This check is not matured now, subject to change.
@@ -265,16 +251,15 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
       float is_current_node_compromisable = (ratio < 1.f);
       can_compromise_stashed_activation = can_compromise_stashed_activation || is_current_node_compromisable;
       if (is_current_node_compromisable) {
-        MO_LOG_DEBUG_INFO(logger, "Node " + curr_node->Name() + "(" + curr_node->OpType() +
-                                      ") has input/output size " + std::to_string(ratio) +
-                                      " < 1.f, can compromise stashed activation");
+        LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType()
+                              << ") has input/output size " << ratio << " < 1.f, can compromise stashed activation";
       }
 
       if (is_current_node_compromisable && compromise_stashed_activation) {
-        MO_LOG_DEBUG_INFO(logger, "Node " + curr_node->Name() + "(" + curr_node->OpType() + ") is in " +
-                                      "recompute op list, and its output [" + cur_output_arg_name +
-                                      "] does not exist in backward, while it meets compromised check, we don't need trace " +
-                                      "bottom-up further.");
+        LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is in "
+                              << "recompute op list, and its output [" << cur_output_arg_name
+                              << "] does not exist in backward, while it meets compromised check, we don't need trace "
+                              << "bottom-up further.";
         save_ratio = saving_ratio;
         continue;
       }
@@ -290,10 +275,10 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
             input_arg_indices.end()) {
           NodeOutputPort next_p = std::make_pair(&parent_node, parent_node_output_index);
 
-          MO_LOG_DEBUG_INFO(logger, "Node " + parent_node.Name() + "(" + parent_node.OpType() + ")'s " +
-                                        std::to_string(parent_node_output_index) + "th output [" +
-                                        parent_node.OutputDefs()[parent_node_output_index]->Name() +
-                                        "] is added in recompute search list");
+          LOGS(logger, VERBOSE) << "Node " << parent_node.Name() << "(" << parent_node.OpType() << ")'s "
+                                << parent_node_output_index
+                                << "th output [" << parent_node.OutputDefs()[parent_node_output_index]->Name()
+                                << "] is added in recompute search list  ";
 
           q.push_back(next_p);
         }
@@ -305,9 +290,8 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
 
   // If input args are not found in bw, but op count exceed MAXIMUM_RECOMPUTE_NODE_COUNT, skip recompute.
   if (!q.empty() || early_stop) {
-    MO_LOG_DEBUG_INFO(logger, "Fail to find a solution for recompute: current node count is " +
-                                  std::to_string(nodes.size()) + ", queue size: " + std::to_string(q.size()) +
-                                  ", early stop: " + std::to_string(early_stop));
+    LOGS(logger, VERBOSE) << "Fail to find a solution for recompute: current node count is " << nodes.size()
+                          << ", queue size: " << q.size() << ", early stop: " << early_stop;
     nodes.clear();
   } else {
     // Re-order the nodes in topological order.
@@ -351,75 +335,24 @@ void NodesInTopoOrderToString(gsl::span<const Node* const> nodes_in_topological_
 
 }  // namespace
 
-Status ParseProbeConfigFromString(std::string_view recompute_probe_config, ProbeConfig& probe_config) {
-  int transformer_layer_as_boundary = 0;
-  if (!recompute_probe_config.empty()) {
-    const auto probe_configs = utils::SplitString(recompute_probe_config, ":");
-    ORT_ENFORCE(probe_configs.size() >= 1, "Probe config information is not complete.");
-    int probe_level_int = ParseIntValueFromString(probe_configs[0]);
-    ORT_ENFORCE(probe_level_int <
-                        static_cast<int>(ProbeLevel::LevelMax) &&
-                    probe_level_int >= 0,
-                "Invalid probe level specified: ", probe_configs[0]);
-
-    if (probe_configs.size() > 1) {
-      transformer_layer_as_boundary = ParseIntValueFromString(probe_configs[1]);
-      ORT_ENFORCE(transformer_layer_as_boundary == 0 || transformer_layer_as_boundary == 1,
-                  "Invalid transformer_layer_as_boundary specified: ", probe_configs[1]);
-    }
-
-    probe_config.probe_level = static_cast<ProbeLevel>(probe_level_int);
-  }
-
-  probe_config.enable_transformer_layer_as_boundary = transformer_layer_as_boundary == 1;
-
-  return Status::OK();
-}
-
-std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const GraphViewer& graph_viewer,
-                                                         const Node& node,
-                                                         const ProbeConfig& probe_config,
+std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const Node& node,
+                                                         const ProbeLevel probe_level,
                                                          const ActivationUsedMap& fw_op_output_arg_used_map,
                                                          const InlinedHashMap<NodeIndex, ptrdiff_t>&
                                                              node_index_to_its_order_in_topological_sort_map,
                                                          const InlinedHashMap<const Node*, InlinedVector<size_t>>&
                                                              candidate_output_args_map,
-                                                         const InlinedHashSet<const Node*>& layer_boundary_ln_nodes,
                                                          const logging::Logger& logger,
                                                          bool compromise_stashed_activation,
                                                          bool& can_compromise_stashed_activation) {
-  if (!IsRecomputable(node, probe_config.probe_level)) {
+  if (!IsRecomputable(node, probe_level)) {
     return nullptr;
-  }
-
-  if (probe_config.enable_transformer_layer_as_boundary) {
-    // Check whether the node's stashed activation outputs are used by LayerNormalization's inputs.
-    // If yes, for Transformers, we don't need to recompute the node, because we treated
-    // LayerNormalization of Attention as the boundary for subgraph searching.
-    // Check at least one of the stashed activation output is used as the 1st input
-    // of LayerNormalization, e.g. will be used as input of LayerNormalizationGrad.
-    for (auto& output_index : candidate_output_args_map.at(&node)) {
-      auto output_name = node.OutputDefs()[output_index]->Name();
-      auto consumers = graph_viewer.GetConsumerNodes(output_name);
-      for (auto& consumer : consumers) {
-        if (layer_boundary_ln_nodes.find(consumer) != layer_boundary_ln_nodes.end()) {
-          int dest_in_index = optimizer_utils::IndexOfNodeInput(*consumer, *node.OutputDefs()[output_index]);
-          if (dest_in_index == 0) {
-            LOGS(logger, INFO) << "Node " << node.Name() << "(" << node.OpType()
-                               << ") is a Attention+MLP layer boundary node, "
-                               << "its stashed activation outputs are used by LayerNormalization's inputs, "
-                               << "we don't need to recompute it.";
-            return nullptr;
-          }
-        }
-      }
-    }
   }
 
   InlinedVector<const Node*> nodes_in_topological_order;
   float save_ratio = 1.f;
   ORT_ENFORCE(SelectRecomputeSubgraph(node,
-                                      probe_config,
+                                      probe_level,
                                       candidate_output_args_map.at(&node),
                                       fw_op_output_arg_used_map,
                                       node_index_to_its_order_in_topological_sort_map,
@@ -436,7 +369,7 @@ std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const GraphViewer& grap
   std::string subgraph_str_representation, log_info;
   NodesInTopoOrderToString(nodes_in_topological_order, subgraph_str_representation, log_info);
 
-  MO_LOG_DEBUG_INFO(logger, "Node " + node.Name() + "(" + node.OpType() + ") can be recomputed" + log_info);
+  LOGS(logger, VERBOSE) << "Node " << node.Name() << "(" << node.OpType() << ") can be recomputed" << log_info;
 
   return std::make_unique<NodeRecomputePlan>(&node, candidate_output_args_map.at(&node),
                                              nodes_in_topological_order,
@@ -455,7 +388,7 @@ std::string NodeRecomputePlan::NormalizeForNodeClusterId() const {
   oss << "recompute:" << node->OpType() << "-"
       << compromise_recompute_ << "-";
   for (auto& output_index : GetActivationOutputIndices()) {
-    oss << output_index << ":" << GetActivationOutputDimParamString(output_index);
+    oss << output_index << ":" << GetTensorElemCountInSymbolicString(node, output_index);
     oss << ":" << node->OutputDefs()[output_index]->TypeAsProto()->tensor_type().elem_type() << "-";
   }
 
