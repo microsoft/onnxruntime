@@ -74,7 +74,7 @@
 #ifdef ENABLE_TRAINING
 #include "core/framework/partial_graph_execution_state.h"
 #include "core/framework/stream_execution_context.h"
-#include "orttraining/core/optimizer/memory_optimizer.h"
+#include "orttraining/core/optimizer/memory_optimizer/memory_optimizer.h"
 #endif
 
 using namespace ONNX_NAMESPACE;
@@ -1156,10 +1156,10 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   {
     const std::string memory_optimizer_config =
         session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerEnabler, "");
-    const std::string probe_level =
-        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerProbeLevel, "0");
+    const std::string probe_config =
+        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerProbeConfig, "0:0");
 
-    MemoryOptimizer mem_transformer{memory_optimizer_config, probe_level};
+    MemoryOptimizer mem_transformer{memory_optimizer_config, probe_config};
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(mem_transformer, *session_logger_, graph));
   }
 #endif
