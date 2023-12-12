@@ -41,9 +41,9 @@ Abstract:
  *        This kernel handles the special case where M, the number of rows of A and C, is 1.
  *
  * @tparam BlkBitWidth  Bit width of each value in a block.
- * @tparam BlkLen       Number of values in a block.
  * @tparam KernelType   Hardware-specific kernel type.
  *
+ * @param       BlkLen              Number of values in a block.
  * @param       A                   Supplies the A matrix.
  * @param       QuantBData          Supplies the quantized B matrix block data.
  * @param       QuantBScale         Supplies the quantized B matrix block scale values.
@@ -54,9 +54,10 @@ Abstract:
  * @param       BlockStrideQuantB   Number of blocks between adjacent columns of the quantized B matrix.
  * @param       Bias                Bias vector of length N.
  */
-template <size_t BlkBitWidth, size_t BlkLen, typename KernelType>
+template <size_t BlkBitWidth, typename KernelType>
 MLAS_FORCEINLINE void
 MlasSQNBitGemmM1Kernel(
+    size_t BlkLen,
     const float* A,
     const uint8_t* QuantBData,
     const float* QuantBScale,
@@ -75,9 +76,9 @@ MlasSQNBitGemmM1Kernel(
  *        MlasSgemmCopyPackB.
  *
  * @tparam BlkBitWidth  Bit width of each value in a block.
- * @tparam BlkLen       Number of values in a block.
  * @tparam KernelType   Hardware-specific kernel type.
  *
+ * @param       BlkLen              Number of values in a block.
  * @param[out]  FpData              Supplies the output buffer for the dequantized B float data.
  * @param       QuantBData          Supplies the quantized B matrix block data.
  * @param       QuantBScale         Supplies the quantized B matrix block scale values.
@@ -86,9 +87,10 @@ MlasSQNBitGemmM1Kernel(
  * @param       CountK              Number of rows of B.
  * @param       BlockStrideQuantB   Number of blocks between adjacent columns of the quantized B matrix.
  */
-template <size_t BlkBitWidth, size_t BlkLen, typename KernelType>
+template <size_t BlkBitWidth, typename KernelType>
 MLAS_FORCEINLINE void
 MlasQNBitBlkDequantBForSgemm(
+    size_t BlkLen,
     float* FpData,
     const uint8_t* QuantBData,
     const float* QuantBScale,
@@ -145,9 +147,10 @@ MlasAddBiasForGemm(const float* Bias, float* C, size_t CountM, size_t CountN, si
     }
 }
 
-template <size_t BlkBitWidth, size_t BlkLen, typename KernelType>
+template <size_t BlkBitWidth, typename KernelType>
 MLAS_FORCEINLINE void MLASCALL
 MlasSQNBitGemmOperation(
+    const size_t BlkLen,
     const size_t K,
     const MLAS_SQNBIT_GEMM_DATA_PARAMS* const DataParams,
     const size_t RangeStartM,
@@ -189,7 +192,8 @@ MlasSQNBitGemmOperation(
             float* c_blk = C + n;
             const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
 
-            MlasSQNBitGemmM1Kernel<BlkBitWidth, BlkLen, KernelType>(
+            MlasSQNBitGemmM1Kernel<BlkBitWidth, KernelType>(
+                BlkLen,
                 a_row, b_col, b_col_scale, b_col_zp, c_blk, CountN, K, k_blks, bias
             );
 
@@ -226,7 +230,8 @@ MlasSQNBitGemmOperation(
         float* c_blk = C + n;
         const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
 
-        MlasQNBitBlkDequantBForSgemm<BlkBitWidth, BlkLen, KernelType>(
+        MlasQNBitBlkDequantBForSgemm<BlkBitWidth, KernelType>(
+            BlkLen,
             dequant_b, b_col, b_col_scale, b_col_zp, CountN, K, k_blks
         );
 
@@ -262,6 +267,7 @@ MlasSQNBitGemmOperation(
 //
 
 typedef void(MLASCALL MLAS_SQNBIT_GEMM_OPERATION)(
+    size_t BlkLen,
     size_t K,
     const MLAS_SQNBIT_GEMM_DATA_PARAMS* DataParams,
     size_t RangeStartM,
@@ -271,11 +277,7 @@ typedef void(MLASCALL MLAS_SQNBIT_GEMM_OPERATION)(
 );
 
 enum QuantVariant {
-    QuantVariant_BitWidth4_BlockSize16,
-    QuantVariant_BitWidth4_BlockSize32,
-    QuantVariant_BitWidth4_BlockSize64,
-    QuantVariant_BitWidth4_BlockSize128,
-    QuantVariant_BitWidth4_BlockSize256,
+    QuantVariant_BitWidth4,
     QuantVariantCount,  // Keep this element last and ensure that its value is the number of other QuantVariant values.
                         // Its value is used as an array size.
 };

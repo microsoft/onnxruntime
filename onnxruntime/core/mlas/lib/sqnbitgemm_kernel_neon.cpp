@@ -70,7 +70,7 @@ FoldAccumulators(float32x4_t a0, float32x4_t a1, float32x4_t a2, float32x4_t a3)
 
 template <size_t Capacity>
 MLAS_FORCEINLINE void
-LoadData(const float* src, size_t count, float32x4_t (& dst)[Capacity / 4])
+LoadData(const float* src, size_t count, float32x4_t (&dst)[Capacity / 4])
 {
     static_assert(Capacity % 4 == 0, "Capacity must be divisible by 4.");
 
@@ -101,9 +101,10 @@ LoadData(const float* src, size_t count, float32x4_t (& dst)[Capacity / 4])
     }
 }
 
-template <size_t BlkBitWidth, size_t BlkLen, size_t NCols>
+template <size_t BlkBitWidth, size_t NCols>
 MLAS_FORCEINLINE void
 ComputeDotProducts(
+    size_t BlkLen,
     const float* ARowPtr,
     const uint8_t* QuantBDataColPtr,
     const float* QuantBScaleColPtr,
@@ -117,6 +118,9 @@ ComputeDotProducts(
 )
 {
     static_assert(NCols == 1 || NCols == 4, "NCols must be 1 or 4");
+
+    constexpr size_t SubBlkLen = 16;  // number of block elements to process in a sub-block iteration
+    assert(BlkLen % SubBlkLen == 0);
 
     const uint8x8_t LowMask = vdup_n_u8(0x0F);
 
@@ -161,8 +165,6 @@ ComputeDotProducts(
                 offset[i] = 16.0f + zp;
             });
         }
-
-        constexpr size_t SubBlkLen = 16;  // number of block elements to process in one iteration
 
         for (size_t k_idx_in_blk = 0; k_idx_in_blk < k_blk_len; k_idx_in_blk += SubBlkLen) {
             // load A row vector elements
@@ -268,9 +270,10 @@ ComputeDotProducts(
 // MlasSQNBitGemmKernel and helpers.
 //
 
-template <size_t BlkBitWidth, size_t BlkLen>
+template <size_t BlkBitWidth>
 MLAS_FORCEINLINE void
 MlasSQNBitGemmM1KernelNeon(
+    size_t BlkLen,
     const float* A,
     const uint8_t* QuantBData,
     const float* QuantBScale,
@@ -304,7 +307,8 @@ MlasSQNBitGemmM1KernelNeon(
     int64_t nblk = static_cast<int64_t>(CountN) - NCols;
 
     while (nblk >= 0) {
-        ComputeDotProducts<BlkBitWidth, BlkLen, NCols>(
+        ComputeDotProducts<BlkBitWidth, NCols>(
+            BlkLen,
             ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
             StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
             BiasPtr
@@ -327,7 +331,8 @@ MlasSQNBitGemmM1KernelNeon(
     // left over columns less than `NCols`?
     nblk += NCols;
     for (int64_t n = 0; n < nblk; ++n) {
-        ComputeDotProducts<BlkBitWidth, BlkLen, 1>(
+        ComputeDotProducts<BlkBitWidth, 1>(
+            BlkLen,
             ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
             StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
             BiasPtr
@@ -346,42 +351,36 @@ MlasSQNBitGemmM1KernelNeon(
     }
 }
 
-#define SPECIALIZE_SQNBIT_GEMM_M1_KERNEL(BlkBitWidth, BlkLen)                  \
-    template <>                                                                \
-    MLAS_FORCEINLINE void                                                      \
-    MlasSQNBitGemmM1Kernel<BlkBitWidth, BlkLen, MLAS_SQNBIT_GEMM_KERNEL_NEON>( \
-        const float* A,                                                        \
-        const uint8_t* QuantBData,                                             \
-        const float* QuantBScale,                                              \
-        const uint8_t* QuantBZeroPoint,                                        \
-        float* C,                                                              \
-        size_t CountN,                                                         \
-        size_t CountK,                                                         \
-        size_t BlockStrideQuantB,                                              \
-        const float* Bias                                                      \
-    )                                                                          \
-    {                                                                          \
-        return MlasSQNBitGemmM1KernelNeon<BlkBitWidth, BlkLen>(                \
-            A, QuantBData, QuantBScale, QuantBZeroPoint, C, CountN, CountK,    \
-            BlockStrideQuantB, Bias                                            \
-        );                                                                     \
-    }
-
-SPECIALIZE_SQNBIT_GEMM_M1_KERNEL(4, 16)
-SPECIALIZE_SQNBIT_GEMM_M1_KERNEL(4, 32)
-SPECIALIZE_SQNBIT_GEMM_M1_KERNEL(4, 64)
-SPECIALIZE_SQNBIT_GEMM_M1_KERNEL(4, 128)
-SPECIALIZE_SQNBIT_GEMM_M1_KERNEL(4, 256)
-
-#undef SPECIALIZE_SQNBIT_GEMM_M1_KERNEL
+template <>
+MLAS_FORCEINLINE void
+MlasSQNBitGemmM1Kernel<4, MLAS_SQNBIT_GEMM_KERNEL_NEON>(
+    size_t BlkLen,
+    const float* A,
+    const uint8_t* QuantBData,
+    const float* QuantBScale,
+    const uint8_t* QuantBZeroPoint,
+    float* C,
+    size_t CountN,
+    size_t CountK,
+    size_t BlockStrideQuantB,
+    const float* Bias
+)
+{
+    return MlasSQNBitGemmM1KernelNeon<4>(
+        BlkLen,
+        A, QuantBData, QuantBScale, QuantBZeroPoint, C, CountN, CountK,
+        BlockStrideQuantB, Bias
+    );
+}
 
 //
 // MlasQNBitBlkDequantBForSgemm and helpers.
 //
 
-template <size_t BlkBitWidth, size_t BlkLen>
+template <size_t BlkBitWidth>
 MLAS_FORCEINLINE void
 MlasQNBitBlkDequantBForSgemmNeon(
+    size_t BlkLen,
     float* FpData,
     const uint8_t* QuantBData,
     const float* QuantBScale,
@@ -448,31 +447,24 @@ MlasQNBitBlkDequantBForSgemmNeon(
     impl0_reference();
 }
 
-#define SPECIALIZE_QNBIT_BLK_DEQUANT_B_FOR_SGEMM(BlkBitWidth, BlkLen)                           \
-    template <>                                                                                 \
-    MLAS_FORCEINLINE void                                                                       \
-    MlasQNBitBlkDequantBForSgemm<BlkBitWidth, BlkLen, MLAS_SQNBIT_GEMM_KERNEL_NEON>(            \
-        float* FpData,                                                                          \
-        const uint8_t* QuantBData,                                                              \
-        const float* QuantBScale,                                                               \
-        const uint8_t* QuantBZeroPoint,                                                         \
-        size_t CountN,                                                                          \
-        size_t CountK,                                                                          \
-        size_t BlockStrideQuantB                                                                \
-    )                                                                                           \
-    {                                                                                           \
-        MlasQNBitBlkDequantBForSgemmNeon<BlkBitWidth, BlkLen>(                                  \
-            FpData, QuantBData, QuantBScale, QuantBZeroPoint, CountN, CountK, BlockStrideQuantB \
-        );                                                                                      \
-    }
-
-SPECIALIZE_QNBIT_BLK_DEQUANT_B_FOR_SGEMM(4, 16)
-SPECIALIZE_QNBIT_BLK_DEQUANT_B_FOR_SGEMM(4, 32)
-SPECIALIZE_QNBIT_BLK_DEQUANT_B_FOR_SGEMM(4, 64)
-SPECIALIZE_QNBIT_BLK_DEQUANT_B_FOR_SGEMM(4, 128)
-SPECIALIZE_QNBIT_BLK_DEQUANT_B_FOR_SGEMM(4, 256)
-
-#undef SPECIALIZE_QNBIT_BLK_DEQUANT_B_FOR_SGEMM
+template <>
+MLAS_FORCEINLINE void
+MlasQNBitBlkDequantBForSgemm<4, MLAS_SQNBIT_GEMM_KERNEL_NEON>(
+    size_t BlkLen,
+    float* FpData,
+    const uint8_t* QuantBData,
+    const float* QuantBScale,
+    const uint8_t* QuantBZeroPoint,
+    size_t CountN,
+    size_t CountK,
+    size_t BlockStrideQuantB
+)
+{
+    MlasQNBitBlkDequantBForSgemmNeon<4>(
+        BlkLen,
+        FpData, QuantBData, QuantBScale, QuantBZeroPoint, CountN, CountK, BlockStrideQuantB
+    );
+}
 
 //
 // Kernel dispatch structure definition.
@@ -480,10 +472,6 @@ SPECIALIZE_QNBIT_BLK_DEQUANT_B_FOR_SGEMM(4, 256)
 
 const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
     MLAS_SQNBIT_GEMM_DISPATCH d;
-    d.Operations[QuantVariant_BitWidth4_BlockSize16] = MlasSQNBitGemmOperation<4, 16, MLAS_SQNBIT_GEMM_KERNEL_NEON>;
-    d.Operations[QuantVariant_BitWidth4_BlockSize32] = MlasSQNBitGemmOperation<4, 32, MLAS_SQNBIT_GEMM_KERNEL_NEON>;
-    d.Operations[QuantVariant_BitWidth4_BlockSize64] = MlasSQNBitGemmOperation<4, 64, MLAS_SQNBIT_GEMM_KERNEL_NEON>;
-    d.Operations[QuantVariant_BitWidth4_BlockSize128] = MlasSQNBitGemmOperation<4, 128, MLAS_SQNBIT_GEMM_KERNEL_NEON>;
-    d.Operations[QuantVariant_BitWidth4_BlockSize256] = MlasSQNBitGemmOperation<4, 256, MLAS_SQNBIT_GEMM_KERNEL_NEON>;
+    d.Operations[QuantVariant_BitWidth4] = MlasSQNBitGemmOperation<4, MLAS_SQNBIT_GEMM_KERNEL_NEON>;
     return d;
 }();

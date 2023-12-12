@@ -24,17 +24,10 @@ namespace
 int32_t
 GetDispatchQuantVariant(size_t BlkBitWidth, size_t BlkLen)
 {
+    MLAS_UNREFERENCED_PARAMETER(BlkLen);
     int32_t type = -1;
-    if (BlkBitWidth == 4 && BlkLen == 16) {
-        type = QuantVariant_BitWidth4_BlockSize16;
-    } else if (BlkBitWidth == 4 && BlkLen == 32) {
-        type = QuantVariant_BitWidth4_BlockSize32;
-    } else if (BlkBitWidth == 4 && BlkLen == 64) {
-        type = QuantVariant_BitWidth4_BlockSize64;
-    } else if (BlkBitWidth == 4 && BlkLen == 128) {
-        type = QuantVariant_BitWidth4_BlockSize128;
-    } else if (BlkBitWidth == 4 && BlkLen == 256) {
-        type = QuantVariant_BitWidth4_BlockSize256;
+    if (BlkBitWidth == 4) {
+        type = QuantVariant_BitWidth4;
     }
 
     return type;
@@ -60,7 +53,7 @@ MlasSQNBitGemmBatch(
     if (ThreadPool == nullptr) {
         for (size_t gemm_i = 0; gemm_i < BatchN; gemm_i++) {
             auto Data = &DataParams[gemm_i];
-            Operation(K, Data, 0, M, 0, N);
+            Operation(BlkLen, K, Data, 0, M, 0, N);
         }
         return;
     }
@@ -120,7 +113,7 @@ MlasSQNBitGemmBatch(
         const size_t RangeStartN = ThreadIdN * StrideN;
         const size_t RangeCountN = std::min(N - RangeStartN, (size_t)StrideN);
 
-        Operation(K, Data, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
+        Operation(BlkLen, K, Data, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
     });
 }
 
