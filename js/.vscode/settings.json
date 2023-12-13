@@ -3,6 +3,10 @@
     "editor.formatOnSave": true,
     "editor.defaultFormatter": "xaver.clang-format"
   },
+  "[json]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
   "[jsonc]": {
     "editor.formatOnSave": true,
     "editor.defaultFormatter": "esbenp.prettier-vscode"
@@ -10,6 +14,10 @@
   "[markdown]": {
     "editor.formatOnSave": true,
     "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[javascript]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "xaver.clang-format"
   },
   "[typescript]": {
     "editor.formatOnSave": true,
@@ -28,7 +36,8 @@
     "node/lib/**/*.js.map": true,
     "node/lib/**/*.js": true,
     "web/lib/**/*.js.map": true,
-    "web/lib/**/*.js": true
+    "web/lib/**/*.js": true,
+    "web/lib/**/*.d.ts": true
   },
   "files.insertFinalNewline": true,
   "files.trimTrailingWhitespace": true,
@@ -37,5 +46,12 @@
     "./types": true
   },
   "typescript.tsdk": "node_modules/typescript/lib",
-  "git.detectSubmodules": false
+  "git.detectSubmodules": false,
+  "cmake.configureOnOpen": false,
+  "json.schemas": [
+    {
+      "fileMatch": ["web/test/data/ops/*.jsonc"],
+      "url": "./web/test/op-test-schema.json"
+    }
+  ]
 }

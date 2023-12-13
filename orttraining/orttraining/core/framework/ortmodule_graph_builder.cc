@@ -182,6 +182,10 @@ Status OrtModuleGraphBuilder::OptimizeForwardGraph(const TrainingGraphTransforme
         graph_transformation_mgr.ApplyTransformers(forward_graph, static_cast<TransformerLevel>(i), *logger_));
   }
 
+  if (!config.optimized_pre_grad_filepath.empty()) {
+    ORT_RETURN_IF_ERROR(Model::Save(*forward_model_, config.optimized_pre_grad_filepath));
+  }
+
   return Status::OK();
 }
 
@@ -305,7 +309,9 @@ void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
 
     if (std::find(non_differentiable_indices.begin(), non_differentiable_indices.end(), i) ==
         non_differentiable_indices.end()) {
-      yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(grad_name));
+      NodeArg* grad_node_arg = gradient_graph.GetNodeArg(grad_name);
+      ORT_ENFORCE(grad_node_arg != nullptr, "Differentiable param grad node arg should exist.");
+      yield_output_node_args.emplace_back(grad_node_arg);
       graph_info_.module_output_gradient_name.emplace_back(grad_name);
     }
   }
@@ -331,9 +337,10 @@ void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
 
   attributes.insert({full_shape_outputs_name, full_shape_outputs});
 
-  // Handle potential duplciated output_gradient names
+  // Handle potential duplicated output_gradient names
   std::unordered_map<std::string, std::vector<size_t>> name_to_idx;
   for (size_t i = 0; i < yield_output_node_args.size(); ++i) {
+    ORT_ENFORCE(yield_output_node_args[i] != nullptr);
     const std::string& name = yield_output_node_args[i]->Name();
     auto it = name_to_idx.find(name);
     if (it == name_to_idx.end()) {

@@ -48,6 +48,32 @@ enum class HtpPerformanceMode : uint8_t {
   kHtpBalanced,
 };
 
+enum class ContextPriority : uint8_t {
+  LOW = 0,
+  NORMAL,
+  NORMAL_HIGH,
+  HIGH,
+  UNDEFINED
+};
+
+// Defines the graph optimization strategy used by the HTP backend.
+enum class HtpGraphFinalizationOptimizationMode : uint8_t {
+  kDefault = 0,
+  kMode1 = 1,  // Faster preparation time, less optimal graph
+  kMode2 = 2,  // Longer preparation time, more optimal graph
+  kMode3 = 3,  // Longest preparation time, most likely even more optimal graph.
+};
+
+enum class QnnBackendType : uint8_t {
+  CPU = 0,
+  GPU,
+  DSP,
+  HTP,
+  HTP_FP16
+};
+
+bool IsNpuBackend(QnnBackendType backend_type);
+
 // constexpr config values
 constexpr const int kSleepMinLatency = 40;
 constexpr const int kSleepLowLatency = 100;
@@ -95,6 +121,20 @@ uint32_t GetQnnTensorRank(const Qnn_Tensor_t& qnn_tensor);
 uint32_t* GetQnnTensorDims(const Qnn_Tensor_t& qnn_tensor);
 const Qnn_ClientBuffer_t& GetQnnTensorClientBuf(const Qnn_Tensor_t& qnn_tensor);
 const Qnn_QuantizeParams_t& GetQnnTensorQParams(const Qnn_Tensor_t& qnn_tensor);
+
+/**
+ * Compares two sets of quantization parameters. Sets the parameters `scale_diff` and `offset_diff`
+ * to the absolute differences. Returns an error status if the quantization parameters are not
+ * of the same type, or if the type is not supported.
+ *
+ * \param qparam0 The first set of quantization parameters.
+ * \param qparam1 The second set of quantization parameters.
+ * \param scale_diff Set to the absolute value of the difference in scale value.
+ * \param offset_diff Set to the absolute value of the difference in offset value.
+ * \return Status indicating success.
+ */
+Status CompareQnnQuantParams(const Qnn_QuantizeParams_t& qparam0, const Qnn_QuantizeParams_t& qparam1,
+                             float& max_scale_diff, int32_t& max_offset_diff);
 
 // TODO: split out separate files for Wrappers
 class QnnTensorWrapper {
@@ -436,38 +476,6 @@ typedef struct GraphConfigInfo {
   const char* graphName;
   const QnnGraph_Config_t** graphConfigs;
 } GraphConfigInfo_t;
-
-namespace qnn_def {
-const std::string package_name = "qti.aisw";
-const std::string dilation = "dilation";
-const std::string pad_amount = "pad_amount";
-const std::string stride = "stride";
-const std::string group = "group";
-const std::string filter_size = "filter_size";
-const std::string count_pad_for_edges = "count_pad_for_edges";
-const std::string perm = "perm";
-const std::string axis = "axis";
-const std::string axes = "axes";
-const std::string keep_dims = "keep_dims";
-const std::string transpose_in0 = "transpose_in0";
-const std::string transpose_in1 = "transpose_in1";
-const std::string min_value = "min_value";
-const std::string max_value = "max_value";
-const std::string ranges = "ranges";
-const std::string output_padding = "output_padding";
-const std::string split_index = "split_index";
-const std::string align_corners = "align_corners";
-const std::string half_pixel_centers = "half_pixel_centers";
-const std::string exclude_outside = "exclude_outside";
-const std::string transformation_mode = "transformation_mode";
-const std::string interpolation_mode = "interpolation_mode";
-const std::string nearest_mode = "nearest_mode";
-const std::string rounding_mode = "rounding_mode";
-const std::string topk = "k";
-const std::string multiples = "multiples";
-const std::string epsilon = "epsilon";
-const std::string alpha = "alpha";
-}  // namespace qnn_def
 
 }  // namespace qnn
 }  // namespace onnxruntime

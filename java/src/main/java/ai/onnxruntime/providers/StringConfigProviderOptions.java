@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime.providers;
@@ -15,6 +15,7 @@ import java.util.stream.Collectors;
  * Abstract base class for provider options which are configured solely by key value string pairs.
  */
 abstract class StringConfigProviderOptions extends OrtProviderOptions {
+  /** A Java side copy of the options. */
   protected final Map<String, String> options;
 
   protected StringConfigProviderOptions(long nativeHandle) {
@@ -38,7 +39,7 @@ abstract class StringConfigProviderOptions extends OrtProviderOptions {
   }
 
   /**
-   * Parses the output of {@link #getOptionsString()} and adds those options to this options
+   * Parses the output of {@code getOptionsString()} and adds those options to this options
    * instance.
    *
    * @param serializedForm The serialized form to parse.

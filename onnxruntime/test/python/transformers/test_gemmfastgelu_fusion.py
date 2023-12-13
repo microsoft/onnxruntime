@@ -43,7 +43,7 @@ def float_tensor(name: str, shape: List[int], random=False):
     return helper.make_tensor(name, TensorProto.FLOAT, shape, weights)
 
 
-def create_MatMul_FastGelu_withoutBias(batch_size, m, n, k):  # noqa: N802
+def create_mat_mul_fast_gelu_without_bias(batch_size, m, n, k):
     # MatMul + FastGelu
     nodes = [
         helper.make_node("MatMul", ["input", "matmul_weight"], ["fastgelu_input"], "matmul"),
@@ -77,7 +77,7 @@ def create_MatMul_FastGelu_withoutBias(batch_size, m, n, k):  # noqa: N802
     return helper.make_model(graph)
 
 
-def create_MatMul_FastGelu_withBias(batch_size, m, n, k):  # noqa: N802
+def create_mat_mul_fast_gelu_with_bias(batch_size, m, n, k):
     # MatMul + FastGelu
     nodes = [
         helper.make_node("MatMul", ["input", "matmul_weight"], ["fastgelu_input"], "matmul"),
@@ -122,7 +122,7 @@ class TestFusion(unittest.TestCase):
         self.assertEqual(str(optimized_model.model.graph), str(expected_model.model.graph))
 
     def test_gemmfastgelu_fusion_withoutbias(self):
-        model = create_MatMul_FastGelu_withoutBias(32, 128, 64, 1024)
+        model = create_mat_mul_fast_gelu_without_bias(32, 128, 64, 1024)
         dir = "."
         model_path = os.path.join(dir, "gemmfastgelu_nobias.onnx")
         onnx.save(model, model_path)
@@ -135,7 +135,7 @@ class TestFusion(unittest.TestCase):
         self.verify_fusion(optimized_model, "gemmfastgelu_nobias_opt.onnx")
 
     def test_gemmfastgelu_fusion_withbias(self):
-        model = create_MatMul_FastGelu_withBias(32, 128, 64, 1024)
+        model = create_mat_mul_fast_gelu_with_bias(32, 128, 64, 1024)
         dir = "."
         model_path = os.path.join(dir, "gemmfastgelu_withbias.onnx")
         onnx.save(model, model_path)

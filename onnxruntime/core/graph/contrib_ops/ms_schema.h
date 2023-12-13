@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "onnx/defs/schema.h"
+#include "core/graph/onnx_protobuf.h"
 
 namespace onnxruntime {
 namespace contrib {

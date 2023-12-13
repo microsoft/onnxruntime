@@ -1,13 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor';
+import {env} from 'onnxruntime-common';
+
+import {TensorView} from '../../tensor-view';
 import {PoolConvUtil, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
 
-import {createIndicesHelper, ShaderHelper} from './common';
+import {createTensorShapeVariables, getElementAt, IndicesHelper, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
 
 // TODO: support:
 // - ceil_mode                 "test_maxpool_2d_ceil"
@@ -16,23 +17,18 @@ import {createIndicesHelper, ShaderHelper} from './common';
 // - [MaxPool] output[1]       "test_maxpool_with_argmax_2d_precomputed_pads"
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
-  if (!inputs || inputs.length !== 1) {
+  if (env.webgpu.validateInputContent && (!inputs || inputs.length !== 1)) {
     throw new Error('Pool ops requires 1 input.');
-  }
-  if (inputs[0].dims.length !== 4) {
-    throw new Error('Pool ops supports 2-D inputs only for now.');
-  }
-  if (inputs[0].dataType !== DataType.float) {
-    throw new Error('Invalid input type.');
   }
 };
 
 const getAdjustedPoolAttributesAndOutputShape = <AttributeType extends AveragePoolAttributes|MaxPoolAttributes>(
-    inputs: readonly TensorView[], attributes: AttributeType, isGlobalOperator: boolean): [AttributeType, number[]] => {
+    input: TensorView, attributes: AttributeType, isGlobalOperator: boolean): [AttributeType, number[]] => {
   const isChannelsLast = attributes.format === 'NHWC';
-  const inputShapeAsChannelFirst = isChannelsLast ?
-      [inputs[0].dims[0], inputs[0].dims[3], inputs[0].dims[1], inputs[0].dims[2]] :
-      inputs[0].dims.slice();
+  const inputShapeAsChannelFirst = input.dims.slice();
+  if (isChannelsLast) {
+    inputShapeAsChannelFirst.splice(1, 0, inputShapeAsChannelFirst.pop()!);  // Move channel to the second position.
+  }
   const hasDilations = Object.hasOwnProperty.call(attributes, 'dilations');
   const kernelShape = attributes.kernelShape.slice();
   const strides = attributes.strides.slice();
@@ -49,75 +45,118 @@ const getAdjustedPoolAttributesAndOutputShape = <AttributeType extends AveragePo
   } else {
     Object.assign(newAttributes, {kernelShape, strides, pads, cacheKey: attributes.cacheKey});
   }
-  return [
-    newAttributes,
-    isChannelsLast ?
-        [
-          outputShapeAsChannelFirst[0], outputShapeAsChannelFirst[2], outputShapeAsChannelFirst[3],
-          outputShapeAsChannelFirst[1]
-        ] :
-        outputShapeAsChannelFirst
-  ];
+  const outputShapeAsChannelLast = outputShapeAsChannelFirst.slice();
+  outputShapeAsChannelLast.push(outputShapeAsChannelLast.splice(1, 1)[0]);
+  return [newAttributes, isChannelsLast ? outputShapeAsChannelLast : outputShapeAsChannelFirst];
 };
 
-const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPoolAttributes>(
-    shaderHelper: ShaderHelper, inputDims: readonly number[], outputShape: readonly number[], attributes: AttributeType,
-    op1: string, op2: string, dataType: string, start: string): string => {
+const getUniformAndPadInfo = <AttributeType extends AveragePoolAttributes|MaxPoolAttributes>(
+    outputShape: readonly number[],
+    attributes: AttributeType): [ProgramUniform[], UniformsArrayType, boolean, boolean, boolean] => {
   const isChannelsLast = attributes.format === 'NHWC';
-  const rank = inputDims.length;
   const outputSize = ShapeUtil.size(outputShape);
-  const outputIndicesHelper = createIndicesHelper('output', outputShape);
-  const xIndicesHelper = createIndicesHelper('x', inputDims);
-
+  const kernelSize = ShapeUtil.size(attributes.kernelShape);
+  const programUniforms: ProgramUniform[] = [{type: 'uint32', data: outputSize}, {type: 'uint32', data: kernelSize}];
+  const uniforms: UniformsArrayType = [{name: 'outputSize', type: 'u32'}, {name: 'kernelSize', type: 'u32'}];
   if (attributes.kernelShape.length <= 2) {
     const kw = attributes.kernelShape[attributes.kernelShape.length - 1];
     const sw = attributes.strides[attributes.strides.length - 1];
     const pwStart = attributes.pads[attributes.pads.length / 2 - 1];
     const pwEnd = attributes.pads[attributes.pads.length - 1];
-    const dimIdxW = rank - (isChannelsLast ? 2 : 1);
-    let codeW = '';
-    let codeH = '';
-    let codeHEnd = '';
-    if (pwStart + pwEnd !== 0) {
-      codeW = `
-              for (var i: u32 = 0u; i < ${kw}u; i++) {
-                xIndices[${dimIdxW}] = indices[${dimIdxW}] * ${sw} - ${pwStart} + i;
-                if (xIndices[${dimIdxW}] < 0 || xIndices[${dimIdxW}] >= ${inputDims[dimIdxW]}) {
-                  pad++;
-                  continue;
-                }
-                let x_val = x[${xIndicesHelper.i2oExpression('xIndices')}];
-                ${op1}
-              }`;
-    } else {
-      codeW = `
-              for (var i: u32 = 0u; i < ${kw}u; i++) {
-                xIndices[${dimIdxW}] = indices[${dimIdxW}] * ${sw} - ${pwStart} + i;
-                let x_val = x[${xIndicesHelper.i2oExpression('xIndices')}];
-                ${op1}
-              }`;
-    }
+    const pwStartEnd = !!(pwStart + pwEnd);
+    programUniforms.push(
+        {type: 'uint32', data: kw},
+        {type: 'uint32', data: sw},
+        {type: 'uint32', data: pwStart},
+        {type: 'uint32', data: pwEnd},
+    );
+    uniforms.push(
+        {name: 'kw', type: 'u32'}, {name: 'sw', type: 'u32'}, {name: 'pwStart', type: 'u32'},
+        {name: 'pwEnd', type: 'u32'});
 
+    let phStartEnd = false;
     if (attributes.kernelShape.length === 2) {
       const kh = attributes.kernelShape[attributes.kernelShape.length - 2];
       const sh = attributes.strides[attributes.strides.length - 2];
       const phStart = attributes.pads[attributes.pads.length / 2 - 2];
       const phEnd = attributes.pads[attributes.pads.length - 2];
+      phStartEnd = !!(phStart + phEnd);
+      programUniforms.push(
+          {type: 'uint32', data: kh}, {type: 'uint32', data: sh}, {type: 'uint32', data: phStart},
+          {type: 'uint32', data: phEnd});
+
+      uniforms.push(
+          {name: 'kh', type: 'u32'}, {name: 'sh', type: 'u32'}, {name: 'phStart', type: 'u32'},
+          {name: 'phEnd', type: 'u32'});
+    }
+    return [programUniforms, uniforms, true, pwStartEnd, phStartEnd];
+  } else {
+    if (isChannelsLast) {
+      throw new Error('Pooling with kernelShape.length > 2 is not supported for NHWC format.');
+    }
+    const kernelStrides = ShapeUtil.computeStrides(attributes.kernelShape);
+    programUniforms.push(
+        {type: 'uint32', data: kernelStrides}, {type: 'uint32', data: attributes.pads},
+        {type: 'uint32', data: attributes.strides});
+    uniforms.push(
+        {name: 'kernelStrides', type: 'u32', length: kernelStrides.length},
+        {name: 'pads', type: 'u32', length: attributes.pads.length},
+        {name: 'strides', type: 'u32', length: attributes.strides.length});
+
+    const hasPads = attributes.pads.reduce((sum, cur) => sum + cur);
+    return [programUniforms, uniforms, !!hasPads, false, false];
+  }
+};
+
+const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPoolAttributes>(
+    shaderHelper: ShaderHelper, x: IndicesHelper, rank: number, outputShapeRank: number, attributes: AttributeType,
+    op1: string, op2: string, start: number, uniforms: UniformsArrayType, hasPads: boolean, pwStartEnd: boolean,
+    phStartEnd: boolean): string => {
+  const isChannelsLast = attributes.format === 'NHWC';
+  const dataType = x.type.value;
+  const output = outputVariable('output', x.type.tensor, outputShapeRank);
+
+  if (attributes.kernelShape.length <= 2) {
+    let codeW = '';
+    let codeH = '';
+    let codeHEnd = '';
+    const dimIdxW = rank - (isChannelsLast ? 2 : 1);
+    if (pwStartEnd === true) {
+      codeW = `
+                for (var i: u32 = 0u; i < uniforms.kw; i++) {
+                  xIndices[${dimIdxW}] = indices[${dimIdxW}] * uniforms.sw - uniforms.pwStart + i;
+                  if (xIndices[${dimIdxW}] < 0 || xIndices[${dimIdxW}]
+                      >= uniforms.x_shape[${dimIdxW}]) {
+                    pad++;
+                    continue;
+                  }
+                  let x_val = x[${x.indicesToOffset('xIndices')}];
+                  ${op1}
+                }`;
+    } else {
+      codeW = `
+                for (var i: u32 = 0u; i < uniforms.kw; i++) {
+                  xIndices[${dimIdxW}] = indices[${dimIdxW}] * uniforms.sw - uniforms.pwStart + i;
+                  let x_val = x[${x.indicesToOffset('xIndices')}];
+                  ${op1}
+                }`;
+    }
+
+    if (attributes.kernelShape.length === 2) {
       const dimIdxH = rank - (isChannelsLast ? 3 : 2);
-      const dimH = inputDims[dimIdxH];
-      if (phStart + phEnd !== 0) {
+      if (phStartEnd === true) {
         codeH = `
-                for (var j: u32 = 0u; j < ${kh}u; j++) {
-                  xIndices[${dimIdxH}] = indices[${dimIdxH}] * ${sh} - ${phStart} + j;
-                  if (xIndices[${dimIdxH}] < 0 || xIndices[${dimIdxH}] >= ${dimH}) {
-                    pad+= ${kw};
+                for (var j: u32 = 0u; j < uniforms.kh; j++) {
+                  xIndices[${dimIdxH}] = indices[${dimIdxH}] * uniforms.sh - uniforms.phStart + j;
+                  if (xIndices[${dimIdxH}] < 0 || xIndices[${dimIdxH}] >= uniforms.x_shape[${dimIdxH}]) {
+                    pad += i32(uniforms.kw);
                     continue;
                   }
               `;
       } else {
         codeH = `
-                for (var j: u32 = 0u; j < ${kh}u; j++) {
-                  xIndices[${dimIdxH}] = indices[${dimIdxH}] * ${sh} - ${phStart} + j;
+                for (var j: u32 = 0u; j < uniforms.kh; j++) {
+                  xIndices[${dimIdxH}] = indices[${dimIdxH}] * uniforms.sh - uniforms.phStart + j;
                 `;
       }
       codeHEnd = `
@@ -126,21 +165,15 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
     }
 
     const poolingCode = `
-            @group(0) @binding(0) var<storage, read> x : array<${dataType}>;
-            @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
-
-            ${outputIndicesHelper.o2iImpl}
-            ${xIndicesHelper.i2oImpl}
+            ${shaderHelper.registerUniforms(uniforms).declareVariables(x, output)}
 
             ${shaderHelper.mainStart()}
-              ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
+              ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
 
-              ${outputIndicesHelper.indicesVariableDeclaration('indices')}
-              ${outputIndicesHelper.o2iCall('global_idx', 'indices')}
-              ${outputIndicesHelper.indicesVariableDeclaration('xIndices')}
-              ${outputIndicesHelper.o2iCall('global_idx', 'xIndices')}
+              let indices = ${output.offsetToIndices('global_idx')};
+              var xIndices = ${output.offsetToIndices('global_idx')};
 
-              var value: ${dataType} = ${dataType}(${start});
+              var value = ${dataType}(${start});
               var pad = 0;
               ${codeH}
               ${codeW}
@@ -154,50 +187,35 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
     if (isChannelsLast) {
       throw new Error('Pooling with kernelShape.length > 2 is not supported for NHWC format.');
     }
-    const kernelSize = ShapeUtil.size(attributes.kernelShape);
-    const kernelStrides = ShapeUtil.computeStrides(attributes.kernelShape);
-    const stridesRank = kernelStrides.length;
+    const stridesRank = attributes.kernelShape.length;
     const padsRank = attributes.pads.length;
-    const hasPads = attributes.pads.reduce((sum, cur) => sum + cur);
     let padCode = '';
     if (hasPads) {
       padCode = `
-                if (xIndices[j] >= inputDims[j]) {
+                if (xIndices[j] >= uniforms.x_shape[j]) {
                   pad++;
                   isPad = true;
                   break;
                 }
               }
               if (!isPad) {
-                let x_val = x[${xIndicesHelper.i2oExpression('xIndices')}];
+                let x_val = x[${x.indicesToOffset('xIndices')}];
                 ${op1}
               }`;
     } else {
       padCode = `
               }
-              let x_val = x[${xIndicesHelper.i2oExpression('xIndices')}];
+              let x_val = x[${x.indicesToOffset('xIndices')}];
               ${op1}
             `;
     }
     const poolingCode = `
-            @group(0) @binding(0) var<storage, read> x : array<${dataType}>;
-            @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
-
-            ${outputIndicesHelper.o2iImpl}
-            ${xIndicesHelper.i2oImpl}
-
-            const pads = array<u32, ${padsRank}>(${attributes.pads.map(i => `${i}u`).join(',')});
-            const inputDims = array<u32, ${rank}>(${inputDims.map(i => `${i}u`).join(',')});
-            const kernelStrides = array<u32, ${stridesRank}>(${kernelStrides.map(i => `${i}u`).join(',')});
-            const strides = array<u32, ${stridesRank}>(${attributes.strides.map(i => `${i}u`).join(',')});
+            ${shaderHelper.registerUniforms(uniforms).declareVariables(x, output)}
 
             ${shaderHelper.mainStart()}
-              ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-
-              ${outputIndicesHelper.indicesVariableDeclaration('indices')}
-              ${outputIndicesHelper.o2iCall('global_idx', 'indices')}
-              ${outputIndicesHelper.indicesVariableDeclaration('xIndices')}
-              ${outputIndicesHelper.o2iCall('global_idx', 'xIndices')}
+              ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
+              let indices = ${output.offsetToIndices('global_idx')};
+              var xIndices = ${output.offsetToIndices('global_idx')};
 
               var offsets: array<u32, ${stridesRank}>;
 
@@ -205,18 +223,19 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
               var pad = 0;
               var isPad = false;
 
-              for (var i: u32 = 0u; i < ${kernelSize}u; i++) {
+              for (var i: u32 = 0u; i < uniforms.kernelSize; i++) {
                 var offset = i;
                 for (var j = 0u; j < ${stridesRank - 1}u; j++) {
-                  offsets[j] = offset / kernelStrides[j];
-                  offset -= offsets[j] * kernelStrides[j];
+                  offsets[j] = offset / ${getElementAt('uniforms.kernelStrides', 'j', stridesRank)};
+                  offset -= offsets[j] * ${getElementAt('uniforms.kernelStrides', 'j', stridesRank)};
                 }
                 offsets[${stridesRank - 1}] = offset;
 
                 isPad = false;
                 for (var j = ${rank - stridesRank}u; j < ${rank}u; j++) {
-                  xIndices[j] = indices[j] * strides[j - ${rank - stridesRank}u]
-                    + offsets[j - ${rank - stridesRank}u] - pads[j - 2u];
+                  xIndices[j] = indices[j] * ${
+        getElementAt('uniforms.strides', `j - ${rank - stridesRank}u`, stridesRank)}
+                    + offsets[j - ${rank - stridesRank}u] - ${getElementAt('uniforms.pads', 'j - 2u', padsRank)};
                   ${padCode}
               }
               ${op2}
@@ -253,27 +272,38 @@ export interface AveragePoolAttributes extends PoolCommonAttributes, AttributeWi
 }
 
 const createAveragePoolProgramInfo =
-    (inputs: readonly TensorView[], metadata: ProgramMetadata, isGlobalOperator: boolean,
-     attributes: AveragePoolAttributes): ProgramInfo => {
+    (name: string, input: TensorView, isGlobalOperator: boolean, attributes: AveragePoolAttributes): ProgramInfo => {
       const [adjustedAttributes, outputShape] =
-          getAdjustedPoolAttributesAndOutputShape(inputs, attributes, isGlobalOperator);
-      const kernelSize = ShapeUtil.size(adjustedAttributes.kernelShape);
-
-      const dataType = 'f32';
+          getAdjustedPoolAttributesAndOutputShape(input, attributes, isGlobalOperator);
+      const x = inputVariable('x', input.dataType, input.dims.length);
+      const dataType = x.type.value;
 
       const op1 = 'value += x_val;';
       let op2 = '';
       if (adjustedAttributes.countIncludePad) {
-        op2 += `value /= ${dataType}(${kernelSize});`;
+        op2 += `value /= ${dataType}(uniforms.kernelSize);`;
       } else {
-        op2 += `value /= ${dataType}(${kernelSize} - pad);`;
+        op2 += `value /= ${dataType}(i32(uniforms.kernelSize) - pad);`;
       }
+      const [programUniforms, uniforms, hasPads, pwStartEnd, phStartEnd] =
+          getUniformAndPadInfo(outputShape, adjustedAttributes);
+      programUniforms.push(...createTensorShapeVariables(input.dims));
+      programUniforms.push(...createTensorShapeVariables(outputShape));
+      const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank'];
       return {
-        ...metadata,
-        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
+        name,
+        shaderCache: {
+          hint: attributes.cacheKey + hasPads + pwStartEnd + phStartEnd + adjustedAttributes.countIncludePad,
+          inputDependencies
+        },
+        getRunData: () => ({
+          outputs: [{dims: outputShape, dataType: input.dataType}],
+          dispatchGroup: {x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)},
+          programUniforms
+        }),
         getShaderSource: shaderHelper => generatePoolingCode(
-            shaderHelper, inputs[0].dims, outputShape, adjustedAttributes, op1, op2, dataType, '0.0'),
-        dispatchGroup: () => ({x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)})
+            shaderHelper, x, input.dims.length, outputShape.length, adjustedAttributes, op1, op2, 0.0, uniforms,
+            hasPads, pwStartEnd, phStartEnd),
       };
     };
 
@@ -291,8 +321,7 @@ export const parseAveragePoolAttributes = (attributes: Record<string, unknown>):
 
 export const averagePool = (context: ComputeContext, attributes: AveragePoolAttributes): void => {
   validateInputs(context.inputs);
-  const metadata = {name: 'AveragePool', inputTypes: [GpuDataType.default], cacheHint: attributes.cacheKey};
-  context.compute({...metadata, get: () => createAveragePoolProgramInfo(context.inputs, metadata, false, attributes)});
+  context.compute(createAveragePoolProgramInfo('AveragePool', context.inputs[0], false, attributes));
 };
 
 const globalPoolAttributes = {
@@ -314,8 +343,7 @@ export const parseGlobalAveragePoolAttributes = (attributes: Record<string, unkn
 
 export const globalAveragePool = (context: ComputeContext, attributes: AveragePoolAttributes): void => {
   validateInputs(context.inputs);
-  const metadata = {name: 'GlobalAveragePool', inputTypes: [GpuDataType.default], cacheHint: attributes.cacheKey};
-  context.compute({...metadata, get: () => createAveragePoolProgramInfo(context.inputs, metadata, true, attributes)});
+  context.compute(createAveragePoolProgramInfo('GlobalAveragePool', context.inputs[0], true, attributes));
 };
 
 export interface MaxPoolAttributes extends PoolCommonAttributes, AttributeWithCacheKey {
@@ -324,27 +352,36 @@ export interface MaxPoolAttributes extends PoolCommonAttributes, AttributeWithCa
 }
 
 const createMaxPoolProgramInfo =
-    (inputs: readonly TensorView[], metadata: ProgramMetadata, isGlobalOperator: boolean,
-     attributes: MaxPoolAttributes): ProgramInfo => {
+    (name: string, input: TensorView, isGlobalOperator: boolean, attributes: MaxPoolAttributes): ProgramInfo => {
       const [adjustedAttributes, outputShape] =
-          getAdjustedPoolAttributesAndOutputShape(inputs, attributes, isGlobalOperator);
+          getAdjustedPoolAttributesAndOutputShape(input, attributes, isGlobalOperator);
       const op1 = `
       value = max(x_val, value);
     `;
       const op2 = '';
+      const x = inputVariable('x', input.dataType, input.dims.length);
+      const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank'];
+      const [programUniforms, uniforms, hasPads, pwStartEnd, phStartEnd] =
+          getUniformAndPadInfo(outputShape, adjustedAttributes);
+      programUniforms.push(...createTensorShapeVariables(input.dims));
+      programUniforms.push(...createTensorShapeVariables(outputShape));
       return {
-        ...metadata,
-        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
-        getShaderSource: shaderHelper =>
-            generatePoolingCode(shaderHelper, inputs[0].dims, outputShape, adjustedAttributes, op1, op2, 'f32', '-1e5'),
-        dispatchGroup: () => ({x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)})
+        name,
+        shaderCache: {hint: attributes.cacheKey + hasPads, inputDependencies},
+        getRunData: () => ({
+          outputs: [{dims: outputShape, dataType: input.dataType}],
+          dispatchGroup: {x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)},
+          programUniforms
+        }),
+        getShaderSource: shaderHelper => generatePoolingCode(
+            shaderHelper, x, input.dims.length, outputShape.length, adjustedAttributes, op1, op2, -1e5, uniforms,
+            hasPads, pwStartEnd, phStartEnd),
       };
     };
 
 export const maxPool = (context: ComputeContext, attributes: MaxPoolAttributes): void => {
   validateInputs(context.inputs);
-  const metadata = {name: 'MaxPool', inputTypes: [GpuDataType.default], cacheHint: attributes.cacheKey};
-  context.compute({...metadata, get: () => createMaxPoolProgramInfo(context.inputs, metadata, false, attributes)});
+  context.compute(createMaxPoolProgramInfo('MaxPool', context.inputs[0], false, attributes));
 };
 
 export const parseMaxPoolAttributes = (attributes: Record<string, unknown>): MaxPoolAttributes => {
@@ -370,6 +407,5 @@ export const parseGlobalMaxPoolAttributes = (attributes: Record<string, unknown>
 
 export const globalMaxPool = (context: ComputeContext, attributes: MaxPoolAttributes): void => {
   validateInputs(context.inputs);
-  const metadata = {name: 'GlobalMaxPool', inputTypes: [GpuDataType.default], cacheHint: attributes.cacheKey};
-  context.compute({...metadata, get: () => createMaxPoolProgramInfo(context.inputs, metadata, true, attributes)});
+  context.compute(createMaxPoolProgramInfo('GlobalMaxPool', context.inputs[0], true, attributes));
 };

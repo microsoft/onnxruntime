@@ -16,12 +16,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         where T : IDisposable
     {
         public DisposableListTest()
-        {}
+        { }
+
+        public DisposableListTest(IEnumerable<T> enumerable) : base(enumerable)
+        { }
+
         public DisposableListTest(int count)
             : base(count)
-        {}
+        { }
 
-#region IDisposable Support
+        #region IDisposable Support
         private bool disposedValue = false; // To detect redundant calls
 
         protected virtual void Dispose(bool disposing)
@@ -54,7 +58,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             Dispose(true);
             GC.SuppressFinalize(this);
         }
-#endregion
+        #endregion
     }
 
     internal struct DisposableTestPair<TValue> : IDisposable
@@ -218,26 +222,26 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 switch (nodeMeta.OnnxValueType)
                 {
                     case OnnxValueType.ONNX_TYPE_TENSOR:
-                    {
-                        var tensor = Onnx.TensorProto.Parser.ParseFrom(file);
-                        return LoadTensorPb(tensor, nodeName, nodeMeta);
-                    }
+                        {
+                            var tensor = Onnx.TensorProto.Parser.ParseFrom(file);
+                            return LoadTensorPb(tensor, nodeName, nodeMeta);
+                        }
                     case OnnxValueType.ONNX_TYPE_SEQUENCE:
-                    {
-                        var sequence = Onnx.SequenceProto.Parser.ParseFrom(file);
-                        return CreateNamedOnnxValueFromSequence(sequence, nodeName, nodeMeta);
-                    }
+                        {
+                            var sequence = Onnx.SequenceProto.Parser.ParseFrom(file);
+                            return CreateNamedOnnxValueFromSequence(sequence, nodeName, nodeMeta);
+                        }
                     case OnnxValueType.ONNX_TYPE_MAP:
-                    {
-                        throw new NotImplementedException(
-                            "Map test data format requires clarification: https://github.com/onnx/onnx/issues/5072");
-                    }
+                        {
+                            throw new NotImplementedException(
+                                "Map test data format requires clarification: https://github.com/onnx/onnx/issues/5072");
+                        }
 
                     case OnnxValueType.ONNX_TYPE_OPTIONAL:
-                    {
-                        var opt = Onnx.OptionalProto.Parser.ParseFrom(file);
-                        return CreateNamedOnnxValueFromOptional(opt, nodeName, nodeMeta);
-                    }
+                        {
+                            var opt = Onnx.OptionalProto.Parser.ParseFrom(file);
+                            return CreateNamedOnnxValueFromOptional(opt, nodeName, nodeMeta);
+                        }
                     default:
                         throw new NotImplementedException($"Unable to load value type: {nodeMeta.OnnxValueType} not implemented");
                 }
@@ -254,26 +258,26 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 switch (nodeMeta.OnnxValueType)
                 {
                     case OnnxValueType.ONNX_TYPE_TENSOR:
-                    {
-                        var tensor = Onnx.TensorProto.Parser.ParseFrom(file);
-                        return new DisposableTestPair<OrtValue>(nodeName, LoadOrValueTensorPb(tensor, nodeName, nodeMeta));
-                    }
+                        {
+                            var tensor = Onnx.TensorProto.Parser.ParseFrom(file);
+                            return new DisposableTestPair<OrtValue>(nodeName, LoadOrValueTensorPb(tensor, nodeName, nodeMeta));
+                        }
                     case OnnxValueType.ONNX_TYPE_SEQUENCE:
-                    {
-                        var sequence = Onnx.SequenceProto.Parser.ParseFrom(file);
-                        return new DisposableTestPair<OrtValue>(nodeName, CreateOrtValueFromSequence(sequence, nodeName, nodeMeta));
-                    }
+                        {
+                            var sequence = Onnx.SequenceProto.Parser.ParseFrom(file);
+                            return new DisposableTestPair<OrtValue>(nodeName, CreateOrtValueFromSequence(sequence, nodeName, nodeMeta));
+                        }
                     case OnnxValueType.ONNX_TYPE_MAP:
-                    {
-                        throw new NotImplementedException(
-                            "Map test data format requires clarification: https://github.com/onnx/onnx/issues/5072");
-                    }
+                        {
+                            throw new NotImplementedException(
+                                "Map test data format requires clarification: https://github.com/onnx/onnx/issues/5072");
+                        }
 
                     case OnnxValueType.ONNX_TYPE_OPTIONAL:
-                    {
-                        var opt = Onnx.OptionalProto.Parser.ParseFrom(file);
-                        return new DisposableTestPair<OrtValue>(nodeName, CreateOrtValueFromOptional(opt, nodeName, nodeMeta));
-                    }
+                        {
+                            var opt = Onnx.OptionalProto.Parser.ParseFrom(file);
+                            return new DisposableTestPair<OrtValue>(nodeName, CreateOrtValueFromOptional(opt, nodeName, nodeMeta));
+                        }
                     default:
                         throw new NotImplementedException($"Unable to load value type: {nodeMeta.OnnxValueType} not implemented");
                 }
@@ -309,50 +313,50 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             switch (seqElemType)
             {
                 case Onnx.SequenceProto.Types.DataType.Tensor:
-                {
-                    SequenceCheckMatchOnnxType(nodeName, sequenceMeta, OnnxValueType.ONNX_TYPE_TENSOR);
-                    var sequenceOfTensors = new List<NamedOnnxValue>(sequence.TensorValues.Count);
-                    foreach (var tensor in sequence.TensorValues)
                     {
-                        var elemName = MakeSequenceElementName(nodeName, sequence.Name, seqNum++);
-                        var namedOnnxValue = LoadTensorPb(tensor, elemName, elemMeta);
-                        sequenceOfTensors.Add(namedOnnxValue);
+                        SequenceCheckMatchOnnxType(nodeName, sequenceMeta, OnnxValueType.ONNX_TYPE_TENSOR);
+                        var sequenceOfTensors = new List<NamedOnnxValue>(sequence.TensorValues.Count);
+                        foreach (var tensor in sequence.TensorValues)
+                        {
+                            var elemName = MakeSequenceElementName(nodeName, sequence.Name, seqNum++);
+                            var namedOnnxValue = LoadTensorPb(tensor, elemName, elemMeta);
+                            sequenceOfTensors.Add(namedOnnxValue);
+                        }
+                        return NamedOnnxValue.CreateFromSequence(nodeName, sequenceOfTensors);
                     }
-                    return NamedOnnxValue.CreateFromSequence(nodeName, sequenceOfTensors);
-                }
                 case Onnx.SequenceProto.Types.DataType.Sequence:
-                {
-                    SequenceCheckMatchOnnxType(nodeName, sequenceMeta, OnnxValueType.ONNX_TYPE_SEQUENCE);
-                    var seqOfSequences = new List<NamedOnnxValue>(sequence.SequenceValues.Count);
-                    foreach (var s in sequence.SequenceValues)
                     {
-                        var elemName = MakeSequenceElementName(nodeName, sequence.Name, seqNum++);
-                        seqOfSequences.Add(CreateNamedOnnxValueFromSequence(s, elemName, elemMeta));
+                        SequenceCheckMatchOnnxType(nodeName, sequenceMeta, OnnxValueType.ONNX_TYPE_SEQUENCE);
+                        var seqOfSequences = new List<NamedOnnxValue>(sequence.SequenceValues.Count);
+                        foreach (var s in sequence.SequenceValues)
+                        {
+                            var elemName = MakeSequenceElementName(nodeName, sequence.Name, seqNum++);
+                            seqOfSequences.Add(CreateNamedOnnxValueFromSequence(s, elemName, elemMeta));
+                        }
+                        return NamedOnnxValue.CreateFromSequence(nodeName, seqOfSequences);
                     }
-                    return NamedOnnxValue.CreateFromSequence(nodeName, seqOfSequences);
-                }
                 case Onnx.SequenceProto.Types.DataType.Map:
-                {
-                    SequenceCheckMatchOnnxType(nodeName, sequenceMeta, OnnxValueType.ONNX_TYPE_MAP);
-                    var seqOfMaps = new List<NamedOnnxValue>(sequence.MapValues.Count);
-                    foreach (var m in sequence.MapValues)
                     {
-                        var elemName = MakeSequenceElementName(nodeName, sequence.Name, seqNum++);
-                        seqOfMaps.Add(CreateNamedOnnxValueFromMap(m, elemName, elemMeta));
+                        SequenceCheckMatchOnnxType(nodeName, sequenceMeta, OnnxValueType.ONNX_TYPE_MAP);
+                        var seqOfMaps = new List<NamedOnnxValue>(sequence.MapValues.Count);
+                        foreach (var m in sequence.MapValues)
+                        {
+                            var elemName = MakeSequenceElementName(nodeName, sequence.Name, seqNum++);
+                            seqOfMaps.Add(CreateNamedOnnxValueFromMap(m, elemName, elemMeta));
+                        }
+                        return NamedOnnxValue.CreateFromSequence(nodeName, seqOfMaps);
                     }
-                    return NamedOnnxValue.CreateFromSequence(nodeName, seqOfMaps);
-                }
                 case Onnx.SequenceProto.Types.DataType.Optional:
-                {
-                    SequenceCheckMatchOnnxType(nodeName, sequenceMeta, OnnxValueType.ONNX_TYPE_OPTIONAL);
-                    var seqOfOpts = new List<NamedOnnxValue>(sequence.OptionalValues.Count);
-                    foreach (var opt in sequence.OptionalValues)
                     {
-                        var elemName = MakeSequenceElementName(nodeName, sequence.Name, seqNum++);
-                        seqOfOpts.Add(CreateNamedOnnxValueFromOptional(opt, elemName, elemMeta));
+                        SequenceCheckMatchOnnxType(nodeName, sequenceMeta, OnnxValueType.ONNX_TYPE_OPTIONAL);
+                        var seqOfOpts = new List<NamedOnnxValue>(sequence.OptionalValues.Count);
+                        foreach (var opt in sequence.OptionalValues)
+                        {
+                            var elemName = MakeSequenceElementName(nodeName, sequence.Name, seqNum++);
+                            seqOfOpts.Add(CreateNamedOnnxValueFromOptional(opt, elemName, elemMeta));
+                        }
+                        return NamedOnnxValue.CreateFromSequence(nodeName, seqOfOpts);
                     }
-                    return NamedOnnxValue.CreateFromSequence(nodeName, seqOfOpts);
-                }
                 default:
                     throw new NotImplementedException($"Sequence test data loading does not support element type: " +
                                                       $"'{seqElemType}'");
@@ -370,20 +374,20 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             switch ((Onnx.OptionalProto.Types.DataType)optional.ElemType)
             {
                 case Onnx.OptionalProto.Types.DataType.Tensor:
-                {
-                    var tensor = optional.TensorValue;
-                    return LoadTensorPb(tensor, nodeName, meta);
-                }
+                    {
+                        var tensor = optional.TensorValue;
+                        return LoadTensorPb(tensor, nodeName, meta);
+                    }
                 case Onnx.OptionalProto.Types.DataType.Sequence:
-                {
-                    var sequence = optional.SequenceValue;
-                    return CreateNamedOnnxValueFromSequence(sequence, nodeName, meta);
-                }
+                    {
+                        var sequence = optional.SequenceValue;
+                        return CreateNamedOnnxValueFromSequence(sequence, nodeName, meta);
+                    }
                 case Onnx.OptionalProto.Types.DataType.Map:
-                {
-                    var map = optional.MapValue;
-                    return CreateNamedOnnxValueFromMap(map, nodeName, meta);
-                }
+                    {
+                        var map = optional.MapValue;
+                        return CreateNamedOnnxValueFromMap(map, nodeName, meta);
+                    }
                 case Onnx.OptionalProto.Types.DataType.Optional:
                     throw new NotImplementedException($"Unable to load '{nodeName}' optional contained within optional");
                 default:
@@ -454,23 +458,21 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             switch (seqElemType)
             {
                 case Onnx.SequenceProto.Types.DataType.Tensor:
-                {
-                    SequenceCheckMatchOnnxType(nodeName, sequenceMeta, OnnxValueType.ONNX_TYPE_TENSOR);
-                    using (var sequenceOfTensors = new DisposableListTest<OrtValue>(sequence.TensorValues.Count))
                     {
+                        SequenceCheckMatchOnnxType(nodeName, sequenceMeta, OnnxValueType.ONNX_TYPE_TENSOR);
+                        using DisposableListTest<OrtValue> sequenceOfTensors = new(sequence.TensorValues.Count);
                         foreach (var tensor in sequence.TensorValues)
                         {
                             var element = LoadOrValueTensorPb(tensor, sequence.Name, elemMeta);
                             sequenceOfTensors.Add(element);
                         }
+                        // Will take possession of ortValues in the sequence and will clear this container
                         return OrtValue.CreateSequence(sequenceOfTensors);
                     }
-                }
                 case Onnx.SequenceProto.Types.DataType.Sequence: // Sequence of sequences
-                {
-                    SequenceCheckMatchOnnxType(nodeName, sequenceMeta, OnnxValueType.ONNX_TYPE_SEQUENCE);
-                    using (var seqOfSequences = new DisposableListTest<OrtValue>(sequence.TensorValues.Count))
                     {
+                        SequenceCheckMatchOnnxType(nodeName, sequenceMeta, OnnxValueType.ONNX_TYPE_SEQUENCE);
+                        using DisposableListTest<OrtValue> seqOfSequences = new(sequence.TensorValues.Count);
                         foreach (var s in sequence.SequenceValues)
                         {
                             var elemName = MakeSequenceElementName(nodeName, sequence.Name, seqNum++);
@@ -479,17 +481,15 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         }
                         return OrtValue.CreateSequence(seqOfSequences);
                     }
-                }
                 case Onnx.SequenceProto.Types.DataType.Map:
-                {
-                    throw new NotImplementedException(
-                        "Test data format for maps is under investigation");
-                }
-                case Onnx.SequenceProto.Types.DataType.Optional:
-                {
-                    SequenceCheckMatchOnnxType(nodeName, sequenceMeta, OnnxValueType.ONNX_TYPE_OPTIONAL);
-                    using (var seqOfSequences = new DisposableListTest<OrtValue>(sequence.TensorValues.Count))
                     {
+                        throw new NotImplementedException(
+                            "Test data format for maps is under investigation");
+                    }
+                case Onnx.SequenceProto.Types.DataType.Optional:
+                    {
+                        SequenceCheckMatchOnnxType(nodeName, sequenceMeta, OnnxValueType.ONNX_TYPE_OPTIONAL);
+                        using DisposableListTest<OrtValue> seqOfSequences = new(sequence.TensorValues.Count);
                         foreach (var opt in sequence.OptionalValues)
                         {
                             var elemName = MakeSequenceElementName(nodeName, sequence.Name, seqNum++);
@@ -498,7 +498,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         }
                         return OrtValue.CreateSequence(seqOfSequences);
                     }
-                }
                 default:
                     throw new NotImplementedException($"Sequence test data loading does not support element type: " +
                                                       $"'{seqElemType}'");
@@ -511,20 +510,20 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             switch ((Onnx.OptionalProto.Types.DataType)optional.ElemType)
             {
                 case Onnx.OptionalProto.Types.DataType.Tensor:
-                {
-                    var tensor = optional.TensorValue;
-                    return LoadOrValueTensorPb(tensor, nodeName, meta);
-                }
+                    {
+                        var tensor = optional.TensorValue;
+                        return LoadOrValueTensorPb(tensor, nodeName, meta);
+                    }
                 case Onnx.OptionalProto.Types.DataType.Sequence:
-                {
-                    var sequence = optional.SequenceValue;
-                    return CreateOrtValueFromSequence(sequence, nodeName, meta);
-                }
+                    {
+                        var sequence = optional.SequenceValue;
+                        return CreateOrtValueFromSequence(sequence, nodeName, meta);
+                    }
                 case Onnx.OptionalProto.Types.DataType.Map:
-                {
-                    throw new NotImplementedException(
-                        "Test data format for maps is under investigation");
-                }
+                    {
+                        throw new NotImplementedException(
+                            "Test data format for maps is under investigation");
+                    }
                 case Onnx.OptionalProto.Types.DataType.Optional:
                     throw new NotImplementedException($"Unable to load '{nodeName}' optional contained within optional");
                 default:
@@ -543,7 +542,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             Assert.NotNull(typeInfo);
 
             // ArrayUtilities not accessible in all builds
-            var shapeSize = shape.Aggregate(1L, (a, v) => a * v);
+            var shapeSize = ShapeUtils.GetSizeForShape(shape);
             var inferredSize = rawData.Length / typeInfo.TypeSize;
             Assert.Equal(shapeSize, inferredSize);
             Assert.Equal(0, rawData.Length % typeInfo.TypeSize);
@@ -589,7 +588,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 for (int i = 0; i < strings.Count; ++i)
                 {
-                    ortValue.FillStringTensorElement(strings[i].Span, i);
+                    ortValue.StringTensorSetElementAt(strings[i].Span, i);
                 }
                 return ortValue;
             }

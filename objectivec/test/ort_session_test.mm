@@ -50,6 +50,13 @@ NS_ASSUME_NONNULL_BEGIN
   return path;
 }
 
++ (NSString*)getStringModelPath {
+  NSBundle* bundle = [NSBundle bundleForClass:[ORTSessionTest class]];
+  NSString* path = [bundle pathForResource:@"identity_string"
+                                    ofType:@"ort"];
+  return path;
+}
+
 + (NSMutableData*)dataWithScalarFloat:(float)value {
   NSMutableData* data = [[NSMutableData alloc] initWithBytes:&value length:sizeof(value)];
   return data;
@@ -257,6 +264,61 @@ static OrtStatus* _Nullable DummyRegisterCustomOpsFn(OrtSessionOptions* /*sessio
   ORTAssertBoolResultSuccessful(registerResult, err);
 
   XCTAssertEqual(gDummyRegisterCustomOpsFnCalled, true);
+}
+
+- (void)testStringInputs {
+  NSError* err = nil;
+  NSArray<NSString*>* stringData = @[ @"ONNX Runtime", @"is the", @"best", @"AI Framework" ];
+  ORTValue* stringValue = [[ORTValue alloc] initWithTensorStringData:stringData shape:@[ @2, @2 ] error:&err];
+  ORTAssertNullableResultSuccessful(stringValue, err);
+
+  ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
+                                              modelPath:[ORTSessionTest getStringModelPath]
+                                         sessionOptions:[ORTSessionTest makeSessionOptions]
+                                                  error:&err];
+  ORTAssertNullableResultSuccessful(session, err);
+
+  NSDictionary<NSString*, ORTValue*>* outputs =
+      [session runWithInputs:@{@"input:0" : stringValue}
+                 outputNames:[NSSet setWithArray:@[ @"output:0" ]]
+                  runOptions:[ORTSessionTest makeRunOptions]
+                       error:&err];
+  ORTAssertNullableResultSuccessful(outputs, err);
+
+  ORTValue* outputStringValue = outputs[@"output:0"];
+  XCTAssertNotNil(outputStringValue);
+
+  NSArray<NSString*>* outputStringData = [outputStringValue tensorStringDataWithError:&err];
+  ORTAssertNullableResultSuccessful(outputStringData, err);
+
+  XCTAssertEqual([stringData count], [outputStringData count]);
+  XCTAssertTrue([stringData isEqualToArray:outputStringData]);
+}
+
+- (void)testKeepORTEnvReference {
+  ORTEnv* __weak envWeak = _ortEnv;
+  // Remove sole strong reference to the ORTEnv created in setUp.
+  _ortEnv = nil;
+  // There should be no more strong references to it.
+  XCTAssertNil(envWeak);
+
+  // Create a new ORTEnv.
+  NSError* err = nil;
+  ORTEnv* env = [[ORTEnv alloc] initWithLoggingLevel:ORTLoggingLevelWarning
+                                               error:&err];
+  ORTAssertNullableResultSuccessful(env, err);
+
+  ORTSession* session = [[ORTSession alloc] initWithEnv:env
+                                              modelPath:[ORTSessionTest getAddModelPath]
+                                         sessionOptions:[ORTSessionTest makeSessionOptions]
+                                                  error:&err];
+  ORTAssertNullableResultSuccessful(session, err);
+
+  envWeak = env;
+  // Remove strong reference to the ORTEnv passed to the ORTSession initializer.
+  env = nil;
+  // ORTSession should keep a strong reference to it.
+  XCTAssertNotNil(envWeak);
 }
 
 @end

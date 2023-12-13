@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "reshape.h"
+#include "core/providers/js/js_data_types.h"
 
 namespace onnxruntime {
 namespace js {
@@ -12,7 +13,7 @@ ONNX_OPERATOR_KERNEL_EX(
     14,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("T", JsepSupportedDataTypes())
         .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>())
         .Alias(0, 0)
         .InputMemoryType(OrtMemTypeCPU, 1),
@@ -24,7 +25,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     13, 13,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("T", JsepSupportedDataTypes())
         .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>())
         .Alias(0, 0)
         .InputMemoryType(OrtMemTypeCPU, 1),
@@ -36,7 +37,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     5, 12,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("T", JsepSupportedDataTypes())
         .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>())
         .Alias(0, 0)
         .InputMemoryType(OrtMemTypeCPU, 1),

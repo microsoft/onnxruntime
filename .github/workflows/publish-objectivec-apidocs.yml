@@ -23,7 +23,7 @@ jobs:
     name: Generate Objective-C API docs
     runs-on: macos-13
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Install Jazzy
       run: |

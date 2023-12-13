@@ -20,6 +20,8 @@ def get_package_name(os, cpu_arch, ep, is_training_package):
             pkg_name += "-cuda"
         elif ep == "tensorrt":
             pkg_name += "-tensorrt"
+        elif ep == "rocm":
+            pkg_name += "-rocm"
     elif os == "linux":
         pkg_name += "-linux-"
         pkg_name += cpu_arch
@@ -27,6 +29,8 @@ def get_package_name(os, cpu_arch, ep, is_training_package):
             pkg_name += "-cuda"
         elif ep == "tensorrt":
             pkg_name += "-tensorrt"
+        elif ep == "rocm":
+            pkg_name += "-rocm"
     elif os == "osx":
         pkg_name = "onnxruntime-osx-" + cpu_arch
     return pkg_name
@@ -67,7 +71,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                     is_versioned_dylib = re.match(r".*[\.\d+]+\.dylib$", child_file.name)
                     if child_file.is_file() and child_file.suffix == ".dylib" and not is_versioned_dylib:
                         files_list.append(
-                            '<file src="' + str(child_file) + '" target="runtimes/osx.10.14-%s/native"/>' % cpu_arch
+                            '<file src="' + str(child_file) + '" target="runtimes/osx-%s/native"/>' % cpu_arch
                         )
         for cpu_arch in ["x64", "aarch64"]:
             if child.name == get_package_name("linux", cpu_arch, ep, is_training_package):
@@ -178,7 +182,7 @@ def generate_icon(line_list, icon_file):
 
 
 def generate_license(line_list):
-    line_list.append('<license type="file">LICENSE.txt</license>')
+    line_list.append('<license type="file">LICENSE</license>')
 
 
 def generate_project_url(line_list, project_url):
@@ -190,7 +194,7 @@ def generate_repo_url(line_list, repo_url, commit_id):
 
 
 def generate_dependencies(xml_text, package_name, version):
-    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.12.0"/>'
+    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.12.1"/>'
 
     if package_name == "Microsoft.AI.MachineLearning":
         xml_text.append("<dependencies>")
@@ -433,14 +437,7 @@ def generate_files(line_list, args):
         )
 
     if args.execution_provider == "tensorrt":
-        files_list.append(
-            "<file src="
-            + '"'
-            + os.path.join(
-                args.sources_path, "include\\onnxruntime\\core\\providers\\tensorrt\\tensorrt_provider_factory.h"
-            )
-            + '" target="build\\native\\include" />'
-        )
+        files_list.append("<file src=" + '"' + '" target="build\\native\\include" />')
 
     if args.execution_provider == "dnnl":
         files_list.append(
@@ -536,6 +533,8 @@ def generate_files(line_list, args):
             # downloaded from other build jobs
             if is_cuda_gpu_package:
                 ep_list = ["tensorrt", "cuda", None]
+            elif is_rocm_gpu_package:
+                ep_list = ["rocm", None]
             else:
                 ep_list = [None]
             for ep in ep_list:
@@ -553,11 +552,12 @@ def generate_files(line_list, args):
                 files_list.append(
                     "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.pdb") + runtimes + " />"
                 )
+
     else:
         files_list.append(
             "<file src="
             + '"'
-            + os.path.join(args.native_build_path, "nuget-staging/usr/local/lib", "libonnxruntime.so")
+            + os.path.join(args.native_build_path, "libonnxruntime.so")
             + '" target="runtimes\\linux-'
             + args.target_architecture
             + '\\native" />'
@@ -669,9 +669,7 @@ def generate_files(line_list, args):
             # TODO(agladyshev): Add support for Linux.
             raise RuntimeError("Now only Windows is supported for TVM EP.")
 
-    if is_rocm_gpu_package:
-        if not is_linux():
-            raise RuntimeError("Only Linux is supported for ROCm EP.")
+    if args.execution_provider == "rocm" or is_rocm_gpu_package and not is_ado_packaging_build:
         files_list.append(
             "<file src="
             + '"'
@@ -709,25 +707,9 @@ def generate_files(line_list, args):
         )
 
         if is_windows():
-            if "2022" in openvino_path:
-                dll_list_path = os.path.join(openvino_path, "runtime\\bin\\intel64\\Release\\")
-                tbb_list_path = os.path.join(openvino_path, "runtime\\3rdparty\\tbb\\bin\\")
-            else:
-                dll_list_path = os.path.join(
-                    openvino_path, "deployment_tools\\inference_engine\\bin\\intel64\\Release\\"
-                )
-                tbb_list_path = os.path.join(openvino_path, "deployment_tools\\inference_engine\\external\\tbb\\bin\\")
-                ngraph_list_path = os.path.join(openvino_path, "deployment_tools\\ngraph\\lib\\")
-                for ngraph_element in os.listdir(ngraph_list_path):
-                    if ngraph_element.endswith("dll"):
-                        files_list.append(
-                            "<file src="
-                            + '"'
-                            + os.path.join(ngraph_list_path, ngraph_element)
-                            + runtimes_target
-                            + args.target_architecture
-                            + '\\native" />'
-                        )
+            dll_list_path = os.path.join(openvino_path, "runtime\\bin\\intel64\\Release\\")
+            tbb_list_path = os.path.join(openvino_path, "runtime\\3rdparty\\tbb\\bin\\")
+
             for dll_element in os.listdir(dll_list_path):
                 if dll_element.endswith("dll"):
                     files_list.append(
@@ -738,26 +720,7 @@ def generate_files(line_list, args):
                         + args.target_architecture
                         + '\\native" />'
                     )
-            # plugins.xml
-            files_list.append(
-                "<file src="
-                + '"'
-                + os.path.join(dll_list_path, "plugins.xml")
-                + runtimes_target
-                + args.target_architecture
-                + '\\native" />'
-            )
-            # usb-ma2x8x.mvcmd
-            # OpenVINO 2022.3 doesn't have usb-ma2x8x.mvcmd
-            if "2022.3" not in openvino_path:
-                files_list.append(
-                    "<file src="
-                    + '"'
-                    + os.path.join(dll_list_path, "usb-ma2x8x.mvcmd")
-                    + runtimes_target
-                    + args.target_architecture
-                    + '\\native" />'
-                )
+
             for tbb_element in os.listdir(tbb_list_path):
                 if tbb_element.endswith("dll"):
                     files_list.append(
@@ -830,8 +793,10 @@ def generate_files(line_list, args):
                 "<file src=" + '"' + os.path.join(args.native_build_path, nuget_dependencies["tvm"]) + runtimes + " />"
             )
 
-        # Some tools to be packaged in nightly build only, should not be released
+        # Some tools to be packaged in nightly debug build only, should not be released
         # These are copied to the runtimes folder for convenience of loading with the dlls
+        # NOTE: nuget gives a spurious error on linux if these aren't in a separate directory to the library so
+        #       we add them to a tools folder for that reason.
         if (
             args.is_release_build.lower() != "true"
             and args.target_architecture == "x64"
@@ -841,7 +806,10 @@ def generate_files(line_list, args):
                 "<file src="
                 + '"'
                 + os.path.join(args.native_build_path, nuget_dependencies["onnxruntime_perf_test"])
-                + runtimes
+                + runtimes[:-1]
+                + "\\tools\\"
+                + nuget_dependencies["onnxruntime_perf_test"]
+                + '"'
                 + " />"
             )
 
@@ -854,7 +822,10 @@ def generate_files(line_list, args):
                 "<file src="
                 + '"'
                 + os.path.join(args.native_build_path, nuget_dependencies["onnx_test_runner"])
-                + runtimes
+                + runtimes[:-1]
+                + "\\tools\\"
+                + nuget_dependencies["onnx_test_runner"]
+                + '"'
                 + " />"
             )
 
@@ -908,7 +879,6 @@ def generate_files(line_list, args):
         os.system(copy_command + " " + source_props + " " + target_props)
         files_list.append("<file src=" + '"' + target_props + '" target="build\\native" />')
         if not is_snpe_package and not is_qnn_package:
-            files_list.append("<file src=" + '"' + target_props + '" target="build\\netstandard1.1" />')
             files_list.append("<file src=" + '"' + target_props + '" target="build\\netstandard2.0" />')
 
         # Process targets file
@@ -927,7 +897,6 @@ def generate_files(line_list, args):
         os.system(copy_command + " " + source_targets + " " + target_targets)
         files_list.append("<file src=" + '"' + target_targets + '" target="build\\native" />')
         if not is_snpe_package and not is_qnn_package:
-            files_list.append("<file src=" + '"' + target_targets + '" target="build\\netstandard1.1" />')
             files_list.append("<file src=" + '"' + target_targets + '" target="build\\netstandard2.0" />')
 
         # Process xamarin targets files
@@ -1097,8 +1066,11 @@ def generate_files(line_list, args):
                 "<file src=" + '"' + net6_android_target_targets + '" target="buildTransitive\\net6.0-android31.0" />'
             )
 
+    # README
+    files_list.append("<file src=" + '"' + os.path.join(args.sources_path, "README.md") + '" target="README.md" />')
+
     # Process License, ThirdPartyNotices, Privacy
-    files_list.append("<file src=" + '"' + os.path.join(args.sources_path, "LICENSE.txt") + '" target="LICENSE.txt" />')
+    files_list.append("<file src=" + '"' + os.path.join(args.sources_path, "LICENSE") + '" target="LICENSE" />')
     files_list.append(
         "<file src="
         + '"'
@@ -1153,10 +1125,11 @@ def validate_execution_provider(execution_provider):
             or execution_provider == "cuda"
             or execution_provider == "tensorrt"
             or execution_provider == "openvino"
+            or execution_provider == "rocm"
         ):
             raise Exception(
                 "On Linux platform nuget generation is supported only "
-                "for cpu|cuda|dnnl|tensorrt|openvino execution providers."
+                "for cpu|cuda|dnnl|tensorrt|openvino|rocm execution providers."
             )
 
 

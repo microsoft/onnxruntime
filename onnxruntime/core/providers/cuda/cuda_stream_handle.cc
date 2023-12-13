@@ -1,11 +1,30 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#include "core/providers/cuda/cuda_resource.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/common/spin_pause.h"
 
 namespace onnxruntime {
+
+DeferredCpuAllocator::DeferredCpuAllocator(CudaStream& cuda_stream) : cuda_stream_(cuda_stream) {
+  OrtAllocator::version = ORT_API_VERSION;
+  OrtAllocator::Alloc =
+      [](OrtAllocator* this_, size_t size) {
+        auto self = reinterpret_cast<DeferredCpuAllocator*>(this_);
+        return self->cuda_stream_.GetCpuAllocator()->Alloc(size);
+      };
+  OrtAllocator::Free =
+      [](OrtAllocator* this_, void* p) {
+        auto self = reinterpret_cast<DeferredCpuAllocator*>(this_);
+        self->cuda_stream_.EnqueDeferredCPUBuffer(p);
+      };
+  OrtAllocator::Info =
+      [](const OrtAllocator* this_) {
+        auto self = reinterpret_cast<const DeferredCpuAllocator*>(this_);
+        return &self->cuda_stream_.GetCpuAllocator()->Info();
+      };
+}
 
 struct CudaNotification : public synchronize::Notification {
   CudaNotification(Stream& s) : Notification(s) {
@@ -46,7 +65,8 @@ CudaStream::CudaStream(cudaStream_t stream,
                        cublasHandle_t external_cublas_handle) : Stream(stream, device),
                                                                 own_stream_(own_flag),
                                                                 cpu_allocator_(cpu_allocator),
-                                                                release_cpu_buffer_on_cuda_stream_(release_cpu_buffer_on_cuda_stream) {
+                                                                release_cpu_buffer_on_cuda_stream_(release_cpu_buffer_on_cuda_stream),
+                                                                deferred_cpu_allocator_(*this) {
   if (own_flag) {
     CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
     CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
@@ -149,6 +169,28 @@ Status CudaStream::CleanUpOnRunEnd() {
   return Status::OK();
 }
 
+void* CudaStream::GetResource(int version, int id) const {
+  ORT_ENFORCE(version <= ORT_CUDA_RESOUCE_VERSION, "resource version unsupported!");
+  void* resource{};
+  switch (id) {
+    case CudaResource::cuda_stream_t:
+      return reinterpret_cast<void*>(GetHandle());
+      break;
+    case CudaResource::cudnn_handle_t:
+      return reinterpret_cast<void*>(cudnn_handle_);
+      break;
+    case CudaResource::cublas_handle_t:
+      return reinterpret_cast<void*>(cublas_handle_);
+      break;
+    case CudaResource::deferred_cpu_allocator_t:
+      return const_cast<DeferredCpuAllocator*>(&deferred_cpu_allocator_);
+      break;
+    default:
+      break;
+  }
+  return resource;
+}
+
 // CPU Stream command handles
 void WaitCudaNotificationOnDevice(Stream& stream, synchronize::Notification& notification) {
   static_cast<CudaNotification*>(&notification)->wait_on_device(stream);
@@ -172,6 +214,7 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
   stream_handle_registry.RegisterWaitFn(device_type, OrtDevice::CPU, WaitCudaNotificationOnHost);
   if (!use_existing_stream)
     stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator, release_cpu_buffer_on_cuda_stream](const OrtDevice& device) {
+      CUDA_CALL_THROW(cudaSetDevice(device.Id()));
       cudaStream_t stream = nullptr;
       CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
       // CUDA_CALL_THROW(cudaStreamCreate(&stream));

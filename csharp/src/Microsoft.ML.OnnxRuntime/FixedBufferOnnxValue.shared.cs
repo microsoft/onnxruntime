@@ -89,7 +89,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// \endcode
         /// </example>
         public static FixedBufferOnnxValue CreateFromMemory<T>(OrtMemoryInfo memoryInfo, Memory<T> memory,
-            TensorElementType elementType, long[] shape, long bytesSize)
+            TensorElementType elementType, long[] shape, long bytesSize) where T : unmanaged
         {
             if(elementType == TensorElementType.String)
             {

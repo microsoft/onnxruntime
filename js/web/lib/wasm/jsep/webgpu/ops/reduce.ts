@@ -2,12 +2,13 @@
 // Licensed under the MIT License.
 
 import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor';
+import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {ComputeContext, ProgramInfo, ProgramShaderCacheInfo} from '../types';
 
-import {createIndicesHelper, ShaderHelper} from './common';
+import {createTensorShapeVariables, IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
+import {reduceL1Shared, reduceL2Shared, reduceLogSumExpShared, reduceLogSumShared, reduceMaxShared, reduceMeanShared, reduceMinShared, reduceProdShared, reduceSumShared, reduceSumSquareShared} from './reduce-shared';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length === 0 || inputs.length > 2) {
@@ -17,10 +18,6 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
   if (inputs.length === 2 && inputs[1].dims.length !== 1) {
     throw new Error('Invalid axes input dims.');
   }
-
-  if (inputs[0].dataType !== DataType.float) {
-    throw new Error('Invalid input type.');
-  }
 };
 
 export interface ReduceAttributes extends AttributeWithCacheKey {
@@ -29,84 +26,89 @@ export interface ReduceAttributes extends AttributeWithCacheKey {
   axes: number[];
 }
 
-type ReduceOp = (inputs: readonly TensorView[], axes: number[]) => string[];
-const noOp: ReduceOp = (): string[] => ['', '', 'value = _A[inputIdx];', ''];
-const createReduceProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: ReduceAttributes,
-     reduceOp: ReduceOp): ProgramInfo => {
+export type ReduceOp =
+    (input: IndicesHelper, output: IndicesHelper,
+     axes: readonly number[]) => [string, string, string, string, ...string[]];
+
+const noOp: ReduceOp = (input) => ['', '', `var value = ${input.getByIndices('input_indices')};`, ''];
+export const createReduceProgramInfo =
+    (name: string, shaderCache: ProgramShaderCacheInfo, inputs: readonly TensorView[], reduceOp: ReduceOp,
+     axesInput: number[], outputDataType: DataType, keepDims = false, noopWithEmptyAxes = false): ProgramInfo => {
       const outputShape: number[] = [];
       const inputShape = inputs[0].dims;
-
-      const idxCopy: string[] = [];  // copy output indexes to input indexes
-
-      const axes = ShapeUtil.normalizeAxes(attributes.axes, inputs[0].dims.length);
-      const outputDimsLength = inputs[0].dims.length - (attributes.keepDims ? 0 : axes.length);
-      const ops = reduceOp(inputs, axes);
-      const inputIndicesHelper = createIndicesHelper('input', inputShape);
-      const initInputIdx = (ops[1] === '') ? '' : `let inputIdx = ${inputIndicesHelper.i2oExpression('inputIndices')};`;
-      let reduceOps = `
-          let inputIdx = ${inputIndicesHelper.i2oExpression('inputIndices')};
-          ${ops[2]};`;
-      const reduceOnAllAxes = !attributes.noopWithEmptyAxes && attributes.axes.length === 0;
-      for (let k = 0; k < inputs[0].dims.length; k++) {
-        // if this axis is reduced
-        if (reduceOnAllAxes || axes.indexOf(k) >= 0) {
-          if (attributes.keepDims) {
+      const inputRank = inputShape.length;
+      const axes = ShapeUtil.normalizeAxes(axesInput, inputRank);
+      const reduceOnAllAxes = !noopWithEmptyAxes && axes.length === 0;
+      inputShape.forEach((d, i) => {
+        if (reduceOnAllAxes || axes.indexOf(i) >= 0) {
+          if (keepDims) {
             outputShape.push(1);
-          }  // else { remove the axis from outputShape; }
-
-          // loop over the d-th axis
-          reduceOps = `for(var j${k}: u32 = 0; j${k} < ${inputs[0].dims[k]}; j${k}++) {
-                            inputIndices[${k}] = j${k};
-                            ${reduceOps}
-                          }`;
+          }  // else { // skip this axis}
         } else {
-          if (outputDimsLength > 1) {
-            idxCopy.push(`inputIndices[${k}] = outputIndices[${outputShape.length}];`);
-          } else {
-            idxCopy.push(`inputIndices[${k}] = outputIndices;`);
-          }
-          outputShape.push(inputs[0].dims[k]);
+          outputShape.push(d);
         }
-      }
-
-      const outputIndicesHelper = createIndicesHelper('output', outputShape);
+      });
+      const outputRank = outputShape.length;
       const outputSize = ShapeUtil.size(outputShape);
-      const dataType = 'f32';
+      const getShaderSource = (shaderHelper: ShaderHelper) => {
+        const idxCopy: string[] = [];  // copy output indexes to input indexes
 
-      const getShaderSource = (shaderHelper: ShaderHelper) => `
-          @group(0) @binding(0) var<storage, read> _A : array<${dataType}>;
-          @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
+        const input = inputVariable('_A', inputs[0].dataType, inputRank);
+        const output = outputVariable('output', outputDataType, outputRank);
+        const ops = reduceOp(input, output, axes);
+        let reduceOps = ops[2];
 
-          ${outputIndicesHelper.o2iImpl}
-          ${inputIndicesHelper.i2oImpl}
+        for (let k = 0, l = 0; k < inputRank; k++) {
+          // if this axis is reduced
+          if (reduceOnAllAxes || axes.indexOf(k) >= 0) {
+            if (keepDims) {
+              l++;
+            }
+            // loop over the d-th axis
+            reduceOps = `for(var j${k}: u32 = 0; j${k} < ${inputShape[k]}; j${k}++) {
+                  ${ops[2].includes('last_index') ? `let last_index = j${k};` : ''}
+                  ${input.indicesSet('input_indices', k, `j${k}`)}
+                  ${reduceOps}
+                }`;
+          } else {
+            idxCopy.push(`${input.indicesSet('input_indices', k, output.indicesGet('output_indices', l))};`);
+            l++;
+          }
+        }
+        return `
 
-          ${shaderHelper.mainStart()}
-          ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-          ${inputIndicesHelper.indicesVariableDeclaration('inputIndices')}
-          ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
-          ${outputIndicesHelper.o2iCall('global_idx', 'outputIndices')}
+        ${shaderHelper.registerUniform('output_size', 'u32').declareVariables(input, output)}
 
-          var value = ${dataType}(0);
+        ${shaderHelper.mainStart()}
+          ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
+          var input_indices: ${input.type.indices};
+          let output_indices = ${output.offsetToIndices('global_idx')};
 
           ${idxCopy.join('\n')}
           ${ops[0]}       // init ops for reduce max/min
-          ${initInputIdx}
           ${ops[1]}
           ${reduceOps}
-          ${ops[3]}       // final computation for reduce mean
-          output[global_idx] = value;
+          ${ops[3]}
+          ${ops.length === 4 ? output.setByOffset('global_idx', 'value') : ops.slice(4).join('\n')}
         }`;
+      };
 
       return {
-        ...metadata,
+        name,
+        shaderCache,
         getShaderSource,
-        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
-        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
+        getRunData: () => ({
+          outputs: [{dims: outputShape, dataType: outputDataType}],
+          dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
+          programUniforms: [
+            {type: 'uint32', data: outputSize}, ...createTensorShapeVariables(inputShape),
+            ...createTensorShapeVariables(outputShape)
+          ]
+        }),
       };
     };
 
-const createReduceAttributesFromInputs =
+export const createReduceAttributesFromInputs =
     (inputs: readonly TensorView[], attributes: ReduceAttributes): ReduceAttributes => {
       const axes: number[] = [];
       if (inputs[1].dims[0] > 0) {
@@ -116,111 +118,257 @@ const createReduceAttributesFromInputs =
           {axes, keepDims: attributes.keepDims, noopWithEmptyAxes: attributes.noopWithEmptyAxes});
     };
 
-const createReduceProgramInfoLoader =
-    (inputs: readonly TensorView[], name: string, attributes: ReduceAttributes, reduceOp: ReduceOp):
-        ProgramInfoLoader => {
-          const updatedAttributes: ReduceAttributes =
-              inputs.length === 1 ? attributes : createReduceAttributesFromInputs(inputs, attributes);
-          const metadata:
-              ProgramMetadata = {name, inputTypes: [GpuDataType.default], cacheHint: updatedAttributes.cacheKey};
-          return {
-            ...metadata,
-            get: () => createReduceProgramInfo(
-                metadata, [inputs[0]], updatedAttributes,
-                updatedAttributes.noopWithEmptyAxes && updatedAttributes.axes.length === 0 ? noOp : reduceOp)
-          };
-        };
+const runReduceProgram =
+    (context: ComputeContext, name: string, attributes: ReduceAttributes, reduceOp: ReduceOp): void => {
+      const inputs = context.inputs;
+      const updatedAttributes: ReduceAttributes =
+          inputs.length === 1 ? attributes : createReduceAttributesFromInputs(inputs, attributes);
 
-export const reduceLogSum = (context: ComputeContext, attributes: ReduceAttributes): void => {
+      context.compute(
+          createReduceProgramInfo(
+              name, {hint: updatedAttributes.cacheKey, inputDependencies: ['rank']}, [inputs[0]],
+              updatedAttributes.noopWithEmptyAxes && updatedAttributes.axes.length === 0 ? noOp : reduceOp,
+              updatedAttributes.axes, inputs[0].dataType, updatedAttributes.keepDims,
+              updatedAttributes.noopWithEmptyAxes),
+          {inputs: [0]});
+    };
+
+const reduceLogSumNaive = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
-  const reduceOp: ReduceOp = (): string[] => ['value = 0.0;', '', 'value += _A[inputIdx];', 'value = log(value);'];
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceLogSum', attributes, reduceOp), {inputs: [0]});
+  const reduceOp: ReduceOp = (input, output) =>
+      [`var value = ${output.type.storage}(0);`,
+       '',
+       `value += ${input.getByIndices('input_indices')};`,
+       'value = log(value);',
+  ];
+  runReduceProgram(context, 'ReduceLogSum', attributes, reduceOp);
+};
+
+const reduceL1Naive = (context: ComputeContext, attributes: ReduceAttributes): void => {
+  validateInputs(context.inputs);
+  const reduceOp: ReduceOp = (input, output) =>
+      [`var value = ${output.type.storage}(0);`,
+       '',
+       `value += abs(${input.getByIndices('input_indices')});`,
+       '',
+  ];
+  runReduceProgram(context, 'ReduceL1', attributes, reduceOp);
+};
+
+const reduceL2Naive = (context: ComputeContext, attributes: ReduceAttributes): void => {
+  validateInputs(context.inputs);
+  const reduceOp: ReduceOp = (input, output) =>
+      [`var t = ${output.type.value}(0); var value = ${output.type.value}(0);`,
+       '',
+       `t = ${input.getByIndices('input_indices')}; value += (t * t);`,
+       'value = sqrt(value);',
+  ];
+  runReduceProgram(context, 'ReduceL2', attributes, reduceOp);
+};
+
+const reduceLogSumExpNaive = (context: ComputeContext, attributes: ReduceAttributes): void => {
+  validateInputs(context.inputs);
+  const reduceOp: ReduceOp = (input, output) =>
+      [`var value = ${output.type.storage}(0);`,
+       '',
+       `value += exp(${input.getByIndices('input_indices')});`,
+       'value = log(value);',
+  ];
+  runReduceProgram(context, 'ReduceLogSumExp', attributes, reduceOp);
+};
+
+const reduceMaxNaive = (context: ComputeContext, attributes: ReduceAttributes): void => {
+  validateInputs(context.inputs);
+  const reduceOp: ReduceOp = (input, _output, axes) => {
+    const idxZero = [];
+    for (let k = 0; k < input.rank; k++) {
+      if (axes.indexOf(k) >= 0 || axes.length === 0) {
+        idxZero.push(input.indicesSet('input_indices', k, 0));
+      }
+    }
+
+    return [
+      `${idxZero.join('\n')}`,
+      `var value = ${input.getByIndices('input_indices')};`,
+      `value = max(value, ${input.getByIndices('input_indices')});`,
+      '',
+    ];
+  };
+  runReduceProgram(context, 'ReduceMax', attributes, reduceOp);
+};
+
+const reduceMeanNaive = (context: ComputeContext, attributes: ReduceAttributes): void => {
+  validateInputs(context.inputs);
+  const reduceOp: ReduceOp = (input, output, axes) => {
+    let size = 1.0;
+    for (let k = 0; k < input.rank; k++) {
+      if (axes.indexOf(k) >= 0 || axes.length === 0) {
+        // TODO: this depends on the input dims. If we want to use uniform, this need to be updated.
+        size *= context.inputs[0].dims[k];
+      }
+    }
+
+    return [
+      'var sum = f32(0);',
+      '',
+      `sum += f32(${input.getByIndices('input_indices')});`,
+      `let value = ${output.type.value}(sum / ${size});`,
+    ];
+  };
+  runReduceProgram(context, 'ReduceMean', attributes, reduceOp);
+};
+
+const reduceMinNaive = (context: ComputeContext, attributes: ReduceAttributes): void => {
+  validateInputs(context.inputs);
+  const reduceOp: ReduceOp = (input, _output, axes) => {
+    const idxZero = [];
+    for (let k = 0; k < input.rank; k++) {
+      if (axes.indexOf(k) >= 0 || axes.length === 0) {
+        idxZero.push(`input_indices[${k}] = 0;`);  // first element
+      }
+    }
+
+    return [
+      `${idxZero.join('\n')}`,
+      `var value = ${input.getByIndices('input_indices')};`,
+      `value = min(value, ${input.getByIndices('input_indices')});`,
+      '',
+    ];
+  };
+  runReduceProgram(context, 'ReduceMin', attributes, reduceOp);
+};
+
+const reduceProdNaive = (context: ComputeContext, attributes: ReduceAttributes): void => {
+  validateInputs(context.inputs);
+  const reduceOp: ReduceOp = (input, output) =>
+      [`var value = ${output.type.storage}(1);`,
+       '',
+       `value *= ${input.getByIndices('input_indices')};`,
+       '',
+  ];
+  runReduceProgram(context, 'ReduceProd', attributes, reduceOp);
+};
+
+const reduceSumNaive = (context: ComputeContext, attributes: ReduceAttributes): void => {
+  validateInputs(context.inputs);
+  const reduceOp: ReduceOp = (input, output) =>
+      [`var value = ${output.type.storage}(0);`,
+       '',
+       `value += ${input.getByIndices('input_indices')};`,
+       '',
+  ];
+  runReduceProgram(context, 'ReduceSum', attributes, reduceOp);
+};
+
+const reduceSumSquareNaive = (context: ComputeContext, attributes: ReduceAttributes): void => {
+  validateInputs(context.inputs);
+  const reduceOp: ReduceOp = (input, output) =>
+      [`var t = ${output.type.value}(0); var value = ${output.type.value}(0);`,
+       '',
+       `t = ${input.getByIndices('input_indices')}; value += t * t;`,
+       '',
+  ];
+  runReduceProgram(context, 'ReduceSumSquare', attributes, reduceOp);
+};
+
+const useNaiveReduceMethod =
+    (shape: readonly number[], axes: readonly number[], noopWithEmptyAxes: boolean): boolean => {
+      if (axes.length === 0) {
+        return noopWithEmptyAxes;
+      }
+
+      let outputSize = 1;
+      let reduceSize = 1;
+      for (let dim = 0; dim < axes.length; dim++) {
+        if (axes.indexOf(dim) === -1) {
+          outputSize *= shape[dim];
+        } else {
+          reduceSize *= shape[dim];
+        }
+      }
+
+      // The condition data is very rough, although considering the count of Execution Unit (EU), the potential
+      // work groups in a EU and the counts of loops in the naive and shared methods, also doing experiments
+      // on some machines.
+      return reduceSize < 32 && outputSize > 1024;
+    };
+
+export const reduceMean = (context: ComputeContext, attributes: ReduceAttributes): void => {
+  if (useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes)) {
+    reduceMeanNaive(context, attributes);
+  } else {
+    reduceMeanShared(context, attributes);
+  }
 };
 
 export const reduceL1 = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  validateInputs(context.inputs);
-  const reduceOp: ReduceOp = (): string[] => ['value = 0.0;', '', 'value += abs(_A[inputIdx]);', ''];
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceL1', attributes, reduceOp), {inputs: [0]});
+  if (useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes)) {
+    reduceL1Naive(context, attributes);
+  } else {
+    reduceL1Shared(context, attributes);
+  }
 };
 
 export const reduceL2 = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  validateInputs(context.inputs);
-  const reduceOp: ReduceOp = ():
-      string[] => ['var t = f32(0); value = 0.0;', '', 't = _A[inputIdx]; value += (t * t);', 'value = sqrt(value);'];
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceL2', attributes, reduceOp), {inputs: [0]});
+  if (useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes)) {
+    reduceL2Naive(context, attributes);
+  } else {
+    reduceL2Shared(context, attributes);
+  }
 };
 
 export const reduceLogSumExp = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  validateInputs(context.inputs);
-  const reduceOp: ReduceOp = (): string[] => ['value = 0.0;', '', 'value += exp(_A[inputIdx]);', 'value = log(value);'];
-  context.compute(
-      createReduceProgramInfoLoader(context.inputs, 'ReduceLogSumExp', attributes, reduceOp), {inputs: [0]});
+  if (useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes)) {
+    reduceLogSumExpNaive(context, attributes);
+  } else {
+    reduceLogSumExpShared(context, attributes);
+  }
 };
 
 export const reduceMax = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  validateInputs(context.inputs);
-  const reduceOp: ReduceOp = (inputs: TensorView[], axes: number[]): string[] => {
-    const idxZero = [];
-    for (let k = 0; k < inputs[0].dims.length; k++) {
-      if (axes.indexOf(k) >= 0 || axes.length === 0) {
-        idxZero.push(`inputIndices[${k}] = 0;`);  // first element
-      }
-    }
-
-    return [`${idxZero.join('\n')}`, 'value = _A[inputIdx];', 'value = max(value, _A[inputIdx]);', ''];
-  };
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMax', attributes, reduceOp), {inputs: [0]});
-};
-
-export const reduceMean = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  validateInputs(context.inputs);
-  const reduceOp: ReduceOp = (inputs: TensorView[], axes: number[]): string[] => {
-    let size = 1.0;
-    for (let k = 0; k < inputs[0].dims.length; k++) {
-      if (axes.indexOf(k) >= 0 || axes.length === 0) {
-        size *= inputs[0].dims[k];
-      }
-    }
-
-    return ['value = 0.0;', '', 'value += _A[inputIdx];', `value = value / ${size}.;`];  // ensure real number with `.`
-  };
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMean', attributes, reduceOp), {inputs: [0]});
+  if (useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes)) {
+    reduceMaxNaive(context, attributes);
+  } else {
+    reduceMaxShared(context, attributes);
+  }
 };
 
 export const reduceMin = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  validateInputs(context.inputs);
-  const reduceOp: ReduceOp = (inputs: TensorView[], axes: number[]): string[] => {
-    const idxZero = [];
-    for (let k = 0; k < inputs[0].dims.length; k++) {
-      if (axes.indexOf(k) >= 0 || axes.length === 0) {
-        idxZero.push(`inputIndices[${k}] = 0;`);  // first element
-      }
-    }
-
-    return [`${idxZero.join('\n')}`, 'value = _A[inputIdx];', 'value = min(value, _A[inputIdx]);', ''];
-  };
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMin', attributes, reduceOp), {inputs: [0]});
+  if (useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes)) {
+    reduceMinNaive(context, attributes);
+  } else {
+    reduceMinShared(context, attributes);
+  }
 };
 
 export const reduceProd = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  validateInputs(context.inputs);
-  const reduceOp: ReduceOp = (): string[] => ['value = 1.0;', '', 'value *= _A[inputIdx];', ''];
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceProd', attributes, reduceOp), {inputs: [0]});
+  if (useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes)) {
+    reduceProdNaive(context, attributes);
+  } else {
+    reduceProdShared(context, attributes);
+  }
 };
 
 export const reduceSum = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  validateInputs(context.inputs);
-  const reduceOp: ReduceOp = (): string[] => ['value = 0.0;', '', 'value += _A[inputIdx];', ''];
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceSum', attributes, reduceOp), {inputs: [0]});
+  if (useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes)) {
+    reduceSumNaive(context, attributes);
+  } else {
+    reduceSumShared(context, attributes);
+  }
 };
 
 export const reduceSumSquare = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  validateInputs(context.inputs);
-  const reduceOp: ReduceOp =
-      (): string[] => ['var t = f32(0); value = 0.0;', '', 't = _A[inputIdx]; value += t * t;', ''];
-  context.compute(
-      createReduceProgramInfoLoader(context.inputs, 'ReduceSumSquare', attributes, reduceOp), {inputs: [0]});
+  if (useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes)) {
+    reduceSumSquareNaive(context, attributes);
+  } else {
+    reduceSumSquareShared(context, attributes);
+  }
 };
 
-export const parseReduceAttributes = (attributes: Record<string, unknown>): ReduceAttributes =>
-    createAttributeWithCacheKey(attributes as Omit<ReduceAttributes, keyof AttributeWithCacheKey>);
+export const reduceLogSum = (context: ComputeContext, attributes: ReduceAttributes): void => {
+  if (useNaiveReduceMethod(context.inputs[0].dims, attributes.axes, attributes.noopWithEmptyAxes)) {
+    reduceLogSumNaive(context, attributes);
+  } else {
+    reduceLogSumShared(context, attributes);
+  }
+};

@@ -5,6 +5,7 @@ using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -24,8 +25,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="namedOnnxValue"></param>
         /// <param name="metadata"></param>
-        /// <param name="disposables"></param>
-        /// <returns></returns>
+        /// <returns>OrtValye created accoding to the metadata</returns>
         internal static OrtValue CreateProjection(NamedOnnxValue namedOnnxValue, NodeMetadata metadata)
         {
             OrtValue result;
@@ -67,8 +67,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="namedOnnxValue">NamedOnnxValue containing a IEnumerable<NameOnnValue></param>
         /// <param name="metadata">sequence metadata</param>
-        /// <param name="disposables">cleanup list</param>
-        /// <returns></returns>
+        /// <returns>OrtValue that represents a sequence</returns>
         /// <exception cref="OnnxRuntimeException"></exception>
         private static OrtValue CreateSequenceProjection(NamedOnnxValue namedOnnxValue, NodeMetadata metadata)
         {
@@ -84,8 +83,8 @@ namespace Microsoft.ML.OnnxRuntime
                 capacity = collection.Count;
             }
 
-            // Record all the ortValues belonging to the sequence locally
-            using (var sequenceOrtValues = new DisposableList<OrtValue>(capacity))
+            DisposableList<OrtValue> sequenceOrtValues = new(capacity);
+            try
             {
                 foreach (var element in seqContainer)
                 {
@@ -97,7 +96,12 @@ namespace Microsoft.ML.OnnxRuntime
 
                     sequenceOrtValues.Add(CreateProjection(element, elementMeta));
                 }
-                return OrtValue.CreateSequence(sequenceOrtValues);
+                return OrtValue.CreateSequence(ref sequenceOrtValues);
+            }
+            catch(Exception)
+            {
+                sequenceOrtValues?.Dispose();
+                throw;
             }
         }
 
@@ -107,7 +111,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="node"></param>
         /// <param name="elementMeta"></param>
-        /// <param name="disposables"></param>
         /// <returns>OrtValue</returns>
         /// <exception cref="OnnxRuntimeException"></exception>
         private static OrtValue CreateMapProjection(NamedOnnxValue node, NodeMetadata elementMeta)
@@ -123,9 +126,13 @@ namespace Microsoft.ML.OnnxRuntime
                     $"Node: {node.Name} onnxruntime only supports maps with primitive types values");
             }
 
-            TensorBase keys = node.GetDictionaryKeys();
-            using (OrtValue ortValueKeys = OrtValue.CreateFromTensorObject(keys, out TensorElementType elementTypeKeys))
+            Span<OrtValue> ortValues = new OrtValue[2];
+            var disposableGuard = new DisposableArray<OrtValue>(ortValues);
+            try
             {
+                TensorBase keys = node.GetDictionaryKeys();
+                ortValues[0] = OrtValue.CreateFromTensorObject(keys, out TensorElementType elementTypeKeys);
+
                 if (elementTypeKeys != mapMeta.KeyDataType)
                 {
                     throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
@@ -133,39 +140,40 @@ namespace Microsoft.ML.OnnxRuntime
                 }
 
                 TensorBase values = node.GetDictionaryValues();
-                using (OrtValue ortValueValues = OrtValue.CreateFromTensorObject(values, out TensorElementType elementTypeValues))
+                ortValues[1] = OrtValue.CreateFromTensorObject(values, out TensorElementType elementTypeValues);
+                if (elementTypeValues != mapValuesMeta.ElementDataType)
                 {
-                    if (elementTypeValues != mapValuesMeta.ElementDataType)
-                    {
-                        throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
-                                                       $"Map value data type supplied: {elementTypeValues} metadata expected: {mapValuesMeta.ElementDataType}");
-                    }
-
-                    // Create Map OrtValue
-                    return OrtValue.CreateMap(ortValueKeys, ortValueValues);
+                    throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
+                                                   $"Map value data type supplied: {elementTypeValues} metadata expected: {mapValuesMeta.ElementDataType}");
                 }
+
+                // Create Map OrtValue
+                return OrtValue.CreateMap(ref ortValues[0], ref ortValues[1]);
+            }
+            catch (Exception)
+            {
+                disposableGuard.Dispose();
+                throw;
             }
         }
-
 
         /// <summary>
         /// This pins memory that is contained within DenseTensor.
         /// </summary>
         /// <param name="node">NodeOnnxValue containing DenseTensor</param>
         /// <param name="elementMeta"></param>
-        /// <param name="disposables">cleanup list</param>
         /// <returns></returns>
         /// <exception cref="OnnxRuntimeException"></exception>
         private static OrtValue CreateTensorProjection(NamedOnnxValue node, NodeMetadata elementMeta)
         {
-            if (!(node.Value is TensorBase))
+            if (node.Value is not TensorBase)
             {
                 throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
                     $"NamedOnnxValue contains: {node.Value.GetType()}, expecting a Tensor<T>");
             }
 
             OrtValue ortValue = OrtValue.CreateFromTensorObject(node.Value as TensorBase, out TensorElementType elementType);
-            try 
+            try
             {
                 if (elementType != elementMeta.ElementDataType)
                 {
@@ -173,7 +181,7 @@ namespace Microsoft.ML.OnnxRuntime
                         $"Tensor element data type discovered: {elementType} metadata expected: {elementMeta.ElementDataType}");
                 }
             }
-            catch(Exception)
+            catch (Exception)
             {
                 ortValue.Dispose();
                 throw;

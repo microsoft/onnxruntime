@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <string>
+#include <filesystem>
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -172,7 +173,9 @@ TEST(QnnEP, TestDisableCPUFallback_ConflictingConfig) {
 // The models passed to this function are subgraphs extracted from a larger model that exhibited
 // shape inferencing issues on QNN. Thus, the models are expected to have a specific input/output
 // types and shapes.
-static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp) {
+static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bool enable_qnn_saver = false,
+                               std::string htp_graph_finalization_opt_mode = "",
+                               std::string qnn_context_priority = "") {
   Ort::SessionOptions so;
 
   // Ensure all type/shape inference warnings result in errors!
@@ -183,9 +186,23 @@ static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp) {
 
 #if defined(_WIN32)
   options["backend_path"] = use_htp ? "QnnHtp.dll" : "QnnCpu.dll";
+  if (enable_qnn_saver) {
+    options["qnn_saver_path"] = "QnnSaver.dll";
+  }
 #else
   options["backend_path"] = use_htp ? "libQnnHtp.so" : "libQnnCpu.so";
+  if (enable_qnn_saver) {
+    options["qnn_saver_path"] = "libQnnSaver.so";
+  }
 #endif
+
+  if (!htp_graph_finalization_opt_mode.empty()) {
+    options["htp_graph_finalization_optimization_mode"] = std::move(htp_graph_finalization_opt_mode);
+  }
+
+  if (!qnn_context_priority.empty()) {
+    options["qnn_context_priority"] = std::move(qnn_context_priority);
+  }
 
   so.AppendExecutionProvider("QNN", options);
 
@@ -226,7 +243,7 @@ static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp) {
   auto typeshape = ort_output.GetTensorTypeAndShapeInfo();
   std::vector<int64_t> output_shape = typeshape.GetShape();
 
-  ASSERT_THAT(output_shape, ::testing::ElementsAre(1, 6, 7, 10));
+  EXPECT_THAT(output_shape, ::testing::ElementsAre(1, 6, 7, 10));
 }
 
 // Test shape inference of NHWC Resize operator (opset 11) that uses
@@ -253,6 +270,23 @@ TEST_F(QnnCPUBackendTests, TestNHWCResizeShapeInference_sizes_opset18) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx", false);
 }
 
+// Test that QNN Saver generates the expected files for a model meant to run on the QNN CPU backend.
+TEST_F(QnnCPUBackendTests, QnnSaver_OutputFiles) {
+  const std::filesystem::path qnn_saver_output_dir = "saver_output";
+
+  // Remove pre-existing QNN Saver output files. Note that fs::remove_all() can handle non-existing paths.
+  std::filesystem::remove_all(qnn_saver_output_dir);
+  ASSERT_FALSE(std::filesystem::exists(qnn_saver_output_dir));
+
+  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx",
+                     false,  // use_htp
+                     true);  // enable_qnn_saver
+
+  // Check that QNN Saver output files exist.
+  EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "saver_output.c"));
+  EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "params.bin"));
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Test shape inference of QDQ NHWC Resize operator (opset 18) that uses
@@ -260,8 +294,121 @@ TEST_F(QnnCPUBackendTests, TestNHWCResizeShapeInference_sizes_opset18) {
 TEST_F(QnnHTPBackendTests, TestNHWCResizeShapeInference_qdq_sizes_opset18) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx", true);
 }
-#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
+// Test that QNN Saver generates the expected files for a model meant to run on the QNN HTP backend.
+TEST_F(QnnHTPBackendTests, QnnSaver_OutputFiles) {
+  const std::filesystem::path qnn_saver_output_dir = "saver_output";
+
+  // Remove pre-existing QNN Saver output files. Note that fs::remove_all() can handle non-existing paths.
+  std::filesystem::remove_all(qnn_saver_output_dir);
+  ASSERT_FALSE(std::filesystem::exists(qnn_saver_output_dir));
+
+  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx",
+                     true,   // use_htp
+                     true);  // enable_qnn_saver
+
+  // Check that QNN Saver output files exist.
+  EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "saver_output.c"));
+  EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "params.bin"));
+}
+
+// Test that models run with various HTP graph finalization optimization modes.
+TEST_F(QnnHTPBackendTests, HTPGraphFinalizationOptimizationModes) {
+  constexpr std::array<const char*, 5> graph_opt_modes = {"",    // No explicit mode specified
+                                                          "0",   // Explicit default mode
+                                                          "1",   // Mode 1
+                                                          "2",   // Mode 2
+                                                          "3"};  // Mode 3
+  for (auto mode : graph_opt_modes) {
+    RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
+                       true,   // use_htp
+                       false,  // enable_qnn_saver
+                       mode);  // htp_graph_finalization_opt_mode
+  }
+}
+
+// Test that models run with high QNN context priority.
+TEST_F(QnnHTPBackendTests, QnnContextPriorityHigh) {
+  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
+                     true,     // use_htp
+                     false,    // enable_qnn_saver
+                     "",       // htp_graph_finalization_opt_mode
+                     "high");  // qnn_context_priority
+}
+
+// Create a model with Case + Add (quantized)
+// cast_input -> Cast -> Q -> DQ \
+//                                Add -> Q -> DQ -> output
+//             input2 -> Q -> DQ /
+static GetTestModelFn BuildCastAddTestCase() {
+  return [](ModelTestBuilder& builder) {
+    // Creat Cast node int32 -> float32
+    NodeArg* cast_input = MakeTestInput(builder, TestInputDef<int32_t>({2, 3}, false, {0, 1, 0, 1, 0, 1}));
+
+    auto* cast_output = builder.MakeIntermediate();
+    Node& cast_node = builder.AddNode("Cast", {cast_input}, {cast_output});
+    cast_node.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT));
+
+    // Create Add node
+    std::vector<float> data = {0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f};
+    gsl::span<float> data_range = gsl::make_span(data);
+    QuantParams<uint8_t> q_parameter = GetDataQuantParams<uint8_t>(data_range);
+    auto* add_input1_qdq = AddQDQNodePair<uint8_t>(builder, cast_output, q_parameter.scale, q_parameter.zero_point);
+
+    NodeArg* add_input2 = MakeTestInput(builder, TestInputDef<float>({2, 3}, false, data));
+    auto* add_input2_qdq = AddQDQNodePair<uint8_t>(builder, add_input2, q_parameter.scale, q_parameter.zero_point);
+
+    auto* add_output = builder.MakeIntermediate();
+
+    builder.AddNode("Add", {add_input1_qdq, add_input2_qdq}, {add_output});
+
+    // add_output -> Q -> DQ -> output
+    AddQDQNodePairWithOutputAsGraphOutput<uint8_t>(builder, add_output, q_parameter.scale, q_parameter.zero_point);
+  };
+}
+
+// Test that models with 2 inputs which has different data type can still generate the context binary
+TEST_F(QnnHTPBackendTests, QnnContextBinaryGeneration2InputTypes) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["qnn_context_cache_enable"] = "1";
+  const std::string context_binary_file = "./qnn_context_binary_int32_fp32_inputs_test.onnx";
+  provider_options["qnn_context_cache_path"] = context_binary_file;
+
+  RunQnnModelTest(BuildCastAddTestCase(),
+                  provider_options,
+                  13,  // opset
+                  ExpectedEPNodeAssignment::All,
+                  1e-5f,
+                  logging::Severity::kERROR,
+                  false);
+
+  // Make sure the Qnn context cache binary file is generated
+  EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
+}
+
+// A repro of QC case 06838696, accuracy issue for Cast + Op (quantized)
+// the value pair(1, 0.00392156886) at index #1 don't match,
+// which is -0.996078 from 1
+TEST_F(QnnHTPBackendTests, DISABLED_CastAddHTPAccuracyTest) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  RunQnnModelTest(BuildCastAddTestCase(),
+                  provider_options,
+                  13,  // opset
+                  ExpectedEPNodeAssignment::All);
+}
+
+#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace test

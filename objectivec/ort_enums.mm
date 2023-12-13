@@ -4,6 +4,7 @@
 #import "ort_enums_internal.h"
 
 #include <algorithm>
+#include <optional>
 
 #import "cxx_api.h"
 
@@ -39,13 +40,13 @@ constexpr ValueTypeInfo kValueTypeInfos[]{
 struct TensorElementTypeInfo {
   ORTTensorElementDataType type;
   ONNXTensorElementDataType capi_type;
-  size_t element_size;
+  std::optional<size_t> element_size;
 };
 
 // supported ORT tensor element data types
 // define the mapping from ORTTensorElementDataType to C API ONNXTensorElementDataType here
 constexpr TensorElementTypeInfo kElementTypeInfos[]{
-    {ORTTensorElementDataTypeUndefined, ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, 0},
+    {ORTTensorElementDataTypeUndefined, ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED, std::nullopt},
     {ORTTensorElementDataTypeFloat, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, sizeof(float)},
     {ORTTensorElementDataTypeInt8, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, sizeof(int8_t)},
     {ORTTensorElementDataTypeUInt8, ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, sizeof(uint8_t)},
@@ -53,6 +54,7 @@ constexpr TensorElementTypeInfo kElementTypeInfos[]{
     {ORTTensorElementDataTypeUInt32, ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32, sizeof(uint32_t)},
     {ORTTensorElementDataTypeInt64, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, sizeof(int64_t)},
     {ORTTensorElementDataTypeUInt64, ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64, sizeof(uint64_t)},
+    {ORTTensorElementDataTypeString, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING, std::nullopt},
 };
 
 struct GraphOptimizationLevelInfo {
@@ -119,9 +121,11 @@ ORTTensorElementDataType CAPIToPublicTensorElementType(ONNXTensorElementDataType
 size_t SizeOfCAPITensorElementType(ONNXTensorElementDataType capi_type) {
   return SelectAndTransform(
       kElementTypeInfos,
-      [capi_type](const auto& type_info) { return type_info.capi_type == capi_type; },
-      [](const auto& type_info) { return type_info.element_size; },
-      "unsupported tensor element type");
+      [capi_type](const auto& type_info) {
+        return type_info.element_size.has_value() && type_info.capi_type == capi_type;
+      },
+      [](const auto& type_info) { return *type_info.element_size; },
+      "unsupported tensor element type or tensor element type does not have a known size");
 }
 
 GraphOptimizationLevel PublicToCAPIGraphOptimizationLevel(ORTGraphOptimizationLevel opt_level) {

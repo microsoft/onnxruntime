@@ -43,7 +43,7 @@ def custom_activation(scope, operator, container):
 
 
 class TestInferenceSessionKeras(unittest.TestCase):
-    def testRunModelConv(self):  # noqa: N802
+    def test_run_model_conv(self):
         # keras model
         N, C, H, W = 2, 3, 5, 5  # noqa: N806
         x = np.random.rand(N, H, W, C).astype(np.float32, copy=False)

@@ -25,9 +25,9 @@ def parse_args():
     return args
 
 
-def run_gh_pr_command(command: typing.List[str]):
+def run_gh_pr_command(command: typing.List[str], check=True):
     try:
-        return subprocess.run(["gh", "pr", *command], capture_output=True, text=True, check=True)
+        return subprocess.run(["gh", "pr", *command], capture_output=True, text=True, check=check)
     except subprocess.CalledProcessError as cpe:
         print(cpe)
         print(cpe.stderr)
@@ -51,12 +51,27 @@ def main():
                 print(f"PR {pr_id} is not OPEN. Currently in state {pieces[1]}.")
                 sys.exit(-1)
 
+    print("Check passed pipelines")
+    gh_out = run_gh_pr_command(["checks", pr_id, "--required"], check=False)
+    # output format is a tab separated list of columns:
+    # (pipeline name) "\t" (status) "\t" (ran time) "\t" (url)
+    checked_pipelines = [
+        columns[0]
+        for columns in (line.strip().split("\t") for line in gh_out.stdout.split("\n"))
+        if len(columns) == 4 and columns[1] == "pass"
+    ]
+
     print("Adding azp run commands")
 
     # Current pipelines. These change semi-frequently and may need updating.
+    #
+    # Note: there is no easy way to get the list for azp "required" pipelines before they starts.
+    #       we need to maintain this list manually.
+    #
     pipelines = [
         # windows
         "Windows ARM64 QNN CI Pipeline",
+        "Windows x64 QNN CI Pipeline",
         "Windows CPU CI Pipeline",
         "Windows GPU CI Pipeline",
         "Windows GPU TensorRT CI Pipeline",
@@ -78,7 +93,14 @@ def main():
         # checks
         "onnxruntime-python-checks-ci-pipeline",
         "onnxruntime-binary-size-checks-ci-pipeline",
+        # not currently required, but running ensures we're hitting all mobile platforms
+        "Android CI Pipeline",
+        "iOS CI Pipeline",
+        "ONNX Runtime React Native CI Pipeline",
     ]
+
+    # remove pipelines that have already run successfully
+    pipelines = [p for p in pipelines if p not in checked_pipelines]
 
     # azp run is limited to 10 pipelines at a time
     max_pipelines_per_comment = 10

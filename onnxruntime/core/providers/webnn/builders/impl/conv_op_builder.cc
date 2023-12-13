@@ -49,9 +49,8 @@ common::Status SetConvBaseOptions(ModelBuilder& model_builder,
   NodeAttrHelper helper(node);
   const auto group = helper.Get("group", static_cast<int32_t>(1));
   const auto& input_defs = node.InputDefs();
-  const auto& weight_tensor = *model_builder.GetInitializerTensors().at(input_defs[1]->Name());
-  const auto& weight_shape = weight_tensor.dims();
-
+  std::vector<int64_t> weight_shape;
+  ORT_RETURN_IF_NOT(GetShape(*input_defs[1], weight_shape, logger), "Cannot get weight shape");
   options.set("strides", emscripten::val::array(strides));
   options.set("dilations", emscripten::val::array(dilations));
   options.set("groups", group);
@@ -74,7 +73,10 @@ common::Status SetConvBaseOptions(ModelBuilder& model_builder,
       options.set("autoPad", emscripten::val("same-upper"));
     }
   } else {
-    options.set("padding", emscripten::val::array(pads));
+    // Permute the ONNX's pads, which is [beginning_height, beginning_width, ending_height, ending_width],
+    // while WebNN's padding is [beginning_height, ending_height, beginning_width, ending_width].
+    const std::vector<int32_t> padding{pads[0], pads[2], pads[1], pads[3]};
+    options.set("padding", emscripten::val::array(padding));
   }
 
   // Add bias if present.
@@ -249,8 +251,18 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         std::vector<int64_t> input_shape;
         ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
         for (size_t i = 0; i < 2; i++) {
-          total_padding[i] = strides[i] * (narrow<size_t>(input_shape[i + 1]) - 1) +
-                             output_padding[i] + ((kernel_shape[i] - 1) * dilations[i] + 1) - output_shape[i];
+          // Get the dimensions of H and W.
+          // For NHWC layout, the dimensions of H and W correspond to index 1 and 2.
+          // For NCHW layout, the dimensions of H and W correspond to index 2 and 3.
+          if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
+            total_padding[i] = strides[i] * (narrow<size_t>(input_shape[i + 1]) - 1) +
+                               output_padding[i] + ((kernel_shape[i] - 1) * dilations[i] + 1) - output_shape[i];
+          } else {
+            ORT_RETURN_IF_NOT(model_builder.GetPreferredLayout() == DataLayout::NCHW,
+                              "WebNN GPU backend preferred layout should be NCHW.");
+            total_padding[i] = strides[i] * (narrow<size_t>(input_shape[i + 2]) - 1) +
+                               output_padding[i] + ((kernel_shape[i] - 1) * dilations[i] + 1) - output_shape[i];
+          }
         }
         pads[0] = total_padding[0] - (total_padding[0] / 2);
         pads[1] = total_padding[0] / 2;
@@ -275,30 +287,33 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
                                       const Node& node,
-                                      const WebnnDeviceType /* device_type */,
+                                      const WebnnDeviceType device_type,
                                       const logging::Logger& logger) const {
   const auto& name = node.Name();
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
 
   const auto& weight_name = input_defs[1]->Name();
-  if (Contains(initializers, weight_name)) {
-    const auto& tensor = *initializers.at(weight_name);
-    if (tensor.dims().size() != 4) {
-      LOGS(logger, VERBOSE) << op_type << " [" << name << "] dimension: " << tensor.dims().size()
-                            << " Only conv 2d is supported.";
+  // WebNN CPU backend (XNNPACK) requires the filter operand to be a constant.
+  // https://github.com/google/XNNPACK/blob/master/src/subgraph/convolution-2d.c#L739
+  if (device_type == WebnnDeviceType::CPU) {
+    if (Contains(initializers, weight_name)) {
+      const auto& tensor = *initializers.at(weight_name);
+      if (tensor.dims().size() != 4) {
+        LOGS(logger, VERBOSE) << op_type << " [" << name << "] dimension: " << tensor.dims().size()
+                              << " Only conv 2d is supported.";
+        return false;
+      }
+    } else {
+      LOGS(logger, VERBOSE) << "The weight of " << op_type << " [" << name << "] must be known";
       return false;
     }
-  } else {
-    LOGS(logger, VERBOSE) << "The weight of " << op_type << " [" << name << "] must be known";
-    return false;
   }
-
   return true;
 }
 
 void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
+  if (op_registrations.op_builder_map.count(op_type) > 0)
     return;
 
   static std::vector<std::string> op_types =

@@ -5,6 +5,36 @@ parameters:
 - name: machine_pool
   type: string
 
+- name: extra_build_arg
+  type: string
+  default: ''
+
+- name: cmake_build_type
+  type: string
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+- name: docker_base_image
+  type: string
+  default: 'nvidia/cuda:11.8.0-cudnn8-devel-ubi8'
+  values:
+   - nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+   - nvidia/cuda:12.2.2-cudnn8-devel-ubi8
+- name: trt_version
+  type: string
+  default: '8.6.1.6-1.cuda11.8'
+  values:
+    - 8.6.1.6-1.cuda11.8
+    - 8.6.1.6-1.cuda12.0
+- name: cuda_version
+  type: string
+  default: '11.8'
+  values:
+   - 11.8
+   - 12.2
 jobs:
 - job: Linux_py_GPU_Wheels_${{ parameters.arch }}
   timeoutInMinutes: 240
@@ -13,7 +43,13 @@ jobs:
   pool: ${{ parameters.machine_pool }}
   variables:
     # The build machine pool doesn't have dotnet, so it can't run CG.
-    skipComponentGovernanceDetection: true
+    - name: skipComponentGovernanceDetection
+      value: true
+    - name: extra_build_args
+      ${{ if ne(parameters.extra_build_arg, '') }}:
+        value: -x ${{ parameters.extra_build_arg }}
+      ${{ if eq(parameters.extra_build_arg, '') }}:
+        value: ''
   steps:
     - checkout: self
       clean: true
@@ -23,10 +59,16 @@ jobs:
 
     - template: get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_8_tensorrt8_6
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
         Context: tools/ci_build/github/linux/docker
-        DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u ) --build-arg PLATFORM=${{ parameters.arch }}"
-        Repository: onnxruntimecuda118xtrt86build${{ parameters.arch }}
+        DockerBuildArgs: "
+        --network=host 
+        --build-arg BASEIMAGE=${{ parameters.docker_base_image }}
+        --build-arg TRT_VERSION=${{ parameters.trt_version }}
+        --build-arg BUILD_UID=$( id -u )
+        --build-arg PLATFORM=${{ parameters.arch }}
+        "
+        Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
 
 
     - task: Bash@3
@@ -34,8 +76,7 @@ jobs:
       inputs:
         targetType: filePath
         filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
-        # please check ONNXRUNTIME_CUDA_VERSION in tools/ci_build/github/linux/build_linux_arm64_python_package.sh
-        arguments: -i onnxruntimecuda118xtrt86build${{ parameters.arch }} -x "-d GPU"
+        arguments: -i onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }} -d "GPU" -c ${{ parameters.cmake_build_type }} $(extra_build_args)
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: ONNXRuntime python wheel'

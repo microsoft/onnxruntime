@@ -122,7 +122,7 @@ class TestModelOptimization(unittest.TestCase):
             "SkipLayerNormalization": expected_fusion_result_list[6],
         }
 
-        for _onnx_path, value in model_fusion_statistics.items():
+        for value in model_fusion_statistics.values():
             actual_node_count = value
 
         for op_type, count in expected_node_count.items():
@@ -311,7 +311,7 @@ class TestModelOptimization(unittest.TestCase):
 
 @unittest.skipUnless(is_tf_available(), "skip TestBertOptimizationTF since tensorflow is not available")
 class TestTensorflowModelOptimization(unittest.TestCase):
-    def Setup(self):  # noqa: N802
+    def setUp(self):
         try:
             import tf2onnx  # noqa: F401
         except ImportError:
@@ -354,7 +354,7 @@ class TestTensorflowModelOptimization(unittest.TestCase):
                 fusion_options,
             )
 
-        onnx_model = list(model_fusion_statistics.keys())[0]
+        onnx_model = next(iter(model_fusion_statistics.keys()))
         fusion_result_list = list(model_fusion_statistics[onnx_model].values())
 
         if validate_model:

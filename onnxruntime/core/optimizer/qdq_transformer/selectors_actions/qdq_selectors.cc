@@ -14,6 +14,12 @@
 namespace onnxruntime {
 namespace QDQ {
 namespace {
+
+constexpr bool Is16BitIntType(int32_t data_type) {
+  return (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16) ||
+         (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16);
+}
+
 // adjust for an optional input/output that has an entry but does not exist
 int NumActualValues(const Node& node, bool input) {
   const auto& defs = input ? node.InputDefs() : node.OutputDefs();
@@ -110,6 +116,17 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     return false;
   }
 
+  int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+  if (dt_input != dt_output) {
+    return false;
+  }
+
+  if (!allow_16bit_ && Is16BitIntType(dt_input)) {
+    return false;
+  }
+
   const Node& dq_node = *dq_nodes.front();
   const Node& q_node = *q_nodes.front();
 
@@ -124,7 +141,7 @@ bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                     const Node& node,
                                     const std::vector<const Node*>& dq_nodes,
                                     const std::vector<const Node*>& q_nodes) const {
-  int num_dq_inputs = NumActualValues(node, true);
+  constexpr int num_dq_inputs = 1;
   if (num_dq_inputs != gsl::narrow_cast<int>(dq_nodes.size())) {
     return false;
   }
@@ -136,6 +153,12 @@ bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
 
   (void)q_nodes;
   const Node& dq_node = *dq_nodes.front();
+  const int32_t dt_input = dq_node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+  // 16-bit int types must be explicitly allowed.
+  if (!allow_16bit_ && Is16BitIntType(dt_input)) {
+    return false;
+  }
 
   auto get_const_initializer = [&graph_viewer](const std::string& initializer_name) {
     return graph_viewer.GetConstantInitializer(initializer_name, true);
@@ -154,7 +177,16 @@ bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
   int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
-  return dt_input == dt_output;
+  if (dt_input != dt_output) {
+    return false;
+  }
+
+  // 16-bit int types must be explicitly allowed.
+  if (!allow_16bit_ && Is16BitIntType(dt_input)) {
+    return false;
+  }
+
+  return true;
 }
 
 bool BinaryNodeGroupSelector::Check(const GraphViewer& graph_viewer,
@@ -168,8 +200,18 @@ bool BinaryNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   int32_t dt_input_1 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_input_2 = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-  return dt_input_1 == dt_input_2 &&
-         dt_input_1 == dt_output;
+
+  // All input and output types must match.
+  if (dt_input_1 != dt_input_2 || dt_input_1 != dt_output) {
+    return false;
+  }
+
+  // 16-bit int types must be explicitly allowed.
+  if (!allow_16bit_ && Is16BitIntType(dt_input_1)) {
+    return false;
+  }
+
+  return true;
 }
 
 bool VariadicNodeGroupSelector::Check(const GraphViewer& graph_viewer,
@@ -194,14 +236,56 @@ bool VariadicNodeGroupSelector::Check(const GraphViewer& graph_viewer,
       return false;
     }
   }
-  return dt_input == dt_output;
+
+  if (dt_input != dt_output) {
+    return false;
+  }
+
+  // 16-bit int types must be explicitly allowed.
+  if (!allow_16bit_ && Is16BitIntType(dt_input)) {
+    return false;
+  }
+
+  return true;
 }
 
 void InputVariadicSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.num_input_defs = 1;  // set to 1 as the first input is variadic
 }
 
-void OutputVariadicSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
+bool SplitNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                   const Node& node,
+                                   const std::vector<const Node*>& dq_nodes,
+                                   const std::vector<const Node*>& q_nodes) const {
+  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, 1)) {
+    return false;
+  }
+
+  auto get_const_initializer = [&graph_viewer](const std::string& initializer_name) {
+    return graph_viewer.GetConstantInitializer(initializer_name, true);
+  };
+
+  const Node& dq_node = *dq_nodes.front();
+  int32_t dt_input = dq_node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+  // All Q outputs should have same data type and (optionally) equal quantization parameters as the input.
+  for (size_t q_idx = 0; q_idx < q_nodes.size(); q_idx++) {
+    const Node& q_node = *q_nodes[q_idx];
+
+    if (dt_input != q_node.OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type()) {
+      return false;
+    }
+
+    if (req_equal_quant_params_ &&
+        !IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath())) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+void SplitSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.num_output_defs = 1;  // set to 1 as the first output is variadic
 }
 
@@ -227,12 +311,19 @@ bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     }
   }
 
-  if (dq_nodes.size() < 3) {  // no bias
-    return true;
+  if (dq_nodes.size() == 3) {  // has bias
+    int32_t dt_bias = dq_nodes[2]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    if (dt_bias != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) {
+      return false;
+    }
   }
 
-  int32_t dt_bias = dq_nodes[2]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-  return dt_bias == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32;
+  // 16-bit int types must be explicitly allowed.
+  if (!allow_16bit_ && (Is16BitIntType(dt_input) || Is16BitIntType(dt_weight))) {
+    return false;
+  }
+
+  return true;
 }
 
 void ConvSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
@@ -254,6 +345,11 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     if (!int8_allowed_ || dt_weight != dt_input) {
       return false;
     }
+  }
+
+  // 16-bit int types must be explicitly allowed.
+  if (!allow_16bit_ && (Is16BitIntType(dt_input) || Is16BitIntType(dt_weight))) {
+    return false;
   }
 
   // potential match for QLinearMatMul or MatMulIntegerToFloat
@@ -299,6 +395,11 @@ bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     }
   }
 
+  // 16-bit int types must be explicitly allowed.
+  if (!allow_16bit_ && (Is16BitIntType(dt_A) || Is16BitIntType(dt_B))) {
+    return false;
+  }
+
   if (dq_nodes.size() < 3) {  // no bias
     return true;
   }
@@ -326,27 +427,67 @@ bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
   const int32_t dt_input_1 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   const int32_t dt_input_2 = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   const int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-  return dt_input_1 == dt_input_2 &&
-         dt_input_1 == dt_output;
+
+  // All input and output types must match.
+  if (dt_input_1 != dt_input_2 || dt_input_1 != dt_output) {
+    return false;
+  }
+
+  // 16-bit int types must be explicitly allowed.
+  if (!allow_16bit_ && Is16BitIntType(dt_input_1)) {
+    return false;
+  }
+
+  return true;
 }
 
-bool InstanceNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer,
-                                                   const Node& node,
-                                                   const std::vector<const Node*>& dq_nodes,
-                                                   const std::vector<const Node*>& q_nodes) const {
+bool PadNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
+                                 const std::vector<const Node*>& dq_nodes,
+                                 const std::vector<const Node*>& q_nodes) const {
+  // Pad can have 1 or 2 dq input, the optional input constant_value can be quantized or non-quantized.
+  // QNN supports data input quantized with constant_value input non-quantized.
+  int num_dq_inputs = static_cast<int>(dq_nodes.size());
+  if (num_dq_inputs > 2) {
+    return false;
+  }
+
+  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, num_dq_inputs)) {
+    return false;
+  }
+
+  const int32_t dt_input_1 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  const int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  if (dq_nodes.size() > 1) {
+    const int32_t dt_input_2 = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    return dt_input_1 == dt_input_2 &&
+           dt_input_1 == dt_output;
+  } else {
+    return dt_input_1 == dt_output;
+  }
+}
+
+bool InstanceAndLayerNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                                           const Node& node,
+                                                           const std::vector<const Node*>& dq_nodes,
+                                                           const std::vector<const Node*>& q_nodes) const {
   if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
     return false;
   }
 
   int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-  int32_t dt_scale = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-  int32_t dt_bias = dq_nodes[2]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_bias = 0;
+  bool has_bias = false;
+  // bias is optional for LayerNorm
+  if (dq_nodes.size() > 2) {
+    has_bias = true;
+    dt_bias = dq_nodes[2]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  }
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
-  // Input, output, and scale need to be the same type. The bias is int32.
+  // Input, output, need to be the same type. The bias is int32.
+  // Scale can be different with input for a16w8 case
   return (dt_input == dt_output) &&
-         (dt_input == dt_scale) &&
-         (dt_bias == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32);
+         (has_bias ? dt_bias == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32 : true);
 }
 
 bool BatchNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer,
@@ -384,6 +525,42 @@ bool LogicalComparisonNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   int32_t dt_input_1 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_input_2 = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   return dt_input_1 == dt_input_2;
+}
+
+bool TopKNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                  const Node& node,
+                                  const std::vector<const Node*>& dq_nodes,
+                                  const std::vector<const Node*>& q_nodes) const {
+  constexpr int num_dq_inputs = 1;
+  constexpr int num_q_outputs = 1;
+  if (num_dq_inputs != gsl::narrow_cast<int>(dq_nodes.size())) {
+    return false;
+  }
+
+  if (const auto dq_validation_status = QDQ::ValidateNodeGroupDQNodes(graph_viewer, node, dq_nodes);
+      !dq_validation_status.IsOK()) {
+    return false;
+  }
+
+  if (num_q_outputs != gsl::narrow_cast<int>(q_nodes.size())) {
+    return false;
+  }
+
+  const Node& dq_node = *dq_nodes.front();
+  const Node& q_node = *q_nodes.front();
+
+  int32_t dt_input = dq_node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_output = q_node.OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+  if (dt_input != dt_output) {
+    return false;
+  }
+
+  auto get_const_initializer = [&graph_viewer](const std::string& initializer_name) {
+    return graph_viewer.GetConstantInitializer(initializer_name, true);
+  };
+
+  return IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath());
 }
 
 }  // namespace QDQ

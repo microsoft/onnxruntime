@@ -6,12 +6,21 @@
 #include "core/providers/cuda/cuda_kernel.h"
 
 #if defined(ORT_USE_NCCL)
+#include <algorithm>
+#include <optional>
+#include <tuple>
 #include <nccl.h>
+#include <sstream>
+#include <string>
 #endif
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+#define NCCL_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(NCCL_CALL(expr))
+
+ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type);
 
 // -----------------------------------------------------------------------
 // Defines a new version of nccl classes
@@ -43,6 +52,10 @@ class NcclContext final {
 class NcclKernel : public ::onnxruntime::cuda::CudaKernel {
  public:
   explicit NcclKernel(const OpKernelInfo& info);
+
+  ncclComm_t Comm() const {
+    return nccl_->Comm();
+  }
 
  protected:
   NcclContext* nccl_ = nullptr;
@@ -80,6 +93,27 @@ class AllToAll final : public NcclKernel {
  private:
   int64_t group_size_ = -1;
 };
+
+Status FuncAllReduce(
+    ncclComm_t comm,
+    cudaStream_t stream,
+    const Tensor* input,
+    Tensor* output);
+
+void FuncAllGather(
+    const NcclKernel* nccl_kernel,
+    OpKernelContext* ctx,
+    const Tensor* input,
+    const int64_t group_size,
+    const int64_t axis,
+    Tensor* output);
+
+std::unique_ptr<Tensor> FuncAllGather(
+    const NcclKernel* nccl_kernel,
+    OpKernelContext* ctx,
+    const Tensor* input,
+    const int64_t group_size,
+    const int64_t axis);
 
 }  // namespace cuda
 }  // namespace contrib

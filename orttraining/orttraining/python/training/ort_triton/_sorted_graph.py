@@ -5,15 +5,17 @@
 
 import copy
 import itertools
-from typing import Any, Dict, List, Set
+from typing import Dict, List, Set
 
 import numpy as np
 import onnx
-from onnx import GraphProto, ModelProto, NodeProto, helper
+import sympy
+from onnx import GraphProto, ModelProto, NodeProto, TensorProto, helper
 
-from ._common import TensorInfo, TypeAndShapeInfer
+from ._common import SymbolicDSU, TensorInfo, TypeAndShapeInfer
 from ._decompose import DecomposeDispatch
 from ._op_config import is_elementwise_node
+from ._sympy_utils import parse_shape
 from ._utils import get_attribute, to_numpy_array, topological_sort
 
 
@@ -29,17 +31,20 @@ class SortedGraph:
         input_shapes: the shapes of the model inputs. Can be numeric values or symbolic values.
     """
 
-    def __init__(self, model: ModelProto, input_shapes: List[List[Any]]):
+    def __init__(self, model: ModelProto, input_shapes: List[List[sympy.Expr]]):
         self._model: ModelProto = model
         self._graph: GraphProto = model.graph
-        self._input_shapes: List[List[Any]] = input_shapes
+        self._input_shapes: List[List[sympy.Expr]] = input_shapes
 
         # For elementwise graph outputs, when we group nodes to different kernels, if the target shape is different
         # from other nodes' target shape, even it can be broadcasted, we still need to create a new kernel for it.
         self._elementwise_graph_outputs: Set[str] = set()
+        graph_output_names = [output.name for output in self._graph.output]
         for node in self._graph.node:
             if is_elementwise_node(node):
-                self._elementwise_graph_outputs.update(node.output)
+                self._elementwise_graph_outputs.update(
+                    [output for output in node.output if output in graph_output_names]
+                )
 
         # Topological sort the nodes in the graph.
         self._sorted_nodes: List[NodeProto] = topological_sort(
@@ -53,7 +58,7 @@ class SortedGraph:
         for initializer in self._graph.initializer:
             self._node_arg_infos[initializer.name] = TensorInfo(
                 initializer.data_type,
-                list(to_numpy_array(initializer).shape),
+                parse_shape(list(to_numpy_array(initializer).shape)),
             )
 
         # Decompose complex operators.
@@ -66,7 +71,7 @@ class SortedGraph:
         initializers = {}
         for initializer in self._graph.initializer:
             initializers[initializer.name] = initializer
-        self._sorted_initializers: List[TensorInfo] = []
+        self._sorted_initializers: List[TensorProto] = []
         for node in self._sorted_nodes:
             for input in node.input:
                 if input in initializers:
@@ -86,7 +91,7 @@ class SortedGraph:
         name_map = {}
         for idx, input in enumerate(self._graph.input):
             shape_str = str(self._input_shapes[idx]).replace(" ", "")
-            graph_inputs.append(f"({str(input.type.tensor_type.elem_type)},{shape_str})")
+            graph_inputs.append(f"({input.type.tensor_type.elem_type!s},{shape_str})")
             name_map[input.name] = f"i{idx}"
         graph_inputs_str = ",".join(graph_inputs)
 
@@ -127,7 +132,7 @@ class SortedGraph:
             attributes_str = ",".join(attributes)
             nodes.append(f"{node.op_type}[{attributes_str}]({inputs_str})->({outputs_str})")
         nodes_str = ",".join(nodes)
-        return f"{graph_inputs_str}|{str(len(self._graph.output))}|{constants_str}|{nodes_str}"
+        return f"{graph_inputs_str}|{len(self._graph.output)!s}|{constants_str}|{nodes_str}"
 
     def __hash__(self):
         return hash(str(self))
@@ -157,6 +162,7 @@ class SortedGraph:
 
     def _decompose(self):
         dispatch = DecomposeDispatch()
+        symbolics: SymbolicDSU = SymbolicDSU()
         pos = 0
         # If a node is complex, decompose it and insert the decomposed nodes at the same position.
         # All complex Ops are defined in DecomposeDispatch.
@@ -175,16 +181,18 @@ class SortedGraph:
                 value_attr = get_attribute(node, "value")
                 self._node_arg_infos[node.output[0]] = TensorInfo(
                     value_attr.data_type,
-                    list(to_numpy_array(value_attr).shape),
+                    parse_shape(list(to_numpy_array(value_attr).shape)),
                 )
             else:
                 input_infos = []
                 for input in node.input:
                     input_infos.append(self._node_arg_infos[input])
-                output_infos = TypeAndShapeInfer.infer(node, input_infos, self._graph)
+                output_infos = TypeAndShapeInfer.infer(node, input_infos, self._graph, symbolics)
                 for idx, output in enumerate(node.output):
                     self._node_arg_infos[output] = output_infos[idx]
             pos += 1
+        for tensor_info in self._node_arg_infos.values():
+            tensor_info.update_shape(symbolics)
 
     # Save the ONNX graphs for debug purpose. The original ONNX graph is the subgraph from backend.
     # The processed ONNX graph is the subgraph after decompose, it also contains the concrete shapes for each arg.
@@ -197,13 +205,20 @@ class SortedGraph:
         for node in itertools.chain(processed_model.graph.input, processed_model.graph.output):
             node.type.tensor_type.shape.Clear()
             for dim in self.node_arg_infos[node.name].shape:
-                node.type.tensor_type.shape.dim.add().dim_value = int(dim)
+                if dim.is_number:
+                    node.type.tensor_type.shape.dim.add().dim_value = int(dim)
+                else:
+                    node.type.tensor_type.shape.dim.add().dim_param = str(dim)
         value_infos = []
         for node in itertools.chain(self.const_nodes, self.sorted_nodes):
             for output in node.output:
                 tensor_info = self.node_arg_infos[output]
                 value_infos.append(
-                    helper.make_tensor_value_info(output, tensor_info.dtype, [int(dim) for dim in tensor_info.shape])
+                    helper.make_tensor_value_info(
+                        output,
+                        tensor_info.dtype,
+                        [int(dim) if dim.is_number else str(dim) for dim in tensor_info.shape],
+                    )
                 )
         processed_model.graph.ClearField("value_info")
         processed_model.graph.value_info.extend(value_infos)

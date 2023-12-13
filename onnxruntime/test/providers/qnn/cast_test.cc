@@ -57,12 +57,10 @@ static void RunCastOpTest(const std::vector<int64_t>& shape, ONNX_NAMESPACE::Ten
   provider_options["backend_path"] = use_htp ? "libQnnHtp.so" : "libQnnCpu.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildCastTestCase<InputType>(shape, dst_type),
                   provider_options,
                   13,  // opset
-                  expected_ep_assignment,
-                  expected_nodes_in_partition);
+                  expected_ep_assignment);
 }
 
 //

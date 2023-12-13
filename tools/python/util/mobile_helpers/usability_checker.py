@@ -8,10 +8,12 @@ import pathlib
 import tempfile
 from collections import deque
 from enum import IntEnum
+from typing import Optional
 
 import onnx
 
 from ..onnx_model_utils import (
+    ModelProtoWithShapeInfo,
     get_producer_consumer_maps,
     is_fixed_size_tensor,
     iterate_graph_per_graph_func,
@@ -188,7 +190,7 @@ def check_partitioning(
     graph: onnx.GraphProto,
     supported_ops_checker: _SupportedOpsChecker,
     require_fixed_input_sizes: bool = False,
-    value_info: dict = None,
+    value_info: Optional[dict] = None,
 ):
     """
     Estimate the partitions the graph will be split into for nodes that is_node_supported_fn returns true for.
@@ -356,13 +358,13 @@ def check_partitioning(
     return info
 
 
-def _check_ep_partitioning(model, supported_ops_config, value_info: dict = None):
+def _check_ep_partitioning(model, supported_ops_config, value_info: Optional[dict] = None):
     supported_ops = _SupportedOpsChecker(supported_ops_config)
     partition_info = check_partitioning(model.graph, supported_ops, value_info is not None, value_info)
     return partition_info
 
 
-def check_nnapi_partitions(model, value_info: dict = None):
+def check_nnapi_partitions(model, value_info: Optional[dict] = None):
     # if we're running in the ORT python package the file should be local. otherwise assume we're running from the
     # ORT repo
     script_dir = pathlib.Path(__file__).parent
@@ -376,7 +378,7 @@ def check_nnapi_partitions(model, value_info: dict = None):
     return _check_ep_partitioning(model, config_path, value_info)
 
 
-def check_coreml_partitions(model, value_info: dict = None):
+def check_coreml_partitions(model, value_info: Optional[dict] = None):
     # if we're running in the ORT python package the file should be local. otherwise assume we're running from the
     # ORT repo
     script_dir = pathlib.Path(__file__).parent
@@ -390,7 +392,7 @@ def check_coreml_partitions(model, value_info: dict = None):
     return _check_ep_partitioning(model, config_path, value_info)
 
 
-def check_shapes(graph: onnx.GraphProto, logger: logging.Logger = None):
+def check_shapes(graph: onnx.GraphProto, logger: Optional[logging.Logger] = None):
     """
     Check the shapes of graph inputs, values and graph outputs to determine if they have static or dynamic sizes.
     NNAPI and CoreML do not support dynamically sized values.
@@ -463,9 +465,9 @@ def check_shapes(graph: onnx.GraphProto, logger: logging.Logger = None):
     return dynamic_inputs, num_dynamic_values
 
 
-def checker(model_path, logger: logging.Logger):
-    model = onnx.load(model_path)
-    model_with_shape_info = onnx.shape_inference.infer_shapes(model)
+def checker(model_path: pathlib.Path, logger: logging.Logger):
+    model_with_shape_info_wrapper = ModelProtoWithShapeInfo(model_path)
+    model_with_shape_info = model_with_shape_info_wrapper.model_with_shape_info
 
     # create lookup map for efficiency
     value_to_shape = {}
@@ -522,7 +524,7 @@ def checker(model_path, logger: logging.Logger):
     return nnapi_suitability != PartitioningInfo.TryWithEP.NO or coreml_suitability != PartitioningInfo.TryWithEP.NO
 
 
-def analyze_model(model_path: pathlib.Path, skip_optimize: bool = False, logger: logging.Logger = None):
+def analyze_model(model_path: pathlib.Path, skip_optimize: bool = False, logger: Optional[logging.Logger] = None):
     """
     Analyze the provided model to determine if it's likely to work well with the NNAPI or CoreML Execution Providers
     :param model_path: Model to analyze.
@@ -540,10 +542,10 @@ def analyze_model(model_path: pathlib.Path, skip_optimize: bool = False, logger:
     with tempfile.TemporaryDirectory() as tmp:
         if not skip_optimize:
             tmp_path = pathlib.Path(tmp) / model_path.name
-            optimize_model(model_path, tmp_path)
+            optimize_model(model_path, tmp_path, use_external_initializers=True)
             model_path = tmp_path
 
-        try_eps = checker(str(model_path.resolve(strict=True)), logger)
+        try_eps = checker(model_path.resolve(strict=True), logger)
 
     return try_eps
 

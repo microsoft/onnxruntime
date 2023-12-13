@@ -212,8 +212,8 @@ def run_test_dir(model_or_dir):
         models = onnx_models + ort_models
         if len(models) > 1:
             raise ValueError(
-                "'Multiple .onnx and/or .ort files found in {}. '"
-                "'Please provide specific .onnx or .ort file as input.".format(model_dir)
+                f"'Multiple .onnx and/or .ort files found in {model_dir}. '"
+                "'Please provide specific .onnx or .ort file as input."
             )
         elif len(models) == 0:
             raise ValueError(f"'No .onnx or .ort files found in {model_dir}.")
@@ -239,7 +239,7 @@ def run_test_dir(model_or_dir):
             output_names = list(expected_outputs.keys())
             # handle case where there's a single expected output file but no name in it (empty string for name)
             # e.g. ONNX test models 20190729\opset8\tf_mobilenet_v2_1.4_224
-            if len(output_names) == 1 and output_names[0] == "":  # noqa: PLC1901
+            if len(output_names) == 1 and output_names[0] == "":
                 output_names = [o.name for o in sess.get_outputs()]
                 assert len(output_names) == 1, "There should be single output_name."
                 expected_outputs[output_names[0]] = expected_outputs[""]

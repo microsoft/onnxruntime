@@ -7,12 +7,13 @@
 
 import tempfile
 import unittest
+from importlib.util import find_spec
 from pathlib import Path
 
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import InputFeedsNegOneZeroOne, check_model_correctness, generate_random_initializer
+from op_test_utils import check_model_correctness, generate_random_initializer, input_feeds_neg_one_zero_one
 
 from onnxruntime.quantization import QuantType, StaticQuantConfig, quantize, quantize_static
 
@@ -72,7 +73,7 @@ class TestStaticQuantization(unittest.TestCase):
         cls._tmp_model_dir.cleanup()
 
     def test_save_as_external(self):
-        data_reader = InputFeedsNegOneZeroOne(10, {"input": [1, self._channel_size, 1, 3]})
+        data_reader = input_feeds_neg_one_zero_one(10, {"input": [1, self._channel_size, 1, 3]})
         for use_external_data_format in [True, False]:
             quant_model_path = str(Path(self._tmp_model_dir.name) / f"quant.{use_external_data_format}.onnx")
             quantize_static(
@@ -89,7 +90,7 @@ class TestStaticQuantization(unittest.TestCase):
             data_reader.rewind()
 
     def test_static_quant_config(self):
-        data_reader = InputFeedsNegOneZeroOne(10, {"input": [1, self._channel_size, 1, 3]})
+        data_reader = input_feeds_neg_one_zero_one(10, {"input": [1, self._channel_size, 1, 3]})
         quant_config = StaticQuantConfig(data_reader)
         quant_model_path = str(Path(self._tmp_model_dir.name) / "quant.config.onnx")
         quantize(self._model_fp32_path, quant_model_path, quant_config)
@@ -97,6 +98,25 @@ class TestStaticQuantization(unittest.TestCase):
         data_reader.rewind()
         check_model_correctness(self, self._model_fp32_path, quant_model_path, data_reader.get_next())
         data_reader.rewind()
+
+    @unittest.skip(
+        "Skip failed test in Python Packaging Test Pipeline."
+        "During importing neural_compressor, pycocotools throws ValueError: numpy.ndarray size changed"
+    )
+    def test_smooth_quant(self):
+        if not find_spec("neural_compressor"):
+            self.skipTest("skip test_smooth_quant since neural_compressor is not installed")
+        data_reader = input_feeds_neg_one_zero_one(10, {"input": [1, self._channel_size, 1, 3]})
+        quant_config = StaticQuantConfig(data_reader, extra_options={"SmoothQuant": True})
+        quant_model_path = str(Path(self._tmp_model_dir.name) / "quant.config.onnx")
+        quantize(self._model_fp32_path, quant_model_path, quant_config)
+
+        data_reader.rewind()
+        check_model_correctness(self, self._model_fp32_path, quant_model_path, data_reader.get_next())
+        data_reader.rewind()
+
+        model = onnx.load(quant_model_path)
+        self.assertIn("Mul", [i.op_type for i in model.graph.node])
 
 
 if __name__ == "__main__":

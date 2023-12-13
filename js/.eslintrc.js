@@ -5,10 +5,18 @@
 
 module.exports = {
   root: true,
-  ignorePatterns: ['**/*.js', 'node_modules/', 'types/', 'dist/'],
+  ignorePatterns: [
+    '**/*.js',
+    'node_modules/',
+    'ort-schema/',
+    'common/test/type-tests/',
+    'web/types.d.ts',
+    'test/data/',
+    'dist/',
+  ],
   env: { 'es6': true },
   parser: '@typescript-eslint/parser',
-  parserOptions: { 'project': 'tsconfig.json', 'sourceType': 'module' },
+  parserOptions: { 'project': true, 'sourceType': 'module' },
   plugins: ['@typescript-eslint', 'prefer-arrow', 'header', 'import', 'unicorn', 'jsdoc'],
   rules: {
     'unicorn/filename-case': 'error',
@@ -119,7 +127,12 @@ module.exports = {
     rules: {
       'jsdoc/check-alignment': 'error',
       'jsdoc/check-indentation': 'error',
-      'jsdoc/newline-after-description': 'error',
+    }
+  }, {
+    files: ['common/test/**/*.ts'],
+    rules: {
+      '@typescript-eslint/naming-convention': 'off',
+      'import/no-extraneous-dependencies': 'off',
     }
   }, {
     files: ['node/script/**/*.ts', 'node/test/**/*.ts', 'web/script/**/*.ts', 'web/test/**/*.ts'], rules: {
@@ -140,7 +153,54 @@ module.exports = {
     }
   }, {
     files: ['web/lib/**/*.ts'], rules: {
-      'no-underscore-dangle': 'off',
+      'no-underscore-dangle': ['error', {
+        'allow': [
+          '_free',
+          '_malloc',
+          '_JsepGetNodeName',
+          '_JsepOutput',
+          '_OrtAddFreeDimensionOverride',
+          '_OrtAddRunConfigEntry',
+          '_OrtAddSessionConfigEntry',
+          '_OrtAppendExecutionProvider',
+          '_OrtBindInput',
+          '_OrtBindOutput',
+          '_OrtClearBoundOutputs',
+          '_OrtCreateBinding',
+          '_OrtCreateRunOptions',
+          '_OrtCreateSession',
+          '_OrtCreateSessionOptions',
+          '_OrtCreateTensor',
+          '_OrtEndProfiling',
+          '_OrtFree',
+          '_OrtGetInputName',
+          '_OrtGetInputOutputCount',
+          '_OrtGetLastError',
+          '_OrtGetOutputName',
+          '_OrtGetTensorData',
+          '_OrtInit',
+          '_OrtReleaseBinding',
+          '_OrtReleaseRunOptions',
+          '_OrtReleaseSession',
+          '_OrtReleaseSessionOptions',
+          '_OrtReleaseTensor',
+          '_OrtRun',
+          '_OrtRunWithBinding',
+          '_OrtTrainingCopyParametersFromBuffer',
+          '_OrtTrainingCopyParametersToBuffer',
+          '_OrtTrainingCreateSession',
+          '_OrtTrainingEvalStep',
+          '_OrtTrainingGetModelInputOutputCount',
+          '_OrtTrainingGetModelInputOutputName',
+          '_OrtTrainingGetParametersSize',
+          '_OrtTrainingLazyResetGrad',
+          '_OrtTrainingLoadCheckpoint',
+          '_OrtTrainingOptimizerStep',
+          '_OrtTrainingReleaseCheckpoint',
+          '_OrtTrainingReleaseSession',
+          '_OrtTrainingRunTrainStep'
+        ]
+      }]
     }
   }, {
     files: ['web/lib/onnxjs/**/*.ts'], rules: {
@@ -153,6 +213,7 @@ module.exports = {
       'import/no-internal-modules': 'off',
       'prefer-arrow/prefer-arrow-functions': 'off',
       'no-param-reassign': 'off',
+      'no-underscore-dangle': 'off',
       'guard-for-in': 'off'
     }
   }, {

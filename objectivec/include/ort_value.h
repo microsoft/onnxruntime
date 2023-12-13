@@ -33,6 +33,21 @@ NS_ASSUME_NONNULL_BEGIN
                                       error:(NSError**)error;
 
 /**
+ * Creates a value that is a string tensor.
+ * The string data will be copied into a buffer owned by this ORTValue instance.
+ *
+ * Available since 1.16.
+ *
+ * @param tensorStringData The tensor string data.
+ * @param shape The tensor shape.
+ * @param error Optional error information set if an error occurs.
+ * @return The instance, or nil if an error occurs.
+ */
+- (nullable instancetype)initWithTensorStringData:(NSArray<NSString*>*)tensorStringData
+                                            shape:(NSArray<NSNumber*>*)shape
+                                            error:(NSError**)error;
+
+/**
  * Gets the type information.
  *
  * @param error Optional error information set if an error occurs.
@@ -62,6 +77,19 @@ NS_ASSUME_NONNULL_BEGIN
  * @return The tensor data, or nil if an error occurs.
  */
 - (nullable NSMutableData*)tensorDataWithError:(NSError**)error;
+
+/**
+ * Gets the tensor string data.
+ * This assumes that the value is a string tensor.
+ *
+ * This returns a copy of the value's underlying string data.
+ *
+ * Available since 1.16.
+ *
+ * @param error Optional error information set if an error occurs.
+ * @return The copy of the tensor string data, or nil if an error occurs.
+ */
+- (nullable NSArray<NSString*>*)tensorStringDataWithError:(NSError**)error;
 
 @end
 

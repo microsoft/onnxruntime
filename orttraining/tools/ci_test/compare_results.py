@@ -19,7 +19,7 @@ class Comparisons:
     def float_le(tolerance=None):
         actual_tolerance = 0.0 if tolerance is None else tolerance
         return Comparison(
-            name="less than or equal to" + (f" (tolerance: {str(actual_tolerance)})" if tolerance is not None else ""),
+            name="less than or equal to" + (f" (tolerance: {actual_tolerance!s})" if tolerance is not None else ""),
             fn=(lambda actual, expected: float(actual) <= float(expected) + actual_tolerance),
         )
 

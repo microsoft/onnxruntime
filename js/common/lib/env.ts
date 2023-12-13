@@ -9,6 +9,7 @@ export declare namespace Env {
     'ort-wasm.wasm'?: string;
     'ort-wasm-threaded.wasm'?: string;
     'ort-wasm-simd.wasm'?: string;
+    'ort-training-wasm-simd.wasm'?: string;
     'ort-wasm-simd-threaded.wasm'?: string;
     /* eslint-enable @typescript-eslint/naming-convention */
   };
@@ -62,6 +63,10 @@ export declare namespace Env {
      */
     contextId?: 'webgl'|'webgl2';
     /**
+     * Get the WebGL rendering context.
+     */
+    readonly context: WebGLRenderingContext;
+    /**
      * Set or get the maximum batch size for matmul. 0 means to disable batching.
      *
      * @deprecated
@@ -87,8 +92,63 @@ export declare namespace Env {
     async?: boolean;
   }
 
+  export interface WebGpuProfilingDataV1TensorMetadata {
+    dims: readonly number[];
+    dataType: string;
+  }
+  export interface WebGpuProfilingDataV1 {
+    version: 1;
+    inputsMetadata: readonly WebGpuProfilingDataV1TensorMetadata[];
+    outputsMetadata: readonly WebGpuProfilingDataV1TensorMetadata[];
+    kernelId: number;
+    kernelType: string;
+    kernelName: string;
+    startTime: number;
+    endTime: number;
+  }
+
+  export type WebGpuProfilingData = WebGpuProfilingDataV1;
+
   export interface WebGpuFlags {
+    /**
+     * Set or get the profiling mode.
+     *
+     * @deprecated Use `env.webgpu.profiling.mode` instead. If `env.webgpu.profiling.mode` is set, this property will be
+     * ignored.
+     */
     profilingMode?: 'off'|'default';
+    /**
+     * Set or get the profiling configuration.
+     */
+    profiling?: {
+      /**
+       * Set or get the profiling mode.
+       *
+       * @defaultValue `'off'`
+       */
+      mode?: 'off'|'default';
+
+      /**
+       * Set or get a callback function when a profiling data is received. If not set, the profiling data will be
+       * printed to console.
+       */
+      ondata?: (data: WebGpuProfilingData) => void;
+    };
+    /**
+     * Get the device for WebGPU.
+     *
+     * When use with TypeScript, the type of this property is `GPUDevice` defined in "@webgpu/types".
+     * Use `const device = env.webgpu.device as GPUDevice;` in TypeScript to access this property with correct type.
+     *
+     * see comments on {@link GpuBufferType} for more details about why not use types defined in "@webgpu/types".
+     */
+    readonly device: unknown;
+    /**
+     * Set or get whether validate input content.
+     *
+     * @defaultValue `false`
+     */
+    validateInputContent?: boolean;
   }
 }
 
@@ -110,27 +170,27 @@ export interface Env {
    * Get version of the current package.
    */
   readonly versions: {
-    common: string;
-    web?: string;
-    node?: string;
+    readonly common: string;
+    readonly web?: string;
+    readonly node?: string;
     // eslint-disable-next-line @typescript-eslint/naming-convention
-    'react-native'?: string;
+    readonly 'react-native'?: string;
   };
 
   /**
    * Represent a set of flags for WebAssembly
    */
-  wasm: Env.WebAssemblyFlags;
+  readonly wasm: Env.WebAssemblyFlags;
 
   /**
    * Represent a set of flags for WebGL
    */
-  webgl: Env.WebGLFlags;
+  readonly webgl: Env.WebGLFlags;
 
   /**
    * Represent a set of flags for WebGPU
    */
-  webgpu: Env.WebGpuFlags;
+  readonly webgpu: Env.WebGpuFlags;
 
   [name: string]: unknown;
 }

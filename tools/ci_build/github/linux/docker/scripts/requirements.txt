@@ -3,11 +3,11 @@ numpy==1.21.6 ; python_version < '3.11'
 numpy==1.24.2 ; python_version >= '3.11'
 mypy
 pytest
-setuptools>=41.4.0
+setuptools>=68.2.2
 wheel>=0.35.1
-onnx==1.14.0
+onnx==1.15.0
 argparse
-sympy==1.10.1
+sympy==1.12
 flatbuffers
-protobuf==3.20.2
+protobuf==4.21.12
 packaging

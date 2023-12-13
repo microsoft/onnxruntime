@@ -102,6 +102,10 @@ compileTestJava {
 	}
 }
 
+sourceSets.main.java {
+	srcDirs = ['src/main/java', 'src/main/jvm']
+}
+
 sourceSets.test {
 	// add test resource files
 	resources.srcDirs += [

@@ -13,12 +13,13 @@
       3
     ]
   },
-  "version": "1.16.0",
+  "version": "1.17.0",
   "dependencies": {
     "onnxruntime-common": "file:../common"
   },
   "scripts": {
     "buildr": "tsc && node ./script/build --config=RelWithDebInfo",
+    "preprepare": "node -e \"require('node:fs').copyFileSync('./node_modules/long/index.d.ts', './node_modules/long/umd/index.d.ts')\"",
     "prepare": "tsc --build script test .",
     "rebuild": "tsc && node ./script/build --rebuild",
     "rebuildd": "tsc && node ./script/build --rebuild --config=Debug",
@@ -35,13 +36,11 @@
   ],
   "devDependencies": {
     "@types/minimist": "^1.2.2",
-    "@types/mocha": "^10.0.1",
     "cmake-js": "^7.2.1",
     "jsonc": "^2.0.0",
     "minimist": "^1.2.8",
-    "mocha": "^10.2.0",
     "node-addon-api": "^6.0.0",
-    "onnx-proto": "^8.0.1"
+    "protobufjs": "^7.2.4"
   },
   "main": "dist/index.js",
   "os": [

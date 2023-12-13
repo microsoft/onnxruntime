@@ -20,8 +20,8 @@ class BinaryOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
- private:
-  int GetMinSupportedOpSet(const Node& node) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+                         const WebnnDeviceType device_type, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -43,6 +43,8 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     output = model_builder.GetBuilder().call<emscripten::val>("div", input0, input1);
   } else if (op_type == "Pow") {
     output = model_builder.GetBuilder().call<emscripten::val>("pow", input0, input1);
+  } else if (op_type == "PRelu") {
+    output = model_builder.GetBuilder().call<emscripten::val>("prelu", input0, input1);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "BinaryOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
@@ -52,15 +54,26 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   return Status::OK();
 }
 
-// Operator support related.
+bool BinaryOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+                                        const Node& node,
+                                        const WebnnDeviceType device_type,
+                                        const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  const auto& op_type = node.OpType();
 
-int BinaryOpBuilder::GetMinSupportedOpSet(const Node& /* node */) const {
-  // Add/Sub/Mul/Div/Pow opset 6- has broadcast attributes we do not support now.
-  return 7;
+  // XNNPACK prelu operator expects slope to be a static value.
+  // https://github.com/google/XNNPACK/issues/4692
+  // TODO: Remove this check after it is solved.
+  if (op_type == "PRelu" && !Contains(initializers, input_defs[1]->Name()) && device_type == WebnnDeviceType::CPU) {
+    LOGS(logger, VERBOSE) << "The second input (slope) for PRelu must be a constant initializer for WebNN CPU backend.";
+    return false;
+  }
+
+  return true;
 }
 
 void CreateBinaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
+  if (op_registrations.op_builder_map.count(op_type) > 0)
     return;
 
   static std::vector<std::string> op_types =
@@ -70,6 +83,7 @@ void CreateBinaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& o
           "Mul",
           "Div",
           "Pow",
+          "PRelu",
       };
 
   op_registrations.builders.push_back(std::make_unique<BinaryOpBuilder>());

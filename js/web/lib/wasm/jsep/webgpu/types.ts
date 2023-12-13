@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor, TensorView} from '../tensor';
+import {TensorView} from '../tensor-view';
 
 import {ShaderHelper} from './ops/common';
 
@@ -19,72 +19,97 @@ export interface GpuData {
 }
 
 export interface TensorInfo {
-  id?: Tensor.Id;
   dims: readonly number[];
   dataType: number;
-  gpuDataType: GpuDataType;
 }
 
 
-export interface ProgramVariable {
-  type: 'float'|'int';
-  name: string;
-  arrayLength?: number;
-  data: number|number[];
+export interface ProgramUniform {
+  type: 'int32'|'float32'|'uint32';
+  data: number|readonly number[];
+}
+
+/**
+ * Represent the dependency of a program on a specific input tensor.
+ *
+ * - 'none': the shader/uniform does not depend on this input's info
+ * - 'type': the shader/uniform depends on data type of this input
+ * - 'rank': the shader/uniform depends on data type and the rank of this input
+ * - 'dims': the shader/uniform depends on data type and the dims of this input
+ * - 'data': the shader/uniform depends on data type, the dims and the data of this input
+ */
+export type ProgramInputTensorInfoDependency = 'none'|'type'|'rank'|'dims'|'data';
+
+/**
+ * Represent information about a program's cache for shader.
+ */
+export interface ProgramShaderCacheInfo {
+  /**
+   * an optional string as a cache hint in the artifact cache. If this is not specified, the cache hint will be empty.
+   *
+   * This hint string should only contains initializing-time information, such as the attributes or any information of
+   * initializers. It should NOT contain any runtime information, such as the shape of inputs.
+   */
+  hint?: string;
+
+  /**
+   * an optional list of dependencies of the program on the input tensors. If this is not specified, the program depends
+   * on 'dims' of all inputs.
+   */
+  inputDependencies?: ProgramInputTensorInfoDependency[];
+}
+
+/**
+ * Represent information about a program's cache for uniform.
+ */
+export interface ProgramUniformCacheInfo {
+  /**
+   * an optional string as a cache hint in the uniform cache. If this is not specified, the cache hint will be empty.
+   *
+   * This hint string should only contains runtime information, such as the shape of inputs.
+   */
+  hint?: string;
+
+  /**
+   * an optional list of dependencies of the program on the input tensors. If this is not specified, the program depends
+   * on 'none' of all inputs.
+   */
+  inputDependencies?: ProgramInputTensorInfoDependency[];
 }
 
 
-export interface ProgramMetadata {
+/**
+ * A set of data that represent a shader program
+ */
+export interface ProgramInfo {
   /**
    * the name of the program. used for debugging and profiling
    */
   name: string;
 
   /**
-   * gpu data types for each input
+   * an optional object describing the cache information of the program shader.
+   *
+   * If this is not specified, assume hint is empty and inputDependencies are ['dims'] for all inputs.
    */
-  inputTypes: GpuDataType[];
-  /**
-   * an optional string as a cache hint in the artifact cache
-   */
-  cacheHint?: string;
-}
+  shaderCache?: ProgramShaderCacheInfo;
 
-/**
- * A ProgramInfoLoader allows
- */
-export interface ProgramInfoLoader extends ProgramMetadata {
   /**
-   * a function to get the program info
-   */
-  get(): ProgramInfo;
-}
-
-/**
- * A set of data that represent a shader program
- */
-export interface ProgramInfo extends ProgramMetadata {
-  /**
-   * information of uniform variables
-   */
-  variables?: ProgramVariable[];
-  /**
-   * tensor info for outputs
-   */
-  outputs: TensorInfo[];
-  /**
-   * the shader's processing source code
+   * the shader's processing source code.
+   *
+   * This function will be called when shader cache missed.
    */
   getShaderSource: (shaderHelper: ShaderHelper) => string;
-  /**
-   * default is "main"
-   */
-  // entryPoint: string;
 
-  dispatchGroup: (inputs: readonly TensorView[]) => {
-    x: number;
-    y?: number;
-    z?: number;
+  /**
+   * A function to get run data required to run the program.
+   *
+   * This function will be called every time the program is executed. Should keep this function as simple as possible.
+   */
+  getRunData: (inputs: readonly TensorView[]) => {
+    outputs: readonly TensorInfo[];
+    dispatchGroup: {x: number; y?: number; z?: number};
+    programUniforms?: readonly ProgramUniform[];
   };
 }
 
@@ -139,7 +164,11 @@ export interface ComputeContext {
    */
   readonly customDataBuffer: Uint8Array;
 
-  compute(program: ProgramInfoLoader|ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping):
-      TensorView[];
+  /**
+   * a number of outputs for the node
+   */
+  readonly outputCount: number;
+
+  compute(program: ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping): TensorView[];
   output(index: number, dims: readonly number[]): number;
 }

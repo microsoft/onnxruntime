@@ -2,11 +2,11 @@
 // Licensed under the MIT License.
 
 import {flatbuffers} from 'flatbuffers';
-import {onnx} from 'onnx-proto';
 
 import {Graph} from './graph';
 import {OpSet} from './opset';
-import {onnxruntime} from './ort-schema/ort-generated';
+import {onnxruntime} from './ort-schema/flatbuffers/ort-generated';
+import {onnx} from './ort-schema/protobuf/onnx';
 import {LongUtil} from './util';
 
 import ortFbs = onnxruntime.experimental.fbs;

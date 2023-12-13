@@ -1,34 +1,53 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
 
 import ai.onnxruntime.TensorInfo.OnnxTensorType;
 
-/** An enum representing onnxruntime supported Java primitive types (and String). */
+/** An enum representing ONNX Runtime supported Java primitive types (and String). */
 public enum OnnxJavaType {
+  /** A 32-bit floating point value. */
   FLOAT(1, float.class, 4),
+  /** A 64-bit floating point value. */
   DOUBLE(2, double.class, 8),
+  /** An 8-bit signed integer value. */
   INT8(3, byte.class, 1),
+  /** A 16-bit signed integer value. */
   INT16(4, short.class, 2),
+  /** A 32-bit signed integer value. */
   INT32(5, int.class, 4),
+  /** A 64-bit signed integer value. */
   INT64(6, long.class, 8),
+  /** A boolean value stored in a single byte. */
   BOOL(7, boolean.class, 1),
+  /** A UTF-8 string. */
   STRING(8, String.class, 4),
+  /** A 8-bit unsigned integer value. */
   UINT8(9, byte.class, 1),
+  /** A IEEE 16-bit floating point value. */
+  FLOAT16(10, short.class, 2),
+  /** A non-IEEE 16-bit floating point value, with 8 exponent bits and 7 mantissa bits. */
+  BFLOAT16(11, short.class, 2),
+  /** An unknown type used as an error condition or a sentinel. */
   UNKNOWN(0, Object.class, 0);
 
-  private static final OnnxJavaType[] values = new OnnxJavaType[10];
+  private static final OnnxJavaType[] values;
 
   static {
-    for (OnnxJavaType ot : OnnxJavaType.values()) {
+    OnnxJavaType[] tmpValues = OnnxJavaType.values();
+    values = new OnnxJavaType[tmpValues.length];
+    for (OnnxJavaType ot : tmpValues) {
       values[ot.value] = ot;
     }
   }
 
+  /** The native value of the enum. */
   public final int value;
+  /** The Java side type used as the carrier. */
   public final Class<?> clazz;
+  /** The number of bytes used by a single value of this type. */
   public final int size;
 
   OnnxJavaType(int value, Class<?> clazz, int size) {
@@ -76,6 +95,9 @@ public enum OnnxJavaType {
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
         return OnnxJavaType.INT64;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+        return OnnxJavaType.FLOAT16;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
+        return OnnxJavaType.BFLOAT16;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
         return OnnxJavaType.FLOAT;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
@@ -87,7 +109,6 @@ public enum OnnxJavaType {
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
       default:
         return OnnxJavaType.UNKNOWN;
     }

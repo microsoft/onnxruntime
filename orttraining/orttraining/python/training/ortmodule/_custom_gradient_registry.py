@@ -56,8 +56,8 @@ def _to_gradient_definition(gradient):
 
 
 class CustomGradientRegistry:
-    _GRADIENTS = {}
-    _STOP_GRADIENT_EDGES = {}
+    _GRADIENTS = {}  # noqa: RUF012
+    _STOP_GRADIENT_EDGES = {}  # noqa: RUF012
 
     @classmethod
     def register(cls, domain, name, attributes, fn):
@@ -271,8 +271,3 @@ def upsample_nearest2d_gradient():
 @register_gradient("org.pytorch.aten", "ATen", "upsample_nearest3d", "vec")
 def upsample_nearest3d_gradient():
     return _upsample_gradient("upsample_nearest3d_backward", 3)
-
-
-@register_gradient("org.pytorch.aten", "ATen", "upsample_bilinear2d", "vec")
-def upsample_bilinear2d_gradient():
-    return _upsample_gradient("upsample_bilinear2d_backward", 2)

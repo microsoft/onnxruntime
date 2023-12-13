@@ -4,9 +4,11 @@ stages:
     parameters:
       NpmPackagingMode: 'dev'
       IsReleasePipeline: true
-      PoolName: 'aiinfra-Win-CPU-2022-web-beta'
+      PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
       BuildStaticLib: true
       ExtraBuildArgs: ''
+      UseWebPoolName: true
+      WebCpuPoolName: 'Onnxruntime-Win-CPU-2022'
 
 # This stage is to test if the combined build works on
 # o Windows ARM64
@@ -19,7 +21,6 @@ stages:
     DoCompliance: false
     DoEsrp: false
     stage_name_suffix: CPU_x86_default
-    EnvSetupScript: setup_env_x86.bat
     buildArch: x86
     msbuildPlatform: Win32
     packageName: x86
@@ -34,7 +35,6 @@ stages:
     DoCompliance: false
     DoEsrp: false
     stage_name_suffix: CPU_arm64_default
-    EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: arm64
     packageName: arm64
@@ -49,7 +49,6 @@ stages:
     DoCompliance: false
     DoEsrp: false
     stage_name_suffix: CPU_x64_default
-    EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64
@@ -67,15 +66,34 @@ stages:
     - template: templates/jobs/win-ci-vs-2022-job.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
-        EnvSetupScript: setup_env_cuda_11.bat
+        EnvSetupScript: setup_env_cuda.bat
         buildArch: x64
         additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
         RunOnnxRuntimeTests: true
-        RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
+        WITH_CACHE: true
+        MachinePool: onnxruntime-Win2022-GPU-MultiA10
+        OnnxruntimeTestGpuDeviceId: 1
+
+- ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
+  # The settings below is the same as Windows GPU CI pipeline's CUDA job except here we set OnnxruntimeTestGpuDeviceId to 1
+  - stage: trt_multi_gpu
+    dependsOn: []
+    jobs:
+    - template: templates/jobs/win-ci-vs-2022-job.yml
+      parameters:
+        BuildConfig: 'RelWithDebInfo'
+        EnvSetupScript: setup_env_trt.bat
+        buildArch: x64
+        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --enable_cuda_profiling --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        msbuildPlatform: x64
+        isX86: false
+        job_name_suffix: x64_RelWithDebInfo
+        RunOnnxRuntimeTests: true
+        ORT_EP_NAME: TRT
         WITH_CACHE: true
         MachinePool: onnxruntime-Win2022-GPU-MultiA10
         OnnxruntimeTestGpuDeviceId: 1
@@ -93,7 +111,6 @@ stages:
       isX86: false
       job_name_suffix: x64_mimalloc
       RunOnnxRuntimeTests: true
-      RunStaticCodeAnalysis: false
       isTraining: false
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
@@ -113,7 +130,6 @@ stages:
       isX86: false
       job_name_suffix: x64_no_memory_profiling
       RunOnnxRuntimeTests: false
-      RunStaticCodeAnalysis: false
       isTraining: false
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
@@ -133,7 +149,6 @@ stages:
       isX86: false
       job_name_suffix: x64_minimal_no_exception
       RunOnnxRuntimeTests: true
-      RunStaticCodeAnalysis: false
       isTraining: false
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
@@ -153,7 +168,6 @@ stages:
       isX86: false
       job_name_suffix: x64_debug_node_input_output
       RunOnnxRuntimeTests: true
-      RunStaticCodeAnalysis: false
       isTraining: false
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
@@ -244,3 +258,40 @@ stages:
         script: docker image rm $(dockerImageTag)
         workingDirectory: '$(Build.BinariesDirectory)'
       condition: succeededOrFailed()
+
+# We currently use static frameworks in the iOS packages.
+# This test validates that dynamic frameworks also work.
+- stage: IosDynamicFramework
+  dependsOn: []
+  jobs:
+  - job: IosDynamicFramework
+    timeoutInMinutes: 120
+    pool:
+      vmImage: "macOS-13"
+
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: "3.9"
+        addToPath: true
+        architecture: "x64"
+
+    - template: templates/use-xcode-version.yml
+
+    - script: |
+        pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
+      displayName: "Install Python requirements"
+
+    - script: |
+        python tools/ci_build/github/apple/build_apple_framework.py \
+          --build_dir "$(Build.BinariesDirectory)/ios_framework" \
+          --build_dynamic_framework \
+          tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json
+      displayName: "Build iOS dynamic framework"
+
+    - script: |
+        python tools/ci_build/github/apple/test_apple_packages.py \
+          --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
+          --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
+          --variant Mobile
+      displayName: "Test pod with iOS dynamic framework"

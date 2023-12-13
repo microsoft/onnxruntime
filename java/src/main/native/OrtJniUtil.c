@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2022 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -146,6 +146,14 @@ jint convertFromONNXDataFormat(ONNXTensorElementDataType type) {
             return 15;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:    // Non-IEEE floating-point format based on IEEE754 single-precision
             return 16;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:
+            return 17;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ:
+            return 18;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2:
+            return 19;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ:
+            return 20;
         default:
             return -1;
     }
@@ -190,6 +198,14 @@ ONNXTensorElementDataType convertToONNXDataFormat(jint type) {
             return ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128;  // complex with float64 real and imaginary components
         case 16:
             return ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16;    // Non-IEEE floating-point format based on IEEE754 single-precision
+        case 17:
+          return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN;
+        case 18:
+          return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ;
+        case 19:
+          return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2;
+        case 20:
+          return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ;
         default:
             return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
     }
@@ -200,10 +216,15 @@ size_t onnxTypeSize(ONNXTensorElementDataType type) {
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:   // maps to c type uint8_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:    // maps to c type int8_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ:
             return 1;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:  // maps to c type uint16_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:   // maps to c type int16_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:    // Non-IEEE floating-point format based on IEEE754 single-precision
             return 2;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:  // maps to c type uint32_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:   // maps to c type int32_t
@@ -215,7 +236,6 @@ size_t onnxTypeSize(ONNXTensorElementDataType type) {
             return 8;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:  // maps to c++ type std::string
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:    // Non-IEEE floating-point format based on IEEE754 single-precision
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:   // complex with float32 real and imaginary components
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:  // complex with float64 real and imaginary components
         default:
@@ -256,6 +276,12 @@ typedef union FP32 {
 jfloat convertHalfToFloat(const uint16_t half) {
     FP32 output;
     output.intVal = (((half&0x8000)<<16) | (((half&0x7c00)+0x1C000)<<13) | ((half&0x03FF)<<13));
+    return output.floatVal;
+}
+
+jfloat convertBF16ToFloat(const uint16_t bf16) {
+    FP32 output;
+    output.intVal = bf16 << 16;
     return output.floatVal;
 }
 
@@ -486,6 +512,7 @@ int64_t copyJavaToPrimitiveArray(JNIEnv* jniEnv, ONNXTensorElementDataType onnxT
             (*jniEnv)->GetLongArrayRegion(jniEnv, typedArr, 0, inputLength, (jlong * )outputTensor);
             return consumedSize;
         }
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:    // Non-IEEE floating-point format based on IEEE754 single-precision
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
             throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "16-bit float not supported.");
             return -1;
@@ -522,7 +549,6 @@ int64_t copyJavaToPrimitiveArray(JNIEnv* jniEnv, ONNXTensorElementDataType onnxT
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:   // complex with float32 real and imaginary components
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:  // complex with float64 real and imaginary components
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:    // Non-IEEE floating-point format based on IEEE754 single-precision
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
         default: {
             throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), "Invalid outputTensor element type.");
@@ -600,6 +626,21 @@ int64_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxT
             free(floatArr);
             return consumedSize;
         }
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16: { // stored as a uint16_t
+            jfloat *floatArr = malloc(sizeof(jfloat) * outputLength);
+            if (floatArr == NULL) {
+                throwOrtException(jniEnv, 1, "Not enough memory");
+                return -1;
+            }
+            uint16_t *bf16Arr = (uint16_t *)inputTensor;
+            for (int32_t i = 0; i < outputLength; i++) {
+                floatArr[i] = convertBF16ToFloat(bf16Arr[i]);
+            }
+            jfloatArray typedArr = (jfloatArray)outputArray;
+            (*jniEnv)->SetFloatArrayRegion(jniEnv, typedArr, 0, outputLength, floatArr);
+            free(floatArr);
+            return consumedSize;
+        }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: { // maps to c type float
             jfloatArray typedArr = (jfloatArray)outputArray;
             (*jniEnv)->SetFloatArrayRegion(jniEnv, typedArr, 0, outputLength, (jfloat * )inputTensor);
@@ -628,11 +669,6 @@ int64_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxT
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128: {
           // complex with float64 real and imaginary components
           throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "Invalid inputTensor element type ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128.");
-          return -1;
-        }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16: {
-          // Non-IEEE floating-point format based on IEEE754 single-precision
-          throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "Invalid inputTensor element type ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16.");
           return -1;
         }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:

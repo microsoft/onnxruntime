@@ -33,7 +33,10 @@ Status ConcatSliceElimination::ApplyImpl(Graph& graph, bool& modified, int graph
       modified = true;
     }
   }
-  LOGS(logger, INFO) << "Total fused concat node count: " << fused_count;
+
+  if (fused_count > 0) {
+    LOGS(logger, INFO) << "Total fused concat node count: " << fused_count;
+  }
 
   return Status::OK();
 }

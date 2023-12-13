@@ -32,7 +32,7 @@ def check_list_of_map_to_float(testcase, expected_rows, actual_rows):
 
 
 class TestBackend(unittest.TestCase):
-    def testRunModelNonTensor(self):  # noqa: N802
+    def test_run_model_non_tensor(self):
         name = get_name("pipeline_vectorize.onnx")
         rep = backend.prepare(name)
         x = {0: 25.0, 1: 5.13, 2: 0.0, 3: 0.453, 4: 5.966}
@@ -40,7 +40,7 @@ class TestBackend(unittest.TestCase):
         output_expected = np.array([[49.752754]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
-    def testRunModelProto(self):  # noqa: N802
+    def test_run_model_proto(self):
         name = datasets.get_example("logreg_iris.onnx")
         model = load(name)
 
@@ -65,7 +65,7 @@ class TestBackend(unittest.TestCase):
 
         check_list_of_map_to_float(self, output_expected, res[1])
 
-    def testRunModelProtoApi(self):  # noqa: N802
+    def test_run_model_proto_api(self):
         name = datasets.get_example("logreg_iris.onnx")
         model = load(name)
 

@@ -184,7 +184,9 @@ NodeArg* CreateInitializerFromVector(Graph& graph,
     total_count *= dim;
   }
 
-  ORT_ENFORCE(total_count == static_cast<int64_t>(values.size()));
+  ORT_ENFORCE(total_count == static_cast<int64_t>(values.size()),
+              "The total count of dims does not match the size of values. ",
+              "total_count: ", total_count, " values.size(): ", values.size());
 
   const_tensor.set_raw_data(values.data(), values.size() * sizeof(int64_t));
   return &graph_utils::AddInitializer(graph, const_tensor);

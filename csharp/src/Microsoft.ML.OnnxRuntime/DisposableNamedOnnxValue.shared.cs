@@ -21,6 +21,7 @@ namespace Microsoft.ML.OnnxRuntime
     internal class DisposableList<T> : List<T>, IDisposableReadOnlyCollection<T>
         where T : IDisposable
     {
+        private bool _disposed;
         public DisposableList() { }
         public DisposableList(int count) : base(count) { }
 
@@ -30,6 +31,11 @@ namespace Microsoft.ML.OnnxRuntime
 
         protected virtual void Dispose(bool disposing)
         {
+            if (_disposed)
+            {
+                return;
+            }
+
             if (disposing)
             {
                 // Dispose in the reverse order.
@@ -43,6 +49,7 @@ namespace Microsoft.ML.OnnxRuntime
                     this[i]?.Dispose();
                 }
                 this.Clear();
+                _disposed = true;
             }
         }
 

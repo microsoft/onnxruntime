@@ -24,11 +24,8 @@ struct ConverterResourceDescription {
     // 1) the resources have different dimensions
     // 2) the resources are on different devices
     // 3) the resources have different pixel formats
-    if (desc.width != width ||
-        desc.height != height ||
-        desc.luid.HighPart != luid.HighPart ||
-        desc.luid.LowPart != luid.LowPart ||
-        desc.pixel_format != pixel_format) {
+    if (desc.width != width || desc.height != height || desc.luid.HighPart != luid.HighPart ||
+            desc.luid.LowPart != luid.LowPart || desc.pixel_format != pixel_format) {
       return false;
     }
 
@@ -99,8 +96,7 @@ class PoolObjectWrapper {
     return std::make_shared<PoolObjectWrapper>(std::forward<TArgs>(args)...);
   }
 
-  explicit PoolObjectWrapper(std::shared_ptr<ConverterResources>&& resources) : m_resources(resources) {
-  }
+  explicit PoolObjectWrapper(std::shared_ptr<ConverterResources>&& resources) : m_resources(resources) {}
 
   ~PoolObjectWrapper() {
     if (m_resources) {
@@ -108,13 +104,10 @@ class PoolObjectWrapper {
     }
   }
 
-  std::shared_ptr<ConverterResources> Get() {
-    return m_resources;
-  }
+  std::shared_ptr<ConverterResources> Get() { return m_resources; }
 
  private:
   std::shared_ptr<ConverterResources> m_resources;
 };
 
 }  // namespace _winml
-

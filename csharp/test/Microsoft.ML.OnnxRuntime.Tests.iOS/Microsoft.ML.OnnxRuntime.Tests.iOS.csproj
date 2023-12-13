@@ -103,7 +103,7 @@
     <PackageReference Include="Xamarin.Forms">
       <Version>5.0.0.2083</Version>
     </PackageReference>
-    <PackageReference Include="System.Memory" Version="4.5.3" IncludeAssets="None" />
+    <PackageReference Include="System.Memory" Version="4.5.5" IncludeAssets="None" />
     <PackageReference Include="Xamarin.TestCloud.Agent">
       <Version>0.22.2</Version>
     </PackageReference>

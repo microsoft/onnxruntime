@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
 
 #include "contrib_ops/cuda/bert/cutlass_fmha/fmha_launch_template.h"
 
@@ -21,4 +21,4 @@ void run_memory_efficient_attention_sm70(const MemoryEfficientAttentionParams& p
 }  // namespace contrib
 }  // namespace onnxruntime
 
-#endif  // USE_FLASH_ATTENTION
+#endif  // USE_MEMORY_EFFICIENT_ATTENTION

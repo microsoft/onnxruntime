@@ -50,7 +50,10 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
       modified = true;
     }
   }
-  LOGS(logger, INFO) << "Total fused reshape node count: " << fused_count;
+
+  if (fused_count > 0) {
+    LOGS(logger, INFO) << "Total fused reshape node count: " << fused_count;
+  }
 
   return Status::OK();
 }

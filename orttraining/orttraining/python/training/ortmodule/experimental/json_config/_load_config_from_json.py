@@ -49,7 +49,7 @@ def _load_propagate_cast_ops(ortmodule_config_accessor, data):
 
     key_to_function_mapping = {"Strategy": _update_strategy, "Level": _update_level, "Allow": _update_allow}
 
-    for key, _ in data.PropagateCastOps.__dict__.items():
+    for key in data.PropagateCastOps.__dict__:
         key_to_function_mapping[key]()
 
 
@@ -162,7 +162,7 @@ def _load_debug_options(ortmodule_config_accessor, data):
         "SaveONNXPath": _update_onnx_path,
     }
 
-    for key, _ in data.DebugOptions.__dict__.items():
+    for key in data.DebugOptions.__dict__:
         key_to_function_mapping[key]()
 
     debug_options = DebugOptions(log_level=log_level, save_onnx=save_onnx, onnx_prefix=onnx_prefix)
@@ -301,5 +301,5 @@ def load_from_json(ortmodule, path=None):
         # update the debug config for both train and eval modes
         ortmodule_config_accessor = ortmodule._torch_module._execution_manager(training_mode)
         # iterate over the json data instead of checking for keys in json to catch key errors
-        for key, _ in data.__dict__.items():
+        for key in data.__dict__:
             load_functions[key](ortmodule_config_accessor, data)

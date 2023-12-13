@@ -23,6 +23,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateUnaryOpBuilder("Exp", op_registrations);
     CreateUnaryOpBuilder("Floor", op_registrations);
     CreateUnaryOpBuilder("Identity", op_registrations);
+    CreateUnaryOpBuilder("Log", op_registrations);
     CreateUnaryOpBuilder("Neg", op_registrations);
     CreateUnaryOpBuilder("Not", op_registrations);
     CreateUnaryOpBuilder("Reciprocal", op_registrations);
@@ -37,6 +38,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateBinaryOpBuilder("Mul", op_registrations);
     CreateBinaryOpBuilder("Div", op_registrations);
     CreateBinaryOpBuilder("Pow", op_registrations);
+    CreateBinaryOpBuilder("PRelu", op_registrations);
   }
 
   {  // Ternary
@@ -96,24 +98,48 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Logical
     CreateLogicalOpBuilder("Equal", op_registrations);
+    CreateLogicalOpBuilder("Greater", op_registrations);
+    CreateLogicalOpBuilder("GreaterOrEqual", op_registrations);
+    CreateLogicalOpBuilder("Less", op_registrations);
+    CreateLogicalOpBuilder("LessOrEqual", op_registrations);
+  }
+
+  {  // Max/Min
+    CreateMaxMinOpBuilder("Max", op_registrations);
+    CreateMaxMinOpBuilder("Min", op_registrations);
   }
 
   {  // Normalization
+    CreateNormalizationOpBuilder("BatchNormalization", op_registrations);
     CreateNormalizationOpBuilder("GroupNormalization", op_registrations);
     CreateNormalizationOpBuilder("InstanceNormalization", op_registrations);
     CreateNormalizationOpBuilder("LayerNormalization", op_registrations);
   }
 
+  {  // Pad
+    CreatePadOpBuilder("Pad", op_registrations);
+  }
+
   {  // Pool
+    CreatePoolOpBuilder("AveragePool", op_registrations);
     CreatePoolOpBuilder("GlobalAveragePool", op_registrations);
     CreatePoolOpBuilder("GlobalMaxPool", op_registrations);
-    CreatePoolOpBuilder("AveragePool", op_registrations);
+    CreatePoolOpBuilder("GlobalLpPool", op_registrations);
+    CreatePoolOpBuilder("LpPool", op_registrations);
     CreatePoolOpBuilder("MaxPool", op_registrations);
   }
 
   {  // Reduction
+    CreateReductionOpBuilder("ReduceL1", op_registrations);
+    CreateReductionOpBuilder("ReduceL2", op_registrations);
+    CreateReductionOpBuilder("ReduceLogSum", op_registrations);
+    CreateReductionOpBuilder("ReduceLogSumExp", op_registrations);
     CreateReductionOpBuilder("ReduceMax", op_registrations);
     CreateReductionOpBuilder("ReduceMean", op_registrations);
+    CreateReductionOpBuilder("ReduceMin", op_registrations);
+    CreateReductionOpBuilder("ReduceProd", op_registrations);
+    CreateReductionOpBuilder("ReduceSum", op_registrations);
+    CreateReductionOpBuilder("ReduceSumSquare", op_registrations);
   }
 
   {  // Reshape
