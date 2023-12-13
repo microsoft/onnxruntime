@@ -63,6 +63,8 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("SpaceToDepth", *this);
 
     CreateSimpleOpBuilder("GridSample", *this);
+
+    CreateSimpleOpBuilder("LpNormalization", *this);
   }
 
   {

@@ -111,7 +111,7 @@ class TrainingManager(GraphExecutionManager):
 
                 Module outputs are returned to the user
                 """
-                self._runtime_inspector.inspect_memory(Phase.PRE_FORWARD)
+                self._runtime_inspector.memory_ob.inspect_memory(Phase.PRE_FORWARD)
 
                 if self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
                     # Assert that the input and model device match
@@ -146,7 +146,7 @@ class TrainingManager(GraphExecutionManager):
                 for idx in self._graph_info.output_grad_indices_non_differentiable:
                     ctx.mark_non_differentiable(user_outputs[idx])
 
-                self._runtime_inspector.inspect_memory(Phase.POST_FORWARD)
+                self._runtime_inspector.memory_ob.inspect_memory(Phase.POST_FORWARD)
 
                 return user_outputs
 
@@ -154,7 +154,7 @@ class TrainingManager(GraphExecutionManager):
             def backward(ctx, *grad_outputs):
                 """Performs backward pass based on grad wrt module output"""
 
-                self._runtime_inspector.inspect_memory(Phase.PRE_BACKWARD)
+                self._runtime_inspector.memory_ob.inspect_memory(Phase.PRE_BACKWARD)
 
                 assert ctx.run_info is not None, "forward() or __call__() methods must be called before backward()"
                 if self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
@@ -205,7 +205,7 @@ class TrainingManager(GraphExecutionManager):
                 # This version only works if backward_outputs is an OrtValueVector.
                 transferred_backward_outputs = _utils._ortvalues_to_torch_tensor(backward_outputs, self._device)
 
-                self._runtime_inspector.inspect_memory(Phase.POST_BACKWARD)
+                self._runtime_inspector.memory_ob.inspect_memory(Phase.POST_BACKWARD)
 
                 return tuple(transferred_backward_outputs[idx] if idx != -1 else None for idx in self._gradient_map)
 
@@ -242,7 +242,6 @@ class TrainingManager(GraphExecutionManager):
                     self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
                     self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE),
                 )
-
             # If exporting module to ONNX for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
             build_gradient_graph = False
@@ -432,6 +431,37 @@ class TrainingManager(GraphExecutionManager):
             ] * len(bw_fetches_names)
 
         local_device_rank = self._device.index if device_type == "ort" else _utils.get_device_index(self._device)
+
+        # Create a training agent without enabling memory optimization here is beneficial for memory analyzing
+        # when we have an allocation plan in place, and reuse information is available.
+        if self._runtime_inspector.memory_ob.is_enabled():
+            # Create a training agent without enabling memory optimization.
+            execution_agent = TrainingAgent(
+                self._onnx_models.optimized_model.SerializeToString(),
+                fw_feed_names,
+                fw_outputs_device_info,
+                bw_fetches_names,
+                bw_outputs_device_info,
+                session_options,
+                providers,
+                provider_options,
+                local_device_rank,
+            )
+
+            self._runtime_inspector.memory_ob.find_memory_optimization_opportunity(
+                execution_agent, self._runtime_options
+            )
+
+            # Release it as early as possible.
+            del execution_agent
+
+        # Enable memory optimization if it is enabled in the session options.
+        session_options.add_session_config_entry(
+            "optimization.memory_optimizer_config", self._runtime_options.memory_optimizer_config
+        )
+        session_options.add_session_config_entry(
+            "optimization.enable_memory_probe_recompute_config", self._runtime_options.recompute_probe_config
+        )
 
         self._execution_agent = TrainingAgent(
             self._onnx_models.optimized_model.SerializeToString(),
