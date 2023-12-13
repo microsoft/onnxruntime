@@ -1,16 +1,14 @@
-resources:
-  pipelines:
-  - pipeline: build
-    source: 'Python-CUDA-Packaging-Pipeline'
-    trigger: true
-    branch: main # branch to pick the artifact, Used only for manual triggered pipeline runs for testing the pipeline itself
-  #TODO: Remove the following dependency. Running python tests should not need to use manylinux.
-  repositories:
-  - repository: manylinux # The name used to reference this repository in the checkout step
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
+parameters:
+  - name: build_id
+    type: string
+    default: 'latest'
+  - name: project
+    type: string
+    default: 'Lotus'
+  - name: pipeline
+    type: string
+    default: 'Python-CUDA-Packaging-Pipeline'
+
 stages:
 # ****The following Stage depend on all previous tags. ***
 # GPU resources are very limited,
@@ -20,37 +18,9 @@ stages:
   jobs:
   - template: stages/py-linux-cuda-package-test-stage.yml
     parameters:
-      arch: 'x86_64'
+      CudaVersion: '12.2'
       machine_pool: 'Onnxruntime-Linux-GPU'
-      device: 'GPU'
-      python_wheel_suffix: '_gpu'
       timeout: 480
-
-
-# if final job not extecuted, it will not run nightlly build
-- stage: Final
-  dependsOn:
-    - Linux_Test_GPU_x86_64_stage
-  jobs:
-  - job: Final
-    # Run this step only if all previous steps are succeeded and (this build was triggered by a resource trigger or it was triggered by another build).
-    condition: and(succeeded(), eq(variables['Build.Reason'], 'ResourceTrigger'))
-    timeoutInMinutes: 60
-    variables:
-      skipComponentGovernanceDetection: true
-    workspace:
-      clean: all
-    pool: Onnxruntime-Win-CPU-2022
-    steps:
-    - task: PowerShell@2
-      displayName: 'Add Build Tag'
-      env:
-        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
-      inputs:
-        targetType: inline
-        script: |
-          $headers = New-Object "System.Collections.Generic.Dictionary[[String],[String]]"
-          $headers.Add("Authorization", "Bearer $env:SYSTEM_ACCESSTOKEN")
-          $headers.Add("Content-Type", "application/json")
-          $uri = "https://dev.azure.com/aiinfra/Lotus/_apis/build/builds/$(resources.pipeline.build.runID)/tags/test%20pass?api-version=6.0"
-          Invoke-RestMethod -Uri $uri -Headers $headers -Method PUT
+      build_id: ${{ parameters.build_id }}
+      project: ${{ parameters.project }}
+      pipeline: ${{ parameters.pipeline }}
