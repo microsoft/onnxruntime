@@ -98,6 +98,12 @@ stages:
             OpsetVersion: ${{ parameters.opset_version }}
             CudaVersion: ${{ parameters.cuda_version }}
             UploadWheel: ${{ parameters.upload_wheel }}
+          Python312:
+            PythonVersion: '3.12'
+            TorchVersion: ${{ parameters.torch_version }}
+            OpsetVersion: ${{ parameters.opset_version }}
+            CudaVersion: ${{ parameters.cuda_version }}
+            UploadWheel: ${{ parameters.upload_wheel }}
 
       steps:
       - task: CmdLine@2

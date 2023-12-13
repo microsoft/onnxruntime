@@ -77,6 +77,10 @@ stages:
             PythonVersion: '3.11'
             MsbuildPlatform: x64
             buildArch: x64
+          Python312_x64:
+            PythonVersion: '3.12'
+            MsbuildPlatform: x64
+            buildArch: x64
           # Training build cannot support Win32 for now because one or more of its python
           # dependencies does not support Win32. So, don't build a training package for Win32
           ${{ if not(contains(parameters.build_py_parameters, '--enable_training')) }}:
@@ -94,6 +98,10 @@ stages:
               buildArch: x86
             Python311_x86:
               PythonVersion: '3.11'
+              MsbuildPlatform: Win32
+              buildArch: x86
+            Python312_x86:
+              PythonVersion: '3.12'
               MsbuildPlatform: Win32
               buildArch: x86
       variables:
@@ -297,6 +305,14 @@ stages:
 
       - template: py-win-gpu.yml
         parameters:
+          MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
+          PYTHON_VERSION: '3.12'
+          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+          ENV_SETUP_SCRIPT: setup_env_gpu.bat
+          EP_NAME: gpu
+
+      - template: py-win-gpu.yml
+        parameters:
           MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
           PYTHON_VERSION: '3.8'
           EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
@@ -327,6 +343,14 @@ stages:
           ENV_SETUP_SCRIPT: setup_env.bat
           EP_NAME: directml
 
+      - template: py-win-gpu.yml
+        parameters:
+          MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
+          PYTHON_VERSION: '3.12'
+          EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
+          ENV_SETUP_SCRIPT: setup_env.bat
+          EP_NAME: directml
+
   - ${{ if eq(parameters.enable_mac_cpu, true) }}:
     - job: MacOS_py_Wheels
       timeoutInMinutes: 120
@@ -346,6 +370,8 @@ stages:
             PythonVersion: '3.10'
           Python311:
             PythonVersion: '3.11'
+          Python312:
+            PythonVersion: '3.12'
       steps:
       - checkout: self
         clean: true
@@ -411,6 +437,8 @@ stages:
             PythonVersion: '3.10'
           Python311:
             PythonVersion: '3.11'
+          Python312:
+            PythonVersion: '3.12'
       steps:
       - checkout: self
         clean: true
