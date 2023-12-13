@@ -68,38 +68,62 @@ class FissionTransformerBlockPhi(Fusion):
             num_heads=32,
             unidirectional=1,
             do_rotary=1,
-        ),       
+        )       
         helper.make_node(
             'MatMul',
             inputs=[self.uname(layer_id, 'attn_out'), attn_out_weight],
             outputs=[self.uname(layer_id, 'matmul_out')],
             name=self.uname(layer_id, 'OutProj_MatMul'),
-        ),
+        )
         helper.make_node(
             'Add',
             inputs=[self.uname(layer_id, 'matmul_out'), attn_out_bias],
             outputs=[self.uname(layer_id, 'add_out')],
             name=self.uname(layer_id, 'OutProj_Add'),
-        ),
+        )
         helper.make_node(
             'MatMul',
             inputs=[self.uname(layer_id, 'ln_out'), mlp_fc1_weight],
             outputs=[self.uname(layer_id, 'fc1_w_out')],
             name=self.uname(layer_id, 'FC1_MatMul'),
-        ),
+        )
         helper.make_node(
             'Add',
             inputs=[self.uname(layer_id, 'fc1_w_out'), mlp_fc1_bias],
             outputs=[self.uname(layer_id, 'fc1_b_out')],
             name=self.uname(layer_id, 'FC1_Bias'),
-        ),
+        )
         helper.make_node(
             'NewGelu', # check what is it and use onnx inlining if needed
             inputs=[self.uname(layer_id, 'fc1_b_out')],
             outputs=[self.uname(layer_id, 'new_gelu_out')],
             name=self.uname(layer_id, 'NewGelu'),
             domain='com.microsoft', # fix later
-        ),
+        )
+        helper.make_node(
+            'MatMul',
+            inputs=[self.uname(layer_id, 'new_gelu_out'), mlp_fc2_weight],
+            outputs=[self.uname(layer_id, 'fc2_w_out')],
+            name=self.uname(layer_id, 'FC2_MatMul'),
+        )
+        helper.make_node(
+            'Add',
+            inputs=[self.uname(layer_id, 'fc2_w_out'), mlp_fc2_bias],
+            outputs=[self.uname(layer_id, 'fc2_b_out')],
+            name=self.uname(layer_id, 'FC2_Bias'),
+        )
+        helper.make_node(
+            'Add',
+            inputs=[self.uname(layer_id, 'attn_out'), self.uname(layer_id, 'fc2_b_out')],
+            outputs=[self.uname(layer_id, 'residual_1_out')],
+            name=self.uname(layer_id, 'Residual_Add_1'),
+        )
+        helper.make_node(
+            'Add',
+            inputs=[i_hidden_states, self.uname(layer_id, 'residual_1_out')],
+            outputs=[o_hidden_states],
+            name=self.uname(layer_id, 'Residual_Add_2'),
+        )
 
 
 class PhiOnnxModel(OnnxModel):
