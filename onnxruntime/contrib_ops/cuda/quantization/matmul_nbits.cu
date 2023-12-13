@@ -30,6 +30,64 @@ __device__ __forceinline__ T WarpUniform(T value) {
   return p.value;
 }
 
+// Convert 8 4bits integer stored in one uint32_t to 8 halfs.
+// 8 4bits with order 0,1,2,3,4,5,6,7,8 will be converted to 8 halfs with order 0,4,1,5,2,6,3,7
+__device__ __forceinline__ void Convert8xInt4To8xHalfs(uint32_t value, half2* half_2x4) {
+  uint32_t* h = reinterpret_cast<uint32_t*>(half_2x4);
+
+  // From https://github.com/NVIDIA/FasterTransformer/blob/main/src/fastertransformer/cutlass_extensions/include/cutlass_extensions/interleaved_numeric_conversion.h
+  // First, we extract the i4s and construct an intermediate fp16 number.
+  constexpr uint32_t kImmLut = (0xf0 & 0xcc) | 0xaa;
+  constexpr uint32_t kBottomMask = 0x000f000f;
+  constexpr uint32_t kTopMask = 0x00f000f0;
+  constexpr uint32_t kI4sToF16sMagicNum = 0x64006400;
+
+  // Note that the entire sequence only requires 1 shift instruction. This is thanks to the register packing
+  // format and the fact that we force our integers to be unsigned, and account for this in the fp16 subtractions.
+  // In addition, I exploit the fact that sub and fma have the same throughput in order to convert elt_23 and
+  // elt_67 to fp16 without having to shift them to the bottom bits before hand.
+
+  // Shift right by 8 to now consider elt_45 and elt_67. Issue first to hide RAW dependency if we issue
+  // immediately before required.
+  const uint32_t top_i4s = value >> 8;
+  // Extract elt_01 - (i4s & 0x000f000f) | 0x64006400
+  asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
+               : "=r"(h[0])
+               : "r"(value), "n"(kBottomMask), "n"(kI4sToF16sMagicNum), "n"(kImmLut));
+  // Extract elt_23 (i4s & 0x00f000f0) | 0x64006400
+  asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
+               : "=r"(h[1])
+               : "r"(value), "n"(kTopMask), "n"(kI4sToF16sMagicNum), "n"(kImmLut));
+  // Extract elt_45 (top_i4s & 0x000f000f) | 0x64006400
+  asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
+               : "=r"(h[2])
+               : "r"(top_i4s), "n"(kBottomMask), "n"(kI4sToF16sMagicNum), "n"(kImmLut));
+  // Extract elt_67 (top_i4s & 0x00f000f0) | 0x64006400
+  asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
+               : "=r"(h[3])
+               : "r"(top_i4s), "n"(kTopMask), "n"(kI4sToF16sMagicNum), "n"(kImmLut));
+
+  // I use inline PTX below because I am not sure if the compiler will emit float2half instructions if I use the
+  // half2 ctor. In this case, I chose performance reliability over code readability.
+
+  // This is the half2 {1024, 1024} represented as an integer.
+  constexpr uint32_t kFp16TopMagicNum = 0x64006400;
+  // This is the half2 {1 / 16, 1 / 16} represented as an integer.
+  constexpr uint32_t kOneSixteenth = 0x2c002c00;
+  // This is the half2 {-64, -64} represented as an integer.
+  constexpr uint32_t kNeg64 = 0xd400d400;
+
+  // Finally, we construct the output numbers.
+  // Convert elt_01
+  asm volatile("sub.f16x2 %0, %1, %2;\n" : "=r"(h[0]) : "r"(h[0]), "r"(kFp16TopMagicNum));
+  // Convert elt_23
+  asm volatile("fma.rn.f16x2 %0, %1, %2, %3;\n" : "=r"(h[1]) : "r"(h[1]), "r"(kOneSixteenth), "r"(kNeg64));
+  // Convert elt_45
+  asm volatile("sub.f16x2 %0, %1, %2;\n" : "=r"(h[2]) : "r"(h[2]), "r"(kFp16TopMagicNum));
+  // Convert elt_67
+  asm volatile("fma.rn.f16x2 %0, %1, %2, %3;\n" : "=r"(h[3]) : "r"(h[3]), "r"(kOneSixteenth), "r"(kNeg64));
+}
+
 __device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, half scale, uint8_t zp, const half* a, half* sums) {
   half2 scale_half2 = {scale, scale};
   half zp_adjust = -scale * __short2half_rn(zp);
@@ -46,58 +104,8 @@ __device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, 
   asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(vec_permuted.w) : "r"(vec_a.y), "r"(vec_a.w), "r"(kHighHalf2));
 
   half2 elements[4];  // [04, 15, 26, 37]
-  uint32_t* h = reinterpret_cast<uint32_t*>(&elements);
 
-  // First, we extract the i4s and construct an intermediate fp16 number.
-  static constexpr uint32_t immLut = (0xf0 & 0xcc) | 0xaa;
-  static constexpr uint32_t BOTTOM_MASK = 0x000f000f;
-  static constexpr uint32_t TOP_MASK = 0x00f000f0;
-  static constexpr uint32_t I4s_TO_F16s_MAGIC_NUM = 0x64006400;
-
-  // Note that the entire sequence only requires 1 shift instruction. This is thanks to the register packing
-  // format and the fact that we force our integers to be unsigned, and account for this in the fp16 subtractions.
-  // In addition, I exploit the fact that sub and fma have the same throughput in order to convert elt_23 and
-  // elt_67 to fp16 without having to shift them to the bottom bits before hand.
-
-  // Shift right by 8 to now consider elt_45 and elt_67. Issue first to hide RAW dependency if we issue
-  // immediately before required.
-  const uint32_t top_i4s = values_quant >> 8;
-  // Extract elt_01 - (i4s & 0x000f000f) | 0x64006400
-  asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
-               : "=r"(h[0])
-               : "r"(values_quant), "n"(BOTTOM_MASK), "n"(I4s_TO_F16s_MAGIC_NUM), "n"(immLut));
-  // Extract elt_23 (i4s & 0x00f000f0) | 0x64006400
-  asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
-               : "=r"(h[1])
-               : "r"(values_quant), "n"(TOP_MASK), "n"(I4s_TO_F16s_MAGIC_NUM), "n"(immLut));
-  // Extract elt_45 (top_i4s & 0x000f000f) | 0x64006400
-  asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
-               : "=r"(h[2])
-               : "r"(top_i4s), "n"(BOTTOM_MASK), "n"(I4s_TO_F16s_MAGIC_NUM), "n"(immLut));
-  // Extract elt_67 (top_i4s & 0x00f000f0) | 0x64006400
-  asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
-               : "=r"(h[3])
-               : "r"(top_i4s), "n"(TOP_MASK), "n"(I4s_TO_F16s_MAGIC_NUM), "n"(immLut));
-
-  // I use inline PTX below because I am not sure if the compiler will emit float2half instructions if I use the
-  // half2 ctor. In this case, I chose performance reliability over code readability.
-
-  // This is the half2 {1024, 1024} represented as an integer.
-  static constexpr uint32_t FP16_TOP_MAGIC_NUM = 0x64006400;
-  // This is the half2 {1 / 16, 1 / 16} represented as an integer.
-  static constexpr uint32_t ONE_SIXTEENTH = 0x2c002c00;
-  // This is the half2 {-64, -64} represented as an integer.
-  static constexpr uint32_t NEG_64 = 0xd400d400;
-
-  // Finally, we construct the output numbers.
-  // Convert elt_01
-  asm volatile("sub.f16x2 %0, %1, %2;\n" : "=r"(h[0]) : "r"(h[0]), "r"(FP16_TOP_MAGIC_NUM));
-  // Convert elt_23
-  asm volatile("fma.rn.f16x2 %0, %1, %2, %3;\n" : "=r"(h[1]) : "r"(h[1]), "r"(ONE_SIXTEENTH), "r"(NEG_64));
-  // Convert elt_45
-  asm volatile("sub.f16x2 %0, %1, %2;\n" : "=r"(h[2]) : "r"(h[2]), "r"(FP16_TOP_MAGIC_NUM));
-  // Convert elt_67
-  asm volatile("fma.rn.f16x2 %0, %1, %2, %3;\n" : "=r"(h[3]) : "r"(h[3]), "r"(ONE_SIXTEENTH), "r"(NEG_64));
+  Convert8xInt4To8xHalfs(values_quant, elements);
 
   half2 v0 = elements[0] * scale_half2 + zp_adjust2;
   half2 v1 = elements[1] * scale_half2 + zp_adjust2;
