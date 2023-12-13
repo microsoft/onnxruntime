@@ -144,7 +144,7 @@ class OrtCudaEngineBuilder(EngineBuilder):
         self._configure(
             "unetxl",
             onnx_opset_version=onnx_opset_version,
-            use_cuda_graph=False,  # TODO: fix Runtime Error with cuda graph
+            use_cuda_graph=self.use_cuda_graph,
         )
 
         self._configure(
@@ -158,12 +158,11 @@ class OrtCudaEngineBuilder(EngineBuilder):
         engine_dir: str,
         framework_model_dir: str,
         onnx_dir: str,
+        tmp_dir: Optional[str] = None,
         onnx_opset_version: int = 17,
-        opt_image_height: int = 512,
-        opt_image_width: int = 512,
-        opt_batch_size: int = 1,
         force_engine_rebuild: bool = False,
         device_id: int = 0,
+        save_fp32_intermediate_model=False,
     ):
         self.torch_device = torch.device("cuda", device_id)
         self.load_models(framework_model_dir)
@@ -189,24 +188,44 @@ class OrtCudaEngineBuilder(EngineBuilder):
             if model_name not in self.model_config:
                 self.model_config[model_name] = _ModelConfig(onnx_opset_version, self.use_cuda_graph)
 
+        # Load lora only when we need export text encoder or UNet to ONNX.
+        load_lora = False
+        if self.pipeline_info.lora_weights:
+            for model_name in self.models:
+                if model_name not in ["clip", "clip2", "unet", "unetxl"]:
+                    continue
+                onnx_path = self.get_onnx_path(model_name, onnx_dir, opt=False)
+
+                suffix = ".fp16" if self.model_config[model_name].fp16 else ".fp32"
+                onnx_opt_path = self.get_onnx_path(model_name, engine_dir, opt=True, suffix=suffix)
+                if not os.path.exists(onnx_opt_path):
+                    if not os.path.exists(onnx_path):
+                        load_lora = True
+                        break
+
         # Export models to ONNX
+        self.disable_torch_spda()
+        pipe = self.load_pipeline_with_lora() if load_lora else None
+
         for model_name, model_obj in self.models.items():
             if model_name == "vae" and self.vae_torch_fallback:
                 continue
 
             onnx_path = self.get_onnx_path(model_name, onnx_dir, opt=False)
-            onnx_opt_path = self.get_onnx_path(model_name, engine_dir, opt=True)
+            suffix = ".fp16" if self.model_config[model_name].fp16 else ".fp32"
+            onnx_opt_path = self.get_onnx_path(model_name, engine_dir, opt=True, suffix=suffix)
             if not os.path.exists(onnx_opt_path):
                 if not os.path.exists(onnx_path):
                     print("----")
                     logger.info("Exporting model: %s", onnx_path)
-                    model = model_obj.load_model(framework_model_dir, self.hf_token)
-                    if model_name == "vae":
-                        model.to(torch.float32)
+
+                    model = self.get_or_load_model(pipe, model_name, model_obj, framework_model_dir)
+                    model = model.to(torch.float32)
 
                     with torch.inference_mode():
                         # For CUDA EP, export FP32 onnx since some graph fusion only supports fp32 graph pattern.
-                        inputs = model_obj.get_sample_input(opt_batch_size, opt_image_height, opt_image_width)
+                        # Export model with sample of batch size 1, image size 512 x 512
+                        inputs = model_obj.get_sample_input(1, 512, 512)
 
                         torch.onnx.export(
                             model,
@@ -225,27 +244,55 @@ class OrtCudaEngineBuilder(EngineBuilder):
                 else:
                     logger.info("Found cached model: %s", onnx_path)
 
-                # Run graph optimization and convert to mixed precision (computation in FP16)
+                # Generate fp32 optimized model.
+                # If final target is fp16 model, we save fp32 optimized model so that it is easy to tune
+                # fp16 conversion. That could save a lot of time in developing.
+                use_fp32_intermediate = save_fp32_intermediate_model and self.model_config[model_name].fp16
+                onnx_fp32_path = onnx_path
+                if use_fp32_intermediate:
+                    onnx_fp32_path = self.get_onnx_path(model_name, engine_dir, opt=True, suffix=".fp32")
+                    if not os.path.exists(onnx_fp32_path):
+                        print("------")
+                        logger.info("Generating optimized model: %s", onnx_fp32_path)
+                        model_obj.optimize_ort(
+                            onnx_path,
+                            onnx_fp32_path,
+                            to_fp16=False,
+                            fp32_op_list=self.model_config[model_name].force_fp32_ops,
+                            optimize_by_ort=self.model_config[model_name].optimize_by_ort,
+                            tmp_dir=self.get_model_dir(model_name, tmp_dir, opt=False, suffix=".fp32", create=False),
+                        )
+                    else:
+                        logger.info("Found cached optimized model: %s", onnx_fp32_path)
+
+                # Generate the final optimized model.
                 if not os.path.exists(onnx_opt_path):
                     print("------")
                     logger.info("Generating optimized model: %s", onnx_opt_path)
 
+                    # When there is fp32 intermediate optimized model, this will just convert model from fp32 to fp16.
+                    optimize_by_ort = False if use_fp32_intermediate else self.model_config[model_name].optimize_by_ort
+
                     model_obj.optimize_ort(
-                        onnx_path,
+                        onnx_fp32_path,
                         onnx_opt_path,
                         to_fp16=self.model_config[model_name].fp16,
                         fp32_op_list=self.model_config[model_name].force_fp32_ops,
-                        optimize_by_ort=self.model_config[model_name].optimize_by_ort,
+                        optimize_by_ort=optimize_by_ort,
+                        optimize_by_fusion=not use_fp32_intermediate,
+                        tmp_dir=self.get_model_dir(model_name, tmp_dir, opt=False, suffix=".fp16", create=False),
                     )
                 else:
                     logger.info("Found cached optimized model: %s", onnx_opt_path)
+        self.enable_torch_spda()
 
         built_engines = {}
         for model_name in self.models:
             if model_name == "vae" and self.vae_torch_fallback:
                 continue
 
-            onnx_opt_path = self.get_onnx_path(model_name, engine_dir, opt=True)
+            suffix = ".fp16" if self.model_config[model_name].fp16 else ".fp32"
+            onnx_opt_path = self.get_onnx_path(model_name, engine_dir, opt=True, suffix=suffix)
 
             use_cuda_graph = self.model_config[model_name].use_cuda_graph
 

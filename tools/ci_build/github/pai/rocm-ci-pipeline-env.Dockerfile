@@ -68,7 +68,7 @@ RUN conda create -y -n ${CONDA_DEFAULT_ENV} python=3.9
 ENV PATH ${CONDA_ENVIRONMENT_PATH}/bin:${PATH}
 
 # Conda base patch
-RUN pip install cryptography==41.0.0
+RUN pip install cryptography==41.0.4
 
 # Enable rocm-ci environment
 SHELL ["conda", "run", "-n", "rocm-ci", "/bin/bash", "-c"]
@@ -79,7 +79,6 @@ RUN ln -sf /usr/lib/x86_64-linux-gnu/libstdc++.so.6 ${CONDA_ENVIRONMENT_PATH}/bi
 # Install Pytorch
 RUN pip install torch==2.0.1 torchvision==0.15.2 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-${ROCM_VERSION}/ && \
     pip install torch-ort --no-dependencies
-
 
 ##### Install Cupy to decrease CPU utilization
 # Install non dev openmpi
@@ -128,7 +127,11 @@ RUN pip install \
     dill==0.3.4 \
     pytorch_lightning==1.6.0 \
     pytest-xdist \
-    pytest-rerunfailures
+    pytest-rerunfailures \
+    ml_dtypes==0.3.0
+
+# Install migraphx
+RUN apt update && apt install -y migraphx
 
 ENV ORTMODULE_ONNX_OPSET_VERSION=15
 

@@ -37,9 +37,13 @@ enum OrtDmlPerformancePreference {
 };
 
 enum OrtDmlDeviceFilter : uint32_t {
+#ifdef ENABLE_NPU_ADAPTER_ENUMERATION
   Any = 0xffffffff,
   Gpu = 1 << 0,
   Npu = 1 << 1,
+#else
+  Gpu = 1 << 0,
+#endif
 };
 
 inline OrtDmlDeviceFilter operator~(OrtDmlDeviceFilter a) { return (OrtDmlDeviceFilter) ~(int)a; }
@@ -128,7 +132,7 @@ struct OrtDmlApi {
   /**
    * SessionOptionsAppendExecutionProvider_DML2
    * Creates a DirectML Execution Provider given the supplied device options that contain a performance preference
-   * (high power, low power, or defult) and a device filter (None, GPU, or NPU).
+   * (high power, low power, or default) and a device filter (None, GPU, or NPU).
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts);
 };

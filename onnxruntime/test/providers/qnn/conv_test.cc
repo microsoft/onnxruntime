@@ -148,7 +148,7 @@ static void RunHTPConvOpTest(const std::string& conv_op_type, const TestInputDef
                              ExpectedEPNodeAssignment expected_ep_assignment,
                              bool use_contrib_qdq = false,
                              int opset = 13,
-                             float fp32_abs_err = 1e-5f) {
+                             QDQTolerance tolerance = QDQTolerance()) {
   ProviderOptions provider_options;
 
 #if defined(_WIN32)
@@ -165,7 +165,7 @@ static void RunHTPConvOpTest(const std::string& conv_op_type, const TestInputDef
                        provider_options,
                        opset,
                        expected_ep_assignment,
-                       fp32_abs_err);
+                       tolerance);
 }
 
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
@@ -405,7 +405,9 @@ TEST_F(QnnHTPBackendTests, Test_QDQConvWithDynamicWeightsFromMul) {
   RunQnnModelTest(BuildConvMulGraph,
                   provider_options,
                   13,
-                  ExpectedEPNodeAssignment::All);
+                  ExpectedEPNodeAssignment::All,
+                  4e-4f);  // Accuracy decreased slightly in QNN SDK 2.17.
+                           // Expected: 9.94500065, Actual: 9.94537735
 }
 
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
@@ -419,7 +421,11 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_bias_dynamic_input) {
                                      {0, 0, 0, 0},                                            // Pads
                                      {1, 1},                                                  // Dilations
                                      "NOTSET",
-                                     ExpectedEPNodeAssignment::All);
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_qdq_contrib_ops
+                                     13,     // opset
+                                     // Need tolerance of 0.413% of output range after QNN SDK 2.17
+                                     QDQTolerance(0.00413f));
 }
 
 // Tests 16-bit QDQ Conv with dynamic weights and bias (uses QNN's Conv2d)
@@ -518,8 +524,7 @@ TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_StaticBias) {
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
-                                      13,
-                                      0.2f);
+                                      13);
 }
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with static bias.
@@ -541,8 +546,7 @@ TEST_F(QnnHTPBackendTests, ConvU16U8S32_StaticBias) {
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
-                                      13,
-                                      0.6f);
+                                      13);
 }
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with dynamic bias.
@@ -565,8 +569,7 @@ TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_DynamicBias) {
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
-                                      13,
-                                      0.2f);
+                                      13);
 }
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with dynamic bias.
@@ -588,8 +591,7 @@ TEST_F(QnnHTPBackendTests, ConvU16U8S32_DynamicBias) {
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
-                                      13,
-                                      0.57f);
+                                      13);
 }
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with no bias
@@ -611,8 +613,7 @@ TEST_F(QnnHTPBackendTests, ConvU16U8S32_NoBias) {
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
-                                      13,
-                                      0.58f);
+                                      13);
 }
 
 // Tests 16-bit activations, 8-bit static weights QDQ Conv with no bias
@@ -635,8 +636,7 @@ TEST_F(QnnHTPBackendTests, DepthwiseConvU16U8S32_NoBias) {
                                       "NOTSET",
                                       ExpectedEPNodeAssignment::All,
                                       true,  // Use com.microsoft QDQ ops for 16-bit
-                                      13,
-                                      0.2f);
+                                      13);
 }
 
 // Test that dynamic weights with default bias works for Conv. This was previously not working
@@ -678,7 +678,11 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_bias_initializer) {
                                      {0, 0, 0, 0},                                            // Pads
                                      {1, 1},                                                  // Dilations
                                      "NOTSET",
-                                     ExpectedEPNodeAssignment::All);
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_qdq_contrib_ops
+                                     13,     // opset
+                                     // Need tolerance of 0.413% of output range after QNN SDK 2.17
+                                     QDQTolerance(0.00413f));
 }
 
 // Tests 1D Conv with bias as an initializer.
@@ -827,10 +831,20 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_large_input1_padding_bias_initializer) {
                                      {1, 1, 1, 1},
                                      {1, 1},
                                      "NOTSET",
-                                     ExpectedEPNodeAssignment::All);
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_qdq_contrib_ops
+                                     13,     // opset
+                                     // Need tolerance of 0.73% of output range after QNN SDK 2.17
+                                     QDQTolerance(0.00730f));
 }
 
 TEST_F(QnnHTPBackendTests, ConvU8U8S32_large_input2_bias_initializer) {
+#ifdef __linux__
+  // On Linux QNN SDK 2.17: Need a tolerance of 0.785% of output range to pass.
+  QDQTolerance tolerance = QDQTolerance(0.00785f);
+#else
+  QDQTolerance tolerance = QDQTolerance();
+#endif
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
                                      TestInputDef<float>({1, 128, 8, 56}, false, 0.f, 10.f),  // Dynamic input
                                      TestInputDef<float>({32, 128, 1, 1}, true, -1.f, 1.f),   // Random static weights
@@ -839,7 +853,10 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_large_input2_bias_initializer) {
                                      {0, 0, 0, 0},
                                      {1, 1},
                                      "NOTSET",
-                                     ExpectedEPNodeAssignment::All);
+                                     ExpectedEPNodeAssignment::All,
+                                     false,
+                                     13,
+                                     tolerance);
 }
 
 TEST_F(QnnHTPBackendTests, ConvU8U8S32_LargeInput_Dilations_Pads) {

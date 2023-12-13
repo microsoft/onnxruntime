@@ -2193,7 +2193,7 @@ Example 4:
               OpSchema::Variadic)
       .TypeConstraint(
           "T",
-          OpSchema::all_tensor_types(),
+          OpSchema::all_tensor_types_ir4(),
           "Constrain input and output types to all tensor types.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         for (int i = 0; i < static_cast<int>(ctx.getNumOutputs()); ++i) {
@@ -2270,7 +2270,7 @@ Example 4:
               OpSchema::Optional)
       .TypeConstraint(
           "T",
-          OpSchema::all_tensor_types(),
+          OpSchema::all_tensor_types_ir4(),
           "Constrain output types to any tensor type.")
       .TypeConstraint(
           "Tint",
@@ -4180,6 +4180,7 @@ Return true if all elements are true and false otherwise.
       .Attr("func_name", "Function name of the Python Triton kernel.", AttributeProto::STRING, std::string(""))
       .Attr("onnx_key", "The hash key for the ONNX graph.", AttributeProto::INT, static_cast<int64_t>(0))
       .Attr("onnx_string", "The onnx string of the triton kernel.", AttributeProto::STRING, std::string(""))
+      .AllowUncheckedAttributes()
       .Input(0, "inputs",
              "Input tensors. If to call an existing Python Triton kernel, "
              "the input count and order should match the arguments of the function. If to compute an ONNX graph, "
@@ -4740,7 +4741,7 @@ Return true if all elements are true and false otherwise.
           "For other indices,  the corresponding value in output will be padded to zero."
 
           "The indices don't allow duplicated index values, otherwise, though there is no runtime check"
-          "(in case of performance concern), the behaviour of output is undefined."
+          "(in case of performance concern), the behavior of output is undefined."
 
           "An example:"
           "  input: [[1, 2, 3, 4], [5, 6, 7, 8]], shape is [2, 4]"
@@ -4748,14 +4749,12 @@ Return true if all elements are true and false otherwise.
           "  unflatten_dims: [2, 3], shape is [2]"
 
           "  output: [[[1, 2, 3, 4], [0, 0, 0, 0], [0, 0, 0, 0]], [[0, 0, 0, 0], [0, 0, 0, 0], [5, 6, 7, 8]]],"
-          "  shape is [2, 3, 4]"
-          "  flatten_output_shape: [6, 4], shape is [2]")
+          "  shape is [2, 3, 4]")
       .Input(0, "input", "input data of rank N, shape is [d1, d2, ..., dN]", "T")
       .Input(1, "indices", "1D Tensor of int32/int64 indices, shape is [d1], each element's value ranges in [0, M1*M2).",
              "T_INDEX")
       .Input(2, "unflatten_dims", "1D tensor with two values, [M1, M2].", "T_INT")
       .Output(0, "output", "output data of rank N+1, [M1, M2, d2, ..., dN]", "T")
-      .Output(1, "flatten_output_shape", "1D tensor with output shape, [M1*M2, d2, ..., dN]", "T_INT")
       .TypeConstraint(
           "T_INT",
           {"tensor(int32)", "tensor(int64)"},
@@ -4768,6 +4767,26 @@ Return true if all elements are true and false otherwise.
           "T_INDEX",
           {"tensor(int32)", "tensor(int64)"},
           "Constrain indices to integer types");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(FlattenAndUnpad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "FlattenAndUnpad operator flattens the first two dims of input tensor, and unpad according to given indices."
+          "This is used by padding elimination graph transformer.")
+      .Input(0, "input", "input data of rank N + 1, shape is [M1, M2, d2, ..., dN]", "T")
+      .Input(1, "indices", "1D Tensor of int32/int64 indices, shape is [d1], each element's value ranges in [0, M1*M2).",
+             "T_INT")
+      .Output(0, "output", "output data of rank N, [d1, d2, ..., dN]", "T")
+      .Output(1, "unflatten_dims", "1D tensor with two values, [M1, M2].", "T_INT")
+      .TypeConstraint(
+          "T_INT",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain indices and shape to integer tensors.")
+      .TypeConstraint(
+          "T",
+          {"tensor(int32)", "tensor(int64)", "tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GRUTraining)
       .SetDomain(kMSDomain)
@@ -5001,6 +5020,26 @@ Return true if all elements are true and false otherwise.
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input and output types to float tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ResizeGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "dY", "Gradient of output Y.", "T")
+      .Input(1, "X", "Input tensor to the Resize operator.", "T")
+      .Input(2, "roi", "The roi input to the Resize operator.", "T", OpSchema::Optional)
+      .Input(3, "scales", "The scales input to the Resize operator.", "tensor(float)", OpSchema::Optional)
+      .Output(0, "dX", "Gradient of the input X.", "T")
+      .AllowUncheckedAttributes()
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        if (hasInputShape(ctx, 1)) {
+          propagateShapeFromInputToOutput(ctx, 1, 0);
+        }
+      });
 }
 
 }  // namespace training

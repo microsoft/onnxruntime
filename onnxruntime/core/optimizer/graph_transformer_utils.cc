@@ -50,6 +50,8 @@
 #include "core/optimizer/matmul_integer_to_float.h"
 #include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
+#include "core/optimizer/matmul_bn_fusion.h"
+#include "core/optimizer/pad_fusion.h"
 #include "core/optimizer/nchwc_transformer.h"
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
@@ -75,7 +77,6 @@
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
-#include "orttraining/core/optimizer/memory_optimizer.h"
 #endif
 #ifdef ENABLE_TRITON
 #include "orttraining/core/optimizer/triton_fusion.h"
@@ -127,6 +128,8 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<ConvAddFusion>());
       rules.push_back(std::make_unique<ConvMulFusion>());
       rules.push_back(std::make_unique<ConvBNFusion>());
+      rules.push_back(std::make_unique<PadFusion>());
+      rules.push_back(std::make_unique<MatmulBNFusion>());
       rules.push_back(std::make_unique<ClipQuantFusion>());
       rules.push_back(std::make_unique<ReluQuantFusion>());
       break;
@@ -268,11 +271,12 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                       onnxruntime::kCudaExecutionProvider,
                                                                       onnxruntime::kRocmExecutionProvider,
                                                                       onnxruntime::kDmlExecutionProvider};
-      const InlinedHashSet<std::string_view> cpu_cuda_rocm_acl_armnn_eps = {onnxruntime::kCpuExecutionProvider,
-                                                                            onnxruntime::kCudaExecutionProvider,
-                                                                            onnxruntime::kRocmExecutionProvider,
-                                                                            onnxruntime::kAclExecutionProvider,
-                                                                            onnxruntime::kArmNNExecutionProvider};
+      const InlinedHashSet<std::string_view> cpu_cuda_rocm_acl_armnn_js_eps = {onnxruntime::kCpuExecutionProvider,
+                                                                               onnxruntime::kCudaExecutionProvider,
+                                                                               onnxruntime::kRocmExecutionProvider,
+                                                                               onnxruntime::kAclExecutionProvider,
+                                                                               onnxruntime::kArmNNExecutionProvider,
+                                                                               onnxruntime::kJsExecutionProvider};
 
 #ifdef MLAS_TARGET_AMD64_IX86
       const bool avx2_precision_mode =
@@ -294,7 +298,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(cpu_ep));
       transformers.emplace_back(std::make_unique<DynamicQuantizeMatMulFusion>(cpu_ep));
 
-      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_eps));
+      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_js_eps));
 
       transformers.emplace_back(std::make_unique<GeluFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_cuda_dml_rocm_eps));
@@ -348,18 +352,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their
       // fusions might be prevented if this one removes a Q/DQ node too early.
       transformers.emplace_back(std::make_unique<QDQFinalCleanupTransformer>(enable_quant_qdq_cleanup));
-
-#ifdef ENABLE_TRAINING
-      // Put memory optimization transformer at last (which is done after most of fusions are done) by intention.
-      // Known issue: after memory optimization is completed, if some fusion happens, it is possible that the
-      // node priority got changed. This may disorder the execution order of nodes to recompute.
-      // TODO(pengwa): need to fix this issue.
-      const std::string enable_memory_optimizer =
-          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerEnabler, "");
-      const std::string probe_level =
-          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerProbeLevel, "0");
-      transformers.emplace_back(std::make_unique<MemoryOptimizer>(enable_memory_optimizer, probe_level));
-#endif
 
     } break;
 

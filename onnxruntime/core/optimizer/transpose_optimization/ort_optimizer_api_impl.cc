@@ -107,10 +107,17 @@ class ApiGraph final : public api::GraphRef {
   onnxruntime::Graph& graph_;
   AllocatorPtr cpu_allocator_;
   const char* new_node_ep_;
+  std::unordered_set<std::string_view> graph_outputs_;  // graph_.GetOutputs() names for efficient lookup
 
  public:
   explicit ApiGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator, const char* new_node_ep)
-      : graph_(graph), cpu_allocator_(std::move(cpu_allocator)), new_node_ep_(new_node_ep) {}
+      : graph_(graph), cpu_allocator_(std::move(cpu_allocator)), new_node_ep_(new_node_ep) {
+    const auto& graph_outputs = graph_.GetOutputs();
+    graph_outputs_.reserve(graph_outputs.size());
+    for (const auto* output : graph_outputs) {
+      graph_outputs_.insert(output->Name());
+    }
+  }
 
   onnxruntime::Graph& Graph() {
     return graph_;
@@ -138,6 +145,7 @@ class ApiGraph final : public api::GraphRef {
   void MoveOutput(api::NodeRef& src_node, size_t src_idx, api::NodeRef& dst_node, size_t dst_idx) override;
   void CopyValueInfo(std::string_view src_name, std::string_view dst_name) override;
   bool HasValueConsumers(std::string_view name) const override;
+  bool IsGraphOutput(std::string_view name) const override;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiGraph);
@@ -447,6 +455,10 @@ std::vector<std::unique_ptr<api::NodeRef>> ApiGraph::Nodes() const {
   return nodes;
 }
 
+bool ApiGraph::IsGraphOutput(std::string_view name) const {
+  return graph_outputs_.find(name) != graph_outputs_.end();
+}
+
 std::unique_ptr<api::TensorRef> ApiGraph::GetConstant(std::string_view name) const {
   const auto* tensor = graph_.GetConstantInitializer(std::string(name), /*check_outer_scope*/ true);
   if (tensor == nullptr) {
@@ -494,11 +506,8 @@ std::unique_ptr<api::ValueConsumers> ApiGraph::GetValueConsumers(std::string_vie
     }
   }
 
-  const auto& graph_outputs = graph_.GetOutputs();
-  for (const auto* output : graph_outputs) {
-    if (output->Name() == name) {
-      consumers->comprehensive = false;
-    }
+  if (IsGraphOutput(name)) {
+    consumers->comprehensive = false;
   }
 
   return consumers;
@@ -510,14 +519,7 @@ bool ApiGraph::HasValueConsumers(std::string_view name) const {
     return true;
   }
 
-  const auto& graph_outputs = graph_.GetOutputs();
-  for (const auto* output : graph_outputs) {
-    if (output->Name() == name) {
-      return true;
-    }
-  }
-
-  return false;
+  return IsGraphOutput(name);
 }
 
 std::unique_ptr<api::NodeRef> ApiGraph::GetNodeProducingOutput(std::string_view name) const {
@@ -704,10 +706,6 @@ static std::optional<int> GetLayoutTransformationPotentiallyAddedOpSinceVersion(
 // Based on the opset version imported for this model, returns the since version for the node.
 static int GetSinceVersionForNewOp(std::string_view op_type, std::string_view domain,
                                    const std::unordered_map<std::string, int>& domain_to_version_map) {
-  // TODO do we need this check? we will also check kLayoutTransformationPotentiallyAddedOps
-  ORT_ENFORCE(domain == kOnnxDomain, "Transpose optimizer is expected to add only onnx domain ops. Domain: ",
-              domain, " provided for op: ", op_type);
-
   const auto opset_import_iter = domain_to_version_map.find(std::string(domain));
   ORT_ENFORCE(opset_import_iter != domain_to_version_map.end(), domain, " domain not found in opset imports.");
 

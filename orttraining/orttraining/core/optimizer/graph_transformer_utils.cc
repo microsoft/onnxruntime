@@ -63,6 +63,7 @@
 #include "orttraining/core/optimizer/scaled_sum_fusion.h"
 #include "orttraining/core/optimizer/shape_optimizer.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
+#include "orttraining/core/optimizer/transpose_replacement.h"
 #include "core/optimizer/compute_optimizer/upstream_gather.h"
 #include "core/optimizer/compute_optimizer/upstream_reshape.h"
 #include "core/optimizer/pre_shape_node_elimination.h"
@@ -71,6 +72,7 @@
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 #include "orttraining/core/optimizer/pythonop_rewriter.h"
 #endif
+#include "orttraining/core/optimizer/conv1d_replacement.h"
 
 namespace onnxruntime {
 namespace training {
@@ -193,6 +195,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
         // Once we have a CPU kernel for PadAndUnflatten, we can remove the guard.
         transformers.emplace_back(std::make_unique<PaddingElimination>(compatible_eps,
                                                                        config.sparse_embedding_input_names));
+        transformers.emplace_back(std::make_unique<Conv1dReplacement>(compatible_eps));
 #endif
       }
 
@@ -203,6 +206,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
           std::make_unique<RuleBasedGraphTransformer>(optimizer_utils::GenerateRuleBasedTransformerName(level),
                                                       compatible_eps);
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<ConcatReplacement>()));
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<TransposeReplacement>()));
     } break;
 
     case TransformerLevel::Level3: {

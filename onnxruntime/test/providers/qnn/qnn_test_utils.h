@@ -84,6 +84,16 @@ inline QuantParams<QType> GetDataQuantParams(gsl::span<const float> data) {
  */
 std::vector<float> GetFloatDataInRange(float min_val, float max_val, size_t num_elems);
 
+/**
+ * Returns a float vector with sequential data.
+ *
+ * \param shape The tensor shape used to determine the number of values.
+ * \param start The starting value.
+ * \param step The step size.
+ * \return A vector of sequential floats.
+ */
+std::vector<float> GetSequentialFloatData(const std::vector<int64_t>& shape, float start = 0.0f, float step = 1.0f);
+
 // Class that defines an input that can be created with ModelTestBuilder.
 // Defines whether the input is an initializer and if the data should be randomized or if
 // set to an explicit value.
@@ -239,6 +249,19 @@ void InferenceModel(const std::string& model_data, const char* log_id,
  */
 void TryEnableQNNSaver(ProviderOptions& qnn_options);
 
+struct QDQTolerance {
+  // When comparing output activations between QNN EP and CPU EP (both running the QDQ model),
+  // this value defines the maximum tolerable difference as a percentage of the output range.
+  // Ex: (qdq@QNN_EP - qdq@CPU_EP) / (rmax_output - rmin_output) <= DEFAULT_QDQ_TOLERANCE.
+  static constexpr float DEFAULT_QDQ_TOLERANCE = 0.004f;  // 0.4% is equivalent to 1 int8 quantization unit
+                                                          // or 262 int16 quantization units.
+
+  QDQTolerance() : value(DEFAULT_QDQ_TOLERANCE) {}
+  explicit QDQTolerance(float tolerance) : value(tolerance) {}
+
+  float value;
+};
+
 /**
  * Tests the accuracy of a QDQ model on QNN EP by runnning 3 inferences:
  *
@@ -254,13 +277,15 @@ void TryEnableQNNSaver(ProviderOptions& qnn_options);
  * \param qnn_options QNN EP provider options.
  * \param opset_version The opset version.
  * \param expected_ep_assignment Describes "which nodes" should be assigned to the EP.
- * \param fp32_abs_err Small tolerance used for floating-point comparisons.
+ * \param tolerance The percent tolerance (as fraction) QNN EP results are allowed to differ from the QDQ model on CPU EP.
+ *                  This tolerance is a percentage of the output range.
  * \param log_severity The logger's severity setting.
  */
 template <typename QuantType>
 inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTestQDQModelFn<QuantType>& qdq_model_fn,
                                  ProviderOptions qnn_options, int opset_version,
-                                 ExpectedEPNodeAssignment expected_ep_assignment, float fp32_abs_err = 1e-4f,
+                                 ExpectedEPNodeAssignment expected_ep_assignment,
+                                 QDQTolerance tolerance = QDQTolerance(),
                                  logging::Severity log_severity = logging::Severity::kERROR,
                                  const std::string& qnn_ctx_model_path = "") {
   // Add kMSDomain to cover contrib op like Gelu
@@ -366,37 +391,71 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
         gsl::span<const float> cpu_f32_vals = output_vals[i];
         gsl::span<const float> cpu_qdq_vals = cpu_qdq_tensor.DataAsSpan<float>();
         gsl::span<const float> qnn_qdq_vals = qnn_qdq_tensor.DataAsSpan<float>();
+        constexpr QuantType qmin = std::numeric_limits<QuantType>::min();
+        constexpr QuantType qmax = std::numeric_limits<QuantType>::max();
+        const float output_range = output_qparams[i].scale * static_cast<float>(qmax - qmin);
 
         ASSERT_EQ(num_vals, cpu_qdq_vals.size());
         ASSERT_EQ(num_vals, qnn_qdq_vals.size());
 
-        for (size_t j = 0; j < num_vals && error_count < max_error_count; j++) {
-          const float expected_val = cpu_f32_vals[j];  // "ground-truth"
-          const float qnn_qdq_val = qnn_qdq_vals[j];
-          const float cpu_qdq_val = cpu_qdq_vals[j];
-          const float cpu_err = std::fabs(expected_val - cpu_qdq_val);
-          const float qnn_err = std::fabs(expected_val - qnn_qdq_val);
+        float max_f32_err = 0.0f;
+        float max_qdq_err = 0.0f;
+        bool print_accuracy_warning = false;
 
-          // Case 1 (qnn_err <= cpu_err): QNN EP is *more* accurate, which makes (qnn_err - cpu_err) zero or
-          //                              a negative value.
-          // Case 2 (qnn_err > cpu_err):  QNN EP is less accurate, but the error difference is within 1
-          //                              quantization unit (i.e., scale). This can occur due to rounding differences.
-          const bool is_as_accurate_as_cpu_qdq = (qnn_err - cpu_err) <= (output_qparams[i].scale + fp32_abs_err);
-          if (!is_as_accurate_as_cpu_qdq) {
+        for (size_t j = 0; j < num_vals && error_count < max_error_count; j++) {
+          const float expected_val = cpu_f32_vals[j];  // f32@CPU_EP val ("ground-truth")
+          const float qnn_qdq_val = qnn_qdq_vals[j];   // qdq@QNN_EP val
+          const float cpu_qdq_val = cpu_qdq_vals[j];   // qdq@CPU_EP val
+
+          // Get errors of qdq@CPU_EP and qdq@QNN_EP against f32@CPU_EP.
+          const float cpu_err = std::fabs(expected_val - cpu_qdq_val);
+          const float cpu_err_norm = cpu_err / output_range;
+          const float qnn_err = std::fabs(expected_val - qnn_qdq_val);
+          const float qnn_err_norm = qnn_err / output_range;
+
+          // Also compare the QDQ values against each other.
+          // This is equivalent to abs(qdq@QNN_EP - qdq@CPU_EP) / output_range
+          const float qdq_vals_err_norm = std::fabs(qnn_err_norm - cpu_err_norm);
+
+          // True if qdq@QNN_EP is at least as accurate as qdq@CPU_EP when compared to expected f32@CPU_EP value.
+          const bool is_as_accurate_as_cpu_ep = qnn_err_norm <= cpu_err_norm;
+
+          // True if the normalized difference between qdq@QNN_EP and qdq@CPU_EP is within tolerance.
+          const bool qdq_vals_diff_within_tolerance = qdq_vals_err_norm <= tolerance.value;
+
+          const bool passed_test = is_as_accurate_as_cpu_ep || qdq_vals_diff_within_tolerance;
+          if (!passed_test) {
             ++error_count;
           }
-
-          EXPECT_TRUE(is_as_accurate_as_cpu_qdq)
+          EXPECT_TRUE(passed_test)
               << "Inaccuracy detected for output '" << debug_output_name
               << "', element " << j
-              << ".\nOutput quant params: scale=" << output_qparams[i].scale
-              << ", zero_point=" << static_cast<int32_t>(output_qparams[i].zero_point)
-              << ".\nExpected val: " << expected_val << "\n"
-              << "QNN QDQ val: " << qnn_qdq_val << " (err " << qnn_err << ")\n"
-              << "CPU QDQ val: " << cpu_qdq_val << " (err " << cpu_err << ")";
+              << "\noutput_range=" << output_range << ", tolerance=" << (tolerance.value * 100) << "%"
+              << ".\nExpected val (f32@CPU_EP): " << expected_val << "\n"
+              << "qdq@QNN_EP val: " << qnn_qdq_val << " (err: " << qnn_err << ", err/output_range: "
+              << qnn_err_norm * 100.0f << "%)\n"
+              << "qdq@CPU_EP val: " << cpu_qdq_val << " (err: " << cpu_err << ", err/output_range: "
+              << cpu_err_norm * 100.0f << "%)\n"
+              << "abs(qdq@QNN_EP - qdq@CPU_EP) / output_range = " << qdq_vals_err_norm * 100.0f << "%";
+
+          max_f32_err = std::max(max_f32_err, qnn_err_norm);
+          max_qdq_err = std::max(max_qdq_err, qdq_vals_err_norm);
+          if (passed_test && !is_as_accurate_as_cpu_ep && (qdq_vals_err_norm > QDQTolerance::DEFAULT_QDQ_TOLERANCE)) {
+            print_accuracy_warning = true;
+          }
+        }
+
+        if (print_accuracy_warning) {
+          std::cerr << std::endl
+                    << "[WARNING]: Output " << i
+                    << " required larger tolerance to pass accuracy checks" << std::endl
+                    << "Max normalized error against f32@CPU_EP = " << max_f32_err * 100.0f << "%" << std::endl
+                    << "Max normalized error against qdq@CPU_EP = " << max_qdq_err * 100.0f << "%" << std::endl
+                    << "Default tolerance = " << QDQTolerance::DEFAULT_QDQ_TOLERANCE * 100.0f << "%" << std::endl
+                    << "Tolerance used = " << tolerance.value * 100.0f << "%" << std::endl;
         }
       } else {
-        VerifyOutput(debug_output_name, cpu_f32_outputs[i].Get<Tensor>(), qnn_qdq_tensor, fp32_abs_err);
+        VerifyOutput(debug_output_name, cpu_f32_outputs[i].Get<Tensor>(), qnn_qdq_tensor, 1e-4f);
       }
     }
   }
@@ -574,7 +633,9 @@ inline GetTestQDQModelFn<QuantType> BuildQDQOpTestCase(const std::string& op_typ
  */
 void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
-                     float fp32_abs_err = 1e-5f, logging::Severity log_severity = logging::Severity::kERROR);
+                     float fp32_abs_err = 1e-5f,
+                     logging::Severity log_severity = logging::Severity::kERROR,
+                     bool verify_outputs = true);
 
 enum class BackendSupport {
   SUPPORT_UNKNOWN,

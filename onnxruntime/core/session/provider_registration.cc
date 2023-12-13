@@ -12,6 +12,10 @@
 #include "core/session/ort_apis.h"
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
 
+#ifdef _WIN32
+#include "core/platform/tracing.h"
+#endif
+
 #if defined(USE_DML)
 #include "core/providers/dml/dml_provider_factory_creator.h"
 #endif
@@ -66,6 +70,17 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     return status;
   }
 
+#ifdef _WIN32
+  for (const auto& config_pair : provider_options) {
+    TraceLoggingWrite(
+        telemetry_provider_handle,
+        "ProviderOptionsAppendExecutionProvider",
+        TraceLoggingString(provider_name, "ProviderName"),
+        TraceLoggingString(config_pair.first.c_str(), "Key"),
+        TraceLoggingString(config_pair.second.c_str(), "Value"));
+  }
+#endif
+
   auto create_not_supported_status = [&provider_name]() {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                  (std::string(provider_name) + " execution provider is not supported in this build. ").c_str());
@@ -104,8 +119,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   } else if (strcmp(provider_name, "WEBNN") == 0) {
 #if defined(USE_WEBNN)
     std::string deviceType = options->value.config_options.GetConfigOrDefault("deviceType", "cpu");
+    std::string numThreads = options->value.config_options.GetConfigOrDefault("numThreads", "0");
     std::string powerPreference = options->value.config_options.GetConfigOrDefault("powerPreference", "default");
     provider_options["deviceType"] = deviceType;
+    provider_options["numThreads"] = numThreads;
     provider_options["powerPreference"] = powerPreference;
     options->provider_factories.push_back(WebNNProviderFactoryCreator::Create(provider_options));
 #else

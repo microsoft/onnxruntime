@@ -27,44 +27,64 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
   return info;
 }
 
-#define KERNEL_CREATE_INFO_VERSIONED(Start, End, Op) \
-  BuildKernelCreateInfo<                             \
-      ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, Start, End, Op)>
+#define KERNEL_CREATE_INFO_VERSIONED(Start, End, Op, Domain) \
+  BuildKernelCreateInfo<                                     \
+      ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, Domain, Start, End, Op)>
 
-#define KERNEL_CREATE_INFO(Start, Op) \
-  BuildKernelCreateInfo<              \
-      ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, Start, Op)>
+#define KERNEL_CREATE_INFO(Start, Op, Domain) \
+  BuildKernelCreateInfo<                      \
+      ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, Domain, Start, Op)>
 
-#define KERNEL_CREATE_INFO_TYPED(Start, type, Op) \
-  BuildKernelCreateInfo<                          \
-      ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, Start, type, Op)>
+#define KERNEL_CREATE_INFO_TYPED(Start, Type, Op, Domain) \
+  BuildKernelCreateInfo<                                  \
+      ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, Domain, Start, Type, Op)>
 
+// Layout sensitive operators in NHWC domain
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 7, 9, AveragePool);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, 10, AveragePool);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 18, AveragePool);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 19, AveragePool);
+
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, 10, Conv);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, Conv);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, ConvTranspose);
+
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, 10, ConvTranspose);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, QLinearConvTranspose);
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 10, 10, Resize);
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 11, 12, Resize);
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, 17, Resize);
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 18, 18, Resize);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 19, Resize);
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 11, MaxPool);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 12, MaxPool);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, AveragePool);
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, Softmax);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Softmax);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, ConvTranspose);
 
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, uint8_t, QLinearConv);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, int8_t, QLinearConv);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, QLinearAveragePool);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider,
-                                      kDynamicDomainByCreate, 1, QLinearSoftmax);
 
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, 12, Gemm);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, QLinearConvTranspose);
+
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, QLinearAveragePool);
+
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, 10, Resize);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 12, Resize);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 13, 17, Resize);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 18, 18, Resize);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 19, Resize);
+
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 8, 9, MaxPool);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, 10, MaxPool);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 11, MaxPool);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 12, MaxPool);
+
+// ONNX operators
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, 8, Gemm);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 9, 10, Gemm);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 11, 12, Gemm);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Gemm);
 
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, MatMul);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 8, MatMul);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 9, 12, MatMul);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, MatMul);
+
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 10, Softmax);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 11, 12, Softmax);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Softmax);
+
+// Internal domain
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kDynamicDomainByCreate, 1, QLinearSoftmax);
 
 std::unique_ptr<KernelRegistry> RegisterKernels() {
   auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
@@ -72,43 +92,52 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list becoming empty after ops-reducing
 
-      KERNEL_CREATE_INFO(11, Conv),
-      KERNEL_CREATE_INFO(11, ConvTranspose),
-      KERNEL_CREATE_INFO_VERSIONED(1, 10, ConvTranspose),
-      KERNEL_CREATE_INFO(1, QLinearConvTranspose),
-      KERNEL_CREATE_INFO_VERSIONED(11, 11, MaxPool),
-      KERNEL_CREATE_INFO(12, MaxPool),
-      KERNEL_CREATE_INFO(11, AveragePool),
+      // layout sensitive. nodes will be moved to kMSInternalNHWCDomain by layout transformation
+      KERNEL_CREATE_INFO_VERSIONED(7, 9, AveragePool, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_VERSIONED(10, 10, AveragePool, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_VERSIONED(11, 18, AveragePool, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO(19, AveragePool, kMSInternalNHWCDomain),
+
+      KERNEL_CREATE_INFO_VERSIONED(1, 10, Conv, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO(11, Conv, kMSInternalNHWCDomain),
+
+      KERNEL_CREATE_INFO_VERSIONED(1, 10, ConvTranspose, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO(11, ConvTranspose, kMSInternalNHWCDomain),
+
+      KERNEL_CREATE_INFO_VERSIONED(8, 9, MaxPool, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_VERSIONED(10, 10, MaxPool, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_VERSIONED(11, 11, MaxPool, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO(12, MaxPool, kMSInternalNHWCDomain),
+
+      KERNEL_CREATE_INFO(1, QLinearConvTranspose, kMSInternalNHWCDomain),
+
+      KERNEL_CREATE_INFO_VERSIONED(10, 10, Resize, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_VERSIONED(11, 12, Resize, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_VERSIONED(13, 17, Resize, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_VERSIONED(18, 18, Resize, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO(19, Resize, kMSInternalNHWCDomain),
+
       // layout insensitive, use ONNX-domain directly
-      BuildKernelCreateInfo<
-          ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Softmax)>,
-      BuildKernelCreateInfo<
-          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, Softmax)>,
-      BuildKernelCreateInfo<
-          ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 19, Resize)>,
-      BuildKernelCreateInfo<
-          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 18, 18, Resize)>,
-      BuildKernelCreateInfo<
-          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, 17, Resize)>,
-      BuildKernelCreateInfo<
-          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 11, 12, Resize)>,
-      BuildKernelCreateInfo<
-          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 10, 10, Resize)>,
-      BuildKernelCreateInfo<
-          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, 12, Gemm)>,
-      BuildKernelCreateInfo<
-          ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Gemm)>,
-      BuildKernelCreateInfo<
-          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, MatMul)>,
-      BuildKernelCreateInfo<
-          ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, MatMul)>,
+      KERNEL_CREATE_INFO_VERSIONED(1, 10, Softmax, kOnnxDomain),
+      KERNEL_CREATE_INFO_VERSIONED(11, 12, Softmax, kOnnxDomain),
+      KERNEL_CREATE_INFO(13, Softmax, kOnnxDomain),
+
+      KERNEL_CREATE_INFO_VERSIONED(7, 8, Gemm, kOnnxDomain),
+      KERNEL_CREATE_INFO_VERSIONED(9, 10, Gemm, kOnnxDomain),
+      KERNEL_CREATE_INFO_VERSIONED(11, 12, Gemm, kOnnxDomain),
+      KERNEL_CREATE_INFO(13, Gemm, kOnnxDomain),
+
+      KERNEL_CREATE_INFO_VERSIONED(1, 8, MatMul, kOnnxDomain),
+      KERNEL_CREATE_INFO_VERSIONED(9, 12, MatMul, kOnnxDomain),
+      KERNEL_CREATE_INFO(13, MatMul, kOnnxDomain),
 
       //  quantization op
-      KERNEL_CREATE_INFO_TYPED(10, uint8_t, QLinearConv),
-      KERNEL_CREATE_INFO_TYPED(10, int8_t, QLinearConv),
-      KERNEL_CREATE_INFO(1, QLinearAveragePool),
-      BuildKernelCreateInfo<
-          ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kDynamicDomainByCreate, 1, QLinearSoftmax)>,
+      KERNEL_CREATE_INFO(1, QLinearAveragePool, kMSInternalNHWCDomain),
+
+      KERNEL_CREATE_INFO_TYPED(10, uint8_t, QLinearConv, kMSInternalNHWCDomain),
+      KERNEL_CREATE_INFO_TYPED(10, int8_t, QLinearConv, kMSInternalNHWCDomain),
+
+      KERNEL_CREATE_INFO(1, QLinearSoftmax, kDynamicDomainByCreate),
   };
 
   for (auto& function_table_entry : function_table) {

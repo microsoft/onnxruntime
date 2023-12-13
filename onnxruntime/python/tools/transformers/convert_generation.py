@@ -1272,6 +1272,101 @@ def find_past_seq_len_usage(subg: GraphProto):
     return tensor_names_to_rename, nodes_to_remove
 
 
+def replace_mha_with_gqa(
+    model: OnnxModel, attn_mask: str, kv_num_heads: int = 0, world_size: int = 1, window_size: int = 0
+):
+    # Insert attention_mask subgraph to calculate shared inputs for all GroupQueryAttention nodes
+    #
+    #                attention_mask
+    #               /              \
+    #          ReduceSum          Shape
+    #              |                |
+    #             Sub             Gather
+    #              |                |
+    #          seqlens_k   total_sequence_length
+    #              |                |
+    #        Cast to int32    Cast to int32
+
+    model.add_initializer(
+        onnx.helper.make_tensor(
+            name="one",
+            data_type=TensorProto.INT64,
+            dims=[1],
+            vals=[1],
+        )
+    )
+    reduce_sum_node = onnx.helper.make_node(
+        "ReduceSum",
+        inputs=[attn_mask, "one"],
+        outputs=[attn_mask + "_row_sums"],
+        name=model.create_node_name("ReduceSum"),
+    )
+    sub_node = onnx.helper.make_node(
+        "Sub",
+        inputs=[attn_mask + "_row_sums", "one"],
+        outputs=["seqlens_k_int64"],
+        name=model.create_node_name("Sub"),
+    )
+    seqlen_k_cast_node = onnx.helper.make_node(
+        "Cast",
+        inputs=["seqlens_k_int64"],
+        outputs=["seqlens_k"],
+        name=model.create_node_name("Cast"),
+        to=TensorProto.INT32,
+    )
+    shape_node = onnx.helper.make_node(
+        "Shape",
+        inputs=[attn_mask],
+        outputs=[attn_mask + "_shape"],
+        name=model.create_node_name("Shape"),
+    )
+    gather_node = onnx.helper.make_node(
+        "Gather",
+        inputs=[attn_mask + "_shape", "one"],
+        outputs=["total_seq_len_int64"],
+        name=model.create_node_name("Gather"),
+        axis=0,
+    )
+    total_seqlen_cast_node = onnx.helper.make_node(
+        "Cast",
+        inputs=["total_seq_len_int64"],
+        outputs=["total_seq_len"],
+        name=model.create_node_name("Cast"),
+        to=TensorProto.INT32,
+    )
+    model.model.graph.node.extend(
+        [reduce_sum_node, sub_node, seqlen_k_cast_node, shape_node, gather_node, total_seqlen_cast_node]
+    )
+
+    # Replace MultiHeadAttention with GroupQueryAttention
+    mha_nodes = list(filter(lambda node: node.op_type == "MultiHeadAttention", model.model.graph.node))
+    for node in mha_nodes:
+        num_heads_mha = 0
+        for att in node.attribute:
+            if att.name == "num_heads":
+                num_heads_mha = att.i
+        gqa_node = onnx.helper.make_node(
+            "GroupQueryAttention",
+            inputs=[
+                node.input[0],  # query
+                node.input[1],  # key
+                node.input[2],  # value
+                node.input[6],  # past_key
+                node.input[7],  # past_value
+                "seqlens_k",  # seqlens_k (for attention_mask)
+                "total_seq_len",  # total_seq_len (for attention_mask)
+            ],
+            outputs=node.output,
+            name=node.name.replace("MultiHeadAttention", "GroupQueryAttention"),
+            domain="com.microsoft",
+            num_heads=num_heads_mha // world_size,
+            kv_num_heads=num_heads_mha // world_size if kv_num_heads == 0 else kv_num_heads // world_size,
+        )
+        model.model.graph.node.remove(node)
+        model.model.graph.node.extend([gqa_node])
+    return model
+
+
 def update_decoder_subgraph_output_cross_attention(subg: GraphProto):
     input_self_past_0 = 1
     # w/wo attention mask, w/wo hidden_state

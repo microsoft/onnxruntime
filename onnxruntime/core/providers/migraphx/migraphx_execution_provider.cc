@@ -1,5 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License
+#include <fstream>
+#include <algorithm>
+#include <iterator>
+#include <unordered_map>
+#include <set>
 
 #include "core/providers/shared_library/provider_api.h"
 #define ORT_API_MANUAL_INIT
@@ -11,10 +16,6 @@
 #include "hip_allocator.h"
 #include "gpu_data_transfer.h"
 #include "migraphx_inc.h"
-
-#include <fstream>
-#include <algorithm>
-#include <iterator>
 
 // TODO: find a better way to share this
 #include "core/providers/rocm/rocm_stream_handle.h"
@@ -113,6 +114,45 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
     fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
   }
 
+  // whether int8 is enabled
+  const std::string int8_enable_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kINT8Enable);
+  if (!int8_enable_env.empty()) {
+    int8_enable_ = (std::stoi(int8_enable_env) == 0 ? false : true);
+  }
+
+  if (int8_enable_) {
+    const std::string int8_calibration_cache_name_env =
+        onnxruntime::GetEnvironmentVar(migraphx_env_vars::kINT8CalibrationTableName);
+    if (!int8_calibration_cache_name_env.empty()) {
+      int8_calibration_cache_name_ = int8_calibration_cache_name_env;
+    }
+
+    const std::string cache_path = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kCachePath);
+    if (!cache_path.empty()) {
+      calibration_cache_path_ = cache_path;
+    }
+
+    const std::string int8_use_native_migraphx_calibration_table_env =
+        onnxruntime::GetEnvironmentVar(migraphx_env_vars::kINT8UseNativeMIGraphXCalibrationTable);
+    if (!int8_use_native_migraphx_calibration_table_env.empty()) {
+      int8_use_native_migraphx_calibration_table_ =
+          (std::stoi(int8_use_native_migraphx_calibration_table_env) == 0 ? false : true);
+    }
+  }
+
+  if (int8_enable_) {
+    int8_calibration_cache_available_ = !int8_calibration_cache_name_.empty();
+  }
+
+  // Load INT8 calibration table
+  std::unordered_map<std::string, float> dynamic_range_map;
+  if (int8_enable_ && int8_calibration_cache_available_) {
+    const std::string calibration_cache_path = GetCachePath(calibration_cache_path_, int8_calibration_cache_name_);
+    if (!ReadDynamicRange(calibration_cache_path, int8_use_native_migraphx_calibration_table_, dynamic_range_map)) {
+      throw std::runtime_error("Failed to read INT8 calibration table " + calibration_cache_path);
+    }
+  }
+
   // dump unsupported ops
   const std::string dump_model_ops_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::dumpModelOps);
   if (!dump_model_ops_env.empty()) {
@@ -124,6 +164,15 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
 
   MIOPEN_CALL_THROW(miopenCreate(&external_miopen_handle_));
   MIOPEN_CALL_THROW(miopenSetStream(external_miopen_handle_, stream_));
+
+  LOGS_DEFAULT(VERBOSE) << "[MIGraphX EP] MIGraphX provider options: "
+                        << "device_id: " << device_id_
+                        << ", migraphx_fp16_enable: " << fp16_enable_
+                        << ", migraphx_int8_enable: " << int8_enable_
+                        << ", dump_model_ops: " << dump_model_ops_
+                        << ", migraphx_int8_calibration_cache_name: " << int8_calibration_cache_name_
+                        << ", int8_calibration_cache_available: " << int8_calibration_cache_available_
+                        << ", use_native_migraphx_calibration_table: " << int8_use_native_migraphx_calibration_table_;
 }
 
 MIGraphXExecutionProvider::~MIGraphXExecutionProvider() {
@@ -467,7 +516,8 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
   return false;
 }
 
-void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& clusters, const logging::Logger& logger) {
+void SubgraphPostProcessing(const onnxruntime::GraphViewer& graph_viewer, std::vector<std::vector<NodeIndex>>& clusters,
+                            const logging::Logger& logger) {
   // Then check whether a subgraph should fallback to CPU
   // 1. Check whether a subgraph contains a RNN operator
   std::unordered_set<std::string> rnn_names = {"RNN", "GRU", "LSTM"};
@@ -642,7 +692,8 @@ std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const st
             fused_inputs.erase(iter);
             erased.insert(output);
           } else if (erased.find(output) == erased.end()) {
-            if (std::find(graph_output_names.begin(), graph_output_names.end(), output->Name()) != graph_output_names.end()) {
+            if (std::find(graph_output_names.begin(),
+                          graph_output_names.end(), output->Name()) != graph_output_names.end()) {
               graph_outputs_to_add[output] = output_order;
             }
             fused_outputs[output] = output_order++;
@@ -660,7 +711,8 @@ std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const st
         }
         // Only when output is neither in input list nor erased list, add the output to output list
         else if (erased.find(output) == erased.end()) {
-          if (std::find(graph_output_names.begin(), graph_output_names.end(), output->Name()) != graph_output_names.end()) {
+          if (std::find(graph_output_names.begin(),
+                        graph_output_names.end(), output->Name()) != graph_output_names.end()) {
             graph_outputs_to_add[output] = output_order;
           }
           fused_outputs[output] = output_order++;
@@ -733,31 +785,157 @@ static std::vector<NodeIndex>
 GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                           /*out*/ std::unordered_set<std::string>& mgx_required_initializers,
                           const logging::Logger& logger) {
-  static std::set<std::string> mgx_supported_ops = {"Abs", "Acos", "Acosh", "Add", "And",
-                                                    "ArgMax", "ArgMin", "Asin", "Asinh", "Atan", "Atanh", "ATen", "AveragePool",
-                                                    "BatchNormalization", "Cast", "Ceil", "Celu", "Clip", "Concat", "Constant", "ConstantFill",
-                                                    "ConstantOfShape", "Conv", "ConvInteger", "ConvTranspose", "Cos", "Cosh", "CumSum",
-                                                    "DepthToSpace", "DequantizeLinear", "Div", "Dropout", "Elu", "Equal", "Erf", "Exp",
-                                                    "Expand", "EyeLike", "Flatten", "Floor", "GRU", "Gather", "GatherElements", "GatherND", "Gemm", "GlobalAveragePool",
-                                                    "GlobalMaxPool", "Greater", "GreaterOrEqual", "HardSigmoid", "HardSwish", "Identity",
-                                                    "If", "ImageScaler", "InstanceNormalization", "IsNan", "LeakyRelu", "Less", "LessOrEqual",
-                                                    "Log", "LogSoftmax", "Loop", "LpNormalization", "LRN", "LSTM", "MatMul", "MatMulInteger", "Max", "MaxPool",
-                                                    "Mean", "Min", "Mod", "Mul", "Multinomial", "Neg", "NonMaxSuppression", "NonZero", "Not",
-                                                    "OneHot", "Or", "Pad", "Pow", "PRelu", "QuantizeLinear", "RandomNormal", "RandomNormalLike",
-                                                    "RandomUniform", "RandomUniformLike", "Range", "Reciprocal", "ReduceL1", "ReduceL2",
-                                                    "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", "ReduceMean", "ReduceMin", "ReduceProd",
-                                                    "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", "Resize", "ReverseSequence", "RNN", "Roialign", "Round",
-                                                    "Scatter", "ScatterElements", "ScatterND", "Selu", "Shape", "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Softplus",
-                                                    "Softsign", "SpaceToDepth", "Split", "Sqrt", "Squeeze", "Sub", "Sum", "Tan", "Tanh",
-                                                    "ThresholdedRelu", "Tile", "TopK", "Transpose", "Trilu", "Unsqueeze", "Upsample", "Where", "Xor"};
+  static std::set<std::string> mgx_supported_ops = {"Abs",
+                                                    "Acos",
+                                                    "Acosh",
+                                                    "Add",
+                                                    "And",
+                                                    "ArgMax",
+                                                    "ArgMin",
+                                                    "Asin",
+                                                    "Asinh",
+                                                    "Atan",
+                                                    "Atanh",
+                                                    "ATen",
+                                                    "AveragePool",
+                                                    "BatchNormalization",
+                                                    "Cast",
+                                                    "Ceil",
+                                                    "Celu",
+                                                    "Clip",
+                                                    "Concat",
+                                                    "Constant",
+                                                    "ConstantFill",
+                                                    "ConstantOfShape",
+                                                    "Conv",
+                                                    "ConvInteger",
+                                                    "ConvTranspose",
+                                                    "Cos",
+                                                    "Cosh",
+                                                    "CumSum",
+                                                    "DepthToSpace",
+                                                    "DequantizeLinear",
+                                                    "Div",
+                                                    "Dropout",
+                                                    "Elu",
+                                                    "Equal",
+                                                    "Erf",
+                                                    "Exp",
+                                                    "Expand",
+                                                    "EyeLike",
+                                                    "Flatten",
+                                                    "Floor",
+                                                    "GRU",
+                                                    "Gather",
+                                                    "GatherElements",
+                                                    "GatherND",
+                                                    "Gemm",
+                                                    "GlobalAveragePool",
+                                                    "GlobalMaxPool",
+                                                    "Greater",
+                                                    "GreaterOrEqual",
+                                                    "HardSigmoid",
+                                                    "HardSwish",
+                                                    "Identity",
+                                                    "If",
+                                                    "ImageScaler",
+                                                    "InstanceNormalization",
+                                                    "IsNan",
+                                                    "LeakyRelu",
+                                                    "Less",
+                                                    "LessOrEqual",
+                                                    "Log",
+                                                    "LogSoftmax",
+                                                    "Loop",
+                                                    "LpNormalization",
+                                                    "LRN",
+                                                    "LSTM",
+                                                    "MatMul",
+                                                    "MatMulInteger",
+                                                    "Max",
+                                                    "MaxPool",
+                                                    "Mean",
+                                                    "Min",
+                                                    "Mod",
+                                                    "Mul",
+                                                    "Multinomial",
+                                                    "Neg",
+                                                    "NonMaxSuppression",
+                                                    "NonZero",
+                                                    "Not",
+                                                    "OneHot",
+                                                    "Or",
+                                                    "Pad",
+                                                    "Pow",
+                                                    "PRelu",
+                                                    "QLinearAdd",
+                                                    "QLinearConv",
+                                                    "QLinearMatMul",
+                                                    "QuantizeLinear",
+                                                    "DynamicQuantizeLinear",
+                                                    "RandomNormal",
+                                                    "RandomNormalLike",
+                                                    "RandomUniform",
+                                                    "RandomUniformLike",
+                                                    "Range",
+                                                    "Reciprocal",
+                                                    "ReduceL1",
+                                                    "ReduceL2",
+                                                    "ReduceLogSum",
+                                                    "ReduceLogSumExp",
+                                                    "ReduceMax",
+                                                    "ReduceMean",
+                                                    "ReduceMin",
+                                                    "ReduceProd",
+                                                    "ReduceSum",
+                                                    "ReduceSumSquare",
+                                                    "Relu",
+                                                    "Reshape",
+                                                    "Resize",
+                                                    "ReverseSequence",
+                                                    "RNN",
+                                                    "Roialign",
+                                                    "Round",
+                                                    "Scatter",
+                                                    "ScatterElements",
+                                                    "ScatterND",
+                                                    "Selu",
+                                                    "Shape",
+                                                    "Sigmoid",
+                                                    "Sign",
+                                                    "Sin",
+                                                    "Sinh",
+                                                    "Slice",
+                                                    "Softmax",
+                                                    "Softplus",
+                                                    "Softsign",
+                                                    "SpaceToDepth",
+                                                    "Split",
+                                                    "Sqrt",
+                                                    "Squeeze",
+                                                    "Sub",
+                                                    "Sum",
+                                                    "Tan",
+                                                    "Tanh",
+                                                    "ThresholdedRelu",
+                                                    "Tile",
+                                                    "TopK",
+                                                    "Transpose",
+                                                    "Trilu",
+                                                    "Unsqueeze",
+                                                    "Upsample",
+                                                    "Where",
+                                                    "Xor"};
   std::vector<NodeIndex> unsupported_nodes_idx;
   for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
     if (IsNodeSupported(mgx_supported_ops, graph_viewer, node_idx, logger)) {
       // Collect inputs that are initializers
-      graph_viewer.GetNode(node_idx)->ForEachDef([&mgx_required_initializers, &graph_viewer](const onnxruntime::NodeArg& node_arg, bool is_input) {
+      graph_viewer.GetNode(node_idx)->ForEachDef([&mgx_required_initializers,
+                                                  &graph_viewer](const onnxruntime::NodeArg& node_arg, bool is_input) {
               if(is_input && graph_viewer.GetAllInitializedTensors().count(node_arg.Name())) {
                 mgx_required_initializers.insert(node_arg.Name());
-              } }, true);
+              } },
+                                                 true);
     } else {
       unsupported_nodes_idx.push_back(node_idx);
     }
@@ -770,7 +948,8 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
 // is split into 3 parts. supported_cluster + (UNsupported_node + rest_of_the_graph).
 // This functions returns vector of all supported_subgraphx by amdmigraphx
 static std::vector<std::vector<NodeIndex>>
-GetPartitionedSubgraphs(const std::vector<NodeIndex>& topological_order, const std::vector<NodeIndex>& unsupported_nodes) {
+GetPartitionedSubgraphs(const std::vector<NodeIndex>& topological_order,
+                        const std::vector<NodeIndex>& unsupported_nodes) {
   std::vector<std::vector<NodeIndex>> mgx_subgraphx;
 
   auto prev = topological_order.begin();
@@ -948,6 +1127,24 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         migraphx::quantize_fp16(prog);
       }
 
+      // Read in the calibration data and map it to an migraphx paramater map for the calibration ops
+      if (int8_enable_ && int8_calibration_cache_available_) {
+        migraphx::quantize_int8_options quant_opts;
+        migraphx::program_parameters quant_params;
+
+        auto param_shapes = prog.get_parameter_shapes();
+
+        for (auto&& name : param_shapes.names()) {
+          auto dynamic_range_i = dynamic_range_map.find(name);
+          if (dynamic_range_i != dynamic_range_map.end()) {
+            quant_params.add(name, migraphx::argument(param_shapes[name], &(dynamic_range_i->second)));
+          }
+        }
+
+        quant_opts.add_calibration_data(quant_params);
+        // perform static quantization on the programs
+        migraphx::quantize_int8(prog, t_, quant_opts);
+      }
       prog.compile(t_);
       auto prog_output_shapes = prog.get_output_shapes();
       for (std::size_t i = 0; i < output_names.size(); ++i) {
@@ -967,7 +1164,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       std::unique_ptr<MIGraphXFuncState> p = std::make_unique<MIGraphXFuncState>();
       *p = {context->allocate_func, context->release_func, context->allocator_handle, map_progs_[context->node_name],
             map_onnx_string_[context->node_name], options, t_, map_input_index_[context->node_name], &mgx_mu_,
-            map_no_input_shape_[context->node_name], fp16_enable_, dump_model_ops_};
+            map_no_input_shape_[context->node_name], fp16_enable_, int8_enable_,
+            int8_calibration_cache_available_, dynamic_range_map, dump_model_ops_};
       *state = p.release();
       return 0;
     };
@@ -982,12 +1180,15 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       MIGraphXFuncState* mgx_state = reinterpret_cast<MIGraphXFuncState*>(state);
 
       std::unordered_map<std::string, std::size_t>& map_input_name_index = mgx_state->input_name_indexes;
+      std::unordered_map<std::string, float>& map_dynamic_range = mgx_state->dynamic_range_map;
       migraphx::target t = mgx_state->t;
       migraphx::program& prog = mgx_state->prog;
       std::string& onnx_string = mgx_state->onnx_string;
       migraphx::onnx_options& cmp_options = mgx_state->options;
       bool& no_input_shape = mgx_state->no_input_shape;
       bool fp16_enable = mgx_state->fp16_enable;
+      bool int8_enable = mgx_state->int8_enable;
+      bool int8_calibration_cache_available = mgx_state->int8_calibration_cache_available;
 
       // mean no program at all, so need to get the input shape info
       // from input data
@@ -1041,6 +1242,25 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         prog = migraphx::parse_onnx_buffer(onnx_string, cmp_options);
         if (fp16_enable) {
           migraphx::quantize_fp16(prog);
+        }
+
+        // Read in the calibration data and map it to an migraphx paramater map for the calibration ops
+        if (int8_enable && int8_calibration_cache_available) {
+          migraphx::quantize_int8_options quant_opts;
+          migraphx::program_parameters quant_params;
+
+          auto param_shapes = prog.get_parameter_shapes();
+
+          for (auto&& name : param_shapes.names()) {
+            auto dynamic_range_i = map_dynamic_range.find(name);
+            if (dynamic_range_i != map_dynamic_range.end()) {
+              quant_params.add(name, migraphx::argument(param_shapes[name], &(dynamic_range_i->second)));
+            }
+          }
+
+          quant_opts.add_calibration_data(quant_params);
+          // perform static quantization on the programs
+          migraphx::quantize_int8(prog, t, quant_opts);
         }
 
         prog.compile(t);
@@ -1137,9 +1357,11 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
   return Status::OK();
 }
 
-void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const {
+void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry,
+                                                       AllocatorMap& allocators) const {
   auto allocator = allocators[GetOrtDeviceByMemType(OrtMemTypeCPU)];
-  RegisterRocmStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, false /*TODO:external_stream_*/, external_miopen_handle_, external_rocblas_handle_);
+  RegisterRocmStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_,
+                            false /*TODO:external_stream_*/, external_miopen_handle_, external_rocblas_handle_);
 }
 
 OrtDevice MIGraphXExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {

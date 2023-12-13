@@ -66,7 +66,7 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86
     rm ~/miniconda.sh && conda clean -ya
 
 # Conda base patch
-RUN pip install cryptography==41.0.0
+RUN pip install cryptography==41.0.4
 
 # Create migraphx-ci environment
 ENV CONDA_ENVIRONMENT_PATH /opt/miniconda/envs/migraphx-ci
@@ -83,4 +83,4 @@ RUN ln -sf /usr/lib/x86_64-linux-gnu/libstdc++.so.6 ${CONDA_ENVIRONMENT_PATH}/bi
 # Install migraphx
 RUN apt update && apt install -y migraphx
 
-RUN pip install numpy packaging
+RUN pip install numpy packaging ml_dtypes==0.3.0

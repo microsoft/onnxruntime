@@ -33,6 +33,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/qpostprocessor.cpp
   ${MLAS_SRC_DIR}/qlgavgpool.cpp
   ${MLAS_SRC_DIR}/qdwconv_kernelsize.cpp
+  ${MLAS_SRC_DIR}/sqnbitgemm.cpp
 )
 
 if (NOT onnxruntime_ORT_MINIMAL_BUILD)
@@ -68,6 +69,7 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.cpp
       )
 
       set(mlas_platform_preprocess_srcs
@@ -282,6 +284,8 @@ else()
           set(X86 TRUE)
         elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
           set(X86_64 TRUE)
+        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^loongarch64.*")
+          set(LOONGARCH64 TRUE)
         endif()
     endif()
 
@@ -334,17 +338,24 @@ else()
           ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.cpp
         )
         if (NOT APPLE)
           set(mlas_platform_srcs
             ${mlas_platform_srcs}
             ${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S
+            ${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSmmla.S
+            ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUmmla.S
             ${MLAS_SRC_DIR}/activate_fp16.cpp
             ${MLAS_SRC_DIR}/dwconv.cpp
             ${MLAS_SRC_DIR}/halfgemm_kernel_neon.cpp
             ${MLAS_SRC_DIR}/pooling_fp16.cpp
+            ${MLAS_SRC_DIR}/qgemm_kernel_smmla.cpp
+            ${MLAS_SRC_DIR}/qgemm_kernel_ummla.cpp
           )
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSmmla.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
+          set_source_files_properties(${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUmmla.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
           set_source_files_properties(${MLAS_SRC_DIR}/activate_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/dwconv.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/pooling_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
@@ -563,6 +574,26 @@ else()
           list(APPEND ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas_x86_64)
           set(mlas_platform_srcs )
         else()
+          set(MLAS_SOURCE_IS_NOT_SET 0)
+        endif()
+    endif()
+    if(LOONGARCH64 AND MLAS_SOURCE_IS_NOT_SET)
+        set(mlas_platform_srcs
+          ${MLAS_SRC_DIR}/qgemm_kernel_lsx.cpp
+          ${MLAS_SRC_DIR}/loongarch64/SgemmKernelLasx.S
+          ${MLAS_SRC_DIR}/loongarch64/DgemmKernelLsx.S
+          ${MLAS_SRC_DIR}/loongarch64/DgemmKernelLasx.S
+          ${MLAS_SRC_DIR}/loongarch64/SgemmKernelLsx.S
+          ${MLAS_SRC_DIR}/loongarch64/SconvKernelLsx.S
+          ${MLAS_SRC_DIR}/loongarch64/SconvKernelLasx.S
+          ${MLAS_SRC_DIR}/loongarch64/SpoolKernelLSX.S
+          ${MLAS_SRC_DIR}/loongarch64/SpoolKernelLasx.S
+          ${MLAS_SRC_DIR}/loongarch64/SgemmTransposePackB16x4LSX.S
+          ${MLAS_SRC_DIR}/loongarch64/SgemmTransposePackB16x4Lasx.S
+          ${MLAS_SRC_DIR}/loongarch64/SoftmaxKernelLasx.S
+            )
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mlsx -mlasx")
+        if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
           set(MLAS_SOURCE_IS_NOT_SET 0)
         endif()
     endif()

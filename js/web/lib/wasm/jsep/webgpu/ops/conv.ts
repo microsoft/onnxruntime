@@ -10,6 +10,7 @@ import {createConv2DMatMulProgramInfo} from './3rd-party/conv2d_mm_webgpu';
 import {createMatmulProgramInfo} from './3rd-party/matmul_packed_webgpu';
 import {createGroupedConvProgramInfo} from './conv-grouped';
 import {InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
+import {createNaiveMatmulProgramInfo} from './matmul';
 import {createTransposeProgramInfo} from './transpose';
 
 export const calculateOutputShape =
@@ -168,7 +169,7 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
     if (isChannelsLast) {
       const transposedWeight = (context.kernelCustomData.wT as TensorView | undefined) ??
           context.compute(
-              createTransposeProgramInfo(inputs[1].dataType, inputs[1].dims.length, weightTransposeAttribute),
+              createTransposeProgramInfo(inputs[1], weightTransposeAttribute),
               {inputs: [1], outputs: [attributes.wIsConst ? -2 : -1]})[0];
       if (attributes.wIsConst && !context.kernelCustomData.wT) {
         context.kernelCustomData.wT = transposedWeight;
@@ -195,9 +196,19 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
     if (hasBias) {
       matmulInputs.push(inputs[2]);
     }
-    context.compute(
-        createMatmulProgramInfo(matmulInputs, adjustedAttributes, outputShape, matmulOutputShape, isChannelsLast),
-        {inputs: matmulInputs});
+    const N = matmulOutputShape[2];
+    const K = matmulInputs[0].dims[matmulInputs[0].dims.length - 1];
+    // Tune the threshold.
+    if (N < 8 && K < 8) {
+      context.compute(
+          createNaiveMatmulProgramInfo(
+              matmulInputs, adjustedAttributes, outputShape, matmulOutputShape, isChannelsLast),
+          {inputs: matmulInputs});
+    } else {
+      context.compute(
+          createMatmulProgramInfo(matmulInputs, adjustedAttributes, outputShape, matmulOutputShape, isChannelsLast),
+          {inputs: matmulInputs});
+    }
     return;
   }
 
@@ -208,7 +219,7 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
   // STEP.1: transpose weight
   const transposedWeight = (context.kernelCustomData.wT as TensorView | undefined) ??
       context.compute(
-          createTransposeProgramInfo(inputs[1].dataType, inputs[1].dims.length, weightTransposeAttribute),
+          createTransposeProgramInfo(inputs[1], weightTransposeAttribute),
           {inputs: [1], outputs: [attributes.wIsConst ? -2 : -1]})[0];
   if (attributes.wIsConst && !context.kernelCustomData.wT) {
     context.kernelCustomData.wT = transposedWeight;

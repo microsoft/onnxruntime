@@ -1375,6 +1375,27 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Sampling, 1,
                                   GreedySearchShapeInference(ctx);
                                 }));
 
+constexpr const char* MoE_ver1_doc = R"DOC(
+      Mixture of experts. Examples: Switch transformer(https://arxiv.org/pdf/2101.03961.pdf) use top 1,
+      GLaM(https://arxiv.org/abs/2112.06905) activates top 2 FFN, and Vision MOE(https://arxiv.org/pdf/2106.05974.pdf)
+      usually uses top 32 experts.
+      )DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(MoE, 1,
+                            OpSchema()
+                                .SetDoc(MoE_ver1_doc)
+                                .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu and identity. Default is relu", AttributeProto::STRING, std::string("relu"))
+                                .Attr("k", "Number of top experts to select from expert pool", AttributeProto::INT, static_cast<int64_t>(1))
+                                .Input(0, "input", "2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+                                .Input(1, "router_probs", "2D input tensor with shape (num_rows, num_experts)", "T")
+                                .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, hidden_size, inter_size)", "T")
+                                .Input(3, "fc2_experts_weights", "3D input tensor with shape (num_experts, inter_size, hidden_size)", "T")
+                                .Input(4, "fc1_experts_bias", "2D optional input tensor with shape (num_experts, inter_size)", "T", OpSchema::Optional)
+                                .Input(5, "fc2_experts_bias", "2D optional input tensor with shape (num_experts, hidden_size)", "T", OpSchema::Optional)
+                                .Output(0, "output", "2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+                                .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or float16 tensors.")
+                                .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+
 ONNX_MS_OPERATOR_SET_SCHEMA(SampleOp, 1,
                             OpSchema()
                                 .Input(0, "X", "input", "T")
@@ -2573,9 +2594,128 @@ ONNX_MS_OPERATOR_SET_SCHEMA(CropAndResize, 1,
         a fixed size = [crop_height, crop_width]. The result is a 4-D tensor [num_boxes, crop_height, crop_width, depth].
         The resizing is corner aligned.)DOC"));
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+#define GEMM_FLOAT8_TYPES \
+  { "tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)" }
+#else
+#define GEMM_FLOAT8_TYPES \
+  { "tensor(float16)", "tensor(bfloat16)", "tensor(float)" }
+#endif
+
+ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloat8, 1,
+                            OpSchema()
+                                .SetDoc(R"DOC(Generic Gemm for float and float 8.)DOC")
+                                .Attr(
+                                    "transA",
+                                    "Whether A should be transposed. Float 8 only supprted transA=0.",
+                                    AttributeProto::INT,
+                                    static_cast<int64_t>(0))
+                                .Attr(
+                                    "transB",
+                                    "Whether B should be transposed. Float 8 only supprted transB=1.",
+                                    AttributeProto::INT,
+                                    static_cast<int64_t>(0))
+                                .Attr(
+                                    "alpha",
+                                    "Scalar multiplier for the product of input tensors A * B.",
+                                    AttributeProto::FLOAT,
+                                    1.0f)
+                                .Attr(
+                                    "beta",
+                                    "Scalar multiplier for the product of input bias C.",
+                                    AttributeProto::FLOAT,
+                                    0.0f)
+                                .Attr(
+                                    "dtype",
+                                    "Output Type. Same definition as attribute 'to' for operator Cast.",
+                                    AttributeProto::INT,
+                                    static_cast<int64_t>(1))
+                                .Attr(
+                                    "activation",
+                                    "Activation function, RELU or GELU or NONE (default).",
+                                    AttributeProto::STRING,
+                                    OPTIONAL_VALUE)
+                                .Input(
+                                    0,
+                                    "A",
+                                    "Input tensor A. "
+                                    "The shape of A should be (M, K) if transA is 0, "
+                                    "or (K, M) if transA is non-zero.",
+                                    "TA")
+                                .Input(
+                                    1,
+                                    "B",
+                                    "Input tensor B. "
+                                    "The shape of B should be (K, N) if transB is 0, "
+                                    "or (N, K) if transB is non-zero.",
+                                    "TB")
+                                .Input(
+                                    2,
+                                    "C",
+                                    "Input tensor C.",
+                                    "TC",
+                                    OpSchema::Optional)
+                                .Input(
+                                    3,
+                                    "scaleA",
+                                    "Scale of tensor A if A is float 8 tensor",
+                                    "TS",
+                                    OpSchema::Optional)
+                                .Input(
+                                    4,
+                                    "scaleB",
+                                    "Scale of tensor B if B is float 8 tensor",
+                                    "TS",
+                                    OpSchema::Optional)
+                                .Input(
+                                    5,
+                                    "scaleY",
+                                    "Scale of the output tensor if A or B is float 8.",
+                                    "TS",
+                                    OpSchema::Optional)
+                                .Output(0, "Y", "Output tensor of shape (M, N).", "TR")
+                                .TypeConstraint(
+                                    "TA",
+                                    GEMM_FLOAT8_TYPES,
+                                    "Constrain type to input A.")
+                                .TypeConstraint(
+                                    "TB",
+                                    GEMM_FLOAT8_TYPES,
+                                    "Constrain type to input B.")
+                                .TypeConstraint(
+                                    "TC",
+                                    {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                                    "Constrain type to input C.")
+                                .TypeConstraint(
+                                    "TR",
+                                    GEMM_FLOAT8_TYPES,
+                                    "Constrain type to result type.")
+                                .TypeConstraint("TS", {"tensor(float)"},
+                                                "Constrain type for all input scales (scaleA, scaleB, scaleY).")
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  propagateElemTypeFromAttributeToOutput(ctx, "dtype", 0, TensorProto::FLOAT);
+                                  if (!hasNInputShapes(ctx, 2)) {
+                                    return;
+                                  }
+                                  auto transAAttr = ctx.getAttribute("transA");
+                                  bool transA = transAAttr ? static_cast<int>(transAAttr->i()) != 0 : false;
+                                  auto transBAttr = ctx.getAttribute("transB");
+                                  bool transB = transBAttr ? static_cast<int>(transBAttr->i()) != 0 : false;
+                                  auto& first_input_shape = getInputShape(ctx, 0);
+                                  auto& second_input_shape = getInputShape(ctx, 1);
+                                  if (first_input_shape.dim_size() != 2) {
+                                    fail_shape_inference("First input does not have rank 2");
+                                  }
+                                  if (second_input_shape.dim_size() != 2) {
+                                    fail_shape_inference("Second input does not have rank 2");
+                                  }
+                                  updateOutputShape(ctx, 0, {first_input_shape.dim(transA ? 1 : 0), second_input_shape.dim(transB ? 0 : 1)});
+                                }));
+
 static void MatmulWithQuantWeightShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
                                                 int64_t K,
-                                                int64_t N) {
+                                                int64_t N,
+                                                bool transB) {
   int input_a_idx = 0;
   if (!hasInputShape(ctx, input_a_idx)) {
     return;
@@ -2589,15 +2729,15 @@ static void MatmulWithQuantWeightShapeInference(ONNX_NAMESPACE::InferenceContext
   // TODO: check B shape
 
   const auto& dim_last = a_shape.dim(a_shape.dim_size() - 1);
-  if (dim_last.has_dim_value() && dim_last.dim_value() != K) {
+  ONNX_NAMESPACE::TensorShapeProto resultShape;
+  if (dim_last.has_dim_value() && dim_last.dim_value() != (transB ? K : N)) {
     fail_shape_inference("Incompatible dimensions for matrix multiplication");
   }
 
-  ONNX_NAMESPACE::TensorShapeProto resultShape;
   for (int i = 0; i < a_shape.dim_size() - 1; ++i) {
     *resultShape.add_dim() = a_shape.dim(i);
   }
-  resultShape.add_dim()->set_dim_value(N);
+  resultShape.add_dim()->set_dim_value(transB ? N : K);
 
   *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() = resultShape;
 }
@@ -3108,7 +3248,7 @@ void RegisterContribSchemas() {
           "List of tensors for inputs",
           "T",
           OpSchema::Variadic,
-          true,
+          false,
           1,
           OpSchema::NonDifferentiable)
       .Output(
@@ -3117,7 +3257,7 @@ void RegisterContribSchemas() {
           "One or more outputs, list of tensors for outputs",
           "T",
           OpSchema::Variadic,
-          true,
+          false,
           1,
           OpSchema::NonDifferentiable)
       .TypeConstraint(
@@ -3133,11 +3273,7 @@ void RegisterContribSchemas() {
            "tensor(float16)",
            "tensor(float)",
            "tensor(double)"},
-          "Constrain input and output types.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        // Type inference
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-      });
+          "Constrain input and output types.");
 
   static const char* BitmaskDropout_ver1_doc = R"DOC(
 BitmaskDropout takes an input floating-point tensor, an optional input ratio (floating-point scalar) and an optional input training_mode (boolean scalar).
@@ -3236,7 +3372,71 @@ Input zero_points is stored as uint8_t. If bits <= 4, two zero points are stored
         // Shape inference
         int64_t in_features = getAttribute(ctx, "K", -1);
         int64_t out_features = getAttribute(ctx, "N", -1);
-        MatmulWithQuantWeightShapeInference(ctx, in_features, out_features);
+        MatmulWithQuantWeightShapeInference(ctx, in_features, out_features, true);
+      });
+
+  static const char* MatMulBnb4_ver1_doc = R"DOC(
+MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4 data type (https://arxiv.org/pdf/2305.14314.pdf). It does Matrix Multiplication like MatMul (https://github.com/onnx/onnx/blob/main/docs/Operators.md#matmul) with differences:
+  1. Input B is a 2D constant Matrix. Its input feature count and output feature count are specified by attribute 'K' and 'N'.
+  2. Input B is quantized with 4 bits with quantization data type specified by attribute 'quant_type'. It is transposed, flattened and quantized blockwisely with block size specified by attribute 'block_size'.
+     And block_size is not an arbitrary number and must be a power of 2 and not smaller than 16, like 16, 32, 64, 128,..
+  3. Input B's quantization constants or scales are specified by input 'absmax'.
+
+  Input B is stored as uint8_t with shape: [(N * K + 1) / 2].
+  Input absmax is stored in same type as original type of B(float32, float16) with shape like: [(N * K + block_size - 1) / block_size].
+
+
+  1. (Default value) transB=True (Majorly used for forward pass)
+    Shape of A: [D0, D1, ..., Dn, K]
+    Shape of Dequanted B: [N, K], this is aligned with how PyTorch defined the linear weight, .e.g [out_features, in_features].
+
+    The computation math:
+      dequant_B = dequant(B, absmax, quant_type, block_size)
+      transposed_dequant_B = dequant_B^T
+      output = A @ transposed_dequant_B
+
+    Shape of output: [D0, D1, ..., Dn, N]
+
+  2. transB=False (Majorly used for backward pass)
+    Shape of A: [D0, D1, ..., Dn, N]
+    Shape of Dequanted B: [N, K], this is aligned with how PyTorch defined the linear weight, .e.g [out_features, in_features].
+
+    The computation math:
+      dequant_B = dequant(B, absmax, quant_type, block_size)
+      output = A @ dequant_B
+
+    Shape of output: [D0, D1, ..., Dn, K]
+
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulBnb4)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(MatMulBnb4_ver1_doc)
+      .Attr("K", "size of each input feature", AttributeProto::INT)
+      .Attr("N", "size of each output feature", AttributeProto::INT)
+      .Attr("block_size", "number of groupsize used for weight quantization. It needs to be a power of 2 and not smaller than 16.", AttributeProto::INT)
+      .Attr("quant_type", "quantization data type. 0 for FP4, 1 for NF4.", AttributeProto::INT)
+      .Attr("training_mode",
+            "Indicate if the ops run in training_mode, by default, False.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .Attr("transB", "Whether B should be transposed on the last two dimensions before doing multiplication. Default to be 1.",
+            AttributeProto::INT, static_cast<int64_t>(1))
+      .Input(0, "A", "The input tensor, not quantized", "T1")
+      .Input(1, "B", "1-dimensional quantized data for weight", "T2")
+      .Input(2, "absmax", "quantization constants", "T1")
+      .Output(0, "Y", "tensor. The output tensor has the same rank as the input. ", "T1")
+      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float/half_float/brain_float tensors.")
+      .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain quantized weight types to uint8.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        // Shape inference
+        int64_t in_features = getAttribute(ctx, "K", -1);
+        int64_t out_features = getAttribute(ctx, "N", -1);
+        bool transB = getAttribute(ctx, "transB", 1) != 0;
+        MatmulWithQuantWeightShapeInference(ctx, in_features, out_features, transB);
       });
 
 #ifdef ENABLE_ATEN
