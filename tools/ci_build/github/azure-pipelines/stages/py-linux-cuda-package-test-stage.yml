@@ -60,7 +60,7 @@ stages:
           - checkout: none
           - task: DownloadPipelineArtifact@2
             inputs:
-              artifact: 'onnxruntime_gpu'
+              artifact: 'drop-linux-gpu-x86_64'
               targetPath: '$(Build.SourcesDirectory)/drop-linux-gpu-x86_64'
               ${{ if ne(parameters.build_id, 'latest') }}:
                 buildType: 'specific'
@@ -81,24 +81,15 @@ stages:
                 buildVersionToDownload: 'specific'
                 buildId: '${{ parameters.build_id }}'
             displayName: 'Download Build Artifacts - onnxruntime_gpu'
-          # The public ADO project
-          # - ${{ if eq(variables['System.CollectionId'], 'f3ad12f2-e480-4533-baf2-635c95467d29') }}:
 
-          # The private ADO project
-          - ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
-              - download: build   # pipeline resource identifier.
-                artifact: 'drop-linux-gpu-x86_64'
-
-              - download: build   # pipeline resource identifier.
-                artifact: 'onnxruntime_gpu'
-
-              - bash: |
-                  set -e -x
-                  ls $(Build.SourcesDirectory)
-                  mv "$(Build.SourcesDirectory)/drop-linux-gpu-x86_64" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
-                  mv "$(Build.SourcesDirectory)/onnxruntime_gpu" "$(Build.BinariesDirectory)/whl"
-                  cp -r "$(Build.BinariesDirectory)/whl" $(Build.BinariesDirectory)/tmp
-                  find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -d "${1%.*}" "$1"' _ {} \;
+          - bash: |
+              set -e -x
+              ls $(Build.SourcesDirectory)
+              mv "$(Build.SourcesDirectory)/drop-linux-gpu-x86_64" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
+              mv "$(Build.SourcesDirectory)/onnxruntime_gpu" "$(Build.BinariesDirectory)/whl"
+              cp -r "$(Build.BinariesDirectory)/whl" $(Build.BinariesDirectory)/tmp
+              find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -d "${1%.*}" "$1"' _ {} \;
+            displayName: 'Prepare artifacts'
 
           - task: BinSkim@4
             displayName: 'Run BinSkim'
@@ -111,21 +102,17 @@ stages:
               Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
               Context: tools/ci_build/github/linux/docker
               DockerBuildArgs: "
-          --network=host 
-          --build-arg BASEIMAGE=${{ variables.docker_base_image }}
-          --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
-          --build-arg BUILD_UID=$( id -u )
-          --build-arg PLATFORM=x86_64
-          "
+              --network=host 
+              --build-arg BASEIMAGE=${{ variables.docker_base_image }}
+              --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
+              --build-arg BUILD_UID=$( id -u )
+              --build-arg PLATFORM=x86_64
+              "
               Repository: onnxruntimecuda${{ replace(parameters.CudaVersion, '.', '') }}xtrt86buildx86_64
 
           - task: Bash@3
-            displayName: 'Bash Script'
+            displayName: 'Run Python Docker Test
             inputs:
               targetType: filePath
               filePath: tools/ci_build/github/linux/run_python_dockertest.sh
               arguments: -d GPU -c ${{parameters.cmake_build_type}} -i onnxruntimecuda${{ replace(parameters.CudaVersion, '.', '') }}xtrt86buildx86_64
-
-          - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-            displayName: 'Clean Agent Directories'
-            condition: always()
