@@ -942,6 +942,8 @@ Status BindContextOutput(Ort::KernelContext& ctx,
       auto allocatorPtr = std::make_unique<OutputAllocator>();
       trt_context->setOutputAllocator(output_name, allocatorPtr.get());
       dds_output_allocator_map[output_name] = std::move(allocatorPtr);
+    } else {
+      trt_context->setOutputAllocator(output_name, dds_output_allocator_map[output_name].get());
     }
   } else {
     output_tensors[i] = ctx.GetOutput(output_index, output_shapes);
@@ -3005,6 +3007,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       bool sync_stream_after_enqueue = trt_state->sync_stream_after_enqueue;
       auto fused_node_name = trt_state->fused_node_name;
       auto& shape_ranges = trt_state->input_shape_ranges;
+      auto& dds_output_allocator_map = this->dds_output_allocator_maps_[fused_node_name];
       auto trt_builder = trt_state->builder;
       auto trt_engine = trt_state->engine->get();
       auto trt_context = trt_state->context->get();
@@ -3339,7 +3342,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       std::unordered_map<size_t, int> output_dim_sizes;
       output_dim_sizes.reserve(num_outputs);
       std::unordered_set<char const*> dds_output_set;
-      DDSOutputAllocatorMap dds_output_allocator_map;
 
       for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
         char const* output_name = output_binding_names[i];
