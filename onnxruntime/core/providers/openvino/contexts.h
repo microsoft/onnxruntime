@@ -17,7 +17,7 @@ struct GlobalContext {
   bool is_wholly_supported_graph = false;
   bool enable_npu_fast_compile = false;
   bool enable_opencl_throttling = false;
-  bool enable_dynamic_shapes = false;
+  bool disable_dynamic_shapes = false;
   size_t num_of_threads;
   std::string device_type;
   std::string precision_str;
