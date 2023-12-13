@@ -520,6 +520,8 @@ Status FlashAttention(
 
     void* present_key = reinterpret_cast<void*>(const_cast<T*>(data.present_key));
     void* present_value = reinterpret_cast<void*>(const_cast<T*>(data.present_value));
+    void* cos_cache = reinterpret_cast<void*>(const_cast<T*>(data.cos_cache));
+    void* sin_cache = reinterpret_cast<void*>(const_cast<T*>(data.sin_cache));
 
     DUMP_TENSOR_INIT();
     DUMP_TENSOR("seqlens_k", reinterpret_cast<int*>(seqlens_k), batch_size, 1);
@@ -527,10 +529,10 @@ Status FlashAttention(
     bool past_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
     ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
         device_prop, stream, query, present_key, present_value, key, value, data.output, reinterpret_cast<void*>(data.softmax_lse),
-        seqlens_k, batch_size, num_heads, kv_num_heads,
+        seqlens_k, cos_cache, sin_cache, batch_size, num_heads, kv_num_heads,
         head_size, sequence_length, present_sequence_length, kv_sequence_length,
         scale, is_causal, past_bsnh, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
-        reinterpret_cast<void*>(data.out_accum), parameters.local_window_size));
+        reinterpret_cast<void*>(data.out_accum), parameters.local_window_size, parameters.rotary_interleaved));
   } else {
     // Not share buffer case
     // Note that Flash Attention kv-caching operates in place on a buffer... therefore this path is inneficient
@@ -549,6 +551,8 @@ Status FlashAttention(
 
     void* present_key = reinterpret_cast<void*>(const_cast<T*>(data.present_key));
     void* present_value = reinterpret_cast<void*>(const_cast<T*>(data.present_value));
+    void* cos_cache = reinterpret_cast<void*>(const_cast<T*>(data.cos_cache));
+    void* sin_cache = reinterpret_cast<void*>(const_cast<T*>(data.sin_cache));
 
     DUMP_TENSOR_INIT();
     DUMP_TENSOR("seqlens_k", reinterpret_cast<int*>(seqlens_k), batch_size, 1);
@@ -559,10 +563,10 @@ Status FlashAttention(
     bool past_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
     ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
         device_prop, stream, query, present_key, present_value, nullptr, nullptr, data.output, reinterpret_cast<void*>(data.softmax_lse),
-        seqlens_k, batch_size, num_heads, kv_num_heads,
+        seqlens_k, cos_cache, sin_cache, batch_size, num_heads, kv_num_heads,
         head_size, sequence_length, present_sequence_length, 0,
         scale, is_causal, past_bsnh, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
-        reinterpret_cast<void*>(data.out_accum), parameters.local_window_size));
+        reinterpret_cast<void*>(data.out_accum), parameters.local_window_size, parameters.rotary_interleaved));
   }
 
   DUMP_TENSOR_INIT();

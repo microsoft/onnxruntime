@@ -99,6 +99,8 @@ struct GroupQueryAttentionParameters {
   int local_window_size;
   bool kv_share_buffer;
   bool is_prompt;  // determines if seqlens_k is past or kv sequence length tensor
+  bool do_rotary;
+  bool rotary_interleaved;
   float scale;
   AttentionQkvFormat qkv_format;
   AttentionQkvFormat past_kv_format;

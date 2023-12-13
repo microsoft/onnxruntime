@@ -46,6 +46,8 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   kv_num_heads_ = static_cast<int>(kv_num_heads);
   is_past_bsnh_ = false;  // info.GetAttrOrDefault<int64_t>("is_past_bsnh", 1) == 1;
   local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
+  do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
+  rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
 #if USE_FLASH_ATTENTION
@@ -85,6 +87,8 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                 value,
                                                                 past_key,
                                                                 past_value,
+                                                                cos_cache,
+                                                                sin_cache,
                                                                 &parameters,
                                                                 num_heads_,
                                                                 kv_num_heads_,
@@ -95,6 +99,8 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                 device_prop.maxThreadsPerBlock));
   parameters.local_window_size = local_window_size_;
   int sequence_length = parameters.sequence_length;
+  parameters.do_rotary = do_rotary_;
+  parameters.rotary_interleaved = rotary_interleaved_;
 
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(parameters.batch_size);
@@ -229,6 +235,11 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
   if (fmha_buffer != nullptr) {
     data.fmha_buffer = reinterpret_cast<CudaT*>(fmha_buffer.get());
+  }
+  // Rotary
+  if (parameters.do_rotary) {
+    data.cos_cache = reinterpret_cast<const CudaT*>(cos_cache->Data<T>());
+    data.sin_cache = reinterpret_cast<const CudaT*>(sin_cache->Data<T>());
   }
 
   cublasHandle_t cublas = GetCublasHandle(context);

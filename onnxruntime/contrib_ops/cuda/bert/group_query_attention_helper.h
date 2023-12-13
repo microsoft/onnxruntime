@@ -16,6 +16,8 @@ Status CheckInputs(const Tensor* query,
                    const Tensor* value,
                    const Tensor* past_key,
                    const Tensor* past_value,
+                   const Tensor* cos_cache,
+                   const Tensor* sin_cache,
                    void* parameters,
                    int num_heads,
                    int kv_num_heads,
@@ -180,6 +182,31 @@ Status CheckInputs(const Tensor* query,
   int total_sequence_length = *((*total_seqlen).template Data<int32_t>());
   int present_sequence_length = std::max(total_sequence_length, past_sequence_length);
 
+  if (cos_cache != nullptr && sin_cache != nullptr) {
+    const auto& cos_dims = cos_cache->Shape().GetDims();
+    const auto& sin_dims = sin_cache->Shape().GetDims();
+
+    if (cos_dims[0] != present_sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                            "cos_cache dimension 0 must be of present_sequence_length.");
+    }
+    if (sin_dims[0] != present_sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                            "sin_cache dimension 0 must be of present_sequence_length.");
+    }
+    if (cos_dims[1] != head_size / 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                            "cos_cache dimension 1 must be of head_size / 2.");
+    }
+    if (sin_dims[1] != head_size / 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                            "sin_cache dimension 1 must be of head_size / 2.");
+    }
+  } else if (cos_cache != nullptr || sin_cache != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'cos_cache' and 'sin_cache' shall be both present or both absent.");
+  }
+
   bool is_prompt = sequence_length != 1;
 
   if (parameters != nullptr) {
@@ -208,6 +235,8 @@ Status CheckInputs(const Tensor* query,
                    const Tensor* value,
                    const Tensor* past_key,
                    const Tensor* past_value,
+                   const Tensor* cos_cache,
+                   const Tensor* sin_cache,
                    void* parameters,
                    int num_heads,
                    int kv_num_heads,
@@ -220,7 +249,7 @@ Status CheckInputs(const Tensor* query,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(query, key, value, past_key, past_value, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, is_past_bsnh, scale);
+  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, is_past_bsnh, scale);
 }
 
 }  // namespace group_query_attention_helper

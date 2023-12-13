@@ -357,6 +357,8 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        void* out,          // batch_size x seqlen_q x num_heads x head_size
                        void* softmax_lse,  // batch_size x num_heads x seqlen_q
                        void* seqlens_k_,   // batch_size
+                       void* rotary_cos,   // seqlen_ro x (rotary_dim / 2)
+                       void* rotary_sin,   // seqlen_ro x (rotary_dim / 2)
                        int batch_size,
                        int num_heads,
                        int num_heads_k,
@@ -370,10 +372,8 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        int num_splits,
                        void* softmax_lse_accum,  // num_splits x batch_size x seqlen_q x num_heads
                        void* out_accum,          // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
-                       int local_window_size) {
-  // if (seqlen_q == 1) {
-  //   is_causal = false;
-  // }  // causal=true is the same as causal=false in this case
+                       int local_window_size,
+                       bool is_rotary_interleaved) {
 
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
   const int head_size_rounded = round_multiple(head_size, 32);
@@ -425,6 +425,13 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
   params.is_seqlens_k_cumulative = seqlens_k_ == nullptr;
   if (seqlens_k_ != nullptr) {
     params.cu_seqlens_k = static_cast<int*>(seqlens_k_);
+  }
+
+  if (rotary_cos != nullptr) {
+    params.rotary_cos_ptr = rotary_cos;
+    params.rotary_sin_ptr = rotary_sin;
+    params.is_rotary_interleaved = is_rotary_interleaved;
+    params.rotary_dim = int(head_size_rounded / 2);
   }
 
   params.num_splits = num_splits;

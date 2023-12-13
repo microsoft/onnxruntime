@@ -1051,11 +1051,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(7,
                "cos_cache",
                "2D tensor with shape (max_sequence_length, head_size / 2).",
-               "T")
+               "T",
+               OpSchema::Optional)
         .Input(8,
                "sin_cache",
                "2D tensor with shape (max_sequence_length, head_size / 2).",
-               "T")
+               "T",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
