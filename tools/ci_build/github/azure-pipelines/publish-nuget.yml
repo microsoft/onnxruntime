@@ -33,6 +33,7 @@ stages:
       parameters:
         packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
 
+    # TODO: the following step has no error checking
     - task: CmdLine@2
       displayName: 'Post binary sizes to the dashboard database using command line'
       inputs:
@@ -89,7 +90,7 @@ stages:
     - download: build
       displayName: 'Download Pipeline Artifact - Signed NuGet ROCm Package'
       artifact: 'drop-signed-nuget-ROCm'
-    - script: move "drop-signed-nuget-ROCm\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
+    - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-ROCm\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
 
     #TODO: allow choosing different feeds
     - task: NuGetCommand@2
