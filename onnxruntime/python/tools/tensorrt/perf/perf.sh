@@ -40,7 +40,7 @@ FLOAT_16_LINK="https://raw.githubusercontent.com/microsoft/onnxconverter-common/
 cleanup_files() {
     rm -f $FAIL_MODEL_FILE
     rm -f $LATENCY_FILE
-    rm -f METRICS_FILE
+    rm -f $METRICS_FILE
     rm -f $SESSION_FILE
     rm -f $FLOAT_16
     rm -rf result/$OPTION

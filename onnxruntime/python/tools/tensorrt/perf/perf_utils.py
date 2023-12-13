@@ -27,7 +27,6 @@ standalone_trt_fp16 = "TRTFp16"
 acl = "ORT-ACLFp32"
 
 # table names
-metrics_name = "metrics"
 success_name = "success"
 fail_name = "fail"
 memory_name = "memory"
@@ -39,23 +38,11 @@ latency_over_time_name = "latency_over_time"
 specs_name = "specs"
 session_name = "session"
 session_over_time_name = "session_over_time"
+metrics_name = "op_metrics"
 
 # column names
 model_title = "Model"
 group_title = "Group"
-
-# List of column name tuples for operator metrics: (<map_key>, <csv_column>, <db_column>)
-metrics_columns = [
-    ("model_name", "Model", "Model"),
-    ("input_ep", "Input EP", "InputEP"),
-    ("operator", "Operator", "Operator"),
-    ("assigned_ep", "Assigned EP", "AssignedEP"),
-    ("event_category", "Event Category", "EventCategory"),
-    ("num_instances", "Num Instances", "NumInstances"),
-    ("total_dur", "Total Duration", "TotalDuration"),
-    ("min_dur", "Min Duration", "MinDuration"),
-    ("max_dur", "Max Duration", "MaxDuration"),
-]
 
 # endings
 second = "_second"

@@ -1590,6 +1590,28 @@ def output_metrics(model_to_metrics, csv_filename):
     logger.info(f"Tensorrt ratio metrics are saved to csv file: {csv_filename}")
 
 
+def output_op_metrics(model_to_metrics, csv_filename):
+    with open(csv_filename, mode="w", newline="") as csv_file:
+        csv_writer = csv.writer(csv_file)
+        csv_writer.writerow(["Model", "Ep", "op percentage in each ep"])
+
+        for model, ep_info in model_to_metrics.items():
+            if cuda in ep_info:
+                cuda_data = ep_info[cuda]["ratio_of_ops_in_cuda_not_fallback_cpu"]
+                csv_writer.writerow([model, cuda, cuda_data])
+            if cuda_fp16 in ep_info:
+                cuda_fp16_data = ep_info[cuda_fp16]["ratio_of_ops_in_cuda_not_fallback_cpu"]
+                csv_writer.writerow([model, cuda_fp16, cuda_fp16_data])
+            if trt in ep_info:
+                trt_data = ep_info[trt]["ratio_of_ops_in_trt"]
+                csv_writer.writerow([model, trt, trt_data])
+            if trt_fp16 in ep_info:
+                trt_fp16_data = ep_info[trt_fp16]["ratio_of_ops_in_trt"]
+                csv_writer.writerow([model, trt_fp16, trt_fp16_data])
+
+    logger.info(f"op metrics for cuda/trt ep are saved to csv file: {csv_filename}")
+
+
 def output_system_info(result, csv_filename):
     with open(csv_filename, mode="a", newline="") as csv_file:
         column_names = ["cpu_info", "cuda", "gpu_info", "linux_distro", "memory", "trt"]
@@ -2336,6 +2358,7 @@ def main():
             )
             csv_filename = os.path.join(path, csv_filename)
             output_metrics(model_to_metrics, csv_filename)
+            output_op_metrics(model_to_metrics, csv_filename)
 
     if len(model_to_session) > 0:
         write_map_to_file(model_to_session, SESSION_FILE)

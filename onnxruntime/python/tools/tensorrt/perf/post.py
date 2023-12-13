@@ -24,8 +24,6 @@ from perf_utils import (
     memory_name,
     memory_over_time_name,
     model_title,
-    metrics_columns,
-    metrics_name,
     ort_provider_list,
     provider_list,
     second,
@@ -338,23 +336,6 @@ def get_session(session, model_group):
     return session
 
 
-def get_metrics(metrics, model_group):
-    """
-    Returns a new Pandas table that contains operator usage and performance information.
-    :param metrics: The Pandas table containing operator usage and performance information.
-    :param model_group: The model group namespace to append as a column.
-    :return: The updated table.
-    """
-
-    csv_columns, db_columns = [], []
-
-    for _, csv_col, db_col in metrics_columns:
-        csv_columns.append(csv_col)
-        db_columns.append(db_col)
-
-    return adjust_columns(metrics, csv_columns, db_columns, model_group)
-
-
 def write_table(
     ingest_client, database_name, table, table_name, upload_time, identifier, branch, commit_id, commit_date
 ):
@@ -434,7 +415,6 @@ def main():
             specs_name,
             session_name,
             session_over_time_name,
-            metrics_name,
         ]
 
         table_results = {}
@@ -477,11 +457,6 @@ def main():
                     table_results[status_name] = pd.concat(
                         [table_results[status_name], get_status(table, model_group)], ignore_index=True
                     )
-                elif metrics_name in csv:
-                    table_results[metrics_name] = pd.concat(
-                        [table_results[metrics_name], get_metrics(table, model_group)],
-                        ignore_index=True,
-                        )
             os.chdir(result_file)
 
         if not table_results[memory_name].empty:
