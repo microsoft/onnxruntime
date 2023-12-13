@@ -2,15 +2,12 @@
 set -e -x
 BUILD_CONFIG="Release"
 
-while getopts "i:d:c:u:" parameter_Option
+while getopts "i:d:x:c:" parameter_Option
 do case "${parameter_Option}"
 in
 i) DOCKER_IMAGE=${OPTARG};;
 d) DEVICE=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
-u) CUDA_VERSION=${OPTARG:"11.8"};;
-*) echo "Usage: $0 -i <docker_image> -d <GPU|CPU> [-c <build_config>] [-u <cuda_version>]"
-   exit 1;;
 esac
 done
 
@@ -29,4 +26,4 @@ docker run --rm \
     -e NIGHTLY_BUILD \
     -e BUILD_BUILDNUMBER \
     $ADDITIONAL_DOCKER_PARAMETER \
-    $DOCKER_IMAGE tools/ci_build/github/linux/run_python_tests.sh -d $DEVICE -c $BUILD_CONFIG -u $CUDA_VERSION
+    $DOCKER_IMAGE tools/ci_build/github/linux/run_python_tests.sh -d $DEVICE -c $BUILD_CONFIG
