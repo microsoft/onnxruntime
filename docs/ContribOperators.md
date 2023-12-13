@@ -2780,7 +2780,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input A data type to 8-bit integer tensor.</dd>
 <dt><tt>T2</tt> : tensor(int8), tensor(uint8)</dt>
 <dd>Constrain input B data type to 8-bit integer tensor.</dd>
-<dt><tt>T3</tt> : tensor(float)</dt>
+<dt><tt>T3</tt> : tensor(float), tensor(float16)</dt>
 <dd>Constrain input a_scale, b_scale and output Y data type as float tensor.</dd>
 </dl>
 
@@ -5925,5 +5925,4 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
 
