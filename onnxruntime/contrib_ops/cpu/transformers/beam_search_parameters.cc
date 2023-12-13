@@ -124,6 +124,7 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   ORT_ENFORCE(logits_processor >= 0,
               "logits_processor shall be a non-negative integer, got ", logits_processor);
 
+  std::cout << "Reading in temperature now!" << std::endl;
   auto* temperature_tensor = context->Input<Tensor>(14);
   if (temperature_tensor) {
     if (temperature_tensor->IsDataType<float>()) {
@@ -134,6 +135,7 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   } else {
     temperature = 1.0f;
   }
+  //std::cout << "Temperature Setasdasd!!" << temperature << std::endl;
   //auto* temperature_tensor = context->Input<Tensor>(14);
   //temperature = temperature_tensor ? *temperature_tensor->Data<float>() : 1.0f;
 }

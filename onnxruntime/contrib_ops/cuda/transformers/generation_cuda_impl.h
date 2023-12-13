@@ -110,6 +110,7 @@ void LaunchBeamSearchScorer_AppendNextTokenToSequences(BeamScorerState& state_cp
                                                        gsl::span<int32_t> next_beam_indices,
                                                        cudaStream_t stream);
 
+template <typename T>
 void LaunchBeamSearchScorer_Finalize(int batch_size,
                                      BeamScorerState& state,
                                      gsl::span<const int32_t> sequences,
@@ -117,7 +118,7 @@ void LaunchBeamSearchScorer_Finalize(int batch_size,
                                      gsl::span<BeamHypotheses> beam_hyps_,
                                      gsl::span<const float> final_beam_scores,
                                      gsl::span<int32_t> output,
-                                     gsl::span<float> sequence_scores,
+                                     gsl::span<T> sequence_scores,
                                      cudaStream_t stream);
 
 void LaunchNextTokenKernel(const int64_t* next_token_indices,

@@ -8,6 +8,7 @@
 #include <cub/device/device_segmented_radix_sort.cuh>
 #include "contrib_ops/cuda/bert/utils.cuh"
 #include "contrib_ops/cuda/transformers/generation_cuda_impl.h"
+#include <stdio.h>
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -500,13 +501,14 @@ void LaunchBeamSearchScorer_AppendNextTokenToSequences(BeamScorerState& state_cp
                                                                                   next_beam_tokens.data());
 }
 
+template <typename T>
 __global__ void BeamSearchScorer_Finalize(BeamScorerState& state,
                                           const int32_t* sequences_buffer,
                                           int sequence_length,
                                           BeamHypotheses* beam_hyps_,
                                           const float* final_beam_scores,
                                           int32_t* output,
-                                          float* sequence_scores) {
+                                          T* sequence_scores) {
   int batch_index = blockIdx.x * blockDim.x + threadIdx.x;
   if (batch_index >= state.batch_size_)
     return;
@@ -533,6 +535,7 @@ __global__ void BeamSearchScorer_Finalize(BeamScorerState& state,
       sequence_scores ? sequence_scores + batch_index * state.num_return_sequences_ : nullptr);
 }
 
+template <typename T>
 void LaunchBeamSearchScorer_Finalize(int batch_size,
                                      BeamScorerState& state,
                                      gsl::span<const int32_t> sequences,
@@ -540,7 +543,7 @@ void LaunchBeamSearchScorer_Finalize(int batch_size,
                                      gsl::span<BeamHypotheses> beam_hyps,
                                      gsl::span<const float> final_beam_scores,
                                      gsl::span<int32_t> output,
-                                     gsl::span<float> sequence_scores,
+                                     gsl::span<T> sequence_scores,
                                      cudaStream_t stream) {
   BeamSearchScorer_Finalize<<<1, batch_size, 0, stream>>>(state,
                                                           sequences.data(),
@@ -550,6 +553,28 @@ void LaunchBeamSearchScorer_Finalize(int batch_size,
                                                           output.data(),
                                                           sequence_scores.data());
 }
+
+template void LaunchBeamSearchScorer_Finalize(int batch_size,
+                                     BeamScorerState& state,
+                                     gsl::span<const int32_t> sequences,
+                                     int sequence_length,
+                                     gsl::span<BeamHypotheses> beam_hyps,
+                                     gsl::span<const float> final_beam_scores,
+                                     gsl::span<int32_t> output,
+                                     gsl::span<float> sequence_scores,
+                                     cudaStream_t stream);
+
+/*
+template void LaunchBeamSearchScorer_Finalize(int batch_size,
+                                     BeamScorerState& state,
+                                     gsl::span<const int32_t> sequences,
+                                     int sequence_length,
+                                     gsl::span<BeamHypotheses> beam_hyps,
+                                     gsl::span<const float> final_beam_scores,
+                                     gsl::span<int32_t> output,
+                                     gsl::span<half> sequence_scores,
+                                     cudaStream_t stream);
+*/
 
 __global__ void AddProbsKernel(float* log_probs,
                                float* cum_log_probs,

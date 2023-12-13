@@ -247,6 +247,7 @@ Status BeamSearchBase<T>::ProcessLogits(
     BeamSearchCpuState& cpu_state,
     AllocatorPtr& allocator,
     int counter) {
+  std::cout << "Processing logits?" << std::endl;
   return process_logits_func_(logits, &beam_state, &(cpu_state.sequences), allocator,
                               thread_pool_, &logits_processors_, beam_scorer_.get(),
                               parameters_, counter, ort_stream_, GetConsoleDumper());
@@ -260,7 +261,9 @@ Status BeamSearchBase<T>::GenerateNextToken(
     BeamSearchCpuState& cpu_state,
     int counter) {
   // Process logits to get next token scores
+  std::cout << "Processing Logits!" << std::endl;
   ORT_RETURN_IF_ERROR(ProcessLogits(logits, beam_state, cpu_state, temp_space_allocator_, counter));
+  std::cout << "Getting next scores!" << std::endl;
 
   if (this->IsCuda()) {
     auto beam_scores = beam_scorer_->GetNextScores();
@@ -273,6 +276,8 @@ Status BeamSearchBase<T>::GenerateNextToken(
                                           DeviceCopyDirection::deviceToDevice));
 
     beam_next_tokens = beam_scorer_->GetNextTokens();
+
+  std::cout << "Got next scores" << std::endl;
 
 #ifdef DEBUG_GENERATION
     auto beam_indices = beam_scorer_->GetNextIndicesGPU();

@@ -215,6 +215,7 @@ void BeamSearchScorer::Finalize(ISequences& sequences,
   std::cout << "here3" << std::endl;
   // Score of each sequence, with shape (batch_size * num_return_sequences).
   //gsl::span<float> sequence_scores;
+  // cast each element to FP16?
   gsl::span<float> sequence_scores;
   if (output_sequence_scores) {
     sequence_scores = output_sequence_scores->MutableDataAsSpan<float>();

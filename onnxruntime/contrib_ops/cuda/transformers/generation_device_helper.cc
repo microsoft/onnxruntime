@@ -20,6 +20,10 @@
 #include "contrib_ops/cuda/transformers/beam_search_topk.h"
 #include "contrib_ops/cuda/transformers/greedy_search_top_one.h"
 #include "core/providers/cuda/tensor/transpose.h"
+#include <stdio.h>
+#include <vector>
+#include <iterator>
+#include <typeinfo>
 
 // the includes would be dummy for ROCm, we will ignore them for now
 #ifdef ENABLE_NVTX_PROFILE
@@ -334,6 +338,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                      Stream* ort_stream,                                     // cuda stream (for CUDA only)
                      const transformers::IConsoleDumper* dumper) {           // tensor dumper
 
+std::cout << "Processig logits!" << std::endl;
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxNestedRangeCreator processLogitsRange("ProcessLogits", profile::Color::Red);
   processLogitsRange.Begin();
@@ -401,7 +406,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     dumper->Print("next_token_logits", next_token_logits.data(), batch_size, num_beams, vocab_size);
   }
 #endif
-
+  std::cout << "Log softmax" << std::endl;
   // Get scores for candidates of next token: next_token_scores = log_softmax(next_token_logits, dim=-1)
   gsl::span<float>& next_token_scores = beam_state->next_token_scores;
 
@@ -431,6 +436,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   int extra_decoding_len = static_cast<int>(parameters->extra_decoding_ids.size() / parameters->batch_size);
   const bool need_handle_extra_decoding_ids = is_whisper_model && (!parameters->extra_decoding_ids.empty()) && (extra_decoding_len >= step);
 
+  std::cout << "Launcing processing kernel" << std::endl;
   cuda::LaunchLogitsProcessKernel<float>(
       next_token_scores.data(),
       parameters->vocab_mask.data(),
@@ -482,6 +488,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
   }
 
+  std::cout << "LaunchForceDecoding" << std::endl;
   if (need_handle_extra_decoding_ids && !parameters->extra_decoding_ids.empty()) {
     cuda::LaunchForceDecodingIds(
         next_token_scores.data(),
@@ -497,6 +504,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after logits process", next_token_scores.data(), batch_size, num_beams, vocab_size);
 #endif
+std::cout << "Addprobs to" << std::endl;
   // Add beam score to next token scores. Corresponding python code is like:
   //    next_token_scores = next_token_scores + beam_scores[:, None].expand_as(next_token_scores)
   cuda::LaunchAddProbsKernel(next_token_scores.data(), beam_state->beam_scores.data(),
@@ -743,21 +751,44 @@ bool CudaBeamSearchScorer::IsDoneLater() const {
   return state_cpu_->not_done_count_ == 0;
 }
 
+template <class T, class U>
+gsl::span<T>convert_span(gsl::span<U> s)
+{
+    auto data = s.data();
+    if (!data)
+    {
+        return {};
+    }
+    auto bytes = s.size_bytes();
+    Expects(bytes % sizeof(T) == 0);
+ 
+    return { reinterpret_cast<T*>(data), bytes / gsl::narrow_cast<int>(sizeof(T)) };
+}
+
 void CudaBeamSearchScorer::Finalize(transformers::ISequences& sequences,
                                     gsl::span<const float>& final_beam_scores,
                                     Tensor* output_sequences,
                                     Tensor* output_sequence_scores) {
+  std::cout << "HERE" << std::endl;
   ORT_ENFORCE(output_sequences != nullptr);
 
   // Word IDs of each sequence, with shape (batch_size * num_return_sequences, max_sequence_length).
+  std::cout << "HERE121212" << std::endl;
   gsl::span<int32_t> output{output_sequences->MutableData<int32_t>(), static_cast<size_t>(output_sequences->Shape().Size())};
 
   // Score of each sequence, with shape (batch_size * num_return_sequences).
   gsl::span<float> sequence_scores;
+  //static_cast<float>(*temperature_tensor->Data<MLFloat16>()
   if (output_sequence_scores) {
-    sequence_scores = gsl::span<float>{output_sequence_scores->MutableData<float>(), static_cast<size_t>(output_sequence_scores->Shape().Size())};
+    gsl::span<MLFloat16> old_span = gsl::span<MLFloat16>{output_sequence_scores->MutableData<MLFloat16>(), static_cast<size_t>(output_sequence_scores->Shape().Size())};
+    auto data = old_span.data();
+    auto bytes = old_span.size_bytes();
+    sequence_scores = gsl::span<float>{reinterpret_cast<float*>(data), bytes / gsl::narrow_cast<int>(sizeof(float))};
+    //sequence_scores = convert_span(old_span); //gsl::span<float>{output_sequence_scores->MutableData<float>(), static_cast<size_t>(output_sequence_scores->Shape().Size())};
   }
+  std::cout << "HERE3" << std::endl;
 
+  //gsl::span<float> new_scores = static_cast<float>()
   cuda::LaunchBeamSearchScorer_Finalize(state_cpu_->batch_size_, *state_gpu_, sequences.GetCurrentDeviceSequences(), sequences.GetSequenceLength(), beam_hyps_, final_beam_scores, output, sequence_scores, stream_);
 }
 

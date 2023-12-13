@@ -114,6 +114,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
 
   const BeamSearchParameters* parameters = this->parameters_;
 
+  std::cout << "Executing Encoder" << std::endl;
   // Allocate output tensors.
   int64_t sequences_dims[] = {parameters->batch_size, parameters->num_return_sequences, parameters->max_length};
   TensorShape sequences_shape(&sequences_dims[0], sizeof(sequences_dims) / sizeof(sequences_dims[0]));
@@ -201,10 +202,13 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
   }
 #endif
 
+std::cout << "Done with encoder!" << std::endl;
+
   // ------------------------------------
   // Initialize resources
   // ------------------------------------
 
+std::cout << "Initializing beam_State" << std::endl;
   BeamSearchState<T> beam_state{*parameters,
                                 this->temp_space_allocator_,
                                 decoder_subgraph_.has_decoder_masked_attention_,
@@ -237,6 +241,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
   // ------------------------------------------------------------------------------
   // Generate next token from logits output from encoder, and initialize decoder inputs.
   // ------------------------------------------------------------------------------
+  std::cout << "Initialized beam_State!" << std::endl;
   gsl::span<int32_t> beam_next_tokens;
 
   int iteration_counter = 0;
@@ -255,6 +260,8 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
 
   std::vector<OrtValue> decoder_fetches;
 
+  std::cout << "Executing search!" << std::endl;
+
   if (current_length + 1 < parameters->max_length) {
     ++iteration_counter;
     ORT_RETURN_IF_ERROR(this->GenerateNextToken(encoder_fetches[0],
@@ -263,7 +270,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
                                                 cpu_state,
                                                 iteration_counter));
     ++current_length;  // Increase sequence length after a new token is generated.
-
+    std::cout << "1" << std::endl;
     ORT_RETURN_IF_ERROR(decoder_subgraph_.CreateInitialFeeds(this->cpu_allocator_,
                                                              ReinterpretAsSpan<const int32_t>(beam_next_tokens),
                                                              this->implicit_inputs_,
@@ -280,6 +287,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
                                                              cpu_state.sequences,
                                                              parameters->max_length,
                                                              decoder_subgraph_.has_decoder_masked_attention_));
+    std::cout << "2" << std::endl;
 
     if (decoder_subgraph_.past_present_share_buffer_) {
       decoder_fetches.reserve(static_cast<size_t>(decoder_subgraph_.GetFirstPresentOutputIndex()) +
@@ -296,7 +304,10 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
       }
     }
 
+    std::cout << "3" << std::endl;
+
     if (decoder_subgraph_.output_cross_qk_) {
+      std::cout << "QK" << std::endl;
       ORT_ENFORCE(decoder_subgraph_.has_decoder_masked_attention_, "decoder subgraph: output_cross_qk could only work with has_decoder_masked_attention");
       ORT_ENFORCE(decoder_subgraph_.past_present_share_buffer_, "decoder subgraph: output_cross_qk could only work with past_present_share_buffer");
 
@@ -499,6 +510,8 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
   std::cout << "final_beam_scores" << std::endl;
   std::cout << "float?" << output_sequences_scores->IsDataType<float>()<< std::endl;
   std::cout << "float16?" << output_sequences_scores->IsDataType<MLFloat16>() << std::endl;
+  std::cout << "Output Scores?" << output_scores << std::endl;
+  
   this->beam_scorer_->Finalize(cpu_state.sequences,
                                final_beam_scores,
                                output_sequences,

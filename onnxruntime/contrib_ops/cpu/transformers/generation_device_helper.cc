@@ -292,7 +292,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 #ifndef DEBUG_GENERATION
   ORT_UNUSED_PARAMETER(dumper);
 #endif
-
+  std::cout << "PRocessing Logits!" << std::endl;
   int batch_size = parameters->batch_size;
   int num_beams = parameters->num_beams;
   int vocab_size = parameters->vocab_size;
@@ -334,7 +334,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     dumper->Print("next_token_logits", next_token_logits.data(), batch_size, num_beams, vocab_size);
   }
 #endif
-
+std::cout << "Next token score!" << std::endl;
   // Get scores for candidates of next token: next_token_scores = log_softmax(next_token_logits, dim=-1)
   gsl::span<T>& next_token_scores = beam_state->next_token_scores;
   ORT_RETURN_IF_ERROR(
@@ -349,9 +349,10 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after softmax", next_token_scores.data(), batch_size, num_beams, vocab_size);
 #endif
-
+std::cout << "Processors starting" << std::endl;
   // Apply all score processors that updates scores
   logits_processors->Process(sequences, next_token_scores, step);
+std::cout << "Processor ending" << std::endl;
 
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after logits process", next_token_scores.data(), batch_size, num_beams, vocab_size);
