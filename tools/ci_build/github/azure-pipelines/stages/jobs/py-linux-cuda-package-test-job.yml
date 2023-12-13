@@ -35,7 +35,7 @@ parameters:
       - MinSizeRel
 
 jobs:
-  - job: Linux_Test_GPU_x86_64
+  - job: Linux_Python_CUDA_Package_Test
     ${{ if ne(parameters.dependencies, 'none') }}:
       dependsOn: ${{ parameters.dependencies }}
     ${{ if eq(parameters.dependencies, 'none') }}:
