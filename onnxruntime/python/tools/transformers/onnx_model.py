@@ -83,6 +83,12 @@ class OnnxModel:
                 all_nodes.append(node)  # noqa: PERF402
         return all_nodes
 
+    def functions(self):
+        all_functions = []
+        for function in self.model.functions:
+            all_functions.append(function)
+        return all_functions
+
     def graph(self):
         return self.model.graph
 
