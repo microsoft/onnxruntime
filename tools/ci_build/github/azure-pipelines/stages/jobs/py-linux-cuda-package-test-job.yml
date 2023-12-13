@@ -112,4 +112,4 @@ jobs:
         inputs:
           targetType: filePath
           filePath: tools/ci_build/github/linux/run_python_dockertest.sh
-          arguments: -d GPU -c ${{parameters.cmake_build_type}} -i onnxruntimecuda${{ replace(parameters.CudaVersion, '.', '') }}xtrt86buildx86_64
+          arguments: -d GPU -c ${{parameters.cmake_build_type}} -i onnxruntimecuda${{ replace(parameters.CudaVersion, '.', '') }}xtrt86buildx86_64 -u 12.2

@@ -6,12 +6,15 @@ set -e -x
 
 BUILD_DEVICE="CPU"
 BUILD_CONFIG="Release"
-while getopts "d:c:" parameter_Option
+while getopts "d:c:u:" parameter_Option
 do case "${parameter_Option}"
 in
 #GPU or CPU. 
 d) BUILD_DEVICE=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
+u) CUDA_VERSION=${OPTARG:"11.8"};;
+*) echo "Usage: $0 -d <GPU|CPU> [-c <build_config>] [-u <cuda_version>] "
+   exit 1;;
 esac
 done
 
@@ -33,7 +36,7 @@ if [ $ARCH == "x86_64" ]; then
     BUILD_ARGS="$BUILD_ARGS --enable_onnx_tests"
 fi
 if [ $BUILD_DEVICE == "GPU" ]; then
-    BUILD_ARGS="$BUILD_ARGS --use_cuda --use_tensorrt --cuda_version=11.8 --tensorrt_home=/usr --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8"
+    BUILD_ARGS="$BUILD_ARGS --use_cuda --use_tensorrt --tensorrt_home=/usr --cuda_version=$CUDA_VERSION  --cuda_home=/usr/local/cuda-$CUDA_VERSION --cudnn_home=/usr/local/cuda-$CUDA_VERSION"
 fi
 # We assume the machine doesn't have gcc and python development header files, so we don't build onnxruntime from source
 python3 -m pip install --upgrade pip
