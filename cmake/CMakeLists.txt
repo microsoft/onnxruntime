@@ -61,6 +61,8 @@ endif()
 
 if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 8)
   message(FATAL_ERROR  "GCC version must be greater than or equal to 8")
+elseif("${CMAKE_C_COMPILER_ID}" STREQUAL "Clang" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 16)
+  message(FATAL_ERROR  "GCC version must be greater than or equal to 16")
 endif()
 
 # Options
