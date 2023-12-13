@@ -170,7 +170,6 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
   constexpr int k_per_iter = 256;
 
   b_data_quant += n_id * blocks_per_K * (block_size / 2) + lane_id * 4;
-  asm volatile("prefetch.global.L1 [%0];" ::"l"(b_data_quant));
 
   // blocks_per_k is the number of scales and zero points on the k dim
   const int b_zp_k = (blocks_per_K + 1) / 2;
@@ -202,7 +201,6 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
   for (; k_id < (k & 0xffffff00); k_id += k_per_iter) {
     uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant));
     b_data_quant += k_per_iter / 2;
-    asm volatile("prefetch.global.L1 [%0];" ::"l"(b_data_quant));
     T scale = b_scale_vec[scale_col_offset + t_meta_k];
     uint8_t zp = b_zp_vec[zp_col_offset + t_meta_k / 2];
     zp = (t_meta_k & 0x01) ? (zp >> 4) : (zp & 0x0f);
@@ -253,7 +251,6 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
   constexpr int k_per_iter = 256;
 
   b_data_quant += n_id * blocks_per_K * (block_size / 2) + lane_id * 4;
-  asm volatile("prefetch.global.L1 [%0];" ::"l"(b_data_quant));
 
   extern __shared__ char shared_buffer[];
 
@@ -275,7 +272,6 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
   for (; k_id < (k & 0xffffff00); k_id += k_per_iter) {
     uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant));
     b_data_quant += k_per_iter / 2;
-    asm volatile("prefetch.global.L1 [%0];" ::"l"(b_data_quant));
     T scale = b_scale_vec[scale_col_offset + t_meta_k];
     AccumulateEightElements(value, scale, 8, a_data + k_id + (lane_id << 3), sums);
     t_meta_k += k_per_iter / block_size;  // k index for this thread, points to the scale and zero point
