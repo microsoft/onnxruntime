@@ -13,6 +13,8 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
 #include "contrib_ops/cpu/transformers/beam_search_scorer.h"
+#include <stdio.h>
+#include <iostream>
 
 namespace onnxruntime {
 namespace contrib {
@@ -187,13 +189,15 @@ void BeamSearchScorer::Finalize(ISequences& sequences,
                                 Tensor* output_sequence_scores) {
   ORT_ENFORCE(output_sequences != nullptr);
 
+
   // Finalize all open beam hypotheses and add to generated hypotheses.
+  std::cout << "here1" << std::endl;
   for (size_t batch_index = 0; batch_index < batch_size_; batch_index++) {
     BeamHypotheses& beam_hyp = beam_hyps_[batch_index];
     if (beam_hyp.done_) {
       continue;
     }
-
+    std::cout << "here2" << std::endl;
     for (size_t beam_index = 0; beam_index < num_beams_; beam_index++) {
       size_t batch_beam_index = batch_index * num_beams_ + beam_index;
       float final_score = final_beam_scores[batch_beam_index];
@@ -208,12 +212,15 @@ void BeamSearchScorer::Finalize(ISequences& sequences,
   // Fill output sequences with pad token ID so that we do not need append it later.
   std::fill_n(output.data(), output.size(), pad_token_id_);
 
+  std::cout << "here3" << std::endl;
   // Score of each sequence, with shape (batch_size * num_return_sequences).
+  //gsl::span<float> sequence_scores;
   gsl::span<float> sequence_scores;
   if (output_sequence_scores) {
     sequence_scores = output_sequence_scores->MutableDataAsSpan<float>();
   }
 
+  std::cout << "here4" << std::endl;
   // Select the best hypotheses according to number of sequences to return.
   for (size_t batch_index = 0; batch_index < batch_size_; batch_index++) {
     BeamHypotheses& beam_hyp = beam_hyps_[batch_index];
@@ -227,6 +234,7 @@ void BeamSearchScorer::Finalize(ISequences& sequences,
     beam_hyp.Output(narrow<int>(num_return_sequences_), narrow<int>(max_length_), batch_output,
                     sequence_scores_buffer);
   }
+  std::cout << "here5" << std::endl;
 }
 
 }  // namespace transformers

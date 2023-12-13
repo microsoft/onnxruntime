@@ -125,7 +125,6 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
               "logits_processor shall be a non-negative integer, got ", logits_processor);
 
   auto* temperature_tensor = context->Input<Tensor>(14);
-  auto* temperature_tensor = context->Input<Tensor>(6);
   if (temperature_tensor) {
     if (temperature_tensor->IsDataType<float>()) {
       temperature = *temperature_tensor->Data<float>();
@@ -135,6 +134,8 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   } else {
     temperature = 1.0f;
   }
+  //auto* temperature_tensor = context->Input<Tensor>(14);
+  //temperature = temperature_tensor ? *temperature_tensor->Data<float>() : 1.0f;
 }
 void BeamSearchParameters::SetSubgraphParameters(int vocabulary_size, int heads, int hidden_size_per_head, int layers) {
   // Override vocab_size using the inferred shape from the decoder subgraph ONLY IF

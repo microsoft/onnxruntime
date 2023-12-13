@@ -186,8 +186,8 @@ class Tensor final {
   template <typename T>
   T* MutableData() {
     // Type check
-    ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
-                "T ", "!=", dtype_);
+    //ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
+    //           "T ", "!=", dtype_);
     return reinterpret_cast<T*>(static_cast<char*>(p_data_) + byte_offset_);
   }
 
@@ -197,8 +197,8 @@ class Tensor final {
   template <typename T>
   gsl::span<T> MutableDataAsSpan() {
     // Type check
-    ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
-                "T ", "!=", dtype_);
+    //ORT_ENFORCE(utils::IsPrimitiveDataType<T>(dtype_), "Tensor type mismatch. ",
+     //           "T ", "!=", dtype_);
     T* data = reinterpret_cast<T*>(static_cast<char*>(p_data_) + byte_offset_);
     return gsl::make_span(data, static_cast<size_t>(shape_.Size()));
   }

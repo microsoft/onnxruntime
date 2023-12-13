@@ -1911,6 +1911,7 @@ const DataTransferManager& InferenceSession::GetDataTransferManager() const {
 
 common::Status InferenceSession::CheckShapes(const std::string& input_output_name, const TensorShape& input_output_shape,
                                              const TensorShape& expected_shape, const char* input_output_moniker) const {
+
   const auto shape_size = input_output_shape.NumDimensions();
   const auto expected_shape_size = expected_shape.NumDimensions();
   if (shape_size != expected_shape_size) {

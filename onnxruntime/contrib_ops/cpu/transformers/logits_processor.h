@@ -10,7 +10,7 @@
 #include "contrib_ops/cpu/transformers/greedy_search_parameters.h"
 #include "contrib_ops/cpu/transformers/sampling_parameters.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
-
+#include <stdio.h>
 namespace onnxruntime {
 namespace contrib {
 namespace transformers {

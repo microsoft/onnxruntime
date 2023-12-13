@@ -8,7 +8,6 @@
 #include <cub/device/device_segmented_radix_sort.cuh>
 #include "contrib_ops/cuda/bert/utils.cuh"
 #include "contrib_ops/cuda/transformers/generation_cuda_impl.h"
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {

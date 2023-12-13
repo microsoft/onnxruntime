@@ -464,6 +464,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
     }
   }
 
+  std::cout << "Done with search!" << std::endl;
   if (decoder_subgraph_.output_cross_qk_) {
     TensorShape cross_qk_shape{
         static_cast<int64_t>(parameters->batch_size),
@@ -493,11 +494,17 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
         beam_indices));
   }
 
+  std::cout << "Done with QK!..." << std::endl;
   gsl::span<const float> final_beam_scores = beam_state.beam_scores;
+  std::cout << "final_beam_scores" << std::endl;
+  std::cout << "float?" << output_sequences_scores->IsDataType<float>()<< std::endl;
+  std::cout << "float16?" << output_sequences_scores->IsDataType<MLFloat16>() << std::endl;
   this->beam_scorer_->Finalize(cpu_state.sequences,
                                final_beam_scores,
                                output_sequences,
                                output_sequences_scores);
+
+  std::cout << "Outputting scores..." << std::endl;
 
   // Output per token scores
   if (output_scores) {
@@ -507,6 +514,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
     ORT_RETURN_IF_ERROR(this->device_copy_func_(target, source, nullptr, DeviceCopyDirection::deviceToDevice));
   }
 
+  std::cout << "Outputting scores!" << std::endl;
   return status;
 }
 

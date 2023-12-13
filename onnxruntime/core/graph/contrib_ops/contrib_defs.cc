@@ -1231,14 +1231,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(WhisperBeamSearch, 1,
                                        "In such case, we should remove this from the tail of the decoder_input_ids, and put it here. ids < 0 in it (for multiple batch) "
                                        "are treated as stop of the extra_decoding_ids for corresponding batch.",
                                        "I", OpSchema::Optional)
-				                        .Input(14, "temperature", "Temperature value to apply to logit processing during this execution's decoding. Shape is (1)", "V", OpSchema::Optional)
+				 .Input(14, "temperature", "Temperature value to apply to logit processing during this execution's decoding. Shape is (1)", "V", OpSchema::Optional)
                                 .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, num_return_sequences, max_sequence_length)", "I")
-                                .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)", "T", OpSchema::Optional)
+                                .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)", "L", OpSchema::Optional)
                                 .Output(2, "scores",
                                         "Processed beam scores for each vocabulary token at each generation step."
                                         "Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam."
                                         "Shape is (max_length - sequence_length, batch_size, num_beams, vocab_size)",
-                                        "T", OpSchema::Optional)
+                                        "L", OpSchema::Optional)
                                 .Output(3, "cross_qk",
                                         "Output the accumulated stacked Q*K in cross attentions. Let H = number of Head of cross attention, "
                                         "F = the frames or kv-seq-len of the cross attention input, T = real decoded token length, L = number of layers,"
@@ -1251,6 +1251,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(WhisperBeamSearch, 1,
                                         "The prob is save before logits may be updated by extra-decoding-ids. The shape of non_speech_probs is [B]",
                                         "T", OpSchema::Optional)
                                 .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain to float tensors.")
+                                .TypeConstraint("L", {"tensor(float)", "tensor(float16)"}, "Constrain to float tensors.")
                                 .TypeConstraint("F", {"tensor(float)", "tensor(int32)", "tensor(float16)"}, "Constrain input type to float or int tensors.")
                                 .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
                                 .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
