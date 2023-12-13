@@ -38,6 +38,7 @@ from perf_utils import (
     is_validate_mode,
     memory_ending,
     model_title,
+    op_metrics_name,
     ort_provider_list,
     percentile_ending,
     pretty_print,
@@ -1593,7 +1594,7 @@ def output_metrics(model_to_metrics, csv_filename):
 def output_op_metrics(model_to_metrics, csv_filename):
     with open(csv_filename, mode="w", newline="") as csv_file:
         csv_writer = csv.writer(csv_file)
-        csv_writer.writerow(["Model", "Ep", "op percentage in each ep"])
+        csv_writer.writerow([model_title, "Ep", "op percentage in each ep"])
 
         for model, ep_info in model_to_metrics.items():
             if cuda in ep_info:
@@ -2358,7 +2359,7 @@ def main():
             )
             csv_filename = os.path.join(path, csv_filename)
             output_metrics(model_to_metrics, csv_filename)
-            output_op_metrics(model_to_metrics, csv_filename)
+            output_op_metrics(model_to_metrics, op_metrics_name)
 
     if len(model_to_session) > 0:
         write_map_to_file(model_to_session, SESSION_FILE)

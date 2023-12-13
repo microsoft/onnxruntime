@@ -27,6 +27,7 @@ standalone_trt_fp16 = "TRTFp16"
 acl = "ORT-ACLFp32"
 
 # table names
+metrics_name = "metrics"
 success_name = "success"
 fail_name = "fail"
 memory_name = "memory"
@@ -38,7 +39,7 @@ latency_over_time_name = "latency_over_time"
 specs_name = "specs"
 session_name = "session"
 session_over_time_name = "session_over_time"
-metrics_name = "op_metrics"
+op_metrics_name = "op_metrics"
 
 # column names
 model_title = "Model"

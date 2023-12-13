@@ -24,6 +24,7 @@ from perf_utils import (
     memory_name,
     memory_over_time_name,
     model_title,
+    op_metrics_name,
     ort_provider_list,
     provider_list,
     second,
@@ -415,6 +416,7 @@ def main():
             specs_name,
             session_name,
             session_over_time_name,
+            op_metrics_name,
         ]
 
         table_results = {}
