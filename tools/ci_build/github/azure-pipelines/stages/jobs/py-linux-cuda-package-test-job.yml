@@ -88,6 +88,12 @@ jobs:
           find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -d "${1%.*}" "$1"' _ {} \;
         displayName: 'Prepare artifacts'
 
+      - task: BinSkim@4
+        displayName: 'Run BinSkim'
+        inputs:
+          AnalyzeTargetGlob: '$(Build.BinariesDirectory)/tmp/**/*.so'
+          continueOnError: true
+
       - template: ../../templates/get-docker-image-steps.yml
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
