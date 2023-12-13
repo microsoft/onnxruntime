@@ -772,14 +772,14 @@ class ShaderHelperImpl implements ShaderHelper {
     const is1DimensionDispatch = this.normalizedDispatchGroup[1] === 1 && this.normalizedDispatchGroup[2] === 1;
     const paramList = is1DimensionDispatch ? `@builtin(global_invocation_id) global_id : vec3<u32>,
     @builtin(local_invocation_id) local_id : vec3<u32>` :
-                                             `@builtin(local_invocation_index) local_index : u32,
+                                             `@builtin(local_invocation_index) local_idx : u32,
     @builtin(workgroup_id) workgroup_id : vec3<u32>,
     @builtin(num_workgroups) num_workgroups : vec3<u32>`;
     const globalIdxDefinition = is1DimensionDispatch ?
         'let global_idx = global_id.x; let local_idx = local_id.x;' :
         `let global_idx = (workgroup_id.z * num_workgroups[0] * num_workgroups[1] +
           workgroup_id.y * num_workgroups[0] + workgroup_id.x) * ${
-            workgroupSizeX * workgroupSizeY * workgroupSizeZ}u + local_index; let local_idx = local_index;`;
+            workgroupSizeX * workgroupSizeY * workgroupSizeZ}u + local_idx;`;
 
     return `@compute @workgroup_size(${workgroupSizeX}, ${workgroupSizeY}, ${workgroupSizeZ})
   fn main(${paramList}) {
