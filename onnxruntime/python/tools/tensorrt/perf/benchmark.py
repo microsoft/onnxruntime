@@ -80,7 +80,7 @@ trt_native_fp16_gain = "TRT_Standalone_fp16_gain(%)"
 # metadata
 FAIL_MODEL_FILE = ".fail_model_map"
 LATENCY_FILE = ".latency_map"
-OP_METRICS_FILE = ".op_metrics_map"
+METRICS_FILE = ".metrics_map"
 SESSION_FILE = ".session_map"
 MEMORY_FILE = "./temp_memory.csv"
 
@@ -632,35 +632,35 @@ def update_fail_report(fail_results, model, ep, e_type, e):
     fail_results.append(result)
 
 
-def update_op_metrics_map(model_to_op_metrics, model_name, ep_to_operator):
+def update_metrics_map(model_to_metrics, model_name, ep_to_operator):
     if len(ep_to_operator) <= 0:
         return
 
-    if model_name not in model_to_op_metrics:
-        model_to_op_metrics[model_name] = {}
+    if model_name not in model_to_metrics:
+        model_to_metrics[model_name] = {}
 
     for ep, op_map in ep_to_operator.items():
-        if ep not in model_to_op_metrics[model_name]:
-            model_to_op_metrics[model_name][ep] = {}
+        if ep not in model_to_metrics[model_name]:
+            model_to_metrics[model_name][ep] = {}
 
         if ep in (cuda, cuda_fp16):
-            model_to_op_metrics[model_name][ep]["ratio_of_ops_in_cuda_not_fallback_cpu"] = calculate_cuda_op_percentage(
+            model_to_metrics[model_name][ep]["ratio_of_ops_in_cuda_not_fallback_cpu"] = calculate_cuda_op_percentage(
                 op_map
             )
-            model_to_op_metrics[model_name][ep]["total_ops"] = get_total_ops(op_map)
+            model_to_metrics[model_name][ep]["total_ops"] = get_total_ops(op_map)
         else:
             (
                 total_trt_execution_time,
                 total_execution_time,
                 ratio_of_execution_time_in_trt,
             ) = calculate_trt_latency_percentage(op_map)
-            model_to_op_metrics[model_name][ep]["total_ops"] = get_total_ops(op_map)
-            model_to_op_metrics[model_name][ep]["total_trt_execution_time"] = total_trt_execution_time
-            model_to_op_metrics[model_name][ep]["total_execution_time"] = total_execution_time
-            model_to_op_metrics[model_name][ep]["ratio_of_execution_time_in_trt"] = ratio_of_execution_time_in_trt
+            model_to_metrics[model_name][ep]["total_ops"] = get_total_ops(op_map)
+            model_to_metrics[model_name][ep]["total_trt_execution_time"] = total_trt_execution_time
+            model_to_metrics[model_name][ep]["total_execution_time"] = total_execution_time
+            model_to_metrics[model_name][ep]["ratio_of_execution_time_in_trt"] = ratio_of_execution_time_in_trt
 
 
-def update_op_metrics_map_ori(model_to_op_metrics, name, ep_to_operator):
+def update_metrics_map_ori(model_to_metrics, name, ep_to_operator):
     if len(ep_to_operator) <= 0:
         return
 
@@ -679,11 +679,11 @@ def update_op_metrics_map_ori(model_to_op_metrics, name, ep_to_operator):
         elif ep == trt_fp16:
             trt_fp16_op_map = op_map
 
-    if name not in model_to_op_metrics:
-        model_to_op_metrics[name] = {}
+    if name not in model_to_metrics:
+        model_to_metrics[name] = {}
 
     if cuda_op_map:
-        model_to_op_metrics[name]["ratio_of_ops_in_cuda_not_fallback_cpu"] = calculate_cuda_op_percentage(cuda_op_map)
+        model_to_metrics[name]["ratio_of_ops_in_cuda_not_fallback_cpu"] = calculate_cuda_op_percentage(cuda_op_map)
 
     if trt_op_map:
         (
@@ -691,18 +691,18 @@ def update_op_metrics_map_ori(model_to_op_metrics, name, ep_to_operator):
             total_execution_time,
             ratio_of_execution_time_in_trt,
         ) = calculate_trt_latency_percentage(trt_op_map)
-        model_to_op_metrics[name]["total_trt_execution_time"] = total_trt_execution_time
-        model_to_op_metrics[name]["total_execution_time"] = total_execution_time
-        model_to_op_metrics[name]["ratio_of_execution_time_in_trt"] = ratio_of_execution_time_in_trt
+        model_to_metrics[name]["total_trt_execution_time"] = total_trt_execution_time
+        model_to_metrics[name]["total_execution_time"] = total_execution_time
+        model_to_metrics[name]["ratio_of_execution_time_in_trt"] = ratio_of_execution_time_in_trt
         if cuda_op_map:
             (
                 total_ops_in_trt,
                 total_ops,
                 ratio_of_ops_in_trt,
             ) = calculate_trt_op_percentage(trt_op_map, cuda_op_map)
-            model_to_op_metrics[name]["total_ops_in_trt"] = total_ops_in_trt
-            model_to_op_metrics[name]["total_ops"] = total_ops
-            model_to_op_metrics[name]["ratio_of_ops_in_trt"] = ratio_of_ops_in_trt
+            model_to_metrics[name]["total_ops_in_trt"] = total_ops_in_trt
+            model_to_metrics[name]["total_ops"] = total_ops
+            model_to_metrics[name]["ratio_of_ops_in_trt"] = ratio_of_ops_in_trt
 
     if trt_fp16_op_map:
         (
@@ -711,19 +711,19 @@ def update_op_metrics_map_ori(model_to_op_metrics, name, ep_to_operator):
             ratio_of_execution_time_in_trt,
         ) = calculate_trt_latency_percentage(trt_fp16_op_map)
         name_ = name + " (FP16)"
-        model_to_op_metrics[name_] = {}
-        model_to_op_metrics[name_]["total_trt_execution_time"] = total_trt_execution_time
-        model_to_op_metrics[name_]["total_execution_time"] = total_execution_time
-        model_to_op_metrics[name_]["ratio_of_execution_time_in_trt"] = ratio_of_execution_time_in_trt
+        model_to_metrics[name_] = {}
+        model_to_metrics[name_]["total_trt_execution_time"] = total_trt_execution_time
+        model_to_metrics[name_]["total_execution_time"] = total_execution_time
+        model_to_metrics[name_]["ratio_of_execution_time_in_trt"] = ratio_of_execution_time_in_trt
         if cuda_fp16_op_map:
             (
                 total_ops_in_trt,
                 total_ops,
                 ratio_of_ops_in_trt,
             ) = calculate_trt_op_percentage(trt_fp16_op_map, cuda_op_map)
-            model_to_op_metrics[name_]["total_ops_in_trt"] = total_ops_in_trt
-            model_to_op_metrics[name_]["total_ops"] = total_ops
-            model_to_op_metrics[name_]["ratio_of_ops_in_trt"] = ratio_of_ops_in_trt
+            model_to_metrics[name_]["total_ops_in_trt"] = total_ops_in_trt
+            model_to_metrics[name_]["total_ops"] = total_ops
+            model_to_metrics[name_]["ratio_of_ops_in_trt"] = ratio_of_ops_in_trt
 
     if debug:
         pp = pprint.PrettyPrinter(indent=4)
@@ -1505,7 +1505,7 @@ def output_latency(results, csv_filename):
     logger.info(f"CUDA/TRT latency comparison are saved to csv file: {csv_filename}")
 
 
-def output_metrics(model_to_op_metrics, csv_filename):
+def output_metrics(model_to_metrics, csv_filename):
     with open(csv_filename, mode="w", newline="") as csv_file:
         column_names = [
             "Model",
@@ -1521,7 +1521,7 @@ def output_metrics(model_to_op_metrics, csv_filename):
         csv_writer.writerow(column_names)
 
         results = []
-        for model, ep_info in model_to_op_metrics.items():
+        for model, ep_info in model_to_metrics.items():
             result = {}
             result_fp16 = {}
             result["model_name"] = model
@@ -1625,7 +1625,7 @@ def test_models_eps(args, models):
 
     success_results = []
     model_to_latency = {}  # model -> cuda and tensorrt latency
-    model_to_op_metrics = {}  # model -> metrics from profiling file
+    model_to_metrics = {}  # model -> metrics from profiling file
     model_to_fail_ep = {}  # model -> failing ep
     model_to_session = {}  # models -> session creation time
 
@@ -1678,7 +1678,7 @@ def test_models_eps(args, models):
 
         model_to_latency[name] = ep_results["latency"]
         model_to_session[name] = ep_results["session"]
-        update_op_metrics_map(model_to_op_metrics, name, ep_results["metrics"])
+        update_metrics_map(model_to_metrics, name, ep_results["metrics"])
 
     os.chdir(init_dir)
 
@@ -1686,7 +1686,7 @@ def test_models_eps(args, models):
         success_results,
         model_to_latency,
         model_to_fail_ep,
-        model_to_op_metrics,
+        model_to_metrics,
         model_to_session,
     )
 
@@ -2264,7 +2264,7 @@ def main():
         success_results,
         model_to_latency,
         model_to_fail_ep,
-        model_to_op_metrics,
+        model_to_metrics,
         model_to_session,
     ) = test_models_eps(args, models)
     perf_end_time = datetime.now()
@@ -2323,19 +2323,19 @@ def main():
         csv_filename = os.path.join(path, csv_filename)
         output_details(success_results, csv_filename)
 
-    if len(model_to_op_metrics) > 0:
+    if len(model_to_metrics) > 0:
         logger.info("\n=========================================")
         logger.info("========== Models/EPs metrics  ==========")
         logger.info("=========================================")
-        pretty_print(pp, model_to_op_metrics)
-        write_map_to_file(model_to_op_metrics, OP_METRICS_FILE)
+        pretty_print(pp, model_to_metrics)
+        write_map_to_file(model_to_metrics, METRICS_FILE)
 
         if args.write_test_result:
             csv_filename = (
                 args.benchmark_metrics_csv if args.benchmark_metrics_csv else f"benchmark_metrics_{time_stamp}.csv"
             )
             csv_filename = os.path.join(path, csv_filename)
-            output_metrics(model_to_op_metrics, csv_filename)
+            output_metrics(model_to_metrics, csv_filename)
 
     if len(model_to_session) > 0:
         write_map_to_file(model_to_session, SESSION_FILE)

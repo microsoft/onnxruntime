@@ -68,7 +68,7 @@ def main():
     model_to_fail_ep = {}
 
     benchmark_fail_csv = fail_name + csv_ending  # noqa: F405
-    benchmark_metrics_csv = op_metrics_name + csv_ending  # noqa: F405
+    benchmark_metrics_csv = metrics_name + csv_ending  # noqa: F405
     benchmark_success_csv = success_name + csv_ending  # noqa: F405
     benchmark_latency_csv = latency_name + csv_ending  # noqa: F405
     benchmark_status_csv = status_name + csv_ending  # noqa: F405
@@ -166,9 +166,9 @@ def main():
         logger.info("=========== Models/EPs metrics ==========")  # noqa: F405
         logger.info("=========================================")  # noqa: F405
 
-        if os.path.exists(OP_METRICS_FILE):  # noqa: F405
-            model_to_op_metrics = read_map_from_file(OP_METRICS_FILE)  # noqa: F405
-            output_metrics(model_to_op_metrics, os.path.join(path, benchmark_metrics_csv))  # noqa: F405
+        if os.path.exists(METRICS_FILE):  # noqa: F405
+            model_to_metrics = read_map_from_file(METRICS_FILE)  # noqa: F405
+            output_metrics(model_to_metrics, os.path.join(path, benchmark_metrics_csv))  # noqa: F405
             logger.info(f"\nSaved model metrics results to {benchmark_metrics_csv}")  # noqa: F405
 
     if benchmark:

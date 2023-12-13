@@ -24,8 +24,8 @@ from perf_utils import (
     memory_name,
     memory_over_time_name,
     model_title,
-    op_metrics_columns,
-    op_metrics_name,
+    metrics_columns,
+    metrics_name,
     ort_provider_list,
     provider_list,
     second,
@@ -338,21 +338,21 @@ def get_session(session, model_group):
     return session
 
 
-def get_op_metrics(op_metrics, model_group):
+def get_metrics(metrics, model_group):
     """
     Returns a new Pandas table that contains operator usage and performance information.
-    :param op_metrics: The Pandas table containing operator usage and performance information.
+    :param metrics: The Pandas table containing operator usage and performance information.
     :param model_group: The model group namespace to append as a column.
     :return: The updated table.
     """
 
     csv_columns, db_columns = [], []
 
-    for _, csv_col, db_col in op_metrics_columns:
+    for _, csv_col, db_col in metrics_columns:
         csv_columns.append(csv_col)
         db_columns.append(db_col)
 
-    return adjust_columns(op_metrics, csv_columns, db_columns, model_group)
+    return adjust_columns(metrics, csv_columns, db_columns, model_group)
 
 
 def write_table(
@@ -434,7 +434,7 @@ def main():
             specs_name,
             session_name,
             session_over_time_name,
-            op_metrics_name,
+            metrics_name,
         ]
 
         table_results = {}
@@ -477,9 +477,9 @@ def main():
                     table_results[status_name] = pd.concat(
                         [table_results[status_name], get_status(table, model_group)], ignore_index=True
                     )
-                elif op_metrics_name in csv:
-                    table_results[op_metrics_name] = pd.concat(
-                        [table_results[op_metrics_name], get_op_metrics(table, model_group)],
+                elif metrics_name in csv:
+                    table_results[metrics_name] = pd.concat(
+                        [table_results[metrics_name], get_metrics(table, model_group)],
                         ignore_index=True,
                         )
             os.chdir(result_file)

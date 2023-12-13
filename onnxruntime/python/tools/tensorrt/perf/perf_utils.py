@@ -27,7 +27,7 @@ standalone_trt_fp16 = "TRTFp16"
 acl = "ORT-ACLFp32"
 
 # table names
-op_metrics_name = "op_metrics"
+metrics_name = "metrics"
 success_name = "success"
 fail_name = "fail"
 memory_name = "memory"
@@ -45,7 +45,7 @@ model_title = "Model"
 group_title = "Group"
 
 # List of column name tuples for operator metrics: (<map_key>, <csv_column>, <db_column>)
-op_metrics_columns = [
+metrics_columns = [
     ("model_name", "Model", "Model"),
     ("input_ep", "Input EP", "InputEP"),
     ("operator", "Operator", "Operator"),
