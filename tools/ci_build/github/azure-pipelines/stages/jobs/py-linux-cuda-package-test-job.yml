@@ -54,6 +54,7 @@ jobs:
           value: 8.6.1.6-1.cuda12.0
     pool: ${{ parameters.machine_pool }}
     steps:
+      - checkout: self
       - task: DownloadPipelineArtifact@2
         inputs:
           artifact: 'drop-linux-gpu-x86_64'
@@ -86,12 +87,6 @@ jobs:
           cp -r "$(Build.BinariesDirectory)/whl" $(Build.BinariesDirectory)/tmp
           find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -d "${1%.*}" "$1"' _ {} \;
         displayName: 'Prepare artifacts'
-
-      - task: BinSkim@4
-        displayName: 'Run BinSkim'
-        inputs:
-          AnalyzeTargetGlob: '$(Build.BinariesDirectory)/tmp/**/*.so'
-          continueOnError: true
 
       - template: ../../templates/get-docker-image-steps.yml
         parameters:
