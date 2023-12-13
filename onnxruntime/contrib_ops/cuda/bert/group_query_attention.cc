@@ -63,6 +63,9 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
 #else
   disable_memory_efficient_attention_ = true;
 #endif
+  if (!disable_flash_attention_) {
+    zeros_ = this->GetScratchBuffer<int>(kZerosCount, nullptr);
+  }
 }
 
 template <typename T>
@@ -98,6 +101,10 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                 scale_,
                                                                 device_prop.maxThreadsPerBlock));
   parameters.local_window_size = local_window_size_;
+  parameters.is_unidirectional = is_unidirectional_;
+  parameters.zeros_count = kZerosCount;
+  parameters.zero_ptr = zeros_.get();
+  // parameters.left_padding = left_padding_;
   int sequence_length = parameters.sequence_length;
   parameters.do_rotary = do_rotary_;
   parameters.rotary_interleaved = rotary_interleaved_;
