@@ -122,9 +122,6 @@ struct TensorrtFuncState {
   std::unordered_map<std::string, float> dynamic_range_map;
   bool filter_tactic_sources = false;
   nvinfer1::TacticSources tactic_sources;
-  // Below: class private members
-
-  std::string engine_cache_path;
 };
 
 // Holds important information for building valid ORT graph.
