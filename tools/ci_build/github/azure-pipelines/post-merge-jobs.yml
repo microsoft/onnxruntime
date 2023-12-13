@@ -4,9 +4,11 @@ stages:
     parameters:
       NpmPackagingMode: 'dev'
       IsReleasePipeline: true
-      PoolName: 'aiinfra-Win-CPU-2022-web-beta'
+      PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
       BuildStaticLib: true
       ExtraBuildArgs: ''
+      UseWebPoolName: true
+      WebCpuPoolName: 'Onnxruntime-Win-CPU-2022'
 
 # This stage is to test if the combined build works on
 # o Windows ARM64
@@ -19,7 +21,6 @@ stages:
     DoCompliance: false
     DoEsrp: false
     stage_name_suffix: CPU_x86_default
-    EnvSetupScript: setup_env_x86.bat
     buildArch: x86
     msbuildPlatform: Win32
     packageName: x86
@@ -34,7 +35,6 @@ stages:
     DoCompliance: false
     DoEsrp: false
     stage_name_suffix: CPU_arm64_default
-    EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: arm64
     packageName: arm64
@@ -49,7 +49,6 @@ stages:
     DoCompliance: false
     DoEsrp: false
     stage_name_suffix: CPU_x64_default
-    EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64
@@ -266,7 +265,7 @@ stages:
   dependsOn: []
   jobs:
   - job: IosDynamicFramework
-
+    timeoutInMinutes: 120
     pool:
       vmImage: "macOS-13"
 
@@ -284,14 +283,15 @@ stages:
       displayName: "Install Python requirements"
 
     - script: |
-        python tools/ci_build/github/apple/build_ios_framework.py \
+        python tools/ci_build/github/apple/build_apple_framework.py \
           --build_dir "$(Build.BinariesDirectory)/ios_framework" \
           --build_dynamic_framework \
           tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json
       displayName: "Build iOS dynamic framework"
 
     - script: |
-        python tools/ci_build/github/apple/test_ios_packages.py \
-          --framework_info_file "$(Build.BinariesDirectory)/ios_framework/framework_info.json" \
-          --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out"
+        python tools/ci_build/github/apple/test_apple_packages.py \
+          --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
+          --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
+          --variant Mobile
       displayName: "Test pod with iOS dynamic framework"

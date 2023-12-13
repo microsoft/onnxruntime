@@ -26,7 +26,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "0c296085f9f65f0f8ef7aec7b9eed55faf37dc40",
+          "commitHash": "b86cc54efce19530fb953e4b21f57e6b3888534c",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -36,7 +36,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "29bf8085f3bf17b84d30e34b3d7ff8248fda404e",
+          "commitHash": "3abf3298b6b43acc8556b1342ffb6de4a85fb30f",
           "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
         },
         "comments": "abseil_cpp"
@@ -126,7 +126,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "f8d7d77c06936315286eb55f8de22cd23c188571",
+          "commitHash": "b3a9ba2b8e975550799838332803d468797ae2e1",
           "repositoryUrl": "https://github.com/google/googletest.git"
         },
         "comments": "googletest"
@@ -136,7 +136,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "003c580e696a774afdc984996ee909b7c8d8128c",
+          "commitHash": "0da379fc4808f9601faef392352018c741c0f297",
           "repositoryUrl": "https://github.com/google/XNNPACK.git"
         },
         "comments": "googlexnnpack"
@@ -196,16 +196,6 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "6a20ba82b439ea1fd650da4d389e96b60a1dd828",
-          "repositoryUrl": "https://github.com/onnx/onnx.git"
-        },
-        "comments": "onnx"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
           "commitHash": "a43ce67187bab219520fd80f21af8bbd4354bc8c",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
@@ -236,7 +226,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "1787867f6183f056420e532eec640cba25efafea",
+          "commitHash": "4fe0e1e183925bf8cfa6aae24237e724a96479b8",
           "repositoryUrl": "https://github.com/Maratyszcza/pthreadpool.git"
         },
         "comments": "pthreadpool"
@@ -296,7 +286,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "c4f6b8c6bc94ff69048492fb34df0dfaf1983933",
+          "commitHash": "6f47420213f757831fae65c686aa471749fa8d60",
           "repositoryUrl": "https://github.com/NVIDIA/cutlass.git"
         },
         "comments": "cutlass"
@@ -326,7 +316,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "d52ec01652b7d620386251db92455968d8d90bdc",
+          "commitHash": "5356c4a943a35e74d7cdc69486afcb8703b9a59a",
           "repositoryUrl": "https://github.com/ROCmSoftwarePlatform/composable_kernel.git"
         },
         "comments": "composable_kernel"

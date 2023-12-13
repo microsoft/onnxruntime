@@ -14,7 +14,6 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "core/util/qmath.h"
-#include "contrib_ops/cpu/quantization/dequantize_blockwise.h"
 
 #include <chrono>
 #include <random>
@@ -24,6 +23,8 @@
 
 namespace onnxruntime {
 namespace test {
+
+static constexpr int QBits = 4;
 
 void QuantizeDequantize(std::vector<float>& raw_vals,
                         std::vector<uint8_t>& quant_vals,
@@ -35,27 +36,29 @@ void QuantizeDequantize(std::vector<float>& raw_vals,
   OrtThreadPoolParams to;
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to,
                                           concurrency::ThreadPoolType::INTRA_OP);
-  contrib::QuantizeBlockwise<float>(
+
+  MlasQuantizeBlockwise<float, 4>(
       quant_vals.data(),
-      raw_vals.data(),
       scales.data(),
       zp != nullptr ? zp->data() : nullptr,
+      raw_vals.data(),
       block_size,
-      4,
-      N,
+      true,
       K,
+      N,
+      N,
       tp.get());
 
   // Note that input1_f_vals is NxK after dequant
-  contrib::DequantizeBlockwise<float>(
-      raw_vals.data(),
-      quant_vals.data(),
-      scales.data(),
-      zp != nullptr ? zp->data() : nullptr,
-      block_size,
-      4,
-      N,
-      K,
+  MlasDequantizeBlockwise<float, 4>(
+      raw_vals.data(),                       // dequantized output
+      quant_vals.data(),                     // quantized input
+      scales.data(),                         // quantization scales
+      zp != nullptr ? zp->data() : nullptr,  // quantization zero points
+      block_size,                            // quantization block size
+      true,                                  // columnwise quantization
+      K,                                     // number of rows
+      N,                                     // number of columns
       tp.get());
 }
 
@@ -69,13 +72,17 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
   MlasTranspose(input1_f_vals.data(), input1_f_vals_trans.data(), K, N);
 #endif
 
-  int64_t block_per_k = (K + block_size - 1) / block_size;
-  int64_t number_of_block = block_per_k * N;
-  int64_t block_blob_size = block_size * 4 / 8;
-  int64_t buf_size = number_of_block * (block_size * 4 / 8);
-  std::vector<uint8_t> input1_vals(buf_size);
-  std::vector<float> scales(number_of_block);
-  std::vector<uint8_t> zp((N * block_per_k + 1) / 2);
+  int q_rows, q_cols;
+  MlasBlockwiseQuantizedShape<float, 4>((int)block_size, true, (int)K, (int)N, q_rows, q_cols);
+
+  size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
+  MlasBlockwiseQuantizedBufferSizes(4, static_cast<int>(block_size), /* columnwise */ true,
+                                    static_cast<int>(K), static_cast<int>(N),
+                                    q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
+
+  std::vector<uint8_t> input1_vals(q_data_size_in_bytes);
+  std::vector<float> scales(q_scale_size);
+  std::vector<uint8_t> zp(q_zp_size_in_bytes);
 
   QuantizeDequantize(input1_f_vals,
                      input1_vals,
@@ -100,13 +107,13 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
   test.AddAttribute<int64_t>("K", K);
   test.AddAttribute<int64_t>("N", N);
   test.AddAttribute<int64_t>("block_size", block_size);
-  test.AddAttribute<int64_t>("bits", 4);
+  test.AddAttribute<int64_t>("bits", QBits);
   if (use_float16) {
     test.AddInput<MLFloat16>("A", {M, K}, ToFloat16(input0_vals), false);
-    test.AddInput<uint8_t>("B", {N, block_per_k, block_blob_size}, input1_vals, true);
-    test.AddInput<MLFloat16>("scales", {N * block_per_k}, ToFloat16(scales), true);
+    test.AddInput<uint8_t>("B", {q_cols, q_rows}, input1_vals, true);
+    test.AddInput<MLFloat16>("scales", {static_cast<int64_t>(q_scale_size)}, ToFloat16(scales), true);
     if (has_zeropoint) {
-      test.AddInput<uint8_t>("zero_points", {(N * block_per_k + 1) / 2}, zp, true);
+      test.AddInput<uint8_t>("zero_points", {static_cast<int64_t>(q_zp_size_in_bytes)}, zp, true);
     }
 
     test.AddOutput<MLFloat16>("Y", {M, N}, ToFloat16(expected_vals));
@@ -117,10 +124,10 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   } else {
     test.AddInput<float>("A", {M, K}, input0_vals, false);
-    test.AddInput<uint8_t>("B", {N, block_per_k, block_blob_size}, input1_vals, true);
-    test.AddInput<float>("scales", {N * block_per_k}, scales, true);
+    test.AddInput<uint8_t>("B", {q_cols, q_rows}, input1_vals, true);
+    test.AddInput<float>("scales", {static_cast<int64_t>(q_scale_size)}, scales, true);
     if (has_zeropoint) {
-      test.AddInput<uint8_t>("zero_points", {(N * block_per_k + 1) / 2}, zp, true);
+      test.AddInput<uint8_t>("zero_points", {static_cast<int64_t>(q_zp_size_in_bytes)}, zp, true);
     }
 
     test.AddOutput<float>("Y", {M, N}, expected_vals);

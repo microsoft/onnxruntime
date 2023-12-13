@@ -51,6 +51,7 @@ set(contrib_ops_excluded_files
   "math/gemm_float8.cc"
   "math/gemm_float8.cu"
   "math/gemm_float8.h"
+  "moe/*"
   "quantization/attention_quantization.cc"
   "quantization/attention_quantization.h"
   "quantization/attention_quantization_impl.cu"
@@ -94,6 +95,11 @@ set(contrib_ops_excluded_files
   "cuda_contrib_kernels.h"
   "inverse.cc"
   "fused_conv.cc"
+  "bert/group_query_attention_helper.h"
+  "bert/group_query_attention.h"
+  "bert/group_query_attention.cc"
+  "bert/group_query_attention_impl.h"
+  "bert/group_query_attention_impl.cu"
 )
 
 if (NOT onnxruntime_ENABLE_ATEN)
@@ -103,12 +109,17 @@ if (NOT onnxruntime_USE_NCCL)
   # Those are string patterns to exclude. Do NOT use stars such as
   # collective/*.cc or *.h.
   list(APPEND contrib_ops_excluded_files "collective/nccl_kernels.cc")
+  list(APPEND contrib_ops_excluded_files "collective/sharded_moe.h")
+  list(APPEND contrib_ops_excluded_files "collective/sharded_moe.cc")
   list(APPEND contrib_ops_excluded_files "collective/sharding.cc")
   list(APPEND contrib_ops_excluded_files "collective/sharding_spec.cc")
   list(APPEND contrib_ops_excluded_files "collective/distributed_matmul.cc")
   list(APPEND contrib_ops_excluded_files "collective/distributed_slice.cc")
   list(APPEND contrib_ops_excluded_files "collective/distributed_reshape.cc")
   list(APPEND contrib_ops_excluded_files "collective/distributed_expand.cc")
+  list(APPEND contrib_ops_excluded_files "collective/distributed_reduce.cc")
+  list(APPEND contrib_ops_excluded_files "collective/distributed_unsqueeze.cc")
+  list(APPEND contrib_ops_excluded_files "collective/distributed_squeeze.cc")
 endif()
 
 set(provider_excluded_files

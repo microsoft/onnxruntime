@@ -21,13 +21,15 @@ namespace test {
 template <typename QuantType>
 GetTestQDQModelFn<QuantType> BuildPoolQDQTestCase(const std::string& op_type,
                                                   const TestInputDef<float>& input_def,
-                                                  const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs) {
-  return [op_type, input_def, attrs](ModelTestBuilder& builder,
-                                     std::vector<QuantParams<QuantType>>& output_qparams) {
+                                                  const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                                                  bool use_contrib_qdq_ops) {
+  return [op_type, input_def, attrs, use_contrib_qdq_ops](ModelTestBuilder& builder,
+                                                          std::vector<QuantParams<QuantType>>& output_qparams) {
     // input -> Q -> DQ ->
     NodeArg* input = MakeTestInput(builder, input_def);
     QuantParams<QuantType> input_qparams = GetTestInputQuantParams<QuantType>(input_def);
-    NodeArg* input_qdq = AddQDQNodePair<QuantType>(builder, input, input_qparams.scale, input_qparams.zero_point);
+    NodeArg* input_qdq = AddQDQNodePair<QuantType>(builder, input, input_qparams.scale, input_qparams.zero_point,
+                                                   use_contrib_qdq_ops);
 
     // MaxPool
     NodeArg* pool_output = builder.MakeIntermediate();
@@ -41,7 +43,7 @@ GetTestQDQModelFn<QuantType> BuildPoolQDQTestCase(const std::string& op_type,
     // NOTE: Input and output quantization parameters must be equal for MaxPool.
     output_qparams[0] = input_qparams;  // Overwrite!
     AddQDQNodePairWithOutputAsGraphOutput<QuantType>(builder, pool_output, input_qparams.scale,
-                                                     input_qparams.zero_point);
+                                                     input_qparams.zero_point, use_contrib_qdq_ops);
   };
 }
 
@@ -72,7 +74,9 @@ static void RunQDQPoolOpTest(const std::string& op_type,
                              const TestInputDef<float>& input_def,
                              const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                              ExpectedEPNodeAssignment expected_ep_assignment,
-                             int opset = 18) {
+                             int opset = 18,
+                             bool use_contrib_qdq_ops = false,
+                             QDQTolerance tolerance = QDQTolerance()) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -81,11 +85,11 @@ static void RunQDQPoolOpTest(const std::string& op_type,
 #endif
 
   TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, attrs),
-                       BuildPoolQDQTestCase<QuantType>(op_type, input_def, attrs),
+                       BuildPoolQDQTestCase<QuantType>(op_type, input_def, attrs, use_contrib_qdq_ops),
                        provider_options,
                        opset,
                        expected_ep_assignment,
-                       1e-5f);
+                       tolerance);
 }
 
 //
@@ -119,7 +123,7 @@ TEST_F(QnnCPUBackendTests, MaxPool_Large_Input) {
                 ExpectedEPNodeAssignment::All);
 }
 
-// QNN v2.13, backendValidateOpConfig() failed for node `MaxPool` of type `PoolMax2d` with error code 4003
+// Fails on QNN v2.17, QNN.graphAddNode() failed for node `MaxPool` of type `PoolMax2d` with error code 6000
 TEST_F(QnnCPUBackendTests, DISABLED_MaxPool_Ceil) {
   RunPoolOpTest("MaxPool",
                 TestInputDef<float>({1, 2, 3, 3}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
@@ -133,7 +137,7 @@ TEST_F(QnnCPUBackendTests, DISABLED_MaxPool_Ceil) {
                 ExpectedEPNodeAssignment::All);
 }
 
-// QNN v2.13, backendValidateOpConfig() failed for node `MaxPool` of type `PoolMax2d` with error code 4003
+// Fails on QNN v2.17, QNN.graphAddNode() failed for node `MaxPool` of type `PoolMax2d` with error code 6000
 TEST_F(QnnCPUBackendTests, DISABLED_MaxPool_Large_Input2_Ceil) {
   RunPoolOpTest("MaxPool",
                 TestInputDef<float>({1, 128, 16, 113}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
@@ -183,7 +187,11 @@ TEST_F(QnnHTPBackendTests, MaxPool_Large_Input_HTP_u8) {
                              utils::MakeAttribute("ceil_mode", static_cast<int64_t>(0)),
                              utils::MakeAttribute("storage_order", static_cast<int64_t>(0)),
                              utils::MakeAttribute("auto_pad", "NOTSET")},
-                            ExpectedEPNodeAssignment::All);
+                            ExpectedEPNodeAssignment::All,
+                            18,     // opset
+                            false,  // use_contrib_qdq_ops
+                            // Need a tolerance of 0.417% of output range after QNN SDK 2.17
+                            QDQTolerance(0.00417f));
 }
 
 TEST_F(QnnHTPBackendTests, MaxPool_Ceil_HTP_u8) {
@@ -219,7 +227,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_MaxPool_Large_Input2_Ceil_HTP_u8) {
 
 // QNN v2.13: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
 // Fixed in QNN v2.14.1.
-TEST_F(QnnHTPBackendTests, MaxPool_LargeInput_1Pads) {
+TEST_F(QnnHTPBackendTests, MaxPool_LargeInput_1Pads_u8) {
   RunQDQPoolOpTest<uint8_t>("MaxPool",
                             TestInputDef<float>({1, 64, 384, 576}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
                             {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
@@ -229,15 +237,46 @@ TEST_F(QnnHTPBackendTests, MaxPool_LargeInput_1Pads) {
                              utils::MakeAttribute("ceil_mode", static_cast<int64_t>(0)),
                              utils::MakeAttribute("storage_order", static_cast<int64_t>(0)),
                              utils::MakeAttribute("auto_pad", "NOTSET")},
-                            ExpectedEPNodeAssignment::All);
+                            ExpectedEPNodeAssignment::All,
+                            18,     // opset
+                            false,  // use_contrib_qdq_ops
+                            // Need a tolerance of 0.417% of output range after QNN SDK 2.17
+                            QDQTolerance(0.00417f));
+}
+
+// Test uint16 QDQ MaxPool with large inputs.
+TEST_F(QnnHTPBackendTests, MaxPool_LargeInput_1Pads_u16) {
+  RunQDQPoolOpTest<uint16_t>("MaxPool",
+                             TestInputDef<float>({1, 64, 384, 576}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
+                             {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
+                              utils::MakeAttribute("strides", std::vector<int64_t>{2, 2}),
+                              utils::MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1}),
+                              utils::MakeAttribute("dilations", std::vector<int64_t>{1, 1}),
+                              utils::MakeAttribute("ceil_mode", static_cast<int64_t>(0)),
+                              utils::MakeAttribute("storage_order", static_cast<int64_t>(0)),
+                              utils::MakeAttribute("auto_pad", "NOTSET")},
+                             ExpectedEPNodeAssignment::All,
+                             18,     // opset
+                             true);  // use_contrib_qdq_ops
 }
 
 // QDQ GlobalMaxPool test
 TEST_F(QnnHTPBackendTests, GlobalMaxPool_u8) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 18);
   RunQDQPoolOpTest<uint8_t>("GlobalMaxPool",
-                            TestInputDef<float>({1, 2, 3, 3}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
+                            TestInputDef<float>({1, 2, 3, 3}, false, input_data),  // Dynamic input with range [-10, 10]
                             {},
                             ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnHTPBackendTests, GlobalMaxPool_u16) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 18);
+  RunQDQPoolOpTest<uint16_t>("GlobalMaxPool",
+                             TestInputDef<float>({1, 2, 3, 3}, false, input_data),  // Dynamic input with range [-10, 10]
+                             {},
+                             ExpectedEPNodeAssignment::All,
+                             18,
+                             true);  // Use 'com.microsoft' domain Q/DQ ops
 }
 
 TEST_F(QnnHTPBackendTests, GlobalMaxPool_Large_Input_u8) {
@@ -247,14 +286,7 @@ TEST_F(QnnHTPBackendTests, GlobalMaxPool_Large_Input_u8) {
                             ExpectedEPNodeAssignment::All);
 }
 
-// initial_sequencer_dp.cc:156:ERROR:A single op, "q::MaxPool_valid.tcm" (Op ID: 277700000016), requires 0x6c0800 bytes of TCM, which is greater than the TCM size of 0x400000!
-// QnnDsp <E> graph prepare failed 13
-// QnnDsp <E> Failed to finalize graph QNN_983391626356502531_0 with err: 1002
-// QnnDsp <E> Failed to finalize graph (id: 1) with err 1002
-// QnnDsp <V> Wake up free backend 1 thread(s)
-// QnnDsp <I> QnnGraph_finalize done. status 0x3ea
-// Failed to finalize QNN graph.
-TEST_F(QnnHTPBackendTests, DISABLED_GlobalMaxPool_LargeInput2_u8) {
+TEST_F(QnnHTPBackendTests, GlobalMaxPool_LargeInput2_u8) {
   RunQDQPoolOpTest<uint8_t>("GlobalMaxPool",
                             TestInputDef<float>({1, 64, 384, 576}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
                             {},

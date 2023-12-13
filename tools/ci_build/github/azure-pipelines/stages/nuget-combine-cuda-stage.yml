@@ -1,0 +1,226 @@
+parameters:
+- name: DoCompliance
+  type: boolean
+  default: true
+
+- name: DoEsrp
+  type: boolean
+  default: true
+
+- name: IsReleaseBuild
+  type: boolean
+  default: false
+
+stages:
+######## Nuget ########
+# Win/Linux CUDA Combined packaging
+- stage: NuGet_Packaging_GPU
+  dependsOn:
+    - Set_ReleaseVersionSuffix
+    - Windows_Packaging_gpu
+    - Windows_Packaging_tensorrt
+    - Linux_C_API_Packaging_CPU_x64
+    - Linux_C_API_Packaging_GPU_x64
+    - Linux_C_API_Packaging_GPU_TensorRT_x64
+  condition: succeeded()
+  jobs:
+    - job:
+      workspace:
+        clean: all
+      pool: 'Onnxruntime-Win-CPU-2022'
+      variables:
+        breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
+        ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
+
+      steps:
+        - checkout: self
+          submodules: true
+  # Download the all artifacts
+        - task: DownloadPipelineArtifact@2
+          displayName: 'Download Pipeline Artifact from Linux_C_API_Packaging_GPU_x64 Stage'
+          inputs:
+            artifactName: 'onnxruntime-win-x64-cuda'
+            targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        - task: DownloadPipelineArtifact@2
+          displayName: 'Download Pipeline Artifact from Linux_C_API_Packaging_GPU_TensorRT_x64 Stage'
+          inputs:
+            artifactName: 'onnxruntime-win-x64-tensorrt'
+            targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+        - task: DownloadPipelineArtifact@2
+          displayName: 'Download Pipeline Artifact from Windows_Packaging_gpu Stage'
+          inputs:
+            artifactName: 'onnxruntime-linux-x64-cuda'
+            targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+        - task: DownloadPipelineArtifact@2
+          displayName: 'Download Pipeline Artifact from Windows_Packaging_tensorrt Stage'
+          inputs:
+            artifactName: 'onnxruntime-linux-x64-tensorrt'
+            targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+        - task: DownloadPipelineArtifact@2
+          displayName: 'Download Pipeline Artifact - protoc from Windows_Packaging_(cpu|gpu) Stage'
+          inputs:
+            artifactName: 'drop-extra'
+            targetPath: '$(Build.BinariesDirectory)/extra-artifact'
+
+        # Reconstruct the build dir
+        - task: PowerShell@2
+          displayName: 'PS: Extract nuget files gpu'
+          inputs:
+            targetType: filePath
+            filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\extract_nuget_files_gpu.ps1
+
+        - script: |
+            dir
+          workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact'
+          displayName: 'List artifacts'
+
+        - script: |
+            mklink /D /J models C:\local\models
+          workingDirectory: '$(Build.BinariesDirectory)'
+          displayName: 'Create models link'
+
+        - task: NuGetToolInstaller@0
+          displayName: Use Nuget 6.2.1
+          inputs:
+            versionSpec: 6.2.1
+
+        - task: PowerShell@2
+          displayName: Install .NET 6 workloads
+          inputs:
+            targetType: 'inline'
+            script: |
+              dotnet workload install android ios macos
+            workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+        - task: PowerShell@2
+          displayName: Build .NET 6 targets using dotnet
+          inputs:
+            targetType: 'inline'
+            # we don't specify 'Any CPU' as the platform here because if we do it gets added to the output path
+            #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\Any CPU\RelWithDebInfo\net6.0-ios\
+            # which is inconsistent with the msbuild output path for the pre-.net6 targets
+            #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\monoandroid11.0
+            # and makes it harder to do the packing
+            #
+            # 'Any CPU' is the default (first 'mixed' platform specified in the csproj) so this should be fine.
+            script: |
+              dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:SelectedTargets=Net6 -p:Configuration=RelWithDebInfo -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
+            workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+        - task: MSBuild@1
+          displayName: 'Restore NuGet Packages and create project.assets.json for pre-.net6 targets'
+          inputs:
+            solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+            platform: 'Any CPU'
+            configuration: RelWithDebInfo
+            msbuildArguments: '-t:restore -p:SelectedTargets=PreNet6 -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"'
+            workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+        - task: MSBuild@1
+          displayName: 'Build C# for pre-.net6 targets'
+          inputs:
+            solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+            configuration: RelWithDebInfo
+            platform: 'Any CPU'
+            msbuildArguments: '-p:SelectedTargets=PreNet6 -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
+            workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+        - template: ../templates/win-esrp-dll.yml
+          parameters:
+            FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
+            DisplayName: 'ESRP - Sign C# dlls'
+            DoEsrp: ${{ parameters.DoEsrp }}
+
+        - task: MSBuild@1
+          displayName: Update projects.assets.json with combined list of all target frameworks
+          inputs:
+            solution: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj'
+            platform: 'Any CPU'
+            configuration: RelWithDebInfo
+            msbuildArguments: '-t:restore -p:SelectedTargets=All -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
+            workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+        - task: MSBuild@1
+          displayName: 'Build Nuget Packages'
+          inputs:
+            solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+            configuration: RelWithDebInfo
+            platform: 'Any CPU'
+            msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
+            workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+        - task: BatchScript@1
+          displayName: 'Add TensorRT header file to the native nuGet package'
+          inputs:
+            filename: $(Build.SourcesDirectory)\tools\ci_build\github\windows\bundle_nuget_with_native_headers.bat
+            workingFolder: $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo
+
+        - task: CopyFiles@2
+          displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
+          inputs:
+            SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+            Contents: '*.snupkg'
+            TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+        - task: CopyFiles@2
+          displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
+          inputs:
+            SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+            Contents: '*.nupkg'
+            TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+        - task: CopyFiles@2
+          displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
+          inputs:
+            SourceFolder: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
+            Contents: '*.nupkg'
+            TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+        - template: ../templates/esrp_nuget.yml
+          parameters:
+            DisplayName: 'ESRP - sign NuGet package'
+            FolderPath: '$(Build.ArtifactStagingDirectory)'
+            DoEsrp: ${{ parameters.DoEsrp }}
+
+        - template: ../templates/validate-package.yml
+          parameters:
+            PackageType: 'nuget'
+            PackagePath: '$(Build.ArtifactStagingDirectory)'
+            PackageName: 'Microsoft.ML.OnnxRuntime.*nupkg'
+            PlatformsSupported: 'win-x64,linux-x64'
+            VerifyNugetSigning: false
+
+        - task: PublishPipelineArtifact@0
+          displayName: 'Publish Pipeline NuGet Artifact'
+          inputs:
+            artifactName: 'drop-signed-nuget-GPU'
+            targetPath: '$(Build.ArtifactStagingDirectory)'
+
+
+        - task: MSBuild@1
+          displayName: 'Clean C#'
+          inputs:
+            solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+            platform: 'Any CPU'
+            configuration: RelWithDebInfo
+            msbuildArguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
+            workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+
+        - task: RoslynAnalyzers@2
+          displayName: 'Run Roslyn Analyzers'
+          inputs:
+            userProvideBuildInfo: msBuildInfo
+            msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\msbuild.exe" $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln -p:configuration="RelWithDebInfo" -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
+          condition: and(succeeded(), eq('${{ parameters.DoCompliance }}', true))
+
+        - template: ../templates/component-governance-component-detection-steps.yml
+          parameters:
+            condition: 'succeeded'
+
+        - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+          displayName: 'Clean Agent Directories'
+          condition: always()

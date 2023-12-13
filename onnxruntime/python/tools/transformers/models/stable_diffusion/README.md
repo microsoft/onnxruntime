@@ -1,76 +1,130 @@
 # Stable Diffusion GPU Optimization
 
-## Overview
-
-[Stable Diffusion](https://stability.ai/blog/stable-diffusion-announcement) is a text-to-image latent diffusion model for image generation. Explanation of the Stable Diffusion can be found in [Stable Diffusion with Diffusers](https://huggingface.co/blog/stable_diffusion).
-
-## Optimizations for Stable Diffusion
-
 ONNX Runtime uses the following optimizations to speed up Stable Diffusion in CUDA:
 
 * [Flash Attention](https://arxiv.org/abs/2205.14135) for float16 precision. Flash Attention uses tiling to reduce number of GPU memory reads/writes, and improves performance with less memory for long sequence length. The kernel requires GPUs of Compute Capability >= 7.5 (like T4, A100, and RTX 2060~4090).
 * [Memory Efficient Attention](https://arxiv.org/abs/2112.05682v2) for float32 precision or older GPUs (like V100). We used the fused multi-head attention kernel in CUTLASS, and the kernel was contributed by xFormers.
 * Channel-last (NHWC) convolution. For NVidia GPU with Tensor Cores support, NHWC tensor layout is recommended for convolution. See [Tensor Layouts In Memory: NCHW vs NHWC](https://docs.nvidia.com/deeplearning/performance/dl-performance-convolutional/index.html#tensor-layout).
-* GroupNorm kernel for NHWC tensor layout.
+* GroupNorm for NHWC tensor layout, and SkipGroupNorm fusion which fuses GroupNorm with Add bias and residual inputs
 * SkipLayerNormalization which fuses LayerNormalization with Add bias and residual inputs.
 * BiasSplitGelu is a fusion of Add bias with SplitGelu activation.
 * BiasAdd fuses Add bias and residual.
 * Reduce Transpose nodes by graph transformation.
 
-These optimizations are firstly carried out on CUDA EP. They may not work on other EP. To show the impact of each optimization on latency and GPU memory, we did some experiments:
-
-### Results on RTX 3060 GPU:
-
-| Optimizations                                                                      | Average Latency (batch_size=1) | Memory in MB (batch_size=1) | Average Latency (batch_size=8) | Memory in MB (batch_size=8) |
-| ---------------------------------------------------------------------------------- | ------------------------------ | --------------------------- | ------------------------------ | --------------------------- |
-| Raw FP32 models                                                                    | 25.6                           | 10,667                      | OOM                            | OOM                         |
-| FP16 baseline                                                                      | 10.2                           | 10,709                      | OOM                            | OOM                         |
-| FP16 baseline + FMHA                                                               | 6.1                            | 7,719                       | 39.1                           | 10,821                      |
-| FP16 baseline + FMHA + NhwcConv                                                    | 5.5                            | 7,656                       | 38.8                           | 11,615                      |
-| FP16 baseline + FMHA + NhwcConv + GroupNorm                                        | 5.1                            | 6,673                       | 35.8                           | 10,763                      |
-| FP16 baseline + FMHA + NhwcConv + GroupNorm + BiasSplitGelu                        | 4.9                            | 4,447                       | 33.7                           | 6,669                       |
-| FP16 baseline + FMHA + NhwcConv + GroupNorm + BiasSplitGelu + Packed QKV           | 4.8                            | 4,625                       | 33.5                           | 6,663                       |
-| FP16 baseline + FMHA + NhwcConv + GroupNorm + BiasSplitGelu + Packed QKV + BiasAdd | 4.7                            | 4,480                       | 33.3                           | 6,499                       |
-
-FP16 baseline contains optimizations available in ONNX Runtime 1.13 including LayerNormalization, SkipLayerNormalization, Gelu and float16 conversion.
-
-Here FMHA means Attention and MultiHeadAttention operators with Flash Attention and Memory Efficient Attention kernels but inputs are not packed. Packed QKV means the inputs are packed.
-
-The last two optimizations (Packed QKV and BiasAdd) are only available in nightly package. Compared to 1.14.1, nightly package has slight improvement in performance.
-
-### Results on MI250X with 1 GCD
-
-With runtime tuning enabled, we get following performance number on one GCD of a MI250X GPU:
-
-| Optimizations                                                         | Average Latency (batch_size=1) | Memory in MB (batch_size=1) | Average Latency (batch_size=8) | Memory in MB (batch_size=8) |
-| --------------------------------------------------------------------- | ------------------------------ | --------------------------- | ------------------------------ | --------------------------- |
-| Raw FP32 models                                                       | 6.7                            | 17,319                      | 36.4 *                         | 33,787                      |
-| FP16 baseline                                                         | 4.1                            | 8,945                       | 24.0 *                         | 34,493                      |
-| FP16 baseline + FMHA                                                  | 2.6                            | 4,886                       | 15.0                           | 10,146                      |
-| FP16 baseline + FMHA + NhwcConv                                       | 2.4                            | 4,952                       | 14.8                           | 9,632                       |
-| FP16 baseline + FMHA + NhwcConv + GroupNorm                           | 2.3                            | 4,906                       | 13.6                           | 9,774                       |
-| FP16 baseline + FMHA + NhwcConv + GroupNorm + BiasSplitGelu           | 2.2                            | 4,910                       | 12.5                           | 9,646                       |
-| FP16 baseline + FMHA + NhwcConv + GroupNorm + BiasSplitGelu + BiasAdd | 2.2                            | 4,910                       | 12.5                           | 9,778                       |
-
-The entries marked with `*` produce suspicious output images. The might be numerical stability or correctness issue for the pipeline. The performance number is for reference only.
+These optimizations are firstly carried out on CUDA EP. They may not work on other EP.
 
 ## Scripts:
 
 | Script                                         | Description                                                                               |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| [optimize_pipeline.py](./optimize_pipeline.py) | Optimize Stable Diffusion ONNX models                                                     |
+| [demo_txt2img_xl.py](./demo_txt2img_xl.py)     | Demo of text to image generation using Stable Diffusion XL model.                         |
+| [demo_txt2img.py](./demo_txt2img.py)           | Demo of text to image generation using Stable Diffusion models except XL.                 |
+| [optimize_pipeline.py](./optimize_pipeline.py) | Optimize Stable Diffusion ONNX models exported from Huggingface diffusers or optimum      |
 | [benchmark.py](./benchmark.py)                 | Benchmark latency and memory of OnnxRuntime, xFormers or PyTorch 2.0 on stable diffusion. |
+| [benchmark_turbo.py](./benchmark_controlnet.py)| Benchmark latency of PyTorch or Stable-Fast with canny control net.                       |
 
-In below example, we run the scripts in source code directory. You can get source code like the following:
+## Run demo with docker
 
+#### Clone the onnxruntime repository
 ```
 git clone https://github.com/microsoft/onnxruntime
-cd onnxruntime/onnxruntime/python/tools/transformers/models/stable_diffusion
+cd onnxruntime
 ```
 
-## Example of Stable Diffusion 1.5
+#### Launch NVIDIA pytorch container
 
-Below is an example to optimize Stable Diffusion 1.5 in Linux. For Windows OS, please change the format of path to be like `.\sd` instead of `./sd`.
+Install nvidia-docker using [these instructions](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html#docker).
+
+```
+docker run --rm -it --gpus all -v $PWD:/workspace nvcr.io/nvidia/pytorch:23.10-py3 /bin/bash
+```
+
+#### Build onnxruntime from source
+After launching the docker, you can build and install onnxruntime-gpu wheel like the following.
+```
+export CUDACXX=/usr/local/cuda-12.2/bin/nvcc
+git config --global --add safe.directory '*'
+sh build.sh --config Release  --build_shared_lib --parallel --use_cuda --cuda_version 12.2 \
+            --cuda_home /usr/local/cuda-12.2 --cudnn_home /usr/lib/x86_64-linux-gnu/ --build_wheel --skip_tests \
+            --use_tensorrt --tensorrt_home /usr/src/tensorrt \
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF \
+            --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=80 \
+            --allow_running_as_root
+python3 -m pip install --upgrade pip
+python3 -m pip install build/Linux/Release/dist/onnxruntime_gpu-1.17.0-cp310-cp310-linux_x86_64.whl --force-reinstall
+```
+
+If the GPU is not A100, change `CMAKE_CUDA_ARCHITECTURES=80` in the command line according to the GPU compute capacity (like 89 for RTX 4090, or 86 for RTX 3090).
+If your machine has less than 64GB memory, replace `--parallel` by `--parallel 4 --nvcc_threads 1 ` to avoid out of memory.
+
+#### Install required packages
+```
+cd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion
+python3 -m pip install -r requirements-cuda12.txt
+python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
+```
+
+### Run Demo
+
+You can review the usage of supported pipelines like the following:
+```
+python3 demo_txt2img.py --help
+python3 demo_txt2img_xl.py --help
+```
+
+For example:
+`--engine {ORT_CUDA,ORT_TRT,TRT}` can be used to choose different backend engines including CUDA or TensorRT execution provider of ONNX Runtime, or TensorRT.
+`--work-dir WORK_DIR` can be used to load or save models under the given directory. You can download the [optimized ONNX models of Stable Diffusion XL 1.0](https://huggingface.co/tlwu/stable-diffusion-xl-1.0-onnxruntime#usage-example) to save time in running the XL demo.
+
+#### Generate an image guided by a text prompt
+```
+python3 demo_txt2img.py "astronaut riding a horse on mars"
+```
+
+#### Generate an image with Stable Diffusion XL guided by a text prompt
+```
+python3 demo_txt2img_xl.py "starry night over Golden Gate Bridge by van gogh"
+
+python3 demo_txt2img_xl.py --enable-refiner "starry night over Golden Gate Bridge by van gogh"
+```
+
+If you do not provide prompt, the script will generate different image sizes for a list of prompts for demonstration.
+
+### Generate an image guided by a text prompt using LCM LoRA
+```
+python3 demo_txt2img_xl.py --scheduler LCM --lora-weights latent-consistency/lcm-lora-sdxl --denoising-steps 4 "Self-portrait oil painting, a beautiful cyborg with golden hair, 8k"
+```
+
+#### Generate an image with SDXL LCM model guided by a text prompt
+```
+python3 demo_txt2img_xl.py --lcm "an astronaut riding a rainbow unicorn, cinematic, dramatic"
+```
+
+#### Generate an image with SD-Turbo or SDXL-Turbo model guided by a text prompt
+It is recommended to use LCM or EulerA scheduler to run SD-Turbo or SDXL-Turbo model.
+```
+python3 demo_txt2img.py --version sd-turbo "little cute gremlin wearing a jacket, cinematic, vivid colors, intricate masterpiece, golden ratio, highly detailed"
+
+python3 demo_txt2img_xl.py --version xl-turbo "little cute gremlin wearing a jacket, cinematic, vivid colors, intricate masterpiece, golden ratio, highly detailed"
+```
+
+#### Generate an image with a text prompt using a control net
+Control Net is supported for 1.5, SDXL base and SDXL-Turbo models in this demo.
+
+```
+wget https://huggingface.co/lllyasviel/sd-controlnet-depth/resolve/main/images/stormtrooper.png
+python3 demo_txt2img_xl.py --controlnet-image stormtrooper.png --controlnet-type depth --controlnet-scale 0.5 --version xl-turbo "Stormtrooper's lecture in beautiful lecture hall"
+
+wget https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png
+python3 demo_txt2img_xl.py --controlnet-type canny --controlnet-scale 0.5 --controlnet-image input_image_vermeer.png --version xl-turbo --height 1024 --width 1024 "portrait of young Mona Lisa with mountain, river and forest in the background"
+```
+
+## Optimize Stable Diffusion ONNX models for Hugging Face Diffusers or Optimum
+
+If you are able to run the above demo with docker, you can use the docker and skip the following setup and fast forward to [Export ONNX pipeline](#export-onnx-pipeline).
+
+Below setup does not use docker. We'll use the environment to optimize ONNX models of Stable Diffusion exported by huggingface diffusers or optimum.
+For Windows OS, please change the format of path to be like `.\sd` instead of `./sd`.
 
 It is recommended to create a Conda environment with Python 3.10 for the following setup:
 ```
@@ -78,7 +132,7 @@ conda create -n py310 python=3.10
 conda activate py310
 ```
 
-### Setup Environment (CUDA)
+### Setup Environment (CUDA) without docker
 
 First, we need install CUDA 11.8 or 12.1, [cuDNN](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html) 8.5 or above, and [TensorRT 8.6.1](https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html) in the machine.
 
@@ -86,12 +140,19 @@ First, we need install CUDA 11.8 or 12.1, [cuDNN](https://docs.nvidia.com/deeple
 
 In the Conda environment, install PyTorch 2.1 or above, and other required packages like the following:
 ```
-pip install torch --index-url https://download.pytorch.org/whl/nightly/cu118
+pip install torch --index-url https://download.pytorch.org/whl/cu118
 pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
 pip install -r requirements-cuda11.txt
 ```
 
-We cannot directly `pip install tensorrt` for CUDA 11. Follow https://github.com/NVIDIA/TensorRT/issues/2773 to install TensorRT for CUDA 11 in Linux. For Windows, pip install the tensorrt wheel in the downloaded TensorRT zip file instead.
+For Windows, install nvtx like the following:
+```
+conda install -c conda-forge nvtx
+```
+
+We cannot directly `pip install tensorrt` for CUDA 11. Follow https://github.com/NVIDIA/TensorRT/issues/2773 to install TensorRT for CUDA 11 in Linux.
+
+For Windows, pip install the tensorrt wheel in the downloaded TensorRT zip file instead. Like `pip install tensorrt-8.6.1.6.windows10.x86_64.cuda-11.8\tensorrt-8.6.1.6\python\tensorrt-8.6.1-cp310-none-win_amd64.whl`.
 
 #### CUDA 12.*:
 The official package of onnxruntime-gpu 1.16.* is built for CUDA 11.8. To use CUDA 12.*, you will need [build onnxruntime from source](https://onnxruntime.ai/docs/build/inferencing.html).
@@ -99,6 +160,7 @@ The official package of onnxruntime-gpu 1.16.* is built for CUDA 11.8. To use CU
 ```
 git clone --recursive https://github.com/Microsoft/onnxruntime.git
 cd onnxruntime
+pip install cmake
 pip install -r requirements-dev.txt
 ```
 Follow [example script for A100 in Ubuntu](https://github.com/microsoft/onnxruntime/blob/26a7b63716e3125bfe35fe3663ba10d2d7322628/build_release.sh)
@@ -106,7 +168,7 @@ or [example script for RTX 4090 in Windows](https://github.com/microsoft/onnxrun
 
 Then install other python packages like the following:
 ```
-pip install torch --index-url https://download.pytorch.org/whl/nightly/cu121
+pip install torch --index-url https://download.pytorch.org/whl/cu121
 pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
 pip install -r requirements-cuda12.txt
 ```
@@ -182,7 +244,13 @@ Example to optimize the exported float32 ONNX models, and save to float16 models
 python -m onnxruntime.transformers.models.stable_diffusion.optimize_pipeline -i ./sd_v1_5/fp32 -o ./sd_v1_5/fp16 --float16
 ```
 
-For SDXL model, it is recommended to use a machine with 32 GB or more memory to optimize.
+In all examples below, we run the scripts in source code directory. You can get source code like the following:
+```
+git clone https://github.com/microsoft/onnxruntime
+cd onnxruntime/onnxruntime/python/tools/transformers/models/stable_diffusion
+```
+
+For SDXL model, it is recommended to use a machine with 48 GB or more memory to optimize.
 ```
 python optimize_pipeline.py -i ./sd_xl_base_onnx -o ./sd_xl_base_fp16 --float16
 ```
@@ -264,6 +332,44 @@ python benchmark.py -e onnxruntime -r tensorrt -b 1 -v 1.5 --enable_cuda_graph
 python benchmark.py -e tensorrt --height 1024 --width 1024 -s 30  -b 1 -v xl-1.0 --enable_cuda_graph
 python benchmark.py -e onnxruntime -r tensorrt --height 1024 --width 1024 -s 30  -b 1 -v xl-1.0 --enable_cuda_graph
 ```
+
+### Results on RTX 3060 GPU:
+
+To show the impact of each optimization on latency and GPU memory, we did some experiments:
+
+| Optimizations                                                                      | Average Latency (batch_size=1) | Memory in MB (batch_size=1) | Average Latency (batch_size=8) | Memory in MB (batch_size=8) |
+| ---------------------------------------------------------------------------------- | ------------------------------ | --------------------------- | ------------------------------ | --------------------------- |
+| Raw FP32 models                                                                    | 25.6                           | 10,667                      | OOM                            | OOM                         |
+| FP16 baseline                                                                      | 10.2                           | 10,709                      | OOM                            | OOM                         |
+| FP16 baseline + FMHA                                                               | 6.1                            | 7,719                       | 39.1                           | 10,821                      |
+| FP16 baseline + FMHA + NhwcConv                                                    | 5.5                            | 7,656                       | 38.8                           | 11,615                      |
+| FP16 baseline + FMHA + NhwcConv + GroupNorm                                        | 5.1                            | 6,673                       | 35.8                           | 10,763                      |
+| FP16 baseline + FMHA + NhwcConv + GroupNorm + BiasSplitGelu                        | 4.9                            | 4,447                       | 33.7                           | 6,669                       |
+| FP16 baseline + FMHA + NhwcConv + GroupNorm + BiasSplitGelu + Packed QKV           | 4.8                            | 4,625                       | 33.5                           | 6,663                       |
+| FP16 baseline + FMHA + NhwcConv + GroupNorm + BiasSplitGelu + Packed QKV + BiasAdd | 4.7                            | 4,480                       | 33.3                           | 6,499                       |
+
+FP16 baseline contains optimizations available in ONNX Runtime 1.13 including LayerNormalization, SkipLayerNormalization, Gelu and float16 conversion.
+
+Here FMHA means Attention and MultiHeadAttention operators with Flash Attention and Memory Efficient Attention kernels but inputs are not packed. Packed QKV means the inputs are packed.
+
+The last two optimizations (Packed QKV and BiasAdd) are only available in nightly package. Compared to 1.14.1, nightly package has slight improvement in performance.
+
+### Results on MI250X with 1 GCD
+
+With runtime tuning enabled, we get following performance number on one GCD of a MI250X GPU:
+
+| Optimizations                                                         | Average Latency (batch_size=1) | Memory in MB (batch_size=1) | Average Latency (batch_size=8) | Memory in MB (batch_size=8) |
+| --------------------------------------------------------------------- | ------------------------------ | --------------------------- | ------------------------------ | --------------------------- |
+| Raw FP32 models                                                       | 6.7                            | 17,319                      | 36.4 *                         | 33,787                      |
+| FP16 baseline                                                         | 4.1                            | 8,945                       | 24.0 *                         | 34,493                      |
+| FP16 baseline + FMHA                                                  | 2.6                            | 4,886                       | 15.0                           | 10,146                      |
+| FP16 baseline + FMHA + NhwcConv                                       | 2.4                            | 4,952                       | 14.8                           | 9,632                       |
+| FP16 baseline + FMHA + NhwcConv + GroupNorm                           | 2.3                            | 4,906                       | 13.6                           | 9,774                       |
+| FP16 baseline + FMHA + NhwcConv + GroupNorm + BiasSplitGelu           | 2.2                            | 4,910                       | 12.5                           | 9,646                       |
+| FP16 baseline + FMHA + NhwcConv + GroupNorm + BiasSplitGelu + BiasAdd | 2.2                            | 4,910                       | 12.5                           | 9,778                       |
+
+The entries marked with `*` produce suspicious output images. The might be numerical stability or correctness issue for the pipeline. The performance number is for reference only.
+
 
 ### Example Benchmark output
 
@@ -400,7 +506,8 @@ Results are from Standard_NC4as_T4_v3 Azure virtual machine:
 
 ### Credits
 
-Some CUDA kernels (Flash Attention, GroupNorm, SplitGelu and BiasAdd etc.) were originally implemented in [TensorRT](https://github.com/nviDIA/TensorRT) by Nvidia.
+Some CUDA kernels (TensorRT Fused Attention, GroupNorm, SplitGelu and BiasAdd etc.) and demo diffusion were originally implemented in [TensorRT](https://github.com/nviDIA/TensorRT) by Nvidia.
+We use [Flash Attention v2](https://github.com/Dao-AILab/flash-attention) in Linux.
 We use Memory efficient attention from [CUTLASS](https://github.com/NVIDIA/cutlass). The kernels were developed by Meta xFormers.
 The ONNX export script and pipeline for stable diffusion was developed by Huggingface [diffusers](https://github.com/huggingface/diffusers) library.
 
@@ -408,10 +515,8 @@ Most ROCm kernel optimizations are from [composable kernel](https://github.com/R
 Some kernels are enabled by MIOpen. We hereby thank for the AMD developers' collaboration.
 
 ### Future Works
-
-There are other optimizations might improve the performance or reduce memory footprint:
-* Export the whole pipeline into a single ONNX model. Currently, there are multiple ONNX models (CLIP, VAE and U-Net etc). Each model uses separated thread pool and memory allocator. Combine them into one model could share thread pool and memory allocator. The end result is more efficient and less memory footprint.
-* For Stable Diffusion 2.1, we disable TensorRT flash attention kernel and use only memory efficient attention. It is possible to add flash attention in Windows to improve performance.
-* Reduce GPU memory footprint by actively deleting buffers for intermediate results.
-* Safety Checker Optimization
-* Leverage FP8 in latest GPU
+* Update demo to support inpainting.
+* Support flash attention in Windows.
+* Integration with UI.
+* Optimization for H100 GPU.
+* Export the whole pipeline into a single ONNX model. This senario is mainly for mobile device.

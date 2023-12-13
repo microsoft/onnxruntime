@@ -17,7 +17,7 @@ import torch
 from onnxruntime.training.utils import (
     ORTModelInputOutputType,
     extract_data_and_schema,
-    pytorch_dtype_to_onnx,
+    pytorch_type_to_onnx_dtype,
     unflatten_data_using_schema,
 )
 
@@ -291,7 +291,7 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
                     raise RuntimeError(f"param {p} has no grad, this should not happen.")
                 # Param gradient accumulation is triggered here, along with the attached hooks, done by PyTorch.
                 assert p.shape == g.shape, f"param_index: {param_index} - param shape {p.shape} != grad shape {g.shape}"
-                p.backward(g)
+                # p.backward(g)
 
         # At this point, the **real** param grads are already updated, the following grads are only used for
         # completing the full backward propagation, will not affect parameter updates.
@@ -324,7 +324,7 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
         start_offset = len(tensor_input_shapes) - len(partitioned_params)
         for index, param in enumerate(partitioned_params):
             tensor_output_shapes[start_offset + index] = list(param.ds_shape)
-            tensor_output_dtypes[start_offset + index] = int(pytorch_dtype_to_onnx(param.dtype))
+            tensor_output_dtypes[start_offset + index] = int(pytorch_type_to_onnx_dtype(param.dtype))
         assert len(tensor_output_shapes) == len(tensor_input_shapes)
         assert len(tensor_output_dtypes) == len(tensor_input_dtypes)
 

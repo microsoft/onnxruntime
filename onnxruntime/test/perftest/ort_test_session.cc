@@ -121,7 +121,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
     buffer.emplace_back("do_copy_in_default_stream");
     option_keys.push_back(buffer.back().c_str());
-    buffer.emplace_back(performance_test_config.run_config.do_cuda_copy_in_separate_stream ? "1" : "0");
+    buffer.emplace_back(!performance_test_config.run_config.do_cuda_copy_in_separate_stream ? "1" : "0");
     option_values.push_back(buffer.back().c_str());
 
 #ifdef _MSC_VER
@@ -240,8 +240,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       if (key == "device_type") {
         std::set<std::string> ov_supported_device_types = {"CPU_FP32", "CPU_FP16", "GPU_FP32",
                                                            "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
-                                                           "GPU.0_FP16", "GPU.1_FP16",
-                                                           "VPUX_FP16", "VPUX_U8"};
+                                                           "GPU.0_FP16", "GPU.1_FP16"};
         if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
           ov_options[key] = value;
         } else if (value.find("HETERO:") == 0) {
@@ -254,17 +253,17 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW(
               "[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
               "Select from 'CPU_FP32', 'CPU_FP16', 'GPU_FP32', 'GPU.0_FP32', 'GPU.1_FP32', 'GPU_FP16', "
-              "'GPU.0_FP16', 'GPU.1_FP16', 'VPUX_FP16', 'VPUX_U8' or from"
+              "'GPU.0_FP16', 'GPU.1_FP16' or from"
               " HETERO/MULTI/AUTO options available. \n");
         }
       } else if (key == "device_id") {
         ov_options[key] = value;
-      } else if (key == "enable_vpu_fast_compile") {
+      } else if (key == "enable_npu_fast_compile") {
         if (value == "true" || value == "True" ||
             value == "false" || value == "False") {
           ov_options[key] = value;
         } else {
-          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_vpu_fast_compile' should be a boolean i.e. true or false. Default value is false.\n");
+          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_npu_fast_compile' should be a boolean i.e. true or false. Default value is false.\n");
         }
       } else if (key == "enable_opencl_throttling") {
         if (value == "true" || value == "True" ||
@@ -299,7 +298,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ov_options[key] = value;
         }
       } else {
-        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_vpu_fast_compile', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling|true'] \n");
+        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_npu_fast_compile', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling|true'] \n");
       }
     }
     session_options.AppendExecutionProvider("OpenVINO", ov_options);
@@ -344,7 +343,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if (supported_profiling_level.find(value) == supported_profiling_level.end()) {
           ORT_THROW("Supported profiling_level: off, basic, detailed");
         }
-      } else if (key == "rpc_control_latency") {
+      } else if (key == "rpc_control_latency" || key == "vtcm_mb") {
         // no validation
       } else if (key == "htp_performance_mode") {
         std::set<std::string> supported_htp_perf_mode = {"burst", "balanced", "default", "high_performance",
@@ -357,9 +356,26 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           std::string str = str_stream.str();
           ORT_THROW("Supported htp_performance_mode: " + str);
         }
+      } else if (key == "qnn_saver_path") {
+        // no validation
+      } else if (key == "htp_graph_finalization_optimization_mode") {
+        std::unordered_set<std::string> supported_htp_graph_final_opt_modes = {"0", "1", "2", "3"};
+        if (supported_htp_graph_final_opt_modes.find(value) == supported_htp_graph_final_opt_modes.end()) {
+          std::ostringstream str_stream;
+          std::copy(supported_htp_graph_final_opt_modes.begin(), supported_htp_graph_final_opt_modes.end(),
+                    std::ostream_iterator<std::string>(str_stream, ","));
+          std::string str = str_stream.str();
+          ORT_THROW("Wrong value for htp_graph_finalization_optimization_mode. select from: " + str);
+        }
+      } else if (key == "qnn_context_priority") {
+        std::set<std::string> supported_qnn_context_priority = {"low", "normal", "normal_high", "high"};
+        if (supported_qnn_context_priority.find(value) == supported_qnn_context_priority.end()) {
+          ORT_THROW("Supported qnn_context_priority: low, normal, normal_high, high");
+        }
       } else {
         ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path', 'qnn_context_cache_enable',
-'qnn_context_cache_path', 'profiling_level', 'rpc_control_latency', 'htp_performance_mode'])");
+'qnn_context_cache_path', 'profiling_level', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
+'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority'])");
       }
 
       qnn_options[key] = value;
