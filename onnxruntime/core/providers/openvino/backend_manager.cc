@@ -102,37 +102,6 @@ BackendManager::BackendManager(const onnxruntime::Node& fused_node,
   }
 }
 
-bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& model_proto) const {
-  bool has_batched_inputs = true;
-
-  for (int i = 0; i < static_cast<int>(subgraph_context_.input_indexes.size()); i++) {
-    auto& input = model_proto.graph().input(subgraph_context_.input_indexes[i]);
-
-    // Batch-process only raw image inputs (NCHW or NHWC layouts)
-    auto& shape = input.type().tensor_type().shape();
-    if (shape.dim_size() != 4) {
-      has_batched_inputs = false;
-      break;
-    }
-
-    if (shape.dim(0).value_case() == shape.dim(0).kDimValue) {
-      has_batched_inputs = false;
-      break;
-    }
-
-    for (int index = 1; index < 4; index++) {
-      if (shape.dim(index).value_case() != shape.dim(0).kDimValue) {
-        has_batched_inputs = false;
-        break;
-      }
-    }
-    if (!has_batched_inputs) {
-      break;
-    }
-  }
-  return has_batched_inputs;
-}
-
 bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& subgraph) const {
   bool has_sym_dims = false;
   auto graph_inputs = subgraph.GetInputs();
@@ -225,26 +194,6 @@ BackendManager::ReWriteInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_pr
     for (size_t dim = 0, end = shape.size(); dim < end; dim++) {
       g_in_shape->add_dim()->set_dim_value(shape[dim]);
     }
-  }
-  return model_copy;
-}
-
-std::shared_ptr<ONNX_NAMESPACE::ModelProto>
-BackendManager::ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_proto) {
-  auto model_copy = std::shared_ptr<ONNX_NAMESPACE::ModelProto>(ONNX_NAMESPACE::ModelProto::Create());
-  std::string proto_str;
-  model_proto.SerializeToString(proto_str);
-  model_copy->ParseFromString(proto_str);
-  auto graph_proto = model_copy->mutable_graph();
-
-  for (int i = 0; i < graph_proto->input_size(); i++) {
-    ONNX_NAMESPACE::TensorShapeProto* g_in_shape =
-        graph_proto->mutable_input(static_cast<int>(i))
-            ->mutable_type()
-            ->mutable_tensor_type()
-            ->mutable_shape();
-    g_in_shape->mutable_dim(0)->clear_dim_value();
-    g_in_shape->mutable_dim(0)->set_dim_value(1);
   }
   return model_copy;
 }
