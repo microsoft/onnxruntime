@@ -54,7 +54,6 @@ jobs:
           value: 8.6.1.6-1.cuda12.0
     pool: ${{ parameters.machine_pool }}
     steps:
-      - checkout: none
       - task: DownloadPipelineArtifact@2
         inputs:
           artifact: 'drop-linux-gpu-x86_64'
