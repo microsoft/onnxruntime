@@ -123,12 +123,7 @@ struct TensorrtFuncState {
   bool filter_tactic_sources = false;
   nvinfer1::TacticSources tactic_sources;
   // Below: class private members
-  bool fp16_enable = false;
-  bool int8_enable = false;
-  bool int8_calibration_cache_available = false;
-  bool dla_enable = false;
-  int dla_core = 0;
-  bool engine_cache_enable = false;
+
   std::string engine_cache_path;
 };
 
