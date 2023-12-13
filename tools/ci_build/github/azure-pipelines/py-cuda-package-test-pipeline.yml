@@ -16,7 +16,7 @@ stages:
 - stage: Linux_Test_GPU_x86_64_stage
   dependsOn:
   jobs:
-  - template: stages/py-linux-cuda-package-test-stage.yml
+  - template: stages/jobs/py-linux-cuda-package-test-job.yml
     parameters:
       CudaVersion: '12.2'
       machine_pool: 'Onnxruntime-Linux-GPU'
