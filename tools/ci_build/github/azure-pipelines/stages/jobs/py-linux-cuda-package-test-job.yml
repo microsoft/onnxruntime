@@ -94,7 +94,7 @@ jobs:
           AnalyzeTargetGlob: '$(Build.BinariesDirectory)/tmp/**/*.so'
           continueOnError: true
 
-      - template: ../templates/get-docker-image-steps.yml
+      - template: ../../templates/get-docker-image-steps.yml
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
           Context: tools/ci_build/github/linux/docker
