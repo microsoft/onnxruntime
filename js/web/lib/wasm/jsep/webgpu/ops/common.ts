@@ -776,10 +776,10 @@ class ShaderHelperImpl implements ShaderHelper {
     @builtin(workgroup_id) workgroup_id : vec3<u32>,
     @builtin(num_workgroups) num_workgroups : vec3<u32>`;
     const globalIdxDefinition = is1DimensionDispatch ?
-        'let global_idx = global_id.x;' :
+        'let global_idx = global_id.x; let local_idx = local_id.x;' :
         `let global_idx = (workgroup_id.z * num_workgroups[0] * num_workgroups[1] +
           workgroup_id.y * num_workgroups[0] + workgroup_id.x) * ${
-            workgroupSizeX * workgroupSizeY * workgroupSizeZ}u + local_index;`;
+            workgroupSizeX * workgroupSizeY * workgroupSizeZ}u + local_index; let local_idx = local_index;`;
 
     return `@compute @workgroup_size(${workgroupSizeX}, ${workgroupSizeY}, ${workgroupSizeZ})
   fn main(${paramList}) {
