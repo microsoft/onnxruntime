@@ -1033,6 +1033,7 @@ class OnnxModel:
         # TODO: support graph_topological_sort() in subgraphs
         # for graph in self.graphs():
         #    self.graph_topological_sort(graph)
+        print("topo sort")
         OnnxModel.graph_topological_sort(self.model.graph, is_deterministic)
 
     @staticmethod

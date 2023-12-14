@@ -7,23 +7,19 @@ from logging import getLogger
 from typing import List, Optional
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
-from onnx import GraphProto, ModelProto, TensorProto, ValueInfoProto, helper
+from onnx import GraphProto, ModelProto, TensorProto, ValueInfoProto, helper, inliner
 from onnx_model import OnnxModel
 from fusion_options import FusionOptions
 
 logger = getLogger(__name__)
 
-
-class FissionTransformerBlockPhi(Fusion):
+class PostProcessCausalLMHead(Fusion):
     def __init__(
         self,
         model: OnnxModel,
     ):
         super().__init__(model, "DONOTUSE", [ #"model_modeling_mixformer_sequential_ParallelBlock_sub1_1",
-                                             "model_modeling_mixformer_sequential_ParallelBlock_sub2_1"])
-        
-    def uname(self, layer_id, name):
-        return name + "_" + str(layer_id)
+                                             "model_modeling_mixformer_sequential_CausalLMHead_sub_1__1_1"])
 
     def fuse(
             self,
@@ -31,12 +27,45 @@ class FissionTransformerBlockPhi(Fusion):
             input_name_to_nodes,
             output_name_to_node,
     ):
+        print("node.input[0] ", node.input[0])
+        print("node.input[1] ", node.input[1])
+        node.input[0] = node.input[1]
+
+class FissionTransformerBlockPhi(Fusion):
+    def __init__(
+        self,
+        model: OnnxModel,
+    ):
+        super().__init__(model, "DONOTUSE", ["model_modeling_mixformer_sequential_ParallelBlock_sub1_1",
+                                             "model_modeling_mixformer_sequential_ParallelBlock_sub2_1",
+                                             ])
+
+    def uname(self, layer_id, name):
+        return name + "_" + str(layer_id)
+
+    def get_layer_id(self, node):
+        if node.op_type == "model_modeling_mixformer_sequential_ParallelBlock_sub1_1":
+            return 1
+        elif node.op_type == "model_modeling_mixformer_sequential_ParallelBlock_sub2_1":
+            return 2
+
+    def fuse(
+            self,
+            node,
+            input_name_to_nodes,
+            output_name_to_node,
+    ):
+        layer_id = self.get_layer_id(node)
+
         # transformer block input and output
-        i_hidden_states = node.input[0]
+        i_hidden_states = node.input[2]
         i_attn_mask = node.input[1]
-        i_kv_cache = node.input[2]
+        i_kv_cache = node.input[3]
         o_hidden_states = node.output[1]
-        o_kv_cache = node.output[2]
+        o_kv_cache = node.output[0]
+
+        print("o_hidden_states ", o_hidden_states)
+        print("o_kv_cache ", o_kv_cache)
 
         # internal nodes weights
         ln_weight = node.input[4] #float32[2560]
@@ -50,8 +79,8 @@ class FissionTransformerBlockPhi(Fusion):
         mlp_fc2_weight = node.input[14] #float32[2560,10240] need transpose?
         mlp_fc2_bias = node.input[15] #float32[2560]
 
-        # opt graph construction. TODO: replace ? with layer id
-        layer_id = 0
+        # opt graph construction.
+
         subgraph_nodes = [
             helper.make_node(
                 'LayerNormalization',
@@ -69,7 +98,7 @@ class FissionTransformerBlockPhi(Fusion):
                 num_heads=32,
                 unidirectional=1,
                 do_rotary=1,
-            ),      
+            ),
             helper.make_node(
                 'MatMul',
                 inputs=[self.uname(layer_id, 'attn_out'), attn_out_weight],
@@ -139,15 +168,18 @@ class PhiOnnxModel(OnnxModel):
     def __init__(self, model: ModelProto, num_heads: int = 0, head_size: int = 0):
         super().__init__(model)
         self.fission_transformer_block = FissionTransformerBlockPhi(self)
+        self.postprocess_causal_lm_head = PostProcessCausalLMHead(self)
 
-    def transformer_block_fission(self):
-        self.fission_transformer_block.apply()
+    def inline_model(self):
+        self.model = inliner.inline_local_functions(self.model, False)
 
     def postprocess(self):
         self.prune_graph()
 
     def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
-        self.transformer_block_fission()
+        self.fission_transformer_block.apply()
+        self.postprocess_causal_lm_head.apply()
+        self.inline_model()
 
     def get_fused_operator_statistics(self):
         """
