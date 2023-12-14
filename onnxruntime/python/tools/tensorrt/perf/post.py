@@ -459,6 +459,10 @@ def main():
                     table_results[status_name] = pd.concat(
                         [table_results[status_name], get_status(table, model_group)], ignore_index=True
                     )
+                elif op_metrics_name in csv:
+                    table_results[status_name] = pd.concat(
+                        [table_results[status_name], get_status(table, model_group)], ignore_index=True
+                    )
             os.chdir(result_file)
 
         if not table_results[memory_name].empty:
