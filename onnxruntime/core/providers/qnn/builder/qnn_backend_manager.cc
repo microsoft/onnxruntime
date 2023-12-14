@@ -17,7 +17,11 @@
 #include "core/framework/endian_utils.h"
 #include "core/common/logging/capture.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
+
+#ifdef _WIN32
 #include "core/platform/tracing.h"
+#include "winmeta.h"
+#endif
 
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1
@@ -849,7 +853,7 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
     auto& provider = env.GetTelemetryProvider();
     if (provider.IsEnabled()) {
       auto keyword = provider.Keyword();
-      if ((keyword & static_cast<unsigned long long>(onnxruntime::logging::TLKeyword::EP)) != 0) {
+      if ((keyword & static_cast<unsigned long long>(onnxruntime::logging::TLKeyword::Profiling)) != 0) {
         tracelogging_provider_ep_enabled = true;
       }
     }
@@ -1012,8 +1016,8 @@ void QnnBackendManager::LogQnnProfileEventAsTraceLogging(
   TraceLoggingWrite(
       telemetry_provider_handle,
       "QNNProfilingEvent",
-      TraceLoggingKeyword(static_cast<unsigned long long>(onnxruntime::logging::TLKeyword::EP)),
-      // TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+      TraceLoggingKeyword(static_cast<unsigned long long>(onnxruntime::logging::TLKeyword::Profiling)),
+      TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
       TraceLoggingValue(timestamp, "Timestamp"),
       TraceLoggingString(message.c_str(), "Message"),
       TraceLoggingString(qnnScalarValue.c_str(), "Value"),

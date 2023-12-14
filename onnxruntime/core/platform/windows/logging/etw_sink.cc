@@ -89,7 +89,7 @@ Severity EtwRegistrationManager::MapLevelToSeverity() {
     case TRACE_LEVEL_CRITICAL:
       return Severity::kFATAL;
     default:
-      return Severity::kVERBOSE;  // Default case, or handle it as you see fit
+      return Severity::kVERBOSE;
   }
 }
 

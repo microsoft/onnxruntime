@@ -479,6 +479,8 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
 #ifdef _WIN32
   TraceLoggingWrite(telemetry_provider_handle,
                     "SessionOptions",
+                    TraceLoggingKeyword(static_cast<unsigned long long>(onnxruntime::logging::TLKeyword::Session)),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     TraceLoggingUInt8(static_cast<UINT8>(session_options.execution_mode), "execution_mode"),
                     TraceLoggingUInt8(static_cast<UINT8>(session_options.execution_order), "execution_order"),
                     TraceLoggingBoolean(session_options.enable_profiling, "enable_profiling"),
@@ -499,6 +501,8 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
   TraceLoggingWrite(
       telemetry_provider_handle,
       "SessionOptions_IntraOrtThreadPoolParams",
+      TraceLoggingKeyword(static_cast<unsigned long long>(onnxruntime::logging::TLKeyword::Session)),
+      TraceLoggingLevel(WINEVENT_LEVEL_INFO),
       TraceLoggingInt32(session_options.intra_op_param.thread_pool_size, "thread_pool_size"),
       TraceLoggingBoolean(session_options.intra_op_param.auto_set_affinity, "auto_set_affinity"),
       TraceLoggingBoolean(session_options.intra_op_param.allow_spinning, "allow_spinning"),
@@ -511,6 +515,8 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
     TraceLoggingWrite(
         telemetry_provider_handle,
         "SessionOptions_ConfigEntry",
+        TraceLoggingKeyword(static_cast<unsigned long long>(onnxruntime::logging::TLKeyword::Session)),
+        TraceLoggingLevel(WINEVENT_LEVEL_INFO),
         TraceLoggingString(config_pair.first.c_str(), "Key"),
         TraceLoggingString(config_pair.second.c_str(), "Value"));
   }

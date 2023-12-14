@@ -4,6 +4,7 @@
 #include <string>
 
 #include "core/common/common.h"
+#include "core/common/logging/logging.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/provider_options.h"
 #include "core/providers/provider_factory_creators.h"
@@ -14,6 +15,7 @@
 
 #ifdef _WIN32
 #include "core/platform/tracing.h"
+#include "winmeta.h"
 #endif
 
 #if defined(USE_DML)
@@ -75,6 +77,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     TraceLoggingWrite(
         telemetry_provider_handle,
         "ProviderOptionsAppendExecutionProvider",
+        TraceLoggingKeyword(static_cast<unsigned long long>(onnxruntime::logging::TLKeyword::Session)),
+        TraceLoggingLevel(WINEVENT_LEVEL_INFO),
         TraceLoggingString(provider_name, "ProviderName"),
         TraceLoggingString(config_pair.first.c_str(), "Key"),
         TraceLoggingString(config_pair.second.c_str(), "Value"));

@@ -152,7 +152,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   if (provider.IsEnabled()) {
     auto level = provider.Level();
     auto keyword = provider.Keyword();
-    if ((keyword & static_cast<unsigned long long>(onnxruntime::logging::TLKeyword::EP)) != 0) {
+    if ((keyword & static_cast<unsigned long long>(onnxruntime::logging::TLKeyword::Profiling)) != 0) {
       if (level != 0) {
         if (level == 1) {
           ParseProfilingLevel("basic", profiling_level);

@@ -76,11 +76,15 @@ struct Category {
 };
 
 enum class TLKeyword : unsigned long long {
-  Logs = 0x1,
-  Reserved1 = 0x2,
-  Reserved2 = 0x4,
-  Reserved3 = 0x8,
-  EP = 0x10
+  Session = 0x1,
+  Logs = 0x2,
+  Reserved1 = 0x4,
+  Reserved2 = 0x8,
+  Reserved3 = 0x10,
+  Reserved4 = 0x20,
+  Reserved5 = 0x40,
+  Reserved6 = 0x80,
+  Profiling = 0x100
 };
 
 class ISink;
@@ -347,7 +351,8 @@ unsigned int GetProcessId();
 std::unique_ptr<ISink> EnhanceLoggerWithEtw(std::unique_ptr<ISink> existingLogger, logging::Severity originalSeverity, logging::Severity etwSeverity);
 
 /**
-  If the ONNXRuntimeTraceLoggingProvider ETW Provider is enabled, then can override the logging level
+  If the ONNXRuntimeTraceLoggingProvider ETW Provider is enabled, then can override the logging level.
+  But this overrided level only applies to the ETW sink. The original logger(s) retain their original logging level
 */
 Severity OverrideLevelWithEtw(Severity originalSeverity);
 
