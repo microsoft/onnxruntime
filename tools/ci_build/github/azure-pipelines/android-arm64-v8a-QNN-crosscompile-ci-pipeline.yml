@@ -53,6 +53,8 @@ jobs:
   - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
     displayName: Install coreutils and ninja
 
+  - template: "templates/use-android-ndk.yml"
+
   - script: sudo chmod go+rw /dev/kvm
     displayName: Update permissions to KVM
 
