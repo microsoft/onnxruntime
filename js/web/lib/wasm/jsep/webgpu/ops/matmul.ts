@@ -134,8 +134,7 @@ export const createNaiveMatmulProgramInfo =
       return {
         name: 'MatMulNaive',
         shaderCache: {
-          hint: `${activationAttributes.activationCacheKey}_${components}_${aComponents}_${outputNumber}_${
-              isChannelsLast}`,
+          hint: `${activationAttributes.activation};${components};${aComponents};${outputNumber};${isChannelsLast}`,
           inputDependencies: hasBias ? ['rank', 'rank', 'rank'] : ['rank', 'rank']
         },
         getRunData: () => ({
