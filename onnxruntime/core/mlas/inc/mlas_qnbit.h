@@ -23,6 +23,12 @@ Abstract:
 #include "mlas.h"
 #include "mlas_gemm_postprocessor.h"
 
+// TODO add documentation
+enum MLAS_SQNBITGEMM_COMPUTE_TYPE {
+    CompFp32,  // fp32 A, fp32 accumulator
+    CompInt8,  // int8 A, int32 accumulator
+};
+
 /**
  * @brief Data parameters for float/n-bit quantized int GEMM routine.
  */
@@ -32,10 +38,15 @@ struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
     const void* QuantBData = nullptr;        ///< address of quantized B (quantized n-bit int values)
     const float* QuantBScale = nullptr;      ///< address of scale values of quantized B, one per block
     const void* QuantBZeroPoint = nullptr;   ///< optional address of zero point values of quantized B, one per block
-    bool IsBPacked = false;                  ///< whether B values are packed in an optimized format for the computation
     const float* Bias = nullptr;             ///< optional address of Bias, vector size N
     float* C = nullptr;                      ///< address of result matrix
     size_t ldc = 0;                          ///< leading dimension of C
+
+    /**
+     * Address of intermediate workspace buffer.
+     * Only required if MlasSQNBitGemmWorkspaceSize returns a non-zero value.
+     */
+    void* Workspace = nullptr;
 
     ///< optional post processing to apply to result matrix
     MLAS_GEMM_POSTPROCESSOR<float>* PostProcessor = nullptr;
@@ -54,6 +65,7 @@ struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
  * @param[in]       BlkLen          number of quantized values per block
  * @param[inout]    DataParams      An array (size BatchN) of parameter blocks
  * @param[in]       ThreadPool      optional thread pool to use
+ * // TODO update param doc
  */
 void MLASCALL
 MlasSQNBitGemmBatch(
@@ -63,6 +75,7 @@ MlasSQNBitGemmBatch(
     size_t BatchN,
     size_t BlkBitWidth,
     size_t BlkLen,
+    MLAS_SQNBITGEMM_COMPUTE_TYPE ComputeType,
     const MLAS_SQNBIT_GEMM_DATA_PARAMS* DataParams,
     MLAS_THREADPOOL* ThreadPool = nullptr
 );
@@ -71,9 +84,29 @@ MlasSQNBitGemmBatch(
  * @brief Determines whether a float32/quantized n-bit int GEMM implementation is available on the current platform.
  * @param[in]   BlkBitWidth     quantized value bit width (e.g., 4 means 4 bit ints)
  * @param[in]   BlkLen          number of quantized values per block
+ * TODO update param doc
  */
 bool MLASCALL
 MlasIsSQNBitGemmAvailable(
+    size_t M,
+    size_t N,
+    size_t K,
     size_t BlkBitWidth,
-    size_t BlkLen
+    size_t BlkLen,
+    MLAS_SQNBITGEMM_COMPUTE_TYPE ComputeType
+);
+
+/**
+ * @brief Gets the size in bytes of the intermediate workspace buffer required by the float32/quantized n-bit int GEMM
+ * implementation. If zero, no intermediate workspace is required.
+ * // TODO update param doc
+ */
+size_t MLASCALL
+MlasSQNBitGemmWorkspaceSize(
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_SQNBITGEMM_COMPUTE_TYPE ComputeType
 );

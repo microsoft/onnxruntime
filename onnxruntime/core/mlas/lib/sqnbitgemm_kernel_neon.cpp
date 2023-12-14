@@ -15,19 +15,13 @@ Abstract:
 
 --*/
 
-#include "sqnbitgemm.h"
-
 #include <arm_neon.h>
 
 #include <algorithm>
 #include <cassert>
 #include <utility>
 
-//
-// Hardware-specific kernel type.
-//
-struct MLAS_SQNBIT_GEMM_KERNEL_NEON {
-};
+#include "sqnbitgemm.h"
 
 namespace
 {
@@ -264,12 +258,6 @@ ComputeDotProducts(
     }
 }
 
-}  // namespace
-
-//
-// MlasSQNBitGemmKernel and helpers.
-//
-
 template <size_t BlkBitWidth>
 MLAS_FORCEINLINE void
 MlasSQNBitGemmM1KernelNeon(
@@ -351,32 +339,6 @@ MlasSQNBitGemmM1KernelNeon(
     }
 }
 
-template <>
-MLAS_FORCEINLINE void
-MlasSQNBitGemmM1Kernel<4, MLAS_SQNBIT_GEMM_KERNEL_NEON>(
-    size_t BlkLen,
-    const float* A,
-    const uint8_t* QuantBData,
-    const float* QuantBScale,
-    const uint8_t* QuantBZeroPoint,
-    float* C,
-    size_t CountN,
-    size_t CountK,
-    size_t BlockStrideQuantB,
-    const float* Bias
-)
-{
-    return MlasSQNBitGemmM1KernelNeon<4>(
-        BlkLen,
-        A, QuantBData, QuantBScale, QuantBZeroPoint, C, CountN, CountK,
-        BlockStrideQuantB, Bias
-    );
-}
-
-//
-// MlasQNBitBlkDequantBForSgemm and helpers.
-//
-
 template <size_t BlkBitWidth>
 MLAS_FORCEINLINE void
 MlasQNBitBlkDequantBForSgemmNeon(
@@ -447,24 +409,130 @@ MlasQNBitBlkDequantBForSgemmNeon(
     impl0_reference();
 }
 
-template <>
-MLAS_FORCEINLINE void
-MlasQNBitBlkDequantBForSgemm<4, MLAS_SQNBIT_GEMM_KERNEL_NEON>(
+//
+// CompInt8 kernel implementation and related helpers
+//
+
+void MLASCALL
+QuantizeA_CompInt8(
     size_t BlkLen,
-    float* FpData,
+    const float* A,
+    size_t CountM,
+    size_t CountK,
+    size_t lda,
+    std::byte* QuantA
+)
+{
+    auto impl0_reference = [&]() {
+        const size_t BlockCountK = MlasDivRoundup(CountK, BlkLen);
+
+        const size_t QuantAStride = BlockCountK * Q8BlkSize(BlkLen);
+
+        for (size_t m = 0; m < CountM; ++m) {
+            const float* ADataRowPtr = A + m * lda;
+            std::byte* QuantARowPtr = QuantA + m * QuantAStride;
+
+            for (size_t k = 0, k_blk = 0; k < CountK; k += BlkLen, ++k_blk) {
+                const size_t k_blk_len = std::min(CountK - k, BlkLen);
+
+                const float* ADataBlkPtr = ADataRowPtr + k;
+
+                // scan block values first to determine scale
+
+                float amax = 0.0f;  // max of absolute values of A block
+
+                for (size_t kk = 0; kk < k_blk_len; ++kk) {
+                    float a = ADataBlkPtr[kk];
+                    amax = std::max(amax, fabsf(a));
+                }
+
+                constexpr float range_max = (1 << 7) - 1;
+                const float scale = amax / range_max;
+                const float scale_reciprocal = scale != 0.0f ? 1.0f / scale : 0.0f;
+
+                std::byte* QuantABlkPtr = QuantARowPtr + k_blk * Q8BlkSize(BlkLen);
+
+                Q8BlkScale(QuantABlkPtr) = scale;
+                int8_t* QuantABlkData = Q8BlkData(QuantABlkPtr);
+
+                for (size_t kk = 0; kk < k_blk_len; ++kk) {
+                    const float q = ADataBlkPtr[kk] * scale_reciprocal;
+                    QuantABlkData[kk] = static_cast<int8_t>(
+                        std::clamp(
+                            q,
+                            static_cast<float>(std::numeric_limits<int8_t>::min()),
+                            static_cast<float>(std::numeric_limits<int8_t>::max())
+                        )
+                    );
+                }
+            }
+        }
+    };
+
+    // TODO neon impl
+
+    impl0_reference();
+}
+
+MLAS_FORCEINLINE
+void
+SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8(
+    size_t BlkLen,
+    const std::byte* QuantA,
     const uint8_t* QuantBData,
     const float* QuantBScale,
     const uint8_t* QuantBZeroPoint,
+    float* C,
     size_t CountN,
     size_t CountK,
-    size_t BlockStrideQuantB
+    size_t BlockStrideQuantB,
+    const float* Bias
 )
 {
-    MlasQNBitBlkDequantBForSgemmNeon<4>(
-        BlkLen,
-        FpData, QuantBData, QuantBScale, QuantBZeroPoint, CountN, CountK, BlockStrideQuantB
-    );
+    auto impl0_reference = [&]() {
+        const std::byte* QuantARowPtr = QuantA;
+
+        for (size_t n = 0; n < CountN; ++n) {
+            float sum = Bias != nullptr ? Bias[n] : 0.0f;
+
+            for (size_t k = 0, k_blk = 0; k < CountK; k += BlkLen, ++k_blk) {
+                const size_t k_blk_len = std::min(CountK - k, BlkLen);
+
+                const std::byte* QuantABlkPtr = QuantARowPtr + k_blk * Q8BlkSize(BlkLen);
+
+                const float a_scale = Q8BlkScale(QuantABlkPtr);
+
+                const float b_scale = QuantBScale[n * BlockStrideQuantB + k_blk];
+
+                int8_t b_zp = 8;
+                if (QuantBZeroPoint != nullptr) {
+                    const uint8_t b_zp_byte = QuantBZeroPoint[n * ((BlockStrideQuantB + 1) / 2) + k_blk / 2];
+                    b_zp = (k_blk & 1) ? static_cast<int8_t>(b_zp_byte >> 4) : static_cast<int8_t>(b_zp_byte & 0x0F);
+                }
+
+                int32_t qsum = 0;
+
+                const int8_t* QuantABlkData = Q8BlkData(QuantABlkPtr);
+                for (size_t kk = 0; kk < k_blk_len; ++kk) {
+                    const int8_t qa = QuantABlkData[kk];
+                    const uint8_t qb_byte = QuantBData[(n * BlockStrideQuantB * BlkLen + k + kk) / 2];
+                    const int8_t qb = ((kk & 1) == 1 ? static_cast<int8_t>(qb_byte >> 4) : static_cast<int8_t>(qb_byte & 0x0F)) - b_zp;
+                    qsum += qa * qb;
+                }
+
+                sum += static_cast<float>(qsum) * a_scale * b_scale;
+            }
+
+            C[n] = sum;
+        }
+    };
+
+    // TODO neon impl
+
+    impl0_reference();
 }
+
+}  // namespace
 
 //
 // Kernel dispatch structure definition.
@@ -472,6 +540,11 @@ MlasQNBitBlkDequantBForSgemm<4, MLAS_SQNBIT_GEMM_KERNEL_NEON>(
 
 const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
     MLAS_SQNBIT_GEMM_DISPATCH d;
-    d.Operations[QuantVariant_BitWidth4] = MlasSQNBitGemmOperation<4, MLAS_SQNBIT_GEMM_KERNEL_NEON>;
+
+    d.SQNBitGemmM1Kernel_BlkBitWidth4_CompFp32 = MlasSQNBitGemmM1KernelNeon<4>;
+    d.QNBitBlkDequantBForSgemm_BlkBitWidth4_CompFp32 = MlasQNBitBlkDequantBForSgemmNeon<4>;
+    d.SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8 = SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8;
+    d.QuantizeA_CompInt8 = QuantizeA_CompInt8;
+
     return d;
 }();

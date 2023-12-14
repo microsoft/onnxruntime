@@ -74,6 +74,7 @@ static void GemmSizeProducts(benchmark::internal::Benchmark* b) {
   ArgsProduct(b, {{1, 1024, 2048}, {4096, 11008}, {4096, 11008}, {8}});
 }
 
+// TODO disable if unavailable
 BENCHMARK(SQNBITGEMM<4, 16, false>)->Apply(GemmSizeProducts)->UseRealTime();
 BENCHMARK(SQNBITGEMM<4, 16, true>)->Apply(GemmSizeProducts)->UseRealTime();
 BENCHMARK(SQNBITGEMM<4, 32, false>)->Apply(GemmSizeProducts)->UseRealTime();
