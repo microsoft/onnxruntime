@@ -259,7 +259,7 @@ stages:
         condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
         displayName: 'Publish Java temp binaries'
         inputs:
-          pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
+          pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}${{parameters.artifact_name_suffix}}'
           artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}'
 
       - ${{ if eq(parameters['DoCompliance'], 'true') }}:
