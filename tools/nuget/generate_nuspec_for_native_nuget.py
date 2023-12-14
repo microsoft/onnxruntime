@@ -197,7 +197,7 @@ def generate_repo_url(line_list, repo_url, commit_id):
 
 
 def add_common_dependencies(xml_text, package_name, version):
-    dependent_packages = True if package_name == "Microsoft.ML.OnnxRuntime.Gpu-win" or package_name == "Microsoft.ML.OnnxRuntime.Gpu-linux" else False
+    dependent_packages = bool(package_name == "Microsoft.ML.OnnxRuntime.Gpu-win" or package_name == "Microsoft.ML.OnnxRuntime.Gpu-linux")
     if not dependent_packages:
         xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
     if package_name == "Microsoft.ML.OnnxRuntime.Gpu":

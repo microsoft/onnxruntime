@@ -124,21 +124,25 @@ def check_if_dlls_are_present(
                 folder = package_path + "/lib"
                 header_folder = package_path + "/include"
 
-            path = folder + "/" + "onnxruntime.dll"
-            print("Checking path: " + path)
-            if path not in file_list_in_package:
-                print("onnxruntime.dll not found for " + platform)
-                raise Exception("onnxruntime.dll not found for " + platform)
+            # In Nuget GPU package, onnxruntime.dll is in dependent package.
+            if not (package_type == "nuget" and is_gpu_package):
+                path = folder + "/" + "onnxruntime.dll"
+                print("Checking path: " + path)
+                if path not in file_list_in_package:
+                    print("onnxruntime.dll not found for " + platform)
+                    raise Exception("onnxruntime.dll not found for " + platform)
+                continue
 
-            if is_gpu_dependent_package:
+            # In Nuget GPU package, cuda ep and tensorrt ep dlls are in dependent package.
+            if (is_gpu_package and package_type != "nuget") or is_gpu_dependent_package:
                 for dll in win_gpu_package_libraries:
                     path = folder + "/" + dll
                     print("Checking path: " + path)
                     if path not in file_list_in_package:
                         print(dll + " not found for " + platform)
                         raise Exception(dll + " not found for " + platform)
-
-            if is_gpu_package:
+            # In Nuget GPU package, gpu header files are not in dependent package.
+            if (is_gpu_package and package_type != "nuget") or (package_type == "nuget" and not is_gpu_dependent_package):
                 check_if_headers_are_present(gpu_related_header_files, header_folder, file_list_in_package, platform)
 
             if is_dml_package:
@@ -157,19 +161,24 @@ def check_if_dlls_are_present(
                 folder = package_path + "/lib"
                 header_folder = package_path + "/include"
 
-            path = folder + "/" + "libonnxruntime.so"
-            print("Checking path: " + path)
-            if path not in file_list_in_package:
-                print("libonnxruntime.so not found for " + platform)
-                raise Exception("libonnxruntime.so not found for " + platform)
+            # In Nuget GPU package, onnxruntime.dll is in dependent package.
+            if not (package_type == "nuget" and is_gpu_package):
+                path = folder + "/" + "libonnxruntime.so"
+                print("Checking path: " + path)
+                if path not in file_list_in_package:
+                    print("libonnxruntime.so not found for " + platform)
+                    raise Exception("libonnxruntime.so not found for " + platform)
 
-            if is_gpu_package:
+            # In Nuget GPU package, cuda ep and tensorrt ep dlls are in dependent package.
+            if (is_gpu_package and package_type != "nuget") or is_gpu_dependent_package:
                 for so in linux_gpu_package_libraries:
                     path = folder + "/" + so
                     print("Checking path: " + path)
                     if path not in file_list_in_package:
                         print(so + " not found for " + platform)
                         raise Exception(so + " not found for " + platform)
+            # In Nuget GPU package, gpu header files are not in dependent package.
+            if (is_gpu_package and package_type != "nuget") or (package_type == "nuget" and not is_gpu_dependent_package):
                 for header in gpu_related_header_files:
                     path = header_folder + "/" + header
                     print("Checking path: " + path)
