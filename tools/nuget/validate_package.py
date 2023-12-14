@@ -119,7 +119,8 @@ def check_if_dlls_are_present(
 
             if package_type == "nuget":
                 folder = "runtimes/" + platform + "/" + native_folder
-                header_folder = "build/native/include"
+                build_dir = "buildTransitive" if is_gpu_package else "build"
+                header_folder = f"{build_dir}/native/include"
             else:  # zip package
                 folder = package_path + "/lib"
                 header_folder = package_path + "/include"
@@ -156,7 +157,8 @@ def check_if_dlls_are_present(
         elif platform.startswith("linux"):
             if package_type == "nuget":
                 folder = "runtimes/" + platform + "/native"
-                header_folder = "build/native/include"
+                build_dir = "buildTransitive" if is_gpu_package else "build"
+                header_folder = f"{build_dir}/native/include"
             else:  # tarball package
                 folder = package_path + "/lib"
                 header_folder = package_path + "/include"
