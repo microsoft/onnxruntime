@@ -182,7 +182,8 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
   if constexpr (has_zero_point) {
     int zp_offset = n_block_id * kColsPerThreadBlock * b_zp_k;
     for (int i = warp_id * kWarpSize + lane_id; i < kColsPerThreadBlock * b_zp_k; i += kColsPerThreadBlock * kWarpSize) {
-      b_zp_vec[i] = zero_points[zp_offset + i];
+      b_zp_vec[2 * i] = (zero_points[zp_offset + i] & 0x0f);
+      b_zp_vec[2 * i + 1] = (zero_points[zp_offset + i] >> 4);
     }
   }
   __syncthreads();
@@ -190,7 +191,7 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
   a_data += m_id * k;
 
   const int scale_col_offset = warp_id * blocks_per_K;
-  const int zp_col_offset = warp_id * b_zp_k;
+  const int zp_col_offset = warp_id * b_zp_k * 2;
 
   T sums[8] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
   int k_id = 0;
@@ -202,8 +203,7 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
     T scale = b_scale_vec[scale_col_offset + t_meta_k];
     uint8_t zp = 8;
     if constexpr (has_zero_point) {
-      zp = b_zp_vec[zp_col_offset + t_meta_k / 2];
-      zp = (t_meta_k & 0x01) ? (zp >> 4) : (zp & 0x0f);
+      zp = b_zp_vec[zp_col_offset + t_meta_k];
     }
     AccumulateEightElements(value, scale, zp, a_data + k_id + (lane_id << 3), sums);
     t_meta_k += k_per_iter / block_size;  // k index for this thread, points to the scale and zero point
@@ -215,8 +215,7 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
     T scale = b_scale_vec[scale_col_offset + t_meta_k];
     uint8_t zp = 8;
     if constexpr (has_zero_point) {
-      zp = b_zp_vec[zp_col_offset + t_meta_k / 2];
-      zp = (t_meta_k & 0x01) ? (zp >> 4) : (zp & 0x0f);
+      zp = b_zp_vec[zp_col_offset + t_meta_k];
     }
     AccumulateEightElements(value, scale, zp, a_data + k_id + (lane_id << 3), sums);
   }
@@ -251,8 +250,8 @@ bool TryMatMul4Bits(
   dim3 blocks((n + kColsPerThreadBlock - 1) / kColsPerThreadBlock, m);
   dim3 threads(kWarpSize, kColsPerThreadBlock);
   int blocks_per_K = (k + block_size - 1) / block_size;
-  int blocks_per_thread_block = blocks_per_K * kColsPerThreadBlock;
-  int shared_mem_size = sizeof(T) * blocks_per_thread_block + (zero_points != nullptr ? blocks_per_thread_block / 2 : 0);
+  int shared_mem_size = sizeof(T) * blocks_per_K * kColsPerThreadBlock +
+                        (zero_points != nullptr ? (blocks_per_K + 1) / 2 * kColsPerThreadBlock * 2 : 0);
   if (shared_mem_size > shared_mem_per_block) {
     return false;
   }
