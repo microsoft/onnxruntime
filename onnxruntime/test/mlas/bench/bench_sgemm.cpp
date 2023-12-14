@@ -103,14 +103,14 @@ void SGEMM(benchmark::State& state, bool pack_b, bool trans_a, bool trans_b, flo
 
 static void GemmSizeWithOne(benchmark::internal::Benchmark* b) {
   b->ArgNames(sgemm_bench_arg_names);
-  ArgsProduct(b, {{1}, {63, 255, 1023}, {63, 255, 1023}});
-  ArgsProduct(b, {{63, 255, 1023}, {1}, {63, 255, 1023}});
-  ArgsProduct(b, {{63, 255, 1023}, {63, 255, 1023}, {1}});
+  b->ArgsProduct({{1}, {63, 255, 1023}, {63, 255, 1023}});
+  b->ArgsProduct({{63, 255, 1023}, {1}, {63, 255, 1023}});
+  b->ArgsProduct({{63, 255, 1023}, {63, 255, 1023}, {1}});
 }
 
 static void GemmSizeProducts(benchmark::internal::Benchmark* b) {
   b->ArgNames(sgemm_bench_arg_names);
-  ArgsProduct(b, {{63, 255, 1023}, {63, 255, 1023}, {63, 255, 1023}});
+  b->ArgsProduct({{63, 255, 1023}, {63, 255, 1023}, {63, 255, 1023}});
 }
 
 BENCHMARK_CAPTURE(SGEMM, NORMAL_NoTrans, false, false, false)->Apply(GemmSizeProducts)->UseRealTime();
@@ -128,7 +128,7 @@ BENCHMARK_CAPTURE(SGEMM, PACKB_TransA, true, true, false)->Apply(GemmSizeProduct
 
 static void GemmLLMSizeProducts(benchmark::internal::Benchmark* b) {
   b->ArgNames(sgemm_bench_arg_names);
-  ArgsProduct(b, {{1, 1024, 2048}, {4096, 11008}, {4096, 11008}});
+  b->ArgsProduct({{1, 1024, 2048}, {4096, 11008}, {4096, 11008}});
 }
 
 BENCHMARK_CAPTURE(SGEMM, LLM, false, false, true)->Apply(GemmLLMSizeProducts)->UseRealTime();

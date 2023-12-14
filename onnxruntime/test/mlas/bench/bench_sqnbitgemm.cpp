@@ -10,27 +10,28 @@
 
 #include "bench_util.h"
 #include "core/util/thread_utils.h"
+#include "core/common/narrow.h"
 
-template <size_t BlkBitWidth, size_t BlkLen, bool Symmetric>
+using onnxruntime::narrow;
+
+template <size_t BlkBitWidth>
 void SQNBITGEMM(benchmark::State& state) {
-  if (state.range(0) <= 0) throw std::invalid_argument("M must greater than 0!");
-  if (state.range(1) <= 0) throw std::invalid_argument("N must greater than 0!");
-  if (state.range(2) <= 0) throw std::invalid_argument("K must greater than 0!");
-  if (state.range(3) <= 0) throw std::invalid_argument("Threads must greater than 0!");
-
-  const size_t M = static_cast<size_t>(state.range(0));
-  const size_t N = static_cast<size_t>(state.range(1));
-  const size_t K = static_cast<size_t>(state.range(2));
-  const size_t threads = static_cast<size_t>(state.range(3));
+  const auto BlkLen = narrow<size_t>(state.range(0));
+  const auto M = narrow<size_t>(state.range(1));
+  const auto N = narrow<size_t>(state.range(2));
+  const auto K = narrow<size_t>(state.range(3));
+  const auto Threads = narrow<size_t>(state.range(4));
+  const auto Symmetric = narrow<bool>(state.range(5));
+  const auto ComputeType = static_cast<MLAS_SQNBITGEMM_COMPUTE_TYPE>(state.range(6));
 
   size_t QuantBDataSizeInBytes, QuantBScaleSize, QuantBZeroPointSizeInBytes;
   MlasBlockwiseQuantizedBufferSizes(
-      BlkBitWidth, BlkLen, /* columnwise */ true,
+      BlkBitWidth, static_cast<int>(BlkLen), /* columnwise */ true,
       static_cast<int>(K), static_cast<int>(N),
       QuantBDataSizeInBytes, QuantBScaleSize, &QuantBZeroPointSizeInBytes);
 
   OrtThreadPoolParams tpo;
-  tpo.thread_pool_size = static_cast<int>(threads);
+  tpo.thread_pool_size = static_cast<int>(Threads);
   tpo.auto_set_affinity = true;
 
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> tp(
@@ -47,7 +48,7 @@ void SQNBITGEMM(benchmark::State& state) {
 
   MlasQuantizeBlockwise<float, BlkBitWidth>(QuantBData.data(), QuantBScale.data(),
                                             Symmetric ? nullptr : QuantBZeroPoint.data(),
-                                            B.data(), BlkLen, /* columnwise */ true,
+                                            B.data(), static_cast<int>(BlkLen), /* columnwise */ true,
                                             static_cast<int>(K), static_cast<int>(N), static_cast<int>(N),
                                             tp.get());
 
@@ -62,26 +63,35 @@ void SQNBITGEMM(benchmark::State& state) {
   params.ldc = N;
 
   // warm up run
-  MlasSQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, &params, tp.get());
+  MlasSQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, tp.get());
 
   for (auto _ : state) {
-    MlasSQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, &params, tp.get());
+    MlasSQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, tp.get());
   }
 }
 
-static void GemmSizeProducts(benchmark::internal::Benchmark* b) {
-  b->ArgNames({"M", "N", "K", "Threads"});
-  ArgsProduct(b, {{1, 1024, 2048}, {4096, 11008}, {4096, 11008}, {8}});
+static void SQNBitGemmArgs(benchmark::internal::Benchmark* b) {
+  b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "ComputeType"});
+
+  ArgsProductWithFilter(b,
+
+                        {{16, 32, 64, 128, 256},                   // BlkLen
+                         {1, 1024, 2048},                          // M
+                         {4096, 11008},                            // N
+                         {4096, 11008},                            // K
+                         {8},                                      // Threads
+                         {int64_t{false}, int64_t{true}},          // Symmetric
+                         {int64_t{CompFp32}, int64_t{CompInt8}}},  // ComputeType
+
+                        [](const std::vector<int64_t>& args) {
+                          return MlasIsSQNBitGemmAvailable(
+                              // M, N, K
+                              narrow<size_t>(args[1]), narrow<size_t>(args[2]), narrow<size_t>(args[3]),
+                              // BlkBitWidth, BlkLen
+                              4, narrow<size_t>(args[0]),
+                              // ComputeType
+                              static_cast<MLAS_SQNBITGEMM_COMPUTE_TYPE>(args[6]));
+                        });
 }
 
-// TODO disable if unavailable
-BENCHMARK(SQNBITGEMM<4, 16, false>)->Apply(GemmSizeProducts)->UseRealTime();
-BENCHMARK(SQNBITGEMM<4, 16, true>)->Apply(GemmSizeProducts)->UseRealTime();
-BENCHMARK(SQNBITGEMM<4, 32, false>)->Apply(GemmSizeProducts)->UseRealTime();
-BENCHMARK(SQNBITGEMM<4, 32, true>)->Apply(GemmSizeProducts)->UseRealTime();
-BENCHMARK(SQNBITGEMM<4, 64, false>)->Apply(GemmSizeProducts)->UseRealTime();
-BENCHMARK(SQNBITGEMM<4, 64, true>)->Apply(GemmSizeProducts)->UseRealTime();
-BENCHMARK(SQNBITGEMM<4, 128, false>)->Apply(GemmSizeProducts)->UseRealTime();
-BENCHMARK(SQNBITGEMM<4, 128, true>)->Apply(GemmSizeProducts)->UseRealTime();
-BENCHMARK(SQNBITGEMM<4, 256, false>)->Apply(GemmSizeProducts)->UseRealTime();
-BENCHMARK(SQNBITGEMM<4, 256, true>)->Apply(GemmSizeProducts)->UseRealTime();
+BENCHMARK(SQNBITGEMM<4>)->Apply(SQNBitGemmArgs)->UseRealTime();

@@ -109,7 +109,7 @@ void Q8Q4GEMM(benchmark::State& state, MLAS_BLK_QUANT_TYPE qtype) {
 
 static void GemmSizeProducts(benchmark::internal::Benchmark* b) {
   b->ArgNames(q4gemm_bench_arg_names);
-  ArgsProduct(b, {{1, 1024, 2048}, {4096}, {4096}, {8}});
+  b->ArgsProduct({{1, 1024, 2048}, {4096}, {4096}, {8}});
 }
 
 [[maybe_unused]] static const bool benchmarks_registered = []() {
