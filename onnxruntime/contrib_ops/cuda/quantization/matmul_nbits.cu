@@ -185,13 +185,13 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
       b_zp_vec[2 * i] = (zero_points[zp_offset + i] & 0x0f);
       b_zp_vec[2 * i + 1] = (zero_points[zp_offset + i] >> 4);
     }
+    b_zp_vec += warp_id * b_zp_k * 2;
   }
   __syncthreads();
 
-  a_data += m_id * k;
+  a_data += m_id * k + (lane_id << 3);
 
-  const int scale_col_offset = warp_id * blocks_per_K;
-  const int zp_col_offset = warp_id * b_zp_k * 2;
+  b_scale_vec += warp_id * blocks_per_K;
 
   T sums[8] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
   int k_id = 0;
@@ -200,24 +200,24 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
   for (; k_id < (k & 0xffffff00); k_id += k_per_iter) {
     uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant));
     b_data_quant += k_per_iter / 2;
-    T scale = b_scale_vec[scale_col_offset + t_meta_k];
+    T scale = b_scale_vec[t_meta_k];
     uint8_t zp = 8;
     if constexpr (has_zero_point) {
-      zp = b_zp_vec[zp_col_offset + t_meta_k];
+      zp = b_zp_vec[t_meta_k];
     }
-    AccumulateEightElements(value, scale, zp, a_data + k_id + (lane_id << 3), sums);
+    AccumulateEightElements(value, scale, zp, a_data + k_id, sums);
     t_meta_k += k_per_iter / block_size;  // k index for this thread, points to the scale and zero point
   }
 
   // handle reminder
   if (k_id + lane_id * 8 < k) {
     uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant));
-    T scale = b_scale_vec[scale_col_offset + t_meta_k];
+    T scale = b_scale_vec[t_meta_k];
     uint8_t zp = 8;
     if constexpr (has_zero_point) {
-      zp = b_zp_vec[zp_col_offset + t_meta_k];
+      zp = b_zp_vec[t_meta_k];
     }
-    AccumulateEightElements(value, scale, zp, a_data + k_id + (lane_id << 3), sums);
+    AccumulateEightElements(value, scale, zp, a_data + k_id, sums);
   }
 
   float sum = (float)(sums[0] + sums[1] + sums[2] + sums[3] + sums[4] + sums[5] + sums[6] + sums[7]);
