@@ -869,7 +869,7 @@ stages:
       parameters:
         PackageType: 'nuget'
         PackagePath: '$(Build.ArtifactStagingDirectory)'
-        PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.nupkg'
+        PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.*nupkg'
         PlatformsSupported: 'win-x64,linux-x64'
         VerifyNugetSigning: false
 
@@ -877,7 +877,7 @@ stages:
       parameters:
         PackageType: 'nuget'
         PackagePath: '$(Build.ArtifactStagingDirectory)'
-        PackageName: 'Microsoft.ML.OnnxRuntime.Gpu-win.nupkg'
+        PackageName: 'Microsoft.ML.OnnxRuntime.Gpu-win.*nupkg'
         PlatformsSupported: 'win-x64'
         VerifyNugetSigning: false
 
@@ -885,7 +885,7 @@ stages:
       parameters:
         PackageType: 'nuget'
         PackagePath: '$(Build.ArtifactStagingDirectory)'
-        PackageName: 'Microsoft.ML.OnnxRuntime.Gpu-linux.nupkg'
+        PackageName: 'Microsoft.ML.OnnxRuntime.Gpu-linux.*nupkg'
         PlatformsSupported: 'linux-x64'
         VerifyNugetSigning: false
 
