@@ -629,13 +629,13 @@ class StorageWeightKBlockF4 : public StorageWeightKBlockS4 {
 
 class PackedWeightParser {
  public:
-  static gemm::WeightBase* deserialBuffer(void* serialized_buf) {
-    auto rptr = reinterpret_cast<int8_t*>(serialized_buf);
+  static gemm::WeightBase* deserialBuffer(const void* serialized_buf) {
+    auto rptr = reinterpret_cast<int8_t*>(const_cast<void*>(serialized_buf));
     rptr += WeightBase::offset();
     int mProID = utils::deserialize<int>(rptr);
     WeightBase* ptr = NULL;
     if (mProID >= int(JBLAS_PROLOGUEB_IDS::Begin) && mProID < int(JBLAS_PROLOGUEB_IDS::End)) {
-      rptr = reinterpret_cast<int8_t*>(serialized_buf);
+      rptr = reinterpret_cast<int8_t*>(const_cast<void*>(serialized_buf));
       auto type = static_cast<JBLAS_PROLOGUEB_IDS>(mProID);
       switch (type) {
         case JBLAS_PROLOGUEB_IDS::WeightPack:
