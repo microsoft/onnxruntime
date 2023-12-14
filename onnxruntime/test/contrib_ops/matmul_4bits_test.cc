@@ -147,7 +147,7 @@ TEST(MatMulNBits, Float32) {
     for (auto N : {1, 2, 32, 288}) {
       for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
         for (auto block_size : {16, 32, 64, 128}) {
-          for (auto comp : {CompFp32, CompInt8}) {
+          for (auto comp : {CompUndef, CompFp32, CompInt8}) {
             RunTest(M, N, K, block_size, comp, false, false);
             RunTest(M, N, K, block_size, comp, true, false);
           }
