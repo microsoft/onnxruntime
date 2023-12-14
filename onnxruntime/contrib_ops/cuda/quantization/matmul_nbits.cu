@@ -145,7 +145,6 @@ __device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, 
 
 constexpr int kColsPerThreadBlock = 8;
 constexpr int kWarpSize = 32;
-constexpr int kUnrollSize = 16;
 
 // kernel for 4bits quantized gemv, i.e., computing A(1,K) x B(K, N)
 // B(K, N) is quantized blockwise with 4bits and stored as [N, (K + block_size - 1)/block_size, blob]
@@ -199,9 +198,10 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
   int t_meta_k = lane_id * 8 / block_size;
   b_data_quant += n_id * blocks_per_K * (block_size / 2) + lane_id * 4;
 
-  for (; k_id < (k & 0xfffff000); k_id += kUnrollSize * k_per_iter) {
+  constexpr int kUnroll16 = 16;
+  for (; k_id < (k & 0xfffff000); k_id += kUnroll16 * k_per_iter) {
 #pragma unroll
-    for (int i = 0; i < kUnrollSize; i++) {
+    for (int i = 0; i < kUnroll16; i++) {
       uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + k_per_iter / 2 * i));
       T scale = b_scale_vec[t_meta_k + k_per_iter / block_size * i];
       uint8_t zp = 8;
@@ -210,8 +210,24 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
       }
       AccumulateEightElements(value, scale, zp, a_data + k_id + i * k_per_iter, sums);
     }
-    b_data_quant += k_per_iter / 2 * kUnrollSize;
-    t_meta_k += k_per_iter / block_size * kUnrollSize;  // k index for this thread, points to the scale and zero point
+    b_data_quant += k_per_iter / 2 * kUnroll16;
+    t_meta_k += k_per_iter / block_size * kUnroll16;  // k index for this thread, points to the scale and zero point
+  }
+
+  constexpr int kUnroll4 = 4;
+  for (; k_id < (k & 0xfffffc00); k_id += kUnroll4 * k_per_iter) {
+#pragma unroll
+    for (int i = 0; i < kUnroll4; i++) {
+      uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + k_per_iter / 2 * i));
+      T scale = b_scale_vec[t_meta_k + k_per_iter / block_size * i];
+      uint8_t zp = 8;
+      if constexpr (has_zero_point) {
+        zp = b_zp_vec[t_meta_k + k_per_iter / block_size * i];
+      }
+      AccumulateEightElements(value, scale, zp, a_data + k_id + i * k_per_iter, sums);
+    }
+    b_data_quant += k_per_iter / 2 * kUnroll4;
+    t_meta_k += k_per_iter / block_size * kUnroll4;  // k index for this thread, points to the scale and zero point
   }
 
   for (; k_id < (k & 0xffffff00); k_id += k_per_iter) {
