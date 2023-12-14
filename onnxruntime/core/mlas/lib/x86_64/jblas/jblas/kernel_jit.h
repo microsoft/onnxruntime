@@ -317,10 +317,7 @@ class JitMemcpy2DAvx2 : protected jblas::xbyak::JitAvx2 {
  protected:
   void generate(int unrollk, std::vector<kernel::jit_injector::eltwise_injector>& injectors) {
     // unrollK=[1,2]
-    if (unrollk != 1 && unrollk != 2) {
-      assert(false);
-      return;
-    }
+    assert(unrollk == 1 || unrollk == 2);
     Xbyak::Label data_label;
     inLocalLabel();  // use local label for multiple instance
     {
