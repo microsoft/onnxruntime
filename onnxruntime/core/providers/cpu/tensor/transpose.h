@@ -38,16 +38,17 @@ class TransposeBase {
  protected:
   TransposeBase(const OpKernelInfo& info) {
     std::vector<int64_t> temp_perm;
-    ORT_THROW_IF_ERROR(info.GetAttrs<int64_t>("perm", temp_perm));
-    size_t rank = temp_perm.size();
-    perm_.resize(temp_perm.size());
-    // Check that perm_ is a valid permutation of [0,rank-1]
-    for (size_t i = 0; i != temp_perm.size(); ++i) {
-      int64_t v = temp_perm[i];
-      ORT_ENFORCE(v >= 0 && static_cast<uint64_t>(v) <= std::numeric_limits<size_t>::max());
-      if (static_cast<size_t>(v) >= rank)
-        ORT_THROW("Attribute perm of Transpose has an invalid value. Value ", i, " is outside range.");
-      perm_[i] = static_cast<size_t>(v);
+    Status status = info.GetAttrs<int64_t>("perm", temp_perm);
+    if (status.IsOK()) {
+      size_t rank = temp_perm.size();
+      perm_.resize(temp_perm.size());
+      // Check that perm_ is a valid permutation of [0,rank-1]
+      for (size_t i = 0; i != temp_perm.size(); ++i) {
+        int64_t v = temp_perm[i];
+        ORT_ENFORCE(v >= 0 && static_cast<uint64_t>(v) <= std::numeric_limits<size_t>::max());
+        if (static_cast<size_t>(v) >= rank)
+          ORT_THROW("Attribute perm of Transpose has an invalid value. Value ", i, " is outside range.");
+        perm_[i] = static_cast<size_t>(v);
       }
       perm_specified_ = true;
       std::vector<bool> seen(rank, false);
@@ -56,6 +57,7 @@ class TransposeBase {
           ORT_THROW("Attribute perm of Transpose has an invalid value. Value ", i, " is repeated.");
         seen[i] = true;
       }
+    }
   }
 
   Status ComputeOutputShape(const Tensor& X, TensorShapeVector& output_dims, InlinedVector<size_t>& default_perm,
