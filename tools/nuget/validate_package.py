@@ -93,6 +93,7 @@ def check_if_headers_are_present(header_files, header_folder, file_list_in_packa
             raise Exception(header + " not found for " + platform)
 
 
+
 def check_if_dlls_are_present(
     package_type,
     is_windows_ai_package,
@@ -102,6 +103,7 @@ def check_if_dlls_are_present(
     platforms_supported,
     zip_file,
     package_path,
+    is_gpu_dependent_package = False, # only used for nuget packages
 ):
     platforms = platforms_supported.strip().split(",")
     if package_type == "tarball":
@@ -128,13 +130,15 @@ def check_if_dlls_are_present(
                 print("onnxruntime.dll not found for " + platform)
                 raise Exception("onnxruntime.dll not found for " + platform)
 
-            if is_gpu_package:
+            if is_gpu_dependent_package:
                 for dll in win_gpu_package_libraries:
                     path = folder + "/" + dll
                     print("Checking path: " + path)
                     if path not in file_list_in_package:
                         print(dll + " not found for " + platform)
                         raise Exception(dll + " not found for " + platform)
+
+            if is_gpu_package:
                 check_if_headers_are_present(gpu_related_header_files, header_folder, file_list_in_package, platform)
 
             if is_dml_package:
@@ -275,10 +279,12 @@ def validate_nuget(args):
     nuget_file_name = nuget_packages_found_in_path[0]
     full_nuget_path = os.path.join(args.package_path, nuget_file_name)
 
-    if "Gpu" in nuget_file_name:
+    if "Gpu" in nuget_file_name and "Gpu-" not in nuget_file_name:
         is_gpu_package = True
+        is_gpu_dependent_package = False
     else:
         is_gpu_package = False
+        is_gpu_dependent_package = True
 
     if "directml" in nuget_file_name.lower():
         is_dml_package = True
@@ -325,6 +331,7 @@ def validate_nuget(args):
             args.platforms_supported,
             zip_file,
             None,
+            is_gpu_dependent_package,
         )
 
         verify_nuget_signing = args.verify_nuget_signing.lower()
