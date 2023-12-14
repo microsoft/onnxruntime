@@ -307,12 +307,13 @@ __device__ bool BeamHypotheses::CanImprove(float best_sum_logprobs, int current_
   return beams_[beams_count_ - 1].score < current_score;
 }
 
+template <typename T>
 __device__ void BeamHypotheses::Output(
     int top_k,
     int max_length,
     int pad_token_id,
     int32_t* sequences,       // buffer of shape (num_return_sequences, max_length)
-    float* sequences_scores)  // buffer of shape (num_return_sequences) or empty
+    T* sequences_scores)      // buffer of shape (num_return_sequences) or empty
 {
   // Copy the top_k beams into the sequences
   for (int index = 0; index < top_k; index++) {
@@ -327,7 +328,7 @@ __device__ void BeamHypotheses::Output(
       target[i] = pad_token_id;
 
     if (sequences_scores)
-      sequences_scores[index] = item.score;
+      sequences_scores[index] = (T)item.score;
   }
 }
 
@@ -501,13 +502,14 @@ void LaunchBeamSearchScorer_AppendNextTokenToSequences(BeamScorerState& state_cp
                                                                                   next_beam_tokens.data());
 }
 
+template <typename T>
 __global__ void BeamSearchScorer_Finalize(BeamScorerState& state,
                                           const int32_t* sequences_buffer,
                                           int sequence_length,
                                           BeamHypotheses* beam_hyps_,
                                           const float* final_beam_scores,
                                           int32_t* output,
-                                          float* sequence_scores) {
+                                          T* sequence_scores) {
   int batch_index = blockIdx.x * blockDim.x + threadIdx.x;
   if (batch_index >= state.batch_size_)
     return;
@@ -534,6 +536,7 @@ __global__ void BeamSearchScorer_Finalize(BeamScorerState& state,
       sequence_scores ? sequence_scores + batch_index * state.num_return_sequences_ : nullptr);
 }
 
+template <typename T>
 void LaunchBeamSearchScorer_Finalize(int batch_size,
                                      BeamScorerState& state,
                                      gsl::span<const int32_t> sequences,
@@ -541,7 +544,7 @@ void LaunchBeamSearchScorer_Finalize(int batch_size,
                                      gsl::span<BeamHypotheses> beam_hyps,
                                      gsl::span<const float> final_beam_scores,
                                      gsl::span<int32_t> output,
-                                     gsl::span<float> sequence_scores,
+                                     gsl::span<T> sequence_scores,
                                      cudaStream_t stream) {
   BeamSearchScorer_Finalize<<<1, batch_size, 0, stream>>>(state,
                                                           sequences.data(),
@@ -551,6 +554,58 @@ void LaunchBeamSearchScorer_Finalize(int batch_size,
                                                           output.data(),
                                                           sequence_scores.data());
 }
+
+template void LaunchBeamSearchScorer_Finalize<float>(
+    int batch_size,
+    BeamScorerState& state,
+    gsl::span<const int32_t> sequences,
+    int sequence_length,
+    gsl::span<BeamHypotheses> beam_hyps,
+    gsl::span<const float> final_beam_scores,
+    gsl::span<int32_t> output,
+    gsl::span<float> sequence_scores,
+    cudaStream_t stream);
+
+template void LaunchBeamSearchScorer_Finalize<__half>(
+    int batch_size,
+    BeamScorerState& state,
+    gsl::span<const int32_t> sequences,
+    int sequence_length,
+    gsl::span<BeamHypotheses> beam_hyps,
+    gsl::span<const float> final_beam_scores,
+    gsl::span<int32_t> output,
+    gsl::span<__half> sequence_scores,
+    cudaStream_t stream);
+
+template <typename T>
+__global__ void FloatConvertAndCopyKernel(const float* src, T* dst, size_t total_elements) {
+  int64_t index = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if (index < total_elements) {
+    dst[index] = (T)src[index];
+  }
+}
+
+template <typename T>
+void LaunchBeamSearchScoreCopy(gsl::span<const float> final_scores,
+                               gsl::span<T> output_scores,
+                               cudaStream_t stream) {
+    ORT_ENFORCE(final_scores.size() == output_scores.size());
+    constexpr unsigned ThreadPerBlock = 256;
+    unsigned num_blocks = (unsigned)((final_scores.size() + (ThreadPerBlock - 1))/ ThreadPerBlock);
+
+    typedef typename ToCudaType<float>::MappedType CudaT;
+
+    FloatConvertAndCopyKernel<<<num_blocks, ThreadPerBlock, 0, stream>>>(
+        final_scores.data(), (CudaT*)output_scores.data(), final_scores.size());
+}
+
+template void LaunchBeamSearchScoreCopy(gsl::span<const float> final_scores,
+                                        gsl::span<float> output_scores,
+                                        cudaStream_t stream);
+
+template void LaunchBeamSearchScoreCopy(gsl::span<const float> final_scores,
+                                        gsl::span<MLFloat16> output_scores,
+                                        cudaStream_t stream);
 
 __global__ void AddProbsKernel(float* log_probs,
                                float* cum_log_probs,

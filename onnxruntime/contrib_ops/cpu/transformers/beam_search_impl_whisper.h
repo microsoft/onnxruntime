@@ -500,12 +500,8 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
                                output_sequences_scores);
 
   // Output per token scores
-  if (output_scores) {
-    gsl::span<float> target = output_scores->MutableDataAsSpan<float>();
-    gsl::span<const float> source = beam_state.scores;
-    assert(target.size() == source.size());
-    ORT_RETURN_IF_ERROR(this->device_copy_func_(target, source, nullptr, DeviceCopyDirection::deviceToDevice));
-  }
+  gsl::span<const float> per_token_scores = beam_state.scores;
+  this->beam_scorer_->OutputScores(per_token_scores, output_scores);
 
   return status;
 }
