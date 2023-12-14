@@ -1,21 +1,12 @@
-parameters:
-- name: PublishingNuget
-  displayName: Publishing Nuget Packages and report binary size to mysql
-  type: boolean
-  default: true
+resources:
+  pipelines:
+  - pipeline: build
+    source: 'Zip-Nuget-Java-Nodejs Packaging Pipeline'
+    trigger: true
+    branch: main
+
 stages:
 - stage: Publish_NuGet_Package_And_Report
-  condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-  dependsOn:
-  - NuGet_Test_Win_CPU
-  - NuGet_Test_Linux_CPU
-  - NuGet_Test_Win_GPU
-  - NuGet_Test_Linux_GPU
-  - NuGet_Test_Linux_ROCm
-  - NuGet_Test_MacOS
-  - NuGet_Packaging_DML
-  - NuGet_Test_Win_Training_CPU
-  - NuGet_Test_Linux_Training_CPU
   jobs:
   - job:
     workspace:
@@ -28,18 +19,21 @@ stages:
     steps:
     - checkout: self
       submodules: false
-    - template: set-version-number-variables-step.yml
-
-    - task: DownloadPipelineArtifact@0
+    - template: templates/set-version-number-variables-step.yml
+    
+    - script: mkdir "$(Build.BinariesDirectory)\nuget-artifact\final-package"
+    
+    - download: build
       displayName: 'Download Pipeline Artifact - Signed NuGet Package'
-      inputs:
-        artifactName: 'drop-signed-nuget-CPU'
-        targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
+      artifact: 'drop-signed-nuget-CPU'
+   
+    - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-CPU\*" "$(Build.BinariesDirectory)\nuget-artifact\final-package"
 
-    - template: ../nuget/templates/get-nuget-package-version-as-variable.yml
+    - template: nuget/templates/get-nuget-package-version-as-variable.yml
       parameters:
         packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
 
+    # TODO: the following step has no error checking
     - task: CmdLine@2
       displayName: 'Post binary sizes to the dashboard database using command line'
       inputs:
@@ -64,8 +58,10 @@ stages:
               )
             )
 
+    # Only report binary sizes to database if the build build was auto-triggered from the main branch
     - task: AzureCLI@2
       displayName: 'Azure CLI'
+      condition: and (succeeded(), and(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.Reason'], 'ResourceTrigger')))
       inputs:
         azureSubscription: AIInfraBuildOnnxRuntimeOSS
         scriptLocation: inlineScript
@@ -75,39 +71,36 @@ stages:
           python.exe $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=$(Build.SourceVersion) --size_data_file=binary_size_data.txt --build_project=Lotus --build_id=$(Build.BuildId)
         workingDirectory: '$(Build.BinariesDirectory)'
 
-    - task: DownloadPipelineArtifact@0
+    - download: build
       displayName: 'Download Pipeline Artifact - Signed NuGet Package'
-      inputs:
-        artifactName: 'drop-signed-nuget-dml'
-        targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
+      artifact: 'drop-signed-nuget-dml'
 
-    - task: DownloadPipelineArtifact@0
+    - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-dml\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
+
+    - download: build
       displayName: 'Download Pipeline Artifact - Signed NuGet Package'
-      inputs:
-        artifactName: 'drop-signed-nuget-Training-CPU'
-        targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
+      artifact: 'drop-signed-nuget-Training-CPU'
+    - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-Training-CPU\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
 
-    - task: DownloadPipelineArtifact@0
+    - download: build
       displayName: 'Download Pipeline Artifact - Signed NuGet Package'
-      inputs:
-        artifactName: 'drop-signed-nuget-GPU'
-        targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
+      artifact: 'drop-signed-nuget-GPU'
+    - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-GPU\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
 
-    - task: DownloadPipelineArtifact@0
+    - download: build
       displayName: 'Download Pipeline Artifact - Signed NuGet ROCm Package'
-      inputs:
-        artifactName: 'drop-signed-nuget-ROCm'
-        targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
+      artifact: 'drop-signed-nuget-ROCm'
+    - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-ROCm\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
 
+    #TODO: allow choosing different feeds
     - task: NuGetCommand@2
       displayName: 'Copy Signed Native NuGet Package to ORT-NIGHTLY'
-      condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
       inputs:
         command: 'push'
         packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/*.nupkg'
         publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/7982ae20-ed19-4a35-a362-a96ac99897b7'
 
-    - template: component-governance-component-detection-steps.yml
+    - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
