@@ -142,6 +142,7 @@ JblasSQ4GemmBatchDriver(
     bool processed = true;
     for (size_t i = 0; i < BatchN; i++) {
         auto ptr = jblas::storage::gemm::PackedWeightParser::deserialBuffer(const_cast<void*>(DataParams[i].B));
+        auto uptr = std::unique_ptr<jblas::storage::gemm::WeightBase>(ptr);
         if (ptr) {
             if (ptr->mPrologueID == JBLAS_PROLOGUEB_IDS::WeightKBlockS4) {
                 auto kptr = reinterpret_cast<jblas::storage::gemm::StorageWeightKBlockS4*>(ptr);
@@ -192,7 +193,6 @@ JblasSQ4GemmBatchDriver(
                     }
                 }
             }
-            delete ptr;
         } else {
             processed = false;
             break;
@@ -275,6 +275,7 @@ JblasSQ4GemmBatchWorkspaceSize(
     size_t size = 0;
     for (size_t i = 0; i < BatchN; i++) {
         auto ptr = jblas::storage::gemm::PackedWeightParser::deserialBuffer(const_cast<void*>(DataParams[i].B));
+        auto uptr = std::unique_ptr<jblas::storage::gemm::WeightBase>(ptr);
         if (ptr) {
             if (ptr->mPrologueID == JBLAS_PROLOGUEB_IDS::WeightKBlockS4) {
                 auto kptr = reinterpret_cast<jblas::storage::gemm::StorageWeightKBlockS4*>(ptr);
@@ -337,7 +338,6 @@ JblasSQ4GemmBatchWorkspaceSize(
                     }
                 }
             }
-            delete ptr;
         }
     }
     return size;
@@ -486,6 +486,7 @@ bool
 JblasQ4GemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb, MLAS_THREADPOOL* ThreadPool)
 {
     auto ptr = jblas::storage::gemm::PackedWeightParser::deserialBuffer(const_cast<void*>(PackedBuf));
+    auto uptr = std::unique_ptr<jblas::storage::gemm::WeightBase>(ptr);
     ORTThreading orth(ThreadPool);
     auto N_ = static_cast<int>(N);
     auto K_ = static_cast<int>(K);
@@ -527,7 +528,6 @@ JblasQ4GemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, siz
                 }
             }
         }
-        delete ptr;
         return true;
     }
     return false;
