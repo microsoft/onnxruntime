@@ -147,9 +147,7 @@ class CompFp32BlockEpilogue {
       ret = kernel::wrapper::CompFp32BlockScale::template forward<ISA_T>(
           reinterpret_cast<utils::bf16*>(_param.scales) + K_offset * _param.ldsb + N_offset, srcptr, cachestep, dstptr,
           cachestep, M, N);
-      if (_param.zps != nullptr) {
-        assert(0);
-      }
+      assert(_param.zps == nullptr);
       assert(ret == JblasSuccess);
       return ret;
     }
