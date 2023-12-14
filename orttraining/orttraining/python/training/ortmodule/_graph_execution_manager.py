@@ -37,7 +37,7 @@ from ._io import _FlattenedModule, _InputInfo
 from ._runtime_inspector import RuntimeInspector
 from ._utils import check_function_has_param, get_rank
 from ._zero_stage3_compatibility import stage3_export_context
-from .options import DebugOptions, LogLevel, _RuntimeOptions
+from .options import DebugOptions, LogLevel, _MemoryOptimizationLevel, _RuntimeOptions
 from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
 
 
@@ -650,10 +650,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         if get_rank() != 0:
             return
 
-        if self._runtime_inspector.memory_ob.is_enabled() and self._debug_options.log_level <= LogLevel.DEVINFO:
-            self._logger.info(self._runtime_inspector.memory_ob.memory_optimization_opportunity_table_str)
-
-        tbl = PTable()
+        tbl = PTable(sortable=True)
 
         def _add_record(tbl, columns):
             return tbl.add_row([columns[0], ":", "ON" if columns[1] else "OFF", ":", columns[2]])
@@ -678,29 +675,35 @@ class GraphExecutionManager(GraphExecutionInterface):
             ],
         )
 
-        output_memory_optimization_details = self._debug_options.log_level <= LogLevel.INFO
+        if self._runtime_options.memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
+            opt_config_to_display = "ALL_RECOMPUTE_FOR_EACH_LAYER"
+        else:
+            opt_config_to_display = self._runtime_options.memory_optimizer_config
+
         mem_row = _add_record(
             tbl,
             [
                 "Memory Optimizer",
                 len(self._runtime_options.memory_optimizer_config) > 0,
                 (
-                    f"User config: {self._runtime_options.memory_optimizer_config}, probe level: {self._runtime_options.probe_level}"
+                    f"Memory Optimization Level: [{_MemoryOptimizationLevel.to_string(self._runtime_options.memory_optimization_level)}], "
+                    f"Optimization Config: [{opt_config_to_display}]"
                     if len(self._runtime_options.memory_optimizer_config) > 0
-                    else "Enable with env ORTMODULE_MEMORY_OPT_CONFIG=<config>"
+                    else "Enable with env ORTMODULE_MEMORY_OPT_LEVEL=1 or ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,..."
                 ),
             ],
         )
 
-        if self._runtime_inspector.memory_ob.is_enabled() and output_memory_optimization_details:
+        if self._runtime_inspector.memory_ob.is_enabled() and self._debug_options.logging.log_level < LogLevel.WARNING:
             mem_notes, mem_tbl = self._runtime_inspector.memory_ob.display_memory_optimization_plans(
-                self._runtime_options.memory_optimizer_config
+                self._runtime_options.memory_optimizer_config,
+                details=True,
             )
             if mem_tbl is not None:
                 mem_row.append_annotation_table(mem_tbl)
                 notes.extend(mem_notes)
 
-        _add_record(
+        compute_opt_row = _add_record(
             tbl,
             [
                 "Compute Optimizer",
@@ -708,10 +711,12 @@ class GraphExecutionManager(GraphExecutionInterface):
                 "Enable/Disable with env ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=1/0",
             ],
         )
+
+        compute_opt_annotation_tbl = PTable()
         _add_record(
-            tbl,
+            compute_opt_annotation_tbl,
             [
-                " - FLOPReduction",
+                " - FLOP Reduction",
                 self._runtime_options.enable_compute_optimizer,
                 "Reduce FLOPs by upstreaming shrinking-sized ops",
             ],
@@ -720,13 +725,17 @@ class GraphExecutionManager(GraphExecutionInterface):
         if self._runtime_options.enable_compute_optimizer:
             if len(self._runtime_options.label_sparsity_ratio) > 0:
                 _add_record(
-                    tbl, [" - LabelSparsityOpt", True, f"Input density: {self._runtime_options.label_sparsity_ratio}"]
+                    compute_opt_annotation_tbl,
+                    [" - Label Sparsity Opt", True, f"Input density: {self._runtime_options.label_sparsity_ratio}"],
                 )
 
             if len(self._runtime_options.embed_sparsity_ratio) > 0:
                 _add_record(
-                    tbl, [" - EmbedSparsityOpt", True, f"Input density: {self._runtime_options.embed_sparsity_ratio}"]
+                    compute_opt_annotation_tbl,
+                    [" - Embed Sparsity Opt", True, f"Input density: {self._runtime_options.embed_sparsity_ratio}"],
                 )
+
+        compute_opt_row.append_annotation_table(compute_opt_annotation_tbl)
 
         # Add fallback
         _add_record(
@@ -739,7 +748,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         )
 
         # Add Triton
-        _add_record(
+        triton_row = _add_record(
             tbl,
             [
                 "TritonOp Enabled",
@@ -748,20 +757,24 @@ class GraphExecutionManager(GraphExecutionInterface):
             ],
         )
 
+        triton_annotation_tbl = PTable()
+
         if self._runtime_options.enable_tuning:
             desc = "Enable tunning Ops online"
             if self._runtime_options.tuning_results_path:
                 desc += f", save tuning results to {self._runtime_options.tuning_results_path}"
-            _add_record(tbl, ["Online Op Tuning", True, desc])
+            _add_record(triton_annotation_tbl, ["Online Op Tuning", True, desc])
         elif self._runtime_options.tuning_results_path:
             _add_record(
-                tbl,
+                triton_annotation_tbl,
                 [
                     "Offline Op Tuning",
                     True,
                     f"Use offline tuning results from {self._runtime_options.tuning_results_path}",
                 ],
             )
+
+        triton_row.append_annotation_table(triton_annotation_tbl)
 
         _add_record(
             tbl,
