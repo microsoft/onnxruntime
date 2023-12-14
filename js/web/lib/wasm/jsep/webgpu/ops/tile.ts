@@ -6,7 +6,7 @@ import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {ComputeContext, ProgramInfo} from '../types';
 
-import {inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper} from './common';
 
 const getRepeats = (repeatsTensorView: TensorView): readonly number[] =>
     Array.from(repeatsTensorView.getBigInt64Array(), Number);
@@ -54,30 +54,35 @@ export const createTileProgramInfo = (inputs: readonly TensorView[]): ProgramInf
   const outputSize = ShapeUtil.size(outputShape);
 
   const dataType = inputs[0].dataType;
-  const input = inputVariable('input', dataType, inputShape);
-  const output = outputVariable('output', dataType, outputShape);
+  const input = inputVariable('input', dataType, inputShape.length);
+  const output = outputVariable('output', dataType, outputShape.length);
 
   const getShaderSource = (shaderHelper: ShaderHelper) => `
       const inputShape = ${input.indices(...inputShape)};
-      ${shaderHelper.declareVariables(input, output)}
+      ${shaderHelper.registerUniform('output_size', 'u32').declareVariables(input, output)}
       ${shaderHelper.mainStart()}
-      ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-      let outputIndices = ${output.offsetToIndices('global_idx')};
-      var inputIndices: ${input.type.indices};
+      ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
+      let output_indices = ${output.offsetToIndices('global_idx')};
+      var input_indices: ${input.type.indices};
       for (var i = 0; i < ${inputShape.length}; i++) {
-        let inputDimValue = ${output.indicesGet('outputIndices', 'i')}  % ${input.indicesGet('inputShape', 'i')};
+        let input_dim_i = ${input.indicesGet('uniforms.input_shape', 'i')};
+        let input_dim_value = ${output.indicesGet('output_indices', 'i')}  % input_dim_i;
 
-        ${input.indicesSet('inputIndices', 'i', 'inputDimValue')}
+        ${input.indicesSet('input_indices', 'i', 'input_dim_value')}
       }
-      ${output.setByOffset('global_idx', input.getByIndices('inputIndices'))}
+      ${output.setByOffset('global_idx', input.getByIndices('input_indices'))}
     }`;
 
   return {
     name: 'Tile',
-    shaderCache: {hint: `${repeats}`},
+    shaderCache: {hint: `${repeats}`, inputDependencies: ['rank']},
     getRunData: () => ({
       outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
       dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
+      programUniforms: [
+        {type: 'uint32', data: outputSize}, ...createTensorShapeVariables(inputs[0].dims),
+        ...createTensorShapeVariables(outputShape)
+      ],
     }),
     getShaderSource,
   };

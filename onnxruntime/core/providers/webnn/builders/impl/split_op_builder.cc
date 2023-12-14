@@ -17,6 +17,9 @@ namespace webnn {
 
 class SplitOpBuilder : public BaseOpBuilder {
   // Add operator related.
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
@@ -28,6 +31,15 @@ class SplitOpBuilder : public BaseOpBuilder {
 
   int GetMinSupportedOpSet(const Node& node) const override;
 };
+
+// Add operator related.
+
+void SplitOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  // Skip split initializer if present.
+  if (node.InputDefs().size() > 1) {
+    model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
+  }
+}
 
 Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                              const Node& node,

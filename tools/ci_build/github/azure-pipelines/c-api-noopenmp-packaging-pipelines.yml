@@ -1349,5 +1349,3 @@ stages:
       inputs:
         artifactName: 'drop-signed-nuget-dml'
         targetPath: '$(Build.ArtifactStagingDirectory)'
-
-- template: templates/publish-nuget.yml

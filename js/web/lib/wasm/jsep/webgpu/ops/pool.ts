@@ -1,12 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {env} from 'onnxruntime-common';
+
 import {TensorView} from '../../tensor-view';
 import {PoolConvUtil, ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, ProgramInfo} from '../types';
+import {ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
 
-import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, getElementAt, IndicesHelper, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
 
 // TODO: support:
 // - ceil_mode                 "test_maxpool_2d_ceil"
@@ -15,11 +17,8 @@ import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './comm
 // - [MaxPool] output[1]       "test_maxpool_with_argmax_2d_precomputed_pads"
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
-  if (!inputs || inputs.length !== 1) {
+  if (env.webgpu.validateInputContent && (!inputs || inputs.length !== 1)) {
     throw new Error('Pool ops requires 1 input.');
-  }
-  if (inputs[0].dims.length !== 4 && inputs[0].dims.length !== 3) {
-    throw new Error('Pool ops supports 1-D or 2-D inputs only for now.');
   }
 };
 
@@ -51,30 +50,83 @@ const getAdjustedPoolAttributesAndOutputShape = <AttributeType extends AveragePo
   return [newAttributes, isChannelsLast ? outputShapeAsChannelLast : outputShapeAsChannelFirst];
 };
 
-const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPoolAttributes>(
-    shaderHelper: ShaderHelper, x: IndicesHelper, xShape: readonly number[], outputShape: readonly number[],
-    attributes: AttributeType, op1: string, op2: string, start: string): string => {
+const getUniformAndPadInfo = <AttributeType extends AveragePoolAttributes|MaxPoolAttributes>(
+    outputShape: readonly number[],
+    attributes: AttributeType): [ProgramUniform[], UniformsArrayType, boolean, boolean, boolean] => {
   const isChannelsLast = attributes.format === 'NHWC';
-  const inputDims = xShape;
-  const dataType = x.type.value;
-  const rank = inputDims.length;
   const outputSize = ShapeUtil.size(outputShape);
-  const output = outputVariable('output', x.type.tensor, outputShape);
-
+  const kernelSize = ShapeUtil.size(attributes.kernelShape);
+  const programUniforms: ProgramUniform[] = [{type: 'uint32', data: outputSize}, {type: 'uint32', data: kernelSize}];
+  const uniforms: UniformsArrayType = [{name: 'outputSize', type: 'u32'}, {name: 'kernelSize', type: 'u32'}];
   if (attributes.kernelShape.length <= 2) {
     const kw = attributes.kernelShape[attributes.kernelShape.length - 1];
     const sw = attributes.strides[attributes.strides.length - 1];
     const pwStart = attributes.pads[attributes.pads.length / 2 - 1];
     const pwEnd = attributes.pads[attributes.pads.length - 1];
-    const dimIdxW = rank - (isChannelsLast ? 2 : 1);
+    const pwStartEnd = !!(pwStart + pwEnd);
+    programUniforms.push(
+        {type: 'uint32', data: kw},
+        {type: 'uint32', data: sw},
+        {type: 'uint32', data: pwStart},
+        {type: 'uint32', data: pwEnd},
+    );
+    uniforms.push(
+        {name: 'kw', type: 'u32'}, {name: 'sw', type: 'u32'}, {name: 'pwStart', type: 'u32'},
+        {name: 'pwEnd', type: 'u32'});
+
+    let phStartEnd = false;
+    if (attributes.kernelShape.length === 2) {
+      const kh = attributes.kernelShape[attributes.kernelShape.length - 2];
+      const sh = attributes.strides[attributes.strides.length - 2];
+      const phStart = attributes.pads[attributes.pads.length / 2 - 2];
+      const phEnd = attributes.pads[attributes.pads.length - 2];
+      phStartEnd = !!(phStart + phEnd);
+      programUniforms.push(
+          {type: 'uint32', data: kh}, {type: 'uint32', data: sh}, {type: 'uint32', data: phStart},
+          {type: 'uint32', data: phEnd});
+
+      uniforms.push(
+          {name: 'kh', type: 'u32'}, {name: 'sh', type: 'u32'}, {name: 'phStart', type: 'u32'},
+          {name: 'phEnd', type: 'u32'});
+    }
+    return [programUniforms, uniforms, true, pwStartEnd, phStartEnd];
+  } else {
+    if (isChannelsLast) {
+      throw new Error('Pooling with kernelShape.length > 2 is not supported for NHWC format.');
+    }
+    const kernelStrides = ShapeUtil.computeStrides(attributes.kernelShape);
+    programUniforms.push(
+        {type: 'uint32', data: kernelStrides}, {type: 'uint32', data: attributes.pads},
+        {type: 'uint32', data: attributes.strides});
+    uniforms.push(
+        {name: 'kernelStrides', type: 'u32', length: kernelStrides.length},
+        {name: 'pads', type: 'u32', length: attributes.pads.length},
+        {name: 'strides', type: 'u32', length: attributes.strides.length});
+
+    const hasPads = attributes.pads.reduce((sum, cur) => sum + cur);
+    return [programUniforms, uniforms, !!hasPads, false, false];
+  }
+};
+
+const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPoolAttributes>(
+    shaderHelper: ShaderHelper, x: IndicesHelper, rank: number, outputShapeRank: number, attributes: AttributeType,
+    op1: string, op2: string, start: number, uniforms: UniformsArrayType, hasPads: boolean, pwStartEnd: boolean,
+    phStartEnd: boolean): string => {
+  const isChannelsLast = attributes.format === 'NHWC';
+  const dataType = x.type.value;
+  const output = outputVariable('output', x.type.tensor, outputShapeRank);
+
+  if (attributes.kernelShape.length <= 2) {
     let codeW = '';
     let codeH = '';
     let codeHEnd = '';
-    if (pwStart + pwEnd !== 0) {
+    const dimIdxW = rank - (isChannelsLast ? 2 : 1);
+    if (pwStartEnd === true) {
       codeW = `
-                for (var i: u32 = 0u; i < ${kw}u; i++) {
-                  xIndices[${dimIdxW}] = indices[${dimIdxW}] * ${sw} - ${pwStart} + i;
-                  if (xIndices[${dimIdxW}] < 0 || xIndices[${dimIdxW}] >= ${inputDims[dimIdxW]}) {
+                for (var i: u32 = 0u; i < uniforms.kw; i++) {
+                  xIndices[${dimIdxW}] = indices[${dimIdxW}] * uniforms.sw - uniforms.pwStart + i;
+                  if (xIndices[${dimIdxW}] < 0 || xIndices[${dimIdxW}]
+                      >= uniforms.x_shape[${dimIdxW}]) {
                     pad++;
                     continue;
                   }
@@ -83,33 +135,28 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
                 }`;
     } else {
       codeW = `
-                for (var i: u32 = 0u; i < ${kw}u; i++) {
-                  xIndices[${dimIdxW}] = indices[${dimIdxW}] * ${sw} - ${pwStart} + i;
+                for (var i: u32 = 0u; i < uniforms.kw; i++) {
+                  xIndices[${dimIdxW}] = indices[${dimIdxW}] * uniforms.sw - uniforms.pwStart + i;
                   let x_val = x[${x.indicesToOffset('xIndices')}];
                   ${op1}
                 }`;
     }
 
     if (attributes.kernelShape.length === 2) {
-      const kh = attributes.kernelShape[attributes.kernelShape.length - 2];
-      const sh = attributes.strides[attributes.strides.length - 2];
-      const phStart = attributes.pads[attributes.pads.length / 2 - 2];
-      const phEnd = attributes.pads[attributes.pads.length - 2];
       const dimIdxH = rank - (isChannelsLast ? 3 : 2);
-      const dimH = inputDims[dimIdxH];
-      if (phStart + phEnd !== 0) {
+      if (phStartEnd === true) {
         codeH = `
-                for (var j: u32 = 0u; j < ${kh}u; j++) {
-                  xIndices[${dimIdxH}] = indices[${dimIdxH}] * ${sh} - ${phStart} + j;
-                  if (xIndices[${dimIdxH}] < 0 || xIndices[${dimIdxH}] >= ${dimH}) {
-                    pad+= ${kw};
+                for (var j: u32 = 0u; j < uniforms.kh; j++) {
+                  xIndices[${dimIdxH}] = indices[${dimIdxH}] * uniforms.sh - uniforms.phStart + j;
+                  if (xIndices[${dimIdxH}] < 0 || xIndices[${dimIdxH}] >= uniforms.x_shape[${dimIdxH}]) {
+                    pad += i32(uniforms.kw);
                     continue;
                   }
               `;
       } else {
         codeH = `
-                for (var j: u32 = 0u; j < ${kh}u; j++) {
-                  xIndices[${dimIdxH}] = indices[${dimIdxH}] * ${sh} - ${phStart} + j;
+                for (var j: u32 = 0u; j < uniforms.kh; j++) {
+                  xIndices[${dimIdxH}] = indices[${dimIdxH}] * uniforms.sh - uniforms.phStart + j;
                 `;
       }
       codeHEnd = `
@@ -118,15 +165,15 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
     }
 
     const poolingCode = `
-            ${shaderHelper.declareVariables(x, output)}
+            ${shaderHelper.registerUniforms(uniforms).declareVariables(x, output)}
 
             ${shaderHelper.mainStart()}
-              ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
+              ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
 
               let indices = ${output.offsetToIndices('global_idx')};
               var xIndices = ${output.offsetToIndices('global_idx')};
 
-              var value: ${dataType} = ${dataType}(${start});
+              var value = ${dataType}(${start});
               var pad = 0;
               ${codeH}
               ${codeW}
@@ -140,15 +187,12 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
     if (isChannelsLast) {
       throw new Error('Pooling with kernelShape.length > 2 is not supported for NHWC format.');
     }
-    const kernelSize = ShapeUtil.size(attributes.kernelShape);
-    const kernelStrides = ShapeUtil.computeStrides(attributes.kernelShape);
-    const stridesRank = kernelStrides.length;
+    const stridesRank = attributes.kernelShape.length;
     const padsRank = attributes.pads.length;
-    const hasPads = attributes.pads.reduce((sum, cur) => sum + cur);
     let padCode = '';
     if (hasPads) {
       padCode = `
-                if (xIndices[j] >= inputDims[j]) {
+                if (xIndices[j] >= uniforms.x_shape[j]) {
                   pad++;
                   isPad = true;
                   break;
@@ -166,37 +210,32 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
             `;
     }
     const poolingCode = `
-            ${shaderHelper.declareVariables(x, output)}
-
-            const pads = array<u32, ${padsRank}>(${attributes.pads.map(i => `${i}u`).join(',')});
-            const inputDims = array<u32, ${rank}>(${inputDims.map(i => `${i}u`).join(',')});
-            const kernelStrides = array<u32, ${stridesRank}>(${kernelStrides.map(i => `${i}u`).join(',')});
-            const strides = array<u32, ${stridesRank}>(${attributes.strides.map(i => `${i}u`).join(',')});
+            ${shaderHelper.registerUniforms(uniforms).declareVariables(x, output)}
 
             ${shaderHelper.mainStart()}
-              ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-
+              ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
               let indices = ${output.offsetToIndices('global_idx')};
-              let xIndices = ${output.offsetToIndices('global_idx')};
+              var xIndices = ${output.offsetToIndices('global_idx')};
 
               var offsets: array<u32, ${stridesRank}>;
 
-              var value = ${output.type.value}(${start});
+              var value = ${dataType}(${start});
               var pad = 0;
               var isPad = false;
 
-              for (var i: u32 = 0u; i < ${kernelSize}u; i++) {
+              for (var i: u32 = 0u; i < uniforms.kernelSize; i++) {
                 var offset = i;
                 for (var j = 0u; j < ${stridesRank - 1}u; j++) {
-                  offsets[j] = offset / kernelStrides[j];
-                  offset -= offsets[j] * kernelStrides[j];
+                  offsets[j] = offset / ${getElementAt('uniforms.kernelStrides', 'j', stridesRank)};
+                  offset -= offsets[j] * ${getElementAt('uniforms.kernelStrides', 'j', stridesRank)};
                 }
                 offsets[${stridesRank - 1}] = offset;
 
                 isPad = false;
                 for (var j = ${rank - stridesRank}u; j < ${rank}u; j++) {
-                  xIndices[j] = indices[j] * strides[j - ${rank - stridesRank}u]
-                    + offsets[j - ${rank - stridesRank}u] - pads[j - 2u];
+                  xIndices[j] = indices[j] * ${
+        getElementAt('uniforms.strides', `j - ${rank - stridesRank}u`, stridesRank)}
+                    + offsets[j - ${rank - stridesRank}u] - ${getElementAt('uniforms.pads', 'j - 2u', padsRank)};
                   ${padCode}
               }
               ${op2}
@@ -236,27 +275,35 @@ const createAveragePoolProgramInfo =
     (name: string, input: TensorView, isGlobalOperator: boolean, attributes: AveragePoolAttributes): ProgramInfo => {
       const [adjustedAttributes, outputShape] =
           getAdjustedPoolAttributesAndOutputShape(input, attributes, isGlobalOperator);
-      const kernelSize = ShapeUtil.size(adjustedAttributes.kernelShape);
-
-      const x = inputVariable('x', input.dataType, input.dims);
+      const x = inputVariable('x', input.dataType, input.dims.length);
       const dataType = x.type.value;
 
       const op1 = 'value += x_val;';
       let op2 = '';
       if (adjustedAttributes.countIncludePad) {
-        op2 += `value /= ${dataType}(${kernelSize});`;
+        op2 += `value /= ${dataType}(uniforms.kernelSize);`;
       } else {
-        op2 += `value /= ${dataType}(${kernelSize} - pad);`;
+        op2 += `value /= ${dataType}(i32(uniforms.kernelSize) - pad);`;
       }
+      const [programUniforms, uniforms, hasPads, pwStartEnd, phStartEnd] =
+          getUniformAndPadInfo(outputShape, adjustedAttributes);
+      programUniforms.push(...createTensorShapeVariables(input.dims));
+      programUniforms.push(...createTensorShapeVariables(outputShape));
+      const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank'];
       return {
         name,
-        shaderCache: {hint: attributes.cacheKey},
+        shaderCache: {
+          hint: attributes.cacheKey + hasPads + pwStartEnd + phStartEnd + adjustedAttributes.countIncludePad,
+          inputDependencies
+        },
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: input.dataType}],
-          dispatchGroup: {x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)}
+          dispatchGroup: {x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)},
+          programUniforms
         }),
-        getShaderSource: shaderHelper =>
-            generatePoolingCode(shaderHelper, x, input.dims, outputShape, adjustedAttributes, op1, op2, '0.0'),
+        getShaderSource: shaderHelper => generatePoolingCode(
+            shaderHelper, x, input.dims.length, outputShape.length, adjustedAttributes, op1, op2, 0.0, uniforms,
+            hasPads, pwStartEnd, phStartEnd),
       };
     };
 
@@ -312,16 +359,23 @@ const createMaxPoolProgramInfo =
       value = max(x_val, value);
     `;
       const op2 = '';
-      const x = inputVariable('x', input.dataType, input.dims);
+      const x = inputVariable('x', input.dataType, input.dims.length);
+      const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank'];
+      const [programUniforms, uniforms, hasPads, pwStartEnd, phStartEnd] =
+          getUniformAndPadInfo(outputShape, adjustedAttributes);
+      programUniforms.push(...createTensorShapeVariables(input.dims));
+      programUniforms.push(...createTensorShapeVariables(outputShape));
       return {
         name,
-        shaderCache: {hint: attributes.cacheKey},
+        shaderCache: {hint: attributes.cacheKey + hasPads, inputDependencies},
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: input.dataType}],
-          dispatchGroup: {x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)}
+          dispatchGroup: {x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)},
+          programUniforms
         }),
-        getShaderSource: shaderHelper =>
-            generatePoolingCode(shaderHelper, x, input.dims, outputShape, adjustedAttributes, op1, op2, '-1e5'),
+        getShaderSource: shaderHelper => generatePoolingCode(
+            shaderHelper, x, input.dims.length, outputShape.length, adjustedAttributes, op1, op2, -1e5, uniforms,
+            hasPads, pwStartEnd, phStartEnd),
       };
     };
 

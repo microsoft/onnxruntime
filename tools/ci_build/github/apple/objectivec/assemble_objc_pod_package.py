@@ -154,6 +154,7 @@ def assemble_objc_pod_package(
         "DESCRIPTION": pod_config["description"],
         "INCLUDE_DIR_LIST": path_patterns_as_variable_value(include_dirs),
         "IOS_DEPLOYMENT_TARGET": framework_info["iphonesimulator"]["APPLE_DEPLOYMENT_TARGET"],
+        "MACOSX_DEPLOYMENT_TARGET": framework_info.get("macosx", {}).get("APPLE_DEPLOYMENT_TARGET", ""),
         "LICENSE_FILE": license_file,
         "NAME": pod_name,
         "PUBLIC_HEADER_FILE_LIST": path_patterns_as_variable_value(pod_files["public_header_files"]),

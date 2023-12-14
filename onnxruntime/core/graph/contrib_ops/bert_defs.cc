@@ -259,7 +259,6 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
       *output_shape.add_dim() = query_dims[1];
       *output_shape.add_dim() = query_dims[2];
       updateOutputShape(ctx, 0, output_shape);
-      return;
     } else {
       fail_shape_inference("Missing input 2 (value)");
     }

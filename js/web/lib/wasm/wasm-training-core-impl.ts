@@ -3,7 +3,7 @@
 
 import {InferenceSession, Tensor} from 'onnxruntime-common';
 
-import {SerializableModeldata, SerializableSessionMetadata, TensorMetadata} from './proxy-messages';
+import {SerializableModeldata, TensorMetadata} from './proxy-messages';
 import {setRunOptions} from './run-options';
 import {setSessionOptions} from './session-options';
 import {dataLocationStringToEnum, tensorDataTypeEnumToString, tensorDataTypeStringToEnum, tensorTypeToTypedArrayConstructor} from './wasm-common';
@@ -77,50 +77,44 @@ const getModelInputOutputCount = (trainingSessionId: number, isEvalModel: boolea
 };
 
 const getModelInputOutputNamesLoop =
-    (trainingSessionId: number, count: number, isInput: boolean, isEvalModel: boolean): [string[], number[]] => {
+    (trainingSessionId: number, count: number, isInput: boolean, isEvalModel: boolean): string[] => {
       const names = [];
       const wasm = getInstance();
-
-      const namesUTF8Encoded = [];
 
       for (let i = 0; i < count; i++) {
         if (wasm._OrtTrainingGetModelInputOutputName) {
           const name = wasm._OrtTrainingGetModelInputOutputName(trainingSessionId, i, isInput, isEvalModel);
           ifErrCodeCheckLastError(name, `Can't get input or output name -- is input: ${isInput}, index ${i}`, false);
 
-          namesUTF8Encoded.push(name);
           names.push(wasm.UTF8ToString(name));
+          wasm._free(name);
         } else {
           throw new Error(NO_TRAIN_FUNCS_MSG);
         }
       }
-      return [names, namesUTF8Encoded];
+      return names;
     };
 
-const getTrainingModelInputOutputNames = (trainingSessionId: number): [string[], number[], string[], number[]] => {
-  const [inputCount, outputCount] = getModelInputOutputCount(trainingSessionId, false);
+export const getModelInputOutputNames = (trainingSessionId: number, isEvalModel: boolean): [string[], string[]] => {
+  let inputNames: string[] = [];
+  let outputNames: string[] = [];
 
-  const [inputNames, inputNamesUTF8Encoded] = getModelInputOutputNamesLoop(trainingSessionId, inputCount, true, false);
-  const [outputNames, outputNamesUTF8Encoded] =
-      getModelInputOutputNamesLoop(trainingSessionId, outputCount, false, false);
+  const [inputCount, outputCount] = getModelInputOutputCount(trainingSessionId, isEvalModel);
 
-  return [inputNames, inputNamesUTF8Encoded, outputNames, outputNamesUTF8Encoded];
+  inputNames = getModelInputOutputNamesLoop(trainingSessionId, inputCount, true, isEvalModel);
+  outputNames = getModelInputOutputNamesLoop(trainingSessionId, outputCount, false, isEvalModel);
+
+  return [inputNames, outputNames];
 };
 
 export const createTrainingSessionHandle =
     (checkpointHandle: number, trainModelData: SerializableModeldata, evalModelData: SerializableModeldata,
-     optimizerModelData: SerializableModeldata,
-     options: InferenceSession.SessionOptions): [SerializableSessionMetadata, number[], number[]] => {
+     optimizerModelData: SerializableModeldata, options: InferenceSession.SessionOptions): number => {
       const wasm = getInstance();
 
       let trainingSessionHandle = 0;
       let sessionOptionsHandle = 0;
       let allocs: number[] = [];
-      let inputNamesUTF8Encoded: number[] = [];
-      let outputNamesUTF8Encoded: number[] = [];
-
-      let inputNames: string[] = [];
-      let outputNames: string[] = [];
 
       try {
         [sessionOptionsHandle, allocs] = setSessionOptions(options);
@@ -133,11 +127,7 @@ export const createTrainingSessionHandle =
         }
 
         ifErrCodeCheckLastError(trainingSessionHandle, 'Error occurred when trying to create a TrainingSession', false);
-
-        [inputNames, inputNamesUTF8Encoded, outputNames, outputNamesUTF8Encoded] =
-            getTrainingModelInputOutputNames(trainingSessionHandle);
-        return [[trainingSessionHandle, inputNames, outputNames], inputNamesUTF8Encoded, outputNamesUTF8Encoded];
-
+        return trainingSessionHandle;
       } catch (e) {
         if (wasm._OrtTrainingReleaseSession && trainingSessionHandle !== 0) {
           wasm._OrtTrainingReleaseSession(trainingSessionHandle);
@@ -152,8 +142,6 @@ export const createTrainingSessionHandle =
           wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
         }
         allocs.forEach(alloc => wasm._free(alloc));
-        inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
-        outputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
       }
     };
 
@@ -265,6 +253,17 @@ const moveOutputToTensorMetadataArr =
       return output;
     };
 
+export const lazyResetGrad = async(trainingSessionId: number): Promise<void> => {
+  const wasm = getInstance();
+
+  if (wasm._OrtTrainingLazyResetGrad) {
+    const errorCode = wasm._OrtTrainingLazyResetGrad(trainingSessionId);
+    ifErrCodeCheckLastError(errorCode, 'Can\'t call lazyResetGrad.');
+  } else {
+    throw new Error(NO_TRAIN_FUNCS_MSG);
+  }
+};
+
 export const runTrainStep = async(
     trainingSessionId: number, inputIndices: number[], inputTensors: TensorMetadata[], outputIndices: number[],
     outputTensors: Array<TensorMetadata|null>, options: InferenceSession.RunOptions): Promise<TensorMetadata[]> => {
@@ -298,6 +297,83 @@ export const runTrainStep = async(
       const errorCode = wasm._OrtTrainingRunTrainStep(
           trainingSessionId, inputValuesOffset, inputCount, outputValuesOffset, outputCount, runOptionsHandle);
       ifErrCodeCheckLastError(errorCode, 'failed to call OrtTrainingRunTrainStep in the WebAssembly layer');
+    } else {
+      throw new Error(NO_TRAIN_FUNCS_MSG);
+    }
+
+    return moveOutputToTensorMetadataArr(outputValuesOffset, outputCount, outputTensorHandles, outputTensors);
+  } finally {
+    wasm.stackRestore(beforeRunStack);
+
+    inputTensorHandles.forEach(v => wasm._OrtReleaseTensor(v));
+    outputTensorHandles.forEach(v => wasm._OrtReleaseTensor(v));
+    inputOutputAllocs.forEach(p => wasm._free(p));
+
+    if (runOptionsHandle !== 0) {
+      wasm._OrtReleaseRunOptions(runOptionsHandle);
+    }
+    runOptionsAllocs.forEach(p => wasm._free(p));
+  }
+};
+
+export const runOptimizerStep =
+    async(trainingSessionId: number, options: InferenceSession.RunOptions): Promise<void> => {
+  const wasm = getInstance();
+
+  let runOptionsHandle = 0;
+  let runOptionsAllocs: number[] = [];
+
+  try {
+    [runOptionsHandle, runOptionsAllocs] = setRunOptions(options);
+
+    if (wasm._OrtTrainingOptimizerStep) {
+      const errCode = wasm._OrtTrainingOptimizerStep(trainingSessionId, runOptionsHandle);
+      ifErrCodeCheckLastError(errCode, 'Failed to call OrtTrainingOptimizerStep in the WebAssembly layer');
+    } else {
+      throw new Error(NO_TRAIN_FUNCS_MSG);
+    }
+  } finally {
+    if (runOptionsHandle !== 0) {
+      wasm._OrtReleaseRunOptions(runOptionsHandle);
+    }
+    runOptionsAllocs.forEach(p => wasm._free(p));
+  }
+};
+
+export const runEvalStep = async(
+    trainingSessionId: number, inputIndices: number[], inputTensors: TensorMetadata[], outputIndices: number[],
+    outputTensors: Array<TensorMetadata|null>, options: InferenceSession.RunOptions): Promise<TensorMetadata[]> => {
+  const wasm = getInstance();
+
+  const inputCount = inputIndices.length;
+  const outputCount = outputIndices.length;
+
+  let runOptionsHandle = 0;
+  let runOptionsAllocs: number[] = [];
+
+  const inputTensorHandles: number[] = [];
+  const outputTensorHandles: number[] = [];
+  const inputOutputAllocs: number[] = [];
+
+  const beforeRunStack = wasm.stackSave();
+
+  try {
+    // prepare parameters by moving them to heap
+    [runOptionsHandle, runOptionsAllocs] = setRunOptions(options);
+
+    // handle inputs -- you don't want anything added to the index
+    const inputValuesOffset = createAndAllocateTensors(
+        trainingSessionId, inputIndices, inputTensors, inputTensorHandles, inputOutputAllocs, 0);
+    // handle outputs
+    // you want inputCount to be added to the index of every output tensor passed to prepareInputOutputTensor
+    const outputValuesOffset = createAndAllocateTensors(
+        trainingSessionId, outputIndices, outputTensors, outputTensorHandles, inputOutputAllocs, inputCount);
+
+    if (wasm._OrtTrainingEvalStep) {
+      const errorCode = wasm._OrtTrainingEvalStep(
+          trainingSessionId, inputValuesOffset, inputCount, outputValuesOffset, outputCount, runOptionsHandle);
+
+      ifErrCodeCheckLastError(errorCode, 'failed to call OrtTrainingEvalStep in the WebAssembly layer');
     } else {
       throw new Error(NO_TRAIN_FUNCS_MSG);
     }
@@ -439,17 +515,13 @@ export const loadParametersBuffer =
   }
 };
 
-export const releaseTrainingSessionAndCheckpoint =
-    (checkpointId: number, sessionId: number, inputNamesUTF8Encoded: number[], outputNamesUTF8Encoded: number[]):
-        void => {
-          const wasm = getInstance();
-          inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
-          outputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
+export const releaseTrainingSessionAndCheckpoint = (checkpointId: number, sessionId: number): void => {
+  const wasm = getInstance();
 
-          if (wasm._OrtTrainingReleaseSession) {
-            wasm._OrtTrainingReleaseSession(sessionId);
-          }
-          if (wasm._OrtTrainingReleaseCheckpoint) {
-            wasm._OrtTrainingReleaseCheckpoint(checkpointId);
-          }
-        };
+  if (wasm._OrtTrainingReleaseSession) {
+    wasm._OrtTrainingReleaseSession(sessionId);
+  }
+  if (wasm._OrtTrainingReleaseCheckpoint) {
+    wasm._OrtTrainingReleaseCheckpoint(checkpointId);
+  }
+};

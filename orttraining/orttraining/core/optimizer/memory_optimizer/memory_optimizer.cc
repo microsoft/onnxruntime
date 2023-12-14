@@ -13,7 +13,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
 #include "orttraining/core/graph/recompute_graph_utils.h"
-#include "orttraining/core/optimizer/memory_optimizer.h"
+#include "orttraining/core/optimizer/memory_optimizer/memory_optimizer.h"
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
 #include "orttraining/core/optimizer/memory_optimizer/optimization_planner.h"
 #include "orttraining/core/optimizer/memory_optimizer/recompute_analysis.h"
@@ -30,19 +30,17 @@ constexpr bool IsForwardPassOperator(ptrdiff_t op_order_in_topological_sort,
 
 }  // namespace
 
-Status MemoryOptimizer::ParseConfigFromString(const std::string& memory_optimizer_config,
-                                              const std::string& level) {
+Status MemoryOptimizer::ParseOptimizationConfigFromString(const std::string& memory_optimizer_config,
+                                                          const std::string& recompute_probe_config) {
   optimizer_config_ = memory_optimizer_config;
 
-  ORT_RETURN_IF_ERROR(optimizer::memory_optimizer::ParseConfigFromString(
+  ORT_RETURN_IF_ERROR(optimizer::memory_optimizer::ParseOptimizationConfigFromString(
       memory_optimizer_config,
       pattern_subgraph_to_user_optimizer_config_map_));
 
-  int probe_level = optimizer::memory_optimizer::ParseIntValueFromString(level);
-  ORT_RETURN_IF_NOT(probe_level < static_cast<int>(optimizer::memory_optimizer::ProbeLevel::LevelMax) &&
-                        probe_level >= 0,
-                    "Invalid probe level specified: ", level);
-  recompute_probe_level_ = static_cast<optimizer::memory_optimizer::ProbeLevel>(probe_level);
+  ORT_RETURN_IF_ERROR(optimizer::memory_optimizer::ParseProbeConfigFromString(
+      recompute_probe_config,
+      recompute_probe_config_));
 
   return Status::OK();
 }
@@ -126,13 +124,20 @@ bool MemoryOptimizer::ModifyGraph(Graph& graph,
 
 Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& logger)
     const {
+  // Reset the backward pass attribute for all nodes.
+  ORT_RETURN_IF_ERROR(optimizer::memory_optimizer::ResetNodeBackwardPassAttribute(graph, modified));
+
   LOGS(logger, VERBOSE) << "Memory optimization config: " << optimizer_config_ << ", probe level: "
-                        << static_cast<int>(recompute_probe_level_);
+                        << static_cast<int>(recompute_probe_config_.probe_level)
+                        << ", enable_transformer_layer_as_boundary:"
+                        << recompute_probe_config_.enable_transformer_layer_as_boundary;
 
   if (pattern_subgraph_to_user_optimizer_config_map_.empty()) {
     LOGS(logger, VERBOSE) << "No optimization pattern is specified, skip memory optimization.";
     return Status::OK();
   }
+
+  size_t recomputed_node_count = 0;
 
   ptrdiff_t yield_op_order_in_topological_sort;
   InlinedHashMap<const Node*, InlinedVector<size_t>> candidate_output_args_map;
@@ -143,7 +148,7 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   optimizer::memory_optimizer::MemoryOptimizationPlanner memory_opt_planner;
   ORT_ENFORCE(optimizer::memory_optimizer::FindORTModuleMemoryOpportunity(
                   graph_viewer,
-                  recompute_probe_level_,
+                  recompute_probe_config_,
                   logger,
                   node_index_to_its_order_in_topological_sort_map,
                   yield_op_order_in_topological_sort,
@@ -166,7 +171,7 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   // The reason we do reversed topological order is that we want the later layers' recompute nodes can be appended
   // earlier than the earlier layers, in this way, the execution order of later layers will be in front of the earlier
   // layers.
-  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
+  const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
   for (int i = static_cast<int>(node_ids.size()) - 1; i >= 0; --i) {
     Node* p_node = graph.GetNode(node_ids[i]);
     if (p_node == nullptr) {
@@ -183,7 +188,15 @@ Status MemoryOptimizer::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
                                       node_to_apply_context_map[p_node]);
     }
 
+    if (has_been_modified) {
+      recomputed_node_count += 1;
+    }
+
     modified = modified || has_been_modified;
+  }
+
+  if (recomputed_node_count > 0) {
+    LOGS(logger, INFO) << "Total number of recomputed nodes: " << recomputed_node_count;
   }
 
   PrintSummary(memory_opt_planner, node_to_apply_context_map, logger);
