@@ -4,7 +4,7 @@
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType} from '../types';
+import {ComputeContext, GpuDataType, ProgramUniform} from '../types';
 
 import {applyAttention, AttentionAttrs, AttentionMaskType, AttentionParameters, AttentionQkvFormat} from './attention';
 import {ShaderHelper, tensorTypeToWsglStorageType} from './common';
@@ -228,7 +228,6 @@ const validateInputs = (inputs: readonly TensorView[], attributes: AttentionAttr
   };
 };
 
-
 export const parseMultiHeadAttentionAttributes = (attributes: AttentionAttrs): AttentionAttrs =>
     createAttributeWithCacheKey({...attributes});
 
@@ -240,18 +239,19 @@ const addBiasTranspose =
       const outputShape = [batchSize, sequenceLength, hiddenSize];
       const outputSize = ShapeUtil.size(outputShape);
 
+      const programUniforms: ProgramUniform[] =
+          [{type: 'uint32', data: outputSize}, {type: 'uint32', data: biasOffset}, {type: 'uint32', data: hiddenSize}];
       const dataType = tensorTypeToWsglStorageType(qkv.dataType);
       const getShaderSource = (shaderHelper: ShaderHelper) => `
-  const biasOffset = ${biasOffset}u;
-  const hiddenSize = ${hiddenSize}u;
-
   @group(0) @binding(0) var<storage, read> qkv: array<${dataType}>;
   @group(0) @binding(1) var<storage, read> bias: array<${dataType}>;
   @group(0) @binding(2) var<storage, read_write> qkv_with_bias: array<${dataType}>;
+  struct Uniforms { outputSize:u32, biasOffset:u32, hiddenSize:u32 };
+  @group(0) @binding(3) var<uniform> uniforms: Uniforms;
 
   ${shaderHelper.mainStart()}
-    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-    let biasOffsetIdx = (global_idx % hiddenSize) + biasOffset;
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
+    let biasOffsetIdx = (global_idx % uniforms.hiddenSize) + uniforms.biasOffset;
 
     qkv_with_bias[global_idx] = qkv[global_idx] + bias[biasOffsetIdx];
   }`;
@@ -259,10 +259,11 @@ const addBiasTranspose =
       return context.compute(
           {
             name: 'MultiHeadAttentionAddBias',
-            shaderCache: {hint: JSON.stringify({batchSize, sequenceLength, hiddenSize, biasOffset})},
+            shaderCache: {inputDependencies: ['type', 'type']},
             getRunData: () => ({
               outputs: [{dims: outputShape, dataType: qkv.dataType, gpuDataType: GpuDataType.default}],
               dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
+              programUniforms
             }),
             getShaderSource,
           },
