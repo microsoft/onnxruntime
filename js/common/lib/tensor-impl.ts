@@ -1,10 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {resolvePreprocessor} from './preprocess-impl.js';
+import {PreprocessorDataOutputTypeMapping, PreprocessPlan} from './preprocess.js';
 import {tensorToDataURL, tensorToImageData} from './tensor-conversion-impl.js';
 import {TensorToDataUrlOptions, TensorToImageDataOptions} from './tensor-conversion.js';
 import {tensorFromGpuBuffer, tensorFromImage, tensorFromPinnedBuffer, tensorFromTexture} from './tensor-factory-impl.js';
-import {CpuPinnedConstructorParameters, GpuBufferConstructorParameters, TensorFromGpuBufferOptions, TensorFromImageBitmapOptions, TensorFromImageDataOptions, TensorFromImageElementOptions, TensorFromTextureOptions, TensorFromUrlOptions, TextureConstructorParameters} from './tensor-factory.js';
+import {CpuPinnedConstructorParameters, GpuBufferConstructorParameters, PreProcessConstructorParameters, TensorFromGpuBufferOptions, TensorFromImageBitmapOptions, TensorFromImageDataOptions, TensorFromImageElementOptions, TensorFromTextureOptions, TensorFromUrlOptions, TextureConstructorParameters} from './tensor-factory.js';
 import {checkBigInt, NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP, NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP, SupportedTypedArray, SupportedTypedArrayConstructors} from './tensor-impl-type-mapping.js';
 import {calculateSize, tensorReshape} from './tensor-utils-impl.js';
 import {Tensor as TensorInterface} from './tensor.js';
@@ -59,13 +61,21 @@ export class Tensor implements TensorInterface {
    * @param params - Specify the parameters to construct the tensor.
    */
   constructor(params: GpuBufferConstructorParameters);
+  /**
+   * Construct a new tensor object from preprocess steps.
+   *
+   * Tensor's location will be set to 'pending'.
+   *
+   * @param params - Specify the parameters to construct the tensor.
+   */
+  constructor(params: PreProcessConstructorParameters);
 
   /**
    * implementation.
    */
   constructor(
       arg0: TensorType|TensorDataType|readonly string[]|readonly boolean[]|CpuPinnedConstructorParameters|
-      TextureConstructorParameters|GpuBufferConstructorParameters,
+      TextureConstructorParameters|GpuBufferConstructorParameters|PreProcessConstructorParameters,
       arg1?: TensorDataType|readonly number[]|readonly string[]|readonly boolean[], arg2?: readonly number[]) {
     // perform one-time check for BigInt support
     checkBigInt();
@@ -109,6 +119,11 @@ export class Tensor implements TensorInterface {
           this.gpuBufferData = arg0.gpuBuffer;
           this.downloader = arg0.download;
           this.disposer = arg0.dispose;
+          break;
+        }
+        case 'pending': {
+          const {data, input, output, options} = arg0;
+          this.preprocessPlan = {data, input, output, options};
           break;
         }
         default:
@@ -272,6 +287,8 @@ export class Tensor implements TensorInterface {
   readonly dims: readonly number[];
   readonly type: TensorType;
   readonly size: number;
+
+  preprocessPlan?: PreprocessPlan;
   // #endregion
 
   // #region private fields
@@ -399,6 +416,34 @@ export class Tensor implements TensorInterface {
     this.isDownloading = undefined;
 
     this.dataLocation = 'none';
+  }
+
+  async preprocess(backendName: string): Promise<void> {
+    if (!this.preprocessPlan) {
+      throw new Error('The current tensor does not have a preprocess plan.');
+    }
+    const {data: inputData, input, output, options} = this.preprocessPlan;
+    const preprocessor = await resolvePreprocessor(backendName, input, output);
+    if (!preprocessor) {
+      throw new Error(`Cannot find preprocessor "${input}" => "${output}" for backend "${backendName}".`);
+    }
+    const outputData = await preprocessor.process(inputData, options);
+    switch (output) {
+      case 'cpu':
+        this.dataLocation = 'cpu';
+        this.cpuData = outputData as Tensor['data'];
+        break;
+      case 'gpu-buffer': {
+        this.dataLocation = 'gpu-buffer';
+        const {gpuBuffer, dispose} = outputData as PreprocessorDataOutputTypeMapping['gpu-buffer'];
+        this.gpuBufferData = gpuBuffer;
+        this.disposer = dispose;
+        break;
+      }
+      default:
+        throw new Error(`unsupported output location: ${output}`);
+    }
+    delete this.preprocessPlan;
   }
 
   // #endregion

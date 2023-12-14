@@ -140,7 +140,32 @@ export declare namespace Tensor {
   /**
    * represent where the tensor data is stored
    */
-  export type DataLocation = 'none'|'cpu'|'cpu-pinned'|'texture'|'gpu-buffer';
+  export type DataLocation =|
+      /**
+       * the data is disposed and became unavailable.
+       */
+      'none'|
+      /**
+       * the data is stored in CPU, as either a string array (for 'string' tensor type) or a TypedArray (for numeric
+       * tensor type).
+       */
+      'cpu'|
+      /**
+       * the numeric tensor data is stored in CPU as TypedArray with pinned buffer.
+       */
+      'cpu-pinned'|
+      /**
+       * the numeric tensor data is stored as WebGL texture.
+       */
+      'texture'|
+      /**
+       * the numeric tensor data is stored as WebGPU buffer.
+       */
+      'gpu-buffer'|
+      /**
+       * the data is pending on one or more pre-processing step(s) before it became available.
+       */
+      'pending';
 
   /**
    * represent the data type of a tensor

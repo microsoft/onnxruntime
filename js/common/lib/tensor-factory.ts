@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {PreprocessPlan} from './preprocess.js';
 import {Tensor, TypedTensor} from './tensor.js';
 
 export type ImageFormat = 'RGB'|'RGBA'|'BGR'|'RBG';
@@ -84,6 +85,17 @@ export interface GpuBufferConstructorParameters<T extends Tensor.GpuBufferDataTy
   readonly gpuBuffer: Tensor.GpuBufferType;
 }
 
+/**
+ * represent the parameter for constructing a tensor from a preprocess setep.
+ */
+export interface PreProcessConstructorParameters<T extends Tensor.Type = Tensor.Type> extends
+    PreprocessPlan, CommonConstructorParameters<T> {
+  /**
+   * Specify the location of the data to be 'pending'.
+   */
+  readonly location: 'pending';
+}
+
 // #endregion
 
 // the following region contains type definitions of each individual options.
@@ -113,6 +125,13 @@ export interface OptionsTensorDataType {
    * Describes the data type of the tensor.
    */
   dataType?: 'float32'|'uint8';
+}
+
+export interface OptionsTensorTargetLocation {
+  /**
+   * Describes the target location of the tensor.
+   */
+  location?: 'gpu-buffer'|'cpu';
 }
 
 export interface OptionsTensorLayout {
@@ -175,18 +194,20 @@ export interface OptionsNormalizationParameters {
 // #region Options composition
 
 export interface TensorFromImageDataOptions extends OptionResizedDimensions, OptionsTensorFormat, OptionsTensorLayout,
-                                                    OptionsTensorDataType, OptionsNormalizationParameters {}
+                                                    OptionsTensorDataType, OptionsTensorTargetLocation,
+                                                    OptionsNormalizationParameters {}
 
 export interface TensorFromImageElementOptions extends OptionResizedDimensions, OptionsTensorFormat,
                                                        OptionsTensorLayout, OptionsTensorDataType,
-                                                       OptionsNormalizationParameters {}
+                                                       OptionsTensorTargetLocation, OptionsNormalizationParameters {}
 
 export interface TensorFromUrlOptions extends OptionsDimensions, OptionResizedDimensions, OptionsTensorFormat,
-                                              OptionsTensorLayout, OptionsTensorDataType,
+                                              OptionsTensorLayout, OptionsTensorDataType, OptionsTensorTargetLocation,
                                               OptionsNormalizationParameters {}
 
 export interface TensorFromImageBitmapOptions extends OptionResizedDimensions, OptionsTensorFormat, OptionsTensorLayout,
-                                                      OptionsTensorDataType, OptionsNormalizationParameters {}
+                                                      OptionsTensorDataType, OptionsTensorTargetLocation,
+                                                      OptionsNormalizationParameters {}
 
 export interface TensorFromTextureOptions<T extends Tensor.TextureDataTypes> extends
     Required<OptionsDimensions>, OptionsFormat, GpuResourceConstructorParameters<T>/* TODO: add more */ {}

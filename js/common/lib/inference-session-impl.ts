@@ -5,7 +5,7 @@ import {resolveBackend} from './backend-impl.js';
 import {InferenceSessionHandler} from './backend.js';
 import {InferenceSession as InferenceSessionInterface} from './inference-session.js';
 import {OnnxValue} from './onnx-value.js';
-import {Tensor} from './tensor.js';
+import {Tensor} from './tensor-impl.js';
 
 type SessionOptions = InferenceSessionInterface.SessionOptions;
 type RunOptions = InferenceSessionInterface.RunOptions;
@@ -14,9 +14,7 @@ type FetchesType = InferenceSessionInterface.FetchesType;
 type ReturnType = InferenceSessionInterface.ReturnType;
 
 export class InferenceSession implements InferenceSessionInterface {
-  private constructor(handler: InferenceSessionHandler) {
-    this.handler = handler;
-  }
+  private constructor(private handler: InferenceSessionHandler, private backendName: string) {}
   run(feeds: FeedsType, options?: RunOptions): Promise<ReturnType>;
   run(feeds: FeedsType, fetches: FetchesType, options?: RunOptions): Promise<ReturnType>;
   async run(feeds: FeedsType, arg1?: FetchesType|RunOptions, arg2?: RunOptions): Promise<ReturnType> {
@@ -91,8 +89,15 @@ export class InferenceSession implements InferenceSessionInterface {
 
     // check if all inputs are in feed
     for (const name of this.inputNames) {
-      if (typeof feeds[name] === 'undefined') {
+      const tensor = feeds[name] as Tensor | undefined;
+      if (typeof tensor === 'undefined') {
         throw new Error(`input '${name}' is missing in 'feeds'.`);
+      }
+      if (tensor.location === 'pending') {
+        if (!tensor.preprocess) {
+          throw new Error(`input '${name}' is pending preprocess, but no preprocess plan is provided.`);
+        }
+        await tensor.preprocess(this.backendName);
       }
     }
 
@@ -194,9 +199,9 @@ export class InferenceSession implements InferenceSessionInterface {
     // get backend hints
     const eps = options.executionProviders || [];
     const backendHints = eps.map(i => typeof i === 'string' ? i : i.name);
-    const backend = await resolveBackend(backendHints);
+    const [backendName, backend] = await resolveBackend(backendHints);
     const handler = await backend.createInferenceSessionHandler(filePathOrUint8Array, options);
-    return new InferenceSession(handler);
+    return new InferenceSession(handler, backendName);
   }
 
   startProfiling(): void {
@@ -212,6 +217,4 @@ export class InferenceSession implements InferenceSessionInterface {
   get outputNames(): readonly string[] {
     return this.handler.outputNames;
   }
-
-  private handler: InferenceSessionHandler;
 }
