@@ -28,11 +28,11 @@ class MatMulNBits final : public OpKernel {
     const Tensor* tensor_B = nullptr;
     const Tensor* tensor_scale = nullptr;
     const Tensor* tensor_zero_point = nullptr;
-    bool get_B = info.TryGetConstantInput(1, &tensor_B);
-    bool get_scale = info.TryGetConstantInput(2, &tensor_scale);
-    bool get_zero_point = info.TryGetConstantInput(3, &tensor_zero_point);
-    all_constant_ = get_B && get_scale;
-    all_constant_ = is_asym_ ? all_constant_ && get_zero_point : all_constant_;
+    bool B_constant = info.TryGetConstantInput(1, &tensor_B);
+    bool scale_constant = info.TryGetConstantInput(2, &tensor_scale);
+    bool zero_point_constant = info.TryGetConstantInput(3, &tensor_zero_point);
+    all_constant_ = B_constant && scale_constant;
+    all_constant_ = is_asym_ ? all_constant_ && zero_point_constant : all_constant_;
   }
 
   Status Compute(OpKernelContext* context) const override;
