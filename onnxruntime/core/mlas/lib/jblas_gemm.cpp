@@ -53,7 +53,7 @@ JblasSQ4GemmCompF32(
     auto K_ = static_cast<int>(K);
     auto lda_ = static_cast<int>(lda);
     auto ldc_ = static_cast<int>(ldc);
-    if (M <= 32) {
+    if (M <= 16) {
         using Parallel = jblas::parallel::gemm::SchedulerKBlock<GemmCore_T>;
         using Launcher = tLauncher_Fp32_S4_F32F32<GemmCore_T>;
         static Launcher kernel;
@@ -106,7 +106,7 @@ JblasSQ4GemmCompInt8(
     static Launcher kernel;
     auto quanA = kernel.mProA.createStorage(M_, K_, B->mBlockSize, B->mIsAsym);
     quanA.assign(WorkSpace);
-    if (M <= 32) {
+    if (M <= 16) {
         ORTThreading single(nullptr);
         kernel.mProA.quantize({A, lda_, &quanA}, M_, K_, &single);
     } else {
@@ -219,7 +219,7 @@ JblasSQ4GemmCompF32WorkspaceSize(
     (void)(N);
     (void)(lda);
     (void)(ldc);
-    if (M <= 32) {
+    if (M <= 16) {
         using Launcher = tLauncher_Fp32_S4_F32F32<GemmCore_T>;
         static Launcher kernel;
         if (B->mIsAsym) {
