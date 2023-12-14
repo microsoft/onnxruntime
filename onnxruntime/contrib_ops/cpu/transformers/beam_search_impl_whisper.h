@@ -153,6 +153,12 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
   const OrtValue* encoder_input_ids_value = this->context_.GetInputOrtValue(0);
   const Tensor& encoder_input_ids = encoder_input_ids_value->Get<Tensor>();
 
+  const OrtValue* left_pad_mask_value = this->context_.GetInputOrtValue(15);
+  const Tensor& left_pad_mask = left_pad_mask_value->Get<Tensor>();
+
+  const OrtValue* position_ids_value = this->context_.GetInputOrtValue(16);
+  const Tensor& position_ids = position_ids_value->Get<Tensor>();
+
   BeamSearchCpuState cpu_state{*parameters,
                                this->cpu_allocator_,
                                this->IsCuda(),
@@ -166,6 +172,8 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
   ORT_RETURN_IF_ERROR(this->encoder_subgraph_.CreateInitialFeeds(
       encoder_input_ids,
       initial_decoder_input_ids_value,
+      left_pad_mask,
+      position_ids,
       parameters->decoder_start_token_id,
       this->implicit_inputs_,
       encoder_feeds,

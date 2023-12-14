@@ -50,6 +50,8 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, 10)   // 'decoder_input_ids' needs to be on CPU
         .InputMemoryType(OrtMemTypeCPUInput, 11)   // 'logits_processor' needs to be on CPU
         .InputMemoryType(OrtMemTypeCPUInput, 14)   // 'temperature' needs to be on CPU
+        .InputMemoryType(OrtMemTypeCPUInput, 15)   // 'left_pad_mask' needs to be on CPU
+        .InputMemoryType(OrtMemTypeCPUInput, 16)   // 'position_ids' needs to be on CPU
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)  // 'sequences' output on CPU
         .OutputMemoryType(OrtMemTypeCPUOutput, 1)  // 'sequences_scores' output on CPU
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),

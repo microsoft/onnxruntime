@@ -40,7 +40,7 @@ namespace transformers {
 
 Status WhisperEncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                                         const std::vector<const NodeArg*>& subgraph_outputs) {
-  ORT_RETURN_IF(num_subgraph_inputs != 2, "expect 2 inputs, got:", num_subgraph_inputs);
+  ORT_RETURN_IF(num_subgraph_inputs < 2, "expect 2 inputs, got:", num_subgraph_inputs);
 
   ORT_RETURN_IF(num_subgraph_outputs < 6, "expect >=6 outputs, got:", num_subgraph_outputs);
   ORT_RETURN_IF((static_cast<int>(subgraph_outputs.size()) - first_present_output_index_) % 4 != 0,
@@ -95,6 +95,8 @@ Status WhisperEncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
 Status WhisperEncoderSubgraph::CreateInitialFeeds(
     const Tensor& original_encoder_input_ids,
     const OrtValue* original_decoder_input_ids_value,
+    const Tensor& original_left_pad_mask,
+    const Tensor& original_position_ids,
     int start_token_id,
     const std::vector<const OrtValue*>& implicit_inputs,
     std::vector<OrtValue>& feeds,
@@ -117,12 +119,18 @@ Status WhisperEncoderSubgraph::CreateInitialFeeds(
   ORT_RETURN_IF(cpu_allocator == nullptr, "cpu_allocator shouldn't be nullptr");
 
   OrtValue encoder_input_ids;
+  OrtValue left_pad_mask;
+  OrtValue position_ids;
   ORT_RETURN_IF_ERROR(create_encoder_inputs_func(&original_encoder_input_ids,
                                                  original_decoder_input_ids_value,
+                                                 &original_left_pad_mask,
+                                                 &original_position_ids,
                                                  start_token_id,
                                                  cpu_allocator,
                                                  encoder_input_ids,
-                                                 decoder_input_ids));
+                                                 decoder_input_ids,
+                                                 left_pad_mask,
+                                                 position_ids));
 
   const IExecutionProvider* provider = GetProvider();
   AllocatorPtr default_allocator = session_state_->GetAllocator(provider->GetOrtDeviceByMemType(OrtMemTypeDefault));
@@ -130,7 +138,7 @@ Status WhisperEncoderSubgraph::CreateInitialFeeds(
   const OrtMemoryInfo& location = default_allocator->Info();
   ORT_RETURN_IF_ERROR(add_to_feeds_func(
       ort_stream,
-      {encoder_input_ids, decoder_input_ids},
+      {encoder_input_ids, decoder_input_ids, left_pad_mask, position_ids},
       feeds,
       buffer,
       default_allocator,

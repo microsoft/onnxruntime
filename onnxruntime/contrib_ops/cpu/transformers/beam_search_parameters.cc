@@ -64,6 +64,40 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
     }
   }
 
+  left_pad_mask = gsl::span<int32_t>();
+  if (this->model_type == IGenerationParameters::kModelTypeWhisper && left_pad_mask_input_id > 0) {
+    const Tensor* left_pad_mask_tensor = context->Input<Tensor>(left_pad_mask_input_id);
+    if (left_pad_mask_tensor != nullptr) {
+      const auto& left_pad_mask_tensor_dims = left_pad_mask_tensor->Shape().GetDims();
+      ORT_ENFORCE(left_pad_mask_tensor_dims.size() == 4,
+                  "left_pad_mask_tensor shall have 4 dimensions. Got ",
+                  left_pad_mask_tensor_dims.size());
+      ORT_ENFORCE(left_pad_mask_tensor_dims[0] == batch_size,
+                  "left_pad_mask_tensor first dim not same as batch_size. Got ",
+                  left_pad_mask_tensor_dims[0], ", expecting ", batch_size);
+      if (left_pad_mask_tensor->Shape().Size() > 0) {
+        left_pad_mask = gsl::span<const int32_t>(left_pad_mask_tensor->Data<int32_t>(), (size_t)left_pad_mask_tensor->Shape().Size());
+      }
+    }
+  }
+
+  position_ids = gsl::span<int32_t>();
+  if (this->model_type == IGenerationParameters::kModelTypeWhisper && position_ids_input_id > 0) {
+    const Tensor* position_ids_tensor = context->Input<Tensor>(position_ids_input_id);
+    if (position_ids_tensor != nullptr) {
+      const auto& position_ids_tensor_dims = position_ids_tensor->Shape().GetDims();
+      ORT_ENFORCE(position_ids_tensor_dims.size() == 2,
+                  "position_ids_tensor shall have 2 dimensions. Got ",
+                  position_ids_tensor_dims.size());
+      ORT_ENFORCE(position_ids_tensor_dims[0] == batch_size,
+                  "position_ids_tensor first dim not same as batch_size. Got ",
+                  position_ids_tensor_dims[0], ", expecting ", batch_size);
+      if (position_ids_tensor->Shape().Size() > 0) {
+        position_ids = gsl::span<const int32_t>(position_ids_tensor->Data<int32_t>(), (size_t)position_ids_tensor->Shape().Size());
+      }
+    }
+  }
+
   if (this->model_type == IGenerationParameters::kModelTypeGpt) {
     sequence_length = static_cast<int>(dims[1]);
   } else if (this->model_type == IGenerationParameters::kModelTypeWhisper) {
@@ -156,6 +190,8 @@ void WhisperBeamSearchParameters::ParseFromAttributes(const OpKernelInfo& info) 
   no_speech_token = static_cast<int>(info.GetAttrOrDefault<int64_t>("no_speech_token", -1LL));
   cross_qk_layer_head_input_id = 12;
   extra_decoding_ids_input_id = 13;
+  left_pad_mask_input_id = 14;
+  position_ids_input_id = 15;
   cross_qk_output_id = 3;
   no_speech_probs_output_id = 4;
 }

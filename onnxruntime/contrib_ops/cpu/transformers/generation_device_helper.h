@@ -190,10 +190,14 @@ using UpdateDecoderFeedsFunc = std::function<Status(
 using CreateWhisperEncoderInputsFunc = std::function<Status(
     const Tensor* original_encoder_input_features,
     const OrtValue* original_decoder_input_ids_value,
+    const Tensor* original_left_pad_mask,
+    const Tensor* original_position_ids,
     int start_token_id,
     AllocatorPtr allocator,
     OrtValue& encoder_input_ids,
-    OrtValue& decoder_input_ids)>;
+    OrtValue& decoder_input_ids,
+    OrtValue& left_pad_mask,
+    OrtValue& position_ids)>;
 
 template <typename T>
 using ExpandBufferFunc = std::function<Status(
@@ -376,10 +380,14 @@ template <typename T>
 Status CreateWhisperEncoderInputs(
     const Tensor* original_encoder_input_features,
     const OrtValue* original_decoder_input_ids_value,
+    const Tensor* original_left_pad_mask,
+    const Tensor* original_position_ids,
     int start_token_id,
     AllocatorPtr allocator,
     OrtValue& encoder_input_ids,
-    OrtValue& decoder_input_ids);
+    OrtValue& decoder_input_ids,
+    OrtValue& left_pad_mask,
+    OrtValue& position_ids);
 
 // ---------------------------------------------------------------
 // Utility Functions

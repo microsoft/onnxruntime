@@ -183,11 +183,15 @@ struct IGenerationParameters {
   // Parameters for whisper model
   bool decoder_output_cross_qk = false;
   gsl::span<const int32_t> extra_decoding_ids;
+  gsl::span<const int32_t> left_pad_mask;
+  gsl::span<const int32_t> position_ids;
   int32_t no_speech_token = -1;
   void* no_speech_probs = nullptr;
 
   int cross_qk_layer_head_input_id = -1;
   int extra_decoding_ids_input_id = -1;
+  int left_pad_mask_input_id = -1;
+  int position_ids_input_id = -1;
   int cross_qk_output_id = -1;
   int no_speech_probs_output_id = -1;
 };

@@ -206,13 +206,13 @@ class FusionBartAttentionOpenai(FusionAttention):
 
         qk_nodes_1 = self.model.match_parent_path(matmul_qkv, ["Softmax", "MatMul"], [0, 0])
         qk_nodes_2 = self.model.match_parent_path(
-            matmul_qkv, ["Softmax", "Add", "MatMul"], [0, 0, 0]
+            matmul_qkv, ["Softmax", "Add", "Add", "MatMul"], [0, 0, 0, 0]
         )
         if qk_nodes_1 is not None:
             _, matmul_qk = qk_nodes_1
             qk_nodes = qk_nodes_1
         elif qk_nodes_2 is not None:
-            _, add_qk, matmul_qk = qk_nodes_2
+            _, add_left_pad_mask, add_qk, matmul_qk = qk_nodes_2
             qk_nodes = qk_nodes_2
         else:
             return
@@ -385,6 +385,10 @@ class FusionBartAttentionOpenai(FusionAttention):
             elif mask_nodes_bart is not None:
                 mask_index = mask_nodes_bart[0].output[-1]
 
+        left_pad_mask_index = None
+        if decoder_attention:
+            left_pad_mask_index = add_left_pad_mask.input[1]
+
         if (
             encoder_attention
             or decoder_attention
@@ -440,7 +444,7 @@ class FusionBartAttentionOpenai(FusionAttention):
                     hidden_size,
                     root_input,
                     attention_last_node.output[0],
-                    add_qk_str=mask_index if decoder_attention else None,
+                    add_qk_str=left_pad_mask_index if decoder_attention else None,
                     past_k=past_k,
                     past_v=past_v,
                     present_k=present_k,

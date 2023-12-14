@@ -22,6 +22,8 @@ class WhisperEncoderSubgraph : public T5EncoderSubgraph {
   Status CreateInitialFeeds(
       const Tensor& encoder_input_ids,
       const OrtValue* original_decoder_input_ids_value,
+      const Tensor& left_pad_mask,
+      const Tensor& position_ids,
       int start_token_id,
       const std::vector<const OrtValue*>& implicit_inputs,
       std::vector<OrtValue>& feeds,

@@ -877,10 +877,14 @@ template <typename T>
 Status CreateWhisperEncoderInputs(
     const Tensor* original_encoder_input_features,
     const OrtValue* original_decoder_input_ids_value,
+    const Tensor* original_left_pad_mask,
+    const Tensor* original_position_ids,
     int start_token_id,
     AllocatorPtr allocator,
     OrtValue& encoder_input_features,
-    OrtValue& decoder_input_ids) {
+    OrtValue& decoder_input_ids,
+    OrtValue& left_pad_mask,
+    OrtValue& position_ids) {
   const TensorShape& input_features_shape = original_encoder_input_features->Shape();
   ORT_ENFORCE(input_features_shape.NumDimensions() == 3);
   const int64_t& batch_size = input_features_shape[0];
@@ -897,6 +901,20 @@ Status CreateWhisperEncoderInputs(
                        const_cast<Tensor*>(original_encoder_input_features)->MutableData<T>(),
                        allocator->Info(),
                        encoder_input_features);
+
+  const TensorShape& left_pad_mask_shape = original_left_pad_mask->Shape();
+  Tensor::InitOrtValue(DataTypeImpl::GetType<T>(),
+                       left_pad_mask_shape,
+                       const_cast<Tensor*>(original_left_pad_mask)->MutableData<T>(),
+                       allocator->Info(),
+                       left_pad_mask);
+
+  const TensorShape& position_ids_shape = original_position_ids->Shape();
+  Tensor::InitOrtValue(DataTypeImpl::GetType<T>(),
+                       position_ids_shape,
+                       const_cast<Tensor*>(original_position_ids)->MutableData<T>(),
+                       allocator->Info(),
+                       position_ids);
 
   // decoder_input_ids is optional.
   if (original_decoder_input_ids_value == nullptr) {
@@ -1071,18 +1089,26 @@ template Status ExpandBuffer<MLFloat16>(
 template Status CreateWhisperEncoderInputs<float>(
     const Tensor* original_encoder_input_features,
     const OrtValue* original_decoder_input_ids_value,
+    const Tensor* original_left_pad_mask,
+    const Tensor* original_position_ids,
     int start_token_id,
     AllocatorPtr allocator,
     OrtValue& encoder_input_features,
-    OrtValue& decoder_input_ids);
+    OrtValue& decoder_input_ids,
+    OrtValue& left_pad_mask,
+    OrtValue& position_ids);
 
 template Status CreateWhisperEncoderInputs<MLFloat16>(
     const Tensor* original_encoder_input_features,
     const OrtValue* original_decoder_input_ids_value,
+    const Tensor* original_left_pad_mask,
+    const Tensor* original_position_ids,
     int start_token_id,
     AllocatorPtr allocator,
     OrtValue& encoder_input_features,
-    OrtValue& decoder_input_ids);
+    OrtValue& decoder_input_ids,
+    OrtValue& left_pad_mask,
+    OrtValue& position_ids);
 
 Status UpdateDecoderCrossQK(
     [[maybe_unused]] int iteration_number,

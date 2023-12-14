@@ -30,6 +30,8 @@ class WhisperDecoderInitOpenai(torch.nn.Module):
         tokens,
         audio_features,
         past=None,
+        left_pad_mask=None,
+        position_ids=None,
     ):
         # Create a kv_cache for past_values
         past_kv_cache = dict()
@@ -47,7 +49,7 @@ class WhisperDecoderInitOpenai(torch.nn.Module):
         if not self.kv_cache:
             self.kv_cache, _ = self.whisper_model.install_kv_cache_hooks()
 
-        logits = self.whisper_decoder(tokens, audio_features, kv_cache=past_kv_cache)
+        logits = self.whisper_decoder(tokens, audio_features, kv_cache=past_kv_cache, left_pad_mask=left_pad_mask, position_ids=position_ids)
 
         # Add concat node for past values
         if past is not None:

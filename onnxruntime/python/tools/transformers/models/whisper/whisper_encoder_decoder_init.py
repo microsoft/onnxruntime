@@ -52,12 +52,14 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         self,
         encoder_input_ids: torch.Tensor,
         decoder_input_ids: torch.Tensor = None,
+        left_pad_mask: torch.Tensor = None,
+        position_ids: torch.Tensor = None,
     ):
         encoder_hidden_states: torch.FloatTensor = self.whisper_encoder(encoder_input_ids)
         # Decoder out: (logits, past_key_values, encoder_hidden_state)
         if self.model_impl == "openai":
             encoder_hidden_states.unsqueeze(0)
-            decinit_out, present = self.whisper_decoder_openai_init(decoder_input_ids, encoder_hidden_states)
+            decinit_out, present = self.whisper_decoder_openai_init(decoder_input_ids, encoder_hidden_states, left_pad_mask=left_pad_mask, position_ids=position_ids)
             return decinit_out, encoder_hidden_states, present
         else:
             decinit_out = self.whisper_decoder_init(decoder_input_ids, encoder_hidden_states)
@@ -67,9 +69,11 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
 
 
 class WhisperEncoderDecoderInitInputs:
-    def __init__(self, encoder_input_ids, decoder_input_ids=None):
+    def __init__(self, encoder_input_ids, decoder_input_ids=None, left_pad_mask=None, position_ids=None):
         self.encoder_input_ids: torch.LongTensor = encoder_input_ids
         self.decoder_input_ids: torch.LongTensor = decoder_input_ids
+        self.left_pad_mask: torch.LongTensor = left_pad_mask
+        self.position_ids: torch.LongTensor = position_ids
 
     @staticmethod
     def create_dummy(
@@ -90,13 +94,17 @@ class WhisperEncoderDecoderInitInputs:
         if use_decoder_input_ids:
             dtype = torch.int32 if use_int32_inputs else torch.int64
             decoder_input_ids = torch.ones((batch_size, 2), dtype=dtype, device=device) * config.decoder_start_token_id
+        left_pad_mask = torch.zeros((batch_size, 1, 2, 2), dtype=dtype, device=device)
+        position_ids = torch.zeros((batch_size, 2), dtype=dtype, device=device)
 
-        return WhisperEncoderDecoderInitInputs(encoder_inputs.input_ids, decoder_input_ids)
+        return WhisperEncoderDecoderInitInputs(encoder_inputs.input_ids, decoder_input_ids, left_pad_mask, position_ids)
 
     def to_list(self) -> List:
         input_list = [self.encoder_input_ids]
         if self.decoder_input_ids is not None:
             input_list.append(self.decoder_input_ids)
+        input_list.append(self.left_pad_mask)
+        input_list.append(self.position_ids)
         return input_list
 
 
@@ -134,7 +142,7 @@ class WhisperEncoderDecoderInitHelper:
 
         # TODO : Investigate whether copy of model if needed
         cloned_model = copy.deepcopy(model).to(device)
-        out = cloned_model(inputs.encoder_input_ids, inputs.decoder_input_ids)
+        out = cloned_model(inputs.encoder_input_ids, inputs.decoder_input_ids, inputs.left_pad_mask, inputs.position_ids)
         present = out[2]
         present_names = PastKeyValuesHelper.get_input_names(present, encoder=True)
 
@@ -178,6 +186,18 @@ class WhisperEncoderDecoderInitHelper:
                 0: "batch_size",
                 1: "decode_sequence_length",
             }
+
+        input_names.append("left_pad_mask")
+        dynamic_axes["left_pad_mask"] = {
+            0: "batch_size",
+            2: "decode_sequence_length",
+            3: "decode_sequence_length",
+        }
+        input_names.append("position_ids")
+        dynamic_axes["position_ids"] = {
+            0: "batch_size",
+            1: "decode_sequence_length",
+        }
 
         for name in present_names:
             if "cross" in name:
@@ -244,6 +264,8 @@ class WhisperEncoderDecoderInitHelper:
         }
         if inputs.decoder_input_ids is not None:
             ort_inputs["decoder_input_ids"] = numpy.ascontiguousarray(inputs.decoder_input_ids.cpu().numpy())
+        ort_inputs["left_pad_mask"] = numpy.ascontiguousarray(inputs.left_pad_mask.cpu().numpy())
+        ort_inputs["position_ids"] = numpy.ascontiguousarray(inputs.position_ids.cpu().numpy())
 
         ort_outputs = ort_session.run(None, ort_inputs)
         return ort_outputs

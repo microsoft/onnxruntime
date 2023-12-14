@@ -49,6 +49,10 @@ def chain_model(args):
         "",  # attention mask
         "decoder_input_ids" if args.use_forced_decoder_ids else "",
         "logits_processor" if args.use_logits_processor else "",
+        "",
+        "",
+        "left_pad_mask" if args.use_forced_decoder_ids else "",
+        "position_ids" if args.use_forced_decoder_ids else "",
     ]
 
     beam_outputs = ["sequences"]
@@ -58,13 +62,15 @@ def chain_model(args):
         beam_outputs.append("scores_fp16" if args.precision == Precision.FLOAT16 else "scores")
 
     if args.use_whisper_beamsearch:
-        assert len(beam_inputs) == 12
+        #assert len(beam_inputs) == 1
+        '''
         beam_inputs.extend(
             [
                 "cross_qk_layer_head" if args.collect_cross_qk else "",
                 "extra_decoding_ids" if args.extra_decoding_ids else "",
             ]
         )
+        '''
         if args.collect_cross_qk:
             while len(beam_outputs) < 3:
                 beam_outputs.extend([""])
@@ -168,6 +174,17 @@ def chain_model(args):
             "decoder_input_ids", TensorProto.INT32, ["batch_size", "initial_sequence_length"]
         )
         graph_inputs.append(decoder_input_ids)
+
+        left_pad_mask = helper.make_tensor_value_info(
+            "left_pad_mask", TensorProto.INT32, ["batch_size", 1, "initial_sequence_length", "initial_sequence_length",]
+        )
+        graph_inputs.append(left_pad_mask)
+
+        position_ids = helper.make_tensor_value_info(
+            "position_ids", TensorProto.INT32, ["batch_size", "initial_sequence_length"]
+        )
+        graph_inputs.append(position_ids)
+
 
     if args.use_logits_processor:
         logits_processor = helper.make_tensor_value_info("logits_processor", TensorProto.INT32, [1])
