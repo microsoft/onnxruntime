@@ -39,8 +39,8 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
   ORT_ENFORCE(proba_.size() == probb_.size());
 
   // one of these should be valid
-  ORT_THROW_IF_ERROR(info.GetAttrs<std::string>("classlabels_strings", classlabels_strings_).IsOK() ||
-                     info.GetAttrs<int64_t>("classlabels_ints", classlabels_ints_));
+  ORT_ENFORCE(info.GetAttrs<std::string>("classlabels_strings", classlabels_strings_).IsOK() ||
+              info.GetAttrs<int64_t>("classlabels_ints", classlabels_ints_).IsOK());
 
   vector_count_ = 0;
   feature_count_ = 0;
