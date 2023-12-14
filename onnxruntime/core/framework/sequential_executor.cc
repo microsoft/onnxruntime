@@ -181,7 +181,7 @@ class SessionScope {
     }
 
     auto& logger = session_state_.Logger();
-    LOGS(logger, VERBOSE) << "Begin execution";
+    VLOGS(logger, VERBOSE) << "Begin execution";
     const SequentialExecutionPlan& seq_exec_plan = *session_state_.GetExecutionPlan();
     const auto& exec_plan_vec = seq_exec_plan.execution_plan;
     VLOGS(logger, 1) << "Size of execution plan vector: " << exec_plan_vec.size();
@@ -515,7 +515,7 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
     return Status(status.Category(), status.Code(), msg_string);
   }
   ctx.RecycleNodeInputs(idx);
-  LOGS(logger, VERBOSE) << "stream " << stream_idx << " launch kernel with idx " << idx;
+  VLOGS(logger, VERBOSE) << "stream " << stream_idx << " launch kernel with idx " << idx;
   return Status::OK();
 }
 
@@ -531,7 +531,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                                    const bool only_execute_path_to_fetches,
                                    bool single_thread_mode) {
   auto* execution_plan = session_state.GetExecutionPlan();
-  LOGS(logger, VERBOSE) << "Number of streams: " << execution_plan->execution_plan.size();
+  VLOGS(logger, VERBOSE) << "Number of streams: " << execution_plan->execution_plan.size();
   int32_t valid_streams = 0;
   for (auto& stream : execution_plan->execution_plan) {
     if (stream && stream->steps_.size() > 0)
