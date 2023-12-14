@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {tensorDataTypeEnumToString} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
 
-import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
+import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, UniformDataElementType, UniformsArrayType} from './common';
 import {calculateOutputShape, ConvAttributes} from './conv';
 import {getActivationSnippet} from './fuse-utils';
 
@@ -32,11 +33,25 @@ export const createGroupedConvProgramInfo =
       const x = inputVariable('x', inputs[0].dataType, xShape.length);
       const w = inputVariable('w', inputs[1].dataType, wShape.length);
       const inputVars = [x, w];
+
       const programUniforms: ProgramUniform[] = [
         {type: 'uint32', data: outputSize}, {type: 'uint32', data: attributes.dilations},
         {type: 'uint32', data: [attributes.strides[0], attributes.strides[1]]},
         {type: 'uint32', data: [attributes.pads[0], attributes.pads[1]]}, {type: 'uint32', data: outputChannelsPerGroup}
       ];
+      const uniforms: UniformsArrayType = [
+        {name: 'outputSize', type: 'u32'}, {name: 'dilations', type: 'u32', length: attributes.dilations.length},
+        {name: 'strides', type: 'u32', length: 2}, {name: 'pads', type: 'u32', length: 2},
+        {name: 'outputChannelsPerGroup', type: 'u32'}
+      ];
+      const tensorDataType = tensorDataTypeEnumToString(inputs[0].dataType) as ProgramUniform['type'];
+      if (attributes.activation === 'Clip') {
+        programUniforms.push(
+            {type: tensorDataType, data: attributes.clipMax!}, {type: tensorDataType, data: attributes.clipMin!});
+        uniforms.push(
+            {name: 'clipMax', type: x.type.value as UniformDataElementType},
+            {name: 'clipMin', type: x.type.value as UniformDataElementType});
+      }
       programUniforms.push(
           ...createTensorShapeVariables(xShape), ...createTensorShapeVariables(wShape),
           ...createTensorShapeVariables(outputShape));
@@ -47,12 +62,6 @@ export const createGroupedConvProgramInfo =
         inputDependencies.push('rank');
       }
       programUniforms.push(...createTensorShapeVariables(outputShape));
-
-      const uniforms: UniformsArrayType = [
-        {name: 'outputSize', type: 'u32'}, {name: 'dilations', type: 'u32', length: attributes.dilations.length},
-        {name: 'strides', type: 'u32', length: 2}, {name: 'pads', type: 'u32', length: 2},
-        {name: 'outputChannelsPerGroup', type: 'u32'}
-      ];
 
       const getShaderSource = (shaderHelper: ShaderHelper) => `
 

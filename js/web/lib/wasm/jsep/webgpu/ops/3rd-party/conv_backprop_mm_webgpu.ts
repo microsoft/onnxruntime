@@ -19,10 +19,11 @@
 //
 // modified to fit the needs of the project
 
+import {tensorDataTypeEnumToString} from '../../../../wasm-common';
 import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor-view';
 import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../../types';
-import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from '../common';
+import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, UniformDataElementType, UniformsArrayType} from '../common';
 import {ConvTransposeAttributes} from '../conv-transpose';
 import {getActivationSnippet} from '../fuse-utils';
 
@@ -196,15 +197,30 @@ export const createConv2DTransposeMatMulProgramInfo =
         effectiveFilterDims[0] - 1 - Math.floor((attributes.pads[0] + attributes.pads[2]) / 2),
         effectiveFilterDims[1] - 1 - Math.floor((attributes.pads[1] + attributes.pads[3]) / 2)
       ];
+
+      const x = inputVariable('x', inputs[0].dataType, inputs[0].dims.length, components);
+      const w = inputVariable('w', inputs[1].dataType, inputs[1].dims.length, 1);
+      const output = outputVariable('result', inputs[0].dataType, outputShape.length, components);
+      const inputVariables = [x, w];
+
       const programUniforms: ProgramUniform[] = [
         {type: 'int32', data: dimAOuter}, {type: 'int32', data: dimBOuter}, {type: 'int32', data: dimInner},
         {type: 'int32', data: attributes.strides}, {type: 'int32', data: attributes.dilations},
         {type: 'int32', data: filterDims}, {type: 'int32', data: pads}
       ];
-      const x = inputVariable('x', inputs[0].dataType, inputs[0].dims.length, components);
-      const w = inputVariable('w', inputs[1].dataType, inputs[1].dims.length, 1);
-      const output = outputVariable('result', inputs[0].dataType, outputShape.length, components);
-      const inputVariables = [x, w];
+      const uniforms: UniformsArrayType = [
+        {name: 'dimAOuter', type: 'i32'}, {name: 'dimBOuter', type: 'i32'}, {name: 'dimInner', type: 'i32'},
+        {name: 'strides', type: 'i32', length: 2}, {name: 'dilations', type: 'i32', length: 2},
+        {name: 'filterDims', type: 'i32', length: filterDims.length}, {name: 'pads', type: 'i32', length: pads.length}
+      ];
+      const tensorDataType = tensorDataTypeEnumToString(inputs[0].dataType) as ProgramUniform['type'];
+      if (attributes.activation === 'Clip') {
+        programUniforms.push(
+            {type: tensorDataType, data: attributes.clipMax!}, {type: tensorDataType, data: attributes.clipMin!});
+        uniforms.push(
+            {name: 'clipMax', type: x.type.value as UniformDataElementType},
+            {name: 'clipMin', type: x.type.value as UniformDataElementType});
+      }
       programUniforms.push(
           ...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(inputs[1].dims));
 
@@ -224,15 +240,9 @@ export const createConv2DTransposeMatMulProgramInfo =
 
       programUniforms.push(...createTensorShapeVariables(outputShape));
 
-      const uniforms: UniformsArrayType = [
-        {name: 'dimAOuter', type: 'i32'}, {name: 'dimBOuter', type: 'i32'}, {name: 'dimInner', type: 'i32'},
-        {name: 'strides', type: 'i32', length: 2}, {name: 'dilations', type: 'i32', length: 2},
-        {name: 'filterDims', type: 'i32', length: filterDims.length}, {name: 'pads', type: 'i32', length: pads.length}
-      ];
-
       return {
         name: 'Conv2DTransposeMatMul',
-        shaderCache: {hint: `${attributes.format}`, inputDependencies},
+        shaderCache: {hint: `${attributes.format};${attributes.activation};${elementsPerThread}`, inputDependencies},
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
           dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]},

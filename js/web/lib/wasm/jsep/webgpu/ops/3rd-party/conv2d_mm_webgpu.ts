@@ -19,10 +19,11 @@
 //
 // modified to fit the needs of the project
 
+import {tensorDataTypeEnumToString} from '../../../../wasm-common';
 import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor-view';
 import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../../types';
-import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from '../common';
+import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformDataElementType, UniformsArrayType} from '../common';
 import {ConvAttributes} from '../conv';
 import {getActivationSnippet} from '../fuse-utils';
 
@@ -195,15 +196,29 @@ export const createConv2DMatMulProgramInfo =
 
       // TODO: support component 2, 3.
       const components = isVec4 ? 4 : 1;
+      const x =
+          inputVariable('x', inputs[0].dataType, inputs[0].dims.length, innerElementSize === 3 ? 1 : innerElementSize);
+      const w = inputVariable('w', inputs[1].dataType, inputs[1].dims.length, components);
+      const inputVariables = [x, w];
+
       const programUniforms: ProgramUniform[] = [
         {type: 'int32', data: dimAOuter}, {type: 'int32', data: dimBOuter}, {type: 'int32', data: dimInner},
         {type: 'int32', data: [attributes.pads[0], attributes.pads[1]]}, {type: 'int32', data: attributes.strides},
         {type: 'int32', data: attributes.dilations}
       ];
-      const x =
-          inputVariable('x', inputs[0].dataType, inputs[0].dims.length, innerElementSize === 3 ? 1 : innerElementSize);
-      const w = inputVariable('w', inputs[1].dataType, inputs[1].dims.length, components);
-      const inputVariables = [x, w];
+      const uniforms: UniformsArrayType = [
+        {name: 'dimAOuter', type: 'i32'}, {name: 'dimBOuter', type: 'i32'}, {name: 'dimInner', type: 'i32'},
+        {name: 'pad', type: 'i32', length: 2}, {name: 'stride', type: 'i32', length: 2},
+        {name: 'dilation', type: 'i32', length: 2}
+      ];
+      const tensorDataType = tensorDataTypeEnumToString(inputs[0].dataType) as ProgramUniform['type'];
+      if (attributes.activation === 'Clip') {
+        programUniforms.push(
+            {type: tensorDataType, data: attributes.clipMax!}, {type: tensorDataType, data: attributes.clipMin!});
+        uniforms.push(
+            {name: 'clipMax', type: x.type.value as UniformDataElementType},
+            {name: 'clipMin', type: x.type.value as UniformDataElementType});
+      }
 
       programUniforms.push(
           ...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(inputs[1].dims));
@@ -232,15 +247,13 @@ export const createConv2DMatMulProgramInfo =
       const output = outputVariable('result', inputs[0].dataType, outputShape.length, components);
       programUniforms.push(...createTensorShapeVariables(outputShape));
 
-      const uniforms: UniformsArrayType = [
-        {name: 'dimAOuter', type: 'i32'}, {name: 'dimBOuter', type: 'i32'}, {name: 'dimInner', type: 'i32'},
-        {name: 'pad', type: 'i32', length: 2}, {name: 'stride', type: 'i32', length: 2},
-        {name: 'dilation', type: 'i32', length: 2}
-      ];
       return {
         name: 'Conv2DMatMul',
-        shaderCache:
-            {hint: `${attributes.format};${innerElementSize};${fitAOuter};${fitBOuter};${fitInner}`, inputDependencies},
+        shaderCache: {
+          hint:
+              `${attributes.format};${attributes.activation};${innerElementSize};${fitAOuter};${fitBOuter};${fitInner}`,
+          inputDependencies
+        },
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
           dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]},

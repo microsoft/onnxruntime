@@ -23,5 +23,5 @@ export const matMul = (context: ComputeContext): void => {
   if (!outputShape) {
     throw new Error('Can\'t use matmul on the given tensors');
   }
-  context.compute(createMatmulProgramInfo(context.inputs, {activation: '', activationCacheKey: ''}, outputShape));
+  context.compute(createMatmulProgramInfo(context.inputs, {activation: ''}, outputShape));
 };

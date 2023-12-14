@@ -19,10 +19,11 @@
 //
 // modified to fit the needs of the project
 
+import {tensorDataTypeEnumToString} from '../../../../wasm-common';
 import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
 import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../../types';
-import {createTensorShapeVariables, enableShapesUniforms, getBroadcastDims, IndicesHelper, inputVariable, internalVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from '../common';
+import {createTensorShapeVariables, enableShapesUniforms, getBroadcastDims, IndicesHelper, inputVariable, internalVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformDataElementType, UniformsArrayType} from '../common';
 import {getActivationSnippet, InternalActivationAttributes} from '../fuse-utils';
 
 import {typeSnippet} from './activation_util';
@@ -478,6 +479,18 @@ export const createMatmulProgramInfo =
       inputDependencies.push(enableAShapesUniforms ? 'rank' : 'dims');
       inputDependencies.push(enableBShapesUniforms ? 'rank' : 'dims');
 
+      const uniforms: UniformsArrayType =
+          [{name: 'dimAOuter', type: 'i32'}, {name: 'dimBOuter', type: 'i32'}, {name: 'dimInner', type: 'i32'}];
+      const tensorDataType = tensorDataTypeEnumToString(inputs[0].dataType) as ProgramUniform['type'];
+      if (activationAttributes.activation === 'Clip') {
+        programUniforms.push(
+            {type: tensorDataType, data: activationAttributes.clipMax!},
+            {type: tensorDataType, data: activationAttributes.clipMin!});
+        uniforms.push(
+            {name: 'clipMax', type: output.type.value as UniformDataElementType},
+            {name: 'clipMin', type: output.type.value as UniformDataElementType});
+      }
+
       const hasBias = inputs.length > 2;
       const {activationFunction, applyActivation} = getActivationSnippet(activationAttributes, output.type.value);
       const declareFunctions = matMulReadWriteFnSource(
@@ -494,28 +507,18 @@ export const createMatmulProgramInfo =
 
       const getShaderSource = (shaderHelper: ShaderHelper) => `
   ${
-          shaderHelper.registerUniform('dimAOuter', 'i32')
-              .registerUniform('dimBOuter', 'i32')
-              .registerUniform('dimInner', 'i32')
-              .registerInternalVariables(batchDims)
-              .declareVariables(...inputVariables, output)}
+          shaderHelper.registerUniforms(uniforms).registerInternalVariables(batchDims).declareVariables(
+              ...inputVariables, output)}
   ${activationFunction}
   ${declareFunctions}
   ${
           isVec4 ? makeMatMulPackedVec4Source(elementsPerThread, workgroupSize, dataType, batchDims) :
                    makeMatMulPackedSource(elementsPerThread, workgroupSize, dataType, batchDims)}
                    `;
-      // TODO: turn clipMax and clipMin to uniforms.
       return {
         name: 'MatMul',
         shaderCache: {
-          hint: activationAttributes.activationCacheKey + `${elementsPerThread}` +
-              `${activationAttributes.activation}` +
-              `${activationAttributes.clipMax}` +
-              `${activationAttributes.clipMin}` +
-              `${isVec4}` +
-              `${hasBias}` +
-              `${isChannelsLast}`,
+          hint: `${elementsPerThread};${activationAttributes.activation};${isVec4};${hasBias};${isChannelsLast}`,
           inputDependencies
         },
         getRunData: () => ({

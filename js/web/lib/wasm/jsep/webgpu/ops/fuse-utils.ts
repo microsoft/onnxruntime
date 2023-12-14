@@ -7,7 +7,6 @@ export interface InternalActivationAttributes {
   readonly activation: string;
   readonly clipMin?: number;
   readonly clipMax?: number;
-  readonly activationCacheKey: string;
 }
 
 export const getActivationSnippet = (attributes: InternalActivationAttributes, valueType: string):
@@ -22,8 +21,7 @@ export const getActivationSnippet = (attributes: InternalActivationAttributes, v
           };
         case 'Clip':
           return {
-            activationFunction: `const clip_min_=${valueType}(${attributes.clipMin!});const clip_max_=${valueType}(${
-                attributes.clipMax!});`,
+            activationFunction: 'const clip_min_ = uniforms.clipMin; const clip_max_ = uniforms.clipMax;',
             applyActivation: 'value = clamp(value, clip_min_, clip_max_);'
           };
           // TODO: adding other activations that can be fused.
@@ -38,7 +36,7 @@ export const parseInternalActivationAttributes =
 
       if (activation === 'Clip') {
         const [clipMin, clipMax] = attributes?.activation_params as [number, number] || [MIN_CLIP, MAX_CLIP];
-        return {activation, clipMax, clipMin, activationCacheKey: `${activation}:${clipMin},${clipMax}`};
+        return {activation, clipMax, clipMin};
       }
-      return {activation, activationCacheKey: activation};
+      return {activation};
     };
