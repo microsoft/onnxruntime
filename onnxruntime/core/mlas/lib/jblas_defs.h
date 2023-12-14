@@ -35,7 +35,7 @@ using tLauncher_Fp32_S4_F32F32 = jblas::wrapper::gemm::LauncherKBlock<
 
 /*
 Name conversion explaination:
-Int8:   comp type, determined by GemmCore, can be any jblas::gemm::ICorexxx(interger GemmCore)
+Int8:   comp type, determined by GemmCore, can be any jblas::gemm::ICorexxx(integer GemmCore)
 S4:     weight dtype, determined by jblas::prologue_b::gemm::WeightKBlockS4(support integer weight classes only)
 F32F32: input/output dtype, determined by jblas::prologue_a::gemm::ActivationKBlockBaseF32 and
 jblas::epilogue::gemm::AccumulatorWriteBackFp32.
@@ -65,8 +65,8 @@ class ORTThreading : public jblas::parallel::IThreading
    public:
     ORTThreading(void* tp);
     void parallel_for(const jblas::parallel::thread_func& func) override;
-    virtual void set_threads(int nthreads) override { assert(0); }
-    virtual void sync() override { assert(0); }
+    void set_threads(int nthreads) override { assert(0); }
+    void sync() override { assert(0); }
     void* mTp;
 };
 
