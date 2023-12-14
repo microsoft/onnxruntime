@@ -36,18 +36,20 @@ class FissionTransformerBlockPhi(Fusion):
         self,
         model: OnnxModel,
     ):
-        super().__init__(model, "DONOTUSE", ["model_modeling_mixformer_sequential_ParallelBlock_sub1_1",
-                                             "model_modeling_mixformer_sequential_ParallelBlock_sub2_1",
-                                             ])
+        self.func_to_layer_id = {}
+        nodes_to_find = []
+        for layer in range(32):
+            func_name = f"model_modeling_mixformer_sequential_ParallelBlock_sub{layer + 1}_1"
+            nodes_to_find.append(func_name)
+            self.func_to_layer_id[func_name] = layer + 1
+
+        super().__init__(model, "DONOTUSE", nodes_to_find)
 
     def uname(self, layer_id, name):
         return name + "_" + str(layer_id)
 
     def get_layer_id(self, node):
-        if node.op_type == "model_modeling_mixformer_sequential_ParallelBlock_sub1_1":
-            return 1
-        elif node.op_type == "model_modeling_mixformer_sequential_ParallelBlock_sub2_1":
-            return 2
+        return self.func_to_layer_id[node.op_type]
 
     def fuse(
             self,
@@ -58,7 +60,7 @@ class FissionTransformerBlockPhi(Fusion):
         layer_id = self.get_layer_id(node)
 
         # transformer block input and output
-        i_hidden_states = node.input[2]
+        i_hidden_states = node.input[0] if layer_id == 1 else node.input[2]
         i_attn_mask = node.input[1]
         i_kv_cache = node.input[3]
         o_hidden_states = node.output[1]
@@ -144,7 +146,7 @@ class FissionTransformerBlockPhi(Fusion):
             ),
             helper.make_node(
                 'Add',
-                inputs=[self.uname(layer_id, 'attn_out'), self.uname(layer_id, 'fc2_b_out')],
+                inputs=[self.uname(layer_id, 'add_out'), self.uname(layer_id, 'fc2_b_out')],
                 outputs=[self.uname(layer_id, 'residual_1_out')],
                 name=self.uname(layer_id, 'Residual_Add_1'),
             ),
@@ -186,26 +188,6 @@ class PhiOnnxModel(OnnxModel):
         Returns node count of fused operators.
         """
         op_count = {}
-        # ops = [
-        #     "EmbedLayerNormalization",
-        #     "Attention",
-        #     "MultiHeadAttention",
-        #     "Gelu",
-        #     "FastGelu",
-        #     "BiasGelu",
-        #     "GemmFastGelu",
-        #     "LayerNormalization",
-        #     "SimplifiedLayerNormalization",
-        #     "SkipLayerNormalization",
-        #     "SkipSimplifiedLayerNormalization",
-        #     "RotaryEmbedding",
-        # ]
-        # q_ops = ["QOrderedAttention", "QOrderedGelu", "QOrderedLayerNormalization", "QOrderedMatMul"]
-        # for op in ops + q_ops:
-        #     nodes = self.get_nodes_by_op_type(op)
-        #     op_count[op] = len(nodes)
-
-        # logger.info(f"Optimized operators: {op_count}")
         return op_count
 
     def is_fully_optimized(self, fused_op_count=None):
