@@ -870,7 +870,6 @@ stages:
         PackageType: 'nuget'
         PackagePath: '$(Build.ArtifactStagingDirectory)'
         PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.*nupkg'
-        PlatformsSupported: 'win-x64,linux-x64'
         VerifyNugetSigning: false
 
     - template: templates/validate-package.yml
