@@ -1031,12 +1031,24 @@ class PlannerImpl {
     // fetch_all_dependents will collect all dependent nodes for "node_index"
     std::function<std::set<NodeIndex>(NodeIndex)> fetch_all_dependents = [&](NodeIndex node_index) {
       std::set<NodeIndex> dependents;
-
+      /*
       std::function<void(NodeIndex)> dfs = [&](NodeIndex curr) {
         if (dependents.find(curr) == dependents.end()) {
           dependents.insert(curr);
           for (NodeIndex dep : dependence_graph_[curr]) {
             dfs(dep);
+          }
+        }
+      };
+      */
+      std::function<void(NodeIndex)> dfs = [&](NodeIndex curr) {
+        if (dependents.find(curr) == dependents.end()) {
+          dependents.insert(curr);
+          auto dep_graph_iter = dependence_graph_.find(curr);
+          if (dep_graph_iter != dependence_graph_.end()) {
+            for (NodeIndex dep : dep_graph_iter->second) {
+              dfs(dep);
+            }
           }
         }
       };
