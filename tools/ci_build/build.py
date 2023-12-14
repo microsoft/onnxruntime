@@ -1462,6 +1462,7 @@ def generate_build_tree(
                 ]
     cflags = None
     cxxflags = None
+    ldflags = None
     for config in configs:
         if "CFLAGS" not in os.environ and "CXXFLAGS" not in os.environ:
             if is_windows():
@@ -1511,6 +1512,9 @@ def generate_build_tree(
                     ]
                 elif config == "Debug":
                     cflags = ["-ggdb3", "-O0"]
+                    if platform.architecture()[0] != "32bit" and not (args.enable_training_apis and args.use_cuda):
+                        cflags += ["/fsanitize=address"]
+                        ldflags += ["/fsanitize=address"]
                 elif config == "MinSizeRel":
                     cflags = [
                         "-DNDEBUG",
@@ -1540,6 +1544,12 @@ def generate_build_tree(
             temp_cmake_args += [
                 "-DCMAKE_C_FLAGS=%s" % (" ".join(cflags)),
                 "-DCMAKE_CXX_FLAGS=%s" % (" ".join(cxxflags)),
+            ]
+        if ldflags is not None:
+            temp_cmake_args += [
+                "-DCMAKE_EXE_LINKER_FLAGS_INIT=%s" % (" ".join(ldflags)),
+                "-DCMAKE_MODULE_LINKER_FLAGS_INIT=%s" % (" ".join(ldflags)),
+                "-DCMAKE_SHARED_LINKER_FLAGS_INIT=%s" % (" ".join(ldflags)),
             ]
         run_subprocess(
             [
