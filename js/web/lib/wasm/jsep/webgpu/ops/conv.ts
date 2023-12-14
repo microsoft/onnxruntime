@@ -9,6 +9,7 @@ import {createConv2DMatMulProgramInfo} from './3rd-party/conv2d_mm_webgpu';
 import {createMatmulProgramInfo} from './3rd-party/matmul_packed_webgpu';
 import {createGroupedConvProgramInfo} from './conv-grouped';
 import {InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
+import {createNaiveMatmulProgramInfo} from './matmul';
 import {createTransposeProgramInfo} from './transpose';
 
 export const calculateOutputShape =
@@ -193,9 +194,19 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
     if (hasBias) {
       matmulInputs.push(inputs[2]);
     }
-    context.compute(
-        createMatmulProgramInfo(matmulInputs, adjustedAttributes, outputShape, matmulOutputShape, isChannelsLast),
-        {inputs: matmulInputs});
+    const N = matmulOutputShape[2];
+    const K = matmulInputs[0].dims[matmulInputs[0].dims.length - 1];
+    // Tune the threshold.
+    if (N < 8 && K < 8) {
+      context.compute(
+          createNaiveMatmulProgramInfo(
+              matmulInputs, adjustedAttributes, outputShape, matmulOutputShape, isChannelsLast),
+          {inputs: matmulInputs});
+    } else {
+      context.compute(
+          createMatmulProgramInfo(matmulInputs, adjustedAttributes, outputShape, matmulOutputShape, isChannelsLast),
+          {inputs: matmulInputs});
+    }
     return;
   }
 
