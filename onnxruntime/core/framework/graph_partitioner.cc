@@ -510,6 +510,33 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     ORT_RETURN_IF_ERROR(graph.Resolve());
   }
 
+  const std::vector<const Node*> ep_context_nodes = current_ep.GetEpContextNodes();
+  auto get_ep_context_node = [&ep_context_nodes](const std::string& node_name) -> std::pair<bool, const Node*> {
+    for (auto& node : ep_context_nodes) {
+      if (node_name == node->Name()) {
+        return std::make_pair(true, node);
+      }
+    }
+    return std::make_pair(false, static_cast<const Node*>(nullptr));
+  };
+
+  if (ep_context_nodes.size() > 0) {
+    Model ep_model(graph.Name(), false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                   graph.DomainToVersionMap(), {}, *current_ep.GetLogger());
+    auto& ep_graph = ep_model.MainGraph();
+    for (const auto& node : graph.Nodes()) {
+      // the fused node and EPContext node has same node name
+      auto ep_context_node = get_ep_context_node(node.Name());
+      // Use EpContext node created by current EP if name matched, otherwise use original node
+      if (ep_context_node.first) {
+        ep_graph.AddNode(*ep_context_node.second);
+      } else {
+        ep_graph.AddNode(node);
+      }
+    }
+    ORT_RETURN_IF_ERROR(Model::Save(ep_model, "ep_partition.onnx"));
+  }
+
   // For some cases, like fp16 on cpu, right now we don't have any kernel support that.
   // But we will insert cast op to run the model, so skip the error checking here.
   // If after graph transform phase, the node still not assigned, we will report error

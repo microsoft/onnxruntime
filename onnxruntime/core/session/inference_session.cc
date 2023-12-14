@@ -1198,6 +1198,8 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(copy_transformer, *session_logger_, graph));
   }
 
+  ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, "partitioned_graph.onnx"));
+
 #ifdef ENABLE_TRAINING
   // Enable memory optimizations (mainly insert recomputation nodes with priority).
   // Only applicable for training scenarios.

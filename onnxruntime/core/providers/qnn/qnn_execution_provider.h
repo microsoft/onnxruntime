@@ -35,6 +35,8 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   DataLayout GetPreferredLayout() const override;
 
+  const std::vector<const Node*> GetEpContextNodes() const override;
+
  private:
   bool IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
                        std::unordered_map<const NodeUnit*, bool>& node_unit_supported_result,
@@ -66,6 +68,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool disable_cpu_ep_fallback_ = false;  // True if CPU EP fallback has been disabled for this session.
   bool qnn_context_embed_mode_ = true;
   int32_t vtcm_size_in_mb_ = 0;
+  std::unique_ptr<onnxruntime::Model> qnn_ep_context_model_;
 };
 
 }  // namespace onnxruntime

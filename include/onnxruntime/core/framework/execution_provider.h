@@ -326,6 +326,14 @@ class IExecutionProvider {
    */
   virtual std::vector<AllocatorPtr> CreatePreferredAllocators() { return std::vector<AllocatorPtr>(); };
 
+  /**
+   * Get the array of pointers for EPContext nodes
+   * Default return an empty vector if not provided by the Execution Provider
+   */
+  virtual const std::vector<const Node*> GetEpContextNodes() const {
+    return std::vector<const Node*>();
+  }
+
  private:
   const std::string type_;
 

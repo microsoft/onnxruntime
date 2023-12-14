@@ -206,8 +206,7 @@ Status ValidateWithContextFile(const onnxruntime::PathString& context_cache_path
   return Status::OK();
 }
 
-Status GenerateCtxCacheOnnxModel(const std::string model_name,
-                                 const std::string model_description,
+Status GenerateCtxCacheOnnxModel(Model* model,
                                  unsigned char* buffer,
                                  uint64_t buffer_size,
                                  const std::string& sdk_build_version,
@@ -216,11 +215,7 @@ Status GenerateCtxCacheOnnxModel(const std::string model_name,
                                  const onnxruntime::PathString& context_cache_path,
                                  bool qnn_context_embed_mode,
                                  const logging::Logger& logger) {
-  std::unordered_map<std::string, int> domain_to_version = {{kOnnxDomain, 11}, {kMSDomain, 1}};
-  Model model(model_name, false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-              domain_to_version, {}, logger);
-  auto& graph = model.MainGraph();
-  graph.SetDescription(model_description);
+  auto& graph = model->MainGraph();
 
   using namespace ONNX_NAMESPACE;
   int index = 0;
@@ -272,8 +267,6 @@ Status GenerateCtxCacheOnnxModel(const std::string model_name,
     ep_node.AddAttribute(SOURCE, kQnnExecutionProvider);
     ++index;
   }
-  ORT_RETURN_IF_ERROR(graph.Resolve());
-  ORT_RETURN_IF_ERROR(Model::Save(model, context_cache_path));
 
   return Status::OK();
 }

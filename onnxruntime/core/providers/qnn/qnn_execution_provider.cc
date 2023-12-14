@@ -569,7 +569,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
   }
 
   if (is_qnn_ctx_model || (context_cache_enabled_ && is_ctx_file_exist)) {
-    ORT_RETURN_IF(fused_nodes_and_graphs.size() != 1, "Only support single partition for context cache feature.");
+    //ORT_RETURN_IF(fused_nodes_and_graphs.size() != 1, "Only support single partition for context cache feature.");
     std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger, qnn_backend_manager_.get());
     // Load and execute from cached context if exist
     ORT_RETURN_IF_ERROR(qnn::LoadQnnCtxFromOnnxModel(graph_viewer,
@@ -592,11 +592,14 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
 
   ORT_RETURN_IF_ERROR(CompileFromOrtGraph(fused_nodes_and_graphs, node_compute_funcs, logger));
   if (context_cache_enabled_ && !is_qnn_ctx_model) {
-    ORT_RETURN_IF(fused_nodes_and_graphs.size() != 1, "Only support single partition for context cache feature.");
+    //ORT_RETURN_IF(fused_nodes_and_graphs.size() != 1, "Only support single partition for context cache feature.");
     uint64_t buffer_size(0);
     auto context_buffer = qnn_backend_manager_->GetContextBinaryBuffer(buffer_size);
-    ORT_RETURN_IF_ERROR(qnn::GenerateCtxCacheOnnxModel(model_name,
-                                                       model_description,
+    std::unordered_map<std::string, int> domain_to_version = {{kOnnxDomain, 11}, {kMSDomain, 1}};
+    Model model(model_name, false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                domain_to_version, {}, logger);
+    qnn_ep_context_model_ = std::make_unique<Model>(model_name, false, logger);
+    ORT_RETURN_IF_ERROR(qnn::GenerateCtxCacheOnnxModel(qnn_ep_context_model_.get(),
                                                        context_buffer.get(),
                                                        buffer_size,
                                                        qnn_backend_manager_->GetSdkVersion(),
@@ -607,5 +610,14 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                        logger));
   }
   return Status::OK();
+}
+
+const std::vector<const Node*> QNNExecutionProvider::GetEpContextNodes() const {
+  std::vector<const Node*> ep_context_nodes;
+  const auto& graph = qnn_ep_context_model_->MainGraph();
+  for (const auto& node : graph.Nodes()) {    ;
+    ep_context_nodes.push_back(graph.GetNode(node.Index()));
+  }
+  return ep_context_nodes;
 }
 }  // namespace onnxruntime
