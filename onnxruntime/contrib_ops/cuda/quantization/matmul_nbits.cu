@@ -198,49 +198,29 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
   int t_meta_k = lane_id * 8 / block_size;
   b_data_quant += n_id * blocks_per_K * (block_size / 2) + lane_id * 4;
 
-  constexpr int kUnroll16 = 16;
-  for (; k_id < (k & 0xfffff000); k_id += kUnroll16 * k_per_iter) {
-#pragma unroll
-    for (int i = 0; i < kUnroll16; i++) {
-      uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + k_per_iter / 2 * i));
-      T scale = b_scale_vec[t_meta_k + k_per_iter / block_size * i];
-      uint8_t zp = 8;
-      if constexpr (has_zero_point) {
-        zp = b_zp_vec[t_meta_k + k_per_iter / block_size * i];
-      }
-      AccumulateEightElements(value, scale, zp, a_data + k_id + i * k_per_iter, sums);
-    }
-    b_data_quant += k_per_iter / 2 * kUnroll16;
-    t_meta_k += k_per_iter / block_size * kUnroll16;  // k index for this thread, points to the scale and zero point
-  }
+#define UnRollReduction(unroll_size)                                                              \
+  do {                                                                                            \
+    constexpr int kUnroll = unroll_size;                                                          \
+    constexpr int kUnrollMask = 0xffffffff & (~(kUnroll * k_per_iter - 1));                       \
+    for (; k_id < (k & kUnrollMask); k_id += kUnroll * k_per_iter) {                              \
+      _Pragma("unroll") for (int i = 0; i < kUnroll; i++) {                                       \
+        uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + k_per_iter / 2 * i)); \
+        T scale = b_scale_vec[t_meta_k + k_per_iter / block_size * i];                            \
+        uint8_t zp = 8;                                                                           \
+        if constexpr (has_zero_point) {                                                           \
+          zp = b_zp_vec[t_meta_k + k_per_iter / block_size * i];                                  \
+        }                                                                                         \
+        AccumulateEightElements(value, scale, zp, a_data + k_id + i * k_per_iter, sums);          \
+      }                                                                                           \
+      b_data_quant += k_per_iter / 2 * kUnroll;                                                   \
+      t_meta_k += k_per_iter / block_size * kUnroll;                                              \
+    }                                                                                             \
+  } while (false)
 
-  constexpr int kUnroll4 = 4;
-  for (; k_id < (k & 0xfffffc00); k_id += kUnroll4 * k_per_iter) {
-#pragma unroll
-    for (int i = 0; i < kUnroll4; i++) {
-      uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + k_per_iter / 2 * i));
-      T scale = b_scale_vec[t_meta_k + k_per_iter / block_size * i];
-      uint8_t zp = 8;
-      if constexpr (has_zero_point) {
-        zp = b_zp_vec[t_meta_k + k_per_iter / block_size * i];
-      }
-      AccumulateEightElements(value, scale, zp, a_data + k_id + i * k_per_iter, sums);
-    }
-    b_data_quant += k_per_iter / 2 * kUnroll4;
-    t_meta_k += k_per_iter / block_size * kUnroll4;  // k index for this thread, points to the scale and zero point
-  }
-
-  for (; k_id < (k & 0xffffff00); k_id += k_per_iter) {
-    uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant));
-    b_data_quant += k_per_iter / 2;
-    T scale = b_scale_vec[t_meta_k];
-    uint8_t zp = 8;
-    if constexpr (has_zero_point) {
-      zp = b_zp_vec[t_meta_k];
-    }
-    AccumulateEightElements(value, scale, zp, a_data + k_id, sums);
-    t_meta_k += k_per_iter / block_size;  // k index for this thread, points to the scale and zero point
-  }
+  UnRollReduction(16);
+  UnRollReduction(4);
+  UnRollReduction(1);
+#undef UnRollReduction
 
   // handle reminder
   if (k_id + lane_id * 8 < k) {
@@ -262,7 +242,7 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
   if (lane_id == 0) {
     output[m_id * n + n_id] = sum;
   }
-}
+}  // namespace cuda
 
 template <class T>
 bool TryMatMul4Bits(
