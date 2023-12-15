@@ -60,7 +60,11 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                 child = child / "lib"  # noqa: PLW2901
                 for child_file in child.iterdir():
                     suffixes = [".dll", ".lib", ".pdb"] if include_pdbs else [".dll", ".lib"]
-                    if child_file.suffix in suffixes and is_this_file_needed(ep, child_file.name, package_name) and package_name != "Microsoft.ML.OnnxRuntime.Gpu-linux":
+                    if (
+                        child_file.suffix in suffixes
+                        and is_this_file_needed(ep, child_file.name, package_name)
+                        and package_name != "Microsoft.ML.OnnxRuntime.Gpu-linux"
+                    ):
                         files_list.append(
                             '<file src="' + str(child_file) + '" target="runtimes/win-%s/native"/>' % cpu_arch
                         )
@@ -86,7 +90,11 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                 for child_file in child.iterdir():
                     if not child_file.is_file():
                         continue
-                    if child_file.suffix == ".so" and is_this_file_needed(ep, child_file.name, package_name) and package_name != "Microsoft.ML.OnnxRuntime.Gpu-win":
+                    if (
+                        child_file.suffix == ".so"
+                        and is_this_file_needed(ep, child_file.name, package_name)
+                        and package_name != "Microsoft.ML.OnnxRuntime.Gpu-win"
+                    ):
                         files_list.append(
                             '<file src="' + str(child_file) + '" target="runtimes/linux-%s/native"/>' % cpu_arch
                         )
@@ -197,12 +205,15 @@ def generate_repo_url(line_list, repo_url, commit_id):
 
 
 def add_common_dependencies(xml_text, package_name, version):
-    dependent_packages = bool(package_name == "Microsoft.ML.OnnxRuntime.Gpu-win" or package_name == "Microsoft.ML.OnnxRuntime.Gpu-linux")
+    dependent_packages = bool(
+        package_name == "Microsoft.ML.OnnxRuntime.Gpu-win" or package_name == "Microsoft.ML.OnnxRuntime.Gpu-linux"
+    )
     if not dependent_packages:
         xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
     if package_name == "Microsoft.ML.OnnxRuntime.Gpu":
         xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu-win"' + ' version="' + version + '"/>')
         xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu-linux"' + ' version="' + version + '"/>')
+
 
 def generate_dependencies(xml_text, package_name, version):
     dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.12.1"/>'
@@ -409,19 +420,25 @@ def generate_files(line_list, args):
         "<file src="
         + '"'
         + os.path.join(args.sources_path, "include\\onnxruntime\\core\\session\\onnxruntime_*.h")
-        + '" target="' + include_dir + '" />'
+        + '" target="'
+        + include_dir
+        + '" />'
     )
     files_list.append(
         "<file src="
         + '"'
         + os.path.join(args.sources_path, "include\\onnxruntime\\core\\framework\\provider_options.h")
-        + '" target="' + include_dir + '" />'
+        + '" target="'
+        + include_dir
+        + '" />'
     )
     files_list.append(
         "<file src="
         + '"'
         + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\cpu\\cpu_provider_factory.h")
-        + '" target="' + include_dir + '" />'
+        + '" target="'
+        + include_dir
+        + '" />'
     )
 
     if is_training_package:
@@ -554,7 +571,9 @@ def generate_files(line_list, args):
             else:
                 ep_list = [None]
             for ep in ep_list:
-                generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs, is_training_package, args.package_name)
+                generate_file_list_for_ep(
+                    nuget_artifacts_dir, ep, files_list, include_pdbs, is_training_package, args.package_name
+                )
             is_ado_packaging_build = True
         else:
             # Code path for local dev build

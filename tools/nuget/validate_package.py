@@ -93,7 +93,6 @@ def check_if_headers_are_present(header_files, header_folder, file_list_in_packa
             raise Exception(header + " not found for " + platform)
 
 
-
 def check_if_dlls_are_present(
     package_type,
     is_windows_ai_package,
@@ -103,7 +102,7 @@ def check_if_dlls_are_present(
     platforms_supported,
     zip_file,
     package_path,
-    is_gpu_dependent_package = False, # only used for nuget packages
+    is_gpu_dependent_package=False,  # only used for nuget packages
 ):
     platforms = platforms_supported.strip().split(",")
     if package_type == "tarball":
@@ -143,7 +142,9 @@ def check_if_dlls_are_present(
                         print(dll + " not found for " + platform)
                         raise Exception(dll + " not found for " + platform)
             # In Nuget GPU package, gpu header files are not in dependent package.
-            if (is_gpu_package and package_type != "nuget") or (package_type == "nuget" and not is_gpu_dependent_package):
+            if (is_gpu_package and package_type != "nuget") or (
+                package_type == "nuget" and not is_gpu_dependent_package
+            ):
                 check_if_headers_are_present(gpu_related_header_files, header_folder, file_list_in_package, platform)
 
             if is_dml_package:
@@ -180,7 +181,9 @@ def check_if_dlls_are_present(
                         print(so + " not found for " + platform)
                         raise Exception(so + " not found for " + platform)
             # In Nuget GPU package, gpu header files are not in dependent package.
-            if (is_gpu_package and package_type != "nuget") or (package_type == "nuget" and not is_gpu_dependent_package):
+            if (is_gpu_package and package_type != "nuget") or (
+                package_type == "nuget" and not is_gpu_dependent_package
+            ):
                 for header in gpu_related_header_files:
                     path = header_folder + "/" + header
                     print("Checking path: " + path)
