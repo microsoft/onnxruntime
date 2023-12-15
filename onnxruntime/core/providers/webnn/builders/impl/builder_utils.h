@@ -21,7 +21,8 @@ common::Status HandleAutoPad(const std::vector<int64_t> input_shape,
                              const std::vector<int64_t>& onnx_strides,
                              const std::vector<int64_t>& onnx_dilations,
                              AutoPadType auto_pad_type,
-                             AutoPadType& auto_pad_type_out) ORT_MUST_USE_RESULT;
+                             std::vector<int64_t>& pads_out,
+                             bool use_nchw) ORT_MUST_USE_RESULT;
 
 }  // namespace webnn
 }  // namespace onnxruntime
