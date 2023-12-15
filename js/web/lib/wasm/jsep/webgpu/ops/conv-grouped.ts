@@ -5,7 +5,7 @@ import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {ProgramInfo} from '../types';
 
-import {inputVariable, outputVariable, ShaderHelper} from './common';
+import {getMaxComponents, inputVariable, outputVariable, ShaderHelper} from './common';
 import {calculateOutputShape, ConvAttributes} from './conv';
 import {getActivationSnippet} from './fuse-utils';
 
@@ -90,6 +90,90 @@ export const createGroupedConvProgramInfo =
             dims: squeezeOutputShapeFunction ? squeezeOutputShapeFunction(outputShape) : outputShape,
             dataType: inputs[0].dataType
           }],
+          dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
+        }),
+        getShaderSource,
+      };
+    };
+
+export const createGroupedConvVectorizeProgramInfo =
+    (inputs: readonly TensorView[], attributes: ConvAttributes, outputShape: readonly number[]): ProgramInfo => {
+      const hasBias = inputs.length > 2;
+      const components = getMaxComponents(outputShape[3]);
+      const outputNumber = getMaxComponents(outputShape[2]);
+      const outputSize = ShapeUtil.size(outputShape) / components / outputNumber;
+      const xShape = [inputs[0].dims[0], inputs[0].dims[1], inputs[0].dims[2], inputs[0].dims[3] / components];
+      const wShape = [inputs[1].dims[0], inputs[1].dims[1], inputs[1].dims[2], inputs[1].dims[3] / components];
+
+      const getShaderSource = (shaderHelper: ShaderHelper) => {
+        const output = outputVariable(
+            'output', inputs[0].dataType, [outputShape[0], outputShape[1], outputShape[2], outputShape[3] / components],
+            components);
+        const {activationFunction, applyActivation} = getActivationSnippet(attributes, output.type.value);
+        const x = inputVariable('x', inputs[0].dataType, xShape, components);
+        const w = inputVariable('w', inputs[1].dataType, wShape, components);
+        const inputVars = [x, w];
+        if (hasBias) {
+          inputVars.push(inputVariable('b', inputs[2].dataType, inputs[2].dims, components));
+        }
+        const processBias = hasBias ? 'value += b[output_channel];' : '';
+        const xNumber = (outputNumber - 1) * attributes.strides[1] + wShape[1];
+
+        return `
+  const strides: vec2<i32> = vec2(${attributes.strides[0]}, ${attributes.strides[1]});
+  const pads: vec2<i32> = vec2(${attributes.pads[0]}, ${attributes.pads[1]});
+  ${shaderHelper.declareVariables(...inputVars, output)}
+  ${activationFunction}
+  ${shaderHelper.mainStart()}
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
+    let width0 = ${outputShape[3]}u / ${components}u;
+    let output_channel = global_idx % width0;
+    var index1 = global_idx / width0;
+    let width1 = ${outputShape[2]}u / ${outputNumber}u;
+    let col = (index1 % width1) * ${outputNumber}u;
+    index1 = index1 / width1;
+    let row = index1 % ${outputShape[1]}u;
+    let batch = index1 / ${outputShape[1]}u;
+
+    let xRCCorner = vec2<i32>(i32(row), i32(col)) * strides - pads;
+
+    var xVals: array<${x.type.value}, ${xNumber}>;
+    var values: array<${output.type.value}, ${outputNumber}>;
+    let input_channel = output_channel;
+      for (var wHeight: u32 = 0u; wHeight < ${wShape[0]}u; wHeight++) {
+        let xHeight = xRCCorner.x + i32(wHeight);
+        if (xHeight >= 0 || xHeight < ${xShape[1]}) {
+          for (var i = 0; i < ${xNumber}; i++) {
+            let xWidth = xRCCorner.y + i;
+            if (xWidth >= 0 && xWidth < ${xShape[2]}) {
+              xVals[i] = ${x.get('batch', 'u32(xHeight)', 'u32(xWidth)', 'input_channel')};
+            } else {
+              xVals[i] = ${x.type.value}(0);
+            }
+          }
+          for (var wWidth: u32 = 0u; wWidth < ${wShape[1]}u; wWidth++) {
+            let wVal = ${w.get('wHeight', 'wWidth', '0', 'output_channel')};
+            for (var i = 0u; i < ${outputNumber}u; i++) {
+              values[i] = fma(xVals[i * ${attributes.strides[1]}u + wWidth], wVal, values[i]);
+            }
+          }
+        }
+      }
+
+    for (var i = 0u; i < ${outputNumber}u; i++) {
+        var value = values[i];
+        ${processBias}
+        ${applyActivation}
+        ${output.set('batch', 'row', 'col + i', 'output_channel', 'value')};
+    }
+  }`;
+      };
+
+      return {
+        name: 'GroupedConv-Vectorize',
+        shaderCache: {hint: attributes.cacheKey},
+        getRunData: () => ({
+          outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
           dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
         }),
         getShaderSource,
