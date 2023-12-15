@@ -65,7 +65,8 @@ Status PrepareQkv_Attention(contrib::AttentionParameters& parameters,
     LaunchAddBiasTranspose(stream, matrix_to_transpose, format, max_threads_per_block,
                            batch_size, sequence_length, num_heads, qk_head_size,
                            data.gemm_buffer, data.bias, qkv, true, v_head_size, qkv_add_bias,
-                           3, parameters.do_rotary, parameters.past_sequence_length);
+                           3, parameters.do_rotary, parameters.rotary_embedding,
+                           parameters.past_sequence_length);
   }
   return Status::OK();
 }

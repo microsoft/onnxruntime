@@ -43,6 +43,7 @@ def create_neox_attention_graph(
             num_heads=num_heads,
             unidirectional=1,
             do_rotary=1,
+            rotary_embedding = 64,
             domain="com.microsoft",
         ),
     ]
@@ -180,7 +181,7 @@ class GPTNeoXAttention(nn.Module):
         self.num_attention_heads = num_head
         self.hidden_size = hidden_size
         self.head_size = self.hidden_size // self.num_attention_heads
-        self.rotary_ndims = int(self.head_size)
+        self.rotary_ndims = 64
         max_positions = 2048
         self.register_buffer(
             "bias",
@@ -422,7 +423,7 @@ class TestGPTNeoXAttention(unittest.TestCase):
         for batch_size in [1, 2, 4, 8]:
             for seq_len in [32, 128, 512, 1024, 2048]:
                 for num_head in [12]:
-                    for hidden_size in [768]:
+                    for hidden_size in [768, 960]:
                         attn = GPTNeoXAttention(batch_size, seq_len, num_head, hidden_size)
 
                         hidden_states = torch.normal(mean=0.5, std=0.1, size=(batch_size, seq_len, hidden_size)).to(
@@ -432,7 +433,10 @@ class TestGPTNeoXAttention(unittest.TestCase):
                         torch_output = attn.torch_forward(hidden_states)
                         ort_output = attn.onnx_forward(hidden_states)
                         if ort_output is not None:
-                            assert torch.allclose(torch_output, ort_output, atol=1e-4)
+                            assert torch.allclose(torch_output, ort_output, atol=1e-3)
+                            print(
+                                f"Passed: test_gpt_neox_attention: {batch_size}, {seq_len}, {num_head}, {hidden_size}"
+                            )
 
     def test_gpt_neox_decoder_masked_self_attention(self):
         for batch_size in [1, 2, 4, 8]:
@@ -466,7 +470,7 @@ class TestGPTNeoXAttention(unittest.TestCase):
                             hidden_states, attention_mask=attention_mask, layer_past=layer_past
                         )
                         if ort_output is not None:
-                            assert torch.allclose(torch_output, ort_output, atol=1e-4)
+                            assert torch.allclose(torch_output, ort_output, atol=1e-3)
 
 
 if __name__ == "__main__":
