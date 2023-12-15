@@ -622,19 +622,6 @@ bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_prot
       // non-onnx domains, like MSDOMAIN.
 
       auto requested_opset_version = get_opset_version(graph_);
-
-      /// When we fix custom function registration then we can apply the following
-      /// logic for non ONNX domains as we do for ONNX. Currently, we only apply ONNX
-      /// domain version
-      /* {
-        const auto iter = domain_to_version.find(op_->domain());
-        if (iter != domain_to_version.cend()) {
-          function_ptr = op_->GetFunction(iter->second, true);
-        } else {
-          function_ptr = op_->GetFunction();
-        }
-      }*/
-
       if (requested_opset_version.has_value()) {
         function_ptr = op_->GetFunction(*requested_opset_version, true);
       } else {
