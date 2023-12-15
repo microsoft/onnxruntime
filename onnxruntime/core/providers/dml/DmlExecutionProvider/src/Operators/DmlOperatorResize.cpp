@@ -250,13 +250,11 @@ public:
         std::string mode = kernelCreationContext.GetOptionalAttribute<std::string>(AttrName::Mode, "NEAREST");
         DML_INTERPOLATION_MODE interpolationMode = Dml::MapStringToInteropolationMode(mode);
 
-<<<<<<< HEAD
-=======
+
 #if DML_TARGET_VERSION >= 0x6300
         const int antialiased = kernelCreationContext.GetOptionalAttribute<int>(AttrName::Antialiased, 0);
 #endif
 
->>>>>>> 6e9bbb3be6 (feature version gate)
         // Map ONNX to DML's mode using offsets and rounding direction.
         // These offsets are in addition to the coordinate transform offsets.
         DML_AXIS_DIRECTION roundingDirection = DML_AXIS_DIRECTION_DECREASING;

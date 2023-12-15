@@ -1870,6 +1870,8 @@ void TestAntialiasing(std::map<std::string, std::string> attributes,
       test.AddAttribute<float>("extrapolation_value", std::stof(v));
     } else if (k == "roi") {
       roi = parse_attr(v, 0.0f);
+    } else if (k == "antialias") {
+      test.AddAttribute<int64_t>("antialias", std::stoll(v));
     } else {
       throw std::invalid_argument("Unknown attribute");
     }
@@ -2231,5 +2233,23 @@ TEST(ResizeOpTest, Antialias_Use_Extrapolation) {
       },
       {4, 4, 4}, X, {3, 3, 3}, Y);
 }
+
+// Test without anti-aliasing for better comparison with DirectML
+TEST(ResizeOpTest, Axes_and_Scale_18) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> Y = {3.5f, 4.8333335f, 6.1666665f, 8.833333f, 10.166667f, 11.5f, 14.166667f, 15.5f, 16.833334f, 24.833334f, 26.166666f, 27.5f, 30.166666f, 31.5f, 32.833332f, 35.5f, 36.833332f, 38.166668f, 46.166668f, 47.5f, 48.833332f, 51.5f, 52.833332f, 54.166668f, 56.833332f, 58.166668f, 59.5};
+  TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "0"}, {"axes", "{2,3,4}"}, {"output_shape", "{1,1,3,3,3}"}, {"antialias", "0"}}, {1, 1, 4, 4, 4}, X,
+                   std::vector<float>{3 / 4.0f, 3 / 4.0f, 3 / 4.0f}, Y);
+}
+
+TEST(ResizeOpTest, Axes_and_Size_18) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> Y = {3.5f, 4.8333335f, 6.1666665f, 8.833333f, 10.166667f, 11.5f, 14.166667f, 15.5f, 16.833334f, 24.833334f, 26.166666f, 27.5f, 30.166666f, 31.5f, 32.833332f, 35.5f, 36.833332f, 38.166668f, 46.166668f, 47.5f, 48.833332f, 51.5f, 52.833332f, 54.166668f, 56.833332f, 58.166668f, 59.5};
+  TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "0"}, {"axes", "{2,3,4}"}, {"output_shape", "{1,1,3,3,3}"}, {"antialias", "0"}}, {1, 1, 4, 4, 4}, X,
+                   {3, 3, 3}, Y);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
