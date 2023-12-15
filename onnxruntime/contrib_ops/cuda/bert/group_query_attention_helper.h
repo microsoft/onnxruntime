@@ -194,13 +194,13 @@ Status CheckInputs(const Tensor* query,
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                             "sin_cache dimension 0 must be of present_sequence_length.");
     }
-    if (cos_dims[1] != head_size / 2) {
+    if (cos_dims[1] != (head_size / 16) * 8) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "cos_cache dimension 1 must be of head_size / 2.");
+                            "cos_cache dimension 1 must be <= head_size / 2 and a multiple of 8.");
     }
-    if (sin_dims[1] != head_size / 2) {
+    if (sin_dims[1] != (head_size / 16) * 8) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "sin_cache dimension 1 must be of head_size / 2.");
+                            "sin_cache dimension 1 must be <= head_size / 2 and a multiple of 8.");
     }
   } else if (cos_cache != nullptr || sin_cache != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

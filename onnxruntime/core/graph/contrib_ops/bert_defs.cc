@@ -273,8 +273,8 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
       }
       ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, past_key_index, 1);
       ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, static_cast<size_t>(past_key_index) + 1, 2);
-      ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, past_key_index, 1);
-      ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, static_cast<size_t>(past_key_index) + 1, 2);
+      // ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, past_key_index, 1);
+      // ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, static_cast<size_t>(past_key_index) + 1, 2);
     }
   }
 }
