@@ -656,7 +656,7 @@ TEST(FunctionTest, Test_GH_issue_16438) {
       }>
     }
   )";
-  
+
   std::string serialized_model;
   ParseOnnxSource(code, serialized_model);
   SessionOptions session_options;
