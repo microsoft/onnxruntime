@@ -69,12 +69,12 @@ struct OpenVINOExecutionProviderInfo {
   int num_streams_;
   void* context_;
   bool enable_opencl_throttling_;
-  bool enable_dynamic_shapes_;
+  bool disable_dynamic_shapes_;
 
   explicit OpenVINOExecutionProviderInfo(std::string dev_type, bool enable_npu_fast_compile, std::string dev_id,
                                          size_t num_of_threads, std::string cache_dir, int num_streams,
                                          void* context, bool enable_opencl_throttling,
-                                         bool enable_dynamic_shapes)
+                                         bool disable_dynamic_shapes)
       : enable_npu_fast_compile_(enable_npu_fast_compile),
         device_id_(dev_id),
         num_of_threads_(num_of_threads),
@@ -82,7 +82,7 @@ struct OpenVINOExecutionProviderInfo {
         num_streams_(num_streams),
         context_(context),
         enable_opencl_throttling_(enable_opencl_throttling),
-        enable_dynamic_shapes_(enable_dynamic_shapes) {
+        disable_dynamic_shapes_(disable_dynamic_shapes) {
     if (dev_type == "") {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
                          << "No runtime device selection option provided.";
