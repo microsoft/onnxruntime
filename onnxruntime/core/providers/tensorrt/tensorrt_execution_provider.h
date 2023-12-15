@@ -97,6 +97,38 @@ template <typename T>
 using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
 };  // namespace tensorrt_ptr
 
+//
+// Class to allocate memory for outputs with data-dependent shapes. The sizes of those are unknown so pre-allocation is
+// not possible.
+//
+class OutputAllocator : public nvinfer1::IOutputAllocator {
+ public:
+  void* reallocateOutput(char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment) noexcept override;
+
+  void notifyShape(char const* tensorName, nvinfer1::Dims const& dims) noexcept override;
+
+  void* getBuffer() {
+    return outputPtr;
+  }
+
+  std::vector<int64_t>& getOutputShape() {
+    return output_shapes;
+  }
+
+  uint64_t getSize() {
+    return allocated_size;
+  }
+
+  ~OutputAllocator() override {
+    cudaFree(outputPtr);
+  }
+
+ private:
+  void* outputPtr{nullptr};
+  uint64_t allocated_size = 0;
+  std::vector<int64_t> output_shapes;
+};
+
 using ShapeRangesMap = std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>;
 
 // Information to construct kernel function state.
@@ -153,6 +185,7 @@ struct SubGraphContext {
 };
 
 using SubGraphContextMap = std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>;
+using DDSOutputAllocatorMap = std::unordered_map<std::string, std::unique_ptr<OutputAllocator>>;
 
 // Logical device representation.
 class TensorrtExecutionProvider : public IExecutionProvider {
@@ -263,6 +296,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_opt_shapes_;
   std::unordered_map<std::string, ShapeRangesMap> input_shape_ranges_;  // The profile shape ranges that the engine is built with
   std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
+  std::unordered_map<std::string, DDSOutputAllocatorMap> dds_output_allocator_maps_;
 
   // for external stream, we need to create its cudnn/cublass handle before cuda EP enable cuda graph capture
   cudnnHandle_t external_cudnn_handle_ = nullptr;
