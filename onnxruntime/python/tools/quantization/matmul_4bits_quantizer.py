@@ -292,6 +292,7 @@ class MatMul4BitsQuantizer:
         weight_only_node_config = self._generate_q4_node_config()
 
         algorithm = self.algo_config.algorithm
+        logger.info(f"start to quantize model with {algorithm} algorithm...")
         if algorithm == "RTN":
             from neural_compressor.adaptor.ox_utils.weight_only import rtn_quantize
 
@@ -325,6 +326,7 @@ class MatMul4BitsQuantizer:
                 perchannel=perchannel,
                 accuracy_level=accuracy_level,
             )
+        logger.info(f"complete quantization of model with {algorithm} algorithm.")
 
     def process(self):
         if self.algo_config is None:
