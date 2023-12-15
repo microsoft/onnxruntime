@@ -290,12 +290,12 @@ def validate_nuget(args):
     nuget_file_name = nuget_packages_found_in_path[0]
     full_nuget_path = os.path.join(args.package_path, nuget_file_name)
 
-    if "Gpu" in nuget_file_name and "Gpu-" not in nuget_file_name:
-        is_gpu_package = True
-        is_gpu_dependent_package = False
+    if "Gpu" in nuget_file_name:
+        is_gpu_package = bool("Gpu-" not in nuget_file_name)
+        is_gpu_dependent_package = bool("Gpu-" in nuget_file_name)
     else:
         is_gpu_package = False
-        is_gpu_dependent_package = True
+        is_gpu_dependent_package = False
 
     if "directml" in nuget_file_name.lower():
         is_dml_package = True
