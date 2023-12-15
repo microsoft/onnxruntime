@@ -483,7 +483,8 @@ std::unique_ptr<unsigned char[]> QnnBackendManager::GetContextBinaryBuffer(uint6
   return context_buffer;
 }
 
-Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length, QnnModel& qnn_model) {
+Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length,
+                                                         std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models) {
   bool result = nullptr == qnn_sys_interface_.systemContextCreate ||
                 nullptr == qnn_sys_interface_.systemContextGetBinaryInfo ||
                 nullptr == qnn_sys_interface_.systemContextFree;
@@ -516,8 +517,9 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
     graphs_info = binary_info->contextBinaryInfoV2.graphs;
   }
 
-  ORT_RETURN_IF(graph_count > 1, "Load from Qnn cached context only support 1 sub-graph.");
-  ORT_RETURN_IF(graphs_info == nullptr, "Failed to get graph info from Qnn cached context.");
+  ORT_RETURN_IF(graph_count < 1 || graphs_info == nullptr, "Failed to get graph info from Qnn cached context.");
+  LOGS(*logger_, VERBOSE) << "Graph count from QNN context: " << graph_count << ", EPContext node count: " << qnn_models.size();
+  ORT_RETURN_IF(graph_count != qnn_models.size(), "Graph count from QNN context not equal to EPContext node count.");
 
   ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinary,
                 "Invalid function pointer for contextCreateFromBinary.");
@@ -537,7 +539,12 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 
   // More work to support multiple partition, how to map the graph name in compile to qnn graph name
   // Need the lower level framework to understand EPContext op and pass in the partition_name in fused_node during Compile
-  ORT_RETURN_IF_ERROR(qnn_model.DeserializeGraphInfoFromBinaryInfo(graphs_info[0]));
+  for (uint32_t i = 0; i < graph_count; ++i) {
+    std::string graph_name(graphs_info[i].graphInfoV1.graphName);
+    auto qnn_model_pos = qnn_models.find(graph_name);
+    ORT_RETURN_IF(qnn_model_pos == qnn_models.end(), graph_name + " does not match any EPContext node names.");
+    ORT_RETURN_IF_ERROR(qnn_model_pos->second->DeserializeGraphInfoFromBinaryInfo(graphs_info[i]));
+  }
 
   qnn_sys_interface_.systemContextFree(sys_ctx_handle);
   sys_ctx_handle = nullptr;

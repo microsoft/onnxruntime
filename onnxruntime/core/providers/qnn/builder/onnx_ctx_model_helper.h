@@ -28,10 +28,9 @@ static const std::string EP_SDK_VER = "ep_sdk_version";
 static const std::string PARTITION_NAME = "partition_name";
 static const std::string SOURCE = "source";
 
-Status IsFusedGraphHasCtxNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
-                              bool& is_qnn_ctx_model);
+bool GraphHasEpContextNode(const onnxruntime::GraphViewer& graph_viewer);
 
-bool IsQnnCtxModel(const onnxruntime::GraphViewer& graph_viewer);
+bool IsFusedGraphHasCtxNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs);
 
 Status CreateNodeArgs(const std::vector<std::string>& names,
                       const std::unordered_map<std::string, OnnxTensorInfo>& tensor_info_table,
@@ -44,20 +43,20 @@ bool IsContextCacheFileExists(const std::string& customer_context_cache_path,
 
 Status GetEpContextFromModel(const onnxruntime::PathString& ctx_onnx_model_path,
                              QnnBackendManager* qnn_backend_manager,
-                             QnnModel& qnn_model,
+                             std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models,
                              const logging::Logger& logger);
 
 Status GetEpContextFromGraph(const onnxruntime::GraphViewer& graph_viewer,
                              const onnxruntime::PathString& ctx_onnx_model_path,
                              QnnBackendManager* qnn_backend_manager,
-                             QnnModel& qnn_model);
+                             std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models);
 
 Status LoadQnnCtxFromOnnxModel(const onnxruntime::GraphViewer& graph_viewer,
                                const onnxruntime::PathString& ctx_onnx_model_path,
                                bool is_qnn_ctx_model,
                                bool is_ctx_cache_file_exist,
                                QnnBackendManager* qnn_backend_manager,
-                               QnnModel& qnn_model,
+                               std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models,
                                const logging::Logger& logger);
 
 Status ValidateWithContextFile(const onnxruntime::PathString& context_cache_path,

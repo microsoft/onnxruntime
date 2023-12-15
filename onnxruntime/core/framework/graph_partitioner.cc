@@ -524,6 +524,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     Model ep_model(graph.Name(), false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
                    graph.DomainToVersionMap(), {}, *current_ep.GetLogger());
     auto& ep_graph = ep_model.MainGraph();
+    ep_graph.SetDescription(graph.Description());
     for (const auto& node : graph.Nodes()) {
       // the fused node and EPContext node has same node name
       auto ep_context_node = get_ep_context_node(node.Name());

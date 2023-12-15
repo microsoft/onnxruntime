@@ -97,7 +97,8 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
   std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
   std::tie(node_unit_holder, node_unit_map) = GetAllNodeUnits(graph_viewer);
 
-  const auto& graph_name = graph_viewer.Name();
+  // This name must be same with the EPContext node name
+  const auto& graph_name = fused_node.Name();
   ORT_RETURN_IF_ERROR(SetGraphInputOutputInfo(graph_viewer, fused_node));
 
   QnnModelWrapper qnn_model_wrapper = QnnModelWrapper(graph_viewer, logger_,
