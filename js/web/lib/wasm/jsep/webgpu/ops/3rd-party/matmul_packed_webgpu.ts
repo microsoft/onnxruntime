@@ -19,12 +19,11 @@
 //
 // modified to fit the needs of the project
 
-import {tensorDataTypeEnumToString} from '../../../../wasm-common';
 import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
 import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../../types';
-import {createTensorShapeVariables, enableShapesUniforms, getBroadcastDims, IndicesHelper, inputVariable, internalVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformDataElementType, UniformsArrayType} from '../common';
-import {getActivationSnippet, InternalActivationAttributes} from '../fuse-utils';
+import {createTensorShapeVariables, enableShapesUniforms, getBroadcastDims, IndicesHelper, inputVariable, internalVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from '../common';
+import {getActivationSnippet, InternalActivationAttributes, updateUniformsFromActivation} from '../fuse-utils';
 
 import {typeSnippet} from './activation_util';
 
@@ -481,15 +480,8 @@ export const createMatmulProgramInfo =
 
       const uniforms: UniformsArrayType =
           [{name: 'dimAOuter', type: 'i32'}, {name: 'dimBOuter', type: 'i32'}, {name: 'dimInner', type: 'i32'}];
-      const tensorDataType = tensorDataTypeEnumToString(inputs[0].dataType) as ProgramUniform['type'];
-      if (activationAttributes.activation === 'Clip') {
-        programUniforms.push(
-            {type: tensorDataType, data: activationAttributes.clipMax!},
-            {type: tensorDataType, data: activationAttributes.clipMin!});
-        uniforms.push(
-            {name: 'clipMax', type: output.type.value as UniformDataElementType},
-            {name: 'clipMin', type: output.type.value as UniformDataElementType});
-      }
+      updateUniformsFromActivation(
+          programUniforms, uniforms, activationAttributes, inputs[0].dataType, output.type.value);
 
       const hasBias = inputs.length > 2;
       const {activationFunction, applyActivation} = getActivationSnippet(activationAttributes, output.type.value);

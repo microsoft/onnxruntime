@@ -1,14 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {tensorDataTypeEnumToString} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
 
-import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, UniformDataElementType, UniformsArrayType} from './common';
+import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
 import {calculateOutputShape, ConvAttributes} from './conv';
-import {getActivationSnippet} from './fuse-utils';
+import {getActivationSnippet, updateUniformsFromActivation} from './fuse-utils';
 
 /**
  * naive grouped conv implementation, supports 1d/2d conv
@@ -44,14 +43,7 @@ export const createGroupedConvProgramInfo =
         {name: 'strides', type: 'u32', length: 2}, {name: 'pads', type: 'u32', length: 2},
         {name: 'outputChannelsPerGroup', type: 'u32'}
       ];
-      const tensorDataType = tensorDataTypeEnumToString(inputs[0].dataType) as ProgramUniform['type'];
-      if (attributes.activation === 'Clip') {
-        programUniforms.push(
-            {type: tensorDataType, data: attributes.clipMax!}, {type: tensorDataType, data: attributes.clipMin!});
-        uniforms.push(
-            {name: 'clipMax', type: x.type.value as UniformDataElementType},
-            {name: 'clipMin', type: x.type.value as UniformDataElementType});
-      }
+      updateUniformsFromActivation(programUniforms, uniforms, attributes, inputs[0].dataType, x.type.value);
       programUniforms.push(
           ...createTensorShapeVariables(xShape), ...createTensorShapeVariables(wShape),
           ...createTensorShapeVariables(outputShape));

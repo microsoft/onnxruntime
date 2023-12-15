@@ -1,14 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {tensorDataTypeEnumToString} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
 
 import {createMatmulProgramInfo} from './3rd-party/matmul_packed_webgpu';
-import {createTensorShapeVariables, getBroadcastDims, getMaxComponents, IndicesHelper, inputVariable, internalVariable, outputVariable, ShaderHelper, UniformDataElementType, UniformsArrayType,} from './common';
-import {getActivationSnippet, InternalActivationAttributes} from './fuse-utils';
+import {createTensorShapeVariables, getBroadcastDims, getMaxComponents, IndicesHelper, inputVariable, internalVariable, outputVariable, ShaderHelper, UniformsArrayType,} from './common';
+import {getActivationSnippet, InternalActivationAttributes, updateUniformsFromActivation} from './fuse-utils';
 
 export const createNaiveMatmulProgramInfo =
     (inputs: readonly TensorView[], activationAttributes: InternalActivationAttributes, outputShape: readonly number[],
@@ -56,15 +55,8 @@ export const createNaiveMatmulProgramInfo =
       const uniforms: UniformsArrayType = [
         {name: 'outputSize', type: 'u32'}, {name: 'M', type: 'u32'}, {name: 'N', type: 'u32'}, {name: 'K', type: 'u32'}
       ];
-      const tensorDataType = tensorDataTypeEnumToString(inputs[0].dataType) as ProgramUniform['type'];
-      if (activationAttributes.activation === 'Clip') {
-        programUniforms.push(
-            {type: tensorDataType, data: activationAttributes.clipMax!},
-            {type: tensorDataType, data: activationAttributes.clipMin!});
-        uniforms.push(
-            {name: 'clipMax', type: output.type.value as UniformDataElementType},
-            {name: 'clipMin', type: output.type.value as UniformDataElementType});
-      }
+      updateUniformsFromActivation(
+          programUniforms, uniforms, activationAttributes, inputs[0].dataType, output.type.value);
       programUniforms.push(
           ...createTensorShapeVariables(outerDims), ...createTensorShapeVariables(aShape),
           ...createTensorShapeVariables(bShape));

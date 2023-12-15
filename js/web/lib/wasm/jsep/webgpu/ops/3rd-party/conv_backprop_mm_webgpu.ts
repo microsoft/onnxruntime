@@ -19,13 +19,12 @@
 //
 // modified to fit the needs of the project
 
-import {tensorDataTypeEnumToString} from '../../../../wasm-common';
 import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor-view';
 import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../../types';
-import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, UniformDataElementType, UniformsArrayType} from '../common';
+import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from '../common';
 import {ConvTransposeAttributes} from '../conv-transpose';
-import {getActivationSnippet} from '../fuse-utils';
+import {getActivationSnippet, updateUniformsFromActivation} from '../fuse-utils';
 
 import {biasSnippet, typeSnippet} from './activation_util';
 import {utilFunctions} from './conv_util';
@@ -213,14 +212,7 @@ export const createConv2DTransposeMatMulProgramInfo =
         {name: 'strides', type: 'i32', length: 2}, {name: 'dilations', type: 'i32', length: 2},
         {name: 'filterDims', type: 'i32', length: filterDims.length}, {name: 'pads', type: 'i32', length: pads.length}
       ];
-      const tensorDataType = tensorDataTypeEnumToString(inputs[0].dataType) as ProgramUniform['type'];
-      if (attributes.activation === 'Clip') {
-        programUniforms.push(
-            {type: tensorDataType, data: attributes.clipMax!}, {type: tensorDataType, data: attributes.clipMin!});
-        uniforms.push(
-            {name: 'clipMax', type: x.type.value as UniformDataElementType},
-            {name: 'clipMin', type: x.type.value as UniformDataElementType});
-      }
+      updateUniformsFromActivation(programUniforms, uniforms, attributes, inputs[0].dataType, x.type.value);
       programUniforms.push(
           ...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(inputs[1].dims));
 
