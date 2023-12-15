@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/platform/windows/telemetry.h"
+#include "core/common/logging/logging.h"
 #include "onnxruntime_config.h"
 
 // ETW includes
@@ -16,6 +17,7 @@
 
 #include <TraceLoggingProvider.h>
 #include <evntrace.h>
+#include "winmeta.h"
 
 // Seems this workaround can be dropped when we drop support for VS2017 toolchains
 // https://developercommunity.visualstudio.com/content/problem/85934/traceloggingproviderh-is-incompatible-with-utf-8.html
@@ -151,6 +153,7 @@ void WindowsTelemetry::LogProcessInfo() const {
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingString(ORT_VERSION, "runtimeVersion"),
@@ -167,7 +170,8 @@ void WindowsTelemetry::LogSessionCreationStart() const {
                     "SessionCreationStart",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO));
 }
 
 void WindowsTelemetry::LogEvaluationStop() const {
@@ -175,7 +179,8 @@ void WindowsTelemetry::LogEvaluationStop() const {
     return;
 
   TraceLoggingWrite(telemetry_provider_handle,
-                    "EvaluationStop");
+                    "EvaluationStop",
+                    );
 }
 
 void WindowsTelemetry::LogEvaluationStart() const {
@@ -240,6 +245,8 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingKeyword(static_cast<unsigned long long>(onnxruntime::logging::TLKeyword::Session)),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),
@@ -268,6 +275,7 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingLevel(WINEVENT_LEVEL_ERROR),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingHResult(hr, "hResult"),
@@ -284,6 +292,7 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingLevel(WINEVENT_LEVEL_ERROR),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),
