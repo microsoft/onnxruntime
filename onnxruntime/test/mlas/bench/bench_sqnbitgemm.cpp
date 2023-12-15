@@ -4,7 +4,9 @@
 #include "mlas_q4.h"
 #include "mlas_qnbit.h"
 
+#include <memory>
 #include <stdexcept>
+#include <vector>
 
 #include "benchmark/benchmark.h"
 
@@ -52,6 +54,12 @@ void SQNBITGEMM(benchmark::State& state) {
                                             static_cast<int>(K), static_cast<int>(N), static_cast<int>(N),
                                             tp.get());
 
+  std::unique_ptr<std::byte[]> Workspace;
+  if (const auto WorkspaceSize = MlasSQNBitGemmWorkspaceSize(M, N, K, BlkBitWidth, BlkLen, ComputeType);
+      WorkspaceSize > 0) {
+    Workspace = std::make_unique<std::byte[]>(WorkspaceSize);
+  }
+
   MLAS_SQNBIT_GEMM_DATA_PARAMS params{};
   params.A = A.data();
   params.lda = K;
@@ -61,6 +69,7 @@ void SQNBITGEMM(benchmark::State& state) {
   params.Bias = nullptr;
   params.C = C.data();
   params.ldc = N;
+  params.Workspace = Workspace.get();
 
   // warm up run
   MlasSQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, tp.get());
