@@ -2728,7 +2728,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       trt_config->setFlag(nvinfer1::BuilderFlag::kENABLE_TACTIC_HEURISTIC);
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] Builder heuristics are enabled. For TRT > 8.5, trt_build_heuristics_enable is deprecated, please set builder optimization level as 2 to enable builder heuristics.";
     }
-#elif NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR == 6 || NV_TENSORRT_MAJOR > 8
+#elif NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR > 5 || NV_TENSORRT_MAJOR > 8
     // for TRT 8.6 onwards, heuristic-based tactic option is automatically enabled by setting builder optimization level 2 
     if (build_heuristics_enable_) {
       if (builder_optimization_level_ == 2) {
@@ -2739,7 +2739,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       }
     }
 #endif
-#if NV_TENSORRT_MINOR > 5 && NV_TENSORRT_MAJOR >= 8
+
+#if NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR > 5 || NV_TENSORRT_MAJOR > 8
     // switch optimizaion level
     if (builder_optimization_level_ != 3) {
       trt_config->setBuilderOptimizationLevel(builder_optimization_level_);
@@ -3176,7 +3177,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           trt_config->setFlag(nvinfer1::BuilderFlag::kENABLE_TACTIC_HEURISTIC);
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder heuristics are enabled";
         }
-#if NV_TENSORRT_MINOR > 5 && NV_TENSORRT_MAJOR >= 8
+#if NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR > 5 || NV_TENSORRT_MAJOR > 8
         // switch optimizaion level
         if (trt_state->builder_optimization_level != 3) {
           trt_config->setBuilderOptimizationLevel(trt_state->builder_optimization_level);
