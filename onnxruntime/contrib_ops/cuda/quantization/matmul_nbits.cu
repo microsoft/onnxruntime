@@ -177,9 +177,11 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
     b_scale_vec[i] = scales_data[offset + i];
   }
 
-  const int b_zp_k = (blocks_per_K + 1) / 2;
-  uint8_t* b_zp_vec = reinterpret_cast<uint8_t*>(b_scale_vec + kColsPerThreadBlock * blocks_per_K);
+  uint8_t* b_zp_vec = nullptr;
+  (void)b_zp_vec;
   if constexpr (has_zero_point) {
+    b_zp_vec = reinterpret_cast<uint8_t*>(b_scale_vec + kColsPerThreadBlock * blocks_per_K);
+    const int b_zp_k = (blocks_per_K + 1) / 2;
     int zp_offset = n_block_id * kColsPerThreadBlock * b_zp_k;
     for (int i = warp_id * kWarpSize + lane_id; i < kColsPerThreadBlock * b_zp_k; i += kColsPerThreadBlock * kWarpSize) {
       b_zp_vec[2 * i] = (zero_points[zp_offset + i] & 0x0f);
