@@ -29,7 +29,7 @@ static void ParseProfilingLevel(std::string profiling_level_string,
                  profiling_level_string.end(),
                  profiling_level_string.begin(),
                  [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
-  LOGS_DEFAULT(VERBOSE) << "profiling_level: " << profiling_level_string;
+  LOGS_DEFAULT(INFO) << "profiling_level: " << profiling_level_string;
   if (profiling_level_string == "off") {
     profiling_level = qnn::ProfilingLevel::OFF;
   } else if (profiling_level_string == "basic") {
@@ -154,9 +154,14 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     auto keyword = provider.Keyword();
     if ((keyword & static_cast<unsigned long long>(onnxruntime::logging::TLKeyword::Profiling)) != 0) {
       if (level != 0) {
-        if (level == 1) {
+        if (level == 5) {
+          LOGS_DEFAULT(INFO) << "Overriding profiling to basic based on ETW level: " << static_cast<int>(level);
           ParseProfilingLevel("basic", profiling_level);
-        } else {
+        } else if (level < 5) {
+          LOGS_DEFAULT(INFO) << "QNN Profiler ETW level not supported below level 5. Level: " << static_cast<int>(level);
+        }
+        else {
+          LOGS_DEFAULT(INFO) << "Overriding profiling to detailed based on ETW level: " << static_cast<int>(level);
           ParseProfilingLevel("detailed", profiling_level);
         }
       }

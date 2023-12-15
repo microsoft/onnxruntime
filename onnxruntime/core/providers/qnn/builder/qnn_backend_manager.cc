@@ -882,9 +882,9 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
 
     if (!tracelogging_provider_ep_enabled) {
       outfile.close();
-      LOGS(*logger_, INFO) << "Wrote QNN profiling events (" << num_events << ") to qnn-profiling-data.csv";
+      LOGS(*logger_, VERBOSE) << "Wrote QNN profiling events (" << num_events << ") to qnn-profiling-data.csv";
     } else {
-      LOGS(*logger_, INFO) << "Wrote QNN profiling events (" << num_events << ") to ETW";
+      LOGS(*logger_, VERBOSE) << "Wrote QNN profiling events (" << num_events << ") to ETW";
     }
   }
 
@@ -911,7 +911,7 @@ Status QnnBackendManager::ExtractProfilingSubEvents(
           ExtractProfilingSubEvents(*(profile_sub_events + sub_event_idx), outfile, useExtendedEventData, tracelogging_provider_ep_enabled));
     }
 
-    LOGS(*logger_, INFO) << "Wrote QNN profiling sub events (" << num_sub_events << ")";
+    LOGS(*logger_, VERBOSE) << "Wrote QNN profiling sub events (" << num_sub_events << ")";
   }
 
   return Status::OK();
