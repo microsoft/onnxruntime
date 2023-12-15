@@ -14,17 +14,32 @@ import numpy as np
 
 logger = getLogger(__name__)
 
-class TransposeFunc:
+# TODO: handle the hard-coded values
+class ProcessGemmWFunc:
     def __call__(self, x):
-        return np.transpose(x)
+        return np.transpose(x, (1, 0))
+
+class ProcessAttnWFunc:
+    def __call__(self, x):
+        x = np.reshape(x, (32, 3, -1))
+        x = np.transpose(x, (1, 0, 2))
+        x = np.reshape(x, (7680, -1))
+        x = np.transpose(x, (1, 0))
+        return x
+
+class ProcessAttnBFunc:
+    def __call__(self, x):
+        x = np.reshape(x, (32, 3, -1))
+        x = np.transpose(x, (1, 0, 2))
+        x = np.reshape(x, (-1))
+        return x
 
 class PostProcessCausalLMHead(Fusion):
     def __init__(
         self,
         model: OnnxModel,
     ):
-        super().__init__(model, "DONOTUSE", [ #"model_modeling_mixformer_sequential_ParallelBlock_sub1_1",
-                                             "model_modeling_mixformer_sequential_CausalLMHead_sub_1__1_1"])
+        super().__init__(model, "DONOTUSE", ["model_modeling_mixformer_sequential_CausalLMHead_sub_1__1_1"])
 
     def fuse(
             self,
@@ -32,8 +47,7 @@ class PostProcessCausalLMHead(Fusion):
             input_name_to_nodes,
             output_name_to_node,
     ):
-        print("node.input[0] ", node.input[0])
-        print("node.input[1] ", node.input[1])
+        # hack: remove input dulication
         node.input[0] = node.input[1]
 
 class FissionTransformerBlockPhi(Fusion):
@@ -55,8 +69,8 @@ class FissionTransformerBlockPhi(Fusion):
 
     def get_layer_id(self, node):
         return self.func_to_layer_id[node.op_type]
-    
-    def process_initializer(self, initializer_name, functor): 
+
+    def process_initializer(self, initializer_name, functor):
         i = self.model.get_initializer(initializer_name)
         i_np_array = NumpyHelper.to_array(i)
         processed_i_np_array = functor(i_np_array)
@@ -70,7 +84,7 @@ class FissionTransformerBlockPhi(Fusion):
         self.model.add_initializer(new_tensor, self.this_graph_name)
         return new_tensor.name
 
-    def fuse(
+    def fuse_with_attn(
             self,
             node,
             input_name_to_nodes,
@@ -85,18 +99,16 @@ class FissionTransformerBlockPhi(Fusion):
         o_hidden_states = node.output[1]
         o_kv_cache = node.output[0]
 
-        tran = TransposeFunc()
-
         # internal nodes weights
         ln_weight = node.input[4] #float32[2560]
         ln_bias = node.input[5] #float32[2560]
-        attn_qkv_weight = self.process_initializer(node.input[6], tran) #float32[7680,2560]
-        attn_qkv_bias = node.input[7] #float32[7680]
-        attn_out_weight = self.process_initializer(node.input[10], tran) #float32[2560,2560]
+        attn_qkv_weight = self.process_initializer(node.input[6], ProcessAttnWFunc()) #float32[7680,2560]
+        attn_qkv_bias = self.process_initializer(node.input[7], ProcessAttnBFunc()) #float32[7680]
+        attn_out_weight = self.process_initializer(node.input[10], ProcessGemmWFunc()) #float32[2560,2560]
         attn_out_bias = node.input[11] #float32[2560]
-        mlp_fc1_weight = self.process_initializer(node.input[12], tran) #float32[10240,2560]
+        mlp_fc1_weight = self.process_initializer(node.input[12], ProcessGemmWFunc()) #float32[10240,2560]
         mlp_fc1_bias = node.input[13] #float32[10240]
-        mlp_fc2_weight = self.process_initializer(node.input[14], tran) #float32[2560,10240]
+        mlp_fc2_weight = self.process_initializer(node.input[14], ProcessGemmWFunc()) #float32[2560,10240]
         mlp_fc2_bias = node.input[15] #float32[2560]
 
         # opt graph construction.
@@ -124,6 +136,8 @@ class FissionTransformerBlockPhi(Fusion):
                 num_heads=32,
                 unidirectional=1,
                 do_rotary=1,
+                rotary_embedding=32,
+                #past_present_share_buffers=1,
             ),
             helper.make_node(
                 'MatMul',
@@ -150,11 +164,11 @@ class FissionTransformerBlockPhi(Fusion):
                 name=self.uname(layer_id, 'FC1_Bias'),
             ),
             helper.make_node(
-                'FastGelu', 
+                'FastGelu',
                 inputs=[self.uname(layer_id, 'fc1_b_out')],
                 outputs=[self.uname(layer_id, 'new_gelu_out')],
                 name=self.uname(layer_id, 'FastGelu'),
-                domain='com.microsoft', 
+                domain='com.microsoft',
             ),
             helper.make_node(
                 'MatMul',
@@ -189,6 +203,14 @@ class FissionTransformerBlockPhi(Fusion):
         self.nodes_to_remove.append(node)
         self.prune_graph = True
 
+    def fuse(
+            self,
+            node,
+            input_name_to_nodes,
+            output_name_to_node,
+    ):
+        self.fuse_with_attn(node, input_name_to_nodes, output_name_to_node)
+
 
 class PhiOnnxModel(OnnxModel):
     def __init__(self, model: ModelProto, num_heads: int = 0, head_size: int = 0):
@@ -203,6 +225,7 @@ class PhiOnnxModel(OnnxModel):
         self.prune_graph()
 
     def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
+        #return
         self.fission_transformer_block.apply()
         self.postprocess_causal_lm_head.apply()
         self.inline_model()
