@@ -109,9 +109,11 @@ export const initializeWebAssemblyAndOrtRuntime = async(): Promise<void> => {
       await initializeWebAssembly(env.wasm);
       await core.initRuntime(env);
       initialized = true;
+    } catch (e) {
+      aborted = true;
+      throw e;
     } finally {
       initializing = false;
-      aborted = true;
     }
   }
 };
