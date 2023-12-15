@@ -259,8 +259,8 @@ stages:
         condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
         displayName: 'Publish Java temp binaries'
         inputs:
-          pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}${{parameters.artifact_name_suffix}}'
-          artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}'
+          pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
+          artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
 
       - ${{ if eq(parameters['DoCompliance'], 'true') }}:
         - task: CredScan@3
