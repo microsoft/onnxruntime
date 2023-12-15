@@ -12,7 +12,7 @@ namespace AttrName
     static constexpr const char* AllowZero = "allowzero";
     static constexpr const char* Alpha = "alpha";
     static constexpr const char* AlignCorners = "align_corners";
-    static constexpr const char* Antialias = "antialias";
+    static constexpr const char* Antialiased = "antialias";
     static constexpr const char* AutoPad = "auto_pad";
     static constexpr const char* Axes = "axes";
     static constexpr const char* Axis = "axis";

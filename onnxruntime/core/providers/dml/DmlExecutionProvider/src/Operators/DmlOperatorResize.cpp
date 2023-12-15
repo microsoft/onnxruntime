@@ -177,7 +177,7 @@ class DmlOperatorResize : public DmlOperator, public ResizeHelper
 public:
     // Resample a multidimensional image to a new size.
     DmlOperatorResize(const MLOperatorKernelCreationContext& kernelCreationContext, uint32_t opsetVersion)
-    :   DmlOperator(kernelCreationContext), 
+    :   DmlOperator(kernelCreationContext),
         ResizeHelper(kernelCreationContext, kernelCreationContext.GetTensorShapeDescription(), opsetVersion)
     {
         ML_CHECK_VALID_ARGUMENT(!m_scales.empty(), "Resize/Upsample expect scales, either a 2nd input tensors or 'scales' attribute.");
@@ -250,7 +250,7 @@ public:
         std::string mode = kernelCreationContext.GetOptionalAttribute<std::string>(AttrName::Mode, "NEAREST");
         DML_INTERPOLATION_MODE interpolationMode = Dml::MapStringToInteropolationMode(mode);
 
-        const int antialias = kernelCreationContext.GetOptionalAttribute<int>(AttrName::Antialias, 0);
+        const int antialiased = kernelCreationContext.GetOptionalAttribute<int>(AttrName::Antialiased, 0);
 
         // Map ONNX to DML's mode using offsets and rounding direction.
         // These offsets are in addition to the coordinate transform offsets.
@@ -300,7 +300,7 @@ public:
         operatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(paddedScales.size());
         operatorDesc.InputPixelOffsets = inputPixelOffsets.data();
         operatorDesc.OutputPixelOffsets = outputPixelOffsets.data();
-        operatorDesc.Antialias = static_cast<BOOL>(antialias);
+        operatorDesc.Antialiased = static_cast<BOOL>(antialiased);
 
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_RESAMPLE3, &operatorDesc };
         SetDmlOperatorDesc(opDesc, kernelCreationContext);
