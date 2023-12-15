@@ -9,6 +9,8 @@ parameters:
   TestDataArtifactSuffix: ''
   Skipx86Tests: 'false'
   CudaVersion: ''
+  SpecificArtifact: false
+  BuildId: ''
 
 stages:
 - stage: NuGet_Test_Win_${{ parameters.StageSuffix }}
@@ -58,11 +60,13 @@ stages:
         arguments: 'amd64'
         modifyEnvironment: true
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact'
-      inputs:
-        artifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
-        targetPath: '$(Build.BinariesDirectory)\nuget-artifact'
+    - template: ../../templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact'
+        ArtifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
+        TargetPath: '$(Build.BinariesDirectory)\nuget-artifact'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
     - template: get-nuget-package-version-as-variable.yml
       parameters:
