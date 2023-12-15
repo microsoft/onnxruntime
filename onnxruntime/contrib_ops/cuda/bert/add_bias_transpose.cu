@@ -650,7 +650,7 @@ void InvokeAddBiasTranspose(
     if (format != 1 && format != 2 && format != 3) {
       ORT_THROW("format must be 1, 2 or 3 for rotary attention");
     }
-    if (rotary_embedding != 64 && rotary_embedding != 128) {
+    if (rotary_embedding != 32 && rotary_embedding != 64 && rotary_embedding != 128) {
       ORT_THROW("rotary_embedding must be 64 or 128 for rotary attention");
     }
     if (v_head_size != -1 && qk_head_size != v_head_size) {
