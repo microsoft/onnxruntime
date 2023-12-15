@@ -1,12 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {tensorDataTypeEnumToString} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
 
 import {createMatmulProgramInfo} from './3rd-party/matmul_packed_webgpu';
-import {createTensorShapeVariables, getBroadcastDims, getMaxComponents, IndicesHelper, inputVariable, internalVariable, outputVariable, ShaderHelper,} from './common';
+import {createTensorShapeVariables, getBroadcastDims, getMaxComponents, IndicesHelper, inputVariable, internalVariable, outputVariable, ShaderHelper, UniformDataElementType, UniformsArrayType,} from './common';
 import {getActivationSnippet, InternalActivationAttributes} from './fuse-utils';
 
 export const createNaiveMatmulProgramInfo =
@@ -27,36 +28,52 @@ export const createNaiveMatmulProgramInfo =
       const outerDims = reshapedOutputShape ? reshapedOutputShape.slice(0, -2) : outputShape.slice(0, -2);
       const batchSize = ShapeUtil.size(outerDims);
       const outputShapeInShader = [batchSize, M, N];
+
+      const batchDims = internalVariable('batch_dims', inputs[0].dataType, outerDims.length);
+      const a = inputVariable('a', inputs[0].dataType, aShape.length, aComponents);
+      const b = inputVariable('b', inputs[1].dataType, bShape.length, components);
+      const output = outputVariable('output', inputs[0].dataType, outputShapeInShader.length, components);
+      const {activationFunction, applyActivation} = getActivationSnippet(activationAttributes, output.type.value);
+      const inputVariables = [a, b];
+      let processBias = '';
+      if (hasBias) {
+        const biasComponents = isChannelsLast ? components : 1;
+        inputVariables.push(inputVariable('bias', inputs[2].dataType, inputs[2].dims.length, biasComponents));
+        processBias = `${
+            isChannelsLast ? `value += bias[col / ${biasComponents}];` :
+                             `value += ${output.type.value}(bias[row + i]);`}`;
+      }
+
+      const outerDimsA = aShape.slice(0, -2);
+      const outerDimsB = bShape.slice(0, -2);
+      const broadCastADims = getBroadcastDims(outerDimsA, outerDims);
+      const broadCastBDims = getBroadcastDims(outerDimsB, outerDims);
+
       const programUniforms: ProgramUniform[] = [
         {type: 'uint32', data: outputSize}, {type: 'uint32', data: M}, {type: 'uint32', data: N},
-        {type: 'uint32', data: K}, ...createTensorShapeVariables(outerDims), ...createTensorShapeVariables(aShape),
-        ...createTensorShapeVariables(bShape)
+        {type: 'uint32', data: K}
       ];
+      const uniforms: UniformsArrayType = [
+        {name: 'outputSize', type: 'u32'}, {name: 'M', type: 'u32'}, {name: 'N', type: 'u32'}, {name: 'K', type: 'u32'}
+      ];
+      const tensorDataType = tensorDataTypeEnumToString(inputs[0].dataType) as ProgramUniform['type'];
+      if (activationAttributes.activation === 'Clip') {
+        programUniforms.push(
+            {type: tensorDataType, data: activationAttributes.clipMax!},
+            {type: tensorDataType, data: activationAttributes.clipMin!});
+        uniforms.push(
+            {name: 'clipMax', type: output.type.value as UniformDataElementType},
+            {name: 'clipMin', type: output.type.value as UniformDataElementType});
+      }
+      programUniforms.push(
+          ...createTensorShapeVariables(outerDims), ...createTensorShapeVariables(aShape),
+          ...createTensorShapeVariables(bShape));
       if (hasBias) {
         programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
       }
       programUniforms.push(...createTensorShapeVariables(outputShapeInShader));
 
       const getShaderSource = (shaderHelper: ShaderHelper) => {
-        const batchDims = internalVariable('batch_dims', inputs[0].dataType, outerDims.length);
-        const a = inputVariable('a', inputs[0].dataType, aShape.length, aComponents);
-        const b = inputVariable('b', inputs[1].dataType, bShape.length, components);
-        const output = outputVariable('output', inputs[0].dataType, outputShapeInShader.length, components);
-        const {activationFunction, applyActivation} = getActivationSnippet(activationAttributes, output.type.value);
-        const inputVariables = [a, b];
-        let processBias = '';
-        if (hasBias) {
-          const biasComponents = isChannelsLast ? components : 1;
-          inputVariables.push(inputVariable('bias', inputs[2].dataType, inputs[2].dims.length, biasComponents));
-          processBias = `${
-              isChannelsLast ? `value += bias[col / ${biasComponents}];` :
-                               `value += ${output.type.value}(bias[row + i]);`}`;
-        }
-
-        const outerDimsA = aShape.slice(0, -2);
-        const outerDimsB = bShape.slice(0, -2);
-        const broadCastADims = getBroadcastDims(outerDimsA, outerDims);
-        const broadCastBDims = getBroadcastDims(outerDimsB, outerDims);
         const getIndices = (variable: IndicesHelper, broadCastDims: number[]) => {
           const rank = variable.rank;
           const name = variable.name;
@@ -96,12 +113,8 @@ export const createNaiveMatmulProgramInfo =
 
         return `
   ${
-            shaderHelper.registerUniform('outputSize', 'u32')
-                .registerUniform('M', 'u32')
-                .registerUniform('N', 'u32')
-                .registerUniform('K', 'u32')
-                .registerInternalVariables(batchDims)
-                .declareVariables(...inputVariables, output)}
+            shaderHelper.registerUniforms(uniforms).registerInternalVariables(batchDims).declareVariables(
+                ...inputVariables, output)}
   ${activationFunction}
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
