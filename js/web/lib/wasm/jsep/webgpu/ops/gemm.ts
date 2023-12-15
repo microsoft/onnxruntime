@@ -1,12 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {tensorDataTypeEnumToString} from '../../../wasm-common';
 import {TensorView} from '../../tensor-view';
 import {GemmUtil, ShapeUtil} from '../../util';
 import {ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
 
-import {createTensorShapeVariables, getElementAt, inputVariable, outputVariable, ShaderHelper, UniformDataElementType, UniformsArrayType} from './common';
+import {createTensorShapeVariables, IndicesHelper, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs) {
@@ -34,23 +33,6 @@ interface GemmAttributes {
   beta: number;
 }
 
-const calculateC = (m: number, n: number, dims: readonly number[]): [string, boolean, boolean] => {
-  let calculate = '0u';
-  if (dims.length !== 0) {
-    const broadcastM = (dims.length === 1 && m !== 1) || (dims.length === 2 && dims[0] !== m);
-    const broadcastN = dims[dims.length - 1] !== n;
-
-    if (!broadcastM) {
-      calculate += `+ m * ${getElementAt('uniforms.c_shape', dims.length - 1, dims.length)}`;
-    }
-    if (!broadcastN) {
-      calculate += '+ n';
-    }
-    return [`value += uniforms.beta * c[${calculate}];`, broadcastM, broadcastN];
-  }
-  return [`value += uniforms.beta * c[${calculate}];`, false, false];
-};
-
 const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAttributes): ProgramInfo => {
   const aShape = inputs[0].dims.slice();
   const bShape = inputs[1].dims.slice();
@@ -73,24 +55,27 @@ const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAt
   }
 
   const calculateAlpha = attributes.alpha === 1 ? '' : 'value *= uniforms.alpha;';
-  const [calculateCSnippet, broadcastM, broadcastN] =
-      inputs.length === 3 ? calculateC(M, N, inputs[2].dims) : ['', false, false];
+  const broadcastM = inputs.length === 3 ?
+      (inputs[2].dims.length === 1 && M !== 1) || (inputs[2].dims.length === 2 && inputs[2].dims[0] !== M) :
+      false;
+  const broadcastN = inputs.length === 3 ? inputs[2].dims[inputs[2].dims.length - 1] !== N : false;
 
   const a = inputVariable('a', inputs[0].dataType, inputs[0].dims.length);
   const b = inputVariable('b', inputs[1].dataType, inputs[1].dims.length);
   const dataType = a.type.value;
 
   const variables = [a, b];
-  const tensorDataType = tensorDataTypeEnumToString(inputs[0].dataType) as ProgramUniform['type'];
   const programUniforms: ProgramUniform[] = [
     {type: 'uint32', data: outputSize}, {type: 'uint32', data: M}, {type: 'uint32', data: N}, {type: 'uint32', data: K},
-    {type: tensorDataType, data: attributes.alpha}, {type: tensorDataType, data: attributes.beta},
+    {type: 'float32', data: attributes.alpha}, {type: 'float32', data: attributes.beta},
     ...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(inputs[1].dims)
   ];
 
   const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
+  let c: IndicesHelper;
   if (inputs.length === 3) {
-    variables.push(inputVariable('c', inputs[2].dataType, inputs[2].dims.length));
+    c = inputVariable('c', inputs[2].dataType, inputs[2].dims.length);
+    variables.push(c);
     programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
     inputDependencies.push('rank');
   }
@@ -100,7 +85,7 @@ const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAt
 
   const uniforms: UniformsArrayType = [
     {name: 'outputSize', type: 'u32'}, {name: 'M', type: 'u32'}, {name: 'N', type: 'u32'}, {name: 'K', type: 'u32'},
-    {name: 'alpha', type: dataType as UniformDataElementType}, {name: 'beta', type: dataType as UniformDataElementType}
+    {name: 'alpha', type: 'f32'}, {name: 'beta', type: 'f32'}
   ];
 
   const getShaderSource = (shaderHelper: ShaderHelper) => `
@@ -118,7 +103,13 @@ const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAt
     }
 
     ${calculateAlpha}
-    ${calculateCSnippet}
+    ${(() => {
+    if (inputs.length === 3) {
+      return `let cOffset = ${c.broadcastedIndicesToOffset('vec2(m, n)', output)}; value += uniforms.beta * ${
+          c.getByOffset('cOffset')};`;
+    }
+    return '';
+  })()}
     output[global_id.x] = value;
 
   }`;
