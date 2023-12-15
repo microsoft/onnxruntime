@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include <vector>
 #include <string>
+#include <vector>
 
 #include "core/providers/js/js_kernel.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
@@ -17,7 +17,6 @@ class ConvBase : public JsKernel {
   ConvBase(const OpKernelInfo& info, bool is_channels_last, bool is_fused_conv) : JsKernel(info),
                                                                                   conv_attrs_(info),
                                                                                   w_is_const_(false) {
-    std::vector<float> activation_params;
     TensorShapeVector kernel_shape;
     const size_t pads_vec_size = conv_attrs_.pads.size() == 0 ? 4 : conv_attrs_.pads.size();
     std::vector<int32_t> local_pads(pads_vec_size, 0);
@@ -28,13 +27,8 @@ class ConvBase : public JsKernel {
     if (conv_attrs_.kernel_shape_specified) {
       ORT_ENFORCE(info.GetAttrs("kernel_shape", kernel_shape).IsOK());
     }
-    if (is_fused_conv) {
-      ORT_THROW_IF_ERROR(info.GetAttr<std::string>("activation", &conv_attrs_.activation));
-      ORT_THROW_IF_ERROR(info.GetAttrs<float>("activation_params", activation_params));
-    } else {
-      conv_attrs_.activation = info.GetAttrOrDefault<std::string>("activation", "");
-      activation_params = info.GetAttrsOrDefault<float>("activation_params", activation_params);
-    }
+    conv_attrs_.activation = info.GetAttrOrDefault<std::string>("activation", "");
+    std::vector<float> activation_params = info.GetAttrsOrDefault<float>("activation_params");
     const auto* activation_params_ptr = activation_params.size() > 0 ? activation_params.data() : nullptr;
     int64_t channels_last = is_channels_last ? 1 : info.GetAttrOrDefault<int64_t>("channels_last", 0);
     auto kernel_shape_0 = conv_attrs_.kernel_shape_specified && kernel_shape.size() > 0 ? kernel_shape[0] : 0;
