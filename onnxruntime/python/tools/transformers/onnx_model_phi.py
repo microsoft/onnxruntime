@@ -6,12 +6,17 @@
 from logging import getLogger
 from typing import List, Optional
 from fusion_base import Fusion
-from fusion_utils import FusionUtils
+from fusion_utils import FusionUtils, NumpyHelper
 from onnx import GraphProto, ModelProto, TensorProto, ValueInfoProto, helper, inliner
 from onnx_model import OnnxModel
 from fusion_options import FusionOptions
+import numpy as np
 
 logger = getLogger(__name__)
+
+class TransposeFunc:
+    def __call__(self, x):
+        return np.transpose(x)
 
 class PostProcessCausalLMHead(Fusion):
     def __init__(
@@ -50,6 +55,20 @@ class FissionTransformerBlockPhi(Fusion):
 
     def get_layer_id(self, node):
         return self.func_to_layer_id[node.op_type]
+    
+    def process_initializer(self, initializer_name, functor): 
+        i = self.model.get_initializer(initializer_name)
+        i_np_array = NumpyHelper.to_array(i)
+        processed_i_np_array = functor(i_np_array)
+        new_tensor = helper.make_tensor(
+            initializer_name + "_processed",
+            data_type = TensorProto.FLOAT,
+            dims = processed_i_np_array.shape,
+            vals = processed_i_np_array.flatten().tobytes(),
+            raw = True,
+        )
+        self.model.add_initializer(new_tensor, self.this_graph_name)
+        return new_tensor.name
 
     def fuse(
             self,
@@ -66,23 +85,21 @@ class FissionTransformerBlockPhi(Fusion):
         o_hidden_states = node.output[1]
         o_kv_cache = node.output[0]
 
-        print("o_hidden_states ", o_hidden_states)
-        print("o_kv_cache ", o_kv_cache)
+        tran = TransposeFunc()
 
         # internal nodes weights
         ln_weight = node.input[4] #float32[2560]
         ln_bias = node.input[5] #float32[2560]
-        attn_qkv_weight = node.input[6] #float32[7680,2560] need transpose?
+        attn_qkv_weight = self.process_initializer(node.input[6], tran) #float32[7680,2560]
         attn_qkv_bias = node.input[7] #float32[7680]
-        attn_out_weight = node.input[10] #float32[2560,2560] need transpose?
+        attn_out_weight = self.process_initializer(node.input[10], tran) #float32[2560,2560]
         attn_out_bias = node.input[11] #float32[2560]
-        mlp_fc1_weight = node.input[12] #float32[10240,2560] need transpose?
+        mlp_fc1_weight = self.process_initializer(node.input[12], tran) #float32[10240,2560]
         mlp_fc1_bias = node.input[13] #float32[10240]
-        mlp_fc2_weight = node.input[14] #float32[2560,10240] need transpose?
+        mlp_fc2_weight = self.process_initializer(node.input[14], tran) #float32[2560,10240]
         mlp_fc2_bias = node.input[15] #float32[2560]
 
         # opt graph construction.
-
         subgraph_nodes = [
             helper.make_node(
                 'LayerNormalization',
@@ -92,8 +109,15 @@ class FissionTransformerBlockPhi(Fusion):
                 epsilon=9.999999747378752e-06,
             ),
             helper.make_node(
+                'Cast',
+                inputs=[i_attn_mask],
+                outputs=[self.uname(layer_id, 'casted_mask')],
+                name=self.uname(layer_id, 'Cast'),
+                to=6,
+            ),
+            helper.make_node(
                 'Attention',
-                inputs=[self.uname(layer_id, 'ln_out'), attn_qkv_weight, attn_qkv_bias, i_attn_mask, i_kv_cache],
+                inputs=[self.uname(layer_id, 'ln_out'), attn_qkv_weight, attn_qkv_bias, self.uname(layer_id, 'casted_mask'), i_kv_cache],
                 outputs=[self.uname(layer_id, 'attn_out'), o_kv_cache],
                 name=self.uname(layer_id, 'Attention'),
                 domain='com.microsoft',
@@ -126,11 +150,11 @@ class FissionTransformerBlockPhi(Fusion):
                 name=self.uname(layer_id, 'FC1_Bias'),
             ),
             helper.make_node(
-                'NewGelu', # check what is it and use onnx inlining if needed
+                'FastGelu', 
                 inputs=[self.uname(layer_id, 'fc1_b_out')],
                 outputs=[self.uname(layer_id, 'new_gelu_out')],
-                name=self.uname(layer_id, 'NewGelu'),
-                domain='com.microsoft', # fix later
+                name=self.uname(layer_id, 'FastGelu'),
+                domain='com.microsoft', 
             ),
             helper.make_node(
                 'MatMul',
