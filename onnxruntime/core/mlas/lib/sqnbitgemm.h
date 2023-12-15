@@ -186,14 +186,12 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
 
     SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8_Fn* SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8 = nullptr;
 
-    typedef void(QuantizeA_CompInt8_Fn)(
+    typedef void(QuantizeARow_CompInt8_Fn)(
         size_t BlkLen,
         const float* A,
-        size_t CountM,
         size_t CountK,
-        size_t lda,
         std::byte* QuantA
     );
 
-    QuantizeA_CompInt8_Fn* QuantizeA_CompInt8 = nullptr;
+    QuantizeARow_CompInt8_Fn* QuantizeARow_CompInt8 = nullptr;
 };

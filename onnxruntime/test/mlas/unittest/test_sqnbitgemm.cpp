@@ -88,7 +88,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
         std::copy_n(A + m * lda + k, local_blk_len, blk_a);
 
         float amax = 0.0f;  // max of absolute values of A block
-        for (size_t kk = 0; kk < k_blk_len; ++kk) {
+        for (size_t kk = 0; kk < local_blk_len; ++kk) {
           float a = blk_a[kk];
           amax = std::max(amax, fabsf(a));
         }
@@ -100,7 +100,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
         QuantAScale[m * BlockCountK + k_blk] = scale;
 
         for (size_t kk = 0; kk < BlkLen; ++kk) {
-          const float q = blk_a[kk] * scale_reciprocal;
+          const float q = roundf(blk_a[kk] * scale_reciprocal);
           QuantAData[m * BlockCountK * BlkLen + k + kk] =
               static_cast<int8_t>(
                   std::clamp(q,

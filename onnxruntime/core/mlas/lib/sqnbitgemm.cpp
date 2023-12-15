@@ -88,7 +88,7 @@ MlasIsSQNBitGemmAvailable(
         }
         case SQNBitGemmVariant_BitWidth4_CompInt8: {
             return dispatch->SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8 != nullptr &&
-                   dispatch->QuantizeA_CompInt8 != nullptr;
+                   dispatch->QuantizeARow_CompInt8 != nullptr;
         }
         default: {
             return false;
@@ -366,13 +366,24 @@ InitializeWorkspace_CompInt8(
 
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
 
-    const auto QuantizeA = GetMlasPlatform().SQNBitGemmDispatch->QuantizeA_CompInt8;
+    const auto QuantizeARow = GetMlasPlatform().SQNBitGemmDispatch->QuantizeARow_CompInt8;
+
+    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+    const size_t QuantAStride = BlockCountK * Q8BlkSize(BlkLen);
 
     // TODO use threading
     for (size_t gemm_idx = 0; gemm_idx < BatchN; ++gemm_idx) {
-        auto& data = DataParams[gemm_idx];
+        const auto& data = DataParams[gemm_idx];
 
-        QuantizeA(BlkLen, data.A, M, K, K, static_cast<std::byte*>(data.Workspace));
+        const float* ARowPtr = data.A;
+        std::byte* QuantARowPtr = static_cast<std::byte*>(data.Workspace);
+
+        for (size_t m = 0; m < M; ++m) {
+            QuantizeARow(BlkLen, ARowPtr, K, QuantARowPtr);
+
+            ARowPtr += data.lda;
+            QuantARowPtr += QuantAStride;
+        }
     }
 }
 

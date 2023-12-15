@@ -64,7 +64,7 @@ FoldAccumulators(float32x4_t a0, float32x4_t a1, float32x4_t a2, float32x4_t a3)
 
 template <size_t Capacity>
 MLAS_FORCEINLINE void
-LoadData(const float* src, size_t count, float32x4_t (&dst)[Capacity / 4])
+LoadFloatData(const float* src, size_t count, float32x4_t (&dst)[Capacity / 4])
 {
     static_assert(Capacity % 4 == 0, "Capacity must be divisible by 4.");
 
@@ -166,7 +166,7 @@ ComputeDotProducts(
             // load `SubBlkLen` elements from A, padded with 0's if there aren't enough
             const size_t k_subblk_len = std::min(k_blk_len - k_idx_in_blk, SubBlkLen);
             float32x4_t av[4]{};
-            LoadData<SubBlkLen>(ARowPtr + k + k_idx_in_blk, k_subblk_len, av);
+            LoadFloatData<SubBlkLen>(ARowPtr + k + k_idx_in_blk, k_subblk_len, av);
 
             // load B column vectors
             uint8x8_t bv_packed[NCols];
@@ -413,65 +413,161 @@ MlasQNBitBlkDequantBForSgemmNeon(
 // CompInt8 kernel implementation and related helpers
 //
 
-void MLASCALL
-QuantizeA_CompInt8(
+template <size_t SubBlkLen>
+MLAS_FORCEINLINE void
+QuantizeBlock(
     size_t BlkLen,
     const float* A,
-    size_t CountM,
-    size_t CountK,
-    size_t lda,
+    size_t ElementCount,
     std::byte* QuantA
 )
 {
-    auto impl0_reference = [&]() {
-        const size_t BlockCountK = MlasDivRoundup(CountK, BlkLen);
+    static_assert(SubBlkLen >= 16 && SubBlkLen % 16 == 0);
 
-        const size_t QuantAStride = BlockCountK * Q8BlkSize(BlkLen);
+    assert(BlkLen % SubBlkLen == 0);
 
-        for (size_t m = 0; m < CountM; ++m) {
-            const float* ADataRowPtr = A + m * lda;
-            std::byte* QuantARowPtr = QuantA + m * QuantAStride;
+    constexpr size_t VectorCount = SubBlkLen / 4;
 
-            for (size_t k = 0, k_blk = 0; k < CountK; k += BlkLen, ++k_blk) {
-                const size_t k_blk_len = std::min(CountK - k, BlkLen);
+    //
+    // Scan block values first to determine scale.
+    //
 
-                const float* ADataBlkPtr = ADataRowPtr + k;
+    float amax = 0.0f;  // max of absolute values of A block
 
-                // scan block values first to determine scale
+    size_t k;
+    for (k = 0; k < ElementCount; k += SubBlkLen) {
+        const size_t SubBlkElementCount = std::min(ElementCount - k, SubBlkLen);
 
-                float amax = 0.0f;  // max of absolute values of A block
+        float32x4_t a[VectorCount]{};
+        LoadFloatData<SubBlkLen>(A + k, SubBlkElementCount, a);
 
-                for (size_t kk = 0; kk < k_blk_len; ++kk) {
-                    float a = ADataBlkPtr[kk];
-                    amax = std::max(amax, fabsf(a));
-                }
+        float32x4_t abs_a[VectorCount];
+        UnrolledLoop<VectorCount>([&](size_t i) {
+            abs_a[i] = vabsq_f32(a[i]);
+        });
 
-                constexpr float range_max = (1 << 7) - 1;
-                const float scale = amax / range_max;
-                const float scale_reciprocal = scale != 0.0f ? 1.0f / scale : 0.0f;
+        // find amax of SubBlkLen elements
+        for (size_t interval = VectorCount / 2; interval > 0; interval /= 2) {
+            for (size_t i = 0; i < interval; ++i) {
+                abs_a[i] = vmaxq_f32(abs_a[i], abs_a[i + interval]);
+            }
+        }
 
-                std::byte* QuantABlkPtr = QuantARowPtr + k_blk * Q8BlkSize(BlkLen);
+        // update existing amax
+        amax = std::max(amax, vmaxvq_f32(abs_a[0]));
+    }
 
-                Q8BlkScale(QuantABlkPtr) = scale;
-                int8_t* QuantABlkData = Q8BlkData(QuantABlkPtr);
+    constexpr float range_max = (1 << 7) - 1;
+    const float scale = amax / range_max;
+    const float scale_reciprocal = scale != 0.0f ? 1.0f / scale : 0.0f;
 
-                for (size_t kk = 0; kk < k_blk_len; ++kk) {
-                    const float q = ADataBlkPtr[kk] * scale_reciprocal;
-                    QuantABlkData[kk] = static_cast<int8_t>(
-                        std::clamp(
-                            q,
-                            static_cast<float>(std::numeric_limits<int8_t>::min()),
-                            static_cast<float>(std::numeric_limits<int8_t>::max())
-                        )
-                    );
-                }
+    Q8BlkScale(QuantA) = scale;
+
+    //
+    // Compute quantized block values.
+    //
+
+    int8_t* QuantAData = Q8BlkData(QuantA);
+
+    for (k = 0; k < ElementCount; k += SubBlkLen) {
+        const size_t SubBlkElementCount = std::min(ElementCount - k, SubBlkLen);
+
+        float32x4_t a[VectorCount]{};
+        LoadFloatData<SubBlkLen>(A + k, SubBlkElementCount, a);
+
+        UnrolledLoop<VectorCount>([&](size_t i) {
+            a[i] = vmulq_n_f32(a[i], scale_reciprocal);
+        });
+
+        int32x4_t a_s32[VectorCount];
+        UnrolledLoop<VectorCount>([&](size_t i) {
+            a_s32[i] = vcvtaq_s32_f32(a[i]);
+        });
+
+        UnrolledLoop<VectorCount>([&](size_t i) {
+            QuantAData[k + i * 4 + 0] = static_cast<int8_t>(vgetq_lane_s32(a_s32[i], 0));
+            QuantAData[k + i * 4 + 1] = static_cast<int8_t>(vgetq_lane_s32(a_s32[i], 1));
+            QuantAData[k + i * 4 + 2] = static_cast<int8_t>(vgetq_lane_s32(a_s32[i], 2));
+            QuantAData[k + i * 4 + 3] = static_cast<int8_t>(vgetq_lane_s32(a_s32[i], 3));
+        });
+    }
+
+    //
+    // Zero out any remaining sub-block elements.
+    //
+
+    for (; k < BlkLen; k += SubBlkLen) {
+        const int8x16_t Zeros = vdupq_n_s8(0);
+        UnrolledLoop<SubBlkLen / 16>([&](size_t i) {
+            vst1q_s8(QuantAData + k + i * 16, Zeros);
+        });
+    }
+}
+
+void MLASCALL
+QuantizeARow_CompInt8(
+    size_t BlkLen,
+    const float* A,
+    size_t CountK,
+    std::byte* QuantA
+)
+{
+    [[maybe_unused]] auto impl0_reference = [&]() {
+        const float* ADataRowPtr = A;
+        std::byte* QuantARowPtr = QuantA;
+
+        for (size_t k = 0, k_blk = 0; k < CountK; k += BlkLen, ++k_blk) {
+            const size_t k_blk_len = std::min(CountK - k, BlkLen);
+
+            const float* ADataBlkPtr = ADataRowPtr + k;
+
+            // scan block values first to determine scale
+
+            float amax = 0.0f;  // max of absolute values of A block
+
+            for (size_t kk = 0; kk < k_blk_len; ++kk) {
+                float a = ADataBlkPtr[kk];
+                amax = std::max(amax, fabsf(a));
+            }
+
+            constexpr float range_max = (1 << 7) - 1;
+            const float scale = amax / range_max;
+            const float scale_reciprocal = scale != 0.0f ? 1.0f / scale : 0.0f;
+
+            std::byte* QuantABlkPtr = QuantARowPtr + k_blk * Q8BlkSize(BlkLen);
+
+            Q8BlkScale(QuantABlkPtr) = scale;
+            int8_t* QuantABlkData = Q8BlkData(QuantABlkPtr);
+
+            for (size_t kk = 0; kk < k_blk_len; ++kk) {
+                const float q = roundf(ADataBlkPtr[kk] * scale_reciprocal);
+                QuantABlkData[kk] = static_cast<int8_t>(
+                    std::clamp(
+                        q,
+                        static_cast<float>(std::numeric_limits<int8_t>::min()),
+                        static_cast<float>(std::numeric_limits<int8_t>::max())
+                    )
+                );
             }
         }
     };
 
-    // TODO neon impl
+    [[maybe_unused]] auto impl1 = [&]() {
+        const float* ADataBlkPtr = A;
+        std::byte* QuantABlkPtr = QuantA;
 
-    impl0_reference();
+        for (size_t k = 0; k < CountK; k += BlkLen) {
+            const size_t k_blk_len = std::min(CountK - k, BlkLen);
+
+            QuantizeBlock<16>(BlkLen, ADataBlkPtr, k_blk_len, QuantABlkPtr);
+
+            ADataBlkPtr += BlkLen;
+            QuantABlkPtr += Q8BlkSize(BlkLen);
+        }
+    };
+
+    // impl0_reference();
+    impl1();
 }
 
 MLAS_FORCEINLINE
@@ -544,7 +640,7 @@ const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
     d.SQNBitGemmM1Kernel_BlkBitWidth4_CompFp32 = MlasSQNBitGemmM1KernelNeon<4>;
     d.QNBitBlkDequantBForSgemm_BlkBitWidth4_CompFp32 = MlasQNBitBlkDequantBForSgemmNeon<4>;
     d.SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8 = SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8;
-    d.QuantizeA_CompInt8 = QuantizeA_CompInt8;
+    d.QuantizeARow_CompInt8 = QuantizeARow_CompInt8;
 
     return d;
 }();
