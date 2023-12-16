@@ -52,7 +52,7 @@ resources:
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: 39159767b951fead9cb36a36c40d920638796138
+    ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 jobs:
 - job: Linux_CPU_Minimal_Build_E2E
