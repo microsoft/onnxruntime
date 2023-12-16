@@ -43,6 +43,10 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 4);
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
 
+        // When the input is 4D, it has the shape [batchSize, numHeads, sequenceLength, headSize]. Otherwise,
+        // it has the shape [batchSize, sequenceLength, hiddenSize]
+        const bool inputIs4D = kernelInfo.GetInputTensorDimensionCount(inputDataIndex) == 4;
+
         // When positionIds is a scalar, it represents the start offset for each sequence
         const bool positionIdsIsOffset = kernelInfo.GetInputTensorDimensionCount(positionIdsIndex) == 1;
 
@@ -63,9 +67,9 @@ public:
 
         // We resize the data to be of shape [batchSize, sequenceLength, numHeads, headSize]
         const auto inputDataSizes = m_inputTensorDescs[inputDataIndex].GetSizes();
-        const uint32_t batchSize = inputDataSizes[1];
+        const uint32_t batchSize = inputIs4D ? inputDataSizes[0] : inputDataSizes[1];
         const uint32_t sequenceLength = inputDataSizes[2];
-        const uint32_t numHeads = inputDataSizes[3] / headSize;
+        const uint32_t numHeads = inputIs4D ? inputDataSizes[1] : inputDataSizes[3] / headSize;
 
         const auto cosCacheSizes = m_inputTensorDescs[cosCacheIndex].GetSizes();
         const uint32_t maxSequenceLength = cosCacheSizes[cosCacheSizes.size() - 2];
@@ -80,8 +84,8 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         const MLOperatorTensorDataType dataType = kernelInfo.GetInputEdgeDescription(inputDataIndex).tensorDataType;
 
-        // Splitting the hiddenSize into numHeads and headSize dimensions makes it easier for DML to handle
-        const std::array<uint32_t, 4> inputOutputShape = {batchSize, sequenceLength, numHeads, headSize};
+        // We can collapse this size into a 1D tensor since it's only used as the input/output of elementwise operations
+        const std::array<uint32_t, 1> inputOutputShape = {batchSize * sequenceLength * numHeads * headSize};
         TensorDesc inputOutputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, inputOutputShape);
         const DML_TENSOR_DESC inputOutputDmlTensorDesc = inputOutputTensorDesc.GetDmlDesc();
 
@@ -104,7 +108,19 @@ public:
             : std::vector<uint32_t>({batchSize, sequenceLength, numHeads, 1, headSize / 2});
 
         TensorDesc inputDataTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, inputDataTensorShape);
+
+        // We need to stride it if the input was 4D
+        if (inputIs4D)
+        {
+            const std::vector<uint32_t> inputDataStrides = interleaved
+                ? std::vector<uint32_t>({sequenceLength * numHeads * headSize, headSize, sequenceLength * headSize, 2, 1})
+                : std::vector<uint32_t>({sequenceLength * numHeads * headSize, headSize, sequenceLength * headSize, headSize / 2, 1});
+        }
+
         const DML_TENSOR_DESC inputDataDmlTensorDesc = inputDataTensorDesc.GetDmlDesc();
+
+        TensorDesc joinedDataTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, inputDataTensorShape);
+        const DML_TENSOR_DESC joinedDataDmlTensorDesc = joinedDataTensorDesc.GetDmlDesc();
 
         TensorDesc splitInputDataTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, splitInputDataTensorShape);
         const std::array<DML_TENSOR_DESC, 2> splitInputDataDmlTensorDescs = {splitInputDataTensorDesc.GetDmlDesc(), splitInputDataTensorDesc.GetDmlDesc()};
@@ -122,7 +138,7 @@ public:
         // Swap the 2 halves and join them together
         DML_JOIN_OPERATOR_DESC joinInputDesc{};
         joinInputDesc.InputTensors = splitInputDataDmlTensorDescs.data();
-        joinInputDesc.OutputTensor = &inputDataDmlTensorDesc;
+        joinInputDesc.OutputTensor = &joinedDataDmlTensorDesc;
         joinInputDesc.Axis = splitInputDesc.Axis;
         joinInputDesc.InputCount = gsl::narrow_cast<uint32_t>(splitInputDataDmlTensorDescs.size());
         const DML_OPERATOR_DESC joinInputDmlDesc = {DML_OPERATOR_JOIN, &joinInputDesc};
@@ -212,16 +228,16 @@ public:
         const DML_TENSOR_DESC broadcastedSignDmlTensorDesc = broadcastedSignCosSinTensorDesc.GetDmlDesc();
 
         DML_ELEMENT_WISE_MULTIPLY_OPERATOR_DESC mulSignDesc{};
-        mulSignDesc.ATensor = &inputDataDmlTensorDesc;
+        mulSignDesc.ATensor = &joinedDataDmlTensorDesc;
         mulSignDesc.BTensor = &broadcastedSignDmlTensorDesc;
-        mulSignDesc.OutputTensor = &inputDataDmlTensorDesc;
+        mulSignDesc.OutputTensor = &joinedDataDmlTensorDesc;
         const DML_OPERATOR_DESC mulSignDmlDesc = {DML_OPERATOR_ELEMENT_WISE_MULTIPLY, &mulSignDesc};
 
         // Multiply the non-rotated data with the cos and the rotated data with the sin
         DML_ELEMENT_WISE_MULTIPLY_OPERATOR_DESC mulCosSinDesc{};
-        mulCosSinDesc.ATensor = &inputDataDmlTensorDesc;
+        mulCosSinDesc.ATensor = &joinedDataDmlTensorDesc;
         mulCosSinDesc.BTensor = &broadcastedCosSinDmlTensorDesc;
-        mulCosSinDesc.OutputTensor = &inputDataDmlTensorDesc;
+        mulCosSinDesc.OutputTensor = &joinedDataDmlTensorDesc;
         const DML_OPERATOR_DESC mulCosSinDmlDesc = {DML_OPERATOR_ELEMENT_WISE_MULTIPLY, &mulCosSinDesc};
 
         // Add the multiplied cos and sin values together
