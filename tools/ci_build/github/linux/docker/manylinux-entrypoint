@@ -1,9 +1,0 @@
-#!/bin/bash
-
-set -eu
-
-if [ "${AUDITWHEEL_ARCH}" == "i686" ] && [ "$(uname -m)" == "x86_64" ]; then
-	linux32 "$@"
-else
-	exec "$@"
-fi
