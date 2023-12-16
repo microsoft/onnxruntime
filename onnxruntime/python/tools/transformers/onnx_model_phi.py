@@ -39,7 +39,7 @@ class PostProcessCausalLMHead(Fusion):
         self,
         model: OnnxModel,
     ):
-        super().__init__(model, "DONOTUSE", ["model_modeling_mixformer_sequential_CausalLMHead_sub_1__1_1"])
+        super().__init__(model, "DONOTUSE", ["model_modeling_mixformer_sequential_CausalLMHead_layers__1_1"])
 
     def fuse(
             self,
@@ -91,6 +91,7 @@ class FissionTransformerBlockPhi(Fusion):
             output_name_to_node,
     ):
         layer_id = self.get_layer_id(node)
+        print(f"process layer {layer_id}")
 
         # transformer block input and output
         i_hidden_states = node.input[0] if layer_id == 1 else node.input[2]
@@ -225,10 +226,9 @@ class PhiOnnxModel(OnnxModel):
         self.prune_graph()
 
     def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
-        #return
         self.fission_transformer_block.apply()
         self.postprocess_causal_lm_head.apply()
-        self.inline_model()
+        #self.inline_model()
 
     def get_fused_operator_statistics(self):
         """
