@@ -31,6 +31,8 @@ Abstract:
 #include "mlas_qnbit.h"
 #include "mlasi.h"
 
+#include <cassert>
+
 constexpr MLAS_FORCEINLINE size_t
 MlasQNBitBlkDataSizeInBytes(size_t BlkBitWidth, size_t BlkLen)
 {
@@ -87,15 +89,14 @@ Q8BlkSize(size_t BlkLen)
     const size_t BlkSize = sizeof(float) + BlkLen * sizeof(int8_t);
     // Currently, the strictest alignment requirement of a block is for a float.
     // Ensure contiguous blocks are suitably aligned.
-    // assert(BlkSize % alignof(float) == 0);  // TODO needs include, put it in .cpp?
+    assert(BlkSize % alignof(float) == 0);
     return BlkSize;
 }
 
 MLAS_FORCEINLINE
 constexpr size_t
-Q8BlkAlignment(size_t BlkLen)
+Q8BlkAlignment()
 {
-    MLAS_UNREFERENCED_PARAMETER(BlkLen);
     return alignof(float);
 }
 

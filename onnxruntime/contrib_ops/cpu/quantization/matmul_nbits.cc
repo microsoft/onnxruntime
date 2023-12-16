@@ -67,7 +67,8 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   const size_t K = static_cast<size_t>(helper.K());
   const size_t lda = helper.Lda(false);
 
-  if (MlasIsSQNBitGemmAvailable(nbits_, block_size_)) {
+  const MLAS_SQNBITGEMM_COMPUTE_TYPE compute_type = CompFp32;
+  if (MlasIsSQNBitGemmAvailable(M, N, K, nbits_, block_size_, compute_type)) {
     // number of bytes or elements between adjacent matrices
     size_t b_data_matrix_stride_in_bytes, b_scale_matrix_stride, b_zero_point_matrix_stride_in_bytes;
     MlasBlockwiseQuantizedBufferSizes(static_cast<int>(nbits_), static_cast<int>(block_size_), /* columnwise */ true,
@@ -76,6 +77,15 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
                                       &b_zero_point_matrix_stride_in_bytes);
 
     const size_t b_matrix_size = K * N;
+
+    IAllocatorUniquePtr<std::byte> workspace{};
+    if (const size_t workspace_size = MlasSQNBitGemmWorkspaceSize(M, N, K, batch_count,
+                                                                  nbits_, block_size_, compute_type);
+        workspace_size > 0) {
+      AllocatorPtr allocator;
+      ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
+      workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size);
+    }
 
     InlinedVector<MLAS_SQNBIT_GEMM_DATA_PARAMS> data(batch_count);
     for (size_t i = 0; i < batch_count; ++i) {
@@ -92,7 +102,8 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
       data[i].ldc = N;
     }
 
-    MlasSQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, data.data(), thread_pool);
+    MlasSQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type, data.data(), workspace.get(),
+                        thread_pool);
 
     return Status::OK();
   }

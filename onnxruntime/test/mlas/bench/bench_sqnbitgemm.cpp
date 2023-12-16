@@ -55,7 +55,7 @@ void SQNBITGEMM(benchmark::State& state) {
                                             tp.get());
 
   std::unique_ptr<std::byte[]> Workspace;
-  if (const auto WorkspaceSize = MlasSQNBitGemmWorkspaceSize(M, N, K, BlkBitWidth, BlkLen, ComputeType);
+  if (const auto WorkspaceSize = MlasSQNBitGemmWorkspaceSize(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType);
       WorkspaceSize > 0) {
     Workspace = std::make_unique<std::byte[]>(WorkspaceSize);
   }
@@ -69,13 +69,12 @@ void SQNBITGEMM(benchmark::State& state) {
   params.Bias = nullptr;
   params.C = C.data();
   params.ldc = N;
-  params.Workspace = Workspace.get();
 
   // warm up run
-  MlasSQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, tp.get());
+  MlasSQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace.get(), tp.get());
 
   for (auto _ : state) {
-    MlasSQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, tp.get());
+    MlasSQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace.get(), tp.get());
   }
 }
 

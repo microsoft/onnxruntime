@@ -72,10 +72,9 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     params.QuantBData = QuantBData;
     params.QuantBScale = QuantBScale;
     params.QuantBZeroPoint = QuantBZeroPoint;
-    params.Workspace = Workspace;
     params.PostProcessor = nullptr;
 
-    MlasSQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Threadpool);
+    MlasSQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace, Threadpool);
   }
 
   void QuantizeA(size_t M, size_t K, const float* A, int8_t* QuantAData, float* QuantAScale) {
@@ -252,7 +251,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     }
 
     void* Workspace = nullptr;
-    if (const auto WorkspaceSize = MlasSQNBitGemmWorkspaceSize(M, N, K, BlkBitWidth, BlkLen, ComputeType);
+    if (const auto WorkspaceSize = MlasSQNBitGemmWorkspaceSize(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType);
         WorkspaceSize > 0) {
       Workspace = BufferWorkspace.GetBuffer(WorkspaceSize);
     }

@@ -42,12 +42,6 @@ struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
     float* C = nullptr;                      ///< address of result matrix
     size_t ldc = 0;                          ///< leading dimension of C
 
-    /**
-     * Address of intermediate workspace buffer.
-     * Only required if MlasSQNBitGemmWorkspaceSize returns a non-zero value.
-     */
-    void* Workspace = nullptr;
-
     ///< optional post processing to apply to result matrix
     MLAS_GEMM_POSTPROCESSOR<float>* PostProcessor = nullptr;
 };
@@ -63,9 +57,12 @@ struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
  * @param[in]       BatchN          number of batches
  * @param[in]       BlkBitWidth     quantized value bit width (e.g., 4 means 4 bit ints)
  * @param[in]       BlkLen          number of quantized values per block
+ * @param[in]       ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
  * @param[inout]    DataParams      An array (size BatchN) of parameter blocks
+ * @param[in]       Workspace       Address of intermediate workspace buffer.
+                                    If MlasSQNBitGemmWorkspaceSize() returns a non-zero value, this should be a buffer
+                                    with at least that many bytes. Otherwise, it can be nullptr.
  * @param[in]       ThreadPool      optional thread pool to use
- * // TODO update param doc
  */
 void MLASCALL
 MlasSQNBitGemmBatch(
@@ -77,6 +74,7 @@ MlasSQNBitGemmBatch(
     size_t BlkLen,
     MLAS_SQNBITGEMM_COMPUTE_TYPE ComputeType,
     const MLAS_SQNBIT_GEMM_DATA_PARAMS* DataParams,
+    void* Workspace,
     MLAS_THREADPOOL* ThreadPool = nullptr
 );
 
@@ -106,6 +104,7 @@ MlasSQNBitGemmWorkspaceSize(
     size_t M,
     size_t N,
     size_t K,
+    size_t BatchN,
     size_t BlkBitWidth,
     size_t BlkLen,
     MLAS_SQNBITGEMM_COMPUTE_TYPE ComputeType
