@@ -23,7 +23,9 @@
 #define ERROR 0
 
 #ifdef USE_DML
-#include <DirectML.h>
+// TODO (pavignol): Revert
+// #include <DirectML.h>
+#include "core/providers/dml/DirectML2.h"
 #endif USE_DML
 
 #include "core/framework/customregistry.h"

@@ -11,7 +11,9 @@
 // clang-format off
 
 #pragma once
-#include "DirectML.h"
+// TODO (pavignol): Revert
+// #include <DirectML.h>
+#include "core/providers/dml/DirectML2.h"
 
 #include <cstdint>
 #include <cassert>

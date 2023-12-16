@@ -107,6 +107,7 @@ namespace AttrName
     static constexpr const char* QkvHiddenSizes = "qkv_hidden_sizes";
     static constexpr const char* Unidirectional = "unidirectional";
     static constexpr const char* NumHeads = "num_heads";
+    static constexpr const char* KvNumHeads = "kv_num_heads";
 
     static constexpr const char* FusedActivation = "fused_activation";
     static constexpr const char* FusedActivationDomain = "fused_activation_domain";
