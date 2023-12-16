@@ -20,6 +20,7 @@ CMake creates a target to this project
     <IsWindowsBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</IsWindowsBuild>
     <IsLinuxBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinuxBuild>
     <ExecutionProvider Condition=" '$(ExecutionProvider)' == '' ">None</ExecutionProvider>
+    <IsDependentPackage Condition=" '$(IsDependentPackage)' == '' ">false</IsDependentPackage>
 
     <!-- include Xamarin/MAUI Android and iOS target frameworks? Command line property overrides this value. -->
     <IncludeMobileTargets>true</IncludeMobileTargets>
@@ -81,8 +82,10 @@ CMake creates a target to this project
       <Output TaskParameter="AbsolutePaths" PropertyName="OnnxRuntimeSourceDirectoryAbs"/>
     </ConvertToAbsolutePath>
     <PropertyGroup>
-      <CurrentDate>$([System.DateTime]::UtcNow.ToString(yyyyMMdd))</CurrentDate>
-      <CurrentTime>$([System.DateTime]::UtcNow.ToString(hhmm))</CurrentTime>
+      <!-- If we create multiple nuget packages in one job, major package and dependent packages version should be the same-->
+      <!-- CurrentDate and CurrentTime are only used for dev packages-->
+      <CurrentDate Condition="'$(CurrentDate)'==''">$([System.DateTime]::UtcNow.ToString(yyyyMMdd))</CurrentDate>
+      <CurrentTime Condition="'$(CurrentTime)'==''">$([System.DateTime]::UtcNow.ToString(hhmm))</CurrentTime>
       <PackageVersion>@(MajorVersionNumber)</PackageVersion>
       <PackageVersion>$(PackageVersion)$(ReleaseVersionSuffix)</PackageVersion>
       <Version>$(PackageVersion)</Version>
@@ -100,10 +103,10 @@ CMake creates a target to this project
     </Exec>
 
     <!-- Create Microsoft.ML.OnnxRuntime.Managed with the C# bindings using the C# project -->
-    <Message Importance="High" Text="Creating Microsoft.ML.OnnxRuntime.Managed nuget package..." />
-    <MSBuild Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
+    <Message Condition="'$(IsDependentPackage)'!='True'" Importance="High" Text="Creating Microsoft.ML.OnnxRuntime.Managed nuget package..." />
+    <MSBuild Condition="'$(IsDependentPackage)'!='True'" Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
              Targets="CopyMiscFiles;Pack"
-            Properties="NoBuild=true;Platform=AnyCPU;PackageVersion=$(PackageVersion);OrtPackageId=$(OrtPackageId);IncludeMobileTargets=$(IncludeMobileTargets)"/>
+             Properties="NoBuild=true;Platform=AnyCPU;PackageVersion=$(PackageVersion);OrtPackageId=$(OrtPackageId);IncludeMobileTargets=$(IncludeMobileTargets)"/>
 
     <!-- Manually create the nuspec for the native Microsoft.ML.OnnxRuntime package -->
     <Message Importance="High" Text="Generating nuspec for the native Microsoft.ML.OnnxRuntime nuget package..." />

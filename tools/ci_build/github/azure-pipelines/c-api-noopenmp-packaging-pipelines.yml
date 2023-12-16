@@ -706,6 +706,8 @@ stages:
     variables:
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
+      CurrentDate: $[format('{0:yyyyMMdd}', pipeline.startTime)]
+      CurrentTime: $[format('{0:HHmm}', pipeline.startTime)]
 
     steps:
     - checkout: self
@@ -813,6 +815,10 @@ stages:
         platform: 'Any CPU'
         msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
+      env:
+        # check out csharp/OnnxRuntime.CSharp.proj for the usage of these variables
+        CurrentDate: $(CurrentDate)
+        CurrentTime: $(CurrentTime)
 
     - task: MSBuild@1
       displayName: 'Build Nuget Packages Microsoft.ML.OnnxRuntime.Gpu-win'
@@ -822,6 +828,11 @@ stages:
         platform: 'Any CPU'
         msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu-win -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
+      env:
+        # check out csharp/OnnxRuntime.CSharp.proj for the usage of these variables
+        CurrentDate: $(CurrentDate)
+        CurrentTime: $(CurrentTime)
+        IsDependentPackage: 'True'
 
     - task: MSBuild@1
       displayName: 'Build Nuget Packages Microsoft.ML.OnnxRuntime.Gpu-linux'
@@ -831,6 +842,11 @@ stages:
         platform: 'Any CPU'
         msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu-linux -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
+      env:
+        # check out csharp/OnnxRuntime.CSharp.proj for the usage of these variables
+        CurrentDate: $(CurrentDate)
+        CurrentTime: $(CurrentTime)
+        IsDependentPackage: 'True'
 
     - task: BatchScript@1
       displayName: 'Add TensorRT header file to the native nuGet package'
