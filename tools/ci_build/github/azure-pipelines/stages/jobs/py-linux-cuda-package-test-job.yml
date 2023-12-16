@@ -113,3 +113,6 @@ jobs:
           targetType: filePath
           filePath: tools/ci_build/github/linux/run_python_dockertest.sh
           arguments: -d GPU -c ${{parameters.cmake_build_type}} -i onnxruntimecuda${{ replace(parameters.CudaVersion, '.', '') }}xtrt86buildx86_64 -u 12.2
+      - template: ../../template/component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
