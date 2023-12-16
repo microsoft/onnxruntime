@@ -67,7 +67,6 @@ public:
         ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlQueryIndex].GetDimensionCount() == 3);
         ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlKeyIndex].GetDimensionCount() == 3);
         ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlValueIndex].GetDimensionCount() == 3);
-        ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlPastSequenceLengthsIndex].GetDimensionCount() == 1);
 
         const uint32_t queryNumHeads = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetAttribute<int64_t>(AttrName::NumHeads));
         const uint32_t kvNumHeads = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetAttribute<int64_t>(AttrName::KvNumHeads));
@@ -103,7 +102,21 @@ public:
         ML_CHECK_VALID_ARGUMENT(valueSizes[2] == kvHiddenSize);
 
         // Validate PastSequenceLengths dimensions
-        ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlPastSequenceLengthsIndex].GetSizes()[0] == batchSize);
+        if (m_inputTensorDescs[dmlPastSequenceLengthsIndex].GetDimensionCount() == 1)
+        {
+            ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlPastSequenceLengthsIndex].GetSizes()[0] == batchSize);
+        }
+        else
+        {
+            ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlPastSequenceLengthsIndex].GetDimensionCount() == 2);
+            ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlPastSequenceLengthsIndex].GetSizes()[0] == batchSize);
+            ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlPastSequenceLengthsIndex].GetSizes()[1] == 1);
+        }
+
+        const std::array<uint32_t, 1> pastSequenceLengthsShape = {batchSize};
+        auto pastSequenceLengthsDataType = kernelCreationContext.GetInputEdgeDescription(seqLensIndex).tensorDataType;
+        TensorDesc pastSequenceLengthsTensorDesc = TensorDesc::ConstructDefaultTensorDesc(pastSequenceLengthsDataType, pastSequenceLengthsShape);
+        const DML_TENSOR_DESC pastSequenceLengthsDmlTensorDesc = pastSequenceLengthsTensorDesc.GetDmlDesc();
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
@@ -112,7 +125,7 @@ public:
         mhaDesc.QueryTensor = &inputDescs[dmlQueryIndex];
         mhaDesc.KeyTensor = &inputDescs[dmlKeyIndex];
         mhaDesc.ValueTensor = &inputDescs[dmlValueIndex];
-        mhaDesc.PastSequenceLengthsTensor = &inputDescs[dmlPastSequenceLengthsIndex];
+        mhaDesc.PastSequenceLengthsTensor = &pastSequenceLengthsDmlTensorDesc;
         mhaDesc.OutputTensor = &outputDescs[outputIndex];
         mhaDesc.OutputPresentKeyTensor = &outputDescs[outputPresentKeyIndex];
         mhaDesc.OutputPresentValueTensor = &outputDescs[outputPresentValueIndex];
