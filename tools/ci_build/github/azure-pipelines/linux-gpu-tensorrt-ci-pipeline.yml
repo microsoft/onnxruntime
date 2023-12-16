@@ -40,7 +40,7 @@ resources:
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
+    ref: 39159767b951fead9cb36a36c40d920638796138
 variables:
   - name: docker_base_image
     ${{ if eq(parameters.CudaVersion, '11.8') }}:

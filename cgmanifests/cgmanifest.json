@@ -5,7 +5,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "93d8a750f5f3de6c941719427f1fee23995092bb",
+               "commitHash": "215105818dfde3174fe799600bb0f3cae233d0bf",
                "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
             }
          }
@@ -398,7 +398,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "aead4d751c2101e23336aa73f2380df83e7a13f3",
+               "commitHash": "93d8a750f5f3de6c941719427f1fee23995092bb",
                "repositoryUrl": "https://github.com/pypa/manylinux"
             },
             "comments": "For building our CI build docker image"
