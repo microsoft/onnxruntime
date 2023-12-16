@@ -1,6 +1,7 @@
 cerberus
 numpy==1.21.6 ; python_version < '3.11'
-numpy==1.24.2 ; python_version >= '3.11'
+numpy==1.24.2 ; python_version == '3.11'
+numpy==1.26.0 ; python_version >= '3.12'
 mypy
 pytest
 setuptools>=68.2.2
