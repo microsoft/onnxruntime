@@ -1,48 +1,63 @@
 parameters:
-  - name: build_id
-    type: string
-  - name: project
-    type: string
-  - name: pipeline
-    type: string
   - name: artifact_feed
     type: string
     default: 'onnxruntime-cuda-12'
-  - name: dependencies
-    type: string
-    default: 'none'
 
 stages:
   - stage: NuGet_Publishing_GPU
-    ${{ if ne(parameters.dependencies, 'none') }}:
-      dependsOn:
-    ${{ if eq(parameters.dependencies, 'none') }}:
-      dependsOn: []
     jobs:
       - job:
+        workspace:
+          clean: all
+        variables:
+        - name: GDN_CODESIGN_TARGETDIRECTORY
+          value: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
         pool: 'onnxruntime-Win-CPU-2022'
         steps:
           - checkout: none
-          - script: |
-              echo "Project: ${{ parameters.project }}"
-              echo "Build ID: ${{ parameters.build_id }}"
-              echo "Pipeline: ${{ parameters.pipeline }}"
-              echo "Artifact Feed: ${{ parameters.artifact_feed }}"
-            displayName: 'Print Parameters'
-          - task: DownloadPipelineArtifact@2
-            displayName: 'Download NuGet artifact drop-signed-nuget-GPU'
+
+          - task: NuGetToolInstaller@1
             inputs:
-              artifact: drop-signed-nuget-GPU
-              targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
-              ${{ if ne(parameters.build_id, 'latest') }}:
-                buildType: 'specific'
-                project: '${{ parameters.project }}'
-                pipeline: '${{ parameters.pipeline }}'
-                buildVersionToDownload: 'specific'
-                buildId: '${{ parameters.build_id }}'
-          - script: |
-              ls $(Build.BinariesDirectory)/nuget-artifact/final-package
-            displayName: List Downloaded Package
+              versionSpec: 6.8.x
+
+          - script: mkdir "$(Build.BinariesDirectory)\nuget-artifact\final-package"
+          
+          - download: build
+            displayName: 'Download Pipeline Artifact - Signed NuGet Package'
+            artifact: 'drop-signed-nuget-GPU'
+       
+          - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-GPU\*" "$(Build.BinariesDirectory)\nuget-artifact\final-package"
+          
+          - powershell: |
+              New-Item -Path $(Agent.TempDirectory) -Name "binfiles" -ItemType "directory"
+              $base_path_name = Join-Path -Path $(Agent.TempDirectory) -ChildPath "binfiles"
+              Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact\final-package -Filter *.nupkg |
+                  Foreach-Object {
+                   $dir_name = Join-Path -Path $base_path_name -ChildPath $_.Basename
+                   $cmd = "7z.exe x $($_.FullName) -y -o$dir_name"
+                   Write-Output $cmd
+                   Invoke-Expression -Command $cmd
+                  }
+              dir $(Agent.TempDirectory)
+              tree $(Agent.TempDirectory)
+            workingDirectory: '$(Agent.TempDirectory)'
+
+        - task: CodeSign@1
+          displayName: 'Run Codesign Validation'
+
+          - task: CodeSign@1
+            displayName: 'Run Codesign Validation'
+
+          - task: PublishSecurityAnalysisLogs@3
+            displayName: 'Publish Security Analysis Logs'
+            continueOnError: true
+
+          - task: PostAnalysis@2
+            inputs:
+              GdnBreakAllTools: true
+              GdnBreakPolicy: M365
+              GdnBreakPolicyMinSev: Error
+
           - template: ../nuget/templates/get-nuget-package-version-as-variable.yml
             parameters:
               packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
