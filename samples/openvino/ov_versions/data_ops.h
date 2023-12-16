@@ -75,7 +75,7 @@ class DataOps {
     populate_types_supported();
   }
 
-  virtual std::vector<interface::NodeViewRef*> GetUnsupportedNodeIndices(std::unordered_set<std::string>& ng_required_initializers);
+  virtual std::vector<size_t> GetUnsupportedNodeIndices(std::unordered_set<std::string>& ng_required_initializers);
   virtual bool IsOpSupportedOnlyInModel(std::string name);
   virtual bool SpecialConditionForClusterSizeOne(std::unordered_set<std::string>& ng_required_initializers, const onnxruntime::interface::NodeViewRef* node);
   virtual bool DoNotOmitSubGraph(const std::string& name);

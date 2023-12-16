@@ -13,10 +13,6 @@
 #include "onnx/onnx_pb.h"
 #endif
 
-namespace onnx {
-class ModelProto;
-}
-
 namespace onnxruntime {
 /// <summary>
 /// Enum of DataTypes using standard ONNX values. Casting to/from int32_t is encouraged.
@@ -46,6 +42,13 @@ enum class DataType : int32_t {
 };
 
 namespace interface {
+
+struct ModelProtoPtr {
+  const char* p;
+  size_t len;
+  size_t version;
+};
+
 class GraphViewRef;
 /// <summary>
 /// An interface for a constant tensor value used by initializers
@@ -217,9 +220,9 @@ class GraphViewRef {
   virtual onnx::ModelProto ToModelProto() const = 0;
 #endif
 
-  virtual onnx::ModelProto* ToModelProto2() const = 0;
-
   virtual std::string_view SerializeModelProtoToString() const = 0;
+
+  virtual ModelProtoPtr SerializeModelProto() const = 0;
 
   virtual ~GraphViewRef(){};
 };

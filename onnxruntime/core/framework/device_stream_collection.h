@@ -3,6 +3,7 @@
 #ifdef ORT_ENABLE_STREAM
 #pragma once
 #include "core/framework/stream_handles.h"
+#include "core/framework/allocator.h"
 #include "gsl/gsl"
 
 namespace onnxruntime {

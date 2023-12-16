@@ -4,7 +4,7 @@
 
 #include <functional>
 #include <unordered_map>
-#include "core/framework/allocator.h"
+#include "core/framework/allocator_no_ort_symbol.h"
 #include "core/framework/ortdevice.h"
 #include "core/common/status.h"
 

@@ -43,13 +43,15 @@ static std::vector<std::string> parseDevices(const std::string& device_string) {
   auto devices = split(comma_separated_devices, ',');
   if (devices.size() < 2) {
     print_build_options();
-    ORT_THROW("Invalid device string: " + device_string);
+    //ORT_THROW("Invalid device string: " + device_string);
+    abort();
   }
   std::vector<std::string> dev_options = {"CPU", "GPU", "VPUX"};
   for (std::string dev : devices) {
     if (!std::count(dev_options.begin(), dev_options.end(), dev)) {
       print_build_options();
-      ORT_THROW("Invalid device string: " + device_string);
+      //ORT_THROW("Invalid device string: " + device_string);
+      abort();
     }
   }
   return devices;
@@ -150,7 +152,8 @@ struct OpenVINOExecutionProviderInfo {
       precision_ = "FP32";
       device_type_ = dev_type;
     } else {
-      ORT_THROW("Invalid device string: " + dev_type);
+      //ORT_THROW("Invalid device string: " + dev_type);
+      abort();
     }
     //LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
     //                   << "Choosing Device: " << device_type_ << " , Precision: " << precision_;

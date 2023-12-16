@@ -986,10 +986,10 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
   return true;
 }
 
-std::vector<interface::NodeViewRef*> DataOps::GetUnsupportedNodeIndices(std::unordered_set<std::string>& ng_required_initializers) {
+std::vector<size_t> DataOps::GetUnsupportedNodeIndices(std::unordered_set<std::string>& ng_required_initializers) {
   const auto ng_supported_ops = GetNgSupportedOps(GetOnnxOpSet(graph_viewer_));
 
-  std::vector<interface::NodeViewRef*> unsupported_nodes;
+  std::vector<size_t> unsupported_nodes;
 
   for (std::unique_ptr<interface::NodeViewRef>& node : graph_viewer_.NodeViews()) {
     if (node_is_supported(ng_supported_ops, node.get())) {
@@ -999,7 +999,7 @@ std::vector<interface::NodeViewRef*> DataOps::GetUnsupportedNodeIndices(std::uno
                 ng_required_initializers.insert(std::string(node_arg.Name()));
               } }, true);
     } else {
-      unsupported_nodes.push_back(node.get());
+      unsupported_nodes.push_back(node->Index());
     }
   }
   return unsupported_nodes;

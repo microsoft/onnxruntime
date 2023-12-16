@@ -114,11 +114,11 @@ class [[nodiscard]] Status {
  public:
   Status() noexcept = default;
 
-  Status(StatusCategory category, int code, const std::string& msg);
+  Status(StatusCategory category, int code, const std::string& msg) { state_ = std::make_unique<State>(category, code, msg); }
 
-  Status(StatusCategory category, int code, const char* msg);
+  Status(StatusCategory category, int code, const char* msg) { state_ = std::make_unique<State>(category, code, msg); }
 
-  Status(StatusCategory category, int code);
+  Status(StatusCategory category, int code) : Status(category, code, "") {}
 
   Status(const Status& other)
       : state_((other.state_ == nullptr) ? nullptr : new State(*other.state_)) {}
@@ -141,13 +141,35 @@ class [[nodiscard]] Status {
     return (state_ == nullptr);
   }
 
-  int Code() const noexcept;
+  int Code() const noexcept { return IsOK() ? static_cast<int>(common::OK) : state_->code; }
 
-  StatusCategory Category() const noexcept;
+  StatusCategory Category() const noexcept { return IsOK() ? common::NONE : state_->category; }
 
-  const std::string& ErrorMessage() const noexcept;
+  const std::string& ErrorMessage() const noexcept { return IsOK() ? EmptyString() : state_->msg; }
 
-  std::string ToString() const;
+  std::string ToString() const {
+    if (state_ == nullptr) {
+      return std::string("OK");
+    }
+
+    std::string result;
+
+    if (common::SYSTEM == state_->category) {
+      result += "SystemError";
+      result += " : ";
+      result += std::to_string(errno);
+    } else if (common::ONNXRUNTIME == state_->category) {
+      result += "[ONNXRuntimeError]";
+      result += " : ";
+      result += std::to_string(Code());
+      result += " : ";
+      result += StatusCodeToString(static_cast<StatusCode>(Code()));
+      result += " : ";
+      result += state_->msg;
+    }
+
+    return result;
+  }
 
   bool operator==(const Status& other) const {
     return (this->state_ == other.state_) || (ToString() == other.ToString());
@@ -162,7 +184,10 @@ class [[nodiscard]] Status {
   }
 
  private:
-  static const std::string& EmptyString() noexcept;
+  static const std::string& EmptyString() noexcept {
+    static std::string s_empty;
+    return s_empty;
+  }
 
   struct State {
     State(StatusCategory cat0, int code0, const std::string& msg0)

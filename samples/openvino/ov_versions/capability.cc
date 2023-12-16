@@ -55,7 +55,7 @@ std::vector<std::unique_ptr<interface::SubGraphDef>> GetCapability::Execute() {
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     std::cout << "No of unsupported nodes " << unsupported_nodes.size() << std::endl;
     for (size_t i = 0; i < unsupported_nodes.size(); i++) {
-      std::cout << "Unsupported node op " << unsupported_nodes[i]->OpType() << std::endl;
+      std::cout << "Unsupported node op " << unsupported_nodes[i] << std::endl; // TODO: print op type
     }
   }
 #endif
@@ -122,7 +122,7 @@ std::vector<std::unique_ptr<interface::SubGraphDef>> GetCapability::Execute() {
 
     std::vector<size_t> modified_unsupported_nodes;
     for (std::unique_ptr<interface::NodeViewRef>& node : graph_viewer_.NodeViews()) {
-      if (std::find_if(unsupported_nodes.begin(), unsupported_nodes.end(), [&node](interface::NodeViewRef* unsupported) { return unsupported->Index() == node->Index(); }) != unsupported_nodes.end()) {
+      if (std::find(unsupported_nodes.begin(), unsupported_nodes.end(), node->Index()) != unsupported_nodes.end()) {
         modified_unsupported_nodes.push_back(node->Index());
       } else {
         std::string_view optype = node->OpType();

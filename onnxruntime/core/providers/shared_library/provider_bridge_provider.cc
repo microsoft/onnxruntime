@@ -387,46 +387,6 @@ const char* Category::onnxruntime = "onnxruntime";
 
 }  // namespace logging
 
-namespace common {
-
-Status::Status(StatusCategory category, int code, const std::string& msg) {
-  // state_ will be allocated here causing the status to be treated as a failure
-  ORT_ENFORCE(code != static_cast<int>(common::OK));
-
-  state_ = std::make_unique<State>(category, code, msg);
-}
-
-Status::Status(StatusCategory category, int code, const char* msg) {
-  // state_ will be allocated here causing the status to be treated as a failure
-  ORT_ENFORCE(code != static_cast<int>(common::OK));
-
-  state_ = std::make_unique<State>(category, code, msg);
-}
-
-Status::Status(StatusCategory category, int code) : Status(category, code, "") {
-}
-
-StatusCategory Status::Category() const noexcept {
-  return IsOK() ? StatusCategory::NONE : state_->category;
-}
-
-int Status::Code() const noexcept {
-  return IsOK() ? static_cast<int>(common::OK) : state_->code;
-}
-
-const std::string& Status::ErrorMessage() const noexcept {
-  return IsOK() ? EmptyString() : state_->msg;
-}
-
-std::string Status::ToString() const { return g_host->Status__ToString(this); }
-
-const std::string& Status::EmptyString() noexcept {
-  static std::string s_empty;
-  return s_empty;
-}
-
-}  // namespace common
-
 namespace math {
 uint16_t floatToHalf(float f) { return g_host->math__floatToHalf(f); }
 float halfToFloat(uint16_t h) { return g_host->math__halfToFloat(h); }

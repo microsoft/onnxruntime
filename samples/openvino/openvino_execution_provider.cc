@@ -11,6 +11,7 @@
 namespace onnxruntime {
 
 OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProviderInfo& info) {
+  type_ = "openvino";
   openvino_ep::BackendManager::GetGlobalContext().device_type = info.device_type_;
   openvino_ep::BackendManager::GetGlobalContext().precision_str = info.precision_;
   openvino_ep::BackendManager::GetGlobalContext().enable_vpu_fast_compile = info.enable_vpu_fast_compile_;
@@ -24,7 +25,9 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
     openvino_ep::BackendManager::GetGlobalContext().num_of_threads = 8;
   } else if ((int)info.num_of_threads_ > 8) {
     std::string err_msg = std::string("\n [ERROR] num_of_threads configured during runtime is: ") + std::to_string(info.num_of_threads_) + "\nnum_of_threads configured should be >0 and <=8.\n";
-    ORT_THROW(err_msg);
+    //ORT_THROW(err_msg);
+    std::cout<<err_msg;
+    abort();
   } else {
     openvino_ep::BackendManager::GetGlobalContext().num_of_threads = info.num_of_threads_;
   }
@@ -68,7 +71,9 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
       for (auto device : available_devices) {
         err_msg = err_msg + device + "\n";
       }
-      ORT_THROW(err_msg);
+      //ORT_THROW(err_msg);
+      std::cout<<err_msg;
+      abort();
     }
     // Checking for device_id configuration
     if (info.device_id_ != "") {
@@ -87,7 +92,9 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
         for (auto device : available_devices) {
           err_msg = err_msg + device + "\n";
         }
-        ORT_THROW(err_msg);
+        //ORT_THROW(err_msg);
+        std::cout<<err_msg;
+        abort();
       }
     }
   }
@@ -188,8 +195,13 @@ extern "C" {
 #endif
 
 EXPORT_API onnxruntime::OpenVINOExecutionProvider* GetExternalProvider(const void* provider_options) {
-  onnxruntime::OpenVINOExecutionProviderInfo* options = (onnxruntime::OpenVINOExecutionProviderInfo*)(provider_options);
-  return std::make_unique<onnxruntime::OpenVINOExecutionProvider>(*options).release();
+  onnxruntime::OpenVINOExecutionProviderInfo ov_options("CPU_FP32", false, "", 0, "", 1, NULL, false, false);
+  std::unordered_map<std::string, std::string>* options = (std::unordered_map<std::string, std::string>*)(provider_options);
+  if (options->find("num_of_threads") != options->end()) {
+    ov_options.num_of_threads_ = 8;
+  }
+
+  return std::make_unique<onnxruntime::OpenVINOExecutionProvider>(ov_options).release();
 }
 
 #ifdef __cplusplus

@@ -5,7 +5,6 @@
 #include <fstream>
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/common/common.h"
 
 #if defined(OV_API_20)
 using Exception = ov::Exception;
@@ -50,9 +49,11 @@ OVExeNetwork OVCore::LoadNetwork(const std::string& model, std::string& hw_targe
     OVExeNetwork exe(obj);
     return exe;
   } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
+    //ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
+    abort();
   } catch (...) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
+    //ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
+    abort();
   }
 }
 #endif

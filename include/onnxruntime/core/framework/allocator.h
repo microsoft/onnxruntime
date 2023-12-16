@@ -2,14 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
-
 #include "core/common/common.h"
-#include "core/session/onnxruntime_c_api.h"
-#include "ortdevice.h"
-#include "ortmemoryinfo.h"
-#include <map>
-#include <string>
-#include <sstream>
+#include "allocator_no_ort_symbol.h"
 
 // This configures the arena based allocator used by ORT
 // See docs/C_API.md for details on what these mean and how to choose these values
@@ -97,11 +91,6 @@ constexpr const char* WEBGPU_BUFFER = "WebGPU_Buffer";
 constexpr size_t kAllocAlignment = 256;
 
 class IAllocator;
-class Stream;
-namespace synchronize {
-class Notification;
-}
-using WaitNotificationFn = std::function<void(Stream&, synchronize::Notification&)>;
 void* AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn);
 
 template <typename T>

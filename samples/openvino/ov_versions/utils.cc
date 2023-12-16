@@ -137,6 +137,7 @@ void IdentifyConnectedNodes(const interface::GraphViewRef& graph_viewer, NodeInd
 
   for (std::string_view input : curr_node->Inputs()) {
     std::unique_ptr<interface::NodeViewRef> node = graph_viewer.GetNodeViewProducingOutput(input);
+    if (!node) continue;
     IdentifyConnectedNodes(graph_viewer, (*node).Index(), cluster, sub_cluster);
   }
   for (std::string_view output : curr_node->Outputs()) {

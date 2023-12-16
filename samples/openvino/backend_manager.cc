@@ -11,7 +11,6 @@
 #include "ibackend.h"
 #include "backend_utils.h"
 #include "interface/graph/graph.h"
-#include "core/common/common.h"
 #include "onnx/onnx_pb.h"
 
 namespace onnxruntime {
@@ -154,7 +153,11 @@ bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::interface::Gra
 std::unique_ptr<ONNX_NAMESPACE::ModelProto>
 BackendManager::GetModelProtoFromFusedNode(const onnxruntime::interface::NodeViewRef& fused_node,
                                            const onnxruntime::interface::GraphViewRef& subgraph) const {
-  std::unique_ptr<ONNX_NAMESPACE::ModelProto> ret(subgraph.ToModelProto2());
+  onnxruntime::interface::ModelProtoPtr model_proto = subgraph.SerializeModelProto();
+  // TODO: check version
+  std::string model_proto_str(model_proto.p, model_proto.len);
+  std::unique_ptr<ONNX_NAMESPACE::ModelProto> ret = std::make_unique<ONNX_NAMESPACE::ModelProto>();
+  ret->ParseFromString(model_proto_str);
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     const std::string name{fused_node.Name()};

@@ -1715,7 +1715,7 @@ class TestInferenceSession(unittest.TestCase):
         if sys.platform == 'win32':
             shared_lib_path = 'custom_ep.dll'
         elif sys.platform == 'linux':
-            shared_lib_path = 'libcustom_ep.so'
+            shared_lib_path = '/bert_ort/leca/code/onnxruntime/build/Linux/Debug/libcustom_ep.so'
         if not shared_lib_path:
             return
         onnxrt.load_execution_provider_info('CustomEp', shared_lib_path)
