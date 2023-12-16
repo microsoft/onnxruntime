@@ -126,6 +126,7 @@ COPY --from=build_cpython38 /opt/_internal /opt/_internal/
 COPY --from=build_cpython39 /opt/_internal /opt/_internal/
 COPY --from=build_cpython310 /opt/_internal /opt/_internal/
 COPY --from=build_cpython311 /opt/_internal /opt/_internal/
+COPY --from=build_cpython312 /opt/_internal /opt/_internal/
 RUN manylinux-entrypoint /build_scripts/finalize-python.sh
 
 
