@@ -49,7 +49,7 @@ stages:
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         ORT_EP_NAME: CUDA
         WITH_CACHE: true
-        MachinePool: onnxruntime-Win2022-GPU-A10
+        MachinePool: onnxruntime-Win-CPU-2022
 
 - stage: training
   dependsOn: []
