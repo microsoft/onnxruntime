@@ -47,8 +47,8 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   FetchContent_Declare(
     googletest
     URL ${DEP_URL_googletest}
-    FIND_PACKAGE_ARGS 1.14.0...<2.0.0 NAMES GTest
     URL_HASH SHA1=${DEP_SHA1_googletest}
+    FIND_PACKAGE_ARGS 1.14.0...<2.0.0 NAMES GTest
   )
 endif()
 
@@ -124,7 +124,7 @@ if(CMAKE_CROSSCOMPILING AND NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
     if(protoc_binary_SOURCE_DIR)
       message("Use prebuilt protoc")
       set(ONNX_CUSTOM_PROTOC_EXECUTABLE ${protoc_binary_SOURCE_DIR}/bin/protoc.exe)
-	  set(PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
+      set(PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
     endif()
   elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
     if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
@@ -140,7 +140,7 @@ if(CMAKE_CROSSCOMPILING AND NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
     if(protoc_binary_SOURCE_DIR)
       message("Use prebuilt protoc")
       set(ONNX_CUSTOM_PROTOC_EXECUTABLE ${protoc_binary_SOURCE_DIR}/bin/protoc)
-	  set(PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
+      set(PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
     endif()
   elseif ((CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "iOS") AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
     FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_mac_universal} URL_HASH SHA1=${DEP_SHA1_protoc_mac_universal})
@@ -281,7 +281,7 @@ if ((CPUINFO_SUPPORTED OR onnxruntime_USE_XNNPACK) AND NOT ANDROID)
     pytorch_clog
     URL ${DEP_URL_pytorch_cpuinfo}
     URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-	SOURCE_SUBDIR deps/clog
+    SOURCE_SUBDIR deps/clog
   )
   set(ONNXRUNTIME_CLOG_PROJ pytorch_clog)
   set(ONNXRUNTIME_CLOG_TARGET_NAME clog)
