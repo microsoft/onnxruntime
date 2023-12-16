@@ -330,11 +330,14 @@ enum DML_OPERATOR_TYPE
     DML_OPERATOR_ACTIVATION_HARD_SWISH,
     DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING,
     DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT,
-    DML_OPERATOR_MULTIHEAD_ATTENTION1,
 #endif // DML_TARGET_VERSION >= 0x6200
 
 #if DML_TARGET_VERSION >= 0x6300
-    DML_OPERATOR_RESAMPLE3
+    DML_OPERATOR_RESAMPLE3,
+    DML_OPERATOR_FOLD,
+    DML_OPERATOR_UNFOLD,
+    DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2,
+    DML_OPERATOR_MULTIHEAD_ATTENTION1,
 #endif // DML_TARGET_VERSION >= 0x6300
 };
 
@@ -2063,6 +2066,61 @@ struct DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC
     const DML_TENSOR_DESC* OutputTensor;
 };
 
+#endif // DML_TARGET_VERSION >= 0x6200
+
+#if DML_TARGET_VERSION >= 0x6300
+
+struct DML_RESAMPLE3_OPERATOR_DESC
+{
+    const DML_TENSOR_DESC* InputTensor;
+    const DML_TENSOR_DESC* OutputTensor;
+    DML_INTERPOLATION_MODE InterpolationMode;
+    DML_AXIS_DIRECTION RoundingDirection;
+    UINT DimensionCount;
+    _Field_size_(DimensionCount) const FLOAT* Scales;
+    _Field_size_(DimensionCount) const FLOAT* InputPixelOffsets;
+    _Field_size_(DimensionCount) const FLOAT* OutputPixelOffsets;
+    BOOL Antialiased;
+};
+
+struct DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_DESC
+{
+    const DML_TENSOR_DESC* InputTensor;
+    _Maybenull_ const DML_TENSOR_DESC* ScaleTensor;
+    _Maybenull_ const DML_TENSOR_DESC* BiasTensor;
+    const DML_TENSOR_DESC* OutputTensor;
+    UINT AxisCount;
+    _Field_size_(AxisCount) const UINT* Axes;
+    BOOL UseMean;
+    BOOL UseVariance;
+    FLOAT Epsilon;
+    _Maybenull_ const DML_OPERATOR_DESC* FusedActivation;
+};
+
+struct DML_FOLD_OPERATOR_DESC
+{
+    const DML_TENSOR_DESC* InputTensor;
+    const DML_TENSOR_DESC* OutputTensor;
+    UINT DimensionCount;
+    _Field_size_(DimensionCount) const UINT* WindowSizes; // Size of the extracted patch
+    _Field_size_(DimensionCount) const UINT* Strides; // Step size of the extracted patches
+    _Field_size_(DimensionCount) const UINT* Dilations; // Dialations of the extracted patch
+    _Field_size_(DimensionCount) const UINT* StartPadding; // Start padding of the "source tensor"
+    _Field_size_(DimensionCount) const UINT* EndPadding; // End padding of the "source tensor"
+};
+
+struct DML_UNFOLD_OPERATOR_DESC
+{
+    const DML_TENSOR_DESC* InputTensor;
+    const DML_TENSOR_DESC* OutputTensor;
+    UINT DimensionCount;
+    _Field_size_(DimensionCount) const UINT* WindowSizes; // Size of the extracted patch
+    _Field_size_(DimensionCount) const UINT* Strides; // Step size of the extracted patches
+    _Field_size_(DimensionCount) const UINT* Dilations; // Dialations of the extracted patch
+    _Field_size_(DimensionCount) const UINT* StartPadding; // Start padding of the "source tensor"
+    _Field_size_(DimensionCount) const UINT* EndPadding; // End padding of the "source tensor"
+};
+
 struct DML_MULTIHEAD_ATTENTION1_OPERATOR_DESC
 {
     _Maybenull_ const DML_TENSOR_DESC* QueryTensor;
@@ -2085,23 +2143,6 @@ struct DML_MULTIHEAD_ATTENTION1_OPERATOR_DESC
     UINT QueryHeadCount;
     UINT KeyValueHeadCount;
     DML_MULTIHEAD_ATTENTION_MASK_TYPE MaskType;
-};
-
-#endif // DML_TARGET_VERSION >= 0x6200
-
-#if DML_TARGET_VERSION >= 0x6300
-
-struct DML_RESAMPLE3_OPERATOR_DESC
-{
-    const DML_TENSOR_DESC* InputTensor;
-    const DML_TENSOR_DESC* OutputTensor;
-    DML_INTERPOLATION_MODE InterpolationMode;
-    DML_AXIS_DIRECTION RoundingDirection;
-    UINT DimensionCount;
-    _Field_size_(DimensionCount) const FLOAT* Scales;
-    _Field_size_(DimensionCount) const FLOAT* InputPixelOffsets;
-    _Field_size_(DimensionCount) const FLOAT* OutputPixelOffsets;
-    BOOL Antialiased;
 };
 
 #endif // DML_TARGET_VERSION >= 0x6300
