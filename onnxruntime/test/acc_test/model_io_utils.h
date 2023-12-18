@@ -81,7 +81,6 @@ struct ModelIOInfo {
 
   std::vector<IOInfo> inputs;
   std::vector<IOInfo> outputs;
-
 };
 
 AccMetrics ComputeAccuracyMetric(Ort::ConstValue ort_output, Span<const char> raw_expected_output,

@@ -200,4 +200,3 @@ size_t ModelIOInfo::GetTotalOutputSize() const {
 
   return total_size;
 }
-

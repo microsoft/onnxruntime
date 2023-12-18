@@ -53,4 +53,3 @@ int64_t GetFileIndexSuffix(const std::string& filename_wo_ext, const char* prefi
 
   return index;
 }
-
