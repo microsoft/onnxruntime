@@ -553,7 +553,7 @@ def main():
     )
 
     if args.float16:
-        optimizer.convert_float_to_float16(keep_io_types=True)
+        optimizer.convert_float_to_float16(keep_io_types=False)
 
     if args.input_int32:
         optimizer.change_graph_inputs_to_int32()
