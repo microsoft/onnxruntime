@@ -9,10 +9,6 @@ parameters:
   type: boolean
   default: false
 
-- name: EnvSetupScript
-  type: string
-  default: ''
-
 - name: buildArch
   type: string
 
@@ -116,14 +112,8 @@ stages:
         condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
         inputs:
           versionSpec: '18.x'
-      - ${{ if ne(parameters.EnvSetupScript, '') }}:
-        - template: jobs/set-winenv.yml
-          parameters:
-            EnvSetupScript: ${{ parameters.EnvSetupScript }}
-            ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
-              DownloadCUDA: true
 
-      - ${{ if eq(parameters.EnvSetupScript, '') }}:
+      - ${{ if ne(parameters.CudaVersion, '') }}:
         - template: jobs/download_win_gpu_library.yml
           parameters:
             CudaVersion: ${{ parameters.CudaVersion }}
@@ -203,7 +193,7 @@ stages:
         - template: nodejs-artifacts-package-and-publish-steps-windows.yml
           parameters:
             arch: ${{ parameters.packageName }}
-            artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.packageName }}'
+            artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.packageName }}${{ parameters.artifact_name_suffix }}'
             DoEsrp: ${{ parameters.DoEsrp }}
 
       #Upload protoc.exe, which will be used in nuget build for generating C# files
@@ -270,7 +260,7 @@ stages:
         displayName: 'Publish Java temp binaries'
         inputs:
           pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
-          artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}'
+          artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
 
       - ${{ if eq(parameters['DoCompliance'], 'true') }}:
         - task: CredScan@3

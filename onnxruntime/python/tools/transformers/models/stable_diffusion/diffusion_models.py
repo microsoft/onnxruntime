@@ -120,17 +120,23 @@ class PipelineInfo:
     def is_xl(self) -> bool:
         return "xl" in self.version
 
+    def is_xl_turbo(self) -> bool:
+        return self.version == "xl-turbo"
+
     def is_xl_base(self) -> bool:
-        return self.is_xl() and not self._is_refiner
+        return self.version == "xl-1.0" and not self._is_refiner
+
+    def is_xl_base_or_turbo(self) -> bool:
+        return self.is_xl_base() or self.is_xl_turbo()
 
     def is_xl_refiner(self) -> bool:
-        return self.is_xl() and self._is_refiner
+        return self.version == "xl-1.0" and self._is_refiner
 
     def use_safetensors(self) -> bool:
-        return self.is_xl()
+        return self.is_xl() or self.version in ["sd-turbo"]
 
     def stages(self) -> List[str]:
-        if self.is_xl_base():
+        if self.is_xl_base_or_turbo():
             return ["clip", "clip2", "unetxl"] + (["vae"] if self._use_vae else [])
 
         if self.is_xl_refiner():
@@ -153,7 +159,7 @@ class PipelineInfo:
 
     @staticmethod
     def supported_versions(is_xl: bool):
-        return ["xl-1.0"] if is_xl else ["1.4", "1.5", "2.0-base", "2.0", "2.1", "2.1-base"]
+        return ["xl-1.0", "xl-turbo"] if is_xl else ["1.4", "1.5", "2.0-base", "2.0", "2.1", "2.1-base", "sd-turbo"]
 
     def name(self) -> str:
         if self.version == "1.4":
@@ -185,6 +191,10 @@ class PipelineInfo:
                 return "stabilityai/stable-diffusion-xl-refiner-1.0"
             else:
                 return "stabilityai/stable-diffusion-xl-base-1.0"
+        elif self.version == "xl-turbo":
+            return "stabilityai/sdxl-turbo"
+        elif self.version == "sd-turbo":
+            return "stabilityai/sd-turbo"
 
         raise ValueError(f"Incorrect version {self.version}")
 
@@ -195,15 +205,15 @@ class PipelineInfo:
         # TODO: can we read from config instead
         if self.version in ("1.4", "1.5"):
             return 768
-        elif self.version in ("2.0", "2.0-base", "2.1", "2.1-base"):
+        elif self.version in ("2.0", "2.0-base", "2.1", "2.1-base", "sd-turbo"):
             return 1024
-        elif self.version in ("xl-1.0") and self.is_xl_base():
+        elif self.is_xl_base_or_turbo():
             return 768
         else:
             raise ValueError(f"Invalid version {self.version}")
 
     def clipwithproj_embedding_dim(self):
-        if self.version in ("xl-1.0"):
+        if self.is_xl():
             return 1280
         else:
             raise ValueError(f"Invalid version {self.version}")
@@ -211,11 +221,11 @@ class PipelineInfo:
     def unet_embedding_dim(self):
         if self.version in ("1.4", "1.5"):
             return 768
-        elif self.version in ("2.0", "2.0-base", "2.1", "2.1-base"):
+        elif self.version in ("2.0", "2.0-base", "2.1", "2.1-base", "sd-turbo"):
             return 1024
-        elif self.version in ("xl-1.0") and self.is_xl_base():
+        elif self.is_xl_base_or_turbo():
             return 2048
-        elif self.version in ("xl-1.0") and self.is_xl_refiner():
+        elif self.is_xl_refiner():
             return 1280
         else:
             raise ValueError(f"Invalid version {self.version}")
@@ -226,16 +236,20 @@ class PipelineInfo:
     def max_image_size(self):
         return self._max_image_size
 
-    def default_image_size(self):
-        if self.is_xl():
+    @staticmethod
+    def default_resolution(version: str) -> int:
+        if version == "xl-1.0":
             return 1024
-        if self.version in ("2.0", "2.1"):
+        if version in ("2.0", "2.1"):
             return 768
         return 512
 
+    def default_image_size(self) -> int:
+        return PipelineInfo.default_resolution(self.version)
+
     @staticmethod
     def supported_controlnet(version="1.5"):
-        if version == "xl-1.0":
+        if version in ("xl-1.0", "xl-turbo"):
             return {
                 "canny": "diffusers/controlnet-canny-sdxl-1.0",
                 "depth": "diffusers/controlnet-depth-sdxl-1.0",
@@ -315,12 +329,18 @@ class BaseModel:
     def get_model(self):
         return self.model
 
-    def from_pretrained(self, model_class, framework_model_dir, hf_token, subfolder, **kwargs):
-        model_dir = os.path.join(framework_model_dir, self.pipeline_info.name(), subfolder)
+    def from_pretrained(self, model_class, framework_model_dir, hf_token, subfolder=None, model_name=None, **kwargs):
+        if model_name is None:
+            model_name = self.pipeline_info.name()
+
+        if subfolder:
+            model_dir = os.path.join(framework_model_dir, model_name, subfolder)
+        else:
+            model_dir = os.path.join(framework_model_dir, model_name)
 
         if not os.path.exists(model_dir):
             model = model_class.from_pretrained(
-                self.pipeline_info.name(),
+                model_name,
                 subfolder=subfolder,
                 use_safetensors=self.pipeline_info.use_safetensors(),
                 use_auth_token=hf_token,
@@ -797,16 +817,27 @@ class UNet(BaseModel):
         self.controlnet = pipeline_info.controlnet_name()
 
     def load_model(self, framework_model_dir, hf_token, subfolder="unet"):
-        options = {"variant": "fp16", "torch_dtype": torch.float16} if self.fp16 else {}
+        options = {"variant": "fp16", "torch_dtype": torch.float16}
 
         model = self.from_pretrained(UNet2DConditionModel, framework_model_dir, hf_token, subfolder, **options)
 
         if self.controlnet:
-            cnet_model_opts = {"torch_dtype": torch.float16} if self.fp16 else {}
-            controlnets = torch.nn.ModuleList(
-                [ControlNetModel.from_pretrained(name, **cnet_model_opts).to(self.device) for name in self.controlnet]
-            )
-            model = UNet2DConditionControlNetModel(model, controlnets)
+            controlnet_list = []
+            for name in self.controlnet:
+                controlnet = self.from_pretrained(
+                    ControlNetModel,
+                    framework_model_dir,
+                    hf_token,
+                    subfolder=None,
+                    model_name=name,
+                    torch_dtype=torch.float16,
+                )
+                controlnet_list.append(controlnet)
+
+            model = UNet2DConditionControlNetModel(model, torch.nn.ModuleList(controlnet_list))
+
+        if not self.fp16:
+            model = model.to(torch.float32)
 
         return model
 
@@ -946,8 +977,8 @@ class UNetXL(BaseModel):
         self.custom_unet = pipeline_info.custom_unet()
         self.controlnet = pipeline_info.controlnet_name()
 
-    def load_model(self, framework_model_dir, hf_token, subfolder="unet"):
-        options = {"variant": "fp16", "torch_dtype": torch.float16} if self.fp16 else {}
+    def load_model(self, framework_model_dir, hf_token, subfolder="unet", always_download_fp16=True):
+        options = {"variant": "fp16", "torch_dtype": torch.float16} if self.fp16 or always_download_fp16 else {}
 
         if self.custom_unet:
             model_dir = os.path.join(framework_model_dir, self.custom_unet, subfolder)
@@ -960,12 +991,18 @@ class UNetXL(BaseModel):
         else:
             model = self.from_pretrained(UNet2DConditionModel, framework_model_dir, hf_token, subfolder, **options)
 
+        if always_download_fp16 and not self.fp16:
+            model = model.to(torch.float32)
+
         if self.controlnet:
-            cnet_model_opts = {"torch_dtype": torch.float16} if self.fp16 else {}
+            cnet_model_opts = {"torch_dtype": torch.float16} if self.fp16 or always_download_fp16 else {}
             controlnets = torch.nn.ModuleList(
                 [ControlNetModel.from_pretrained(path, **cnet_model_opts).to(self.device) for path in self.controlnet]
             )
             model = UNet2DConditionXLControlNetModel(model, controlnets)
+
+        if always_download_fp16 and not self.fp16:
+            model = model.to(torch.float32)
 
         return model
 

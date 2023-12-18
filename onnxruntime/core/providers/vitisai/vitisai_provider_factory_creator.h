@@ -9,9 +9,6 @@
 #include "core/framework/provider_options.h"
 
 namespace onnxruntime {
-
-struct VitisAIExecutionProviderInfo;
-
 struct VitisAIProviderFactoryCreator {
   static std::shared_ptr<IExecutionProviderFactory> Create(const ProviderOptions& provider_options);
 };

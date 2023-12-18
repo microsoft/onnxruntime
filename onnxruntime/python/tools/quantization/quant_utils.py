@@ -260,13 +260,17 @@ def compute_scale_zp_float8(element_type, std):
     return [zero, scale]
 
 
-def quantize_data(data, qType, symmetric, reduce_range=False, min_real_range=None):
+def quantize_data(
+    data, qType, symmetric, reduce_range=False, min_real_range=None, rmin_override=None, rmax_override=None
+):
     """
     :param data: data to quantize
     :param qType: data type to quantize to. Supported types UINT8 and INT8
     :param symmetric: whether symmetric quantization is used or not. This is applied to INT8.
     :parameter reduce_range: True if the quantization range should be reduced. Defaults to False.
     :parameter min_real_range: Minimum floating-point range (i.e., rmax - rmin) to enforce. Defaults to None.
+    :parameter rmin_override: The value of rmin to use if not None. Otherwise, uses min(data).
+    :parameter rmax_override: The value of rmax to use if not None. Otherwise, uses max(data).
     :return: minimum, maximum, zero point, scale, and quantized weights
 
     To pack weights, we compute a linear transformation
@@ -284,13 +288,19 @@ def quantize_data(data, qType, symmetric, reduce_range=False, min_real_range=Non
     - *S*: scale
     - *z*: zero point
     """
-    rmin = 0
-    rmax = 0
+
+    if rmin_override is not None:
+        rmin = rmin_override
+    else:
+        rmin = min(data) if len(data) else 0
+
+    if rmax_override is not None:
+        rmax = rmax_override
+    else:
+        rmax = max(data) if len(data) else 0
+
     zero_point = 0
     scale = 1.0
-    if len(data):
-        rmin = min(data)
-        rmax = max(data)
 
     if qType == TensorProto.FLOAT8E4M3FN:
         if reduce_range:
