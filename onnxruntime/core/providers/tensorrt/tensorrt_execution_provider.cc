@@ -2506,7 +2506,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
     auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
     trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
-    trt_config->setMaxWorkspaceSize(max_workspace_size_);
+    trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, max_workspace_size_);
 
     // Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow
     if (fp16_enable_ && layer_norm_fp32_fallback_) {
@@ -2723,13 +2723,24 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       trt_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Sparse weights are allowed";
     }
-
-    // enable builder heuristics
+#if NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR == 5
     if (build_heuristics_enable_) {
       trt_config->setFlag(nvinfer1::BuilderFlag::kENABLE_TACTIC_HEURISTIC);
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder heuristics are enabled";
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Builder heuristics are enabled."
+                            << " For TRT > 8.5, trt_build_heuristics_enable is deprecated, please set builder optimization level as 2 to enable builder heuristics.";
     }
-#if NV_TENSORRT_MINOR > 5 && NV_TENSORRT_MAJOR >= 8
+#elif NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR > 5 || NV_TENSORRT_MAJOR > 8
+    // for TRT 8.6 onwards, heuristic-based tactic option is automatically enabled by setting builder optimization level 2
+    if (build_heuristics_enable_) {
+      if (builder_optimization_level_ == 2) {
+        LOGS_DEFAULT(WARNING) << "[TensorRT EP] Builder heuristics are automatically enabled by builder optimization level 2. trt_build_heuristics_enable is deprecated on TRT 8.6 onwards.";
+      } else {
+        LOGS_DEFAULT(WARNING) << "[TensorRT EP] trt_build_heuristics_enable is deprecated on TRT 8.6 onwards. Please set builder optimization level as 2 to enable builder heuristics.";
+      }
+    }
+#endif
+
+#if NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR > 5 || NV_TENSORRT_MAJOR > 8
     // switch optimizaion level
     if (builder_optimization_level_ != 3) {
       trt_config->setBuilderOptimizationLevel(builder_optimization_level_);
@@ -3125,7 +3136,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         trt_state->context->reset();
         trt_state->engine->reset();
         auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
-        trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
+        trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, *(trt_state->max_workspace_size_ptr));
         for (auto trt_profile : trt_profiles) {
           trt_config->addOptimizationProfile(trt_profile);
         }
@@ -3166,7 +3177,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           trt_config->setFlag(nvinfer1::BuilderFlag::kENABLE_TACTIC_HEURISTIC);
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder heuristics are enabled";
         }
-#if NV_TENSORRT_MINOR > 5 && NV_TENSORRT_MAJOR >= 8
+#if NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR > 5 || NV_TENSORRT_MAJOR > 8
         // switch optimizaion level
         if (trt_state->builder_optimization_level != 3) {
           trt_config->setBuilderOptimizationLevel(trt_state->builder_optimization_level);
