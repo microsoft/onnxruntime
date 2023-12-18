@@ -50,6 +50,9 @@ export const updateUniformsFromActivation =
      dataType: number) => {
       const tensorDataType = tensorDataTypeEnumToString(dataType) as ProgramUniform['type'];
       const wgslElementType = getWgslMappedType(dataType, 1);
+      if (typeof wgslElementType !== 'string') {
+        throw new Error(`clipMax and clipMin doesn't support type ${wgslElementType[0]}!`);
+      }
       if (attributes.activation === 'Clip') {
         programUniforms.push(
             {type: tensorDataType, data: attributes.clipMax!}, {type: tensorDataType, data: attributes.clipMin!});
