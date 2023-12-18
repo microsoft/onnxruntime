@@ -623,6 +623,9 @@ export const resize = (context: ComputeContext, attributes: ResizeAttributes): v
   const sizes: number[] = [];
   const roi: number[] = [];
   const opsetVersion = getOpsetVersionFromCustomDataBuffer(context);
+  if (attributes.antialias !== 0) {
+    throw Error('Only default value (0) for Antialias attribute is supported');
+  }
   validateInputs(context.inputs, attributes, opsetVersion, scales, sizes, roi);
   context.compute(
       createResizeProgramInfo(context.inputs[0], attributes, opsetVersion, scales, sizes, roi), {inputs: [0]});
