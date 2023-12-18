@@ -262,6 +262,9 @@ void DmlCommandRecorder::ExecuteCommandList(
         m_queue->ExecuteCommandLists(
         gsl::span<ID3D12CommandList*>(reinterpret_cast<ID3D12CommandList**>(&commandList), 1));
 
+        // The fence value at which the current command allocator may be re-used will now be higher
+        m_commandAllocatorRing.UpdateCurrentAllocatorCompletionEvent(m_queue->GetNextCompletionEvent());
+
         // Fail early if something horrifying happens
         ORT_THROW_IF_FAILED(m_dmlDevice->GetDeviceRemovedReason());
         ORT_THROW_IF_FAILED(m_d3dDevice->GetDeviceRemovedReason());
@@ -269,42 +272,20 @@ void DmlCommandRecorder::ExecuteCommandList(
         return;
     }
 
-    ORT_THROW_IF_FAILED(m_currentCommandList->Close());
-
-    if (m_operationsRecordedInCurrentCommandList)
-    {
-        m_pendingCommandLists.push_back(m_currentCommandList.Get());
-        m_pendingCommandListsCacheable.push_back(true);
-    }
-    else
-    {
-        m_cachedCommandLists.push_back(m_currentCommandList.Get());
-    }
-
-    m_currentCommandList = nullptr;
-    m_operationsRecordedInCurrentCommandList = false;
-
-    m_pendingCommandLists.push_back(commandList);
-    m_pendingCommandListsCacheable.push_back(false);
-
-    // Remember the descriptor heap and apply it to the next command list
+    // Remember the descriptor heap and apply it to the next command list.  This avoids unnecessarily setting it onto
+    // the D3D object lazily at a point when the operation may not be parallelized with GPU work.
     auto heap = m_currentDescriptorHeap;
-    m_currentDescriptorHeap = nullptr;
+
+    // Execute work in the current command list plus provided command list while closing the recorder.
+    CloseAndExecute(commandList);
     Open();
 
-    // The caller can re-use relevant resources after the next set of work to be
-    // flushed has completed.  Its command list hasn't been executed yet, just batched.
-    GpuEvent gpuEvent = m_queue->GetNextCompletionEvent();
+    // Reset the descriptor heap opportunistically per above comment
+    SetDescriptorHeap(heap);
+
+    GpuEvent gpuEvent = m_queue->GetCurrentCompletionEvent();
     gpuEvent.fence.CopyTo(fence);
     *completionValue = gpuEvent.fenceValue;
-
-    // Trigger a flush of the command list, with the assumption that it contains enough GPU work that this
-    // will help parallelize GPU work with subsequent CPU work.  This policy is related to the choice of
-    // minNodeCountToReuseCommandList within FusedGraphKernel, so both should be tuned together.
-    CloseAndExecute();
-    Open();
-
-    SetDescriptorHeap(heap);
 }
 
 ComPtr<ID3D12GraphicsCommandList> DmlCommandRecorder::GetCommandList()
@@ -334,7 +315,7 @@ void DmlCommandRecorder::Open()
 
     ID3D12CommandAllocator* allocator = m_commandAllocatorRing.GetNextAllocator(m_queue->GetNextCompletionEvent());
 
-    if (m_cachedCommandLists.empty())
+    if (!m_cachedCommandList)
     {
         ORT_THROW_IF_FAILED(m_d3dDevice->CreateCommandList(
             0,
@@ -345,47 +326,43 @@ void DmlCommandRecorder::Open()
     }
     else
     {
-        m_currentCommandList = m_cachedCommandLists.front();
-        m_cachedCommandLists.pop_front();
+        m_currentCommandList = m_cachedCommandList;
+        m_cachedCommandList = nullptr;
         ORT_THROW_IF_FAILED(m_currentCommandList->Reset(allocator, nullptr));
     }
 }
 
 void DmlCommandRecorder::CloseAndExecute()
 {
+    CloseAndExecute(nullptr);
+}
+
+void DmlCommandRecorder::CloseAndExecute(_In_opt_ ID3D12GraphicsCommandList* commandList)
+{   
     ORT_THROW_IF_FAILED(m_currentCommandList->Close());
+
+    ID3D12GraphicsCommandList* commandListsToExecute[2] = {};
+    uint32_t commandListsToExecuteCount = 0;
 
     if (m_operationsRecordedInCurrentCommandList)
     {
-        m_pendingCommandLists.push_back(m_currentCommandList.Get());
-        m_pendingCommandListsCacheable.push_back(true);
-    }
-    else
-    {
-        m_cachedCommandLists.push_back(m_currentCommandList.Get());
+        commandListsToExecute[commandListsToExecuteCount++] = m_currentCommandList.Get();
     }
 
+    if (commandList)
+    {
+        commandListsToExecute[commandListsToExecuteCount++] = commandList;
+    }
+
+    if (commandListsToExecuteCount > 0)
+    {
+        m_queue->ExecuteCommandLists(
+                gsl::span<ID3D12CommandList*>(reinterpret_cast<ID3D12CommandList**>(commandListsToExecute), commandListsToExecuteCount));
+    }
+    
+    m_cachedCommandList = m_currentCommandList;
     m_currentCommandList = nullptr;
     m_operationsRecordedInCurrentCommandList = false;
-
-    if (!m_pendingCommandLists.empty())
-    {
-        // Close and execute the command list
-        m_queue->ExecuteCommandLists(
-            gsl::span<ID3D12CommandList*>(reinterpret_cast<ID3D12CommandList**>(m_pendingCommandLists.data()), m_pendingCommandLists.size()));
-
-        assert(m_pendingCommandLists.size() == m_pendingCommandListsCacheable.size());
-        for (size_t i = 0; i < m_pendingCommandLists.size(); ++i)
-        {
-            if (m_pendingCommandListsCacheable[i])
-            {
-                m_cachedCommandLists.push_back(m_pendingCommandLists[i]);
-            }
-        }
-
-        m_pendingCommandLists.clear();
-        m_pendingCommandListsCacheable.clear();
-    }
 
     // The descriptor heap must be set on the command list the next time it's opened.
     m_currentDescriptorHeap = nullptr;
