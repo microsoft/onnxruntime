@@ -1171,6 +1171,39 @@ endif()
 
 
 if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+  # Accuracy test runner
+  set(onnxruntime_acc_test_src_dir ${TEST_SRC_DIR}/acc_test)
+  set(onnxruntime_acc_test_src_patterns
+  "${onnxruntime_acc_test_src_dir}/*.cc"
+  "${onnxruntime_acc_test_src_dir}/*.h")
+
+  file(GLOB onnxruntime_acc_test_src CONFIGURE_DEPENDS
+    ${onnxruntime_acc_test_src_patterns}
+    )
+  onnxruntime_add_executable(onnxruntime_acc_test ${onnxruntime_acc_test_src})
+  target_include_directories(onnxruntime_acc_test PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
+  if (WIN32)
+    target_compile_options(onnxruntime_acc_test PRIVATE ${disabled_warnings})
+  endif()
+  if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+    set_target_properties(onnxruntime_acc_test PROPERTIES
+      XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+    )
+  endif()
+
+  if (onnxruntime_BUILD_SHARED_LIB)
+    set(onnxruntime_acc_test_libs onnxruntime)
+    target_link_libraries(onnxruntime_acc_test PRIVATE ${onnxruntime_acc_test_libs})
+  endif()
+
+  set_target_properties(onnxruntime_acc_test PROPERTIES FOLDER "ONNXRuntimeTest")
+
+  if (onnxruntime_USE_TVM)
+    if (WIN32)
+      target_link_options(onnxruntime_acc_test PRIVATE "/STACK:4000000")
+    endif()
+  endif()
+
   #perf test runner
   set(onnxruntime_perf_test_src_dir ${TEST_SRC_DIR}/perftest)
   set(onnxruntime_perf_test_src_patterns
