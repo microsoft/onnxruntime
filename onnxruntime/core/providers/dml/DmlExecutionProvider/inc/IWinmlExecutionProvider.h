@@ -86,9 +86,9 @@ namespace Windows::AI::MachineLearning::Adapter
         uint32_t nodeCount = 0;
         std::vector<std::unique_ptr<AbstractOperatorDesc>> nodesAsOperatorDesc;
 
-        // TODO: Remove this
+        // TODO (jeffbloo): Remove this
         std::vector<Microsoft::WRL::ComPtr<IDMLOperator>> nodesAsIDMLOperator;
-        
+
         std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
         std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
         std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> intermediateEdges;

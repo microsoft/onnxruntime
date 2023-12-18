@@ -150,8 +150,8 @@ namespace Dml
             ) const;
 
         static void TryConvertTensorToBroadcastScalar(
-            const MLOperatorKernelCreationContext& kernelInfo, 
-            const DML_TENSOR_DESC* tensor, 
+            const MLOperatorKernelCreationContext& kernelInfo,
+            const DML_TENSOR_DESC* tensor,
             uint32_t kernelInputIndex);
 
     private:

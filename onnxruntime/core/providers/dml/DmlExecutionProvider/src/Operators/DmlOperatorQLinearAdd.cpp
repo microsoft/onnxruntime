@@ -8,15 +8,15 @@ namespace Dml
 
 class DmlOperatorQLinearAdd : public DmlOperator
 {
-    enum InputTensors { 
-        IN_A, 
+    enum InputTensors {
+        IN_A,
         IN_A_SCALE,
-        IN_A_ZERO_POINT, 
-        IN_B, 
+        IN_A_ZERO_POINT,
+        IN_B,
         IN_B_SCALE,
         IN_B_ZERO_POINT,
-        IN_C_SCALE, 
-        IN_C_ZERO_POINT 
+        IN_C_SCALE,
+        IN_C_ZERO_POINT
     };
 
 public:
@@ -56,9 +56,9 @@ public:
         AddDesc.BScaleTensor = &inputDescs[IN_B_SCALE];
         AddDesc.BZeroPointTensor = inputDescs[IN_B_ZERO_POINT].Desc != nullptr ? &inputDescs[IN_B_ZERO_POINT] : nullptr;
         AddDesc.OutputScaleTensor = &inputDescs[IN_C_SCALE];
-        AddDesc.OutputZeroPointTensor = inputDescs[IN_C_ZERO_POINT].Desc != nullptr ? &inputDescs[IN_C_ZERO_POINT] : nullptr; 
+        AddDesc.OutputZeroPointTensor = inputDescs[IN_C_ZERO_POINT].Desc != nullptr ? &inputDescs[IN_C_ZERO_POINT] : nullptr;
         AddDesc.OutputTensor = &outputDescs[0];
-        
+
         TryConvertTensorToBroadcastScalar(kernelInfo, AddDesc.AScaleTensor,           IN_A_SCALE);
         TryConvertTensorToBroadcastScalar(kernelInfo, AddDesc.AZeroPointTensor,       IN_A_ZERO_POINT);
 
