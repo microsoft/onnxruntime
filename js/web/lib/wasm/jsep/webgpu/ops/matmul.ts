@@ -34,7 +34,6 @@ export const createNaiveMatmulProgramInfo =
         {type: 'uint32', data: K}
       ];
       const tensorDataType = tensorDataTypeEnumToString(inputs[0].dataType) as ProgramUniform['type'];
-      const wgslElementType = getWgslMappedType(inputs[0].dataType, 1);
       if (activationAttributes.activation === 'Clip') {
         programUniforms.push(
             {type: tensorDataType, data: activationAttributes.clipMax!},
@@ -73,6 +72,10 @@ export const createNaiveMatmulProgramInfo =
           {name: 'K', type: 'u32'}
         ];
         if (activationAttributes.activation === 'Clip') {
+          const wgslElementType = getWgslMappedType(inputs[0].dataType, 1);
+          if (typeof wgslElementType !== 'string') {
+            throw new Error(`clipMax and clipMin doesn't support type ${wgslElementType[0]}!`);
+          }
           uniforms.push(
               {name: 'clipMax', type: wgslElementType as UniformDataElementType},
               {name: 'clipMin', type: wgslElementType as UniformDataElementType});
