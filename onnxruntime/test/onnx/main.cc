@@ -478,12 +478,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           if (value != "0") {
             ORT_THROW("Set to 0 to disable qnn_context_embed_mode.");
           }
-        } else if (key == "qnn_context_cache_enable") {
-          if (value != "1") {
-            ORT_THROW("Set to 1 to enable qnn_context_cache_enable.");
-          }
-        } else if (key == "qnn_context_cache_path") {
-          // no validation
         } else if (key == "profiling_level") {
           std::set<std::string> supported_profiling_level = {"off", "basic", "detailed"};
           if (supported_profiling_level.find(value) == supported_profiling_level.end()) {
@@ -519,8 +513,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             ORT_THROW("Wrong value for htp_graph_finalization_optimization_mode. select from: " + str);
           }
         } else {
-          ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path', 'qnn_context_cache_enable',
-'qnn_context_cache_path', 'profiling_level', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
+          ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
+'profiling_level', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
 'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority'])");
         }
 
