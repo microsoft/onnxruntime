@@ -38,8 +38,8 @@ static std::vector<std::filesystem::path> GetSortedDatasetPaths(const std::files
 
   auto cmp_indexed_paths = [dataset_prefix](const std::filesystem::path& a,
                                             const std::filesystem::path& b) -> bool {
-    const int64_t a_index = GetFileIndexSuffix(a.filename().string(), dataset_prefix);
-    const int64_t b_index = GetFileIndexSuffix(b.filename().string(), dataset_prefix);
+    const int32_t a_index = GetFileIndexSuffix(a.filename().string(), dataset_prefix);
+    const int32_t b_index = GetFileIndexSuffix(b.filename().string(), dataset_prefix);
     return a_index < b_index;
   };
 

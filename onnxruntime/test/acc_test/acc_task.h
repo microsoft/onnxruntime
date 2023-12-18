@@ -19,7 +19,6 @@ class Task {
   };
 
  public:
-  Task() = default;
   Task(Task&& other) = default;
   Task(const Task& other) = default;
   Task(Ort::Session& session, const ModelIOInfo& model_io_info,

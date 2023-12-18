@@ -24,7 +24,7 @@ struct IOInfo {
       return false;
     }
 
-    const size_t total_data_size = elem_size * GetShapeSize(Span<const int64_t>(shape));
+    const size_t total_data_size = elem_size * static_cast<size_t>(GetShapeSize(Span<const int64_t>(shape)));
 
     io_info.name = name;
     io_info.shape = std::move(shape);

@@ -11,12 +11,11 @@ bool FillBytesFromBinaryFile(Span<char> array, const std::string& binary_filepat
     return false;
   }
 
-  size_t file_byte_size = 0;
   input_ifs.seekg(0, input_ifs.end);
-  file_byte_size = input_ifs.tellg();
+  auto file_byte_size = input_ifs.tellg();
   input_ifs.seekg(0, input_ifs.beg);
 
-  if (file_byte_size != array.size()) {
+  if (static_cast<size_t>(file_byte_size) != array.size()) {
     return false;
   }
 
@@ -24,8 +23,8 @@ bool FillBytesFromBinaryFile(Span<char> array, const std::string& binary_filepat
   return static_cast<bool>(input_ifs);
 }
 
-int64_t GetFileIndexSuffix(const std::string& filename_wo_ext, const char* prefix) {
-  int64_t index = -1;
+int32_t GetFileIndexSuffix(const std::string& filename_wo_ext, const char* prefix) {
+  int32_t index = -1;
   const char* str = filename_wo_ext.c_str();
 
   // Move past the prefix.
@@ -41,7 +40,7 @@ int64_t GetFileIndexSuffix(const std::string& filename_wo_ext, const char* prefi
   // Parse the input index from file name.
   index = 0;
   while (*str) {
-    int64_t c = *str;
+    int32_t c = *str;
     if (!(c >= '0' && c <= '9')) {
       return -1;  // Not a number.
     }

@@ -56,7 +56,7 @@ constexpr int64_t GetShapeSize(Span<T> shape) {
   return size;
 }
 
-int64_t GetFileIndexSuffix(const std::string& filename_wo_ext, const char* prefix);
+int32_t GetFileIndexSuffix(const std::string& filename_wo_ext, const char* prefix);
 bool FillBytesFromBinaryFile(Span<char> array, const std::string& binary_filepath);
 
 constexpr double EPSILON_DBL = 2e-16;

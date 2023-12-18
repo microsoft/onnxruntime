@@ -39,14 +39,15 @@ bool LoadIODataFromDisk(const std::vector<std::filesystem::path>& dataset_paths,
         continue;
       }
 
-      const int64_t io_index = GetFileIndexSuffix(data_filename_wo_ext, data_file_prefix);
-      if (io_index < 0) {
+      const int32_t io_index_s32 = GetFileIndexSuffix(data_filename_wo_ext, data_file_prefix);
+      if (io_index_s32 < 0) {
         std::cerr << "[ERROR]: The file " << data_file_path << " does not have a properly formatted name"
                   << " (e.g., " << data_file_prefix << "0.raw)" << std::endl;
         return false;
       }
 
-      if (io_index >= static_cast<int64_t>(io_infos.size())) {
+      const size_t io_index = static_cast<size_t>(io_index_s32);
+      if (io_index >= io_infos.size()) {
         std::cerr << "[ERROR]: The input (or output) file index for file " << data_file_path
                   << " exceeds the number of inputs (or outputs) in the model ("
                   << io_infos.size() << ")" << std::endl;
@@ -54,7 +55,7 @@ bool LoadIODataFromDisk(const std::vector<std::filesystem::path>& dataset_paths,
       }
 
       size_t offset = 0;
-      for (int64_t i = 0; i < io_index; i++) {
+      for (size_t i = 0; i < io_index; i++) {
         offset += io_infos[i].total_data_size;
       }
       assert(offset < total_data_size);
