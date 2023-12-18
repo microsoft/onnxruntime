@@ -824,6 +824,10 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
   }
   ORT_RETURN_IF(nullptr == profile_backend_handle_, "Backend profile handle not valid.");
 
+  // If enabled, profile data is extracted directly after graph execution, which may occur on multiple threads.
+  // Therefore, need to acquire a mutex to ensure only one thread is extracting/saving profile data at a time.
+  std::unique_lock<std::mutex> lock(profile_mutex_);
+
   const QnnProfile_EventId_t* profile_events{nullptr};
   uint32_t num_events{0};
   auto result = qnn_interface_.profileGetEvents(profile_backend_handle_, &profile_events, &num_events);

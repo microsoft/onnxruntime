@@ -10,6 +10,8 @@
 #include <dlfcn.h>
 #endif
 
+#include <mutex>
+
 #include "HTP/QnnHtpDevice.h"
 #include "QnnLog.h"
 #include "System/QnnSystemInterface.h"
@@ -213,6 +215,7 @@ class QnnBackendManager {
 #endif
   const std::string qnn_saver_path_;
   uint32_t htp_power_config_client_id_ = 0;
+  std::mutex profile_mutex_;
 };
 
 }  // namespace qnn
