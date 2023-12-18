@@ -56,18 +56,18 @@ class FusionSkipLayerNormalization(Fusion):
         # Root Mean Square Layer Normalization
         simplified = node.op_type == "SimplifiedLayerNormalization"
 
-        if self.shape_infer_helper is not None:
-            # TODO(tianleiwu): support broadcasting Skip shape (1, sequence_length, hidden_size) or (sequence_length, hidden_size)
-            if not self.shape_infer_helper.compare_shape(add.input[0], add.input[1]):
-                logger.debug(
-                    "skip SkipLayerNormalization fusion since shape of inputs (%s, %s) are not same",
-                    add.input[0],
-                    add.input[1],
-                )
-                return
-        else:
-            logger.debug("skip SkipLayerNormalization fusion since symbolic shape inference failed")
-            return
+        # if self.shape_infer_helper is not None:
+        #     # TODO(tianleiwu): support broadcasting Skip shape (1, sequence_length, hidden_size) or (sequence_length, hidden_size)
+        #     if not self.shape_infer_helper.compare_shape(add.input[0], add.input[1]):
+        #         logger.debug(
+        #             "skip SkipLayerNormalization fusion since shape of inputs (%s, %s) are not same",
+        #             add.input[0],
+        #             add.input[1],
+        #         )
+        #         return
+        # else:
+        #     logger.debug("skip SkipLayerNormalization fusion since symbolic shape inference failed")
+        #     return
 
         gather_path = self.model.match_parent_path(add, ["Gather"], [None])
         if gather_path is not None and self.model.find_graph_input(gather_path[0].input[1]) is None:

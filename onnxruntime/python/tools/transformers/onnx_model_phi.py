@@ -10,6 +10,7 @@ from fusion_utils import FusionUtils, NumpyHelper
 from onnx import GraphProto, ModelProto, TensorProto, ValueInfoProto, helper, inliner
 from onnx_model import OnnxModel
 from fusion_options import FusionOptions
+from fusion_skiplayernorm import FusionBiasSkipLayerNormalization, FusionSkipLayerNormalization
 import numpy as np
 
 logger = getLogger(__name__)
@@ -118,7 +119,6 @@ class FissionTransformerBlockPhi(Fusion):
         output_name_to_node,
     ):
         layer_id = self.get_layer_id(node)
-        print(f"process layer {layer_id}")
 
         # transformer block input and output
         i_hidden_states = node.input[0] if layer_id == 1 else node.input[2]
@@ -130,8 +130,8 @@ class FissionTransformerBlockPhi(Fusion):
         # internal nodes weights
         ln_weight = node.input[4]  # float32[2560]
         ln_bias = node.input[5]  # float32[2560]
-        attn_qkv_weight = self.process_initializer(node.input[6], ProcessAttnWFunc())  # float32[7680,2560]
-        attn_qkv_bias = self.process_initializer(node.input[7], ProcessAttnBFunc())  # float32[7680]
+        attn_qkv_weight = self.process_initializer(node.input[6], ProcessGemmWFunc())  # float32[7680,2560]
+        attn_qkv_bias = node.input[7]  # float32[7680]
         attn_out_weight = self.process_initializer(node.input[10], ProcessGemmWFunc())  # float32[2560,2560]
         attn_out_bias = node.input[11]  # float32[2560]
         mlp_fc1_weight = self.process_initializer(node.input[12], ProcessGemmWFunc())  # float32[10240,2560]
@@ -149,19 +149,12 @@ class FissionTransformerBlockPhi(Fusion):
                 epsilon=9.999999747378752e-06,
             ),
             helper.make_node(
-                "Cast",
-                inputs=[i_attn_mask],
-                outputs=[self.uname(layer_id, "casted_mask")],
-                name=self.uname(layer_id, "Cast"),
-                to=6,
-            ),
-            helper.make_node(
                 "Attention",
                 inputs=[
                     self.uname(layer_id, "ln_out"),
                     attn_qkv_weight,
                     attn_qkv_bias,
-                    self.uname(layer_id, "casted_mask"),
+                    i_attn_mask,
                     i_kv_cache,
                 ],
                 outputs=[self.uname(layer_id, "attn_out"), o_kv_cache],
@@ -317,6 +310,8 @@ class PhiOnnxModel(OnnxModel):
         super().__init__(model)
         self.fission_transformer_block = FissionTransformerBlockPhi(self)
         self.postprocess_causal_lm_head = PostProcessCausalLMHead(self)
+        self.fuse_sln = FusionSkipLayerNormalization(self)
+        self.fuse_bias_sln = FusionBiasSkipLayerNormalization(self)
 
     def inline_model(self):
         self.model = inliner.inline_local_functions(self.model, False)
@@ -329,6 +324,8 @@ class PhiOnnxModel(OnnxModel):
     def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
         self.fission_transformer_block.apply()
         self.postprocess_causal_lm_head.apply()
+        self.fuse_sln.apply()
+        self.fuse_bias_sln.apply()
         # self.inline_model()
         self.postprocess()
 
