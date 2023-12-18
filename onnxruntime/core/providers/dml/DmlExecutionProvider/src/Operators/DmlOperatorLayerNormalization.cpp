@@ -6,6 +6,7 @@
 namespace Dml
 {
 
+template <bool simplified>
 class DmlOperatorLayerNormalization : public DmlOperator
 {
 public:
@@ -128,17 +129,18 @@ public:
             outputCastOpDesc.Desc = &outputCastDesc;
         }
 
-        DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_DESC operatorDesc = {};
+        DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_DESC operatorDesc = {};
         operatorDesc.InputTensor = inputCastOpDesc.Desc ? &inputCastOutputDmlTensorDesc : &inputDesc;
         operatorDesc.ScaleTensor = scaleCastOpDesc.Desc ? &scaleCastOutputDmlTensorDesc : &scaleDesc;
         operatorDesc.BiasTensor = biasCastOpDesc.Desc ? &biasCastOutputDmlTensorDesc : (biasDesc.Desc ? &biasDesc : nullptr);
         operatorDesc.OutputTensor = outputCastOpDesc.Desc ? &outputCastOutputDmlTensorDesc : &outputDesc;
         operatorDesc.Axes = onnxAxes.data();
         operatorDesc.AxisCount = gsl::narrow_cast<uint32_t>(onnxAxes.size());
-        operatorDesc.NormalizeVariance = true;
+        operatorDesc.UseMean = !simplified;
+        operatorDesc.UseVariance = true;
         operatorDesc.Epsilon = epsilon;
         operatorDesc.FusedActivation = nullptr;
-        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION1, &operatorDesc };
+        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2, &operatorDesc };
 
         // Construct the graph
         std::vector<const DML_OPERATOR_DESC*> opDescs;
@@ -258,7 +260,8 @@ void CALLBACK QueryLayerNormalization(IMLOperatorSupportQueryContextPrivate* con
     *isSupported = context->GetOutputCount() == 1;
 }
 
-DML_OP_DEFINE_CREATION_FUNCTION(LayerNormalization, DmlOperatorLayerNormalization);
-DML_OP_DEFINE_CREATION_FUNCTION(LayerNormalization17, DmlOperatorLayerNormalization);
+DML_OP_DEFINE_CREATION_FUNCTION(LayerNormalization, DmlOperatorLayerNormalization<false>);
+DML_OP_DEFINE_CREATION_FUNCTION(LayerNormalization17, DmlOperatorLayerNormalization<false>);
+DML_OP_DEFINE_CREATION_FUNCTION(SimplifiedLayerNormalization, DmlOperatorLayerNormalization<true>);
 
 } // namespace Dml

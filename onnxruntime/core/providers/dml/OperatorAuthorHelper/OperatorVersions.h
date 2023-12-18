@@ -124,6 +124,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_Upsample = 7;
         static const int sc_sinceVer_Xor = 7;
         static const int sc_sinceVer_LayerNormalization = 1;
+        static const int sc_sinceVer_SimplifiedLayerNormalization = 1;
 
         // Special operators
         static const int sc_sinceVer_MemcpyToHost = 1;
@@ -432,6 +433,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_MultiHeadAttention = 1;
         static const int sc_sinceVer_GroupQueryAttention = 1;
         static const int sc_sinceVer_SkipLayerNormalization = 1;
+        static const int sc_sinceVer_SkipSimplifiedLayerNormalization = 1;
         static const int sc_sinceVer_EmbedLayerNormalization = 1;
         static const int sc_sinceVer_BiasSplitGelu = 1;
         static const int sc_sinceVer_NhwcConv = 1;

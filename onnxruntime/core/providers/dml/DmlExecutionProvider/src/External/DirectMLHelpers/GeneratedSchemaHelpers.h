@@ -1075,6 +1075,21 @@ inline std::vector<OperatorField> GetFields(const DML_MEAN_VARIANCE_NORMALIZATIO
         OperatorField(&DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_SCHEMA.Fields[8], ToOperatorFieldType(static_cast<const DML_OPERATOR_DESC*>(desc.FusedActivation))),
     };
 }
+inline std::vector<OperatorField> GetFields(const DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
+        OperatorField(&DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.ScaleTensor))),
+        OperatorField(&DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.BiasTensor))),
+        OperatorField(&DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+        OperatorField(&DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<UINT>(desc.AxisCount))),
+        OperatorField(&DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA.Fields[5], ToOperatorFieldType(static_cast<const UINT*>(desc.Axes), desc.AxisCount)),
+        OperatorField(&DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA.Fields[6], ToOperatorFieldType(static_cast<UINT>(desc.UseMean))),
+        OperatorField(&DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA.Fields[7], ToOperatorFieldType(static_cast<UINT>(desc.UseVariance))),
+        OperatorField(&DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA.Fields[8], ToOperatorFieldType(static_cast<FLOAT>(desc.Epsilon))),
+        OperatorField(&DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA.Fields[9], ToOperatorFieldType(static_cast<const DML_OPERATOR_DESC*>(desc.FusedActivation))),
+    };
+}
 inline std::vector<OperatorField> GetFields(const DML_RESAMPLE1_OPERATOR_DESC& desc)
 {
     return {
@@ -1773,6 +1788,7 @@ inline const DML_OPERATOR_SCHEMA& GetSchema(DML_OPERATOR_TYPE operatorType)
     case DML_OPERATOR_DEPTH_TO_SPACE1: return DML_DEPTH_TO_SPACE1_OPERATOR_SCHEMA;
     case DML_OPERATOR_SPACE_TO_DEPTH1: return DML_SPACE_TO_DEPTH1_OPERATOR_SCHEMA;
     case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION1: return DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_SCHEMA;
+    case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2: return DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA;
     case DML_OPERATOR_RESAMPLE1: return DML_RESAMPLE1_OPERATOR_SCHEMA;
     case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER: return DML_MATRIX_MULTIPLY_INTEGER_OPERATOR_SCHEMA;
     case DML_OPERATOR_QUANTIZED_LINEAR_MATRIX_MULTIPLY: return DML_QUANTIZED_LINEAR_MATRIX_MULTIPLY_OPERATOR_SCHEMA;
@@ -2284,6 +2300,10 @@ inline AbstractOperatorDesc ConvertOperatorDesc(const DML_OPERATOR_DESC& opDesc)
         return AbstractOperatorDesc(
             &DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_SCHEMA,
             GetFields(*static_cast<const DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2:
+        return AbstractOperatorDesc(
+            &DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_DESC*>(opDesc.Desc)));
     case DML_OPERATOR_RESAMPLE1:
         return AbstractOperatorDesc(
             &DML_RESAMPLE1_OPERATOR_SCHEMA,

@@ -8,8 +8,8 @@
 #include "dx.h"
 
 #if USE_DML
-// TODO (pavignol): Revert
-// #include <DirectML.h>
+// TODO (pavignol): Remove
 #include "core/providers/dml/DirectML2.h"
+// #include <DirectML.h>
 #include "core/providers/dml/DmlExecutionProvider/src/ErrorHandling.h"
 #endif USE_DML

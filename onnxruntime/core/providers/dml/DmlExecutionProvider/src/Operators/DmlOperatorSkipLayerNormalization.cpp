@@ -6,6 +6,7 @@
 namespace Dml
 {
 
+template <bool simplified>
 class DmlOperatorSkipLayerNormalization : public DmlOperator
 {
 public:
@@ -83,17 +84,18 @@ public:
         inputSkipBiasAddDesc.OutputTensor = &inputDesc;
         DML_OPERATOR_DESC inputSkipBiasAddOpDesc = { DML_OPERATOR_ELEMENT_WISE_ADD, &inputSkipBiasAddDesc };
 
-        DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_DESC mvnDesc = {};
+        DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_DESC mvnDesc = {};
         mvnDesc.InputTensor = &inputDesc;
         mvnDesc.ScaleTensor = &gammaDesc;
         mvnDesc.BiasTensor = betaDesc.Desc ? &betaDesc : nullptr;
         mvnDesc.OutputTensor = &outputDesc;
         mvnDesc.Axes = axes.data();
         mvnDesc.AxisCount = gsl::narrow_cast<uint32_t>(axes.size());
-        mvnDesc.NormalizeVariance = true;
+        mvnDesc.UseMean = !simplified;
+        mvnDesc.UseVariance = true;
         mvnDesc.Epsilon = epsilon;
         mvnDesc.FusedActivation = nullptr;
-        DML_OPERATOR_DESC mvnOpDesc = { DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION1, &mvnDesc };
+        DML_OPERATOR_DESC mvnOpDesc = { DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2, &mvnDesc };
 
         // Construct the graph
         std::vector<const DML_OPERATOR_DESC*> opDescs;
@@ -223,6 +225,7 @@ void CALLBACK QuerySkipLayerNormalization(IMLOperatorSupportQueryContextPrivate*
     *isSupported = true;
 }
 
-DML_OP_DEFINE_CREATION_FUNCTION(SkipLayerNormalization, DmlOperatorSkipLayerNormalization);
+DML_OP_DEFINE_CREATION_FUNCTION(SkipLayerNormalization, DmlOperatorSkipLayerNormalization<false>);
+DML_OP_DEFINE_CREATION_FUNCTION(SkipSimplifiedLayerNormalization, DmlOperatorSkipLayerNormalization<true>);
 
 } // namespace Dml
