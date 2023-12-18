@@ -1194,7 +1194,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
     set(onnxruntime_acc_test_libs onnxruntime)
     if(NOT WIN32)
-      list(APPEND onnxruntime_acc_test_libs ${CMAKE_DL_LIBS})
+      list(APPEND onnxruntime_acc_test_libs stdc++fs ${CMAKE_DL_LIBS})
     endif()
     if (onnxruntime_LINK_LIBATOMIC)
       list(APPEND onnxruntime_acc_test_libs atomic)
