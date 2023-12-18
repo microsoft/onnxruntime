@@ -4,7 +4,7 @@
 #include <mutex>
 #include "acc_task.h"
 
-TaskThreadPool::TaskThreadPool(int num_threads) {
+TaskThreadPool::TaskThreadPool(size_t num_threads) {
   threads_.reserve(num_threads);
   for (size_t i = 0; i < num_threads; i++) {
     threads_.emplace_back(&TaskThreadPool::ThreadEntry, this);

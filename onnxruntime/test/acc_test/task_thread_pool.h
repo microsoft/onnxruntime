@@ -12,7 +12,7 @@
 
 class TaskThreadPool {
  public:
-  TaskThreadPool(int num_threads);
+  TaskThreadPool(size_t num_threads);
   ~TaskThreadPool();
 
   void CompleteTasks(Span<Task> tasks);
