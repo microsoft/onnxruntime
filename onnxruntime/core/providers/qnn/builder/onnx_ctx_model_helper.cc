@@ -57,10 +57,10 @@ Status GetMainContextNode(const std::vector<IExecutionProvider::FusedNodeAndGrap
 }
 
 Status GetContextFromOnnxModel(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                const onnxruntime::PathString& ctx_onnx_model_path,
-                                QnnBackendManager* qnn_backend_manager,
-                                const logging::Logger& logger,
-                                std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models) {
+                               const onnxruntime::PathString& ctx_onnx_model_path,
+                               QnnBackendManager* qnn_backend_manager,
+                               const logging::Logger& logger,
+                               std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models) {
   for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
     const Node& fused_node = fused_node_and_graph.fused_node;
     qnn_models.emplace(fused_node.Name(),
@@ -204,7 +204,7 @@ bool IsContextCacheFileExists(const std::string& customer_context_cache_path,
   if (!customer_context_cache_path.empty()) {
     context_cache_path = ToPathString(customer_context_cache_path);
   } else if (!model_pathstring.empty()) {
-    context_cache_path = model_pathstring + ToPathString("_qnn_ctx.onnx");
+    context_cache_path = model_pathstring + ToPathString("_ctx.onnx");
   }
 
   return std::filesystem::is_regular_file(context_cache_path) && std::filesystem::exists(context_cache_path);
@@ -305,7 +305,7 @@ Status GenerateCtxCacheOnnxModel(Model* model,
                                   nullptr,
                                   kMSDomain);
 
-    // Only dump the context buffer once since all QNN graph are in one single context
+    // Only dump the context buffer once since all QNN graphs are in one single context
     if (0 == index) {
       if (qnn_context_embed_mode) {
         std::string cache_payload(buffer, buffer + buffer_size);

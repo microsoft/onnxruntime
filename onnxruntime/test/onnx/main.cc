@@ -50,15 +50,12 @@ void usage() {
       "\t-a: Specify custom absolute tolerance values for output value comparison. default: 1e-5\n"
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
       "\t    [QNN only] [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/folderpath/libQnnCpu.so'.\n"
-      "\t    [QNN only] [qnn_context_cache_enable]: 1 to enable cache QNN context. Default to false.\n"
-      "\t    [QNN only] [qnn_context_cache_path]: File path to the qnn context cache. Default to model_file.onnx.bin if not set.\n"
       "\t    [QNN only] [profiling_level]: QNN profiling level, options:  'basic', 'detailed', default 'off'.\n"
       "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
       "\t    [QNN only] [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).\n"
       "\t    [QNN only] [htp_performance_mode]: QNN performance mode, options: 'burst', 'balanced', 'default', 'high_performance', \n"
       "\t    'high_power_saver', 'low_balanced', 'low_power_saver', 'power_saver', 'sustained_high_performance'. Default to 'default'. \n"
       "\t    [QNN only] [qnn_context_priority]: QNN context priority, options: 'low', 'normal', 'normal_high', 'high'. Default to 'normal'. \n"
-      "\t    [QNN only] [qnn_context_embed_mode]: 1 means dump the QNN context binary into the Onnx skeleton model.\n"
       "\t    0 means dump the QNN context binary into separate bin file and set the path in the Onnx skeleton model.\n"
       "\t    [QNN only] [qnn_saver_path]: QNN Saver backend path. e.g '/folderpath/libQnnSaver.so'.\n"
       "\t    [QNN only] [htp_graph_finalization_optimization_mode]: QNN graph finalization optimization mode, options: \n"
@@ -73,6 +70,8 @@ void usage() {
       "\t [Example] [For SNPE EP] -e snpe -i \"runtime|CPU priority|low\" \n\n"
       "\t-o [optimization level]: Default is 99. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
       "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. "
+      "\t-f: Enable EP context cache generation.\n"
+      "\t-b: Disable EP context embed mode.\n"
       "\n"
       "\t-h: help\n"
       "\n"
@@ -179,11 +178,13 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_ERROR;
   bool verbose_logging_required = false;
+  bool ep_context_enable = false;
+  bool disable_ep_context_embed_mode = false;
 
   bool pause = false;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:t:a:xvo:d:i:pz"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:t:a:xvo:d:i:pzfb"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -312,6 +313,12 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         case 'z':
           set_denormal_as_zero = true;
           break;
+        case 'b':
+          disable_ep_context_embed_mode = true;
+          break;
+        case 'f':
+          ep_context_enable = true;
+          break;
         case '?':
         case 'h':
         default:
@@ -385,6 +392,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     sf.SetExecutionMode(execution_mode);
     if (set_denormal_as_zero)
       sf.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
+
+    if (ep_context_enable)
+      sf.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+    if (disable_ep_context_embed_mode)
+      sf.AddConfigEntry(kOrtSessionOptionEpContextEmbedMode, "0");
 
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
