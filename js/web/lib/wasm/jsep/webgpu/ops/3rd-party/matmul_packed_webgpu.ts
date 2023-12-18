@@ -480,8 +480,7 @@ export const createMatmulProgramInfo =
 
       const uniforms: UniformsArrayType =
           [{name: 'dimAOuter', type: 'i32'}, {name: 'dimBOuter', type: 'i32'}, {name: 'dimInner', type: 'i32'}];
-      updateUniformsFromActivation(
-          programUniforms, uniforms, activationAttributes, inputs[0].dataType, output.type.value);
+      updateUniformsFromActivation(programUniforms, uniforms, activationAttributes, inputs[0].dataType);
 
       const hasBias = inputs.length > 2;
       const {activationFunction, applyActivation} = getActivationSnippet(activationAttributes, output.type.value);

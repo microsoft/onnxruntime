@@ -213,7 +213,7 @@ export interface IndicesHelper {
   readonly strides: string;
 }
 
-const getWgslMappedType = (type: number, components: 1|2|3|4): string|[string, string] => {
+export const getWgslMappedType = (type: number, components: 1|2|3|4): string|[string, string] => {
   if (components === 3) {
     throw new Error('vec3 has same alignment as vec4, use vec4 instead');
   }

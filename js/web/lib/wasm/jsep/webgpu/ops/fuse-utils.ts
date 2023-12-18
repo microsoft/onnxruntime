@@ -5,7 +5,7 @@ import {tensorDataTypeEnumToString} from '../../../wasm-common';
 import {MAX_CLIP, MIN_CLIP} from '../../util';
 import {ProgramUniform} from '../types';
 
-import {UniformDataElementType, UniformsArrayType} from './common';
+import {getWgslMappedType, UniformDataElementType, UniformsArrayType} from './common';
 
 export interface InternalActivationAttributes {
   readonly activation: string;
@@ -47,8 +47,9 @@ export const parseInternalActivationAttributes =
 
 export const updateUniformsFromActivation =
     (programUniforms: ProgramUniform[], uniforms: UniformsArrayType, attributes: InternalActivationAttributes,
-     dataType: number, wgslElementType: string) => {
+     dataType: number) => {
       const tensorDataType = tensorDataTypeEnumToString(dataType) as ProgramUniform['type'];
+      const wgslElementType = getWgslMappedType(dataType, 1);
       if (attributes.activation === 'Clip') {
         programUniforms.push(
             {type: tensorDataType, data: attributes.clipMax!}, {type: tensorDataType, data: attributes.clipMin!});

@@ -199,6 +199,7 @@ export const createConv2DMatMulProgramInfo =
           inputVariable('x', inputs[0].dataType, inputs[0].dims.length, innerElementSize === 3 ? 1 : innerElementSize);
       const w = inputVariable('w', inputs[1].dataType, inputs[1].dims.length, components);
       const inputVariables = [x, w];
+      const output = outputVariable('result', inputs[0].dataType, outputShape.length, components);
 
       const programUniforms: ProgramUniform[] = [
         {type: 'int32', data: dimAOuter}, {type: 'int32', data: dimBOuter}, {type: 'int32', data: dimInner},
@@ -210,7 +211,7 @@ export const createConv2DMatMulProgramInfo =
         {name: 'pad', type: 'i32', length: 2}, {name: 'stride', type: 'i32', length: 2},
         {name: 'dilation', type: 'i32', length: 2}
       ];
-      updateUniformsFromActivation(programUniforms, uniforms, attributes, inputs[0].dataType, x.type.value);
+      updateUniformsFromActivation(programUniforms, uniforms, attributes, inputs[0].dataType);
 
       programUniforms.push(
           ...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(inputs[1].dims));
@@ -236,7 +237,6 @@ export const createConv2DMatMulProgramInfo =
           return bias[coords.${isChannelsLast ? 'w' : 'y'}${isVec4 ? '/ 4' : ''}];
         }`;
       }
-      const output = outputVariable('result', inputs[0].dataType, outputShape.length, components);
       programUniforms.push(...createTensorShapeVariables(outputShape));
 
       return {

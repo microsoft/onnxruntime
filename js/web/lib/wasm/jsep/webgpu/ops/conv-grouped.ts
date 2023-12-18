@@ -43,7 +43,7 @@ export const createGroupedConvProgramInfo =
         {name: 'strides', type: 'u32', length: 2}, {name: 'pads', type: 'u32', length: 2},
         {name: 'outputChannelsPerGroup', type: 'u32'}
       ];
-      updateUniformsFromActivation(programUniforms, uniforms, attributes, inputs[0].dataType, x.type.value);
+      updateUniformsFromActivation(programUniforms, uniforms, attributes, inputs[0].dataType);
       programUniforms.push(
           ...createTensorShapeVariables(xShape), ...createTensorShapeVariables(wShape),
           ...createTensorShapeVariables(outputShape));

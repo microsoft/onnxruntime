@@ -212,7 +212,7 @@ export const createConv2DTransposeMatMulProgramInfo =
         {name: 'strides', type: 'i32', length: 2}, {name: 'dilations', type: 'i32', length: 2},
         {name: 'filterDims', type: 'i32', length: filterDims.length}, {name: 'pads', type: 'i32', length: pads.length}
       ];
-      updateUniformsFromActivation(programUniforms, uniforms, attributes, inputs[0].dataType, x.type.value);
+      updateUniformsFromActivation(programUniforms, uniforms, attributes, inputs[0].dataType);
       programUniforms.push(
           ...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(inputs[1].dims));
 
