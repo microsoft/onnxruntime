@@ -3395,8 +3395,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
       }
 
-      if (sync_stream_after_enqueue) {
-        cudaStreamSynchronize(stream);
+      if (sync_stream_after_enqueue_ || dds_output_set.size() > 0) {
+        CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
       }
 
       // Assign TRT output back to ORT output
