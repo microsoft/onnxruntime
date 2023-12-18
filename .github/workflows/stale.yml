@@ -29,7 +29,7 @@ jobs:
           # Label you want to apply to issues that have been inactive for the amount of time specified by days-before-issue-stale
           stale-issue-label: "stale"
           # Comment that you want to add to issues that are labeled by the actions/stale action
-          stale-issue-message: "This issue has been automatically marked as stale due to inactivity and will be closed in 7 days if no further activity occurs. If further support is needed, please provide an update and/or more details."
+          stale-issue-message: "This issue has been automatically marked as stale due to inactivity and will be closed in 30 days if no further activity occurs. If further support is needed, please provide an update and/or more details."
           # Comment that you want to add to issues that are closed by the actions/stale action
           close-issue-message: "This issue has been automatically closed due to inactivity. Please reactivate if further support is needed."
           # If you never want this action to label PRs, set this value to -1
