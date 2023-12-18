@@ -1610,7 +1610,7 @@ def output_op_metrics(model_to_metrics, csv_filename):
                 trt_fp16_data = ep_info[trt_fp16]["ratio_of_ops_in_trt"]
                 csv_writer.writerow([model, trt_fp16, trt_fp16_data])
 
-    logger.info(f"op metrics for cuda/trt ep are saved to csv file: {csv_filename}")
+    logger.info(f"op metrics for cuda/trt ep are saved to csv file: {csv_filename} and will be displayed at Perf Dashboard")
 
 
 def output_system_info(result, csv_filename):
@@ -2359,7 +2359,6 @@ def main():
             )
             csv_filename = os.path.join(path, csv_filename)
             output_metrics(model_to_metrics, csv_filename)
-            output_op_metrics(model_to_metrics, op_metrics_name)
 
     if len(model_to_session) > 0:
         write_map_to_file(model_to_session, SESSION_FILE)
