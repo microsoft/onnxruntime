@@ -72,13 +72,13 @@ bool TaskThreadPool::RunNextTask() {
     return false;
   }
 
-  const size_t task_index = std::atomic_fetch_add(&next_task_index_, 1);
+  const size_t task_index = std::atomic_fetch_add(&next_task_index_, static_cast<size_t>(1));
   if (task_index >= tasks_.size()) {
     return false;
   }
 
   tasks_[task_index].Run();
 
-  std::atomic_fetch_add(&tasks_completed_, 1);
+  std::atomic_fetch_add(&tasks_completed_, static_cast<size_t>(1));
   return true;
 }
