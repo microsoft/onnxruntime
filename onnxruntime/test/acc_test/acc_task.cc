@@ -1,4 +1,11 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 #include "acc_task.h"
+#include <cstdlib>
+#include <cstring>
+#include <iostream>
+#include <variant>
+#include <vector>
 
 static std::vector<Ort::Value> RunInference(Ort::Session& session, const ModelIOInfo& model_io_info,
                                             Span<const char> input_buffer) {
@@ -73,5 +80,7 @@ void Task::Run() {
     return;
   }
 
+  // Should not reach this line unless we add a new (unhandled) std::variant type.
+  std::cerr << "[ERROR]: Unhandled std::variant type for Task::variant_ member." << std::endl;
   std::abort();
 }

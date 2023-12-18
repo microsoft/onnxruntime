@@ -1,12 +1,15 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 #include "cmd_args.h"
 #include <onnxruntime_cxx_api.h>
 #include <onnxruntime_session_options_config_keys.h>
 #include <cassert>
 #include <iostream>
+#include <iterator>
 #include <ostream>
-#include <unordered_set>
 #include <sstream>
 #include <string_view>
+#include <unordered_set>
 
 struct CmdArgs {
   CmdArgs(int argc, char** argv) noexcept : argc_(argc), argv_(argv), index_(0) {}

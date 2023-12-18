@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #pragma once
+#include <atomic>
 #include <condition_variable>
 #include <mutex>
+#include <thread>
 #include <vector>
 
 #include "basic_utils.h"

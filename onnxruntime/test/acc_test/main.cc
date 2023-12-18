@@ -1,28 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
 #include <onnxruntime_cxx_api.h>
 #include <onnxruntime_session_options_config_keys.h>
 
 #include <algorithm>
 #include <array>
-#include <atomic>
 #include <cassert>
-#include <cmath>
-#include <condition_variable>
-#include <cstdlib>  // std::abort
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <sstream>
 #include <limits>
+#include <sstream>
 #include <memory>
-#include <mutex>
 #include <sstream>
 #include <string>
-#include <thread>
-#include <type_traits>
-#include <variant>
 #include <vector>
 
 #include "cmd_args.h"
