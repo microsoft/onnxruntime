@@ -38,7 +38,7 @@ class AttentionBase {
 
     is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
     do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
-    rotary_embedding_ = info.GetAttrOrDefault<int64_t>("rotary_embedding", 0);
+    rotary_embedding_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("rotary_embedding", 0));
     mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
     scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
