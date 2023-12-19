@@ -10,7 +10,7 @@
 #include "core/providers/webnn/builders/model_builder.h"
 #include "core/providers/webnn/builders/op_builder_factory.h"
 
-#include "base_op_builder.h"
+#include "core/providers/webnn/builders/impl/base_op_builder.h"
 
 namespace onnxruntime {
 namespace webnn {

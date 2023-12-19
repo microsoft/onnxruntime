@@ -14,6 +14,8 @@
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 
+#include <utility>
+
 namespace onnxruntime {
 namespace webnn {
 

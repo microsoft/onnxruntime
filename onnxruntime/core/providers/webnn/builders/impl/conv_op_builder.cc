@@ -276,10 +276,10 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         options.set("filterLayout", emscripten::val("ihwo"));
       }
     }
-    emscripten::val filter = model_builder.GetOperand(weight);
-    if (op_type == "Conv")
+    emscripten::val filter = model_builder.GetOperand(weight_name);
+    if (op_type == "Conv") {
       output = model_builder.GetBuilder().call<emscripten::val>("conv2d", input, filter, options);
-    else {
+    } else {
       emscripten::val x_zero_point = emscripten::val::null();
       emscripten::val w_zero_point = emscripten::val::null();
       if (input_defs.size() >= 3) {
