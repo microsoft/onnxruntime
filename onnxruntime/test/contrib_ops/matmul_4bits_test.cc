@@ -63,7 +63,6 @@ void QuantizeDequantize(std::vector<float>& raw_vals,
       tp.get());
 }
 
-
 void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, MLAS_SQNBIT_COMPUTE_TYPE comp_type,
              bool has_zeropoint, bool use_float16, float fp16_abs_error = 0.02f) {
   RandomValueGenerator random{1234};
@@ -175,9 +174,9 @@ TEST(MatMulNBits, Float16) {
 TEST(MatMulNBits, Float16Large) {
   for (auto block_size : {16, 32, 64, 128}) {
     for (auto symmetric : {false, true}) {
-      RunTest(1, 4096, 4096, block_size, CompUndef, symmetric, true, 0.05);
-      RunTest(1, 4096, 11008, block_size, CompUndef, symmetric, true, 0.05);
-      RunTest(1, 11008, 4096, block_size, CompUndef, symmetric, true, 0.05);
+      RunTest(1, 4096, 4096, block_size, CompUndef, symmetric, true, 0.05f);
+      RunTest(1, 4096, 11008, block_size, CompUndef, symmetric, true, 0.05f);
+      RunTest(1, 11008, 4096, block_size, CompUndef, symmetric, true, 0.05f);
     }
   }
 }

@@ -177,7 +177,7 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
     b_scale_vec[i] = scales_data[offset + i];
   }
 
-  uint8_t* b_zp_vec = nullptr;
+  uint8_t* b_zp_vec;
   (void)b_zp_vec;
   if constexpr (has_zero_point) {
     b_zp_vec = reinterpret_cast<uint8_t*>(b_scale_vec + kColsPerThreadBlock * blocks_per_K);
