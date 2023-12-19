@@ -181,7 +181,6 @@ py::object finalize_training_mode_forward(
   }
 
   if (kernel_info.is_first_run) {
-    std::cout << "666666666666666666666666.  py_fn->materialize_grads:" << py_fn->materialize_grads << std::endl;
     get_materialize_grads_once(forward_output_tensors, py_fn->materialize_grads, kernel_info);
 
     if (kernel_info.safe_run_enabled) {
