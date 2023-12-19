@@ -112,6 +112,14 @@ def check_if_dlls_are_present(
     else:
         file_list_in_package = zip_file.namelist()
 
+    # In Nuget GPU package, onnxruntime.dll is in dependent package.
+    package_contains_library = not bool(package_type == "nuget" and is_gpu_package)
+    # In Nuget GPU package, gpu header files are not in dependent package.
+    package_contains_headers = bool(
+        (is_gpu_package and package_type != "nuget") or (package_type == "nuget" and not is_gpu_dependent_package)
+    )
+    # In Nuget GPU package, cuda ep and tensorrt ep dlls are in dependent package
+    package_contains_cuda_binaries = bool((is_gpu_package and package_type != "nuget") or is_gpu_dependent_package)
     for platform in platforms:
         if platform.startswith("win"):
             native_folder = "_native" if is_windows_ai_package else "native"
@@ -125,7 +133,7 @@ def check_if_dlls_are_present(
                 header_folder = package_path + "/include"
 
             # In Nuget GPU package, onnxruntime.dll is in dependent package.
-            if not (package_type == "nuget" and is_gpu_package):
+            if package_contains_library:
                 path = folder + "/" + "onnxruntime.dll"
                 print("Checking path: " + path)
                 if path not in file_list_in_package:
@@ -133,18 +141,15 @@ def check_if_dlls_are_present(
                     raise Exception("onnxruntime.dll not found for " + platform)
                 continue
 
-            # In Nuget GPU package, cuda ep and tensorrt ep dlls are in dependent package.
-            if (is_gpu_package and package_type != "nuget") or is_gpu_dependent_package:
+            if package_contains_cuda_binaries:
                 for dll in win_gpu_package_libraries:
                     path = folder + "/" + dll
                     print("Checking path: " + path)
                     if path not in file_list_in_package:
                         print(dll + " not found for " + platform)
                         raise Exception(dll + " not found for " + platform)
-            # In Nuget GPU package, gpu header files are not in dependent package.
-            if (is_gpu_package and package_type != "nuget") or (
-                package_type == "nuget" and not is_gpu_dependent_package
-            ):
+
+            if package_contains_headers:
                 check_if_headers_are_present(gpu_related_header_files, header_folder, file_list_in_package, platform)
 
             if is_dml_package:
@@ -164,26 +169,22 @@ def check_if_dlls_are_present(
                 folder = package_path + "/lib"
                 header_folder = package_path + "/include"
 
-            # In Nuget GPU package, onnxruntime.dll is in dependent package.
-            if not (package_type == "nuget" and is_gpu_package):
+            if package_contains_library:
                 path = folder + "/" + "libonnxruntime.so"
                 print("Checking path: " + path)
                 if path not in file_list_in_package:
                     print("libonnxruntime.so not found for " + platform)
                     raise Exception("libonnxruntime.so not found for " + platform)
 
-            # In Nuget GPU package, cuda ep and tensorrt ep dlls are in dependent package.
-            if (is_gpu_package and package_type != "nuget") or is_gpu_dependent_package:
+            if package_contains_cuda_binaries:
                 for so in linux_gpu_package_libraries:
                     path = folder + "/" + so
                     print("Checking path: " + path)
                     if path not in file_list_in_package:
                         print(so + " not found for " + platform)
                         raise Exception(so + " not found for " + platform)
-            # In Nuget GPU package, gpu header files are not in dependent package.
-            if (is_gpu_package and package_type != "nuget") or (
-                package_type == "nuget" and not is_gpu_dependent_package
-            ):
+
+            if package_contains_headers:
                 for header in gpu_related_header_files:
                     path = header_folder + "/" + header
                     print("Checking path: " + path)

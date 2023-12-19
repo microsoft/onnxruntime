@@ -41,8 +41,14 @@ def get_package_name(os, cpu_arch, ep, is_training_package):
 # onnxruntime_providers_tensorrt from tensorrt build
 # cuda binaries are split out into the platform dependent packages Microsoft.ML.OnnxRuntime.Sub.Gpu{Linux|Windows}
 # and not included in the base Microsoft.ML.OnnxRuntime.Gpu package
-def is_this_file_needed(ep, filename, package_name):
+def is_this_file_needed(ep, file, package_name):
+    filename = file.name
+    suffix = file.suffix
     if package_name == "Microsoft.ML.OnnxRuntime.Gpu":
+        return False
+    if package_name == "Microsoft.ML.OnnxRuntime.Sub.Gpu.Linux" and suffix in [".dll", ".lib", "pdb"]:
+        return False
+    if package_name == "Microsoft.ML.OnnxRuntime.Sub.Gpu.Windows" and suffix == ".so":
         return False
     return (ep != "cuda" or "cuda" in filename) and (ep != "tensorrt" or "cuda" not in filename)
 
@@ -60,12 +66,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
             if child.name == get_package_name("win", cpu_arch, ep, is_training_package):
                 child = child / "lib"  # noqa: PLW2901
                 for child_file in child.iterdir():
-                    suffixes = [".dll", ".lib", ".pdb"] if include_pdbs else [".dll", ".lib"]
-                    if (
-                        child_file.suffix in suffixes
-                        and is_this_file_needed(ep, child_file.name, package_name)
-                        and package_name != "Microsoft.ML.OnnxRuntime.Sub.Gpu.Linux"
-                    ):
+                    if is_this_file_needed(ep, child_file, package_name):
                         files_list.append(
                             '<file src="' + str(child_file) + '" target="runtimes/win-%s/native"/>' % cpu_arch
                         )
@@ -91,11 +92,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                 for child_file in child.iterdir():
                     if not child_file.is_file():
                         continue
-                    if (
-                        child_file.suffix == ".so"
-                        and is_this_file_needed(ep, child_file.name, package_name)
-                        and package_name != "Microsoft.ML.OnnxRuntime.Sub.Gpu.Windows"
-                    ):
+                    if is_this_file_needed(ep, child_file, package_name):
                         files_list.append(
                             '<file src="' + str(child_file) + '" target="runtimes/linux-%s/native"/>' % cpu_arch
                         )
@@ -207,7 +204,8 @@ def generate_repo_url(line_list, repo_url, commit_id):
 
 def add_common_dependencies(xml_text, package_name, version):
     dependent_packages = bool(
-        package_name == "Microsoft.ML.OnnxRuntime.Sub.Gpu.Windows" or package_name == "Microsoft.ML.OnnxRuntime.Sub.Gpu.Linux"
+        package_name == "Microsoft.ML.OnnxRuntime.Sub.Gpu.Windows"
+        or package_name == "Microsoft.ML.OnnxRuntime.Sub.Gpu.Linux"
     )
     if not dependent_packages:
         xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
@@ -937,7 +935,7 @@ def generate_files(line_list, args):
         os.system(copy_command + " " + source_targets + " " + target_targets)
         files_list.append("<file src=" + '"' + target_targets + '" target="' + build_dir + '\\native"  />')
         if not is_snpe_package and not is_qnn_package:
-            files_list.append("<file src=" + '"' + target_targets + '" target="' + build_dir + '\\netstandard1.1" />')
+            files_list.append("<file src=" + '"' + target_targets + '" target="' + build_dir + '\\netstandard2.0" />')
             files_list.append("<file src=" + '"' + target_targets + '" target="' + build_dir + '\\netstandard2.1"  />')
 
         # Process xamarin targets files
