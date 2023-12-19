@@ -9,6 +9,7 @@ from collections import abc
 from typing import List, Mapping, Optional, Sequence, Tuple, Union
 
 import torch
+import numpy
 
 from onnxruntime.training.utils.torch_profile_utils import nvtx_function_decorator
 
@@ -43,6 +44,7 @@ ORTModelInputOutputType = Union[
     int,
     bool,
     float,
+    numpy.ndarray,
     torch.Tensor,
     Sequence["ORTModelInputOutputType"],
     Mapping[str, "ORTModelInputOutputType"],
@@ -111,6 +113,7 @@ class _TensorStub:
 ORTModelInputOutputSchemaType = Union[
     None,
     str,
+    numpy.ndarray,
     _TensorStub,
     Sequence["ORTModelInputOutputSchemaType"],
     Mapping[str, "ORTModelInputOutputSchemaType"],
@@ -195,6 +198,9 @@ def extract_data_and_schema(
                 return _TensorStub(
                     tensor_idx[0], dtype=PrimitiveType.get_primitive_dtype(data), shape_dims=0, name=prefix_name
                 )
+            return data
+        elif isinstance(data, numpy.ndarray):
+            _warn_of_constant_inputs(data)
             return data
         # Depth first traversal to iterate over the data to replace every tensor with a stub
         elif isinstance(data, torch.Tensor):
@@ -289,6 +295,8 @@ def unflatten_data_using_schema(
         elif isinstance(data_schema, str):
             return data_schema
         elif PrimitiveType.is_primitive_type(data_schema):
+            return data_schema
+        elif isinstance(data_schema, numpy.ndarray):
             return data_schema
         elif isinstance(data_schema, _TensorStub):
             assert isinstance(
