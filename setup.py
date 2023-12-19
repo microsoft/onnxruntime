@@ -489,7 +489,7 @@ if enable_training or enable_training_apis:
         )
 
         package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor"] = ["*.cc"]
-        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils"] = ["*.cc"]
+        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils"] = ["*.cc", "*.h"]
         package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator"] = ["*.cc"]
         package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops"] = [
             "*.cpp",

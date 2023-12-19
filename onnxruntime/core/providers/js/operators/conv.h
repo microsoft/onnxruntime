@@ -30,7 +30,7 @@ class ConvBase : public JsKernel {
     }
     if (is_fused_conv) {
       ORT_THROW_IF_ERROR(info.GetAttr<std::string>("activation", &conv_attrs_.activation));
-      ORT_ENFORCE(info.GetAttrs<float>("activation_params", activation_params).IsOK());
+      ORT_THROW_IF_ERROR(info.GetAttrs<float>("activation_params", activation_params));
     } else {
       conv_attrs_.activation = info.GetAttrOrDefault<std::string>("activation", "");
       activation_params = info.GetAttrsOrDefault<float>("activation_params", activation_params);
