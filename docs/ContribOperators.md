@@ -155,6 +155,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Corresponding past and present are same tensor, its size is (2, batch_size, num_heads, max_sequence_length, head_size)</dd>
 <dt><tt>qkv_hidden_sizes</tt> : list of ints</dt>
 <dd>Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size</dd>
+<dt><tt>rotary_embedding</tt> : int</dt>
+<dd>Dimention of rotary embedding. Limited to 32 or 64. Default value is head_size</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 <dt><tt>unidirectional</tt> : int</dt>
