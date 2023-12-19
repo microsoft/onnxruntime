@@ -39,7 +39,8 @@ def get_package_name(os, cpu_arch, ep, is_training_package):
 # Currently we take onnxruntime_providers_cuda from CUDA build
 # And onnxruntime, onnxruntime_providers_shared and
 # onnxruntime_providers_tensorrt from tensorrt build
-# cuda binaries are in dependent packages not in Microst.ML.OnnxRuntime.Gpu
+# cuda binaries are split out into the platform dependent packages Microsoft.ML.OnnxRuntime.Gpu.Sub.{Linux|Windows}
+# and not included in the base Microsoft.ML.OnnxRuntime.Gpu package
 def is_this_file_needed(ep, filename, package_name):
     if package_name == "Microsoft.ML.OnnxRuntime.Gpu":
         return False
@@ -63,7 +64,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                     if (
                         child_file.suffix in suffixes
                         and is_this_file_needed(ep, child_file.name, package_name)
-                        and package_name != "Microsoft.ML.OnnxRuntime.Gpu-linux"
+                        and package_name != "Microsoft.ML.OnnxRuntime.Gpu.Sub.Linux"
                     ):
                         files_list.append(
                             '<file src="' + str(child_file) + '" target="runtimes/win-%s/native"/>' % cpu_arch
@@ -93,7 +94,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                     if (
                         child_file.suffix == ".so"
                         and is_this_file_needed(ep, child_file.name, package_name)
-                        and package_name != "Microsoft.ML.OnnxRuntime.Gpu-win"
+                        and package_name != "Microsoft.ML.OnnxRuntime.Gpu.Sub.Windows"
                     ):
                         files_list.append(
                             '<file src="' + str(child_file) + '" target="runtimes/linux-%s/native"/>' % cpu_arch
@@ -206,13 +207,13 @@ def generate_repo_url(line_list, repo_url, commit_id):
 
 def add_common_dependencies(xml_text, package_name, version):
     dependent_packages = bool(
-        package_name == "Microsoft.ML.OnnxRuntime.Gpu-win" or package_name == "Microsoft.ML.OnnxRuntime.Gpu-linux"
+        package_name == "Microsoft.ML.OnnxRuntime.Gpu.Sub.Windows" or package_name == "Microsoft.ML.OnnxRuntime.Gpu.Sub.Linux"
     )
     if not dependent_packages:
         xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
     if package_name == "Microsoft.ML.OnnxRuntime.Gpu":
-        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu-win"' + ' version="' + version + '"/>')
-        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu-linux"' + ' version="' + version + '"/>')
+        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu.Sub.Windows"' + ' version="' + version + '"/>')
+        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu.Sub.Linux"' + ' version="' + version + '"/>')
 
 
 def generate_dependencies(xml_text, package_name, version):
@@ -347,8 +348,8 @@ def generate_files(line_list, args):
     ]
     is_mklml_package = args.package_name == "Microsoft.ML.OnnxRuntime.MKLML"
     is_cuda_gpu_package = args.package_name == "Microsoft.ML.OnnxRuntime.Gpu"
-    is_cuda_gpu_win_package = args.package_name == "Microsoft.ML.OnnxRuntime.Gpu-win"
-    is_cuda_gpu_linux_package = args.package_name == "Microsoft.ML.OnnxRuntime.Gpu-linux"
+    is_cuda_gpu_win_sub_package = args.package_name == "Microsoft.ML.OnnxRuntime.Gpu.Sub.Windows"
+    is_cuda_gpu_linux_sub_package = args.package_name == "Microsoft.ML.OnnxRuntime.Gpu.Sub.Linux"
     is_rocm_gpu_package = args.package_name == "Microsoft.ML.OnnxRuntime.ROCm"
     is_dml_package = args.package_name == "Microsoft.ML.OnnxRuntime.DirectML"
     is_windowsai_package = args.package_name == "Microsoft.AI.MachineLearning"
@@ -564,7 +565,7 @@ def generate_files(line_list, args):
         if nuget_artifacts_dir.exists():
             # Code path for ADO build pipeline, the files under 'nuget-artifacts' are
             # downloaded from other build jobs
-            if is_cuda_gpu_package or is_cuda_gpu_win_package or is_cuda_gpu_linux_package:
+            if is_cuda_gpu_package or is_cuda_gpu_win_sub_package or is_cuda_gpu_linux_sub_package:
                 ep_list = ["tensorrt", "cuda", None]
             elif is_rocm_gpu_package:
                 ep_list = ["rocm", None]
@@ -767,7 +768,7 @@ def generate_files(line_list, args):
                         + '\\native" />'
                     )
 
-    if args.execution_provider == "cuda" or is_cuda_gpu_win_package and not is_ado_packaging_build:
+    if args.execution_provider == "cuda" or is_cuda_gpu_win_sub_package and not is_ado_packaging_build:
         files_list.append(
             "<file src="
             + '"'
