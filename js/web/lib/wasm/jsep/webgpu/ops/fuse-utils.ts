@@ -25,7 +25,8 @@ export const getActivationSnippet = (attributes: InternalActivationAttributes, v
           };
         case 'Clip':
           return {
-            activationFunction: 'const clip_min_ = uniforms.clipMin; const clip_max_ = uniforms.clipMax;',
+            activationFunction:
+                `const clip_min_ = ${valueType}(uniforms.clipMin); const clip_max_ = ${valueType}(uniforms.clipMax);`,
             applyActivation: 'value = clamp(value, clip_min_, clip_max_);'
           };
           // TODO: adding other activations that can be fused.
