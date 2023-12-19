@@ -72,11 +72,13 @@ const InlinedHashMap<std::string, AllowedRecomputeNodeConfig>& GetAllowedRecompu
         {"Add", AllowedRecomputeNodeConfig{{0, 1}}},
         {"BiasGelu", AllowedRecomputeNodeConfig{{0, 1}}},
         {"Div", AllowedRecomputeNodeConfig{{0, 1}}},
+        {"Equal", AllowedRecomputeNodeConfig{{0, 1}}},
         {"Mul", AllowedRecomputeNodeConfig{{0, 1}}},
         {"Sub", AllowedRecomputeNodeConfig{{0, 1}}},
 
         // Data layout
         /// The shape input is trivial whether it exists or not in backward.
+        {"Shape", AllowedRecomputeNodeConfig{{0}}},
         {"Reshape", AllowedRecomputeNodeConfig{{0}}},
         {"Squeeze", AllowedRecomputeNodeConfig{{0}}},
         {"Transpose", AllowedRecomputeNodeConfig{{0}}},
