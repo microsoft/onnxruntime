@@ -33,7 +33,9 @@ if [ $ARCH == "x86_64" ]; then
     BUILD_ARGS="$BUILD_ARGS --enable_onnx_tests"
 fi
 if [ $BUILD_DEVICE == "GPU" ]; then
-    BUILD_ARGS="$BUILD_ARGS --use_cuda --use_tensorrt --cuda_version=11.8 --tensorrt_home=/usr --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8"
+    SHORT_CUDA_VERSION=$(echo $CUDA_VERSION | sed   's/\([[:digit:]]\+\.[[:digit:]]\+\)\.[[:digit:]]\+/\1/')
+
+    BUILD_ARGS="$BUILD_ARGS --use_cuda --use_tensorrt --cuda_version=$SHORT_CUDA_VERSION --tensorrt_home=/usr --cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION --cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION"
 fi
 # We assume the machine doesn't have gcc and python development header files, so we don't build onnxruntime from source
 python3 -m pip install --upgrade pip
