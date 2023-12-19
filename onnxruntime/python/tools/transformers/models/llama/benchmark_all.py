@@ -7,6 +7,7 @@ import subprocess
 
 import torch
 from benchmark_helper import setup_logger
+from metrics import BenchmarkRecord
 
 logger = logging.getLogger(__name__)
 
@@ -197,6 +198,9 @@ def save_results(results, filename):
     df = pd.DataFrame(
         results,
         columns=[
+            "Warmup Runs",
+            "Measured Runs",
+            "Model Name",
             "Engine",
             "Precision",
             "Device",
@@ -211,6 +215,8 @@ def save_results(results, filename):
     )
 
     # Set column types
+    df["Warmup Runs"] = df["Warmup Runs"].astype("int")
+    df["Measured Runs"] = df["Measured Runs"].astype("int")
     df["Batch Size"] = df["Batch Size"].astype("int")
     df["Sequence Length"] = df["Sequence Length"].astype("int")
     df["Latency (s)"] = df["Latency (s)"].astype("float")
@@ -218,7 +224,38 @@ def save_results(results, filename):
     df["Throughput (tps)"] = df["Throughput (tps)"].astype("float")
     df["Memory (GB)"] = df["Memory (GB)"].astype("float")
 
-    df.to_csv(filename, index=False)
+    # get pakcage name and version
+    import pkg_resources
+    installed_packages = pkg_resources.working_set
+    installed_packages_list = sorted([f"{i.key}=={i.version}" for i in installed_packages if i.key in ['ort-nightly-gpu', 'ort-nightly', "onnxruntime", "onnxruntime-gpu"]])
+
+    ort_pkg_name = ""
+    ort_pkg_version = ""
+    if installed_packages_list:
+        ort_pkg_name = installed_packages_list[0].split('==')[0]
+        ort_pkg_version = installed_packages_list[0].split('==')[1]
+
+    # Save results to csv with standard format
+    records = []
+    for _, row in df.iterrows():
+        if row['Engine'] == 'onnxruntime':
+            record = BenchmarkRecord(row['Model Name'], row['Precision'], row['Engine'], row['Device'], ort_pkg_name, ort_pkg_version)
+        else:
+            record = BenchmarkRecord(row['Model Name'], row['Precision'], row['Engine'], row['Device'], torch.__name__, torch.__version__)
+
+        record.config.warmup_runs = row["Warmup Runs"]
+        record.config.measured_runs = row["Measured Runs"]
+        record.config.batch_size = row["Batch Size"]
+        record.config.seq_length = row["Sequence Length"]
+        record.metrics.latency_ms_mean = row["Latency (ms)"]
+        record.metrics.throughput_qps = row["Throughput (tps)"]
+        record.metrics.max_memory_usage_GB = row["Memory (GB)"]
+
+        records.append(record)
+
+    BenchmarkRecord.save_as_csv(filename, records)
+    BenchmarkRecord.save_as_json(filename.replace(".csv", ".json"), records)
+    # df.to_csv(filename, index=False)
     logger.info(f"Results saved in {filename}!")
 
 
@@ -234,7 +271,7 @@ def benchmark(args, benchmark_cmd, engine):
 
     # Create entries for csv
     logger.info("Gathering data from log files...")
-    base_results = [engine, args.precision, args.device]
+    base_results = [args.warmup_runs, args.num_runs, args.model_name, engine, args.precision, args.device]
     results = process_log_file(args.device_id, log_path, base_results)
 
     return results
