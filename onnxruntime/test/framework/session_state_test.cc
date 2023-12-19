@@ -170,15 +170,16 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
 
   GraphPartitioner partitioner(krm, execution_providers);
   ASSERT_STATUS_OK(
-      partitioner.Partition(graph, session_state.GetMutableFuncMgr(),
-                            [](Graph& graph, bool& modified, const IExecutionProvider& execution_provider,
-                               const layout_transformation::DebugGraphFn& debug_graph_fn) -> Status {
-                              AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
-                              return layout_transformation::TransformLayoutForEP(
-                                  graph, modified, execution_provider, std::move(cpu_allocator), debug_graph_fn);
-                            },
-                            sess_options.config_options,
-                            DefaultLoggingManager().DefaultLogger()));
+      partitioner.Partition(
+          graph, session_state.GetMutableFuncMgr(),
+          [](Graph& graph, bool& modified, const IExecutionProvider& execution_provider,
+             const layout_transformation::DebugGraphFn& debug_graph_fn) -> Status {
+            AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+            return layout_transformation::TransformLayoutForEP(
+                graph, modified, execution_provider, std::move(cpu_allocator), debug_graph_fn);
+          },
+          sess_options.config_options,
+          DefaultLoggingManager().DefaultLogger()));
 
   ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));
 

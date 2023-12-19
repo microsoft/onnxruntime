@@ -220,15 +220,19 @@ inline QuantParams<QType> GetTestInputQuantParams(const TestInputDef<float>& inp
  *
  * \param model_data The serialized ONNX model to inference.
  * \param log_id The logger ID.
- * \param execution_provider The EP on which to run the model. Set to nullptr for CPU EP.
+ * \param provider_options provider options key value pair.
  * \param expected_ep_assignment Describes "which nodes" should be assigned to the EP.
  * \param feeds The input feeds.
  * \param output_vals Initialized to the inference results.
+ * \param is_qnn_ep Ture: QNN EP is used. False: CPU EP is used (default).
+ * \param session_option_pairs extra session options.
  */
 void InferenceModel(const std::string& model_data, const char* log_id,
-                    std::unique_ptr<IExecutionProvider> execution_provider,
+                    const ProviderOptions& provider_options,
                     ExpectedEPNodeAssignment expected_ep_assignment, const NameMLValMap& feeds,
-                    std::vector<OrtValue>& output_vals);
+                    std::vector<OrtValue>& output_vals,
+                    bool is_qnn_ep = false,
+                    const std::unordered_map<std::string, std::string>& session_option_pairs = {});
 
 /**
  * If the ORT_UNIT_TEST_ENABLE_QNN_SAVER environment variable is enabled (set to 1), this function modifies
@@ -287,7 +291,8 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
                                  ExpectedEPNodeAssignment expected_ep_assignment,
                                  QDQTolerance tolerance = QDQTolerance(),
                                  logging::Severity log_severity = logging::Severity::kERROR,
-                                 const std::string& qnn_ctx_model_path = "") {
+                                 const std::string& qnn_ctx_model_path = "",
+                                 const std::unordered_map<std::string, std::string>& session_option_pairs = {}) {
   // Add kMSDomain to cover contrib op like Gelu
   const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
 
@@ -307,7 +312,7 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
 
   // Run f32 model on CPU EP and collect outputs.
   std::vector<OrtValue> cpu_f32_outputs;
-  InferenceModel(f32_model_data, "f32_model_logger", nullptr, ExpectedEPNodeAssignment::All,
+  InferenceModel(f32_model_data, "f32_model_logger", {}, ExpectedEPNodeAssignment::All,
                  f32_helper.feeds_, cpu_f32_outputs);
   ASSERT_FALSE(cpu_f32_outputs.empty());
 
@@ -344,7 +349,7 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   ASSERT_STATUS_OK(qdq_model.MainGraph().Resolve());
   qdq_model.ToProto().SerializeToString(&qdq_model_data);
 
-  // Run QDQ model on QNN EP and collect outputs.
+  bool is_qnn_ep = true;
   TryEnableQNNSaver(qnn_options);
   std::vector<OrtValue> qnn_qdq_outputs;
   if (!qnn_ctx_model_path.empty()) {
@@ -355,18 +360,19 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
     std::string qnn_ctx_model_data;
     model_proto.SerializeToString(&qnn_ctx_model_data);
     // Run QNN context cache model on QNN EP and collect outputs.
-    InferenceModel(qnn_ctx_model_data, "qnn_ctx_model_logger", QnnExecutionProviderWithOptions(qnn_options),
-                   expected_ep_assignment, qdq_helper.feeds_, qnn_qdq_outputs);
+    InferenceModel(qnn_ctx_model_data, "qnn_ctx_model_logger", qnn_options,
+                   expected_ep_assignment, qdq_helper.feeds_, qnn_qdq_outputs, is_qnn_ep);
   } else {
     // Run QDQ model on QNN EP and collect outputs.
-    InferenceModel(qdq_model_data, "qdq_model_logger", QnnExecutionProviderWithOptions(qnn_options),
-                   expected_ep_assignment, qdq_helper.feeds_, qnn_qdq_outputs);
+    // Only need to apply the extra session options to this QDQ model inference on QNN EP
+    InferenceModel(qdq_model_data, "qdq_model_logger", qnn_options, expected_ep_assignment,
+                   qdq_helper.feeds_, qnn_qdq_outputs, is_qnn_ep, session_option_pairs);
   }
 
   if (expected_ep_assignment != ExpectedEPNodeAssignment::None) {
     // Run QDQ model on CPU EP and collect outputs.
     std::vector<OrtValue> cpu_qdq_outputs;
-    InferenceModel(qdq_model_data, "qdq_model_logger", nullptr, ExpectedEPNodeAssignment::All,
+    InferenceModel(qdq_model_data, "qdq_model_logger", {}, ExpectedEPNodeAssignment::All,
                    qdq_helper.feeds_, cpu_qdq_outputs);
     ASSERT_EQ(cpu_qdq_outputs.size(), num_outputs);
     ASSERT_EQ(qnn_qdq_outputs.size(), num_outputs);

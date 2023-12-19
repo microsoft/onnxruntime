@@ -242,9 +242,10 @@ std::unique_ptr<IExecutionProvider> DefaultQnnExecutionProvider() {
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> QnnExecutionProviderWithOptions(const ProviderOptions& options) {
+std::unique_ptr<IExecutionProvider> QnnExecutionProviderWithOptions(const ProviderOptions& options,
+                                                                    const SessionOptions* session_options) {
 #ifdef USE_QNN
-  return QNNProviderFactoryCreator::Create(options, nullptr)->CreateProvider();
+  return QNNProviderFactoryCreator::Create(options, session_options)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(options);
   return nullptr;

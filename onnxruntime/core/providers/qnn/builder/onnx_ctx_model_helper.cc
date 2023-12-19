@@ -39,7 +39,7 @@ Status GetMainContextNode(const std::vector<IExecutionProvider::FusedNodeAndGrap
                           int& main_context_pos,
                           std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models) {
   main_context_pos = -1;
-  for (int i = 0; i < fused_nodes_and_graphs.size(); ++i) {
+  for (size_t i = 0; i < fused_nodes_and_graphs.size(); ++i) {
     const onnxruntime::GraphViewer& graph_viewer(fused_nodes_and_graphs[i].filtered_graph);
     const auto& ep_context_node = graph_viewer.Nodes().begin();
     ORT_RETURN_IF_NOT(EPCONTEXT_OP == ep_context_node->OpType(), "Should only filter in the EPContext node.");
@@ -48,7 +48,7 @@ Status GetMainContextNode(const std::vector<IExecutionProvider::FusedNodeAndGrap
     NodeAttrHelper node_helper(*ep_context_node);
     int64_t is_main_context = node_helper.Get(MAIN_CONTEXT, static_cast<int64_t>(0));
     if (1 == is_main_context) {
-      main_context_pos = i;
+      main_context_pos = static_cast<int>(i);
     }
   }
 

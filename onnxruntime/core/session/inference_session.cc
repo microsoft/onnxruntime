@@ -1199,7 +1199,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(copy_transformer, *session_logger_, graph));
   }
 
-  bool dump_partitioned_graph = session_options_.config_options.GetConfigOrDefault(kDumpPartitionedGraph, "0") == "1";
+  bool dump_partitioned_graph = session_options_.config_options.GetConfigOrDefault(kDebugGraphPartitioning, "0") == "1";
   if (dump_partitioned_graph) {
     ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, "partitioned_graph.onnx"));
   }

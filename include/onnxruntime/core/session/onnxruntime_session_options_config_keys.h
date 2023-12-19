@@ -240,16 +240,20 @@ static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersMin
 // The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.
 // "0": disable. (default)
 // "1": enable.
-static const char* const kOrtSessionOptionEpContextEnable = "ep.ep_context_enable";
+static const char* const kOrtSessionOptionEpContextEnable = "ep.context_enable";
 
 // Specify the file path for the Onnx model which has EP context.
 // Default to original_file_name_ctx.onnx if not specified
-static const char* const kOrtSessionOptionEpContextFilePath = "ep.ep_context_file_path";
+static const char* const kOrtSessionOptionEpContextFilePath = "ep.context_file_path";
 
 // Flag to specify whether to dump the EP context into the Onnx model.
 // "0": dump the EP context into separate file, keep the file name in the Onnx model.
 // "1": dump the EP context into the Onnx model. (default).
-static const char* const kOrtSessionOptionEpContextEmbedMode = "ep.ep_context_embed_mode";
+static const char* const kOrtSessionOptionEpContextEmbedMode = "ep.context_embed_mode";
 
-// Dump the model after graph partitioning to file "partitioned_graph.onnx".
-static const char* const kDumpPartitionedGraph = "session.dump_partitioned_graph";
+// This option will dump out the model to assist debugging any issues with graph partitioning,
+// and is primarily intended for developer usage.
+//
+// Default is off. Set to "1" to enable.
+// The model will be saved to filename "partitioned_graph.onnx".
+static const char* const kDebugGraphPartitioning = "session.debug_graph_partitioning";
