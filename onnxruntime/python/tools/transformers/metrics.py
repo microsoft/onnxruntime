@@ -65,6 +65,7 @@ class Config(BaseObject):
         precision: Optional[str] = "fp32",
         warmup_runs: Optional[int] = 1,
         measured_runs: Optional[int] = 10,
+        measure_step: Optional[str] = ""
     ):
         super().__init__()
         self.backend = backend
@@ -75,6 +76,7 @@ class Config(BaseObject):
         self.measured_runs = measured_runs
         self.model_info = ModelInfo()
         self.backend_options = BackendOptions()
+        self.measure_step = measure_step
 
 
 class Metadata(BaseObject):

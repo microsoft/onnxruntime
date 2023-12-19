@@ -247,14 +247,17 @@ def save_results(results, filename):
     records = []
     for _, row in df.iterrows():
         if row['Engine'] == 'optimum-ort':
-            record = BenchmarkRecord(row['Model Name'], row['Precision'], row['Engine'], row['Device'], ort_pkg_name, ort_pkg_version)
+            record = BenchmarkRecord(row['Model Name'], row['Precision'], "onnxruntime", row['Device'], ort_pkg_name, ort_pkg_version)
+        elif row['Engine'] in ['pytorch-eager', 'pytorch-compile']:
+            record = BenchmarkRecord(row['Model Name'], row['Precision'], "pytorch", row['Device'], torch.__name__, torch.__version__)
         else:
-            record = BenchmarkRecord(row['Model Name'], row['Precision'], row['Engine'], row['Device'], torch.__name__, torch.__version__)
+            record = BenchmarkRecord(row['Model Name'], row['Precision'], row['Engine'], row['Device'], "", "")
 
         record.config.warmup_runs = row["Warmup Runs"]
         record.config.measured_runs = row["Measured Runs"]
         record.config.batch_size = row["Batch Size"]
         record.config.seq_length = row["Sequence Length"]
+        record.config.measure_step = row["Step"]
         record.metrics.latency_s_mean = row["Latency (s)"]
         record.metrics.latency_ms_mean = row["Latency (ms)"]
         record.metrics.throughput_tps = row["Throughput (tps)"]
