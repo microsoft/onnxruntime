@@ -23,6 +23,12 @@ export interface TrainingSession {
   // #region run()
 
   /**
+   * Lazily resets the gradients of all trainable parameters to zero. Should happen after the invocation of
+   * runOptimizerStep.
+   */
+  lazyResetGrad(): Promise<void>;
+
+  /**
    * Run TrainStep asynchronously with the given feeds and options.
    *
    * @param feeds - Representation of the model input. See type description of `InferenceSession.InputType` for

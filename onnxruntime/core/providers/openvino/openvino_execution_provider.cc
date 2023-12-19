@@ -22,17 +22,9 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   openvino_ep::BackendManager::GetGlobalContext().num_streams = info.num_streams_;
   openvino_ep::BackendManager::GetGlobalContext().context = info.context_;
   openvino_ep::BackendManager::GetGlobalContext().enable_opencl_throttling = info.enable_opencl_throttling_;
-  openvino_ep::BackendManager::GetGlobalContext().enable_dynamic_shapes = info.enable_dynamic_shapes_;
+  openvino_ep::BackendManager::GetGlobalContext().disable_dynamic_shapes = info.disable_dynamic_shapes_;
+  openvino_ep::BackendManager::GetGlobalContext().num_of_threads = info.num_of_threads_;
 
-  if (static_cast<int>(info.num_of_threads_) <= 0) {
-    openvino_ep::BackendManager::GetGlobalContext().num_of_threads = 8;
-  } else if (static_cast<int>(info.num_of_threads_) > 8) {
-    std::string err_msg = std::string("\n [ERROR] num_of_threads configured during runtime is: ") +
-                          std::to_string(info.num_of_threads_) + "\nnum_of_threads configured should be >0 and <=8.\n";
-    ORT_THROW(err_msg);
-  } else {
-    openvino_ep::BackendManager::GetGlobalContext().num_of_threads = info.num_of_threads_;
-  }
   // to check if target device is available
   // using ie_core capability GetAvailableDevices to fetch list of devices plugged in
   if (info.cache_dir_.empty()) {
@@ -120,15 +112,7 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   openvino_ep::BackendManager::GetGlobalContext().onnx_opset_version =
       graph_viewer.DomainToVersionMap().at(kOnnxDomain);
 
-#if defined(OPENVINO_2022_1)
-  openvino_ep::GetCapability obj(graph_viewer,
-                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2022_1");
-  result = obj.Execute();
-#elif defined(OPENVINO_2022_2)
-  openvino_ep::GetCapability obj(graph_viewer,
-                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2022_2");
-  result = obj.Execute();
-#elif defined(OPENVINO_2022_3)
+#if defined(OPENVINO_2022_3)
   openvino_ep::GetCapability obj(graph_viewer,
                                  openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2022_3");
   result = obj.Execute();
@@ -139,6 +123,10 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
 #elif defined(OPENVINO_2023_1)
   openvino_ep::GetCapability obj(graph_viewer,
                                  openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2023_1");
+  result = obj.Execute();
+#elif defined(OPENVINO_2023_2)
+  openvino_ep::GetCapability obj(graph_viewer,
+                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2023_2");
   result = obj.Execute();
 #endif
 

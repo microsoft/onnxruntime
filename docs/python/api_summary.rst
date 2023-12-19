@@ -274,6 +274,77 @@ SessionOptions
 .. autoclass:: onnxruntime.SessionOptions
     :members:
 
+.. autoclass:: onnxruntime.ExecutionMode
+    :members:
+
+.. autoclass:: onnxruntime.ExecutionOrder
+    :members:
+
+.. autoclass:: onnxruntime.GraphOptimizationLevel
+    :members:
+
+.. autoclass:: onnxruntime.OrtAllocatorType
+    :members:
+
+.. autoclass:: onnxruntime.OrtArenaCfg
+    :members:
+
+.. autoclass:: onnxruntime.OrtMemoryInfo
+    :members:
+
+.. autoclass:: onnxruntime.OrtMemType
+    :members:
+
+Functions
+---------
+
+Allocators
+^^^^^^^^^^
+
+.. autofunction:: onnxruntime.create_and_register_allocator
+
+.. autofunction:: onnxruntime.create_and_register_allocator_v2
+
+Telemetry events
+^^^^^^^^^^^^^^^^
+
+.. autofunction:: onnxruntime.disable_telemetry_events
+
+.. autofunction:: onnxruntime.enable_telemetry_events
+
+Providers
+^^^^^^^^^
+
+.. autofunction:: onnxruntime.get_all_providers
+
+.. autofunction:: onnxruntime.get_available_providers
+
+Build, Version
+^^^^^^^^^^^^^^
+
+.. autofunction:: onnxruntime.get_build_info
+
+.. autofunction:: onnxruntime.get_version_string
+
+.. autofunction:: onnxruntime.has_collective_ops
+
+Device
+^^^^^^
+
+.. autofunction:: onnxruntime.get_device
+
+Logging
+^^^^^^^
+
+.. autofunction:: onnxruntime.set_default_logger_severity
+
+.. autofunction:: onnxruntime.set_default_logger_verbosity
+
+Random
+^^^^^^
+
+.. autofunction:: onnxruntime.set_seed
+
 Data
 ----
 
@@ -296,6 +367,9 @@ IOBinding
 ^^^^^^^^^
 
 .. autoclass:: onnxruntime.IOBinding
+    :members:
+
+.. autoclass:: onnxruntime.SessionIOBinding
     :members:
 
 OrtDevice
