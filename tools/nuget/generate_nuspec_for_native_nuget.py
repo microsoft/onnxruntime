@@ -39,7 +39,7 @@ def get_package_name(os, cpu_arch, ep, is_training_package):
 # Currently we take onnxruntime_providers_cuda from CUDA build
 # And onnxruntime, onnxruntime_providers_shared and
 # onnxruntime_providers_tensorrt from tensorrt build
-# cuda binaries are split out into the platform dependent packages Microsoft.ML.OnnxRuntime.Gpu.Sub.{Linux|Windows}
+# cuda binaries are split out into the platform dependent packages Microsoft.ML.OnnxRuntime.Sub.Gpu{Linux|Windows}
 # and not included in the base Microsoft.ML.OnnxRuntime.Gpu package
 def is_this_file_needed(ep, filename, package_name):
     if package_name == "Microsoft.ML.OnnxRuntime.Gpu":
@@ -64,7 +64,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                     if (
                         child_file.suffix in suffixes
                         and is_this_file_needed(ep, child_file.name, package_name)
-                        and package_name != "Microsoft.ML.OnnxRuntime.Gpu.Sub.Linux"
+                        and package_name != "Microsoft.ML.OnnxRuntime.Sub.Gpu.Linux"
                     ):
                         files_list.append(
                             '<file src="' + str(child_file) + '" target="runtimes/win-%s/native"/>' % cpu_arch
@@ -94,7 +94,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                     if (
                         child_file.suffix == ".so"
                         and is_this_file_needed(ep, child_file.name, package_name)
-                        and package_name != "Microsoft.ML.OnnxRuntime.Gpu.Sub.Windows"
+                        and package_name != "Microsoft.ML.OnnxRuntime.Sub.Gpu.Windows"
                     ):
                         files_list.append(
                             '<file src="' + str(child_file) + '" target="runtimes/linux-%s/native"/>' % cpu_arch
@@ -207,13 +207,13 @@ def generate_repo_url(line_list, repo_url, commit_id):
 
 def add_common_dependencies(xml_text, package_name, version):
     dependent_packages = bool(
-        package_name == "Microsoft.ML.OnnxRuntime.Gpu.Sub.Windows" or package_name == "Microsoft.ML.OnnxRuntime.Gpu.Sub.Linux"
+        package_name == "Microsoft.ML.OnnxRuntime.Sub.Gpu.Windows" or package_name == "Microsoft.ML.OnnxRuntime.Sub.Gpu.Linux"
     )
     if not dependent_packages:
         xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
     if package_name == "Microsoft.ML.OnnxRuntime.Gpu":
-        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu.Sub.Windows"' + ' version="' + version + '"/>')
-        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu.Sub.Linux"' + ' version="' + version + '"/>')
+        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Sub.Gpu.Windows"' + ' version="' + version + '"/>')
+        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Sub.Gpu.Linux"' + ' version="' + version + '"/>')
 
 
 def generate_dependencies(xml_text, package_name, version):
@@ -348,8 +348,8 @@ def generate_files(line_list, args):
     ]
     is_mklml_package = args.package_name == "Microsoft.ML.OnnxRuntime.MKLML"
     is_cuda_gpu_package = args.package_name == "Microsoft.ML.OnnxRuntime.Gpu"
-    is_cuda_gpu_win_sub_package = args.package_name == "Microsoft.ML.OnnxRuntime.Gpu.Sub.Windows"
-    is_cuda_gpu_linux_sub_package = args.package_name == "Microsoft.ML.OnnxRuntime.Gpu.Sub.Linux"
+    is_cuda_gpu_win_sub_package = args.package_name == "Microsoft.ML.OnnxRuntime.Sub.Gpu.Windows"
+    is_cuda_gpu_linux_sub_package = args.package_name == "Microsoft.ML.OnnxRuntime.Sub.Gpu.Linux"
     is_rocm_gpu_package = args.package_name == "Microsoft.ML.OnnxRuntime.ROCm"
     is_dml_package = args.package_name == "Microsoft.ML.OnnxRuntime.DirectML"
     is_windowsai_package = args.package_name == "Microsoft.AI.MachineLearning"

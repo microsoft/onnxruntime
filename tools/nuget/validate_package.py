@@ -294,7 +294,7 @@ def validate_nuget(args):
     full_nuget_path = os.path.join(args.package_path, nuget_file_name)
 
     if "Gpu" in nuget_file_name:
-        is_gpu_package = bool("Gpu.Sub" not in nuget_file_name)
+        is_gpu_package = bool("Sub.Gpu" not in nuget_file_name)
         is_gpu_dependent_package = not is_gpu_package
     else:
         is_gpu_package = False
