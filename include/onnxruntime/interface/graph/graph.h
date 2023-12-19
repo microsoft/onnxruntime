@@ -221,6 +221,7 @@ class GraphViewRef {
 #endif
 
   virtual std::string_view SerializeModelProtoToString() const = 0;
+  virtual std::string SerializeModelProtoToString2() const = 0;
 
   virtual ModelProtoPtr SerializeModelProto() const = 0;
 

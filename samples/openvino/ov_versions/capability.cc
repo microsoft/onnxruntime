@@ -65,8 +65,10 @@ std::vector<std::unique_ptr<interface::SubGraphDef>> GetCapability::Execute() {
     std::vector<std::string> inputs;
     std::vector<std::string> outputs;
     // Fill inputs with names
-    std::for_each(graph_viewer_.GetInputs().begin(), graph_viewer_.GetInputs().end(),
-                  [&inputs](std::string_view node_arg) { inputs.push_back(std::string(node_arg)); });
+    //std::for_each(graph_viewer_.GetInputs().begin(), graph_viewer_.GetInputs().end(),
+    //              [&inputs](std::string_view node_arg) { inputs.push_back(std::string(node_arg)); });
+    std::vector<std::string_view> graph_inputs = graph_viewer_.GetInputs();
+    for (size_t i = 0; i < graph_inputs.size(); i++) inputs.push_back(std::string(graph_inputs[i]));
 
     /* In scenarios, when there are no inputs or all inputs being initializers,
          ConstantFolding optimization in onnxruntime pre-computes the value.*/
@@ -99,8 +101,10 @@ std::vector<std::unique_ptr<interface::SubGraphDef>> GetCapability::Execute() {
                   [&inputs](const std::string& initializer) { inputs.push_back(initializer); });
 
     // Fill outputs with names
-    std::for_each(graph_viewer_.GetOutputs().begin(), graph_viewer_.GetOutputs().end(),
-                  [&outputs](std::string_view node_arg) { outputs.push_back(std::string(node_arg)); });
+//    std::for_each(graph_viewer_.GetOutputs().begin(), graph_viewer_.GetOutputs().end(),
+//                  [&outputs](std::string_view node_arg) { outputs.push_back(std::string(node_arg)); });
+    std::vector<std::string_view> graph_outputs = graph_viewer_.GetOutputs();
+    for (size_t i = 0; i < graph_outputs.size(); i++) outputs.push_back(std::string(graph_outputs[i]));
 
     // Create and add this graph to result.
     AppendClusterToSubGraph(graph_viewer_.GetNodesInTopologicalOrder(), inputs, outputs, result);
