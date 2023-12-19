@@ -23,7 +23,7 @@ import {multiHeadAttention, parseMultiHeadAttentionAttributes} from './ops/multi
 import {pad, parsePadAttributes} from './ops/pad';
 import * as pool from './ops/pool';
 import {range} from './ops/range';
-import {parseReduceAttributes, reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
+import {reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
 import {parseResizeAttributes, resize} from './ops/resize';
 import {parseSkipLayerNormAttributes, skipLayerNorm} from './ops/skip-layer-norm';
 import {parseSliceAttributes, slice} from './ops/slice';
@@ -99,16 +99,16 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Pow', [binaryOps.pow]],
   ['Range', [range]],
   ['Reciprocal', [unaryOps.reciprocal]],
-  ['ReduceMin', [reduceMin, parseReduceAttributes]],
-  ['ReduceMean', [reduceMean, parseReduceAttributes]],
-  ['ReduceMax', [reduceMax, parseReduceAttributes]],
-  ['ReduceSum', [reduceSum, parseReduceAttributes]],
-  ['ReduceProd', [reduceProd, parseReduceAttributes]],
-  ['ReduceL1', [reduceL1, parseReduceAttributes]],
-  ['ReduceL2', [reduceL2, parseReduceAttributes]],
-  ['ReduceLogSum', [reduceLogSum, parseReduceAttributes]],
-  ['ReduceLogSumExp', [reduceLogSumExp, parseReduceAttributes]],
-  ['ReduceSumSquare', [reduceSumSquare, parseReduceAttributes]],
+  ['ReduceMin', [reduceMin]],
+  ['ReduceMean', [reduceMean]],
+  ['ReduceMax', [reduceMax]],
+  ['ReduceSum', [reduceSum]],
+  ['ReduceProd', [reduceProd]],
+  ['ReduceL1', [reduceL1]],
+  ['ReduceL2', [reduceL2]],
+  ['ReduceLogSum', [reduceLogSum]],
+  ['ReduceLogSumExp', [reduceLogSumExp]],
+  ['ReduceSumSquare', [reduceSumSquare]],
   ['Relu', [unaryOps.relu]],
   ['Resize', [resize, parseResizeAttributes]],
   ['Sigmoid', [unaryOps.sigmoid]],

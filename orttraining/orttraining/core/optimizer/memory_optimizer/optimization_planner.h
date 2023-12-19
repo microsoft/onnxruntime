@@ -39,6 +39,14 @@ class NodeOptimizationPlanBase {
       : node(node),
         activation_output_indices_(activation_output_indices.begin(), activation_output_indices.end()),
         save_ratio_(save_ratio) {
+    activation_output_dim_params_.reserve(activation_output_indices_.size());
+
+    // Generate dim params once for all outputs to guarantee they are unique across different calls.
+    // because GetTensorElemCountInSymbolicString called to use a static index_empty_dim
+    // when generating empty dim param as a string.
+    for (auto output_index : activation_output_indices_) {
+      activation_output_dim_params_[output_index] = GetTensorElemCountInSymbolicString(node, output_index);
+    }
   }
 
   virtual ~NodeOptimizationPlanBase() = default;
@@ -77,12 +85,20 @@ class NodeOptimizationPlanBase {
    */
   std::string GetMemorySavingSymbolicString() const;
 
+  std::string GetActivationOutputDimParamString(size_t index) const {
+    ORT_ENFORCE(activation_output_dim_params_.find(index) != activation_output_dim_params_.end(),
+                "activation_output_dim_params_ does not contain index: ", index);
+
+    return activation_output_dim_params_.at(index);
+  }
+
   const Node* node;
   // A map: output index reusing other node's output (other_node, output index)
   InlinedHashMap<size_t, NodeOutputPort> reuse_buffers;
 
  private:
   InlinedVector<size_t> activation_output_indices_;
+  InlinedHashMap<size_t, std::string> activation_output_dim_params_;
   float save_ratio_ = 1.0f;
 };
 

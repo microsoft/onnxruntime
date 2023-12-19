@@ -77,25 +77,25 @@ const fixStartEndValues =
         };
 
 const calculateInputIndicesImpl =
-    (input: IndicesHelper, output: IndicesHelper, inputShape: readonly number[], outputShape: readonly number[]):
-        string => `fn calculateInputIndices(outputIndices: ${output.type.indices}) -> ${input.type.indices} {
-          var inputIndices: ${input.type.indices};
+    (input: IndicesHelper, output: IndicesHelper, inputShape: readonly number[]): string =>
+        `fn calculateInputIndices(output_indices: ${output.type.indices}) -> ${input.type.indices} {
+          var input_indices: ${input.type.indices};
           var carry = 0u;
           for (var i = ${inputShape.length}; i >= 0; i--) {
             let input_shape_i = ${getElementAt('uniforms.input_shape', 'i', inputShape.length)};
             let steps_i = ${getElementAt('uniforms.steps', 'i', inputShape.length)};
             let signs_i = ${getElementAt('uniforms.signs', 'i', inputShape.length)};
             let starts_i = ${getElementAt('uniforms.starts', 'i', inputShape.length)};
-            var outputIndex = ${outputShape.length === 1 ? 'outputIndices' : 'outputIndices[i]'};
-            var inputIndex = outputIndex * steps_i + starts_i + carry;
-            carry = inputIndex / input_shape_i;
-            inputIndex = inputIndex % input_shape_i;
+            var output_index = ${output.indicesGet('output_indices', 'i')};
+            var input_index = output_index * steps_i + starts_i + carry;
+            carry = input_index / input_shape_i;
+            input_index = input_index % input_shape_i;
             if (signs_i < 0) {
-              inputIndex = input_shape_i - inputIndex - 1u + starts_i;
+              input_index = input_shape_i - input_index - 1u + starts_i;
             }
-            ${inputShape.length === 1 ? 'inputIndices' : 'inputIndices[i]'} = inputIndex;
+            ${input.indicesSet('input_indices', 'i', 'input_index')};
           }
-          return inputIndices;
+          return input_indices;
       }`;
 
 const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: SliceAttributes): ProgramInfo => {
@@ -162,12 +162,12 @@ const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: Slice
 
   const getShaderSource = (shaderHelper: ShaderHelper) => `
       ${shaderHelper.registerUniforms(uniforms).declareVariables(input, output)}
-        ${calculateInputIndicesImpl(input, output, inputShape, outputShape)}
+        ${calculateInputIndicesImpl(input, output, inputShape)}
         ${shaderHelper.mainStart()}
           ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
-          let outputIndices = ${output.offsetToIndices('global_idx')};
-          let inputIndices = calculateInputIndices(outputIndices);
-          ${output.setByOffset('global_idx', input.getByIndices('inputIndices'))}
+          let output_indices = ${output.offsetToIndices('global_idx')};
+          let input_indices = calculateInputIndices(output_indices);
+          ${output.setByOffset('global_idx', input.getByIndices('input_indices'))}
       }`;
   return {
     name: 'Slice',
