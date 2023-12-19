@@ -147,6 +147,87 @@ CMake creates a target to this project
     />
   </Target>
 
+  <!-- To support build.py and CI easily, generate the sub packages in the proj -->
+  <Target Name="CreateSubGpuWinPackages" AfterTargets="CreatePackage" Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu'">
+    <!-- Manually create the nuspec for the native Microsoft.ML.OnnxRuntime package -->
+    <Message Importance="High" Text="Generating nuspec for the native Microsoft.ML.OnnxRuntime nuget package..." />
+    <Exec Command="$(PythonExe) $(GenerateNuspecScript) --package_version $(PackageVersion) --package_name Microsoft.ML.OnnxRuntime.Sub.Gpu.Windows --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild) --execution_provider $(ExecutionProvider)"
+          ContinueOnError="False"
+          ConsoleToMSBuild="true">
+        <Output TaskParameter="ConsoleOutput" PropertyName="GenerateNuspecOutput" />
+    </Exec>
+    <!-- run `nuget pack` on Windows or `dotnet pack` on Linux to create the native nupkg -->
+    <Message Importance="High" Text="Bundling native shared library artifacts into nuget package..." />
+    <Exec Condition=" '$(IsWindowsBuild)' == 'true'"
+          Command="$(NugetExe) pack NativeNuget.nuspec"
+          WorkingDirectory="$(NativeBuildOutputDirAbs)"
+          ContinueOnError="False"
+          ConsoleToMSBuild="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
+    </Exec>
+
+    <!-- build.py uses dotnet to build on linux so we know it's available.
+         nuget needs to be run using mono to work correctly, but installing mono on WSL breaks interop
+         (see https://github.com/microsoft/WSL/issues/8531). in order to play nicely with both we use `dotnet pack`
+         to pack the native nuget package using a stub csproj to provide the nuspec file path.
+    -->
+    <Exec Condition="'$(IsLinuxBuild)' == 'true'"
+          Command="dotnet pack tools/linux_pack/LinuxPackNativeNuget.csproj /p:Configuration=$(Configuration) /p:OnnxRuntimeBuildDirectory=$(NativeBuildOutputDirAbs)"
+          ContinueOnError="False"
+          ConsoleToMSBuild="true" >
+      <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
+    </Exec>
+
+
+    <!-- copy the nupkg to the build output directory so its location is consistent on all platforms -->
+    <Copy Condition="'$(IsLinuxBuild)' == 'true'"
+          SourceFiles="tools/linux_pack/bin/$(Configuration)/$(OrtPackageId).$(PackageVersion).nupkg"
+          DestinationFolder="$(NativeBuildOutputDirAbs)" />
+
+    <Copy SourceFiles="$(NativeBuildOutputDirAbs)\$(OrtPackageId).$(PackageVersion).nupkg"
+          DestinationFolder="$(NativeBuildOutputDirAbs)\nuget-local-artifacts" />
+  </Target>
+
+  <Target Name="CreateSubGpuLinuxPackages" AfterTargets="CreatePackage" Condition="'$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu'">
+    <!-- Manually create the nuspec for the native Microsoft.ML.OnnxRuntime package -->
+    <Message Importance="High" Text="Generating nuspec for the native Microsoft.ML.OnnxRuntime nuget package..." />
+    <Exec Command="$(PythonExe) $(GenerateNuspecScript) --package_version $(PackageVersion) --package_name Microsoft.ML.OnnxRuntime.Sub.Gpu.Linux --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild) --execution_provider $(ExecutionProvider)"
+          ContinueOnError="False"
+          ConsoleToMSBuild="true">
+        <Output TaskParameter="ConsoleOutput" PropertyName="GenerateNuspecOutput" />
+    </Exec>
+    <!-- run `nuget pack` on Windows or `dotnet pack` on Linux to create the native nupkg -->
+    <Message Importance="High" Text="Bundling native shared library artifacts into nuget package..." />
+    <Exec Condition=" '$(IsWindowsBuild)' == 'true'"
+          Command="$(NugetExe) pack NativeNuget.nuspec"
+          WorkingDirectory="$(NativeBuildOutputDirAbs)"
+          ContinueOnError="False"
+          ConsoleToMSBuild="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
+    </Exec>
+
+    <!-- build.py uses dotnet to build on linux so we know it's available.
+         nuget needs to be run using mono to work correctly, but installing mono on WSL breaks interop
+         (see https://github.com/microsoft/WSL/issues/8531). in order to play nicely with both we use `dotnet pack`
+         to pack the native nuget package using a stub csproj to provide the nuspec file path.
+    -->
+    <Exec Condition="'$(IsLinuxBuild)' == 'true'"
+          Command="dotnet pack tools/linux_pack/LinuxPackNativeNuget.csproj /p:Configuration=$(Configuration) /p:OnnxRuntimeBuildDirectory=$(NativeBuildOutputDirAbs)"
+          ContinueOnError="False"
+          ConsoleToMSBuild="true" >
+      <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
+    </Exec>
+
+
+    <!-- copy the nupkg to the build output directory so its location is consistent on all platforms -->
+    <Copy Condition="'$(IsLinuxBuild)' == 'true'"
+          SourceFiles="tools/linux_pack/bin/$(Configuration)/$(OrtPackageId).$(PackageVersion).nupkg"
+          DestinationFolder="$(NativeBuildOutputDirAbs)" />
+
+    <Copy SourceFiles="$(NativeBuildOutputDirAbs)\$(OrtPackageId).$(PackageVersion).nupkg"
+          DestinationFolder="$(NativeBuildOutputDirAbs)\nuget-local-artifacts" />
+  </Target>
+
   <ItemGroup>
     <LicenseFile Include="$(OnnxRuntimeSourceDirectory)\LICENSE"/>
   </ItemGroup>

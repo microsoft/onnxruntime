@@ -708,8 +708,6 @@ stages:
     variables:
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
-      BuildDate: $[format('{0:yyyyMMdd}', pipeline.startTime)]
-      BuildTime: $[format('{0:HHmm}', pipeline.startTime)]
 
     steps:
     - checkout: self
@@ -815,25 +813,7 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         configuration: RelWithDebInfo
         platform: 'Any CPU'
-        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix) -p:CurrrentDate=$(BuildDate) -p:CurrentTime=$(BuildTime)'
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-    - task: MSBuild@1
-      displayName: 'Build Nuget Packages Microsoft.ML.OnnxRuntime.Sub.Gpu.Windows'
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
-        configuration: RelWithDebInfo
-        platform: 'Any CPU'
-        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Sub.Gpu.Windows -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix) -p:CurrrentDate=$(BuildDate) -p:CurrentTime=$(BuildTime) -p:IsPlatformSpecificSubPackage=True'
-        workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-    - task: MSBuild@1
-      displayName: 'Build Nuget Packages Microsoft.ML.OnnxRuntime.Sub.Gpu.Linux'
-      inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
-        configuration: RelWithDebInfo
-        platform: 'Any CPU'
-        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Sub.Gpu.Linux -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix) -p:CurrrentDate=$(BuildDate) -p:CurrentTime=$(BuildTime) -p:IsPlatformSpecificSubPackage=True'
+        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: BatchScript@1
