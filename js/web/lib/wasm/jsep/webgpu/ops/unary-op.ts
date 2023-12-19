@@ -125,8 +125,8 @@ export interface ClipAttributes extends AttributeWithCacheKey {
 }
 
 const generateClipAttributesFromInputs = (inputs: readonly TensorView[]): ClipAttributes => {
-  const min = (inputs.length >= 2) ? inputs[1].getFloat32Array()[0] : MIN_CLIP;
-  const max = (inputs.length >= 3) ? inputs[2].getFloat32Array()[0] : MAX_CLIP;
+  const min = (inputs.length >= 2 && inputs[1].data !== 0) ? inputs[1].getFloat32Array()[0] : MIN_CLIP;
+  const max = (inputs.length >= 3 && inputs[2].data !== 0) ? inputs[2].getFloat32Array()[0] : MAX_CLIP;
   return createAttributeWithCacheKey({min, max});
 };
 
