@@ -42,9 +42,6 @@ stages:
               tree $(Agent.TempDirectory)
             workingDirectory: '$(Agent.TempDirectory)'
 
-        - task: CodeSign@1
-          displayName: 'Run Codesign Validation'
-
           - task: CodeSign@1
             displayName: 'Run Codesign Validation'
 
