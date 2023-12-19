@@ -1392,7 +1392,7 @@
       "tile.jsonc",
       "transpose.jsonc",
       "transpose_int32_uint32.jsonc",
-      "upsample.jsonc"
+      "upsample.jsonc",
       "where.jsonc"
       // Turn on this when https://github.com/microsoft/onnxruntime/issues/17405 is fixed.
       //"where_broadcast.jsonc",
