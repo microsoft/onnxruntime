@@ -1,7 +1,8 @@
 # packages used by transformers python unittest (only enabled in Linux CPU CI Pipeline)
 packaging
 protobuf==3.20.2
-numpy==1.26.0
+numpy==1.24.0; python_version < '3.12'
+numpy==1.26.0; python_version >= '3.12'
 coloredlogs==15.0
 transformers==4.30.0
 psutil
