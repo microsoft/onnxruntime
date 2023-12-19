@@ -763,6 +763,7 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vect
   ORT_ENFORCE(ops.size() > 0, "No kernels to registers.");
   int undefined = 0;
 
+  // Creation of the schema for the first kernel in ops.
   const OrtCustomOp* op = *ops.begin();
   ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "custom op registered at runtime", 0);
 
@@ -791,11 +792,17 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vect
       }
     }
 
+    // The loop goes through all operators sharing the same schema to build
+    // the minimal type constraints for all of them. All kernels must have
+    // the same number of inputs / outputs among themselves to be able to build
+    // the type constraints. Any kind of incompatibility between a schema and
+    // a kernel is checked by method IsCompatible once the schema is created
+    // by this method.
     std::unordered_set<ONNXTensorElementDataType> all_types;
     for (auto o : ops) {
-      ORT_ENFORCE(static_cast<size_t>(i) < (is_input ? o->GetInputTypeCount(o) : o->GetOutputTypeCount(o)),
+      ORT_ENFORCE(static_cast<size_t>(i) != (is_input ? o->GetInputTypeCount(o) : o->GetOutputTypeCount(o)),
                   "Another version of operator '", schema.Name(),
-                  "'has less ", (is_input ? "inputs" : "outputs"),
+                  "'has a different number of ", (is_input ? "inputs" : "outputs"),
                   ". onnxruntime allows the overloading of an operator "
                   "if all versions have the same number of declared ",
                   (is_input ? "inputs" : "outputs"), ".");
@@ -1035,24 +1042,19 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       auto schema = CreateSchema(domain->domain_, ops);
       ORT_ENFORCE(name == schema.Name());
       schema_map.emplace(schema.Name(), schema);
-    }
 
-    // This loops checks that all custom operators sharing the same name are compatible with the defined schema.
-    for (const auto* op : domain->custom_ops_) {
-      // define kernel
-      auto kernel_create_info = CreateKernelCreateInfo(domain->domain_, op);
-      kernel_def_map[op->GetName(op)].push_back(kernel_create_info.kernel_def.get());
-      ORT_RETURN_IF_ERROR(output->RegisterCustomKernel(kernel_create_info));
-      // define schema
-      auto schema_map_iter = schema_map.find(op->GetName(op));
-      ORT_ENFORCE(schema_map_iter != schema_map.end(),
-                  "This condition fail is no schema was defined for this "
-                  "operator as it should have in the previous loop.");
-      // If IsCompabible returns false, then all custom operators named
-      // 'op->GetName(op)' are not compatible among themselves.
-      // They should have the same number of inputs and outputs, the same characteristics,
-      // (optional, ...). Only the type can change.
-      ORT_RETURN_IF_ERROR(IsCompatible(schema_map_iter->second, op));
+      // This loops checks that all custom operators sharing the same name are compatible with the defined schema.
+      for (const auto* op : ops) {
+        // define kernel
+        auto kernel_create_info = CreateKernelCreateInfo(domain->domain_, op);
+        kernel_def_map[op->GetName(op)].push_back(kernel_create_info.kernel_def.get());
+        ORT_RETURN_IF_ERROR(output->RegisterCustomKernel(kernel_create_info));
+        // If IsCompabible returns false, then all custom operators named
+        // 'op->GetName(op)' are not compatible among themselves.
+        // They should have the same number of inputs and outputs, the same characteristics,
+        // (optional, ...). Only the type can change.
+        ORT_RETURN_IF_ERROR(IsCompatible(schema, op));
+      }
     }
 
     std::vector<ONNX_NAMESPACE::OpSchema> schemas;
