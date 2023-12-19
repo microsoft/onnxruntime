@@ -175,6 +175,9 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateTransposeOpBuilder("Transpose", op_registrations);
   }
 
+  {  // Transpose
+    CreateTriangularOpBuilder("Triangular", op_registrations);
+  }
   return op_registrations;
 }
 
