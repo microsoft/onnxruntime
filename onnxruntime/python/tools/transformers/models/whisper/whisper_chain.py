@@ -176,7 +176,7 @@ def chain_model(args):
         graph_inputs.append(decoder_input_ids)
 
         left_pad_mask = helper.make_tensor_value_info(
-            "left_pad_mask", TensorProto.INT32, ["batch_size", 1, "initial_sequence_length", "initial_sequence_length",]
+            "left_pad_mask", TensorProto.FLOAT, ["batch_size", 1, "initial_sequence_length", "initial_sequence_length",]
         )
         graph_inputs.append(left_pad_mask)
 

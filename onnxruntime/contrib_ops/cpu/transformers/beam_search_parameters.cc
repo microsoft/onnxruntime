@@ -64,7 +64,7 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
     }
   }
 
-  left_pad_mask = gsl::span<int32_t>();
+  left_pad_mask = gsl::span<float>();
   if (this->model_type == IGenerationParameters::kModelTypeWhisper && left_pad_mask_input_id > 0) {
     const Tensor* left_pad_mask_tensor = context->Input<Tensor>(left_pad_mask_input_id);
     if (left_pad_mask_tensor != nullptr) {
@@ -76,7 +76,7 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
                   "left_pad_mask_tensor first dim not same as batch_size. Got ",
                   left_pad_mask_tensor_dims[0], ", expecting ", batch_size);
       if (left_pad_mask_tensor->Shape().Size() > 0) {
-        left_pad_mask = gsl::span<const int32_t>(left_pad_mask_tensor->Data<int32_t>(), (size_t)left_pad_mask_tensor->Shape().Size());
+        left_pad_mask = gsl::span<const float>(left_pad_mask_tensor->Data<float>(), (size_t)left_pad_mask_tensor->Shape().Size());
       }
     }
   }

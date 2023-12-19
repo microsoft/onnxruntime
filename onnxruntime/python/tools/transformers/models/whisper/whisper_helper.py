@@ -412,7 +412,7 @@ class WhisperHelper:
             elif name == "left_pad_mask":
                 inputs[name] = np.zeros((batch_size, 1, 4, 4), dtype=ort_to_np[dtype])
             elif name == "position_ids":
-                inputs[name] = np.zeros((batch_size, 4), dtype=ort_to_np[dtype])
+                inputs[name] = np.repeat(np.array([[0, 1, 2, 3]], dtype=ort_to_np[dtype]), batch_size, 0)
             else:
                 inputs[name] = np.array([inputs[name]], dtype=ort_to_np[dtype])
         ort_outputs = ort_session.run(None, inputs)[0][0]

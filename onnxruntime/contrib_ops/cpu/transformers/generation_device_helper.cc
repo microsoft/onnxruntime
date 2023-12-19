@@ -910,9 +910,9 @@ Status CreateWhisperEncoderInputs(
                        left_pad_mask);
 
   const TensorShape& position_ids_shape = original_position_ids->Shape();
-  Tensor::InitOrtValue(DataTypeImpl::GetType<T>(),
+  Tensor::InitOrtValue(element_type,
                        position_ids_shape,
-                       const_cast<Tensor*>(original_position_ids)->MutableData<T>(),
+                       const_cast<Tensor*>(original_position_ids)->MutableData<int32_t>(),
                        allocator->Info(),
                        position_ids);
 
