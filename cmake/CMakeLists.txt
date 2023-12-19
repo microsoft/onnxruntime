@@ -61,8 +61,6 @@ endif()
 
 if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 8)
   message(FATAL_ERROR  "GCC version must be greater than or equal to 8")
-elseif("${CMAKE_C_COMPILER_ID}" STREQUAL "Clang" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 16)
-  message(FATAL_ERROR  "GCC version must be greater than or equal to 16")
 endif()
 
 # Options
@@ -354,13 +352,7 @@ if (onnxruntime_USE_ROCM)
   endif()
 endif()
 
-if (APPLE)
-    if (NOT CMAKE_OSX_ARCHITECTURES)
-        message("Building ONNX Runtime for ${CMAKE_HOST_SYSTEM_PROCESSOR}")
-    endif()
-elseif (NOT WIN32 AND NOT APPLE)
-    message("Building ONNX Runtime for ${CMAKE_SYSTEM_PROCESSOR}")
-endif()
+
 
 # Single output director for all binaries
 set(RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
@@ -492,6 +484,14 @@ if (onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_MINIMAL_BUILD)
 endif()
 
 include(adjust_global_compile_flags.cmake)
+
+if (APPLE)
+  if (NOT CMAKE_OSX_ARCHITECTURES)
+    message("Building ONNX Runtime for ${CMAKE_HOST_SYSTEM_PROCESSOR} CPU ARCH")
+  endif()
+elseif (NOT WIN32 AND NOT APPLE)
+  message("Building ONNX Runtime for ${onnxruntime_target_platform} CPU ARCH")
+endif()
 
 # We need to link with libatomic on systems that do not have built-in atomics, or
 # don't have built-in support for 8 byte atomics
@@ -639,7 +639,16 @@ else()
   check_cxx_compiler_flag(-Wunused-variable HAS_UNUSED_VARIABLE)
   check_cxx_compiler_flag(-Wuseless-cast HAS_USELESS_CAST)
   check_function_exists(reallocarray HAS_REALLOCARRAY)
-
+  if (NOT APPLE AND onnxruntime_target_platform STREQUAL "aarch64")
+   check_cxx_compiler_flag(-march=armv8.2-a+bf16 HAS_ARM64_BFLOAT16)
+   if(NOT HAS_ARM64_BFLOAT16)
+     message(FATAL_ERROR  "The compiler doesn't support BFLOAT16!!!")
+   endif()
+   check_cxx_compiler_flag(-march=armv8.2-a+fp16 HAS_ARM64_FLOAT16)
+   if(NOT HAS_ARM64_FLOAT16)
+     message(FATAL_ERROR  "The compiler doesn't support FLOAT16!!!")
+   endif()
+  endif()
   if (HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
     list(APPEND ORT_WARNING_FLAGS -Wno-tautological-pointer-compare)
