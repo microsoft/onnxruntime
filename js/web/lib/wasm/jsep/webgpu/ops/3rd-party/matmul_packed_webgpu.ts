@@ -23,7 +23,7 @@ import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
 import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../../types';
 import {createTensorShapeVariables, enableShapesUniforms, getBroadcastDims, IndicesHelper, inputVariable, internalVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from '../common';
-import {getActivationSnippet, InternalActivationAttributes, updateUniformsFromActivation} from '../fuse-utils';
+import {getActivationSnippet, InternalActivationAttributes} from '../fuse-utils';
 
 import {typeSnippet} from './activation_util';
 
@@ -467,7 +467,12 @@ export const createMatmulProgramInfo =
           [{type: 'int32', data: dimAOuter}, {type: 'int32', data: dimBOuter}, {type: 'int32', data: dimInner}];
       const uniforms: UniformsArrayType =
           [{name: 'dimAOuter', type: 'i32'}, {name: 'dimBOuter', type: 'i32'}, {name: 'dimInner', type: 'i32'}];
-      updateUniformsFromActivation(programUniforms, uniforms, activationAttributes, inputs[0].dataType);
+      if (activationAttributes.activation === 'Clip') {
+        programUniforms.push(
+            {type: 'float32', data: activationAttributes.clipMax!},
+            {type: 'float32', data: activationAttributes.clipMin!});
+        uniforms.push({name: 'clipMax', type: 'f32'}, {name: 'clipMin', type: 'f32'});
+      }
 
       if (enableBatchUniforms) {
         programUniforms.push(...createTensorShapeVariables(outerDims));

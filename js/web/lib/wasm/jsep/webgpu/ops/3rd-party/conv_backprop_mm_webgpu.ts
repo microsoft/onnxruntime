@@ -24,7 +24,7 @@ import {TensorView} from '../../../tensor-view';
 import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../../types';
 import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from '../common';
 import {ConvTransposeAttributes} from '../conv-transpose';
-import {getActivationSnippet, updateUniformsFromActivation} from '../fuse-utils';
+import {getActivationSnippet} from '../fuse-utils';
 
 import {biasSnippet, typeSnippet} from './activation_util';
 import {utilFunctions} from './conv_util';
@@ -211,7 +211,11 @@ export const createConv2DTransposeMatMulProgramInfo =
         {name: 'strides', type: 'i32', length: 2}, {name: 'dilations', type: 'i32', length: 2},
         {name: 'filterDims', type: 'i32', length: filterDims.length}, {name: 'pads', type: 'i32', length: pads.length}
       ];
-      updateUniformsFromActivation(programUniforms, uniforms, attributes, inputs[0].dataType);
+      if (attributes.activation === 'Clip') {
+        programUniforms.push(
+            {type: 'float32', data: attributes.clipMax!}, {type: 'float32', data: attributes.clipMin!});
+        uniforms.push({name: 'clipMax', type: 'f32'}, {name: 'clipMin', type: 'f32'});
+      }
       programUniforms.push(
           ...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(inputs[1].dims));
 

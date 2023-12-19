@@ -24,7 +24,7 @@ import {TensorView} from '../../../tensor-view';
 import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../../types';
 import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType} from '../common';
 import {ConvAttributes} from '../conv';
-import {getActivationSnippet, updateUniformsFromActivation} from '../fuse-utils';
+import {getActivationSnippet} from '../fuse-utils';
 
 import {biasSnippet, typeSnippet} from './activation_util';
 import {utilFunctions} from './conv_util';
@@ -210,8 +210,11 @@ export const createConv2DMatMulProgramInfo =
         {name: 'pad', type: 'i32', length: 2}, {name: 'stride', type: 'i32', length: 2},
         {name: 'dilation', type: 'i32', length: 2}
       ];
-      updateUniformsFromActivation(programUniforms, uniforms, attributes, inputs[0].dataType);
-
+      if (attributes.activation === 'Clip') {
+        programUniforms.push(
+            {type: 'float32', data: attributes.clipMax!}, {type: 'float32', data: attributes.clipMin!});
+        uniforms.push({name: 'clipMax', type: 'f32'}, {name: 'clipMin', type: 'f32'});
+      }
       programUniforms.push(
           ...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(inputs[1].dims));
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];

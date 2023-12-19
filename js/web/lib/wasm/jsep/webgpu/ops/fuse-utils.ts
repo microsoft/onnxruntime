@@ -1,11 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {tensorDataTypeEnumToString} from '../../../wasm-common';
 import {MAX_CLIP, MIN_CLIP} from '../../util';
-import {ProgramUniform} from '../types';
-
-import {getWgslMappedType, UniformDataElementType, UniformsArrayType} from './common';
 
 export interface InternalActivationAttributes {
   readonly activation: string;
@@ -36,21 +32,4 @@ export const parseInternalActivationAttributes =
         return {activation, clipMax, clipMin};
       }
       return {activation};
-    };
-
-export const updateUniformsFromActivation =
-    (programUniforms: ProgramUniform[], uniforms: UniformsArrayType, attributes: InternalActivationAttributes,
-     dataType: number) => {
-      const tensorDataType = tensorDataTypeEnumToString(dataType) as ProgramUniform['type'];
-      const wgslElementType = getWgslMappedType(dataType, 1);
-      if (typeof wgslElementType !== 'string') {
-        throw new Error(`clipMax and clipMin doesn't support type ${wgslElementType[0]}!`);
-      }
-      if (attributes.activation === 'Clip') {
-        programUniforms.push(
-            {type: tensorDataType, data: attributes.clipMax!}, {type: tensorDataType, data: attributes.clipMin!});
-        uniforms.push(
-            {name: 'clipMax', type: wgslElementType as UniformDataElementType},
-            {name: 'clipMin', type: wgslElementType as UniformDataElementType});
-      }
     };
