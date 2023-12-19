@@ -129,7 +129,7 @@ struct SessionOptions {
 
   // By default the session uses its own set of threadpools, unless this is set to false.
   // Use this in conjunction with the CreateEnvWithGlobalThreadPools API.
-#if defined(__wasm__)
+#if defined(__wasm__) && defined(__EMSCRIPTEN_PTHREADS__)
   bool use_per_session_threads = false;
 #else
   bool use_per_session_threads = true;
