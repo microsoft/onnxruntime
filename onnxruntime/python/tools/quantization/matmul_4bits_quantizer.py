@@ -193,9 +193,9 @@ set of 4b integers with a scaling factor and an optional offset.
 
     parser.add_argument("--input_model", required=True, help="Path to the input model file")
     parser.add_argument("--output_model", required=True, help="Path to the output model file")
-    parser.add_argument("--block_size", required=False, default=32)
+    parser.add_argument("--block_size", required=False, default=32, type=int, help="Block size for quantization")
     parser.add_argument(
-        "--symmetric", required=False, default=True, help="Indicate whether to quantize the model symmetrically"
+        "--symmetric", required=False, default=True, type=bool, help="Indicate whether to quantize the model symmetrically"
     )
     parser.add_argument("-v", "--verbose", required=False, action="store_true")
     parser.set_defaults(verbose=False)
