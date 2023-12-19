@@ -1603,11 +1603,15 @@ def output_op_metrics(model_to_metrics, csv_filename):
             if cuda_fp16 in ep_info:
                 cuda_fp16_data = ep_info[cuda_fp16]["ratio_of_ops_in_cuda_not_fallback_cpu"]
                 csv_writer.writerow([model, cuda_fp16, cuda_fp16_data])
-            if trt in ep_info:
-                trt_data = ep_info[trt]["ratio_of_ops_in_trt"]
+            if cuda in ep_info and trt in ep_info:
+                total_ops_in_cuda = ep_info[cuda]["total_ops"]
+                cuda_cpu_ops_in_trt = ep_info[trt]["total_ops"]
+                trt_data = (total_ops_in_cuda - cuda_cpu_ops_in_trt) / total_ops_in_cuda
                 csv_writer.writerow([model, trt, trt_data])
-            if trt_fp16 in ep_info:
-                trt_fp16_data = ep_info[trt_fp16]["ratio_of_ops_in_trt"]
+            if cuda_fp16 in ep_info and trt_fp16 in ep_info:
+                total_ops_in_cuda = ep_info[cuda_fp16]["total_ops"]
+                cuda_cpu_ops_in_trt = ep_info[trt_fp16]["total_ops"]
+                trt_fp16_data = (total_ops_in_cuda - cuda_cpu_ops_in_trt) / total_ops_in_cuda
                 csv_writer.writerow([model, trt_fp16, trt_fp16_data])
 
     logger.info(f"op metrics for cuda/trt ep are saved to csv file: {csv_filename} and will be displayed at Perf Dashboard")
