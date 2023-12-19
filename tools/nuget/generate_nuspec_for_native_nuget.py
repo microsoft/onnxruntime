@@ -419,7 +419,7 @@ def generate_files(line_list, args):
     include_dir = f"{build_dir}\\native\\include"
 
     # Sub.Gpu packages do not include the onnxruntime headers
-    if not "Sub.Gpu" in args.package_name:
+    if "Sub.Gpu" not in args.package_name:
         files_list.append(
             "<file src="
             + '"'
