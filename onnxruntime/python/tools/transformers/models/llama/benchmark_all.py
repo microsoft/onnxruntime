@@ -238,7 +238,7 @@ def save_results(results, filename):
     # Save results to csv with standard format
     records = []
     for _, row in df.iterrows():
-        if row['Engine'] == 'onnxruntime':
+        if row['Engine'] == 'optimum-ort':
             record = BenchmarkRecord(row['Model Name'], row['Precision'], row['Engine'], row['Device'], ort_pkg_name, ort_pkg_version)
         else:
             record = BenchmarkRecord(row['Model Name'], row['Precision'], row['Engine'], row['Device'], torch.__name__, torch.__version__)
@@ -247,8 +247,9 @@ def save_results(results, filename):
         record.config.measured_runs = row["Measured Runs"]
         record.config.batch_size = row["Batch Size"]
         record.config.seq_length = row["Sequence Length"]
+        record.metrics.latency_s_mean = row["Latency (s)"]
         record.metrics.latency_ms_mean = row["Latency (ms)"]
-        record.metrics.throughput_qps = row["Throughput (tps)"]
+        record.metrics.throughput_tps = row["Throughput (tps)"]
         record.metrics.max_memory_usage_GB = row["Memory (GB)"]
 
         records.append(record)

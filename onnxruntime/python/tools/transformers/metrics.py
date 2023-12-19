@@ -98,12 +98,16 @@ class Metrics(BaseObject):
     def __init__(
         self,
         latency_ms_mean: Optional[float] = 0.0,
+        latency_s_mean: Optional[float] = 0.0,
         throughput_qps: Optional[float] = 0.0,
+        throughput_tps: Optional[float] = 0.0,
         max_memory_usage_GB: Optional[float] = 0.0,
     ):
         super().__init__()
         self.latency_ms_mean = latency_ms_mean
+        self.latency_s_mean = latency_s_mean
         self.throughput_qps = throughput_qps
+        self.throughput_tps = throughput_tps
         self.max_memory_usage_GB = max_memory_usage_GB
 
 
