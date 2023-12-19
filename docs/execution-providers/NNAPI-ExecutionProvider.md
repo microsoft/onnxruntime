@@ -115,6 +115,7 @@ Following ops are supported by the NNAPI Execution Provider,
 |ai.onnx:GlobalAveragePool|Only 2D Pool is supported.|
 |ai.onnx:GlobalMaxPool|Only 2D Pool is supported.|
 |ai.onnx:Identity||
+|ai.onnx:LeakyRelu||
 |ai.onnx:Log||
 |ai.onnx:LRN||
 |ai.onnx:MatMul||
@@ -137,6 +138,7 @@ Following ops are supported by the NNAPI Execution Provider,
 |ai.onnx:Sin||
 |ai.onnx:Slice||
 |ai.onnx:Softmax||
+|ai.onnx:Split|Number of splits must evenly divide split axis size. Input split should be constant if provided.|
 |ai.onnx:Sqrt||
 |ai.onnx:Squeeze|Input axes should be constant.|
 |ai.onnx:Sub||
