@@ -56,11 +56,11 @@ struct TensorRTCustomOp : Ort::CustomOpBase<TensorRTCustomOp, TensorRTCustomKern
 
   OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t) const { return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC; };
 
-  constexpr bool GetVariadicInputHomogeneity() const noexcept {
+  bool GetVariadicInputHomogeneity() const {
     return false;  // heterogenous
   }
 
-  constexpr bool GetVariadicOutputHomogeneity() const noexcept {
+  bool GetVariadicOutputHomogeneity() const {
     return false;  // heterogeneous
   }
 
