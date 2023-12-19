@@ -415,32 +415,35 @@ def generate_files(line_list, args):
     runtimes = f'{runtimes_target}{args.target_architecture}\\{runtimes_native_folder}"'
 
     # Process headers
-    build_dir = "buildTransitive" if "Microsoft.ML.OnnxRuntime.Gpu" in args.package_name else "build"
+    build_dir = "buildTransitive" if "Gpu" in args.package_name else "build"
     include_dir = f"{build_dir}\\native\\include"
-    files_list.append(
-        "<file src="
-        + '"'
-        + os.path.join(args.sources_path, "include\\onnxruntime\\core\\session\\onnxruntime_*.h")
-        + '" target="'
-        + include_dir
-        + '" />'
-    )
-    files_list.append(
-        "<file src="
-        + '"'
-        + os.path.join(args.sources_path, "include\\onnxruntime\\core\\framework\\provider_options.h")
-        + '" target="'
-        + include_dir
-        + '" />'
-    )
-    files_list.append(
-        "<file src="
-        + '"'
-        + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\cpu\\cpu_provider_factory.h")
-        + '" target="'
-        + include_dir
-        + '" />'
-    )
+
+    # Sub.Gpu packages do not include the onnxruntime headers
+    if not "Sub.Gpu" in args.package_name:
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.sources_path, "include\\onnxruntime\\core\\session\\onnxruntime_*.h")
+            + '" target="'
+            + include_dir
+            + '" />'
+        )
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.sources_path, "include\\onnxruntime\\core\\framework\\provider_options.h")
+            + '" target="'
+            + include_dir
+            + '" />'
+        )
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\cpu\\cpu_provider_factory.h")
+            + '" target="'
+            + include_dir
+            + '" />'
+        )
 
     if is_training_package:
         files_list.append(
