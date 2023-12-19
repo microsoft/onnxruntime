@@ -114,29 +114,16 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   if (session_options) {
     disable_cpu_ep_fallback_ = session_options->config_options.GetConfigOrDefault(
                                    kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
-  }
 
-  static const std::string CONTEXT_CACHE_ENABLED = "qnn_context_cache_enable";
-  auto context_cache_enabled_pos = provider_options_map.find(CONTEXT_CACHE_ENABLED);
-  if (context_cache_enabled_pos != provider_options_map.end()) {
-    if (context_cache_enabled_pos->second == "1") {
-      context_cache_enabled_ = true;
-      LOGS_DEFAULT(VERBOSE) << "Context cache enabled.";
-    }
-  }
+    context_cache_enabled_ = session_options->config_options.GetConfigOrDefault(
+                                 kOrtSessionOptionEpContextEnable, "0") == "1";
+    LOGS_DEFAULT(VERBOSE) << "Context cache enable: " << context_cache_enabled_;
 
-  static const std::string CONTEXT_CACHE_PATH = "qnn_context_cache_path";
-  auto context_cache_path_pos = provider_options_map.find(CONTEXT_CACHE_PATH);
-  if (context_cache_path_pos != provider_options_map.end()) {
-    context_cache_path_cfg_ = context_cache_path_pos->second;
-    LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << context_cache_path_cfg_;
-  }
-
-  static const std::string CONTEXT_CACHE_EMBED_MODE = "qnn_context_embed_mode";
-  auto context_cache_embed_mode_pos = provider_options_map.find(CONTEXT_CACHE_EMBED_MODE);
-  if (context_cache_embed_mode_pos != provider_options_map.end()) {
-    qnn_context_embed_mode_ = context_cache_embed_mode_pos->second == "1";
+    qnn_context_embed_mode_ = session_options->config_options.GetConfigOrDefault(
+                                  kOrtSessionOptionEpContextEmbedMode, "1") == "1";
     LOGS_DEFAULT(VERBOSE) << "User specified context cache embed mode: " << qnn_context_embed_mode_;
+
+    context_cache_path_cfg_ = session_options->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
   }
 
   static const std::string BACKEND_PATH = "backend_path";
