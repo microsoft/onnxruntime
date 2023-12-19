@@ -2,6 +2,7 @@
   {
     "name": "Upsample - Nearest",
     "operator": "Upsample",
+    "opset": { "domain": "", "version": 7 },
     "attributes": [{ "name": "scales", "data": [1.0, 1.0, 2.0, 3.0], "type": "floats" }],
     "cases": [
       {
@@ -32,6 +33,7 @@
   {
     "name": "Upsample - Nearest2X",
     "operator": "Upsample",
+    "opset": { "domain": "", "version": 7 },
     "attributes": [{ "name": "scales", "data": [1.0, 1.0, 2.0, 2.0], "type": "floats" }],
     "cases": [
       {
@@ -60,6 +62,7 @@
   {
     "name": "Upsample - Nearest222X",
     "operator": "Upsample",
+    "opset": { "domain": "", "version": 7 },
     "attributes": [{ "name": "scales", "data": [2.0, 1.0, 2.0, 2.0], "type": "floats" }],
     "cases": [
       {
@@ -92,6 +95,7 @@
   {
     "name": "Upsample - Nearest15X",
     "operator": "Upsample",
+    "opset": { "domain": "", "version": 7 },
     "attributes": [{ "name": "scales", "data": [1.0, 1.0, 2.0, 1.5], "type": "floats" }],
     "cases": [
       {
@@ -120,6 +124,7 @@
   {
     "name": "Upsample - Nearest_NoScale",
     "operator": "Upsample",
+    "opset": { "domain": "", "version": 7 },
     "attributes": [
       { "name": "scales", "data": [1.0, 1.0, 1.0, 1.0], "type": "floats" },
       { "name": "mode", "data": "nearest", "type": "string" }
@@ -147,6 +152,7 @@
   {
     "name": "Upsample - 4D Bilinear",
     "operator": "Upsample",
+    "opset": { "domain": "", "version": 7 },
     "attributes": [
       { "name": "scales", "data": [1.0, 1.0, 2.0, 4.0], "type": "floats" },
       { "name": "mode", "data": "linear", "type": "string" }
@@ -180,6 +186,7 @@
   {
     "name": "Upsample - 2D Bilinear",
     "operator": "Upsample",
+    "opset": { "domain": "", "version": 7 },
     "attributes": [
       { "name": "scales", "data": [2.0, 4.0], "type": "floats" },
       { "name": "mode", "data": "linear", "type": "string" }
@@ -210,6 +217,7 @@
   {
     "name": "Upsample - 4D Bilinear ScalesNoOp",
     "operator": "Upsample",
+    "opset": { "domain": "", "version": 7 },
     "attributes": [
       { "name": "scales", "data": [1.0, 1.0, 1.0, 1.0], "type": "floats" },
       { "name": "mode", "data": "linear", "type": "string" }
@@ -237,6 +245,7 @@
   {
     "name": "Upsample - 1D Nearest",
     "operator": "Upsample",
+    "opset": { "domain": "", "version": 7 },
     "attributes": [
       { "name": "scales", "data": [2.0], "type": "floats" },
       { "name": "mode", "data": "nearest", "type": "string" }
@@ -255,6 +264,99 @@
           {
             "data": [1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0, 5.0, 5.0],
             "dims": [10],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Upsample - 5D Trilinear",
+    "operator": "Upsample",
+    "opset": { "domain": "", "version": 7 },
+    "attributes": [
+      { "name": "scales", "data": [1.0, 1.0, 1.0, 2.0, 4.0], "type": "floats" },
+      { "name": "mode", "data": "linear", "type": "string" }
+    ],
+    "cases": [
+      {
+        "name": "X",
+        "inputs": [
+          {
+            "data": [1.0, 3.0, 3.0, 5.0, 3.0, 5.0, 7.0, 9.0],
+            "dims": [1, 2, 1, 2, 2],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [
+              1.0, 1.5, 2.0, 2.5, 3.0, 3.0, 3.0, 3.0, 2.0, 2.5, 3.0, 3.5, 4.0, 4.0, 4.0, 4.0, 3.0, 3.5, 4.0, 4.5, 5.0,
+              5.0, 5.0, 5.0, 3.0, 3.5, 4.0, 4.5, 5.0, 5.0, 5.0, 5.0,
+
+              3.0, 3.5, 4.0, 4.5, 5.0, 5.0, 5.0, 5.0, 5.0, 5.5, 6.0, 6.5, 7.0, 7.0, 7.0, 7.0, 7.0, 7.5, 8.0, 8.5, 9.0,
+              9.0, 9.0, 9.0, 7.0, 7.5, 8.0, 8.5, 9.0, 9.0, 9.0, 9.0
+            ],
+            "dims": [1, 2, 1, 4, 8],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Upsample - 3D Trilinear",
+    "operator": "Upsample",
+    "opset": { "domain": "", "version": 7 },
+    "attributes": [
+      { "name": "scales", "data": [1.0, 2.0, 4.0], "type": "floats" },
+      { "name": "mode", "data": "linear", "type": "string" }
+    ],
+    "cases": [
+      {
+        "name": "X",
+        "inputs": [
+          {
+            "data": [1.0, 3.0, 3.0, 5.0],
+            "dims": [1, 2, 2],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [
+              1.0, 1.5, 2.0, 2.5, 3.0, 3.0, 3.0, 3.0, 2.0, 2.5, 3.0, 3.5, 4.0, 4.0, 4.0, 4.0, 3.0, 3.5, 4.0, 4.5, 5.0,
+              5.0, 5.0, 5.0, 3.0, 3.5, 4.0, 4.5, 5.0, 5.0, 5.0, 5.0
+            ],
+            "dims": [1, 4, 8],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Upsample - 3D Trilinear ScalesNoOp",
+    "operator": "Upsample",
+    "opset": { "domain": "", "version": 7 },
+    "attributes": [
+      { "name": "scales", "data": [1.0, 1.0, 1.0], "type": "floats" },
+      { "name": "mode", "data": "linear", "type": "string" }
+    ],
+    "cases": [
+      {
+        "name": "X",
+        "inputs": [
+          {
+            "data": [1.0, 3.0, 3.0, 5.0, 3.0, 5.0, 7.0, 9.0],
+            "dims": [2, 2, 2],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1.0, 3.0, 3.0, 5.0, 3.0, 5.0, 7.0, 9.0],
+            "dims": [2, 2, 2],
             "type": "float32"
           }
         ]
