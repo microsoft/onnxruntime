@@ -7,6 +7,7 @@ import {ComputeContext} from '../types';
 import {createConv2DTransposeMatMulProgramInfo} from './3rd-party/conv_backprop_mm_webgpu';
 import {createConvTranspose2DProgramInfo} from './3rd-party/conv_backprop_webgpu';
 import {ConvAttributes} from './conv';
+import {parseInternalActivationAttributes} from './fuse-utils';
 import {createTransposeProgramInfo} from './transpose';
 
 const computeTotalPad =
@@ -98,6 +99,7 @@ const getAdjustedConvTransposeAttributes =
     };
 
 export const parseConvTransposeAttributes = (attributes: Record<string, unknown>): ConvTransposeAttributes => {
+  const activationAttributes = parseInternalActivationAttributes(attributes);
   // TODO : Make this generic enough to compute default attributes for multi-dimensional conv
   const format = attributes.format as 'NHWC' | 'NCHW';
   const autoPad =
@@ -111,7 +113,19 @@ export const parseConvTransposeAttributes = (attributes: Record<string, unknown>
   const wIsConst = (attributes.wIsConst as () => boolean)();
   const outputPadding = attributes.outputPadding as [number, number, number, number];
   const outputShape = attributes.outputShape as [number, number];
-  return {autoPad, format, dilations, group, kernelShape, outputPadding, outputShape, pads, strides, wIsConst};
+  return {
+    autoPad,
+    format,
+    dilations,
+    group,
+    kernelShape,
+    outputPadding,
+    outputShape,
+    pads,
+    strides,
+    wIsConst,
+    ...activationAttributes
+  };
 };
 
 const validateInputs = (inputs: readonly TensorView[], attributes: ConvTransposeAttributes): void => {

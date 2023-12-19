@@ -465,6 +465,10 @@ export const createMatmulProgramInfo =
       const inputVariables = [A, B];
       const programUniforms: ProgramUniform[] =
           [{type: 'int32', data: dimAOuter}, {type: 'int32', data: dimBOuter}, {type: 'int32', data: dimInner}];
+      const uniforms: UniformsArrayType =
+          [{name: 'dimAOuter', type: 'i32'}, {name: 'dimBOuter', type: 'i32'}, {name: 'dimInner', type: 'i32'}];
+      updateUniformsFromActivation(programUniforms, uniforms, activationAttributes, inputs[0].dataType);
+
       if (enableBatchUniforms) {
         programUniforms.push(...createTensorShapeVariables(outerDims));
       }
@@ -478,12 +482,9 @@ export const createMatmulProgramInfo =
       inputDependencies.push(enableAShapesUniforms ? 'rank' : 'dims');
       inputDependencies.push(enableBShapesUniforms ? 'rank' : 'dims');
 
-      const uniforms: UniformsArrayType =
-          [{name: 'dimAOuter', type: 'i32'}, {name: 'dimBOuter', type: 'i32'}, {name: 'dimInner', type: 'i32'}];
-      updateUniformsFromActivation(programUniforms, uniforms, activationAttributes, inputs[0].dataType);
 
       const hasBias = inputs.length > 2;
-      const {activationFunction, applyActivation} = getActivationSnippet(activationAttributes, output.type.value);
+      const applyActivation = getActivationSnippet(activationAttributes, output.type.value);
       const declareFunctions = matMulReadWriteFnSource(
           components, hasBias, applyActivation, [batchDims, A, B, output], [outerDimsA, outerDimsB, outerDims],
           isChannelsLast);
@@ -500,7 +501,6 @@ export const createMatmulProgramInfo =
   ${
           shaderHelper.registerUniforms(uniforms).registerInternalVariables(batchDims).declareVariables(
               ...inputVariables, output)}
-  ${activationFunction}
   ${declareFunctions}
   ${
           isVec4 ? makeMatMulPackedVec4Source(elementsPerThread, workgroupSize, dataType, batchDims) :

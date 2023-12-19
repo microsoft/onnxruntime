@@ -52,7 +52,7 @@ export const createNaiveMatmulProgramInfo =
         const a = inputVariable('a', inputs[0].dataType, aShape.length, aComponents);
         const b = inputVariable('b', inputs[1].dataType, bShape.length, components);
         const output = outputVariable('output', inputs[0].dataType, outputShapeInShader.length, components);
-        const {activationFunction, applyActivation} = getActivationSnippet(activationAttributes, output.type.value);
+        const applyActivation = getActivationSnippet(activationAttributes, output.type.value);
         const inputVariables = [a, b];
         let processBias = '';
         if (hasBias) {
@@ -122,7 +122,6 @@ export const createNaiveMatmulProgramInfo =
   ${
             shaderHelper.registerUniforms(uniforms).registerInternalVariables(batchDims).declareVariables(
                 ...inputVariables, output)}
-  ${activationFunction}
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
     let col = (global_idx % (uniforms.N / ${components})) * ${components};

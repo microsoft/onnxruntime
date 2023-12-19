@@ -129,9 +129,8 @@ const conv2dTransposeCommonSnippet =
       return ${type}(0.0);
       `;
 
-      const {activationFunction, applyActivation} = getActivationSnippet(attributes, type);
+      const applyActivation = getActivationSnippet(attributes, type);
       const userCode = `
-      ${activationFunction}
   fn mm_readA(batch: i32, row : i32, colIn : i32) -> ${type} {
     ${isChannelsLast ? sampleA : sampleW}
   }

@@ -28,7 +28,7 @@ export const createGroupedConvProgramInfo =
       const outputSize = ShapeUtil.size(outputShape);
 
       const output = outputVariable('output', inputs[0].dataType, outputShape.length);
-      const {activationFunction, applyActivation} = getActivationSnippet(attributes, output.type.value);
+      const applyActivation = getActivationSnippet(attributes, output.type.value);
       const x = inputVariable('x', inputs[0].dataType, xShape.length);
       const w = inputVariable('w', inputs[1].dataType, wShape.length);
       const inputVars = [x, w];
@@ -58,8 +58,6 @@ export const createGroupedConvProgramInfo =
       const getShaderSource = (shaderHelper: ShaderHelper) => `
 
   ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVars, output)}
-
-  ${activationFunction}
 
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}

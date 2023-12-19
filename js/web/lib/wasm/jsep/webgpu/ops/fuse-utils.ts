@@ -13,27 +13,19 @@ export interface InternalActivationAttributes {
   readonly clipMax?: number;
 }
 
-export const getActivationSnippet = (attributes: InternalActivationAttributes, valueType: string):
-    {activationFunction: string; applyActivation: string} => {
-      switch (attributes.activation) {
-        case 'Relu':
-          return {activationFunction: '', applyActivation: `value = max(value, ${valueType}(0.0));`};
-        case 'Sigmoid':
-          return {
-            activationFunction: '',
-            applyActivation: `value = (${valueType}(1.0) / (${valueType}(1.0) + exp(-value)));`
-          };
-        case 'Clip':
-          return {
-            activationFunction:
-                `const clip_min_ = ${valueType}(uniforms.clipMin); const clip_max_ = ${valueType}(uniforms.clipMax);`,
-            applyActivation: 'value = clamp(value, clip_min_, clip_max_);'
-          };
-          // TODO: adding other activations that can be fused.
-        default:
-          return {activationFunction: '', applyActivation: ''};
-      }
-    };
+export const getActivationSnippet = (attributes: InternalActivationAttributes, valueType: string): string => {
+  switch (attributes.activation) {
+    case 'Relu':
+      return `value = max(value, ${valueType}(0.0));`;
+    case 'Sigmoid':
+      return `value = (${valueType}(1.0) / (${valueType}(1.0) + exp(-value)));`;
+    case 'Clip':
+      return `value = clamp(value, ${valueType}(uniforms.clipMin), ${valueType}(uniforms.clipMax));`;
+    // TODO: adding other activations that can be fused.
+    default:
+      return '';
+  }
+};
 
 export const parseInternalActivationAttributes =
     (attributes: Record<string, unknown>|undefined): InternalActivationAttributes => {
