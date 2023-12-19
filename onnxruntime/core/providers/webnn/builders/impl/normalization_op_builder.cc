@@ -84,7 +84,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     int64_t axis = helper.Get("axis", -1);
     axis = HandleNegativeAxis(axis, rank);
     std::vector<uint32_t> axes(rank - SafeInt<uint32_t>(axis));
-    if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
+    if (model_builder.GetPreferredLayout() == DataLayout::NHWC && axis > 1) {
       std::iota(axes.begin(), axes.end(), axis - 1);
     } else {
       std::iota(axes.begin(), axes.end(), axis);
