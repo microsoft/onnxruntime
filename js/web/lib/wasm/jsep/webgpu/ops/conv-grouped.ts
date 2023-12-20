@@ -107,7 +107,8 @@ export const createGroupedConvVectorizeProgramInfo =
       const outputShapeInShader = [outputShape[0], outputShape[1], outputShape[2], outputShape[3] / components];
 
       const programUniforms: ProgramUniform[] = [
-        {type: 'uint32', data: outputSize}, ...createTensorShapeVariables(xShape),
+        {type: 'uint32', data: outputSize}, {type: 'int32', data: attributes.strides},
+        {type: 'int32', data: attributes.pads}, ...createTensorShapeVariables(xShape),
         ...createTensorShapeVariables(wShape), ...createTensorShapeVariables(outputShapeInShader)
       ];
       const xNumber = (outputNumber - 1) * attributes.strides[1] + wShape[1];
@@ -123,9 +124,11 @@ export const createGroupedConvVectorizeProgramInfo =
         const processBias = hasBias ? 'value += b[output_channel];' : '';
 
         return `
-  const strides: vec2<i32> = vec2(${attributes.strides[0]}, ${attributes.strides[1]});
-  const pads: vec2<i32> = vec2(${attributes.pads[0]}, ${attributes.pads[1]});
-  ${shaderHelper.registerUniform('output_size', 'u32').declareVariables(...inputVars, output)}
+  ${
+            shaderHelper.registerUniform('output_size', 'u32')
+                .registerUniform('strides', 'i32', 2)
+                .registerUniform('pads', 'i32', 2)
+                .declareVariables(...inputVars, output)}
   ${activationFunction}
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
@@ -138,7 +141,7 @@ export const createGroupedConvVectorizeProgramInfo =
     let row = index1 % uniforms.output_shape[1];
     let batch = index1 / uniforms.output_shape[1];
 
-    let xRCCorner = vec2<i32>(i32(row), i32(col)) * strides - pads;
+    let xRCCorner = vec2<i32>(i32(row), i32(col)) * uniforms.strides - uniforms.pads;
 
     var xVals: array<${x.type.value}, ${xNumber}>;
     var values: array<${output.type.value}, ${outputNumber}>;
@@ -176,8 +179,7 @@ export const createGroupedConvVectorizeProgramInfo =
       return {
         name: 'GroupedConv-Vectorize',
         shaderCache: {
-          hint: `${attributes.activationCacheKey};${attributes.strides};${attributes.pads};${components};${
-              outputNumber};${xNumber};${wShape[0]};${wShape[1]}`,
+          hint: `${attributes.activationCacheKey};${components};${outputNumber};${xNumber};${wShape[0]};${wShape[1]}`,
           inputDependencies: hasBias ? ['rank', 'rank', 'type'] : ['rank', 'rank']
         },
         getRunData: () => ({
