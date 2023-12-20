@@ -491,14 +491,9 @@ void ListAllCombinations(const InlinedVector<InlinedVector<InlinedVector<std::sh
   for (size_t i = 0; i < plan_combination_list_at_cur_index.size(); ++i) {
     const auto& plan_combination = plan_combination_list_at_cur_index[i];
     InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>> new_combination = current_combination;
-    // Append the chosen complete plan and continue explore the next reused buffer by index + 1.
+    // Append the chosen complete plan and continue exploring the next reused buffer by index + 1.
     new_combination.insert(new_combination.end(), plan_combination.begin(), plan_combination.end());
-
-    // for (const auto& plan : plan_combination) {
-    //   InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>> new_combination = current_combination;
-    //   new_combination.push_back(plan);
     ListAllCombinations(all_possible_node_optimization_plans, index + 1, new_combination, logger, all_combinations);
-    // }
   }
 
   MO_LOG_DEBUG_INFO(logger, "Exit ListAllCombinations");
