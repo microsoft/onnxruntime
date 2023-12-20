@@ -153,6 +153,8 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
       !use_flash_attention &&
       !disable_memory_efficient_attention_ &&
       local_window_size_ == -1 &&
+      do_rotary_ == false &&
+      key != nullptr &&
       (parameters.head_size & 7) == 0 &&
       parameters.sequence_length <= parameters.seqlen_past_kv_cache + parameters.sequence_length &&
       (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32) &&
@@ -196,8 +198,8 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* present_value = context->Output(2, present_shape);
 
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
-  data.key = reinterpret_cast<const CudaT*>(key->Data<T>());
-  data.value = reinterpret_cast<const CudaT*>(value->Data<T>());
+  data.key = key == nullptr ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
+  data.value = value == nullptr ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
   data.past_key = (nullptr == past_key) ? nullptr : reinterpret_cast<const CudaT*>(past_key->Data<T>());
   data.past_value = (nullptr == past_value) ? nullptr : reinterpret_cast<const CudaT*>(past_value->Data<T>());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());

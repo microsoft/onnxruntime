@@ -375,7 +375,8 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        void* softmax_lse_accum,  // num_splits x batch_size x seqlen_q x num_heads
                        void* out_accum,          // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
                        int local_window_size,
-                       bool is_rotary_interleaved) {
+                       bool is_rotary_interleaved,
+                       bool is_packed_qkv) {
 
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
   const int head_size_rounded = round_multiple(head_size, 32);
@@ -406,10 +407,19 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
     params.knew_ptr = k_new;
     params.vnew_ptr = v_new;
     // All stride are in elements, not bytes.
-    params.knew_batch_stride = seqlen_k_new * num_heads_k * head_size;
-    params.vnew_batch_stride = seqlen_k_new * num_heads_k * head_size;
-    params.knew_row_stride = num_heads_k * head_size;
-    params.vnew_row_stride = num_heads_k * head_size;
+    if (is_packed_qkv) {
+      params.q_batch_stride = (seqlen_q * num_heads * head_size) + (2 * seqlen_k_new * num_heads_k * head_size);
+      params.q_row_stride = (num_heads * head_size) + (2 * num_heads_k * head_size);
+      params.knew_batch_stride = (seqlen_q * num_heads * head_size) + (2 * seqlen_k_new * num_heads_k * head_size);
+      params.vnew_batch_stride = (seqlen_q * num_heads * head_size) + (2 * seqlen_k_new * num_heads_k * head_size);
+      params.knew_row_stride = (num_heads * head_size) + (2 * num_heads_k * head_size);
+      params.vnew_row_stride = (num_heads * head_size) + (2 * num_heads_k * head_size);
+    } else {
+      params.knew_batch_stride = seqlen_k_new * num_heads_k * head_size;
+      params.vnew_batch_stride = seqlen_k_new * num_heads_k * head_size;
+      params.knew_row_stride = num_heads_k * head_size;
+      params.vnew_row_stride = num_heads_k * head_size;
+    }
     params.knew_head_stride = head_size;
     params.vnew_head_stride = head_size;
   } else {

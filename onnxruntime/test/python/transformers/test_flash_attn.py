@@ -185,7 +185,7 @@ def create_multihead_attention_graph(config):
 
 
 def create_group_query_attention_graph_prompt(
-    config, past_kv_format=Formats.BSNH, share_buffer=True, local_window_size=-1, rotary=False, rotary_interleaved=False
+    config, past_kv_format=Formats.BSNH, share_buffer=True, local_window_size=-1, rotary=False, rotary_interleaved=False, packed=False
 ):
     past_kv_seqlen = config.buffer_sequence_length if share_buffer else 0
     present_kv_seqlen = config.buffer_sequence_length if share_buffer else config.kv_sequence_length
@@ -194,8 +194,8 @@ def create_group_query_attention_graph_prompt(
             "GroupQueryAttention",
             [
                 "query",
-                "key",
-                "value",
+                "key" if not packed else "",
+                "value" if not packed else "",
                 "past_key" if share_buffer else "",
                 "past_value" if share_buffer else "",
                 "seqlens_k",
@@ -223,25 +223,7 @@ def create_group_query_attention_graph_prompt(
             [
                 config.batch_size,
                 config.q_sequence_length,
-                config.num_heads * config.head_size,
-            ],
-        ),
-        helper.make_tensor_value_info(
-            "key",
-            TensorProto.FLOAT16,
-            [
-                config.batch_size,
-                config.kv_sequence_length,
-                config.kv_num_heads * config.head_size,
-            ],
-        ),
-        helper.make_tensor_value_info(
-            "value",
-            TensorProto.FLOAT16,
-            [
-                config.batch_size,
-                config.kv_sequence_length,
-                config.kv_num_heads * config.head_size,
+                (config.num_heads * config.head_size) if not packed else (config.num_heads * config.head_size + 2 * config.kv_num_heads * config.head_size),
             ],
         ),
         helper.make_tensor_value_info(
@@ -255,6 +237,27 @@ def create_group_query_attention_graph_prompt(
             [1],
         ),
     ]
+    if not packed:
+        graph_input += [
+            helper.make_tensor_value_info(
+                "key",
+                TensorProto.FLOAT16,
+                [
+                    config.batch_size,
+                    config.kv_sequence_length,
+                    config.kv_num_heads * config.head_size,
+                ],
+            ),
+            helper.make_tensor_value_info(
+                "value",
+                TensorProto.FLOAT16,
+                [
+                    config.batch_size,
+                    config.kv_sequence_length,
+                    config.kv_num_heads * config.head_size,
+                ],
+            ),
+        ]
     if share_buffer:
         graph_input += [
             helper.make_tensor_value_info(
@@ -352,7 +355,7 @@ def create_group_query_attention_graph_prompt(
 
 
 def create_group_query_attention_graph_past(
-    config, past_kv_format=Formats.BSNH, share_buffer=True, local_window_size=-1, rotary=False, rotary_interleaved=False
+    config, past_kv_format=Formats.BSNH, share_buffer=True, local_window_size=-1, rotary=False, rotary_interleaved=False, packed=False
 ):
     past_kv_seqlen = config.kv_sequence_length
     present_kv_seqlen = (
@@ -363,8 +366,8 @@ def create_group_query_attention_graph_past(
             "GroupQueryAttention",
             [
                 "query",
-                "key",
-                "value",
+                "key" if not packed else "",
+                "value" if not packed else "",
                 "past_key",
                 "past_value",
                 "seqlens_k",
@@ -392,25 +395,7 @@ def create_group_query_attention_graph_past(
             [
                 config.batch_size,
                 config.sequence_length,
-                config.num_heads * config.head_size,
-            ],
-        ),
-        helper.make_tensor_value_info(
-            "key",
-            TensorProto.FLOAT16,
-            [
-                config.batch_size,
-                config.sequence_length,
-                config.kv_num_heads * config.head_size,
-            ],
-        ),
-        helper.make_tensor_value_info(
-            "value",
-            TensorProto.FLOAT16,
-            [
-                config.batch_size,
-                config.sequence_length,
-                config.kv_num_heads * config.head_size,
+                (config.num_heads * config.head_size) if not packed else (config.num_heads * config.head_size + 2 * config.kv_num_heads * config.head_size),
             ],
         ),
         helper.make_tensor_value_info(
@@ -444,6 +429,27 @@ def create_group_query_attention_graph_past(
             [1],
         ),
     ]
+    if not packed:
+        graph_input += [
+            helper.make_tensor_value_info(
+                "key",
+                TensorProto.FLOAT16,
+                [
+                    config.batch_size,
+                    config.sequence_length,
+                    config.kv_num_heads * config.head_size,
+                ],
+            ),
+            helper.make_tensor_value_info(
+                "value",
+                TensorProto.FLOAT16,
+                [
+                    config.batch_size,
+                    config.sequence_length,
+                    config.kv_num_heads * config.head_size,
+                ],
+            ),
+        ]
     if rotary:
         graph_input += [
             helper.make_tensor_value_info(
@@ -699,32 +705,36 @@ def gqa_prompt_func(
     q, k, v, config, new_k, new_v, cos=None, sin=None, seqlens_k=None, window_size=-1, past_kv_format=Formats.BSNH, share_buffer=True, rotary_interleaved=False
 ):
     onnx_model_str = create_group_query_attention_graph_prompt(
-        config, past_kv_format, share_buffer, local_window_size=window_size, rotary=cos is not None, rotary_interleaved=rotary_interleaved
+        config, past_kv_format, share_buffer, local_window_size=window_size, rotary=cos is not None, rotary_interleaved=rotary_interleaved, packed=new_k is None
     )
     q = torch.reshape(q, (config.batch_size, config.q_sequence_length, -1))
     past_k = k.clone() if share_buffer else None
     past_v = v.clone() if share_buffer else None
-    new_k = torch.reshape(new_k, (config.batch_size, config.kv_sequence_length, -1))
-    new_v = torch.reshape(new_v, (config.batch_size, config.kv_sequence_length, -1))
+    if new_k is not None:
+        new_k = torch.reshape(new_k, (config.batch_size, config.kv_sequence_length, -1))
+        new_v = torch.reshape(new_v, (config.batch_size, config.kv_sequence_length, -1))
     if share_buffer:
         ort_inputs = {
             "query": q.detach().cpu().numpy(),
-            "key": new_k.detach().cpu().numpy(),
-            "value": new_v.detach().cpu().numpy(),
             "past_key": OrtValue.ortvalue_from_numpy(past_k.detach().cpu().numpy(), "cuda", 0),
             "past_value": OrtValue.ortvalue_from_numpy(past_v.detach().cpu().numpy(), "cuda", 0),
             "seqlens_k": seqlens_k.detach().cpu().numpy().astype(numpy.int32),
             "total_sequence_length": torch.tensor([config.q_sequence_length], dtype=torch.int32).detach().cpu().numpy(),
         }
-        if cos is not None:
-            ort_inputs["cos_cache"] = cos.detach().cpu().numpy()
-            ort_inputs["sin_cache"] = sin.detach().cpu().numpy()
         sess_options = SessionOptions()
         ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
         io_binding = ort_session.io_binding()
+        if new_k is not None:
+            ort_inputs["key"] = new_k.detach().cpu().numpy()
+            ort_inputs["value"] = new_v.detach().cpu().numpy()
+            io_binding.bind_cpu_input("key", ort_inputs["key"])
+            io_binding.bind_cpu_input("value", ort_inputs["value"])
+        if cos is not None:
+            ort_inputs["cos_cache"] = cos.detach().cpu().numpy()
+            ort_inputs["sin_cache"] = sin.detach().cpu().numpy()
+            io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
+            io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
         io_binding.bind_cpu_input("query", ort_inputs["query"])
-        io_binding.bind_cpu_input("key", ort_inputs["key"])
-        io_binding.bind_cpu_input("value", ort_inputs["value"])
         io_binding.bind_input(
             "past_key", "cuda", 0, numpy.float16, ort_inputs["past_key"].shape(), ort_inputs["past_key"].data_ptr()
         )
@@ -738,9 +748,6 @@ def gqa_prompt_func(
         )
         io_binding.bind_cpu_input("seqlens_k", ort_inputs["seqlens_k"])
         io_binding.bind_cpu_input("total_sequence_length", ort_inputs["total_sequence_length"])
-        if cos is not None:
-            io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
-            io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
         io_binding.bind_output("output")
         io_binding.bind_ortvalue_output("present_key", ort_inputs["past_key"])
         io_binding.bind_ortvalue_output("present_value", ort_inputs["past_value"])
@@ -752,25 +759,25 @@ def gqa_prompt_func(
     else:
         ort_inputs = {
             "query": q.detach().cpu().numpy(),
-            "key": new_k.detach().cpu().numpy(),
-            "value": new_v.detach().cpu().numpy(),
             "seqlens_k": seqlens_k.detach().cpu().numpy().astype(numpy.int32),
             "total_sequence_length": torch.tensor([config.q_sequence_length], dtype=torch.int32).detach().cpu().numpy(),
         }
-        if cos is not None:
-            ort_inputs["cos_cache"] = cos.detach().cpu().numpy()
-            ort_inputs["sin_cache"] = sin.detach().cpu().numpy()
         sess_options = SessionOptions()
         ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
         io_binding = ort_session.io_binding()
-        io_binding.bind_cpu_input("query", ort_inputs["query"])
-        io_binding.bind_cpu_input("key", ort_inputs["key"])
-        io_binding.bind_cpu_input("value", ort_inputs["value"])
-        io_binding.bind_cpu_input("seqlens_k", ort_inputs["seqlens_k"])
-        io_binding.bind_cpu_input("total_sequence_length", ort_inputs["total_sequence_length"])
+        if new_k is not None:
+            ort_inputs["key"] = new_k.detach().cpu().numpy()
+            ort_inputs["value"] = new_v.detach().cpu().numpy()
+            io_binding.bind_cpu_input("key", ort_inputs["key"])
+            io_binding.bind_cpu_input("value", ort_inputs["value"])
         if cos is not None:
+            ort_inputs["cos_cache"] = cos.detach().cpu().numpy()
+            ort_inputs["sin_cache"] = sin.detach().cpu().numpy()
             io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
             io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
+        io_binding.bind_cpu_input("query", ort_inputs["query"])
+        io_binding.bind_cpu_input("seqlens_k", ort_inputs["seqlens_k"])
+        io_binding.bind_cpu_input("total_sequence_length", ort_inputs["total_sequence_length"])
         io_binding.bind_output("output")
         io_binding.bind_output("present_key")
         io_binding.bind_output("present_value")
@@ -785,32 +792,36 @@ def gqa_past_func(
     q, k, v, config, new_k, new_v, cos=None, sin=None, seqlens_k=None, past_kv_format=Formats.BSNH, share_buffer=True, window_size=-1, rotary_interleaved=False
 ):
     onnx_model_str = create_group_query_attention_graph_past(
-        config, past_kv_format, share_buffer, local_window_size=window_size, rotary=cos is not None, rotary_interleaved=rotary_interleaved
+        config, past_kv_format, share_buffer, local_window_size=window_size, rotary=cos is not None, rotary_interleaved=rotary_interleaved, packed=new_k is None
     )
     q = torch.reshape(q, (config.batch_size, config.sequence_length, -1))
     past_k = k.clone()
     past_v = v.clone()
-    new_k = torch.reshape(new_k, (config.batch_size, config.sequence_length, -1))
-    new_v = torch.reshape(new_v, (config.batch_size, config.sequence_length, -1))
+    if new_k is not None:
+        new_k = torch.reshape(new_k, (config.batch_size, config.sequence_length, -1))
+        new_v = torch.reshape(new_v, (config.batch_size, config.sequence_length, -1))
     if share_buffer:
         ort_inputs = {
             "query": q.detach().cpu().numpy(),
-            "key": new_k.detach().cpu().numpy(),
-            "value": new_v.detach().cpu().numpy(),
             "past_key": OrtValue.ortvalue_from_numpy(past_k.detach().cpu().numpy(), "cuda", 0),
             "past_value": OrtValue.ortvalue_from_numpy(past_v.detach().cpu().numpy(), "cuda", 0),
             "seqlens_k": seqlens_k.detach().cpu().numpy().astype(numpy.int32),
             "total_sequence_length": torch.tensor([config.kv_sequence_length], dtype=torch.int32).detach().cpu().numpy(),
         }
-        if cos is not None:
-            ort_inputs["cos_cache"] = cos.detach().cpu().numpy()
-            ort_inputs["sin_cache"] = sin.detach().cpu().numpy()
         sess_options = SessionOptions()
         ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
         io_binding = ort_session.io_binding()
+        if new_k is not None:
+            ort_inputs["key"] = new_k.detach().cpu().numpy()
+            ort_inputs["value"] = new_v.detach().cpu().numpy()
+            io_binding.bind_cpu_input("key", ort_inputs["key"])
+            io_binding.bind_cpu_input("value", ort_inputs["value"])
+        if cos is not None:
+            ort_inputs["cos_cache"] = cos.detach().cpu().numpy()
+            ort_inputs["sin_cache"] = sin.detach().cpu().numpy()
+            io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
+            io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
         io_binding.bind_cpu_input("query", ort_inputs["query"])
-        io_binding.bind_cpu_input("key", ort_inputs["key"])
-        io_binding.bind_cpu_input("value", ort_inputs["value"])
         io_binding.bind_input(
             "past_key", "cuda", 0, numpy.float16, ort_inputs["past_key"].shape(), ort_inputs["past_key"].data_ptr()
         )
@@ -824,9 +835,6 @@ def gqa_past_func(
         )
         io_binding.bind_cpu_input("seqlens_k", ort_inputs["seqlens_k"])
         io_binding.bind_cpu_input("total_sequence_length", ort_inputs["total_sequence_length"])
-        if cos is not None:
-            io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
-            io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
         io_binding.bind_output("output")
         io_binding.bind_ortvalue_output("present_key", ort_inputs["past_key"])
         io_binding.bind_ortvalue_output("present_value", ort_inputs["past_value"])
@@ -838,8 +846,6 @@ def gqa_past_func(
     else:
         ort_inputs = {
             "query": q.detach().cpu().numpy(),
-            "key": new_k.detach().cpu().numpy(),
-            "value": new_v.detach().cpu().numpy(),
             "past_key": past_k.detach().cpu().numpy(),
             "past_value": past_v.detach().cpu().numpy(),
             "seqlens_k": seqlens_k.detach().cpu().numpy().astype(numpy.int32),
@@ -850,22 +856,24 @@ def gqa_past_func(
             .cpu()
             .numpy(),
         }
-        if cos is not None:
-            ort_inputs["cos_cache"] = cos.detach().cpu().numpy()
-            ort_inputs["sin_cache"] = sin.detach().cpu().numpy()
         sess_options = SessionOptions()
         ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
         io_binding = ort_session.io_binding()
+        if new_k is not None:
+            ort_inputs["key"] = new_k.detach().cpu().numpy()
+            ort_inputs["value"] = new_v.detach().cpu().numpy()
+            io_binding.bind_cpu_input("key", ort_inputs["key"])
+            io_binding.bind_cpu_input("value", ort_inputs["value"])
+        if cos is not None:
+            ort_inputs["cos_cache"] = cos.detach().cpu().numpy()
+            ort_inputs["sin_cache"] = sin.detach().cpu().numpy()
+            io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
+            io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
         io_binding.bind_cpu_input("query", ort_inputs["query"])
-        io_binding.bind_cpu_input("key", ort_inputs["key"])
-        io_binding.bind_cpu_input("value", ort_inputs["value"])
         io_binding.bind_cpu_input("past_key", ort_inputs["past_key"])
         io_binding.bind_cpu_input("past_value", ort_inputs["past_value"])
         io_binding.bind_cpu_input("seqlens_k", ort_inputs["seqlens_k"])
         io_binding.bind_cpu_input("total_sequence_length", ort_inputs["total_sequence_length"])
-        if cos is not None:
-            io_binding.bind_cpu_input("cos_cache", ort_inputs["cos_cache"])
-            io_binding.bind_cpu_input("sin_cache", ort_inputs["sin_cache"])
         io_binding.bind_output("output")
         io_binding.bind_output("present_key")
         io_binding.bind_output("present_value")
@@ -1088,6 +1096,7 @@ def parity_check_gqa_prompt(
     past_format=Formats.BSNH,
     rotary=False,
     rotary_interleaved=False,
+    packed=False,
     rtol=1e-3,
     atol=1e-3,
 ):
@@ -1215,9 +1224,15 @@ def parity_check_gqa_prompt(
         v_cache_ref = v_cache_ref.transpose(1, 2)
 
     # Flash function
-    out, present_k, present_v = gqa_prompt_func(
-        q, k, v, config, new_k, new_v, cos, sin, cache_seqlens, left_window_size, past_format, True, rotary_interleaved
-    )
+    if packed:
+        packed_qkv = torch.concatenate([q, new_k, new_v], dim=2)
+        out, present_k, present_v = gqa_prompt_func(
+            packed_qkv, k, v, config, None, None, cos, sin, cache_seqlens, left_window_size, past_format, True, rotary_interleaved
+        )
+    else:
+        out, present_k, present_v = gqa_prompt_func(
+            q, k, v, config, new_k, new_v, cos, sin, cache_seqlens, left_window_size, past_format, True, rotary_interleaved
+        )
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
@@ -1233,6 +1248,8 @@ def parity_check_gqa_prompt(
     # Compare results
     print(
         "KV-buffer",
+        " packed:",
+        packed,
         " causal:",
         causal,
         " local:",
@@ -1274,6 +1291,7 @@ def parity_check_gqa_prompt_no_buff(
     past_format=Formats.BSNH,
     rotary=False,
     rotary_interleaved=False,
+    packed=False,
     rtol=1e-3,
     atol=1e-3,
 ):
@@ -1376,9 +1394,15 @@ def parity_check_gqa_prompt_no_buff(
         v_cache_ref = v_cache_ref.transpose(1, 2)
 
     # Flash function
-    out, present_k, present_v = gqa_prompt_func(
-        q, None, None, config, new_k, new_v, cos, sin, cache_seqlens, left_window_size, past_format, False, rotary_interleaved
-    )
+    if packed:
+        packed_qkv = torch.concatenate([q, new_k, new_v], dim=2)
+        out, present_k, present_v = gqa_prompt_func(
+            packed_qkv, None, None, config, None, None, cos, sin, cache_seqlens, left_window_size, past_format, False, rotary_interleaved
+        )
+    else:
+        out, present_k, present_v = gqa_prompt_func(
+            q, None, None, config, new_k, new_v, cos, sin, cache_seqlens, left_window_size, past_format, False, rotary_interleaved
+        )
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
@@ -1390,6 +1414,8 @@ def parity_check_gqa_prompt_no_buff(
     # Compare results
     print(
         "No buff",
+        " packed:",
+        packed,
         " causal:",
         causal,
         " local:",
@@ -1431,6 +1457,7 @@ def parity_check_gqa_past(
     past_format=Formats.BSNH,
     rotary=False,
     rotary_interleaved=False,
+    packed=False,
     rtol=1e-3,
     atol=1e-3,
 ):
@@ -1479,6 +1506,7 @@ def parity_check_gqa_past(
         dtype=torch.float16,
         requires_grad=False,
     )
+
     window_size = (-1, -1)
     left_window_size = -1
     if local:
@@ -1552,9 +1580,15 @@ def parity_check_gqa_past(
         v_cache_ref = v_cache_ref.transpose(1, 2)
 
     # Flash function
-    out, present_k, present_v = gqa_past_func(
-        q, k, v, config, new_k, new_v, cos, sin, cache_seqlens, past_format, True, left_window_size, rotary_interleaved
-    )
+    if packed:
+        packed_qkv = torch.concatenate([q, new_k, new_v], dim=2)
+        out, present_k, present_v = gqa_past_func(
+            packed_qkv, k, v, config, None, None, cos, sin, cache_seqlens, past_format, True, left_window_size, rotary_interleaved
+        )
+    else:
+        out, present_k, present_v = gqa_past_func(
+            q, k, v, config, new_k, new_v, cos, sin, cache_seqlens, past_format, True, left_window_size, rotary_interleaved
+        )
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
@@ -1571,6 +1605,8 @@ def parity_check_gqa_past(
         "KV-buffer",
         "past kv format:",
         "BSNH" if past_format == Formats.BSNH else "BNSH",
+        " packed:",
+        packed,
         " causal:",
         causal,
         " local:",
@@ -1610,6 +1646,7 @@ def parity_check_gqa_past_no_buff(
     past_format=Formats.BSNH,
     rotary=False,
     rotary_interleaved=False,
+    packed=False,
     rtol=1e-3,
     atol=1e-3,
 ):
@@ -1736,9 +1773,15 @@ def parity_check_gqa_past_no_buff(
         v_cache_ref = v_cache_ref.transpose(1, 2)
 
     # Flash function
-    out, present_k, present_v = gqa_past_func(
-        q, k, v, config, new_k, new_v, cos, sin, cache_seqlens, past_format, False, window_size=left_window_size, rotary_interleaved=rotary_interleaved
-    )
+    if packed:
+        packed_qkv = torch.concatenate([q, new_k, new_v], dim=2)
+        out, present_k, present_v = gqa_past_func(
+            packed_qkv, k, v, config, None, None, cos, sin, cache_seqlens, past_format, False, window_size=left_window_size, rotary_interleaved=rotary_interleaved
+        )
+    else:
+        out, present_k, present_v = gqa_past_func(
+            q, k, v, config, new_k, new_v, cos, sin, cache_seqlens, past_format, False, window_size=left_window_size, rotary_interleaved=rotary_interleaved
+        )
     out = torch.squeeze(out, 0)
     out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
@@ -1758,6 +1801,8 @@ def parity_check_gqa_past_no_buff(
     # Compare results
     print(
         "NO buff",
+        " packed:",
+        packed,
         " causal:",
         causal,
         " local:",
@@ -1894,10 +1939,10 @@ class TestGQA(unittest.TestCase):
                     for h in h_sizes:
                         for local in [False, True]:
                             for rotary, rotary_interleaved in [(True, False), (True, True), (False, False)]:
-                                for past_kv_format in [Formats.BNSH]:
+                                for past_kv_format, packed in [(Formats.BNSH, False), (Formats.BNSH, True)]:
                                     config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
-                                    parity_check_gqa_prompt(config, local=local, past_format=past_kv_format, rotary=rotary, rotary_interleaved=rotary_interleaved)
-                                    parity_check_gqa_prompt_no_buff(config, local=local, past_format=past_kv_format, rotary=rotary, rotary_interleaved=rotary_interleaved)
+                                    parity_check_gqa_prompt(config, local=local, past_format=past_kv_format, rotary=rotary, rotary_interleaved=rotary_interleaved, packed=packed)
+                                    parity_check_gqa_prompt_no_buff(config, local=local, past_format=past_kv_format, rotary=rotary, rotary_interleaved=rotary_interleaved, packed=packed)
 
     def test_gqa_past(self):
         if not torch.cuda.is_available():
@@ -1907,7 +1952,6 @@ class TestGQA(unittest.TestCase):
             return
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
         print("-------- TEST GQA PAST (TOKEN GEN) ---------")
-        # print("-------- MEMORY EFFICIENT (TOKEN GEN) --------")
         batches = [5] if pipeline_mode else [1, 3, 5]
         seqs = (
             [(1, 128), (1, 1024), (1, 2048)]
@@ -1929,6 +1973,7 @@ class TestGQA(unittest.TestCase):
         num_h = [(32, 32), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
         h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
         random.seed(69)
+        print("-------- MEMORY EFFICIENT (TOKEN GEN) --------")
         for b in batches:
             for s, s2 in seqs:
                 for n, n2 in num_h:
@@ -1958,7 +2003,7 @@ class TestGQA(unittest.TestCase):
                     for h in h_sizes:
                         for local in [False, True]:
                             for rotary, rotary_interleaved in [(True, False), (True, True), (False, False)]:
-                                for past_kv_format in [Formats.BNSH]:
+                                for past_kv_format, packed in [(Formats.BNSH, False), (Formats.BNSH, True)]:
                                     sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
                                     config = Config(b, s, s2, sp, n, n2, h)
                                     parity_check_gqa_past(
@@ -1968,7 +2013,8 @@ class TestGQA(unittest.TestCase):
                                         rtol=1e-3,
                                         atol=1e-3,
                                         rotary=rotary,
-                                        rotary_interleaved=rotary_interleaved
+                                        rotary_interleaved=rotary_interleaved,
+                                        packed=packed
                                     )
                                     parity_check_gqa_past_no_buff(
                                         config,
@@ -1977,7 +2023,8 @@ class TestGQA(unittest.TestCase):
                                         rtol=1e-3,
                                         atol=1e-3,
                                         rotary=rotary,
-                                        rotary_interleaved=rotary_interleaved
+                                        rotary_interleaved=rotary_interleaved,
+                                        packed=packed
                                     )
 
 

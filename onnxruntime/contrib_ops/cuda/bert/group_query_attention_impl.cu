@@ -151,9 +151,10 @@ template <typename T>
 Status LaunchConcatNewToPastKV(contrib::GroupQueryAttentionParameters& parameters,
                                GroupQueryAttentionData<T>& data,
                                cudaStream_t stream,
-                               const int max_threads_per_block) {
+                               const int max_threads_per_block,
+                               const bool past_only = false) {
   const int batch_size = parameters.batch_size;
-  const int kv_sequence_length = parameters.sequence_length;
+  const int kv_sequence_length = past_only ? 0 : parameters.sequence_length;
   const int past_sequence_length = parameters.seqlen_past_kv_cache;
   const int present_sequence_length = parameters.seqlen_present_kv_cache;
   const int kv_num_heads = parameters.kv_num_heads;
@@ -485,12 +486,21 @@ Status FlashAttention(
   const int kv_num_heads = parameters.kv_num_heads;
   const int head_size = parameters.head_size;
   AttentionQkvFormat past_kv_format = parameters.past_kv_format;
+  bool is_causal = true;
 
   void* query = reinterpret_cast<void*>(const_cast<T*>(data.query));
-  void* key = reinterpret_cast<void*>(const_cast<T*>(data.key));
-  void* value = reinterpret_cast<void*>(const_cast<T*>(data.value));
+  void* key;
+  void* value;
 
-  bool is_causal = true;
+  if (!parameters.is_packed_qkv) {
+    key = reinterpret_cast<void*>(const_cast<T*>(data.key));
+    value = reinterpret_cast<void*>(const_cast<T*>(data.value));
+  } else {
+    const size_t key_offset = static_cast<size_t>(num_heads * head_size);
+    const size_t value_offset = static_cast<size_t>(kv_num_heads * head_size);
+    key = reinterpret_cast<T*>(query) + key_offset;
+    value = reinterpret_cast<T*>(key) + value_offset;
+  }
 
   void* seqlens_k = reinterpret_cast<void*>(data.seqlens_k);
   if (parameters.is_prompt) {
@@ -505,7 +515,7 @@ Status FlashAttention(
       seqlens_k = data.seqlens_k_total;
     }
   } else if (!parameters.kv_share_buffer) {  // copy past kv to present kv
-    ORT_RETURN_IF_ERROR(LaunchConcatNewToPastKV(parameters, data, stream, max_threads_per_block));
+    ORT_RETURN_IF_ERROR(LaunchConcatNewToPastKV(parameters, data, stream, max_threads_per_block, true));
   }
 
   void* present_key = reinterpret_cast<void*>(const_cast<T*>(data.present_key));
@@ -515,13 +525,13 @@ Status FlashAttention(
 
   bool past_bsnh = past_kv_format == AttentionQkvFormat::Q_K_V_BSNH;
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd_kvcache(
-      device_prop, stream,
-      query, present_key, present_value, key, value,
-      data.output, reinterpret_cast<void*>(data.softmax_lse), seqlens_k, cos_cache, sin_cache,
-      batch_size, num_heads, kv_num_heads, head_size,
-      sequence_length, parameters.seqlen_present_kv_cache, kv_sequence_length, parameters.seqlen_present_kv_cache,
+      device_prop, stream, query, present_key, present_value, key, value, data.output,
+      reinterpret_cast<void*>(data.softmax_lse), seqlens_k, cos_cache, sin_cache,
+      batch_size, num_heads, kv_num_heads, head_size, sequence_length,
+      parameters.seqlen_present_kv_cache, kv_sequence_length, parameters.seqlen_present_kv_cache,
       scale, is_causal, past_bsnh, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
-      reinterpret_cast<void*>(data.out_accum), parameters.local_window_size, parameters.rotary_interleaved));
+      reinterpret_cast<void*>(data.out_accum), parameters.local_window_size, parameters.rotary_interleaved,
+      parameters.is_packed_qkv));
 
   // if (parameters.left_padding && parameters.is_prompt) {
   //   ORT_RETURN_IF_ERROR(LaunchLeftPadLast(parameters, data, stream, device_prop.maxThreadsPerBlock));

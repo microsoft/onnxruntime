@@ -259,8 +259,6 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
       *output_shape.add_dim() = query_dims[1];
       *output_shape.add_dim() = query_dims[2];
       updateOutputShape(ctx, 0, output_shape);
-    } else {
-      fail_shape_inference("Missing input 2 (value)");
     }
   }
 
@@ -1017,16 +1015,19 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               OPTIONAL_VALUE)
         .Input(0,
                "query",
-               "Query with shape (batch_size, sequence_length, hidden_size)",
+               "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape"
+               "(batch_size, sequence_length, d) where d is (num_heads * head_size + 2 * kv_num_heads * head_size).",
                "T")
         .Input(1,
                "key",
                "Key with shape (batch_size, kv_sequence_length, kv_hidden_size) ",
-               "T")
+               "T",
+               OpSchema::Optional)
         .Input(2,
                "value",
                "Value with shape (batch_size, kv_sequence_length, kv_hidden_size)",
-               "T")
+               "T",
+               OpSchema::Optional)
         .Input(3,
                "past_key",
                "past state key with support for format BNSH. When past_key uses same tensor as present_key"

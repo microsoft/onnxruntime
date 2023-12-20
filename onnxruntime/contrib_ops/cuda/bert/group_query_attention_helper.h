@@ -26,19 +26,18 @@ Status CheckInputs(const Tensor* query,
                    bool is_past_bsnh,
                    float scale) {
   // Note: Here S* is past_cache_sequence_length, S- is past_sequence_length, S+ is sequence_length
-  //     past_key                   : (B, N_k, S*, H) or (B, N_k, S-, H)
-  //     past_value                 : (B, N_k, S*, H) or (B, N_k, S-, H)
+  //     past_key                   : (B, N_k, S*, H) or (B, N_k, S-, H) or nullptr
+  //     past_value                 : (B, N_k, S*, H) or (B, N_k, S-, H) or nullptr
   // no packing for q/k/v:
-  //     query            (Q)       : (B, S, D)
-  //     key              (K)       : (B, S, D_kv)
-  //     value            (V)       : (B, S, D_kv)
+  //     query            (Q)       : (B, S, D) or (B, S, (D_q + 2 D_kv))
+  //     key              (K)       : (B, S, D_kv) or nullptr
+  //     value            (V)       : (B, S, D_kv) or nullptr
   ORT_UNUSED_PARAMETER(value);
 
   AttentionQkvFormat qkv_format = Q_K_V_BSNH;
   AttentionQkvFormat past_kv_format = is_past_bsnh ? Q_K_V_BSNH : Q_K_V_BNSH;
-
+  const bool is_packed_qkv = key == nullptr;
   const auto& query_dims = query->Shape().GetDims();
-  const auto& key_dims = key->Shape().GetDims();
 
   if (query_dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 dimensions, got ",
@@ -48,10 +47,69 @@ Status CheckInputs(const Tensor* query,
   int batch_size = static_cast<int>(query_dims[0]);
   int sequence_length = static_cast<int>(query_dims[1]);
   int q_hidden_size = static_cast<int>(query_dims[2]);
-  int head_size = static_cast<int>(q_hidden_size) / num_heads;
+  int head_size = 0;
 
-  int kv_hidden_size = static_cast<int>(key_dims[2]);
+  if (num_heads % kv_num_heads != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                          "num_heads must be a multiple of kv_num_heads. Got num_heads % kv_num_heads == ",
+                          num_heads % kv_num_heads);
+  }
 
+  int kv_hidden_size = 0;
+  // Check key and value when not packed
+  if (!is_packed_qkv) {
+    head_size = static_cast<int>(q_hidden_size) / num_heads;
+    if (head_size % 8 != 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                            "head_size must be a multiple of 8. Got head_size % 8 == ",
+                            head_size % 8);
+    }
+    if (value == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                            "Input 'key' and 'value' shall be both present, or both absent in the case of packed qkv.");
+    }
+    const auto& key_dims = key->Shape().GetDims();
+    if (key_dims.size() != 3) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3 dimensions, got ",
+                            key_dims.size());
+    } else if (query_dims[0] != key_dims[0]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                            "Input 'query' and 'key' shall have same dim 0 (batch size)");
+    } else if (query_dims[1] != key_dims[1]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                            "Input 'query' and 'key' shall have same dim 1 (sequence length)");
+    }
+    kv_hidden_size = static_cast<int>(key_dims[2]);
+    const auto& value_dims = value->Shape().GetDims();
+    if (value_dims.size() != 3) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 dimensions, got ",
+                            value_dims.size());
+    } else if (query_dims[0] != value_dims[0]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                            "Input 'query' and 'value' shall have same dim 0 (batch size)");
+    } else if (query_dims[1] != value_dims[1]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                            "Input 'query' and 'value' shall have same dim 1 (sequence length)");
+    } else if (value_dims[2] != kv_hidden_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have same hidden size as key.");
+    }
+  } else {
+    // Check packed qkv
+    head_size = static_cast<int>(q_hidden_size) / (num_heads + 2 * kv_num_heads);
+    if (head_size % 8 != 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                            "head_size must be a multiple of 8. Got head_size % 8 == ",
+                            head_size % 8);
+    }
+    if (value != nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                            "Input 'key' and 'value' shall be both present, or both absent in the case of packed qkv.");
+    }
+    q_hidden_size = head_size * num_heads;
+    kv_hidden_size = head_size * kv_num_heads;
+  }
+
+  // Check past-present KV
   int32_t past_sequence_length = 0;
   if (past_key != nullptr && past_value != nullptr) {
     const auto& past_key_dims = past_key->Shape().GetDims();
@@ -132,41 +190,6 @@ Status CheckInputs(const Tensor* query,
                            "Input 'past_key' and 'past_value' shall be both present or both absent.");
   }
 
-  if (key_dims.size() != 3) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3 dimensions, got ",
-                           key_dims.size());
-  }
-  if (query_dims[0] != key_dims[0]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'query' and 'key' shall have same dim 0 (batch size)");
-  }
-
-  if (num_heads % kv_num_heads != 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "num_heads must be a multiple of kv_num_heads. Got num_heads % kv_num_heads == ",
-                           num_heads % kv_num_heads);
-  }
-
-  const auto& value_dims = value->Shape().GetDims();
-  if (value_dims.size() != 3) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 dimensions, got ",
-                           value_dims.size());
-  }
-
-  if (query_dims[0] != value_dims[0]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'query' and 'value' shall have same dim 0 (batch_size)");
-  }
-
-  if (static_cast<int64_t>(sequence_length) != value_dims[1]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'query,' 'key,' and 'value' shall have the same dim 1 (sequence_length)");
-  }
-
-  if (value_dims[2] != kv_hidden_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have same hidden size as key.");
-  }
-
   // Check seqlens_k tensor (holding past seqlen for token gen)
   const auto& seqlens_dim = seqlens_k->Shape().GetDims();
   if (seqlens_dim.size() != 1 && seqlens_dim[0] != batch_size) {
@@ -217,9 +240,10 @@ Status CheckInputs(const Tensor* query,
     output_parameters->seqlen_present_kv_cache = present_sequence_length;  // max sequence length of present kv tensors
     output_parameters->hidden_size = q_hidden_size;
     output_parameters->num_heads = num_heads;
-    output_parameters->head_size = q_hidden_size / num_heads;
+    output_parameters->head_size = head_size;
     output_parameters->kv_hidden_size = kv_hidden_size;
     output_parameters->kv_num_heads = kv_num_heads;
+    output_parameters->is_packed_qkv = is_packed_qkv;
     output_parameters->is_unidirectional = true;
     output_parameters->is_prompt = is_prompt;
     output_parameters->scale = scale;
