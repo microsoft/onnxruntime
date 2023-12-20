@@ -152,13 +152,14 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   if (provider.IsEnabled()) {
     auto level = provider.Level();
     auto keyword = provider.Keyword();
-    if ((keyword & static_cast<unsigned long long>(onnxruntime::logging::TLKeyword::Profiling)) != 0) {
+    if ((keyword & static_cast<uint64_t>(onnxruntime::logging::TLKeyword::Profiling)) != 0) {
       if (level != 0) {
         if (level == 5) {
           LOGS_DEFAULT(INFO) << "Overriding profiling to basic based on ETW level: " << static_cast<int>(level);
           ParseProfilingLevel("basic", profiling_level);
         } else if (level < 5) {
-          LOGS_DEFAULT(INFO) << "QNN Profiler ETW level not supported below level 5. Level: " << static_cast<int>(level);
+          LOGS_DEFAULT(INFO) << "QNN Profiler ETW level not supported below level 5. Level: "
+                             << static_cast<int>(level);
         } else {
           LOGS_DEFAULT(INFO) << "Overriding profiling to detailed based on ETW level: " << static_cast<int>(level);
           ParseProfilingLevel("detailed", profiling_level);

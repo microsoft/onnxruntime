@@ -908,9 +908,11 @@ Status QnnBackendManager::ExtractProfilingSubEvents(
 
     for (size_t sub_event_idx = 0; sub_event_idx < num_sub_events; sub_event_idx++) {
       ORT_RETURN_IF_ERROR(
-          ExtractProfilingEvent(*(profile_sub_events + sub_event_idx), "SUB-EVENT", outfile, useExtendedEventData, tracelogging_provider_ep_enabled));
+          ExtractProfilingEvent(*(profile_sub_events + sub_event_idx), "SUB-EVENT", outfile, useExtendedEventData,
+                                tracelogging_provider_ep_enabled));
       ORT_RETURN_IF_ERROR(
-          ExtractProfilingSubEvents(*(profile_sub_events + sub_event_idx), outfile, useExtendedEventData, tracelogging_provider_ep_enabled));
+          ExtractProfilingSubEvents(*(profile_sub_events + sub_event_idx), outfile, useExtendedEventData,
+                                    tracelogging_provider_ep_enabled));
     }
 
     LOGS(*logger_, VERBOSE) << "Wrote QNN profiling sub events (" << num_sub_events << ")";
@@ -960,6 +962,7 @@ Status QnnBackendManager::ExtractProfilingEventBasic(
             << eventLevel << ","
             << (event_data.identifier ? event_data.identifier : "NULL") << "\n";
   } else {
+#ifdef _WIN32
     LogQnnProfileEventAsTraceLogging(
         (uint64_t)0,
         message,
@@ -968,6 +971,7 @@ Status QnnBackendManager::ExtractProfilingEventBasic(
         "BACKEND",
         eventLevel,
         (event_data.identifier ? event_data.identifier : "NULL"));
+#endif
   }
 
   return Status::OK();
@@ -985,6 +989,10 @@ Status QnnBackendManager::ExtractProfilingEventExtended(
 
   std::string message = GetEventTypeString(event_data_extended.v1.type);
   std::string unit = GetUnitString(event_data_extended.v1.unit);
+
+#ifndef _WIN32
+  tracelogging_provider_ep_enabled = false;
+#endif
 
   if (!tracelogging_provider_ep_enabled) {
     if (event_data_extended.version == QNN_PROFILE_DATA_VERSION_1) {
@@ -1013,6 +1021,7 @@ Status QnnBackendManager::ExtractProfilingEventExtended(
   return Status::OK();
 }
 
+#ifdef _WIN32
 void QnnBackendManager::LogQnnProfileEventAsTraceLogging(
     uint64_t timestamp,
     const std::string& message,
@@ -1034,6 +1043,7 @@ void QnnBackendManager::LogQnnProfileEventAsTraceLogging(
       TraceLoggingString(eventLevel.c_str(), "Event Level"),
       TraceLoggingString(eventIdentifier, "Event Identifier"));
 }
+#endif
 
 const std::string& QnnBackendManager::GetUnitString(QnnProfile_EventUnit_t unitType) {
   const auto& unitStringMap = GetUnitStringMap();

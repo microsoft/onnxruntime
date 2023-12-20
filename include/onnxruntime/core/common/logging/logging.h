@@ -75,7 +75,7 @@ struct Category {
   // TODO: What other high level categories are meaningful? Model? Optimizer? Execution?
 };
 
-enum class TLKeyword : unsigned long long {
+enum class TLKeyword : uint64_t {
   Session = 0x1,
   Logs = 0x2,
   Reserved1 = 0x4,
