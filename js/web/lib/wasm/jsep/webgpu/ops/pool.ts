@@ -339,8 +339,7 @@ const globalPoolAttributes = {
 
 export const parseGlobalAveragePoolAttributes = (attributes: Record<string, unknown>): AveragePoolAttributes => {
   const format = attributes.format as FormatAttributes['format'];
-  const attributesWithoutCacheKey = {format, ...globalPoolAttributes};
-  return {...attributesWithoutCacheKey, cacheKey: createShaderKeyFromAttributes(attributesWithoutCacheKey)};
+  return {format, ...globalPoolAttributes, cacheKey: format};
 };
 
 export const globalAveragePool = (context: ComputeContext, attributes: AveragePoolAttributes): void => {
