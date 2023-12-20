@@ -485,12 +485,20 @@ void ListAllCombinations(const InlinedVector<InlinedVector<InlinedVector<std::sh
     return;
   }
 
-  for (const auto& plans : all_possible_node_optimization_plans[index]) {
-    for (const auto& plan : plans) {
-      InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>> new_combination = current_combination;
-      new_combination.push_back(plan);
-      ListAllCombinations(all_possible_node_optimization_plans, index + 1, new_combination, logger, all_combinations);
-    }
+  const InlinedVector<InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>>>&
+      plan_combination_list_at_cur_index = all_possible_node_optimization_plans[index];
+  // For the index-th reused buffer, iterate all possible complete plans.
+  for (size_t i = 0; i < plan_combination_list_at_cur_index.size(); ++i) {
+    const auto& plan_combination = plan_combination_list_at_cur_index[i];
+    InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>> new_combination = current_combination;
+    // Append the chosen complete plan and continue explore the next reused buffer by index + 1.
+    new_combination.insert(new_combination.end(), plan_combination.begin(), plan_combination.end());
+
+    // for (const auto& plan : plan_combination) {
+    //   InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>> new_combination = current_combination;
+    //   new_combination.push_back(plan);
+    ListAllCombinations(all_possible_node_optimization_plans, index + 1, new_combination, logger, all_combinations);
+    // }
   }
 
   MO_LOG_DEBUG_INFO(logger, "Exit ListAllCombinations");
@@ -520,17 +528,29 @@ void IterateNodeOptimizationPlan(const std::shared_ptr<NodeOptimizationPlanBase>
   }
 
   InlinedVector<InlinedVector<InlinedVector<std::shared_ptr<NodeOptimizationPlanBase>>>>
-      all_possible_node_optimization_plans;
-  all_possible_node_optimization_plans.resize(plan->reuse_buffers.size());
+      all_possible_node_optimization_plans(plan->reuse_buffers.size());
 
   size_t i = 0;
   for (const auto& p : plan->reuse_buffers) {
     MO_LOG_DEBUG_INFO(logger, ">>>reuse buffer: " + std::to_string(p.first));
-    IterateNode(p.second.first, node_to_optimization_plans_map, {}, logger, all_possible_node_optimization_plans[i]);
+
+    // If the resued node is part of current node optimization plan, then we just add current combination to the result.
+    if (plan->GetOptimizationType() == OptimizationType::RecomputeWithCompromise || plan->GetOptimizationType() == OptimizationType::Recompute) {
+      const auto& recompute_subgraph =
+          dynamic_cast<NodeRecomputePlan*>(plan.get())->GetNodesInTopoOrder();
+      if (std::find(recompute_subgraph.begin(), recompute_subgraph.end(), p.second.first) != recompute_subgraph.end()) {
+        all_possible_node_optimization_plans[i].push_back(current_combination);
+      }
+    }
+
+    if (all_possible_node_optimization_plans[i].size() == 0) {
+      IterateNode(p.second.first, node_to_optimization_plans_map, current_combination, logger, all_possible_node_optimization_plans[i]);
+    }
+
     ++i;
   }
 
-  ListAllCombinations(all_possible_node_optimization_plans, 0, current_combination, logger, all_combinations);
+  ListAllCombinations(all_possible_node_optimization_plans, 0, {}, logger, all_combinations);
 
   MO_LOG_DEBUG_INFO(logger, "Exit IterateNodeOptimizationPlan: " + plan->GetClusterId());
 }
