@@ -111,7 +111,7 @@ The generated Onnx model with QNN context binary is default to [input_QDQ_model_
 
 ```
 // C++
-so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "1");
+so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "./model_a_ctx.onnx");
 
 // C
 g_ort->AddSessionConfigEntry(session_options, kOrtSessionOptionEpContextFilePath, "./model_a_ctx.onnx");
