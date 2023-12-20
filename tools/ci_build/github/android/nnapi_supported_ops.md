@@ -23,6 +23,7 @@ Keep in sync with doco generated from /docs/execution-providers/NNAPI-ExecutionP
 |ai.onnx:GlobalAveragePool|Only 2D Pool is supported.|
 |ai.onnx:GlobalMaxPool|Only 2D Pool is supported.|
 |ai.onnx:Identity||
+|ai.onnx:LeakyRelu||
 |ai.onnx:Log||
 |ai.onnx:LRN||
 |ai.onnx:MatMul||
