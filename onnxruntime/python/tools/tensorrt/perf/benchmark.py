@@ -38,7 +38,6 @@ from perf_utils import (
     is_validate_mode,
     memory_ending,
     model_title,
-    op_metrics_name,
     ort_provider_list,
     percentile_ending,
     pretty_print,
@@ -1614,7 +1613,9 @@ def output_op_metrics(model_to_metrics, csv_filename):
                 trt_fp16_data = (total_ops_in_cuda - cuda_cpu_ops_in_trt) / total_ops_in_cuda
                 csv_writer.writerow([model, trt_fp16, trt_fp16_data])
 
-    logger.info(f"op metrics for cuda/trt ep are saved to csv file: {csv_filename} and will be displayed at Perf Dashboard")
+    logger.info(
+        f"op metrics for cuda/trt ep are saved to csv file: {csv_filename} and will be displayed at Perf Dashboard"
+    )
 
 
 def output_system_info(result, csv_filename):
