@@ -112,6 +112,11 @@ class FissionTransformerBlockPhi(Fusion):
         self.model.add_initializer(new_tensor, self.this_graph_name)
         return new_tensor.name
 
+    def add_fp32_value_info(self, name):
+        new_value_info = self.model.graph().value_info.add()
+        new_value_info.name = name
+        new_value_info.type.tensor_type.elem_type = TensorProto.FLOAT
+
     def fuse_with_attn(
         self,
         node,
@@ -119,6 +124,7 @@ class FissionTransformerBlockPhi(Fusion):
         output_name_to_node,
     ):
         layer_id = self.get_layer_id(node)
+        print(f"fuse layer {layer_id}")
 
         # transformer block input and output
         i_hidden_states = node.input[0] if layer_id == 1 else node.input[2]
@@ -226,6 +232,17 @@ class FissionTransformerBlockPhi(Fusion):
         for new_node in subgraph_nodes:
             self.nodes_to_add.append(new_node)
             self.node_name_to_graph_name[new_node.name] = self.this_graph_name
+
+        self.add_fp32_value_info(self.uname(layer_id, "ln_out"))
+        self.add_fp32_value_info(self.uname(layer_id, "attn_out"))
+        self.add_fp32_value_info(self.uname(layer_id, "matmul_out"))
+        self.add_fp32_value_info(self.uname(layer_id, "add_out"))
+        self.add_fp32_value_info(self.uname(layer_id, "fc1_w_out"))
+        self.add_fp32_value_info(self.uname(layer_id, "fc1_b_out"))
+        self.add_fp32_value_info(self.uname(layer_id, "new_gelu_out"))
+        self.add_fp32_value_info(self.uname(layer_id, "fc2_w_out"))
+        self.add_fp32_value_info(self.uname(layer_id, "fc2_b_out"))
+        self.add_fp32_value_info(self.uname(layer_id, "residual_1_out"))
 
         self.nodes_to_remove.append(node)
         self.prune_graph = True
