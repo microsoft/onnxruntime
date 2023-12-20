@@ -41,17 +41,10 @@ def get_package_name(os, cpu_arch, ep, is_training_package):
 # onnxruntime_providers_tensorrt from tensorrt build
 # cuda binaries are split out into the platform dependent packages Microsoft.ML.OnnxRuntime.{Linux|Windows}
 # and not included in the base Microsoft.ML.OnnxRuntime.Gpu package
-def is_this_file_needed(ep, file, package_name):
-    filename = file.name
-    suffix = file.suffix
+def is_this_file_needed(ep, filename, package_name):
     if package_name == "Microsoft.ML.OnnxRuntime.Gpu":
         return False
-    if package_name == "Microsoft.ML.OnnxRuntime.Gpu.Linux" and suffix in [".dll", ".lib", "pdb"]:
-        return False
-    if package_name == "Microsoft.ML.OnnxRuntime.Gpu.Windows" and suffix == ".so":
-        return False
     return (ep != "cuda" or "cuda" in filename) and (ep != "tensorrt" or "cuda" not in filename)
-
 
 # nuget_artifacts_dir: the directory with uncompressed C API tarball/zip files
 # ep: cuda, tensorrt, None
@@ -66,7 +59,8 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
             if child.name == get_package_name("win", cpu_arch, ep, is_training_package):
                 child = child / "lib"  # noqa: PLW2901
                 for child_file in child.iterdir():
-                    if is_this_file_needed(ep, child_file, package_name):
+                    suffixes = [".dll", ".lib", ".pdb"] if include_pdbs else [".dll", ".lib"]
+                    if child_file.suffix in suffixes and is_this_file_needed(ep, child_file.name, package_name) and package_name != "Microsoft.ML.OnnxRuntime.Gpu.Linux":
                         files_list.append(
                             '<file src="' + str(child_file) + '" target="runtimes/win-%s/native"/>' % cpu_arch
                         )
@@ -92,7 +86,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                 for child_file in child.iterdir():
                     if not child_file.is_file():
                         continue
-                    if is_this_file_needed(ep, child_file, package_name):
+                    if child_file.suffix == ".so" and is_this_file_needed(ep, child_file.name, package_name) and package_name != "Microsoft.ML.OnnxRuntime.Gpu.Windows":
                         files_list.append(
                             '<file src="' + str(child_file) + '" target="runtimes/linux-%s/native"/>' % cpu_arch
                         )
@@ -204,12 +198,7 @@ def generate_repo_url(line_list, repo_url, commit_id):
 
 
 def add_common_dependencies(xml_text, package_name, version):
-    dependent_packages = bool(
-        package_name == "Microsoft.ML.OnnxRuntime.Gpu.Windows"
-        or package_name == "Microsoft.ML.OnnxRuntime.Gpu.Linux"
-    )
-    if not dependent_packages:
-        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+    xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
     if package_name == "Microsoft.ML.OnnxRuntime.Gpu":
         xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu.Windows"' + ' version="' + version + '"/>')
         xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu.Linux"' + ' version="' + version + '"/>')
@@ -580,25 +569,29 @@ def generate_files(line_list, args):
             is_ado_packaging_build = True
         else:
             # Code path for local dev build
-            files_list.append(
-                "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.lib") + runtimes + " />"
-            )
-            files_list.append(
-                "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.dll") + runtimes + " />"
-            )
-            if include_pdbs and os.path.exists(os.path.join(args.native_build_path, "onnxruntime.pdb")):
+            # for local dev build, gpu linux package is also generated for compatibility though it is not used
+            if not is_cuda_gpu_linux_sub_package:
                 files_list.append(
-                    "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.pdb") + runtimes + " />"
+                    "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.lib") + runtimes + " />"
                 )
+                files_list.append(
+                    "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.dll") + runtimes + " />"
+                )
+                if include_pdbs and os.path.exists(os.path.join(args.native_build_path, "onnxruntime.pdb")):
+                    files_list.append(
+                        "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.pdb") + runtimes + " />"
+                    )
     else:
-        files_list.append(
-            "<file src="
-            + '"'
-            + os.path.join(args.native_build_path, "libonnxruntime.so")
-            + '" target="runtimes\\linux-'
-            + args.target_architecture
-            + '\\native" />'
-        )
+        ort_so = os.path.join(args.native_build_path, "libonnxruntime.so")
+        if os.path.exists(ort_so):
+            files_list.append(
+                "<file src="
+                + '"'
+                + os.path.join(args.native_build_path, "libonnxruntime.so")
+                + '" target="runtimes\\linux-'
+                + args.target_architecture
+                + '\\native" />'
+            )
 
     if includes_winml:
         # Process microsoft.ai.machinelearning import lib, dll, and pdb
@@ -894,6 +887,8 @@ def generate_files(line_list, args):
     if (
         is_cpu_package
         or is_cuda_gpu_package
+        or is_cuda_gpu_linux_sub_package
+        or is_cuda_gpu_win_sub_package
         or is_rocm_gpu_package
         or is_dml_package
         or is_mklml_package

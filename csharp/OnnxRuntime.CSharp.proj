@@ -47,6 +47,13 @@ CMake creates a target to this project
     <PythonExe>python</PythonExe>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!-- If we create multiple nuget packages in one job, major package and dependent packages version should be the same-->
+    <!-- CurrentDate and CurrentTime are only used for dev packages-->
+    <CurrentDate Condition="'$(CurrentDate)'==''">$([System.DateTime]::UtcNow.ToString(yyyyMMdd))</CurrentDate>
+    <CurrentTime Condition="'$(CurrentTime)'==''">$([System.DateTime]::UtcNow.ToString(hhmm))</CurrentTime>
+  </PropertyGroup>
+
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 
   <Target Name="Build">
@@ -83,10 +90,6 @@ CMake creates a target to this project
       <Output TaskParameter="AbsolutePaths" PropertyName="OnnxRuntimeSourceDirectoryAbs"/>
     </ConvertToAbsolutePath>
     <PropertyGroup>
-      <!-- If we create multiple nuget packages in one job, major package and dependent packages version should be the same-->
-      <!-- CurrentDate and CurrentTime are only used for dev packages-->
-      <CurrentDate Condition="'$(CurrentDate)'==''">$([System.DateTime]::UtcNow.ToString(yyyyMMdd))</CurrentDate>
-      <CurrentTime Condition="'$(CurrentTime)'==''">$([System.DateTime]::UtcNow.ToString(hhmm))</CurrentTime>
       <PackageVersion>@(MajorVersionNumber)</PackageVersion>
       <PackageVersion>$(PackageVersion)$(ReleaseVersionSuffix)</PackageVersion>
       <Version>$(PackageVersion)</Version>
