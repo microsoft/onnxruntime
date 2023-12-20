@@ -60,6 +60,8 @@ class ProcessAttnBFunc:
         x = np.reshape(x, (-1))
         return x
 
+def uname(layer_id, name):
+    return name + "_" + str(layer_id)
 
 class PostProcessCausalLMHead(Fusion):
     def __init__(
@@ -91,9 +93,6 @@ class FissionTransformerBlockPhi(Fusion):
             self.func_to_layer_id[func_name] = layer + 1
 
         super().__init__(model, "DONOTUSE", nodes_to_find)
-
-    def uname(self, layer_id, name):
-        return name + "_" + str(layer_id)
 
     def get_layer_id(self, node):
         return self.func_to_layer_id[node.op_type]
@@ -150,21 +149,21 @@ class FissionTransformerBlockPhi(Fusion):
             helper.make_node(
                 "LayerNormalization",
                 inputs=[i_hidden_states, ln_weight, ln_bias],
-                outputs=[self.uname(layer_id, "ln_out")],
-                name=self.uname(layer_id, "LayerNormalization"),
+                outputs=[uname(layer_id, "ln_out")],
+                name=uname(layer_id, "LayerNormalization"),
                 epsilon=9.999999747378752e-06,
             ),
             helper.make_node(
                 "Attention",
                 inputs=[
-                    self.uname(layer_id, "ln_out"),
+                    uname(layer_id, "ln_out"),
                     attn_qkv_weight,
                     attn_qkv_bias,
                     i_attn_mask,
                     i_kv_cache,
                 ],
-                outputs=[self.uname(layer_id, "attn_out"), o_kv_cache],
-                name=self.uname(layer_id, "Attention"),
+                outputs=[uname(layer_id, "attn_out"), o_kv_cache],
+                name=uname(layer_id, "Attention"),
                 domain="com.microsoft",
                 num_heads=32,
                 unidirectional=1,
@@ -174,58 +173,58 @@ class FissionTransformerBlockPhi(Fusion):
             ),
             helper.make_node(
                 "MatMul",
-                inputs=[self.uname(layer_id, "attn_out"), attn_out_weight],
-                outputs=[self.uname(layer_id, "matmul_out")],
-                name=self.uname(layer_id, "OutProj_MatMul"),
+                inputs=[uname(layer_id, "attn_out"), attn_out_weight],
+                outputs=[uname(layer_id, "matmul_out")],
+                name=uname(layer_id, "OutProj_MatMul"),
             ),
             helper.make_node(
                 "Add",
-                inputs=[self.uname(layer_id, "matmul_out"), attn_out_bias],
-                outputs=[self.uname(layer_id, "add_out")],
-                name=self.uname(layer_id, "OutProj_Add"),
+                inputs=[uname(layer_id, "matmul_out"), attn_out_bias],
+                outputs=[uname(layer_id, "add_out")],
+                name=uname(layer_id, "OutProj_Add"),
             ),
             helper.make_node(
                 "MatMul",
-                inputs=[self.uname(layer_id, "ln_out"), mlp_fc1_weight],
-                outputs=[self.uname(layer_id, "fc1_w_out")],
-                name=self.uname(layer_id, "FC1_MatMul"),
+                inputs=[uname(layer_id, "ln_out"), mlp_fc1_weight],
+                outputs=[uname(layer_id, "fc1_w_out")],
+                name=uname(layer_id, "FC1_MatMul"),
             ),
             helper.make_node(
                 "Add",
-                inputs=[self.uname(layer_id, "fc1_w_out"), mlp_fc1_bias],
-                outputs=[self.uname(layer_id, "fc1_b_out")],
-                name=self.uname(layer_id, "FC1_Bias"),
+                inputs=[uname(layer_id, "fc1_w_out"), mlp_fc1_bias],
+                outputs=[uname(layer_id, "fc1_b_out")],
+                name=uname(layer_id, "FC1_Bias"),
             ),
             helper.make_node(
                 "FastGelu",
-                inputs=[self.uname(layer_id, "fc1_b_out")],
-                outputs=[self.uname(layer_id, "new_gelu_out")],
-                name=self.uname(layer_id, "FastGelu"),
+                inputs=[uname(layer_id, "fc1_b_out")],
+                outputs=[uname(layer_id, "new_gelu_out")],
+                name=uname(layer_id, "FastGelu"),
                 domain="com.microsoft",
             ),
             helper.make_node(
                 "MatMul",
-                inputs=[self.uname(layer_id, "new_gelu_out"), mlp_fc2_weight],
-                outputs=[self.uname(layer_id, "fc2_w_out")],
-                name=self.uname(layer_id, "FC2_MatMul"),
+                inputs=[uname(layer_id, "new_gelu_out"), mlp_fc2_weight],
+                outputs=[uname(layer_id, "fc2_w_out")],
+                name=uname(layer_id, "FC2_MatMul"),
             ),
             helper.make_node(
                 "Add",
-                inputs=[self.uname(layer_id, "fc2_w_out"), mlp_fc2_bias],
-                outputs=[self.uname(layer_id, "fc2_b_out")],
-                name=self.uname(layer_id, "FC2_Bias"),
+                inputs=[uname(layer_id, "fc2_w_out"), mlp_fc2_bias],
+                outputs=[uname(layer_id, "fc2_b_out")],
+                name=uname(layer_id, "FC2_Bias"),
             ),
             helper.make_node(
                 "Add",
-                inputs=[self.uname(layer_id, "add_out"), self.uname(layer_id, "fc2_b_out")],
-                outputs=[self.uname(layer_id, "residual_1_out")],
-                name=self.uname(layer_id, "Residual_Add_1"),
+                inputs=[uname(layer_id, "add_out"), uname(layer_id, "fc2_b_out")],
+                outputs=[uname(layer_id, "residual_1_out")],
+                name=uname(layer_id, "Residual_Add_1"),
             ),
             helper.make_node(
                 "Add",
-                inputs=[i_hidden_states, self.uname(layer_id, "residual_1_out")],
+                inputs=[i_hidden_states, uname(layer_id, "residual_1_out")],
                 outputs=[o_hidden_states],
-                name=self.uname(layer_id, "Residual_Add_2"),
+                name=uname(layer_id, "Residual_Add_2"),
             ),
         ]
 
@@ -233,16 +232,16 @@ class FissionTransformerBlockPhi(Fusion):
             self.nodes_to_add.append(new_node)
             self.node_name_to_graph_name[new_node.name] = self.this_graph_name
 
-        self.add_fp32_value_info(self.uname(layer_id, "ln_out"))
-        self.add_fp32_value_info(self.uname(layer_id, "attn_out"))
-        self.add_fp32_value_info(self.uname(layer_id, "matmul_out"))
-        self.add_fp32_value_info(self.uname(layer_id, "add_out"))
-        self.add_fp32_value_info(self.uname(layer_id, "fc1_w_out"))
-        self.add_fp32_value_info(self.uname(layer_id, "fc1_b_out"))
-        self.add_fp32_value_info(self.uname(layer_id, "new_gelu_out"))
-        self.add_fp32_value_info(self.uname(layer_id, "fc2_w_out"))
-        self.add_fp32_value_info(self.uname(layer_id, "fc2_b_out"))
-        self.add_fp32_value_info(self.uname(layer_id, "residual_1_out"))
+        self.add_fp32_value_info(uname(layer_id, "ln_out"))
+        self.add_fp32_value_info(uname(layer_id, "attn_out"))
+        self.add_fp32_value_info(uname(layer_id, "matmul_out"))
+        self.add_fp32_value_info(uname(layer_id, "add_out"))
+        self.add_fp32_value_info(uname(layer_id, "fc1_w_out"))
+        self.add_fp32_value_info(uname(layer_id, "fc1_b_out"))
+        self.add_fp32_value_info(uname(layer_id, "new_gelu_out"))
+        self.add_fp32_value_info(uname(layer_id, "fc2_w_out"))
+        self.add_fp32_value_info(uname(layer_id, "fc2_b_out"))
+        self.add_fp32_value_info(uname(layer_id, "residual_1_out"))
 
         self.nodes_to_remove.append(node)
         self.prune_graph = True
@@ -309,6 +308,15 @@ def postprocess_io(model: ModelProto):
                 shape=[2, 'batch_size', 32, 'past_seq_len', 80],
             )
         new_outputs.extend([vi])
+
+    # for debug
+    # for i in range(32):
+    #     vi = helper.make_tensor_value_info(
+    #         uname(i + 1, "ln_out"),
+    #         elem_type=TensorProto.FLOAT16,
+    #         shape=['batch_size', 'seq_len', 'hidden_size'],
+    #     )
+    #     new_outputs.extend([vi])
 
     graph.ClearField("output")
     graph.output.extend(new_outputs)

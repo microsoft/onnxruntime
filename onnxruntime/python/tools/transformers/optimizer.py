@@ -553,7 +553,8 @@ def main():
     )
 
     if args.float16:
-        op_block_list = ["FastGelu", "SkipLayerNormalization", "LayerNormalization", "Add"]
+        #op_block_list = ["FastGelu", "SkipLayerNormalization", "LayerNormalization", "Add"]
+        op_block_list = []
         optimizer.convert_float_to_float16(keep_io_types=False, op_block_list=op_block_list)
 
     if args.input_int32:
