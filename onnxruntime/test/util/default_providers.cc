@@ -9,10 +9,9 @@
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/framework/session_options.h"
 
 namespace onnxruntime {
-
-struct SessionOptions;
 
 namespace test {
 
