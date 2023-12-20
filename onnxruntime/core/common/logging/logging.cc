@@ -245,7 +245,8 @@ unsigned int GetProcessId() {
 #endif
 }
 
-std::unique_ptr<ISink> EnhanceLoggerWithEtw(std::unique_ptr<ISink> existingLogger, logging::Severity originalSeverity, logging::Severity etwSeverity) {
+std::unique_ptr<ISink> EnhanceLoggerWithEtw(std::unique_ptr<ISink> existingLogger, logging::Severity originalSeverity,
+                                            logging::Severity etwSeverity) {
 #ifdef _WIN32
   auto& manager = EtwRegistrationManager::Instance();
   if (manager.IsEnabled()) {
@@ -258,6 +259,8 @@ std::unique_ptr<ISink> EnhanceLoggerWithEtw(std::unique_ptr<ISink> existingLogge
   }
 #else
   // On non-Windows platforms, just return the existing logger
+  (void)originalSeverity;
+  (void)etwSeverity;
   return existingLogger;
 #endif  // _WIN32
 }

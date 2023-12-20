@@ -348,7 +348,8 @@ unsigned int GetProcessId();
 /**
    If the ONNXRuntimeTraceLoggingProvider ETW Provider is enabled, then adds to the existing logger.
 */
-std::unique_ptr<ISink> EnhanceLoggerWithEtw(std::unique_ptr<ISink> existingLogger, logging::Severity originalSeverity, logging::Severity etwSeverity);
+std::unique_ptr<ISink> EnhanceLoggerWithEtw(std::unique_ptr<ISink> existingLogger, logging::Severity originalSeverity,
+                                            logging::Severity etwSeverity);
 
 /**
   If the ONNXRuntimeTraceLoggingProvider ETW Provider is enabled, then can override the logging level.

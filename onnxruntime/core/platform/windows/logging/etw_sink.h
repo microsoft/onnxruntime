@@ -62,7 +62,7 @@ class EtwRegistrationManager {
   Severity MapLevelToSeverity();
 
   // Get the current keyword
-  ULONGLONG Keyword() const;
+  uint64_t Keyword() const;
 
   // Get the ETW registration status
   HRESULT Status() const;

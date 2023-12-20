@@ -5,7 +5,7 @@ The ETW Sink (ONNXRuntimeTraceLoggingProvider) allows ONNX semi-structured print
 ETW makes it easy and useful to only enable and listen for events with great performance, and when you need them instead of only at compile time.
 Therefore ONNX will preserve any existing loggers and log severity [provided at compile time](docs/FAQ.md?plain=1#L7).
 
-However, when the provider is enabled a new ETW logger sink will also be added and the severity seperately controlled via ETW dynamically.
+However, when the provider is enabled a new ETW logger sink will also be added and the severity separately controlled via ETW dynamically.
 
 - Provider GUID: 929DD115-1ECB-4CB5-B060-EBD4983C421D
 - Keyword: Logs (0x2) keyword per [logging.h](include\onnxruntime\core\common\logging\logging.h)

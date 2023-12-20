@@ -145,7 +145,9 @@ void EtwRegistrationManager::LazyInitialize() {
   }
 }
 
-void EtwRegistrationManager::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext) {
+void EtwRegistrationManager::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword,
+                                             ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData,
+                                             PVOID CallbackContext) {
   std::lock_guard<OrtMutex> lock(callbacks_mutex_);
   for (const auto& callback : callbacks_) {
     callback(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
@@ -176,13 +178,13 @@ void EtwSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id,
   // TraceLoggingWrite requires (painfully) a compile time constant for the TraceLoggingLevel,
   // forcing us to use an ugly macro for the call.
 #define ETW_EVENT_NAME "ONNXRuntimeLogEvent"
-#define TRACE_LOG_WRITE(level)                                                                          \
-  TraceLoggingWrite(etw_provider_handle, ETW_EVENT_NAME,                                                \
-                    TraceLoggingKeyword(static_cast<ULONGLONG>(onnxruntime::logging::TLKeyword::Logs)), \
-                    TraceLoggingLevel(level),                                                           \
-                    TraceLoggingString(logger_id.c_str(), "logger"),                                    \
-                    TraceLoggingString(message.Category(), "category"),                                 \
-                    TraceLoggingString(message.Location().ToString().c_str(), "location"),              \
+#define TRACE_LOG_WRITE(level)                                                                       \
+  TraceLoggingWrite(etw_provider_handle, ETW_EVENT_NAME,                                             \
+                    TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::TLKeyword::Logs)), \
+                    TraceLoggingLevel(level),                                                        \
+                    TraceLoggingString(logger_id.c_str(), "logger"),                                 \
+                    TraceLoggingString(message.Category(), "category"),                              \
+                    TraceLoggingString(message.Location().ToString().c_str(), "location"),           \
                     TraceLoggingString(message.Message().c_str(), "message"))
 
   const auto severity{message.Severity()};

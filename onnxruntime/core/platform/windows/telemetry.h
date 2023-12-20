@@ -30,7 +30,7 @@ class WindowsTelemetry : public Telemetry {
   unsigned char Level() const override;
 
   // Get the current keyword
-  unsigned long long Keyword() const override;
+  UINT64 Keyword() const override;
 
   // Get the ETW registration status
   // static HRESULT Status();

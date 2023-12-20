@@ -13,8 +13,8 @@
 #include "core/graph/graph_viewer.h"
 #include "core/common/logging/logging.h"
 #ifdef _WIN32
+#include <winmeta.h>
 #include "core/platform/tracing.h"
-#include "winmeta.h"
 #endif
 
 namespace onnxruntime {
@@ -48,7 +48,7 @@ class ExecutionProviders {
       TraceLoggingWrite(
           telemetry_provider_handle,
           "ProviderOptions",
-          TraceLoggingKeyword(static_cast<unsigned long long>(onnxruntime::logging::TLKeyword::Session)),
+          TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::TLKeyword::Session)),
           TraceLoggingLevel(WINEVENT_LEVEL_INFO),
           TraceLoggingString(provider_id.c_str(), "ProviderId"),
           TraceLoggingString(config_pair.first.c_str(), "Key"),

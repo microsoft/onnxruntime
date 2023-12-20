@@ -168,7 +168,7 @@ void StreamExecutionContext::RecycleNodeInputs(onnxruntime::NodeIndex node_index
   for (auto idx : execution_plan->node_release_list[node_index]) {
     if (--release_plan_[idx] == 0) {
       ORT_ENFORCE(frame_.ReleaseMLValue(static_cast<int>(execution_plan->release_actions[idx].value_index)).IsOK());
-      VLOGS(*logger_, VERBOSE) << "ort value " << execution_plan->release_actions[idx].value_index << " released";
+      VLOGS(*logger_, 0) << "ort value " << execution_plan->release_actions[idx].value_index << " released";
     }
   }
 }

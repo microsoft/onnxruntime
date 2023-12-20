@@ -22,7 +22,7 @@ unsigned char Telemetry::Level() const {
 }
 
 // Get the current keyword
-unsigned long long Telemetry::Keyword() const {
+uint64_t Telemetry::Keyword() const {
   return 0;
 }
 

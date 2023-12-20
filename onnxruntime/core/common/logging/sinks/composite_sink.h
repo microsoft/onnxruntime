@@ -5,6 +5,8 @@
 
 #include <string>
 #include <vector>
+#include <utility>
+#include <memory>
 
 #include "core/common/logging/isink.h"
 #include "core/common/logging/logging.h"

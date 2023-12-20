@@ -44,7 +44,7 @@ class Telemetry {
   virtual unsigned char Level() const;
 
   // Get the current keyword
-  virtual unsigned long long Keyword() const;
+  virtual uint64_t Keyword() const;
 
   virtual void LogProcessInfo() const;
 

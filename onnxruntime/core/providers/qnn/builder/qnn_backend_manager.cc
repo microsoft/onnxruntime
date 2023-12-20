@@ -19,8 +19,8 @@
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 
 #ifdef _WIN32
+#include <winmeta.h>
 #include "core/platform/tracing.h"
-#include "winmeta.h"
 #endif
 
 // Flag to determine if Backend should do node validation for each opNode added
@@ -943,6 +943,10 @@ Status QnnBackendManager::ExtractProfilingEventBasic(
   std::string message = GetEventTypeString(event_data.type);
   std::string unit = GetUnitString(event_data.unit);
 
+#ifndef _WIN32
+  tracelogging_provider_ep_enabled = false;
+#endif
+
   if (!tracelogging_provider_ep_enabled) {
     outfile << "UNKNOWN"
             << ","
@@ -1013,10 +1017,11 @@ void QnnBackendManager::LogQnnProfileEventAsTraceLogging(
     const std::string& timingSource,
     const std::string& eventLevel,
     const char* eventIdentifier) {
+#ifdef _WIN32
   TraceLoggingWrite(
       telemetry_provider_handle,
       "QNNProfilingEvent",
-      TraceLoggingKeyword(static_cast<unsigned long long>(onnxruntime::logging::TLKeyword::Profiling)),
+      TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::TLKeyword::Profiling)),
       TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
       TraceLoggingValue(timestamp, "Timestamp"),
       TraceLoggingString(message.c_str(), "Message"),
@@ -1025,6 +1030,7 @@ void QnnBackendManager::LogQnnProfileEventAsTraceLogging(
       TraceLoggingString(timingSource.c_str(), "Timing Source"),
       TraceLoggingString(eventLevel.c_str(), "Event Level"),
       TraceLoggingString(eventIdentifier, "Event Identifier"));
+#endif
 }
 
 const std::string& QnnBackendManager::GetUnitString(QnnProfile_EventUnit_t unitType) {

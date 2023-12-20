@@ -62,7 +62,7 @@ uint32_t WindowsTelemetry::global_register_count_ = 0;
 bool WindowsTelemetry::enabled_ = true;
 uint32_t WindowsTelemetry::projection_ = 0;
 UCHAR WindowsTelemetry::level_ = 0;
-ULONGLONG WindowsTelemetry::keyword_ = 0;
+UINT64 WindowsTelemetry::keyword_ = 0;
 
 WindowsTelemetry::WindowsTelemetry() {
   std::lock_guard<OrtMutex> lock(mutex_);
@@ -95,7 +95,7 @@ UCHAR WindowsTelemetry::Level() const {
   return level_;
 }
 
-ULONGLONG WindowsTelemetry::Keyword() const {
+UINT64 WindowsTelemetry::Keyword() const {
   std::lock_guard<OrtMutex> lock(provider_change_mutex_);
   return keyword_;
 }
@@ -244,7 +244,7 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-                    TraceLoggingKeyword(static_cast<unsigned long long>(onnxruntime::logging::TLKeyword::Session)),
+                    TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::TLKeyword::Session)),
                     TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
