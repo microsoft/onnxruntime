@@ -261,6 +261,12 @@ export interface PoolCommonAttributes extends FormatAttributes {
 const createShaderKeyFromAttributes = (attributes: PoolCommonAttributes): string =>
     (`${attributes.format};${attributes.ceilMode};${attributes.autoPad};${attributes.kernelShape.length}`);
 
+const createAveragePoolShaderKeyFromAttributes = (attributes: AveragePoolAttributes): string =>
+    (`${createShaderKeyFromAttributes(attributes)};${attributes.countIncludePad}`);
+
+const createMaxPoolShaderKeyFromAttributes = (attributes: MaxPoolAttributes): string =>
+    (`${createShaderKeyFromAttributes(attributes)};${attributes.storageOrder};${attributes.dilations}`);
+
 const parsePoolCommonAttributes = (attributes: Record<string, unknown>): PoolCommonAttributes => ({
   format: attributes.format as FormatAttributes['format'],
   autoPad: ['NOTSET', 'VALID', 'SAME_UPPER', 'SAME_LOWER'][attributes.auto_pad as number],
@@ -294,11 +300,8 @@ const createAveragePoolProgramInfo =
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank'];
       return {
         name,
-        shaderCache: {
-          hint: `${attributes.cacheKey};${attributes.countIncludePad};${hasPads};${pwStartEndNotZero};${
-              phStartEndNotZero}`,
-          inputDependencies
-        },
+        shaderCache:
+            {hint: `${attributes.cacheKey};${hasPads};${pwStartEndNotZero};${phStartEndNotZero}`, inputDependencies},
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: input.dataType}],
           dispatchGroup: {x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)},
@@ -318,7 +321,8 @@ export const parseAveragePoolAttributes = (attributes: Record<string, unknown>):
   if (attr.ceilMode !== 0) {
     throw new Error('using ceil() in shape computation is not yet supported for AveragePool');
   }
-  return {countIncludePad, ...attr, cacheKey: createShaderKeyFromAttributes(attr)};
+  const averagePoolAttributes = {countIncludePad, ...attr, cacheKey: ''};
+  return {...averagePoolAttributes, cacheKey: createAveragePoolShaderKeyFromAttributes(averagePoolAttributes)};
 };
 
 export const averagePool = (context: ComputeContext, attributes: AveragePoolAttributes): void => {
@@ -367,11 +371,8 @@ const createMaxPoolProgramInfo =
       programUniforms.push(...createTensorShapeVariables(input.dims), ...createTensorShapeVariables(outputShape));
       return {
         name,
-        shaderCache: {
-          hint: `${attributes.cacheKey};${attributes.storageOrder};${attributes.dilations};${hasPads};${
-              pwStartEndNotZero};${phStartEndNotZero}`,
-          inputDependencies
-        },
+        shaderCache:
+            {hint: `${attributes.cacheKey};${hasPads};${pwStartEndNotZero};${phStartEndNotZero}`, inputDependencies},
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: input.dataType}],
           dispatchGroup: {x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)},
@@ -400,7 +401,8 @@ export const parseMaxPoolAttributes = (attributes: Record<string, unknown>): Max
   if (attr.ceilMode !== 0) {
     throw new Error('using ceil() in shape computation is not yet supported for MaxPool');
   }
-  return {storageOrder, dilations, ...attr, cacheKey: createShaderKeyFromAttributes(attr)};
+  const maxPoolAttributes = {storageOrder, dilations, ...attr, cacheKey: ''};
+  return {...maxPoolAttributes, cacheKey: createMaxPoolShaderKeyFromAttributes(maxPoolAttributes)};
 };
 
 export const parseGlobalMaxPoolAttributes = (attributes: Record<string, unknown>): MaxPoolAttributes => {
