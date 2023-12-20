@@ -9,6 +9,7 @@ import time
 from statistics import mean
 
 import torch
+from demo_utils import PipelineInfo
 from diffusers import (
     AutoencoderKL,
     ControlNetModel,
@@ -16,6 +17,8 @@ from diffusers import (
     EulerAncestralDiscreteScheduler,
     StableDiffusionXLControlNetPipeline,
 )
+from engine_builder import EngineType, get_engine_paths
+from pipeline_stable_diffusion import StableDiffusionPipeline
 
 """
 Benchmark script for SDXL-Turbo with control net for engines like PyTorch or Stable Fast.
@@ -120,6 +123,112 @@ def load_pipeline(name, engine, use_control_net=False, use_nhwc=False, enable_cu
     return pipeline
 
 
+def get_prompt():
+    return "little cute gremlin wearing a jacket, cinematic, vivid colors, intricate masterpiece, golden ratio, highly detailed"
+
+
+def load_ort_cuda_pipeline(name, engine, use_control_net=False, enable_cuda_graph=True, work_dir="."):
+    version = PipelineInfo.supported_models()[name]
+    guidance_scale = 0.0
+    pipeline_info = PipelineInfo(
+        version,
+        use_vae=True,
+        use_fp16_vae=True,
+        do_classifier_free_guidance=(guidance_scale > 1.0),
+        controlnet=["canny"] if use_control_net else [],
+    )
+
+    engine_type = EngineType.ORT_CUDA if engine == "ort_cuda" else EngineType.ORT_TRT
+    onnx_dir, engine_dir, output_dir, framework_model_dir, timing_cache = get_engine_paths(
+        work_dir=work_dir, pipeline_info=pipeline_info, engine_type=engine_type
+    )
+
+    pipeline = StableDiffusionPipeline(
+        pipeline_info,
+        scheduler="EulerA",
+        max_batch_size=32,
+        use_cuda_graph=enable_cuda_graph,
+        framework_model_dir=framework_model_dir,
+        output_dir=output_dir,
+        engine_type=engine_type,
+    )
+
+    pipeline.backend.build_engines(
+        engine_dir=engine_dir,
+        framework_model_dir=framework_model_dir,
+        onnx_dir=onnx_dir,
+        force_engine_rebuild=False,
+        device_id=torch.cuda.current_device(),
+    )
+
+    return pipeline
+
+
+def test_ort_cuda(
+    pipeline,
+    batch_size=1,
+    steps=4,
+    control_image=None,
+    warmup_runs=3,
+    test_runs=10,
+    seed=123,
+    verbose=False,
+    image_height=512,
+    image_width=512,
+):
+    if batch_size > 4 and pipeline.pipeline_info.version == "xl-1.0":
+        pipeline.backend.enable_vae_slicing()
+
+    pipeline.load_resources(image_height, image_width, batch_size)
+
+    warmup_prompt = "warm up"
+    for _ in range(warmup_runs):
+        images, _ = pipeline.run(
+            [warmup_prompt] * batch_size,
+            [""] * batch_size,
+            image_height=image_height,
+            image_width=image_width,
+            denoising_steps=steps,
+            guidance=0.0,
+            seed=seed,
+            controlnet_images=[control_image],
+            controlnet_scales=torch.FloatTensor([0.5]),
+            output_type="image",
+        )
+        assert len(images) == batch_size
+
+    generator = torch.Generator(device="cuda")
+    generator.manual_seed(seed)
+
+    prompt = get_prompt()
+
+    latency_list = []
+    images = None
+    for _ in range(test_runs):
+        torch.cuda.synchronize()
+        start_time = time.perf_counter()
+        images, _ = pipeline.run(
+            [prompt] * batch_size,
+            [""] * batch_size,
+            image_height=image_height,
+            image_width=image_width,
+            denoising_steps=steps,
+            guidance=0.0,
+            seed=seed,
+            controlnet_images=[control_image],
+            controlnet_scales=torch.FloatTensor([0.5]),
+            output_type="pil",
+        )
+        torch.cuda.synchronize()
+        seconds = time.perf_counter() - start_time
+        latency_list.append(seconds)
+
+    if verbose:
+        print(latency_list)
+
+    return images, latency_list
+
+
 def test(pipeline, batch_size=1, steps=4, control_image=None, warmup_runs=3, test_runs=10, seed=123, verbose=False):
     control_net_args = {}
     if hasattr(pipeline, "controlnet"):
@@ -130,33 +239,33 @@ def test(pipeline, batch_size=1, steps=4, control_image=None, warmup_runs=3, tes
 
     warmup_prompt = "warm up"
     for _ in range(warmup_runs):
-        image = pipeline(
+        images = pipeline(
             prompt=warmup_prompt,
             num_inference_steps=steps,
             num_images_per_prompt=batch_size,
             guidance_scale=0.0,
             **control_net_args,
         ).images
-        assert len(image) == batch_size
+        assert len(images) == batch_size
 
     generator = torch.Generator(device="cuda")
     generator.manual_seed(seed)
 
-    prompt = "little cute gremlin wearing a jacket, cinematic, vivid colors, intricate masterpiece, golden ratio, highly detailed"
+    prompt = get_prompt()
 
     latency_list = []
-    image = None
+    images = None
     for _ in range(test_runs):
         torch.cuda.synchronize()
         start_time = time.perf_counter()
-        image = pipeline(
+        images = pipeline(
             prompt=prompt,
             num_inference_steps=steps,
             num_images_per_prompt=batch_size,
             guidance_scale=0.0,
             generator=generator,
             **control_net_args,
-        ).images[0]
+        ).images
         torch.cuda.synchronize()
         seconds = time.perf_counter() - start_time
         latency_list.append(seconds)
@@ -164,7 +273,7 @@ def test(pipeline, batch_size=1, steps=4, control_image=None, warmup_runs=3, tes
     if verbose:
         print(latency_list)
 
-    return image, latency_list
+    return images, latency_list
 
 
 def arguments():
@@ -175,15 +284,23 @@ def arguments():
         "--engine",
         type=str,
         default="torch",
-        choices=["torch", "stable_fast"],
-        help="Backend engine: torch or stable_fast",
+        choices=["torch", "stable_fast", "ort_cuda", "ort_trt"],
+        help="Backend engine: torch, stable_fast or ort_cuda",
     )
 
     parser.add_argument(
         "--name",
         type=str,
+        choices=list(PipelineInfo.supported_models().keys()),
         default="stabilityai/sdxl-turbo",
         help="Stable diffusion model name. Default is stabilityai/sdxl-turbo",
+    )
+
+    parser.add_argument(
+        "--work-dir",
+        type=str,
+        default=".",
+        help="working directory for ort_cuda or ort_trt",
     )
 
     parser.add_argument(
@@ -239,21 +356,39 @@ def main():
     args = arguments()
 
     with torch.no_grad():
-        pipeline = load_pipeline(
-            args.name,
-            args.engine,
-            use_control_net=args.use_control_net,
-            use_nhwc=args.use_nhwc,
-            enable_cuda_graph=args.enable_cuda_graph,
-        )
+        if args.engine == "ort_cuda":
+            pipeline = load_ort_cuda_pipeline(
+                args.name,
+                args.engine,
+                use_control_net=args.use_control_net,
+                enable_cuda_graph=args.enable_cuda_graph,
+                work_dir=args.work_dir,
+            )
+        else:
+            pipeline = load_pipeline(
+                args.name,
+                args.engine,
+                use_control_net=args.use_control_net,
+                use_nhwc=args.use_nhwc,
+                enable_cuda_graph=args.enable_cuda_graph,
+            )
 
         canny_image = get_canny_image()
 
-        if args.engine == "stable_fast":
+        if args.engine == "ort_cuda":
+            images, latency_list = test_ort_cuda(
+                pipeline,
+                args.batch_size,
+                args.steps,
+                control_image=canny_image,
+                warmup_runs=args.warmup_runs,
+                verbose=args.verbose,
+            )
+        elif args.engine == "stable_fast":
             from sfast.utils.compute_precision import low_compute_precision
 
             with low_compute_precision():
-                image, latency_list = test(
+                images, latency_list = test(
                     pipeline,
                     args.batch_size,
                     args.steps,
@@ -262,7 +397,7 @@ def main():
                     verbose=args.verbose,
                 )
         else:
-            image, latency_list = test(
+            images, latency_list = test(
                 pipeline,
                 args.batch_size,
                 args.steps,
@@ -272,8 +407,8 @@ def main():
             )
 
         # Save the first output image to inspect the result.
-        if image:
-            image.save(
+        if images:
+            images[0].save(
                 f"{args.engine}_{args.name.replace('/', '_')}_{args.batch_size}_{args.steps}_c{int(args.use_control_net)}.png"
             )
 
