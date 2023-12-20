@@ -12,6 +12,12 @@ export enum GpuDataType {
 }
 export type GpuDataId = number;
 
+export enum QueryType {
+  none,
+  insidePasses,
+  atPasses,
+}
+
 export interface GpuData {
   type: GpuDataType;
   id: GpuDataId;
@@ -23,10 +29,16 @@ export interface TensorInfo {
   dataType: number;
 }
 
-
 export interface ProgramUniform {
   type: 'int32'|'float32'|'uint32';
   data: number|readonly number[];
+}
+
+export interface PendingKernelInfo {
+  id: number;
+  name: string;
+  inputTensorViews: readonly TensorView[];
+  outputTensorViews: readonly TensorView[];
 }
 
 /**

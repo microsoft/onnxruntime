@@ -3,12 +3,14 @@
 
 import {Env, Tensor} from 'onnxruntime-common';
 
+import {tensorDataTypeEnumToString} from '../wasm-common';
+
 import {configureLogger, LOG_DEBUG} from './log';
 import {createView, TensorView} from './tensor-view';
 import {createGpuDataManager, downloadGpuData, GpuDataManager} from './webgpu/gpu-data-manager';
 import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
 import {ProgramManager} from './webgpu/program-manager';
-import {ComputeContext, GpuData, ProgramInfo, ProgramInputTensorInfoDependency} from './webgpu/types';
+import {ComputeContext, GpuData, PendingKernelInfo, ProgramInfo, ProgramInputTensorInfoDependency, QueryType} from './webgpu/types';
 
 const getProgramInputTensorInfoDependencyKey =
     (inputTensors: readonly TensorView[], inputDependencies: readonly ProgramInputTensorInfoDependency[]): string => {
@@ -130,12 +132,18 @@ export class WebGpuBackend {
 
   private commandEncoder: GPUCommandEncoder|null = null;
   private computePassEncoder: GPUComputePassEncoder|null = null;
+  maxDispatchNumber = 16;
   pendingDispatchNumber = 0;
 
-  queryData?: GpuData;
-  querySet?: GPUQuerySet;
-  querySetCount = 2;
-  queryTimeBase?: bigint;
+
+  // info of kernels pending submission for a single batch
+  pendingKernels: PendingKernelInfo[] = [];
+  // queryReadData -> pendingKernels mapping for all the batches
+  private pendingQueries: Map<number, PendingKernelInfo[]> = new Map();
+  private queryResolveData?: GpuData;
+  private querySet?: GPUQuerySet;
+  private queryTimeBase?: bigint;
+  queryType: QueryType;
 
   env: Env;
 
@@ -161,7 +169,9 @@ export class WebGpuBackend {
       requiredFeatures,
     };
 
-    if (adapter.features.has('timestamp-query')) {
+    if (adapter.features.has('chromium-experimental-timestamp-query-inside-passes')) {
+      requiredFeatures.push('chromium-experimental-timestamp-query-inside-passes' as GPUFeatureName);
+    } else if (adapter.features.has('timestamp-query')) {
       requiredFeatures.push('timestamp-query');
     }
     if (adapter.features.has('shader-f16')) {
@@ -200,6 +210,17 @@ export class WebGpuBackend {
   getCommandEncoder(): GPUCommandEncoder {
     if (!this.commandEncoder) {
       this.commandEncoder = this.device.createCommandEncoder();
+
+      this.setQueryType();
+      if (this.queryType !== QueryType.none && typeof this.querySet === 'undefined') {
+        this.querySet = this.device.createQuerySet({
+          type: 'timestamp',
+          count: this.maxDispatchNumber * 2,
+        });
+        this.queryResolveData = this.gpuDataManager.create(
+            // eslint-disable-next-line no-bitwise
+            this.maxDispatchNumber * 2 * 8, GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE);
+      }
     }
     return this.commandEncoder;
   }
@@ -207,17 +228,12 @@ export class WebGpuBackend {
   getComputePassEncoder(): GPUComputePassEncoder {
     if (!this.computePassEncoder) {
       const computePassDescriptor: GPUComputePassDescriptor = {};
-      if (this.isQueryEnabled()) {
-        if (typeof this.querySet === 'undefined') {
-          this.querySet = this.device.createQuerySet({
-            type: 'timestamp',
-            count: this.querySetCount,
-          });
-        }
+
+      if (this.queryType === QueryType.atPasses) {
         computePassDescriptor.timestampWrites = {
-          querySet: this.querySet,
-          beginningOfPassWriteIndex: 0,
-          endOfPassWriteIndex: 1,
+          querySet: this.querySet!,
+          beginningOfPassWriteIndex: this.pendingDispatchNumber * 2,
+          endOfPassWriteIndex: this.pendingDispatchNumber * 2 + 1,
         };
       }
 
@@ -234,19 +250,85 @@ export class WebGpuBackend {
   }
 
   flush(): void {
-    if (this.commandEncoder) {
-      this.endComputePass();
-      this.device.queue.submit([this.getCommandEncoder().finish()]);
-      this.gpuDataManager.refreshPendingBuffers();
-      this.commandEncoder = null;
-      this.pendingDispatchNumber = 0;
+    if (!this.commandEncoder) {
+      return;
     }
-  }
 
-  isQueryEnabled(): boolean {
-    return this.device.features.has('timestamp-query') &&
-        (this.env.webgpu.profiling?.mode === 'default' ||
-         (!this.env.webgpu.profiling?.mode && this.env.webgpu.profilingMode === 'default'));
+    let queryReadData: GpuData;
+    if (this.queryType !== QueryType.none) {
+      this.commandEncoder.resolveQuerySet(
+          this.querySet!, 0, this.pendingDispatchNumber * 2, this.queryResolveData!.buffer, 0);
+      queryReadData = this.gpuDataManager.create(
+          // eslint-disable-next-line no-bitwise
+          this.pendingDispatchNumber * 2 * 8, GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST);
+      this.pendingQueries.set(queryReadData.id, this.pendingKernels);
+      this.pendingKernels = [];
+      this.commandEncoder.copyBufferToBuffer(
+          this.queryResolveData!.buffer, 0, queryReadData.buffer, 0, this.pendingDispatchNumber * 2 * 8);
+    }
+
+    this.device.queue.submit([this.commandEncoder.finish()]);
+    this.gpuDataManager.refreshPendingBuffers();
+    this.commandEncoder = null;
+    this.pendingDispatchNumber = 0;
+
+    if (this.queryType !== QueryType.none) {
+      void queryReadData!.buffer.mapAsync(GPUMapMode.READ).then(() => {
+        const mappedData = new BigUint64Array(queryReadData.buffer.getMappedRange());
+        const pendingKernels = this.pendingQueries.get(queryReadData.id);
+        for (let i = 0; i < mappedData.length / 2; i++) {
+          const kernelId = pendingKernels![i].id;
+          const kernelInfo = this.kernels.get(kernelId)!;
+          const kernelType = kernelInfo[0];
+          const kernelName = pendingKernels![i].name;
+          const inputTensorViews = pendingKernels![i].inputTensorViews;
+          const outputTensorViews = pendingKernels![i].outputTensorViews;
+          const startTimeU64 = mappedData[i * 2];
+          const endTimeU64 = mappedData[i * 2 + 1];
+
+          if (typeof this.queryTimeBase === 'undefined') {
+            this.queryTimeBase = startTimeU64;
+          }
+
+          const startTime = Number(startTimeU64 - this.queryTimeBase);
+          const endTime = Number(endTimeU64 - this.queryTimeBase);
+
+          if (!Number.isSafeInteger(startTime) || !Number.isSafeInteger(endTime)) {
+            throw new RangeError('incorrect timestamp range');
+          }
+
+          if (this.env.webgpu.profiling?.ondata) {
+            this.env.webgpu.profiling.ondata({
+              version: 1,
+              inputsMetadata: inputTensorViews.map(
+                  value => ({dims: value.dims, dataType: tensorDataTypeEnumToString(value.dataType)})),
+              outputsMetadata: outputTensorViews.map(
+                  value => ({dims: value.dims, dataType: tensorDataTypeEnumToString(value.dataType)})),
+              kernelId,
+              kernelType,
+              kernelName,
+              startTime,
+              endTime,
+            });
+          } else {
+            // if no callback is provided, print the profiling message to console
+            let inputShapes = '';
+            inputTensorViews.forEach((value, i) => {
+              inputShapes += `input[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
+            });
+            let outputShapes = '';
+            outputTensorViews.forEach((value, i) => {
+              outputShapes += `output[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
+            });
+            // eslint-disable-next-line no-console
+            console.log(`[profiling] kernel "${kernelId}|${kernelName}" ${inputShapes}${outputShapes}execution time: ${
+                endTime - startTime} ns`);
+          }
+        }
+        queryReadData.buffer.unmap();
+        this.gpuDataManager.release(queryReadData.id);
+      });
+    }
   }
 
   /**
@@ -513,6 +595,25 @@ export class WebGpuBackend {
       const data = await downloadGpuData(this, gpuBuffer, size);
       return createView(data.buffer, type);
     };
+  }
+  writeTimeStamp(index: number): void {
+    if (this.queryType !== QueryType.insidePasses) {
+      return;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (this.computePassEncoder as any).writeTimestamp(this.querySet, index);
+  }
+
+  setQueryType(): void {
+    this.queryType = QueryType.none;
+    if (this.env.webgpu.profiling?.mode === 'default') {
+      if (this.device.features.has('chromium-experimental-timestamp-query-inside-passes')) {
+        this.queryType = QueryType.insidePasses;
+      } else if (this.device.features.has('timestamp-query')) {
+        this.queryType = QueryType.atPasses;
+      }
+    }
   }
   // #endregion
 }
