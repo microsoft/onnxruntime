@@ -178,13 +178,13 @@ void EtwSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id,
   // TraceLoggingWrite requires (painfully) a compile time constant for the TraceLoggingLevel,
   // forcing us to use an ugly macro for the call.
 #define ETW_EVENT_NAME "ONNXRuntimeLogEvent"
-#define TRACE_LOG_WRITE(level)                                                                       \
-  TraceLoggingWrite(etw_provider_handle, ETW_EVENT_NAME,                                             \
+#define TRACE_LOG_WRITE(level)                                                                         \
+  TraceLoggingWrite(etw_provider_handle, ETW_EVENT_NAME,                                               \
                     TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::TLKeyword::Logs)), \
-                    TraceLoggingLevel(level),                                                        \
-                    TraceLoggingString(logger_id.c_str(), "logger"),                                 \
-                    TraceLoggingString(message.Category(), "category"),                              \
-                    TraceLoggingString(message.Location().ToString().c_str(), "location"),           \
+                    TraceLoggingLevel(level),                                                          \
+                    TraceLoggingString(logger_id.c_str(), "logger"),                                   \
+                    TraceLoggingString(message.Category(), "category"),                                \
+                    TraceLoggingString(message.Location().ToString().c_str(), "location"),             \
                     TraceLoggingString(message.Message().c_str(), "message"))
 
   const auto severity{message.Severity()};
