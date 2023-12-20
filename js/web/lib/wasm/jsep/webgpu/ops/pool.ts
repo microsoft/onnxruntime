@@ -121,7 +121,7 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
     let codeH = '';
     let codeHEnd = '';
     const dimIdxW = rank - (isChannelsLast ? 2 : 1);
-    if (pwStartEndNotZero === true) {
+    if (pwStartEndNotZero) {
       codeW = `
                 for (var i: u32 = 0u; i < uniforms.kw; i++) {
                   xIndices[${dimIdxW}] = indices[${dimIdxW}] * uniforms.sw - uniforms.pwStart + i;
@@ -144,7 +144,7 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
 
     if (attributes.kernelShape.length === 2) {
       const dimIdxH = rank - (isChannelsLast ? 3 : 2);
-      if (phStartEndNotZero === true) {
+      if (phStartEndNotZero) {
         codeH = `
                 for (var j: u32 = 0u; j < uniforms.kh; j++) {
                   xIndices[${dimIdxH}] = indices[${dimIdxH}] * uniforms.sh - uniforms.phStart + j;
@@ -259,7 +259,7 @@ export interface PoolCommonAttributes extends FormatAttributes {
 }
 
 const createShaderKeyFromAttributes = (attributes: PoolCommonAttributes): string =>
-    (`${attributes.format as string};${attributes.ceilMode};${attributes.autoPad};${attributes.kernelShape.length}`);
+    (`${attributes.format};${attributes.ceilMode};${attributes.autoPad};${attributes.kernelShape.length}`);
 
 const parsePoolCommonAttributes = (attributes: Record<string, unknown>): PoolCommonAttributes => ({
   format: attributes.format as FormatAttributes['format'],
@@ -406,8 +406,7 @@ export const parseMaxPoolAttributes = (attributes: Record<string, unknown>): Max
 
 export const parseGlobalMaxPoolAttributes = (attributes: Record<string, unknown>): MaxPoolAttributes => {
   const format = attributes.format as FormatAttributes['format'];
-  const attributesWithoutCacheKey = {format, ...globalPoolAttributes};
-  return {...attributesWithoutCacheKey, cacheKey: createShaderKeyFromAttributes(attributesWithoutCacheKey)};
+  return {format, ...globalPoolAttributes, cacheKey: format};
 };
 
 export const globalMaxPool = (context: ComputeContext, attributes: MaxPoolAttributes): void => {
