@@ -3593,17 +3593,11 @@ struct OrtApi {
    *
    * QNN supported keys:
    *   "backend_path": file path to QNN backend library.
-   *   "qnn_context_cache_enable": 1 to enable QNN graph creation from cached QNN context file. If it's enabled: QNN EP will
-   *    load from cached QNN context binary if it exist. It will generate a context binary file if it's not exist
-   *   "qnn_context_cache_path": explicitly provide the QNN context cache file. Default to model_file.onnx.bin if not provided.
    *   "profiling_level": QNN profiling level, options: "off", "basic", "detailed". Default to off.
    *   "rpc_control_latency": QNN RPC control latency.
    *   "vtcm_mb": QNN VTCM size in MB. default to 0(not set).
    *   "htp_performance_mode": QNN performance mode, options: "burst", "balanced", "default", "high_performance",
    *   "high_power_saver", "low_balanced", "low_power_saver", "power_saver", "sustained_high_performance". Default to "default".
-   *   "qnn_context_embed_mode", 1 means dump the QNN context binary into node attribute EPContext->ep_cache_context in the ONNX skeleton model.
-   *   0 means dump the QNN context binary into separate bin file and set the path to EPContext->ep_cache_context.
-   *   The path is relative path to the ONNX skeleton model file.
    *   "qnn_saver_path": File path to the QNN Saver backend library. If specified, QNN Saver will be enabled and will
    *   dump QNN API calls to disk for replay/debugging. QNN Saver produces incorrect model inference results and
    *   may alter model/EP partitioning. Use only for debugging.
