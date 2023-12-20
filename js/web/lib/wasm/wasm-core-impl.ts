@@ -88,16 +88,22 @@ export const initEp = async(env: Env, epName: string): Promise<void> => {
     if (typeof navigator === 'undefined' || !navigator.gpu) {
       throw new Error('WebGPU is not supported in current environment');
     }
-    if (!await navigator.gpu.requestAdapter()) {
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) {
       throw new Error(
           'Failed to get GPU adapter. You may need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.');
+    }
+
+    if (!env.wasm.simd) {
+      throw new Error(
+          'Not supported for WebGPU=ON and SIMD=OFF. Please set `env.wasm.simd` to true when using `webgpu` EP');
     }
 
     // init JSEP if available
 
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
     const initJsep = require('./jsep/init').init;
-    await initJsep(getInstance(), env);
+    await initJsep(getInstance(), env, adapter);
   }
 };
 
