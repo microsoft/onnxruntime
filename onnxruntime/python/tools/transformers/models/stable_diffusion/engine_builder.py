@@ -174,7 +174,7 @@ class EngineBuilder:
         return model.to(self.torch_device)
 
     def load_models(self, framework_model_dir: str):
-        # For TRT or ORT_TRT, we will export fp16 torch model for UNet.
+        # For TRT or ORT_TRT, we will export fp16 torch model for UNet and VAE
         # For ORT_CUDA, we export fp32 model first, then optimize to fp16.
         export_fp16 = self.engine_type in [EngineType.ORT_TRT, EngineType.TRT]
 
@@ -224,7 +224,7 @@ class EngineBuilder:
                 None,  # not loaded yet
                 device=self.torch_device,
                 max_batch_size=self.max_batch_size,
-                fp16=(export_fp16 and self.custom_fp16_vae is not None),
+                fp16=export_fp16,
                 custom_fp16_vae=self.custom_fp16_vae,
             )
 

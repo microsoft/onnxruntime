@@ -380,8 +380,8 @@ def repeat_prompt(args):
 
 def initialize_pipeline(
     version="xl-turbo",
-    is_refiner:bool=False,
-    is_inpaint:bool=False,
+    is_refiner: bool = False,
+    is_inpaint: bool = False,
     engine_type=EngineType.ORT_CUDA,
     work_dir: str = ".",
     engine_dir=None,
