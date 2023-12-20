@@ -111,7 +111,7 @@ def check_if_dlls_are_present(
             file_list_in_package += [os.path.join(dirpath, file) for file in filenames]
     else:
         file_list_in_package = zip_file.namelist()
-
+    print(file_list_in_package)
     # In Nuget GPU package, onnxruntime.dll is in dependent package.
     package_contains_library = not bool(package_type == "nuget" and is_gpu_package)
     # In Nuget GPU package, gpu header files are not in dependent package.
@@ -126,7 +126,7 @@ def check_if_dlls_are_present(
 
             if package_type == "nuget":
                 folder = "runtimes/" + platform + "/" + native_folder
-                build_dir = "buildTransitive" if is_gpu_package else "build"
+                build_dir = "buildTransitive" if is_gpu_dependent_package else "build"
                 header_folder = f"{build_dir}/native/include"
             else:  # zip package
                 folder = package_path + "/lib"
@@ -139,7 +139,6 @@ def check_if_dlls_are_present(
                 if path not in file_list_in_package:
                     print("onnxruntime.dll not found for " + platform)
                     raise Exception("onnxruntime.dll not found for " + platform)
-                continue
 
             if package_contains_cuda_binaries:
                 for dll in win_gpu_package_libraries:
@@ -163,7 +162,7 @@ def check_if_dlls_are_present(
         elif platform.startswith("linux"):
             if package_type == "nuget":
                 folder = "runtimes/" + platform + "/native"
-                build_dir = "buildTransitive" if is_gpu_package else "build"
+                build_dir = "buildTransitive" if is_gpu_dependent_package else "build"
                 header_folder = f"{build_dir}/native/include"
             else:  # tarball package
                 folder = package_path + "/lib"
@@ -295,8 +294,9 @@ def validate_nuget(args):
     full_nuget_path = os.path.join(args.package_path, nuget_file_name)
 
     is_gpu_package = bool("microsoft.ml.onnxruntime.gpu.1" in args.package_name.lower())
-    is_gpu_dependent_package = bool("microsoft.ml.onnxruntime.gpu.windows" in args.package_name.lower() or "microsoft.ml.onnnxruntime.linux" in args.package_name.lower())
-
+    is_gpu_dependent_package = bool("microsoft.ml.onnxruntime.gpu.windows" in args.package_name.lower() or "microsoft.ml.onnnxruntime.gpu.linux" in args.package_name.lower())
+    print("is_gpu_package: " + str(is_gpu_package))
+    print("is_gpu_dependent_package: " + str(is_gpu_dependent_package))
     if "directml" in nuget_file_name.lower():
         is_dml_package = True
     else:
