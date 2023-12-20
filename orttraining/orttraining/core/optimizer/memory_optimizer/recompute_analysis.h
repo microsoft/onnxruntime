@@ -86,6 +86,53 @@ class NodeRecomputePlan : public NodeOptimizationPlanBase {
 
   std::string GetNodesInTopoOrderStr() const;
 
+  std::string GetMemorySavingSymbolicString() const override {
+    std::string saving_str;
+    for (auto output_index : GetActivationOutputIndices()) {
+      // If the output is reusing other node's buffer, then no memory saving.
+      std::string cur_output_saving_str;
+
+      bool is_reused = reuse_buffers.find(output_index) != reuse_buffers.end();
+      bool is_src_node_in_cur_node_subgraph = false;
+      if (is_reused) {
+        // Here we assume the src_node is the real owner of the buffer, so we don't need trace further.
+        const auto* src_node = reuse_buffers.at(output_index).first;
+        is_src_node_in_cur_node_subgraph = std::find(nodes_in_topological_order_.begin(),
+                                                     nodes_in_topological_order_.end(),
+                                                     src_node) != nodes_in_topological_order_.end();
+      }
+
+      if (!is_reused || is_src_node_in_cur_node_subgraph) {
+        // For is_src_node_in_cur_node_subgraph is True, still use the output to calculate the saving, because
+        // reusing buffer is the same size.
+        const auto& output_def = node->OutputDefs()[output_index];
+        MLDataType ml_data_type = DataTypeImpl::TypeFromProto(*output_def->TypeAsProto());
+        ORT_ENFORCE(ml_data_type->IsTensorType(), "ml_type must be a tensor type, but it is ",
+                    DataTypeImpl::ToString(ml_data_type));
+        const TensorTypeBase* tensor_type_base = ml_data_type->AsTensorType();
+        ORT_ENFORCE(nullptr != tensor_type_base);
+        MLDataType elt_type = tensor_type_base->GetElementType();
+        const auto byte_count_per_element = elt_type->Size();
+        cur_output_saving_str = GetActivationOutputDimParamString(output_index) + " * " +
+                                std::to_string(byte_count_per_element) + " * " +
+                                std::to_string(GetSaveRatio());
+      } else {
+        cur_output_saving_str = "0";
+      }
+
+      if (!saving_str.empty()) {
+        saving_str += " + ";
+      }
+
+      saving_str = "(" + cur_output_saving_str + ")";
+    }
+
+    if (saving_str.empty()) {
+      return saving_str;
+    }
+    return "(" + saving_str + ")";
+  }
+
  private:
   bool compromise_recompute_;
   InlinedVector<const Node*> nodes_in_topological_order_;
