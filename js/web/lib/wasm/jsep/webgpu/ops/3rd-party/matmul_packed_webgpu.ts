@@ -453,9 +453,7 @@ export const createMatmulProgramInfo =
         {type: DataType.int32, data: dimInner}
       ];
       appendActivationUniformsData(activationAttributes, programUniforms);
-      programUniforms.push(
-          ...createTensorShapeVariables(outerDims), ...createTensorShapeVariables(aShapeTemp),
-          ...createTensorShapeVariables(bShapeTemp));
+      programUniforms.push(...createTensorShapeVariables(outerDims, aShapeTemp, bShapeTemp));
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
 
       const hasBias = inputs.length > 2;
