@@ -141,27 +141,27 @@ export const createGroupedConvVectorizeProgramInfo =
     let row = index1 % uniforms.output_shape[1];
     let batch = index1 / uniforms.output_shape[1];
 
-    let xRCCorner = vec2<i32>(i32(row), i32(col)) * uniforms.strides - uniforms.pads;
+    let x_corner = vec2<i32>(i32(row), i32(col)) * uniforms.strides - uniforms.pads;
 
-    var xVals: array<${x.type.value}, ${xNumber}>;
+    var x_vals: array<${x.type.value}, ${xNumber}>;
     var values: array<${output.type.value}, ${outputNumber}>;
     let input_channel = output_channel;
     // Use constant instead of uniform can give better performance for w's height/width.
-    for (var wHeight: u32 = 0u; wHeight < ${wShape[0]}; wHeight++) {
-      let xHeight = xRCCorner.x + i32(wHeight);
-      if (xHeight >= 0 || u32(xHeight) < uniforms.x_shape[1]) {
+    for (var w_height: u32 = 0u; w_height < ${wShape[0]}; w_height++) {
+      let x_height = x_corner.x + i32(w_height);
+      if (x_height >= 0 || u32(x_height) < uniforms.x_shape[1]) {
         for (var i = 0; i < ${xNumber}; i++) {
-          let xWidth = xRCCorner.y + i;
-          if (xWidth >= 0 && u32(xWidth) < uniforms.x_shape[2]) {
-            xVals[i] = ${x.get('batch', 'u32(xHeight)', 'u32(xWidth)', 'input_channel')};
+          let x_width = x_corner.y + i;
+          if (x_width >= 0 && u32(x_width) < uniforms.x_shape[2]) {
+            x_vals[i] = ${x.get('batch', 'u32(x_height)', 'u32(x_width)', 'input_channel')};
           } else {
-            xVals[i] = ${x.type.value}(0);
+            x_vals[i] = ${x.type.value}(0);
           }
         }
-        for (var wWidth: u32 = 0u; wWidth < ${wShape[1]}; wWidth++) {
-          let wVal = ${w.get('wHeight', 'wWidth', '0', 'output_channel')};
+        for (var w_width: u32 = 0u; w_width < ${wShape[1]}; w_width++) {
+          let w_val = ${w.get('w_height', 'w_width', '0', 'output_channel')};
           for (var i = 0u; i < ${outputNumber}u; i++) {
-            values[i] = fma(xVals[i * ${attributes.strides[1]}u + wWidth], wVal, values[i]);
+            values[i] = fma(x_vals[i * ${attributes.strides[1]}u + w_width], w_val, values[i]);
           }
         }
       }
