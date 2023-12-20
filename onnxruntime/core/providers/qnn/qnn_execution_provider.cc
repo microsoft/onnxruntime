@@ -120,7 +120,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "Context cache enable: " << context_cache_enabled_;
 
     std::string embed_mode = session_options->config_options.GetConfigOrDefault(
-                                  kOrtSessionOptionEpContextEmbedMode, "1");
+        kOrtSessionOptionEpContextEmbedMode, "1");
     if ("1" == embed_mode) {
       qnn_context_embed_mode_ = true;
     } else if ("0" == embed_mode) {
