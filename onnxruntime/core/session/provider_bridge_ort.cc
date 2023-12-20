@@ -6,6 +6,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/framework/allocator_utils.h"
+#include "core/framework/config_options.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/data_types.h"
 #include "core/framework/data_transfer_manager.h"
@@ -526,6 +527,11 @@ struct ProviderHostImpl : ProviderHost {
 
   const ONNX_NAMESPACE::ValueInfoProto& ValueInfoProtos__operator_array(const ONNX_NAMESPACE::ValueInfoProtos* p, int index) override { return (*p)[index]; }
 
+  // ConfigOptions (wrapped)
+  std::optional<std::string> ConfigOptions__GetConfigEntry(const ConfigOptions* p, const std::string& config_key) override {
+    return p->GetConfigEntry(config_key);
+  }
+
   // ComputeCapability (wrapped)
   std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) override { return std::make_unique<ComputeCapability>(std::move(t_sub_graph)); }
   void ComputeCapability__operator_delete(ComputeCapability* p) override { delete p; }
@@ -931,6 +937,7 @@ struct ProviderHostImpl : ProviderHost {
   uint32_t OpKernelInfo__GetInputCount(const OpKernelInfo* p) override { return p->GetInputCount(); }
   uint32_t OpKernelInfo__GetOutputCount(const OpKernelInfo* p) override { return p->GetOutputCount(); }
   const Node& OpKernelInfo__node(const OpKernelInfo* p) override { return p->node(); }
+  const ConfigOptions& OpKernelInfo__GetConfigOptions(const OpKernelInfo* p) override { return p->GetConfigOptions(); }
 
   // SessionState (wrapped)
   const DataTransferManager& SessionState__GetDataTransferMgr(const SessionState* p) override { return p->GetDataTransferMgr(); }

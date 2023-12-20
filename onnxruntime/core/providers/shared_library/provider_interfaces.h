@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <optional>
+
 // Public wrappers around internal ort interfaces (currently)
 #include "core/providers/shared_library/provider_host_api.h"
 
@@ -423,6 +425,9 @@ struct ProviderHost {
 
   virtual const ONNX_NAMESPACE::ValueInfoProto& ValueInfoProtos__operator_array(const ONNX_NAMESPACE::ValueInfoProtos* p, int index) = 0;
 
+  // ConfigOptions
+  virtual std::optional<std::string> ConfigOptions__GetConfigEntry(const ConfigOptions* p, const std::string& config_key) = 0;
+
   // ComputeCapability
   virtual std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) = 0;
   virtual void ComputeCapability__operator_delete(ComputeCapability* p) = 0;
@@ -805,6 +810,7 @@ struct ProviderHost {
   virtual uint32_t OpKernelInfo__GetInputCount(const OpKernelInfo* p) = 0;
   virtual uint32_t OpKernelInfo__GetOutputCount(const OpKernelInfo* p) = 0;
   virtual const Node& OpKernelInfo__node(const OpKernelInfo* p) = 0;
+  virtual const ConfigOptions& OpKernelInfo__GetConfigOptions(const OpKernelInfo* p) = 0;
 
   // SessionState
   virtual const DataTransferManager& SessionState__GetDataTransferMgr(const SessionState* p) = 0;

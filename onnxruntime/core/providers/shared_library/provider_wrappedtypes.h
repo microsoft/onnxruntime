@@ -332,6 +332,14 @@ struct DataTypeUtils final {
 
 }  // namespace Utils
 
+struct ConfigOptions final {
+  std::optional<std::string> GetConfigEntry(const std::string& config_key) const {
+    return g_host->ConfigOptions__GetConfigEntry(this, config_key);
+  }
+
+  PROVIDER_DISALLOW_ALL(ConfigOptions)
+};
+
 struct ComputeCapability final {
   static std::unique_ptr<ComputeCapability> Create(std::unique_ptr<IndexedSubGraph> t_sub_graph) { return g_host->ComputeCapability__construct(std::move(t_sub_graph)); }
   static void operator delete(void* p) { g_host->ComputeCapability__operator_delete(reinterpret_cast<ComputeCapability*>(p)); }
@@ -897,6 +905,8 @@ struct OpKernelInfo final {
   uint32_t GetOutputCount() const { return g_host->OpKernelInfo__GetOutputCount(this); }
 
   const Node& node() const noexcept { return g_host->OpKernelInfo__node(this); }
+
+  const ConfigOptions& GetConfigOptions() const { return g_host->OpKernelInfo__GetConfigOptions(this); }
 
   OpKernelInfo() = delete;
   OpKernelInfo(const OpKernelInfo&) = delete;

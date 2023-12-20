@@ -18,10 +18,12 @@ namespace onnxruntime {
 
 ConstantFolding::ConstantFolding(const IExecutionProvider& execution_provider,
                                  bool skip_dequantize_linear,
+                                 const ConfigOptions& config_options,
                                  const InlinedHashSet<std::string_view>& compatible_execution_providers,
                                  const InlinedHashSet<std::string>& excluded_initializers) noexcept
     : GraphTransformer("ConstantFolding", compatible_execution_providers),
       skip_dequantize_linear_(skip_dequantize_linear),
+      config_options_(config_options),
       excluded_initializers_(excluded_initializers),
       execution_provider_(execution_provider) {
 }
@@ -250,12 +252,12 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         // override the EP assigned to the node so that it will use the CPU kernel for Compute.
         node->SetExecutionProviderType(kCpuExecutionProvider);
 
-        kernel = info.CreateKernel(node);
+        kernel = info.CreateKernel(node, config_options_);
 
         // undo the EP change to the value that was assigned at graph partitioning time
         node->SetExecutionProviderType(ep_type);
       } else {
-        kernel = info.CreateKernel(node);
+        kernel = info.CreateKernel(node, config_options_);
       }
 
       // We currently constant fold using the CPU EP only.

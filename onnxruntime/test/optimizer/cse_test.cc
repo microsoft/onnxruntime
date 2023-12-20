@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "test/framework/test_utils.h"
-#include "test/test_environment.h"
 #include "core/graph/model.h"
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/graph_transformer_mgr.h"
+#include "test/framework/test_utils.h"
+#include "test/test_environment.h"
+#include "test/util/include/asserts.h"
 
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
@@ -272,20 +273,21 @@ TEST(CseTests, MergedValueAndGraphOutputAreOutputsOfSameNode) {
 TEST(CseTests, MergeConstants) {
   auto model_uri = ORT_TSTR("testdata/transform/cse/cse_merge_constants.onnx");
   std::shared_ptr<Model> model;
-  ASSERT_TRUE(Model::Load(model_uri, model, nullptr,
-                          DefaultLoggingManager().DefaultLogger())
-                  .IsOK());
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, DefaultLoggingManager().DefaultLogger()));
+
   Graph& graph = model->MainGraph();
   GraphTransformerManager graph_transformation_mgr(1);
   // In current implementation, equal constants are not merged. So CSE must precede constant folding, otherwise we end up
   // with multiple copies of the same constant.
   std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-  ASSERT_TRUE(
-      graph_transformation_mgr.Register(std::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1).IsOK());
-  ASSERT_TRUE(
-      graph_transformation_mgr.Register(std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1).IsOK());
-  ASSERT_TRUE(
-      graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<CommonSubexpressionElimination>(),
+                                                     TransformerLevel::Level1));
+  ConfigOptions empty_config_options;
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options),
+      TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1,
+                                                              DefaultLoggingManager().DefaultLogger()));
 
   ASSERT_EQ(graph.GetAllInitializedTensors().size(), 1U);
   auto op_count = CountOpsInGraph(graph);

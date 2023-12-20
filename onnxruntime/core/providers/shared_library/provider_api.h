@@ -132,6 +132,7 @@ struct Logger;
 struct Capture;
 }  // namespace logging
 struct ComputeCapability;
+struct ConfigOptions;
 struct DataTransferManager;
 struct IndexedSubGraph;
 struct IndexedSubGraph_MetaDef;
