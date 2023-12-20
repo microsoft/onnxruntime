@@ -164,7 +164,11 @@ void TestCustomMemoryLimit_ProcessException(const OnnxRuntimeException& ex) {
 #endif  // #ifdef GTEST_USES_POSIX_RE
 }
 
+#ifdef __SANITIZE_ADDRESS__
+TEST(BFCArenaTest, DISABLED_TestCustomMemoryLimit) {
+#else
 TEST(BFCArenaTest, TestCustomMemoryLimit) {
+#endif
   {
     // Configure a 1MiB byte limit
     BFCArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 20);
