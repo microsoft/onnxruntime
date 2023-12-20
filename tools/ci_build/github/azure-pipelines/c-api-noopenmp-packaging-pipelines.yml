@@ -854,14 +854,15 @@ stages:
         PackageType: 'nuget'
         PackagePath: '$(Build.ArtifactStagingDirectory)'
         PlatformsSupported: 'win-x64,linux-x64'
-        PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.*nupkg'
+        # 1* stands for version number. we use it to fileter Gpu.Windows and Gpu.Linux packages
+        PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.1*nupkg'
         VerifyNugetSigning: false
 
     - template: templates/validate-package.yml
       parameters:
         PackageType: 'nuget'
         PackagePath: '$(Build.ArtifactStagingDirectory)'
-        PackageName: 'Microsoft.ML.OnnxRuntime.Sub.Gpu.Windows.*nupkg'
+        PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Windows.*nupkg'
         PlatformsSupported: 'win-x64'
         VerifyNugetSigning: false
 
@@ -869,7 +870,7 @@ stages:
       parameters:
         PackageType: 'nuget'
         PackagePath: '$(Build.ArtifactStagingDirectory)'
-        PackageName: 'Microsoft.ML.OnnxRuntime.Sub.Gpu.Linux.*nupkg'
+        PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Linux.*nupkg'
         PlatformsSupported: 'linux-x64'
         VerifyNugetSigning: false
 

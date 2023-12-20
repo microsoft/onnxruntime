@@ -39,16 +39,16 @@ def get_package_name(os, cpu_arch, ep, is_training_package):
 # Currently we take onnxruntime_providers_cuda from CUDA build
 # And onnxruntime, onnxruntime_providers_shared and
 # onnxruntime_providers_tensorrt from tensorrt build
-# cuda binaries are split out into the platform dependent packages Microsoft.ML.OnnxRuntime.Sub.Gpu{Linux|Windows}
+# cuda binaries are split out into the platform dependent packages Microsoft.ML.OnnxRuntime.{Linux|Windows}
 # and not included in the base Microsoft.ML.OnnxRuntime.Gpu package
 def is_this_file_needed(ep, file, package_name):
     filename = file.name
     suffix = file.suffix
     if package_name == "Microsoft.ML.OnnxRuntime.Gpu":
         return False
-    if package_name == "Microsoft.ML.OnnxRuntime.Sub.Gpu.Linux" and suffix in [".dll", ".lib", "pdb"]:
+    if package_name == "Microsoft.ML.OnnxRuntime.Gpu.Linux" and suffix in [".dll", ".lib", "pdb"]:
         return False
-    if package_name == "Microsoft.ML.OnnxRuntime.Sub.Gpu.Windows" and suffix == ".so":
+    if package_name == "Microsoft.ML.OnnxRuntime.Gpu.Windows" and suffix == ".so":
         return False
     return (ep != "cuda" or "cuda" in filename) and (ep != "tensorrt" or "cuda" not in filename)
 
@@ -137,6 +137,7 @@ def parse_arguments():
         help="The selected execution provider for this build.",
     )
     parser.add_argument("--sdk_info", required=False, default="", type=str, help="dependency SDK information.")
+    parser.add_argument("--nuspec_name", required=False, default="NativeNuget.nuspec", type=str, help="nuget spec name.")
 
     return parser.parse_args()
 
@@ -204,14 +205,14 @@ def generate_repo_url(line_list, repo_url, commit_id):
 
 def add_common_dependencies(xml_text, package_name, version):
     dependent_packages = bool(
-        package_name == "Microsoft.ML.OnnxRuntime.Sub.Gpu.Windows"
-        or package_name == "Microsoft.ML.OnnxRuntime.Sub.Gpu.Linux"
+        package_name == "Microsoft.ML.OnnxRuntime.Gpu.Windows"
+        or package_name == "Microsoft.ML.OnnxRuntime.Gpu.Linux"
     )
     if not dependent_packages:
         xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
     if package_name == "Microsoft.ML.OnnxRuntime.Gpu":
-        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Sub.Gpu.Windows"' + ' version="' + version + '"/>')
-        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Sub.Gpu.Linux"' + ' version="' + version + '"/>')
+        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu.Windows"' + ' version="' + version + '"/>')
+        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu.Linux"' + ' version="' + version + '"/>')
 
 
 def generate_dependencies(xml_text, package_name, version):
@@ -346,8 +347,8 @@ def generate_files(line_list, args):
     ]
     is_mklml_package = args.package_name == "Microsoft.ML.OnnxRuntime.MKLML"
     is_cuda_gpu_package = args.package_name == "Microsoft.ML.OnnxRuntime.Gpu"
-    is_cuda_gpu_win_sub_package = args.package_name == "Microsoft.ML.OnnxRuntime.Sub.Gpu.Windows"
-    is_cuda_gpu_linux_sub_package = args.package_name == "Microsoft.ML.OnnxRuntime.Sub.Gpu.Linux"
+    is_cuda_gpu_win_sub_package = args.package_name == "Microsoft.ML.OnnxRuntime.Gpu.Windows"
+    is_cuda_gpu_linux_sub_package = args.package_name == "Microsoft.ML.OnnxRuntime.Gpu.Linux"
     is_rocm_gpu_package = args.package_name == "Microsoft.ML.OnnxRuntime.ROCm"
     is_dml_package = args.package_name == "Microsoft.ML.OnnxRuntime.DirectML"
     is_windowsai_package = args.package_name == "Microsoft.AI.MachineLearning"
@@ -417,7 +418,7 @@ def generate_files(line_list, args):
     include_dir = f"{build_dir}\\native\\include"
 
     # Sub.Gpu packages do not include the onnxruntime headers
-    if "Sub.Gpu" not in args.package_name:
+    if args.package_name != "Microsoft.ML.OnnxRuntime.Gpu":
         files_list.append(
             "<file src="
             + '"'
@@ -589,7 +590,6 @@ def generate_files(line_list, args):
                 files_list.append(
                     "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.pdb") + runtimes + " />"
                 )
-
     else:
         files_list.append(
             "<file src="
@@ -1187,7 +1187,8 @@ def main():
     lines = generate_nuspec(args)
 
     # Create the nuspec needed to generate the Nuget
-    with open(os.path.join(args.native_build_path, "NativeNuget.nuspec"), "w") as f:
+    print(f"nuspec_name: {args.nuspec_name}")
+    with open(os.path.join(args.native_build_path, args.nuspec_name), "w") as f:
         for line in lines:
             # Uncomment the printing of the line if you need to debug what's produced on a CI machine
             # print(line)
