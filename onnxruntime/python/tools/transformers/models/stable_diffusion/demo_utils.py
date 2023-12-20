@@ -380,6 +380,8 @@ def repeat_prompt(args):
 
 def initialize_pipeline(
     version="xl-turbo",
+    is_refiner:bool=False,
+    is_inpaint:bool=False,
     engine_type=EngineType.ORT_CUDA,
     work_dir: str = ".",
     engine_dir=None,
@@ -406,6 +408,8 @@ def initialize_pipeline(
 ):
     pipeline_info = PipelineInfo(
         version,
+        is_refiner=is_refiner,
+        is_inpaint=is_inpaint,
         use_vae=use_vae,
         min_image_size=min_image_size,
         max_image_size=max_image_size,
@@ -529,6 +533,8 @@ def load_pipelines(args, batch_size=None):
 
     params = {
         "version": args.version,
+        "is_refiner": False,
+        "is_inpaint": False,
         "engine_type": engine_type,
         "work_dir": args.work_dir,
         "engine_dir": args.engine_dir,
@@ -561,6 +567,7 @@ def load_pipelines(args, batch_size=None):
     refiner = None
     if "xl" in args.version and args.enable_refiner:
         params["version"] = "xl-1.0"  # Allow SDXL Turbo to use refiner.
+        params["is_refiner"] = True
         params["scheduler"] = args.refiner_scheduler
         params["do_classifier_free_guidance"] = args.refiner_guidance > 1.0
         params["lcm"] = False

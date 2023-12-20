@@ -139,7 +139,7 @@ def load_ort_cuda_pipeline(name, engine, use_control_net=False, enable_cuda_grap
     )
 
     engine_type = EngineType.ORT_CUDA if engine == "ort_cuda" else EngineType.ORT_TRT
-    onnx_dir, engine_dir, output_dir, framework_model_dir, timing_cache = get_engine_paths(
+    onnx_dir, engine_dir, output_dir, framework_model_dir, _ = get_engine_paths(
         work_dir=work_dir, pipeline_info=pipeline_info, engine_type=engine_type
     )
 
@@ -157,7 +157,6 @@ def load_ort_cuda_pipeline(name, engine, use_control_net=False, enable_cuda_grap
         engine_dir=engine_dir,
         framework_model_dir=framework_model_dir,
         onnx_dir=onnx_dir,
-        force_engine_rebuild=False,
         device_id=torch.cuda.current_device(),
     )
 

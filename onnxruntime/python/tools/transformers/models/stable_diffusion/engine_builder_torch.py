@@ -39,6 +39,7 @@ class TorchEngineBuilder(EngineBuilder):
             use_cuda_graph=use_cuda_graph,
         )
 
+        self.compile_config = {}
         if use_cuda_graph:
             self.compile_config = {
                 "clip": {"mode": "reduce-overhead", "dynamic": False},

@@ -12,11 +12,11 @@ import onnx
 import torch
 from diffusion_models import PipelineInfo
 from engine_builder import EngineBuilder, EngineType
-from onnx import TensorProto
-from ort_utils import CudaSession, OnnxModel
 from packaging import version
 
 import onnxruntime as ort
+from onnxruntime.transformers.io_binding_helper import CudaSession
+from onnxruntime.transformers.onnx_model import OnnxModel
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +200,7 @@ class OrtCudaEngineBuilder(EngineBuilder):
                 )
 
                 if model_name == "clip2":
-                    model.change_graph_input_type(model.find_graph_input("input_ids"), TensorProto.INT32)
+                    model.change_graph_input_type(model.find_graph_input("input_ids"), onnx.TensorProto.INT32)
 
                 model.save_model_to_file(onnx_opt_path, use_external_data_format=(model_name == "clip2"))
             elif model_name in ["unet", "unetxl"]:
