@@ -127,9 +127,7 @@ class NodeRecomputePlan : public NodeOptimizationPlanBase {
       saving_str = "(" + cur_output_saving_str + ")";
     }
 
-    if (saving_str.empty()) {
-      return saving_str;
-    }
+    ORT_ENFORCE(!saving_str.empty(), "saving_str should not be empty for node: ", node->OpType(), " ", node->Name());
     return "(" + saving_str + ")";
   }
 
