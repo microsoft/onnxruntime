@@ -94,6 +94,7 @@ const InlinedHashMap<std::string, AllowedRecomputeNodeConfig>& GetAllowedRecompu
         {"Expand", AllowedRecomputeNodeConfig{{0}}},
         {"FastGelu", AllowedRecomputeNodeConfig{{0}}},
         {"Gelu", AllowedRecomputeNodeConfig{{0}}},
+        {"QuickGelu", AllowedRecomputeNodeConfig{{0}}},
 
         // Ternary elementwise
         {"Where", AllowedRecomputeNodeConfig{{0, 1, 2}}},
