@@ -20,7 +20,7 @@
 #include <atomic>
 #include <iostream>
 #include <string>
-#include <mutex>
+#include <vector>
 
 #include "core/common/logging/capture.h"
 #include "core/common/logging/isink.h"
@@ -48,7 +48,9 @@ class EtwSink : public ISink {
 
 class EtwRegistrationManager {
  public:
-  using EtwInternalCallback = std::function<void(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext)>;
+  using EtwInternalCallback = std::function<void(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level,
+                                                 ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,
+                                                 PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext)>;
 
   // Singleton instance access
   static EtwRegistrationManager& Instance();
@@ -80,7 +82,8 @@ class EtwRegistrationManager {
   EtwRegistrationManager(EtwRegistrationManager&&) = delete;
   EtwRegistrationManager& operator=(EtwRegistrationManager&&) = delete;
 
-  void InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext);
+  void InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword,
+                       ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext);
 
   static void NTAPI ORT_TL_EtwEnableCallback(
       _In_ LPCGUID SourceId,

@@ -17,7 +17,7 @@
 
 #include <TraceLoggingProvider.h>
 #include <evntrace.h>
-#include "winmeta.h"
+#include <winmeta.h>
 
 // Seems this workaround can be dropped when we drop support for VS2017 toolchains
 // https://developercommunity.visualstudio.com/content/problem/85934/traceloggingproviderh-is-incompatible-with-utf-8.html
@@ -179,7 +179,7 @@ void WindowsTelemetry::LogEvaluationStop() const {
     return;
 
   TraceLoggingWrite(telemetry_provider_handle,
-                    "EvaluationStop", );
+                    "EvaluationStop");
 }
 
 void WindowsTelemetry::LogEvaluationStart() const {

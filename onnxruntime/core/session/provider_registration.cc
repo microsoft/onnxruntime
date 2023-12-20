@@ -14,8 +14,8 @@
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
 
 #ifdef _WIN32
+#include <winmeta.h>
 #include "core/platform/tracing.h"
-#include "winmeta.h"
 #endif
 
 #if defined(USE_DML)

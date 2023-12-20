@@ -853,7 +853,7 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
     auto& provider = env.GetTelemetryProvider();
     if (provider.IsEnabled()) {
       auto keyword = provider.Keyword();
-      if ((keyword & static_cast<unsigned long long>(onnxruntime::logging::TLKeyword::Profiling)) != 0) {
+      if ((keyword & static_cast<uint64_t>(onnxruntime::logging::TLKeyword::Profiling)) != 0) {
         tracelogging_provider_ep_enabled = true;
       }
     }
@@ -875,9 +875,11 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
 
     for (size_t event_idx = 0; event_idx < num_events; event_idx++) {
       ORT_RETURN_IF_ERROR(
-          ExtractProfilingEvent(*(profile_events + event_idx), "ROOT", outfile, backendSupportsExtendedEventData, tracelogging_provider_ep_enabled));
+          ExtractProfilingEvent(*(profile_events + event_idx), "ROOT", outfile, backendSupportsExtendedEventData,
+                                tracelogging_provider_ep_enabled));
       ORT_RETURN_IF_ERROR(
-          ExtractProfilingSubEvents(*(profile_events + event_idx), outfile, backendSupportsExtendedEventData, tracelogging_provider_ep_enabled));
+          ExtractProfilingSubEvents(*(profile_events + event_idx), outfile, backendSupportsExtendedEventData,
+                                    tracelogging_provider_ep_enabled));
     }
 
     if (!tracelogging_provider_ep_enabled) {
@@ -996,6 +998,7 @@ Status QnnBackendManager::ExtractProfilingEventExtended(
               << (event_data_extended.v1.identifier ? event_data_extended.v1.identifier : "NULL") << "\n";
     }
   } else {
+#ifdef _WIN32
     LogQnnProfileEventAsTraceLogging(
         event_data_extended.v1.timestamp,
         message,
@@ -1004,6 +1007,7 @@ Status QnnBackendManager::ExtractProfilingEventExtended(
         "BACKEND",
         eventLevel,
         (event_data_extended.v1.identifier ? event_data_extended.v1.identifier : "NULL"));
+#endif
   }
 
   return Status::OK();
@@ -1017,7 +1021,6 @@ void QnnBackendManager::LogQnnProfileEventAsTraceLogging(
     const std::string& timingSource,
     const std::string& eventLevel,
     const char* eventIdentifier) {
-#ifdef _WIN32
   TraceLoggingWrite(
       telemetry_provider_handle,
       "QNNProfilingEvent",
@@ -1030,7 +1033,6 @@ void QnnBackendManager::LogQnnProfileEventAsTraceLogging(
       TraceLoggingString(timingSource.c_str(), "Timing Source"),
       TraceLoggingString(eventLevel.c_str(), "Event Level"),
       TraceLoggingString(eventIdentifier, "Event Identifier"));
-#endif
 }
 
 const std::string& QnnBackendManager::GetUnitString(QnnProfile_EventUnit_t unitType) {
