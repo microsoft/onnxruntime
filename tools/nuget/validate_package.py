@@ -294,8 +294,8 @@ def validate_nuget(args):
     nuget_file_name = nuget_packages_found_in_path[0]
     full_nuget_path = os.path.join(args.package_path, nuget_file_name)
 
-    is_gpu_package = bool(args.package_name.lower().contains("microsoft.ml.onnxruntime.gpu.1"))
-    is_gpu_dependent_package = bool(args.package_name.lower().contains("microsoft.ml.onnxruntime.gpu.windows") or args.package_name.lower().contains("microsoft.ml.onnnxruntime.linux"))
+    is_gpu_package = bool("microsoft.ml.onnxruntime.gpu.1" in args.package_name.lower())
+    is_gpu_dependent_package = bool("microsoft.ml.onnxruntime.gpu.windows" in args.package_name.lower() or "microsoft.ml.onnnxruntime.linux" in args.package_name.lower())
 
     if "directml" in nuget_file_name.lower():
         is_dml_package = True

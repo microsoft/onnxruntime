@@ -169,7 +169,18 @@ def generate_description(line_list, package_name):
         description = (
             "This package contains native shared library artifacts for all supported platforms of ONNX Runtime."
         )
-
+    elif "Microsoft.ML.OnnxRuntime.Gpu.Linux" in package_name:
+        description = (
+            "This package contains Linux native shared library artifacts for ONNX Runtime with CUDA."
+        )
+    elif "Microsoft.ML.OnnxRuntime.Gpu.Windows" in package_name:
+        description = (
+            "This package contains Windows native shared library artifacts for ONNX Runtime with CUDA."
+        )
+    elif "Microsoft.ML.OnnxRuntime.Gpu.1" in package_name:  # This is a Microsoft.ML.OnnxRuntime.GPU.* package, 1 is begin of version, that is used to filter Gpu.Windows/Gpu.linux
+        description = (
+            "This package contains native shared library artifacts for all supported platforms of ONNX Runtime."
+        )
     line_list.append("<description>" + description + "</description>")
 
 
