@@ -63,23 +63,6 @@ The QNN Execution Provider supports a number of configuration options. The `prov
 |'sustained_high_performance'||
 
 
-|`provider_options_values` for `provider_options_keys = "qnn_context_cache_enable"`|Description|
-|---|---|
-|'0'|disabled (default)|
-|'1'|enable qnn context cache. write out prepared Htp Context Binary to disk to save initialization costs.|
-
-
-|`provider_options_values` for `provider_options_keys = "qnn_context_cache_path"`|Description|
-|---|---|
-|'/path/to/context/cache'|string path to context cache binary|
-
-
-|`provider_options_values` for `provider_options_keys = "qnn_context_embed_mode"`|Description|
-|---|---|
-|'0'|generate the QNN context binary into separate file, set path in ONNX file specified by qnn_context_cache_path.|
-|'1'|generate the QNN context binary into the ONNX file specified by qnn_context_cache_path (default).|
-
-
 |`provider_options_values` for `provider_options_keys = "qnn_context_priority"`|[Description](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/htp_yielding.html)|
 |---|---|
 |'low'||
@@ -95,6 +78,55 @@ The QNN Execution Provider supports a number of configuration options. The `prov
 |'2'|longer preparation time, more optimal graph.|
 |'3'|longest preparation time, most likely even more optimal graph.|
 
+
+## QNN context binary cache feature
+There's a QNN context which contains QNN graphs after converting, compiling, filnalizing the model. QNN can serialize the context into binary file, so that user can use it for futher inference direclty (without the QDQ model) to improve the model loading cost.
+The QNN Execution Provider supports a number of session options to configure this.
+
+### Dump QNN context binary
+1. Create session option, set "ep.context_enable" to "1" to enable QNN context dump. The key "ep.context_enable" is defined as kOrtSessionOptionEpContextEnable in [onnxruntime_session_options_config_keys.h](https://github.com/microsoft/onnxruntime/blob/8931854528b1b2a3f320d012c78d37186fbbdab8/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h#L239-L252).
+2. Create the session with the QDQ model using session options created in step 1, and use HTP backend
+A Onnx model with QNN context binary will be created once the session is created/initialized. No need to run the session.
+The QNN context binary generation can be done on the QualComm device which has HTP using Arm64 build. It can also be done on x64 machine using x64 build (not able to run it since there's no HTP device).
+
+The generated Onnx model which has QNN context binary can be deployed to production/real device to run inference. This Onnx model is treated as a normal model by QNN Execution Provider. Inference code keeps same as inference with QDQ model on HTP backend.
+
+Code example
+```
+#include "onnxruntime_session_options_config_keys.h"
+
+// C++
+Ort::SessionOptions so;
+so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+
+// C
+const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+OrtSessionOptions* session_options;
+CheckStatus(g_ort, g_ort->CreateSessionOptions(&session_options));
+g_ort->AddSessionConfigEntry(session_options, kOrtSessionOptionEpContextEnable, "1");
+```
+
+### Configure the context binary file path
+The generated Onnx model with QNN context binary is default to [input_QDQ_model_path]_ctx.onnx in case user does not specify the path. User can to set the path in the session option with the key "ep.context_file_path". Example code below:
+
+```
+// C++
+so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "1");
+
+// C
+g_ort->AddSessionConfigEntry(session_options, kOrtSessionOptionEpContextFilePath, "./model_a_ctx.onnx");
+```
+
+### Disable the embed mode
+The QNN context binary content is embeded in the generated Onnx model by default. User can to disable it by setting "ep.context_embed_mode" to "0". In that case, a bin file will be generated separately. The file name looks like [ctx.onnx]_QNNExecutionProvider_QNN_[hash_id]_x_x.bin. The name is provided by Ort and tracked in the generated Onnx model. It will cause problems if any changes to the bin file. This bin file needs to sit together with the generated Onnx file.
+
+```
+// C++
+so.AddConfigEntry(kOrtSessionOptionEpContextEmbedMode, "0");
+
+// C
+g_ort->AddSessionConfigEntry(session_options, kOrtSessionOptionEpContextEmbedMode, "0");
+```
 
 ## Usage
 ### C++
