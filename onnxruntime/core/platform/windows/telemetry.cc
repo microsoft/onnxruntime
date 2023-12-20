@@ -179,8 +179,7 @@ void WindowsTelemetry::LogEvaluationStop() const {
     return;
 
   TraceLoggingWrite(telemetry_provider_handle,
-                    "EvaluationStop",
-                    );
+                    "EvaluationStop", );
 }
 
 void WindowsTelemetry::LogEvaluationStart() const {

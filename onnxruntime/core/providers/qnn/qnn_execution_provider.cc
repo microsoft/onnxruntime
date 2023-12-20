@@ -159,8 +159,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
           ParseProfilingLevel("basic", profiling_level);
         } else if (level < 5) {
           LOGS_DEFAULT(INFO) << "QNN Profiler ETW level not supported below level 5. Level: " << static_cast<int>(level);
-        }
-        else {
+        } else {
           LOGS_DEFAULT(INFO) << "Overriding profiling to detailed based on ETW level: " << static_cast<int>(level);
           ParseProfilingLevel("detailed", profiling_level);
         }
