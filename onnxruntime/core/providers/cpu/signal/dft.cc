@@ -19,7 +19,15 @@
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_KERNEL(DFT, 17,
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    DFT,
+    17, 19,
+    KernelDefBuilder()
+        .TypeConstraint("T1", BuildKernelDefConstraints<float, double>())
+        .TypeConstraint("T2", BuildKernelDefConstraints<int32_t, int64_t>()),
+    DFT);
+
+ONNX_CPU_OPERATOR_KERNEL(DFT, 20,
                          KernelDefBuilder()
                              .TypeConstraint("T1", BuildKernelDefConstraints<float, double>())
                              .TypeConstraint("T2", BuildKernelDefConstraints<int32_t, int64_t>()),
@@ -442,7 +450,13 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
 }
 
 Status DFT::Compute(OpKernelContext* ctx) const {
-  ORT_RETURN_IF_ERROR(discrete_fourier_transform(ctx, axis_, is_onesided_, is_inverse_));
+  int64_t axis = axis_;
+  if (opset_ >= 20 && ctx->InputCount() >= 3) {
+    const Tensor* axes_tensor = ctx->Input<Tensor>(2);
+    axis = axes_tensor->Data<int64_t>()[0];
+  }
+
+  ORT_RETURN_IF_ERROR(discrete_fourier_transform(ctx, axis, is_onesided_, is_inverse_));
   return Status::OK();
 }
 

@@ -9,8 +9,10 @@
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/framework/session_options.h"
 
 namespace onnxruntime {
+
 namespace test {
 
 std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_arena) {
@@ -248,6 +250,7 @@ std::unique_ptr<IExecutionProvider> QnnExecutionProviderWithOptions(const Provid
   return QNNProviderFactoryCreator::Create(options, session_options)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(session_options);
   return nullptr;
 #endif
 }

@@ -119,8 +119,15 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
                                  kOrtSessionOptionEpContextEnable, "0") == "1";
     LOGS_DEFAULT(VERBOSE) << "Context cache enable: " << context_cache_enabled_;
 
-    qnn_context_embed_mode_ = session_options->config_options.GetConfigOrDefault(
-                                  kOrtSessionOptionEpContextEmbedMode, "1") == "1";
+    std::string embed_mode = session_options->config_options.GetConfigOrDefault(
+        kOrtSessionOptionEpContextEmbedMode, "1");
+    if ("1" == embed_mode) {
+      qnn_context_embed_mode_ = true;
+    } else if ("0" == embed_mode) {
+      qnn_context_embed_mode_ = false;
+    } else {
+      LOGS_DEFAULT(VERBOSE) << "Invalid ep.context_embed_mode: " << embed_mode << " only 0 or 1 allowed. Set to 1.";
+    }
     LOGS_DEFAULT(VERBOSE) << "User specified context cache embed mode: " << qnn_context_embed_mode_;
 
     context_cache_path_cfg_ = session_options->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
