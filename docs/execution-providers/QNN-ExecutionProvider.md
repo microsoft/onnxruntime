@@ -91,7 +91,7 @@ The QNN context binary generation can be done on the QualComm device which has H
 
 The generated Onnx model which has QNN context binary can be deployed to production/real device to run inference. This Onnx model is treated as a normal model by QNN Execution Provider. Inference code keeps same as inference with QDQ model on HTP backend.
 
-Code example
+[Code example](https://github.com/microsoft/onnxruntime-inference-examples/blob/733ce6f3e8dd2ede8b67a8465684bca2f62a4a33/c_cxx/QNN_EP/mobilenetv2_classification/main.cpp#L90-L97)
 ```
 #include "onnxruntime_session_options_config_keys.h"
 
