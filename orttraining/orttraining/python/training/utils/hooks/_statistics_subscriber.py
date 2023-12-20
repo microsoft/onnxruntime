@@ -13,8 +13,6 @@ from typing import List, Optional, Tuple, Union
 import onnx
 import torch
 
-from onnxruntime.training.utils import log_memory_usage
-
 from ._subscriber_base import RuntimeStates, SubscriberBase
 
 
@@ -203,86 +201,82 @@ def _summarize_tensor(
     run_on_cpu: bool = False,
     bucket_size: int = 1024 * 1024 * 1024 // 2,
 ):
-    # # This is to try the best effort to align the count of numbers per line for easier comparison in diff views,
-    # # though it does not always guarantee to do this way.
-    # torch.set_printoptions(precision=6, linewidth=128)
+    # This is to try the best effort to align the count of numbers per line for easier comparison in diff views,
+    # though it does not always guarantee to do this way.
+    torch.set_printoptions(precision=6, linewidth=128)
 
-    # tensor_shape = tensor.shape
-    # tensor_dtype = tensor.dtype
-    # flatten_array = tensor.flatten().view(-1)
+    tensor_shape = tensor.shape
+    tensor_dtype = tensor.dtype
+    flatten_array = tensor.flatten().view(-1)
 
-    # if run_on_cpu:
-    #     flatten_array = flatten_array.to("cpu")
+    if run_on_cpu:
+        flatten_array = flatten_array.to("cpu")
 
-    # if run_on_cpu:
-    #     num_nan = torch.isnan(flatten_array).sum()
-    #     num_inf = torch.isinf(flatten_array).sum()
-    #     num_neg = (flatten_array < 0).sum()
-    #     num_pos = (flatten_array > 0).sum()
-    #     num_zero = (flatten_array == 0).sum()
-    #     min_value = flatten_array.min()
-    #     max_value = flatten_array.max()
-    #     mean_value = flatten_array.mean()
-    #     std_value = flatten_array.std()
-    # else:
-    #     # Split the calculation for each bucket, then do another round of calculation on the bucket results.
-    #     # This can at the best effort reduce the peak memory impact.
-    #     element_count = flatten_array.numel()
-    #     ceil_bucket_count = (element_count + bucket_size - 1) // (bucket_size)
-    #     nan_buckets = torch.zeros(ceil_bucket_count, dtype=torch.int64, device=flatten_array.device)
-    #     inf_buckets = torch.zeros(ceil_bucket_count, dtype=torch.int64, device=flatten_array.device)
-    #     neg_buckets = torch.zeros(ceil_bucket_count, dtype=torch.int64, device=flatten_array.device)
-    #     pos_buckets = torch.zeros(ceil_bucket_count, dtype=torch.int64, device=flatten_array.device)
-    #     zero_buckets = torch.zeros(ceil_bucket_count, dtype=torch.int64, device=flatten_array.device)
-    #     min_buckets = torch.zeros(ceil_bucket_count, dtype=flatten_array.dtype, device=flatten_array.device)
-    #     max_buckets = torch.zeros(ceil_bucket_count, dtype=flatten_array.dtype, device=flatten_array.device)
-    #     mean_buckets = torch.zeros(ceil_bucket_count, dtype=flatten_array.dtype, device=flatten_array.device)
-    #     std_buckets = torch.zeros(ceil_bucket_count, dtype=flatten_array.dtype, device=flatten_array.device)
+    if run_on_cpu:
+        num_nan = torch.isnan(flatten_array).sum()
+        num_inf = torch.isinf(flatten_array).sum()
+        num_neg = (flatten_array < 0).sum()
+        num_pos = (flatten_array > 0).sum()
+        num_zero = (flatten_array == 0).sum()
+        min_value = flatten_array.min()
+        max_value = flatten_array.max()
+        mean_value = flatten_array.mean()
+        std_value = flatten_array.std()
+    else:
+        # Split the calculation for each bucket, then do another round of calculation on the bucket results.
+        # This can at the best effort reduce the peak memory impact.
+        element_count = flatten_array.numel()
+        ceil_bucket_count = (element_count + bucket_size - 1) // (bucket_size)
+        nan_buckets = torch.zeros(ceil_bucket_count, dtype=torch.int64, device=flatten_array.device)
+        inf_buckets = torch.zeros(ceil_bucket_count, dtype=torch.int64, device=flatten_array.device)
+        neg_buckets = torch.zeros(ceil_bucket_count, dtype=torch.int64, device=flatten_array.device)
+        pos_buckets = torch.zeros(ceil_bucket_count, dtype=torch.int64, device=flatten_array.device)
+        zero_buckets = torch.zeros(ceil_bucket_count, dtype=torch.int64, device=flatten_array.device)
+        min_buckets = torch.zeros(ceil_bucket_count, dtype=flatten_array.dtype, device=flatten_array.device)
+        max_buckets = torch.zeros(ceil_bucket_count, dtype=flatten_array.dtype, device=flatten_array.device)
+        mean_buckets = torch.zeros(ceil_bucket_count, dtype=flatten_array.dtype, device=flatten_array.device)
+        std_buckets = torch.zeros(ceil_bucket_count, dtype=flatten_array.dtype, device=flatten_array.device)
 
-    #     # Summary for each bucket
-    #     element_count_per_bucket = torch.zeros(ceil_bucket_count, dtype=torch.int64, device=flatten_array.device)
-    #     for i in range(ceil_bucket_count):
-    #         end = min((i + 1) * bucket_size, element_count)
-    #         bucket = flatten_array[i * bucket_size : end]
-    #         element_count_per_bucket[i] = bucket.numel()
+        # Summary for each bucket
+        element_count_per_bucket = torch.zeros(ceil_bucket_count, dtype=torch.int64, device=flatten_array.device)
+        for i in range(ceil_bucket_count):
+            end = min((i + 1) * bucket_size, element_count)
+            bucket = flatten_array[i * bucket_size : end]
+            element_count_per_bucket[i] = bucket.numel()
 
-    #         nan_buckets[i] = torch.isnan(bucket).sum()
-    #         inf_buckets[i] = torch.isinf(bucket).sum()
-    #         neg_buckets[i] = (bucket < 0).sum()
-    #         pos_buckets[i] = (bucket > 0).sum()
-    #         zero_buckets[i] = (bucket == 0).sum()
-    #         min_buckets[i] = bucket.min()
-    #         max_buckets[i] = bucket.max()
-    #         mean_buckets[i] = bucket.sum()
-    #         std_buckets[i] = bucket.std()
+            nan_buckets[i] = torch.isnan(bucket).sum()
+            inf_buckets[i] = torch.isinf(bucket).sum()
+            neg_buckets[i] = (bucket < 0).sum()
+            pos_buckets[i] = (bucket > 0).sum()
+            zero_buckets[i] = (bucket == 0).sum()
+            min_buckets[i] = bucket.min()
+            max_buckets[i] = bucket.max()
+            mean_buckets[i] = bucket.sum()
+            std_buckets[i] = bucket.std()
 
-    #     # Reduction across all buckets
-    #     num_nan = nan_buckets.sum()
-    #     num_inf = inf_buckets.sum()
-    #     num_neg = neg_buckets.sum()
-    #     num_pos = pos_buckets.sum()
-    #     num_zero = zero_buckets.sum()
-    #     min_value = min_buckets.min()
-    #     max_value = max_buckets.max()
-    #     mean_value = float(mean_buckets.sum()) / float(element_count)
-    #     # Here we refer to
-    #     # https://math.stackexchange.com/questions/2971315/how-do-i-combine-standard-deviations-of-two-groups
-    #     # to calculate the combined standard deviation of all buckets.
-    #     s = (element_count_per_bucket - 1) * (std_buckets**2) + element_count_per_bucket * (
-    #         (mean_buckets - mean_value) ** 2
-    #     )
-    #     std_value = torch.sqrt(s.sum() / (element_count - 1))
+        # Reduction across all buckets
+        num_nan = nan_buckets.sum()
+        num_inf = inf_buckets.sum()
+        num_neg = neg_buckets.sum()
+        num_pos = pos_buckets.sum()
+        num_zero = zero_buckets.sum()
+        min_value = min_buckets.min()
+        max_value = max_buckets.max()
+        mean_value = float(mean_buckets.sum()) / float(element_count)
+        # Here we refer to
+        # https://math.stackexchange.com/questions/2971315/how-do-i-combine-standard-deviations-of-two-groups
+        # to calculate the combined standard deviation of all buckets.
+        s = (element_count_per_bucket - 1) * (std_buckets**2) + element_count_per_bucket * (
+            (mean_buckets - mean_value) ** 2
+        )
+        std_value = torch.sqrt(s.sum() / (element_count - 1))
 
-    # f.write(
-    #     f"{'>'*max(0, depth) + display_name} shape: {tensor_shape} dtype: {tensor_dtype} size: {flatten_array.size()} \n"
-    #     f"min: {min_value} max: {max_value}, mean: {mean_value}, "
-    #     f"std: {std_value} \n"
-    #     f"nan: {num_nan}, inf: {num_inf}\n"
-    # )
-    # f.write(f"samples(top 128): {flatten_array[:128]}\n")
-    # f.write(f"neg: {num_neg}, pos: {num_pos}, zero: {num_zero},\n")
-    # f.write(f"{'='*16}\n")
-
-    # f.write(f"{display_name} shape: {tensor.shape} dtype: {tensor.dtype} size: {tensor.size()}, \n")
-    f.write(f"{log_memory_usage(display_name, rank_0_only=True, step_info='')}\n")
-    # f.write(f"{'='*16}\n")
+    f.write(
+        f"{'>'*max(0, depth) + display_name} shape: {tensor_shape} dtype: {tensor_dtype} size: {flatten_array.size()} \n"
+        f"min: {min_value} max: {max_value}, mean: {mean_value}, "
+        f"std: {std_value} \n"
+        f"nan: {num_nan}, inf: {num_inf}\n"
+    )
+    f.write(f"samples(top 128): {flatten_array[:128]}\n")
+    f.write(f"neg: {num_neg}, pos: {num_pos}, zero: {num_zero},\n")
+    f.write(f"{'='*16}\n")
