@@ -116,7 +116,7 @@ def check_if_dlls_are_present(
     package_contains_library = not bool(package_type == "nuget" and is_gpu_package)
     # In Nuget GPU package, gpu header files are not in dependent package.
     package_contains_headers = bool(
-        (is_gpu_package and package_type != "nuget") or (package_type == "nuget" and not is_gpu_dependent_package)
+        (is_gpu_package and package_type != "nuget") or (package_type == "nuget" and not is_gpu_package)
     )
     # In Nuget GPU package, cuda ep and tensorrt ep dlls are in dependent package
     package_contains_cuda_binaries = bool((is_gpu_package and package_type != "nuget") or is_gpu_dependent_package)
