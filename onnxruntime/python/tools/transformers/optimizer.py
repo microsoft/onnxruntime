@@ -554,8 +554,8 @@ def main():
 
     if args.float16:
         #op_block_list = ["FastGelu", "SkipLayerNormalization", "LayerNormalization", "Add"]
-        op_block_list = []
-        optimizer.convert_float_to_float16(keep_io_types=False, op_block_list=op_block_list)
+        node_block_list = ["Attention_30", "Attention_31", "Attention_32"]
+        optimizer.convert_float_to_float16(keep_io_types=False, node_block_list=node_block_list)
 
     if args.input_int32:
         optimizer.change_graph_inputs_to_int32()

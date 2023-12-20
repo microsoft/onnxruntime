@@ -161,6 +161,8 @@ class FissionTransformerBlockPhi(Fusion):
                     attn_qkv_bias,
                     i_attn_mask,
                     i_kv_cache,
+                    "",
+                    "past_sequence_length",
                 ],
                 outputs=[uname(layer_id, "attn_out"), o_kv_cache],
                 name=uname(layer_id, "Attention"),
@@ -169,7 +171,7 @@ class FissionTransformerBlockPhi(Fusion):
                 unidirectional=1,
                 do_rotary=1,
                 rotary_embedding=32,
-                # past_present_share_buffers=1,
+                past_present_share_buffer=1,
             ),
             helper.make_node(
                 "MatMul",
@@ -285,9 +287,16 @@ def postprocess_io(model: ModelProto):
             vi = helper.make_tensor_value_info(
                 IO_MAPPING[vi.name],
                 elem_type=vi.type.tensor_type.elem_type,
-                shape=[2, 'batch_size', 32, 'past_seq_len', 80],
+                shape=[2, 'batch_size', 32, 'max_seq_len', 80],
             )
         new_inputs.extend([vi])
+    # add past_sequence_length
+    vi = helper.make_tensor_value_info(
+        "past_sequence_length",
+        elem_type=TensorProto.INT32,
+        shape=[],
+    )
+    new_inputs.extend([vi])
 
     graph.ClearField("input")
     graph.input.extend(new_inputs)
@@ -305,7 +314,7 @@ def postprocess_io(model: ModelProto):
             vi = helper.make_tensor_value_info(
                 IO_MAPPING[vi.name],
                 elem_type=vi.type.tensor_type.elem_type,
-                shape=[2, 'batch_size', 32, 'past_seq_len', 80],
+                shape=[2, 'batch_size', 32, 'max_seq_len', 80],
             )
         new_outputs.extend([vi])
 
