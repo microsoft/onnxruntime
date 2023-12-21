@@ -237,7 +237,7 @@ class TrainingManager(GraphExecutionManager):
                 # Only change this after the firs time a warning is issued.
                 self._first_skip_check_warning = False
                 self._logger.info(
-                    "Fast path enabled - skipping checks.Rebuild graph: %s, Execution agent: %s, Device check: %s",
+                    "Fast path enabled - skipping checks. Rebuild graph: %s, Execution agent: %s, Device check: %s",
                     self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
                     self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
                     self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE),

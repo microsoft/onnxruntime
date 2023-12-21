@@ -170,8 +170,6 @@ try:
             torch.nn.functional.linear = _zero3_linear_wrap_ort_compatible
 
 except ImportError as e:
-    warnings.warn(f"DeepSpeed import error {e}")
-
     def configure_ort_compatible_zero_stage3(debug=False, stats_output_dir=None, stats_overwrite=False):
         raise RuntimeError("DeepSpeed is not installed, cannot configure ORT compatible ZeRO stage3.")
 
@@ -476,7 +474,7 @@ class ZeROOffloadSubscriber(SubscriberBase):
     @nvtx_function_decorator
     def pre_forward_module_apply_impl(
         self,
-        run_rtx: RuntimeStates,
+        run_ctx: RuntimeStates,
         module: torch.nn.Module,
         args: ORTModelInputOutputType,
         kwargs: ORTModelInputOutputType,
@@ -552,7 +550,7 @@ class ZeROOffloadSubscriber(SubscriberBase):
     @nvtx_function_decorator
     def post_forward_module_apply_impl(
         self,
-        run_rtx: RuntimeStates,
+        run_ctx: RuntimeStates,
         module: torch.nn.Module,
         args: ORTModelInputOutputType,
         outputs: ORTModelInputOutputType,
@@ -611,7 +609,7 @@ class ZeROOffloadSubscriber(SubscriberBase):
     @nvtx_function_decorator
     def post_forward_outmost_module_apply_impl(
         self,
-        run_rtx: RuntimeStates,
+        run_ctx: RuntimeStates,
         module: torch.nn.Module,
         args: ORTModelInputOutputType,
         outputs: ORTModelInputOutputType,

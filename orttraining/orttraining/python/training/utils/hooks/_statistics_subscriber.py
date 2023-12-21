@@ -156,12 +156,12 @@ class StatisticsSubscriber(SubscriberBase):
                 )
 
     def post_forward_tensor_apply_impl(
-        self, run_rtx: RuntimeStates, module: torch.nn.Module, tensor_index: int, tensor: torch.Tensor
+        self, run_ctx: RuntimeStates, module: torch.nn.Module, tensor_index: int, tensor: torch.Tensor
     ) -> torch.Tensor:
-        module_index = run_rtx.global_states.module_to_module_index[module]
+        module_index = run_ctx.global_states.module_to_module_index[module]
         name = f"{module.__class__.__name__}_{module_index}_{tensor_index}th_output"
         return _InspectActivation.apply(
-            name, module_index, run_rtx, tensor, self.module_post_forward_impl, self.module_pre_backward_impl
+            name, module_index, run_ctx, tensor, self.module_post_forward_impl, self.module_pre_backward_impl
         )
 
     def module_post_forward_impl(self, activation: torch.Tensor, depth: int, name: str, step: int):
