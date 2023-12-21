@@ -43,7 +43,10 @@ jobs:
   timeoutInMinutes: 240
   workspace:
     clean: all
-  pool: ${{ parameters.machine_pool }}
+  pool: 
+    name: ${{ parameters.machine_pool }}
+    demands:
+      - ImageVersionOverride -equals 46.0.0
   variables:
     # The build machine pool doesn't have dotnet, so it can't run CG.
     - name: skipComponentGovernanceDetection
