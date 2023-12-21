@@ -258,6 +258,7 @@ def save_results(results, filename):
         record.config.batch_size = row["Batch Size"]
         record.config.seq_length = row["Sequence Length"]
         record.config.measure_step = row["Step"]
+        record.config.engine = row["Engine"]
         record.metrics.latency_s_mean = row["Latency (s)"]
         record.metrics.latency_ms_mean = row["Latency (ms)"]
         record.metrics.throughput_tps = row["Throughput (tps)"]
