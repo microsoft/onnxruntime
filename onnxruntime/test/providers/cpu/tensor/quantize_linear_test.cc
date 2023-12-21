@@ -47,6 +47,16 @@ TEST(DequantizeLinearOpTest, Int32) {
   test.Run();
 }
 
+TEST(DequantizeLinearOpTest_1D, Int32) {
+  OpTester test("DequantizeLinear", 13);
+  std::vector<int64_t> dims{4};
+  test.AddInput<int32_t>("x", dims, {-30, -3, 100, 127});
+  test.AddInput<float>("x_scale", {1}, {2.0f});
+  test.AddInput<int32_t>("zero_point", {1}, {0});
+  test.AddOutput<float>("y", dims, {-60.f, -6.f, 200.f, 254.f});
+  test.Run();
+}
+
 // 2d inputs
 TEST(DequantizeLinearOpTest, 2D) {
   OpTester test("DequantizeLinear", 10);

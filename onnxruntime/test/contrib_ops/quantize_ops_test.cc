@@ -76,6 +76,16 @@ TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_int32_cpu) {
   test.Run();
 }
 
+TEST(DequantizeLinearOpTest, DequantizeLinearOpTest_1D) {
+  OpTester test("DequantizeLinear", 1, onnxruntime::kMSDomain);
+
+  test.AddInput<int32_t>("x", {4}, {-30, -3, 100, 127});
+  test.AddInput<float>("x_scale", {1}, {2.0f}, true);
+  test.AddInput<int32_t>("zero_point", {1}, {0}, true);
+  test.AddOutput<float>("y", {4}, {-60.f, -6.f, 200.f, 254.f});
+  test.Run();
+}
+
 #ifdef USE_CUDA
 TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_half_uint8) {
   OpTester test("DequantizeLinear", 1, onnxruntime::kMSDomain);

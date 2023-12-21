@@ -554,7 +554,9 @@ public:
             // If the input tensor is a 1D vector, then extra massaging is needed to project their
             // 1D vectors back to the full shape for broadcasting along the given axis.
             // The 1D vector should have a length equal to the output tensor's dimension on that axis.
-            if (inputTensorShape.size() == 1 && inputTensorShape != outputShape)
+            if ((inputTensorShape.size() == 1 ) && 
+                (outputShape.size() > 1) &&
+                (inputTensorShape != outputShape))
             {
                 ML_CHECK_VALID_ARGUMENT(axis < outputShapeDimCount);
                 uint32_t broadcastAxisLength = outputShape[axis];
