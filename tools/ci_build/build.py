@@ -14,6 +14,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+
+def version_to_tuple(version: str) -> tuple:
+    v = []
+    for s in version.split("."):
+        with contextlib.suppress(ValueError):
+            v.append(int(s))
+    return tuple(v)
+
+
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 
@@ -337,6 +346,11 @@ def parse_arguments():
         help="[cross-compiling] Create ARM64EC makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed",
     )
+    parser.add_argument(
+        "--buildasx",
+        action="store_true",
+        help="[cross-compiling] Create ARM64X Binary.",
+    )
     parser.add_argument("--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
     parser.add_argument("--windows_sdk_version", help="Windows SDK version to use. e.g. 10.0.19041.0")
     parser.add_argument("--android", action="store_true", help="Build for Android")
@@ -369,8 +383,9 @@ def parse_arguments():
     parser.add_argument("--gdk_platform", default="Scarlett", help="Sets the GDK target platform.")
 
     parser.add_argument("--ios", action="store_true", help="build for ios")
+
     parser.add_argument(
-        "--ios_sysroot", default="", help="Specify the location name of the macOS platform SDK to be used"
+        "--apple_sysroot", default="", help="Specify the location name of the macOS platform SDK to be used"
     )
     parser.add_argument(
         "--ios_toolchain_file",
@@ -489,6 +504,15 @@ def parse_arguments():
         const="CPU_FP32",
         type=_openvino_verify_device_type,
         help="Build with OpenVINO for specific hardware.",
+    )
+    parser.add_argument(
+        "--dnnl_aarch64_runtime", action="store", default="", type=str.lower, help="e.g. --dnnl_aarch64_runtime acl"
+    )
+    parser.add_argument(
+        "--dnnl_acl_root",
+        action="store",
+        default="",
+        help='Path to ACL ROOT DIR. e.g. --dnnl_acl_root "$HOME/ComputeLibrary/"',
     )
     parser.add_argument("--use_coreml", action="store_true", help="Build with CoreML support.")
     parser.add_argument("--use_webnn", action="store_true", help="Build with WebNN support.")
@@ -944,7 +968,7 @@ def generate_build_tree(
 
     types_to_disable = args.disable_types
     # enable/disable float 8 types
-    disable_float8_types = args.use_rocm or args.android or ("float8" in types_to_disable)
+    disable_float8_types = args.android or ("float8" in types_to_disable)
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
 
@@ -1077,6 +1101,8 @@ def generate_build_tree(
     if args.use_dnnl:
         cmake_args.append("-Donnxruntime_DNNL_GPU_RUNTIME=" + args.dnnl_gpu_runtime)
         cmake_args.append("-Donnxruntime_DNNL_OPENCL_ROOT=" + args.dnnl_opencl_root)
+        cmake_args.append("-Donnxruntime_DNNL_AARCH64_RUNTIME=" + args.dnnl_aarch64_runtime)
+        cmake_args.append("-Donnxruntime_DNNL_ACL_ROOT=" + args.dnnl_acl_root)
     if args.build_wasm:
         cmake_args.append("-Donnxruntime_ENABLE_WEBASSEMBLY_SIMD=" + ("ON" if args.enable_wasm_simd else "OFF"))
     if args.use_migraphx:
@@ -1084,6 +1110,12 @@ def generate_build_tree(
     if args.use_cuda:
         nvcc_threads = number_of_nvcc_threads(args)
         cmake_args.append("-Donnxruntime_NVCC_THREADS=" + str(nvcc_threads))
+        if not disable_float8_types and args.cuda_version:
+            if version_to_tuple(args.cuda_version) < (11, 8):
+                raise BuildError(
+                    f"Float 8 types require CUDA>=11.8. They must be disabled on CUDA=={args.cuda_version}. "
+                    f"Add '--disable_types float8' to your command line. See option disable_types."
+                )
     if args.use_rocm:
         cmake_args.append("-Donnxruntime_ROCM_HOME=" + rocm_home)
         cmake_args.append("-Donnxruntime_ROCM_VERSION=" + args.rocm_version)
@@ -1171,9 +1203,9 @@ def generate_build_tree(
             "-Donnxruntime_USE_OPENVINO_AUTO=" + ("ON" if args.use_openvino.startswith("AUTO") else "OFF"),
         ]
 
-    # VitisAI and OpenVINO providers currently only support
+    # TensorRT and OpenVINO providers currently only support
     # full_protobuf option.
-    if args.use_full_protobuf or args.use_openvino or args.use_vitisai or args.gen_doc:
+    if args.use_full_protobuf or args.use_tensorrt or args.use_openvino or args.use_vitisai or args.gen_doc:
         cmake_args += ["-Donnxruntime_USE_FULL_PROTOBUF=ON", "-DProtobuf_USE_STATIC_LIBS=ON"]
 
     if args.use_tvm and args.llvm_path is not None:
@@ -1258,33 +1290,38 @@ def generate_build_tree(
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
-    if args.ios:
+    if args.build_apple_framework or args.ios:
         if not args.cmake_generator == "Xcode":
-            raise BuildError("iOS build requires use of the Xcode CMake generator ('--cmake_generator Xcode').")
+            raise BuildError(
+                "iOS/MacOS framework build requires use of the Xcode CMake generator ('--cmake_generator Xcode')."
+            )
 
         needed_args = [
-            args.ios_sysroot,
+            args.apple_sysroot,
             args.apple_deploy_target,
         ]
         arg_names = [
-            "--ios_sysroot          " + "<the location or name of the macOS platform SDK>",
+            "--apple_sysroot          " + "<the location or name of the macOS platform SDK>",
             "--apple_deploy_target  " + "<the minimum version of the target platform>",
         ]
         if not all(needed_args):
             raise BuildError(
-                "iOS build on MacOS canceled due to missing arguments: "
+                "iOS/MacOS framework build on MacOS canceled due to missing arguments: "
                 + ", ".join(val for val, cond in zip(arg_names, needed_args) if not cond)
             )
         cmake_args += [
-            "-DCMAKE_SYSTEM_NAME=iOS",
             "-Donnxruntime_BUILD_SHARED_LIB=ON",
-            "-DCMAKE_OSX_SYSROOT=" + args.ios_sysroot,
+            "-DCMAKE_OSX_SYSROOT=" + args.apple_sysroot,
             "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
             # we do not need protoc binary for ios cross build
             "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
-            "-DCMAKE_TOOLCHAIN_FILE="
-            + (args.ios_toolchain_file if args.ios_toolchain_file else "../cmake/onnxruntime_ios.toolchain.cmake"),
         ]
+        if args.ios:
+            cmake_args += [
+                "-DCMAKE_SYSTEM_NAME=iOS",
+                "-DCMAKE_TOOLCHAIN_FILE="
+                + (args.ios_toolchain_file if args.ios_toolchain_file else "../cmake/onnxruntime_ios.toolchain.cmake"),
+            ]
 
     if args.build_wasm:
         emsdk_dir = os.path.join(cmake_dir, "external", "emsdk")
@@ -1746,10 +1783,10 @@ def run_ios_tests(args, source_dir, config, cwd):
         )
 
     if args.build_apple_framework:
-        package_test_py = os.path.join(source_dir, "tools", "ci_build", "github", "apple", "test_ios_packages.py")
+        package_test_py = os.path.join(source_dir, "tools", "ci_build", "github", "apple", "test_apple_packages.py")
         framework_info_file = os.path.join(cwd, "framework_info.json")
-        dynamic_framework_dir = os.path.join(cwd, config + "-" + args.ios_sysroot)
-        static_framework_dir = os.path.join(cwd, config + "-" + args.ios_sysroot, "static_framework")
+        dynamic_framework_dir = os.path.join(cwd, config + "-" + args.apple_sysroot)
+        static_framework_dir = os.path.join(cwd, config + "-" + args.apple_sysroot, "static_framework")
         # test dynamic framework
         run_subprocess(
             [
@@ -1759,6 +1796,8 @@ def run_ios_tests(args, source_dir, config, cwd):
                 dynamic_framework_dir,
                 "--framework_info_file",
                 framework_info_file,
+                "--variant",
+                "Mobile",
             ],
             cwd=cwd,
         )
@@ -1771,6 +1810,8 @@ def run_ios_tests(args, source_dir, config, cwd):
                 static_framework_dir,
                 "--framework_info_file",
                 framework_info_file,
+                "--variant",
+                "Mobile",
             ],
             cwd=cwd,
         )
@@ -2481,8 +2522,12 @@ def main():
                     cmake_extra_args = ["-A", "ARM"]
                 elif args.arm64:
                     cmake_extra_args = ["-A", "ARM64"]
+                    if args.buildasx:
+                        cmake_extra_args += ["-D", "BUILD_AS_ARM64X=ARM64"]
                 elif args.arm64ec:
                     cmake_extra_args = ["-A", "ARM64EC"]
+                    if args.buildasx:
+                        cmake_extra_args += ["-D", "BUILD_AS_ARM64X=ARM64EC"]
                 cmake_extra_args += ["-G", args.cmake_generator]
                 # Cannot test on host build machine for cross-compiled
                 # builds (Override any user-defined behaviour for test if any)
@@ -2517,6 +2562,7 @@ def main():
                 cmake_extra_args = ["-A", target_arch, "-T", toolset, "-G", args.cmake_generator]
             if args.enable_wcos:
                 cmake_extra_defines.append("CMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake")
+
         elif args.cmake_generator is not None:
             cmake_extra_args += ["-G", args.cmake_generator]
 

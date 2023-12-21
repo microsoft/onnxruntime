@@ -32,7 +32,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: qnn-v2.14.1.230828
+  default: qnn-v2.17.0.231124
 
 jobs:
   - job: Build_QNN_EP
@@ -110,13 +110,5 @@ jobs:
         inputs:
           script: |
             ./build/Release/onnx_test_runner -e qnn \
-              -v -j 1 -c 1 -i "backend_path|$(QNN_SDK_ROOT)/lib/x86_64-linux-clang/libQnnHtp.so qnn_context_cache_enable|1 qnn_context_cache_path|./build/Release/mobilenet_qdq.onnx_qnn_ctx.onnx" \
-              /data/qdq_models/mobilenetv2-1.0_add_transpose_quant
-
-      - task: CmdLine@2
-        displayName: Run QDQ model tests with load from cached context
-        inputs:
-          script: |
-            ./build/Release/onnx_test_runner -e qnn \
-              -v -j 1 -c 1 -i "backend_path|$(QNN_SDK_ROOT)/lib/x86_64-linux-clang/libQnnHtp.so qnn_context_cache_enable|1 qnn_context_cache_path|./build/Release/mobilenet_qdq.onnx_qnn_ctx.onnx" \
+              -v -f -j 1 -c 1 -i "backend_path|$(QNN_SDK_ROOT)/lib/x86_64-linux-clang/libQnnHtp.so" \
               /data/qdq_models/mobilenetv2-1.0_add_transpose_quant

@@ -16,82 +16,76 @@
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_def.h"
+#include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 
 namespace onnxruntime {
 
 constexpr const char* QNN = "QNN";
 
-std::string GetFileNameFromModelPath(onnxruntime::Path model_path) {
-  auto model_path_components = model_path.GetComponents();
-  // There's no model path if model loaded from buffer stead of file
-  if (model_path_components.empty()) {
-    return "";
-  }
-  return PathToUTF8String(model_path_components.back());
-}
-
-void QNNExecutionProvider::ParseProfilingLevel(std::string profiling_level_string) {
+static void ParseProfilingLevel(std::string profiling_level_string,
+                                qnn::ProfilingLevel& profiling_level) {
   std::transform(profiling_level_string.begin(),
                  profiling_level_string.end(),
                  profiling_level_string.begin(),
                  [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
   LOGS_DEFAULT(VERBOSE) << "profiling_level: " << profiling_level_string;
   if (profiling_level_string == "off") {
-    profiling_level_ = qnn::ProfilingLevel::OFF;
+    profiling_level = qnn::ProfilingLevel::OFF;
   } else if (profiling_level_string == "basic") {
-    profiling_level_ = qnn::ProfilingLevel::BASIC;
+    profiling_level = qnn::ProfilingLevel::BASIC;
   } else if (profiling_level_string == "detailed") {
-    profiling_level_ = qnn::ProfilingLevel::DETAILED;
+    profiling_level = qnn::ProfilingLevel::DETAILED;
   } else {
     LOGS_DEFAULT(WARNING) << "Profiling level not valid.";
   }
 }
 
-void QNNExecutionProvider::ParseHtpPerformanceMode(std::string htp_performance_mode_string) {
+static void ParseHtpPerformanceMode(std::string htp_performance_mode_string,
+                                    qnn::HtpPerformanceMode& htp_performance_mode) {
   std::transform(htp_performance_mode_string.begin(),
                  htp_performance_mode_string.end(),
                  htp_performance_mode_string.begin(),
                  [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
   LOGS_DEFAULT(VERBOSE) << "Htp performance mode: " << htp_performance_mode_string;
   if (htp_performance_mode_string == "burst") {
-    htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpBurst;
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpBurst;
   } else if (htp_performance_mode_string == "balanced") {
-    htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpBalanced;
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpBalanced;
   } else if (htp_performance_mode_string == "default") {
-    htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
   } else if (htp_performance_mode_string == "high_performance") {
-    htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpHighPerformance;
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpHighPerformance;
   } else if (htp_performance_mode_string == "high_power_saver") {
-    htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpHighPowerSaver;
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpHighPowerSaver;
   } else if (htp_performance_mode_string == "low_balanced") {
-    htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpLowBalanced;
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpLowBalanced;
   } else if (htp_performance_mode_string == "low_power_saver") {
-    htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpLowPowerSaver;
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpLowPowerSaver;
   } else if (htp_performance_mode_string == "power_saver") {
-    htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpPowerSaver;
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpPowerSaver;
   } else if (htp_performance_mode_string == "sustained_high_performance") {
-    htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpSustainedHighPerformance;
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpSustainedHighPerformance;
   } else {
     LOGS_DEFAULT(WARNING) << "Htp performance mode not valid.";
   }
 }
 
-void QNNExecutionProvider::ParseQnnContextPriority(std::string context_priority_string) {
+static void ParseQnnContextPriority(std::string context_priority_string, qnn::ContextPriority& context_priority) {
   std::transform(context_priority_string.begin(),
                  context_priority_string.end(),
                  context_priority_string.begin(),
                  [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
   LOGS_DEFAULT(VERBOSE) << "QNN context priority: " << context_priority_string;
   if (context_priority_string == "low") {
-    context_priority_ = qnn::ContextPriority::LOW;
+    context_priority = qnn::ContextPriority::LOW;
   } else if (context_priority_string == "normal") {
-    context_priority_ = qnn::ContextPriority::NORMAL;
+    context_priority = qnn::ContextPriority::NORMAL;
   } else if (context_priority_string == "normal_high") {
-    context_priority_ = qnn::ContextPriority::NORMAL_HIGH;
+    context_priority = qnn::ContextPriority::NORMAL_HIGH;
   } else if (context_priority_string == "high") {
-    context_priority_ = qnn::ContextPriority::HIGH;
+    context_priority = qnn::ContextPriority::HIGH;
   } else {
-    context_priority_ = qnn::ContextPriority::UNDEFINED;
+    context_priority = qnn::ContextPriority::UNDEFINED;
     LOGS_DEFAULT(WARNING) << "QNN context priority: " << context_priority_string << " not valid, set to undefined.";
   }
 }
@@ -120,30 +114,23 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   if (session_options) {
     disable_cpu_ep_fallback_ = session_options->config_options.GetConfigOrDefault(
                                    kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
-  }
 
-  static const std::string CONTEXT_CACHE_ENABLED = "qnn_context_cache_enable";
-  auto context_cache_enabled_pos = provider_options_map.find(CONTEXT_CACHE_ENABLED);
-  if (context_cache_enabled_pos != provider_options_map.end()) {
-    if (context_cache_enabled_pos->second == "1") {
-      context_cache_enabled_ = true;
-      LOGS_DEFAULT(VERBOSE) << "Context cache enabled.";
+    context_cache_enabled_ = session_options->config_options.GetConfigOrDefault(
+                                 kOrtSessionOptionEpContextEnable, "0") == "1";
+    LOGS_DEFAULT(VERBOSE) << "Context cache enable: " << context_cache_enabled_;
+
+    std::string embed_mode = session_options->config_options.GetConfigOrDefault(
+        kOrtSessionOptionEpContextEmbedMode, "1");
+    if ("1" == embed_mode) {
+      qnn_context_embed_mode_ = true;
+    } else if ("0" == embed_mode) {
+      qnn_context_embed_mode_ = false;
+    } else {
+      LOGS_DEFAULT(VERBOSE) << "Invalid ep.context_embed_mode: " << embed_mode << " only 0 or 1 allowed. Set to 1.";
     }
-  }
+    LOGS_DEFAULT(VERBOSE) << "User specified context cache embed mode: " << qnn_context_embed_mode_;
 
-  static const std::string CONTEXT_CACHE_PATH = "qnn_context_cache_path";
-  auto context_cache_path_pos = provider_options_map.find(CONTEXT_CACHE_PATH);
-  if (context_cache_path_pos != provider_options_map.end()) {
-    context_cache_path_ = context_cache_path_pos->second;
-    LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << context_cache_path_;
-  }
-
-  bool qnn_context_embed_mode = true;
-  static const std::string CONTEXT_CACHE_EMBED_MODE = "qnn_context_embed_mode";
-  auto context_cache_embed_mode_pos = provider_options_map.find(CONTEXT_CACHE_EMBED_MODE);
-  if (context_cache_embed_mode_pos != provider_options_map.end()) {
-    qnn_context_embed_mode = context_cache_embed_mode_pos->second == "1";
-    LOGS_DEFAULT(VERBOSE) << "User specified context cache embed mode: " << qnn_context_embed_mode;
+    context_cache_path_cfg_ = session_options->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
   }
 
   static const std::string BACKEND_PATH = "backend_path";
@@ -158,23 +145,25 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   }
 
   static const std::string PROFILING_LEVEL = "profiling_level";
+  qnn::ProfilingLevel profiling_level = qnn::ProfilingLevel::OFF;
   auto profiling_level_pos = provider_options_map.find(PROFILING_LEVEL);
   if (profiling_level_pos != provider_options_map.end()) {
-    ParseProfilingLevel(profiling_level_pos->second);
+    ParseProfilingLevel(profiling_level_pos->second, profiling_level);
   }
 
   static const std::string RPC_CONTROL_LANTENCY = "rpc_control_latency";
+  uint32_t rpc_control_latency = 0;
   auto latency_pos = provider_options_map.find(RPC_CONTROL_LANTENCY);
   if (latency_pos != provider_options_map.end()) {
-    rpc_control_latency_ = static_cast<uint32_t>(std::stoul(latency_pos->second));
-    LOGS_DEFAULT(VERBOSE) << "rpc_control_latency: " << rpc_control_latency_;
+    rpc_control_latency = static_cast<uint32_t>(std::stoul(latency_pos->second));
+    LOGS_DEFAULT(VERBOSE) << "rpc_control_latency: " << rpc_control_latency;
   }
 
-  htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
+  qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
   static const std::string HTP_PERFORMANCE_MODE = "htp_performance_mode";
   auto htp_performance_mode_pos = provider_options_map.find(HTP_PERFORMANCE_MODE);
   if (htp_performance_mode_pos != provider_options_map.end()) {
-    ParseHtpPerformanceMode(htp_performance_mode_pos->second);
+    ParseHtpPerformanceMode(htp_performance_mode_pos->second, htp_performance_mode);
   }
 
   htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
@@ -194,19 +183,29 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   }
 
   static const std::string QNN_CONTEXT_PRIORITY = "qnn_context_priority";
+  qnn::ContextPriority context_priority = qnn::ContextPriority::NORMAL;
   auto qnn_context_priority_pos = provider_options_map.find(QNN_CONTEXT_PRIORITY);
   if (qnn_context_priority_pos != provider_options_map.end()) {
-    ParseQnnContextPriority(qnn_context_priority_pos->second);
+    ParseQnnContextPriority(qnn_context_priority_pos->second, context_priority);
+  }
+
+  static const std::string QNN_VTCM_MB = "vtcm_mb";
+  auto qnn_vtcm_mb_pos = provider_options_map.find(QNN_VTCM_MB);
+  if (qnn_vtcm_mb_pos != provider_options_map.end()) {
+    vtcm_size_in_mb_ = std::stoi(qnn_vtcm_mb_pos->second);
+    LOGS_DEFAULT(VERBOSE) << "vtcm_mb: " << vtcm_size_in_mb_;
+    if (vtcm_size_in_mb_ <= 0) {
+      LOGS_DEFAULT(WARNING) << "Skip invalid vtcm_mb: " << vtcm_size_in_mb_;
+    }
   }
 
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
       std::move(backend_path),
-      profiling_level_,
-      rpc_control_latency_,
-      htp_performance_mode_,
-      context_priority_,
+      profiling_level,
+      rpc_control_latency,
+      htp_performance_mode,
+      context_priority,
       std::move(qnn_saver_path));
-  qnn_cache_model_handler_ = std::make_unique<qnn::QnnCacheModelHandler>(qnn_context_embed_mode);
 }
 
 bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
@@ -343,9 +342,10 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   // This is for case: QDQ model + Onnx Qnn context cache model
   if (context_cache_enabled_ && !is_qnn_ctx_model) {
-    load_from_cached_context = qnn_cache_model_handler_->IsContextCacheFileExists(context_cache_path_,
-                                                                                  graph_viewer.Description(),
-                                                                                  graph_viewer.ModelPath().ToPathString());
+    onnxruntime::PathString context_cache_path;
+    load_from_cached_context = qnn::IsContextCacheFileExists(context_cache_path_cfg_,
+                                                             graph_viewer.ModelPath().ToPathString(),
+                                                             context_cache_path);
   }
 
   // Load from cached context will load the QnnSystem lib and skip the Qnn context creation
@@ -444,17 +444,6 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   }
 
   const size_t num_of_partitions = result.size();
-
-  if (!is_qnn_ctx_model && load_from_cached_context && 1 == num_of_partitions) {
-    rt = qnn_cache_model_handler_->ValidateWithContextFile(GetFileNameFromModelPath(graph_viewer.ModelPath()),
-                                                           result[0]->sub_graph->GetMetaDef()->name,
-                                                           logger);
-    if (Status::OK() != rt) {
-      LOGS(logger, ERROR) << "QNN failed to validate context cache metadata: " << rt.ErrorMessage();
-      return result;
-    }
-  }
-
   const auto summary_msg = MakeString("Number of partitions supported by QNN EP: ", num_of_partitions,
                                       ", number of nodes in the graph: ", num_nodes_in_graph,
                                       ", number of nodes supported by QNN: ", num_of_supported_nodes);
@@ -500,16 +489,27 @@ Status QNNExecutionProvider::CreateComputeFunc(std::vector<NodeComputeInfo>& nod
 }
 
 void QNNExecutionProvider::InitQnnGraphConfigs(qnn::QnnGraphConfigsBuilder& configs_builder) const {
-  if (qnn_backend_manager_->GetQnnBackendType() == qnn::QnnBackendType::HTP &&
-      htp_graph_finalization_opt_mode_ != qnn::HtpGraphFinalizationOptimizationMode::kDefault) {
-    QnnHtpGraph_CustomConfig_t& htp_graph_opt_config = configs_builder.PushHtpGraphCustomConfig();
-    htp_graph_opt_config.option = QNN_HTP_GRAPH_CONFIG_OPTION_OPTIMIZATION;
-    htp_graph_opt_config.optimizationOption.type = QNN_HTP_GRAPH_OPTIMIZATION_TYPE_FINALIZE_OPTIMIZATION_FLAG;
-    htp_graph_opt_config.optimizationOption.floatValue = static_cast<float>(htp_graph_finalization_opt_mode_);
+  if (qnn_backend_manager_->GetQnnBackendType() == qnn::QnnBackendType::HTP) {
+    if (htp_graph_finalization_opt_mode_ != qnn::HtpGraphFinalizationOptimizationMode::kDefault) {
+      QnnHtpGraph_CustomConfig_t& htp_graph_opt_config = configs_builder.PushHtpGraphCustomConfig();
+      htp_graph_opt_config.option = QNN_HTP_GRAPH_CONFIG_OPTION_OPTIMIZATION;
+      htp_graph_opt_config.optimizationOption.type = QNN_HTP_GRAPH_OPTIMIZATION_TYPE_FINALIZE_OPTIMIZATION_FLAG;
+      htp_graph_opt_config.optimizationOption.floatValue = static_cast<float>(htp_graph_finalization_opt_mode_);
 
-    QnnGraph_Config_t& graph_opt_config = configs_builder.PushGraphConfig();
-    graph_opt_config.option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
-    graph_opt_config.customConfig = &htp_graph_opt_config;
+      QnnGraph_Config_t& graph_opt_config = configs_builder.PushGraphConfig();
+      graph_opt_config.option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
+      graph_opt_config.customConfig = &htp_graph_opt_config;
+    }
+
+    if (vtcm_size_in_mb_ > 0) {
+      QnnHtpGraph_CustomConfig_t& htp_graph_opt_config_vtcm = configs_builder.PushHtpGraphCustomConfig();
+      htp_graph_opt_config_vtcm.option = QNN_HTP_GRAPH_CONFIG_OPTION_VTCM_SIZE;
+      htp_graph_opt_config_vtcm.vtcmSizeInMB = static_cast<uint32_t>(vtcm_size_in_mb_);
+
+      QnnGraph_Config_t& graph_opt_config_vtcm = configs_builder.PushGraphConfig();
+      graph_opt_config_vtcm.option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
+      graph_opt_config_vtcm.customConfig = &htp_graph_opt_config_vtcm;
+    }
   }
 }
 
@@ -547,25 +547,38 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
   bool is_qnn_ctx_model = false;
   ORT_RETURN_IF_ERROR(qnn::IsFusedGraphHasCtxNode(fused_nodes_and_graphs, is_qnn_ctx_model));
 
-  bool is_ctx_file_exist = qnn_cache_model_handler_->GetIsContextCacheFileExists();
+  onnxruntime::PathString context_cache_path;
+  bool is_ctx_file_exist = qnn::IsContextCacheFileExists(context_cache_path_cfg_,
+                                                         graph_viewer.ModelPath().ToPathString(),
+                                                         context_cache_path);
+  const std::string& model_name = graph_viewer.GetGraph().Name();
+  const std::string& model_description = graph_viewer.GetGraph().Description();
+  const std::string& graph_meta_id = fused_node.Name();
+  if (fused_nodes_and_graphs.size() == 1 && !is_qnn_ctx_model && is_ctx_file_exist) {
+    ORT_RETURN_IF_ERROR(qnn::ValidateWithContextFile(context_cache_path,
+                                                     model_name,
+                                                     model_description,
+                                                     graph_meta_id,
+                                                     logger));
+  }
+
   if (is_qnn_ctx_model || (context_cache_enabled_ && is_ctx_file_exist)) {
     ORT_RETURN_IF(fused_nodes_and_graphs.size() != 1, "Only support single partition for context cache feature.");
     std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger, qnn_backend_manager_.get());
     // Load and execute from cached context if exist
-    ORT_RETURN_IF_ERROR(qnn_cache_model_handler_->LoadQnnCtxFromOnnxModel(graph_viewer,
-                                                                          context_cache_path_,
-                                                                          is_qnn_ctx_model,
-                                                                          is_ctx_file_exist,
-                                                                          qnn_backend_manager_.get(),
-                                                                          *(qnn_model.get()),
-                                                                          logger));
+    ORT_RETURN_IF_ERROR(qnn::LoadQnnCtxFromOnnxModel(graph_viewer,
+                                                     context_cache_path,
+                                                     is_qnn_ctx_model,
+                                                     is_ctx_file_exist,
+                                                     qnn_backend_manager_.get(),
+                                                     *(qnn_model.get()),
+                                                     logger));
     ORT_RETURN_IF_ERROR(qnn_model->SetGraphInputOutputInfo(graph_viewer, fused_node));
     ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput());
 
     // fused node name is QNNExecutionProvider_QNN_[hash_id]_[id]
     // the name here should be same with context->node_name in compute_info
-    LOGS(logger, VERBOSE) << "fused node name: " << fused_node.Name();
-    qnn_models_.emplace(fused_node.Name(), std::move(qnn_model));
+    qnn_models_.emplace(graph_meta_id, std::move(qnn_model));
 
     ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
     return Status::OK();
@@ -576,12 +589,16 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     ORT_RETURN_IF(fused_nodes_and_graphs.size() != 1, "Only support single partition for context cache feature.");
     uint64_t buffer_size(0);
     auto context_buffer = qnn_backend_manager_->GetContextBinaryBuffer(buffer_size);
-    ORT_RETURN_IF_ERROR(qnn_cache_model_handler_->GenerateCtxCacheOnnxModel(context_buffer.get(),
-                                                                            buffer_size,
-                                                                            qnn_backend_manager_->GetSdkVersion(),
-                                                                            fused_nodes_and_graphs,
-                                                                            qnn_models_,
-                                                                            logger));
+    ORT_RETURN_IF_ERROR(qnn::GenerateCtxCacheOnnxModel(model_name,
+                                                       model_description,
+                                                       context_buffer.get(),
+                                                       buffer_size,
+                                                       qnn_backend_manager_->GetSdkVersion(),
+                                                       fused_nodes_and_graphs,
+                                                       qnn_models_,
+                                                       context_cache_path,
+                                                       qnn_context_embed_mode_,
+                                                       logger));
   }
   return Status::OK();
 }

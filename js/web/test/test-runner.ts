@@ -850,7 +850,7 @@ export class ProtoOpTestContext {
 
     this.backendHint = test.backend!;
     this.ioBindingMode = test.ioBinding;
-    this.loadedData = onnx.ModelProto.encode(model).finish();
+    this.loadedData = onnx.ModelProto.encode(model).finish().slice();
 
     // in debug mode, open a new tab in browser for the generated onnx model.
     if (ort.env.debug) {

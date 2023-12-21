@@ -7,7 +7,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo} from '../types';
 
-import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, getElementAt, IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
 type CoordinateTransformMode = 'half_pixel'|'asymmetric'|'pytorch_half_pixel'|'tf_half_pixel_for_nn'|'align_corners'|
     'tf_crop_and_resize'|'half_pixel_symmetric';
@@ -105,50 +105,51 @@ const validateInputs =
       }
     };
 
-const getOriginalCoordinateFromResizedCoordinate = (coordinateTransferMode: CoordinateTransformMode): string =>
-    'fn getOriginalCoordinateFromResizedCoordinate(xResized: f32, xScale: f32, lengthResized: f32,\
-    lengthOriginal: f32, roiStart: f32, roiEnd: f32) -> f32 { ' +
+const getOriginalCoordinateFromResizedCoordinate =
+    (coordinateTransferMode: CoordinateTransformMode, dType: string): string =>
+        `fn getOriginalCoordinateFromResizedCoordinate(xResized: ${dType}, xScale: ${dType}, lengthResized: ${dType},
+     lengthOriginal: ${dType}, roiStart: ${dType}, roiEnd: ${dType}) -> ${dType} { ` +
     (() => {
-      switch (coordinateTransferMode) {
-        case 'asymmetric':
-          return 'return xResized / xScale;';
-        case 'pytorch_half_pixel':
-          return 'if (lengthResized > 1) { \
+          switch (coordinateTransferMode) {
+            case 'asymmetric':
+              return 'return xResized / xScale;';
+            case 'pytorch_half_pixel':
+              return 'if (lengthResized > 1) { \
                     return (xResized + 0.5) / xScale - 0.5; \
                   } else { \
                     return 0.0; \
                   }';
-        case 'tf_half_pixel_for_nn':
-          return 'return (xResized + 0.5) / xScale;';
-        case 'align_corners':
-          return 'if (lengthResized == 1) { \
+            case 'tf_half_pixel_for_nn':
+              return 'return (xResized + 0.5) / xScale;';
+            case 'align_corners':
+              return 'if (lengthResized == 1) { \
                     return 0.0; \
                   } else { \
                     return xResized * (lengthOriginal - 1) / (lengthResized - 1); \
                   }';
-        case 'tf_crop_and_resize':
-          return 'if (lengthResized > 1) { \
+            case 'tf_crop_and_resize':
+              return `if (lengthResized > 1) { \
                     return roiStart * (lengthOriginal - 1) + \
                           (xResized * (roiEnd - roiStart) * (lengthOriginal - 1)) / (lengthResized - 1); \
                   } else { \
-                    return 0.5 * (roiStart + roiEnd) * f32(lengthOriginal - 1); \
-                  }';
-        case 'half_pixel_symmetric':
-          return [
-            'const outputWidth = xScale * lengthResized;', 'const adjustment = lengthResized / outputWidth;',
-            'const center = lengthOriginal / 2;', 'const offset = center * (1 - adjustment);',
-            'return offset + ((xResized + 0.5) / xScale) - 0.5;'
-          ].join('\n');
-        case 'half_pixel':
-          return 'return ((xResized + 0.5) / xScale) - 0.5;';
-        default:
-          throw new Error(`Coordinate transform mode ${coordinateTransferMode} is not supported`);
-      }
-    })() +
+                    return 0.5 * (roiStart + roiEnd) * ${dType}(lengthOriginal - 1); \
+                  }`;
+            case 'half_pixel_symmetric':
+              return [
+                'const outputWidth = xScale * lengthResized;', 'const adjustment = lengthResized / outputWidth;',
+                'const center = lengthOriginal / 2;', 'const offset = center * (1 - adjustment);',
+                'return offset + ((xResized + 0.5) / xScale) - 0.5;'
+              ].join('\n');
+            case 'half_pixel':
+              return 'return ((xResized + 0.5) / xScale) - 0.5;';
+            default:
+              throw new Error(`Coordinate transform mode ${coordinateTransferMode} is not supported`);
+          }
+        })() +
     '}';
 
-const getNearestPixelFromOriginal = (nearestMode: NearestMode, opsetVersion: number): string =>
-    'fn getNearestPixelFromOriginal(xOriginal: f32, isDownSample: bool) -> f32 {' + (() => {
+const getNearestPixelFromOriginal = (nearestMode: NearestMode, opsetVersion: number, dType: string): string =>
+    `fn getNearestPixelFromOriginal(xOriginal: ${dType}, isDownSample: bool) -> ${dType} {` + (() => {
       switch (nearestMode) {
         case 'round_prefer_ceil':
           return 'if (fract(xOriginal) == 0.5) { \
@@ -244,67 +245,67 @@ const adjustOutputShape = (inputShape: readonly number[], scales: number[], attr
 };
 
 const calculateOriginalIndicesFromOutputIndices =
-    (output: IndicesHelper, inputShape: readonly number[], outputShape: readonly number[], scales: readonly number[],
-     roi: readonly number[]): string => `
-    fn calculateOriginalIndicesFromOutputIndices(outputIndices: ${output.type.indices}) -> array<f32, ${
-        outputShape.length}> {
-      const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
-      const outputShape = array<u32, ${outputShape.length}>(${outputShape.map(i => `${i}u`).join(',')});
-      const scales = array<f32, ${scales.length}>(${scales.map(i => `${i}f`).join(',')});
-      const roi = array<f32, ${roi.length}>(${roi.map(i => `${i}f`).join(',')});
-      var originalIndices: array<f32, ${outputShape.length}>;
+    (output: IndicesHelper, inputShape: readonly number[], outputShape: readonly number[], scalesLength: number,
+     roiLength: number): string => `
+    fn calculateOriginalIndicesFromOutputIndices(output_indices: ${output.type.indices}) -> array<${
+        output.type.value}, ${outputShape.length}> {
+      var original_indices: array<${output.type.value}, ${outputShape.length}>;
       for (var i:u32 = 0; i < ${outputShape.length}; i++) {
-        var outputIndex = ${outputShape.length === 1 ? 'outputIndices' : 'outputIndices[i]'};
-        if (scales[i] == 1.0) {
-          originalIndices[i] = f32(outputIndex);
+        var output_index = ${output.type.value}(${output.indicesGet('output_indices', 'i')});
+        var scale = ${getElementAt('uniforms.scales', 'i', scalesLength)};
+        var roi_low = ${getElementAt('uniforms.roi', 'i', roiLength)};
+        var roi_hi = ${getElementAt('uniforms.roi', `i + ${inputShape.length}`, roiLength)};
+        if (scale == 1.0) {
+          original_indices[i] = output_index;
         } else {
-          originalIndices[i] = getOriginalCoordinateFromResizedCoordinate(f32(outputIndex), scales[i],
-                f32(outputShape[i]), f32(inputShape[i]), roi[i], roi[i + ${inputShape.length}]);
+          var input_shape_i = ${output.type.value}(${getElementAt('uniforms.input_shape', 'i', inputShape.length)});
+          var output_shape_i = ${output.type.value}(${getElementAt('uniforms.output_shape', 'i', outputShape.length)});
+          original_indices[i] = getOriginalCoordinateFromResizedCoordinate(output_index, scale, output_shape_i,
+                                                                           input_shape_i, roi_low, roi_hi);
         }
       }
-      return originalIndices;
+      return original_indices;
     }`;
 
 const calculateInputIndicesFromOutputIndices =
     (input: IndicesHelper, output: IndicesHelper, inputShape: readonly number[], outputShape: readonly number[],
-     scales: readonly number[], roi: readonly number[], useExtrapolation: boolean): string => `
-    fn calculateInputIndicesFromOutputIndices(outputIndices: ${output.type.indices}) -> ${input.type.indices} {
-        const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
-        const outputShape = array<u32, ${outputShape.length}>(${outputShape.map(i => `${i}u`).join(',')});
-        const scales = array<f32, ${scales.length}>(${scales.map(i => `${i}f`).join(',')});
-        const roi = array<f32, ${roi.length}>(${roi.map(i => `${i}f`).join(',')});
-        var inputIndices: ${input.type.indices};
-        for (var i:u32 = 0; i < ${outputShape.length}; i++) {
-          var outputIndex = ${outputShape.length === 1 ? 'outputIndices' : 'outputIndices[i]'};
-          var inputIndex: u32;
-          if (scales[i] == 1.0) {
-            inputIndex = outputIndex;
-          } else {
-            var original_idx = getOriginalCoordinateFromResizedCoordinate(f32(outputIndex), scales[i],
-                    f32(outputShape[i]), f32(inputShape[i]), roi[i], roi[i + ${inputShape.length}]);
-            if (!${useExtrapolation} || (original_idx >= 0 && original_idx < f32(inputShape[i]))) {
-              if (original_idx < 0) {
-                inputIndex = 0;
-              } else if (original_idx > (f32(inputShape[i]) - 1)) {
-                inputIndex = inputShape[i] - 1;
-              } else {
-                inputIndex = u32(getNearestPixelFromOriginal(original_idx, scales[i] < 1));
-              }
+     scalesLength: number, roiLength: number, useExtrapolation: boolean): string => `
+    fn calculateInputIndicesFromOutputIndices(output_indices: ${output.type.indices}) -> ${input.type.indices} {
+      var input_indices: ${input.type.indices};
+      for (var i:u32 = 0; i < ${outputShape.length}; i++) {
+        var output_index = ${output.type.value}(${output.indicesGet('output_indices', 'i')});
+        var input_index: u32;
+        var scale = ${getElementAt('uniforms.scales', 'i', scalesLength)};
+        if (scale == 1.0) {
+          input_index = u32(output_index);
+        } else {
+          var roi_low = ${getElementAt('uniforms.roi', 'i', roiLength)};
+          var roi_hi = ${getElementAt('uniforms.roi', `i + ${inputShape.length}`, roiLength)};
+          var input_shape_i = ${output.type.value}(${getElementAt('uniforms.input_shape', 'i', inputShape.length)});
+          var output_shape_i = ${output.type.value}(${getElementAt('uniforms.output_shape', 'i', outputShape.length)});
+          var original_idx = getOriginalCoordinateFromResizedCoordinate(output_index, scale, output_shape_i,
+                                                                        input_shape_i, roi_low, roi_hi);
+          if (!${useExtrapolation} || (original_idx >= 0 && original_idx < input_shape_i)) {
+            if (original_idx < 0) {
+              input_index = 0;
+            } else if (original_idx > (input_shape_i - 1)) {
+              input_index = u32(input_shape_i) - 1;
             } else {
-              inputIndex = u32(original_idx);
+              input_index = u32(getNearestPixelFromOriginal(original_idx, scale < 1));
             }
+          } else {
+            input_index = u32(original_idx);
           }
-          ${input.indicesSet('inputIndices', 'i', 'inputIndex')}
         }
-        return inputIndices;
+        ${input.indicesSet('input_indices', 'i', ' input_index')}
+      }
+      return input_indices;
     }`;
-
 const checkInputIndices = (input: IndicesHelper, inputShape: readonly number[]): string => `
-    fn checkInputIndices(inputIndices: ${input.type.indices}) -> bool {
-      const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
+    fn checkInputIndices(input_indices: ${input.type.indices}) -> bool {
       for (var i:u32 = 0; i < ${inputShape.length}; i++) {
-        var inputIndex = ${inputShape.length === 1 ? 'inputIndices' : 'inputIndices[i]'};
-        if (inputIndex < 0 || inputIndex >= inputShape[i]) {
+        var input_index = ${input.indicesGet('input_indices', 'i')};
+        if (input_index < 0 || input_index >= ${getElementAt('uniforms.input_shape', 'i', inputShape.length)}) {
           return false;
         }
       }
@@ -316,22 +317,23 @@ const bilinearInterpolation =
      useExtrapolation: boolean, extrapolationValue: number): string => {
       const [batchIdx, heightIdx, widthIdx, channelIdx] =
           inputShape.length === 2 ? [-1, 0, 1, -1] : (scales[1] === 1.0 ? [0, 2, 3, 1] : [0, 1, 2, 3]);
+      const dType = input.type.value;
       return `
-    fn getInputValue(batch: u32, channel: u32, row: u32, col: u32) -> f32 {
-      var inputIndices: ${input.type.indices};
-      inputIndices[${heightIdx}] = max(0, min(row, ${inputShape[heightIdx]} - 1));
-      inputIndices[${widthIdx}] = max(0, min(col, ${inputShape[widthIdx]} - 1));
+    fn getInputValue(batch: u32, channel: u32, row: u32, col: u32) -> ${dType} {
+      var input_indices: ${input.type.indices};
+      ${input.indicesSet('input_indices', heightIdx, `max(0, min(row, ${inputShape[heightIdx]} - 1))`)};
+      ${input.indicesSet('input_indices', widthIdx, `max(0, min(col, ${inputShape[widthIdx]} - 1))`)};
       if (${inputShape.length} > 2) {
-        inputIndices[${channelIdx}] = channel;
-        inputIndices[${batchIdx}] = batch;
+        ${input.indicesSet('input_indices', channelIdx, 'channel')};
+        ${input.indicesSet('input_indices', batchIdx, 'batch')};
       };
-      return input[${input.indicesToOffset('inputIndices')}];
+      return ${input.getByIndices('input_indices')};
     }
 
-    fn bilinearInterpolation(outputIndices: ${output.type.indices}) -> f32 {
-      var originalIndices = calculateOriginalIndicesFromOutputIndices(outputIndices);
-      var row:f32 = originalIndices[${heightIdx}];
-      var col:f32 = originalIndices[${widthIdx}];
+    fn bilinearInterpolation(output_indices: ${output.type.indices}) -> ${dType} {
+      var originalIndices = calculateOriginalIndicesFromOutputIndices(output_indices);
+      var row:${dType} = originalIndices[${heightIdx}];
+      var col:${dType} = originalIndices[${widthIdx}];
       if (${useExtrapolation} && (row < 0 || row > (${inputShape[heightIdx]} - 1) || col < 0 || col > ${
           inputShape[widthIdx]} - 1)) {
         return ${extrapolationValue};
@@ -348,14 +350,14 @@ const bilinearInterpolation =
         channel = u32(originalIndices[${channelIdx}]);
         batch = u32(originalIndices[${batchIdx}]);
       }
-      var x11: f32 = getInputValue(batch, channel, row1, col1);
-      var x12: f32 = getInputValue(batch, channel, row1, col2);
-      var x21: f32 = getInputValue(batch, channel, row2, col1);
-      var x22: f32 = getInputValue(batch, channel, row2, col2);
-      var dx1: f32 = row - f32(row1);
-      var dx2: f32 = f32(row2 ) - row;
-      var dy1 = col - f32(col1);
-      var dy2 = f32(col2) - col;
+      var x11: ${dType} = getInputValue(batch, channel, row1, col1);
+      var x12: ${dType} = getInputValue(batch, channel, row1, col2);
+      var x21: ${dType} = getInputValue(batch, channel, row2, col1);
+      var x22: ${dType} = getInputValue(batch, channel, row2, col2);
+      var dx1: ${dType} = row - ${dType}(row1);
+      var dx2: ${dType} = ${dType}(row2) - row;
+      var dy1 = col - ${dType}(col1);
+      var dy2 = ${dType}(col2) - col;
       return (x11 * dx2 * dy2 + x12 * dx2 * dy1 + x21 * dx1 * dy2 + x22 * dx1 * dy1);
     }`;
     };
@@ -365,24 +367,24 @@ const bicubicInterpolation =
      scales: readonly number[], roi: readonly number[], cubicCoeffA: number, useExtrapolation: boolean,
      extrapolationValue: number, excludeOutside: boolean): string => {
       const [heightIdx, widthIdx] = inputShape.length === 2 ? [0, 1] : (scales[1] === 1.0) ? [2, 3] : [1, 2];
-
+      const dType = input.type.value;
       const createCubicInterpolationFunction = (idx: number): string => {
         const direction = idx === heightIdx ? 'row' : 'col';
         return `
-      fn ${direction}CubicInterpolation(inputIndices: ${input.type.indices}, outputIndices: ${
-            output.type.indices}) -> f32 {
-        var outputIndex = ${outputShape.length === 1 ? 'outputIndices' : `outputIndices[${idx}]`};
-        var originalIdx: f32 = getOriginalCoordinateFromResizedCoordinate(f32(outputIndex), ${scales[idx]},
-        f32(${outputShape[idx]}), f32(${inputShape[idx]}), ${roi[idx]}, ${roi[idx]} + ${inputShape.length});
-        var fractOriginalIdx: f32 = originalIdx - floor(originalIdx);
+      fn ${direction}CubicInterpolation(input_indices: ${input.type.indices}, output_indices: ${
+            output.type.indices}) -> ${dType} {
+        var output_index = ${output.indicesGet('output_indices', idx)};
+        var originalIdx: ${dType} = getOriginalCoordinateFromResizedCoordinate(${dType}(output_index), ${scales[idx]},
+        ${dType}(${outputShape[idx]}), ${dType}(${inputShape[idx]}), ${roi[idx]}, ${roi[idx]} + ${inputShape.length});
+        var fractOriginalIdx: ${dType} = originalIdx - floor(originalIdx);
         var coefs = getCubicInterpolationCoefs(fractOriginalIdx);
 
         if (${useExtrapolation} && (originalIdx < 0 || originalIdx > (${inputShape[idx]} - 1))) {
           return ${extrapolationValue};
         }
-        var data: array<f32, 4> = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
+        var data: array<${dType}, 4> = array<${dType}, 4>(0.0, 0.0, 0.0, 0.0);
         for (var i: i32 = -1; i < 3; i++) {
-          var ${direction}: f32 = originalIdx + f32(i);
+          var ${direction}: ${dType} = originalIdx + ${dType}(i);
           if (${direction} < 0 || ${direction} >= ${inputShape[idx]}) {
             if (${excludeOutside}) {
               coefs[i + 1] = 0.0;
@@ -393,10 +395,11 @@ const bicubicInterpolation =
               ${direction} = max(0, min(${direction}, ${inputShape[idx]} - 1));
             }
           }
-          var inputIndicesCopy: ${input.type.indices} = inputIndices;
-          inputIndicesCopy[${idx}] = u32(${direction});
-          data[i + 1] = ${idx === heightIdx ? `input[${input.indicesToOffset('inputIndicesCopy')}];` : `
-                                               rowCubicInterpolation(inputIndicesCopy, outputIndices);`}
+          var input_indices_copy: ${input.type.indices} = input_indices;
+          ${input.indicesSet('input_indices_copy', idx, `u32(${direction})`)};
+          data[i + 1] = ${
+            idx === heightIdx ? input.getByIndices('input_indices_copy') :
+                                'rowCubicInterpolation(input_indices_copy, output_indices)'};
         }
         return cubicInterpolation1D(data, coefs);
       }`;
@@ -405,12 +408,12 @@ const bicubicInterpolation =
       return `
     ${createCubicInterpolationFunction(heightIdx)};
     ${createCubicInterpolationFunction(widthIdx)};
-  fn getCubicInterpolationCoefs(s: f32) -> array<f32, 4> {
+  fn getCubicInterpolationCoefs(s: ${dType}) -> array<${dType}, 4> {
     var absS = abs(s);
-    var coeffs: array<f32, 4> = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
-    var oneMinusAbsS: f32 = 1.0 - absS;
-    var twoMinusAbsS: f32 = 2.0 - absS;
-    var onePlusAbsS: f32 = 1.0 + absS;
+    var coeffs: array<${dType}, 4> = array<${dType}, 4>(0.0, 0.0, 0.0, 0.0);
+    var oneMinusAbsS: ${dType} = 1.0 - absS;
+    var twoMinusAbsS: ${dType} = 2.0 - absS;
+    var onePlusAbsS: ${dType} = 1.0 + absS;
     coeffs[0] = ((${cubicCoeffA} * onePlusAbsS - 5 * ${cubicCoeffA}) * onePlusAbsS + 8 * ${
           cubicCoeffA}) * onePlusAbsS - 4 * ${cubicCoeffA};
     coeffs[1] = ((${cubicCoeffA} + 2) * absS - (${cubicCoeffA} + 3)) * absS * absS + 1;
@@ -420,14 +423,14 @@ const bicubicInterpolation =
     return coeffs;
   }
 
-  fn cubicInterpolation1D(x: array<f32, 4>, coefs: array<f32, 4>) -> f32 {
-    var coefsSum: f32 = coefs[0] + coefs[1] + coefs[2] + coefs[3];
+  fn cubicInterpolation1D(x: array<${dType}, 4>, coefs: array<${dType}, 4>) -> ${dType} {
+    var coefsSum: ${dType} = coefs[0] + coefs[1] + coefs[2] + coefs[3];
     return (x[0] * coefs[0] + x[1] * coefs[1]+ x[2] * coefs[2]+ x[3] * coefs[3]) / coefsSum;
   }
 
-  fn bicubicInterpolation(outputIndices: ${output.type.indices}) -> f32 {
-    var inputIndices: ${input.type.indices} = outputIndices;
-    return colCubicInterpolation(inputIndices, outputIndices);
+  fn bicubicInterpolation(output_indices: ${output.type.indices}) -> ${dType} {
+    var input_indices: ${input.type.indices} = output_indices;
+    return colCubicInterpolation(input_indices, output_indices);
   }
     `;
     };
@@ -446,27 +449,28 @@ const createResizeProgramInfo =
           outputShape = adjustOutputShape(inputShape, scales, attributes);
         }
       }
-      const output = outputVariable('output', inputTensor.dataType, outputShape);
-      const input = inputVariable('input', inputTensor.dataType, inputShape);
+      const output = outputVariable('output', inputTensor.dataType, outputShape.length);
+      const input = inputVariable('input', inputTensor.dataType, inputShape.length);
       const outputSize = ShapeUtil.size(outputShape);
       const noScale = inputShape.length === outputShape.length && inputShape.every((d, i) => d === outputShape[i]);
       const useExtrapolation = attributes.coordinateTransformMode === 'tf_crop_and_resize';
+      const dataType = input.type.value;
       const getShaderSource = (shaderHelper: ShaderHelper) => `
       ${noScale ? '' : `
-      ${getOriginalCoordinateFromResizedCoordinate(attributes.coordinateTransformMode)};
+      ${getOriginalCoordinateFromResizedCoordinate(attributes.coordinateTransformMode, dataType)};
       ${(() => {
         switch (attributes.mode) {
           case 'nearest':
             return `
               ${checkInputIndices(input, inputShape)};
-              ${getNearestPixelFromOriginal(attributes.nearestMode, opsetVersion)};
+              ${getNearestPixelFromOriginal(attributes.nearestMode, opsetVersion, dataType)};
               ${
                 calculateInputIndicesFromOutputIndices(
-                    input, output, inputShape, outputShape, scales, roi, useExtrapolation)};
+                    input, output, inputShape, outputShape, scales.length, roi.length, useExtrapolation)};
               `;
           case 'linear':
             return `
-              ${calculateOriginalIndicesFromOutputIndices(output, inputShape, outputShape, scales, roi)};
+              ${calculateOriginalIndicesFromOutputIndices(output, inputShape, outputShape, scales.length, roi.length)};
               ${
                 bilinearInterpolation(
                     input, output, inputShape, scales, useExtrapolation, attributes.extrapolationValue)};
@@ -483,25 +487,29 @@ const createResizeProgramInfo =
         }
       })()};
       `}
-      ${shaderHelper.declareVariables(input, output)}
+      ${
+          shaderHelper.registerUniform('output_size', 'u32')
+              .registerUniform('scales', 'f32', scales.length)
+              .registerUniform('roi', 'f32', roi.length)
+              .declareVariables(input, output)}
       ${shaderHelper.mainStart()}
-        ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
+        ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
         ${noScale ? 'output[global_idx] = input[global_idx];' : `
-        let outputIndices = ${output.offsetToIndices('global_idx')};
-        var inputIndices: ${input.type.indices};
+        let output_indices = ${output.offsetToIndices('global_idx')};
+        var input_indices: ${input.type.indices};
         ${(() => {
         switch (attributes.mode) {
           case 'nearest':
-            return `inputIndices = calculateInputIndicesFromOutputIndices(outputIndices);
-                if (checkInputIndices(inputIndices)) {
-                  output[global_idx] = input[${input.indicesToOffset('inputIndices')}];
+            return `input_indices = calculateInputIndicesFromOutputIndices(output_indices);
+                if (checkInputIndices(input_indices)) {
+                  output[global_idx] = ${input.getByIndices('input_indices')};
                 } else {
                   output[global_idx] = ${attributes.extrapolationValue};
                 }`;
           case 'linear':
-            return 'output[global_idx] = bilinearInterpolation(outputIndices);';
+            return 'output[global_idx] = bilinearInterpolation(output_indices);';
           case 'cubic':
-            return 'output[global_idx] = bicubicInterpolation(outputIndices);';
+            return 'output[global_idx] = bicubicInterpolation(output_indices);';
           default:
             throw Error(`Unsupported resize mode: ${attributes.mode}`);
         }
@@ -513,12 +521,20 @@ const createResizeProgramInfo =
         name: 'Resize',
         shaderCache: {
           hint: `${attributes.cacheKey}|${opsetVersion}|${scales.length > 0 ? scales : ''}|${
-              sizes.length > 0 ? sizes : ''}|${noScale}`
+              sizes.length > 0 ? sizes : ''}|${roi.length > 0 ? roi : ''}|${noScale}`,
+          inputDependencies: ['rank']
         },
         getShaderSource,
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: inputTensor.dataType}],
-          dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
+          dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
+          programUniforms: [
+            {type: 'uint32', data: outputSize},
+            {type: 'float32', data: scales},
+            {type: 'float32', data: roi},
+            ...createTensorShapeVariables(inputShape),
+            ...createTensorShapeVariables(outputShape),
+          ]
         })
       };
     };

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {InferenceSession} from './inference-session.js';
+import {OnnxValue} from './onnx-value.js';
 import {TrainingSession as TrainingSessionImpl} from './training-session-impl.js';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
@@ -22,6 +23,12 @@ export interface TrainingSession {
   // #region run()
 
   /**
+   * Lazily resets the gradients of all trainable parameters to zero. Should happen after the invocation of
+   * runOptimizerStep.
+   */
+  lazyResetGrad(): Promise<void>;
+
+  /**
    * Run TrainStep asynchronously with the given feeds and options.
    *
    * @param feeds - Representation of the model input. See type description of `InferenceSession.InputType` for
@@ -38,7 +45,7 @@ export interface TrainingSession {
    * @param feeds - Representation of the model input.
    * @param fetches - Representation of the model output.
    * detail.
-   * @param options - Optional. A set of options that controls the behavior of model inference.
+   * @param options - Optional. A set of options that controls the behavior of model training.
    * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding
    values.
    */
@@ -46,24 +53,68 @@ export interface TrainingSession {
       feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
       options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
 
+  /**
+   * Runs a single optimizer step, which performs weight updates for the trainable parameters using the optimizer model.
+   *
+   * @param options - Optional. A set of options that controls the behavior of model optimizing.
+   */
+  runOptimizerStep(options?: InferenceSession.RunOptions): Promise<void>;
+
+  /**
+   * Run a single eval step with the given inputs and options using the eval model.
+   *
+   * @param feeds - Representation of the model input.
+   * @param options - Optional. A set of options that controls the behavior of model eval step.
+   * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding
+   values.
+   */
+  runEvalStep(feeds: InferenceSession.FeedsType, options?: InferenceSession.RunOptions):
+      Promise<InferenceSession.ReturnType>;
+
+  /**
+   * Run a single eval step with the given inputs and options using the eval model.
+   *
+   * @param feeds - Representation of the model input.
+   * @param fetches - Representation of the model output.
+   * detail.
+   * @param options - Optional. A set of options that controls the behavior of model eval step.
+   * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding
+   values.
+   */
+  runEvalStep(
+      feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
+      options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
+
   // #endregion
 
   // #region copy parameters
+
   /**
-   * Copies from a buffer containing parameters to the TrainingSession parameters.
+   * Retrieves the size of all parameters for the training state. Calculates the total number of primitive (datatype of
+   * the parameters) elements of all the parameters in the training state.
    *
-   * @param buffer - buffer containing parameters
-   * @param trainableOnly - True if trainable parameters only to be modified, false otherwise.
+   * @param trainableOnly - When set to true, the size is calculated for trainable params only. Default value is true.
+   */
+  getParametersSize(trainableOnly: boolean): Promise<number>;
+
+  /**
+   * Copies parameter values from the given array to the training state. Currently, only supporting models with
+   * parameters of type Float32.
+   *
+   * @param buffer - Float32 buffer containing parameters converted to a Uint8Array.
+   * @param trainableOnly - True if trainable parameters only to be modified, false otherwise. Default value is true.
    */
   loadParametersBuffer(array: Uint8Array, trainableOnly: boolean): Promise<void>;
 
   /**
-   * Copies from the TrainingSession parameters to a buffer.
+   * Copies the model parameters to a contiguous buffer. Usually used in the context of Federated Learning.
+   * Currently, only supporting models with parameters of type Float32.
    *
-   * @param trainableOnly - True if trainable parameters only to be copied, false othrwise.
-   * @returns A promise that resolves to a buffer of the requested parameters.
+   * @param trainableOnly - When set to true, only trainable parameters are copied. Trainable parameters are parameters
+   * for which requires_grad is set to true. Default value is true.
+   * @returns A promise that resolves to a Float32 OnnxValue of the requested parameters.
    */
-  getContiguousParameters(trainableOnly: boolean): Promise<Uint8Array>;
+  getContiguousParameters(trainableOnly: boolean): Promise<OnnxValue>;
   // #endregion
 
   // #region release()
@@ -77,14 +128,25 @@ export interface TrainingSession {
   // #region metadata
 
   /**
-   * Get input names of the loaded model.
+   * Get input names of the loaded training model.
    */
-  readonly inputNames: readonly string[];
+  readonly trainingInputNames: readonly string[];
 
   /**
-   * Get output names of the loaded model.
+   * Get output names of the loaded training model.
    */
-  readonly outputNames: readonly string[];
+  readonly trainingOutputNames: readonly string[];
+
+  /**
+   * Get input names of the loaded eval model. Is an empty array if no eval model is loaded.
+   */
+  readonly evalInputNames: readonly string[];
+
+  /**
+   * Get output names of the loaded eval model. Is an empty array if no eval model is loaded.
+   */
+  readonly evalOutputNames: readonly string[];
+
   // #endregion
 }
 

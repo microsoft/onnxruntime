@@ -498,6 +498,9 @@ def check_qtype_by_node_type(testcase, model_to_check, check_list):
         model = onnx.load(model_to_check)
     elif isinstance(model_to_check, onnx.ModelProto):
         model = model_to_check
+    # NOTE: ONNX shape inference does not work on MS domain nodes.
+    # Therefore, this function cannot currently be used for graphs that contain ops such as
+    # com.microsoft.QuantizeLinear, which support 16-bit quantization.
     model = onnx.shape_inference.infer_shapes(model)
     value_infos = {vi.name: vi for vi in model.graph.value_info}
     value_infos.update({ot.name: ot for ot in model.graph.output})

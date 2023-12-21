@@ -58,10 +58,11 @@ interface IndicesHelperTypes {
  * create an instance of an indices helper:
  * - `inputVariable()`: create an indices helper instance for an input.
  * - `outputVariable()`: create an indices helper instance for an output.
+ * - `internalVariable()`: create an indices helper instance for an internal variable.
  *
  * An indices helper instance contains helper functions for the following operations:
  * - access readonly basic information, including: `name`(the name of the input or output), `usage`(whether it's an
- * input or an output) and `shape`(the passed in shape).
+ * input, an output or an internal variable) and `shape`(the passed in shape).
  * - `type`: access readonly type information, including: `indices`(the type of indices), `value`(the type of value at
  * runtime), `storage`(the type of value at storage) and `tensor`(the tensor type as represented in TensorView).
  * - generate WGSL code for getting indices from offset. Use `offsetToIndices()` for WGSL code snippet to calculate
@@ -192,9 +193,9 @@ export interface IndicesHelper {
   readonly name: string;
 
   /**
-   * whether the helper is for an input or an output.
+   * whether the helper is for an input, an output or an internal variable.
    */
-  readonly usage: 'input'|'output';
+  readonly usage: 'input'|'output'|'internal';
 
   /**
    * the rank of the input or output.
@@ -325,17 +326,35 @@ export const sumVector = (name: string, components: number) => {
 };
 
 /**
+ * A helper function that returns variable element at index.
+ * @param name - the name of variable.
+ * @param index - the index of variable element.
+ * @param length - the length of variable.
+ */
+export const getElementAt = (name: string, index: number|string, length: number): string => {
+  if (name.startsWith('uniforms.') && length > 4) {
+    if (typeof (index) === 'string') {
+      return `${name}[(${index}) / 4][(${index}) % 4]`;
+    } else {
+      return `${name}[${Math.floor(index / 4)}][${index % 4}]`;
+    }
+  } else {
+    return length > 1 ? `${name}[${index}]` : name;
+  }
+};
+
+/**
  * A helper function to get a IndicesHelper for a given input or output.
  *
  * @param name - the name of the input or output.
  * @param tensorType - the tensor type of the input or output.
  * @param shapeOrRank - the tensor shape or the rank of the input or output.
- * @param isInput - whether the helper is for an input or an output.
+ * @param usage - the usage of the indices helper.
  * @param components - indicates the number of components of each element. 1 for scalar, 2 for vec2, 3 for vec3, 4 for
  *    vec4.
  */
 const createIndicesHelper =
-    (name: string, tensorType: number, shapeOrRank: number|readonly number[], isInput: boolean,
+    (name: string, tensorType: number, shapeOrRank: number|readonly number[], usage: IndicesHelper['usage'],
      components: 1|2|3|4): IndicesHelper => {
       const useUniform = typeof shapeOrRank === 'number';
       const rank = useUniform ? shapeOrRank : shapeOrRank.length;
@@ -361,11 +380,12 @@ const createIndicesHelper =
       const uniformPrefix = useUniform ? 'uniforms.' : '';
       const shape = `${uniformPrefix}${name}_shape`;
       const strides = `${uniformPrefix}${name}_strides`;
+
       let o2iSnippet = '';
       for (let i = 0; i < rank - 1; i++) {
         o2iSnippet += `
-    let dim${i} = current / ${strides}[${i}];
-    let rest${i} = current % ${strides}[${i}];
+    let dim${i} = current / ${getElementAt(strides, i, rank)};
+    let rest${i} = current % ${getElementAt(strides, i, rank)};
     indices[${i}] = dim${i};
     current = rest${i};
     `;
@@ -388,7 +408,7 @@ const createIndicesHelper =
       const offsets: string[] = [];
       if (rank >= 2) {
         for (let i = rank - 1; i >= 0; i--) {
-          offsets.push(`${strides}[${i}] * (indices[${i}])`);
+          offsets.push(`${getElementAt(strides, i, rank)} * (indices[${i}])`);
         }
       }
 
@@ -409,7 +429,7 @@ const createIndicesHelper =
         if (rank < 2) {
           return `${varIndices}`;
         } else {
-          return `${varIndices}[${idx}]`;
+          return `${getElementAt(varIndices, idx, rank)}`;
         }
       };
 
@@ -417,7 +437,7 @@ const createIndicesHelper =
         if (rank < 2) {
           return `${varIndices}=${value};`;
         } else {
-          return `${varIndices}[${idx}]=${value};`;
+          return `${getElementAt(varIndices, idx, rank)}=${value};`;
         }
       };
 
@@ -612,7 +632,7 @@ const createIndicesHelper =
         getByOffset,
         getByIndices,
         // isVec4,
-        usage: isInput ? 'input' : 'output',
+        usage,
         name,
         strides,
         shape,
@@ -631,7 +651,7 @@ const createIndicesHelper =
  */
 export const inputVariable =
     (name: string, type: number, shapeOrRank: number|readonly number[], components: 1|2|3|4 = 1): IndicesHelper =>
-        createIndicesHelper(name, type, shapeOrRank, true, components);
+        createIndicesHelper(name, type, shapeOrRank, 'input', components);
 
 /**
  * Create a IndicesHelper for an output.
@@ -644,9 +664,23 @@ export const inputVariable =
  */
 export const outputVariable =
     (name: string, type: number, shapeOrRank: number|readonly number[], components: 1|2|3|4 = 1): IndicesHelper =>
-        createIndicesHelper(name, type, shapeOrRank, false, components);
+        createIndicesHelper(name, type, shapeOrRank, 'output', components);
 
-export type UniformsArrayType = Array<{name: string; type: string}>;
+/**
+ * Create a IndicesHelper for an internal variable.
+ *
+ * @param name - the name of the variable.
+ * @param type - the tensor type of the variable.
+ * @param shapeOrRank - the tensor shape or the rank of the variable.
+ * @param components - the number of components of the variable. available values are 1, 2, 3, 4. default is 1.
+ * @returns an IndicesHelper for the variable.
+ */
+export const internalVariable =
+    (name: string, type: number, shapeOrRank: number|readonly number[], components: 1|2|3|4 = 1): IndicesHelper =>
+        createIndicesHelper(name, type, shapeOrRank, 'internal', components);
+
+export type UniformDataElementType = 'u32'|'f32'|'i32';
+export type UniformsArrayType = Array<{name: string; type: UniformDataElementType; length?: number}>;
 
 /**
  * A ShaderHelper is a helper class for generating WGSL code.
@@ -697,9 +731,28 @@ export interface ShaderHelper {
 
   /**
    * A helper function to register one uniform. Can be called multiple times to register multiple uniforms.
+   *
+   * @param name - the name of the uniform.
+   * @param type - the type of the uniform.
+   * @param length - the length of the uniform, default to 1 when it is not provided.
    */
-  registerUniform(name: string, type: string): ShaderHelper;
-  registerUniforms(nameToTypeMap: UniformsArrayType): ShaderHelper;
+  registerUniform(name: string, type: string, length?: number): ShaderHelper;
+
+  /**
+   * A helper function to register multiple uniforms. Can be called multiple times to register multiple uniforms.
+   *
+   * @param uniforms - an array of uniforms. Each element of the array is an object with 2 properties: `name` and
+   *     `type`.
+   */
+  registerUniforms(uniforms: UniformsArrayType): ShaderHelper;
+
+  /**
+   * A helper function to register multiple internal variables. Can be called multiple times to register multiple
+   * internal variables.
+   *
+   * @param variables - an array of IndicesHelper for the variables.
+   */
+  registerInternalVariables(...variables: IndicesHelper[]): ShaderHelper;
 }
 
 class ShaderHelperImpl implements ShaderHelper {
@@ -719,14 +772,14 @@ class ShaderHelperImpl implements ShaderHelper {
     const is1DimensionDispatch = this.normalizedDispatchGroup[1] === 1 && this.normalizedDispatchGroup[2] === 1;
     const paramList = is1DimensionDispatch ? `@builtin(global_invocation_id) global_id : vec3<u32>,
     @builtin(local_invocation_id) local_id : vec3<u32>` :
-                                             `@builtin(local_invocation_index) local_index : u32,
+                                             `@builtin(local_invocation_index) local_idx : u32,
     @builtin(workgroup_id) workgroup_id : vec3<u32>,
     @builtin(num_workgroups) num_workgroups : vec3<u32>`;
     const globalIdxDefinition = is1DimensionDispatch ?
-        'let global_idx = global_id.x;' :
+        'let global_idx = global_id.x; let local_idx = local_id.x;' :
         `let global_idx = (workgroup_id.z * num_workgroups[0] * num_workgroups[1] +
           workgroup_id.y * num_workgroups[0] + workgroup_id.x) * ${
-            workgroupSizeX * workgroupSizeY * workgroupSizeZ}u + local_index;`;
+            workgroupSizeX * workgroupSizeY * workgroupSizeZ}u + local_idx;`;
 
     return `@compute @workgroup_size(${workgroupSizeX}, ${workgroupSizeY}, ${workgroupSizeZ})
   fn main(${paramList}) {
@@ -734,16 +787,24 @@ class ShaderHelperImpl implements ShaderHelper {
   `;
   }
 
-  private declareVariable(variable: IndicesHelper, bindingIndex: number): string {
-    this.indicesHelpers.push(variable);
+  private appendVariableUniforms(variable: IndicesHelper): void {
     if (variable.rank !== 0) {
       if (variable.shape.startsWith('uniforms.')) {
-        this.uniforms.push({name: variable.shape.replace('uniforms.', ''), type: variable.type.indices});
+        this.uniforms.push({name: variable.shape.replace('uniforms.', ''), type: 'u32', length: variable.rank});
       }
       if (variable.strides.startsWith('uniforms.')) {
-        this.uniforms.push({name: variable.strides.replace('uniforms.', ''), type: variable.type.indices});
+        this.uniforms.push({name: variable.strides.replace('uniforms.', ''), type: 'u32', length: variable.rank});
       }
     }
+  }
+
+  private declareVariable(variable: IndicesHelper, bindingIndex: number): string {
+    if (variable.usage === 'internal') {
+      throw new Error('cannot use internal variable with declareVariable(). use registerInternalVariables() instead.');
+    }
+    this.variables.push(variable);
+    this.appendVariableUniforms(variable);
+
     const access = variable.usage === 'input' ? 'read' : 'read_write';
     const storageType = variable.type.storage;
     return `@group(0) @binding(${bindingIndex}) var<storage, ${access}> ${variable.name}: array<${storageType}>;`;
@@ -753,8 +814,23 @@ class ShaderHelperImpl implements ShaderHelper {
     return variables.map(v => this.declareVariable(v, this.variableIndex++)).join('\n');
   }
 
-  registerUniform(name: string, type: string): ShaderHelper {
-    this.uniforms.push({name, type});
+  private registerInternalVariable(variable: IndicesHelper): void {
+    if (variable.usage !== 'internal') {
+      throw new Error(
+          'cannot use input or output variable with registerInternalVariable(). use declareVariables() instead.');
+    }
+
+    this.internalVariables.push(variable);
+    this.appendVariableUniforms(variable);
+  }
+
+  registerInternalVariables(...variables: IndicesHelper[]): ShaderHelper {
+    variables.forEach(v => this.registerInternalVariable(v));
+    return this;
+  }
+
+  registerUniform(name: string, type: UniformDataElementType, length = 1): ShaderHelper {
+    this.uniforms.push({name, type, length});
     return this;
   }
 
@@ -763,7 +839,8 @@ class ShaderHelperImpl implements ShaderHelper {
     return this;
   }
 
-  private indicesHelpers: IndicesHelper[] = [];
+  private internalVariables: IndicesHelper[] = [];
+  private variables: IndicesHelper[] = [];
   private uniforms: UniformsArrayType = [];
   private uniformDeclaration(): string {
     if (this.uniforms.length === 0) {
@@ -771,8 +848,13 @@ class ShaderHelperImpl implements ShaderHelper {
     }
 
     const uniformSnippets: string[] = [];
-    for (const {name, type} of this.uniforms) {
-      uniformSnippets.push(`${name}:${type}`);
+    for (const {name, type, length} of this.uniforms) {
+      if (length && length > 4) {
+        uniformSnippets.push(`${name}:array<vec4<${type}>, ${Math.ceil(length / 4)}>`);
+      } else {
+        const typeTemp = length == null || length === 1 ? type : `vec${length}<${type}>`;
+        uniformSnippets.push(`${name}:${typeTemp}`);
+      }
     }
 
     return `
@@ -785,7 +867,8 @@ class ShaderHelperImpl implements ShaderHelper {
    * Get additional implementation that needs to be added to the shader source.
    */
   get additionalImplementations(): string {
-    return this.uniformDeclaration() + this.indicesHelpers.map(i => i.impl()).join('\n');
+    return this.uniformDeclaration() + this.variables.map(i => i.impl()).join('\n') +
+        this.internalVariables.map(i => i.impl()).join('\n');
   }
 }
 
@@ -815,5 +898,5 @@ export const getBroadcastDims = (inShape: readonly number[], outShape: readonly 
   return dims;
 };
 
-// TODO: remove this limitation once >4D dims are supported by uniform.
-export const enableShapesUniforms = (rank: number): boolean => rank <= 4;
+// TODO: remove this when all related uses have been removed.
+export const enableShapesUniforms = (_rank: number): boolean => true;

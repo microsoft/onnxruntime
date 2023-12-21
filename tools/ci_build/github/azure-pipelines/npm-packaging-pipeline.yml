@@ -65,7 +65,7 @@ stages:
   - Build_web_Debug
   jobs:
   - job: Download_Node_Package_And_Publish_Validation_Script
-    pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
+    pool: 'Onnxruntime-Win-CPU-2022'
     variables:
       runCodesignValidationInjection: false
     timeoutInMinutes: 10

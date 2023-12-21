@@ -26,7 +26,7 @@ jobs:
           python-version: '3.11.x'
           architecture: 'x64'
 
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
           node-version: 18
 
@@ -49,13 +49,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.8.x'
-          architecture: 'x64'
       - uses: conda-incubator/setup-miniconda@v2
         with:
-          activate-environment: ""
+          activate-environment: "ort_build"
+          python-version: 3.8
       - name: 'Install LLVM-Dev'
         shell: pwsh
         run: |

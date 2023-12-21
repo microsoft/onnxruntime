@@ -1,0 +1,175 @@
+parameters:
+  - name: RunOnnxRuntimeTests
+    displayName: Run Tests?
+    type: boolean
+    default: true
+
+  - name: UseIncreasedTimeoutForTests
+    displayName: Increase timeout for tests? Set it to false if you are doing an Onnx Runtime release.
+    type: boolean
+    default: false
+
+  - name: DoCompliance
+    displayName: Run Compliance Tasks?
+    type: boolean
+    default: true
+
+  - name: DoEsrp
+    displayName: Run code sign tasks? Must be true if you are doing an ONNX Runtime release
+    type: boolean
+    default: true
+
+  - name: IsReleaseBuild
+    displayName: Is a release build? Set it to true if you are doing an ONNX Runtime release.
+    type: boolean
+    default: false
+
+  - name: PreReleaseVersionSuffixString
+    displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
+    type: string
+    values:
+      - alpha
+      - beta
+      - rc
+      - none
+    default: none
+
+  - name: PreReleaseVersionSuffixNumber
+    displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
+    type: number
+    default: 0
+
+  # these 2 parameters are used for debugging.
+  - name: SpecificArtifact
+    displayName: Use Specific Artifact (Debugging only)
+    type: boolean
+    default: false
+
+  - name: BuildId
+    displayName: Pipeline BuildId, you could find it in the URL
+    type: string
+    default: '0'
+
+  - name: CudaVersion
+    displayName: CUDA version
+    type: string
+    default: '12.2'
+    values:
+      - 11.8
+      - 12.2
+
+variables:
+  - name: ReleaseVersionSuffix
+    value: ''
+  - name: docker_base_image
+    ${{ if eq(parameters.CudaVersion, '11.8') }}:
+      value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+    ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      value: nvidia/cuda:12.2.2-cudnn8-devel-ubi8
+  - name: linux_trt_version
+    ${{ if eq(parameters.CudaVersion, '11.8') }}:
+      value: 8.6.1.6-1.cuda11.8
+    ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      value: 8.6.1.6-1.cuda12.0
+  - name: win_trt_home
+    ${{ if eq(parameters.CudaVersion, '11.8') }}:
+      value: $(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8
+    ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      value: $(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0
+  - name: win_cuda_home
+    ${{ if eq(parameters.CudaVersion, '11.8') }}:
+      value: $(Agent.TempDirectory)\v11.8
+    ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      value: $(Agent.TempDirectory)\v12.2
+resources:
+  repositories:
+    - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
+      type: github
+      endpoint: ort-examples
+      name: microsoft/onnxruntime-inference-examples
+    - repository: manylinux
+      type: Github
+      endpoint: Microsoft
+      name: pypa/manylinux
+      ref: 5eda9aded5462201e6310105728d33016e637ea7
+
+stages:
+# Set ReleaseVersionSuffix
+  - stage: Set_ReleaseVersionSuffix
+    jobs:
+      - job: Set_Variables
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: none
+          - bash: |
+              # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+              set +x
+              if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
+                if [[ "${{ parameters.PreReleaseVersionSuffixNumber }}" -eq 0 ]]; then
+                  echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}"
+                else
+                  echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
+                fi
+              else
+                echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]"
+              fi
+            name: Set_Release_Version_Suffix
+          - bash: echo $(ReleaseVersionSuffix)
+            name: Debug_Release_Version_Suffix
+  # this is needed for certain artifacts to be published
+  - stage: Linux_C_API_Packaging_CPU_x64
+    dependsOn: [ ]
+    jobs:
+    - template: templates/c-api-linux-cpu.yml
+      parameters:
+        BaseImage: 'registry.access.redhat.com/ubi8/ubi'
+        OnnxruntimeArch: 'x64'
+        OnnxruntimeCFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
+        OnnxruntimeCXXFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
+        OnnxruntimeNodejsBindingArch: 'x64'
+        PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
+        PackageJava: false
+        PackageNodeJS: false
+  # Nuget Packaging
+
+  - template: stages/nuget-linux-cuda-packaging-stage.yml
+    parameters:
+      CudaVersion: ${{ parameters.CudaVersion }}
+      docker_base_image: ${{ variables.docker_base_image }}
+      linux_trt_version: ${{ variables.linux_trt_version }}
+  - template: stages/nuget-win-cuda-packaging-stage.yml
+    parameters:
+      RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+      UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
+      CudaVersion: ${{ parameters.CudaVersion }}
+      win_trt_home: ${{ variables.win_trt_home }}
+      win_cuda_home: ${{ variables.win_cuda_home }}
+  - template: stages/nuget-combine-cuda-stage.yml
+    parameters:
+      DoCompliance: ${{ parameters.DoCompliance }}
+      DoEsrp: ${{ parameters.DoEsrp }}
+      IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+  # Testing
+  ## Windows GPU Testing
+  - template: nuget/templates/test_win.yml
+    parameters:
+      AgentPool: 'onnxruntime-Win2022-GPU-T4'
+      NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
+      ArtifactSuffix: 'GPU'
+      StageSuffix: 'GPU'
+      Skipx86Tests: 'true'
+      CudaVersion: ${{ parameters.CudaVersion }}
+  ## Linux GPU Testing
+  - template: nuget/templates/test_linux.yml
+    parameters:
+      AgentPool: Onnxruntime-Linux-GPU
+      ArtifactSuffix: 'GPU'
+      StageSuffix: 'GPU'
+      NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
+      SpecificArtifact: ${{ parameters.specificArtifact }}
+      CudaVersion: ${{ parameters.CudaVersion }}
+      BuildId: ${{ parameters.BuildId }}
+
+## Win/Linux GPU Combined Publishing
+#- template: templates/publish-nuget.yml

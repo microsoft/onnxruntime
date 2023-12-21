@@ -92,7 +92,10 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     utils::InitializeQuantizeParam(quantize_param, is_quantized_tensor);
 
     const auto& input_name = inputs[input_i].node_arg.Name();
-    if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
+
+    // Only skip if the input tensor has already been added (by producer op) *and* we don't need
+    // to transpose it.
+    if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name) && input_trans_flag[input_i] == 0) {
       LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_name;
       input_names.push_back(input_name);
       continue;
@@ -134,7 +137,8 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       std::vector<uint32_t> perm{1, 0};
       ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddTransposeNode(node_unit.Index(), node_input_name, input_tensor_name,
                                                              old_input_shape, perm, input_shape,
-                                                             qnn_data_type, quantize_param, do_op_validation));
+                                                             qnn_data_type, quantize_param, do_op_validation,
+                                                             qnn_model_wrapper.IsGraphInput(node_input_name)));
     }
 
     if (2 == input_i && 2 == input_shape.size()) {
