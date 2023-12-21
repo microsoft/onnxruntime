@@ -5,7 +5,6 @@
 
 import ctypes
 import inspect
-import warnings
 from collections import OrderedDict
 from datetime import timedelta
 from types import CodeType, FunctionType
@@ -169,7 +168,8 @@ try:
         if torch.nn.functional.linear is zero3_linear_wrap:
             torch.nn.functional.linear = _zero3_linear_wrap_ort_compatible
 
-except ImportError as e:
+except ImportError:
+
     def configure_ort_compatible_zero_stage3(debug=False, stats_output_dir=None, stats_overwrite=False):
         raise RuntimeError("DeepSpeed is not installed, cannot configure ORT compatible ZeRO stage3.")
 
