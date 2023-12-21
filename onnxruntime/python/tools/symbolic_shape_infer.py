@@ -2438,7 +2438,10 @@ class SymbolicShapeInference:
                 input_dtype = self.known_vi_[node.input[input_index]].type.tensor_type.elem_type
                 input_dtypes.append(input_dtype)
             output_shapes, output_dtypes = shape_inferer(node, input_shapes, input_dtypes)
-            assert len(output_shapes) == len(output_dtypes) == (len(node.output) - 1)
+            assert len(output_shapes) == len(output_dtypes) == (len(node.output) - 1), (
+                f"PythonOp '{func_name}' returned {len(output_shapes)} shapes and {len(output_dtypes)} dtypes, "
+                f"but expected {len(node.output) - 1} outputs."
+            )
             for i in range(len(node.output) - 1):
                 output_index = i + 1
                 vi = self.known_vi_[node.output[output_index]]
