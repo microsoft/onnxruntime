@@ -113,10 +113,10 @@ __device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, 
   half2 v3 = elements[3] * scale_half2 + zp_adjust2;
 
   half2* sums_half2 = reinterpret_cast<half2*>(sums);
-  sums_half2[0] += v0 * (*(reinterpret_cast<half2*>(&(vec_permuted.x))));
-  sums_half2[1] += v1 * (*(reinterpret_cast<half2*>(&(vec_permuted.y))));
-  sums_half2[2] += v2 * (*(reinterpret_cast<half2*>(&(vec_permuted.z))));
-  sums_half2[3] += v3 * (*(reinterpret_cast<half2*>(&(vec_permuted.w))));
+  sums_half2[0] = sums_half2[0] + v0 * (*(reinterpret_cast<half2*>(&(vec_permuted.x))));
+  sums_half2[1] = sums_half2[1] + v1 * (*(reinterpret_cast<half2*>(&(vec_permuted.y))));
+  sums_half2[2] = sums_half2[2] + v2 * (*(reinterpret_cast<half2*>(&(vec_permuted.z))));
+  sums_half2[3] = sums_half2[3] + v3 * (*(reinterpret_cast<half2*>(&(vec_permuted.w))));
 }
 
 __device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, float scale, uint8_t zp, const float* a, float* sums) {
