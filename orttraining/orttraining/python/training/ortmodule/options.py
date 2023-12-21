@@ -308,6 +308,8 @@ class _RuntimeOptions:
         # Experimental features.
         self.enable_zero_stage3_support = False  # Once enabled, cannot be disabled.
 
+        self.enable_mem_efficient_grad_management = True
+
         self.deepcopy_before_model_export = True
 
         # Override the feature config if it exists in os env.

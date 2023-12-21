@@ -36,7 +36,6 @@ from ._graph_execution_interface import GraphExecutionInterface
 from ._io import _FlattenedModule, _InputInfo
 from ._runtime_inspector import RuntimeInspector
 from ._utils import check_function_has_param, get_rank
-from ._zero_stage3_compatibility import stage3_export_context
 from .options import DebugOptions, LogLevel, _MemoryOptimizationLevel, _RuntimeOptions
 from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
 
@@ -388,6 +387,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"
 
         try:
+            from ._zero_stage3_compatibility import stage3_export_context
+
             with torch.no_grad(), stage3_export_context(self._runtime_options.enable_zero_stage3_support, self):
                 required_export_kwargs = {
                     "input_names": self._input_info.names,
@@ -436,6 +437,13 @@ class GraphExecutionManager(GraphExecutionInterface):
             from ._custom_autograd_function_exporter import post_process_enabling_autograd_function
 
             exported_model = post_process_enabling_autograd_function(exported_model)
+
+        if self._runtime_options.enable_mem_efficient_grad_management:
+            from ._mem_efficent_training import post_processing_enable_mem_efficient_training
+
+            exported_model = post_processing_enable_mem_efficient_training(
+                exported_model, self._flattened_module.named_parameters()
+            )
 
         if self._runtime_options.enable_zero_stage3_support:
             from ._zero_stage3_compatibility import post_processing_enable_zero_stage3_compat
@@ -521,6 +529,11 @@ class GraphExecutionManager(GraphExecutionInterface):
 
             # Add stage3 pull weight trigger name to require_grad_names, so that it will be included in the gradient graph.
             input_names_require_grad.append(STAGE3_PULL_WEIGHT_TRIGGER_NAME)
+        if self._runtime_options.enable_mem_efficient_grad_management:
+            from ._mem_efficent_training import MEM_EFFICIENT_GRAD_TRIGGER_NAME
+
+            # Add stage3 mem efficient grad trigger name to require_grad_names, so that it will be included in the gradient graph.
+            input_names_require_grad.append(MEM_EFFICIENT_GRAD_TRIGGER_NAME)
         grad_builder_config.input_names_require_grad = input_names_require_grad
         grad_builder_config.build_gradient_graph = self._export_mode == torch.onnx.TrainingMode.TRAINING
         grad_builder_config.enable_caching = self._runtime_options.enable_grad_acc_optimization
@@ -596,7 +609,10 @@ class GraphExecutionManager(GraphExecutionInterface):
                     inputs, kwargs
                 )
 
-                if self._runtime_options.enable_zero_stage3_support:
+                if (
+                    self._runtime_options.enable_zero_stage3_support
+                    or self._runtime_options.enable_mem_efficient_grad_management
+                ):
                     self._append_pull_weight_trigger_as_input(kwargs, detected_device)
 
                 _, embed_sparsity_results, label_sparsity_results = _io._combine_input_buffers_initializers(
@@ -632,15 +648,21 @@ class GraphExecutionManager(GraphExecutionInterface):
                 self._runtime_inspector.disable_input_inspector()
 
     def _append_pull_weight_trigger_as_input(self, kwargs: Dict, device: torch.device):
-        from ._zero_stage3_compatibility import (
-            STAGE3_PULL_WEIGHT_TRIGGER_NAME,
-            STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE,
-            STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE,
+        # from ._zero_stage3_compatibility import (
+        #     STAGE3_PULL_WEIGHT_TRIGGER_NAME,
+        #     STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE,
+        #     STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE,
+        # )
+
+        from ._mem_efficent_training import (
+            MEM_EFFICIENT_GRAD_TRIGGER_NAME,
+            MEM_EFFICIENT_GRAD_TRIGGER_OUTPUT_DTYPE,
+            MEM_EFFICIENT_GRAD_TRIGGER_OUTPUT_SHAPE,
         )
 
-        kwargs[STAGE3_PULL_WEIGHT_TRIGGER_NAME] = torch.zeros(
-            STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE,
-            dtype=onnx_dtype_to_pytorch_dtype(STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE),
+        kwargs[MEM_EFFICIENT_GRAD_TRIGGER_NAME] = torch.zeros(
+            MEM_EFFICIENT_GRAD_TRIGGER_OUTPUT_SHAPE,
+            dtype=onnx_dtype_to_pytorch_dtype(MEM_EFFICIENT_GRAD_TRIGGER_OUTPUT_DTYPE),
             device=device,
         ).requires_grad_()
 
