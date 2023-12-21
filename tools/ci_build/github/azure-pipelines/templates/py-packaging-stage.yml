@@ -358,18 +358,8 @@ stages:
 
       - script: |
           set -e -x
-          pushd .
-          mkdir -p /tmp/scripts
-          mkdir -p $(Build.BinariesDirectory)/installed
-          cp $(Build.SourcesDirectory)/cmake/deps.txt /tmp/scripts
-          $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh -p $(Build.BinariesDirectory)/installed
-          popd
-          export PATH=$(Build.BinariesDirectory)/installed/bin:$PATH
-          export ONNX_ML=1
-          export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
-          export _PYTHON_HOST_PLATFORM=macosx-${{variables.MACOSX_DEPLOYMENT_TARGET}}-x86_64
           python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --use_coreml --skip_submodule_sync --parallel --config Release --build_wheel ${{ parameters.build_py_parameters }} --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --use_coreml --skip_submodule_sync --parallel --config Release --build_wheel ${{ parameters.build_py_parameters }} --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64" --update --build
         displayName: 'Command Line Script'
 
       - script: |
