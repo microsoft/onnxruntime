@@ -35,7 +35,7 @@ pip install onnxruntime
 
 ```python
 ## ONNX is built into PyTorch
-pip install torch 
+pip install torch
 ```
 ```python
 ## tensorflow
@@ -77,7 +77,7 @@ x, y = test_data[0][0], test_data[0][1]
 ort_sess = ort.InferenceSession('fashion_mnist_model.onnx')
 outputs = ort_sess.run(None, {'input': x.numpy()})
 
-# Print Result 
+# Print Result
 predicted, actual = classes[outputs[0][0].argmax(0)], classes[y]
 print(f'Predicted: "{predicted}", Actual: "{actual}"')
 ```
@@ -143,7 +143,7 @@ model = ResNet50(weights='imagenet')
 preds = model.predict(x)
 print('Keras Predicted:', decode_predictions(preds, top=3)[0])
 model.save(os.path.join("/tmp", model.name))
-``` 
+```
 - Convert the model to onnx and export
 
 ```python
@@ -198,7 +198,7 @@ with open("logreg_iris.onnx", "wb") as f:
     f.write(onx.SerializeToString())
 ```
 
-    
+
 - Load and run the model using ONNX Runtime
 We will use ONNX Runtime to compute the predictions for this machine learning model.
 
@@ -236,18 +236,33 @@ print(pred_onx)
 
 ## Python API Reference Docs
 
- <span class="fs-5"> [Go to the ORT Python API Docs](../api/python/api_summary.html){: .btn  .mr-4 target="_blank"} </span> 
+ <span class="fs-5"> [Go to the ORT Python API Docs](../api/python/api_summary.html){: .btn  .mr-4 target="_blank"} </span>
 
 ## Builds
-If using pip, run pip install `--upgrade pip` prior to downloading.	 
+If using pip, run `pip install --upgrade pip` prior to downloading.
 
 | Artifact      | Description | Supported Platforms |
 |-----------    |-------------|---------------------|
 |[onnxruntime](https://pypi.org/project/onnxruntime)|CPU (Release)| Windows (x64), Linux (x64, ARM64), Mac (X64),  |
-|[ort-nightly](https://test.pypi.org/project/ort-nightly)|CPU (Dev)    | Same as above |
+|[ort-nightly](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly)|CPU (Dev)    | Same as above |
 |[onnxruntime-gpu](https://pypi.org/project/onnxruntime-gpu)|GPU (Release)| Windows (x64), Linux (x64, ARM64) |
-|[ort-nightly-gpu](https://test.pypi.org/project/ort-nightly-gpu)|GPU (Dev) | Same as above |
+|[ort-nightly-gpu for CUDA 11.*](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-gpu) |GPU (Dev) | Windows (x64), Linux (x64, ARM64) |
+|[ort-nightly-gpu for CUDA 12.*](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ort-cuda-12-nightly/PyPI/ort-nightly-gpu) |GPU (Dev) | Windows (x64), Linux (x64, ARM64) |
 
+Before installing nightly package, you will need install dependencies first.
+```
+python -m pip install coloredlogs flatbuffers numpy packaging protobuf sympy
+```
+
+Example to install ort-nightly-gpu for CUDA 11.*:
+```
+python -m pip install ort-nightly-gpu --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/
+```
+
+Example to install ort-nightly-gpu for CUDA 12.*:
+```
+python -m pip install ort-nightly-gpu --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ort-cuda-12-nightly/pypi/simple/
+```
 
 For Python compiler version notes, see [this page](https://github.com/microsoft/onnxruntime/tree/main/docs/Python_Dev_Notes.md)
 
@@ -256,4 +271,3 @@ For Python compiler version notes, see [this page](https://github.com/microsoft/
 * [TensorFlow with ONNX Runtime](../tutorials/tf-get-started.md)
 * [PyTorch with ONNX Runtime](https://pytorch.org/tutorials/advanced/super_resolution_with_onnxruntime.html)
 * [scikit-learn with ONNX Runtime](http://onnx.ai/sklearn-onnx/index_tutorial.html)
- 
