@@ -3,6 +3,8 @@ parameters:
   NugetPackageName : ''
   ArtifactSuffix: ''
   StageSuffix: 'CPU'
+  # More Suffix is used to differentiate testing for GPU and GPU-Windows/GPU-Linux packages
+  MoreSuffix: ''
   # For inference packages, the test data artifact name is drop-extra and no suffix is required.
   # For training packages, to differentiate the artifact name we add '-training' suffix. This needs to be passed from
   # the parent pipeline.
@@ -13,7 +15,7 @@ parameters:
   BuildId: ''
 
 stages:
-- stage: NuGet_Test_Win_${{ parameters.StageSuffix }}
+- stage: NuGet_Test_Win_${{ parameters.StageSuffix }}${{ parameters.MoreSuffix }}
   dependsOn:
   - NuGet_Packaging_${{ parameters.StageSuffix }}
   condition: succeeded()
