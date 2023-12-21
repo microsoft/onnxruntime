@@ -9,25 +9,29 @@ from typing import List, Optional, Tuple, Union
 import onnx
 import torch
 
-from onnxruntime.training.utils import log_memory_usage, extract_data_and_schema, unflatten_data_using_schema, ORTModelInputOutputType
-
+from onnxruntime.training.utils import (
+    ORTModelInputOutputType,
+    extract_data_and_schema,
+    log_memory_usage,
+    unflatten_data_using_schema,
+)
 
 from ._subscriber_base import RuntimeStates, SubscriberBase
-
 
 _PRE_FW_PASS_PHASE = "pre-fw-pass"
 _POST_FW_PASS_PHASE = "post-fw-pass"
 _PRE_BW_PASS_PHASE = "pre-bw-pass"
 _POST_BW_PASS_PHASE = "post-bw-pass"
 
+
 class _InspectMemoryUsage(torch.autograd.Function):
     """This class is used to print the memory statistics in the forward and backward passes."""
 
     @staticmethod
-    def forward(ctx, phase: str, run_ctx: RuntimeStates, module: torch.nn.Module,
-                *input_tensor_list: Tuple[torch.Tensor, ...]) -> Tuple[torch.Tensor, ...]:
-        """Make sure there is the same number of `tensor` inputs and outputs.
-        """
+    def forward(
+        ctx, phase: str, run_ctx: RuntimeStates, module: torch.nn.Module, *input_tensor_list: Tuple[torch.Tensor, ...]
+    ) -> Tuple[torch.Tensor, ...]:
+        """Make sure there is the same number of `tensor` inputs and outputs."""
         ctx.current_step = run_ctx.global_states.execution_step
         ctx.phase = phase
         ctx.module = module
@@ -79,7 +83,6 @@ class _InspectMemoryUsage(torch.autograd.Function):
         return fw_alias_map, bw_alias_map
 
 
-
 class MemoryStatisticsSubscriber(SubscriberBase):
     """
     This subscriber is used to print the memory statistics in the forward and backward passes.
@@ -106,18 +109,17 @@ class MemoryStatisticsSubscriber(SubscriberBase):
         args: ORTModelInputOutputType,
         kwargs: ORTModelInputOutputType,
     ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
-
         flatten_args_tensor_list, args_schema = extract_data_and_schema(args)
         flatten_kwargs_tensor_list, kwargs_schema = extract_data_and_schema(kwargs)
-        flatten_out = _InspectMemoryUsage.apply(_PRE_FW_PASS_PHASE, run_ctx, module,
-                                                 *(flatten_args_tensor_list + flatten_kwargs_tensor_list))
-        args_tensors = flatten_out[:len(flatten_args_tensor_list)]
-        kwargs_tensors = flatten_out[len(flatten_args_tensor_list):]
+        flatten_out = _InspectMemoryUsage.apply(
+            _PRE_FW_PASS_PHASE, run_ctx, module, *(flatten_args_tensor_list + flatten_kwargs_tensor_list)
+        )
+        args_tensors = flatten_out[: len(flatten_args_tensor_list)]
+        kwargs_tensors = flatten_out[len(flatten_args_tensor_list) :]
         restored_args = unflatten_data_using_schema(args_tensors, args_schema)
         restored_kwargs = unflatten_data_using_schema(kwargs_tensors, kwargs_schema)
 
         return restored_args, restored_kwargs
-
 
     def post_forward_outmost_module_apply_impl(
         self,
@@ -126,7 +128,6 @@ class MemoryStatisticsSubscriber(SubscriberBase):
         args: ORTModelInputOutputType,
         outputs: ORTModelInputOutputType,
     ) -> Tuple[ORTModelInputOutputType, ORTModelInputOutputType]:
-
         flatten_output_tensor_list, output_schema = extract_data_and_schema(outputs)
         output_tensors = _InspectMemoryUsage.apply(_POST_FW_PASS_PHASE, run_ctx, module, *flatten_output_tensor_list)
         restored_outputs = unflatten_data_using_schema(output_tensors, output_schema)
