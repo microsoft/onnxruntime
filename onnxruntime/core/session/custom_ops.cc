@@ -377,6 +377,12 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetResource, _In_ const OrtKernelCont
   API_IMPL_END
 };
 
+ORT_API_STATUS_IMPL(KernelContext_SimpleParallelFor, _In_ const OrtKernelContext* /*context*/, _In_ void (*/*fn*/)(void*, int), _In_ int /*total*/, _In_ void* /*user_data*/) {
+  API_IMPL_BEGIN
+  return nullptr;
+  API_IMPL_END
+};
+
 #ifdef _WIN32
 #pragma warning(pop)
 #endif

@@ -4515,6 +4515,11 @@ struct OrtApi {
    * \since Version 1.17.
    */
   ORT_API2_STATUS(ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ OrtOpAttrType type, _Inout_ void* data, _In_ size_t len, _Out_ size_t* out);
+
+  /**
+    todo - comments
+   */
+  ORT_API2_STATUS(KernelContext_SimpleParallelFor, _In_ const OrtKernelContext* context, _In_ void (*fn)(void*,int), _In_ int total, _In_ void* user_data);
 };
 
 /*
