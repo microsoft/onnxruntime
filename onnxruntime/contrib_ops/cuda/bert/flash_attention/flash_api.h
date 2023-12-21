@@ -102,8 +102,8 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        void* softmax_lse_accum = nullptr,  // num_splits x batch_size x seqlen_q x num_heads
                        void* out_accum = nullptr,          // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
                        int local_window_size = -1,
-                       bool is_rotary_interleaved=false,
-                       bool is_packed_qkv=false);
+                       bool is_rotary_interleaved = false,
+                       bool is_packed_qkv = false);
 
 size_t get_softmax_lse_size(int max_seqlen_q, int batch_size, int num_heads);
 

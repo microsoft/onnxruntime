@@ -377,7 +377,6 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        int local_window_size,
                        bool is_rotary_interleaved,
                        bool is_packed_qkv) {
-
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
   const int head_size_rounded = round_multiple(head_size, 32);
   const int seqlen_q_rounded = round_multiple(seqlen_q, 128);
