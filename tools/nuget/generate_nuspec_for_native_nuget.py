@@ -176,17 +176,15 @@ def generate_description(line_list, package_name):
             + "See https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training for "
             + "more details."
         )
-    elif "Microsoft.ML.OnnxRuntime" in package_name:  # This is a Microsoft.ML.OnnxRuntime.* package
+    elif "Microsoft.ML.OnnxRuntime.Gpu.Linux" in package_name:
+        description = ("This package contains Linux native shared library artifacts for ONNX Runtime with CUDA.")
+    elif "Microsoft.ML.OnnxRuntime.Gpu.Windows" in package_name:
+        description = ("This package contains Windows native shared library artifacts for ONNX Runtime with CUDA.")
+    elif "Microsoft.ML.OnnxRuntime.Gpu" in package_name:
         description = (
             "This package contains native shared library artifacts for all supported platforms of ONNX Runtime."
         )
-    elif "Microsoft.ML.OnnxRuntime.Gpu.Linux" in package_name:
-        description = "This package contains Linux native shared library artifacts for ONNX Runtime with CUDA."
-    elif "Microsoft.ML.OnnxRuntime.Gpu.Windows" in package_name:
-        description = "This package contains Windows native shared library artifacts for ONNX Runtime with CUDA."
-    elif (
-        "Microsoft.ML.OnnxRuntime.Gpu.1" in package_name
-    ):  # This is a Microsoft.ML.OnnxRuntime.GPU.* package, 1 is begin of version, that is used to filter Gpu.Windows/Gpu.linux
+    elif "Microsoft.ML.OnnxRuntime" in package_name:  # This is a Microsoft.ML.OnnxRuntime.* package
         description = (
             "This package contains native shared library artifacts for all supported platforms of ONNX Runtime."
         )
