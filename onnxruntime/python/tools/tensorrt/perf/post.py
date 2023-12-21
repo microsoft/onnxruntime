@@ -296,22 +296,6 @@ def get_status(status, model_group):
     return status
 
 
-def get_op_metrics(op_metrics, model_group):
-    """
-    Returns a new Pandas table with data that tracks op percentage in each ep
-
-    :param op_metrics: The Pandas table containing percentage of cuda/trt ops in cuda/trt EPs, for all models.
-    :param model_group: The model group namespace to append as a column.
-
-    :return: The updated table.
-    """
-
-    op_metrics_columns = op_metrics.keys()
-    op_metrics_db_columns = table_headers
-    op_metrics = adjust_columns(op_metrics, op_metrics_columns, op_metrics_db_columns, model_group)
-    return op_metrics
-
-
 def get_specs(specs, branch, commit_hash, commit_datetime):
     """
     Returns a new Pandas table with data that tracks the configuration/specs/versions of the hardware and software
@@ -477,8 +461,7 @@ def main():
                     )
                 elif op_metrics_name in csv:
                     table_results[op_metrics_name] = pd.concat(
-                        [table_results[op_metrics_name], get_op_metrics(table, model_group)], ignore_index=True
-                    )
+                        [table_results[op_metrics_name], table], ignore_index=True)
             os.chdir(result_file)
 
         if not table_results[memory_name].empty:
