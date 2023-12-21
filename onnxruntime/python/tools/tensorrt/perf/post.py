@@ -461,7 +461,8 @@ def main():
                     )
                 elif op_metrics_name in csv:
                     table_results[op_metrics_name] = pd.concat(
-                        [table_results[op_metrics_name], table], ignore_index=True)
+                        [table_results[op_metrics_name], table], ignore_index=True
+                    )
             os.chdir(result_file)
 
         if not table_results[memory_name].empty:
