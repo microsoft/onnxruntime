@@ -75,6 +75,17 @@ TEST(LayerNormTest, LayerNorm) {
   test.Run();
 }
 
+TEST(LayerNormTest, LayerNorm_BFloat16Input) {
+  OpTester test("LayerNormalization");
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> dims{1, 2, 3};
+  test.AddInput<BFloat16>("x", dims, ToBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f}));
+  test.AddInput<float>("gamma", {3}, {1.0f, 1.0f, 1.0f});
+  test.AddOutput<float>("output", dims, {-1.2247f, 0.0f, 1.2247f, -1.2247f, 0.0f, 1.2247f});
+  test.Run();
+}
+
 TEST(LayerNormTest, LayerNorm_Scale) {
   OpTester test("LayerNormalization");
   test.AddAttribute<float>("epsilon", 1e-05f);

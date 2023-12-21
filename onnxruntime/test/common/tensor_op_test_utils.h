@@ -156,6 +156,15 @@ inline std::vector<MLFloat16> ToFloat16(const std::vector<float>& data) {
   return result;
 }
 
+inline std::vector<BFloat16> ToBFloat16(const std::vector<float>& data) {
+  std::vector<BFloat16> result;
+  result.reserve(data.size());
+  for (size_t i = 0; i < data.size(); i++) {
+    result.push_back(BFloat16(data[i]));
+  }
+  return result;
+}
+
 inline void CheckTensor(const Tensor& expected_tensor, const Tensor& output_tensor, double rtol, double atol) {
   ORT_ENFORCE(expected_tensor.Shape() == output_tensor.Shape(),
               "Expected output shape [" + expected_tensor.Shape().ToString() +
