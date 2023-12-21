@@ -30,6 +30,7 @@ __device__ __forceinline__ T WarpUniform(T value) {
   return p.value;
 }
 
+#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
 // Convert 8 4bits integer stored in one uint32_t to 8 halfs.
 // 8 4bits with order 0,1,2,3,4,5,6,7,8 will be converted to 8 halfs with order 0,4,1,5,2,6,3,7
 __device__ __forceinline__ void Convert8xInt4To8xHalfs(uint32_t value, half2* half_2x4) {
@@ -118,6 +119,30 @@ __device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, 
   sums_half2[2] = sums_half2[2] + v2 * (*(reinterpret_cast<half2*>(&(vec_permuted.z))));
   sums_half2[3] = sums_half2[3] + v3 * (*(reinterpret_cast<half2*>(&(vec_permuted.w))));
 }
+#else
+__device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, half scale, uint8_t zp, const half* a, half* sums) {
+  half2 scale_half2 = {scale, scale};
+  half zp_adjust = -scale * __short2half_rn(zp);
+  half2 zp_adjust2 = {zp_adjust, zp_adjust};
+  uint4 vec_a = *(reinterpret_cast<const uint4*>(a));
+
+  half2 element01 = __halves2half2(__uint2half_rn(values_quant & 0xF), __uint2half_rn((values_quant >> 4) & 0xF));
+  half2 element23 = __halves2half2(__uint2half_rn((values_quant >> 8) & 0xF), __uint2half_rn((values_quant >> 12) & 0xF));
+  half2 element45 = __halves2half2(__uint2half_rn((values_quant >> 16) & 0xF), __uint2half_rn((values_quant >> 20) & 0xF));
+  half2 element67 = __halves2half2(__uint2half_rn((values_quant >> 24) & 0xF), __uint2half_rn((values_quant >> 28) & 0xF));
+
+  half2 v0 = element01 * scale_half2 + zp_adjust2;
+  half2 v1 = element23 * scale_half2 + zp_adjust2;
+  half2 v2 = element45 * scale_half2 + zp_adjust2;
+  half2 v3 = element67 * scale_half2 + zp_adjust2;
+
+  half2* sums_half2 = reinterpret_cast<half2*>(sums);
+  sums_half2[0] = sums_half2[0] + v0 * (*(reinterpret_cast<half2*>(&(vec_a.x))));
+  sums_half2[1] = sums_half2[1] + v1 * (*(reinterpret_cast<half2*>(&(vec_a.y))));
+  sums_half2[2] = sums_half2[2] + v2 * (*(reinterpret_cast<half2*>(&(vec_a.z))));
+  sums_half2[3] = sums_half2[3] + v3 * (*(reinterpret_cast<half2*>(&(vec_a.w))));
+}
+#endif
 
 __device__ __forceinline__ float AccumulateEightElements(uint32_t values_quant, float scale, uint8_t zp, const float* a, float* sums) {
   float4 a_vec_0 = *(reinterpret_cast<const float4*>(a));
