@@ -46,6 +46,7 @@ def is_this_file_needed(ep, filename, package_name):
         return False
     return (ep != "cuda" or "cuda" in filename) and (ep != "tensorrt" or "cuda" not in filename)
 
+
 # nuget_artifacts_dir: the directory with uncompressed C API tarball/zip files
 # ep: cuda, tensorrt, None
 # files_list: a list of xml string pieces to append
@@ -60,7 +61,11 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                 child = child / "lib"  # noqa: PLW2901
                 for child_file in child.iterdir():
                     suffixes = [".dll", ".lib", ".pdb"] if include_pdbs else [".dll", ".lib"]
-                    if child_file.suffix in suffixes and is_this_file_needed(ep, child_file.name, package_name) and package_name != "Microsoft.ML.OnnxRuntime.Gpu.Linux":
+                    if (
+                        child_file.suffix in suffixes
+                        and is_this_file_needed(ep, child_file.name, package_name)
+                        and package_name != "Microsoft.ML.OnnxRuntime.Gpu.Linux"
+                    ):
                         files_list.append(
                             '<file src="' + str(child_file) + '" target="runtimes/win-%s/native"/>' % cpu_arch
                         )
@@ -86,7 +91,11 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                 for child_file in child.iterdir():
                     if not child_file.is_file():
                         continue
-                    if child_file.suffix == ".so" and is_this_file_needed(ep, child_file.name, package_name) and package_name != "Microsoft.ML.OnnxRuntime.Gpu.Windows":
+                    if (
+                        child_file.suffix == ".so"
+                        and is_this_file_needed(ep, child_file.name, package_name)
+                        and package_name != "Microsoft.ML.OnnxRuntime.Gpu.Windows"
+                    ):
                         files_list.append(
                             '<file src="' + str(child_file) + '" target="runtimes/linux-%s/native"/>' % cpu_arch
                         )
@@ -131,7 +140,9 @@ def parse_arguments():
         help="The selected execution provider for this build.",
     )
     parser.add_argument("--sdk_info", required=False, default="", type=str, help="dependency SDK information.")
-    parser.add_argument("--nuspec_name", required=False, default="NativeNuget.nuspec", type=str, help="nuget spec name.")
+    parser.add_argument(
+        "--nuspec_name", required=False, default="NativeNuget.nuspec", type=str, help="nuget spec name."
+    )
 
     return parser.parse_args()
 
@@ -170,14 +181,12 @@ def generate_description(line_list, package_name):
             "This package contains native shared library artifacts for all supported platforms of ONNX Runtime."
         )
     elif "Microsoft.ML.OnnxRuntime.Gpu.Linux" in package_name:
-        description = (
-            "This package contains Linux native shared library artifacts for ONNX Runtime with CUDA."
-        )
+        description = "This package contains Linux native shared library artifacts for ONNX Runtime with CUDA."
     elif "Microsoft.ML.OnnxRuntime.Gpu.Windows" in package_name:
-        description = (
-            "This package contains Windows native shared library artifacts for ONNX Runtime with CUDA."
-        )
-    elif "Microsoft.ML.OnnxRuntime.Gpu.1" in package_name:  # This is a Microsoft.ML.OnnxRuntime.GPU.* package, 1 is begin of version, that is used to filter Gpu.Windows/Gpu.linux
+        description = "This package contains Windows native shared library artifacts for ONNX Runtime with CUDA."
+    elif (
+        "Microsoft.ML.OnnxRuntime.Gpu.1" in package_name
+    ):  # This is a Microsoft.ML.OnnxRuntime.GPU.* package, 1 is begin of version, that is used to filter Gpu.Windows/Gpu.linux
         description = (
             "This package contains native shared library artifacts for all supported platforms of ONNX Runtime."
         )
