@@ -98,8 +98,10 @@ class QDQSoftmax(QDQOperatorBase):
             out_zero_point, out_scale = quant_overrides["zero_point"], quant_overrides["scale"]
         else:
             # Unless overridden by the user, force Softmax to range from 0.0 to 1.0
-            rmin = quant_overrides.get("rmin", 0.0)
-            rmax = quant_overrides.get("rmax", 1.0)
+            qparams = self.quantizer.quantization_params[output_name]
+            dtype = qparams.data["scale"].dtype
+            rmin = quant_overrides.get("rmin", np.array(0, dtype=dtype))
+            rmax = quant_overrides.get("rmax", np.array(1, dtype=dtype))
             symmetric = quant_overrides.get("symmetric", self.quantizer.is_activation_symmetric)
             reduce_range = quant_overrides.get("reduce_range", False)
             qmin, qmax = get_qmin_qmax_for_qType(quant_type, reduce_range=reduce_range, symmetric=symmetric)
