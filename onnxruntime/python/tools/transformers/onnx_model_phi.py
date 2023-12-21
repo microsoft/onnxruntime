@@ -63,39 +63,13 @@ class ProcessAttnBFunc:
 def uname(layer_id, name):
     return name + "_" + str(layer_id)
 
-class PostProcessCausalLMHead(Fusion):
+class Fission(Fusion):
     def __init__(
         self,
         model: OnnxModel,
+        nodes_to_find: List[str],
     ):
-        super().__init__(model, "DONOTUSE", ["model_modeling_mixformer_sequential_CausalLMHead_layers__1_1"])
-
-    def fuse(
-        self,
-        node,
-        input_name_to_nodes,
-        output_name_to_node,
-    ):
-        # hack: remove input dulication
-        node.input[0] = node.input[1]
-
-
-class FissionTransformerBlockPhi(Fusion):
-    def __init__(
-        self,
-        model: OnnxModel,
-    ):
-        self.func_to_layer_id = {}
-        nodes_to_find = []
-        for layer in range(32):
-            func_name = f"model_modeling_mixformer_sequential_ParallelBlock_sub{layer + 1}_1"
-            nodes_to_find.append(func_name)
-            self.func_to_layer_id[func_name] = layer + 1
-
         super().__init__(model, "DONOTUSE", nodes_to_find)
-
-    def get_layer_id(self, node):
-        return self.func_to_layer_id[node.op_type]
 
     def process_initializer(self, initializer_name, functor):
         i = self.model.get_initializer(initializer_name)
@@ -116,6 +90,95 @@ class FissionTransformerBlockPhi(Fusion):
         new_value_info.name = name
         new_value_info.type.tensor_type.elem_type = TensorProto.FLOAT
 
+    def replace_fp32_value_info(self, name, shape):
+        for value_info in self.model.graph().value_info:
+            if value_info.name == name:
+                self.model.graph().value_info.remove(value_info)
+                break
+        new_value_info = helper.make_tensor_value_info(
+            name,
+            elem_type=TensorProto.FLOAT,
+            shape=shape,
+        )
+        self.model.graph().value_info.extend([new_value_info])
+
+
+class FissionTransformerCausalLMHeadPhi(Fission):
+    def __init__(
+        self,
+        model: OnnxModel,
+    ):
+        super().__init__(model, ["model_modeling_mixformer_sequential_CausalLMHead_layers__1_1"])
+
+    def fuse(
+        self,
+        node,
+        input_name_to_nodes,
+        output_name_to_node,
+    ):
+        i_hidden_states = node.input[1]
+        o_logits = node.output[0]
+
+        # internal nodes weights
+        ln_weight = node.input[3]  # float32[2560]
+        ln_bias = node.input[4]  # float32[2560]
+        fc_weight = self.process_initializer(node.input[5], ProcessGemmWFunc())  # float32[51200,2560]
+        fc_bias = node.input[6]  # float32[51200]
+
+        # opt graph construction.
+        subgraph_nodes = [
+            helper.make_node(
+                "LayerNormalization",
+                inputs=[i_hidden_states, ln_weight, ln_bias],
+                outputs=[uname(99, "ln_out")],
+                name=uname(99, "LayerNormalization"),
+                epsilon=9.999999747378752e-06,
+            ),
+            helper.make_node(
+                "MatMul",
+                inputs=[uname(99, "ln_out"), fc_weight],
+                outputs=[uname(99, "matmul_out")],
+                name=uname(99, "OutProj_MatMul"),
+            ),
+            helper.make_node(
+                "Add",
+                inputs=[uname(99, "matmul_out"), fc_bias],
+                outputs=[o_logits],
+                name=uname(99, "OutProj_Add"),
+            ),
+        ]
+
+        for new_node in subgraph_nodes:
+            self.nodes_to_add.append(new_node)
+            self.node_name_to_graph_name[new_node.name] = self.this_graph_name
+        
+        self.add_fp32_value_info(uname(99, "ln_out"))
+        self.add_fp32_value_info(uname(99, "matmul_out"))
+
+        self.replace_fp32_value_info(i_hidden_states, ["batch_size", "seq_len", "hidden_size"])
+        self.replace_fp32_value_info(o_logits, ["batch_size", "seq_len", 51200])
+
+        self.nodes_to_remove.append(node)
+        self.prune_graph = True
+
+
+class FissionTransformerBlockPhi(Fission):
+    def __init__(
+        self,
+        model: OnnxModel,
+    ):
+        self.func_to_layer_id = {}
+        nodes_to_find = []
+        for layer in range(32):
+            func_name = f"model_modeling_mixformer_sequential_ParallelBlock_sub{layer + 1}_1"
+            nodes_to_find.append(func_name)
+            self.func_to_layer_id[func_name] = layer + 1
+
+        super().__init__(model, nodes_to_find)
+
+    def get_layer_id(self, node):
+        return self.func_to_layer_id[node.op_type]
+
     def fuse_with_attn(
         self,
         node,
@@ -128,21 +191,21 @@ class FissionTransformerBlockPhi(Fusion):
         # transformer block input and output
         i_hidden_states = node.input[0] if layer_id == 1 else node.input[2]
         i_attn_mask = node.input[1]
-        i_kv_cache = node.input[3]
-        o_hidden_states = node.output[1]
+        i_kv_cache = node.input[4]
+        o_hidden_states = node.output[2]
         o_kv_cache = node.output[0]
 
         # internal nodes weights
-        ln_weight = node.input[4]  # float32[2560]
-        ln_bias = node.input[5]  # float32[2560]
-        attn_qkv_weight = self.process_initializer(node.input[6], ProcessGemmWFunc())  # float32[7680,2560]
-        attn_qkv_bias = node.input[7]  # float32[7680]
-        attn_out_weight = self.process_initializer(node.input[10], ProcessGemmWFunc())  # float32[2560,2560]
-        attn_out_bias = node.input[11]  # float32[2560]
-        mlp_fc1_weight = self.process_initializer(node.input[12], ProcessGemmWFunc())  # float32[10240,2560]
-        mlp_fc1_bias = node.input[13]  # float32[10240]
-        mlp_fc2_weight = self.process_initializer(node.input[14], ProcessGemmWFunc())  # float32[2560,10240]
-        mlp_fc2_bias = node.input[15]  # float32[2560]
+        ln_weight = node.input[5]  # float32[2560]
+        ln_bias = node.input[6]  # float32[2560]
+        attn_qkv_weight = self.process_initializer(node.input[7], ProcessGemmWFunc())  # float32[7680,2560]
+        attn_qkv_bias = node.input[8]  # float32[7680]
+        attn_out_weight = self.process_initializer(node.input[11], ProcessGemmWFunc())  # float32[2560,2560]
+        attn_out_bias = node.input[12]  # float32[2560]
+        mlp_fc1_weight = self.process_initializer(node.input[13], ProcessGemmWFunc())  # float32[10240,2560]
+        mlp_fc1_bias = node.input[14]  # float32[10240]
+        mlp_fc2_weight = self.process_initializer(node.input[15], ProcessGemmWFunc())  # float32[2560,10240]
+        mlp_fc2_bias = node.input[16]  # float32[2560]
 
         # opt graph construction.
         subgraph_nodes = [
@@ -161,8 +224,8 @@ class FissionTransformerBlockPhi(Fusion):
                     attn_qkv_bias,
                     i_attn_mask,
                     i_kv_cache,
-                    "",
-                    "past_sequence_length",
+                    # "",
+                    # "past_sequence_length",
                 ],
                 outputs=[uname(layer_id, "attn_out"), o_kv_cache],
                 name=uname(layer_id, "Attention"),
@@ -171,7 +234,7 @@ class FissionTransformerBlockPhi(Fusion):
                 unidirectional=1,
                 do_rotary=1,
                 rotary_embedding=32,
-                past_present_share_buffer=1,
+                #past_present_share_buffer=1,
             ),
             helper.make_node(
                 "MatMul",
@@ -245,6 +308,9 @@ class FissionTransformerBlockPhi(Fusion):
         self.add_fp32_value_info(uname(layer_id, "fc2_b_out"))
         self.add_fp32_value_info(uname(layer_id, "residual_1_out"))
 
+        self.replace_fp32_value_info(i_hidden_states, ["batch_size", "seq_len", "hidden_size"])
+        self.replace_fp32_value_info(o_hidden_states, ["batch_size", "seq_len", "hidden_size"])
+
         self.nodes_to_remove.append(node)
         self.prune_graph = True
 
@@ -287,16 +353,16 @@ def postprocess_io(model: ModelProto):
             vi = helper.make_tensor_value_info(
                 IO_MAPPING[vi.name],
                 elem_type=vi.type.tensor_type.elem_type,
-                shape=[2, 'batch_size', 32, 'max_seq_len', 80],
+                shape=[2, 'batch_size', 32, 'past_seq_len', 80],
             )
         new_inputs.extend([vi])
     # add past_sequence_length
-    vi = helper.make_tensor_value_info(
-        "past_sequence_length",
-        elem_type=TensorProto.INT32,
-        shape=[],
-    )
-    new_inputs.extend([vi])
+    # vi = helper.make_tensor_value_info(
+    #     "past_sequence_length",
+    #     elem_type=TensorProto.INT32,
+    #     shape=[],
+    # )
+    # new_inputs.extend([vi])
 
     graph.ClearField("input")
     graph.input.extend(new_inputs)
@@ -307,14 +373,14 @@ def postprocess_io(model: ModelProto):
             vi = helper.make_tensor_value_info(
                 IO_MAPPING[vi.name],
                 elem_type=vi.type.tensor_type.elem_type,
-                shape=shape_of(vi),
+                shape=['batch_size', 'seq_len', 51200]
             )
         else:
             shape = shape_of(vi)
             vi = helper.make_tensor_value_info(
                 IO_MAPPING[vi.name],
                 elem_type=vi.type.tensor_type.elem_type,
-                shape=[2, 'batch_size', 32, 'max_seq_len', 80],
+                shape=[2, 'batch_size', 32, 'total_seq_len', 80],
             )
         new_outputs.extend([vi])
 
@@ -338,12 +404,25 @@ def postprocess_io(model: ModelProto):
             if name in IO_MAPPING:
                 node.output[i] = IO_MAPPING[name]
 
+def postprocess_value_info(model: ModelProto):
+    for value_info in model.graph.value_info:
+        shape = shape_of(value_info)
+        if len(shape) == 3 and shape[0] == 2:
+            print("value info: ", value_info.name, shape)
+            new_value_info = helper.make_tensor_value_info(
+                value_info.name,
+                elem_type=value_info.type.tensor_type.elem_type,
+                shape=['batch_size', shape[1], shape[2]],
+            )
+            model.graph.value_info.remove(value_info)
+            model.graph.value_info.extend([new_value_info])
+
 
 class PhiOnnxModel(OnnxModel):
     def __init__(self, model: ModelProto, num_heads: int = 0, head_size: int = 0):
         super().__init__(model)
         self.fission_transformer_block = FissionTransformerBlockPhi(self)
-        self.postprocess_causal_lm_head = PostProcessCausalLMHead(self)
+        self.postprocess_causal_lm_head = FissionTransformerCausalLMHeadPhi(self)
         self.fuse_sln = FusionSkipLayerNormalization(self)
         self.fuse_bias_sln = FusionBiasSkipLayerNormalization(self)
 
@@ -354,6 +433,7 @@ class PhiOnnxModel(OnnxModel):
         print("post process")
         #self.prune_graph()
         postprocess_io(self.model)
+        #postprocess_value_info(self.model)
 
     def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
         self.fission_transformer_block.apply()
