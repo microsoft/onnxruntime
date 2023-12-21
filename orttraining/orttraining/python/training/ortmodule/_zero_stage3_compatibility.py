@@ -179,8 +179,6 @@ def post_processing_enable_zero_stage3_compat(
     exported_model.graph.node.insert(0, weight_pull_node)
 
     # Update safe_run_mode attribute for PythonOp.
-    from onnxruntime.training.utils.hooks._subscriber_manager import _IncrementStep
-
     _allowed_unsafe_run_python_op_names = [
         get_fully_qualified_class_name(ORTZeROOffloadPreForwardFunction),
         get_fully_qualified_class_name(ORTZeROOffloadPostForwardFunction),
@@ -188,7 +186,6 @@ def post_processing_enable_zero_stage3_compat(
         DEEPSPEED_PRE_BACKWARD_FUNCTION_NAME,
         DEEPSPEED_POST_BACKWARD_FUNCTION_NAME,
         DEEPSPEED_LINEAR_FUNCTION_NAME,
-        get_fully_qualified_class_name(_IncrementStep),
     ]
 
     for node in exported_model.graph.node:

@@ -155,6 +155,9 @@ class SubscriberManager:
             raise RuntimeError("No subscribers are registered.")
 
         def _pre_forward_outmost_module_hook(module, module_inputs):
+            return _pre_forward_outmost_module_with_kwarg_hook(module, module_inputs, {})
+
+        def _pre_forward_outmost_module_with_kwarg_hook(module, module_inputs, kwargs):
             # This check is to support the case where module is first registered in the subscriber manager,
             # then the module and hook are copied, when new module instance runs to the hook, the global states
             # are not reset, so the logic depends on the global states will fail. So in the outer-most pre-forward hook
@@ -168,9 +171,20 @@ class SubscriberManager:
                     "Initialize global states for the first time, this should only happen once for each outmost module."
                 )
                 self._initialize_one_time_global_states(module)
+
+            # Call pre outmost module forward custom actions for subscribers
+            for sub in self._subscribers:
+                module_inputs = sub.pre_forward_outmost_module_apply(self._run_ctx, module, module_inputs, kwargs)
+
             return module_inputs
 
-        module.register_forward_pre_hook(_pre_forward_outmost_module_hook)
+        # "with_kwargs" is not available for low versions of PyTorch.
+        if "with_kwargs" in inspect.signature(module.register_forward_pre_hook).parameters:
+            self._pre_forward_hooks.append(
+                module.register_forward_pre_hook(_pre_forward_outmost_module_with_kwarg_hook, with_kwargs=True)
+            )
+        else:
+            self._pre_forward_hooks.append(module.register_forward_pre_hook(_pre_forward_outmost_module_hook))
 
         next_module_index = [0]
         self._register_hooks_recursively(module, 1, next_module_index)
@@ -189,7 +203,7 @@ class SubscriberManager:
 
             return restored_outputs
 
-        module.register_forward_hook(_post_forward_outmost_module_hook)
+        self._pre_forward_hooks.append(module.register_forward_hook(_post_forward_outmost_module_hook))
 
     def _initialize_one_time_global_states(self, module: torch.nn.Module):
         def _reset_recursively(module: torch.nn.Module, depth: int, next_module_index: List[int]):
@@ -244,6 +258,18 @@ class SubscriberManager:
             for sub in self._subscribers:
                 module_inputs, kwargs = sub.pre_forward_module_apply(self._run_ctx, module, module_inputs, kwargs)
 
+            if len(self._subscribers) == 0:
+                return module_inputs, kwargs
+
+            # If there is no tensor level post forward func override, we can skip the following tensor level hook.
+            if all(
+                [
+                    sub.__class__.pre_forward_tensor_apply_impl == SubscriberBase.pre_forward_tensor_apply_impl
+                    for sub in self._subscribers
+                ]
+            ):
+                return module_inputs, kwargs
+
             # Tensor level hook
             flatten_positional_input_tensor_list, input_schema = extract_data_and_schema(module_inputs)
             flatten_keyword_input_tensor_list, keyword_input_schema = extract_data_and_schema(kwargs)
@@ -271,6 +297,18 @@ class SubscriberManager:
             # Module level hook
             for sub in self._subscribers:
                 _, module_outputs = sub.post_forward_module_apply(self._run_ctx, module, module_inputs, module_outputs)
+
+            if len(self._subscribers) == 0:
+                return module_outputs
+
+            # If there is no tensor level post forward func override, we can skip the following tensor level hook.
+            if all(
+                [
+                    sub.__class__.post_forward_tensor_apply_impl == SubscriberBase.post_forward_tensor_apply_impl
+                    for sub in self._subscribers
+                ]
+            ):
+                return module_outputs
 
             # Tensor level hook
             flatten_output_tensor_list, output_schema = extract_data_and_schema(module_outputs)

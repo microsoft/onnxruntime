@@ -509,6 +509,8 @@ class MemoryObserver:
 
         self._is_first_inspect = True
 
+        self._m = m
+
     def is_enabled(self) -> bool:
         """Check if memory inspector is enabled."""
         return self._is_enabled
@@ -621,10 +623,12 @@ class MemoryObserver:
         need_print = self._current_step < 10 or (self._current_step & (self._current_step - 1) == 0)
 
         if need_print:
-            self._logger.info(
-                log_memory_usage(
-                    _convert_phase_to_string(cur_phase), rank_0_only=True, step_info=f"step {self._current_step}"
-                )
+            log_memory_usage(
+                _convert_phase_to_string(cur_phase),
+                rank_0_only=True,
+                step_info=f"step {self._current_step}",
+                logger=self._logger,
+                module=self._m,
             )
 
         if cur_phase == self._last_phase:

@@ -8,12 +8,14 @@ import torch
 
 __all__ = [
     "StatisticsSubscriber",
+    "MemoryStatisticsSubscriber",
     "GlobalSubscriberManager",
     "inspect_activation",
     "ZeROOffloadSubscriber",
     "configure_ort_compatible_zero_stage3",
 ]
 
+from ._mem_statistics_subscriber import MemoryStatisticsSubscriber
 from ._statistics_subscriber import StatisticsSubscriber, _InspectActivation
 from ._subscriber_manager import SubscriberManager
 from ._zero_offload_subscriber import ZeROOffloadSubscriber, configure_ort_compatible_zero_stage3
