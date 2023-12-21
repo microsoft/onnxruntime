@@ -194,7 +194,7 @@ class QLinearConv(QuantOperatorBase):
             bias_present = True
 
         qlinear_conv_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
-        qlinear_conv_name = qlinear_conv_name = node.name + "_quant" if node.name else ""
+        qlinear_conv_name = node.name + "_quant" if node.name else ""
 
         kwargs = {}
         for attribute in node.attribute:
