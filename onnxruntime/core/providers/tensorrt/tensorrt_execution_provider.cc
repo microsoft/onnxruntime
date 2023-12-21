@@ -3171,13 +3171,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           trt_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Sparse weights are allowed";
         }
-
+#if NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR == 5
         // enable builder heuristics
         if (trt_state->build_heuristics_enable) {
           trt_config->setFlag(nvinfer1::BuilderFlag::kENABLE_TACTIC_HEURISTIC);
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Builder heuristics are enabled";
         }
-#if NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR > 5 || NV_TENSORRT_MAJOR > 8
+#elif NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR > 5 || NV_TENSORRT_MAJOR > 8
         // switch optimizaion level
         if (trt_state->builder_optimization_level != 3) {
           trt_config->setBuilderOptimizationLevel(trt_state->builder_optimization_level);
