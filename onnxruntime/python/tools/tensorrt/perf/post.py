@@ -460,6 +460,7 @@ def main():
                         [table_results[status_name], get_status(table, model_group)], ignore_index=True
                     )
                 elif op_metrics_name in csv:
+                    table = table.assign(Group=model_group)
                     table_results[op_metrics_name] = pd.concat(
                         [table_results[op_metrics_name], table], ignore_index=True
                     )
