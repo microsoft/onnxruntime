@@ -13,14 +13,18 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - uses: actions/stale@v4.1.1
+      - uses: actions/stale@v8.0.0
         with:
           # Comma separated list of labels that can be assigned to issues to exclude them from being marked as stale
           exempt-issue-labels: contributions welcome, feature request, regression
+          # Override exempt-all-assignees but only to exempt the issues with an assignee to be marked as stale automatically
+          exempt-all-issue-assignees: true
+          # Used to ignore the issues and pull requests created before the start date
+          start-date: 20220419
           # Number of days without activity before the actions/stale action labels an issue
           days-before-issue-stale: 30
           # Number of days without activity before the actions/stale action closes an issue
-          days-before-issue-close: 7
+          days-before-issue-close: 30
           # Label you want to apply to issues that have been inactive for the amount of time specified by days-before-issue-stale
           stale-issue-label: "stale"
           # Comment that you want to add to issues that are labeled by the actions/stale action

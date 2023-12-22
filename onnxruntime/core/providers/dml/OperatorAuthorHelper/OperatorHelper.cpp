@@ -257,14 +257,15 @@ namespace OperatorHelper
         }
     }
 
-    void DowncastDimensions(gsl::span<const int64_t> inputDimensions, std::vector<DimensionType>& outputDimensions)
+    template <typename T>
+    void DowncastDimensions(gsl::span<T> inputDimensions, std::vector<DimensionType>& outputDimensions)
     {
         outputDimensions.reserve(inputDimensions.size());
         outputDimensions.clear();
 
-        for (int64_t dim : inputDimensions)
+        for (T dim : inputDimensions)
         {
-            outputDimensions.push_back(gsl::narrow_cast<uint32_t>(std::clamp<int64_t>(dim, INT32_MIN, INT32_MAX)));
+            outputDimensions.push_back(gsl::narrow_cast<DimensionType>(std::clamp<T>(dim, INT32_MIN, INT32_MAX)));
         }
     }
 
@@ -1870,6 +1871,64 @@ namespace OperatorHelper
         return { std::move(outputShape) };
     }
 
+    void Col2ImHelper::Initialize(
+        const IKernelInformationAdapter& kernelInformation,
+        const IShapeInformationAdapter& shapeInformation)
+    {
+        std::vector<int> shapeData;
+        ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(1), /*out*/ shapeData);
+        m_imageShape.resize(shapeData.size());
+        DowncastDimensions(gsl::span(shapeData), /*out*/ m_imageShape);
+        ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(2), /*out*/ shapeData);
+        m_blockShape.resize(shapeData.size());
+        DowncastDimensions(gsl::span(shapeData), /*out*/ m_blockShape);
+
+        const uint32_t dimCount = gsl::narrow_cast<uint32_t>(m_blockShape.size());
+        m_dilations = {dimCount, 1};
+        m_pads = {dimCount * 2, 0};
+        m_strides = {dimCount, 1};
+
+        if (kernelInformation.HasAttribute(AttrName::Dilations, MLOperatorAttributeType::IntArray))
+        {
+            shapeData = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Dilations);
+            m_dilations.resize(shapeData.size());
+            DowncastDimensions(gsl::span(shapeData), /*out*/ m_dilations);
+            ML_CHECK_VALID_ARGUMENT(m_dilations.size() == dimCount);
+        }
+
+        if (kernelInformation.HasAttribute(AttrName::Pads, MLOperatorAttributeType::IntArray))
+        {
+            shapeData = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Pads);
+            m_pads.resize(shapeData.size());
+            DowncastDimensions(gsl::span(shapeData), /*out*/ m_pads);
+            ML_CHECK_VALID_ARGUMENT(m_pads.size() == dimCount * 2);
+        }
+
+        if (kernelInformation.HasAttribute(AttrName::Strides, MLOperatorAttributeType::IntArray))
+        {
+            shapeData = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Strides);
+            m_strides.resize(shapeData.size());
+            DowncastDimensions(gsl::span(shapeData), /*out*/ m_strides);
+            ML_CHECK_VALID_ARGUMENT(m_strides.size() == dimCount);
+        }
+
+        m_inputShape = shapeInformation.GetInputTensorShape(0);
+
+        auto blockShapeProduct = ComputeElementCountFromDimensions(m_blockShape);
+        m_outputShape.resize(2 + m_imageShape.size());
+        m_outputShape[0] = m_inputShape[0];                     // N
+        m_outputShape[1] = m_inputShape[1] / blockShapeProduct; // C
+        for (int i = 2; i < m_outputShape.size(); i++)
+        {
+            m_outputShape[i] = m_imageShape[i - 2];
+        };
+    }
+
+    std::vector<EdgeShapes> Col2ImHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        return { EdgeShapes(m_outputShape) };
+    }
+
     void ConcatHelperBase::Initialize(
         const MLOperatorAttributes& operatorAttributes,
         gsl::span<const DimensionType> inputDimensions
@@ -2020,7 +2079,7 @@ namespace OperatorHelper
         }
         return outputShapes;
     }
-    
+
     std::vector<EdgeShapes> QLinearAveragePoolingHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         auto inputShape = shapeInfo.GetInputTensorShape(0);
@@ -2050,7 +2109,7 @@ namespace OperatorHelper
         }
         return outputShapes;
     }
-    
+
     std::vector<EdgeShapes> RoiPoolingHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         auto roiShape = shapeInfo.GetInputTensorShape(InputTensors::ROIS);
@@ -2113,7 +2172,7 @@ namespace OperatorHelper
         {
             std::vector<int64_t> outputDimensions64bit = shapeInfo.GetAttributeVector<int64_t>(AttrName::OutputShape);
             ML_CHECK_VALID_ARGUMENT(outputDimensions64bit.size() == m_inputShape.size(), "Input dimensions and output_shape must have same rank.");
-            DowncastDimensions(outputDimensions64bit, /*out*/ outputDimensions);
+            DowncastDimensions(gsl::span(outputDimensions64bit), /*out*/ outputDimensions);
         }
         else
         {
@@ -2450,8 +2509,7 @@ namespace OperatorHelper
             {
                 float scale = m_scales[i];
                 ML_CHECK_VALID_ARGUMENT(scale > FLT_EPSILON, "Scale values should be positive.");
-                float roiRange = m_regionOfInterest.empty() ? 1.0f : m_regionOfInterest[i + rank] - m_regionOfInterest[i];
-                m_outputDimensions.push_back(gsl::narrow_cast<uint32_t>(floor(m_inputDimensions[i] * roiRange * scale)));
+                m_outputDimensions.push_back(gsl::narrow_cast<uint32_t>(floor(m_inputDimensions[i] * scale)));
             }
         }
         else

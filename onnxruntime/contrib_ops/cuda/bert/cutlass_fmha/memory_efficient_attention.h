@@ -14,10 +14,12 @@ namespace cuda {
 struct MemoryEfficientAttentionParams {
   int32_t sm;
   bool is_half;
+  bool is_kv_bsnh = true;
   int32_t batch_size;
   int32_t num_heads;
   int32_t sequence_length;
   int32_t kv_sequence_length;
+  int32_t max_sequence_length;
   int32_t qk_head_size;
   int32_t v_head_size;
   bool causal;
@@ -41,6 +43,8 @@ struct MemoryEfficientAttentionParams {
   static bool need_workspace(size_t v_head_size, bool is_float) {
     return (v_head_size > 128 && !is_float);
   }
+
+  bool has_custom_right_padding = false;
 };
 
 void run_memory_efficient_attention(const MemoryEfficientAttentionParams& params);

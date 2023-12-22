@@ -221,7 +221,7 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           status != HIPBLAS_STATUS_SUCCESS,
-          "[hipBLASLt] Solution #", i, " failed: algo ", algo_index, " not supported (", params->Signature(), ")");
+          "[hipBLASLt] Solution #", i, " failed: algo ", algo_index, " not supported");
 
       IAllocatorUniquePtr<void> workspace_buffer;
       if (workspace_size > 0) {

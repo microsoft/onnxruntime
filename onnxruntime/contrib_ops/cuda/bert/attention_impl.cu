@@ -316,7 +316,9 @@ Status FlashAttention(
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
       device_prop, stream, query, key, value, data.output, reinterpret_cast<void*>(data.scratch),
       parameters.batch_size, parameters.num_heads, parameters.num_heads, parameters.head_size,
-      parameters.sequence_length, parameters.total_sequence_length, scale, parameters.is_unidirectional));
+      parameters.sequence_length, parameters.total_sequence_length, scale, parameters.is_unidirectional,
+      parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum), reinterpret_cast<void*>(data.out_accum),
+      true));
 
   DUMP_TENSOR("flash attention output", data.output,
               parameters.batch_size, parameters.sequence_length, parameters.num_heads, parameters.v_head_size);
@@ -372,6 +374,7 @@ Status EfficientAttention(
   p.num_heads = parameters.num_heads;
   p.sequence_length = parameters.sequence_length;
   p.kv_sequence_length = parameters.total_sequence_length;
+  p.max_sequence_length = parameters.total_sequence_length;
   p.qk_head_size = parameters.head_size;
   p.v_head_size = parameters.v_head_size;
   p.causal = parameters.is_unidirectional;
@@ -393,10 +396,12 @@ Status EfficientAttention(
   p.attn_bias = nullptr == data.relative_position_bias ? nullptr : data.relative_position_bias;
   p.is_attn_bias_batched = !parameters.broadcast_res_pos_bias;
   p.output = data.output;
+  p.is_kv_bsnh = true;
   p.workspace = MemoryEfficientAttentionParams::need_workspace(parameters.v_head_size, sizeof(T) == sizeof(float))
                     ? data.scratch
                     : nullptr;
   p.stream = stream;
+  p.has_custom_right_padding = false;
   run_memory_efficient_attention(p);
   DUMP_TENSOR("efficient attention output", data.output,
               parameters.batch_size, parameters.sequence_length, parameters.num_heads, parameters.v_head_size);

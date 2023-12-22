@@ -337,6 +337,18 @@ class OnnxModel:
                 return i, matched, return_indice
         return -1, None, None
 
+    def match_parent_paths_all(self, node, paths, output_name_to_node):
+        match_i, matches, return_indices = [], [], []
+        for i, path in enumerate(paths):
+            assert isinstance(path, (List, Tuple))
+            return_indice = []
+            matched = self.match_parent_path(node, path[0], path[1], output_name_to_node, return_indice)
+            if matched:
+                match_i.append(i)
+                matches.append(matched)
+                return_indices.append(return_indice)
+        return match_i, matches, return_indices
+
     def match_parent_path(
         self,
         node,
@@ -1114,7 +1126,9 @@ class OnnxModel:
             op = (node.domain + ":" if include_domain and node.domain else "") + node.op_type
             op_count[op] = 1 if op not in op_count else (op_count[op] + 1)
 
-        logger.info(f"Operators:{op_count}")
+        # Sorted by count in the descending order, then by key in alphabetical order.
+        logger.info(f"Operators:{sorted(op_count.items(), key=lambda kv:(-kv[1], kv[0]))}")
+
         return op_count
 
     @staticmethod

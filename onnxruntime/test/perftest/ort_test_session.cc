@@ -16,6 +16,10 @@
 #include "providers.h"
 #include "TestCase.h"
 
+#ifdef USE_DML
+#include "core/providers/dml/dml_provider_factory.h"
+#endif
+
 #ifdef _WIN32
 #define strdup _strdup
 #endif
@@ -42,8 +46,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                                                const TestModelInfo& m)
     : rand_engine_(rd()), input_names_(m.GetInputCount()), input_names_str_(m.GetInputCount()), input_length_(m.GetInputCount()) {
   Ort::SessionOptions session_options;
-  const std::string& provider_name = performance_test_config.machine_config.provider_type_name;
-  if (provider_name == onnxruntime::kDnnlExecutionProvider) {
+  provider_name_ = performance_test_config.machine_config.provider_type_name;
+  if (provider_name_ == onnxruntime::kDnnlExecutionProvider) {
 #ifdef USE_DNNL
     // Generate provider options
     OrtDnnlProviderOptions dnnl_options;
@@ -96,7 +100,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("DNNL is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kCudaExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kCudaExecutionProvider) {
 #ifdef USE_CUDA
     const auto& api = Ort::GetApi();
     OrtCUDAProviderOptionsV2* cuda_options;
@@ -121,7 +125,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
     buffer.emplace_back("do_copy_in_default_stream");
     option_keys.push_back(buffer.back().c_str());
-    buffer.emplace_back(performance_test_config.run_config.do_cuda_copy_in_separate_stream ? "1" : "0");
+    buffer.emplace_back(!performance_test_config.run_config.do_cuda_copy_in_separate_stream ? "1" : "0");
     option_values.push_back(buffer.back().c_str());
 
 #ifdef _MSC_VER
@@ -161,7 +165,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("CUDA is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kTensorrtExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
     const auto& api = Ort::GetApi();
     OrtTensorRTProviderOptionsV2* tensorrt_options;
@@ -215,7 +219,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
 #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -240,8 +244,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       if (key == "device_type") {
         std::set<std::string> ov_supported_device_types = {"CPU_FP32", "CPU_FP16", "GPU_FP32",
                                                            "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
-                                                           "GPU.0_FP16", "GPU.1_FP16",
-                                                           "VPUX_FP16", "VPUX_U8"};
+                                                           "GPU.0_FP16", "GPU.1_FP16"};
         if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
           ov_options[key] = value;
         } else if (value.find("HETERO:") == 0) {
@@ -252,19 +255,19 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ov_options[key] = value;
         } else {
           ORT_THROW(
-              "[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
+              "[ERROR] [OpenVINO] You have selected a wrong configuration value for the key 'device_type'. "
               "Select from 'CPU_FP32', 'CPU_FP16', 'GPU_FP32', 'GPU.0_FP32', 'GPU.1_FP32', 'GPU_FP16', "
-              "'GPU.0_FP16', 'GPU.1_FP16', 'VPUX_FP16', 'VPUX_U8' or from"
+              "'GPU.0_FP16', 'GPU.1_FP16' or from"
               " HETERO/MULTI/AUTO options available. \n");
         }
       } else if (key == "device_id") {
         ov_options[key] = value;
-      } else if (key == "enable_vpu_fast_compile") {
+      } else if (key == "enable_npu_fast_compile") {
         if (value == "true" || value == "True" ||
             value == "false" || value == "False") {
           ov_options[key] = value;
         } else {
-          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_vpu_fast_compile' should be a boolean i.e. true or false. Default value is false.\n");
+          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_npu_fast_compile' should be a boolean i.e. true or false. Default value is false.\n");
         }
       } else if (key == "enable_opencl_throttling") {
         if (value == "true" || value == "True" ||
@@ -299,14 +302,14 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ov_options[key] = value;
         }
       } else {
-        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_vpu_fast_compile', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling|true'] \n");
+        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_npu_fast_compile', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling|true'] \n");
       }
     }
     session_options.AppendExecutionProvider("OpenVINO", ov_options);
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kQnnExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
 #ifdef USE_QNN
 #ifdef _MSC_VER
     std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -357,9 +360,26 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           std::string str = str_stream.str();
           ORT_THROW("Supported htp_performance_mode: " + str);
         }
+      } else if (key == "qnn_saver_path") {
+        // no validation
+      } else if (key == "htp_graph_finalization_optimization_mode") {
+        std::unordered_set<std::string> supported_htp_graph_final_opt_modes = {"0", "1", "2", "3"};
+        if (supported_htp_graph_final_opt_modes.find(value) == supported_htp_graph_final_opt_modes.end()) {
+          std::ostringstream str_stream;
+          std::copy(supported_htp_graph_final_opt_modes.begin(), supported_htp_graph_final_opt_modes.end(),
+                    std::ostream_iterator<std::string>(str_stream, ","));
+          std::string str = str_stream.str();
+          ORT_THROW("Wrong value for htp_graph_finalization_optimization_mode. select from: " + str);
+        }
+      } else if (key == "qnn_context_priority") {
+        std::set<std::string> supported_qnn_context_priority = {"low", "normal", "normal_high", "high"};
+        if (supported_qnn_context_priority.find(value) == supported_qnn_context_priority.end()) {
+          ORT_THROW("Supported qnn_context_priority: low, normal, normal_high, high");
+        }
       } else {
         ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path', 'qnn_context_cache_enable',
-'qnn_context_cache_path', 'profiling_level', 'rpc_control_latency', 'htp_performance_mode'])");
+'qnn_context_cache_path', 'profiling_level', 'rpc_control_latency', 'htp_performance_mode', 'qnn_saver_path',
+'htp_graph_finalization_optimization_mode', 'qnn_context_priority'])");
       }
 
       qnn_options[key] = value;
@@ -368,7 +388,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("QNN is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kSnpeExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kSnpeExecutionProvider) {
 #ifdef USE_SNPE
 #ifdef _MSC_VER
     std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -420,7 +440,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("SNPE is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kNnapiExecutionProvider) {
 #ifdef USE_NNAPI
     uint32_t nnapi_flags = 0;
 #ifdef _MSC_VER
@@ -448,22 +468,81 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("NNAPI is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kCoreMLExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kCoreMLExecutionProvider) {
 #ifdef USE_COREML
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(session_options, 0));
 #else
     ORT_THROW("COREML is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kDmlExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kDmlExecutionProvider) {
 #ifdef USE_DML
     std::unordered_map<std::string, std::string> dml_options;
     dml_options["performance_preference"] = "high_performance";
     dml_options["device_filter"] = "gpu";
+    dml_options["disable_metacommands"] = "false";
+    dml_options["enable_dynamic_graph_fusion"] = "false";
+#ifdef _MSC_VER
+    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+    std::istringstream ss(ov_string);
+    std::string token;
+    while (ss >> token) {
+      if (token == "") {
+        continue;
+      }
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW("[ERROR] [DML] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
+      }
+
+      auto key = token.substr(0, pos);
+      auto value = token.substr(pos + 1);
+
+      if (key == "device_filter") {
+        std::set<std::string> ov_supported_device_types = {"gpu", "npu"};
+        if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
+          dml_options[key] = value;
+        } else {
+          ORT_THROW(
+              "[ERROR] [DML] You have selected a wrong configuration value for the key 'device_filter'. "
+              "Select from 'gpu', or 'npu' \n");
+        }
+      } else if (key == "performance_preference") {
+        std::set<std::string> ov_supported_values = {"default", "high_performance", "minimal_power"};
+        if (ov_supported_values.find(value) != ov_supported_values.end()) {
+          dml_options[key] = value;
+        } else {
+          ORT_THROW(
+              "[ERROR] [DML] You have selected a wrong configuration value for the key 'performance_preference'. "
+              "Select from 'default', 'high_performance' or 'minimal_power' \n");
+        }
+      } else if (key == "disable_metacommands") {
+        std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
+        if (ov_supported_values.find(value) != ov_supported_values.end()) {
+          dml_options[key] = value;
+        } else {
+          ORT_THROW(
+              "[ERROR] [DML] You have selcted wrong value for the key 'disable_metacommands'. "
+              "Select from 'true' or 'false' \n");
+        }
+      } else if (key == "enable_dynamic_graph_fusion") {
+        std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
+        if (ov_supported_values.find(value) != ov_supported_values.end()) {
+          dml_options[key] = value;
+        } else {
+          ORT_THROW(
+              "[ERROR] [DML] You have selcted wrong value for the key 'enable_dynamic_graph_fusion'. "
+              "Select from 'true' or 'false' \n");
+        }
+      }
+    }
     session_options.AppendExecutionProvider("DML", dml_options);
 #else
     ORT_THROW("DML is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kAclExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kAclExecutionProvider) {
 #ifdef USE_ACL
     Ort::ThrowOnError(
         OrtSessionOptionsAppendExecutionProvider_ACL(session_options,
@@ -471,14 +550,14 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("Acl is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kArmNNExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kArmNNExecutionProvider) {
 #ifdef USE_ARMNN
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(session_options,
                                                                      performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
 #else
     ORT_THROW("ArmNN is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kRocmExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kRocmExecutionProvider) {
 #ifdef USE_ROCM
     OrtROCMProviderOptions rocm_options;
     rocm_options.miopen_conv_exhaustive_search = performance_test_config.run_config.cudnn_conv_algo;
@@ -488,7 +567,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("ROCM is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kMIGraphXExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(session_options, 0));
     OrtROCMProviderOptions rocm_options;
@@ -498,7 +577,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("MIGraphX is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kXnnpackExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kXnnpackExecutionProvider) {
 #ifdef USE_XNNPACK
     session_options.AddConfigEntry(kOrtSessionOptionsConfigAllowIntraOpSpinning, "0");
     session_options.AppendExecutionProvider(
@@ -506,7 +585,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("Xnnpack is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kVitisAIExecutionProvider) {
+  } else if (provider_name_ == onnxruntime::kVitisAIExecutionProvider) {
 #ifdef USE_VITISAI
 #ifdef _MSC_VER
     std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -534,7 +613,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("VitisAI is not supported in this build\n");
 #endif
-  } else if (!provider_name.empty() && provider_name != onnxruntime::kCpuExecutionProvider) {
+  } else if (!provider_name_.empty() && provider_name_ != onnxruntime::kCpuExecutionProvider) {
     ORT_THROW("This backend is not included in perf test runner.\n");
   }
 

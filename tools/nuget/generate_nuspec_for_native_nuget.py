@@ -194,7 +194,7 @@ def generate_repo_url(line_list, repo_url, commit_id):
 
 
 def generate_dependencies(xml_text, package_name, version):
-    dml_dependency = '<dependency id="Microsoft.AI.DirectML.Preview" version="1.13.0-dev4c864f8324cef2ff5c39a5822d6c4de05929306d"/>'
+    dml_dependency = '<dependency id="Microsoft.AI.DirectML.Preview" version="1.13.0-devb7c99852e0b25080ea3388fea784008631dfd4c4"/>'
 
     if package_name == "Microsoft.AI.MachineLearning":
         xml_text.append("<dependencies>")
@@ -552,11 +552,12 @@ def generate_files(line_list, args):
                 files_list.append(
                     "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.pdb") + runtimes + " />"
                 )
+
     else:
         files_list.append(
             "<file src="
             + '"'
-            + os.path.join(args.native_build_path, "nuget-staging/usr/local/lib", "libonnxruntime.so")
+            + os.path.join(args.native_build_path, "libonnxruntime.so")
             + '" target="runtimes\\linux-'
             + args.target_architecture
             + '\\native" />'
@@ -706,25 +707,9 @@ def generate_files(line_list, args):
         )
 
         if is_windows():
-            if "2022" in openvino_path:
-                dll_list_path = os.path.join(openvino_path, "runtime\\bin\\intel64\\Release\\")
-                tbb_list_path = os.path.join(openvino_path, "runtime\\3rdparty\\tbb\\bin\\")
-            else:
-                dll_list_path = os.path.join(
-                    openvino_path, "deployment_tools\\inference_engine\\bin\\intel64\\Release\\"
-                )
-                tbb_list_path = os.path.join(openvino_path, "deployment_tools\\inference_engine\\external\\tbb\\bin\\")
-                ngraph_list_path = os.path.join(openvino_path, "deployment_tools\\ngraph\\lib\\")
-                for ngraph_element in os.listdir(ngraph_list_path):
-                    if ngraph_element.endswith("dll"):
-                        files_list.append(
-                            "<file src="
-                            + '"'
-                            + os.path.join(ngraph_list_path, ngraph_element)
-                            + runtimes_target
-                            + args.target_architecture
-                            + '\\native" />'
-                        )
+            dll_list_path = os.path.join(openvino_path, "runtime\\bin\\intel64\\Release\\")
+            tbb_list_path = os.path.join(openvino_path, "runtime\\3rdparty\\tbb\\bin\\")
+
             for dll_element in os.listdir(dll_list_path):
                 if dll_element.endswith("dll"):
                     files_list.append(
@@ -735,26 +720,7 @@ def generate_files(line_list, args):
                         + args.target_architecture
                         + '\\native" />'
                     )
-            # plugins.xml
-            files_list.append(
-                "<file src="
-                + '"'
-                + os.path.join(dll_list_path, "plugins.xml")
-                + runtimes_target
-                + args.target_architecture
-                + '\\native" />'
-            )
-            # usb-ma2x8x.mvcmd
-            # OpenVINO 2022.3 doesn't have usb-ma2x8x.mvcmd
-            if "2022.3" not in openvino_path:
-                files_list.append(
-                    "<file src="
-                    + '"'
-                    + os.path.join(dll_list_path, "usb-ma2x8x.mvcmd")
-                    + runtimes_target
-                    + args.target_architecture
-                    + '\\native" />'
-                )
+
             for tbb_element in os.listdir(tbb_list_path):
                 if tbb_element.endswith("dll"):
                     files_list.append(
@@ -827,8 +793,10 @@ def generate_files(line_list, args):
                 "<file src=" + '"' + os.path.join(args.native_build_path, nuget_dependencies["tvm"]) + runtimes + " />"
             )
 
-        # Some tools to be packaged in nightly build only, should not be released
+        # Some tools to be packaged in nightly debug build only, should not be released
         # These are copied to the runtimes folder for convenience of loading with the dlls
+        # NOTE: nuget gives a spurious error on linux if these aren't in a separate directory to the library so
+        #       we add them to a tools folder for that reason.
         if (
             args.is_release_build.lower() != "true"
             and args.target_architecture == "x64"
@@ -838,7 +806,10 @@ def generate_files(line_list, args):
                 "<file src="
                 + '"'
                 + os.path.join(args.native_build_path, nuget_dependencies["onnxruntime_perf_test"])
-                + runtimes
+                + runtimes[:-1]
+                + "\\tools\\"
+                + nuget_dependencies["onnxruntime_perf_test"]
+                + '"'
                 + " />"
             )
 
@@ -851,7 +822,10 @@ def generate_files(line_list, args):
                 "<file src="
                 + '"'
                 + os.path.join(args.native_build_path, nuget_dependencies["onnx_test_runner"])
-                + runtimes
+                + runtimes[:-1]
+                + "\\tools\\"
+                + nuget_dependencies["onnx_test_runner"]
+                + '"'
                 + " />"
             )
 
@@ -905,7 +879,6 @@ def generate_files(line_list, args):
         os.system(copy_command + " " + source_props + " " + target_props)
         files_list.append("<file src=" + '"' + target_props + '" target="build\\native" />')
         if not is_snpe_package and not is_qnn_package:
-            files_list.append("<file src=" + '"' + target_props + '" target="build\\netstandard1.1" />')
             files_list.append("<file src=" + '"' + target_props + '" target="build\\netstandard2.0" />')
 
         # Process targets file
@@ -924,7 +897,6 @@ def generate_files(line_list, args):
         os.system(copy_command + " " + source_targets + " " + target_targets)
         files_list.append("<file src=" + '"' + target_targets + '" target="build\\native" />')
         if not is_snpe_package and not is_qnn_package:
-            files_list.append("<file src=" + '"' + target_targets + '" target="build\\netstandard1.1" />')
             files_list.append("<file src=" + '"' + target_targets + '" target="build\\netstandard2.0" />')
 
         # Process xamarin targets files

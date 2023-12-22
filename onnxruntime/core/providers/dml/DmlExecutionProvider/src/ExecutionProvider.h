@@ -150,6 +150,7 @@ namespace Dml
         }
 
         STDMETHOD_(bool, IsMcdmDevice)() const noexcept final;
+        STDMETHOD_(bool, CustomHeapsSupported)() const noexcept final;
 
         STDMETHOD_(bool, MetacommandsEnabled)() const noexcept final;
         bool DynamicGraphFusionEnabled() const noexcept;
@@ -186,6 +187,7 @@ namespace Dml
         ComPtr<ID3D12Device> m_d3d12Device;
         ComPtr<IDMLDevice> m_dmlDevice;
         bool m_isMcdmDevice = false;
+        bool m_areCustomHeapsSupported = false;
         bool m_areMetacommandsEnabled = true;
         bool m_dynamicGraphFusionEnabled = false;
         bool m_native16BitShaderOpsSupported = false;
