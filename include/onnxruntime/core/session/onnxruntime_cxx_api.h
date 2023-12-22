@@ -2056,7 +2056,7 @@ struct KernelContext {
   Logger GetLogger() const;
   OrtAllocator* GetAllocator(const OrtMemoryInfo& memory_info) const;
   OrtKernelContext* GetOrtKernelContext() const { return ctx_; }
-  void SimpleParallelFor(void (*fn)(void*, size_t), size_t total, void* usr_data) const;
+  void ParallelFor(void (*fn)(void*, size_t), size_t total, size_t num_batch, void* usr_data) const;
 
  private:
   OrtKernelContext* ctx_;

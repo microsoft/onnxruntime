@@ -49,13 +49,25 @@ struct KernelOne {
   }
 };
 
-struct Data {
+struct DataI {
+  const float* from = {};
+  float* to = {};
+};
+
+struct DataII {
   const float* from = {};
   int32_t* to = {};
 };
 
-void SimpleCopy(void* raw_data, size_t ith) {
-  auto data = reinterpret_cast<Data*>(raw_data);
+// floats to floats
+void CopyI(void* raw_data, size_t ith) {
+  auto data = reinterpret_cast<DataI*>(raw_data);
+  data->to[ith] = data->from[ith];
+}
+
+// floats to int32_t
+void CopyII(void* raw_data, size_t ith) {
+  auto data = reinterpret_cast<DataII*>(raw_data);
   data->to[ith] = static_cast<int32_t>(round(data->from[ith]));
 }
 
@@ -66,11 +78,16 @@ void KernelTwo(OrtKernelContext* context,
   const auto& shape = X.Shape();
   auto X_raw = X.Data();
   auto Y_raw = Y.Allocate(shape);
-  Data data = {X_raw, Y_raw};
+  std::vector<float> floats(X.NumberOfElement(), 0.f);
+
+  DataI data_i = {X_raw, floats.data()};
   auto total = std::accumulate(shape.begin(), shape.end(), 1LL, std::multiplies<int64_t>());
 
   Ort::KernelContext ctx(context);
-  ctx.SimpleParallelFor(SimpleCopy, static_cast<int>(total), &data);
+  ctx.ParallelFor(CopyI, static_cast<int>(total), 0, &data_i);  // test simple parallel for
+
+  DataII data_ii = {floats.data(), Y_raw};
+  ctx.ParallelFor(CopyII, static_cast<int>(total), 2, &data_ii);  // test batch parallel for
 }
 
 template <typename T>

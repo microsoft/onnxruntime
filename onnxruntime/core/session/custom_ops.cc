@@ -378,15 +378,24 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetResource, _In_ const OrtKernelCont
   API_IMPL_END
 };
 
-ORT_API_STATUS_IMPL(OrtApis::KernelContext_SimpleParallelFor, _In_ const OrtKernelContext* context, _In_ void (*fn)(void*, size_t), _In_ size_t total, _In_ void* usr_data) {
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_ParallelFor, _In_ const OrtKernelContext* context, _In_ void (*fn)(void*, size_t), _In_ size_t total, _In_ size_t num_batch, _In_ void* usr_data) {
   API_IMPL_BEGIN
   if (context && total && usr_data) {
     const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContext*>(context);
     auto* tp = ctx->GetOperatorThreadPool();
     if (tp) {
-      onnxruntime::concurrency::ThreadPool::TrySimpleParallelFor(tp,
-                                                                 static_cast<std::ptrdiff_t>(total),
-                                                                 [fn, usr_data](std::ptrdiff_t ith) { fn(usr_data, static_cast<size_t>(ith)); });
+      if (num_batch) {
+        onnxruntime::concurrency::ThreadPool::TryBatchParallelFor(
+            tp,
+            static_cast<std::ptrdiff_t>(total),
+            [fn, usr_data](std::ptrdiff_t ith) { fn(usr_data, static_cast<size_t>(ith)); },
+            static_cast<std::ptrdiff_t>(num_batch));
+      } else {
+        onnxruntime::concurrency::ThreadPool::TrySimpleParallelFor(
+            tp,
+            static_cast<std::ptrdiff_t>(total),
+            [fn, usr_data](std::ptrdiff_t ith) { fn(usr_data, static_cast<size_t>(ith)); });
+      }
     }
   }
   return nullptr;

@@ -4519,7 +4519,7 @@ struct OrtApi {
   /**
     todo - comments
    */
-  ORT_API2_STATUS(KernelContext_SimpleParallelFor, _In_ const OrtKernelContext* context, _In_ void (*fn)(void*, size_t), _In_ size_t total, _In_ void* usr_data);
+  ORT_API2_STATUS(KernelContext_ParallelFor, _In_ const OrtKernelContext* context, _In_ void (*fn)(void*, size_t), _In_ size_t total, _In_ size_t num_batch, _In_ void* usr_data);
 };
 
 /*

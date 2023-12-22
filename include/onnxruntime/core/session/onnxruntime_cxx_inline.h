@@ -1652,8 +1652,8 @@ inline Logger KernelContext::GetLogger() const {
   return Logger{out};
 }
 
-inline void KernelContext::SimpleParallelFor(void (*fn)(void*, size_t), size_t total, void* usr_data) const {
-  ThrowOnError(GetApi().KernelContext_SimpleParallelFor(ctx_, fn, total, usr_data));
+inline void KernelContext::ParallelFor(void (*fn)(void*, size_t), size_t total, size_t num_batch, void* usr_data) const {
+  ThrowOnError(GetApi().KernelContext_ParallelFor(ctx_, fn, total, num_batch, usr_data));
 }
 
 inline OpAttr::OpAttr(const char* name, const void* data, int len, OrtOpAttrType type) {
