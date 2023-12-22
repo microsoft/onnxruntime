@@ -147,7 +147,8 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
 
         self.assertEqual(bias_zp.int32_data[0], self.default_zp_scales["BIAS"][0])
         self.assertEqual(bias_zp.data_type, self.default_bias_qtype)
-        self.assertEqual(bias_sc.float_data[0], self.default_zp_scales["BIAS"][1])
+        np_array = onnx.numpy_helper.to_array(bias_sc)
+        self.assertEqual(np_array[0], self.default_zp_scales["BIAS"][1])
 
         self.assertEqual(out_zp.int32_data[0], self.default_zp_scales["OUT"][0])
         self.assertEqual(out_zp.data_type, self.default_act_qtype)
@@ -253,7 +254,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         """
         Test overriding rmin/rmax for Sigmoid output.
         """
-        sigmoid_rmin, sigmoid_rmax = 0.0, 0.5
+        sigmoid_rmin, sigmoid_rmax = np.array(0.0, dtype=np.float32), np.array(0.5, dtype=np.float32)
         inp_zp, inp_sc, sig_out_zp, sig_out_sc, _, _, _, _, _, _ = self.perform_qdq_quantization(
             "model_quant_overrides2.onnx",
             tensor_quant_overrides={"SIG_OUT": [{"rmin": sigmoid_rmin, "rmax": sigmoid_rmax}]},
@@ -462,7 +463,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
                 },
             )
 
-        self.assertIn("option 'rmin' is invalid with 'scale' and 'zero_point'", str(context.exception))
+        self.assertIn("Tensor override option 'rmax' is invalid with 'scale' and 'zero_point'", str(context.exception))
 
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(

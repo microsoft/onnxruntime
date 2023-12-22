@@ -1272,8 +1272,12 @@ class ONNXQuantizer:
 
         # Update packed weight, zero point, and scale initializers
         zero_scale_shape = [initializer.dims[channel_axis]]
-        scale_initializer = onnx.helper.make_tensor(scale_name, initializer.data_type, zero_scale_shape, scale_list)
-        zero_initializer = onnx.helper.make_tensor(zp_name, weight_qType, zero_scale_shape, zero_point_list)
+        scale_initializer = onnx.helper.make_tensor(
+            scale_name, initializer.data_type, zero_scale_shape, np.hstack(scale_list).tolist()
+        )
+        zero_initializer = onnx.helper.make_tensor(
+            zp_name, weight_qType, zero_scale_shape, np.hstack(zero_point_list).tolist()
+        )
 
         self.model.initializer_extend([scale_initializer, zero_initializer])
 
