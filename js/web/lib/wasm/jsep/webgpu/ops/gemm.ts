@@ -94,8 +94,8 @@ const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAt
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
 
-    let m = global_id.x / uniforms.N;
-    let n = global_id.x % uniforms.N;
+    let m = global_idx / uniforms.N;
+    let n = global_idx % uniforms.N;
 
     var value = ${dataType}(0);
     for (var k: u32 = 0u; k < uniforms.K; k++) {
@@ -110,7 +110,7 @@ const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAt
     }
     return '';
   })()}
-    output[global_id.x] = value;
+    output[global_idx] = value;
 
   }`;
   return {
