@@ -49,16 +49,28 @@ struct KernelOne {
   }
 };
 
+struct Data {
+  const float* from = {};
+  int32_t* to = {};
+};
+
+void SimpleCopy(void* raw_data, size_t ith) {
+  auto data = reinterpret_cast<Data*>(raw_data);
+  data->to[ith] = static_cast<int32_t>(round(data->from[ith]));
+}
+
 // lite custom op as a function
-void KernelTwo(const Ort::Custom::Tensor<float>& X,
+void KernelTwo(OrtKernelContext* context,
+               const Ort::Custom::Tensor<float>& X,
                Ort::Custom::Tensor<int32_t>& Y) {
   const auto& shape = X.Shape();
   auto X_raw = X.Data();
   auto Y_raw = Y.Allocate(shape);
+  Data data = {X_raw, Y_raw};
   auto total = std::accumulate(shape.begin(), shape.end(), 1LL, std::multiplies<int64_t>());
-  for (int64_t i = 0; i < total; i++) {
-    Y_raw[i] = static_cast<int32_t>(round(X_raw[i]));
-  }
+
+  Ort::KernelContext ctx(context);
+  ctx.SimpleParallelFor(SimpleCopy, static_cast<int>(total), &data);
 }
 
 template <typename T>

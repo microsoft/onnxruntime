@@ -21,6 +21,7 @@
 #include "core/session/custom_ops.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
+#include "core/platform/threadpool.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 static constexpr uint32_t min_ort_version_with_optional_io_support = 8;
@@ -377,8 +378,17 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetResource, _In_ const OrtKernelCont
   API_IMPL_END
 };
 
-ORT_API_STATUS_IMPL(KernelContext_SimpleParallelFor, _In_ const OrtKernelContext* /*context*/, _In_ void (*/*fn*/)(void*, int), _In_ int /*total*/, _In_ void* /*user_data*/) {
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_SimpleParallelFor, _In_ const OrtKernelContext* context, _In_ void (*fn)(void*, size_t), _In_ size_t total, _In_ void* usr_data) {
   API_IMPL_BEGIN
+  if (context && total && usr_data) {
+    const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContext*>(context);
+    auto* tp = ctx->GetOperatorThreadPool();
+    if (tp) {
+      onnxruntime::concurrency::ThreadPool::TrySimpleParallelFor(tp,
+                                                                 static_cast<std::ptrdiff_t>(total),
+                                                                 [fn, usr_data](std::ptrdiff_t ith) { fn(usr_data, static_cast<size_t>(ith)); });
+    }
+  }
   return nullptr;
   API_IMPL_END
 };
