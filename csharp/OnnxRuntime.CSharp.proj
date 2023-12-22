@@ -99,8 +99,8 @@ CMake creates a target to this project
   </Target>
 
   <Target Name="CreateNativePackage">
-    <!-- Manually create the nuspec for the native Microsoft.ML.OnnxRuntime package -->
-    <Message Importance="High" Text="Generating nuspec for the native Microsoft.ML.OnnxRuntime nuget package..." />
+    <!-- Create the nuspec for the native OnnxRuntime package -->
+    <Message Importance="High" Text="Generating nuspec for the native $(OrtPackageId) nuget package..." />
     <Exec Command="$(PythonExe) $(GenerateNuspecScript) --package_version $(PackageVersion) --package_name $(OrtPackageId) --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild) --execution_provider $(ExecutionProvider) --nuspec_name $(NuSpecName)"
           ContinueOnError="False"
           ConsoleToMSBuild="true">
