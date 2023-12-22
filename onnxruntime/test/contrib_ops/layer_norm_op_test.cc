@@ -76,6 +76,13 @@ TEST(LayerNormTest, LayerNorm) {
 }
 
 TEST(LayerNormTest, LayerNorm_BFloat16Input) {
+  #ifdef USE_CUDA
+    int min_cuda_architecture = 530;
+    if (!HasCudaEnvironment(min_cuda_architecture)) {
+      LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+      return;
+    }
+  #endif
   OpTester test("LayerNormalization");
   test.AddAttribute<float>("epsilon", 1e-05f);
 
