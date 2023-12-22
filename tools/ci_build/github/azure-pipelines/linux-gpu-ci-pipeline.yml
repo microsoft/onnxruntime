@@ -78,9 +78,9 @@ jobs:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "
-      --network=host 
+      --network=host
       --build-arg BASEIMAGE=$(docker_base_image)
-      --build-arg TRT_VERSION=$(linux_trt_version) 
+      --build-arg TRT_VERSION=$(linux_trt_version)
       --build-arg BUILD_UID=$( id -u )
       "
       Repository: onnxruntimecuda11build
@@ -128,6 +128,7 @@ jobs:
               --parallel \
               --build_wheel \
               --enable_onnx_tests --use_cuda --cuda_version=${{variables.common_cuda_version}} --cuda_home=/usr/local/cuda-${{variables.common_cuda_version}} --cudnn_home=/usr/local/cuda-${{variables.common_cuda_version}} \
+              --enable_transformers_tool_test \
               --enable_cuda_profiling --enable_cuda_nhwc_ops \
               --enable_pybind --build_java \
               --use_cache \
@@ -179,7 +180,7 @@ jobs:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "
-      --network=host 
+      --network=host
       --build-arg BASEIMAGE=$(docker_base_image)
       --build-arg TRT_VERSION=$(linux_trt_version)
       --build-arg BUILD_UID=$( id -u )
