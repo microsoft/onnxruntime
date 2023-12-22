@@ -2394,24 +2394,28 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>do_rotary</tt> : int</dt>
+<dd>Whether to use rotary position embedding. Default value is 0.</dd>
 <dt><tt>kv_num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for k and v</dd>
 <dt><tt>local_window_size</tt> : int</dt>
 <dd>left_window_size for local attention (like Mistral). Default value is -1 meaning unused.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for q</dd>
+<dt><tt>rotary_interleaved</tt> : int</dt>
+<dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 </dl>
 
-#### Inputs
+#### Inputs (7 - 9)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
-<dd>Query with shape (batch_size, sequence_length, hidden_size)</dd>
-<dt><tt>key</tt> : T</dt>
+<dd>Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape(batch_size, sequence_length, d) where d is (num_heads * head_size + 2 * kv_num_heads * head_size).</dd>
+<dt><tt>key</tt> (optional) : T</dt>
 <dd>Key with shape (batch_size, kv_sequence_length, kv_hidden_size) </dd>
-<dt><tt>value</tt> : T</dt>
+<dt><tt>value</tt> (optional) : T</dt>
 <dd>Value with shape (batch_size, kv_sequence_length, kv_hidden_size)</dd>
 <dt><tt>past_key</tt> (optional) : T</dt>
 <dd>past state key with support for format BNSH. When past_key uses same tensor as present_key(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.</dd>
@@ -2421,6 +2425,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>1d Tensor of shape (batch_size). Indicates past sequence lengths for token generation case.</dd>
 <dt><tt>total_sequence_length</tt> : M</dt>
 <dd>Scalar tensor of total sequence length (past + new).</dd>
+<dt><tt>cos_cache</tt> (optional) : T</dt>
+<dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
+<dt><tt>sin_cache</tt> (optional) : T</dt>
+<dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
 </dl>
 
 #### Outputs
@@ -2824,6 +2832,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>size of each input feature</dd>
 <dt><tt>N</tt> : int (required)</dt>
 <dd>size of each output feature</dd>
+<dt><tt>accuracy_level</tt> : int</dt>
+<dd>The minimum accuracy level of input A, can be: 0(unset), 1(fp32), 2(fp16), 3(bf16), or 4(int8) (default unset). It is used to control how input A is quantized or downcast internally while doing computation, for example: 0 means input A will not be quantized or downcast while doing computation. 4 means input A can be quantized with the same block_size to int8 internally from type T1.</dd>
 <dt><tt>bits</tt> : int (required)</dt>
 <dd>number of bits used for weight quantization (default 4)</dd>
 <dt><tt>block_size</tt> : int (required)</dt>
