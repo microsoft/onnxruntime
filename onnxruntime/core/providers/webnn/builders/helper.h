@@ -7,6 +7,7 @@
 #include <core/common/status.h>
 #include "core/common/inlined_containers.h"
 #include <core/graph/basic_types.h>
+#include <core/graph/graph_viewer.h>
 #include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
@@ -34,6 +35,9 @@ typedef struct {
   std::string opName;
   bool isCpuSupported;  // The WebNN CPU backend XNNPack supports it (not about the CPU EP).
 } WebnnOpInfo;
+
+// Collects all the initializer tensors in the subGraph and its ancestor graphs.
+InitializedTensorSet CollectAllInitializedTensors(const onnxruntime::GraphViewer& graph_viewer);
 
 bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger);
 

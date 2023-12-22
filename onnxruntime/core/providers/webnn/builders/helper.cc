@@ -12,6 +12,24 @@
 namespace onnxruntime {
 namespace webnn {
 
+InitializedTensorSet CollectAllInitializedTensors(const onnxruntime::GraphViewer& graph_viewer) {
+  InitializedTensorSet all_initializers;
+  if (graph_viewer.IsSubgraph()) {
+    const Graph* cur_graph = &graph_viewer.GetGraph();
+    // Traverse up to the top-level graph, collecting all initializers.
+    while (cur_graph->IsSubgraph()) {
+      const auto& current_initializers = cur_graph->GetAllInitializedTensors();
+      all_initializers.insert(current_initializers.begin(), current_initializers.end());
+      cur_graph = cur_graph->ParentGraph();
+    };
+    // Collect initializers in top-level graph.
+    const auto& current_initializers = cur_graph->GetAllInitializedTensors();
+    all_initializers.insert(current_initializers.begin(), current_initializers.end());
+  }
+
+  return all_initializers;
+}
+
 bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger) {
   const auto* shape_proto = node_arg.Shape();
   if (!shape_proto) {
