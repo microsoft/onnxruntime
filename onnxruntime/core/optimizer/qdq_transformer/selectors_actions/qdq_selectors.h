@@ -244,9 +244,9 @@ class BaseSelector : public NodeSelector {
   }
 
  protected:
-  BaseSelector(std::unique_ptr<NodeGroupSelector> node_group_selector, std::vector<const char*> compatible_providers = {})
-      : node_group_selector_{std::move(node_group_selector)} {
-    compatible_providers_.assign(compatible_providers.begin(), compatible_providers.end());
+  BaseSelector(std::unique_ptr<NodeGroupSelector> node_group_selector, gsl::span<const char*> compatible_providers = {})
+      : node_group_selector_{std::move(node_group_selector)},
+        compatible_providers_(compatible_providers.begin(), compatible_providers.end()) {
   }
 
   // override if you need to adjust the values in NodesToOptimize.
@@ -273,13 +273,13 @@ class DropDQNodesSelector : public BaseSelector {
 
 class UnarySelector : public BaseSelector {
  public:
-  explicit UnarySelector(std::vector<const char*> compatible_providers, bool allow_16bit = false)
+  explicit UnarySelector(gsl::span<const char*> compatible_providers = {}, bool allow_16bit = false)
       : BaseSelector(std::make_unique<UnaryNodeGroupSelector>(allow_16bit), compatible_providers) {}
 };
 
 class BinarySelector : public BaseSelector {
  public:
-  explicit BinarySelector(std::vector<const char*> compatible_providers = {}, bool allow_16bit = false)
+  explicit BinarySelector(gsl::span<const char*> compatible_providers = {}, bool allow_16bit = false)
       : BaseSelector(std::make_unique<BinaryNodeGroupSelector>(allow_16bit), compatible_providers) {}
 };
 
@@ -311,7 +311,7 @@ class ConvSelector : public BaseSelector {
 
 class WhereSelector : public BaseSelector {
  public:
-  explicit WhereSelector(std::vector<const char*> compatible_providers = {}, bool allow_16bit = false)
+  explicit WhereSelector(gsl::span<const char*> compatible_providers = {}, bool allow_16bit = false)
       : BaseSelector(std::make_unique<WhereNodeGroupSelector>(allow_16bit), compatible_providers) {}
 };
 
@@ -327,7 +327,7 @@ class MatMulSelector : public BaseSelector {
 // Output: optional Q node for Y
 class GemmSelector : public BaseSelector {
  public:
-  explicit GemmSelector(std::vector<const char*> compatible_providers = {}, bool allow_16bit = false)
+  explicit GemmSelector(gsl::span<const char*> compatible_providers = {}, bool allow_16bit = false)
       : BaseSelector(std::make_unique<GemmNodeGroupSelector>(allow_16bit), compatible_providers) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;

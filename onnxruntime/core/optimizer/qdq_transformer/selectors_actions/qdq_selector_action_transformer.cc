@@ -123,35 +123,42 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
 void BinaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // 4 nodes. 2 x DQ for inputs, target, Q
   // Replace with internal QLinear version of operator. Delete all original nodes.
-
-#if !defined(ORT_MINIMAL_BUILD)
   {
-    const std::string action_name{"2DQ_Mul"};
+    const std::string action_name{"2DQ"};
     std::unique_ptr<Action> action = std::make_unique<QDQ::BinaryReplaceWithQLinear>(kMSDomain);
 
+#if !defined(ORT_MINIMAL_BUILD)
+    // TODO: Enable 16-bit types in selector when binary QLinear* ops support 16-bit.
     std::vector<const char*> providers = {kCpuExecutionProvider};
     std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::BinarySelector>(providers);
     qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
-                                                           {{"Mul", {}}},
+                                                           {{"Add", {}},
+                                                            {"Mul", {}}},
                                                            std::move(selector),
                                                            std::move(action));
+
+#else
+    qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
+#endif
   }
 
   {
-    const std::string action_name{"2DQ_Add"};
+    const std::string action_name{"Add"};
     std::unique_ptr<Action> action = std::make_unique<QDQ::BinaryReplaceWithQLinear>(kMSDomain);
 
-    std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::BinarySelector>();
+#if !defined(ORT_MINIMAL_BUILD)
+    std::vector<const char*> providers = {kDmlExecutionProvider};
+    std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::BinarySelector>(providers);
 
     qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
-                                                            {{"Add", {}}},
-                                                            std::move(selector),
-                                                            std::move(action));
-  }
+                                                           {{"Add", {}}},
+                                                           std::move(selector),
+                                                           std::move(action));
 
 #else
-  qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
+    qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
 #endif
+  }
 }
 
 void VariadicOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
