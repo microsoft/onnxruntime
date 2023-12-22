@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "core/framework/float8.h"
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/tunable/rocm_tunable.h"
 

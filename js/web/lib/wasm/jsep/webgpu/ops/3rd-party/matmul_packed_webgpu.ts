@@ -22,7 +22,7 @@
 import {TensorView} from '../../../tensor-view';
 import {ShapeUtil} from '../../../util';
 import {ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../../types';
-import {createTensorShapeVariables, enableShapesUniforms, getBroadcastDims, IndicesHelper, inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from '../common';
+import {createTensorShapeVariables, enableShapesUniforms, getBroadcastDims, IndicesHelper, inputVariable, internalVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from '../common';
 import {getActivationSnippet, InternalActivationAttributes} from '../fuse-utils';
 
 import {typeSnippet} from './activation_util';
@@ -341,13 +341,8 @@ fn main(@builtin(local_invocation_id) localId : vec3<u32>,
 const matMulReadWriteFnSource =
     (component: number, hasBias: boolean, applyActivation: string, variables: IndicesHelper[],
      batchShapes: Array<readonly number[]>, isChannelsLast = false): string => {
-      const batchAShape = batchShapes[0];
-      const batchBShape = batchShapes[1];
-      const batchShape = batchShapes[2];
-      const batchVariable = variables[0];
-      const aVariable = variables[1];
-      const bVariable = variables[2];
-      const outputVariable = variables[3];
+      const [batchAShape, batchBShape, batchShape] = batchShapes;
+      const [batchVariable, aVariable, bVariable, outputVariable] = variables;
       const broadCastADims = getBroadcastDims(batchAShape, batchShape);
       const broadCastBDims = getBroadcastDims(batchBShape, batchShape);
       const dataType = tensorTypeToWsglStorageType(variables[0].type.tensor);
@@ -434,9 +429,7 @@ export const createMatmulProgramInfo =
       const outerDims = reshapedOutputShape ? reshapedOutputShape.slice(0, -2) : outputShape.slice(0, -2);
       const enableBatchUniforms = enableShapesUniforms(outerDims.length);
       const batchShapeOrRank = enableBatchUniforms ? outerDims.length : outerDims;
-      const batchDims = inputVariable('batchDims', inputs[0].dataType, batchShapeOrRank, 1, true);
-      const variables = [batchDims];
-      const batchShapes = [outerDimsA, outerDimsB, outerDims];
+      const batchDims = internalVariable('batchDims', inputs[0].dataType, batchShapeOrRank, 1);
       const batchSize = ShapeUtil.size(outerDims);
 
       const dimAOuter = aShape[aShape.length - 2];
@@ -469,10 +462,7 @@ export const createMatmulProgramInfo =
       const A = inputVariable('a', inputs[0].dataType, aShapeOrRank, components);
       const B = inputVariable('b', inputs[1].dataType, bShapeOrRank, components);
       const output = outputVariable('result', inputs[0].dataType, outputShapeTemp.length, components);
-      variables.push(A);
-      variables.push(B);
-      variables.push(output);
-      const inputVariables = [batchDims, A, B];
+      const inputVariables = [A, B];
       const programUniforms: ProgramUniform[] =
           [{type: 'int32', data: dimAOuter}, {type: 'int32', data: dimBOuter}, {type: 'int32', data: dimInner}];
       if (enableBatchUniforms) {
@@ -490,8 +480,9 @@ export const createMatmulProgramInfo =
 
       const hasBias = inputs.length > 2;
       const {activationFunction, applyActivation} = getActivationSnippet(activationAttributes, output.type.value);
-      const declareFunctions =
-          matMulReadWriteFnSource(components, hasBias, applyActivation, variables, batchShapes, isChannelsLast);
+      const declareFunctions = matMulReadWriteFnSource(
+          components, hasBias, applyActivation, [batchDims, A, B, output], [outerDimsA, outerDimsB, outerDims],
+          isChannelsLast);
       if (hasBias) {
         const biasComponents = isChannelsLast ? components : 1;
         inputVariables.push(inputVariable('bias', inputs[2].dataType, inputs[2].dims.length, biasComponents));
@@ -506,6 +497,7 @@ export const createMatmulProgramInfo =
           shaderHelper.registerUniform('dimAOuter', 'i32')
               .registerUniform('dimBOuter', 'i32')
               .registerUniform('dimInner', 'i32')
+              .registerInternalVariables(batchDims)
               .declareVariables(...inputVariables, output)}
   ${activationFunction}
   ${declareFunctions}
@@ -518,11 +510,7 @@ export const createMatmulProgramInfo =
         name: 'MatMul',
         shaderCache: {
           hint: activationAttributes.activationCacheKey + `${elementsPerThread}` +
-              `${activationAttributes.activation}` +
-              `${activationAttributes.clipMax}` +
-              `${activationAttributes.clipMin}` +
               `${isVec4}` +
-              `${hasBias}` +
               `${isChannelsLast}`,
           inputDependencies
         },

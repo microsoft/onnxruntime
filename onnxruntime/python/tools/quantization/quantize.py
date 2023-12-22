@@ -155,6 +155,33 @@ class StaticQuantConfig(QuantConfig):
                     SmoothQuantFolding = True/False :
                         Default is True. It only works if SmoothQuant is True. If enabled, inserted Mul ops during
                         SmoothQuant will be folded into the previous op if the previous op is foldable.
+                    UseQDQContribOps = True/False :
+                        Default is False. If enabled, the inserted QuantizeLinear and DequantizeLinear ops will have the
+                        `com.microsoft` domain, which forces use of ONNX Runtime's QuantizeLinear and DequantizeLinear
+                        contrib op implementations. The contrib op implementations may support features not standardized
+                        into the ONNX specification (e.g., 16-bit quantization types).
+                    MinimumRealRange = float|None :
+                        Default is None. If set to a floating-point value, the calculation of the quantization parameters
+                        (i.e., scale and zero point) will enforce a minimum range between rmin and rmax. If (rmax-rmin)
+                        is less than the specified minimum range, rmax will be set to rmin + MinimumRealRange. This is
+                        necessary for EPs like QNN that require a minimum floating-point range when determining
+                        quantization parameters.
+                    TensorQuantOverrides = dictionary :
+                        Default is {}. Set tensor quantization overrides. The key is a tensor name and the value is a
+                        list of dictionaries. For per-tensor quantization, the list contains a single dictionary. For
+                        per-channel quantization, the list contains a dictionary for each channel in the tensor.
+                        Each dictionary contains optional overrides with the following keys and values.
+                            'quant_type' = QuantType : The tensor's quantization data type.
+                            'scale' =  Float         : The scale value to use. Must also specify `zero_point` if set.
+                            'zero_point' = Int       : The zero-point value to use. Must also specify `scale` is set.
+                            'symmetric' = Bool       : If the tensor should use symmetric quantization. Invalid if also
+                                                       set `scale` or `zero_point`.
+                            'reduce_range' = Bool    : If the quantization range should be reduced. Invalid if also
+                                                       set `scale` or `zero_point`.
+                            'rmax' = Float           : Override the maximum real tensor value in calibration data.
+                                                       Invalid if also set `scale` or `zero_point`.
+                            'rmin' = Float           : Override the minimum real tensor value in calibration data.
+                                                       Invalid if also set `scale` or `zero_point`.
             execution_provider : A enum indicates the Execution Provider such as: CPU, TRT, NNAPI, SNE, etc.
         Raises:
             ValueError: Raise ValueError if execution provider is unknown
@@ -376,6 +403,22 @@ def quantize_static(
                     is less than the specified minimum range, rmax will be set to rmin + MinimumRealRange. This is
                     necessary for EPs like QNN that require a minimum floating-point range when determining
                     quantization parameters.
+                TensorQuantOverrides = dictionary :
+                    Default is {}. Set tensor quantization overrides. The key is a tensor name and the value is a
+                    list of dictionaries. For per-tensor quantization, the list contains a single dictionary. For
+                    per-channel quantization, the list contains a dictionary for each channel in the tensor.
+                    Each dictionary contains optional overrides with the following keys and values.
+                        'quant_type' = QuantType : The tensor's quantization data type.
+                        'scale' =  Float         : The scale value to use. Must also specify `zero_point` if set.
+                        'zero_point' = Int       : The zero-point value to use. Must also specify `scale` is set.
+                        'symmetric' = Bool       : If the tensor should use symmetric quantization. Invalid if also
+                                                   set `scale` or `zero_point`.
+                        'reduce_range' = Bool    : If the quantization range should be reduced. Invalid if also
+                                                   set `scale` or `zero_point`.
+                        'rmax' = Float           : Override the maximum real tensor value in calibration data.
+                                                   Invalid if also set `scale` or `zero_point`.
+                        'rmin' = Float           : Override the minimum real tensor value in calibration data.
+                                                   Invalid if also set `scale` or `zero_point`.
     """
     if activation_type == QuantType.QFLOAT8E4M3FN or weight_type == QuantType.QFLOAT8E4M3FN:
         if calibrate_method != CalibrationMethod.Distribution:
