@@ -159,7 +159,7 @@ class TritonCodegen(NodeVisitor):
 
         other_input_args = "seed_cuda, " if node.has_dropout else ""
         # Support symbolic shape if any.
-        symbolic_shape_args_str = ", ".join(node.symbolic_shape_variables)
+        symbolic_shape_args_str = ", ".join(sorted(node.offset_calc.symbolic_shape_variables))
         if symbolic_shape_args_str:
             other_input_args += f"{symbolic_shape_args_str}, "
 
@@ -490,7 +490,7 @@ class TritonCodegen(NodeVisitor):
                 kernel_args_str += ", seed_cuda"
 
             # Support symbolic shape if any.
-            symbolic_shape_args_str = ", ".join(kernel_node.symbolic_shape_variables)
+            symbolic_shape_args_str = ", ".join(sorted(kernel_node.offset_calc.symbolic_shape_variables))
             if symbolic_shape_args_str:
                 kernel_args_str += f", {symbolic_shape_args_str}"
 

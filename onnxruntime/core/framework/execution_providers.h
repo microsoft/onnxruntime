@@ -12,6 +12,9 @@
 #include "core/framework/execution_provider.h"
 #include "core/graph/graph_viewer.h"
 #include "core/common/logging/logging.h"
+#ifdef _WIN32
+#include "core/platform/tracing.h"
+#endif
 
 namespace onnxruntime {
 
@@ -36,7 +39,19 @@ class ExecutionProviders {
     ORT_IGNORE_RETURN_VALUE(provider_idx_map_.insert({provider_id, new_provider_idx}));
 
     // update execution provider options
-    exec_provider_options_[provider_id] = p_exec_provider->GetProviderOptions();
+    auto providerOptions = p_exec_provider->GetProviderOptions();
+    exec_provider_options_[provider_id] = providerOptions;
+
+#ifdef _WIN32
+    for (const auto& config_pair : providerOptions) {
+      TraceLoggingWrite(
+          telemetry_provider_handle,
+          "ProviderOptions",
+          TraceLoggingString(provider_id.c_str(), "ProviderId"),
+          TraceLoggingString(config_pair.first.c_str(), "Key"),
+          TraceLoggingString(config_pair.second.c_str(), "Value"));
+    }
+#endif
 
     exec_provider_ids_.push_back(provider_id);
     exec_providers_.push_back(p_exec_provider);

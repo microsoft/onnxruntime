@@ -783,7 +783,7 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
   onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_ut ${onnxruntime_test_providers_cuda_ut_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
   config_cuda_provider_shared_module(onnxruntime_providers_cuda_ut)
   onnxruntime_add_include_to_target(onnxruntime_providers_cuda_ut GTest::gtest GTest::gmock)
-  target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE GTest::gtest GTest::gmock)
+  target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda_ut)
 endif()
 
@@ -1373,56 +1373,55 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_link_libraries(compare_two_sessions PRIVATE ${GETOPT_LIB_WIDE} tdh Advapi32)
   endif()
 
-  file(GLOB onnxruntime_mlas_test_src CONFIGURE_DEPENDS
-    "${TEST_SRC_DIR}/mlas/unittest/*.h"
-    "${TEST_SRC_DIR}/mlas/unittest/*.cpp"
-  )
-  onnxruntime_add_executable(onnxruntime_mlas_test ${onnxruntime_mlas_test_src})
-  if(MSVC)
-    target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd26409>"
-                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26409>")
-    target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
-            "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-    target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd6326>"
-                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
-    target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd26426>"
-                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26426>")
-  endif()
-  if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
-    set_target_properties(onnxruntime_mlas_test PROPERTIES
-      XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+  if(NOT onnxruntime_target_platform STREQUAL "ARM64EC")
+    file(GLOB onnxruntime_mlas_test_src CONFIGURE_DEPENDS
+      "${TEST_SRC_DIR}/mlas/unittest/*.h"
+      "${TEST_SRC_DIR}/mlas/unittest/*.cpp"
     )
-  endif()
-  target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}
-          ${CMAKE_CURRENT_BINARY_DIR})
-  target_link_libraries(onnxruntime_mlas_test PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common)
-  if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    target_link_libraries(onnxruntime_mlas_test PRIVATE cpuinfo)
-  endif()
-  if(NOT WIN32)
-    target_link_libraries(onnxruntime_mlas_test PRIVATE nsync::nsync_cpp ${CMAKE_DL_LIBS})
-  endif()
-  if (CMAKE_SYSTEM_NAME STREQUAL "Android")
-    target_link_libraries(onnxruntime_mlas_test PRIVATE ${android_shared_libs})
-  endif()
-
-  if(WIN32)
-    target_link_libraries(onnxruntime_mlas_test PRIVATE debug Dbghelp Advapi32)
-  endif()
-  if (onnxruntime_LINK_LIBATOMIC)
-    target_link_libraries(onnxruntime_mlas_test PRIVATE atomic)
-  endif()
-  target_link_libraries(onnxruntime_mlas_test PRIVATE Threads::Threads)
-
-  set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
-  if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-      set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 -s PROXY_TO_PTHREAD=1 -s EXIT_RUNTIME=1")
-    else()
-      set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1")
+    onnxruntime_add_executable(onnxruntime_mlas_test ${onnxruntime_mlas_test_src})
+    if(MSVC)
+      target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd26409>"
+                  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26409>")
+      target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
+              "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
+      target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd6326>"
+                  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
+      target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd26426>"
+                  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26426>")
     endif()
-  endif()
-
+    if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+      set_target_properties(onnxruntime_mlas_test PROPERTIES
+        XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+      )
+    endif()
+    target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}
+            ${CMAKE_CURRENT_BINARY_DIR})
+    target_link_libraries(onnxruntime_mlas_test PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common)
+    if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+      target_link_libraries(onnxruntime_mlas_test PRIVATE cpuinfo)
+    endif()
+    if(NOT WIN32)
+      target_link_libraries(onnxruntime_mlas_test PRIVATE nsync::nsync_cpp ${CMAKE_DL_LIBS})
+    endif()
+    if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+      target_link_libraries(onnxruntime_mlas_test PRIVATE ${android_shared_libs})
+    endif()
+    if(WIN32)
+      target_link_libraries(onnxruntime_mlas_test PRIVATE debug Dbghelp Advapi32)
+    endif()
+    if (onnxruntime_LINK_LIBATOMIC)
+      target_link_libraries(onnxruntime_mlas_test PRIVATE atomic)
+    endif()
+    target_link_libraries(onnxruntime_mlas_test PRIVATE Threads::Threads)
+    set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
+    if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+      if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+        set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 -s PROXY_TO_PTHREAD=1 -s EXIT_RUNTIME=1")
+      else()
+        set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1")
+      endif()
+    endif()
+endif()
   # Training API Tests
   # Disabling training_api_test_trainer. CXXOPT generates a ton of warnings because of which nuget pipeline is failing.
   # TODO(askhade): Fix the warnings.

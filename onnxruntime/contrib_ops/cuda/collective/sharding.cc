@@ -244,7 +244,7 @@ DistributedKernel::DistributedKernel(const OpKernelInfo& info) : NcclKernel(info
   // stored on a 1-D mesh with 2 devices and the second input on another 1-D
   // mesh with 1 device.
   std::vector<std::string> attr_input_device_mesh_shapes;
-  ORT_ENFORCE(info.GetAttrs<std::string>("input_device_mesh_shapes", attr_input_device_mesh_shapes).IsOK());
+  ORT_THROW_IF_ERROR(info.GetAttrs<std::string>("input_device_mesh_shapes", attr_input_device_mesh_shapes));
 
   // input_device_mesh_elements[i] is the flattened device mesh for the i-th input.
   // Note that its actual shape is input_device_mesh_shapes[i].
@@ -255,12 +255,12 @@ DistributedKernel::DistributedKernel(const OpKernelInfo& info) : NcclKernel(info
   //  Then the first input is stored on a 1-D mesh with 2 devices and the second
   //  input on another 1-D mesh with 1 device.
   std::vector<std::string> attr_input_device_mesh_elements;
-  ORT_ENFORCE(info.GetAttrs<std::string>("input_device_mesh_elements", attr_input_device_mesh_elements).IsOK());
+  ORT_THROW_IF_ERROR(info.GetAttrs<std::string>("input_device_mesh_elements", attr_input_device_mesh_elements));
 
   // input_shard_specs[i] is the sharding spec of the i-th input; e.g.,
   // "RR" if the i-th input is not sharded.
   std::vector<std::string> input_shard_specs;
-  ORT_ENFORCE(info.GetAttrs<std::string>("input_shard_specs", input_shard_specs).IsOK());
+  ORT_THROW_IF_ERROR(info.GetAttrs<std::string>("input_shard_specs", input_shard_specs));
 
   ORT_ENFORCE(attr_input_device_mesh_shapes.size() == attr_input_device_mesh_elements.size());
   ORT_ENFORCE(attr_input_device_mesh_shapes.size() == input_shard_specs.size());
@@ -274,13 +274,13 @@ DistributedKernel::DistributedKernel(const OpKernelInfo& info) : NcclKernel(info
   }
 
   std::vector<std::string> attr_output_device_mesh_shapes;
-  ORT_ENFORCE(info.GetAttrs<std::string>("output_device_mesh_shapes", attr_output_device_mesh_shapes).IsOK());
+  ORT_THROW_IF_ERROR(info.GetAttrs<std::string>("output_device_mesh_shapes", attr_output_device_mesh_shapes));
 
   std::vector<std::string> attr_output_device_mesh_elements;
-  ORT_ENFORCE(info.GetAttrs<std::string>("output_device_mesh_elements", attr_output_device_mesh_elements).IsOK());
+  ORT_THROW_IF_ERROR(info.GetAttrs<std::string>("output_device_mesh_elements", attr_output_device_mesh_elements));
 
   std::vector<std::string> output_shard_specs;
-  ORT_ENFORCE(info.GetAttrs<std::string>("output_shard_specs", output_shard_specs).IsOK());
+  ORT_THROW_IF_ERROR(info.GetAttrs<std::string>("output_shard_specs", output_shard_specs));
 
   ORT_ENFORCE(attr_output_device_mesh_shapes.size() == attr_output_device_mesh_elements.size());
   ORT_ENFORCE(attr_output_device_mesh_shapes.size() == output_shard_specs.size());

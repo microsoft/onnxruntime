@@ -5,8 +5,10 @@
 # Dockerfile to Test ONNX Runtime on UBI8 with CUDA 11.8 and TensorRT 8.6
 
 # Build base image with required system packages
-FROM nvidia/cuda:11.8.0-cudnn8-devel-ubi8 AS base
-
+ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+ARG TRT_VERSION=8.6.1.6-1.cuda11.8
+FROM $BASEIMAGE AS base
+ARG TRT_VERSION
 ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${PATH}
 
 RUN dnf install -y bash wget &&\
@@ -26,8 +28,7 @@ RUN pip3 install setuptools>=68.2.2
 
 # Install TensorRT
 RUN dnf install -y libnvinfer8 libnvonnxparsers8 libnvparsers8 libnvinfer-plugin8 libnvinfer-lean8 libnvinfer-vc-plugin8 libnvinfer-dispatch8
-RUN v="8.6.1.6-1+cuda11.8" &&\
-    dnf downgrade -y libnvinfer8-${v} libnvinfer8-${v} libnvonnxparsers8-${v} libnvparsers8-${v} libnvinfer-plugin8-${v} libnvinfer-lean8-${v} libnvinfer-vc-plugin8-${v} libnvinfer-dispatch8-${v} &&\
+RUN dnf downgrade -y libnvinfer8-${TRT_VERSION} libnvinfer8-${TRT_VERSION} libnvonnxparsers8-${TRT_VERSION} libnvparsers8-${TRT_VERSION} libnvinfer-plugin8-${TRT_VERSION} libnvinfer-lean8-${TRT_VERSION} libnvinfer-vc-plugin8-${TRT_VERSION} libnvinfer-dispatch8-${TRT_VERSION} &&\
     dnf install -y dnf-plugin-versionlock &&\
     dnf versionlock libnvinfer8 libnvonnxparsers8 libnvparsers8 libnvinfer-plugin8 libnvinfer-lean8 libnvinfer-vc-plugin8 libnvinfer-dispatch8
 RUN dnf clean dbcache

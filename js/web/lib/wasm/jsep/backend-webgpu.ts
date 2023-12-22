@@ -144,17 +144,7 @@ export class WebGpuBackend {
    */
   sessionExternalDataMapping: Map<number, Map<number, [number, GPUBuffer]>> = new Map();
 
-  async initialize(env: Env): Promise<void> {
-    if (!navigator.gpu) {
-      // WebGPU is not available.
-      throw new Error('WebGpuBackend: WebGPU is not available.');
-    }
-
-    const adapter = await navigator.gpu.requestAdapter();
-    if (!adapter) {
-      throw new Error('WebGpuBackend: Failed to get GPU adapter.');
-    }
-
+  async initialize(env: Env, adapter: GPUAdapter): Promise<void> {
     this.env = env;
     const requiredFeatures: GPUFeatureName[] = [];
     const deviceDescriptor: GPUDeviceDescriptor = {
@@ -254,11 +244,9 @@ export class WebGpuBackend {
   }
 
   isQueryEnabled(): boolean {
-    if (this.device.features.has('timestamp-query') && this.env.webgpu.profilingMode === 'default') {
-      return true;
-    } else {
-      return false;
-    }
+    return this.device.features.has('timestamp-query') &&
+        (this.env.webgpu.profiling?.mode === 'default' ||
+         (!this.env.webgpu.profiling?.mode && this.env.webgpu.profilingMode === 'default'));
   }
 
   /**
@@ -338,51 +326,26 @@ export class WebGpuBackend {
     let uniformBufferBinding: GPUBindingResource|undefined;
     if (programUniforms) {
       let currentOffset = 0;
-      let preLength = 0;
       const offsets: number[] = [];
-      let maxAlignmentOfField = 1;
+
       programUniforms.forEach(v => {
         const data = typeof v.data === 'number' ? [v.data] : v.data;
         if (data.length === 0) {
           return;
         }
         // https://www.w3.org/TR/WGSL/#alignof
-        let baseAlignment: number;
-        switch (data.length) {
-          case 1:
-            baseAlignment = 4;
-            break;
-          case 2:
-            baseAlignment = 8;
-            break;
-          case 3:
-            baseAlignment = 16;
-            break;
-          case 4:
-            baseAlignment = 16;
-            break;
-          case 5:
-            baseAlignment = 16;
-            break;
-          case 6:
-            baseAlignment = 16;
-            break;
-          default:
-            throw new Error(`unsupported data length: ${data.length}`);
-        }
-
-        if (preLength === 5 || preLength === 6) {
-          baseAlignment = 16;
-        }
-        if (baseAlignment > maxAlignmentOfField) {
-          maxAlignmentOfField = baseAlignment;
-        }
+        const baseAlignment = data.length <= 2 ? data.length * 4 : 16;
         currentOffset = Math.ceil(currentOffset / baseAlignment) * baseAlignment;
-        preLength = data.length;
         offsets.push(currentOffset);
-        currentOffset += data.length * 4;
+        // When data.length > 4, the uniform variable is of type array<vec4<i32|u32|f32>,N>, where N =
+        // Math.ceil(data.length / 4) and SizeOf(vec4<i32|u32|f32>) = 16. The total byte length is N *
+        // SizeOf(vec4<i32|u32|f32>).
+        currentOffset += data.length > 4 ? Math.ceil(data.length / 4) * 16 : data.length * 4;
       });
 
+      // Meet alignment of struct here: https://www.w3.org/TR/WGSL/#alignment-and-size. For simplicity, set
+      // maxAlignmentOfField to 16 since the underlying buffer has been rounded up to 16.
+      const maxAlignmentOfField = 16;
       currentOffset = Math.ceil(currentOffset / maxAlignmentOfField) * maxAlignmentOfField;
       const arrayBuffer = new ArrayBuffer(currentOffset);
       programUniforms.forEach((v, i) => {
@@ -413,6 +376,7 @@ export class WebGpuBackend {
     if (!artifact) {
       artifact = this.programManager.build(program, normalizedDispatchGroup);
       this.programManager.setArtifact(key, artifact);
+      LOG_DEBUG('info', () => `[artifact] key: ${key}, programName: ${program.name}`);
     }
 
     LOG_DEBUG(

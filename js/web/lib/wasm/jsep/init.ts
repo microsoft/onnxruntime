@@ -130,65 +130,76 @@ class ComputeContextImpl implements ComputeContext {
   }
 }
 
-export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
-  const init = module.jsepInit;
-  if (init && navigator.gpu) {
-    if (!env.wasm.simd) {
-      throw new Error(
-          'Not supported for WebGPU=ON and SIMD=OFF. Please set `env.wasm.simd` to true when using WebGPU EP');
-    }
-    const backend = new WebGpuBackend();
-    await backend.initialize(env);
-
-    init(
-        // backend
-        backend,
-
-        // jsepAlloc()
-        (size: number) => backend.alloc(size),
-
-        // jsepFree()
-        (ptr: number) => backend.free(ptr),
-
-        // jsepCopy(src, dst, size, isSourceGpu)
-        (src: number, dst: number, size: number, isSourceGpu = false) => {
-          if (isSourceGpu) {
-            LOG_DEBUG('verbose', () => `[WebGPU] jsepCopyGpuToGpu: src=${src}, dst=${dst}, size=${size}`);
-            backend.memcpy(src, dst);
-          } else {
-            LOG_DEBUG('verbose', () => `[WebGPU] jsepCopyCpuToGpu: dataOffset=${src}, gpuDataId=${dst}, size=${size}`);
-            const data = module.HEAPU8.subarray(src, src + size);
-            backend.upload(dst, data);
-          }
-        },
-
-        // jsepCopyAsync(src, dst, size)
-        async(gpuDataId: number, dataOffset: number, size: number):
-            Promise<void> => {
-              LOG_DEBUG(
-                  'verbose',
-                  () => `[WebGPU] jsepCopyGpuToCpu: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
-
-              await backend.download(gpuDataId, () => module.HEAPU8.subarray(dataOffset, dataOffset + size));
-            },
-
-        // jsepCreateKernel
-        (name: string, kernel: number, attribute: unknown) => backend.createKernel(
-            name, kernel, attribute,
-            env.debug || env.webgpu.profilingMode === 'default' ? module.UTF8ToString(module._JsepGetNodeName(kernel)) :
-                                                                  `${kernel}`),
-
-        // jsepReleaseKernel
-        (kernel: number) => backend.releaseKernel(kernel),
-
-        // jsepRun
-        (kernel: number, contextDataOffset: number, sessionHandle: number, errors: Array<Promise<string|null>>) => {
-          LOG_DEBUG(
-              'verbose',
-              () => `[WebGPU] jsepRun: sessionHandle=${sessionHandle}, kernel=${kernel}, contextDataOffset=${
-                  contextDataOffset}`);
-          const context = new ComputeContextImpl(module, backend, contextDataOffset);
-          return backend.computeKernel(kernel, context, errors);
-        });
+/**
+ * Initialize JSEP with WebGPU backend.
+ *
+ * This function will be called only once after the WebAssembly module is loaded and initialized ("_OrtInit" is called).
+ * This function expects:
+ *  - WebGPU is enabled in build (BUILD_DEFS.DISABLE_WEBGPU === false).
+ *  - WebGPU is available in current environment. (a valid GPUAdapter is passed in)
+ * If the WebAssembly module is not built with JSEP support, this function will throw an error. This will invalidate
+ * 'webgpu' backend.
+ *
+ * @param module - the ORT WebAssembly module
+ * @param env - the ORT environment variable (ort.env)
+ * @param gpuAdapter - the pre-created GPU adapter
+ */
+export const init = async(module: OrtWasmModule, env: Env, gpuAdapter: GPUAdapter): Promise<void> => {
+  const jsepInit = module.jsepInit;
+  if (!jsepInit) {
+    throw new Error('Failed to initialize JSEP. The WebAssembly module is not built with JSEP support.');
   }
+
+  const backend = new WebGpuBackend();
+  await backend.initialize(env, gpuAdapter);
+
+  jsepInit(
+      // backend
+      backend,
+
+      // jsepAlloc()
+      (size: number) => backend.alloc(size),
+
+      // jsepFree()
+      (ptr: number) => backend.free(ptr),
+
+      // jsepCopy(src, dst, size, isSourceGpu)
+      (src: number, dst: number, size: number, isSourceGpu = false) => {
+        if (isSourceGpu) {
+          LOG_DEBUG('verbose', () => `[WebGPU] jsepCopyGpuToGpu: src=${src}, dst=${dst}, size=${size}`);
+          backend.memcpy(src, dst);
+        } else {
+          LOG_DEBUG('verbose', () => `[WebGPU] jsepCopyCpuToGpu: dataOffset=${src}, gpuDataId=${dst}, size=${size}`);
+          const data = module.HEAPU8.subarray(src, src + size);
+          backend.upload(dst, data);
+        }
+      },
+
+      // jsepCopyAsync(src, dst, size)
+      async(gpuDataId: number, dataOffset: number, size: number):
+          Promise<void> => {
+            LOG_DEBUG(
+                'verbose',
+                () => `[WebGPU] jsepCopyGpuToCpu: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
+
+            await backend.download(gpuDataId, () => module.HEAPU8.subarray(dataOffset, dataOffset + size));
+          },
+
+      // jsepCreateKernel
+      (name: string, kernel: number, attribute: unknown) => backend.createKernel(
+          name, kernel, attribute,
+          env.debug || backend.isQueryEnabled() ? module.UTF8ToString(module._JsepGetNodeName(kernel)) : `${kernel}`),
+
+      // jsepReleaseKernel
+      (kernel: number) => backend.releaseKernel(kernel),
+
+      // jsepRun
+      (kernel: number, contextDataOffset: number, sessionHandle: number, errors: Array<Promise<string|null>>) => {
+        LOG_DEBUG(
+            'verbose',
+            () => `[WebGPU] jsepRun: sessionHandle=${sessionHandle}, kernel=${kernel}, contextDataOffset=${
+                contextDataOffset}`);
+        const context = new ComputeContextImpl(module, backend, contextDataOffset);
+        return backend.computeKernel(kernel, context, errors);
+      });
 };

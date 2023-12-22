@@ -24,6 +24,7 @@ from perf_utils import (
     memory_name,
     memory_over_time_name,
     model_title,
+    op_metrics_name,
     ort_provider_list,
     provider_list,
     second,
@@ -415,6 +416,7 @@ def main():
             specs_name,
             session_name,
             session_over_time_name,
+            op_metrics_name,
         ]
 
         table_results = {}
@@ -456,6 +458,11 @@ def main():
                 elif status_name in csv:
                     table_results[status_name] = pd.concat(
                         [table_results[status_name], get_status(table, model_group)], ignore_index=True
+                    )
+                elif op_metrics_name in csv:
+                    table = table.assign(Group=model_group)
+                    table_results[op_metrics_name] = pd.concat(
+                        [table_results[op_metrics_name], table], ignore_index=True
                     )
             os.chdir(result_file)
 
