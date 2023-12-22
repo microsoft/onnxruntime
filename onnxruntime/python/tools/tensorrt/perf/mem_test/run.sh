@@ -14,9 +14,7 @@ s) ORT_SOURCE=${OPTARG};;
 esac
 done
 
-ONNX_MODEL_TAR_URL="https://github.com/onnx/models/raw/main/archive/vision/classification/squeezenet/model/squeezenet1.0-7.tar.gz"
-MODEL_TAR_NAME="squeezenet1.0-7.tar.gz"
-ONNX_MODEL="squeezenet.onnx"
+ONNX_MODEL="/data/ep-perf-models/onnx-zoo-models/squeezenet1.0-7/squeezenet/model.onnx"
 ASAN_OPTIONS="protect_shadow_gap=0:new_delete_type_mismatch=0:log_path=asan.log"
 
 export LD_LIBRARY_PATH=${ORT_BINARY_PATH}
@@ -48,15 +46,11 @@ cp ../squeezenet_calibration.flatbuffers .
 
 cmake ..
 make -j
-wget ${ONNX_MODEL_TAR_URL} -O squeezenet1.0-7.tar.gz
-tar -xzf ${MODEL_TAR_NAME} --strip-components=1
-mv model.onnx ${ONNX_MODEL}
-rm ${MODEL_TAR_NAME}
 mkdir result
 
 # Run valgrind
 echo $(date +"%Y-%m-%d %H:%M:%S") '[valgrind] Starting memcheck with' ${ONNX_MODEL}
-valgrind --leak-check=full --show-leak-kinds=all --log-file=valgrind.log ${ORT_SOURCE}/build/Linux/Release/onnxruntime_perf_test -e tensorrt -r 1 ${ONNX_MODEL}
+valgrind--leak-check=full --show-leak-kinds=definite --max-threads=3000 --num-callers=20 --keep-debuginfo=yes --log-file=valgrind.log ${ORT_SOURCE}/build/Linux/Release/onnxruntime_perf_test -e tensorrt -r 1 ${ONNX_MODEL}
 echo $(date +"%Y-%m-%d %H:%M:%S") '[valgrind] Analyzing valgrind log'
 
 found_leak_summary=false

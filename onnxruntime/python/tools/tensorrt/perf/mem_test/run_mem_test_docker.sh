@@ -24,4 +24,4 @@ then
     BUILD_ORT_LATEST="true"
 fi
 
-docker run --rm --gpus all -v $MEM_TEST_DIR:$DOCKER_MEM_TEST_DIR $DOCKER_IMAGE /bin/bash $DOCKER_MEM_TEST_DIR'run.sh' -p $DOCKER_MEM_TEST_DIR -o $DOCKER_ORT_LIBS -s $DOCKER_ORT_SOURCE -l $BUILD_ORT_LATEST
+docker run --rm --gpus all -v $MEM_TEST_DIR:$DOCKER_MEM_TEST_DIR $DOCKER_IMAGE /bin/bash $DOCKER_MEM_TEST_DIR'run.sh' -p $DOCKER_MEM_TEST_DIR -o $DOCKER_ORT_LIBS -s $DOCKER_ORT_SOURCE -l $BUILD_ORT_LATEST -v /data/ep-perf-models:/data/ep-perf-models

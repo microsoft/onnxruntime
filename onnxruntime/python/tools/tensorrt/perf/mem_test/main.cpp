@@ -135,7 +135,7 @@ void run_ort_trt() {
 
   session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
 
-  const char* model_path = "squeezenet.onnx";
+  const char* model_path = "/data/ep-perf-models/onnx-zoo-models/squeezenet1.0-7/squeezenet/model.onnx";
 
   Ort::ThrowOnError(api.CreateTensorRTProviderOptions(&tensorrt_options));
   std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(
