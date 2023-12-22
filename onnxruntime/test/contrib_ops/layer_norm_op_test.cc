@@ -83,7 +83,7 @@ TEST(LayerNormTest, LayerNorm_BFloat16Input) {
   test.AddInput<BFloat16>("x", dims, ToBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f}));
   test.AddInput<BFloat16>("gamma", {3}, ToBFloat16({1.0f, 1.0f, 1.0f}));
   test.AddOutput<BFloat16>("output", dims, ToBFloat16({-1.2247f, 0.0f, 1.2247f, -1.2247f, 0.0f, 1.2247f}));
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
 }
 
 TEST(LayerNormTest, LayerNorm_Scale) {
