@@ -124,7 +124,8 @@ export const parseConvTransposeAttributes = (attributes: Record<string, unknown>
     pads,
     strides,
     wIsConst,
-    ...activationAttributes
+    ...activationAttributes,
+    cacheKey: `${attributes.format};${activationAttributes.activation};`
   };
 };
 

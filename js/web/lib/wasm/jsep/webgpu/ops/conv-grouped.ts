@@ -103,7 +103,7 @@ export const createGroupedConvProgramInfo =
   }`;
       return {
         name: 'GroupedConv',
-        shaderCache: {hint: `${isChannelLast};${attributes.activation}`, inputDependencies},
+        shaderCache: {hint: attributes.cacheKey, inputDependencies},
         getRunData: () => ({
           outputs: [{
             dims: squeezeOutputShapeFunction ? squeezeOutputShapeFunction(outputShape) : outputShape,

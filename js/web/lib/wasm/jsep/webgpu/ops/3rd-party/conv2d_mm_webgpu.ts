@@ -244,8 +244,8 @@ export const createConv2DMatMulProgramInfo =
       return {
         name: 'Conv2DMatMul',
         shaderCache: {
-          hint: `${attributes.format};${attributes.activation};${innerElementSize};${isVec4};${fitAOuter};${
-              fitBOuter};${fitInner};${tileAOuter};${tileBOuter};${tileInner}`,
+          hint: `${attributes.cacheKey};${innerElementSize};${isVec4};${fitAOuter};${fitBOuter};${fitInner};${
+              tileAOuter};${tileBOuter};${tileInner}`,
           inputDependencies
         },
         getRunData: () => ({

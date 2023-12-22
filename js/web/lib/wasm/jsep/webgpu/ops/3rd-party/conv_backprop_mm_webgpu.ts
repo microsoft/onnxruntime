@@ -237,10 +237,8 @@ export const createConv2DTransposeMatMulProgramInfo =
 
       return {
         name: 'Conv2DTransposeMatMul',
-        shaderCache: {
-          hint: `${attributes.format};${attributes.activation};${elementsPerThread};${workGroupSize}`,
-          inputDependencies
-        },
+        shaderCache:
+            {hint: `${attributes.cacheKey};${elementsPerThread};${workGroupSize};${isVec4}`, inputDependencies},
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
           dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]},
