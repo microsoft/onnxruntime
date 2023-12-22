@@ -31,6 +31,7 @@ const createConvTranspose2DOpProgramShaderSource =
       const rowDim = isChannelsLast ? 1 : 2;
       const colDim = isChannelsLast ? 2 : 3;
       const channelDim = isChannelsLast ? 3 : 1;
+      const workPerThread = isVec4 ? 2 : 1;
 
       let declareFunctions = `
   fn setOutputAtIndex(flatIndex : u32, value : ${isVec4 ? `vec4<${dataType}>` : dataType}) {
@@ -54,15 +55,15 @@ const createConvTranspose2DOpProgramShaderSource =
       const codeSnippet4 = `{
         let batch: u32 = ${is1DimensionDispatch ? 'global_id.z' : 'workgroup_id.z'} / uniforms.result_shape[1];
         let r = ${is1DimensionDispatch ? 'global_id.z' : 'workgroup_id.z'} % uniforms.result_shape[1];
-        let c = ${is1DimensionDispatch ? 'global_id.y' : 'workgroup_id.y'} * uniforms.workPerThread;
+        let c = ${is1DimensionDispatch ? 'global_id.y' : 'workgroup_id.y'} * ${workPerThread};
         let d1: u32 = ${is1DimensionDispatch ? 'global_id.x' : 'workgroup_id.x'} * 4;
 
         let dyCorner = vec2<i32>(i32(r), i32(c)) - vec2<i32>(uniforms.pads);
 
         // Convolve dy(?, ?, d2) with w(:, :, d1, d2) to compute dx(xR, xC, d1).
         // ? = to be determined. : = across all values in that axis.
-        var dotProd: array<vec4<${dataType}>, uniforms.workPerThread>;
-        for (var i = 0; i < uniforms.workPerThread; i++) {
+        var dotProd: array<vec4<${dataType}>, ${workPerThread}>;
+        for (var i = 0; i < ${workPerThread}; i++) {
           dotProd[i] = vec4<${dataType}>(0.0);
         }
         for (var wR: u32 = 0; wR < uniforms.filterDims[0]; wR = wR + 1) {
@@ -150,7 +151,7 @@ const createConvTranspose2DOpProgramShaderSource =
           }
         }
 
-        for (var i: u32 = 0; i < uniforms.workPerThread; i = i + 1) {
+        for (var i: u32 = 0; i < ${workPerThread}; i = i + 1) {
           let value = dotProd[i] + ${hasBias ? 'bias[c+i]' : '0.0'};
           ${output.set('batch', 'r', 'c + i', 'd1', 'value')};
         }
@@ -260,7 +261,6 @@ export const createConvTranspose2DProgramInfo =
       ];
 
       const isVec4 = false;
-      const workPerThread = isVec4 ? 2 : 1;
       const group = attributes.group;
       const wShape = inputs[1].dims;
       const inputChannelsPerGroup = wShape[0] / group;
@@ -269,9 +269,8 @@ export const createConvTranspose2DProgramInfo =
       const programUniforms: ProgramUniform[] = [
         {type: 'int32', data: outputSize}, {type: 'uint32', data: strides}, {type: 'uint32', data: filterDims},
         {type: 'uint32', data: dilations}, {type: 'uint32', data: effectiveFilterDims}, {type: 'int32', data: pads},
-        {type: 'int32', data: workPerThread}, {type: 'uint32', data: inputChannelsPerGroup},
-        {type: 'uint32', data: outputChannelsPerGroup}, ...createTensorShapeVariables(inputs[0].dims),
-        ...createTensorShapeVariables(inputs[1].dims)
+        {type: 'uint32', data: inputChannelsPerGroup}, {type: 'uint32', data: outputChannelsPerGroup},
+        ...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(inputs[1].dims)
       ];
       if (hasBias) {
         programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
@@ -283,8 +282,8 @@ export const createConvTranspose2DProgramInfo =
         {name: 'filterDims', type: 'u32', length: filterDims.length},
         {name: 'dilations', type: 'u32', length: filterDims.length},
         {name: 'effectiveFilterDims', type: 'u32', length: effectiveFilterDims.length},
-        {name: 'pads', type: 'i32', length: pads.length}, {name: 'workPerThread', type: 'i32'},
-        {name: 'inputChannelsPerGroup', type: 'u32'}, {name: 'outputChannelsPerGroup', type: 'u32'}
+        {name: 'pads', type: 'i32', length: pads.length}, {name: 'inputChannelsPerGroup', type: 'u32'},
+        {name: 'outputChannelsPerGroup', type: 'u32'}
       ];
       const is1DimensionDispatch = dispatch[1] === 1 && dispatch[2] === 1;
       return {
