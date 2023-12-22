@@ -514,7 +514,7 @@ export const createMatmulProgramInfo =
       return {
         name: 'MatMul',
         shaderCache: {
-          hint: `${elementsPerThread};${activationAttributes.activation};${isVec4};${hasBias};${isChannelsLast}`,
+          hint: `${elementsPerThread};${activationAttributes.activation};${isVec4};${isChannelsLast}`,
           inputDependencies
         },
         getRunData: () => ({

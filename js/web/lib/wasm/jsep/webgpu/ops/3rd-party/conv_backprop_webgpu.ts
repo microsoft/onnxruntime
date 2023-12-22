@@ -289,7 +289,7 @@ export const createConvTranspose2DProgramInfo =
       const is1DimensionDispatch = dispatch[1] === 1 && dispatch[2] === 1;
       return {
         name: 'ConvTranspose2D',
-        shaderCache: {hint: `${isChannelsLast};${hasBias};${isVec4}`, inputDependencies},
+        shaderCache: {hint: `${isChannelsLast};${isVec4}`, inputDependencies},
         getRunData: () => ({
           dispatchGroup: {x: dispatch[0], y: dispatch[1], z: dispatch[2]},
           outputs: [{
