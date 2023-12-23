@@ -6,7 +6,6 @@
 #include <iostream>
 #include <vector>
 #include <onnxruntime_cxx_api.h>
-#include <tensorrt_provider_factory.h>
 #include <tensorrt_provider_options.h>
 
 void run_ort_trt2() {
