@@ -372,32 +372,38 @@ namespace Dml::GraphDescBuilder
                             dmlFusedNodeInputIndex < isConstGpuGraphInputCount &&
                             isConstGpuGraphInput[dmlFusedNodeInputIndex])
                         {
+                            // This is a highly inefficient approach to generating constant nodes.  It duplicates constant data 
+                            // across the graph input as well as every consumer's unique constant node.  However it is currently 
+                            // only used for small inputs.
+                            uint32_t c_maxConstNodeDataSize = 8;
+
+                            ComPtr<OnnxTensorWrapper> constantInput = constantCpuGraphInputGetter(arg->Name());
+
                             auto& operatorGraphInputNode = graphNodeCreateInfo.nodesAsOperatorDesc[operatorGraphInputEdge.ToNodeIndex];
                             std::vector<DmlBufferTensorDesc*> toNodeInputTensorDescs = operatorGraphInputNode->GetInputTensors();
                             DmlBufferTensorDesc* tensorDesc = toNodeInputTensorDescs[operatorGraphInputEdge.ToNodeInputIndex];
 
-                            ComPtr<OnnxTensorWrapper> constantInput = constantCpuGraphInputGetter(arg->Name());
-
-                            if (constantInput)
+                            if (constantInput && tensorDesc->totalTensorSizeInBytes < c_maxConstNodeDataSize)
                             {
+                                assert(((constantInput->GetTensorByteSize() + 3) & ~3) >= tensorDesc->totalTensorSizeInBytes);
+                                size_t minimumConstantSize = std::min(constantInput->GetTensorByteSize(), tensorDesc->totalTensorSizeInBytes);
+
                                 std::vector<uint8_t> tensorData;
                                 tensorData.insert(
-                                    tensorData.begin(),
-                                    static_cast<const uint8_t*>(constantInput->GetData()),
-                                    static_cast<const uint8_t*>(constantInput->GetData()) + GetElementSize(tensorDesc->dataType));
-                                if (tensorData.size() <= tensorDesc.TotalTensorSizeInBytes)
-                                {
-                                    NodeInfo nodeInfo = {};
-                                    nodeInfo.nodeDef = std::move(tensorData);
-                                    graphNodes.push_back(std::move(nodeInfo));
+                                    tensorData.begin(), 
+                                    static_cast<const uint8_t*>(constantInput->GetData()), 
+                                    static_cast<const uint8_t*>(constantInput->GetData()) + minimumConstantSize);
 
-                                    DML_INTERMEDIATE_GRAPH_EDGE_DESC edge = {};
-                                    edge.FromNodeIndex = static_cast<UINT>(graphNodes.size() - 1);
-                                    edge.FromNodeOutputIndex = 0;
-                                    edge.ToNodeIndex = mainGraphNodeIndex;
-                                    edge.ToNodeInputIndex = operatorGraphInputEdge.ToNodeInputIndex;
-                                    graphIntermediateEdges.push_back(edge);
-                                }
+                                NodeInfo nodeInfo = {};
+                                nodeInfo.nodeDef = std::move(tensorData);
+                                graphNodes.push_back(std::move(nodeInfo));
+
+                                DML_INTERMEDIATE_GRAPH_EDGE_DESC edge = {};
+                                edge.FromNodeIndex = static_cast<UINT>(graphNodes.size() - 1);
+                                edge.FromNodeOutputIndex = 0;
+                                edge.ToNodeIndex = mainGraphNodeIndex;
+                                edge.ToNodeInputIndex = operatorGraphInputEdge.ToNodeInputIndex;
+                                graphIntermediateEdges.push_back(edge);
                             }
                             else
                             {
