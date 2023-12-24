@@ -48,6 +48,12 @@
 #include "cub/util_type.cuh"
 #endif
 
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
+#include "core/providers/cuda/cu_inc/binary_elementwise_impl.cuh"
+#include "core/providers/cuda/math/binary_elementwise_ops_impl_functors.cuh"
+
+using namespace onnxruntime::cuda;
+
 namespace ort_fastertransformer {
 
 static constexpr int WARP_SIZE = 32;
@@ -296,6 +302,7 @@ __launch_bounds__(WARPS_PER_CTA* WARP_SIZE) __global__
   int start_col = first_elt_read_by_thread;
   static constexpr int COLS_PER_GROUP_LDG = ELTS_PER_LDG * THREADS_PER_ROW;
 
+  T output_row_sum = T(0.f);
   for (int k_idx = 0; k_idx < k; ++k_idx) {
     // First, each thread does the local argmax
     float max_val = row_chunk[0];
@@ -336,8 +343,16 @@ __launch_bounds__(WARPS_PER_CTA* WARP_SIZE) __global__
       // single) thread per row of the input/output matrices.
       const int idx = k * thread_row + k_idx;
       output[idx] = T(max_val);
+      output_row_sum += T(max_val);
       indices[idx] = should_process_row ? expert : NUM_EXPERTS;
       source_rows[idx] = k_idx * num_rows + thread_row;
+
+      if (NORMALIZE_ROUTING_WEIGHTS && k_idx == k - 1) {
+#pragma unroll
+        for (int ki = 0; ki < k; ++ki) {
+          output[idx - ki] /= output_row_sum;
+        }
+      }
     }
 
     // Finally, we clear the value in the thread with the current max if there is another iteration to run.
@@ -521,9 +536,8 @@ __global__ void dispatch_activations_kernel(int64_t* total_rows_before_expert, i
 }
 
 template <typename T, typename WeightType, typename Enable>
-CutlassMoeFCRunner<T, WeightType, Enable>::CutlassMoeFCRunner(int sm_version) {
-  total_past_rows_ = 0;
-  total_covered_rows_ = 0;
+CutlassMoeFCRunner<T, WeightType, Enable>::CutlassMoeFCRunner(int sm_version, bool has_fc3)
+    : has_fc3_(has_fc3), total_past_rows_(0), total_covered_rows_(0) {
   moe_gemm_runner_.initialize(sm_version);
 }
 
@@ -531,6 +545,9 @@ template <typename T, typename WeightType, typename Enable>
 size_t CutlassMoeFCRunner<T, WeightType, Enable>::getWorkspaceSize(int num_rows, const int hidden_size,
                                                                    const int inter_size, int num_experts,
                                                                    int k) {
+  // bugbug: check if sharded moe works with k > 1
+  total_covered_rows_ = k * num_rows;
+
   const int buf_size = static_cast<int>(pad_to_multiple_of_16(k * num_rows * hidden_size));
   const int interbuf_size = static_cast<int>(pad_to_multiple_of_16(k * num_rows * inter_size));
   const int padded_experts = static_cast<int>(pad_to_multiple_of_16(num_experts));
@@ -548,7 +565,7 @@ size_t CutlassMoeFCRunner<T, WeightType, Enable>::getWorkspaceSize(int num_rows,
   total_ws_bytes += buf_size * sizeof(T);                    // permuted_data
   total_ws_bytes += padded_experts * sizeof(int64_t);        // Hold total_rows_before_expert_
   total_ws_bytes += num_softmax_outs * sizeof(T);
-  const int bytes_for_fc1_result = interbuf_size * sizeof(T);
+  const int bytes_for_fc1_result = has_fc3_ ? 2 * interbuf_size * sizeof(T) : interbuf_size * sizeof(T);
   const int sorter_ws_size_bytes = static_cast<int>(pad_to_multiple_of_16(sorter_.getWorkspaceSize(num_rows)));
   sorter_.update_num_experts(num_experts);
 
@@ -578,7 +595,12 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::configure_ws_ptrs(char* ws_ptr, 
 
   total_rows_before_expert_ = (int64_t*)(permuted_data_ + buf_size);
 
-  fc1_result_ = (T*)(total_rows_before_expert_ + padded_experts);
+  if (has_fc3_) {
+    fc3_result_ = (T*)(total_rows_before_expert_ + padded_experts);
+    fc1_result_ = (T*)(fc3_result_ + interbuf_size);
+  } else {
+    fc1_result_ = (T*)(total_rows_before_expert_ + padded_experts);
+  }
 
   const bool is_pow_2 = (num_experts != 0) && ((num_experts & (num_experts - 1)) == 0);
   if (!is_pow_2 || num_experts > 256) {
@@ -591,11 +613,12 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::configure_ws_ptrs(char* ws_ptr, 
 template <typename T, typename WeightType, typename Enable>
 void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
     const T* input_activations, const T* gating_output, const WeightType* fc1_expert_weights, const T* fc1_scales,
-    const T* fc1_expert_biases, ActivationType fc1_activation_type, const WeightType* fc2_expert_weights,
-    const T* fc2_scales, int num_rows, const int hidden_size, const int inter_size, int num_experts,
-    int local_num_experts, int local_experts_start_index, int k, char* workspace_ptr, T* fc2_result,
-    const bool* finished, int active_rows, T* expert_scales, int* expanded_source_row_to_expanded_dest_row,
-    int* expert_for_source_row, cudaStream_t stream) {
+    const T* fc1_expert_biases, ActivationType fc1_activation_type, const WeightType* fc3_expert_weights,
+    const T* fc3_scales, const T* fc3_expert_biases, const WeightType* fc2_expert_weights, const T* fc2_scales,
+    int num_rows, const int hidden_size, const int inter_size, int num_experts, int local_num_experts,
+    int local_experts_start_index, int k, char* workspace_ptr, T* fc2_result, const bool* finished, int active_rows,
+    T* expert_scales, int* expanded_source_row_to_expanded_dest_row, int* expert_for_source_row,
+    cudaStream_t stream) {
   static constexpr bool scales_required =
       std::is_same<WeightType, uint8_t>::value || std::is_same<WeightType, cutlass::uint4b_t>::value;
 
@@ -641,7 +664,34 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
                                      expanded_active_expert_rows, inter_size, hidden_size,
                                      local_num_experts, fc1_activation_type, stream);
 
-  //BinaryElementWiseImpl
+  if (has_fc3_) {
+    if (scales_required) {
+      if (fc3_scales == nullptr) {
+        ORT_THROW("[FT Error][Run MoE FC] Scales expected but scale for third matmul is a null pointer");
+      }
+    } else {
+      if (fc3_scales != nullptr) {
+        ORT_THROW("[FT Error][Run MoE FC] Scales are ignored for fp32/fp16/bf16 but received scale for FC3");
+      }
+    }
+    if (fc3_expert_weights == nullptr) {
+      ORT_THROW("[FT Error][Run MoE FC] FC3 weights are null");
+    }
+    moe_gemm_runner_.moe_gemm(permuted_data_ + total_past_rows_ * hidden_size,
+                              fc3_expert_weights, fc3_scales, fc3_expert_biases,
+                              fc3_result_ + total_past_rows_ * inter_size,
+                              total_rows_before_expert_ + local_experts_start_index,
+                              expanded_active_expert_rows, inter_size, hidden_size,
+                              local_num_experts, stream);
+
+    int output_rank_or_simple_broadcast = static_cast<int>(SimpleBroadcast::NoBroadcast);
+    fast_divmod fdm;
+    BinaryElementWiseImpl(stream, output_rank_or_simple_broadcast, nullptr,
+                          fc1_result_ + total_past_rows_ * inter_size, nullptr,
+                          fc3_result_ + total_past_rows_ * inter_size, nullptr,
+                          fdm, fdm, fc1_result_ + total_past_rows_ * inter_size,
+                          OP_Mul<T, T, T>(), static_cast<size_t>(total_covered_rows_ * inter_size));
+  }
 
   moe_gemm_runner_.moe_gemm(fc1_result_ + total_past_rows_ * inter_size,
                             fc2_expert_weights, fc2_scales,
@@ -653,14 +703,16 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
 template <typename T, typename WeightType, typename Enable>
 void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
     const T* input_activations, const T* gating_output, const WeightType* fc1_expert_weights, const T* fc1_scales,
-    const T* fc1_expert_biases, ActivationType fc1_activation_type, const WeightType* fc2_expert_weights,
-    const T* fc2_scales, int num_rows, const int hidden_size, const int inter_size, int num_experts,
-    int local_num_experts, int local_experts_start_index, int k, char* workspace_ptr, T* fc2_result, T* expert_scales,
+    const T* fc1_expert_biases, ActivationType fc1_activation_type, const WeightType* fc3_expert_weights,
+    const T* fc3_scales, const T* fc3_expert_biases,const WeightType* fc2_expert_weights, const T* fc2_scales,
+    int num_rows, const int hidden_size, const int inter_size, int num_experts, int local_num_experts,
+    int local_experts_start_index, int k, char* workspace_ptr, T* fc2_result, T* expert_scales,
     int* expanded_source_row_to_expanded_dest_row, int* expert_for_source_row, cudaStream_t stream) {
   run_moe_fc(input_activations, gating_output, fc1_expert_weights, fc1_scales, fc1_expert_biases, fc1_activation_type,
-             fc2_expert_weights, fc2_scales, num_rows, hidden_size, inter_size, num_experts, local_num_experts,
-             local_experts_start_index, k, workspace_ptr, fc2_result, nullptr, num_rows, expert_scales,
-             expanded_source_row_to_expanded_dest_row, expert_for_source_row, stream);
+             fc3_expert_weights, fc3_scales, fc3_expert_biases, fc2_expert_weights, fc2_scales, num_rows, hidden_size,
+             inter_size, num_experts, local_num_experts, local_experts_start_index, k, workspace_ptr, fc2_result,
+             nullptr, num_rows, expert_scales, expanded_source_row_to_expanded_dest_row, expert_for_source_row,
+             stream);
 }
 
 template <typename T, typename WeightType, typename Enable>

@@ -55,6 +55,7 @@ def create_moe_onnx_graph(
     fc2_experts_weights,
     fc1_experts_bias,
     fc2_experts_bias,
+    fc3_experts_weights,
     topk,
 ):
     nodes = [
@@ -67,6 +68,7 @@ def create_moe_onnx_graph(
                 "fc2_experts_weights",
                 "fc1_experts_bias",
                 "fc2_experts_bias",
+                "fc3_experts_weights",
             ],
             ["output"],
             "MoE_0",
@@ -78,6 +80,7 @@ def create_moe_onnx_graph(
 
     fc1_shape = [num_experts, hidden_size, inter_size]
     fc2_shape = [num_experts, inter_size, hidden_size]
+    fc3_shape = [num_experts, hidden_size, inter_size]
 
     torch_type = torch.float16 if ORT_DTYPE == TensorProto.FLOAT16 else torch.float32
 
@@ -94,6 +97,13 @@ def create_moe_onnx_graph(
             ORT_DTYPE,
             fc2_shape,
             fc2_experts_weights.to(torch_type).flatten().tolist(),
+            raw=False,
+        ),
+        helper.make_tensor(
+            "fc3_experts_weights",
+            ORT_DTYPE,
+            fc3_shape,
+            fc3_experts_weights.to(torch_type).flatten().tolist(),
             raw=False,
         ),
     ]
@@ -160,9 +170,9 @@ ACT2FN = ClassInstantier(ACT2CLS)
 class MixtralConfig:
     def __init__(
         self,
-        hidden_size=1024,
-        intermediate_size=2048,
-        num_hidden_layers=32,
+        hidden_size=512,
+        intermediate_size=1024,
+        num_hidden_layers=16,
         num_attention_heads=32,
         num_key_value_heads=8,
         hidden_act="silu",
@@ -209,9 +219,8 @@ class MixtralBLockSparseTop2MLP(nn.Module):
 
     def forward(self, hidden_states):
         current_hidden_states_1 = self.act_fn(self.w1(hidden_states))
-        # bugbug: diff from ORT
-        #current_hidden_states_3 = self.w3(hidden_states)
-        current_hidden_states = current_hidden_states_1 # * current_hidden_states_3
+        current_hidden_states_3 = self.w3(hidden_states)
+        current_hidden_states = current_hidden_states_1 * current_hidden_states_3
         current_hidden_states = self.w2(current_hidden_states)
         return current_hidden_states
 
@@ -249,9 +258,7 @@ class MixtralSparseMoeBlock(nn.Module):
 
         moe_experts_weight1 = torch.stack(w1_list, dim=0)
         moe_experts_weight2 = torch.stack(w2_list, dim=0)
-        print("moe_experts_weight1 shape: ", moe_experts_weight1.shape)
-        print("moe_experts_weight2 shape: ", moe_experts_weight2.shape)
-        #moe_experts_weight3 = torch.stack(w3_list, dim=0)
+        moe_experts_weight3 = torch.stack(w3_list, dim=0)
         moe_experts_bias1 = torch.zeros(self.num_experts, self.ffn_dim)
         moe_experts_bias2 = torch.zeros(self.num_experts, self.hidden_dim)
         #moe_experts_bias3 = torch.zeros(self.num_experts, self.ffn_dim)
@@ -265,6 +272,7 @@ class MixtralSparseMoeBlock(nn.Module):
             moe_experts_weight2,
             moe_experts_bias1,
             moe_experts_bias2,
+            moe_experts_weight3,
             self.top_k,
         )
 
@@ -294,7 +302,10 @@ class MixtralSparseMoeBlock(nn.Module):
         routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
         routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
         # bugbug: diff from ORT
-        #routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
+        print(routing_weights.shape)
+        # print(routing_weights)
+        # print(routing_weights.sum(dim=-1, keepdim=True))
+        routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
         # we cast back to the input dtype
         routing_weights = routing_weights.to(hidden_states.dtype)
 
@@ -348,7 +359,7 @@ class MixtralSparseMoeBlock(nn.Module):
         return torch.tensor(ort_output).reshape(batch_size, sequence_length, -1) #, router_logits
 
 batch_size = 2
-sequence_length = 128
+sequence_length = 16
 config = MixtralConfig()
 mixtral_moe = MixtralSparseMoeBlock(config, batch_size, sequence_length)
 hidden_state = torch.randn(batch_size, sequence_length, config.hidden_size)
@@ -357,4 +368,4 @@ ort_output = mixtral_moe.ort_forward(hidden_state)
 print(torch_output.shape)
 print(ort_output.shape)
 print("parity: ", torch.allclose(torch_output, ort_output, rtol=1e-04, atol=1e-04))
-
+print(torch_output - ort_output)

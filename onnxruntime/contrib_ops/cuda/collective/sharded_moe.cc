@@ -70,7 +70,7 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(moe_params.num_experts % nccl_->Size() == 0,
                     "num_experts should be divisible by world_size");
 
-  ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaT> moe_runner(sm);
+  ort_fastertransformer::CutlassMoeFCRunner<CudaT, CudaT> moe_runner(sm, false);
 
   size_t ws_size =
       moe_runner.getWorkspaceSize(static_cast<int>(moe_params.num_rows), static_cast<int>(moe_params.hidden_size),
@@ -104,7 +104,11 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
                         fc1_experts_bias_optional == nullptr
                             ? nullptr
                             : reinterpret_cast<const CudaT*>(fc1_experts_bias_optional->template Data<T>()),
-                        activation_type_, reinterpret_cast<const CudaT*>(fc2_experts_weights->template Data<T>()),
+                        activation_type_,
+                        nullptr, // fc3_experts_weights_optional
+                        nullptr, // fc3_scales_ptr
+                        nullptr, // fc3_experts_bias_optional
+                        reinterpret_cast<const CudaT*>(fc2_experts_weights->template Data<T>()),
                         std::move(fc2_scales_ptr), static_cast<int>(moe_params.num_rows),
                         static_cast<int>(moe_params.hidden_size),
                         static_cast<int>(moe_params.inter_size), static_cast<int>(moe_params.num_experts),

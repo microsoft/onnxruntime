@@ -107,12 +107,13 @@ template <typename T,          /*The type used for activations/scales/compute*/
           typename Enable = void>
 class CutlassMoeFCRunner {
  public:
-  CutlassMoeFCRunner(int sm_version);
+  CutlassMoeFCRunner(int sm_version, bool has_fc3);
 
   size_t getWorkspaceSize(int num_rows, int hidden_size, int inter_size, int num_experts, int k);
 
   void run_moe_fc(const T* input_activations, const T* gating_output, const WeightType* fc1_expert_weights,
                   const T* fc1_scales, const T* fc1_expert_biases, ActivationType fc1_activation_type,
+                  const WeightType* fc3_expert_weights, const T* fc3_scales, const T* fc3_expert_biases,
                   const WeightType* fc2_expert_weights, const T* fc2_scales, int num_rows, int hidden_size,
                   int inter_size, int num_experts, int local_num_experts, int local_experts_start_index, int k,
                   char* workspace_ptr, T* fc2_result, T* expert_scales, int* expanded_source_row_to_expanded_dest_row,
@@ -120,6 +121,7 @@ class CutlassMoeFCRunner {
 
   void run_moe_fc(const T* input_activations, const T* gating_output, const WeightType* fc1_expert_weights,
                   const T* fc1_scales, const T* fc1_expert_biases, ActivationType fc1_activation_type,
+                  const WeightType* fc3_expert_weights, const T* fc3_scales, const T* fc3_expert_biases,
                   const WeightType* fc2_expert_weights, const T* fc2_scales, int num_rows, int hidden_size,
                   int inter_size, int num_experts, int local_num_experts, int local_experts_start_index, int k,
                   char* workspace_ptr, T* fc2_result, const bool* finished, int active_rows, T* expert_scales,
@@ -152,6 +154,9 @@ class CutlassMoeFCRunner {
   int64_t* total_rows_before_expert_;
 
   T* fc1_result_;
+  T* fc3_result_;
+
+  bool has_fc3_;
 
   // Cuda events
   contrib::cuda::AutoDestoryCudaEvent cuda_event_;
@@ -165,7 +170,7 @@ class CutlassMoeFCRunner {
 template <typename WeightType>
 class CutlassMoeFCRunner<float, WeightType, typename std::enable_if_t<!std::is_same<float, WeightType>::value>> {
  public:
-  CutlassMoeFCRunner(int sm_version);
+  CutlassMoeFCRunner(int sm_version, bool has_fc3);
 
   size_t getWorkspaceSize(int num_rows, int hidden_size, int inter_size, int num_experts, int k) {
     return 0;
