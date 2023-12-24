@@ -6394,3 +6394,61 @@ def test_conv_transpose_gradient_with_strides_padding_and_dilation(conv_algo_sea
 
     if conv_algo_search is not None:
         del os.environ["ORTMODULE_CONV_ALGO_SEARCH"]
+
+
+@pytest.mark.skip(
+    reason="This test fail because bert forward loss is nan in updated transformers lib, disable for now."
+)
+def test_bert_result_with_layerwise_recompute():
+    original_val = os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] if "ORTMODULE_MEMORY_OPT_LEVEL" in os.environ else None
+    # Create PyTorch model with dropout disabled.
+    pt_model = _get_bert_for_sequence_classification_model(
+        "cuda", is_training=True, hidden_dropout_prob=0.0, attention_probs_dropout_prob=0.0
+    )
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = "1"
+    ort_model_with_reompute = ORTModule(
+        copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="layerwise_recompute_test")
+    )
+
+    def run_step(model, x, y, z):
+        outputs = model(x, y, None, None, None, None, z)
+        loss = outputs[0]
+        loss.backward()
+        return outputs[0]
+
+    for _ in range(10):
+        x, y, z = _get_bert_for_sequence_classification_sample_data_with_random_shapes("cuda")
+
+        ort_p = run_step(ort_model, x, y, z)
+        ort_p_with_reompute = run_step(ort_model_with_reompute, x, y, z)
+
+        _test_helpers.assert_values_are_close(ort_p, ort_p_with_reompute, atol=1e-02)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, ort_model_with_reompute)
+
+    execution_mgr = ort_model_with_reompute._torch_module._execution_manager._training_manager
+    from onnxruntime.training.ortmodule._onnx_models import _get_onnx_file_name
+
+    # Keep the logic aligned with _graph_execution_manager.py
+    path = os.path.join(
+        execution_mgr._debug_options.save_onnx_models.path,
+        _get_onnx_file_name(
+            execution_mgr._debug_options.save_onnx_models.name_prefix, "execution_model", execution_mgr._export_mode
+        ),
+    )
+
+    onnx_model = onnx.load(path)
+    onnx_nodes = onnx_model.graph.node
+
+    recompute_nodes = 0
+    for node in onnx_nodes:
+        if "_recompute" in node.name:
+            recompute_nodes += 1
+
+    assert recompute_nodes > 0, "No Recompute nodes are found"
+
+    # Make sure environment variable is restored to its original value after the run is completed.
+    torch.cuda.synchronize()
+    if original_val is not None:
+        os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = original_val

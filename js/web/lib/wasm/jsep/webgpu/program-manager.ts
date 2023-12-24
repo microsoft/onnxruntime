@@ -115,7 +115,7 @@ export class ProgramManager {
             inputShapes += `input[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
           });
           let outputShapes = '';
-          inputTensorViews.forEach((value, i) => {
+          outputTensorViews.forEach((value, i) => {
             outputShapes += `output[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
           });
           // eslint-disable-next-line no-console

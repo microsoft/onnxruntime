@@ -26,18 +26,16 @@ namespace openvino_ep {
 GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string device_type_param,
                              const std::string version_param)
     : graph_viewer_(graph_viewer_param), device_type_(device_type_param) {
-  if (version_param == "V_2022_1") {
-    data_ops_ = new DataOps(graph_viewer_, V_2022_1, device_type_);
-  } else if (version_param == "V_2022_2") {
-    data_ops_ = new DataOps(graph_viewer_, V_2022_2, device_type_);
-  } else if (version_param == "V_2022_3") {
+  if (version_param == "V_2022_3") {
     data_ops_ = new DataOps(graph_viewer_, V_2022_3, device_type_);
   } else if (version_param == "V_2023_0") {
     data_ops_ = new DataOps(graph_viewer_, V_2023_0, device_type_);
   } else if (version_param == "V_2023_1") {
     data_ops_ = new DataOps(graph_viewer_, V_2023_1, device_type_);
+  } else if (version_param == "V_2023_2") {
+    data_ops_ = new DataOps(graph_viewer_, V_2023_2, device_type_);
   } else {
-    data_ops_ = new DataOps(graph_viewer_, V_2023_1, device_type_);
+    data_ops_ = new DataOps(graph_viewer_, V_2023_2, device_type_);
   }
 }
 

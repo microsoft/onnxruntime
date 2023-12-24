@@ -34,7 +34,7 @@ std::string NodeOptimizationPlanBase::GetMemorySavingSymbolicString() const {
     if (!saving_str.empty()) {
       saving_str += " + ";
     }
-    saving_str = "(" + GetTensorElemCountInSymbolicString(node, output_index) + " * " +
+    saving_str = "(" + GetActivationOutputDimParamString(output_index) + " * " +
                  std::to_string(byte_count_per_element) + " * " +
                  std::to_string(GetSaveRatio()) + ")";
   }

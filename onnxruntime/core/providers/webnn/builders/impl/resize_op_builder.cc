@@ -120,10 +120,14 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::vector<float> scales_hw;
   std::vector<int32_t> sizes_hw;
   std::vector<int32_t> axes;
-  const bool isNhwc = model_builder.GetPreferredLayout() == DataLayout::NHWC;
+  const bool is_nhwc = model_builder.GetPreferredLayout() == DataLayout::NHWC;
   if (input_defs.size() == 3) {  // Use scales.
     ORT_RETURN_IF_NOT(GetResizeScales(initializers, node, scales, logger), "Error getting resize scales");
-    scales_hw = {scales[2], scales[3]};
+    if (is_nhwc) {
+      scales_hw = {scales[1], scales[2]};
+    } else {
+      scales_hw = {scales[2], scales[3]};
+    }
     options.set("scales", emscripten::val::array(scales_hw));
   } else {  // We already checked number of inputs in IsOpSupportedImpl.
     std::vector<int64_t> output_sizes;
@@ -132,11 +136,15 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     std::transform(output_sizes.cbegin(), output_sizes.cend(),
                    std::back_inserter(sizes),
                    [](int64_t dim) -> int32_t { return SafeInt<int32_t>(dim); });
-    sizes_hw = {sizes[2], sizes[3]};
+    if (is_nhwc) {
+      sizes_hw = {sizes[1], sizes[2]};
+    } else {
+      sizes_hw = {sizes[2], sizes[3]};
+    }
     options.set("sizes", emscripten::val::array(sizes_hw));
   }
 
-  if (isNhwc) {
+  if (is_nhwc) {
     axes = {1, 2};
   } else {
     axes = {2, 3};
@@ -203,6 +211,7 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
       return false;
     }
 
+    const bool is_nhwc = node.Domain() == kMSInternalNHWCDomain;
     // We want to check if the scales or sizes are not trying to resize on N/C channels here.
     if (input_defs.size() == 3) {  // We are using scales.
       std::vector<float> scales;
@@ -210,7 +219,7 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
         return false;
 
       float scale_n = scales[0];
-      float scale_c = scales[1];
+      float scale_c = is_nhwc ? scales[3] : scales[1];
       if (scale_n != 1.0f || scale_c != 1.0f) {
         LOGS(logger, VERBOSE) << "Scales of N/C channel should be 1"
                               << "Resize of N/C channels are not supported"
@@ -220,8 +229,8 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
 
       // For now we only support upscale, so the scale_h and scale_w should be an integer >= 1.
       // TODO support ResizeBilinear.
-      float scale_h = scales[2];
-      float scale_w = scales[3];
+      float scale_h = is_nhwc ? scales[1] : scales[2];
+      float scale_w = is_nhwc ? scales[2] : scales[3];
 
       // Onnx spec requires scale to be a positive float, so we are not checking that here.
       if (roundf(scale_h) != scale_h) {
@@ -239,9 +248,8 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
       if (!GetResizeOutputSizes(initializers, node, output_sizes, logger))
         return false;
 
-      bool is_NHWC = input_shape[3] == output_sizes[3];
       auto output_size_n = output_sizes[0];
-      const int c_idx = is_NHWC ? 3 : 1;
+      const int c_idx = is_nhwc ? 3 : 1;
       if (output_size_n != input_shape[0] || output_sizes[c_idx] != input_shape[c_idx]) {
         LOGS(logger, VERBOSE) << "Output sizes of N/C chanel should match the input sizes, "
                               << "Resize of N/C channels are not supported"

@@ -25,7 +25,7 @@ class ONNXModels:
 
     1. exported_model: Model that is exported by torch.onnx.export
     2. optimized_model: For eval mode it's exported_model with concrete input shapes set if needed,
-                        for training mode, it's optimized model after gradients graph has been built.
+                        for training mode, it's an optimized model after the gradients graph has been built.
     In addition, ORTModule also saves two other models, to the user-provided path:
     a. the pre_grad_model which is the model before the gradients graph is built.
     b. the execution_model which is the model that is being executed by ORT.
