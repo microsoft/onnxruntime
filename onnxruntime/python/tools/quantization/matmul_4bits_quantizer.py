@@ -268,13 +268,10 @@ class MatMul4BitsQuantizer:
         """Generate weight only quant configuration for nodes."""
         q4_node_config = {}
         template_config_q4 = {"bits": 4, "group_size": self.block_size, "scheme": "sym" if self.is_symmetric else "asym"}
-        template_config_fp32 = "fp32"
         for node in self.model.model.graph.node:
             if node.op_type in ["MatMul"]:
                 if not all([self.model.get_initializer(i) is None for i in node.input]):
                     q4_node_config[node.name] = template_config_q4
-                else:
-                    q4_node_config[node.name] = template_config_fp32
         return q4_node_config
 
     def int4_quant_algo(self):
