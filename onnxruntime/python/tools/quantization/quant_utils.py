@@ -143,7 +143,7 @@ ONNX_INT_TYPE_REDUCED_RANGE = {
 }
 
 
-def _check_type(*args):
+def _check_type(*args, zero_point_index=-1):
     new_args = []
     for i, a in enumerate(args):
         if numpy.issubdtype(type(a), numpy.number):
@@ -152,6 +152,10 @@ def _check_type(*args):
             new_args.append(a)
         else:
             raise TypeError(f"arg {i} is not an array: {a}")
+        if i == zero_point_index:
+            v = new_args[-1]
+            if v.dtype == numpy.float32 or v.dtype == numpy.float16:
+                raise TypeError(f"zero_point cannot be {v.dtype}")
     return tuple(new_args) if len(new_args) > 1 else new_args[0]
 
 
@@ -261,10 +265,13 @@ def compute_scale_zp_float8(element_type, std):
     More details in notebook `quantization_fp8.ipynb
     <https://github.com/microsoft/onnxruntime/blob/main/docs/python/notebooks/quantization_fp8.ipynb>`_.
     """
+    zp_dtype = None
     if element_type not in FLOAT8_DISTRIBUTIONS:
         if element_type == TensorProto.FLOAT8E4M3FN:
             from onnx.numpy_helper import float8e4m3_to_float32
+            from onnx.reference.custom_element_types import float8e4m3fn
 
+            zp_dtype = float8e4m3fn
             all_values = [float8e4m3_to_float32(i) for i in range(0, 256)]
             values = numpy.array(
                 [f for f in all_values if not numpy.isnan(f) and not numpy.isinf(f)], dtype=numpy.float32
@@ -272,9 +279,15 @@ def compute_scale_zp_float8(element_type, std):
         else:
             raise ValueError(f"Quantization to element_type={element_type} not implemented.")
         FLOAT8_DISTRIBUTIONS[element_type] = values
+    elif element_type == TensorProto.FLOAT8E4M3FN:
+        from onnx.reference.custom_element_types import float8e4m3fn
 
+        zp_dtype = float8e4m3fn
+
+    if zp_dtype is None:
+        raise TypeError(f"Unexpected element_type {element_type}.")
     std_f8 = numpy.std(FLOAT8_DISTRIBUTIONS[element_type])
-    zero = numpy.array(0, dtype=std.dtype)
+    zero = numpy.array(0, dtype=zp_dtype)
     scale = numpy.array(std / std_f8, dtype=std.dtype)
     return [zero, scale]
 
@@ -339,14 +352,14 @@ def quantize_data(
                 f"One of the quantized value is NaN data in [{np_data.min()}, {np_data.max()}], "
                 f"quantized_data in [{quantized_data.min()}, {quantized_data.max()}]."
             )
-        return _check_type(rmin, rmax, zero_point, scale, quantized_data)
+        return _check_type(rmin, rmax, zero_point, scale, quantized_data, zero_point_index=2)
 
     if qType in (TensorProto.INT8, TensorProto.UINT8, TensorProto.INT16, TensorProto.UINT16):
         if len(data):
             qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range, symmetric=symmetric)
             zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric, min_real_range)
         quantized_data = quantize_nparray(qType, data, scale, zero_point)
-        return _check_type(rmin, rmax, zero_point, scale, quantized_data)
+        return _check_type(rmin, rmax, zero_point, scale, quantized_data, zero_point_index=2)
 
     raise ValueError(f"Unexpected value for qType={qType}.")
 
