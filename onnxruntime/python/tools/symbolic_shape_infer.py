@@ -2415,9 +2415,9 @@ class SymbolicShapeInference:
 
     def _infer_PythonOp(self, node):  # noqa: N802
         output_tensor_types = get_attribute(node, "output_tensor_types")
-        assert output_tensor_types
+        assert output_tensor_types, f"PythonOp '{node.name}' has no output_tensor_types attribute."
         output_tensor_ranks = get_attribute(node, "output_tensor_ranks")
-        assert output_tensor_ranks
+        assert output_tensor_ranks, f"PythonOp '{node.name}' has no output_tensor_ranks attribute."
 
         from onnxruntime.capi._pybind_state import get_shape_inference_function
 
