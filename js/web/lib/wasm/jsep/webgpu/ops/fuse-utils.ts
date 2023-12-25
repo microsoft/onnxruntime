@@ -16,7 +16,7 @@ export const getActivationSnippet = (attributes: InternalActivationAttributes, v
     case 'Sigmoid':
       return `value = (${valueType}(1.0) / (${valueType}(1.0) + exp(-value)));`;
     case 'Clip':
-      return `value = clamp(value, ${valueType}(uniforms.clipMin), ${valueType}(uniforms.clipMax));`;
+      return `value = clamp(value, ${valueType}(uniforms.clip_min), ${valueType}(uniforms.clip_max));`;
     // TODO: adding other activations that can be fused.
     default:
       return '';

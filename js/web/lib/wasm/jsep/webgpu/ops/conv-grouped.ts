@@ -27,51 +27,55 @@ export const createGroupedConvProgramInfo =
           xShape, wShape, attributes.dilations, attributes.pads, attributes.strides, isChannelLast);
       const outputSize = ShapeUtil.size(outputShape);
 
-      const output = outputVariable('output', inputs[0].dataType, outputShape.length);
-      const applyActivation = getActivationSnippet(attributes, output.type.value);
-      const x = inputVariable('x', inputs[0].dataType, xShape.length);
-      const w = inputVariable('w', inputs[1].dataType, wShape.length);
-      const inputVars = [x, w];
-
       const programUniforms: ProgramUniform[] = [
         {type: 'uint32', data: outputSize}, {type: 'uint32', data: attributes.dilations},
         {type: 'uint32', data: [attributes.strides[0], attributes.strides[1]]},
         {type: 'uint32', data: [attributes.pads[0], attributes.pads[1]]}, {type: 'uint32', data: outputChannelsPerGroup}
       ];
-      const uniforms: UniformsArrayType = [
-        {name: 'outputSize', type: 'u32'}, {name: 'dilations', type: 'u32', length: attributes.dilations.length},
-        {name: 'strides', type: 'u32', length: 2}, {name: 'pads', type: 'u32', length: 2},
-        {name: 'outputChannelsPerGroup', type: 'u32'}
-      ];
       if (attributes.activation === 'Clip') {
         programUniforms.push(
             {type: 'float32', data: attributes.clipMax!}, {type: 'float32', data: attributes.clipMin!});
-        uniforms.push({name: 'clipMax', type: 'f32'}, {name: 'clipMin', type: 'f32'});
       }
       programUniforms.push(
           ...createTensorShapeVariables(xShape), ...createTensorShapeVariables(wShape),
           ...createTensorShapeVariables(outputShape));
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
       if (hasBias) {
-        inputVars.push(inputVariable('b', inputs[2].dataType, inputs[2].dims));
         programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
         inputDependencies.push('rank');
       }
       programUniforms.push(...createTensorShapeVariables(outputShape));
 
-      const getShaderSource = (shaderHelper: ShaderHelper) => `
+      const getShaderSource = (shaderHelper: ShaderHelper) => {
+        const output = outputVariable('output', inputs[0].dataType, outputShape.length);
+        const applyActivation = getActivationSnippet(attributes, output.type.value);
+        const x = inputVariable('x', inputs[0].dataType, xShape.length);
+        const w = inputVariable('w', inputs[1].dataType, wShape.length);
+        const inputVars = [x, w];
+        if (hasBias) {
+          inputVars.push(inputVariable('b', inputs[2].dataType, inputs[2].dims));
+        }
 
+        const uniforms: UniformsArrayType = [
+          {name: 'output_size', type: 'u32'}, {name: 'dilations', type: 'u32', length: attributes.dilations.length},
+          {name: 'strides', type: 'u32', length: 2}, {name: 'pads', type: 'u32', length: 2},
+          {name: 'output_channels_per_group', type: 'u32'}
+        ];
+        if (attributes.activation === 'Clip') {
+          uniforms.push({name: 'clip_max', type: 'f32'}, {name: 'clip_min', type: 'f32'});
+        }
+        return `
   ${shaderHelper.registerUniforms(uniforms).declareVariables(...inputVars, output)}
 
   ${shaderHelper.mainStart()}
-    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
 
     let outputIndices = ${output.offsetToIndices('global_idx')};
     let batch: u32 = outputIndices[0];
     let output_channel: u32 = outputIndices[${isChannelLast ? 3 : 1}];
     let xRCCorner: vec2<u32> = vec2<u32>(outputIndices[${isChannelLast ? 1 : 2}], outputIndices[${
-          isChannelLast ? 2 : 3}]) * uniforms.strides - uniforms.pads;
-    let group_id: u32 = output_channel / uniforms.outputChannelsPerGroup;
+            isChannelLast ? 2 : 3}]) * uniforms.strides - uniforms.pads;
+    let group_id: u32 = output_channel / uniforms.output_channels_per_group;
 
     var value: ${output.type.value} = ${output.type.value}(0);
     for (var wInChannel: u32 = 0u; wInChannel < uniforms.w_shape[1]; wInChannel++) {
@@ -90,8 +94,8 @@ export const createGroupedConvProgramInfo =
           }
 
           let xVal = ${
-          isChannelLast ? x.get('batch', 'xHeight', 'xWidth', 'input_channel') :
-                          x.get('batch', 'input_channel', 'xHeight', 'xWidth')};
+            isChannelLast ? x.get('batch', 'xHeight', 'xWidth', 'input_channel') :
+                            x.get('batch', 'input_channel', 'xHeight', 'xWidth')};
           let wVal = ${w.get('output_channel', 'wInChannel', 'wHeight', 'wWidth')};
           value += xVal*wVal;
         }
@@ -101,6 +105,7 @@ export const createGroupedConvProgramInfo =
     ${applyActivation}
     ${output.setByOffset('global_idx', 'value')}
   }`;
+      };
       return {
         name: 'GroupedConv',
         shaderCache: {hint: attributes.cacheKey, inputDependencies},

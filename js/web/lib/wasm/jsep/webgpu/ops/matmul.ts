@@ -70,7 +70,7 @@ export const createNaiveMatmulProgramInfo =
           {name: 'K', type: 'u32'}
         ];
         if (activationAttributes.activation === 'Clip') {
-          uniforms.push({name: 'clipMax', type: 'f32'}, {name: 'clipMin', type: 'f32'});
+          uniforms.push({name: 'clip_max', type: 'f32'}, {name: 'clip_min', type: 'f32'});
         }
 
         const getIndices = (variable: IndicesHelper, broadCastDims: number[]) => {

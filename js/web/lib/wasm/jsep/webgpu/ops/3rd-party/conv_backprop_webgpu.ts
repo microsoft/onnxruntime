@@ -66,19 +66,19 @@ const createConvTranspose2DOpProgramShaderSource =
         for (var i = 0; i < ${workPerThread}; i++) {
           dotProd[i] = vec4<${dataType}>(0.0);
         }
-        for (var wR: u32 = 0; wR < uniforms.filterDims[0]; wR = wR + 1) {
+        for (var wR: u32 = 0; wR < uniforms.filter_dims[0]; wR = wR + 1) {
           var dyR = (${dataType}(dyCorner.x) + ${dataType}(wR)) / ${dataType}(uniforms.strides.x);
-          let wRPerm = uniforms.filterDims[0] - 1 - wR;
+          let wRPerm = uniforms.filter_dims[0] - 1 - wR;
           if (dyR < 0.0 || dyR >= ${dataType}(uniforms.Dy_shape[1]) ||
               fract(dyR) > 0.0 || wRPerm < 0) {
             continue;
           }
           let idyR: u32 = u32(dyR);
 
-          for (var wC: u32 = 0; wC < uniforms.filterDims[1]; wC = wC + 1) {
+          for (var wC: u32 = 0; wC < uniforms.filter_dims[1]; wC = wC + 1) {
             let dyC = (${dataType}(dyCorner.y) + ${dataType}(wC)) / ${dataType}(uniforms.strides.y);
             let dyC2 = (${dataType}(dyCorner.y) + 1.0 + ${dataType}(wC)) / ${dataType}(uniforms.strides.y);
-            let wCPerm = uniforms.filterDims[1] - 1 - wC;
+            let wCPerm = uniforms.filter_dims[1] - 1 - wC;
             if (wCPerm < 0) {
               continue;
             }
@@ -165,36 +165,36 @@ const createConvTranspose2DOpProgramShaderSource =
           let dyCorner = vec2<i32>(i32(r), i32(c)) - uniforms.pads;
           let dyRCorner = dyCorner.x;
           let dyCCorner = dyCorner.y;
-          let groupId = d1 / uniforms.outputChannelsPerGroup;
-          let wOutChannel = d1 - groupId * uniforms.outputChannelsPerGroup;
+          let groupId = d1 / uniforms.output_channels_per_group;
+          let wOutChannel = d1 - groupId * uniforms.output_channels_per_group;
           // Convolve dy(?, ?, d2) with w(:, :, d1, d2) to compute dx(xR, xC, d1).
           // ? = to be determined. : = across all values in that axis.
           var dotProd = 0.0;
-          for (var wR: u32 = 0; wR < uniforms.effectiveFilterDims.x; wR = wR + 1) {
+          for (var wR: u32 = 0; wR < uniforms.effective_filter_dims.x; wR = wR + 1) {
             if (wR % uniforms.dilations.x != 0) {
               continue;
             }
             let dyR = (${dataType}(dyRCorner) + ${dataType}(wR)) / ${dataType}(uniforms.strides[0]);
-            let wRPerm = uniforms.filterDims.x - 1 - wR / uniforms.dilations.x;
+            let wRPerm = uniforms.filter_dims.x - 1 - wR / uniforms.dilations.x;
             if (dyR < 0.0 || dyR >= ${dataType}(uniforms.Dy_shape[${rowDim}]) || fract(dyR) > 0.0 ||
                 wRPerm < 0) {
               continue;
             }
             let idyR: u32 = u32(dyR);
 
-            for (var wC: u32 = 0; wC < uniforms.effectiveFilterDims.y; wC = wC + 1) {
+            for (var wC: u32 = 0; wC < uniforms.effective_filter_dims.y; wC = wC + 1) {
               if (wC % uniforms.dilations.y != 0) {
                 continue;
               }
               let dyC = (${dataType}(dyCCorner) + ${dataType}(wC)) / ${dataType}(uniforms.strides.y);
-              let wCPerm = uniforms.filterDims.y - 1 - wC / uniforms.dilations.y;
+              let wCPerm = uniforms.filter_dims.y - 1 - wC / uniforms.dilations.y;
               if (dyC < 0.0 || dyC >= ${dataType}(uniforms.Dy_shape[${colDim}]) ||
                   fract(dyC) > 0.0 || wCPerm < 0) {
                 continue;
               }
               let idyC: u32 = u32(dyC);
-              var inputChannel = groupId * uniforms.inputChannelsPerGroup;
-              for (var d2: u32 = 0; d2 < uniforms.inputChannelsPerGroup; d2 = d2 + 1) {
+              var inputChannel = groupId * uniforms.input_channels_per_group;
+              for (var d2: u32 = 0; d2 < uniforms.input_channels_per_group; d2 = d2 + 1) {
                 let xValue = ${
           isChannelsLast ? dy.get('batch', 'idyR', 'idyC', 'inputChannel') :
                            dy.get('batch', 'inputChannel', 'idyR', 'idyC')};
@@ -213,7 +213,7 @@ const createConvTranspose2DOpProgramShaderSource =
   ${declareFunctions}
 
     ${shaderHelper.mainStart()}
-    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')};
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')};
   ${isVec4 ? codeSnippet4 : codeSnippet}}`;
     };
 
@@ -236,11 +236,8 @@ export const createConvTranspose2DProgramInfo =
       ];
       LOG_DEBUG('verbose', () => `[conv2d_backprop_webgpu] dispatch = ${dispatch}`);
 
-      const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
-
       const isChannelsLast = attributes.format === 'NHWC';
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
-
       const strides = [attributes.strides[0], attributes.strides[1]];
       const filterDims =
           [attributes.kernelShape[isChannelsLast ? 1 : 2], attributes.kernelShape[isChannelsLast ? 2 : 3]];
@@ -277,15 +274,23 @@ export const createConvTranspose2DProgramInfo =
         inputDependencies.push('rank');
       }
       programUniforms.push(...createTensorShapeVariables(outputShape));
-      const uniforms: UniformsArrayType = [
-        {name: 'outputSize', type: 'u32'}, {name: 'strides', type: 'u32', length: strides.length},
-        {name: 'filterDims', type: 'u32', length: filterDims.length},
-        {name: 'dilations', type: 'u32', length: filterDims.length},
-        {name: 'effectiveFilterDims', type: 'u32', length: effectiveFilterDims.length},
-        {name: 'pads', type: 'i32', length: pads.length}, {name: 'inputChannelsPerGroup', type: 'u32'},
-        {name: 'outputChannelsPerGroup', type: 'u32'}
-      ];
+
       const is1DimensionDispatch = dispatch[1] === 1 && dispatch[2] === 1;
+      const getShaderSource = (shaderHelper: ShaderHelper) => {
+        const uniforms: UniformsArrayType = [
+          {name: 'output_size', type: 'u32'}, {name: 'strides', type: 'u32', length: strides.length},
+          {name: 'filter_dims', type: 'u32', length: filterDims.length},
+          {name: 'dilations', type: 'u32', length: filterDims.length},
+          {name: 'effective_filter_dims', type: 'u32', length: effectiveFilterDims.length},
+          {name: 'pads', type: 'i32', length: pads.length}, {name: 'input_channels_per_group', type: 'u32'},
+          {name: 'output_channels_per_group', type: 'u32'}
+        ];
+        const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
+        return `${
+            createConvTranspose2DOpProgramShaderSource(
+                shaderHelper, inputs, outputShape, hasBias, is1DimensionDispatch, isVec4, dataType, uniforms,
+                isChannelsLast)}`;
+      };
       return {
         name: 'ConvTranspose2D',
         shaderCache: {hint: `${attributes.cacheKey};`, inputDependencies},
@@ -297,8 +302,6 @@ export const createConvTranspose2DProgramInfo =
           }],
           programUniforms
         }),
-        getShaderSource: (shaderHelper: ShaderHelper) => createConvTranspose2DOpProgramShaderSource(
-            shaderHelper, inputs, outputShape, hasBias, is1DimensionDispatch, isVec4, dataType, uniforms,
-            isChannelsLast),
+        getShaderSource
       };
     };
