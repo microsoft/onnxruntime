@@ -154,29 +154,29 @@ const createPadProgramInfo = (inputs: readonly TensorView[], attributes: PadAttr
   const inputDims = inputs[0].dims;
   const outputDims = ShapeUtil.padShape(inputDims.slice(), attributes.pads);
   const outputSize = ShapeUtil.size(outputDims);
-
-  const output = outputVariable('output', inputs[0].dataType, outputDims.length);
-  const input = inputVariable('x', inputs[0].dataType, inputDims.length);
-
   const programUniforms: ProgramUniform[] =
       [{type: 'uint32', data: outputSize}, {type: 'uint32', data: attributes.pads}];
-
-  const dataType = input.type.value;
-  const padSnippet = getPadSnippet(output, inputDims.length, attributes, dataType);
-
-  const uniforms: UniformsArrayType =
-      [{name: 'outputSize', type: 'u32'}, {name: 'pads', type: 'i32', length: attributes.pads.length}];
   if (attributes.mode === 0) {
     const tensorDataType = tensorDataTypeEnumToString(inputs[0].dataType) as ProgramUniform['type'];
     programUniforms.push({type: tensorDataType, data: attributes.value});
-    uniforms.push({name: 'constantValue', type: dataType as UniformDataElementType});
   }
   programUniforms.push(...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(outputDims));
+  const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank'];
 
-  const getShaderSource = (shaderHelper: ShaderHelper) => `
+  const getShaderSource = (shaderHelper: ShaderHelper) => {
+    const output = outputVariable('output', inputs[0].dataType, outputDims.length);
+    const input = inputVariable('x', inputs[0].dataType, inputDims.length);
+    const dataType = input.type.value;
+    const padSnippet = getPadSnippet(output, inputDims.length, attributes, dataType);
+    const uniforms: UniformsArrayType =
+        [{name: 'output_size', type: 'u32'}, {name: 'pads', type: 'i32', length: attributes.pads.length}];
+    if (attributes.mode === 0) {
+      uniforms.push({name: 'constantValue', type: dataType as UniformDataElementType});
+    }
+    return `
             ${shaderHelper.registerUniforms(uniforms).declareVariables(input, output)}
             ${shaderHelper.mainStart()}
-            ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
+            ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
 
             let indices = ${output.offsetToIndices('global_idx')};
 
@@ -184,7 +184,8 @@ const createPadProgramInfo = (inputs: readonly TensorView[], attributes: PadAttr
             ${padSnippet}
             output[global_idx] = value;
         }`;
-  const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank'];
+  };
+
   return {
     name: 'Pad',
     shaderCache: {hint: `${attributes.mode}`, inputDependencies},

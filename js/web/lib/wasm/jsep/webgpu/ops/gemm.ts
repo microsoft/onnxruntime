@@ -3,6 +3,7 @@
 
 import {TensorView} from '../../tensor-view';
 import {GemmUtil, ShapeUtil} from '../../util';
+import {AttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo, ProgramInputTensorInfoDependency, ProgramUniform} from '../types';
 
 import {createTensorShapeVariables, IndicesHelper, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
@@ -26,7 +27,7 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
   }
 };
 
-interface GemmAttributes {
+export interface GemmAttributes extends AttributeWithCacheKey {
   transA: boolean;
   transB: boolean;
   alpha: number;
@@ -43,56 +44,51 @@ const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAt
     throw new Error('Can\'t use gemm on the given tensors');
   }
   const outputSize = ShapeUtil.size(outputShape);
-  let line = '';
-  if (attributes.transA && attributes.transB) {
-    line = 'value += a[k * uniforms.M + m] * b[n * uniforms.K + k];';
-  } else if (attributes.transA && !attributes.transB) {
-    line = 'value += a[k * uniforms.M + m] * b[k * uniforms.N + n];';
-  } else if (!attributes.transA && attributes.transB) {
-    line = 'value += a[m * uniforms.K + k] * b[n * uniforms.K + k];';
-  } else if (!attributes.transA && !attributes.transB) {
-    line = 'value += a[m * uniforms.K + k] * b[k * uniforms.N + n];';
-  }
-
-  const calculateAlpha = attributes.alpha === 1 ? '' : 'value *= uniforms.alpha;';
-  const broadcastM = inputs.length === 3 ?
-      (inputs[2].dims.length === 1 && M !== 1) || (inputs[2].dims.length === 2 && inputs[2].dims[0] !== M) :
-      false;
-  const broadcastN = inputs.length === 3 ? inputs[2].dims[inputs[2].dims.length - 1] !== N : false;
-
-  const a = inputVariable('a', inputs[0].dataType, inputs[0].dims.length);
-  const b = inputVariable('b', inputs[1].dataType, inputs[1].dims.length);
-  const dataType = a.type.value;
-
-  const variables = [a, b];
   const programUniforms: ProgramUniform[] = [
     {type: 'uint32', data: outputSize}, {type: 'uint32', data: M}, {type: 'uint32', data: N}, {type: 'uint32', data: K},
     {type: 'float32', data: attributes.alpha}, {type: 'float32', data: attributes.beta},
     ...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(inputs[1].dims)
   ];
-
   const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
-  let c: IndicesHelper;
   if (inputs.length === 3) {
-    c = inputVariable('c', inputs[2].dataType, inputs[2].dims.length);
-    variables.push(c);
     programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
     inputDependencies.push('rank');
   }
-  const output = outputVariable('output', inputs[0].dataType, outputShape.length);
-  variables.push(output);
   programUniforms.push(...createTensorShapeVariables(outputShape));
 
-  const uniforms: UniformsArrayType = [
-    {name: 'outputSize', type: 'u32'}, {name: 'M', type: 'u32'}, {name: 'N', type: 'u32'}, {name: 'K', type: 'u32'},
-    {name: 'alpha', type: 'f32'}, {name: 'beta', type: 'f32'}
-  ];
+  const getShaderSource = (shaderHelper: ShaderHelper) => {
+    let line = '';
+    if (attributes.transA && attributes.transB) {
+      line = 'value += a[k * uniforms.M + m] * b[n * uniforms.K + k];';
+    } else if (attributes.transA && !attributes.transB) {
+      line = 'value += a[k * uniforms.M + m] * b[k * uniforms.N + n];';
+    } else if (!attributes.transA && attributes.transB) {
+      line = 'value += a[m * uniforms.K + k] * b[n * uniforms.K + k];';
+    } else if (!attributes.transA && !attributes.transB) {
+      line = 'value += a[m * uniforms.K + k] * b[k * uniforms.N + n];';
+    }
 
-  const getShaderSource = (shaderHelper: ShaderHelper) => `
+    const calculateAlpha = attributes.alpha === 1 ? '' : 'value *= uniforms.alpha;';
+    const a = inputVariable('a', inputs[0].dataType, inputs[0].dims.length);
+    const b = inputVariable('b', inputs[1].dataType, inputs[1].dims.length);
+    const dataType = a.type.value;
+    let c: IndicesHelper;
+    const variables = [a, b];
+    if (inputs.length === 3) {
+      c = inputVariable('c', inputs[2].dataType, inputs[2].dims.length);
+      variables.push(c);
+    }
+    const output = outputVariable('output', inputs[0].dataType, outputShape.length);
+    variables.push(output);
+    const uniforms: UniformsArrayType = [
+      {name: 'output_size', type: 'u32'}, {name: 'M', type: 'u32'}, {name: 'N', type: 'u32'}, {name: 'K', type: 'u32'},
+      {name: 'alpha', type: 'f32'}, {name: 'beta', type: 'f32'}
+    ];
+    return `
   ${shaderHelper.registerUniforms(uniforms).declareVariables(...variables)}
 
   ${shaderHelper.mainStart()}
-    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
 
     let m = global_idx / uniforms.N;
     let n = global_idx % uniforms.N;
@@ -104,21 +100,19 @@ const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAt
 
     ${calculateAlpha}
     ${(() => {
-    if (inputs.length === 3) {
-      return `let cOffset = ${c.broadcastedIndicesToOffset('vec2(m, n)', output)}; value += uniforms.beta * ${
-          c.getByOffset('cOffset')};`;
-    }
-    return '';
-  })()}
+      if (c != null) {
+        return `let cOffset = ${c.broadcastedIndicesToOffset('vec2(m, n)', output)}; value += uniforms.beta * ${
+            c.getByOffset('cOffset')};`;
+      }
+      return '';
+    })()}
     output[global_idx] = value;
-
   }`;
+  };
+
   return {
     name: 'Gemm',
-    shaderCache: {
-      hint: `${attributes.transA};${attributes.transB};${attributes.alpha === 1};${broadcastM};${broadcastN}`,
-      inputDependencies
-    },
+    shaderCache: {hint: `${attributes.cacheKey}`, inputDependencies},
     getRunData: () => ({
       outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
       dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
@@ -126,6 +120,14 @@ const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAt
     }),
     getShaderSource,
   };
+};
+
+export const parseGemmAttributes = (attributes: Record<string, unknown>): GemmAttributes => {
+  const transA = attributes.transA as boolean;
+  const transB = attributes.transB as boolean;
+  const alpha = attributes.alpha as number;
+  const beta = attributes.beta as number;
+  return {transA, transB, alpha, beta, cacheKey: `${attributes.transA};${attributes.transB};${attributes.alpha === 1}`};
 };
 
 export const gemm = (context: ComputeContext, attributes: GemmAttributes): void => {

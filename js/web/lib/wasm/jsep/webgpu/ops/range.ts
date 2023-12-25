@@ -22,28 +22,30 @@ const createRangeProgramInfo = (start: number, limit: number, delta: number, dat
   const numElements = Math.abs(Math.ceil((limit - start) / delta));
   const outputShape: number[] = [numElements];
   const outputSize = numElements;
-
-  const output = outputVariable('output', dataType, outputShape.length);
-  const wgslType = output.type.value;
   const tensorDataType = tensorDataTypeEnumToString(dataType) as ProgramUniform['type'];
   const programUniforms: ProgramUniform[] = [
     {type: 'uint32', data: outputSize}, {type: tensorDataType, data: start}, {type: tensorDataType, data: delta},
     ...createTensorShapeVariables(outputShape)
   ];
-  const uniforms: UniformsArrayType = [
-    {name: 'outputSize', type: 'u32'}, {name: 'start', type: wgslType as UniformDataElementType},
-    {name: 'delta', type: wgslType as UniformDataElementType}
-  ];
 
-  const getShaderSource = (shaderHelper: ShaderHelper) => `
+  const getShaderSource = (shaderHelper: ShaderHelper) => {
+    const output = outputVariable('output', dataType, outputShape.length);
+    const wgslType = output.type.value;
+    const uniforms: UniformsArrayType = [
+      {name: 'outputSize', type: 'u32'}, {name: 'start', type: wgslType as UniformDataElementType},
+      {name: 'delta', type: wgslType as UniformDataElementType}
+    ];
+    return `
         ${shaderHelper.registerUniforms(uniforms).declareVariables(output)}
         ${shaderHelper.mainStart()}
         ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
         output[global_idx] = uniforms.start + ${wgslType}(global_idx) * uniforms.delta;
       }`;
+  };
+
   return {
     name: 'Range',
-    shaderCache: {hint: wgslType},
+    shaderCache: {hint: `${dataType}`},
     getShaderSource,
     getRunData: () => ({
       outputs: [{dims: outputShape, dataType}],
