@@ -233,13 +233,6 @@ const validateAttentionInputs = (inputs: readonly TensorView[], attributes: Atte
 
 export const computeInPlaceSoftmax = (context: ComputeContext, input: TensorView, n: number, d: number) => {
   const components = getMaxComponents(d);
-  let threadMaxValue = 'threadMaxVector';
-  if (components === 2) {
-    threadMaxValue = 'max(threadMaxVector.x, threadMaxVector.y)';
-  } else if (components === 4) {
-    threadMaxValue = 'max(max(threadMaxVector.x, threadMaxVector.y), max(threadMaxVector.z, threadMaxVector.w))';
-  }
-  const dataType = tensorTypeToWsglStorageType(input.dataType, components);
   let WG = 64;
   const dComp = d / components;
   if (dComp < WG) {
@@ -248,28 +241,34 @@ export const computeInPlaceSoftmax = (context: ComputeContext, input: TensorView
     WG = Math.ceil(dComp / 8);
   }
   const elementsPerWG = Math.ceil(d / components / WG);
-
   const tensorDataType = tensorDataTypeEnumToString(input.dataType) as ProgramUniform['type'];
   const programUniforms: ProgramUniform[] =
       [{type: tensorDataType, data: 1 / d}, {type: 'uint32', data: dComp}, {type: 'uint32', data: elementsPerWG}];
+  const dataType = tensorTypeToWsglStorageType(input.dataType, components);
 
-  const valueType = tensorTypeToWsglValueType(input.dataType, components);
-  const elemValueType = tensorTypeToWsglValueType(input.dataType);
-
-  const getShaderSource = () => `
+  const getShaderSource = () => {
+    let threadMaxValue = 'threadMaxVector';
+    if (components === 2) {
+      threadMaxValue = 'max(threadMaxVector.x, threadMaxVector.y)';
+    } else if (components === 4) {
+      threadMaxValue = 'max(max(threadMaxVector.x, threadMaxVector.y), max(threadMaxVector.z, threadMaxVector.w))';
+    }
+    const valueType = tensorTypeToWsglValueType(input.dataType, components);
+    const elemValueType = tensorTypeToWsglValueType(input.dataType);
+    return `
   var<workgroup> wgMax: array<f32, ${WG}>;
   var<workgroup> wgSum: array<f32, ${WG}>;
   @group(0) @binding(0) var<storage, read_write> x: array<${dataType}>;
-  struct Uniforms { dInv:${elemValueType}, dComp:u32, elementsPerWG:u32 };
+  struct Uniforms { d_inv:${elemValueType}, d_comp:u32, elements_per_wg:u32 };
   @group(0) @binding(1) var<uniform> uniforms: Uniforms;
   @compute @workgroup_size(${WG}, 1, 1)
   fn main(@builtin(workgroup_id) workgroup_id : vec3<u32>,
     @builtin(local_invocation_index) local_index : u32) {
-    let localOffset = local_index * uniforms.elementsPerWG;
-    let offset: u32 = workgroup_id.x * uniforms.dComp + localOffset;
+    let localOffset = local_index * uniforms.elements_per_wg;
+    let offset: u32 = workgroup_id.x * uniforms.d_comp + localOffset;
 
     var threadMaxVector = ${fillVector('f32', components, '-3.402823e+38f')};
-    for (var i: u32 = 0; i < uniforms.elementsPerWG && i + localOffset < uniforms.dComp; i++) {
+    for (var i: u32 = 0; i < uniforms.elements_per_wg && i + localOffset < uniforms.d_comp; i++) {
       threadMaxVector = max(${castToF32(elemValueType, components, 'x[offset + i]')}, threadMaxVector);
     }
     wgMax[local_index] = ${threadMaxValue};
@@ -281,7 +280,7 @@ export const computeInPlaceSoftmax = (context: ComputeContext, input: TensorView
     }
 
     var sumVector = ${fillVector('f32', components, '0')};
-    for (var i: u32 = 0; i < uniforms.elementsPerWG && i + localOffset < uniforms.dComp; i++) {
+    for (var i: u32 = 0; i < uniforms.elements_per_wg && i + localOffset < uniforms.d_comp; i++) {
       sumVector += exp(${castToF32(elemValueType, components, 'x[offset + i]')} - maxValue);
     }
     wgSum[local_index] = ${sumVector('sumVector', components)};
@@ -293,16 +292,17 @@ export const computeInPlaceSoftmax = (context: ComputeContext, input: TensorView
     }
 
     if (sum == 0) {
-      for (var i: u32 = 0; i < uniforms.elementsPerWG && i + localOffset < uniforms.dComp; i++) {
-        x[offset + i] = ${fillVector('f32', components, 'uniforms.dInv')};
+      for (var i: u32 = 0; i < uniforms.elements_per_wg && i + localOffset < uniforms.d_comp; i++) {
+        x[offset + i] = ${fillVector('f32', components, 'uniforms.d_inv')};
       }
     } else {
-      for (var i: u32 = 0; i < uniforms.elementsPerWG && i + localOffset < uniforms.dComp; i++) {
+      for (var i: u32 = 0; i < uniforms.elements_per_wg && i + localOffset < uniforms.d_comp; i++) {
         let f32input = ${castToF32(elemValueType, components, 'x[offset + i]')};
         x[offset + i] = ${valueType}(exp(f32input - maxValue) / sum);
       }
     }
   }`;
+  };
 
   context.compute(
       {
@@ -324,15 +324,9 @@ const computeAttentionProbs =
       // TODO: handle mask
 
       const alpha = attributes.scale === 0 ? 1.0 / Math.sqrt(parameters.headSize) : attributes.scale;
-
-      const dataType = tensorTypeToWsglStorageType(q.dataType);
       const components = getMaxComponents(parameters.headSize);
-      const qStorageType = tensorTypeToWsglStorageType(q.dataType, components);
-      const kStorageType = tensorTypeToWsglValueType(key.dataType, components);
-
       const vectorizedHeadSize = parameters.headSize / components;
       const TILE_SIZE = 12;
-
       const dispatch = {
         x: Math.ceil(parameters.totalSequenceLength / TILE_SIZE),
         y: Math.ceil(parameters.sequenceLength / TILE_SIZE),
@@ -346,7 +340,12 @@ const computeAttentionProbs =
       ];
 
       const inputs = [q, key];
-      const getShaderSource = () => `
+
+      const getShaderSource = () => {
+        const dataType = tensorTypeToWsglStorageType(q.dataType);
+        const qStorageType = tensorTypeToWsglStorageType(q.dataType, components);
+        const kStorageType = tensorTypeToWsglValueType(key.dataType, components);
+        return `
 
   const beta: ${dataType} = 1.0;
   const TILE_SIZE = ${TILE_SIZE}u;
@@ -354,7 +353,7 @@ const computeAttentionProbs =
   @group(0) @binding(0) var<storage, read> q: array<${qStorageType}>;
   @group(0) @binding(1) var<storage, read> key: array<${kStorageType}>;
   @group(0) @binding(2) var<storage, read_write> output: array<${dataType}>;
-  struct Uniforms { M:u32, K:u32, N:u32, kvSequenceLength:u32, alpha:${dataType} };
+  struct Uniforms { M:u32, K:u32, N:u32, kv_sequence_length:u32, alpha:${dataType} };
   @group(0) @binding(3) var<uniform> uniforms: Uniforms;
 
   var<workgroup> tileQ: array<${qStorageType}, ${TILE_SIZE * TILE_SIZE}>;
@@ -376,7 +375,7 @@ const computeAttentionProbs =
     let ln = n + local_id.x;
 
     let qOffset = uniforms.M * uniforms.K * headIdx + m * uniforms.K;
-    let kOffset = uniforms.kvSequenceLength * uniforms.K * headIdx + n * uniforms.K;
+    let kOffset = uniforms.kv_sequence_length * uniforms.K * headIdx + n * uniforms.K;
 
     var value = ${fillVector(dataType, components)};
     for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
@@ -401,6 +400,7 @@ const computeAttentionProbs =
       output[outputIdx] = ${sumVector('value', components)} * uniforms.alpha;
     }
   }`;
+      };
 
       const probs = context.compute(
           {
@@ -425,29 +425,29 @@ const computeAttentionProbs =
 const computeVxAttentionScore =
     (context: ComputeContext, probs: TensorView, v: TensorView, params: AttentionParameters) => {
       const outputShape = [params.batchSize, params.sequenceLength, params.vHiddenSize];
-      const probsDataType = tensorTypeToWsglStorageType(probs.dataType);
-      const probsValueType = tensorTypeToWsglValueType(probs.dataType);
-      const vDataType = tensorTypeToWsglStorageType(v.dataType);
-
       const TILE_SIZE = 12;
       const dispatch = {
         x: Math.ceil(params.vHeadSize / TILE_SIZE),
         y: Math.ceil(params.sequenceLength / TILE_SIZE),
         z: params.batchSize * params.numHeads
       };
-
       const programUniforms: ProgramUniform[] = [
         {type: 'uint32', data: params.sequenceLength}, {type: 'uint32', data: params.totalSequenceLength},
         {type: 'uint32', data: params.vHeadSize}, {type: 'uint32', data: params.numHeads},
         {type: 'uint32', data: params.vHiddenSize}
       ];
 
-      const getShaderSource = () => `
+      const getShaderSource = () => {
+        const probsDataType = tensorTypeToWsglStorageType(probs.dataType);
+        const probsValueType = tensorTypeToWsglValueType(probs.dataType);
+        const vDataType = tensorTypeToWsglStorageType(v.dataType);
+
+        return `
   const TILE_SIZE = ${TILE_SIZE}u;
   @group(0) @binding(0) var<storage, read> probs: array<${probsDataType}>;
   @group(0) @binding(1) var<storage, read> v: array<${vDataType}>;
   @group(0) @binding(2) var<storage, read_write> output: array<${probsDataType}>;
-  struct Uniforms { M:u32, K:u32, N:u32, numHeads:u32, vHiddenSize:u32 };
+  struct Uniforms { M:u32, K:u32, N:u32, num_heads:u32, v_hidden_size:u32 };
   @group(0) @binding(3) var<uniform> uniforms: Uniforms;
 
   var<workgroup> tileQ: array<${probsValueType}, ${TILE_SIZE * TILE_SIZE}>;
@@ -484,15 +484,16 @@ const computeVxAttentionScore =
    }
 
    // we need to transpose output from BNSH_v to BSND_v
-   let batchIdx = workgroup_id.z / uniforms.numHeads;
-   let currentBatchHeadNumber = workgroup_id.z % uniforms.numHeads;
-   let headOffset = (batchIdx * uniforms.M * uniforms.numHeads + currentBatchHeadNumber) * uniforms.N;
+   let batchIdx = workgroup_id.z / uniforms.num_heads;
+   let currentBatchHeadNumber = workgroup_id.z % uniforms.num_heads;
+   let headOffset = (batchIdx * uniforms.M * uniforms.num_heads + currentBatchHeadNumber) * uniforms.N;
    if (m < uniforms.M && n < uniforms.N) {
-     let outputIdx = batchIdx * uniforms.M *uniforms.vHiddenSize + m * uniforms.vHiddenSize
+     let outputIdx = batchIdx * uniforms.M *uniforms.v_hidden_size + m * uniforms.v_hidden_size
        + currentBatchHeadNumber * uniforms.N + n;
      output[outputIdx] = value;
    }
   }`;
+      };
 
       return context.compute(
           {
@@ -524,27 +525,16 @@ const prepare = (context: ComputeContext, parameters: AttentionParameters) => {
     parameters.sequenceLength,
     parameters.headSize,
   ];
-
-  const dataType = tensorTypeToWsglStorageType(context.inputs[0].dataType);
-
   const M = parameters.sequenceLength;
   const K = parameters.inputHiddenSize;
   const N = parameters.headSize;
-
   const TILE_SIZE = 12;
   const dispatch = {
     x: Math.ceil(parameters.headSize / TILE_SIZE),
     y: Math.ceil(parameters.sequenceLength / TILE_SIZE),
     z: parameters.batchSize * parameters.numHeads
   };
-
   const inputs = [context.inputs[0], context.inputs[1], context.inputs[2]];
-
-  const inputStorageType = tensorTypeToWsglStorageType(inputs[0].dataType);
-  const outputStorageType = inputStorageType;
-  const weightStorageType = tensorTypeToWsglStorageType(inputs[1].dataType);
-  const biasStorageType = tensorTypeToWsglStorageType(inputs[2].dataType);
-
   const programUniforms: ProgramUniform[] = [
     {type: 'uint32', data: M}, {type: 'uint32', data: K}, {type: 'uint32', data: N},
     {type: 'uint32', data: parameters.numHeads}, {type: 'uint32', data: parameters.headSize},
@@ -552,7 +542,13 @@ const prepare = (context: ComputeContext, parameters: AttentionParameters) => {
     {type: 'uint32', data: parameters.hiddenSize + parameters.hiddenSize + parameters.vHiddenSize}
   ];
 
-  const getShaderSource = () => `
+  const getShaderSource = () => {
+    const dataType = tensorTypeToWsglStorageType(context.inputs[0].dataType);
+    const inputStorageType = tensorTypeToWsglStorageType(inputs[0].dataType);
+    const outputStorageType = inputStorageType;
+    const weightStorageType = tensorTypeToWsglStorageType(inputs[1].dataType);
+    const biasStorageType = tensorTypeToWsglStorageType(inputs[2].dataType);
+    return `
   const TILE_SIZE = ${TILE_SIZE}u;
   @group(0) @binding(0) var<storage, read> input: array<${inputStorageType}>;
   @group(0) @binding(1) var<storage, read> weight: array<${weightStorageType}>;
@@ -560,7 +556,7 @@ const prepare = (context: ComputeContext, parameters: AttentionParameters) => {
   @group(0) @binding(3) var<storage, read_write> outputQ: array<${outputStorageType}>;
   @group(0) @binding(4) var<storage, read_write> outputK: array<${outputStorageType}>;
   @group(0) @binding(5) var<storage, read_write> outputV: array<${outputStorageType}>;
-  struct Uniforms { M:u32, K:u32, N:u32, numHeads:u32, headSize:u32, hiddenSize:u32, ldb:u32 };
+  struct Uniforms { M:u32, K:u32, N:u32, num_heads:u32, head_size:u32, hidden_size:u32, ldb:u32 };
   @group(0) @binding(6) var<uniform> uniforms: Uniforms;
 
   var<workgroup> tileInput: array<${dataType}, ${TILE_SIZE * TILE_SIZE}>;
@@ -576,15 +572,15 @@ const prepare = (context: ComputeContext, parameters: AttentionParameters) => {
     let global_idx = (workgroup_id.z * num_workgroups[0] * num_workgroups[1] +
           workgroup_id.y * num_workgroups[0] + workgroup_id.x) * ${TILE_SIZE * TILE_SIZE}u + local_index;
 
-    let batchIndex = workgroup_id.z / uniforms.numHeads;
-    let headNumber = workgroup_id.z % uniforms.numHeads;
+    let batchIndex = workgroup_id.z / uniforms.num_heads;
+    let headNumber = workgroup_id.z % uniforms.num_heads;
     let m = workgroup_id.y * TILE_SIZE + local_id.y;
     let n = workgroup_id.x * TILE_SIZE + local_id.x;
 
     let inputOffset = batchIndex * (uniforms.M * uniforms.K) + m * uniforms.K;
-    let biasOffsetQ = headNumber * uniforms.headSize;
-    let biasOffsetK = uniforms.hiddenSize + biasOffsetQ;
-    let biasOffsetV = uniforms.hiddenSize + biasOffsetK;
+    let biasOffsetQ = headNumber * uniforms.head_size;
+    let biasOffsetK = uniforms.hidden_size + biasOffsetQ;
+    let biasOffsetV = uniforms.hidden_size + biasOffsetK;
 
     var valueQ = ${dataType}(0);
     var valueK = ${dataType}(0);
@@ -611,7 +607,7 @@ const prepare = (context: ComputeContext, parameters: AttentionParameters) => {
       workgroupBarrier();
     }
 
-    let headOffset = (m * uniforms.N + n) % uniforms.headSize;
+    let headOffset = (m * uniforms.N + n) % uniforms.head_size;
     valueQ += bias[headOffset + biasOffsetQ];
     valueK += bias[headOffset + biasOffsetK];
     valueV += bias[headOffset + biasOffsetV];
@@ -624,6 +620,7 @@ const prepare = (context: ComputeContext, parameters: AttentionParameters) => {
       outputV[outputIdx] = valueV;
     }
   }`;
+  };
 
   return context.compute(
       {

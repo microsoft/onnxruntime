@@ -238,23 +238,25 @@ const addBiasTranspose =
      hiddenSize: number, biasOffset: number) => {
       const outputShape = [batchSize, sequenceLength, hiddenSize];
       const outputSize = ShapeUtil.size(outputShape);
-
       const programUniforms: ProgramUniform[] =
           [{type: 'uint32', data: outputSize}, {type: 'uint32', data: biasOffset}, {type: 'uint32', data: hiddenSize}];
-      const dataType = tensorTypeToWsglStorageType(qkv.dataType);
-      const getShaderSource = (shaderHelper: ShaderHelper) => `
+
+      const getShaderSource = (shaderHelper: ShaderHelper) => {
+        const dataType = tensorTypeToWsglStorageType(qkv.dataType);
+        return `
   @group(0) @binding(0) var<storage, read> qkv: array<${dataType}>;
   @group(0) @binding(1) var<storage, read> bias: array<${dataType}>;
   @group(0) @binding(2) var<storage, read_write> qkv_with_bias: array<${dataType}>;
-  struct Uniforms { outputSize:u32, biasOffset:u32, hiddenSize:u32 };
+  struct Uniforms { output_size:u32, bias_offset:u32, hidden_size:u32 };
   @group(0) @binding(3) var<uniform> uniforms: Uniforms;
 
   ${shaderHelper.mainStart()}
-    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
-    let biasOffsetIdx = (global_idx % uniforms.hiddenSize) + uniforms.biasOffset;
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
+    let bias_offset_idx = (global_idx % uniforms.hidden_size) + uniforms.bias_offset;
 
-    qkv_with_bias[global_idx] = qkv[global_idx] + bias[biasOffsetIdx];
+    qkv_with_bias[global_idx] = qkv[global_idx] + bias[bias_offset_idx];
   }`;
+      };
 
       return context.compute(
           {
