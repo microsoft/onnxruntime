@@ -20,6 +20,7 @@ except ImportError:
 from .calibrate import TensorData
 from .onnx_model import ONNXModel
 from .quant_utils import (
+    ONNX_TYPE_TO_NP_TYPE,
     TENSOR_NAME_QUANT_SUFFIX,
     QuantizationMode,
     QuantizedValue,
@@ -1129,8 +1130,15 @@ class ONNXQuantizer:
             qType = quant_overrides["quant_type"].tensor_type  # noqa: N806
 
         if "scale" in quant_overrides and "zero_point" in quant_overrides:
-            zero_point, scale = quant_overrides["zero_point"], quant_overrides["scale"]
+            zero_point = np.array(quant_overrides["zero_point"], dtype=ONNX_TYPE_TO_NP_TYPE[qType])
+            scale = np.array(quant_overrides["scale"])
             q_weight_data = quantize_nparray(qType, weight_data.flatten(), scale, zero_point)
+            assert isinstance(zero_point, np.ndarray), f"Unexpected type {type(zero_point)}"
+            assert (
+                zero_point.dtype != np.float32 and zero_point.dtype != np.float16
+            ), f"Unexpected dtype {zero_point.dtype}"
+            assert isinstance(scale, np.ndarray), f"Unexpected type {type(scale)}"
+
         else:
             _, _, zero_point, scale, q_weight_data = quantize_data(
                 weight_data.flatten(),
@@ -1141,6 +1149,12 @@ class ONNXQuantizer:
                 rmin_override=quant_overrides.get("rmin"),
                 rmax_override=quant_overrides.get("rmax"),
             )
+
+            assert isinstance(zero_point, np.ndarray), f"Unexpected type {type(zero_point)}"
+            assert (
+                zero_point.dtype != np.float32 and zero_point.dtype != np.float16
+            ), f"Unexpected dtype {zero_point.dtype}"
+            assert isinstance(scale, np.ndarray), f"Unexpected type {type(scale)}"
 
         scale_dtype = weight.data_type
         scale_initializer = onnx.helper.make_tensor(scale_name, scale_dtype, [], scale.reshape((-1,)).tolist())
@@ -1222,10 +1236,20 @@ class ONNXQuantizer:
             channel_quant_overrides = quant_overrides_for_channels[i]
 
             if "scale" in channel_quant_overrides and "zero_point" in channel_quant_overrides:
-                zero_point, scale = channel_quant_overrides["zero_point"], channel_quant_overrides["scale"]
+                zero_point = np.array(channel_quant_overrides["zero_point"], dtype=ONNX_TYPE_TO_NP_TYPE[weight_qType])
+                scale = np.array(channel_quant_overrides["scale"])
                 quantized_per_channel_data = quantize_nparray(
                     weight_qType, per_channel_data.flatten(), scale, zero_point
                 )
+                assert isinstance(zero_point, np.ndarray), f"Unexpected type {type(zero_point)}"
+                assert (
+                    zero_point.dtype != np.float32 and zero_point.dtype != np.float16
+                ), f"Unexpected dtype {zero_point.dtype}"
+                assert isinstance(scale, np.ndarray), f"Unexpected type {type(scale)}"
+                assert isinstance(
+                    quantized_per_channel_data, np.ndarray
+                ), f"Unexpected type {type(quantized_per_channel_data)}"
+
             else:
                 symmetric = channel_quant_overrides.get(
                     "symmetric",
@@ -1243,6 +1267,15 @@ class ONNXQuantizer:
                     rmin_override=channel_quant_overrides.get("rmin"),
                     rmax_override=channel_quant_overrides.get("rmax"),
                 )
+
+                assert isinstance(zero_point, np.ndarray), f"Unexpected type {type(zero_point)}"
+                assert (
+                    zero_point.dtype != np.float32 and zero_point.dtype != np.float16
+                ), f"Unexpected dtype {zero_point.dtype}"
+                assert isinstance(scale, np.ndarray), f"Unexpected type {type(scale)}"
+                assert isinstance(
+                    quantized_per_channel_data, np.ndarray
+                ), f"Unexpected type {type(quantized_per_channel_data)}"
 
             zero_point_list.append(zero_point)
             scale_list.append(scale)

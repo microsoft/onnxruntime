@@ -143,6 +143,18 @@ ONNX_INT_TYPE_REDUCED_RANGE = {
 }
 
 
+def _check_type(*args):
+    new_args = []
+    for i, a in enumerate(args):
+        if numpy.issubdtype(type(a), numpy.number):
+            new_args.append(numpy.array(a))
+        elif isinstance(a, numpy.ndarray):
+            new_args.append(a)
+        else:
+            raise TypeError(f"arg {i} is not an array: {a}")
+    return tuple(new_args) if len(new_args) > 1 else new_args[0]
+
+
 def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
     assert (
         qType in ONNX_TYPE_TO_NP_TYPE
@@ -178,7 +190,7 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
             )
         )
         ref = ReferenceEvaluator(onnx_model)
-        return ref.run(None, {"X": arr, "scale": scale})[0]
+        return _check_type(ref.run(None, {"X": arr, "scale": scale})[0])
     else:
         dtype = ONNX_TYPE_TO_NP_TYPE[qType]
         (qmin, qmax) = get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=True)
@@ -187,7 +199,7 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
         cliphigh = min(qmax, high) if high is not None else qmax
         arr_fp32 = numpy.asarray((arr.astype(numpy.float32) / scale).round() + zero_point)
         numpy.clip(arr_fp32, cliplow, cliphigh, out=arr_fp32)
-        return arr_fp32.astype(dtype)
+        return _check_type(arr_fp32.astype(dtype))
 
 
 def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_real_range=None):
@@ -300,15 +312,17 @@ def quantize_data(
     if rmin_override is not None:
         rmin = rmin_override
     else:
-        rmin = 1.0
+        rmin = 0.0
 
     if rmax_override is not None:
         rmax = rmax_override
     else:
-        rmax = 1.0
+        rmax = 0.0
 
+    rmin = numpy.array(rmin, dtype=data.dtype)
+    rmax = numpy.array(rmax, dtype=data.dtype)
     zero_point = 0
-    scale = 1.0
+    scale = numpy.array(1.0, dtype=data.dtype)
     if len(data):
         rmin = data.min()
         rmax = data.max()
@@ -325,14 +339,14 @@ def quantize_data(
                 f"One of the quantized value is NaN data in [{np_data.min()}, {np_data.max()}], "
                 f"quantized_data in [{quantized_data.min()}, {quantized_data.max()}]."
             )
-        return rmin, rmax, zero_point, scale, quantized_data
+        return _check_type(rmin, rmax, zero_point, scale, quantized_data)
 
     if qType in (TensorProto.INT8, TensorProto.UINT8, TensorProto.INT16, TensorProto.UINT16):
         if len(data):
             qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range, symmetric=symmetric)
             zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric, min_real_range)
         quantized_data = quantize_nparray(qType, data, scale, zero_point)
-        return rmin, rmax, zero_point, scale, quantized_data
+        return _check_type(rmin, rmax, zero_point, scale, quantized_data)
 
     raise ValueError(f"Unexpected value for qType={qType}.")
 
