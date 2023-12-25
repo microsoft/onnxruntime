@@ -1,24 +1,22 @@
+resources:
+  pipelines:
+  - pipeline: build
+    source: 'Nuget-CUDA-Packaging-Pipeline'
+    trigger: 
+      branches:
+        include:
+        - main
+    branch: main
+
 parameters:
   - name: nightly
-    type: string
-    default: '1'
-  - name: build_id
-    type: string
-    default: 'latest'
-  - name: project
-    type: string
-    default: 'Lotus'
-  - name: pipeline
-    type: string
-    default: 'Nuget-CUDA-Packaging-Pipeline'
+    type: boolean
+    default: true
 
 stages:
 - template: stages/nuget-cuda-publishing-stage.yml
   parameters:
-    build_id: ${{ parameters.build_id }}
-    project: ${{ parameters.project }}
-    pipeline: ${{ parameters.pipeline }}
-    ${{ if ne(parameters.nightly, '1') }}:
+    ${{ if ne(parameters.nightly, true) }}:
       artifact_feed: onnxruntime-cuda-12
     ${{ else }}:
       artifact_feed: ort-cuda-12-nightly

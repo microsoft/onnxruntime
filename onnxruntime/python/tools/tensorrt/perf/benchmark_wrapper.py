@@ -1,3 +1,7 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------------------
 import argparse  # noqa: F401
 import copy  # noqa: F401
 import csv  # noqa: F401
@@ -65,6 +69,7 @@ def main():
 
     benchmark_fail_csv = fail_name + csv_ending  # noqa: F405
     benchmark_metrics_csv = metrics_name + csv_ending  # noqa: F405
+    benchmark_op_metrics_csv = op_metrics_name + csv_ending  # noqa: F405
     benchmark_success_csv = success_name + csv_ending  # noqa: F405
     benchmark_latency_csv = latency_name + csv_ending  # noqa: F405
     benchmark_status_csv = status_name + csv_ending  # noqa: F405
@@ -166,6 +171,9 @@ def main():
             model_to_metrics = read_map_from_file(METRICS_FILE)  # noqa: F405
             output_metrics(model_to_metrics, os.path.join(path, benchmark_metrics_csv))  # noqa: F405
             logger.info(f"\nSaved model metrics results to {benchmark_metrics_csv}")  # noqa: F405
+            # Output op metrics for dashboard display
+            output_op_metrics(model_to_metrics, os.path.join(path, benchmark_op_metrics_csv))  # noqa: F405
+            logger.info(f"\nSaved model op metrics results to {benchmark_op_metrics_csv}")  # noqa: F405
 
     if benchmark:
         logger.info("\n=========================================")  # noqa: F405

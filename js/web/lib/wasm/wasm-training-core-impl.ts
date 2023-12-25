@@ -3,7 +3,7 @@
 
 import {InferenceSession, Tensor} from 'onnxruntime-common';
 
-import {SerializableModeldata, TensorMetadata} from './proxy-messages';
+import {SerializableInternalBuffer, TensorMetadata} from './proxy-messages';
 import {setRunOptions} from './run-options';
 import {setSessionOptions} from './session-options';
 import {dataLocationStringToEnum, tensorDataTypeEnumToString, tensorDataTypeStringToEnum, tensorTypeToTypedArrayConstructor} from './wasm-common';
@@ -32,7 +32,7 @@ const ifErrCodeCheckLastError = (errCode: number, message: string, checkNeqZero 
   }
 };
 
-export const createCheckpointHandle = (checkpointData: SerializableModeldata): number => {
+export const createCheckpointHandle = (checkpointData: SerializableInternalBuffer): number => {
   const wasm = getInstance();
 
   const [checkpointDataOffset, checkpointDataLength] = checkpointData;
@@ -108,8 +108,8 @@ export const getModelInputOutputNames = (trainingSessionId: number, isEvalModel:
 };
 
 export const createTrainingSessionHandle =
-    (checkpointHandle: number, trainModelData: SerializableModeldata, evalModelData: SerializableModeldata,
-     optimizerModelData: SerializableModeldata, options: InferenceSession.SessionOptions): number => {
+    (checkpointHandle: number, trainModelData: SerializableInternalBuffer, evalModelData: SerializableInternalBuffer,
+     optimizerModelData: SerializableInternalBuffer, options: InferenceSession.SessionOptions): number => {
       const wasm = getInstance();
 
       let trainingSessionHandle = 0;
