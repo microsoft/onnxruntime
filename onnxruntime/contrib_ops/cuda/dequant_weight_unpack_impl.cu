@@ -35,7 +35,7 @@ __global__ void kDequantizeAndUnpackWeight248(T* out, const int32_t* qweight, co
   int col_ind = (tid % half_n) * 2;
   int weight_in_row = tid / half_n * compress_group_size;
   half2 scale_v = FETCH_HALF2(scale[weight_in_row / group_size * n + col_ind]);
-  uint32_t zero_v = zeros[weight_in_row / group_size * (n / compress_group_size) + (col_ind) / compress_group_size];
+  uint32_t zero_v = qzeros == nullptr ? 0x88888888 : qzeros[weight_in_row / group_size * (n / compress_group_size) + (col_ind) / compress_group_size];
   int zero_ind = col_ind % compress_group_size;
   uint8_t zv1 = (zero_v >> (zero_ind * WBITS)) & max_num_in_bits;
   uint8_t zv2 = (zero_v >> (zero_ind * WBITS + WBITS)) & max_num_in_bits;
@@ -129,12 +129,12 @@ __global__ void DequantizeAndUnpackWeight3567_v2(T* out, const uint32_t* qweight
   const int zero_col_to_2 = ((half_col_ind + 2) * WBITS - 1) / 32;
   const int qzero_width = (row_n * WBITS + 32 - 1) / 32;
   for (int i = 0, scale_zero_from_i = scale_zero_from; scale_zero_from_i <= scale_zero_to; scale_zero_from_i++, i++) {
-    uint32_t zero_v = zeros[scale_zero_from_i * qzero_width + zero_col_from];
+    uint32_t zero_v = qzeros == nullptr ? 0x88888888 : qzeros[scale_zero_from_i * qzero_width + zero_col_from];
     const int zero_bits_last = (((half_col_ind)*WBITS) % 32);
     zv1[i].x = (zero_v >> zero_bits_last) & max_num_in_bits;
     if (zero_col_from != zero_col_to) {
       const int zero_bits_first = ((half_col_ind + 1) * WBITS) % 32;
-      uint32_t zero_v1 = zeros[scale_zero_from * qzero_width + zero_col_to];
+      uint32_t zero_v1 = qzeros == nullptr ? 0x88888888 : qzeros[scale_zero_from * qzero_width + zero_col_to];
       zv1[i].x |= (zero_v1 & ((1 << zero_bits_first) - 1)) << (32 - zero_bits_last);
 
       zv1[i].y = (zero_v1 >> zero_bits_first) & max_num_in_bits;
@@ -144,7 +144,7 @@ __global__ void DequantizeAndUnpackWeight3567_v2(T* out, const uint32_t* qweight
 
     if (zero_col_to != zero_col_to_2) {
       const int zero_bits_first = ((half_col_ind + 2) * WBITS) % 32;
-      uint32_t zero_v1 = zeros[scale_zero_from * qzero_width + zero_col_to_2];
+      uint32_t zero_v1 = qzeros == nullptr ? 0x88888888 : qzeros[scale_zero_from * qzero_width + zero_col_to_2];
       zv1[i].y |= (zero_v1 & ((1 << zero_bits_first) - 1)) << (32 - zero_bits_last - WBITS);
     }
   }
@@ -195,6 +195,132 @@ __global__ void DequantizeAndUnpackWeight3567_v2(T* out, const uint32_t* qweight
       half2 res = __hfma2(wv, scale_2, -scale_zeros_2);
       out_h2[out_offset + i * half_n] = res;
     }
+  }
+}
+
+
+template <typename scalar_t, int WBITS>
+__global__ void DequantizeAndUnpackWeight357_g(
+    scalar_t* out, const uint32_t* qweight, const scalar_t* scale, const uint32_t* qzeros,
+    const int32_t* g_idx, int group_size, const int in_features, const int n,
+    uint8_t add_zero_bias) {
+  int bid = blockIdx.x;
+  int tid = (bid * kBlockSize + threadIdx.x);
+  int out_x = tid % n;
+  int out_y = tid / n;
+  int scale_row = g_idx[out_y];
+
+  const int max_num_in_bits = (1 << WBITS) - 1;
+
+  const int qzero_width = (n * WBITS + 32 - 1) / 32;
+  scalar_t scale_v = scale[scale_row * n + out_x];
+  uint32_t zero_v1 = 0x88888888;
+  uint8_t zv1 = 0;
+  if (qzeros != nullptr) {
+    int start_bits = out_x * WBITS;
+    int first = start_bits / 32;
+    int end_bits = (start_bits + WBITS);
+    int second = end_bits / 32;
+    start_bits = start_bits % 32;
+    end_bits = end_bits % 32;
+
+    zero_v1 = qzeros[scale_row * qzero_width + first];
+    zv1 = (zero_v1 >> start_bits) & max_num_in_bits;
+    if (first != second) {
+      zero_v1 = qzeros[scale_row * qzero_width + second];
+      zv1 |= (zero_v1 & ((1 << end_bits) - 1)) << (32 - start_bits);
+    }
+  }
+
+  scalar_t scale_zeros = __hmul(scale_v, __ushort2half_rn(zv1 + add_zero_bias));
+
+  uint32_t weight_int = 0;
+  uint8_t wv1 = 0;
+  {
+    int start_bits = out_y * WBITS;
+    int first = start_bits / 32;
+    int end_bits = (start_bits + WBITS);
+    int second = end_bits / 32;
+    start_bits = start_bits % 32;
+    end_bits = end_bits % 32;
+
+    weight_int = qweight[first * n + out_x];
+    wv1 = (weight_int >> start_bits) & max_num_in_bits;
+    if (first != second) {
+      weight_int = qweight[second * n + out_x];
+      wv1 |= (weight_int & ((1 << end_bits) - 1)) << (32 - start_bits);
+    }
+  }
+
+  scalar_t wv = __ushort2half_rn(wv1);
+  out[tid] = __hfma(wv, scale_v, -scale_zeros);
+}
+
+template <typename scalar_t, int WBITS>
+__global__ void DequantizeAndUnpackWeight248_g(scalar_t* out, const uint32_t* qweight, const scalar_t* scale, const uint32_t* qzeros, const int32_t* g_idx,
+                                               int group_size, const int in_features, const int n, uint8_t add_zero_bias) {
+  int bid = blockIdx.x;
+  int tid = (bid * kBlockSize + threadIdx.x);
+  int out_x = tid % n;
+  int out_y = tid / n;
+  int scale_row = g_idx[out_y];
+
+  const int compress_group_size = 32 / WBITS;
+  const int max_num_in_bits = (1 << WBITS) - 1;
+
+  scalar_t scale_v = scale[scale_row * n + out_x];
+  uint32_t zero_v = qzeros == nullptr
+                        ? 0x88888888
+                        : qzeros[scale_row * (n / compress_group_size) +
+                                 (out_x / compress_group_size)];
+  int zero_ind = out_x % compress_group_size;
+  uint8_t zv1 = (zero_v >> (zero_ind * WBITS)) & max_num_in_bits;
+
+  scalar_t scale_zeros = __hmul(scale_v, __ushort2half_rn(zv1 + add_zero_bias));
+
+  int weight_int = qweight[(out_y / compress_group_size) * n + out_x];
+  int weight_ind = (out_y) % compress_group_size;
+  uint8_t wv1 = (weight_int >> (weight_ind * WBITS)) & max_num_in_bits;
+  scalar_t wv = __ushort2half_rn(wv1);
+  out[tid] = __hfma(wv, scale_v, -scale_zeros);
+}
+
+void DequantWeightNbit_g(cudaStream_t stream,
+                         const int32_t* qweight_i32_i, const void* scale_fp16,
+                         const int32_t* qzeros_i32_i, const int32_t* g_dix,
+                         void* b_fp16,
+                         uint32_t mat_k, uint32_t mat_n, int bits,
+                         int groupsize) {
+  using scalar_t = half;
+  int add_zero_bias=0;
+  dim3 gridDim = {mat_k * mat_n / kBlockSize};
+  dim3 blockDim = {kBlockSize};
+
+  const uint32_t* qweight_i32 = reinterpret_cast<const uint32_t*>(qweight_i32_i);
+  const uint32_t* qzeros_i32 = reinterpret_cast<const uint32_t*>(qzeros_i32_i);
+#define CASE_EVEN(WBITS)                                                                                                       \
+  case WBITS:                                                                                                                  \
+    DequantizeAndUnpackWeight248_g<scalar_t, WBITS>                                                                            \
+        <<<gridDim, blockDim, 0, stream>>>(                                                                                    \
+            (scalar_t*)b_fp16, qweight_i32, (scalar_t*)scale_fp16, qzeros_i32, g_dix, groupsize, mat_k, mat_n, add_zero_bias); \
+    break;
+#define CASE_ODD(WBITS)                                                                                                        \
+  case WBITS:                                                                                                                  \
+    DequantizeAndUnpackWeight357_g<scalar_t, WBITS>                                                                            \
+        <<<gridDim, blockDim, 0, stream>>>(                                                                                    \
+            (scalar_t*)b_fp16, qweight_i32, (scalar_t*)scale_fp16, qzeros_i32, g_dix, groupsize, mat_k, mat_n, add_zero_bias); \
+    break;
+  switch (bits) {
+    CASE_EVEN(2);
+    CASE_EVEN(4);
+    CASE_EVEN(8);
+    CASE_ODD(3);
+    CASE_ODD(5);
+    CASE_ODD(6);
+    CASE_ODD(7);
+    default:
+      printf("error bits\n");
+      assert(false);
   }
 }
 

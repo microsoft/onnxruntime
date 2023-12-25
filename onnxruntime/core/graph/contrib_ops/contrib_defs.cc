@@ -558,9 +558,21 @@ void nBitQuantOpsShapeInference(InferenceContext& ctx, size_t weight_idx=0) {
   }
 
   auto qweight_input_shape = ctx.getInputType(weight_idx)->tensor_type().shape();
-  if (qweight_input_shape.dim_size() != 2) {
+  if (qweight_input_shape.dim_size() < 2) {
     return;  // Input tensor should have at least two dimensions.
   }
+  if (weight_idx == 1){
+    auto input_shape = ctx.getInputType(0)->tensor_type().shape();
+    for (int i = 0; i < 3; ++i) {
+      if (i == 3 - 1) {
+        final_output_shape->add_dim()->set_dim_value(out_features);
+        break;
+      }
+      final_output_shape->add_dim()->set_dim_value(-1);
+    }
+    return;
+  }
+
   if (in_features > 0) {
     final_output_shape->add_dim()->set_dim_value(in_features);
   } else if (bits == 4 || bits == 2 || bits == 8) {
@@ -3497,12 +3509,13 @@ MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4
       .Output(0, "Y", "tensor. The output tensor has the same rank as the input. ", "T")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
       .TypeConstraint("T1", {"tensor(int32)", "tensor(int64)", "tensor(int8)"}, "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        // Type inference
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        // Shape inference
-        nBitQuantOpsShapeInference(ctx, 1);
-      });
+      //.TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+      //  // Type inference
+      //  propagateElemTypeFromInputToOutput(ctx, 0, 0);
+      //  // Shape inference
+      //  nBitQuantOpsShapeInference(ctx, 1);
+      //})
+      ;
   ONNX_CONTRIB_OPERATOR_SCHEMA(DequantizeAndUnpackWeight)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -3513,6 +3526,7 @@ MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4
       .Input(0, "qweight", "quantized weight", "T", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
       .Input(1, "scales", "scale in quantization", "T1", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
       .Input(2, "qzeros", "zero_points", "T", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
+      .Input(3, "g_idx", "act_order", "T", OpSchema::Optional)
       .Output(0, "Y", "Output tensor", "T1", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
       .TypeConstraint("T", {"tensor(uint32)", "tensor(int32)"}, "Constrain input and output types to integer tensors.")
       .TypeConstraint("T1", {"tensor(float16)", "tensor(float)"}, "Constrain input and output types to integer tensors.")

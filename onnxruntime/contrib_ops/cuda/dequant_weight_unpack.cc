@@ -56,21 +56,39 @@ void DequantWeightNbit(
     uint32_t MATRIX_N,
     uint32_t bits,
     uint32_t groupsize);
+void DequantWeightNbit_g(cudaStream_t stream,
+                         const int32_t* qweight_i32,
+                         const void* scales_data,
+                         const int32_t* zeros_data,
+                         const int32_t* g_dix,
+                         void* b_fp16,
+                         uint32_t mat_k, uint32_t mat_n, int bits,
+                         int groupsize);
 
 Status DequantizeAndUnpackWeight::ComputeInternal(OpKernelContext* ctx) const {
   const auto* qweight = ctx->Input<Tensor>(0);
   const auto* input_scale = ctx->Input<Tensor>(1);
   const auto* input_zeros = ctx->Input<Tensor>(2);
+  const auto* g_idx = ctx->Input<Tensor>(3);
 
   auto output_shape = qweight->Shape();
   output_shape[0] = in_features_;
 
   auto* output = ctx->Output(0, output_shape);
-  DequantWeightNbit(Stream(ctx), qweight->Data<int32_t>(),
-                    input_scale->Data<MLFloat16>(),
-                    input_zeros->Data<int32_t>(),
-                    output->MutableData<MLFloat16>(),
-                    in_features_, output_shape[1], bits_, group_size_);
+  if (g_idx && g_idx->Shape().Size() > 1) {
+    DequantWeightNbit_g(Stream(ctx), qweight->Data<int32_t>(),
+                        input_scale->Data<MLFloat16>(),
+                        input_zeros->Data<int32_t>(),
+                        g_idx->Data<int32_t>(),
+                        output->MutableData<MLFloat16>(),
+                        in_features_, output_shape[1], bits_, group_size_);
+  }else{
+    DequantWeightNbit(Stream(ctx), qweight->Data<int32_t>(),
+                      input_scale->Data<MLFloat16>(),
+                      input_zeros->Data<int32_t>(),
+                      output->MutableData<MLFloat16>(),
+                      in_features_, output_shape[1], bits_, group_size_);
+  }
   return Status::OK();
 }
 

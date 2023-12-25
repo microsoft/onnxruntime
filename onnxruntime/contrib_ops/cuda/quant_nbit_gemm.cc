@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cstdio>
 #include "core/providers/cuda/math/matmul.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
@@ -43,7 +44,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", BuildKernelDefConstraints<float, MLFloat16>()),
+        .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16>()),
     QuantNbitsGemm);
 
 void DequantWeightNbit(
@@ -117,39 +118,61 @@ Status QuantNbitsGemm::ComputeInternal(OpKernelContext* ctx) const {
   const auto* input_scale = ctx->Input<Tensor>(2);
   const auto* input_zeros = ctx->Input<Tensor>(3);
   ////const auto* input_bias = ctx->Input<Tensor>(4);
-  ////const auto* input_gidx = ctx->Input<Tensor>(5);
+  const auto* input_gidx = ctx->Input<Tensor>(5);
   const auto& input_shape = input_x->Shape();
   const auto& weight_shape = input_qweight->Shape();
-  if (input_shape.NumDimensions() == 2 && input_shape[0] <= 4) {
+  if (input_shape.NumDimensions() == 2 && input_shape[0] <= 4 && g_idx && g_idx->Shape().Size() > 1) {
     TensorShapeVector output_shape = input_shape.AsShapeVector();
     output_shape[output_shape.size() - 1] = weight_shape[1];
     auto* output = ctx->Output(0, output_shape);
     auto batch = input_shape[0] * (input_shape.NumDimensions() > 2 ? input_shape[1] : 1);
     int64_t in_features = input_shape[input_shape.NumDimensions() - 1];
 
-    Q4bitGemv(Stream(ctx), input_x->Data<MLFloat16>(),
-                     input_qweight->Data<int32_t>(), output->MutableData<MLFloat16>(),
-                     input_scale->Data<MLFloat16>(), input_zeros->Data<int32_t>(),
-                     batch, in_features, weight_shape[1],
-                     groupsize_);
-    return Status::OK();
+    if (g_idx && g_idx->Shape().Size() > 1) {
+      int64_t shapes[5] = {
+          batch,
+          in_features,
+          weight_shape[0],
+          weight_shape[1],
+          input_zeros->Shape()[1]};
+      vecquant4matmul_cuda(Stream(ctx), input_x->Data<MLFloat16>(),
+                           input_qweight->Data<int32_t>(), output->MutableData<MLFloat16>(),
+                           input_scale->Data<MLFloat16>(), input_zeros->Data<int32_t>(),
+                           input_gidx->Data<int32_t>(), shapes);
+    } else {
+      Q4bitGemv(Stream(ctx), input_x->Data<MLFloat16>(),
+                input_qweight->Data<int32_t>(), output->MutableData<MLFloat16>(),
+                input_scale->Data<MLFloat16>(), input_zeros->Data<int32_t>(),
+                batch, in_features, weight_shape[1],
+                groupsize_);
+    }
+      return Status::OK();
   } else {
-    AllocatorPtr alloc;
-    auto status = ctx->GetTempSpaceAllocator(&alloc);
-    if (!status.IsOK())
-      return status;
+      AllocatorPtr alloc;
+      auto status = ctx->GetTempSpaceAllocator(&alloc);
+      if (!status.IsOK())
+        return status;
 
-    auto fp16_weight_shape = input_qweight->Shape();
-    fp16_weight_shape[0] *= 32 / bits_;
+      auto fp16_weight_shape = input_qweight->Shape();
+      fp16_weight_shape[0] *= 32 / bits_;
 
-    auto temp_fp16_weight = Tensor::Create(input_scale->DataType(), fp16_weight_shape, alloc);
+      auto temp_fp16_weight = Tensor::Create(input_scale->DataType(), fp16_weight_shape, alloc);
 
-    DequantWeightNbit(Stream(ctx), input_qweight->Data<int32_t>(),
-                      input_scale->Data<MLFloat16>(),
-                      input_zeros->Data<int32_t>(),
-                      temp_fp16_weight->MutableData<MLFloat16>(),
-                      weight_shape[0], weight_shape[1], bits_, groupsize_);
-    return Fp16GemmHelper<MLFloat16>(ctx, temp_fp16_weight.get(), GetDeviceProp(), GetCublasHandle(ctx));
+      if (g_idx && g_idx->Shape().Size() > 1) {
+        DequantWeightNbit_g(Stream(ctx), input_qweight->Data<int32_t>(),
+                            input_scale->Data<MLFloat16>(),
+                            input_zeros->Data<int32_t>(),
+                            input_gidx->Data<int32_t>(),
+                            temp_fp16_weight->MutableData<MLFloat16>(),
+                            weight_shape[0], weight_shape[1], bits_, groupsize_);
+      } else {
+        DequantWeightNbit(Stream(ctx), input_qweight->Data<int32_t>(),
+                          input_scale->Data<MLFloat16>(),
+                          input_zeros->Data<int32_t>(),
+                          temp_fp16_weight->MutableData<MLFloat16>(),
+                          weight_shape[0], weight_shape[1], bits_, groupsize_);
+      }
+      return Fp16GemmHelper<MLFloat16>(ctx, temp_fp16_weight.get(), GetDeviceProp(), GetCublasHandle(ctx));
   }
 }
 
