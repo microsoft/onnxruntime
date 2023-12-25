@@ -209,9 +209,8 @@ class TestOpMatMul4Bits(unittest.TestCase):
         data_reader = self.input_feeds(1, {"input": [100, 52]})
         self.quant_test(model_fp32_path, data_reader, 32, False)
 
-    @unittest.skip(
-        "Skip failed test in Python Packaging Test Pipeline."
-        "During importing neural_compressor, pycocotools throws ValueError: numpy.ndarray size changed"
+    @unittest.skipIf(
+        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_4bits"
     )
     def test_quantize_matmul_int4_using_rtn_algo(self):
         if not find_spec("neural_compressor"):
@@ -221,9 +220,8 @@ class TestOpMatMul4Bits(unittest.TestCase):
         data_reader = self.input_feeds(1, {"input": [100, 52]})
         self.quant_test_with_algo("RTN", model_fp32_path, data_reader, 32, False)
 
-    @unittest.skip(
-        "Skip failed test in Python Packaging Test Pipeline."
-        "During importing neural_compressor, pycocotools throws ValueError: numpy.ndarray size changed"
+    @unittest.skipIf(
+        find_spec("onnxruntime.training"), "Skip because training package doesn't has quantize_matmul_4bits"
     )
     def test_quantize_matmul_int4_using_gptq_algo(self):
         if not find_spec("neural_compressor"):
