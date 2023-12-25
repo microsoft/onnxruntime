@@ -19,6 +19,14 @@ MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE = TensorProto.FLOAT
 MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE = [1]
 
 
+def get_params_connected_to_pull_param_trigger(named_params: Dict[str, torch.nn.parameter.Parameter]):
+    return {k: v for k, v in named_params if v.requires_grad}
+
+
+def get_params_not_connected_to_pull_param_trigger(named_params: Dict[str, torch.nn.parameter.Parameter]):
+    return [v for k, v in named_params if not v.requires_grad]
+
+
 def post_processing_enable_mem_efficient_training(
     exported_model: ModelProto,
     named_params: Dict[str, torch.nn.parameter.Parameter],
@@ -29,7 +37,7 @@ def post_processing_enable_mem_efficient_training(
         exported_model (ModelProto): The exported model.
         named_params (Optional[Dict[str, torch.nn.parameter.Parameter]]): The full parameter map.
     """
-    trainable_named_params = {k: v for k, v in named_params if v.requires_grad}
+    trainable_named_params = get_params_connected_to_pull_param_trigger(named_params)
 
     # Create weight retrieving function using trainable_named_params.
     param_pull_trigger_func_class = _create_param_trigger_function(trainable_named_params)
@@ -75,7 +83,8 @@ def post_processing_enable_mem_efficient_training(
     )
 
     graph_inputs_to_remove = []
-    for graph_input in reversed(exported_model.graph.input):
+    input_offset = 0
+    for graph_input in exported_model.graph.input:
         if graph_input.name not in trainable_named_params:
             continue
 
@@ -110,7 +119,8 @@ def post_processing_enable_mem_efficient_training(
             training_mode=1,
             safe_run_mode=0,
         )
-        exported_model.graph.node.insert(0, new_node)
+        exported_model.graph.node.insert(input_offset, new_node)
+        input_offset += 1
 
     # Delete exported_model.graph.input
     for input_to_remove in graph_inputs_to_remove:
