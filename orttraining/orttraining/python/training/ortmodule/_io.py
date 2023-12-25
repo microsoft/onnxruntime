@@ -260,12 +260,12 @@ def _combine_input_buffers_initializers(
             )
 
     # params is a list of all initializers known to the onnx graph
-    # if zero_stage3_offload_param_map:
-    #     for p in params:
-    #         if p not in zero_stage3_offload_param_map.values():
-    #             result.append(p)
-    # else:
-    #     result.extend(params)
+    if zero_stage3_offload_param_map:
+        for p in params:
+            if p not in zero_stage3_offload_param_map.values():
+                result.append(p)
+    else:
+        result.extend(params)
 
     if rt_inspector.memory_ob.is_enabled() and not rt_inspector.memory_ob.symbolic_dim_collecting_completed:
         rt_inspector.memory_ob.collect_symbolic_dim_values(input_info.dynamic_axes, onnx_input_to_value_map)

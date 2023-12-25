@@ -314,10 +314,20 @@ class TrainingManager(GraphExecutionManager):
                 self._runtime_options.enable_zero_stage3_support
                 or self._runtime_options.enable_mem_efficient_grad_management
             ):
-                self._append_pull_weight_trigger_as_input(kwargs, self._device)
+                kwargs = self._append_pull_weight_trigger_as_input(kwargs, self._device)
+
+            param_to_append_as_onnx_graph_inputs = []
+            if self._runtime_options.enable_mem_efficient_grad_management:
+                from ._mem_efficient_grad_mgmt import get_params_not_connected_to_pull_param_trigger
+
+                param_to_append_as_onnx_graph_inputs = get_params_not_connected_to_pull_param_trigger(
+                    self._flattened_module.named_parameters()
+                )
+            else:
+                param_to_append_as_onnx_graph_inputs = self._graph_initializers
 
             prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
-                self._graph_initializers,
+                param_to_append_as_onnx_graph_inputs,
                 self._graph_info.user_input_names,
                 self._input_info,
                 self._flattened_module.named_buffers(),
