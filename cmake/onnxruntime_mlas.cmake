@@ -45,6 +45,15 @@ endif()
 
 set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)
 
+function(add_jblas)
+    add_subdirectory(${MLAS_SRC_DIR}/x86_64/jblas jblas) 
+    target_link_libraries(onnxruntime_mlas PRIVATE jblas::jblas)
+    target_sources(onnxruntime_mlas PRIVATE
+        ${MLAS_SRC_DIR}/jblas_gemm.cpp
+     )
+    set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR OFF)
+endfunction()
+
 #TODO: set MASM flags properly
 function(setup_mlas_source_for_windows)
 
@@ -200,7 +209,6 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/q4gemm_avx512.cpp
       )
     endif()
-
   else()
     target_sources(onnxruntime_mlas PRIVATE
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
@@ -566,7 +574,7 @@ else()
             )
           set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
           set_source_files_properties(${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
-	    endif()
+        endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
           onnxruntime_add_static_library(onnxruntime_mlas_x86_64 ${mlas_platform_srcs})
@@ -602,6 +610,10 @@ else()
           "${MLAS_SRC_DIR}/scalar/*.cpp")
     endif()
     target_sources(onnxruntime_mlas PRIVATE ${mlas_platform_srcs})
+endif()
+
+if(USE_JBLAS)
+  add_jblas()
 endif()
 
 foreach(mlas_target ${ONNXRUNTIME_MLAS_LIBS})
