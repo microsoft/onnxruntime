@@ -94,7 +94,7 @@ RUN wget https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.b
 
 # Install CuPy, No stable version is available
 RUN git clone https://github.com/ROCmSoftwarePlatform/cupy && cd cupy && \
-    git checkout fc251a808037f8a2270860c2a23a683bfc0de43e && \
+    git checkout 432a8683351d681e00903640489cb2f4055d2e09 && \
     export CUPY_INSTALL_USE_HIP=1 && \
     export ROCM_HOME=/opt/rocm && \
     export HCC_AMDGPU_TARGET=gfx906,gfx908,gfx90a && \
