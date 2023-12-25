@@ -292,8 +292,6 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
 
         wgt_qmin, wgt_qmax = get_qmin_qmax_for_qType(wgt_zp.data_type)
         new_wgt_zp, new_wgt_sc = compute_scale_zp(wgt_rmin, wgt_rmax, wgt_qmin, wgt_qmax)
-        print("****", [wgt_zp.data_type, wgt_rmin, wgt_rmax, wgt_qmin, wgt_qmax], [new_wgt_zp, new_wgt_sc])
-        # [2, array(0., dtype=float32), array(1., dtype=float32), 0, 255] [array(0, dtype=int32), array(0.00392157, dtype=float32)]
         self.assertEqual(wgt_zp.int32_data[0], new_wgt_zp)
         self.assertEqual(wgt_sc.float_data[0], np.float32(new_wgt_sc))
 
@@ -508,5 +506,5 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
 if __name__ == "__main__":
     t = TestTensorQuantOverridesOption()
     t.setUp()
-    t.test_qdq_overrides_per_channel1()
+    t.test_qdq_default_per_channel()
     unittest.main()
