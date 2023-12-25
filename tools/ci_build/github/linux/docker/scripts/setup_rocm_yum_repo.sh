@@ -2,7 +2,7 @@
 set -e -x
 
 # version
-ROCM_VERSION=5.6
+ROCM_VERSION=6.0
 
 while getopts "r:" parameter_Option
 do case "${parameter_Option}"
@@ -14,7 +14,7 @@ done
 tee /etc/yum.repos.d/amdgpu.repo <<EOF
 [amdgpu]
 name=amdgpu
-baseurl=https://repo.radeon.com/amdgpu/$ROCM_VERSION/rhel/8.7/main/x86_64/
+baseurl=https://repo.radeon.com/amdgpu/$ROCM_VERSION/rhel/8.8/main/x86_64/
 enabled=1
 priority=50
 gpgcheck=1
