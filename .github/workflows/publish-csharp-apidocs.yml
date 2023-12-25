@@ -51,7 +51,7 @@ jobs:
         rm -rf _site/docs/api/csharp
         mv csharp/ApiDocs/csharp _site/docs/api/csharp
     - name: Upload docs artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: onnxruntime-csharp-apidocs
         path: _site

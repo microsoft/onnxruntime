@@ -44,7 +44,7 @@ jobs:
       shell: bash
 
     - name: Upload new site
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: onnxruntime-objectivec-apidocs
         path: ./_site
