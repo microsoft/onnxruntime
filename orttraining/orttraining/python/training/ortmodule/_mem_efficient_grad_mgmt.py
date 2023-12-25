@@ -4,10 +4,12 @@
 # --------------------------------------------------------------------------
 
 
-from typing import Dict, List, Optional, Tuple, Union
 import ctypes
+from typing import Dict, List, Optional, Tuple, Union
+
 import torch
 from onnx import ModelProto, NodeProto, TensorProto, helper
+
 from onnxruntime.training.utils import pytorch_type_to_onnx_dtype
 
 from ._pythonop_helper import make_pythonop_node
@@ -45,19 +47,23 @@ def post_processing_enable_mem_efficient_training(
     def _get_param_pull_trigger_name(param_name: str) -> str:
         return f"pull_{param_name}"
 
-
     # Create weight retrieving PythonOp.
-    inputs = [helper.make_tensor_value_info(
-        MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME,
-        MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE, # Use the same data type with output for the input
-        MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE,
-    )]
+    inputs = [
+        helper.make_tensor_value_info(
+            MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME,
+            MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE,  # Use the same data type with output for the input
+            MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE,
+        )
+    ]
 
-    outputs = [helper.make_tensor_value_info(
-        _get_param_pull_trigger_name(pname),
-        MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE,
-        MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE,
-    ) for pname in trainable_named_params]
+    outputs = [
+        helper.make_tensor_value_info(
+            _get_param_pull_trigger_name(pname),
+            MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE,
+            MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE,
+        )
+        for pname in trainable_named_params
+    ]
 
     weight_pull_node = make_pythonop_node(
         "weight_pull_trigger",
@@ -68,12 +74,10 @@ def post_processing_enable_mem_efficient_training(
         safe_run_mode=0,
     )
 
-
     graph_inputs_to_remove = []
     for graph_input in reversed(exported_model.graph.input):
         if graph_input.name not in trainable_named_params:
             continue
-
 
         graph_inputs_to_remove.append(graph_input)
 
@@ -81,20 +85,22 @@ def post_processing_enable_mem_efficient_training(
             continue
 
         # Create the param retrieval function for this parameter.
-        node_inputs = [helper.make_tensor_value_info(
+        node_inputs = [
+            helper.make_tensor_value_info(
                 _get_param_pull_trigger_name(graph_input.name),
                 MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE,
                 MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE,
-            ), graph_input.name,  # Second param is a string, which represent the param_name
+            ),
+            graph_input.name,  # Second param is a string, which represent the param_name
         ]
 
         node_outputs = [
             helper.make_tensor_value_info(
-            graph_input.name, # output use the same name as weight
-            int(pytorch_type_to_onnx_dtype(trainable_named_params[graph_input.name].dtype)),
-            list(trainable_named_params[graph_input.name].shape),
-            ),]
-
+                graph_input.name,  # output use the same name as weight
+                int(pytorch_type_to_onnx_dtype(trainable_named_params[graph_input.name].dtype)),
+                list(trainable_named_params[graph_input.name].shape),
+            ),
+        ]
 
         new_node = make_pythonop_node(
             f"weight_retrieval_{graph_input.name}",
@@ -114,13 +120,10 @@ def post_processing_enable_mem_efficient_training(
     exported_model.graph.input.insert(0, inputs[0])
     exported_model.graph.node.insert(0, weight_pull_node)
 
-
     return exported_model
 
 
-def _create_param_trigger_function(
-    trainable_named_params: Optional[Dict[str, torch.nn.parameter.Parameter]]
-):
+def _create_param_trigger_function(trainable_named_params: Optional[Dict[str, torch.nn.parameter.Parameter]]):
     """This function is used to create a weight retrieving function using trainable_named_params."""
 
     class ParamTriggerFunction(torch.autograd.Function):
@@ -153,21 +156,10 @@ def _create_param_trigger_function(
 
             return tensor_output_shapes, tensor_output_dtypes
 
-
-
-
-    # func_full_qual_name = get_fully_qualified_class_name(ParamTriggerFunction)
-    # register_torch_autograd_function(func_full_qual_name, ParamTriggerFunction)
-    # register_custom_function_schema_supplementary(ParamTriggerFunction)
-
-    # return func_full_qual_name
-
     return ParamTriggerFunction
 
 
-def _create_param_retrieval_function(
-    trainable_named_params: Dict[str, torch.nn.parameter.Parameter]
-):
+def _create_param_retrieval_function(trainable_named_params: Dict[str, torch.nn.parameter.Parameter]):
     """This function is used to create a weight retrieving function using trainable_named_params."""
 
     class ParamRetrievalFunction(torch.autograd.Function):
@@ -199,14 +191,13 @@ def _create_param_retrieval_function(
             # Restore the nn.Module from the pointer.
             param_name = ctypes.cast(input_pointer_scalars[0], ctypes.py_object).value
 
-            tensor_output_shapes = [list(trainable_named_params[param_name].shape),]
-            tensor_output_dtypes = [int(pytorch_type_to_onnx_dtype(trainable_named_params[param_name].dtype)),]
+            tensor_output_shapes = [
+                list(trainable_named_params[param_name].shape),
+            ]
+            tensor_output_dtypes = [
+                int(pytorch_type_to_onnx_dtype(trainable_named_params[param_name].dtype)),
+            ]
 
             return tensor_output_shapes, tensor_output_dtypes
 
-    # func_full_qual_name = get_fully_qualified_class_name(ParamRetrievalFunction)
-    # register_torch_autograd_function(func_full_qual_name, ParamRetrievalFunction)
-    # register_custom_function_schema_supplementary(ParamRetrievalFunction)
-
-    # return func_full_qual_name
     return ParamRetrievalFunction

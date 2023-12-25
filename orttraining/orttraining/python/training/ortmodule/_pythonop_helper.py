@@ -4,20 +4,16 @@
 # --------------------------------------------------------------------------
 
 from __future__ import annotations
+
 import inspect
 
+import onnx
 import torch
 
-from onnxruntime.capi._pybind_state import (
-    register_miscellaneous_const_input,
-    register_torch_autograd_function,
-)
+from onnxruntime.capi._pybind_state import register_miscellaneous_const_input, register_torch_autograd_function
 
-from ._utils import get_fully_qualified_class_name
 from ._custom_autograd_function_exporter import register_custom_function_schema_supplementary
-
-
-import onnx
+from ._utils import get_fully_qualified_class_name
 
 PYTHON_OP_DOMAIN = "com.microsoft"
 PYTHON_OP_TYPE = "PythonOp"
@@ -46,17 +42,20 @@ def set_safe_run_mode(model: onnx.ModelProto, allowed_unsafe_run_python_op_names
 
     return model
 
+
 _PYTHON_OP_INCRE_INDEX = [0]
+
 
 def make_pythonop_node(
     name_prefix: str,
-    inputs: list[onnx.ValueInfoProto | int | bool | float | tuple[int, ...] | tuple[bool, ...] | tuple[float, ...] | object ],
+    inputs: list[
+        onnx.ValueInfoProto | int | bool | float | tuple[int, ...] | tuple[bool, ...] | tuple[float, ...] | object
+    ],
     outputs: list[onnx.ValueInfoProto],
     func_class: torch.autograd.Function,
-    training_mode:int,
-    safe_run_mode:int,
-    ) -> onnx.NodeProto:
-
+    training_mode: int,
+    safe_run_mode: int,
+) -> onnx.NodeProto:
     assert issubclass(func_class, torch.autograd.Function), "func_class must be a subclass of torch.autograd.Function."
 
     assert len(inputs) > 0, f"inputs must not be empty for function {func_class}."
@@ -65,7 +64,10 @@ def make_pythonop_node(
     all_input_parameters: list[inspect.Parameter] = list(inspect.signature(func_class.forward).parameters.values())
 
     # Remove the first parameter (ctx) from inspected parameter list.
-    assert len(inputs) == len(all_input_parameters) - 1, f"The number of inputs ({len(inputs)}) must match the number of parameters ({len(all_input_parameters) - 1}) of the forward function."
+    assert len(inputs) == len(all_input_parameters) - 1, (
+        f"The number of inputs ({len(inputs)}) must match the number of parameters "
+        f"({len(all_input_parameters) - 1}) of the forward function."
+    )
 
     func_full_qual_name = get_fully_qualified_class_name(func_class)
 
@@ -106,10 +108,10 @@ def make_pythonop_node(
             tensor_args.append(arg.name)
             input_tensor_types.append(arg.type.tensor_type.elem_type)
             input_tensor_ranks.append(len(arg.type.tensor_type.shape.dim))
-            cconv += 'd'
+            cconv += "d"
             continue
 
-        cconv += 'c'
+        cconv += "c"
 
         # Got a non-tensor variable.
         if isinstance(arg, float):
@@ -180,7 +182,6 @@ def make_pythonop_node(
         output_tensor_types.append(arg.type.tensor_type.elem_type)
         output_tensor_ranks.append(len(arg.type.tensor_type.shape.dim))
 
-
     attrs = {
         "func_name": func_full_qual_name,
         "input_convention": cconv,
@@ -218,7 +219,6 @@ def make_pythonop_node(
     if len(input_pointer_scalars) > 0:
         attrs["input_pointer_scalars"] = input_pointer_scalars
         attrs["input_pointer_scalar_positions"] = input_pointer_scalar_positions
-
 
     # Register function with class names.
     register_torch_autograd_function(func_full_qual_name, func_class)
