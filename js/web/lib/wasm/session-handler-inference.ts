@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import {readFile} from 'node:fs/promises';
-import {InferenceSession, InferenceSessionHandler, SessionHandler, Tensor} from 'onnxruntime-common';
+import {InferenceSession, InferenceSessionHandler, SessionHandler, Tensor, TRACE_FUNC_BEGIN, TRACE_FUNC_END} from 'onnxruntime-common';
 
 import {SerializableInternalBuffer, TensorMetadata} from './proxy-messages';
 import {copyFromExternalBuffer, createSession, endProfiling, releaseSession, run} from './proxy-wrapper';
@@ -54,6 +54,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements InferenceSessionHan
   }
 
   async loadModel(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions): Promise<void> {
+    TRACE_FUNC_BEGIN();
     let model: Parameters<typeof createSession>[0];
 
     if (typeof pathOrBuffer === 'string') {
@@ -70,6 +71,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements InferenceSessionHan
     }
 
     [this.sessionId, this.inputNames, this.outputNames] = await createSession(model, options);
+    TRACE_FUNC_END();
   }
 
   async dispose(): Promise<void> {
@@ -78,6 +80,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements InferenceSessionHan
 
   async run(feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType, options: InferenceSession.RunOptions):
       Promise<SessionHandler.ReturnType> {
+    TRACE_FUNC_BEGIN();
     const inputArray: Tensor[] = [];
     const inputIndices: number[] = [];
     Object.entries(feeds).forEach(kvp => {
@@ -115,6 +118,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements InferenceSessionHan
     for (let i = 0; i < results.length; i++) {
       resultMap[this.outputNames[outputIndices[i]]] = outputArray[i] ?? decodeTensorMetadata(results[i]);
     }
+    TRACE_FUNC_END();
     return resultMap;
   }
 
