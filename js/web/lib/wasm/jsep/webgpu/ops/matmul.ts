@@ -66,7 +66,7 @@ export const createNaiveMatmulProgramInfo =
         const broadCastADims = getBroadcastDims(outerDimsA, outerDims);
         const broadCastBDims = getBroadcastDims(outerDimsB, outerDims);
         const uniforms: UniformsArrayType = [
-          {name: 'outputSize', type: 'u32'}, {name: 'M', type: 'u32'}, {name: 'N', type: 'u32'},
+          {name: 'output_size', type: 'u32'}, {name: 'M', type: 'u32'}, {name: 'N', type: 'u32'},
           {name: 'K', type: 'u32'}
         ];
         if (activationAttributes.activation === 'Clip') {
@@ -115,7 +115,7 @@ export const createNaiveMatmulProgramInfo =
             shaderHelper.registerUniforms(uniforms).registerInternalVariables(batchDims).declareVariables(
                 ...inputVariables, output)}
   ${shaderHelper.mainStart()}
-    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
     let col = (global_idx % (uniforms.N / ${components})) * ${components};
     var index1 = global_idx / (uniforms.N / ${components});
     let stride1 = uniforms.M / ${outputNumber};
