@@ -14,7 +14,7 @@ s) ORT_SOURCE=${OPTARG};;
 esac
 done
 
-ONNX_MODEL_TAR_URL="https://github.com/onnx/models/raw/main/vision/classification/squeezenet/model/squeezenet1.0-7.tar.gz"
+ONNX_MODEL_TAR_URL="https://github.com/onnx/models/raw/main/archive/vision/classification/squeezenet/model/squeezenet1.0-7.tar.gz"
 MODEL_TAR_NAME="squeezenet1.0-7.tar.gz"
 ONNX_MODEL="squeezenet.onnx"
 ASAN_OPTIONS="protect_shadow_gap=0:new_delete_type_mismatch=0:log_path=asan.log"

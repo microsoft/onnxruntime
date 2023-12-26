@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef USE_CUTLASS
+
 #pragma once
 
 #include "core/common/common.h"
@@ -170,3 +172,5 @@ class MoEBase {
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif
