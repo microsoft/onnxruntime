@@ -92,10 +92,34 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     options.set("axes", emscripten::val::array(axes));
     output = model_builder.GetBuilder().call<emscripten::val>("layerNormalization", input, options);
   } else if (op_type == "InstanceNormalization") {
+    // WebNN spec only supports 4D input for instanceNormalization.
+    // Supports 3D input by prepanding 1 size dimension.
+    if (input_shape.size() == 3) {
+      std::vector<uint32_t> new_shape;
+      std::transform(input_shape.begin(), input_shape.end(),
+                     std::back_inserter(new_shape),
+                     [](int64_t dim) -> uint32_t { return SafeInt<uint32_t>(dim); });
+      if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
+        new_shape.insert(new_shape.begin() + 2, 1);
+      } else {
+        new_shape.emplace_back(1);
+      }
+      input = model_builder.GetBuilder().call<emscripten::val>("reshape", input, emscripten::val::array(new_shape));
+    }
+
     if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
       options.set("layout", emscripten::val("nhwc"));
     }
     output = model_builder.GetBuilder().call<emscripten::val>("instanceNormalization", input, options);
+    // Reshape back to the original output shape for 3D input.
+    if (input_shape.size() == 3) {
+      std::vector<uint32_t> output_shape;
+      std::transform(input_shape.begin(), input_shape.end(),
+                     std::back_inserter(output_shape),
+                     [](int64_t dim) -> uint32_t { return SafeInt<uint32_t>(dim); });
+      output = model_builder.GetBuilder().call<emscripten::val>(
+          "reshape", output, emscripten::val::array(output_shape));
+    }
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported normalization op: ", op_type);
   }
@@ -143,8 +167,8 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initi
       return false;
     }
     const auto rank = input_shape.size();
-    if (rank != 4) {
-      LOGS(logger, VERBOSE) << "InstanceNormalization only supports 4D input.";
+    if (rank > 4) {
+      LOGS(logger, VERBOSE) << "InstanceNormalization only supports up to 4D input.";
       return false;
     }
   }
