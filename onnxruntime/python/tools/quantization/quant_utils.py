@@ -139,7 +139,7 @@ ONNX_INT_TYPE_REDUCED_RANGE = {
     onnx_proto.TensorProto.UINT8: (numpy.array(0, dtype=numpy.uint8), numpy.array(127, dtype=numpy.uint8)),
     onnx_proto.TensorProto.INT8: (numpy.array(-64, dtype=numpy.int8), numpy.array(64, dtype=numpy.int8)),
     onnx_proto.TensorProto.UINT16: (numpy.array(0, dtype=numpy.uint16), numpy.array(32767, dtype=numpy.uint16)),
-    onnx_proto.TensorProto.INT16: (numpy.array(-16384, dtype=numpy.uint16), numpy.array(16384, dtype=numpy.uint16)),
+    onnx_proto.TensorProto.INT16: (numpy.array(-16384, dtype=numpy.int16), numpy.array(16384, dtype=numpy.int16)),
 }
 
 
@@ -385,6 +385,14 @@ def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):  # noqa
 
     if not qrange:
         raise ValueError(f"Unexpected data type {qType} requested. Only INT8, UINT8, INT16, and UINT16 are supported.")
+
+    qmin, qmax = qrange
+    if qmin > 0 or qmax < 0:
+        raise ValueError(
+            f"qmin and qmax must meet requirement: qmin <= 0 <= qmax while "
+            f"qmin:{qmin}, qmmax:{qmax}, dtype={qmin.dtype}, reduce_range={reduce_range}, "
+            f"symmetric={symmetric}, qType={qType}"
+        )
 
     return qrange
 
