@@ -24,7 +24,7 @@ jobs:
         --volume $(Build.SourcesDirectory)/orttraining/orttraining/test/python:/onnxruntime_src \
         --volume $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_nightly:/requirements_torch_nightly \
         ptebic.azurecr.io/internal/aifx/acpt/nightly-ubuntu-cuda-torch-dev \
-         bash -c "python3 -m pip install -r /requirements_torch_nightly/requirements.txt && python3 -m pytest -sv /onnxruntime_src/orttraining_test_ortmodule_api.py"
+         bash -c "python3 -m pip install -r /requirements_torch_nightly/requirements.txt && ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT=0 python3 -m pytest -sv /onnxruntime_src/orttraining_test_ortmodule_api.py && ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT=1 python3 -m pytest -sv /onnxruntime_src/orttraining_test_ortmodule_api.py"
     displayName: 'Run ORTModule Tests'
     condition: succeededOrFailed()
     timeoutInMinutes: 120
