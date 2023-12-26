@@ -121,14 +121,14 @@ Status QuantNbitsGemm::ComputeInternal(OpKernelContext* ctx) const {
   const auto* input_gidx = ctx->Input<Tensor>(5);
   const auto& input_shape = input_x->Shape();
   const auto& weight_shape = input_qweight->Shape();
-  if (input_shape.NumDimensions() == 2 && input_shape[0] <= 4 && g_idx && g_idx->Shape().Size() > 1) {
+  if (input_shape.NumDimensions() == 2 && input_shape[0] <= 4 && input_gidx && input_gidx->Shape().Size() > 1) {
     TensorShapeVector output_shape = input_shape.AsShapeVector();
     output_shape[output_shape.size() - 1] = weight_shape[1];
     auto* output = ctx->Output(0, output_shape);
     auto batch = input_shape[0] * (input_shape.NumDimensions() > 2 ? input_shape[1] : 1);
     int64_t in_features = input_shape[input_shape.NumDimensions() - 1];
 
-    if (g_idx && g_idx->Shape().Size() > 1) {
+    if (input_gidx && input_gidx->Shape().Size() > 1) {
       int64_t shapes[5] = {
           batch,
           in_features,
@@ -158,7 +158,7 @@ Status QuantNbitsGemm::ComputeInternal(OpKernelContext* ctx) const {
 
       auto temp_fp16_weight = Tensor::Create(input_scale->DataType(), fp16_weight_shape, alloc);
 
-      if (g_idx && g_idx->Shape().Size() > 1) {
+      if (input_gidx && input_gidx->Shape().Size() > 1) {
         DequantWeightNbit_g(Stream(ctx), input_qweight->Data<int32_t>(),
                             input_scale->Data<MLFloat16>(),
                             input_zeros->Data<int32_t>(),

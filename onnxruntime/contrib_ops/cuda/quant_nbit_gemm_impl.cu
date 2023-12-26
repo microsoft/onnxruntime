@@ -47,7 +47,7 @@ __global__ void BatchGemv(T* out, const T* inA, const uint32_t* inB, const T* sc
   int start_group_id = (y_start / groupsize);
   int compressed_idx = threadIdx.x % 4;
   half2 scale = ((const half2*)(scales + start_group_id * MATRIX_N + n_offset_x))[0];
-  uint32_t qzero_p = qzeros == nullptr ? 0x88888888((qzeros + n_offset_x / 8 +
+  uint32_t qzero_p = qzeros == nullptr ? 0x88888888:((qzeros + n_offset_x / 8 +
                                                      start_group_id * ((MATRIX_N + 7) / 8)))[0];
   half2 hzero = __halves2half2(
       __int2half_rn((qzero_p >> (8 * (compressed_idx))) & 0xf),

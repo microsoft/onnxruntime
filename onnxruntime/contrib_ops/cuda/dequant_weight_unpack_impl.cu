@@ -18,7 +18,7 @@ constexpr int kBlockSize = 256;
 #define FETCH_HALF2(pointer) (reinterpret_cast<const half2*>(&(pointer))[0])
 
 template <typename T, int WBITS>
-__global__ void kDequantizeAndUnpackWeight248(T* out, const int32_t* qweight, const T* scale, const int32_t* zeros,
+__global__ void kDequantizeAndUnpackWeight248(T* out, const int32_t* qweight, const T* scale, const int32_t* qzeros,
                                               const int group_size, const int in_features, const int n) {
   int bid = blockIdx.x;
   int tid = (bid * kBlockSize + threadIdx.x);
@@ -86,7 +86,7 @@ __device__ __forceinline__ uchar2 iterator_qweight_v2(const T* ptr, int idx) {
 }
 
 template <typename T, int WBITS>
-__global__ void DequantizeAndUnpackWeight3567_v2(T* out, const uint32_t* qweight, const T* scale, const uint32_t* zeros,
+__global__ void DequantizeAndUnpackWeight3567_v2(T* out, const uint32_t* qweight, const T* scale, const uint32_t* qzeros,
                                                  int group_size, const int in_features, const int row_n) {
   int bid = blockIdx.x;
   int tid = (bid * kBlockSize + threadIdx.x);
