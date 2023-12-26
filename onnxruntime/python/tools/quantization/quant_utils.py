@@ -226,7 +226,6 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_real_range=Non
     :return: zero and scale [z, s]
 
     """
-    assert rmin <= rmax, f"rmin={rmin} > rmax={rmax}"
     if qmin > 0 or qmax < 0:
         raise ValueError(f"qmin and qmax must meet requirement: qmin <= 0 <= qmax while qmin:{qmin}, qmmax:{qmax}")
 
@@ -245,7 +244,6 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_real_range=Non
         rmin = -absmax
         rmax = +absmax
 
-    assert rmin <= rmax, f"rmin={rmin} > rmax={rmax}"
     assert qmin <= qmax, f"qmin={rmin} > qmax={rmax}"
     dr = numpy.array(rmax - rmin, dtype=numpy.float64)
     dq = numpy.array(qmax, dtype=numpy.float64) - numpy.array(qmin, dtype=numpy.float64)
