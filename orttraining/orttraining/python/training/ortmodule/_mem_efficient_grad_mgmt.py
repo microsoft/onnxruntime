@@ -127,7 +127,12 @@ def post_processing_enable_mem_efficient_training(
         exported_model.graph.input.remove(input_to_remove)
 
     # Re-order graph input to make sure the weight pull trigger is the first user input.
-    exported_model.graph.input.insert(0, inputs[0])
+    offset = 0  # Find the first trainable param, insert the new input before it, as part of user inputs.
+    for input in exported_model.graph.input:
+        if input.name in named_params:
+            break
+        offset += 1
+    exported_model.graph.input.insert(offset, inputs[0])
     exported_model.graph.node.insert(0, weight_pull_node)
 
     return exported_model

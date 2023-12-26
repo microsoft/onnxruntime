@@ -163,7 +163,7 @@ class InferenceManager(GraphExecutionManager):
                 self._runtime_options.enable_zero_stage3_support
                 or self._runtime_options.enable_mem_efficient_grad_management
             ):
-                kwargs = self._append_pull_weight_trigger_as_input(kwargs, self._device)
+                self._append_pull_weight_trigger_as_input(kwargs, self._device)
 
             param_to_append_as_onnx_graph_inputs = []
             if self._runtime_options.enable_mem_efficient_grad_management:

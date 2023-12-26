@@ -534,8 +534,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             from ._mem_efficient_grad_mgmt import MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME
 
             # Add mem efficient grad trigger name to require_grad_names, so that it will be included in the gradient graph.
-
-            input_names_require_grad.insert(0, MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
+            input_names_require_grad.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
         grad_builder_config.input_names_require_grad = input_names_require_grad
         grad_builder_config.build_gradient_graph = self._export_mode == torch.onnx.TrainingMode.TRAINING
         grad_builder_config.enable_caching = self._runtime_options.enable_grad_acc_optimization
@@ -615,7 +614,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     self._runtime_options.enable_zero_stage3_support
                     or self._runtime_options.enable_mem_efficient_grad_management
                 ):
-                    kwargs = self._append_pull_weight_trigger_as_input(kwargs, detected_device)
+                    self._append_pull_weight_trigger_as_input(kwargs, detected_device)
 
                 param_to_append_as_onnx_graph_inputs = []
                 if self._runtime_options.enable_mem_efficient_grad_management:
@@ -673,8 +672,6 @@ class GraphExecutionManager(GraphExecutionInterface):
                 device=device,
             ).requires_grad_()
 
-            return kwargs
-
         if self._runtime_options.enable_mem_efficient_grad_management:
             from ._mem_efficient_grad_mgmt import (
                 MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME,
@@ -682,21 +679,11 @@ class GraphExecutionManager(GraphExecutionInterface):
                 MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE,
             )
 
-            new_kwargs = {
-                MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME: torch.zeros(
-                    MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE,
-                    dtype=onnx_dtype_to_pytorch_dtype(MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE),
-                    device=device,
-                ).requires_grad_()
-            }
-
-            # Then the trigger input will be the first user input.
-            return {
-                **new_kwargs,
-                **kwargs,
-            }
-
-        return kwargs
+            kwargs[MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME] = torch.zeros(
+                MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE,
+                dtype=onnx_dtype_to_pytorch_dtype(MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE),
+                device=device,
+            ).requires_grad_()
 
     def _log_feature_stats(self):
         if get_rank() != 0:
