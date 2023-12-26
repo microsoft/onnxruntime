@@ -138,81 +138,100 @@ def post_processing_enable_mem_efficient_training(
     return exported_model
 
 
+_PARAM_FUNCTION_INDEX = [0]
+
+
 def _create_param_trigger_function(trainable_named_params: Optional[Dict[str, torch.nn.parameter.Parameter]]):
     """This function is used to create a weight retrieving function using trainable_named_params."""
 
-    class ParamTriggerFunction(torch.autograd.Function):
-        @staticmethod
-        def forward(ctx, weight_in_trigger):
-            params = list(trainable_named_params.values())
-            ctx.params = params
-            ctx.dtype = weight_in_trigger.dtype
-            ctx.device = weight_in_trigger.device
-            ctx.shape = weight_in_trigger.shape
-            return (torch.zeros(ctx.shape, device=ctx.device, dtype=ctx.dtype),) * len(params)
+    @staticmethod
+    def forward(ctx, weight_in_trigger):
+        params = list(trainable_named_params.values())
+        ctx.params = params
+        ctx.dtype = weight_in_trigger.dtype
+        ctx.device = weight_in_trigger.device
+        ctx.shape = weight_in_trigger.shape
+        return (torch.zeros(ctx.shape, device=ctx.device, dtype=ctx.dtype),) * len(params)
 
-        @staticmethod
-        def backward(ctx, *grad_outputs):
-            return torch.zeros(ctx.shape, device=ctx.device, dtype=ctx.dtype)
+    @staticmethod
+    def backward(ctx, *grad_outputs):
+        return torch.zeros(ctx.shape, device=ctx.device, dtype=ctx.dtype)
 
-        @staticmethod
-        def infer_shape(
-            node: NodeProto,
-            tensor_input_shapes: List[Optional[List[Union[int, str]]]],
-            tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
-        ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
-            param_count = len(trainable_named_params.values())
-            tensor_output_shapes = [
-                tensor_input_shapes[0],
-            ] * param_count
-            tensor_output_dtypes = [
-                tensor_input_dtypes[0],
-            ] * param_count
+    @staticmethod
+    def infer_shape(
+        node: NodeProto,
+        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
+        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
+    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        param_count = len(trainable_named_params.values())
+        tensor_output_shapes = [
+            tensor_input_shapes[0],
+        ] * param_count
+        tensor_output_dtypes = [
+            tensor_input_dtypes[0],
+        ] * param_count
 
-            return tensor_output_shapes, tensor_output_dtypes
+        return tensor_output_shapes, tensor_output_dtypes
 
-    return ParamTriggerFunction
+    _PARAM_FUNCTION_INDEX[0] += 1
+
+    return type(
+        f"ParamTriggerFunction_{_PARAM_FUNCTION_INDEX[0]}",
+        (torch.autograd.Function,),
+        {
+            "forward": forward,
+            "backward": backward,
+            "infer_shape": infer_shape,
+        },
+    )
 
 
 def _create_param_retrieval_function(trainable_named_params: Dict[str, torch.nn.parameter.Parameter]):
     """This function is used to create a weight retrieving function using trainable_named_params."""
 
-    class ParamRetrievalFunction(torch.autograd.Function):
-        @staticmethod
-        def forward(ctx, param_trigger, param_name):
-            ctx.param_name = param_name
-            ctx.dtype = param_trigger.dtype
-            ctx.device = param_trigger.device
-            ctx.shape = param_trigger.shape
-            return trainable_named_params[param_name]
+    @staticmethod
+    def forward(ctx, param_trigger, param_name):
+        ctx.param_name = param_name
+        ctx.dtype = param_trigger.dtype
+        ctx.device = param_trigger.device
+        ctx.shape = param_trigger.shape
+        return trainable_named_params[param_name]
 
-        @staticmethod
-        def backward(ctx, *grad_outputs):
-            trainable_named_params[ctx.param_name].backward(grad_outputs[0])
-            return torch.zeros(ctx.shape, device=ctx.device, dtype=ctx.dtype), None
+    @staticmethod
+    def backward(ctx, *grad_outputs):
+        trainable_named_params[ctx.param_name].backward(grad_outputs[0])
+        return torch.zeros(ctx.shape, device=ctx.device, dtype=ctx.dtype), None
 
-        @staticmethod
-        def infer_shape(
-            node: NodeProto,
-            tensor_input_shapes: List[Optional[List[Union[int, str]]]],
-            tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
-        ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
-            input_pointer_scalars_attr_name = "input_pointer_scalars"
-            found = [attr for attr in node.attribute if attr.name == input_pointer_scalars_attr_name]
+    @staticmethod
+    def infer_shape(
+        node: NodeProto,
+        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
+        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
+    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        input_pointer_scalars_attr_name = "input_pointer_scalars"
+        found = [attr for attr in node.attribute if attr.name == input_pointer_scalars_attr_name]
 
-            assert len(found) == 1
-            input_pointer_scalars = found[0].ints
+        assert len(found) == 1
+        input_pointer_scalars = found[0].ints
 
-            # Restore the nn.Module from the pointer.
-            param_name = ctypes.cast(input_pointer_scalars[0], ctypes.py_object).value
+        # Restore the nn.Module from the pointer.
+        param_name = ctypes.cast(input_pointer_scalars[0], ctypes.py_object).value
 
-            tensor_output_shapes = [
-                list(trainable_named_params[param_name].shape),
-            ]
-            tensor_output_dtypes = [
-                int(pytorch_type_to_onnx_dtype(trainable_named_params[param_name].dtype)),
-            ]
+        tensor_output_shapes = [
+            list(trainable_named_params[param_name].shape),
+        ]
+        tensor_output_dtypes = [
+            int(pytorch_type_to_onnx_dtype(trainable_named_params[param_name].dtype)),
+        ]
 
-            return tensor_output_shapes, tensor_output_dtypes
+        return tensor_output_shapes, tensor_output_dtypes
 
-    return ParamRetrievalFunction
+    return type(
+        f"ParamRetrievalFunction_{_PARAM_FUNCTION_INDEX[0]}",
+        (torch.autograd.Function,),
+        {
+            "forward": forward,
+            "backward": backward,
+            "infer_shape": infer_shape,
+        },
+    )

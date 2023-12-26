@@ -185,7 +185,6 @@ def make_pythonop_node(
     attrs = {
         "func_name": func_full_qual_name,
         "input_convention": cconv,
-        # "outputs": len(outputs),
         "input_tensor_types": input_tensor_types,
         "input_tensor_ranks": input_tensor_ranks,
         "output_tensor_types": output_tensor_types,
