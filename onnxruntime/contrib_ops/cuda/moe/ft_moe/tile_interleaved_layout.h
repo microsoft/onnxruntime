@@ -31,6 +31,9 @@
 /*! \file
     \brief Defines new layouts needed for MoE
 */
+
+#ifdef USE_CUTLASS
+
 #pragma once
 
 #include "cutlass/cutlass.h"
@@ -59,3 +62,5 @@ struct IsColumnMajorTileInterleave<ColumnMajorTileInterleave<U, V>> {
 
 }  // namespace layout
 }  // namespace cutlass
+
+#endif
