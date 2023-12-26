@@ -308,7 +308,8 @@ class _RuntimeOptions:
         # Experimental features.
         self.enable_zero_stage3_support = False  # Once enabled, cannot be disabled.
 
-        self.enable_mem_efficient_grad_management = False
+        # If auto grad function support is enabled, we will enable memory efficient grad management by default.
+        self.enable_mem_efficient_grad_management = self.enable_custom_autograd_function
 
         self.deepcopy_before_model_export = True
 
@@ -403,7 +404,13 @@ class _RuntimeOptions:
             "ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT" in os.environ
             and int(os.getenv("ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT")) == 1
         ):
-            self.enable_mem_efficient_grad_management = True
+            if self.enable_custom_autograd_function:
+                self.enable_mem_efficient_grad_management = True
+            else:
+                self._logger.warning(
+                    "ORTModule optimization for memory efficient gradient management cannot be enabled "
+                    "because PyTorch custom autograd function support is disabled."
+                )
 
         if "ORTMODULE_DEEPCOPY_BEFORE_MODEL_EXPORT" in os.environ:
             self.deepcopy_before_model_export = int(os.getenv("ORTMODULE_DEEPCOPY_BEFORE_MODEL_EXPORT")) == 1
