@@ -252,7 +252,7 @@ def fetch_onnx_inputs_outputs_name(
             elif name == "attention_mask":
                 attn_mask = onnx_inputs[idx]
                 onnx_inputs[idx] = torch.cat(
-                    (attn_mask,torch.ones((attn_mask.shape[0], 1), device=attn_mask.device, dtype=attn_mask.dtype)),
+                    (attn_mask, torch.ones((attn_mask.shape[0], 1), device=attn_mask.device, dtype=attn_mask.dtype)),
                     dim=1,
                 )
             elif name == "input_ids":
