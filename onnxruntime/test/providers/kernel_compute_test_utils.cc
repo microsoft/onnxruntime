@@ -124,7 +124,8 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
     outputs.emplace_back(output);
   }
 
-  auto kernel = info.CreateKernel(&node);
+  static const ConfigOptions empty_config_options;
+  auto kernel = info.CreateKernel(&node, empty_config_options);
   ASSERT_TRUE(kernel);
 
   std::vector<int> fetch_mlvalue_idxs;

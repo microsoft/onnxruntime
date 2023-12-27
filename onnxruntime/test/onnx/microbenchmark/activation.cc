@@ -69,7 +69,18 @@ struct KernelAndDef {
                   .SetDomain(domain)
                   .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
                   .Build();
-    OpKernelInfo info(main_node, *out.def, *out.a, {}, {}, {});
+
+    // these usually come from the session state. OpKernelInfo stores references to them so we need a valid backing
+    // instance even though we don't use them in this test.
+    static const std::unordered_map<int, OrtValue> constant_initialized_tensors;
+    static const OrtValueNameIdxMap mlvalue_name_idx_map;
+    static const DataTransferManager data_transfer_mgr;
+    static const AllocatorMap allocators;
+    static const ConfigOptions config_options;
+    OpKernelInfo info(main_node, *out.def, *out.a,
+                      constant_initialized_tensors, mlvalue_name_idx_map, data_transfer_mgr, allocators,
+                      config_options);
+
     out.kernel = std::make_unique<KernelType>(info);
     return out;
   }
