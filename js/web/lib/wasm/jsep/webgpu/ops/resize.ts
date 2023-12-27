@@ -515,8 +515,8 @@ const trilinearInterpolation =
         dy2 = 0.5;
       }
       if (width1 == width2) {
-        dx1 = 0.5;
-        dx2 = 0.5;
+        dz1 = 0.5;
+        dz2 = 0.5;
       }
       return (x111 * dx2 * dy2 * dz2 + x112 * dx2 * dy2 * dz1 + x121 * dx2 * dy1 *dz2 + x122 * dx2 * dy1 * dz1 +
               x211 * dx1 * dy2 * dz2 + x212 * dx1 * dy2 * dz1 + x221 * dx1 * dy1 *dz2 + x222 * dx1 * dy1 * dz1);
