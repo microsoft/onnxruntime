@@ -38,7 +38,7 @@ const createLayerNormProgramInfo =
        Got scale size of ${scaleSize} and bias size of ${biasSize}`);
       }
 
-      const meanInvStdDevDim = [];
+      const meanInvStdDevDim: number[] = [];
       for (let i = 0; i < xShape.length; ++i) {
         if (i < axis) {
           meanInvStdDevDim.push(xShape[i]);
@@ -47,7 +47,7 @@ const createLayerNormProgramInfo =
         }
       }
       const components = getMaxComponents(normSize);
-      const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
+      const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
       const programUniforms: ProgramUniform[] = [
         {type: 'uint32', data: normCount}, {type: 'float32', data: normSize},
         {type: 'uint32', data: Math.floor(normSize / components)}, {type: 'float32', data: attributes.epsilon}
@@ -55,7 +55,7 @@ const createLayerNormProgramInfo =
       programUniforms.push(...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(scale.dims));
       if (bias) {
         programUniforms.push(...createTensorShapeVariables(bias.dims));
-        inputDependencies.push('rank');
+        inputDependencies.push('type');
       }
       programUniforms.push(...createTensorShapeVariables(outputShape));
 
@@ -71,23 +71,23 @@ const createLayerNormProgramInfo =
       const getShaderSource = (shaderHelper: ShaderHelper) => {
         const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
         const variables = [
-          inputVariable('x', inputs[0].dataType, inputs[0].dims.length, components),
-          inputVariable('scale', scale.dataType, scale.dims.length, components),
+          inputVariable('x', inputs[0].dataType, inputs[0].dims, components),
+          inputVariable('scale', scale.dataType, scale.dims, components),
         ];
         if (bias) {
-          variables.push(inputVariable('bias', bias.dataType, bias.dims.length, components));
+          variables.push(inputVariable('bias', bias.dataType, bias.dims, components));
         }
-        variables.push(outputVariable('output', inputs[0].dataType, outputShape.length, components));
+        variables.push(outputVariable('output', inputs[0].dataType, outputShape, components));
         if (hasMeanDataOutput) {
-          variables.push(outputVariable('mean_data_output', DataType.float, meanInvStdDevDim.length));
+          variables.push(outputVariable('mean_data_output', DataType.float, meanInvStdDevDim));
         }
         if (hasInvStdOutput) {
-          variables.push(outputVariable('inv_std_output', DataType.float, meanInvStdDevDim.length));
+          variables.push(outputVariable('inv_std_output', DataType.float, meanInvStdDevDim));
         }
 
         const uniforms: UniformsArrayType = [
-          {name: 'norm_count', type: 'u32'}, {name: 'norm_size', type: 'f32'}, {name: 'norm_size_vectorized', type: 'u32'},
-          {name: 'epsilon', type: 'f32'}
+          {name: 'norm_count', type: 'u32'}, {name: 'norm_size', type: 'f32'},
+          {name: 'norm_size_vectorized', type: 'u32'}, {name: 'epsilon', type: 'f32'}
         ];
         return `
   ${shaderHelper.registerUniforms(uniforms).declareVariables(...variables)}
@@ -128,7 +128,7 @@ const createLayerNormProgramInfo =
 
       return {
         name: 'LayerNormalization',
-        shaderCache: {hint: `${components};${hasMeanDataOutput};${hasInvStdOutput}`, inputDependencies},
+        shaderCache: {hint: `${components};${outputCount}`, inputDependencies},
         getRunData: () =>
             ({outputs, dispatchGroup: {x: Math.ceil(normCount / 64 /* workgroup size */)}, programUniforms}),
         getShaderSource,
