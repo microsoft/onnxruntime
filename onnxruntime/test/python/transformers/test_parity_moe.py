@@ -47,8 +47,8 @@ def create_moe_onnx_graph(
     hidden_size,
     inter_size,
     fc1_experts_weights,
-    fc2_experts_weights,
     fc1_experts_bias,
+    fc2_experts_weights,
     fc2_experts_bias,
 ):
     nodes = [
@@ -58,8 +58,8 @@ def create_moe_onnx_graph(
                 "input",
                 "router_probs",
                 "fc1_experts_weights",
-                "fc2_experts_weights",
                 "fc1_experts_bias",
+                "fc2_experts_weights",
                 "fc2_experts_bias",
             ],
             ["output"],
@@ -250,8 +250,8 @@ class MoE(nn.Module):
             in_features,
             hidden_features,
             self.moe_experts.weight1,
-            self.moe_experts.weight2,
             self.moe_experts.bias1,
+            self.moe_experts.weight2,
             self.moe_experts.bias2,
         )
 
@@ -356,8 +356,8 @@ class MoE(nn.Module):
         # print_tensor("input", ort_inputs["input"])
         # print_tensor("router_probs", ort_inputs["router_probs"])
         # print_tensor("fc1_experts_weights", self.moe_experts.weight1.detach().numpy())
-        # print_tensor("fc2_experts_weights", self.moe_experts.weight2.detach().numpy())
         # print_tensor("fc1_experts_bias", self.moe_experts.bias1.detach().numpy())
+        # print_tensor("fc2_experts_weights", self.moe_experts.weight2.detach().numpy())
         # print_tensor("fc2_experts_bias", self.moe_experts.bias2.detach().numpy())
         # print_tensor("output", ort_output[0])
 

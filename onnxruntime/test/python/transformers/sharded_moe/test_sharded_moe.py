@@ -52,10 +52,14 @@ def create_moe_onnx_graph(
     hidden_size,
     inter_size,
     fc1_experts_weights,
-    fc2_experts_weights,
     fc1_experts_bias,
+    fc2_experts_weights,
     fc2_experts_bias,
+    fc3_experts_weights,
     local_experts_start_index=-1,
+    topk=2,
+    normalize_routing_weights=1,
+    activation_type="gelu",
 ):
     use_sharded_moe = local_experts_start_index >= 0
     nodes = [
@@ -65,14 +69,16 @@ def create_moe_onnx_graph(
                 "input",
                 "router_probs",
                 "fc1_experts_weights",
-                "fc2_experts_weights",
                 "fc1_experts_bias",
+                "fc2_experts_weights",
                 "fc2_experts_bias",
+                "fc3_experts_weights",
             ],
             ["output"],
             "MoE_0",
-            k=1,
-            activation_type="gelu",
+            k=topk,
+            normalize_routing_weights=normalize_routing_weights,
+            activation_type=activation_type,
             domain="com.microsoft",
         )
         if not use_sharded_moe
@@ -82,14 +88,16 @@ def create_moe_onnx_graph(
                 "input",
                 "router_probs",
                 "fc1_experts_weights",
-                "fc2_experts_weights",
                 "fc1_experts_bias",
+                "fc2_experts_weights",
                 "fc2_experts_bias",
+                "fc3_experts_weights",
             ],
             ["output"],
             "MoE_0",
-            k=1,
-            activation_type="gelu",
+            k=topk,
+            normalize_routing_weights=normalize_routing_weights,
+            activation_type=activation_type,
             local_experts_start_index=local_experts_start_index,
             domain="com.microsoft",
         ),
@@ -97,6 +105,7 @@ def create_moe_onnx_graph(
 
     fc1_shape = [local_num_experts, hidden_size, inter_size]
     fc2_shape = [local_num_experts, inter_size, hidden_size]
+    fc3_shape = fc1_shape
 
     initializers = [
         helper.make_tensor(
@@ -111,6 +120,13 @@ def create_moe_onnx_graph(
             ORT_DTYPE,
             fc2_shape,
             fc2_experts_weights.flatten(),
+            raw=False,
+        ),
+        helper.make_tensor(
+            "fc3_experts_weights",
+            ORT_DTYPE,
+            fc3_shape,
+            fc3_experts_weights.flatten(),
             raw=False,
         ),
     ]
@@ -174,6 +190,7 @@ def test_moe_with_expert_slicing(
 
     fc1_experts_weights_all = np.random.rand(num_experts, hidden_size, inter_size).astype(NP_TYPE)
     fc2_experts_weights_all = np.random.rand(num_experts, inter_size, hidden_size).astype(NP_TYPE)
+    fc3_experts_weights_all = np.random.rand(num_experts, hidden_size, inter_size).astype(NP_TYPE)
     fc1_experts_bias_all = np.random.rand(num_experts, inter_size).astype(NP_TYPE)
     fc2_experts_bias_all = np.random.rand(num_experts, hidden_size).astype(NP_TYPE)
 
@@ -184,15 +201,19 @@ def test_moe_with_expert_slicing(
         hidden_size,
         inter_size,
         fc1_experts_weights_all,
-        fc2_experts_weights_all,
         fc1_experts_bias_all,
+        fc2_experts_weights_all,
         fc2_experts_bias_all,
+        fc3_experts_weights_all,
     )
 
     fc1_experts_weights = fc1_experts_weights_all[
         local_experts_start_index : local_experts_start_index + num_experts // get_size(), :, :
     ]
     fc2_experts_weights = fc2_experts_weights_all[
+        local_experts_start_index : local_experts_start_index + num_experts // get_size(), :, :
+    ]
+    fc3_experts_weights = fc3_experts_weights_all[
         local_experts_start_index : local_experts_start_index + num_experts // get_size(), :, :
     ]
     fc1_experts_bias = fc1_experts_bias_all[
@@ -206,9 +227,10 @@ def test_moe_with_expert_slicing(
         hidden_size,
         inter_size,
         fc1_experts_weights,
-        fc2_experts_weights,
         fc1_experts_bias,
+        fc2_experts_weights,
         fc2_experts_bias_all,
+        fc3_experts_weights,
         local_experts_start_index,
     )
 
@@ -230,15 +252,15 @@ def test_moe_with_expert_slicing(
     assert np.allclose(output[0], sharded_output[0], atol=THRESHOLD, rtol=THRESHOLD)
 
     print_out(
-        "hidden_size: ",
+        "hidden_size:",
         hidden_size,
-        " inter_size: ",
+        " inter_size:",
         inter_size,
-        " num_experts: ",
+        " num_experts:",
         num_experts,
-        " num_rows: ",
+        " num_rows:",
         num_rows,
-        " world_size: ",
+        " world_size:",
         get_size(),
         " Parity: OK",
     )

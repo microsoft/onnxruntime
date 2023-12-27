@@ -31,9 +31,11 @@ class MoEBase {
                      const Tensor* input,
                      const Tensor* router_probs,
                      const Tensor* fc1_experts_weights,
-                     const Tensor* fc2_experts_weights,
                      const Tensor* fc1_experts_bias_optional,
-                     const Tensor* fc2_experts_bias_optional) const {
+                     const Tensor* fc2_experts_weights,
+                     const Tensor* fc2_experts_bias_optional,
+                     const Tensor* fc3_experts_weights_optional,
+                     const Tensor* fc3_experts_bias_optional) const {
     const auto& input_dims = input->Shape().GetDims();
     const auto& router_probs_dims = router_probs->Shape().GetDims();
     const auto& fc1_experts_weights_dims = fc1_experts_weights->Shape().GetDims();
@@ -126,6 +128,22 @@ class MoEBase {
       }
     }
 
+    if (fc3_experts_weights_optional != nullptr
+        && fc3_experts_weights_optional->Shape().GetDims() != fc1_experts_weights_dims) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "fc3_experts_weights_dims must be equal to fc1_experts_weights_dims, got ",
+                             fc3_experts_weights_optional->Shape().GetDims(), " and ", fc1_experts_weights_dims);
+
+    }
+
+    if (fc3_experts_bias_optional != nullptr && fc1_experts_bias_optional != nullptr
+        && fc3_experts_bias_optional->Shape().GetDims() != fc1_experts_bias_optional->Shape().GetDims()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "fc3_experts_bias_dims must be equal to fc1_experts_bias_dims, got ",
+                             fc3_experts_bias_optional->Shape().GetDims(), " and ",
+                             fc1_experts_bias_optional->Shape().GetDims());
+    }
+
     parameters.num_rows = num_rows;
     parameters.num_experts = num_experts;
     parameters.local_num_experts = local_num_experts;
@@ -161,8 +179,11 @@ class MoEBase {
     } else {
       ORT_THROW("Unsupported MoE activation type: ", activation_type_str);
     }
+
+    normalize_routing_weights_ = op_kernel_info.GetAttrOrDefault<int64_t>("normalize_routing_weights", 0) == 1;
   }
 
+  bool normalize_routing_weights_;
   int64_t k_;
   ort_fastertransformer::ActivationType activation_type_;
 };

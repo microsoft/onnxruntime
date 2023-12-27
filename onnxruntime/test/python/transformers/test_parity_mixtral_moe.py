@@ -52,8 +52,8 @@ def create_moe_onnx_graph(
     hidden_size,
     inter_size,
     fc1_experts_weights,
-    fc2_experts_weights,
     fc1_experts_bias,
+    fc2_experts_weights,
     fc2_experts_bias,
     fc3_experts_weights,
     topk,
@@ -65,14 +65,15 @@ def create_moe_onnx_graph(
                 "input",
                 "router_probs",
                 "fc1_experts_weights",
-                "fc2_experts_weights",
                 "fc1_experts_bias",
+                "fc2_experts_weights",
                 "fc2_experts_bias",
                 "fc3_experts_weights",
             ],
             ["output"],
             "MoE_0",
             k=topk,
+            normalize_routing_weights=1,
             activation_type="silu",
             domain="com.microsoft",
         ),
@@ -156,23 +157,29 @@ def create_moe_onnx_graph(
     model = helper.make_model(graph)
     return model.SerializeToString()
 
+
 from collections import OrderedDict
+
+
 class ClassInstantier(OrderedDict):
     def __getitem__(self, key):
         content = super().__getitem__(key)
         cls, kwargs = content if isinstance(content, tuple) else (content, {})
         return cls(**kwargs)
+
+
 ACT2CLS = {
     "silu": nn.SiLU,
 }
 ACT2FN = ClassInstantier(ACT2CLS)
 
+
 class MixtralConfig:
     def __init__(
         self,
-        hidden_size=512,
-        intermediate_size=1024,
-        num_hidden_layers=16,
+        hidden_size=4096,
+        intermediate_size=14336,
+        num_hidden_layers=32,
         num_attention_heads=32,
         num_key_value_heads=8,
         hidden_act="silu",
@@ -224,6 +231,7 @@ class MixtralBLockSparseTop2MLP(nn.Module):
         current_hidden_states = self.w2(current_hidden_states)
         return current_hidden_states
 
+
 class MixtralSparseMoeBlock(nn.Module):
     """
     This implementation is
@@ -261,16 +269,17 @@ class MixtralSparseMoeBlock(nn.Module):
         moe_experts_weight3 = torch.stack(w3_list, dim=0)
         moe_experts_bias1 = torch.zeros(self.num_experts, self.ffn_dim)
         moe_experts_bias2 = torch.zeros(self.num_experts, self.hidden_dim)
-        #moe_experts_bias3 = torch.zeros(self.num_experts, self.ffn_dim)
 
+        self.batch_size = batch_size
+        self.sequence_length = sequence_length
         self.moe_onnx_graph = create_moe_onnx_graph(
-            batch_size * sequence_length,
+            self.batch_size * self.sequence_length,
             self.num_experts,
             self.hidden_dim,
             self.ffn_dim,
             moe_experts_weight1,
-            moe_experts_weight2,
             moe_experts_bias1,
+            moe_experts_weight2,
             moe_experts_bias2,
             moe_experts_weight3,
             self.top_k,
@@ -301,10 +310,7 @@ class MixtralSparseMoeBlock(nn.Module):
 
         routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
         routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
-        # bugbug: diff from ORT
-        print(routing_weights.shape)
-        # print(routing_weights)
-        # print(routing_weights.sum(dim=-1, keepdim=True))
+
         routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
         # we cast back to the input dtype
         routing_weights = routing_weights.to(hidden_states.dtype)
@@ -339,7 +345,7 @@ class MixtralSparseMoeBlock(nn.Module):
             # the `top_x` tensor here.
             final_hidden_states.index_add_(0, top_x, current_hidden_states.to(hidden_states.dtype))
         final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
-        return final_hidden_states #, router_logits
+        return final_hidden_states  # , router_logits
 
     def ort_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size, sequence_length, hidden_dim = hidden_states.shape
@@ -356,16 +362,31 @@ class MixtralSparseMoeBlock(nn.Module):
         if self.ort_sess is not None:
             ort_output = self.ort_sess.run(None, ort_inputs)
 
-        return torch.tensor(ort_output).reshape(batch_size, sequence_length, -1) #, router_logits
+        return torch.tensor(ort_output).reshape(batch_size, sequence_length, -1)  # , router_logits
 
-batch_size = 2
-sequence_length = 16
-config = MixtralConfig()
-mixtral_moe = MixtralSparseMoeBlock(config, batch_size, sequence_length)
-hidden_state = torch.randn(batch_size, sequence_length, config.hidden_size)
-torch_output = mixtral_moe(hidden_state)
-ort_output = mixtral_moe.ort_forward(hidden_state)
-print(torch_output.shape)
-print(ort_output.shape)
-print("parity: ", torch.allclose(torch_output, ort_output, rtol=1e-04, atol=1e-04))
-print(torch_output - ort_output)
+    def parity_check(self):
+        hidden_state = torch.randn(self.batch_size, self.sequence_length, self.hidden_dim)
+        torch_output = self.forward(hidden_state)
+        ort_output = self.ort_forward(hidden_state)
+        print(
+            "batch_size:",
+            self.batch_size,
+            " sequence_length:",
+            self.sequence_length,
+            " parity:",
+            torch.allclose(torch_output, ort_output, rtol=1e-04, atol=1e-04),
+        )
+
+
+class Test_Mixtral_MoE(unittest.TestCase):
+    def test_mixtral_moe_parity(self):
+        for batch_size in [1, 8, 32]:
+            for sequence_length in [32, 128, 512, 2048]:
+                # use a small sizes to speed up the test
+                config = MixtralConfig(hidden_size=64, intermediate_size=256)
+                mixtral_moe = MixtralSparseMoeBlock(config, batch_size, sequence_length)
+                mixtral_moe.parity_check()
+
+
+if __name__ == "__main__":
+    unittest.main()
