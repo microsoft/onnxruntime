@@ -9,6 +9,7 @@
 #include "core/providers/qnn/builder/qnn_backend_manager.h"
 #include "core/providers/qnn/builder/qnn_model.h"
 #include "core/providers/qnn/builder/qnn_graph_configs_helper.h"
+#include "core/graph/model.h"
 
 namespace onnxruntime {
 
