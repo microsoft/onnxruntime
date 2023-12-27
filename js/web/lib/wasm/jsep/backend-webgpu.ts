@@ -17,9 +17,9 @@ interface KernelInfo {
   nodeName: string;
   kernelEntry: RunFunction;
   attributes: [((attribute: unknown) => unknown)|undefined, unknown];
-  programName: string;
-  inputTensorViews: readonly TensorView[];
-  outputTensorViews: readonly TensorView[];
+  programName?: string;
+  inputTensorViews?: readonly TensorView[];
+  outputTensorViews?: readonly TensorView[];
 }
 
 const getProgramInputTensorInfoDependencyKey =
@@ -134,6 +134,7 @@ export class WebGpuBackend {
     return data;
   }
 
+  // KernelID -> kernelInfo mapping
   kernels: Map<number, KernelInfo>;
   private commandEncoder: GPUCommandEncoder|null = null;
   private computePassEncoder: GPUComputePassEncoder|null = null;
@@ -211,7 +212,6 @@ export class WebGpuBackend {
   dispose(): void {
     if (typeof this.querySet !== 'undefined') {
       this.querySet.destroy();
-      this.gpuDataManager.release(this.queryResolveData!.id);
     }
     this.gpuDataManager.dispose();
   }
@@ -311,9 +311,9 @@ export class WebGpuBackend {
           if (this.env.webgpu.profiling?.ondata) {
             this.env.webgpu.profiling.ondata({
               version: 1,
-              inputsMetadata: inputTensorViews.map(
+              inputsMetadata: inputTensorViews!.map(
                   value => ({dims: value.dims, dataType: tensorDataTypeEnumToString(value.dataType)})),
-              outputsMetadata: outputTensorViews.map(
+              outputsMetadata: outputTensorViews!.map(
                   value => ({dims: value.dims, dataType: tensorDataTypeEnumToString(value.dataType)})),
               kernelId,
               kernelType: opType,
@@ -324,11 +324,11 @@ export class WebGpuBackend {
           } else {
             // if no callback is provided, print the profiling message to console
             let inputShapes = '';
-            inputTensorViews.forEach((value, i) => {
+            inputTensorViews!.forEach((value, i) => {
               inputShapes += `input[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
             });
             let outputShapes = '';
-            outputTensorViews.forEach((value, i) => {
+            outputTensorViews!.forEach((value, i) => {
               outputShapes += `output[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
             });
             // eslint-disable-next-line no-console
@@ -525,9 +525,6 @@ export class WebGpuBackend {
       nodeName,
       kernelEntry: op[0],
       attributes: [op[1], attribute],
-      programName: '',
-      inputTensorViews: [],
-      outputTensorViews: [],
     };
     this.kernels.set(kernelId, kernelInfo);
   }
