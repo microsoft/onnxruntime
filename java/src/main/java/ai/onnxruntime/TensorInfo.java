@@ -276,6 +276,9 @@ public class TensorInfo implements ValueInfo {
    * all elements as that's the expected format of the native code. It can be reshaped to the
    * correct shape using {@link OrtUtil#reshape(String[],long[])}.
    *
+   * <p>For fp16 and bf16 tensors the output carrier type is float, and so this method produces
+   * multidimensional float arrays.
+   *
    * @return A multidimensional array of the appropriate primitive type (or String).
    * @throws OrtException If the shape isn't representable in Java (i.e. if one of its indices is
    *     greater than an int).
@@ -288,6 +291,8 @@ public class TensorInfo implements ValueInfo {
               + Arrays.toString(shape));
     }
     switch (type) {
+      case BFLOAT16:
+      case FLOAT16:
       case FLOAT:
         return OrtUtil.newFloatArray(shape);
       case DOUBLE:

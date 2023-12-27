@@ -275,7 +275,37 @@ typedef union FP32 {
 
 jfloat convertHalfToFloat(const uint16_t half) {
     FP32 output;
-    output.intVal = (((half&0x8000)<<16) | (((half&0x7c00)+0x1C000)<<13) | ((half&0x03FF)<<13));
+
+    uint16_t signBit = 0x8000 & half;
+    uint16_t exponentBits = 0x7c00 & half;
+    uint16_t mantissaBits = 0x03ff & half;
+
+    // Shift exponent to make calculations more obvious
+    int16_t exponent = (exponentBits >> 10);
+    if (exponent == 0) {
+        // denormal value or zero
+        if (mantissaBits == 0) {
+            output.intVal = signBit << 16;
+        } else {
+            static const FP32 magic = { .intVal = 126 << 23 };
+            output.intVal = magic.intVal + mantissaBits;
+            output.floatVal -= magic.floatVal;
+            output.intVal = signBit << 16 | output.intVal;
+        }
+    } else if (exponent == 31) {
+        // infinity or NaN
+        if (mantissaBits == 0) {
+            // infinity
+            output.intVal = signBit << 16 | 0x7f800000;
+        } else {
+            // NaN
+            output.intVal = signBit << 16 | 0x7fc00000;
+        }
+    } else {
+        // normal float
+        output.intVal = ((signBit<<16) | ((exponentBits+0x1c000)<<13) | (mantissaBits<<13));
+    }
+
     return output.floatVal;
 }
 
