@@ -542,6 +542,7 @@ const createResizeProgramInfo =
       const outputSize = ShapeUtil.size(outputShape);
       const noScale = inputShape.length === outputShape.length && inputShape.every((d, i) => d === outputShape[i]);
       const useExtrapolation = attributes.coordinateTransformMode === 'tf_crop_and_resize';
+      const extrapolationValue = attributes.extrapolationValue;
       const dataType = input.type.value;
       const getShaderSource = (shaderHelper: ShaderHelper) => `
       ${noScale ? '' : `
@@ -561,12 +562,9 @@ const createResizeProgramInfo =
               ${calculateOriginalIndicesFromOutputIndices(output, inputShape, outputShape, scales.length, roi.length)};
               ${(() => {
               if (inputShape.length === 2 || inputShape.length === 4) {
-                return `${
-                    bilinearInterpolation(input, output, inputShape, useExtrapolation, attributes.extrapolationValue)}`;
+                return `${bilinearInterpolation(input, output, inputShape, useExtrapolation, extrapolationValue)}`;
               } else if (inputShape.length === 3 || inputShape.length === 5) {
-                return `${
-                    trilinearInterpolation(
-                        input, output, inputShape, useExtrapolation, attributes.extrapolationValue)}`;
+                return `${trilinearInterpolation(input, output, inputShape, useExtrapolation, extrapolationValue)}`;
               } else {
                 throw Error('Linear mode only supports input dims 2, 3, 4 and 5 are supported in linear mode.');
               }
