@@ -24,6 +24,8 @@
 #include "core/common/common.h"
 #include "contrib_ops/cuda/bert/transformer_cuda_common.h"
 
+#include "cutlass/numeric_types.h"
+
 using namespace onnxruntime;
 
 namespace ort_fastertransformer {

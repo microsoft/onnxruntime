@@ -30,7 +30,6 @@
 
 #include "cutlass/array.h"
 #include "cutlass/numeric_conversion.h"
-#include "cutlass/numeric_types.h"
 
 #ifdef __GNUC__
 #pragma GCC diagnostic pop

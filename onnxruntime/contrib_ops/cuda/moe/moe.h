@@ -14,7 +14,7 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-template <typename T>
+template <typename T, typename WeightT>
 class MoE final : public CudaKernel, public MoEBase {
  public:
   explicit MoE(const OpKernelInfo& op_kernel_info);

@@ -69,8 +69,10 @@ def create_moe_onnx_graph(
                 "input",
                 "router_probs",
                 "fc1_experts_weights",
+                "", # fc1_scales
                 "fc1_experts_bias",
                 "fc2_experts_weights",
+                "", # fc2_scales
                 "fc2_experts_bias",
                 "fc3_experts_weights",
             ],

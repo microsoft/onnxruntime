@@ -43,16 +43,20 @@ static void RunMoETest(
       tester.AddInput<MLFloat16>("input", input_dims, ToFloat16(input));
       tester.AddInput<MLFloat16>("router_probs", router_probs_dims, ToFloat16(router_probs));
       tester.AddInput<MLFloat16>("fc1_experts_weights", fc1_experts_weights_dims, ToFloat16(fc1_experts_weights));
+      tester.AddOptionalInputEdge<MLFloat16>(/*fc1_scales*/);
       tester.AddInput<MLFloat16>("fc1_experts_bias", fc1_experts_bias_dims, ToFloat16(fc1_experts_bias));
       tester.AddInput<MLFloat16>("fc2_experts_weights", fc2_experts_weights_dims, ToFloat16(fc2_experts_weights));
+      tester.AddOptionalInputEdge<MLFloat16>(/*fc2_scales*/);
       tester.AddInput<MLFloat16>("fc2_experts_bias", fc2_experts_bias_dims, ToFloat16(fc2_experts_bias));
       tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
     } else {
       tester.AddInput<float>("input", input_dims, input);
       tester.AddInput<float>("router_probs", router_probs_dims, router_probs);
       tester.AddInput<float>("fc1_experts_weights", fc1_experts_weights_dims, fc1_experts_weights);
+      tester.AddOptionalInputEdge<float>(/*fc1_scales*/);
       tester.AddInput<float>("fc1_experts_bias", fc1_experts_bias_dims, fc1_experts_bias);
       tester.AddInput<float>("fc2_experts_weights", fc2_experts_weights_dims, fc2_experts_weights);
+      tester.AddOptionalInputEdge<float>(/*fc2_scales*/);
       tester.AddInput<float>("fc2_experts_bias", fc2_experts_bias_dims, fc2_experts_bias);
       tester.AddOutput<float>("output", output_dims, output_data);
     }
