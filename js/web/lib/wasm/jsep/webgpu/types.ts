@@ -34,13 +34,6 @@ export interface ProgramUniform {
   data: number|readonly number[];
 }
 
-export interface PendingKernelInfo {
-  id: number;
-  name: string;
-  inputTensorViews: readonly TensorView[];
-  outputTensorViews: readonly TensorView[];
-}
-
 /**
  * Represent the dependency of a program on a specific input tensor.
  *

@@ -3,10 +3,9 @@
 
 import {WebGpuBackend} from '../backend-webgpu';
 import {LOG_DEBUG} from '../log';
-import {TensorView} from '../tensor-view';
 
 import {createShaderHelper} from './ops/common';
-import {Artifact, GpuData, PendingKernelInfo, ProgramInfo, QueryType} from './types';
+import {Artifact, GpuData, ProgramInfo, QueryType} from './types';
 
 /**
  * ProgramManager is the main class behind running computations
@@ -31,8 +30,7 @@ export class ProgramManager {
   setArtifact(key: unknown, artifact: Artifact): void {
     this.repo.set(key, artifact);
   }
-  run(buildArtifact: Artifact, inputTensorViews: readonly TensorView[], outputTensorViews: readonly TensorView[],
-      inputs: GpuData[], outputs: GpuData[], dispatchGroup: [number, number, number],
+  run(buildArtifact: Artifact, inputs: GpuData[], outputs: GpuData[], dispatchGroup: [number, number, number],
       uniformBufferBinding: GPUBindingResource|undefined): void {
     const device = this.backend.device;
     const computePassEncoder = this.backend.getComputePassEncoder();
@@ -53,25 +51,9 @@ export class ProgramManager {
     computePassEncoder.setBindGroup(0, bindGroup);
 
     computePassEncoder.dispatchWorkgroups(...dispatchGroup);
-
-    if (this.backend.queryType !== QueryType.none) {
-      const kernelId = this.backend.currentKernelId!;
-      const kernelInfo = this.backend.kernels.get(kernelId)!;
-      let kernelName = kernelInfo[0];
-      if (buildArtifact.programInfo.name !== kernelName) {
-        kernelName = `${kernelName}/${buildArtifact.programInfo.name}`;
-      }
-      const pendingKernelInfo: PendingKernelInfo = {
-        id: kernelId,
-        name: kernelName,
-        inputTensorViews,
-        outputTensorViews,
-      };
-      this.backend.pendingKernels.push(pendingKernelInfo);
-      this.backend.writeTimeStamp(this.backend.pendingDispatchNumber * 2 + 1);
-    }
-
+    this.backend.writeTimeStamp(this.backend.pendingDispatchNumber * 2 + 1);
     this.backend.pendingDispatchNumber++;
+
     if (this.backend.pendingDispatchNumber >= this.backend.maxDispatchNumber ||
         this.backend.queryType === QueryType.atPasses) {
       this.backend.endComputePass();

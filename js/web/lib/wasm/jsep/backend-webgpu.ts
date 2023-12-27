@@ -10,7 +10,17 @@ import {createView, TensorView} from './tensor-view';
 import {createGpuDataManager, downloadGpuData, GpuDataManager} from './webgpu/gpu-data-manager';
 import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
 import {ProgramManager} from './webgpu/program-manager';
-import {ComputeContext, GpuData, PendingKernelInfo, ProgramInfo, ProgramInputTensorInfoDependency, QueryType} from './webgpu/types';
+import {ComputeContext, GpuData, ProgramInfo, ProgramInputTensorInfoDependency, QueryType} from './webgpu/types';
+
+interface KernelInfo {
+  opType: string;
+  nodeName: string;
+  kernelEntry: RunFunction;
+  attributes: [((attribute: unknown) => unknown)|undefined, unknown];
+  programName: string;
+  inputTensorViews: readonly TensorView[];
+  outputTensorViews: readonly TensorView[];
+}
 
 const getProgramInputTensorInfoDependencyKey =
     (inputTensors: readonly TensorView[], inputDependencies: readonly ProgramInputTensorInfoDependency[]): string => {
@@ -124,12 +134,7 @@ export class WebGpuBackend {
     return data;
   }
 
-  /**
-   * a KernelID -> kernel info mapping. value is
-   * [ op_type, name, run function, [optional] preprocess_attribute_once function ]
-   */
-  kernels: Map<number, [string, string, RunFunction, [((attribute: unknown) => unknown) | undefined, unknown]]>;
-
+  kernels: Map<number, KernelInfo>;
   private commandEncoder: GPUCommandEncoder|null = null;
   private computePassEncoder: GPUComputePassEncoder|null = null;
   maxDispatchNumber = 16;
@@ -137,9 +142,9 @@ export class WebGpuBackend {
 
 
   // info of kernels pending submission for a single batch
-  pendingKernels: PendingKernelInfo[] = [];
+  private pendingKernels: number[] = [];
   // queryReadData -> pendingKernels mapping for all the batches
-  private pendingQueries: Map<number, PendingKernelInfo[]> = new Map();
+  private pendingQueries: Map<number, number[]> = new Map();
   private queryResolveData?: GpuData;
   private querySet?: GPUQuerySet;
   private queryTimeBase?: bigint;
@@ -198,11 +203,15 @@ export class WebGpuBackend {
     };
 
     Object.defineProperty(this.env.webgpu, 'device', {value: this.device});
+
+    // init queryType, which is necessary for createKernel
+    this.setQueryType();
   }
 
   dispose(): void {
     if (typeof this.querySet !== 'undefined') {
       this.querySet.destroy();
+      this.gpuDataManager.release(this.queryResolveData!.id);
     }
     this.gpuDataManager.dispose();
   }
@@ -211,6 +220,7 @@ export class WebGpuBackend {
     if (!this.commandEncoder) {
       this.commandEncoder = this.device.createCommandEncoder();
 
+      // refresh queryType, as sometimes we only need to enable query for a specific run
       this.setQueryType();
       if (this.queryType !== QueryType.none && typeof this.querySet === 'undefined') {
         this.querySet = this.device.createQuerySet({
@@ -277,12 +287,13 @@ export class WebGpuBackend {
         const mappedData = new BigUint64Array(queryReadData.buffer.getMappedRange());
         const pendingKernels = this.pendingQueries.get(queryReadData.id);
         for (let i = 0; i < mappedData.length / 2; i++) {
-          const kernelId = pendingKernels![i].id;
+          const kernelId = pendingKernels![i];
           const kernelInfo = this.kernels.get(kernelId)!;
-          const kernelType = kernelInfo[0];
-          const kernelName = pendingKernels![i].name;
-          const inputTensorViews = pendingKernels![i].inputTensorViews;
-          const outputTensorViews = pendingKernels![i].outputTensorViews;
+          const opType = kernelInfo.opType;
+          const nodeName = kernelInfo.nodeName;
+          const programName = kernelInfo.programName;
+          const inputTensorViews = kernelInfo.inputTensorViews;
+          const outputTensorViews = kernelInfo.outputTensorViews;
           const startTimeU64 = mappedData[i * 2];
           const endTimeU64 = mappedData[i * 2 + 1];
 
@@ -305,8 +316,8 @@ export class WebGpuBackend {
               outputsMetadata: outputTensorViews.map(
                   value => ({dims: value.dims, dataType: tensorDataTypeEnumToString(value.dataType)})),
               kernelId,
-              kernelType,
-              kernelName,
+              kernelType: opType,
+              kernelName: nodeName,
               startTime,
               endTime,
             });
@@ -321,12 +332,13 @@ export class WebGpuBackend {
               outputShapes += `output[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
             });
             // eslint-disable-next-line no-console
-            console.log(`[profiling] kernel "${kernelId}|${kernelName}" ${inputShapes}${outputShapes}execution time: ${
-                endTime - startTime} ns`);
+            console.log(`[profiling] kernel "${kernelId}|${opType}|${nodeName}|${programName}" ${inputShapes}${
+                outputShapes}execution time: ${endTime - startTime} ns`);
           }
         }
         queryReadData.buffer.unmap();
         this.gpuDataManager.release(queryReadData.id);
+        this.pendingQueries.delete(queryReadData.id);
       });
     }
   }
@@ -460,14 +472,22 @@ export class WebGpuBackend {
       this.programManager.setArtifact(key, artifact);
       LOG_DEBUG('info', () => `[artifact] key: ${key}, programName: ${program.name}`);
     }
+    // update kernels
+    const kernelInfo = this.kernels.get(this.currentKernelId!)!;
+    kernelInfo.programName = artifact.programInfo.name;
+    kernelInfo.inputTensorViews = inputTensorViews;
+    kernelInfo.outputTensorViews = outputTensorViews;
 
     LOG_DEBUG(
         'info',
         () => `[ProgramManager] run "${program.name}" (key=${key}) with ${normalizedDispatchGroup[0]}x${
             normalizedDispatchGroup[1]}x${normalizedDispatchGroup[2]}`);
-    this.programManager.run(
-        artifact, inputTensorViews, outputTensorViews, inputDatas, outputDatas, normalizedDispatchGroup,
-        uniformBufferBinding);
+
+    if (this.queryType !== QueryType.none) {
+      this.pendingKernels.push(this.currentKernelId!);
+    }
+
+    this.programManager.run(artifact, inputDatas, outputDatas, normalizedDispatchGroup, uniformBufferBinding);
 
     return outputTensorViews;
   }
@@ -500,7 +520,16 @@ export class WebGpuBackend {
       throw new Error(`kernel not implemented: ${opType}`);
     }
 
-    this.kernels.set(kernelId, [opType, nodeName, op[0], [op[1], attribute]]);
+    const kernelInfo: KernelInfo = {
+      opType,
+      nodeName,
+      kernelEntry: op[0],
+      attributes: [op[1], attribute],
+      programName: '',
+      inputTensorViews: [],
+      outputTensorViews: [],
+    };
+    this.kernels.set(kernelId, kernelInfo);
   }
 
   releaseKernel(kernelId: number): void {
@@ -521,7 +550,10 @@ export class WebGpuBackend {
     if (!kernel) {
       throw new Error(`kernel not created: ${kernelId}`);
     }
-    const [opType, nodeName, kernelEntry, attributes] = kernel;
+    const opType = kernel.opType;
+    const nodeName = kernel.nodeName;
+    const kernelEntry = kernel.kernelEntry;
+    const attributes = kernel.attributes;
     if (this.currentKernelId !== null) {
       throw new Error(`kernel "[${opType}] ${nodeName}" is not allowed to be called recursively`);
     }
@@ -604,7 +636,6 @@ export class WebGpuBackend {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (this.computePassEncoder as any).writeTimestamp(this.querySet, index);
   }
-
   setQueryType(): void {
     this.queryType = QueryType.none;
     if (this.env.webgpu.profiling?.mode === 'default') {

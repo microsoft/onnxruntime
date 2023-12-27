@@ -186,10 +186,10 @@ export const init = async(module: OrtWasmModule, env: Env, gpuAdapter: GPUAdapte
           },
 
       // jsepCreateKernel
-      (name: string, kernel: number, attribute: unknown) => backend.createKernel(
-          name, kernel, attribute,
-          env.debug || backend.queryType !== QueryType.none ? module.UTF8ToString(module._JsepGetNodeName(kernel)) :
-                                                              `${kernel}`),
+      (opType: string, kernelId: number, attribute: unknown) => backend.createKernel(
+          opType, kernelId, attribute,
+          env.debug || backend.queryType !== QueryType.none ? module.UTF8ToString(module._JsepGetNodeName(kernelId)) :
+                                                              `${opType}`),
 
       // jsepReleaseKernel
       (kernel: number) => backend.releaseKernel(kernel),
