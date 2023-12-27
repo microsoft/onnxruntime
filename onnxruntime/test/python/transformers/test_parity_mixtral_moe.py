@@ -11,20 +11,17 @@
 # -------------------------------------------------------------------------
 import inspect
 import math
+import time
+import unittest
 import warnings
 from typing import List, Optional, Tuple, Union
 
-import torch
-import torch.nn.functional as F
-from torch import nn
-
-import time
-import unittest
-
 import numpy
 import pytest
-
+import torch
+import torch.nn.functional as F
 from onnx import TensorProto, helper
+from torch import nn
 
 import onnxruntime
 

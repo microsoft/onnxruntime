@@ -128,16 +128,13 @@ class MoEBase {
       }
     }
 
-    if (fc3_experts_weights_optional != nullptr
-        && fc3_experts_weights_optional->Shape().GetDims() != fc1_experts_weights_dims) {
+    if (fc3_experts_weights_optional != nullptr && fc3_experts_weights_optional->Shape().GetDims() != fc1_experts_weights_dims) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "fc3_experts_weights_dims must be equal to fc1_experts_weights_dims, got ",
                              fc3_experts_weights_optional->Shape().GetDims(), " and ", fc1_experts_weights_dims);
-
     }
 
-    if (fc3_experts_bias_optional != nullptr && fc1_experts_bias_optional != nullptr
-        && fc3_experts_bias_optional->Shape().GetDims() != fc1_experts_bias_optional->Shape().GetDims()) {
+    if (fc3_experts_bias_optional != nullptr && fc1_experts_bias_optional != nullptr && fc3_experts_bias_optional->Shape().GetDims() != fc1_experts_bias_optional->Shape().GetDims()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "fc3_experts_bias_dims must be equal to fc1_experts_bias_dims, got ",
                              fc3_experts_bias_optional->Shape().GetDims(), " and ",
