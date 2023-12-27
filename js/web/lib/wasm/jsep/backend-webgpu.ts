@@ -517,4 +517,11 @@ export class WebGpuBackend {
     };
   }
   // #endregion
+
+  runStart(sessionId: number): void {
+    LOG_DEBUG('info', () => `runStart sessionId: ${sessionId}`);
+  }
+  runEnd(sessionId: number): void {
+    LOG_DEBUG('info', () => `runEnd sessionId: ${sessionId}`);
+  }
 }
