@@ -150,13 +150,13 @@ class IAllocator {
      @param stream Which stream instance allocated chunk will be used with.
      @param wait_fn If the allocator want to dynamic reuse a chunk from another stream, use this wait_fn to sync on
                     the target stream to make the reuse safe.
-     @returns std::unique_ptr with allocated memory and deleter.
+     @returns std::unique_ptr with allocated memory and deleter. Throws if it cannot allocate memory.
   */
   template <typename T>
   static IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<IAllocator> allocator, size_t count_or_bytes,
                                               bool use_reserve = false,
                                               Stream* stream = nullptr, WaitNotificationFn wait_fn = nullptr) {
-    assert(allocator != nullptr);
+    ValidateAllocator(allocator);
 
     // for now limit to fundamental types. we could support others, but to do so either we or the caller
     // needs to call the dtor for the objects, for buffers allocated on device we don't have destructor
@@ -169,9 +169,7 @@ class IAllocator {
       // sizeof(void) isn't valid, but the compiler isn't smart enough to ignore that this line isn't
       // reachable if T is void. use std::conditional to 'use' void* in the sizeof call
       const auto size = sizeof(typename std::conditional<std::is_void<T>::value, void*, T>::type);
-      if (!CalcMemSizeForArray(count_or_bytes, size, &alloc_size)) {
-        ORT_THROW("Invalid size requested for allocation: ", count_or_bytes, " * ", size);
-      }
+      alloc_size = CheckedCalcMemSizeForArray(count_or_bytes, size);
     }
 
     // allocate
@@ -182,9 +180,15 @@ class IAllocator {
                                   }};
   }
 
+  /**
+     Create a std::unique_ptr that is allocated and freed by the provided OrtAllocator.
+     @param ort_allocator The allocator.
+     @param count_or_bytes The exact bytes to allocate if T is void, otherwise the number of elements to allocate.
+     @returns std::unique_ptr with allocated memory and deleter. Throws if it cannot allocate memory.
+  */
   template <typename T>
   static IAllocatorUniquePtr<T> MakeUniquePtrFromOrtAllocator(OrtAllocator* ort_allocator, size_t count_or_bytes) {
-    assert(ort_allocator != nullptr);
+    ValidateAllocator(ort_allocator);
 
     size_t alloc_size = count_or_bytes;
     // if T is not void, 'count_or_bytes' == number of items so allow for that
@@ -192,9 +196,7 @@ class IAllocator {
       // sizeof(void) isn't valid, but the compiler isn't smart enough to ignore that this line isn't
       // reachable if T is void. use std::conditional to 'use' void* in the sizeof call
       const auto size = sizeof(typename std::conditional<std::is_void<T>::value, void*, T>::type);
-      if (!CalcMemSizeForArray(count_or_bytes, size, &alloc_size)) {
-        ORT_THROW("Invalid size requested for allocation: ", count_or_bytes, " * ", size);
-      }
+      alloc_size = CheckedCalcMemSizeForArray(count_or_bytes, size);
     }
 
     T* p = static_cast<T*>(ort_allocator->Alloc(ort_allocator, count_or_bytes));
@@ -205,6 +207,21 @@ class IAllocator {
   }
 
  private:
+  // validation functions. split out from methods that are templatized on the data type to minimize binary size.
+  template <typename T>
+  static void ValidateAllocator(const T& allocator) {
+    ORT_ENFORCE(allocator != nullptr);
+  }
+
+  static size_t CheckedCalcMemSizeForArray(size_t count, size_t size) {
+    size_t alloc_size = 0;
+    if (!CalcMemSizeForArray(count, size, &alloc_size)) {
+      ORT_THROW("Invalid size requested for allocation: ", count, " * ", size);
+    }
+
+    return alloc_size;
+  }
+
   OrtMemoryInfo memory_info_;
 };
 
