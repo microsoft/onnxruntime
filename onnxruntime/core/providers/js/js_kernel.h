@@ -197,7 +197,7 @@ class JsKernel : public OpKernel {
 
     int status_code = EM_ASM_INT(
         { return Module.jsepRunKernel($0, $1, Module.jsepSessionState.sessionHandle, Module.jsepSessionState.errors); },
-        this, reinterpret_cast<int32_t>(p_serialized_kernel_context));
+        this, reinterpret_cast<uint32_t>(p_serialized_kernel_context));
 
     LOGS_DEFAULT(VERBOSE) << "outputs = " << context->OutputCount() << ". Y.data="
                           << (size_t)(context->Output<Tensor>(0)->DataRaw()) << ".";
