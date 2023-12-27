@@ -48,7 +48,7 @@ namespace warp {
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Partial specialization for m-by-n-by-kgroup
-template<
+template <
     /// Shape of one matrix production operation (concept: GemmShape)
     typename WarpShape_,
     /// Shape of one matrix production operation (concept: GemmShape)
@@ -81,41 +81,40 @@ struct DefaultMmaTensorOp<WarpShape_,
                           arch::OpMultiplyAddDequantizeInterleavedBToA,
                           PartitionsK,
                           AccumulatorsInRowMajor> {
+ private:
+  // Shape for computing the FP16s
+  using ComputeInstructionShape = InstructionShape_;
 
-private:
-    // Shape for computing the FP16s
-    using ComputeInstructionShape = InstructionShape_;
+  // Chosen so we get K=16 for int8 and K=32 for int4.
+  static constexpr int LoadInstructionK = 8 * sizeof_bits<ElementA>::value / sizeof_bits<ElementB>::value;
 
-    // Chosen so we get K=16 for int8 and K=32 for int4.
-    static constexpr int LoadInstructionK = 8 * sizeof_bits<ElementA>::value / sizeof_bits<ElementB>::value;
+  // Shape for loading the narrow data type from shared memory
+  using LoadInstructionShape = GemmShape<InstructionShape_::kM, InstructionShape_::kN, LoadInstructionK>;
 
-    // Shape for loading the narrow data type from shared memory
-    using LoadInstructionShape = GemmShape<InstructionShape_::kM, InstructionShape_::kN, LoadInstructionK>;
+ public:
+  using Policy = cutlass::gemm::warp::MmaTensorOpPolicy<cutlass::arch::Mma<InstructionShape_,
+                                                                           32,
+                                                                           ElementA,
+                                                                           cutlass::layout::RowMajor,
+                                                                           ElementA,
+                                                                           cutlass::layout::ColumnMajor,
+                                                                           ElementC,
+                                                                           cutlass::layout::RowMajor,
+                                                                           arch::OpMultiplyAdd>,
+                                                        cutlass::MatrixShape<1, 1>>;
 
-public:
-    using Policy = cutlass::gemm::warp::MmaTensorOpPolicy<cutlass::arch::Mma<InstructionShape_,
-                                                                             32,
-                                                                             ElementA,
-                                                                             cutlass::layout::RowMajor,
-                                                                             ElementA,
-                                                                             cutlass::layout::ColumnMajor,
-                                                                             ElementC,
-                                                                             cutlass::layout::RowMajor,
-                                                                             arch::OpMultiplyAdd>,
-                                                          cutlass::MatrixShape<1, 1>>;
-
-    // Define the warp-level tensor op
-    using Type = cutlass::gemm::warp::MmaTensorOpComputeBWithF16<WarpShape_,
-                                                                 ElementA,
-                                                                 LayoutA,
-                                                                 ElementB,
-                                                                 LayoutB,
-                                                                 ElementC,
-                                                                 LayoutC,
-                                                                 Policy,
-                                                                 LoadInstructionShape,
-                                                                 PartitionsK,
-                                                                 AccumulatorsInRowMajor>;
+  // Define the warp-level tensor op
+  using Type = cutlass::gemm::warp::MmaTensorOpComputeBWithF16<WarpShape_,
+                                                               ElementA,
+                                                               LayoutA,
+                                                               ElementB,
+                                                               LayoutB,
+                                                               ElementC,
+                                                               LayoutC,
+                                                               Policy,
+                                                               LoadInstructionShape,
+                                                               PartitionsK,
+                                                               AccumulatorsInRowMajor>;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////

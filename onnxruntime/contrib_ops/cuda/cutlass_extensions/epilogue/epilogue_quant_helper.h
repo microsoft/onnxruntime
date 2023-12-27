@@ -38,10 +38,10 @@ namespace epilogue {
 
 // define scaling mode
 enum class QuantMode {
-    PerTensorQuant,
-    PerTokenQuant,
-    PerChannelQuant,
-    PerTokenChannelQuant
+  PerTensorQuant,
+  PerTokenQuant,
+  PerChannelQuant,
+  PerTokenChannelQuant
 };
 
 }  // namespace epilogue

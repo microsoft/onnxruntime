@@ -52,32 +52,30 @@ namespace threadblock {
 ////////////////////////////////////////////////////////////////////////////////
 // SFINAE trick so I can keep the same loop code for Volta and dispatch to the
 // correct warp level mma. On volta, all data is stored to shared memory as FP16.
-template<typename WarpMma, int kExpansionFactor = 1>
-CUTLASS_DEVICE void run_warp_mma(WarpMma&                           warp_mma,
-                                 typename WarpMma::FragmentC&       D,
+template <typename WarpMma, int kExpansionFactor = 1>
+CUTLASS_DEVICE void run_warp_mma(WarpMma& warp_mma,
+                                 typename WarpMma::FragmentC& D,
                                  typename WarpMma::FragmentA const& A,
                                  typename WarpMma::FragmentB const& B,
                                  typename WarpMma::FragmentC const& C,
-                                 const int                          warp_tileB_k_offset)
-{
-    warp_mma(D, A, B, C);
+                                 const int warp_tileB_k_offset) {
+  warp_mma(D, A, B, C);
 }
 
-template<typename WarpMma, int kExpansionFactor = WarpMma::kExpansionFactor>
-CUTLASS_DEVICE void run_warp_mma(WarpMma&                                      warp_mma,
-                                 typename WarpMma::FragmentC&                  D,
+template <typename WarpMma, int kExpansionFactor = WarpMma::kExpansionFactor>
+CUTLASS_DEVICE void run_warp_mma(WarpMma& warp_mma,
+                                 typename WarpMma::FragmentC& D,
                                  typename WarpMma::TransformedFragmentA const& A,
                                  typename WarpMma::TransformedFragmentB const& B,
-                                 typename WarpMma::FragmentC const&            C,
-                                 const int                                     warp_tileB_k_offset)
-{
-    warp_mma(D, A, B, C, warp_tileB_k_offset);
+                                 typename WarpMma::FragmentC const& C,
+                                 const int warp_tileB_k_offset) {
+  warp_mma(D, A, B, C, warp_tileB_k_offset);
 }
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Structure to compute the matrix product targeting CUDA cores and SIMT math
 /// instructions.
-template<
+template <
     /// Size of the Gemm problem - concept: gemm::GemmShape<>
     typename Shape_,
     /// Policy describing tuning details (concept: MmaPolicy)
@@ -89,142 +87,136 @@ template<
     /// Used for partial specialization
     typename Enable = bool>
 class DqMmaBase {
-public:
-    ///< Size of the Gemm problem - concept: gemm::GemmShape<>
-    using Shape = Shape_;
+ public:
+  ///< Size of the Gemm problem - concept: gemm::GemmShape<>
+  using Shape = Shape_;
 
-    ///< Policy describing tuning details
-    using Policy = Policy_;
+  ///< Policy describing tuning details
+  using Policy = Policy_;
 
-    ///< Type of the scale to be loaded
-    using ElementScale = ElementScale_;
+  ///< Type of the scale to be loaded
+  using ElementScale = ElementScale_;
 
+  //
+  // Dependent types
+  //
+
+  /// Warp-level Mma
+  using Operator = typename Policy::Operator;
+
+  /// Shape describing the overall GEMM computed from shared memory
+  /// by each warp.
+  using WarpGemm = typename Policy::Operator::Shape;
+
+  /// Shape describing the number of warps filling the CTA
+  using WarpCount = GemmShape<Shape::kM / WarpGemm::kM, Shape::kN / WarpGemm::kN, Shape::kK / WarpGemm::kK>;
+
+  /// Number of warp-level GEMM oeprations
+  static int const kWarpGemmIterations = (WarpGemm::kK / Operator::Policy::MmaShape::kK);
+
+  static constexpr int kNumKIterationsPerWarpBLoad =
+      Operator::IteratorB::InstructionShape::kRow / Operator::InstructionShape::kK;
+
+  static_assert(!(kWarpGemmIterations % kNumKIterationsPerWarpBLoad), "");
+  static constexpr int kWarpGemmIterationsForB = kWarpGemmIterations / kNumKIterationsPerWarpBLoad;
+
+  /// Number of stages
+  static int const kStages = Stages;
+
+  /// Tensor reference to the A operand
+  using TensorRefA = TensorRef<typename Operator::ElementA, typename Operator::LayoutA>;
+
+  /// Tensor reference to the B operand
+  using TensorRefB = TensorRef<typename Operator::ElementB, typename Operator::LayoutB>;
+
+  //
+  // Nested structs
+  //
+
+  /// Shared storage object needed by threadblock-scoped GEMM
+  class SharedStorage {
+   public:
     //
-    // Dependent types
+    // Type definitions
     //
 
-    /// Warp-level Mma
-    using Operator = typename Policy::Operator;
+    /// Shape of the A matrix operand in shared memory
+    using ShapeA =
+        MatrixShape<Shape::kM + Policy::SmemPaddingA::kRow, Shape::kK * kStages + Policy::SmemPaddingA::kColumn>;
 
-    /// Shape describing the overall GEMM computed from shared memory
-    /// by each warp.
-    using WarpGemm = typename Policy::Operator::Shape;
+    /// Shape of the B matrix operand in shared memory
+    using ShapeB =
+        MatrixShape<Shape::kK * kStages + Policy::SmemPaddingB::kRow, Shape::kN + Policy::SmemPaddingB::kColumn>;
 
-    /// Shape describing the number of warps filling the CTA
-    using WarpCount = GemmShape<Shape::kM / WarpGemm::kM, Shape::kN / WarpGemm::kN, Shape::kK / WarpGemm::kK>;
-
-    /// Number of warp-level GEMM oeprations
-    static int const kWarpGemmIterations = (WarpGemm::kK / Operator::Policy::MmaShape::kK);
-
-    static constexpr int kNumKIterationsPerWarpBLoad =
-        Operator::IteratorB::InstructionShape::kRow / Operator::InstructionShape::kK;
-
-    static_assert(!(kWarpGemmIterations % kNumKIterationsPerWarpBLoad), "");
-    static constexpr int kWarpGemmIterationsForB = kWarpGemmIterations / kNumKIterationsPerWarpBLoad;
-
-    /// Number of stages
-    static int const kStages = Stages;
-
-    /// Tensor reference to the A operand
-    using TensorRefA = TensorRef<typename Operator::ElementA, typename Operator::LayoutA>;
-
-    /// Tensor reference to the B operand
-    using TensorRefB = TensorRef<typename Operator::ElementB, typename Operator::LayoutB>;
-
-    //
-    // Nested structs
-    //
-
-    /// Shared storage object needed by threadblock-scoped GEMM
-    class SharedStorage {
-    public:
-        //
-        // Type definitions
-        //
-
-        /// Shape of the A matrix operand in shared memory
-        using ShapeA =
-            MatrixShape<Shape::kM + Policy::SmemPaddingA::kRow, Shape::kK * kStages + Policy::SmemPaddingA::kColumn>;
-
-        /// Shape of the B matrix operand in shared memory
-        using ShapeB =
-            MatrixShape<Shape::kK * kStages + Policy::SmemPaddingB::kRow, Shape::kN + Policy::SmemPaddingB::kColumn>;
-
-    public:
-        //
-        // Data members
-        //
-
-        /// Buffer for A operand
-        AlignedBuffer<typename Operator::ElementA, ShapeA::kCount> operand_A;
-
-        /// Buffer for B operand
-        AlignedBuffer<typename Operator::ElementB, ShapeB::kCount> operand_B;
-
-        /// Buffer to hold scales for threadblock
-        AlignedBuffer<ElementScale, Shape::kN> operand_scale;
-
-    public:
-        //
-        // Methods
-        //
-
-        /// Returns a layout object for the A matrix
-        CUTLASS_DEVICE
-        static typename Operator::LayoutA LayoutA()
-        {
-            return Operator::LayoutA::packed({ShapeA::kRow, ShapeA::kColumn});
-        }
-
-        /// Returns a layout object for the B matrix
-        CUTLASS_HOST_DEVICE
-        static typename Operator::LayoutB LayoutB()
-        {
-            return Operator::LayoutB::packed({ShapeB::kRow, ShapeB::kColumn});
-        }
-
-        /// Returns a TensorRef to the A operand
-        CUTLASS_HOST_DEVICE
-        TensorRefA operand_A_ref()
-        {
-            return TensorRefA{operand_A.data(), LayoutA()};
-        }
-
-        /// Returns a TensorRef to the B operand
-        CUTLASS_HOST_DEVICE
-        TensorRefB operand_B_ref()
-        {
-            return TensorRefB{operand_B.data(), LayoutB()};
-        }
-    };
-
-protected:
+   public:
     //
     // Data members
     //
 
-    /// Iterator to load a warp-scoped tile of A operand from shared memory
-    typename Operator::IteratorA warp_tile_iterator_A_;
+    /// Buffer for A operand
+    AlignedBuffer<typename Operator::ElementA, ShapeA::kCount> operand_A;
 
-    /// Iterator to load a warp-scoped tile of B operand from shared memory
-    typename Operator::IteratorB warp_tile_iterator_B_;
+    /// Buffer for B operand
+    AlignedBuffer<typename Operator::ElementB, ShapeB::kCount> operand_B;
 
-public:
-    /// Construct from tensor references
+    /// Buffer to hold scales for threadblock
+    AlignedBuffer<ElementScale, Shape::kN> operand_scale;
+
+   public:
+    //
+    // Methods
+    //
+
+    /// Returns a layout object for the A matrix
     CUTLASS_DEVICE
-    DqMmaBase(
-        ///< Shared storage needed for internal use by threadblock-scoped GEMM
-        SharedStorage& shared_storage,
-        ///< ID within the threadblock
-        int thread_idx,
-        ///< ID of warp
-        int warp_idx,
-        ///< ID of each thread within a warp
-        int lane_idx):
-        warp_tile_iterator_A_(shared_storage.operand_A_ref(), lane_idx),
-        warp_tile_iterator_B_(shared_storage.operand_B_ref(), lane_idx)
-    {
+    static typename Operator::LayoutA LayoutA() {
+      return Operator::LayoutA::packed({ShapeA::kRow, ShapeA::kColumn});
     }
+
+    /// Returns a layout object for the B matrix
+    CUTLASS_HOST_DEVICE
+    static typename Operator::LayoutB LayoutB() {
+      return Operator::LayoutB::packed({ShapeB::kRow, ShapeB::kColumn});
+    }
+
+    /// Returns a TensorRef to the A operand
+    CUTLASS_HOST_DEVICE
+    TensorRefA operand_A_ref() {
+      return TensorRefA{operand_A.data(), LayoutA()};
+    }
+
+    /// Returns a TensorRef to the B operand
+    CUTLASS_HOST_DEVICE
+    TensorRefB operand_B_ref() {
+      return TensorRefB{operand_B.data(), LayoutB()};
+    }
+  };
+
+ protected:
+  //
+  // Data members
+  //
+
+  /// Iterator to load a warp-scoped tile of A operand from shared memory
+  typename Operator::IteratorA warp_tile_iterator_A_;
+
+  /// Iterator to load a warp-scoped tile of B operand from shared memory
+  typename Operator::IteratorB warp_tile_iterator_B_;
+
+ public:
+  /// Construct from tensor references
+  CUTLASS_DEVICE
+  DqMmaBase(
+      ///< Shared storage needed for internal use by threadblock-scoped GEMM
+      SharedStorage& shared_storage,
+      ///< ID within the threadblock
+      int thread_idx,
+      ///< ID of warp
+      int warp_idx,
+      ///< ID of each thread within a warp
+      int lane_idx) : warp_tile_iterator_A_(shared_storage.operand_A_ref(), lane_idx),
+                      warp_tile_iterator_B_(shared_storage.operand_B_ref(), lane_idx) {
+  }
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
