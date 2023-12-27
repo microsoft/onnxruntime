@@ -734,10 +734,10 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
 
 template <typename U, typename V, typename T, bool USE_BIAS, bool USE_MASK>
 auto GetArgAndRunInvoker(const U& impl, const V& invoker, const GemmSoftmaxGemmPermuteParams<T>* params) {
+  constexpr const int kNumBiasBuffer = static_cast<int>(USE_BIAS) + static_cast<int>(USE_MASK);
+
   using Nop = ck::tensor_operation::element_wise::PassThrough;
   using Acc0ElementOp = internal::PreSoftmaxAttentionScoreOp;
-
-  constexpr const int kNumBiasBuffer = static_cast<int>(USE_BIAS) + static_cast<int>(USE_MASK);
 
   TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
       !GemmSoftmaxGemmPermuteTunableOp<T>::IsSupportedMode(params->attention),
