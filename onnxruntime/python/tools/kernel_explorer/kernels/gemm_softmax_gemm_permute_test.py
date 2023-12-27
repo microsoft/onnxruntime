@@ -172,8 +172,7 @@ def _test_gemm_softmax_gemm_permute(
     pre_softmax_attn_scores = pre_softmax_attn_scores * scale
     if attn_bias is not None:
         pre_softmax_attn_scores = pre_softmax_attn_scores + attn_bias
-    converted_mask = None
-    causal_mask = None
+
     correct_causal_mask = np.full((seqlen, total_seqlen), 1)
     if attn_mask is not None:
         filter_value = -10000.0
