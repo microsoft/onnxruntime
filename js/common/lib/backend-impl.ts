@@ -82,7 +82,7 @@ export const resolveBackend = async(backendHints: readonly string[]): Promise<Ba
       const isInitializing = !!backendInfo.initPromise;
       try {
         if (!isInitializing) {
-          backendInfo.initPromise = backendInfo.backend.init();
+          backendInfo.initPromise = backendInfo.backend.init(backendName);
         }
         await backendInfo.initPromise;
         backendInfo.initialized = true;

@@ -88,7 +88,7 @@ struct TensorrtInferDeleter {
   template <typename T>
   void operator()(T* obj) const {
     if (obj) {
-      obj->destroy();
+      delete obj;
     }
   }
 };
