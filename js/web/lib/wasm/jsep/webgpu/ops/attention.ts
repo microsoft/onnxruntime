@@ -248,11 +248,12 @@ export const computeInPlaceSoftmax = (context: ComputeContext, input: TensorView
 
   const getShaderSource = (shaderHelper: ShaderHelper) => {
     const inputHelper = outputVariable('x', input.dataType, input.dims, components);
-    let threadMaxValue = 'threadMaxVector';
+    let threadMaxValue = 'thread_max_vector';
     if (components === 2) {
-      threadMaxValue = 'max(threadMaxVector.x, threadMaxVector.y)';
+      threadMaxValue = 'max(thread_max_vector.x, thread_max_vector.y)';
     } else if (components === 4) {
-      threadMaxValue = 'max(max(threadMaxVector.x, threadMaxVector.y), max(threadMaxVector.z, threadMaxVector.w))';
+      threadMaxValue =
+          'max(max(thread_max_vector.x, thread_max_vector.y), max(thread_max_vector.z, thread_max_vector.w))';
     }
     const elemValueType = tensorTypeToWsglValueType(input.dataType);
     const uniforms: UniformsArrayType = [
@@ -270,9 +271,9 @@ export const computeInPlaceSoftmax = (context: ComputeContext, input: TensorView
     let localOffset = local_index * uniforms.elements_per_wg;
     let offset: u32 = workgroup_id.x * uniforms.d_comp + localOffset;
 
-    var threadMaxVector = ${fillVector('f32', components, '-3.402823e+38f')};
+    var thread_max_vector = ${fillVector('f32', components, '-3.402823e+38f')};
     for (var i: u32 = 0; i < uniforms.elements_per_wg && i + localOffset < uniforms.d_comp; i++) {
-      threadMaxVector = max(${castToF32(elemValueType, components, 'x[offset + i]')}, threadMaxVector);
+      thread_max_vector = max(${castToF32(elemValueType, components, 'x[offset + i]')}, thread_max_vector);
     }
     wgMax[local_index] = ${threadMaxValue};
     workgroupBarrier();
