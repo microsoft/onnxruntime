@@ -334,7 +334,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT,
               OPTIONAL_VALUE)
         .Attr("rotary_embedding_dim",
-              "Dimention of rotary embedding. Limited to 32, 64 or 128. Default value is head_size",
+              "Dimension of rotary embedding. Limited to 32, 64 or 128. Default value is head_size",
               AttributeProto::INT,
               OPTIONAL_VALUE)
         .Attr("mask_filter_value",
