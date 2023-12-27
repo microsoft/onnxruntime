@@ -341,11 +341,11 @@ const bilinearInterpolation =
       var row:${dType} = originalIndices[${heightIdx}];
       var col:${dType} = originalIndices[${widthIdx}];
       ${
-          useExtrapolation ? `if (row < 0 || row > (${inputShape[heightIdx]} - 1) || col < 0 || col > (${
-                                 inputShape[widthIdx]} - 1))) {
+          useExtrapolation ?
+              `if (row < 0 || row > (${inputShape[heightIdx]} - 1) || col < 0 || col > (${inputShape[widthIdx]} - 1))) {
         return ${extrapolationValue};
       }` :
-                             ''};
+              ''};
       row = max(0, min(row, ${inputShape[heightIdx]} - 1));
       col = max(0, min(col, ${inputShape[widthIdx]} - 1));
       var row1: u32 = u32(row);
