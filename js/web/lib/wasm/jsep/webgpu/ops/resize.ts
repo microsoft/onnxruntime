@@ -474,7 +474,7 @@ const trilinearInterpolation =
       var height:${dType} = originalIndices[${heightIdx}];
       var width:${dType} = originalIndices[${widthIdx}];
       ${
-          useExtrapolation ? `(depth < 0 || depth > (${inputShape[depthIdx]} - 1) || height < 0 || height > (${
+          useExtrapolation ? `if (depth < 0 || depth > (${inputShape[depthIdx]} - 1) || height < 0 || height > (${
                                  inputShape[heightIdx]} - 1) || width < 0 || (width > ${inputShape[widthIdx]} - 1))) {
       return ${extrapolationValue};
         }` :
