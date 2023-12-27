@@ -23,24 +23,31 @@ Abstract:
 #include "mlas.h"
 #include "mlas_gemm_postprocessor.h"
 
-// TODO add documentation
-enum MLAS_SQNBITGEMM_COMPUTE_TYPE {
-    CompFp32,  // fp32 A, fp32 accumulator
-    CompInt8,  // int8 A, int32 accumulator
-};
+/**
+ * @brief Define compute types of block quantization
+ */
+typedef enum {
+    CompUndef = 0, /*!< undef */
+    CompFp32 = 1,  /*!< input fp32, accumulator fp32 */
+    CompFp16 = 2,  /*!< input fp16, accumulator fp16 */
+    CompBf16 = 3,  /*!< input bf16, accumulator fp32 */
+    CompInt8 = 4   /*!< input int8, accumulator int32 */
+} MLAS_SQNBIT_COMPUTE_TYPE;
+
+using MLAS_SQNBITGEMM_COMPUTE_TYPE = MLAS_SQNBIT_COMPUTE_TYPE;  // TODO consolidate these
 
 /**
  * @brief Data parameters for float/n-bit quantized int GEMM routine.
  */
 struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
-    const float* A = nullptr;                ///< address of A (float32 matrix)
-    size_t lda = 0;                          ///< leading dimension of A
-    const void* QuantBData = nullptr;        ///< address of quantized B (quantized n-bit int values)
-    const float* QuantBScale = nullptr;      ///< address of scale values of quantized B, one per block
-    const void* QuantBZeroPoint = nullptr;   ///< optional address of zero point values of quantized B, one per block
-    const float* Bias = nullptr;             ///< optional address of Bias, vector size N
-    float* C = nullptr;                      ///< address of result matrix
-    size_t ldc = 0;                          ///< leading dimension of C
+    const float* A = nullptr;               ///< address of A (float32 matrix)
+    size_t lda = 0;                         ///< leading dimension of A
+    const void* QuantBData = nullptr;       ///< address of quantized B (quantized n-bit int values)
+    const float* QuantBScale = nullptr;     ///< address of scale values of quantized B, one per block
+    const void* QuantBZeroPoint = nullptr;  ///< optional address of zero point values of quantized B, one per block
+    const float* Bias = nullptr;            ///< optional address of Bias, vector size N
+    float* C = nullptr;                     ///< address of result matrix
+    size_t ldc = 0;                         ///< leading dimension of C
 
     ///< optional post processing to apply to result matrix
     MLAS_GEMM_POSTPROCESSOR<float>* PostProcessor = nullptr;
@@ -60,8 +67,8 @@ struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
  * @param[in]       ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
  * @param[inout]    DataParams      An array (size BatchN) of parameter blocks
  * @param[in]       Workspace       Address of intermediate workspace buffer.
-                                    If MlasSQNBitGemmWorkspaceSize() returns a non-zero value, this should be a buffer
-                                    with at least that many bytes. Otherwise, it can be nullptr.
+                                    If MlasSQNBitGemmBatchWorkspaceSize() returns a non-zero value, this must be a
+                                    buffer with at least that many bytes. Otherwise, it may be nullptr.
  * @param[in]       ThreadPool      optional thread pool to use
  */
 void MLASCALL
@@ -80,9 +87,14 @@ MlasSQNBitGemmBatch(
 
 /**
  * @brief Determines whether a float32/quantized n-bit int GEMM implementation is available on the current platform.
+ *        Ensure that this returns true before calling MlasSQNBitGemmBatch().
+ *
+ * @param[in]   M               row size of matrix A and C
+ * @param[in]   N               column size of matrix B and C
+ * @param[in]   K               column size of matrix A and row size of matrix B
  * @param[in]   BlkBitWidth     quantized value bit width (e.g., 4 means 4 bit ints)
  * @param[in]   BlkLen          number of quantized values per block
- * TODO update param doc
+ * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
  */
 bool MLASCALL
 MlasIsSQNBitGemmAvailable(
@@ -97,10 +109,16 @@ MlasIsSQNBitGemmAvailable(
 /**
  * @brief Gets the size in bytes of the intermediate workspace buffer required by the float32/quantized n-bit int GEMM
  * implementation. If zero, no intermediate workspace is required.
- * // TODO update param doc
+ * @param[in]   M               row size of matrix A and C
+ * @param[in]   N               column size of matrix B and C
+ * @param[in]   K               column size of matrix A and row size of matrix B
+ * @param[in]   BatchN          number of batches
+ * @param[in]   BlkBitWidth     quantized value bit width (e.g., 4 means 4 bit ints)
+ * @param[in]   BlkLen          number of quantized values per block
+ * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
  */
 size_t MLASCALL
-MlasSQNBitGemmWorkspaceSize(
+MlasSQNBitGemmBatchWorkspaceSize(
     size_t M,
     size_t N,
     size_t K,
@@ -109,17 +127,6 @@ MlasSQNBitGemmWorkspaceSize(
     size_t BlkLen,
     MLAS_SQNBITGEMM_COMPUTE_TYPE ComputeType
 );
-
-/**
- * @brief Define compute types of block quantization
- */
-typedef enum {
-    CompUndef = 0, /*!< undef */
-    CompFp32 = 1,  /*!< input fp32, accumulator fp32 */
-    CompFp16 = 2,  /*!< input fp16, accumulator fp16 */
-    CompBf16 = 3,  /*!< input bf16, accumulator fp32 */
-    CompInt8 = 4   /*!< input int8, accumulator int32 */
-} MLAS_SQNBIT_COMPUTE_TYPE;
 
 /**
  * @brief Data parameters for NBits GEMM routine
@@ -171,7 +178,7 @@ MlasNBitsGemmPackBSize(
  * @param last_call     flag to activate the epilogue process of packB. OpKernel::PrePack will query input tensor
  * one by one: QData, Scale, Zp (if is_asym is true). But kernel prefers to pack all tensors into one blob data where
  * they can share the common attributes like: block_size. Meanwhile, kernel has some pre-computations to speed up
- * inference which require that all blob data are ready. So, you need to set this flag to true when passing Scale 
+ * inference which require that all blob data are ready. So, you need to set this flag to true when passing Scale
  * (is_asym is false) and Zp(is_asym is true).
  * @param thread_pool
  */
@@ -218,7 +225,7 @@ MlasNBitsGemmUnPackB(
  * @return     Workspace size in bytes
  */
 size_t MLASCALL
-MlasSQNBitsGemmBatchWorkspaceSize(
+MlasSQNBitsGemmBatchPackedBWorkspaceSize(
     const size_t M,
     const size_t N,
     const size_t K,

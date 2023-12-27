@@ -251,7 +251,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     }
 
     void* Workspace = nullptr;
-    if (const auto WorkspaceSize = MlasSQNBitGemmWorkspaceSize(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType);
+    if (const auto WorkspaceSize = MlasSQNBitGemmBatchWorkspaceSize(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType);
         WorkspaceSize > 0) {
       Workspace = BufferWorkspace.GetBuffer(WorkspaceSize);
     }

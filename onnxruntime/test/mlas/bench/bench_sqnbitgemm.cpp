@@ -55,7 +55,7 @@ void SQNBITGEMM(benchmark::State& state) {
                                             tp.get());
 
   std::unique_ptr<std::byte[]> Workspace;
-  if (const auto WorkspaceSize = MlasSQNBitGemmWorkspaceSize(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType);
+  if (const auto WorkspaceSize = MlasSQNBitGemmBatchWorkspaceSize(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType);
       WorkspaceSize > 0) {
     Workspace = std::make_unique<std::byte[]>(WorkspaceSize);
   }

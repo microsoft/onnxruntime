@@ -16,11 +16,12 @@ Abstract:
 --*/
 
 #include "sqnbitgemm.h"
+
+#include <cassert>
+
 #ifdef MLAS_JBLAS
 #include "jblas_gemm.h"
 #endif
-
-#include <cassert>
 
 namespace
 {
@@ -156,7 +157,7 @@ SQNBitGemmPerGemmWorkspaceStride(
 }  // namespace
 
 size_t MLASCALL
-MlasSQNBitGemmWorkspaceSize(
+MlasSQNBitGemmBatchWorkspaceSize(
     size_t M,
     size_t N,
     size_t K,
@@ -514,9 +515,8 @@ MlasSQNBitGemmBatch(
     if (ThreadPool == nullptr) {
         for (size_t gemm_i = 0; gemm_i < BatchN; gemm_i++) {
             const auto* Data = &DataParams[gemm_i];
-            void* PerGemmWorkspace = reinterpret_cast<void*>(
-                reinterpret_cast<std::byte*>(Workspace) + gemm_i * PerGemmWorkspaceStride
-            );
+            void* PerGemmWorkspace =
+                reinterpret_cast<std::byte*>(Workspace) + gemm_i * PerGemmWorkspaceStride;
             ComputeOperation(BlkLen, K, Data, PerGemmWorkspace, 0, M, 0, N);
         }
         return;
@@ -662,7 +662,7 @@ MlasNBitsGemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, s
 }
 
 size_t MLASCALL
-MlasSQNBitsGemmBatchWorkspaceSize(
+MlasSQNBitsGemmBatchPackedBWorkspaceSize(
     const size_t M,
     const size_t N,
     const size_t K,

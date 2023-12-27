@@ -161,7 +161,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
       gemm_params[i].C = y_data + helper.OutputOffsets()[i];
       gemm_params[i].ldc = N;
     }
-    auto ws_size = MlasSQNBitsGemmBatchWorkspaceSize(M, N, K, max_len, gemm_params.data());
+    auto ws_size = MlasSQNBitsGemmBatchPackedBWorkspaceSize(M, N, K, max_len, gemm_params.data());
     // workspace for activation process(dynamic quantization and others)
     auto ws_ptr = IAllocator::MakeUniquePtr<int8_t>(allocator, ws_size);
     MlasSQNBitsGemmBatchPackedB(M, N, K, max_len, gemm_params.data(), ws_ptr.get(),
@@ -207,8 +207,8 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
     const size_t b_matrix_size = K * N;
 
     IAllocatorUniquePtr<std::byte> workspace{};
-    if (const size_t workspace_size = MlasSQNBitGemmWorkspaceSize(M, N, K, batch_count,
-                                                                  nbits_, block_size_, compute_type);
+    if (const size_t workspace_size = MlasSQNBitGemmBatchWorkspaceSize(M, N, K, batch_count,
+                                                                       nbits_, block_size_, compute_type);
         workspace_size > 0) {
       AllocatorPtr allocator;
       ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
