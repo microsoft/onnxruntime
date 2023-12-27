@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #include "cutlass_heuristic.h"
 
 #include <cuda_runtime_api.h>
