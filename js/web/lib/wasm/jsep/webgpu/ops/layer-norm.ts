@@ -52,21 +52,11 @@ const createLayerNormProgramInfo =
         {type: 'uint32', data: normCount}, {type: 'float32', data: normSize},
         {type: 'uint32', data: Math.floor(normSize / components)}, {type: 'float32', data: attributes.epsilon}
       ];
-      programUniforms.push(...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(scale.dims));
       if (bias) {
-        programUniforms.push(...createTensorShapeVariables(bias.dims));
         inputDependencies.push('type');
       }
-      programUniforms.push(...createTensorShapeVariables(outputShape));
-
       const hasMeanDataOutput = outputCount > 1;
       const hasInvStdOutput = outputCount > 2;
-      if (hasMeanDataOutput) {
-        programUniforms.push(...createTensorShapeVariables(meanInvStdDevDim));
-      }
-      if (hasInvStdOutput) {
-        programUniforms.push(...createTensorShapeVariables(meanInvStdDevDim));
-      }
 
       const getShaderSource = (shaderHelper: ShaderHelper) => {
         const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
