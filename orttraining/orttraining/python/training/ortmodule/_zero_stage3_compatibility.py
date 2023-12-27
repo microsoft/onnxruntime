@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 
+from contextlib import contextmanager
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
@@ -22,6 +23,10 @@ from ._utils import get_fully_qualified_class_name
 STAGE3_PULL_WEIGHT_TRIGGER_NAME = "pull_weight_trigger"
 STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_DTYPE = TensorProto.FLOAT
 STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE = [1]
+
+DEEPSPEED_PRE_BACKWARD_FUNCTION_NAME = "deepspeed.runtime.zero.parameter_offload.PreBackwardFunction"
+DEEPSPEED_POST_BACKWARD_FUNCTION_NAME = "deepspeed.runtime.zero.parameter_offload.PostBackwardFunction"
+DEEPSPEED_LINEAR_FUNCTION_NAME = "deepspeed.runtime.zero.linear.LinearFunctionForZeroStage3"
 
 
 def post_processing_enable_zero_stage3_compat(
@@ -73,7 +78,10 @@ def post_processing_enable_zero_stage3_compat(
         STAGE3_PULL_WEIGHT_TRIGGER_OUTPUT_SHAPE,
     )
 
-    from onnxruntime.training.utils.hooks._zero_offload_subscriber import ORTZeROOffloadPreForwardFunction
+    from onnxruntime.training.utils.hooks._zero_offload_subscriber import (
+        ORTZeROOffloadPostForwardFunction,
+        ORTZeROOffloadPreForwardFunction,
+    )
 
     pre_forward_function_name = get_fully_qualified_class_name(ORTZeROOffloadPreForwardFunction)
 
@@ -110,9 +118,10 @@ def post_processing_enable_zero_stage3_compat(
             if input_name == graph_input.name:
                 index_offset_on_python_op_input.append(i)
 
-        assert (
-            len(index_offset_on_python_op_input) == 1
-        ), f"index_offset_on_python_op_input length is not 1: {index_offset_on_python_op_input} for node {pre_forward_pythonop_node.name}, input {graph_input.name}, {pre_forward_pythonop_node.input}"
+        assert len(index_offset_on_python_op_input) == 1, (
+            f"index_offset_on_python_op_input length is not 1: {index_offset_on_python_op_input} for "
+            f"node {pre_forward_pythonop_node.name}, input {graph_input.name}, {pre_forward_pythonop_node.input}"
+        )
 
         reverse_index_among_inputs = index_offset_on_python_op_input[0] - len(pre_forward_pythonop_node.input)
 
@@ -168,6 +177,34 @@ def post_processing_enable_zero_stage3_compat(
 
     exported_model.graph.input.insert(offset, new_input)
     exported_model.graph.node.insert(0, weight_pull_node)
+
+    # Update safe_run_mode attribute for PythonOp.
+    from onnxruntime.training.utils.hooks._subscriber_manager import _IncrementStep
+
+    _allowed_unsafe_run_python_op_names = [
+        get_fully_qualified_class_name(ORTZeROOffloadPreForwardFunction),
+        get_fully_qualified_class_name(ORTZeROOffloadPostForwardFunction),
+        func_full_qual_name,
+        DEEPSPEED_PRE_BACKWARD_FUNCTION_NAME,
+        DEEPSPEED_POST_BACKWARD_FUNCTION_NAME,
+        DEEPSPEED_LINEAR_FUNCTION_NAME,
+        get_fully_qualified_class_name(_IncrementStep),
+    ]
+
+    for node in exported_model.graph.node:
+        if node.op_type == "PythonOp":
+            func_name = None
+            safe_run_mode_attr = None
+            for attr in node.attribute:
+                if attr.name == "func_name":
+                    func_name = attr.s.decode("utf-8") if isinstance(attr.s, bytes) else attr.s
+                if attr.name == "safe_run_mode":
+                    safe_run_mode_attr = attr
+
+            if func_name in _allowed_unsafe_run_python_op_names:
+                if safe_run_mode_attr:
+                    node.attribute.remove(safe_run_mode_attr)
+                node.attribute.append(helper.make_attribute("safe_run_mode", 0))
 
     return exported_model
 
@@ -226,12 +263,8 @@ def _register_symbolic_shape_infer_functions():
     ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
         return tensor_input_shapes, tensor_input_dtypes
 
-    register_shape_inference_function(
-        "deepspeed.runtime.zero.parameter_offload.PreBackwardFunction", _simple_pass_through_infer_shape
-    )
-    register_shape_inference_function(
-        "deepspeed.runtime.zero.parameter_offload.PostBackwardFunction", _simple_pass_through_infer_shape
-    )
+    register_shape_inference_function(DEEPSPEED_PRE_BACKWARD_FUNCTION_NAME, _simple_pass_through_infer_shape)
+    register_shape_inference_function(DEEPSPEED_POST_BACKWARD_FUNCTION_NAME, _simple_pass_through_infer_shape)
 
     def _linear_infer_shape(
         node: NodeProto,
@@ -245,7 +278,7 @@ def _register_symbolic_shape_infer_functions():
         output_shape[-1] = shape2[-2]
         return [output_shape], [tensor_input_dtypes[0]]
 
-    register_shape_inference_function("deepspeed.runtime.zero.linear.LinearFunctionForZeroStage3", _linear_infer_shape)
+    register_shape_inference_function(DEEPSPEED_LINEAR_FUNCTION_NAME, _linear_infer_shape)
 
 
 def _register_alias_input_functions():
@@ -273,8 +306,8 @@ def _register_alias_input_functions():
 
         return fw_alias_map, bw_alias_map
 
-    register_input_alias_function("deepspeed.runtime.zero.parameter_offload.PreBackwardFunction", _alias_input)
-    register_input_alias_function("deepspeed.runtime.zero.parameter_offload.PostBackwardFunction", _alias_input)
+    register_input_alias_function(DEEPSPEED_PRE_BACKWARD_FUNCTION_NAME, _alias_input)
+    register_input_alias_function(DEEPSPEED_POST_BACKWARD_FUNCTION_NAME, _alias_input)
 
 
 def _create_weight_retrieval_pythonop(
@@ -359,3 +392,54 @@ def _update_python_op_input_related_attributes(
     node.attribute.remove(dtype_attr)
     node.attribute.append(helper.make_attribute("input_tensor_ranks", input_tensor_ranks))
     node.attribute.append(helper.make_attribute("input_tensor_types", input_tensor_dtypes))
+
+
+@contextmanager
+def stage3_export_context(enable: bool, graph_execution_manager):
+    """Context manager for stage3 specific model export.
+    Some export functions are overridden when entering the context; the original functions are restored when
+    exiting the context.
+
+    Also collect the zero stage3 parameter maps for graph execution manager.
+    """
+    if not enable:
+        yield
+
+    else:
+        original_func = torch.onnx.symbolic_helper._get_tensor_rank
+        from onnxruntime.training.utils.hooks._zero_offload_subscriber import _get_all_zero_stage3_params
+
+        # Delay collecting stage3 parameters here instead of in the graph execution manager,
+        # to make sure DeepSpeed initialization is done, so that the parameters ds_status are correct.
+        graph_execution_manager._zero_stage3_param_map = _get_all_zero_stage3_params(
+            graph_execution_manager._flattened_module
+        )
+
+        try:
+            from torch.onnx._internal import _beartype
+
+            @_beartype.beartype
+            def _get_tensor_rank(x) -> Optional[int]:
+                ### Adapted from https://github.com/pytorch/pytorch/blob/185515368bcd7d94ac06ab1634f22b747b03c6d9/torch/onnx/symbolic_helper.py#L561
+                # Retrieve the real rank for the stage3 weights, because stage3 weights are all (0).
+                from typing import cast as typing_cast
+
+                from torch import _C
+                from torch.onnx.symbolic_helper import _is_tensor
+
+                input_name = x.debugName()
+                if input_name in graph_execution_manager._zero_stage3_param_map:
+                    rank = len(graph_execution_manager._zero_stage3_param_map[input_name].ds_shape)
+                    return rank
+
+                if not _is_tensor(x) or x.type() is None:
+                    return None
+                x_type = x.type()
+                x_type = typing_cast(_C.TensorType, x_type)
+                return x_type.dim()
+
+            torch.onnx.symbolic_helper._get_tensor_rank = _get_tensor_rank
+
+            yield
+        finally:
+            torch.onnx.symbolic_helper._get_tensor_rank = original_func

@@ -793,7 +793,8 @@ static void STFT(
   auto n_dfts = static_cast<size_t>(1 + floor((signal_size - dft_size) / hop_size));
   auto input_shape = std::vector<int64_t>{1, INT64(signal_size)};
   auto output_shape = std::vector<int64_t>{
-    INT64(batch_size), INT64(n_dfts), is_onesided ? ((INT64(dft_size) >> 1) + 1) : INT64(dft_size), 2};
+    INT64(batch_size), INT64(n_dfts), is_onesided ? ((INT64(dft_size) >> 1) + 1) : INT64(dft_size), 2
+  };
   auto dft_length = TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)});
 
   auto model =
@@ -1372,7 +1373,8 @@ static void ModelBuilding_GridSample_Internal(LearningModelDeviceKind kind) {
     5.0000f,
     5.0000f,
     10.0000f,
-    10.0000f};
+    10.0000f
+  };
   input_dims = {1, 1, 3, 2};
   grid_dims = {1, 2, 4, 2};
 
@@ -2193,12 +2195,6 @@ static void SetIntraOpNumThreads() {
   auto binding = LearningModelBinding(session);
   binding.Bind(L"input", tensor_input);
   WINML_EXPECT_NO_THROW(session.Evaluate(binding, L""));
-
-  // Check to verify that the default number of threads in LearningModelSession is equal to the number of logical cores.
-  session = LearningModelSession(model, device);
-  nativeSession = session.as<ILearningModelSessionNative>();
-  WINML_EXPECT_NO_THROW(nativeSession->GetIntraOpNumThreads(&numIntraOpThreads));
-  WINML_EXPECT_EQUAL(std::thread::hardware_concurrency(), numIntraOpThreads);
 }
 
 static void SetIntraOpThreadSpinning() {
@@ -2312,7 +2308,8 @@ const LearningModelSessionAPITestsApi& getapi() {
     ModelBuilding_STFT,
     ModelBuilding_MelSpectrogramOnThreeToneSignal,
     ModelBuilding_MelWeightMatrix,
-    SetName};
+    SetName
+  };
 
   if (SkipGpuTests()) {
     api.CreateSessionDeviceDirectX = SkipTest;

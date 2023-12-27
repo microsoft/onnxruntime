@@ -31,6 +31,7 @@ Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
   Napi::Function func = DefineClass(
       env, "InferenceSession",
       {InstanceMethod("loadModel", &InferenceSessionWrap::LoadModel), InstanceMethod("run", &InferenceSessionWrap::Run),
+       InstanceMethod("dispose", &InferenceSessionWrap::Dispose),
        InstanceAccessor("inputNames", &InferenceSessionWrap::GetInputNames, nullptr, napi_default, nullptr),
        InstanceAccessor("outputNames", &InferenceSessionWrap::GetOutputNames, nullptr, napi_default, nullptr)});
 
@@ -45,7 +46,7 @@ Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
 }
 
 InferenceSessionWrap::InferenceSessionWrap(const Napi::CallbackInfo &info)
-    : Napi::ObjectWrap<InferenceSessionWrap>(info), initialized_(false), session_(nullptr),
+    : Napi::ObjectWrap<InferenceSessionWrap>(info), initialized_(false), disposed_(false), session_(nullptr),
       defaultRunOptions_(nullptr) {}
 
 Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo &info) {
@@ -53,6 +54,7 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo &info) {
   Napi::HandleScope scope(env);
 
   ORT_NAPI_THROW_ERROR_IF(this->initialized_, env, "Model already loaded. Cannot load model multiple times.");
+  ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
 
   size_t argsLength = info.Length();
   ORT_NAPI_THROW_TYPEERROR_IF(argsLength == 0, env, "Expect argument: model file path or buffer.");
@@ -129,6 +131,7 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo &info) {
 Napi::Value InferenceSessionWrap::GetInputNames(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
+  ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
 
   Napi::EscapableHandleScope scope(env);
   return scope.Escape(CreateNapiArrayFrom(env, inputNames_));
@@ -137,6 +140,7 @@ Napi::Value InferenceSessionWrap::GetInputNames(const Napi::CallbackInfo &info) 
 Napi::Value InferenceSessionWrap::GetOutputNames(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
+  ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
 
   Napi::EscapableHandleScope scope(env);
   return scope.Escape(CreateNapiArrayFrom(env, outputNames_));
@@ -145,6 +149,7 @@ Napi::Value InferenceSessionWrap::GetOutputNames(const Napi::CallbackInfo &info)
 Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
+  ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
   ORT_NAPI_THROW_TYPEERROR_IF(info.Length() < 2, env, "Expect argument: inputs(feed) and outputs(fetch).");
   ORT_NAPI_THROW_TYPEERROR_IF(!info[0].IsObject() || !info[1].IsObject(), env,
                               "Expect inputs(feed) and outputs(fetch) to be objects.");
@@ -207,6 +212,18 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo &info) {
   } catch (std::exception const &e) {
     ORT_NAPI_THROW_ERROR(env, e.what());
   }
+}
+
+Napi::Value InferenceSessionWrap::Dispose(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+  ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
+  ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
+
+  this->defaultRunOptions_.reset(nullptr);
+  this->session_.reset(nullptr);
+
+  this->disposed_ = true;
+  return env.Undefined();
 }
 
 Napi::Value InferenceSessionWrap::ListSupportedBackends(const Napi::CallbackInfo &info) {

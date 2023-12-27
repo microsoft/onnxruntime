@@ -141,7 +141,6 @@ export const createReduceSharedProgramInfo =
           return ((a - 1u) / b + 1u);
          }
          ${shaderHelper.mainStart(workgroupSize)}
-          let local_idx = local_id.x;
 
           let outputIndex = global_idx / ${workgroupSize};
           let offset = outputIndex * uniforms.reduceSize;
@@ -199,7 +198,7 @@ const reduceCommon =
 
       let updatedAxes = updatedAttributes.axes;
       if (updatedAxes.length === 0 && !updatedAttributes.noopWithEmptyAxes) {
-        updatedAxes = context.inputs[0].dims.map((s, i) => i);
+        updatedAxes = context.inputs[0].dims.map((_dim, i) => i);
       }
       const normalizeAxes = ShapeUtil.normalizeAxes(updatedAxes, context.inputs[0].dims.length);
 

@@ -543,14 +543,12 @@ TEST(FunctionTest, TestInlinedLocalFunctionRemoved) {
   InferenceSessionWrapper session_object{session_options, GetEnvironment()};
 
   std::stringstream sstr(serialized_model);
-  auto status = session_object.Load(sstr);
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(session_object.Load(sstr));
 
   auto model_proto = session_object.GetModel().ToProto();
   ASSERT_EQ(1, model_proto.functions_size());
 
-  status = session_object.Initialize();
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(session_object.Initialize());
 
   // All functions removed
   model_proto = session_object.GetModel().ToProto();
@@ -591,5 +589,84 @@ TEST(FunctionTest, TestInlinedLocalFunctionNotRemoved) {
 #endif
 }
 
+TEST(FunctionTest, TestInlinedFunctionDoesNotReserrectNonExistingArgs) {
+  // Verify this runs
+  constexpr const ORTCHAR_T* model_uri = ORT_TSTR("testdata/transform/gh_issue_18338.onnx");
+
+  SessionOptions session_options;
+  InferenceSessionWrapper session_object{session_options, GetEnvironment()};
+
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // Scalar shape for input_0 and output
+  const std::string input_names[] = {"input_0"};
+  const std::string output_names[] = {"_val_3"};
+  TensorShape input_shape;
+  MLFloat16 input_0_data{684.f};
+
+  OrtValue input_0;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(), input_shape, &input_0_data, OrtMemoryInfo(), input_0);
+
+  std::vector<OrtValue> fetches(1);
+  RunOptions run_options;
+  ASSERT_STATUS_OK(session_object.Run(run_options, AsSpan(input_names), AsSpan({input_0}),
+                                      AsSpan(output_names), &fetches, 0));
+}
+
+/// <summary>
+/// This test covers the issues:
+/// https://github.com/microsoft/onnxruntime/issues/16438
+/// https://github.com/microsoft/onnxruntime/issues/18781
+/// </summary>
+TEST(FunctionTest, Test_GH_issue_16438) {
+  const char* code = R"(
+    <
+       ir_version: 8,
+       opset_import: ["pkg.onnxscript.torch_lib" : 1, "" : 18],
+       producer_name: "pytorch",
+       producer_version: "2.1.0"
+    >
+    torch_jit (float16[5,10,5] input_0) => (double[5,10,5] _val_1) {
+       _val_1 = pkg.onnxscript.torch_lib.aten_special_log_softmax <dim: int = 2, dtype: int = 11> (input_0)
+    }
+    <
+      domain: "pkg.onnxscript.torch_lib",
+      opset_import: ["" : 18]
+    >
+    aten_special_log_softmax <dim, dtype>(self) => (result_8)
+    {
+      tmp = Shape(self)
+      tmp_0 = Size(tmp)
+      int64_0 = Constant<value : tensor = int64 int64_0{0}> ()
+      int64_0_cast = CastLike(int64_0, tmp_0)
+      self_is_scalar = Equal(tmp_0, int64_0_cast)
+      self_4 = If(self_is_scalar) <then_branch : graph = thenGraph_8() => (self_2) {
+        tmp_1 = Constant<value_ints : ints = [0]> ()
+        self_2 = Unsqueeze(self, tmp_1)
+      }, else_branch : graph = elseGraph_8() => (self_3) {
+        self_3 = Identity(self)
+      }>
+      result = LogSoftmax<axis : int = @dim>(self_4)
+      result_5 = Cast<to : int = @dtype>(result)
+      result_8 = If(self_is_scalar) <then_branch : graph = thenGraph_12() => (result_6) {
+       result_6 = Squeeze(result_5)
+      }, else_branch : graph = elseGraph_12() => (result_7) {
+        result_7 = Identity(result_5)
+      }>
+    }
+  )";
+
+  std::string serialized_model;
+  ParseOnnxSource(code, serialized_model);
+  SessionOptions session_options;
+  InferenceSession session_object{session_options, GetEnvironment()};
+
+  std::stringstream sstr(serialized_model);
+  auto status = session_object.Load(sstr);
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  status = session_object.Initialize();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+}
 }  // namespace test
 }  // namespace onnxruntime

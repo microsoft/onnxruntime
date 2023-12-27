@@ -401,6 +401,7 @@ Status EfficientAttention(
                     ? data.scratch
                     : nullptr;
   p.stream = stream;
+  p.has_custom_right_padding = false;
   run_memory_efficient_attention(p);
   DUMP_TENSOR("efficient attention output", data.output,
               parameters.batch_size, parameters.sequence_length, parameters.num_heads, parameters.v_head_size);

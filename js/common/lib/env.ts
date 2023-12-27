@@ -92,11 +92,48 @@ export declare namespace Env {
     async?: boolean;
   }
 
+  export interface WebGpuProfilingDataV1TensorMetadata {
+    dims: readonly number[];
+    dataType: string;
+  }
+  export interface WebGpuProfilingDataV1 {
+    version: 1;
+    inputsMetadata: readonly WebGpuProfilingDataV1TensorMetadata[];
+    outputsMetadata: readonly WebGpuProfilingDataV1TensorMetadata[];
+    kernelId: number;
+    kernelType: string;
+    kernelName: string;
+    startTime: number;
+    endTime: number;
+  }
+
+  export type WebGpuProfilingData = WebGpuProfilingDataV1;
+
   export interface WebGpuFlags {
     /**
      * Set or get the profiling mode.
+     *
+     * @deprecated Use `env.webgpu.profiling.mode` instead. If `env.webgpu.profiling.mode` is set, this property will be
+     * ignored.
      */
     profilingMode?: 'off'|'default';
+    /**
+     * Set or get the profiling configuration.
+     */
+    profiling?: {
+      /**
+       * Set or get the profiling mode.
+       *
+       * @defaultValue `'off'`
+       */
+      mode?: 'off'|'default';
+
+      /**
+       * Set or get a callback function when a profiling data is received. If not set, the profiling data will be
+       * printed to console.
+       */
+      ondata?: (data: WebGpuProfilingData) => void;
+    };
     /**
      * Get the device for WebGPU.
      *

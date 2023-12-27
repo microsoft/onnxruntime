@@ -4,13 +4,20 @@ stages:
     parameters:
       NpmPackagingMode: 'dev'
       IsReleasePipeline: true
-      PoolName: 'aiinfra-Win-CPU-2022-web-beta'
+      PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
       BuildStaticLib: true
       ExtraBuildArgs: ''
+      UseWebPoolName: true
+      WebCpuPoolName: 'Onnxruntime-Win-CPU-2022'
 
-# This stage is to test if the combined build works on
-# o Windows ARM64
+# The follow section has 15 different build jobs that can be divided into 3 groups:
+# 1. Default CPU build with normal win32 linking, without ORT extension
+# 2. Default CPU build with wcos linking(use apiset), without ORT extension
+# 3. Default CPU build with normal win32 linking with ORT extension
+# Each group has 4 jobs that cover:
 # o Windows ARM64EC
+# o Windows ARM64
+# o Windows ARM
 # o Windows x64
 # o Windows x86
 # Now we don't have coverage for ARM64EC yet. Will add it.
@@ -19,11 +26,10 @@ stages:
     DoCompliance: false
     DoEsrp: false
     stage_name_suffix: CPU_x86_default
-    EnvSetupScript: setup_env_x86.bat
     buildArch: x86
     msbuildPlatform: Win32
     packageName: x86
-    buildparameter: --use_extensions --enable_onnx_tests
+    buildparameter: --enable_onnx_tests
     runTests: true
     buildJava: false
     buildNodejs: false
@@ -33,12 +39,25 @@ stages:
   parameters:
     DoCompliance: false
     DoEsrp: false
+    stage_name_suffix: CPU_arm_default
+    buildArch: x64
+    msbuildPlatform: arm
+    packageName: arm
+    buildparameter: --arm  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    runTests: false
+    buildJava: false
+    buildNodejs: false
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
     stage_name_suffix: CPU_arm64_default
-    EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: arm64
     packageName: arm64
-    buildparameter: --build_nodejs --arm64 --use_extensions  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    buildparameter: --build_nodejs --arm64  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
     runTests: false
     buildJava: false
     buildNodejs: true
@@ -48,8 +67,171 @@ stages:
   parameters:
     DoCompliance: false
     DoEsrp: false
+    stage_name_suffix: CPU_arm64ec_default
+    buildArch: x64
+    msbuildPlatform: ARM64EC
+    packageName: arm64ec
+    buildparameter: --arm64ec  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    runTests: false
+    buildJava: false
+    buildNodejs: false
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
     stage_name_suffix: CPU_x64_default
-    EnvSetupScript: setup_env.bat
+    buildArch: x64
+    msbuildPlatform: x64
+    packageName: x64
+    buildparameter: --build_java --build_nodejs  --enable_onnx_tests
+    runTests: true
+    buildJava: true
+    buildNodejs: true
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_x86_wcos
+    artifact_name_suffix: '-wcos'
+    buildArch: x86
+    msbuildPlatform: Win32
+    packageName: x86
+    buildparameter: --enable_onnx_tests --enable_wcos
+    runTests: true
+    buildJava: false
+    buildNodejs: false
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_arm_wcos
+    artifact_name_suffix: '-wcos'
+    buildArch: x64
+    msbuildPlatform: arm
+    packageName: arm
+    buildparameter: --arm  --enable_onnx_tests --enable_wcos --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    runTests: false
+    buildJava: false
+    buildNodejs: false
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_arm64_wcos
+    artifact_name_suffix: '-wcos'
+    buildArch: x64
+    msbuildPlatform: arm64
+    packageName: arm64
+    buildparameter: --build_nodejs --enable_wcos --arm64  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    runTests: false
+    buildJava: false
+    buildNodejs: true
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_arm64ec_wcos
+    artifact_name_suffix: '-wcos'
+    buildArch: x64
+    msbuildPlatform: ARM64EC
+    packageName: arm64ec
+    buildparameter: --enable_wcos --arm64ec  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    runTests: false
+    buildJava: false
+    buildNodejs: false
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_x64_wcos
+    artifact_name_suffix: '-wcos'
+    buildArch: x64
+    msbuildPlatform: x64
+    packageName: x64
+    buildparameter: --build_java --build_nodejs --enable_onnx_tests  --enable_wcos
+    runTests: true
+    buildJava: true
+    buildNodejs: true
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_x86_extension
+    artifact_name_suffix: '-extension'
+    buildArch: x86
+    msbuildPlatform: Win32
+    packageName: x86
+    buildparameter: --enable_onnx_tests
+    runTests: true
+    buildJava: false
+    buildNodejs: false
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_arm_extension
+    artifact_name_suffix: '-extension'
+    buildArch: x64
+    msbuildPlatform: arm
+    packageName: arm
+    buildparameter: --arm --use_extensions  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    runTests: false
+    buildJava: false
+    buildNodejs: false
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_arm64_extension
+    artifact_name_suffix: '-extension'
+    buildArch: x64
+    msbuildPlatform: arm64
+    packageName: arm64
+    buildparameter: --build_nodejs --arm64 --use_extensions  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    runTests: false
+    buildJava: false
+    buildNodejs: true
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+#- template: templates/win-ci.yml
+#  parameters:
+#    DoCompliance: false
+#    DoEsrp: false
+#    stage_name_suffix: CPU_arm64ec_extension
+#    artifact_name_suffix: '-extension'
+#    buildArch: x64
+#    msbuildPlatform: ARM64EC
+#    packageName: arm64ec
+#    buildparameter: --arm64ec --use_extensions --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+#    runTests: false
+#    buildJava: false
+#    buildNodejs: false
+#    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- template: templates/win-ci.yml
+  parameters:
+    DoCompliance: false
+    DoEsrp: false
+    stage_name_suffix: CPU_x64_extension
+    artifact_name_suffix: '-extension'
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64
@@ -266,7 +448,7 @@ stages:
   dependsOn: []
   jobs:
   - job: IosDynamicFramework
-
+    timeoutInMinutes: 120
     pool:
       vmImage: "macOS-13"
 
@@ -284,14 +466,15 @@ stages:
       displayName: "Install Python requirements"
 
     - script: |
-        python tools/ci_build/github/apple/build_ios_framework.py \
+        python tools/ci_build/github/apple/build_apple_framework.py \
           --build_dir "$(Build.BinariesDirectory)/ios_framework" \
           --build_dynamic_framework \
           tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json
       displayName: "Build iOS dynamic framework"
 
     - script: |
-        python tools/ci_build/github/apple/test_ios_packages.py \
-          --framework_info_file "$(Build.BinariesDirectory)/ios_framework/framework_info.json" \
-          --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out"
+        python tools/ci_build/github/apple/test_apple_packages.py \
+          --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
+          --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
+          --variant Mobile
       displayName: "Test pod with iOS dynamic framework"

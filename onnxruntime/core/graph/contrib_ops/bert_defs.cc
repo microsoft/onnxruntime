@@ -259,7 +259,6 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
       *output_shape.add_dim() = query_dims[1];
       *output_shape.add_dim() = query_dims[2];
       updateOutputShape(ctx, 0, output_shape);
-      return;
     } else {
       fail_shape_inference("Missing input 2 (value)");
     }
@@ -991,7 +990,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* GroupQueryAttention_ver1_doc = R"DOC(
 Group Query Self/Cross Attention.
 
-Supports different number of heads for q and kv.
+Supports different number of heads for q and kv. Only supports causal or local attention.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1000,18 +999,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .SetDoc(GroupQueryAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads for q", AttributeProto::INT)
         .Attr("kv_num_heads", "Number of attention heads for k and v", AttributeProto::INT)
-        .Attr("unidirectional",
-              "Whether every token can only attend to previous tokens. Default value is 1.",
-              AttributeProto::INT,
-              static_cast<int64_t>(1))
-        .Attr("is_past_bsnh",
-              "Whether past kv uses BSNH, otherwise BNSH. Default value is 1 (BSNH).",
-              AttributeProto::INT,
-              static_cast<int64_t>(1))
         .Attr("scale",
               "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
+        .Attr("local_window_size",
+              "left_window_size for local attention (like Mistral). Default value is -1 meaning unused.",
+              AttributeProto::INT,
+              static_cast<int64_t>(-1))
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size)",
@@ -1026,40 +1021,42 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T")
         .Input(3,
                "past_key",
-               "past state key with support for format BSNH or BNSH. When past_key uses same tensor as present_key"
+               "past state key with support for format BNSH. When past_key uses same tensor as present_key"
                "(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.",
                "T",
                OpSchema::Optional)
         .Input(4,
                "past_value",
-               "past state value with support for format BSNH or BNSH. When past_value uses same tensor as present_value"
+               "past state value with support for format BNSH. When past_value uses same tensor as present_value"
                "(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.",
                "T",
                OpSchema::Optional)
         .Input(5,
-               "past_sequence_length",
-               "When buffered past_key and past_value is used (present_key uses same tensor as past_key), required"
-               "to specify past_sequence_length (could be 0). Otherwise, past_sequence_length inferred from past_key.",
-               "M",
-               OpSchema::Optional)
+               "seqlens_k",
+               "1d Tensor of shape (batch_size). Indicates past sequence lengths for token generation case.",
+               "M")
+        .Input(6,
+               "total_sequence_length",
+               "Scalar tensor of total sequence length (past + new).",
+               "M")
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
                 "T")
         .Output(1,
                 "present_key",
-                "present state key with support for format BSNH or BNSH. When past_key uses same tensor as present_key"
+                "present state key with support for format BNSH. When past_key uses same tensor as present_key"
                 "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
                 "kv_sequence_length.",
                 "T")
         .Output(2,
                 "present_value",
-                "present state value with support for format BSNH or BNSH. When past_value uses same tensor as present_value"
+                "present state value with support for format BNSH. When past_value uses same tensor as present_value"
                 "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
                 "kv_sequence_length.",
                 "T")
         .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output to float tensors.")
-        .TypeConstraint("M", {"tensor(int32)", "tensor(int64)"}, "Constrain past sequence length to int tensor.")
+        .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to int tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           GroupQueryAttentionTypeAndShapeInference(ctx, 3);
         }));
@@ -1129,7 +1126,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 constexpr const char* RotaryEmbedding_ver1_doc = R"DOC(
-RotaryEmbedding is the implementation of rotary positional embeddings (RoPE). The positions are represented as rotation matrices 
+RotaryEmbedding is the implementation of rotary positional embeddings (RoPE). The positions are represented as rotation matrices
 that are multiplied to query and key before the inner product of query and key is taken.
 )DOC";
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1146,7 +1143,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               OPTIONAL_VALUE)
         .Input(0,
                "input",
-               "3D tensor with shape (batch_size, sequence_length, hidden_size)",
+               "3D tensor with shape (batch_size, sequence_length, hidden_size) or 4D with shape (batch_size, num_heads, sequence_length, head_size)",
                "T")
         .Input(1,
                "position_ids",
@@ -1162,7 +1159,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T")
         .Output(0,
                 "output",
-                "3D tensor with shape (batch_size, sequence_length, hidden_size)",
+                "tensor with same shape as input.",
                 "T")
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
         .TypeConstraint("M", {"tensor(int64)"}, "Constrain input and output types to integer tensors")

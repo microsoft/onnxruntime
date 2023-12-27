@@ -6,7 +6,7 @@ import {TensorView} from '../../tensor-view';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, ProgramInfo} from '../types';
 
-import {inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, enableShapesUniforms, inputVariable, outputVariable, ShaderHelper} from './common';
 
 type BuiltinFunctionName = string;
 type BinaryCustomExpression = (expressionA: string, expressionB: string) => string;
@@ -17,11 +17,9 @@ type BinaryFunctionCall = BuiltinFunctionName|BinaryCustomExpression|{
 
 const createBinaryOpProgramShader =
     (shaderHelper: ShaderHelper, dimsA: readonly number[], dimsB: readonly number[], dimsOutput: readonly number[],
-     vectorize: boolean, doBroadcast: boolean, funcCall: BinaryFunctionCall, typeA: number, typeB: number,
-     typeOutput: number, additionalImplementation?: string) => {
-      const outputSize = ShapeUtil.size(dimsOutput);
-      const vecSize = Math.ceil(outputSize / 4);
-
+     vectorize: boolean, doBroadcast: boolean, sharedDimensionDivisibleBy4: boolean, funcCall: BinaryFunctionCall,
+     typeA: number, typeB: number, typeOutput: number, useShapesUniforms: boolean,
+     additionalImplementation?: string) => {
       let expressionScalar: BinaryCustomExpression;
       let expressionVector: BinaryCustomExpression;
       if (typeof funcCall === 'string') {
@@ -33,37 +31,20 @@ const createBinaryOpProgramShader =
         expressionVector = funcCall.vector;
       }
 
-      let broadcastImpl = '';
-      const output = outputVariable('outputData', typeOutput, dimsOutput, 4);
-      const a = inputVariable('aData', typeA, dimsA, 4);
-      const b = inputVariable('bData', typeB, dimsB, 4);
-      if (doBroadcast) {
-        const calcOffsetImpl = (dims: readonly number[]) => {
-          const strides = ShapeUtil.computeStrides(dims);
-          const offsets: string[] = [];
-          for (let i = dims.length - 1; i >= 0; i--) {
-            const idx = output.indicesGet('outputIndices', i + dimsOutput.length - dims.length);
-            offsets.push(`${strides[i]}u * (${idx} % ${dims[i]}u)`);
-          }
-          return offsets.length > 0 ? offsets.join('+') : '0u';
-        };
-
-        broadcastImpl = `
-          fn calcOffsetA(outputIndices: ${output.type.indices}) -> u32 {
-            return ${calcOffsetImpl(dimsA)};
-          }
-
-          fn calcOffsetB(outputIndices: ${output.type.indices}) -> u32 {
-            return ${calcOffsetImpl(dimsB)};
-          }
-        `;
-      }
+      const inputAShapeOrRank = useShapesUniforms ? dimsA.length : dimsA;
+      const inputBShapeOrRank = useShapesUniforms ? dimsB.length : dimsB;
+      const outputShapeOrRank = useShapesUniforms ? dimsOutput.length : dimsOutput;
+      const output = outputVariable('outputData', typeOutput, outputShapeOrRank, 4);
+      const a = inputVariable('aData', typeA, inputAShapeOrRank, 4);
+      const b = inputVariable('bData', typeB, inputBShapeOrRank, 4);
 
       let assignment: string;
       if (vectorize) {
         if (doBroadcast) {
           const isAOneElement = ShapeUtil.size(dimsA) === 1;
           const isBOneElement = ShapeUtil.size(dimsB) === 1;
+          const aLastDimDivisibleBy4 = dimsA.length > 0 && dimsA[dimsA.length - 1] % 4 === 0;
+          const bLastDimDivisibleBy4 = dimsB.length > 0 && dimsB[dimsB.length - 1] % 4 === 0;
           if (isAOneElement || isBOneElement) {
             assignment = output.setByOffset(
                 'global_idx',
@@ -73,11 +54,18 @@ const createBinaryOpProgramShader =
           } else {
             assignment = `
             let outputIndices = ${output.offsetToIndices('global_idx * 4u')};
-            let offsetA = calcOffsetA(outputIndices);
-            let offsetB = calcOffsetB(outputIndices);
+            let offsetA = ${a.broadcastedIndicesToOffset('outputIndices', output)};
+            let offsetB = ${b.broadcastedIndicesToOffset('outputIndices', output)};
             ${
                 output.setByOffset(
-                    'global_idx', expressionVector(a.getByOffset('offsetA / 4u'), b.getByOffset('offsetB / 4u')))}
+                    'global_idx',
+                    expressionVector(
+                        sharedDimensionDivisibleBy4 || aLastDimDivisibleBy4 ?
+                            a.getByOffset('offsetA / 4u') :
+                            `${a.type.value}(${a.getByOffset('offsetA / 4u')}[offsetA % 4u])`,
+                        sharedDimensionDivisibleBy4 || bLastDimDivisibleBy4 ?
+                            b.getByOffset('offsetB / 4u') :
+                            `${b.type.value}(${b.getByOffset('offsetB / 4u')}[offsetB % 4u])`))}
           `;
           }
         } else {
@@ -94,8 +82,8 @@ const createBinaryOpProgramShader =
           const expressionB = `bData[indexB${x}][componentB${x}]`;
           return `
             let outputIndices${x} = ${output.offsetToIndices(`global_idx * 4u + ${x}u`)};
-            let offsetA${x} = calcOffsetA(outputIndices${x});
-            let offsetB${x} = calcOffsetB(outputIndices${x});
+            let offsetA${x} = ${a.broadcastedIndicesToOffset(`outputIndices${x}`, output)};
+            let offsetB${x} = ${b.broadcastedIndicesToOffset(`outputIndices${x}`, output)};
             let indexA${x} = offsetA${x} / 4u;
             let indexB${x} = offsetB${x} / 4u;
             let componentA${x} = offsetA${x} % 4u;
@@ -122,13 +110,12 @@ const createBinaryOpProgramShader =
       }
 
       return `
-        ${shaderHelper.declareVariables(a, b, output)}
+        ${shaderHelper.registerUniform('vec_size', 'u32').declareVariables(a, b, output)}
 
         ${additionalImplementation ?? ''}
-        ${broadcastImpl}
 
         ${shaderHelper.mainStart()}
-        ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(vecSize)}
+        ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.vec_size')}
         ${assignment}
       }`;
     };
@@ -141,9 +128,10 @@ const createBinaryOpProgramInfo =
       let outputSize = ShapeUtil.size(a.dims);
 
       let vectorize = false;
+      let sharedDimensionDivisibleBy4 = false;
 
       // TODO: deal with zero-sized tensors (eg. dims=[1,0])
-
+      const cacheKeyAux = [isBroadcast];
       if (isBroadcast) {
         const calculatedShape = BroadcastUtil.calcShape(a.dims, b.dims, false);
         if (!calculatedShape) {
@@ -153,7 +141,12 @@ const createBinaryOpProgramInfo =
         outputSize = ShapeUtil.size(outputShape);
         const isAOneElement = ShapeUtil.size(a.dims) === 1;
         const isBOneElement = ShapeUtil.size(b.dims) === 1;
-
+        const aLastDimDivisibleBy4 = a.dims.length > 0 && a.dims[a.dims.length - 1] % 4 === 0;
+        const bLastDimDivisibleBy4 = b.dims.length > 0 && b.dims[b.dims.length - 1] % 4 === 0;
+        cacheKeyAux.push(isAOneElement);
+        cacheKeyAux.push(isBOneElement);
+        cacheKeyAux.push(aLastDimDivisibleBy4);
+        cacheKeyAux.push(bLastDimDivisibleBy4);
         // check whether vectorize can be enabled
         let sharedDimension = 1;
         for (let i = 1; i < outputShape.length; i++) {
@@ -165,23 +158,41 @@ const createBinaryOpProgramInfo =
             break;
           }
         }
-        if (sharedDimension % 4 === 0 || isAOneElement || isBOneElement) {
+        if (sharedDimension % 4 === 0) {
+          sharedDimensionDivisibleBy4 = true;
+          vectorize = true;
+        } else if (isAOneElement || isBOneElement || aLastDimDivisibleBy4 || bLastDimDivisibleBy4) {
           vectorize = true;
         }
       } else {
         // element-wise
         vectorize = true;
       }
-
+      cacheKeyAux.push(vectorize);
+      const useShapesUniforms = enableShapesUniforms(a.dims.length) && enableShapesUniforms(b.dims.length) &&
+          enableShapesUniforms(outputShape.length);
       return {
         name,
-        shaderCache: {hint: cacheKey},
+        shaderCache: {
+          hint: cacheKey + cacheKeyAux.map((x) => x.toString()).join('_'),
+          inputDependencies: useShapesUniforms ? ['rank', 'rank'] : ['dims', 'dims'],
+        },
         getShaderSource: (shaderHelper) => createBinaryOpProgramShader(
-            shaderHelper, a.dims, b.dims, outputShape, vectorize, isBroadcast, funcCall, a.dataType, b.dataType,
-            outputDataType, additionalImplementation),
+            shaderHelper, a.dims, b.dims, outputShape, vectorize, isBroadcast, sharedDimensionDivisibleBy4, funcCall,
+            a.dataType, b.dataType, outputDataType, useShapesUniforms, additionalImplementation),
         getRunData: () => ({
           outputs: [{dims: outputShape, dataType: outputDataType}],
-          dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */ / 4 /* component size */)}
+          dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */ / 4 /* component size */)},
+          programUniforms: useShapesUniforms ?
+              [
+                {type: 'uint32', data: Math.ceil(ShapeUtil.size(outputShape) / 4)},
+                ...createTensorShapeVariables(a.dims),
+                ...createTensorShapeVariables(b.dims),
+                ...createTensorShapeVariables(outputShape),
+              ] :
+              [
+                {type: 'uint32', data: Math.ceil(ShapeUtil.size(outputShape) / 4)},
+              ],
         }),
       };
     };

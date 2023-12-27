@@ -944,8 +944,6 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"simple_rnn_batchwise", "type error", {}},
       {"mod_float_mixed_sign_example", "fmod attribute must be true for floating point types", {}},
       {"col2im_pads", "result mismatch", {"opset18"}},
-      {"gridsample_volumetric_nearest_align_corners_0", "result differs", {}},
-      {"gridsample_volumetric_nearest_align_corners_1", "result differs", {}},
       {"reduce_l1_empty_set", "unknown version", {}},
       {"reduce_l1_empty_set_expanded", "unknown version", {}},
       {"reduce_l2_empty_set", "unknown version", {}},
@@ -1351,7 +1349,18 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"sce_sum_log_prob", "result differs"});
     broken_tests->insert({"sce_sum_log_prob_expanded", "result differs"});
     broken_tests->insert({"gridsample_reflection_padding", "result differs"});
+    broken_tests->insert({"gridsample_volumetric_nearest_align_corners_0", "unknown version"});
+    broken_tests->insert({"gridsample_volumetric_nearest_align_corners_1", "unknown version"});
     broken_tests->insert({"spacetodepth", "result differs"});
+    // Fails with QNN SDK 2.17.0:
+    // expected 7.70947 (40f6b3f3), got 7.84096 (40fae920), diff: 0.131491, tol=0.00870947 idx=419. 100 of 1715 differ
+    broken_tests->insert({"facedetection_op8_qdq", "result differs"});
+
+#if defined(_WIN32) && defined(_M_AMD64)
+    // Fails with QNN SDK 2.17.0 on Windows x64:
+    // expected 13.5 (41580000), got 0 (0), diff: 13.5, tol=0.0145 idx=3. 3 of 4 differ
+    broken_tests->insert({"averagepool_2d_ceil", "result differs"});
+#endif
   }
 
 #ifdef DISABLE_CONTRIB_OPS

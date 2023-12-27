@@ -137,7 +137,7 @@ class DebugOptions:
     def torch_exporter_filter(self):
         """Accessor for the filter export logs configuration."""
         torch_version = get_runtime_pytorch_version()
-        if self.log_level >= LogLevel.INFO:
+        if self.log_level > LogLevel.DEVINFO:
             if torch_version < version.parse("2.0"):
                 return [
                     # WARNING: The shape inference of com.microsoft::SoftmaxCrossEntropyLossInternal type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
@@ -167,11 +167,6 @@ class DebugOptions:
     @property
     def onnxruntime_log_filter(self):
         """Accessor for the filter onnxruntime logs configuration."""
-        if self.log_level >= LogLevel.INFO:
-            return [
-                "CleanUnusedInitializersAndNodeArgs] Removing initializer",
-                "Serializing optimized model with Graph Optimization level greater than ORT_ENABLE_EXTENDED",
-            ]
         return None
 
 
@@ -195,6 +190,23 @@ class _SkipCheck(IntFlag):
         """Check whether `_SkipCheck.SKIP_CHECK_DISABLED is set on the `_SkipCheck instance"""
 
         return _SkipCheck.SKIP_CHECK_DISABLED in self
+
+
+class _MemoryOptimizationLevel(IntFlag):
+    """Enumeration to specify memory optimization level"""
+
+    USER_SPECIFIED = 0  # Fully respect user-specified config
+    TRANSFORMER_LAYERWISE_RECOMPUTE = 1  # Enable all recomputable subgraphs per layer
+
+    @staticmethod
+    def to_string(memory_optimization_level):
+        if memory_optimization_level == _MemoryOptimizationLevel.USER_SPECIFIED:
+            return "USER_SPECIFIED"
+
+        if memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
+            return "TRANSFORMER_LAYERWISE_RECOMPUTE"
+
+        return ""
 
 
 class _RuntimeOptions:
@@ -262,12 +274,17 @@ class _RuntimeOptions:
         self.enable_embedding_sparse_optimizer = False  # TODO(pengwa): remove once validation on more models are done.
 
         # Configuration for memory optimization.
-        self.memory_optimizer_config = ""
-        self.probe_level = "1"
+        self.memory_optimization_level = (
+            _MemoryOptimizationLevel.USER_SPECIFIED
+        )  # 0: use `memory_optimizer_config`; 1: aggressive optimization, enable all recomputable subgraphs.
+        self.memory_optimizer_config = ""  # This is an advanced config, please refer to onnxruntime docs for details.
+        # 1 is the op set level; 0 indicates whether consider the Transformer-based model's layer boundary when
+        # detecting recompute subgraphs.
+        self.recompute_probe_config = "1:0"
 
         # Configuration for dev tools.
         self.print_input_density = False
-        self.print_memory_stat = False
+        self.print_memory_stat_by_step = False
 
         # Configuration for fallback.
         self.fallback_policy = ortmodule.ORTMODULE_FALLBACK_POLICY
@@ -290,6 +307,8 @@ class _RuntimeOptions:
 
         # Experimental features.
         self.enable_zero_stage3_support = False  # Once enabled, cannot be disabled.
+
+        self.deepcopy_before_model_export = True
 
         # Override the feature config if it exists in os env.
         self._override_from_env_vars()
@@ -319,14 +338,19 @@ class _RuntimeOptions:
             )
 
         # Configuration for memory optimization.
-        self.memory_optimizer_config = os.getenv("ORTMODULE_MEMORY_OPT_CONFIG", self.memory_optimizer_config)
-        self.probe_level = os.getenv("ORTMODULE_MEMORY_OPT_PROBE_RECOMPUTE_LEVEL", self.probe_level)
+        self.memory_optimization_level = int(os.getenv("ORTMODULE_MEMORY_OPT_LEVEL", self.memory_optimization_level))
+        user_given_memory_optimizer_config = os.getenv("ORTMODULE_MEMORY_OPT_CONFIG", self.memory_optimizer_config)
+        self.memory_optimizer_config = ",".join([c for c in user_given_memory_optimizer_config.split(",") if c])
+        if self.memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
+            # For transformer layer-wise recompute, we enable layer boundary when detecting subgraphs.
+            # Then all detected subgraphs will not cross different layers.
+            self.recompute_probe_config = "1:1"
 
         # Configuration for dev tools.
         if "ORTMODULE_PRINT_INPUT_DENSITY" in os.environ:
             self.print_input_density = int(os.getenv("ORTMODULE_PRINT_INPUT_DENSITY")) == 1
         if "ORTMODULE_PRINT_MEMORY_STATS" in os.environ:
-            self.print_memory_stat = int(os.getenv("ORTMODULE_PRINT_MEMORY_STATS")) == 1
+            self.print_memory_stat_by_step = int(os.getenv("ORTMODULE_PRINT_MEMORY_STATS")) == 1
 
         # Configuration for fallback.
         if "ORTMODULE_FALLBACK_POLICY" in os.environ:
@@ -372,3 +396,6 @@ class _RuntimeOptions:
         # Experimental features.
         if "ORTMODULE_ENABLE_ZERO_STAGE3" in os.environ and int(os.getenv("ORTMODULE_ENABLE_ZERO_STAGE3")) == 1:
             self.enable_zero_stage3_support = True
+
+        if "ORTMODULE_DEEPCOPY_BEFORE_MODEL_EXPORT" in os.environ:
+            self.deepcopy_before_model_export = int(os.getenv("ORTMODULE_DEEPCOPY_BEFORE_MODEL_EXPORT")) == 1

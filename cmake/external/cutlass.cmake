@@ -1,10 +1,9 @@
-if (onnxruntime_USE_FLASH_ATTENTION OR onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION)
+if (onnxruntime_USE_CUTLASS)
   include(FetchContent)
   FetchContent_Declare(
     cutlass
     URL ${DEP_URL_cutlass}
     URL_HASH SHA1=${DEP_SHA1_cutlass}
-    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/cutlass/cutlass.patch
   )
 
   FetchContent_GetProperties(cutlass)
