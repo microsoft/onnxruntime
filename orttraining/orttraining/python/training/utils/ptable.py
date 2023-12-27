@@ -20,9 +20,10 @@ class Row:
 class PTable:
     """A table that can be printed to the console."""
 
-    def __init__(self) -> None:
+    def __init__(self, sortable=False) -> None:
         self._rows: List[Row] = []
         self._column_count = None
+        self._sortable = sortable  # allow the rows to be sorted by the first column
 
     def add_row(self, columns: List[str]) -> Row:
         """Add a row to the table. The number of columns must match the number of columns in the table."""
@@ -35,6 +36,9 @@ class PTable:
 
     def get_string(self, first_column_width=None, second_column_width=None) -> str:
         """Serialize the table to a string."""
+        if len(self._rows) == 0:
+            return ""
+
         # Collect the max width of each column
         column_widths = []
         for row in self._rows:
@@ -52,7 +56,12 @@ class PTable:
             column_widths[2] = max(second_column_width, column_widths[2])
 
         serialized_table = ""
-        for row in self._rows:
+        if self._sortable:
+            sorted_rows = sorted(self._rows, key=lambda row: row._columns[0])
+        else:
+            sorted_rows = self._rows
+
+        for row in sorted_rows:
             for i, column in enumerate(row._columns):
                 serialized_table += f"{str(column).ljust(column_widths[i] + 2)}"
             serialized_table += "\n"

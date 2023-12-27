@@ -144,17 +144,7 @@ export class WebGpuBackend {
    */
   sessionExternalDataMapping: Map<number, Map<number, [number, GPUBuffer]>> = new Map();
 
-  async initialize(env: Env): Promise<void> {
-    if (!navigator.gpu) {
-      // WebGPU is not available.
-      throw new Error('WebGpuBackend: WebGPU is not available.');
-    }
-
-    const adapter = await navigator.gpu.requestAdapter();
-    if (!adapter) {
-      throw new Error('WebGpuBackend: Failed to get GPU adapter.');
-    }
-
+  async initialize(env: Env, adapter: GPUAdapter): Promise<void> {
     this.env = env;
     const requiredFeatures: GPUFeatureName[] = [];
     const deviceDescriptor: GPUDeviceDescriptor = {
@@ -254,11 +244,9 @@ export class WebGpuBackend {
   }
 
   isQueryEnabled(): boolean {
-    if (this.device.features.has('timestamp-query') && this.env.webgpu.profilingMode === 'default') {
-      return true;
-    } else {
-      return false;
-    }
+    return this.device.features.has('timestamp-query') &&
+        (this.env.webgpu.profiling?.mode === 'default' ||
+         (!this.env.webgpu.profiling?.mode && this.env.webgpu.profilingMode === 'default'));
   }
 
   /**

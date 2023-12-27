@@ -272,7 +272,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_opencl_throttling' should be a boolean i.e. true or false. Default value is false.\n");
         }
-      } else if (key == "enable_dynamic_shapes") {
+      } else if (key == "disable_dynamic_shapes") {
         if (value == "true" || value == "True" ||
             value == "false" || value == "False") {
           ov_options[key] = value;
@@ -298,7 +298,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ov_options[key] = value;
         }
       } else {
-        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_npu_fast_compile', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling|true'] \n");
+        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_npu_fast_compile', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling', 'disable_dynamic_shapes'] \n");
       }
     }
     session_options.AppendExecutionProvider("OpenVINO", ov_options);
@@ -332,12 +332,6 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if (value.empty()) {
           ORT_THROW("Please provide the QNN backend path.");
         }
-      } else if (key == "qnn_context_cache_enable") {
-        if (value != "1") {
-          ORT_THROW("Set to 1 to enable qnn_context_cache_enable.");
-        }
-      } else if (key == "qnn_context_cache_path") {
-        // no validation
       } else if (key == "profiling_level") {
         std::set<std::string> supported_profiling_level = {"off", "basic", "detailed"};
         if (supported_profiling_level.find(value) == supported_profiling_level.end()) {
@@ -373,8 +367,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW("Supported qnn_context_priority: low, normal, normal_high, high");
         }
       } else {
-        ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path', 'qnn_context_cache_enable',
-'qnn_context_cache_path', 'profiling_level', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
+        ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
+'profiling_level', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
 'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority'])");
       }
 

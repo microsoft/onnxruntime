@@ -13,6 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#ifdef USE_CUTLASS
 
 #pragma once
 
@@ -20,6 +24,7 @@
 #include <cuda_runtime_api.h>
 
 #include "core/common/common.h"
+#include "contrib_ops/cuda/bert/transformer_cuda_common.h"
 
 using namespace onnxruntime;
 
@@ -111,19 +116,25 @@ class CutlassMoeFCRunner {
   void run_moe_fc(const T* input_activations, const T* gating_output, const WeightType* fc1_expert_weights,
                   const T* fc1_scales, const T* fc1_expert_biases, ActivationType fc1_activation_type,
                   const WeightType* fc2_expert_weights, const T* fc2_scales, int num_rows, int hidden_size,
-                  int inter_size, int num_experts, int k, char* workspace_ptr, T* fc2_result,
-                  T* expert_scales, int* expanded_source_row_to_expanded_dest_row, int* expert_for_source_row,
-                  cudaStream_t stream);
+                  int inter_size, int num_experts, int local_num_experts, int local_experts_start_index, int k,
+                  char* workspace_ptr, T* fc2_result, T* expert_scales, int* expanded_source_row_to_expanded_dest_row,
+                  int* expert_for_source_row, cudaStream_t stream);
 
   void run_moe_fc(const T* input_activations, const T* gating_output, const WeightType* fc1_expert_weights,
                   const T* fc1_scales, const T* fc1_expert_biases, ActivationType fc1_activation_type,
                   const WeightType* fc2_expert_weights, const T* fc2_scales, int num_rows, int hidden_size,
-                  int inter_size, int num_experts, int k, char* workspace_ptr, T* fc2_result,
-                  const bool* finished, int active_rows, T* expert_scales,
+                  int inter_size, int num_experts, int local_num_experts, int local_experts_start_index, int k,
+                  char* workspace_ptr, T* fc2_result, const bool* finished, int active_rows, T* expert_scales,
                   int* expanded_source_row_to_expanded_dest_row, int* expert_for_source_row, cudaStream_t stream);
 
   void compute_total_rows_before_expert(const int* sorted_indices, int total_indices, int num_experts,
                                         int64_t* total_rows_before_expert, cudaStream_t stream);
+
+  void dispatch_activations(int64_t* total_rows_before_expert, int num_experts, int local_num_experts,
+                            int local_experts_start_index, cudaStream_t stream);
+
+  void get_total_rows_info(int64_t experts_start_index, int64_t local_num_experts, int64_t& total_past_rows,
+                           int64_t& total_covered_rows);
 
  private:
   void configure_ws_ptrs(char* ws_ptr, int num_rows, int hidden_size, int inter_size, int num_experts, int k);
@@ -143,6 +154,14 @@ class CutlassMoeFCRunner {
   int64_t* total_rows_before_expert_;
 
   T* fc1_result_;
+
+  // Cuda events
+  contrib::cuda::AutoDestoryCudaEvent cuda_event_;
+
+  int64_t total_past_rows_;
+  int64_t total_covered_rows_;
+  // TODO: use pinned memory
+  std::vector<int64_t> total_rows_before_expert_host_;
 };
 
 template <typename WeightType>
@@ -156,3 +175,5 @@ class CutlassMoeFCRunner<float, WeightType, typename std::enable_if_t<!std::is_s
 };
 
 }  // namespace ort_fastertransformer
+
+#endif

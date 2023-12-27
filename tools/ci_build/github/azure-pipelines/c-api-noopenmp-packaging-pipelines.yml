@@ -242,6 +242,7 @@ stages:
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
+    CudaVersion: 11.8
 
 # CUDA with Tensorrt
 - template: templates/win-ci.yml
@@ -253,10 +254,11 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-tensorrt
-    buildparameter: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8"  --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8"  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
+    buildparameter: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8"  --cuda_home="$(Agent.TempDirectory)\v11.8"  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
+    CudaVersion: 11.8
     UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
 
 # ROCm
@@ -592,7 +594,7 @@ stages:
       displayName: 'Test C API application for GPU package'
       inputs:
         script: |
-          docker run --gpus all -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/src_dir \
+          docker run --gpus all -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/models:/data/models --volume $(Build.SourcesDirectory):/src_dir \
           --volume $(Build.ArtifactStagingDirectory):/artifact_src -e NIGHTLY_BUILD onnxruntimecuda118xtrt86build \
           /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet/run_capi_application.sh -o /src_dir/onnxruntime -p /artifact_src/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz -w /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
@@ -706,39 +708,52 @@ stages:
     variables:
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
+      BuildDate: $[format('{0:yyyyMMdd}', pipeline.startTime)]
+      BuildTime: $[format('{0:HHmm}', pipeline.startTime)]
 
     steps:
     - checkout: self
       submodules: true
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - NuGet'
-      inputs:
-        artifactName: 'onnxruntime-win-x64-cuda'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - NuGet'
-      inputs:
-        artifactName: 'onnxruntime-win-x64-tensorrt'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    - template: templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - NuGet'
+        ArtifactName: 'onnxruntime-win-x64-cuda'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - NuGet'
-      inputs:
-        artifactName: 'onnxruntime-linux-x64-cuda'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    - template: templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - NuGet'
+        ArtifactName: 'onnxruntime-win-x64-tensorrt'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - NuGet'
-      inputs:
-        artifactName: 'onnxruntime-linux-x64-tensorrt'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+    - template: templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - NuGet'
+        ArtifactName: 'onnxruntime-linux-x64-cuda'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact - NuGet'
-      inputs:
-        artifactName: 'drop-extra'
-        targetPath: '$(Build.BinariesDirectory)/extra-artifact'
+    - template: templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - NuGet'
+        ArtifactName: 'onnxruntime-linux-x64-tensorrt'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+
+    - template: templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - NuGet'
+        ArtifactName: 'drop-extra'
+        TargetPath: '$(Build.BinariesDirectory)/extra-artifact'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
     # Reconstruct the build dir
     - task: PowerShell@2
@@ -795,12 +810,13 @@ stages:
         DoEsrp: ${{ parameters.DoEsrp }}
 
     - task: MSBuild@1
-      displayName: 'Build Nuget Packages'
+      displayName: 'Build Nuget Packages Microsoft.ML.OnnxRuntime.Gpu'
       inputs:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         configuration: RelWithDebInfo
         platform: 'Any CPU'
-        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
+        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
+                          -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix) -p:CurrentDate=$(BuildDate) -p:CurrentTime=$(BuildTime)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: BatchScript@1
@@ -840,8 +856,25 @@ stages:
       parameters:
         PackageType: 'nuget'
         PackagePath: '$(Build.ArtifactStagingDirectory)'
-        PackageName: 'Microsoft.ML.OnnxRuntime.*nupkg'
         PlatformsSupported: 'win-x64,linux-x64'
+        # 1* stands for version number. we use it to fileter Gpu.Windows and Gpu.Linux packages
+        PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.1*nupkg'
+        VerifyNugetSigning: false
+
+    - template: templates/validate-package.yml
+      parameters:
+        PackageType: 'nuget'
+        PackagePath: '$(Build.ArtifactStagingDirectory)'
+        PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Windows.*nupkg'
+        PlatformsSupported: 'win-x64'
+        VerifyNugetSigning: false
+
+    - template: templates/validate-package.yml
+      parameters:
+        PackageType: 'nuget'
+        PackagePath: '$(Build.ArtifactStagingDirectory)'
+        PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Linux.*nupkg'
+        PlatformsSupported: 'linux-x64'
         VerifyNugetSigning: false
 
     - task: PublishPipelineArtifact@0
@@ -1102,6 +1135,19 @@ stages:
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     Skipx86Tests: 'true'
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
+
+- template: nuget/templates/test_win.yml
+  parameters:
+    AgentPool : 'onnxruntime-Win2022-GPU-T4'
+    NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu.Windows'
+    ArtifactSuffix: 'GPU'
+    StageSuffix: 'GPU'
+    MoreSuffix: '_Windows'
+    Skipx86Tests: 'true'
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
 
 - template: nuget/templates/test_linux.yml
   parameters:
@@ -1109,6 +1155,16 @@ stages:
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
+    SpecificArtifact: ${{ parameters.specificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
+
+- template: nuget/templates/test_linux.yml
+  parameters:
+    AgentPool : Onnxruntime-Linux-GPU
+    ArtifactSuffix: 'GPU'
+    StageSuffix: 'GPU'
+    MoreSuffix: '_Linux'
+    NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu.Linux'
     SpecificArtifact: ${{ parameters.specificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
@@ -1320,5 +1376,3 @@ stages:
       inputs:
         artifactName: 'drop-signed-nuget-dml'
         targetPath: '$(Build.ArtifactStagingDirectory)'
-
-- template: templates/publish-nuget.yml

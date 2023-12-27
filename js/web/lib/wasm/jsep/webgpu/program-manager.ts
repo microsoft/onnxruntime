@@ -75,12 +75,11 @@ export class ProgramManager {
 
       const kernelId = this.backend.currentKernelId!;
       const kernelInfo = this.backend.kernels.get(kernelId)!;
-      const kernelName = `[${kernelInfo[0]}] ${kernelInfo[1]}`;
 
       void syncData.buffer.mapAsync(GPUMapMode.READ).then(() => {
         const mappedData = new BigUint64Array(syncData.buffer.getMappedRange());
-        const startTimeU64 = mappedData[0];
-        const endTimeU64 = mappedData[1];
+        const [startTimeU64, endTimeU64] = mappedData;
+        const [kernelType, kernelName] = kernelInfo;
 
         syncData.buffer.unmap();
 
@@ -96,17 +95,33 @@ export class ProgramManager {
         }
 
         this.backend.gpuDataManager.release(syncData.id);
-        let inputShapes = '';
-        inputTensorViews.forEach((value, i) => {
-          inputShapes += `input[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
-        });
-        let outputShapes = '';
-        outputTensorViews.forEach((value, i) => {
-          outputShapes += `output[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
-        });
-        // eslint-disable-next-line no-console
-        console.log(`[profiling] kernel "${kernelId}|${kernelName}|${buildArtifact.programInfo.name}" ${inputShapes}${
-            outputShapes}execution time: ${endTime - startTime} ns`);
+        if (this.backend.env.webgpu.profiling?.ondata) {
+          this.backend.env.webgpu.profiling.ondata({
+            version: 1,
+            inputsMetadata: inputTensorViews.map(
+                value => ({dims: value.dims, dataType: tensorDataTypeEnumToString(value.dataType)})),
+            outputsMetadata: outputTensorViews.map(
+                value => ({dims: value.dims, dataType: tensorDataTypeEnumToString(value.dataType)})),
+            kernelId,
+            kernelType,
+            kernelName,
+            startTime,
+            endTime,
+          });
+        } else {
+          // if no callback is provided, print the profiling message to console
+          let inputShapes = '';
+          inputTensorViews.forEach((value, i) => {
+            inputShapes += `input[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
+          });
+          let outputShapes = '';
+          outputTensorViews.forEach((value, i) => {
+            outputShapes += `output[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
+          });
+          // eslint-disable-next-line no-console
+          console.log(`[profiling] kernel "${kernelId}|${kernelName}|${buildArtifact.programInfo.name}" ${inputShapes}${
+              outputShapes}execution time: ${endTime - startTime} ns`);
+        }
       });
     }
 

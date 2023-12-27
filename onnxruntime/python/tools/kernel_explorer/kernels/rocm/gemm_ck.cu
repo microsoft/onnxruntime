@@ -23,7 +23,7 @@ namespace py = pybind11;
 namespace onnxruntime {
 
 #ifdef USE_COMPOSABLE_KERNEL
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 class CKGemm : public IKernelExplorer {
  public:
   CKGemm(BlasOp opa, BlasOp opb,
@@ -34,9 +34,7 @@ class CKGemm : public IKernelExplorer {
          double beta,
          DeviceArray& c, int64_t ldc)
       : params_{} {
-    auto supports_a = opa == BlasOp::N ? std::is_same_v<ALayout, Row> : std::is_same_v<ALayout, Col>;
-    auto supports_b = opb == BlasOp::N ? std::is_same_v<BLayout, Row> : std::is_same_v<BLayout, Col>;
-    ORT_ENFORCE(supports_a && supports_b);
+    ORT_ENFORCE(opa == OpA && opb == OpB);
 
     params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
@@ -56,15 +54,15 @@ class CKGemm : public IKernelExplorer {
     params_.c = static_cast<T*>(c.ptr());
     params_.ldc = ldc;
 
-    for (auto&& [type_string, op] : GetCKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
+    for (auto&& [type_string, op] : GetCKGemmTypeStringAndOps<T, OpA, OpB>()) {
       type_strings_.emplace_back(std::move(type_string));
       ops_.emplace_back(std::move(op));
     }
-    for (auto&& [type_string, op] : GetCKStreamKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
+    for (auto&& [type_string, op] : GetCKStreamKGemmTypeStringAndOps<T, OpA, OpB>()) {
       type_strings_.emplace_back(std::move(type_string));
       ops_.emplace_back(std::move(op));
     }
-    for (auto&& [type_string, op] : GetCKSplitKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
+    for (auto&& [type_string, op] : GetCKSplitKGemmTypeStringAndOps<T, OpA, OpB>()) {
       type_strings_.emplace_back(std::move(type_string));
       ops_.emplace_back(std::move(op));
     }
@@ -100,7 +98,7 @@ class CKGemm : public IKernelExplorer {
   size_t selected_op_{};
 };
 
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 class CKStridedBatchedGemm : public IKernelExplorer {
  public:
   CKStridedBatchedGemm(
@@ -113,9 +111,7 @@ class CKStridedBatchedGemm : public IKernelExplorer {
       DeviceArray& c, int64_t ldc, int64_t stride_c,
       int64_t batch)
       : params_{} {
-    auto supports_a = opa == BlasOp::N ? std::is_same_v<ALayout, Row> : std::is_same_v<ALayout, Col>;
-    auto supports_b = opb == BlasOp::N ? std::is_same_v<BLayout, Row> : std::is_same_v<BLayout, Col>;
-    ORT_ENFORCE(supports_a && supports_b);
+    ORT_ENFORCE(opa == OpA && opb == OpB);
 
     params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
@@ -139,7 +135,7 @@ class CKStridedBatchedGemm : public IKernelExplorer {
     params_.stride_c = stride_c;
     params_.batch = batch;
 
-    for (auto&& [type_string, op] : GetCKStridedBatchedGemmTypeStringAndOps<T, ALayout, BLayout>()) {
+    for (auto&& [type_string, op] : GetCKStridedBatchedGemmTypeStringAndOps<T, OpA, OpB>()) {
       type_strings_.emplace_back(std::move(type_string));
       ops_.emplace_back(std::move(op));
     }
@@ -175,44 +171,44 @@ class CKStridedBatchedGemm : public IKernelExplorer {
   size_t selected_op_{};
 };
 
-#define REGISTER_OP_COMMON(type, dtype, alayout, blayout, layout_string)           \
-  py::class_<type<dtype, alayout, blayout>>(m, #type "_" #dtype "_" layout_string) \
-      .def("SetRepeats", &type<dtype, alayout, blayout>::SetRepeats)               \
-      .def("Profile", &type<dtype, alayout, blayout>::Profile)                     \
-      .def("Run", &type<dtype, alayout, blayout>::Run)                             \
-      .def("ListOps", &type<dtype, alayout, blayout>::ListOps)                     \
-      .def("SelectOp", &type<dtype, alayout, blayout>::SelectOp)
+#define REGISTER_OP_COMMON(type, dtype, opa, opb, layout_string)           \
+  py::class_<type<dtype, opa, opb>>(m, #type "_" #dtype "_" layout_string) \
+      .def("SetRepeats", &type<dtype, opa, opb>::SetRepeats)               \
+      .def("Profile", &type<dtype, opa, opb>::Profile)                     \
+      .def("Run", &type<dtype, opa, opb>::Run)                             \
+      .def("ListOps", &type<dtype, opa, opb>::ListOps)                     \
+      .def("SelectOp", &type<dtype, opa, opb>::SelectOp)
 
-#define REGISTER_CKGEMM(dtype, alayout, blayout, layout_string)      \
-  REGISTER_OP_COMMON(CKGemm, dtype, alayout, blayout, layout_string) \
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,       \
-                    double,                                          \
-                    DeviceArray&, int64_t,                           \
-                    DeviceArray&, int64_t,                           \
-                    double,                                          \
+#define REGISTER_CKGEMM(dtype, opa, opb, layout_string)        \
+  REGISTER_OP_COMMON(CKGemm, dtype, opa, opb, layout_string)   \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t, \
+                    double,                                    \
+                    DeviceArray&, int64_t,                     \
+                    DeviceArray&, int64_t,                     \
+                    double,                                    \
                     DeviceArray&, int64_t>());
 
-#define REGISTER_CKGEMM_FOR_ALL_TRANSAB(dtype) \
-  REGISTER_CKGEMM(dtype, Row, Row, "NN");      \
-  REGISTER_CKGEMM(dtype, Row, Col, "NT");      \
-  REGISTER_CKGEMM(dtype, Col, Row, "TN");      \
-  REGISTER_CKGEMM(dtype, Col, Col, "TT");
+#define REGISTER_CKGEMM_FOR_ALL_TRANSAB(dtype)        \
+  REGISTER_CKGEMM(dtype, BlasOp::N, BlasOp::N, "NN"); \
+  REGISTER_CKGEMM(dtype, BlasOp::N, BlasOp::T, "NT"); \
+  REGISTER_CKGEMM(dtype, BlasOp::T, BlasOp::N, "TN"); \
+  REGISTER_CKGEMM(dtype, BlasOp::T, BlasOp::T, "TT");
 
-#define REGISTER_CKSTRIDEDBATCHEDGEMM(dtype, alayout, blayout, layout_string)      \
-  REGISTER_OP_COMMON(CKStridedBatchedGemm, dtype, alayout, blayout, layout_string) \
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,                     \
-                    double,                                                        \
-                    DeviceArray&, int64_t, int64_t,                                \
-                    DeviceArray&, int64_t, int64_t,                                \
-                    double,                                                        \
-                    DeviceArray&, int64_t, int64_t,                                \
+#define REGISTER_CKSTRIDEDBATCHEDGEMM(dtype, opa, opb, layout_string)      \
+  REGISTER_OP_COMMON(CKStridedBatchedGemm, dtype, opa, opb, layout_string) \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,             \
+                    double,                                                \
+                    DeviceArray&, int64_t, int64_t,                        \
+                    DeviceArray&, int64_t, int64_t,                        \
+                    double,                                                \
+                    DeviceArray&, int64_t, int64_t,                        \
                     int64_t>());
 
-#define REGISTER_CKSTRIDEDBATCHEDGEMM_FOR_ALL_TRANSAB(dtype) \
-  REGISTER_CKSTRIDEDBATCHEDGEMM(dtype, Row, Row, "NN");      \
-  REGISTER_CKSTRIDEDBATCHEDGEMM(dtype, Row, Col, "NT");      \
-  REGISTER_CKSTRIDEDBATCHEDGEMM(dtype, Col, Row, "TN");      \
-  REGISTER_CKSTRIDEDBATCHEDGEMM(dtype, Col, Col, "TT");
+#define REGISTER_CKSTRIDEDBATCHEDGEMM_FOR_ALL_TRANSAB(dtype)        \
+  REGISTER_CKSTRIDEDBATCHEDGEMM(dtype, BlasOp::N, BlasOp::N, "NN"); \
+  REGISTER_CKSTRIDEDBATCHEDGEMM(dtype, BlasOp::N, BlasOp::T, "NT"); \
+  REGISTER_CKSTRIDEDBATCHEDGEMM(dtype, BlasOp::T, BlasOp::N, "TN"); \
+  REGISTER_CKSTRIDEDBATCHEDGEMM(dtype, BlasOp::T, BlasOp::T, "TT");
 
 KE_REGISTER(m) {
   REGISTER_CKGEMM_FOR_ALL_TRANSAB(float);

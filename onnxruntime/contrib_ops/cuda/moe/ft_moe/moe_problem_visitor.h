@@ -33,6 +33,8 @@
     \brief Base scheduler for grouped problems, using MoE
 */
 
+#ifdef USE_CUTLASS
+
 #pragma once
 
 #include "cutlass/gemm/kernel/grouped_problem_visitor.h"
@@ -288,3 +290,5 @@ struct MoeProblemVisitor<ProblemSizeHelper, ThreadblockShape, GroupScheduleMode:
 }  // namespace kernel
 }  // namespace gemm
 }  // namespace cutlass
+
+#endif
