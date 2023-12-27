@@ -219,7 +219,7 @@ const initOutputShape =
           return outputShape;
         };
 
-const adjustOutputShape = (inputShape: readonly number[], scales: number[], attributes: ResizeAttributes): number[] => {
+const adjustOutputShape = (inputShape: readonly number[], scales: number[], attributes: ResizeAttributes) => {
   const scaleInPolicy = (() => {
     switch (attributes.keepAspectRatioPolicy) {
       case 'not_larger':
