@@ -199,7 +199,7 @@ class IAllocator {
       alloc_size = CheckedCalcMemSizeForArray(count_or_bytes, size);
     }
 
-    T* p = static_cast<T*>(ort_allocator->Alloc(ort_allocator, count_or_bytes));
+    T* p = static_cast<T*>(ort_allocator->Alloc(ort_allocator, alloc_size));
     return IAllocatorUniquePtr<T>{p,
                                   [ort_allocator](T* p) {
                                     ort_allocator->Free(ort_allocator, p);
