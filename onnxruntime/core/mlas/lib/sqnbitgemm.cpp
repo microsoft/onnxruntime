@@ -246,12 +246,12 @@ SQNBitGemm_BlkBitWidth4_CompFp32(
 
     const float* A = DataParams->A + RangeStartM * lda;
 
-    const uint8_t* QuantBData = static_cast<const uint8_t*>(DataParams->QuantBData) + RangeStartN * ldb;
+    const std::byte* QuantBData = static_cast<const std::byte*>(DataParams->QuantBData) + RangeStartN * ldb;
     const float* QuantBScale = DataParams->QuantBScale + RangeStartN * k_blks;
-    const uint8_t* QuantBZeroPoint =
+    const std::byte* QuantBZeroPoint =
         (DataParams->QuantBZeroPoint == nullptr)
             ? nullptr
-            : static_cast<const uint8_t*>(DataParams->QuantBZeroPoint) + RangeStartN * k_blks_zp_bytes;
+            : static_cast<const std::byte*>(DataParams->QuantBZeroPoint) + RangeStartN * k_blks_zp_bytes;
 
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
 
@@ -263,9 +263,9 @@ SQNBitGemm_BlkBitWidth4_CompFp32(
             CountN = std::min(RangeCountN - n, size_t{128});
 
             const float* a_row = A;
-            const uint8_t* b_col = QuantBData + n * ldb;
+            const std::byte* b_col = QuantBData + n * ldb;
             const float* b_col_scale = QuantBScale + n * k_blks;
-            const uint8_t* b_col_zp =
+            const std::byte* b_col_zp =
                 (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
             float* c_blk = C + n;
             const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
@@ -301,9 +301,9 @@ SQNBitGemm_BlkBitWidth4_CompFp32(
         // Step through each slice of matrix A along the M dimension.
         //
         const float* a_row = A;
-        const uint8_t* b_col = QuantBData + n * ldb;
+        const std::byte* b_col = QuantBData + n * ldb;
         const float* b_col_scale = QuantBScale + n * k_blks;
-        const uint8_t* b_col_zp =
+        const std::byte* b_col_zp =
             (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
         float* c_blk = C + n;
         const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
@@ -363,12 +363,12 @@ SQNBitGemm_BlkBitWidth4_CompInt8(
 
     const std::byte* QuantA = static_cast<const std::byte*>(PerGemmWorkspace) + RangeStartM * lda;
 
-    const uint8_t* QuantBData = static_cast<const uint8_t*>(DataParams->QuantBData) + RangeStartN * ldb;
+    const std::byte* QuantBData = static_cast<const std::byte*>(DataParams->QuantBData) + RangeStartN * ldb;
     const float* QuantBScale = DataParams->QuantBScale + RangeStartN * k_blks;
-    const uint8_t* QuantBZeroPoint =
+    const std::byte* QuantBZeroPoint =
         (DataParams->QuantBZeroPoint == nullptr)
             ? nullptr
-            : static_cast<const uint8_t*>(DataParams->QuantBZeroPoint) + RangeStartN * k_blks_zp_bytes;
+            : static_cast<const std::byte*>(DataParams->QuantBZeroPoint) + RangeStartN * k_blks_zp_bytes;
 
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
 
@@ -380,9 +380,9 @@ SQNBitGemm_BlkBitWidth4_CompInt8(
             CountN = std::min(RangeCountN - n, size_t{128});
 
             const std::byte* a_row = QuantA;
-            const uint8_t* b_col = QuantBData + n * ldb;
+            const std::byte* b_col = QuantBData + n * ldb;
             const float* b_col_scale = QuantBScale + n * k_blks;
-            const uint8_t* b_col_zp =
+            const std::byte* b_col_zp =
                 (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
             float* c_blk = C + n;
             const float* bias = (Bias == nullptr) ? nullptr : Bias + n;

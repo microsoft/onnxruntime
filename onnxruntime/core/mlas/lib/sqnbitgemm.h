@@ -122,9 +122,9 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     typedef void(SQNBitGemmM1Kernel_BlkBitWidth4_CompFp32_Fn)(
         size_t BlkLen,
         const float* A,
-        const uint8_t* QuantBData,
+        const std::byte* QuantBData,
         const float* QuantBScale,
-        const uint8_t* QuantBZeroPoint,
+        const std::byte* QuantBZeroPoint,
         float* C,
         size_t CountN,
         size_t CountK,
@@ -152,9 +152,9 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     typedef void(QNBitBlkDequantBForSgemm_BlkBitWidth4_CompFp32_Fn)(
         size_t BlkLen,
         float* FpData,
-        const uint8_t* QuantBData,
+        const std::byte* QuantBData,
         const float* QuantBScale,
-        const uint8_t* QuantBZeroPoint,
+        const std::byte* QuantBZeroPoint,
         size_t CountN,
         size_t CountK,
         size_t BlockStrideQuantB
@@ -186,9 +186,9 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     typedef void(SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8_Fn)(
         size_t BlkLen,
         const std::byte* QuantA,
-        const uint8_t* QuantBData,
+        const std::byte* QuantBData,
         const float* QuantBScale,
-        const uint8_t* QuantBZeroPoint,
+        const std::byte* QuantBZeroPoint,
         float* C,
         size_t CountN,
         size_t CountK,
