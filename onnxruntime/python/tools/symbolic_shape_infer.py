@@ -5,6 +5,8 @@
 import argparse
 import logging
 
+from __future__ import annotations
+
 import numpy as np
 import onnx
 import sympy
@@ -249,6 +251,8 @@ class SymbolicShapeInference:
         self.int_max_ = int_max
         self.subgraph_id_ = 0
         self.prefix_ = prefix
+
+        self.sympy_data_ = None
 
     def _add_suggested_merge(self, symbols, apply=False):
         assert all([(type(s) == str and s in self.symbolic_dims_) or is_literal(s) for s in symbols])  # noqa: E721
@@ -2330,8 +2334,11 @@ class SymbolicShapeInference:
                 return out
         return None
 
-    def _infer_impl(self, start_sympy_data=None):
+    def _infer_impl(self, start_sympy_data: dict | None=None):
+
         self.sympy_data_ = start_sympy_data or {}
+
+        # remove all existing value_info from graph
         self.out_mp_.graph.ClearField("value_info")
         self._apply_suggested_merge(graph_input_only=True)
         self.input_symbols_ = set()
@@ -2423,7 +2430,19 @@ class SymbolicShapeInference:
             self._onnx_infer_single_node(node)
             known_aten_op = False
             if node.op_type in self.dispatcher_:
-                self.dispatcher_[node.op_type](node)
+                updated_output_value_infos = self.dispatcher_[node.op_type](node)
+                if not isinstance(updated_output_value_infos, tuple):
+                    updated_output_value_infos = (updated_output_value_infos,)
+
+                assert len(updated_output_value_infos) == len(node.output)
+                for i_o in range(len(node.output)):
+                    if updated_output_value_infos[i_o] is not None:
+                        self.update_value_info(
+                            node,
+                            i_o,
+                            updated_output_value_infos[i_o].type.tensor_type.elem_type,
+                            get_shape_from_value_info(updated_output_value_infos[i_o]),
+                        )
             elif node.op_type in ["ConvTranspose"]:
                 # onnx shape inference ops like ConvTranspose may have empty shape for symbolic input
                 # before adding symbolic compute for them
