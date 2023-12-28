@@ -310,14 +310,11 @@ class TrainingManager(GraphExecutionManager):
 
             self._gradient_accumulation_manager.maybe_update_cache_before_run()
 
-            if (
-                self._runtime_options.enable_zero_stage3_support
-                or self._runtime_options.enable_mem_efficient_grad_management
-            ):
+            if self._runtime_options.enable_zero_stage3_support or self._mem_efficient_grad_management_is_enabled:
                 self._append_pull_weight_trigger_as_input(kwargs, self._device)
 
             param_to_append_as_onnx_graph_inputs = []
-            if self._runtime_options.enable_mem_efficient_grad_management:
+            if self._mem_efficient_grad_management_is_enabled:
                 from ._mem_efficient_grad_mgmt import get_params_not_connected_to_pull_param_trigger
 
                 param_to_append_as_onnx_graph_inputs = get_params_not_connected_to_pull_param_trigger(
@@ -506,7 +503,7 @@ class TrainingManager(GraphExecutionManager):
             if param.requires_grad and name in self._graph_initializer_names
         }
 
-        if self._runtime_options.enable_mem_efficient_grad_management:
+        if self._mem_efficient_grad_management_is_enabled:
             from ._mem_efficient_grad_mgmt import MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME
 
             # Remove the inputs we added during model post-processing.
