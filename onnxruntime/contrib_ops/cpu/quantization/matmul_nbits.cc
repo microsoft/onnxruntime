@@ -198,7 +198,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   for (int64_t accuracy_level = accuracy_level_;
        accuracy_level >= static_cast<int64_t>(CompMostAccurate);
        --accuracy_level) {
-    const auto compute_type = static_cast<MLAS_SQNBITGEMM_COMPUTE_TYPE>(accuracy_level);
+    const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level);
     if (MlasIsSQNBitGemmAvailable(M, N, K, nbits_, block_size_, compute_type)) {
       // number of bytes or elements between adjacent matrices
       size_t b_data_matrix_stride_in_bytes, b_scale_matrix_stride, b_zero_point_matrix_stride_in_bytes;

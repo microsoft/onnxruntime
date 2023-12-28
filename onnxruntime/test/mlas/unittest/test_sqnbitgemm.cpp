@@ -18,7 +18,7 @@ Abstract:
 #include "mlas_q4.h"
 #include "mlas_qnbit.h"
 
-static constexpr const char* ComputeTypeName(MLAS_SQNBITGEMM_COMPUTE_TYPE ComputeType) {
+static constexpr const char* ComputeTypeName(MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType) {
   switch (ComputeType) {
     case CompFp32:
       return "Fp32";
@@ -61,7 +61,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
                 float* C,
                 size_t ldc,
                 void* Workspace,
-                MLAS_SQNBITGEMM_COMPUTE_TYPE ComputeType,
+                MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
                 MLAS_THREADPOOL* Threadpool) {
     MLAS_SQNBIT_GEMM_DATA_PARAMS params;
     params.A = A;
@@ -194,7 +194,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
 
  public:
   void Test(size_t M, size_t N, size_t K,
-            MLAS_SQNBITGEMM_COMPUTE_TYPE ComputeType,
+            MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
             bool WithBias, bool Symmetric, bool WithThreadpool) {
     MLAS_THREADPOOL* Threadpool = WithThreadpool ? GetMlasThreadPool() : nullptr;
 
@@ -294,7 +294,7 @@ template <size_t BlkBitWidth, size_t BlkLen>
 class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<BlkBitWidth, BlkLen>> {
  public:
   explicit SQNBitGemmShortExecuteTest(size_t M, size_t N, size_t K,
-                                      MLAS_SQNBITGEMM_COMPUTE_TYPE ComputeType,
+                                      MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
                                       bool WithThreadpool, bool Symmetric, bool WithBias)
       : M_(M),
         N_(N),
@@ -311,7 +311,7 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
   }
 
   static size_t RegisterSingleTest(size_t M, size_t N, size_t K,
-                                   MLAS_SQNBITGEMM_COMPUTE_TYPE ComputeType,
+                                   MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
                                    bool WithThreadpool, bool Symmetric, bool WithBias) {
     size_t tests_registered = 0;
 
@@ -346,7 +346,7 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
   static size_t RegisterShortExecuteTests() {
     size_t tests_registered = 0;
 
-    for (MLAS_SQNBITGEMM_COMPUTE_TYPE ComputeType : {CompFp32, CompInt8}) {
+    for (MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType : {CompFp32, CompInt8}) {
       for (bool WithThreadpool : {false, true}) {
         for (bool Symmetric : {false, true}) {
           for (size_t b = 1; b < 16; b++) {
@@ -377,7 +377,7 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
 
  private:
   size_t M_, N_, K_;
-  MLAS_SQNBITGEMM_COMPUTE_TYPE ComputeType_;
+  MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType_;
   bool WithThreadpool_, Symmetric_, WithBias_;
 };
 

@@ -48,7 +48,7 @@ GetSQNBitGemmVariant(
     size_t K,
     size_t BlkBitWidth,
     size_t BlkLen,
-    MLAS_SQNBITGEMM_COMPUTE_TYPE ComputeType
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
     MLAS_UNREFERENCED_PARAMETER(N);
@@ -75,7 +75,7 @@ MlasIsSQNBitGemmAvailable(
     size_t K,
     size_t BlkBitWidth,
     size_t BlkLen,
-    MLAS_SQNBITGEMM_COMPUTE_TYPE ComputeType
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
     const auto* Dispatch = GetMlasPlatform().SQNBitGemmDispatch;
@@ -164,7 +164,7 @@ MlasSQNBitGemmBatchWorkspaceSize(
     size_t BatchN,
     size_t BlkBitWidth,
     size_t BlkLen,
-    MLAS_SQNBITGEMM_COMPUTE_TYPE ComputeType
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
     const auto Variant = GetSQNBitGemmVariant(M, N, K, BlkBitWidth, BlkLen, ComputeType);
@@ -481,7 +481,7 @@ MlasSQNBitGemmBatch(
     const size_t BatchN,
     const size_t BlkBitWidth,
     const size_t BlkLen,
-    MLAS_SQNBITGEMM_COMPUTE_TYPE ComputeType,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const MLAS_SQNBIT_GEMM_DATA_PARAMS* DataParams,
     void* Workspace,
     MLAS_THREADPOOL* ThreadPool

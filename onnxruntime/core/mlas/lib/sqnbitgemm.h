@@ -10,19 +10,13 @@ Module Name:
 
 Abstract:
 
-    This module includes:  // TODO update
+    This module includes kernel function prototypes and helper functions for
+    implementing SQNBitGemm.
 
-    - Declaration of the set of template functions used to implement a kernel
-    for a matrix/matrix multiplication, A*B, where A is a float matrix and B is
-    a n-bit quantized integer matrix (QNBitGemm).
-
-    - A shared kernel driver function template, MlasSQNBitGemmOperation.
-
-    - Kernel dispatch structure.
-
-    The B matrix is block quantized, which means that its values are grouped
-    into blocks which each have one scale and optional zero point. Each
-    quantized value in B is n-bits wide.
+    SQNBitGemm is a matrix/matrix multiplication, A*B, where A is a float
+    matrix and B is a n-bit quantized integer matrix. B is block quantized,
+    meaning values of B are divided into blocks and each block has its own
+    scale and optional zero point.
 
 --*/
 
@@ -106,7 +100,7 @@ Q8BlkAlignment()
 
 struct MLAS_SQNBIT_GEMM_DISPATCH {
     //
-    // CompFp32 kernels
+    // CompFp32 kernel function prototypes.
     //
 
     /**
@@ -169,9 +163,26 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     QNBitBlkDequantBForSgemm_BlkBitWidth4_CompFp32_Fn* QNBitBlkDequantBForSgemm_BlkBitWidth4_CompFp32 = nullptr;
 
     //
-    // CompInt8 kernels
+    // CompInt8 kernel function prototypes.
     //
 
+    /**
+     * @brief Multiply quantized int8 matrix A with quantized n-bit integer matrix B.
+     *        A and B are block quantized and B is column major.
+     *        This kernel handles the special case where M, the number of rows of A and C, is 1.
+     *
+     * @param       BlkLen              Number of values in a block.
+     * @param       QuantA              Supplies the quantized A matrix.
+                                        Binary data containing block quantized int8 data and scale values.
+     * @param       QuantBData          Supplies the quantized B matrix block data.
+     * @param       QuantBScale         Supplies the quantized B matrix block scale values.
+     * @param       QuantBZeroPoint     Supplies the quantized B matrix block zero point values. Optional.
+     * @param[out]  C                   Supplies the output C matrix.
+     * @param       CountN              Number of columns of B and C.
+     * @param       CountK              Number of columns of A and rows of B.
+     * @param       BlockStrideQuantB   Number of blocks between adjacent columns of the quantized B matrix.
+     * @param       Bias                Bias vector of length N.
+     */
     typedef void(SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8_Fn)(
         size_t BlkLen,
         const std::byte* QuantA,
@@ -187,6 +198,15 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
 
     SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8_Fn* SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8 = nullptr;
 
+    /**
+     * @brief Block quantize values from one row of matrix A from float to int8.
+     *
+     * @param       BlkLen  Number of values in a block.
+     * @param       A       Supplies the A matrix.
+     * @param       CountK  Number of columns of A.
+     * @param[out]  QuantA  Supplies the output quantized A matrix.
+     *                      Binary data containing block quantized int8 data and scale values.
+     */
     typedef void(QuantizeARow_CompInt8_Fn)(
         size_t BlkLen,
         const float* A,

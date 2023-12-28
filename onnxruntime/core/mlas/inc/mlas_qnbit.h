@@ -27,11 +27,11 @@ Abstract:
  * @brief Define compute types of block quantization, in order of decreasing accuracy.
  */
 typedef enum {
-    CompUndef = 0,  /*!< undef */
-    CompFp32,       /*!< input fp32, accumulator fp32 */
-    CompFp16,       /*!< input fp16, accumulator fp16 */
-    CompBf16,       /*!< input bf16, accumulator fp32 */
-    CompInt8,       /*!< input int8, accumulator int32 */
+    CompUndef = 0, /*!< undef */
+    CompFp32,      /*!< input fp32, accumulator fp32 */
+    CompFp16,      /*!< input fp16, accumulator fp16 */
+    CompBf16,      /*!< input bf16, accumulator fp32 */
+    CompInt8,      /*!< input int8, accumulator int32 */
 
     // special values that should be the first and last actual values
 
@@ -39,7 +39,7 @@ typedef enum {
     CompLeastAccurate = CompInt8,
 } MLAS_SQNBIT_COMPUTE_TYPE;
 
-using MLAS_SQNBITGEMM_COMPUTE_TYPE = MLAS_SQNBIT_COMPUTE_TYPE;  // TODO consolidate these
+using MLAS_SQNBIT_GEMM_COMPUTE_TYPE = MLAS_SQNBIT_COMPUTE_TYPE;  // TODO consolidate these
 
 /**
  * @brief Data parameters for float/n-bit quantized int GEMM routine.
@@ -63,6 +63,8 @@ struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
  *        A must be a float32 matrix
  *        B must be a quantized and packed n-bit int matrix
  *
+ *        Call MlasIsSQNBitGemmAvailable() with the same parameters to determine whether this function may be called.
+ *
  * @param[in]       M               row size of matrix A and C
  * @param[in]       N               column size of matrix B and C
  * @param[in]       K               column size of matrix A and row size of matrix B
@@ -84,7 +86,7 @@ MlasSQNBitGemmBatch(
     size_t BatchN,
     size_t BlkBitWidth,
     size_t BlkLen,
-    MLAS_SQNBITGEMM_COMPUTE_TYPE ComputeType,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const MLAS_SQNBIT_GEMM_DATA_PARAMS* DataParams,
     void* Workspace,
     MLAS_THREADPOOL* ThreadPool = nullptr
@@ -92,7 +94,6 @@ MlasSQNBitGemmBatch(
 
 /**
  * @brief Determines whether a float32/quantized n-bit int GEMM implementation is available on the current platform.
- *        Ensure that this returns true before calling MlasSQNBitGemmBatch().
  *
  * @param[in]   M               row size of matrix A and C
  * @param[in]   N               column size of matrix B and C
@@ -108,12 +109,13 @@ MlasIsSQNBitGemmAvailable(
     size_t K,
     size_t BlkBitWidth,
     size_t BlkLen,
-    MLAS_SQNBITGEMM_COMPUTE_TYPE ComputeType
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 );
 
 /**
  * @brief Gets the size in bytes of the intermediate workspace buffer required by the float32/quantized n-bit int GEMM
  * implementation. If zero, no intermediate workspace is required.
+ *
  * @param[in]   M               row size of matrix A and C
  * @param[in]   N               column size of matrix B and C
  * @param[in]   K               column size of matrix A and row size of matrix B
@@ -130,7 +132,7 @@ MlasSQNBitGemmBatchWorkspaceSize(
     size_t BatchN,
     size_t BlkBitWidth,
     size_t BlkLen,
-    MLAS_SQNBITGEMM_COMPUTE_TYPE ComputeType
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 );
 
 /**

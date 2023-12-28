@@ -24,7 +24,7 @@ void SQNBITGEMM(benchmark::State& state) {
   const auto K = narrow<size_t>(state.range(3));
   const auto Threads = narrow<size_t>(state.range(4));
   const auto Symmetric = narrow<bool>(state.range(5));
-  const auto ComputeType = static_cast<MLAS_SQNBITGEMM_COMPUTE_TYPE>(state.range(6));
+  const auto ComputeType = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(state.range(6));
 
   size_t QuantBDataSizeInBytes, QuantBScaleSize, QuantBZeroPointSizeInBytes;
   MlasBlockwiseQuantizedBufferSizes(
@@ -98,7 +98,7 @@ static void SQNBitGemmArgs(benchmark::internal::Benchmark* b) {
                               // BlkBitWidth, BlkLen
                               4, narrow<size_t>(args[0]),
                               // ComputeType
-                              static_cast<MLAS_SQNBITGEMM_COMPUTE_TYPE>(args[6]));
+                              static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(args[6]));
                         });
 }
 
