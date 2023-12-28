@@ -105,8 +105,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<NoopElimination>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<DivMulFusion>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<EliminateDropout>()));
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<GemmSumFusion>()));
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<GemmTransposeFusion>()));
+      //ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<GemmSumFusion>()));
+      //ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<GemmTransposeFusion>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<NotWhereFusion>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<InsertSoftmaxCrossEntropyLossOutput>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<LSTMReplacement>()));
@@ -261,9 +261,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // TODO hack - constant folding currently doesn't work after mixed precision transformation so it's disabled for now
       //             ORT uses CPU kernels to evaluate constant values but some of them don't support fp16
       // transformers.emplace_back(std::make_unique<ConstantFolding>(l1_execution_providers));
-      transformers.emplace_back(std::make_unique<MatMulAddFusion>(l1_execution_providers));
+      //transformers.emplace_back(std::make_unique<MatMulAddFusion>(l1_execution_providers));
       transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
-      transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cuda_rocm_execution_providers));
+      //transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cuda_rocm_execution_providers));
       transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_rocm_execution_providers));
       transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_rocm_execution_providers));
       transformers.emplace_back(std::make_unique<BiasSoftmaxFusion>(l1_execution_providers));
