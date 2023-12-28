@@ -12,6 +12,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+constexpr int kBlockSize = 256;
+constexpr int kNumWaves = 32;
 const int width_element_per_block = 32 * 2;
 template <unsigned int WarpSize>
 __device__ __forceinline__ float warpReduceSum(float sum) {
@@ -140,6 +142,95 @@ __global__ void BatchGemv(T* out, const T* inA, const uint32_t* inB, const T* sc
   }
 }
 
+
+constexpr int kBlockOutput = 32;
+constexpr int kMaxInputBatchInThread = 1;
+
+template <typename scalar_t, int WBITS>
+__global__ void Gemv_g(const scalar_t* __restrict__ input,
+                       const int* __restrict__ qweight, scalar_t* __restrict__ output,
+                       const scalar_t* __restrict__ scales,
+                       const int* __restrict__ qzeros,
+                       const int* __restrict__ g_idx, uint32_t mat_m,
+                       uint32_t mat_k, uint32_t mat_n, uint32_t zero_width) {
+  const int num_thread_group = kBlockSize / kNumWaves;
+  const int thread_num_k = (mat_k + num_thread_group - 1) / num_thread_group;
+  const int thread_idx_group = threadIdx.y;
+  const int thread_group_start = thread_idx_group * thread_num_k;
+
+  const int compress_group_size = 32 / WBITS;
+  const int max_num_in_bits = (1 << WBITS) - 1;
+
+  const int weight_x = blockIdx.x * kBlockOutput + threadIdx.x;
+
+  __shared__ float blocksum[kMaxInputBatchInThread][num_thread_group]
+                           [kBlockOutput];
+  float sum[kMaxInputBatchInThread];
+#pragma unroll
+  for (int bid = 0; bid < kMaxInputBatchInThread; bid++) {
+    sum[bid] = 0;
+  }
+  const int end_k = min(mat_k, thread_group_start + thread_num_k);
+  int input_start_y = blockIdx.y * kMaxInputBatchInThread;
+  int input_end_y = min(mat_m, input_start_y + kMaxInputBatchInThread);
+  int len_input_y = input_end_y - input_start_y;
+  for (int weight_y = thread_group_start; weight_y < end_k; weight_y++) {
+    scalar_t input_vec[kMaxInputBatchInThread];
+    for (int bid = 0; bid < len_input_y; bid++) {
+      input_vec[bid] = input[(input_start_y + bid) * mat_k + weight_y];
+    }
+    int scale_row = g_idx[weight_y];
+
+    scalar_t scale_v = scales[scale_row * mat_n + weight_x];
+    uint32_t zero_v =
+        qzeros == nullptr
+            ? 0x88888888
+            : qzeros[scale_row * zero_width + (weight_x / compress_group_size)];
+    int zero_ind = weight_x % compress_group_size;
+    uint8_t zv1 = (zero_v >> (zero_ind * WBITS)) & max_num_in_bits;
+
+    scalar_t scale_zeros = __hmul(scale_v, __ushort2half_rn(zv1));
+
+    uint32_t weight_int = qweight[(weight_y / compress_group_size) * mat_n + weight_x];
+    int weight_ind = (weight_y) % compress_group_size;
+    uint8_t wv1 = (weight_int >> (weight_ind * WBITS)) & max_num_in_bits;
+    scalar_t wv = __ushort2half_rn(wv1);
+    scalar_t weight = __hfma(wv, scale_v, -scale_zeros);
+    // sum = __hfma(weight, input_v, sum);
+    for (int bid = 0; bid < len_input_y; bid++) {
+      sum[bid] += __half2float(weight * input_vec[bid]);
+    }
+  }
+  for (int bid = 0; bid < len_input_y; bid++) {
+    if constexpr (!std::is_same<scalar_t, float>::value) {
+      blocksum[bid][thread_idx_group][threadIdx.x] = sum[bid];  //__half2float(sum);
+    } else {
+      blocksum[bid][thread_idx_group][threadIdx.x] = sum[bid];
+    }
+  }
+  for (unsigned int s = 1; s < num_thread_group; s *= 2) {
+    __syncthreads();
+    int index = 2 * s * thread_idx_group;
+    if (index < num_thread_group) {
+      for (int bid = 0; bid < len_input_y; bid++) {
+        blocksum[bid][index][threadIdx.x] +=
+            blocksum[bid][index + s][threadIdx.x];
+      }
+    }
+  }
+  for (int bid = 0; bid < len_input_y; bid++) {
+    if (thread_idx_group == 0) {
+      if constexpr (!std::is_same<scalar_t, float>::value) {
+        output[(input_start_y + bid) * mat_n + blockIdx.x * kBlockOutput +
+               threadIdx.x] = __float2half_rn(blocksum[bid][0][threadIdx.x]);
+      } else {
+        output[(input_start_y + bid) * mat_n + blockIdx.x * kBlockOutput +
+               threadIdx.x] = blocksum[bid][0][threadIdx.x];
+      }
+    }
+  }
+}
+
 void Q4bitGemv(
     cudaStream_t stream,
     const void* vec_data,
@@ -161,121 +252,36 @@ void Q4bitGemv(
       reinterpret_cast<const uint32_t*>(zeros_data), groupsize, MATRIX_M, MATRIX_K, MATRIX_N);
 }
 
-#ifdef __CUDA_ARCH__
-#if __CUDA_ARCH__ < 700
-// adapted from https://github.com/torch/cutorch/blob/master/lib/THC/THCAtomics.cuh
-//__device__ __forceinline__ void atomicAdd(__half* address, c10::Half val) {
-//    unsigned int *address_as_ui = reinterpret_cast<unsigned int *>(reinterpret_cast<char *>(address) - (reinterpret_cast<size_t>(address) & 2));
-//    unsigned int old = *address_as_ui;
-//    unsigned int assumed;
-//
-//    do {
-//        assumed = old;
-//        unsigned short hsum = reinterpret_cast<size_t>(address) & 2 ? (old >> 16) : (old & 0xffff);
-//        hsum += val;
-//        old = reinterpret_cast<size_t>(address) & 2
-//                 ? (old & 0xffff) | (hsum << 16)
-//                 : (old & 0xffff0000) | hsum;
-//        old = atomicCAS(address_as_ui, assumed, old);
-//
-//    // Note: uses integer comparison to avoid hang in case of NaN (since NaN != NaN)
-//    } while (assumed != old);
-//}
-#endif
-#endif
 
-const int BLOCKWIDTH = 64;
-const int BLOCKHEIGHT4 = 8;
-
-__device__ inline unsigned int as_unsigned(int i) {
-  return *reinterpret_cast<unsigned int*>(&i);
+template <typename T>
+__forceinline__ T ceil_div(T a, T b) {
+  return (a + b - 1) / b;
 }
 
-__device__ inline int as_int(int i) {
-  return *reinterpret_cast<int*>(&i);
-}
-
-template <typename scalar_t>
-__global__ void VecQuant4MatMulKernel(
-    const scalar_t* __restrict__ vec,
-    const int* __restrict__ mat,
-    scalar_t* __restrict__ mul,
-    const scalar_t* __restrict__ scales,
-    const int* __restrict__ zeros,
-    const int* __restrict__ g_idx,
-    int batch,
-    int vec_height,
-    int height,
-    int width,
-    int zero_width) {
-  int h = BLOCKHEIGHT4 * blockIdx.x;
-  int w = BLOCKWIDTH * blockIdx.y + threadIdx.x;
-
-  __shared__ scalar_t blockvec[BLOCKWIDTH];
-  int i = width * h + w;
-  int g_h = h * 8;
-  int k;
-  unsigned int g;
-  scalar_t w_tmp;
-
-  int z_w = w / 8;
-  int z_mod = (w % 8) * 4;
-
-  scalar_t weight[BLOCKWIDTH];
-
-  for (k = 0; k < BLOCKWIDTH; ++k) {
-    int k_w = (k / 8);
-    int k_bit = (k % 8) * 4;
-
-    g = as_int(g_idx[g_h + k]);
-    scalar_t scale = scales[g * width + w];
-    scalar_t zero = scalar_t(((as_unsigned(zeros[g * zero_width + z_w]) >> z_mod) & 0xF) + 1);
-
-    w_tmp = ((as_unsigned(mat[i + (k_w * width)]) >> k_bit) & 0xF);
-
-    weight[k] = scale * (w_tmp - zero);
-  }
-
-  scalar_t res;
-  for (int b = 0; b < batch; ++b) {
-    res = 0;
-
-    blockvec[threadIdx.x] = vec[b * vec_height + blockIdx.x * BLOCKWIDTH + threadIdx.x];
-    __syncthreads();
-    for (k = 0; k < BLOCKWIDTH; ++k) {
-      res += weight[k] * blockvec[k];
-    }
-    atomicAdd(&mul[b * width + w], res);
-    __syncthreads();
-  }
-}
-void vecquant4matmul_cuda(
+void NbitGemvGidx(
     cudaStream_t stream,
-    const void* vec,
-    const int* mat,
-    void* mul,
+    const void* input,
+    const int32_t* qweight,
+    void* output,
     const void* scales,
-    const int* zeros,
-    const int* g_idx,
-    int64_t* shape) {
-  int batch = shape[0];//vec.size(0);
-  int vec_height = shape[1];//vec.size(1);
-  int height = shape[2];    // mat.size(0);
-  int width = shape[3];     // mat.size(1);
-  int zero_width = shape[4];  // zeros.size(1);
+    const int32_t* qzeros,
+    const int32_t* g_idx,
+    const int64_t* shapes) {
+  auto matricx_m = static_cast<uint32_t>(shapes[0]);
+  auto matricx_k = static_cast<uint32_t>(shapes[1]);
+  auto matricx_n = static_cast<uint32_t>(shapes[2]);
+  auto zero_width = static_cast<uint32_t>(shapes[3]);
 
-  dim3 blocks(
-      (height + BLOCKHEIGHT4 - 1) / BLOCKHEIGHT4,
-      (width + BLOCKWIDTH - 1) / BLOCKWIDTH);
-  dim3 threads(BLOCKWIDTH);
+  dim3 blocks(ceil_div<uint32_t>(matricx_n, kBlockOutput),
+              ceil_div<uint32_t>(matricx_m, kMaxInputBatchInThread));
+  dim3 threads(kBlockOutput, kBlockSize / kBlockOutput);
 
-using scalar = half;
-VecQuant4MatMulKernel<<<blocks, threads, 0, stream>>>(
-    (const scalar*)vec, (const int*)mat, (scalar*)mul,
-    (const scalar*)scales, (const int*)zeros, (const int*)g_idx,
-    batch, vec_height, height, width, zero_width);
+  using scalar_t = __half;
+  Gemv_g<scalar_t, 4><<<blocks, threads, 0, stream>>>(
+      reinterpret_cast<const scalar_t*>(input), qweight, reinterpret_cast<scalar_t*> (output),
+      reinterpret_cast<const scalar_t*>(scales), qzeros, g_idx,matricx_m, matricx_k, matricx_n, zero_width);
 }
 
-  }  // namespace cuda
+}  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

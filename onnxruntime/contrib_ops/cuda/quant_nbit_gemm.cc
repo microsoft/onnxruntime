@@ -121,29 +121,27 @@ Status QuantNbitsGemm::ComputeInternal(OpKernelContext* ctx) const {
   const auto* input_gidx = ctx->Input<Tensor>(5);
   const auto& input_shape = input_x->Shape();
   const auto& weight_shape = input_qweight->Shape();
-  if (input_shape.NumDimensions() == 2 && input_shape[0] <= 4 && input_gidx && input_gidx->Shape().Size() > 1) {
+  int64_t num_batches = input_shape.SizeToDimension(input_shape.NumDimensions() - 1);
+  // huristic: if batch size is less than 8, use used matmul
+  if (num_batches < 8) {
     TensorShapeVector output_shape = input_shape.AsShapeVector();
     output_shape[output_shape.size() - 1] = weight_shape[1];
     auto* output = ctx->Output(0, output_shape);
-    auto batch = input_shape[0] * (input_shape.NumDimensions() > 2 ? input_shape[1] : 1);
-    int64_t in_features = input_shape[input_shape.NumDimensions() - 1];
-
     if (input_gidx && input_gidx->Shape().Size() > 1) {
       int64_t shapes[5] = {
-          batch,
-          in_features,
-          weight_shape[0],
+          num_batches,
+          in_features_,
           weight_shape[1],
           input_zeros->Shape()[1]};
-      vecquant4matmul_cuda(Stream(ctx), input_x->Data<MLFloat16>(),
-                           input_qweight->Data<int32_t>(), output->MutableData<MLFloat16>(),
-                           input_scale->Data<MLFloat16>(), input_zeros->Data<int32_t>(),
-                           input_gidx->Data<int32_t>(), shapes);
+      NbitGemvGidx(Stream(ctx), input_x->Data<MLFloat16>(),
+                   input_qweight->Data<int32_t>(), output->MutableData<MLFloat16>(),
+                   input_scale->Data<MLFloat16>(), input_zeros->Data<int32_t>(),
+                   input_gidx->Data<int32_t>(), shapes);
     } else {
       Q4bitGemv(Stream(ctx), input_x->Data<MLFloat16>(),
                 input_qweight->Data<int32_t>(), output->MutableData<MLFloat16>(),
                 input_scale->Data<MLFloat16>(), input_zeros->Data<int32_t>(),
-                batch, in_features, weight_shape[1],
+                num_batches, in_features_, weight_shape[1],
                 groupsize_);
     }
       return Status::OK();
@@ -153,24 +151,23 @@ Status QuantNbitsGemm::ComputeInternal(OpKernelContext* ctx) const {
       if (!status.IsOK())
         return status;
 
-      auto fp16_weight_shape = input_qweight->Shape();
-      fp16_weight_shape[0] *= 32 / bits_;
+      auto fp16_weight_shape = weight_shape;
+      fp16_weight_shape[0] = in_features_;
 
       auto temp_fp16_weight = Tensor::Create(input_scale->DataType(), fp16_weight_shape, alloc);
-
       if (input_gidx && input_gidx->Shape().Size() > 1) {
         DequantWeightNbit_g(Stream(ctx), input_qweight->Data<int32_t>(),
                             input_scale->Data<MLFloat16>(),
                             input_zeros->Data<int32_t>(),
                             input_gidx->Data<int32_t>(),
                             temp_fp16_weight->MutableData<MLFloat16>(),
-                            weight_shape[0], weight_shape[1], bits_, groupsize_);
+                            in_features_, weight_shape[1], bits_, groupsize_);
       } else {
         DequantWeightNbit(Stream(ctx), input_qweight->Data<int32_t>(),
                           input_scale->Data<MLFloat16>(),
                           input_zeros->Data<int32_t>(),
                           temp_fp16_weight->MutableData<MLFloat16>(),
-                          weight_shape[0], weight_shape[1], bits_, groupsize_);
+                          in_features_, weight_shape[1], bits_, groupsize_);
       }
       return Fp16GemmHelper<MLFloat16>(ctx, temp_fp16_weight.get(), GetDeviceProp(), GetCublasHandle(ctx));
   }

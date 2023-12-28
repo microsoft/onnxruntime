@@ -21,15 +21,15 @@ void Q4bitGemv(
     uint32_t MATRIX_K,
     uint32_t MATRIX_N,
     uint32_t groupsize);
-void vecquant4matmul_cuda(
+void NbitGemvGidx(
     cudaStream_t stream,
-    const void* vec,
-    const int* mat,
-    void* mul,
+    const void* input,
+    const int32_t* qweight,
+    void* output,
     const void* scales,
-    const int* zeros,
-    const int* g_idx,
-    int64_t* shape);
+    const int32_t* qzeros,
+    const int32_t* g_idx,
+    const int64_t* shapes);
 void DequantWeightNbit_g(cudaStream_t stream,
                          const int32_t* qweight_i32_i, const void* scale_fp16,
                          const int32_t* qzeros_i32_i, const int32_t* g_dix,
