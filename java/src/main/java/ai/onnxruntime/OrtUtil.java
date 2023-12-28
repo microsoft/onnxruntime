@@ -694,6 +694,8 @@ public final class OrtUtil {
     if (curDim == info.shape.length - 1) {
       // Reached primitive values, copy into buffer
       switch (info.type) {
+        case FLOAT16:
+        case BFLOAT16:
         case FLOAT:
           float[] fArr = (float[]) array;
           FloatBuffer fBuf = (FloatBuffer) buffer;
@@ -710,8 +712,6 @@ public final class OrtUtil {
           ByteBuffer bBuf = (ByteBuffer) buffer;
           bBuf.get(bArr);
           break;
-        case FLOAT16:
-        case BFLOAT16:
         case INT16:
           short[] sArr = (short[]) array;
           ShortBuffer sBuf = (ShortBuffer) buffer;

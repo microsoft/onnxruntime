@@ -113,6 +113,8 @@ public class OnnxTensor extends OnnxTensorLike {
    * ByteBuffer} then convert it to the right type. If it's not convertible it throws {@link
    * IllegalStateException}.
    *
+   * <p>Note this method converts FP16 and BFLOAT16 ShortBuffers into FP32 FloatBuffers.
+   *
    * @param buf The buffer to convert.
    * @return The buffer with the expected type.
    */
@@ -140,7 +142,23 @@ public class OnnxTensor extends OnnxTensorLike {
         }
         break;
       case BFLOAT16:
+        if (buf instanceof ShortBuffer) {
+          ShortBuffer bf16Buf = (ShortBuffer) buf;
+          return Fp16Conversions.convertBf16BufferToFloatBuffer(bf16Buf);
+        } else if (buf instanceof ByteBuffer) {
+          ShortBuffer bf16Buf = ((ByteBuffer) buf).asShortBuffer();
+          return Fp16Conversions.convertBf16BufferToFloatBuffer(bf16Buf);
+        }
+        break;
       case FLOAT16:
+        if (buf instanceof ShortBuffer) {
+          ShortBuffer fp16Buf = (ShortBuffer) buf;
+          return Fp16Conversions.convertFp16BufferToFloatBuffer(fp16Buf);
+        } else if (buf instanceof ByteBuffer) {
+          ShortBuffer fp16Buf = ((ByteBuffer) buf).asShortBuffer();
+          return Fp16Conversions.convertFp16BufferToFloatBuffer(fp16Buf);
+        }
+        break;
       case INT16:
         if (buf instanceof ShortBuffer) {
           return buf;
