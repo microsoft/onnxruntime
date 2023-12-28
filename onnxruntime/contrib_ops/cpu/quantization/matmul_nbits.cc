@@ -195,45 +195,49 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   const size_t K = static_cast<size_t>(helper.K());
   const size_t lda = helper.Lda(false);
 
-  const MLAS_SQNBITGEMM_COMPUTE_TYPE compute_type = CompFp32;
-  if (MlasIsSQNBitGemmAvailable(M, N, K, nbits_, block_size_, compute_type)) {
-    // number of bytes or elements between adjacent matrices
-    size_t b_data_matrix_stride_in_bytes, b_scale_matrix_stride, b_zero_point_matrix_stride_in_bytes;
-    MlasBlockwiseQuantizedBufferSizes(static_cast<int>(nbits_), static_cast<int>(block_size_), /* columnwise */ true,
-                                      static_cast<int>(K), static_cast<int>(N),
-                                      b_data_matrix_stride_in_bytes, b_scale_matrix_stride,
-                                      &b_zero_point_matrix_stride_in_bytes);
+  for (int64_t accuracy_level = accuracy_level_;
+       accuracy_level >= static_cast<int64_t>(CompMostAccurate);
+       --accuracy_level) {
+    const auto compute_type = static_cast<MLAS_SQNBITGEMM_COMPUTE_TYPE>(accuracy_level);
+    if (MlasIsSQNBitGemmAvailable(M, N, K, nbits_, block_size_, compute_type)) {
+      // number of bytes or elements between adjacent matrices
+      size_t b_data_matrix_stride_in_bytes, b_scale_matrix_stride, b_zero_point_matrix_stride_in_bytes;
+      MlasBlockwiseQuantizedBufferSizes(static_cast<int>(nbits_), static_cast<int>(block_size_), /* columnwise */ true,
+                                        static_cast<int>(K), static_cast<int>(N),
+                                        b_data_matrix_stride_in_bytes, b_scale_matrix_stride,
+                                        &b_zero_point_matrix_stride_in_bytes);
 
-    const size_t b_matrix_size = K * N;
+      const size_t b_matrix_size = K * N;
 
-    IAllocatorUniquePtr<std::byte> workspace{};
-    if (const size_t workspace_size = MlasSQNBitGemmBatchWorkspaceSize(M, N, K, batch_count,
-                                                                       nbits_, block_size_, compute_type);
-        workspace_size > 0) {
-      AllocatorPtr allocator;
-      ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
-      workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size);
+      IAllocatorUniquePtr<std::byte> workspace{};
+      if (const size_t workspace_size = MlasSQNBitGemmBatchWorkspaceSize(M, N, K, batch_count,
+                                                                         nbits_, block_size_, compute_type);
+          workspace_size > 0) {
+        AllocatorPtr allocator;
+        ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
+        workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size);
+      }
+
+      InlinedVector<MLAS_SQNBIT_GEMM_DATA_PARAMS> data(batch_count);
+      for (size_t i = 0; i < batch_count; ++i) {
+        const size_t b_matrix_offset = helper.RightOffsets()[i] / b_matrix_size;
+
+        data[i].A = a_data + helper.LeftOffsets()[i];
+        data[i].lda = lda;
+        data[i].QuantBData = b_data + b_matrix_offset * b_data_matrix_stride_in_bytes;
+        data[i].QuantBScale = scales_data + b_matrix_offset * b_scale_matrix_stride;
+        data[i].QuantBZeroPoint = zero_points_data != nullptr
+                                      ? zero_points_data + b_matrix_offset * b_zero_point_matrix_stride_in_bytes
+                                      : nullptr;
+        data[i].C = y_data + helper.OutputOffsets()[i];
+        data[i].ldc = N;
+      }
+
+      MlasSQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type, data.data(), workspace.get(),
+                          thread_pool);
+
+      return Status::OK();
     }
-
-    InlinedVector<MLAS_SQNBIT_GEMM_DATA_PARAMS> data(batch_count);
-    for (size_t i = 0; i < batch_count; ++i) {
-      const size_t b_matrix_offset = helper.RightOffsets()[i] / b_matrix_size;
-
-      data[i].A = a_data + helper.LeftOffsets()[i];
-      data[i].lda = lda;
-      data[i].QuantBData = b_data + b_matrix_offset * b_data_matrix_stride_in_bytes;
-      data[i].QuantBScale = scales_data + b_matrix_offset * b_scale_matrix_stride;
-      data[i].QuantBZeroPoint = zero_points_data != nullptr
-                                    ? zero_points_data + b_matrix_offset * b_zero_point_matrix_stride_in_bytes
-                                    : nullptr;
-      data[i].C = y_data + helper.OutputOffsets()[i];
-      data[i].ldc = N;
-    }
-
-    MlasSQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type, data.data(), workspace.get(),
-                        thread_pool);
-
-    return Status::OK();
   }
 
   const size_t ldb = helper.Ldb(true);

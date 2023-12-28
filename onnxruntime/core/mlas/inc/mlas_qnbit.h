@@ -24,14 +24,19 @@ Abstract:
 #include "mlas_gemm_postprocessor.h"
 
 /**
- * @brief Define compute types of block quantization
+ * @brief Define compute types of block quantization, in order of decreasing accuracy.
  */
 typedef enum {
-    CompUndef = 0, /*!< undef */
-    CompFp32 = 1,  /*!< input fp32, accumulator fp32 */
-    CompFp16 = 2,  /*!< input fp16, accumulator fp16 */
-    CompBf16 = 3,  /*!< input bf16, accumulator fp32 */
-    CompInt8 = 4   /*!< input int8, accumulator int32 */
+    CompUndef = 0,  /*!< undef */
+    CompFp32,       /*!< input fp32, accumulator fp32 */
+    CompFp16,       /*!< input fp16, accumulator fp16 */
+    CompBf16,       /*!< input bf16, accumulator fp32 */
+    CompInt8,       /*!< input int8, accumulator int32 */
+
+    // special values that should be the first and last actual values
+
+    CompMostAccurate = CompUndef,
+    CompLeastAccurate = CompInt8,
 } MLAS_SQNBIT_COMPUTE_TYPE;
 
 using MLAS_SQNBITGEMM_COMPUTE_TYPE = MLAS_SQNBIT_COMPUTE_TYPE;  // TODO consolidate these
