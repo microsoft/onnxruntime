@@ -337,8 +337,8 @@ void flash_attention_v2(hipStream_t stream,
                         Tensor* output, const InputMetadata* input_metadata,
                         PackedAttentionParameters params, void* flash_attention_v2_kernel) {
   at::Tensor query_tensor = {1, query->DataRaw(), {input_metadata->num_prompt_tokens, params.num_heads, params.head_size}};
-  at::Tensor key_tensor = {1, key->DataRaw(), {input_metadata->num_prompt_tokens, params.num_heads, params.head_size}};
-  at::Tensor value_tensor = {1, value->DataRaw(), {input_metadata->num_prompt_tokens, params.num_heads, params.head_size}};
+  at::Tensor key_tensor = {1, key->DataRaw(), {input_metadata->num_prompt_tokens, params.num_kv_heads, params.head_size}};
+  at::Tensor value_tensor = {1, value->DataRaw(), {input_metadata->num_prompt_tokens, params.num_kv_heads, params.head_size}};
 
   at::Tensor softmax_lse = {2, work_space, {input_metadata->attn_bias.batchsize, params.num_heads, input_metadata->attn_bias.q_seqinfo.max_seqlen}};
   std::vector<int64_t> out_shape = query_tensor.shape_;
