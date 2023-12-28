@@ -133,8 +133,8 @@ namespace Dml
             resourceId = ++m_currentResourceId;
         }
 
-        assert(resourceWrapper->GetD3D12Resource()->GetDesc().Width == bucketSize);
         assert(resourceWrapper != nullptr);
+        assert(resourceWrapper->GetD3D12Resource()->GetDesc().Width == bucketSize);
 
         ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(
             this,
@@ -218,6 +218,11 @@ namespace Dml
     void BucketizedBufferAllocator::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
     {
         m_defaultRoundingMode = roundingMode;
+    }
+
+    void BucketizedBufferAllocator::SetResidency(bool value)
+    {
+        m_subAllocator->SetResidency(value);
     }
 
     CPUAllocator::CPUAllocator(OrtMemType memType)

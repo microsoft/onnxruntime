@@ -46,6 +46,9 @@ namespace Dml
 
         void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
 
+        // Sets the residency of allocated GPU memory
+        void SetResidency(bool value);
+
     public: // onnxruntime::IAllocator
         void* Alloc(size_t size, AllocatorRoundingMode roundingMode);
         void* Alloc(size_t size) final;

@@ -1044,6 +1044,10 @@ inline Session::Session(const Env& env, const void* model_data, size_t model_dat
                                                                             prepacked_weights_container, &this->p_));
 }
 
+inline void Session::Evict() {
+  ThrowOnError(GetApi().EvictSession(this->p_));
+}
+
 inline AllocatedStringPtr ModelMetadata::GetProducerNameAllocated(OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().ModelMetadataGetProducerName(p_, allocator, &out));

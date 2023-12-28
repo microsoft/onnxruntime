@@ -326,6 +326,9 @@ class IExecutionProvider {
    */
   virtual std::vector<AllocatorPtr> CreatePreferredAllocators() { return std::vector<AllocatorPtr>(); };
 
+  virtual common::Status MakeResident() { return Status::OK(); };
+  virtual common::Status Evict() { return Status::OK(); };
+
  private:
   const std::string type_;
 

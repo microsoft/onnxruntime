@@ -11,6 +11,7 @@ namespace Dml
     {
     public:
         virtual Microsoft::WRL::ComPtr<DmlResourceWrapper> Alloc(size_t size) = 0;
+        virtual void SetResidency(bool value) = 0;
         virtual ~DmlSubAllocator(){}
     };
 }
