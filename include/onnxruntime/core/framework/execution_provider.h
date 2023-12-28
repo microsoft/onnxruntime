@@ -32,14 +32,9 @@ class Node;
 #include "core/framework/framework_provider_common.h"
 #include "core/framework/stream_handles.h"
 #include "core/framework/tuning_context.h"
+#include "data_layout.h"
 
 namespace onnxruntime {
-
-enum class DataLayout {
-  NCHW,
-  NHWC,
-  NCHWC,
-};
 
 class IExecutionProvider {
  protected:

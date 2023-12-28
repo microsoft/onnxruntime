@@ -15,7 +15,8 @@ target_include_directories(custom_openvino PUBLIC "../../include/onnxruntime" $E
 #target_include_directories(custom_openvino PUBLIC "../../include/onnxruntime" "/bert_ort/leca/condaenv/pe/include/openvino")
 
 list(APPEND OPENVINO_LIB_LIST ${InferenceEngine_LIBRARIES} ${NGRAPH_LIBRARIES} ngraph::onnx_importer ${PYTHON_LIBRARIES})
-target_link_libraries(custom_openvino PUBLIC "/bert_ort/leca/code/onnxruntime/build/Linux/Debug/_deps/onnx-build/libonnx.a"
+target_link_libraries(custom_openvino PUBLIC # "/bert_ort/leca/code/onnxruntime/build/Linux/Debug/libonnxruntime.so"  # For calling InitApi()
+                                             "/bert_ort/leca/code/onnxruntime/build/Linux/Debug/_deps/onnx-build/libonnx.a"
                                              "/bert_ort/leca/code/onnxruntime/build/Linux/Debug/_deps/onnx-build/libonnx_proto.a"
                                              #"/bert_ort/leca/code/onnxruntime/build/Linux/Debug/_deps/protobuf-build/libprotobuf-lited.a"
                                              "/bert_ort/leca/code/onnxruntime/build/Linux/Debug/_deps/protobuf-build/libprotobufd.a"

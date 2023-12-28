@@ -8,9 +8,13 @@
 #include "interface/graph/graph.h"
 #include "interface/framework/kernel.h"
 //#include "core/session/onnxruntime_c_api.h"
+//#ifdef ORT_API_MANUAL_INIT
+//#include "core/session/onnxruntime_cxx_api.h"
+//#endif
 #include "core/framework/ortdevice.h"
 #include "core/framework/stream_handles.h"
 #include "core/framework/node_compute_info.h"
+#include "core/framework/data_layout.h"
 #include <climits>
 
 namespace onnxruntime {
@@ -37,17 +41,18 @@ struct SubGraphDef {
   std::unique_ptr<MetaDef> meta_def_;
 };
 
+enum OrtMemType {   // from onnxruntime_c_api.h
+  OrtMemTypeCPUInput = -2,
+  OrtMemTypeCPUOutput = -1,
+  OrtMemTypeCPU = OrtMemTypeCPUOutput,
+  OrtMemTypeDefault = 0,
+};
+
 struct Allocator {
   virtual ~Allocator() = default;
-  enum DevType {
-    CPU = 0,
-    GPU,
-    FPGA,
-    TPU,
-  };
   virtual void* Alloc(size_t size) = 0;
   virtual void Free(void*) = 0;
-  DevType dev_type = CPU;
+  OrtDevice device;
 };
 
 using AllocatorPtr = std::unique_ptr<Allocator>;
@@ -55,13 +60,15 @@ using AllocatorPtrs = std::vector<AllocatorPtr>;
 
 class ExecutionProvider {
  public:
-  ExecutionProvider() { default_device_ = OrtDevice(); };
+  ExecutionProvider(std::string type, OrtDevice device = OrtDevice()) : type_{type}, default_device_(device) {
+//#ifdef ORT_API_MANUAL_INIT
+//    Ort::InitApi();
+//#endif
+  };
   virtual ~ExecutionProvider() = default;
 
-  AllocatorPtrs& GetAllocators() { return allocators_; }
-
   std::string& GetType() { return type_; }
-  OrtDevice& GetDevice() { return default_device_; }
+  OrtDevice& GetDevice() { return default_device_; }  // only for provider_adapter's constructor. Need to delete once provider_adapter is retired
 
   virtual bool CanCopy(const OrtDevice&, const OrtDevice&) { return false; }
   // virtual void MemoryCpy(Ort::UnownedValue&, Ort::ConstValue const&) {}
@@ -72,8 +79,19 @@ class ExecutionProvider {
   // latest kernel interface
   virtual void RegisterKernels(interface::IKernelRegistry& kernel_registry) = 0;
 
+  virtual int GetDeviceId() { return default_device_.Id(); }
+
+  virtual DataLayout GetPreferredLayout() const { return DataLayout::NCHW; }
+  virtual bool ConcurrentRunSupported() const { return true; }
+  virtual AllocatorPtrs CreatePreferredAllocators() { return AllocatorPtrs(); }
+  virtual OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const {
+    if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
+      return OrtDevice();  // default return CPU device.
+    }
+    return default_device_;
+  };
+
  protected:
-  AllocatorPtrs allocators_;
   std::string type_;
   OrtDevice default_device_;
 };

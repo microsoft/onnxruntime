@@ -372,32 +372,26 @@ std::string ApiGraphView::SerializeModelProtoToString2() const {
 }
 
 interface::ModelProtoPtr ApiGraphView::SerializeModelProto() const {
-//  GraphViewer graph_viewer(graph_, isg_);
-//  Model model(graph_viewer.Name(), true, ModelMetaData(), PathString(),
-//#if defined(ORT_MINIMAL_BUILD)
-//    IOnnxRuntimeOpSchemaRegistryList(),
-//#else
-//    IOnnxRuntimeOpSchemaRegistryList({graph_viewer.GetSchemaRegistry()}),
-//#endif
-//    graph_viewer.DomainToVersionMap(), std::vector<onnx::FunctionProto>(), graph_viewer.GetGraph().GetLogger()
-//  );
-//  onnx::ModelProto model_proto = model.ToProto();
-//  GraphViewerToProto(graph_viewer, *model_proto.mutable_graph(), true, true);
-//  std::string model_str;
-//  model_proto.SerializeToString(&model_str);
-//  interface::ModelProtoPtr ret;
-//  ret.p = model_str.data();
-//  ret.len = model_str.length();
-//  ret.version = 0;
+  GraphViewer graph_viewer(graph_, isg_);
+  Model model(graph_viewer.Name(), true, ModelMetaData(), PathString(),
+#if defined(ORT_MINIMAL_BUILD)
+    IOnnxRuntimeOpSchemaRegistryList(),
+#else
+    IOnnxRuntimeOpSchemaRegistryList({graph_viewer.GetSchemaRegistry()}),
+#endif
+    graph_viewer.DomainToVersionMap(), std::vector<onnx::FunctionProto>(), graph_viewer.GetGraph().GetLogger()
+  );
+  onnx::ModelProto model_proto = model.ToProto();
+  GraphViewerToProto(graph_viewer, *model_proto.mutable_graph(), true, true);
+  std::string model_str;
+  model_proto.SerializeToString(&model_str);
+  size_t model_str_len = model_str.length();
+  std::unique_ptr<char[]> p = std::make_unique<char[]>(model_str_len);
+  std::memcpy(p.get(), model_str.data(), model_str_len);
   interface::ModelProtoPtr ret;
-  ret.len = ret.version = 5;
-  char *p = new char[ret.len];
-  p[0] = 'a';
-  p[1] = 'b';
-  p[2] = 'c';
-  p[3] = 0;
-  p[4] = 'd';
-  ret.p = p;
+  ret.p = p.release();
+  ret.len = model_str_len;
+  ret.version = 0;
   return ret;
 }
 

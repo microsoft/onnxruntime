@@ -153,10 +153,12 @@ bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::interface::Gra
 std::unique_ptr<ONNX_NAMESPACE::ModelProto>
 BackendManager::GetModelProtoFromFusedNode(const onnxruntime::interface::NodeViewRef& fused_node,
                                            const onnxruntime::interface::GraphViewRef& subgraph) const {
-  //onnxruntime::interface::ModelProtoPtr model_proto = subgraph.SerializeModelProto();
+  onnxruntime::interface::ModelProtoPtr model_proto = subgraph.SerializeModelProto();
+  std::unique_ptr<const char[]> p(model_proto.p);
+  //p.reset(model_proto.p);
   // TODO: check version
-  //std::string model_proto_str(model_proto.p, model_proto.len);
-  std::string model_proto_str = subgraph.SerializeModelProtoToString2();
+  std::string model_proto_str(model_proto.p, model_proto.len);
+  //std::string model_proto_str = subgraph.SerializeModelProtoToString2();
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> ret = std::make_unique<ONNX_NAMESPACE::ModelProto>();
   ret->ParseFromString(model_proto_str);
 #ifndef NDEBUG

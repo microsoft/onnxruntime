@@ -47,8 +47,7 @@ struct AllocatorAdapter : public OrtAllocator {
   AllocatorAdapter(interface::Allocator* impl) : impl_(impl),
                                                  mem_info_("",
                                                            OrtDeviceAllocator,
-                                                           OrtDevice(static_cast<OrtDevice::DeviceType>(impl->dev_type),
-                                                                     OrtDevice::MemType::DEFAULT, 0)) {
+                                                           impl->device) {
     version = ORT_API_VERSION;
     OrtAllocator::Alloc = [](struct OrtAllocator* this_, size_t size) -> void* {
       auto self = reinterpret_cast<AllocatorAdapter*>(this_);
@@ -255,10 +254,6 @@ class ExecutionProviderAdapter : public IExecutionProvider {
       : IExecutionProvider(external_ep->GetType(), external_ep->GetDevice()), external_ep_impl_(external_ep) {
     external_ep_impl_->RegisterKernels(kernel_registry_);
     kernel_registry_.BuildKernels();
-
-    for (auto& allocator : external_ep_impl_->GetAllocators()) {
-      allocators_.push_back(std::make_unique<AllocatorAdapter>(allocator.get()));
-    }
   }
 
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override {

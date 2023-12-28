@@ -72,9 +72,7 @@ struct CustomCPUAllocator : public Allocator {
   };
 };
 
-CustomEp::CustomEp(const CustomEpInfo& info) : info_{info} {
-  type_ = "CustomEp";
-  allocators_.emplace_back(std::make_unique<CustomCPUAllocator>().release());
+CustomEp::CustomEp(const CustomEpInfo& info) : interface::ExecutionProvider{"CustomEp"}, info_{info} {
 }
 
 bool CustomEp::CanCopy(const OrtDevice& /*src*/, const OrtDevice& /*dst*/) {

@@ -10,8 +10,7 @@
 
 namespace onnxruntime {
 
-OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProviderInfo& info) {
-  type_ = "openvino";
+OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProviderInfo& info) : interface::ExecutionProvider{"openvino"} {
   openvino_ep::BackendManager::GetGlobalContext().device_type = info.device_type_;
   openvino_ep::BackendManager::GetGlobalContext().precision_str = info.precision_;
   openvino_ep::BackendManager::GetGlobalContext().enable_vpu_fast_compile = info.enable_vpu_fast_compile_;
@@ -167,6 +166,8 @@ common::Status OpenVINOExecutionProvider::Compile(
         };
     compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       Ort::InitApi(api);
+      //size_t count = 0;
+      //api->KernelContext_GetInputCount(context, &count);
       auto function_state = static_cast<OpenVINOEPFunctionState*>(state);
       try {
         function_state->backend_manager->Compute(context);
