@@ -56,7 +56,8 @@ GetSQNBitGemmVariant(
 
     if (BlkBitWidth == 4 &&
         (BlkLen == 16 || BlkLen == 32 || BlkLen == 64 || BlkLen == 128 || BlkLen == 256)) {
-        if (ComputeType == CompFp32) {
+        if (ComputeType == CompFp32 ||
+            ComputeType == CompUndef) {  // treat CompUndef (undefined) as CompFp32
             return SQNBitGemmVariant_BitWidth4_CompFp32;
         } else if (ComputeType == CompInt8 && M == 1) {
             return SQNBitGemmVariant_BitWidth4_CompInt8;
