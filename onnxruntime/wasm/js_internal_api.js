@@ -4,7 +4,7 @@
 'use strict';
 
 // init JSEP
-Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, releaseKernel, runKernel) => {
+Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, releaseKernel, runKernel, captureBegin, captureEnd, replay) => {
   Module.jsepBackend = backend;
   Module.jsepAlloc = alloc;
   Module.jsepFree = free;
@@ -13,6 +13,9 @@ Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, relea
   Module.jsepCreateKernel = createKernel;
   Module.jsepReleaseKernel = releaseKernel;
   Module.jsepRunKernel = runKernel;
+  Module.jsepCaptureBegin = captureBegin;
+  Module.jsepCaptureEnd = captureEnd;
+  Module.jsepReplay = replay;
 
   // This is a simplified version of cwrap() with options.async === true (-sASYNCIFY=1)
   // It removes some overhead in cwarp() and ccall() that we don't need.

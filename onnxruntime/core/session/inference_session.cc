@@ -140,7 +140,7 @@ static bool HasMemcpyNodes(const Graph& graph) {
   return false;
 }
 
-static bool AreAllComputeNodesAssignedToCudaEp(const Graph& graph) {
+static bool AreAllComputeNodesAssignedToCudaJSEp(const Graph& graph) {
   bool nodes_on_cpu_and_cuda_eps_only = true;
 
   for (const auto& node : graph.Nodes()) {
@@ -149,6 +149,7 @@ static bool AreAllComputeNodesAssignedToCudaEp(const Graph& graph) {
     // Empty node provider means CPU EP
     if (!node_provider.empty() &&
         node_provider != kCudaExecutionProvider &&
+        node_provider != kJsExecutionProvider &&
         node_provider != kCpuExecutionProvider) {
       nodes_on_cpu_and_cuda_eps_only = false;
       break;
@@ -1705,7 +1706,9 @@ common::Status InferenceSession::Initialize() {
       // The TRT EP is configured to do a graph capture AND
       // All the graph nodes have been assigned to the TRT EP,
       // Then the TRT EP is cached for triggering a ReplayGraph() in Run().
-      std::vector<const char*> cuda_graph_support_ep_list = {onnxruntime::kTensorrtExecutionProvider, onnxruntime::kCudaExecutionProvider};
+      std::vector<const char*> cuda_graph_support_ep_list = {onnxruntime::kTensorrtExecutionProvider,
+                                                             onnxruntime::kCudaExecutionProvider,
+                                                             onnxruntime::kJsExecutionProvider};
 
       for (auto& it : cuda_graph_support_ep_list) {
         auto* target_ep = execution_providers_.Get(it);
@@ -1722,12 +1725,13 @@ common::Status InferenceSession::Initialize() {
                                 "as the model has control flow nodes which can't be supported by CUDA Graphs."));
           }
 
-          if (strcmp(target_ep->Type().c_str(), onnxruntime::kCudaExecutionProvider) == 0) {
+          if (strcmp(target_ep->Type().c_str(), onnxruntime::kCudaExecutionProvider) == 0 ||
+              strcmp(target_ep->Type().c_str(), onnxruntime::kJsExecutionProvider) == 0) {
             // Ensure that all nodes have been partitioned to CUDA or CPU EP && there are no memcpy nodes
             // The reasoning behind this logic is that certain shape nodes will be forced onto CPU
             // and as long as there are no memcpy nodes this is confirmation that no compute nodes have been placed on the CPU EP
             // which is all we care about.
-            if (!AreAllComputeNodesAssignedToCudaEp(graph)) {
+            if (!AreAllComputeNodesAssignedToCudaJSEp(graph)) {
               LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
                                             << " as all compute graph nodes have not been partitioned to the CUDA EP.";
 

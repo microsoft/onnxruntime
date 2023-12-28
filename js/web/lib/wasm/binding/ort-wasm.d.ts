@@ -13,6 +13,9 @@ export declare namespace JSEP {
   type ReleaseKernelFunction = (kernel: number) => void;
   type RunFunction =
       (kernel: number, contextDataOffset: number, sessionHandle: number, errors: Array<Promise<string|null>>) => number;
+  type CaptureBeginFunction = () => void;
+  type CaptureEndFunction = () => void;
+  type ReplayFunction = () => void;
 }
 
 export interface OrtWasmModule extends EmscriptenModule {
@@ -123,7 +126,8 @@ export interface OrtWasmModule extends EmscriptenModule {
   jsepInit?
       (backend: JSEP.BackendType, alloc: JSEP.AllocFunction, free: JSEP.FreeFunction, upload: JSEP.UploadFunction,
        download: JSEP.DownloadFunction, createKernel: JSEP.CreateKernelFunction,
-       releaseKernel: JSEP.ReleaseKernelFunction, run: JSEP.RunFunction): void;
+       releaseKernel: JSEP.ReleaseKernelFunction, run: JSEP.RunFunction, captureBegin: JSEP.CaptureBeginFunction,
+       captureEnd: JSEP.CaptureEndFunction, replay: JSEP.ReplayFunction): void;
 
   /**
    * [exported from wasm] Specify a kernel's output when running OpKernel::Compute().
