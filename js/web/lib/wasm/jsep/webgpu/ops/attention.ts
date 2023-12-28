@@ -458,7 +458,7 @@ const computeVxAttentionScore =
    let offsetA = headIdx * (uniforms.M * uniforms.K) + m * uniforms.K;
    let offsetB = headIdx * (uniforms.N * uniforms.K) + n;
 
-   var value = ${probsHelper.type.value}(0);
+   var value = ${probsHelper.type.storage}(0);
    for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
      if (m < uniforms.M && w + local_id.x < uniforms.K) {
        tileQ[TILE_SIZE * local_id.y + local_id.x] = probs[offsetA + w + local_id.x];
