@@ -22,8 +22,9 @@ void RNNShapeInference(InferenceContext& ctx);
 void convTransposeShapeInference(InferenceContext& ctx);
 void convPoolShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, bool use_dilation, bool require_kernel_shape,
                             int input1Idx, int input2Idx);
-void matmulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int input1Idx, int input2Idx);
-
+namespace defs::math::utils {
+void MatMulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int input1Idx, int input2Idx);
+}
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
@@ -400,7 +401,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input B data type to 8-bit integer tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
+          ONNX_NAMESPACE::defs::math::utils::MatMulShapeInference(ctx, 0, 1);
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -438,7 +439,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                         "Constrain input a_scale, b_scale and output Y data type as float tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 2, 0);
-          ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
+          ONNX_NAMESPACE::defs::math::utils::MatMulShapeInference(ctx, 0, 1);
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1129,7 +1130,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("S", {"tensor(float)"}, "Constrain bias and scales to float32")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 2);
+          ONNX_NAMESPACE::defs::math::utils::MatMulShapeInference(ctx, 0, 2);
         }));
 
 static const char* Attention_QOrdered_doc = R"DOC(

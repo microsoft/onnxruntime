@@ -39,10 +39,13 @@ void convPoolShapeInference(
     bool use_dilation, bool require_kernel_shape,
     int input1Idx,
     int input2Idx);
-void matmulShapeInference(
+
+namespace defs::math::utils {
+void MatMulShapeInference(
     ONNX_NAMESPACE::InferenceContext& ctx,
     int input1Idx,
     int input2Idx);
+}
 
 void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
   propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -1893,7 +1896,7 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
                                   // Right now we only support int32
                                   y_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::INT32);
 
-                                  ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
+                                  ONNX_NAMESPACE::defs::math::utils::MatMulShapeInference(ctx, 0, 1);
                                 }));
 
 /**

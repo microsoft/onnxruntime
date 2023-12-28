@@ -13,8 +13,8 @@
 #endif
 using namespace ::ONNX_NAMESPACE;
 
-namespace ONNX_NAMESPACE {
-void matmulShapeInference(
+namespace ONNX_NAMESPACE::defs::math::utils {
+void MatMulShapeInference(
     ONNX_NAMESPACE::InferenceContext& ctx,
     int input1Idx,
     int input2Idx);
@@ -1398,7 +1398,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                         "Constrain input and output types to float or half tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
+          ONNX_NAMESPACE::defs::math::utils::MatMulShapeInference(ctx, 0, 1);
         }));
 
 constexpr const char* RemovePadding_ver1_doc = R"DOC(

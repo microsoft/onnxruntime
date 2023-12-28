@@ -335,7 +335,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
 
   // Instantiate once and reuse for all shape inference calls.
   constexpr bool check_type_true = true;
-  constexpr int error_mode_throw = 1;
+  constexpr InferenceErrorMode error_mode_throw = FailAnyInferenceError;
   constexpr bool enable_data_propagation_false = false;
   static const ONNX_NAMESPACE::ShapeInferenceOptions inference_options{check_type_true, error_mode_throw, enable_data_propagation_false};
 
