@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <type_traits>
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "moe.h"
@@ -37,12 +38,12 @@ template <typename T, bool use_quint4x2>
 struct ToCudaTypeWrapper : public ToCudaType<T> {};
 
 template <>
-struct ToCudaTypeWrapper<uint32_t, false> {
-  using MappedType = uint32_t;
+struct ToCudaTypeWrapper<uint8_t, false> {
+  using MappedType = uint8_t;
 };
 
 template <>
-struct ToCudaTypeWrapper<uint32_t, true> {
+struct ToCudaTypeWrapper<uint8_t, true> {
   using MappedType = cutlass::uint4b_t;
 };
 }  // anonymous namespace
@@ -69,7 +70,7 @@ Status MoE<T, WeightT>::ComputeInternal(OpKernelContext* context) const {
   MoEParameters moe_params;
   ORT_RETURN_IF_ERROR(CheckInputs(moe_params, input, router_probs, fc1_experts_weights, fc1_experts_bias_optional,
                                   fc2_experts_weights, fc2_experts_bias_optional, fc3_experts_weights_optional,
-                                  fc3_experts_bias_optional));
+                                  fc3_experts_bias_optional, std::is_same_v<WeightT, uint8_t>));
 
   static constexpr bool use_quint4x2 = true;
   using CudaT = typename ToCudaType<T>::MappedType;
@@ -110,7 +111,7 @@ Status MoE<T, WeightT>::ComputeInternal(OpKernelContext* context) const {
 
   moe_runner.run_moe_fc(reinterpret_cast<const CudaT*>(input->template Data<T>()),
                         reinterpret_cast<const CudaT*>(router_probs->template Data<T>()),
-                        reinterpret_cast<const CudaWeightT*>(fc1_experts_weights->template Data<T>()),
+                        reinterpret_cast<const CudaWeightT*>(fc1_experts_weights->DataRaw()),
                         fc1_scales_optional == nullptr
                             ? nullptr
                             : reinterpret_cast<const CudaT*>(fc1_scales_optional->template Data<T>()),
@@ -120,14 +121,14 @@ Status MoE<T, WeightT>::ComputeInternal(OpKernelContext* context) const {
                         activation_type_,
                         fc3_experts_weights_optional == nullptr
                             ? nullptr
-                            : reinterpret_cast<const CudaWeightT*>(fc3_experts_weights_optional->template Data<T>()),
+                            : reinterpret_cast<const CudaWeightT*>(fc3_experts_weights_optional->DataRaw()),
                         fc3_scales_optional == nullptr
                             ? nullptr
                             : reinterpret_cast<const CudaT*>(fc3_scales_optional->template Data<T>()),
                         fc3_experts_bias_optional == nullptr
                             ? nullptr
                             : reinterpret_cast<const CudaT*>(fc3_experts_bias_optional->template Data<T>()),
-                        reinterpret_cast<const CudaWeightT*>(fc2_experts_weights->template Data<T>()),
+                        reinterpret_cast<const CudaWeightT*>(fc2_experts_weights->DataRaw()),
                         fc2_scales_optional == nullptr
                             ? nullptr
                             : reinterpret_cast<const CudaT*>(fc2_scales_optional->template Data<T>()),
