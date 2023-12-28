@@ -3,9 +3,9 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from __future__ import annotations
 
 import ctypes
-from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 from onnx import ModelProto, NodeProto, TensorProto, helper
@@ -19,38 +19,44 @@ MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE = TensorProto.FLOAT
 MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE = [1]
 
 
-def get_params_connected_to_pull_param_trigger(named_params: Dict[str, torch.nn.parameter.Parameter]):
-    return {k: v for k, v in named_params if v.requires_grad}
+def get_params_connected_to_pull_param_trigger(
+    named_params: dict[str, torch.nn.parameter.Parameter], exported_model: ModelProto
+):
+    # Be noted, some parameters might not in graph input because they are not used in forward, so we filtered them also.
+    onnx_initializer_names = {p.name for p in exported_model.graph.input}
+    return {k: v for k, v in named_params if v.requires_grad and k in onnx_initializer_names}
 
 
-def get_params_not_connected_to_pull_param_trigger(named_params: Dict[str, torch.nn.parameter.Parameter]):
-    return [v for k, v in named_params if not v.requires_grad]
+def get_params_not_connected_to_pull_param_trigger(
+    named_params: dict[str, torch.nn.parameter.Parameter], exported_model: ModelProto
+):
+    # Be noted, some parameters might not in graph input because they are not used in forward, so we filtered them also.
+    onnx_initializer_names = {p.name for p in exported_model.graph.input}
+    return [v for k, v in named_params if not v.requires_grad and k in onnx_initializer_names]
 
 
 def post_processing_enable_mem_efficient_training(
     exported_model: ModelProto,
-    named_params: Dict[str, torch.nn.parameter.Parameter],
-) -> ModelProto:
+    named_params: dict[str, torch.nn.parameter.Parameter],
+) -> tuple[bool, ModelProto]:
     """This function is used to enable zero stage3 compatibility.
 
     Args:
         exported_model (ModelProto): The exported model.
         named_params (Optional[Dict[str, torch.nn.parameter.Parameter]]): The full parameter map.
+
+    Returns:
+        tuple[bool, ModelProto]: A tuple of bool and ModelProto. The bool indicates whether the model is modified.
+
     """
-    trainable_named_params = get_params_connected_to_pull_param_trigger(named_params)
+    trainable_named_params = get_params_connected_to_pull_param_trigger(named_params, exported_model)
+    # print(exported_model.graph.input)
+    if len(trainable_named_params) == 0:
+        return False, exported_model
 
     # Create weight retrieving function using trainable_named_params.
     param_pull_trigger_func_class = _create_param_trigger_function(trainable_named_params)
     param_retrieve_func_class = _create_param_retrieval_function(trainable_named_params)
-
-    consumer_map = {}
-    for node in exported_model.graph.node:
-        for inp in node.input:
-            if inp not in consumer_map:
-                consumer_map[inp] = []
-
-            if node not in consumer_map[inp]:
-                consumer_map[inp].append(node)
 
     def _get_param_pull_trigger_name(param_name: str) -> str:
         return f"pull_{param_name}"
@@ -90,9 +96,6 @@ def post_processing_enable_mem_efficient_training(
 
         graph_inputs_to_remove.append(graph_input)
 
-        if graph_input.name not in consumer_map:
-            continue
-
         # Create the param retrieval function for this parameter.
         node_inputs = [
             helper.make_tensor_value_info(
@@ -123,6 +126,14 @@ def post_processing_enable_mem_efficient_training(
         input_offset += 1
 
     # Delete exported_model.graph.input
+
+    names_to_remove = [input.name for input in graph_inputs_to_remove]
+    value_infos_to_remove = [
+        value_info for value_info in exported_model.graph.value_info if value_info.name in names_to_remove
+    ]
+    for value_info in value_infos_to_remove:
+        exported_model.graph.value_info.remove(value_info)
+
     for input_to_remove in graph_inputs_to_remove:
         exported_model.graph.input.remove(input_to_remove)
 
@@ -135,13 +146,13 @@ def post_processing_enable_mem_efficient_training(
     exported_model.graph.input.insert(offset, inputs[0])
     exported_model.graph.node.insert(0, weight_pull_node)
 
-    return exported_model
+    return True, exported_model
 
 
 _PARAM_FUNCTION_INDEX = [0]
 
 
-def _create_param_trigger_function(trainable_named_params: Optional[Dict[str, torch.nn.parameter.Parameter]]):
+def _create_param_trigger_function(trainable_named_params: dict[str, torch.nn.parameter.Parameter]):
     """This function is used to create a weight retrieving function using trainable_named_params."""
 
     @staticmethod
@@ -160,9 +171,9 @@ def _create_param_trigger_function(trainable_named_params: Optional[Dict[str, to
     @staticmethod
     def infer_shape(
         node: NodeProto,
-        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
-        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
-    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        tensor_input_shapes: list[list[int | str] | None],
+        tensor_input_dtypes: list[torch.onnx.TensorProtoDataType],
+    ) -> tuple[list[list[int | str] | None], list[torch.onnx.TensorProtoDataType]]:
         param_count = len(trainable_named_params.values())
         tensor_output_shapes = [
             tensor_input_shapes[0],
@@ -186,7 +197,7 @@ def _create_param_trigger_function(trainable_named_params: Optional[Dict[str, to
     )
 
 
-def _create_param_retrieval_function(trainable_named_params: Dict[str, torch.nn.parameter.Parameter]):
+def _create_param_retrieval_function(trainable_named_params: dict[str, torch.nn.parameter.Parameter]):
     """This function is used to create a weight retrieving function using trainable_named_params."""
 
     @staticmethod
@@ -205,9 +216,9 @@ def _create_param_retrieval_function(trainable_named_params: Dict[str, torch.nn.
     @staticmethod
     def infer_shape(
         node: NodeProto,
-        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
-        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
-    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        tensor_input_shapes: list[list[int | str] | None],
+        tensor_input_dtypes: list[torch.onnx.TensorProtoDataType],
+    ) -> tuple[list[list[int | str] | None], list[torch.onnx.TensorProtoDataType]]:
         input_pointer_scalars_attr_name = "input_pointer_scalars"
         found = [attr for attr in node.attribute if attr.name == input_pointer_scalars_attr_name]
 

@@ -400,13 +400,10 @@ class _RuntimeOptions:
         if "ORTMODULE_ENABLE_ZERO_STAGE3" in os.environ and int(os.getenv("ORTMODULE_ENABLE_ZERO_STAGE3")) == 1:
             self.enable_zero_stage3_support = True
 
-        if (
-            "ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT" in os.environ
-            and int(os.getenv("ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT")) == 1
-        ):
-            if self.enable_custom_autograd_function:
-                self.enable_mem_efficient_grad_management = True
-            else:
+        if "ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT" in os.environ:
+            enable_grad_mgmt = int(os.getenv("ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT"))
+            self.enable_mem_efficient_grad_management = enable_grad_mgmt == 1 and self.enable_custom_autograd_function
+            if not self.enable_custom_autograd_function and enable_grad_mgmt == 1:
                 self._logger.warning(
                     "ORTModule optimization for memory efficient gradient management cannot be enabled "
                     "because PyTorch custom autograd function support is disabled."

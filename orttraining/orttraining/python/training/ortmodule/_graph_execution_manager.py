@@ -438,13 +438,6 @@ class GraphExecutionManager(GraphExecutionInterface):
 
             exported_model = post_process_enabling_autograd_function(exported_model)
 
-        if self._runtime_options.enable_mem_efficient_grad_management:
-            from ._mem_efficient_grad_mgmt import post_processing_enable_mem_efficient_training
-
-            exported_model = post_processing_enable_mem_efficient_training(
-                exported_model, self._flattened_module.named_parameters()
-            )
-
         if self._runtime_options.enable_zero_stage3_support:
             from ._zero_stage3_compatibility import post_processing_enable_zero_stage3_compat
 
@@ -504,9 +497,29 @@ class GraphExecutionManager(GraphExecutionInterface):
     def _initialize_graph_builder(self):
         """Creates a new OrtModuleGraphBuilder, initializes it and saves it to self._graph_builder"""
 
+        # We post process the exported model because the trainable parame might be changed, so this path is
+        # re-triggered by reinitialize_graph_builder.
+        exported_model = copy.deepcopy(self._onnx_models.exported_model)
+        self._onnx_models.processed_exported_model = exported_model
+        if self._runtime_options.enable_mem_efficient_grad_management:
+            from ._mem_efficient_grad_mgmt import post_processing_enable_mem_efficient_training
+
+            # Override the options if model is not modified.
+            (
+                self._runtime_options.enable_mem_efficient_grad_management,
+                exported_model,
+            ) = post_processing_enable_mem_efficient_training(exported_model, self._flattened_module.named_parameters())
+
+        # if self._runtime_options.run_symbolic_shape_infer:
+        #     exported_model = SymbolicShapeInference.infer_shapes(
+        #         exported_model, auto_merge=True, guess_output_rank=True
+        #     )
+
         # All initializer names along with user inputs are a part of the onnx graph inputs
         # since the onnx model was exported with the flag keep_initializers_as_inputs=True
-        onnx_initializer_names = {p.name for p in self._onnx_models.exported_model.graph.input}
+        # We need to use the raw exported model here since the graph inputs include both user inputrs and
+        # parameters.
+        onnx_initializer_names = {p.name for p in exported_model.graph.input}
 
         # TODO: PyTorch exporter bug: changes the initializer order in ONNX model
         initializer_names = [
@@ -535,6 +548,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
             # Add mem efficient grad trigger name to require_grad_names, so that it will be included in the gradient graph.
             input_names_require_grad.append(MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME)
+
         grad_builder_config.input_names_require_grad = input_names_require_grad
         grad_builder_config.build_gradient_graph = self._export_mode == torch.onnx.TrainingMode.TRAINING
         grad_builder_config.enable_caching = self._runtime_options.enable_grad_acc_optimization
@@ -546,12 +560,23 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # It is assumed here that the order and names of the inputs and outputs are not modified by the backend in any way
         # and are kept as they appear in the exported onnx model.
-        self._graph_builder.initialize(self._onnx_models.exported_model.SerializeToString(), grad_builder_config)
+        self._graph_builder.initialize(exported_model.SerializeToString(), grad_builder_config)
+
+        raw_onnx_initializer_names = {p.name for p in self._onnx_models.exported_model.graph.input}
+
+        raw_initializer_names = [
+            name for name, _ in self._flattened_module.named_parameters() if name in raw_onnx_initializer_names
+        ]
+        raw_initializer_names_to_train = [
+            name
+            for name, param in self._flattened_module.named_parameters()
+            if param.requires_grad and name in raw_onnx_initializer_names
+        ]
 
         # TODO: Explore ways to make self._graph_info.initializer_names and self._graph_info.initializer_names_to_train
         #       a set (unordered_set in the backend) that does not require a copy on each reference.
-        self._graph_initializer_names = set(initializer_names)
-        self._graph_initializer_names_to_train = set(initializer_names_to_train)
+        self._graph_initializer_names = set(raw_initializer_names)
+        self._graph_initializer_names_to_train = set(raw_initializer_names_to_train)
 
         # Initializers can be cached and used since they are expected not to be re-instantiated
         # between forward calls.
@@ -602,7 +627,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Enable data sparsity inspection if sparse optimizer is ON or user wants to print input density.
         if self._runtime_options.enable_sparse_optimizer or self._runtime_options.print_input_density:
             self._runtime_inspector.enable_input_inspector(
-                self._onnx_models.exported_model, self._graph_builder.get_graph_info().user_input_names
+                self._onnx_models.processed_exported_model, self._graph_builder.get_graph_info().user_input_names
             )
 
             if self._runtime_options.enable_sparse_optimizer:
@@ -621,7 +646,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     from ._mem_efficient_grad_mgmt import get_params_not_connected_to_pull_param_trigger
 
                     param_to_append_as_onnx_graph_inputs = get_params_not_connected_to_pull_param_trigger(
-                        self._flattened_module.named_parameters()
+                        self._flattened_module.named_parameters(), self._onnx_models.exported_model
                     )
                 else:
                     param_to_append_as_onnx_graph_inputs = self._graph_initializers
