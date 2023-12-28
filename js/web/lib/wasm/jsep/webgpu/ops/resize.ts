@@ -342,7 +342,7 @@ const bilinearInterpolation =
       var col:${dType} = originalIndices[${widthIdx}];
       ${
           useExtrapolation ?
-              `if (row < 0 || row > (${inputShape[heightIdx]} - 1) || col < 0 || col > (${inputShape[widthIdx]} - 1))) {
+              `if (row < 0 || row > (${inputShape[heightIdx]} - 1) || col < 0 || col > (${inputShape[widthIdx]} - 1)) {
         return ${extrapolationValue};
       }` :
               ''};
