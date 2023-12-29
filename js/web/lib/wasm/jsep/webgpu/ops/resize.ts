@@ -41,7 +41,7 @@ const validateScales = (scales: number[], attributes: ResizeAttributes): void =>
             (scales.length === 4 && scales[0] === 1 && scales[3] === 1) ||
             (scales.length === 5 && scales[0] === 1 && scales[1] === 1))) {
         throw new Error(
-            `For linear more Resize requires scales to be 2D, 3D, 4D with either two outermost or one innermost and
+            `For linear mode, Resize requires scales to be 2D, 3D, 4D with either two outermost or one innermost and
             one outermost scale values equal to 1, or 5D with two outermost scale values equal to 1`);
       }
     } else if (attributes.mode === 'cubic') {
