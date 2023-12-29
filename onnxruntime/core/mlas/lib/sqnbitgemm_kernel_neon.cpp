@@ -665,10 +665,9 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
             });
 
             // compute quantized dot product
-            int32x4_t dot[NCols];
+            int32x4_t dot[NCols]{};
             UnrolledLoop<NCols>([&](size_t i) {
-                const int32x4_t zero_v = vdupq_n_s32(0);
-                dot[i] = vdotq_s32(zero_v, av, bv[i]);
+                dot[i] = vdotq_s32(dot[i], av, bv[i]);
             });
 
             // convert to float and add to `acc`
