@@ -240,7 +240,7 @@ TEST(ConvTest, Conv1D_Invalid_Input_Shape) {
   auto dummy_vals = {0.0f, 0.0f};
   TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, false,
              OpTester::ExpectResult::kExpectFailure,
-             "Node:node1 Output:Y [ShapeInferenceError] Can't merge shape info. "
+             "Node:node1 Output:Y [ShapeError] Can't merge shape info. "
              "Both inferred and declared dimension have values but they differ. Inferred=0 Declared=2 Dimension=2",
              -1);  // use latest opset for shape inferencing errors
 }
@@ -263,7 +263,7 @@ TEST(ConvTest, Conv2D_Invalid_Input_Shape) {
                      -0.0f, 0.0f, -0.0f, -0.0f};
   TestConvOp(attrs, {X, dummy_vals}, {X_shape, dummy_shape}, dummy_vals, dummy_shape, false,
              OpTester::ExpectResult::kExpectFailure,
-             "Node:node1 Output:Y [ShapeInferenceError] Can't merge shape info. "
+             "Node:node1 Output:Y [ShapeError] Can't merge shape info. "
              "Both inferred and declared dimension have values but they differ. Inferred=1 Declared=2 Dimension=0",
              -1);  // use latest opset for shape inferencing errors
 }

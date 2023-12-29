@@ -367,7 +367,7 @@ TEST(Unique, InvalidAxis) {
   test.AddInput("X", X_dims, X);
   test.AddOutput("Y", Y_dims, Y);
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "[ShapeInferenceError] Invalid value for attribute axis");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "[ShapeError] Invalid value for attribute axis");
 }
 
 // check empty input is gracefully handled

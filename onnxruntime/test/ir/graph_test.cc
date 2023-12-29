@@ -1506,7 +1506,7 @@ TEST_F(GraphTest, ShapeInferenceErrorHandling) {
   auto status = graph.Resolve();
   EXPECT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Node (node_1) Op (ShapeInferenceThrowsOp) "
-                                                        "[ShapeInferenceError] try harder"));
+                                                        "[ShapeError] try harder"));
 }
 
 TEST_F(GraphTest, AddTensorAttribute) {

@@ -1004,7 +1004,7 @@ static void InvalidInput(bool is_v8) {
                iteration_count_out, output_0, output_1, output_2, output_3,
                {},
                OpTester::ExpectResult::kExpectFailure,
-               "[ShapeInferenceError] Number of scan input axes specified (3) is not equal to number of scan inputs (2).");
+               "[ShapeError] Number of scan input axes specified (3) is not equal to number of scan inputs (2).");
 
     std::vector<int64_t> output_axes = {3, -1, 0, 0};  // 2 dims in output so 3 is invalid
     RunTest_v9("InvalidEntryInOutputAxes", sequence_len, input_size,
@@ -1013,7 +1013,7 @@ static void InvalidInput(bool is_v8) {
                iteration_count_out, output_0, output_1, output_2, output_3,
                {},
                OpTester::ExpectResult::kExpectFailure,
-               "[ShapeInferenceError] scan_output_axes axis value 3 is invalid for a tensor of rank 2");
+               "[ShapeError] scan_output_axes axis value 3 is invalid for a tensor of rank 2");
 
     output_axes = {0, 1, 2};
     RunTest_v9("InvalidNumEntriesInOutputAxes", sequence_len, input_size,
@@ -1022,7 +1022,7 @@ static void InvalidInput(bool is_v8) {
                iteration_count_out, output_0, output_1, output_2, output_3,
                {},
                OpTester::ExpectResult::kExpectFailure,
-               "[ShapeInferenceError] Number of scan output axes specified (3) is not equal to number of scan outputs (4).");
+               "[ShapeError] Number of scan output axes specified (3) is not equal to number of scan outputs (4).");
   }
 }
 

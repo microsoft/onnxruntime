@@ -258,7 +258,7 @@ TEST(LogSoftmaxOperator, InvalidAxis) {
           false,  // TensorRT parser: Assertion failed: axis >= 0 && axis < nbDims
           OpTester::ExpectResult::kExpectFailure,
           // ONNX has a bug in the error message generation so this is somewhat cryptic until it's fixed. Message should be:
-          "[ShapeInferenceError] 'axis' must be in [-2 , 1]. Its actual value is: -7");
+          "[ShapeError] 'axis' must be in [-2 , 1]. Its actual value is: -7");
   //", 1]. Its actual value is: -7");
 }
 

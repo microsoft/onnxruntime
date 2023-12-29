@@ -34,14 +34,14 @@ TEST(DetOpTest, InputDimsLessThan2) {
   OpTester test("Det", 11);
   test.AddInput<float>("X", {1}, {3.0f});
   test.AddOutput<float>("Y", {}, {-14.});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "[ShapeInferenceError] Input rank must be >= 2.");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "[ShapeError] Input rank must be >= 2.");
 }
 
 TEST(DetOpTest, InputDoesNotHaveSquareMatrix) {
   OpTester test("Det", 11);
   test.AddInput<float>("X", {2, 3}, {3.0f, 8.0f, 4.0f, 6.0f, 4.0f, 6.0f});
   test.AddOutput<float>("Y", {}, {-14.});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "[ShapeInferenceError] The inner-most 2 dimensions must have the same size");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "[ShapeError] The inner-most 2 dimensions must have the same size");
 }
 
 }  // namespace test

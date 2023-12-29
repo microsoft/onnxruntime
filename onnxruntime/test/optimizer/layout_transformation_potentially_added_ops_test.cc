@@ -27,6 +27,9 @@ TEST(LayoutTransformationPotentiallyAddedOpsTests, OpsHaveLatestVersions) {
     if (prev_domain != it->domain || prev_op_type != it->op_type) {
       const auto* schema = schema_registry->GetSchema(std::string{it->op_type}, INT_MAX, std::string{it->domain});
       ASSERT_NE(schema, nullptr);
+      if (schema->SinceVersion() != it->since_version) {
+        std::cout << "";
+      }
       EXPECT_EQ(schema->SinceVersion(), it->since_version)
           << "A new version for op " << it->op_type << " (" << schema->SinceVersion()
           << ") is available. Please update kLayoutTransformationPotentiallyAddedOps to include it.";

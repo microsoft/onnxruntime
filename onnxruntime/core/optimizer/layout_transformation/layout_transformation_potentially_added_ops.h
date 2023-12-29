@@ -23,7 +23,7 @@ inline constexpr std::array kLayoutTransformationPotentiallyAddedOps = {
     OpIdentifierWithStringViews{kOnnxDomain, "DequantizeLinear", 10},
     OpIdentifierWithStringViews{kOnnxDomain, "DequantizeLinear", 13},
     OpIdentifierWithStringViews{kOnnxDomain, "DequantizeLinear", 19},
-    // OpIdentifierWithStringViews{kOnnxDomain, "DequantizeLinear", 21}, pending CPU EP adding support
+    OpIdentifierWithStringViews{kOnnxDomain, "DequantizeLinear", 21},
     OpIdentifierWithStringViews{kOnnxDomain, "Gather", 1},
     OpIdentifierWithStringViews{kOnnxDomain, "Gather", 11},
     OpIdentifierWithStringViews{kOnnxDomain, "Gather", 13},
@@ -35,7 +35,7 @@ inline constexpr std::array kLayoutTransformationPotentiallyAddedOps = {
     OpIdentifierWithStringViews{kOnnxDomain, "QuantizeLinear", 10},
     OpIdentifierWithStringViews{kOnnxDomain, "QuantizeLinear", 13},
     OpIdentifierWithStringViews{kOnnxDomain, "QuantizeLinear", 19},
-    // OpIdentifierWithStringViews{kOnnxDomain, "QuantizeLinear", 21}, pending CPU EP adding support
+    OpIdentifierWithStringViews{kOnnxDomain, "QuantizeLinear", 21},
     OpIdentifierWithStringViews{kOnnxDomain, "Squeeze", 1},
     OpIdentifierWithStringViews{kOnnxDomain, "Squeeze", 11},
     OpIdentifierWithStringViews{kOnnxDomain, "Squeeze", 13},

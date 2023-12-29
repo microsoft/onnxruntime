@@ -484,9 +484,9 @@ TEST(SplitOperatorTest, SplitAttributeSumTooSmall) {
   outputs.push_back({{2, 2}, {3.f, 4.f, 5.f, 6.f}});
 
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, true, true, -1, true,
-                 "[ShapeInferenceError] Mismatch between the sum of 'split'");
+                 "[ShapeError] Mismatch between the sum of 'split'");
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, true, false, -1, true,
-                 "[ShapeInferenceError] Mismatch between the sum of 'split'");  // TensorRT parser: Assertion failed: axis != BATCH_DIM
+                 "[ShapeError] Mismatch between the sum of 'split'");  // TensorRT parser: Assertion failed: axis != BATCH_DIM
 }
 
 TEST(SplitOperatorTest, InvalidValueInSplitAttribute) {
@@ -505,9 +505,9 @@ TEST(SplitOperatorTest, InvalidValueInSplitAttribute) {
   outputs.push_back({{3, 2}, {3.f, 4.f, 5.f, 6.f, 7.f, 8.f}});
 
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, true, true, -1, true,
-                 "[ShapeInferenceError] Mismatch between number of splits");
+                 "[ShapeError] Mismatch between number of splits");
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, true, false, -1, true,
-                 "[ShapeInferenceError] Mismatch between number of splits");  // TensorRT parser: Assertion failed: axis != BATCH_DIM
+                 "[ShapeError] Mismatch between number of splits");  // TensorRT parser: Assertion failed: axis != BATCH_DIM
 }
 
 // split as input
