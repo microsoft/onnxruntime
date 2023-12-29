@@ -5,7 +5,6 @@
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
-namespace contrib {
 namespace cuda {
 
 template <typename T>
@@ -22,5 +21,4 @@ void GridSampleImpl(
     T* output_data);
 
 }  // namespace cuda
-}  // namespace contrib
 }  // namespace onnxruntime

@@ -7,7 +7,6 @@
 using namespace onnxruntime::cuda;
 
 namespace onnxruntime {
-namespace contrib {
 namespace cuda {
 
 template <typename T>
@@ -229,5 +228,4 @@ void GridSampleImpl(
 SPECIALIZED_IMPL(float)
 
 }  // namespace cuda
-}  // namespace contrib
 }  // namespace onnxruntime
