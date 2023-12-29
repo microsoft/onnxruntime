@@ -31,4 +31,3 @@ Right now, the Windows version supports only the DML provider. Linux x64 can use
 ## License
 
 License information can be found [here](https://github.com/microsoft/onnxruntime/blob/main/README.md#license).
-https://onnxruntime.ai/docs/build/inferencing.html#apis-and-language-bindings
