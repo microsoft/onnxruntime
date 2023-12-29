@@ -26,8 +26,8 @@ REGISTER_KERNEL_TYPED_20(float)
 
 template <typename T>
 GridSample<T>::GridSample(const OpKernelInfo& info) : CudaKernel(info) {
-  onnxruntime::GridSample<T>::GridSampleInterpolationMode mode{onnxruntime::GridSample<T>::Linear};
-  onnxruntime::GridSample<T>::GridSamplePaddingMode padding_mode{onnxruntime::GridSample<T>::Zeros};
+  typename onnxruntime::GridSample<T>::GridSampleInterpolationMode mode{onnxruntime::GridSample<T>::Linear};
+  typename onnxruntime::GridSample<T>::GridSamplePaddingMode padding_mode{onnxruntime::GridSample<T>::Zeros};
   std::tie(mode, padding_mode, align_corners_) = onnxruntime::GridSample<T>::ParseAttributes(info);
   mode_i_ = static_cast<int>(mode);
   padding_mode_i_ = static_cast<int>(padding_mode);
