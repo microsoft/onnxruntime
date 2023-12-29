@@ -491,6 +491,7 @@ class FusionRotaryAttention(FusionAttention):
             ],
             output_name_to_node=None,
         )
+
         if v_nodes_1 is not None:
             reshape_v_2, _, concat_v, _, reshape_v_1, matmul_v = v_nodes_1
             v_nodes = v_nodes_1
@@ -527,12 +528,12 @@ class FusionRotaryAttention(FusionAttention):
 
         qk_nodes = self.model.match_parent_path(
             matmul_qkv,
-            ["Softmax", "Add", "Div", "MatMul"],
-            [0, 0, 0, 0],
+            ["Softmax", "Add", "MatMul"],
+            [0, 0, 0],
         )
         add_qk, matmul_qk = None, None
         if qk_nodes is not None:
-            _, add_qk, _, matmul_qk = qk_nodes
+            _, add_qk, matmul_qk = qk_nodes
         else:
             logger.debug("fuse_rotary_attention: failed to match qk nodes")
             return
@@ -570,6 +571,12 @@ class FusionRotaryAttention(FusionAttention):
             ["Expand", "Where", "Sub", "Cast", "Expand", "Unsqueeze", "Unsqueeze"],
             [1, 0, 2, 1, 0, 0, 0],
         )
+        attn_mask_nodes_7 = self.model.match_parent_path(
+            add_qk,
+            ["Where", "Cast", "Where", "Sub", "Cast", "Expand", "Unsqueeze", "Unsqueeze"],
+            [1, 0, 0, 2, 1, 0, 0, 0],
+        )
+
         if attn_mask_nodes_1 is not None:
             _, slice_mask_1, slice_mask_2 = attn_mask_nodes_1
             attn_mask = slice_mask_1.output[0]
@@ -588,6 +595,8 @@ class FusionRotaryAttention(FusionAttention):
         elif attn_mask_nodes_6 is not None:
             # The mask has already been reshaped to (B,N,S,T)
             add_qk_str = attn_mask_nodes_6[0].output[0]
+        elif attn_mask_nodes_7 is not None:
+            add_qk_str = attn_mask_nodes_7[0].output[0]
         else:
             logger.debug("fuse_rotary_attention: failed to match attention mask nodes")
             return
@@ -617,6 +626,7 @@ class FusionRotaryAttention(FusionAttention):
             [
                 (
                     [
+                         "Mul",
                         "Transpose",
                         "Reshape",
                         "Expand",
@@ -627,10 +637,11 @@ class FusionRotaryAttention(FusionAttention):
                         "Reshape",
                         "MatMul",
                     ],
-                    [1, 0, 0, 0, 0, 1, 0, 0, 0],
+                    [1, 0, 0, 0, 0, 0, 1, 0, 0, 0],
                 ),
                 (
                     [
+                         "Mul",
                         "Transpose",
                         "Reshape",
                         "Expand",
@@ -647,10 +658,11 @@ class FusionRotaryAttention(FusionAttention):
                         "Reshape",
                         "MatMul",
                     ],
-                    [1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+                    [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
                 ),
                 (
                     [
+                        "Mul",
                         "Transpose",
                         "Reshape",
                         "Expand",
@@ -670,10 +682,11 @@ class FusionRotaryAttention(FusionAttention):
                         "Reshape",
                         "MatMul",
                     ],
-                    [1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+                    [1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
                 ),
                 (
                     [
+                        "Mul",
                         "Transpose",
                         "Reshape",
                         "Expand",
@@ -691,10 +704,11 @@ class FusionRotaryAttention(FusionAttention):
                         "Reshape",
                         "MatMul",
                     ],
-                    [1, 0, 0, 1, 1, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0],
+                    [1, 0, 0, 0, 1, 1, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0],
                 ),
                 (
                     [
+                        "Mul",
                         "Transpose",
                         "Reshape",
                         "Expand",
@@ -710,10 +724,11 @@ class FusionRotaryAttention(FusionAttention):
                         "Reshape",
                         "MatMul",
                     ],
-                    [1, 0, 0, 1, 2, 0, 4, 0, 0, 0, 1, 0, 0, 0],
+                    [1, 0, 0, 0, 1, 2, 0, 4, 0, 0, 0, 1, 0, 0, 0],
                 ),
                 (
                     [
+                        "Mul",
                         "Transpose",
                         "Reshape",
                         "Concat",
@@ -726,10 +741,11 @@ class FusionRotaryAttention(FusionAttention):
                         "Reshape",
                         "MatMul",
                     ],
-                    [1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0],
+                    [1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0],
                 ),
                 (
                     [
+                        "Mul",
                         "Transpose",
                         "Reshape",
                         "Concat",
@@ -743,10 +759,11 @@ class FusionRotaryAttention(FusionAttention):
                         "Reshape",
                         "MatMul",
                     ],
-                    [1, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0],
+                    [1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0],
                 ),
                 (
                     [
+                         "Mul",
                         "Transpose",
                         "Reshape",
                         "Concat",
@@ -759,10 +776,11 @@ class FusionRotaryAttention(FusionAttention):
                         "Reshape",
                         "MatMul",
                     ],
-                    [1, 0, 1, 2, 0, 0, 0, 1, 0, 0, 0],
+                    [1, 0, 0, 1, 2, 0, 0, 0, 1, 0, 0, 0],
                 ),
                 (
                     [
+                        "Mul",
                         "Transpose",
                         "Reshape",
                         "Concat",
@@ -775,11 +793,12 @@ class FusionRotaryAttention(FusionAttention):
                         "Reshape",
                         "MatMul",
                     ],
-                    [1, 0, 1, 3, 0, 0, 0, 1, 0, 0, 0],
+                    [1, 0, 0, 1, 3, 0, 0, 0, 1, 0, 0, 0],
                 ),
             ],
             output_name_to_node=None,
         )
+
         if k_nodes_1 is not None:
             reshape_k_2, _, concat_k, _, rotary_k, matmul_k = k_nodes_1
             k_nodes = k_nodes_1
@@ -827,14 +846,14 @@ class FusionRotaryAttention(FusionAttention):
         )
         q_nodes_2 = self.model.match_parent_path(
             matmul_qk,
-            ["RotaryEmbedding", "Transpose", "Reshape", "MatMul"],
-            [0, 0, 0, 0],
+            ["Mul", "RotaryEmbedding", "Transpose", "Reshape", "MatMul"],
+            [0, 0, 0, 0, 0],
         )
         if q_nodes_1 is not None:
             reshape_q_2, _, rotary_q, matmul_q = q_nodes_1
             q_nodes = q_nodes_1
         elif q_nodes_2 is not None:
-            rotary_q, _, reshape_q, matmul_q = q_nodes_2
+            _, rotary_q, _, reshape_q, matmul_q = q_nodes_2
             q_nodes = q_nodes_2
         else:
             logger.debug("fuse_rotary_attention: failed to match q nodes")
@@ -875,6 +894,7 @@ class FusionRotaryAttention(FusionAttention):
             # Rename inputs of rotary_q/k so it connects with output of matmul_q/k
             # Before: MatMul --> Reshape --> Transpose --> RotaryEmbedding
             # After: MatMul --> RotaryEmbedding
+
             rotary_q.input[0] = matmul_q.output[0]
             rotary_k.input[0] = matmul_k.output[0]
 
@@ -934,7 +954,7 @@ class FusionRotaryAttention(FusionAttention):
         if q_nodes == q_nodes_1:
             self.nodes_to_remove.extend(q_nodes[:-2])
         elif q_nodes == q_nodes_2:
-            self.nodes_to_remove.append(q_nodes[1])
+            self.nodes_to_remove.append(q_nodes[0])
             self.nodes_to_remove.append(q_nodes[2])
 
         self.prune_graph = True
