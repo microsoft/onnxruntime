@@ -5,6 +5,12 @@ import {TensorView} from '../tensor-view';
 
 import {ShaderHelper} from './ops/common';
 
+export enum StatusType {
+  default = 0,
+  capture = 1,
+  replay = 2
+}
+
 export enum GpuDataType {
   default = 0,
   upload = 1,

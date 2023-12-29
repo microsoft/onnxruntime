@@ -9,7 +9,7 @@ import {LOG_DEBUG} from '../log';
 import {TensorView} from '../tensor-view';
 
 import {createShaderHelper} from './ops/common';
-import {Artifact, GpuData, ProgramInfo} from './types';
+import {Artifact, GpuData, ProgramInfo, StatusType} from './types';
 
 /**
  * ProgramManager is the main class behind running computations
@@ -41,7 +41,6 @@ export class ProgramManager {
     const device = this.backend.device;
 
     const computePassEncoder = this.backend.getComputePassEncoder();
-    computePassEncoder.setPipeline(buildArtifact.computePipeline);
     const entries = [];
     for (const input of inputs) {
       entries.push({binding: entries.length, resource: {buffer: input.buffer}});
@@ -54,8 +53,19 @@ export class ProgramManager {
     }
     const bindGroup = device.createBindGroup(
         {layout: buildArtifact.computePipeline.getBindGroupLayout(0), entries, label: buildArtifact.programInfo.name});
-    computePassEncoder.setBindGroup(0, bindGroup);
 
+    if (this.backend.status === StatusType.capture) {
+      const commandInfo = {
+        kernelId: this.backend.currentKernelId!,
+        computePipeline: buildArtifact.computePipeline,
+        bindGroup,
+        dispatchGroup
+      };
+      this.backend.capturedCommandList.push(commandInfo);
+    }
+
+    computePassEncoder.setPipeline(buildArtifact.computePipeline);
+    computePassEncoder.setBindGroup(0, bindGroup);
     computePassEncoder.dispatchWorkgroups(...dispatchGroup);
 
     this.backend.pendingDispatchNumber++;

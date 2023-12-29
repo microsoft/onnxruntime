@@ -4,7 +4,7 @@
 import {WebGpuBackend} from '../backend-webgpu';
 import {LOG_DEBUG} from '../log';
 
-import {GpuData, GpuDataId, GpuDataType} from './types';
+import {GpuData, GpuDataId, GpuDataType, StatusType} from './types';
 
 /**
  * manages GpuDataId -> GpuBuffer
@@ -312,20 +312,24 @@ class GpuDataManagerImpl implements GpuDataManager {
       buffer.destroy();
     }
     this.buffersForUploadingPending = [];
-    for (const buffer of this.buffersPending) {
-      // eslint-disable-next-line no-bitwise
-      if ((buffer.usage & GPUBufferUsage.STORAGE) === GPUBufferUsage.STORAGE) {
-        // Put the pending buffer to freeBuffers list instead of really destroying it for buffer reusing.
-        this.freeBuffers.get(buffer.size)!.push(buffer);
+
+    // Don't release intermediate tensors in non-default mode.
+    if (this.backend.status === StatusType.default) {
+      for (const buffer of this.buffersPending) {
         // eslint-disable-next-line no-bitwise
-      } else if ((buffer.usage & GPUBufferUsage.UNIFORM) === GPUBufferUsage.UNIFORM) {
-        // Put the pending buffer to freeUniformBuffers list instead of really destroying it for buffer reusing.
-        this.freeUniformBuffers.get(buffer.size)!.push(buffer);
-      } else {
-        buffer.destroy();
+        if ((buffer.usage & GPUBufferUsage.STORAGE) === GPUBufferUsage.STORAGE) {
+          // Put the pending buffer to freeBuffers list instead of really destroying it for buffer reusing.
+          this.freeBuffers.get(buffer.size)!.push(buffer);
+          // eslint-disable-next-line no-bitwise
+        } else if ((buffer.usage & GPUBufferUsage.UNIFORM) === GPUBufferUsage.UNIFORM) {
+          // Put the pending buffer to freeUniformBuffers list instead of really destroying it for buffer reusing.
+          this.freeUniformBuffers.get(buffer.size)!.push(buffer);
+        } else {
+          buffer.destroy();
+        }
       }
+      this.buffersPending = [];
     }
-    this.buffersPending = [];
   }
 
   dispose() {

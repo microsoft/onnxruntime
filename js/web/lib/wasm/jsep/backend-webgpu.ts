@@ -8,7 +8,14 @@ import {createView, TensorView} from './tensor-view';
 import {createGpuDataManager, downloadGpuData, GpuDataManager} from './webgpu/gpu-data-manager';
 import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
 import {ProgramManager} from './webgpu/program-manager';
-import {ComputeContext, GpuData, ProgramInfo, ProgramInputTensorInfoDependency} from './webgpu/types';
+import {ComputeContext, GpuData, ProgramInfo, ProgramInputTensorInfoDependency, StatusType} from './webgpu/types';
+
+interface CommandInfo {
+  kernelId: number;
+  computePipeline: GPUComputePipeline;
+  bindGroup: GPUBindGroup;
+  dispatchGroup: [number, number, number];
+}
 
 const getProgramInputTensorInfoDependencyKey =
     (inputTensors: readonly TensorView[], inputDependencies: readonly ProgramInputTensorInfoDependency[]): string => {
@@ -141,6 +148,8 @@ export class WebGpuBackend {
   queryTimeBase?: bigint;
 
   env: Env;
+  status: StatusType = StatusType.default;
+  capturedCommandList: CommandInfo[] = [];
 
   /**
    * a SessionID -> a Map of (InputOutputIndex -> [ID, GPUBuffer]) mapping.
@@ -549,11 +558,28 @@ export class WebGpuBackend {
   }
   captureBegin(): void {
     LOG_DEBUG('info', () => 'captureBegin');
+    this.capturedCommandList = [];
+    this.status = StatusType.capture;
   }
   captureEnd(): void {
     LOG_DEBUG('info', () => 'captureEnd');
+    this.status = StatusType.default;
   }
   replay(): void {
     LOG_DEBUG('info', () => 'replay');
+    this.status = StatusType.replay;
+    const length = this.capturedCommandList.length;
+    for (let i = 0; i < length; i++) {
+      const computePassEncoder = this.getComputePassEncoder();
+      const command = this.capturedCommandList[i];
+      computePassEncoder.setPipeline(command.computePipeline);
+      computePassEncoder.setBindGroup(0, command.bindGroup);
+      computePassEncoder.dispatchWorkgroups(...command.dispatchGroup);
+      this.pendingDispatchNumber++;
+      if (this.pendingDispatchNumber >= 16) {
+        this.flush();
+      }
+    }
+    this.status = StatusType.default;
   }
 }

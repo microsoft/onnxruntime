@@ -763,9 +763,6 @@ Status JsExecutionProvider::OnRunEnd(bool sync_stream) {
     if (IsGraphCaptureAllowed()) {
       EM_ASM({ Module.jsepCaptureEnd(); });
       is_graph_captured_ = true;
-      // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
-      // so run the captured graph here to actually execute the work.
-      EM_ASM({ Module.jsepReplay(); });
     } else {
       IncrementRegularRunCountBeforeGraphCapture();
     }
