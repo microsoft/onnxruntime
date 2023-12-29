@@ -126,7 +126,7 @@ def _make_causal_mask(
 
     correct_mask = np.full((seqence_length, total_sequence_length), 1)
     for i in range(seqence_length):
-        correct_mask[i][:] = not (sum(mask[i]) == total_sequence_length)
+        correct_mask[i][:] = sum(mask[i]) != total_sequence_length
     return mask, correct_mask
 
 
