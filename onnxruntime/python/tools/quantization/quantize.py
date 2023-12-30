@@ -466,7 +466,6 @@ def quantize_static(
 
         import copy
 
-        import onnx
         from neural_compressor.adaptor.ox_utils.smooth_quant import ORTSmoothQuant
 
         def inc_dataloader():
@@ -478,8 +477,7 @@ def quantize_static(
         dataloader = inc_dataloader()
         sq = ORTSmoothQuant(model_input, dataloader, reduce_range)
         del dataloader
-        model = sq.transform(
-            extra_options.get("SmoothQuantAlpha", 0.5), extra_options.get("SmoothQuantFolding", True))
+        model = sq.transform(extra_options.get("SmoothQuantAlpha", 0.5), extra_options.get("SmoothQuantFolding", True))
         sq_path = tempfile.TemporaryDirectory(prefix="ort.quant.")
         model_input = Path(sq_path).joinpath("sq_model.onnx").as_posix()
         model.save(model_input)
