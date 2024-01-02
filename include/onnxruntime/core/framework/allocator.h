@@ -3,13 +3,14 @@
 
 #pragma once
 
+#include <map>
+
 #include "core/common/common.h"
 #include "core/framework/allocator_stats.h"
+// some enums are defined in session/onnxruntime_c_api.h but used in ortdevice.h/ortmemory.h
 #include "core/session/onnxruntime_c_api.h"
-#include "ortdevice.h"
-#include "ortmemoryinfo.h"
-#include <cassert>
-#include <map>
+#include "core/framework/ortdevice.h"
+#include "core/framework/ortmemoryinfo.h"
 
 // This configures the arena based allocator used by ORT
 // See docs/C_API.md for details on what these mean and how to choose these values
@@ -69,8 +70,12 @@ class IAllocator {
   IAllocator(const OrtMemoryInfo& info) : memory_info_(info) {}
   virtual ~IAllocator() = default;
   /**
-  @remarks Use SafeInt when calculating the size of memory to allocate using Alloc.
-  */
+   * Allocate memory of the specified size.
+   * If size is 0, nullptr is returned.
+   * If allocation fails, an exception is thrown.
+   *
+   * @remarks Use SafeInt when calculating the size of memory to allocate using Alloc.
+   */
   virtual void* Alloc(size_t size) = 0;
 
   virtual void Free(void* p) = 0;
@@ -168,12 +173,14 @@ class IAllocator {
     if constexpr (!std::is_void<T>::value) {
       // sizeof(void) isn't valid, but the compiler isn't smart enough to ignore that this line isn't
       // reachable if T is void. use std::conditional to 'use' void* in the sizeof call
-      const auto size = sizeof(typename std::conditional<std::is_void<T>::value, void*, T>::type);
-      alloc_size = CheckedCalcMemSizeForArray(count_or_bytes, size);
+      constexpr auto size = sizeof(typename std::conditional<std::is_void<T>::value, void*, T>::type);
+      alloc_size = ValidatedCalcMemSizeForArray(count_or_bytes, size);
     }
 
     // allocate
     T* p = static_cast<T*>(AllocateBufferWithOptions(*allocator, alloc_size, use_reserve, stream, std::move(wait_fn)));
+    ValidateAllocation(p, alloc_size);
+
     return IAllocatorUniquePtr<T>{p,
                                   [allocator = std::move(allocator)](T* p) {
                                     allocator->Free(p);
@@ -195,11 +202,13 @@ class IAllocator {
     if constexpr (!std::is_void<T>::value) {
       // sizeof(void) isn't valid, but the compiler isn't smart enough to ignore that this line isn't
       // reachable if T is void. use std::conditional to 'use' void* in the sizeof call
-      const auto size = sizeof(typename std::conditional<std::is_void<T>::value, void*, T>::type);
-      alloc_size = CheckedCalcMemSizeForArray(count_or_bytes, size);
+      constexpr auto size = sizeof(typename std::conditional<std::is_void<T>::value, void*, T>::type);
+      alloc_size = ValidatedCalcMemSizeForArray(count_or_bytes, size);
     }
 
     T* p = static_cast<T*>(ort_allocator->Alloc(ort_allocator, alloc_size));
+    ValidateAllocation(p, alloc_size);
+
     return IAllocatorUniquePtr<T>{p,
                                   [ort_allocator](T* p) {
                                     ort_allocator->Free(ort_allocator, p);
@@ -207,13 +216,16 @@ class IAllocator {
   }
 
  private:
+  //
   // validation functions. split out from methods that are templatized on the data type to minimize binary size.
+  //
+
   template <typename T>
   static void ValidateAllocator(const T& allocator) {
     ORT_ENFORCE(allocator != nullptr);
   }
 
-  static size_t CheckedCalcMemSizeForArray(size_t count, size_t size) {
+  static size_t ValidatedCalcMemSizeForArray(size_t count, size_t size) {
     size_t alloc_size = 0;
     if (!CalcMemSizeForArray(count, size, &alloc_size)) {
       ORT_THROW("Invalid size requested for allocation: ", count, " * ", size);
@@ -221,6 +233,12 @@ class IAllocator {
 
     return alloc_size;
   }
+
+  static void ValidateAllocation(void* p, size_t size) {
+    // allocator should throw directly but in case it didn't ensure we do here so that calling code doesn't
+    // need to check for nullptr when an actual allocation was expected.
+    ORT_ENFORCE(p != nullptr || size == 0, "Memory allocation failed. Size=", size);
+  };
 
   OrtMemoryInfo memory_info_;
 };
