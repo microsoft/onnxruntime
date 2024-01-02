@@ -517,62 +517,17 @@ QuantizeARow_CompInt8(
     std::byte* QuantA
 )
 {
-    [[maybe_unused]] auto impl0_reference = [&]() {
-        const float* ADataRowPtr = A;
-        std::byte* QuantARowPtr = QuantA;
+    const float* ADataBlkPtr = A;
+    std::byte* QuantABlkPtr = QuantA;
 
-        for (size_t k = 0, k_blk = 0; k < CountK; k += BlkLen, ++k_blk) {
-            const size_t k_blk_len = std::min(CountK - k, BlkLen);
+    for (size_t k = 0; k < CountK; k += BlkLen) {
+        const size_t k_blk_len = std::min(CountK - k, BlkLen);
 
-            const float* ADataBlkPtr = ADataRowPtr + k;
+        QuantizeBlock<16>(BlkLen, ADataBlkPtr, k_blk_len, QuantABlkPtr);
 
-            // scan block values first to determine scale
-
-            float amax = 0.0f;  // max of absolute values of A block
-
-            for (size_t kk = 0; kk < k_blk_len; ++kk) {
-                float a = ADataBlkPtr[kk];
-                amax = std::max(amax, fabsf(a));
-            }
-
-            constexpr float range_max = (1 << 7) - 1;
-            const float scale = amax / range_max;
-            const float scale_reciprocal = scale != 0.0f ? 1.0f / scale : 0.0f;
-
-            std::byte* QuantABlkPtr = QuantARowPtr + k_blk * Q8BlkSize(BlkLen);
-
-            Q8BlkScale(QuantABlkPtr) = scale;
-            int8_t* QuantABlkData = Q8BlkData(QuantABlkPtr);
-
-            for (size_t kk = 0; kk < k_blk_len; ++kk) {
-                const float q = roundf(ADataBlkPtr[kk] * scale_reciprocal);
-                QuantABlkData[kk] = static_cast<int8_t>(
-                    std::clamp(
-                        q,
-                        static_cast<float>(std::numeric_limits<int8_t>::min()),
-                        static_cast<float>(std::numeric_limits<int8_t>::max())
-                    )
-                );
-            }
-        }
-    };
-
-    [[maybe_unused]] auto impl1 = [&]() {
-        const float* ADataBlkPtr = A;
-        std::byte* QuantABlkPtr = QuantA;
-
-        for (size_t k = 0; k < CountK; k += BlkLen) {
-            const size_t k_blk_len = std::min(CountK - k, BlkLen);
-
-            QuantizeBlock<16>(BlkLen, ADataBlkPtr, k_blk_len, QuantABlkPtr);
-
-            ADataBlkPtr += BlkLen;
-            QuantABlkPtr += Q8BlkSize(BlkLen);
-        }
-    };
-
-    //impl0_reference();
-    impl1();
+        ADataBlkPtr += BlkLen;
+        QuantABlkPtr += Q8BlkSize(BlkLen);
+    }
 }
 
 template <size_t NCols>
@@ -723,120 +678,71 @@ SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8(
     const float* Bias
 )
 {
-    [[maybe_unused]] auto impl0_reference = [&]() {
-        const std::byte* QuantARowPtr = QuantA;
+    constexpr size_t BlkBitWidth = 4;
+    constexpr size_t NCols = 4;
 
-        for (size_t n = 0; n < CountN; ++n) {
-            float sum = Bias != nullptr ? Bias[n] : 0.0f;
+    const std::byte* QuantARowPtr = QuantA;
+    float* CRowPtr = C;
 
-            for (size_t k = 0, k_blk = 0; k < CountK; k += BlkLen, ++k_blk) {
-                const size_t k_blk_len = std::min(CountK - k, BlkLen);
+    const size_t BlockCountK = BlockStrideQuantB;
 
-                const std::byte* QuantABlkPtr = QuantARowPtr + k_blk * Q8BlkSize(BlkLen);
+    const size_t StrideQuantBData = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const size_t StrideQuantBScale = BlockCountK;
+    const size_t StrideQuantBZeroPoint = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockCountK);
 
-                const float a_scale = Q8BlkScale(QuantABlkPtr);
+    const float* BiasPtr = Bias;
 
-                const float b_scale = QuantBScale[n * BlockStrideQuantB + k_blk];
+    const std::byte* QuantBDataColPtr = QuantBData;
+    const float* QuantBScaleColPtr = QuantBScale;
+    const std::byte* QuantBZeroPointColPtr = QuantBZeroPoint;
 
-                int8_t b_zp = 8;
-                if (QuantBZeroPoint != nullptr) {
-                    const std::byte b_zp_byte = QuantBZeroPoint[n * ((BlockStrideQuantB + 1) / 2) + k_blk / 2];
-                    b_zp = (k_blk & 1)
-                               ? std::to_integer<int8_t>(b_zp_byte >> 4)
-                               : std::to_integer<int8_t>(b_zp_byte & std::byte{0x0F});
-                }
+    float* SumPtr = CRowPtr;
 
-                int32_t qsum = 0;
+    int64_t nblk = static_cast<int64_t>(CountN) - NCols;
 
-                const int8_t* QuantABlkData = Q8BlkData(QuantABlkPtr);
-                for (size_t kk = 0; kk < k_blk_len; ++kk) {
-                    const int8_t qa = QuantABlkData[kk];
-                    const std::byte qb_byte = QuantBData[(n * BlockStrideQuantB * BlkLen + k + kk) / 2];
-                    const int8_t qb =
-                        ((kk & 1) == 1
-                             ? std::to_integer<int8_t>(qb_byte >> 4)
-                             : std::to_integer<int8_t>(qb_byte & std::byte{0x0F})) -
-                        b_zp;
-                    qsum += qa * qb;
-                }
+    while (nblk >= 0) {
+        ComputeDotProducts_BlkBitWidth4_CompInt8<NCols>(
+            BlkLen,
+            QuantARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
+            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
+            BiasPtr
+        );
 
-                sum += static_cast<float>(qsum) * a_scale * b_scale;
-            }
+        // move to next `NCols` columns
 
-            C[n] = sum;
-        }
-    };
-
-    [[maybe_unused]] auto impl1 = [&]() {
-        constexpr size_t BlkBitWidth = 4;
-        constexpr size_t NCols = 4;
-
-        const std::byte* QuantARowPtr = QuantA;
-        float* CRowPtr = C;
-
-        const size_t BlockCountK = BlockStrideQuantB;
-
-        const size_t StrideQuantBData = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-        const size_t StrideQuantBScale = BlockCountK;
-        const size_t StrideQuantBZeroPoint = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockCountK);
-
-        const float* BiasPtr = Bias;
-
-        const std::byte* QuantBDataColPtr = QuantBData;
-        const float* QuantBScaleColPtr = QuantBScale;
-        const std::byte* QuantBZeroPointColPtr = QuantBZeroPoint;
-
-        float* SumPtr = CRowPtr;
-
-        int64_t nblk = static_cast<int64_t>(CountN) - NCols;
-
-        while (nblk >= 0) {
-            ComputeDotProducts_BlkBitWidth4_CompInt8<NCols>(
-                BlkLen,
-                QuantARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
-                StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
-                BiasPtr
-            );
-
-            // move to next `NCols` columns
-
-            QuantBDataColPtr += NCols * StrideQuantBData;
-            QuantBScaleColPtr += NCols * StrideQuantBScale;
-            if (QuantBZeroPointColPtr != nullptr) {
-                QuantBZeroPointColPtr += NCols * StrideQuantBZeroPoint;
-            }
-
-            BiasPtr += BiasPtr != nullptr ? NCols : 0;
-            SumPtr += NCols;
-
-            nblk -= NCols;
+        QuantBDataColPtr += NCols * StrideQuantBData;
+        QuantBScaleColPtr += NCols * StrideQuantBScale;
+        if (QuantBZeroPointColPtr != nullptr) {
+            QuantBZeroPointColPtr += NCols * StrideQuantBZeroPoint;
         }
 
-        // left over columns less than `NCols`?
-        nblk += NCols;
-        for (int64_t n = 0; n < nblk; ++n) {
-            ComputeDotProducts_BlkBitWidth4_CompInt8<1>(
-                BlkLen,
-                QuantARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
-                StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
-                BiasPtr
-            );
+        BiasPtr += BiasPtr != nullptr ? NCols : 0;
+        SumPtr += NCols;
 
-            // move to next column
+        nblk -= NCols;
+    }
 
-            QuantBDataColPtr += StrideQuantBData;
-            QuantBScaleColPtr += StrideQuantBScale;
-            if (QuantBZeroPointColPtr != nullptr) {
-                QuantBZeroPointColPtr += StrideQuantBZeroPoint;
-            }
+    // left over columns less than `NCols`?
+    nblk += NCols;
+    for (int64_t n = 0; n < nblk; ++n) {
+        ComputeDotProducts_BlkBitWidth4_CompInt8<1>(
+            BlkLen,
+            QuantARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
+            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
+            BiasPtr
+        );
 
-            BiasPtr += BiasPtr != nullptr ? 1 : 0;
-            SumPtr += 1;
+        // move to next column
+
+        QuantBDataColPtr += StrideQuantBData;
+        QuantBScaleColPtr += StrideQuantBScale;
+        if (QuantBZeroPointColPtr != nullptr) {
+            QuantBZeroPointColPtr += StrideQuantBZeroPoint;
         }
-    };
 
-    //impl0_reference();
-    impl1();
+        BiasPtr += BiasPtr != nullptr ? 1 : 0;
+        SumPtr += 1;
+    }
 }
 
 }  // namespace
