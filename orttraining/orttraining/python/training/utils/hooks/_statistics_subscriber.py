@@ -252,7 +252,10 @@ def _summarize_tensor(
             min_buckets[i] = bucket.min()
             max_buckets[i] = bucket.max()
             mean_buckets[i] = bucket.sum()
-            std_buckets[i] = bucket.std()
+
+            # Only calculate std for float types, otherwise it will throw exception.
+            if bucket.dtype in [torch.float16, torch.float32, torch.float64]:
+                std_buckets[i] = bucket.std()
 
         # Reduction across all buckets
         num_nan = nan_buckets.sum()

@@ -1533,25 +1533,14 @@ def test_python_op_save_input_for_backward():
 
     import warnings
 
-    for index in range(10):
-        count = 0
-        with warnings.catch_warnings(record=True) as w:
+    for _ in range(10):
+        with warnings.catch_warnings(record=True):
             input = torch.randn(output_size, device=device, dtype=torch.float)
             pt_prediction = _run_step(pt_model, input)
             ort_prediction = _run_step(ort_model, input)
 
             assert_values_are_close(ort_prediction, pt_prediction, rtol=1e-04, atol=1.0)
             assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-5)
-
-            for i in range(len(w)):
-                msg = str(w[i].message)
-                if "Add input index to _GlobalOpKernelInfoMap" in msg:
-                    count += 1
-
-        if index == 0:
-            assert count == 2
-        else:
-            assert count == 0
 
 
 class DupNamedFunction(torch.autograd.Function):

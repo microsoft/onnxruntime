@@ -3359,6 +3359,13 @@ Input zero_points is stored as uint8_t. If bits <= 4, two zero points are stored
       .Attr("N", "size of each output feature", AttributeProto::INT)
       .Attr("bits", "number of bits used for weight quantization (default 4)", AttributeProto::INT)
       .Attr("block_size", "number of groupsize used for weight quantization,(default 128). It needs to be a power of 2 and not smaller than 16.", AttributeProto::INT)
+      .Attr("accuracy_level",
+            "The minimum accuracy level of input A, can be: 0(unset), 1(fp32), 2(fp16), 3(bf16), or 4(int8) "
+            "(default unset). It is used to control how input A is quantized or downcast internally while "
+            "doing computation, for example: 0 means input A will not be quantized or downcast while doing "
+            "computation. 4 means input A can be quantized with the same block_size to int8 internally from "
+            "type T1.",
+            AttributeProto::INT, static_cast<int64_t>(0))
       .Input(0, "A", "The input tensor, not quantized", "T1")
       .Input(1, "B", "1-dimensional data blob", "T2")
       .Input(2, "scales", "quantization scale", "T1")

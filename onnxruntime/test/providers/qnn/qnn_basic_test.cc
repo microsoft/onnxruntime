@@ -375,17 +375,36 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryGeneration2InputTypes) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
-  provider_options["qnn_context_cache_enable"] = "1";
-  const std::string context_binary_file = "./qnn_context_binary_int32_fp32_inputs_test.onnx";
-  provider_options["qnn_context_cache_path"] = context_binary_file;
 
-  RunQnnModelTest(BuildCastAddTestCase(),
-                  provider_options,
-                  13,  // opset
-                  ExpectedEPNodeAssignment::All,
-                  1e-5f,
-                  logging::Severity::kERROR,
-                  false);
+  // Add kMSDomain to cover contrib op like Gelu
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
+
+  auto& logging_manager = DefaultLoggingManager();
+  logging_manager.SetDefaultLoggerSeverity(logging::Severity::kERROR);
+
+  onnxruntime::Model model("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           logging_manager.DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+  BuildCastAddTestCase()(helper);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+  // Serialize the model to a string.
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  const auto model_data_span = AsByteSpan(model_data.data(), model_data.size());
+
+  const std::string context_binary_file = "./qnn_context_binary_int32_fp32_inputs_test.onnx";
+  Ort::SessionOptions so;
+  so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+  so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, context_binary_file.c_str());
+
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  Ort::Session session(*ort_env, model_data_span.data(), model_data_span.size(), so);
 
   // Make sure the Qnn context cache binary file is generated
   EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
