@@ -396,7 +396,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   const auto gen_metadef_name = [&]() {
     uint64_t model_hash;
-    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
+    int metadef_id = ModelMetadefIdGenerator::GenerateMetaDefId(graph_viewer, model_hash);
     return MakeString(QNN, "_", model_hash, "_", metadef_id);
   };
 

@@ -312,10 +312,6 @@ struct ProviderHostImpl : ProviderHost {
     return p->IExecutionProvider::Compile(fused_nodes_and_graphs, node_compute_funcs);
   }
 
-  int IExecutionProvider__GenerateMetaDefId(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) override {
-    return p->IExecutionProvider::GenerateMetaDefId(graph_viewer, model_hash);
-  }
-
   // Status (direct)
   std::string Status__ToString(const Status* p) override { return p->Status::ToString(); }
 

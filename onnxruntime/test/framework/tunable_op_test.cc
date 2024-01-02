@@ -82,7 +82,7 @@ class TestEP : public IExecutionProvider {
   TestTuningContext tuning_ctx_{this};
 
  public:
-  TestEP() : IExecutionProvider{kEPType, true} {}
+  TestEP() : IExecutionProvider{kEPType} {}
 
   ITuningContext* GetTuningContext() const override {
     return const_cast<TestTuningContext*>(&tuning_ctx_);

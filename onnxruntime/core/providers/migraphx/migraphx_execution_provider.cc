@@ -757,7 +757,7 @@ std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const st
 
   // Generate unique kernel name for MIGraphX subgraph
   uint64_t model_hash = 0;
-  int id = GenerateMetaDefId(graph, model_hash);
+  int id = ModelMetadefIdGenerator::GenerateMetaDefId(graph, model_hash);
   std::string subgraph_id = std::to_string(model_hash) + "_" + std::to_string(id);
   auto meta_def = IndexedSubGraph_MetaDef::Create();
   const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";

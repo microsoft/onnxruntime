@@ -54,7 +54,7 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
   const auto gen_metadef_name = [&]() {
     HashValue model_hash;
-    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
+    int metadef_id = ModelMetadefIdGenerator::GenerateMetaDefId(graph_viewer, model_hash);
     return MakeString(COREML, "_", model_hash, "_", metadef_id);
   };
 

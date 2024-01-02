@@ -18,10 +18,10 @@ class TestEP : public IExecutionProvider {
   static constexpr const char* kEPType = "TestEP";
 
  public:
-  TestEP() : IExecutionProvider{kEPType, true} {}
+  TestEP() : IExecutionProvider{kEPType} {}
 
   int GetId(const GraphViewer& viewer, HashValue& model_hash) {
-    return GenerateMetaDefId(viewer, model_hash);
+    return ModelMetadefIdGenerator::GenerateMetaDefId(viewer, model_hash);
   }
 };
 

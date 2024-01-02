@@ -36,8 +36,11 @@ common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
 
 #endif
 
-int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::GraphViewer& graph_viewer,
-                                                            HashValue& model_hash) {
+int ModelMetadefIdGenerator::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) {
+  // if the EP is shared across multiple sessions there's a very small potential for concurrency issues.
+  // use a lock when generating an id to be paranoid
+  static OrtMutex mutex;
+  std::lock_guard<OrtMutex> lock(mutex);
   model_hash = 0;
 
   // find the top level graph
@@ -95,17 +98,6 @@ int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::G
 
   // return the current unique id, and increment to update
   return model_metadef_id_[model_hash]++;
-}
-
-int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const {
-  ORT_ENFORCE(metadef_id_generator_,
-              "IExecutionProvider constructor must be called with true for use_metadef_id_creator");
-
-  // if the EP is shared across multiple sessions there's a very small potential for concurrency issues.
-  // use a lock when generating an id to be paranoid
-  static OrtMutex mutex;
-  std::lock_guard<OrtMutex> lock(mutex);
-  return metadef_id_generator_->GenerateId(graph_viewer, model_hash);
 }
 
 }  // namespace onnxruntime

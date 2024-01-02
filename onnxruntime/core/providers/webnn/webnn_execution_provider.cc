@@ -158,7 +158,7 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
     // Assign inputs and outputs to subgraph's meta_def.
     uint64_t model_hash;
-    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
+    int metadef_id = ModelMetadefIdGenerator::GenerateMetaDefId(graph_viewer, model_hash);
     auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
     meta_def->name = "WEBNN_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
     meta_def->domain = kMSDomain;

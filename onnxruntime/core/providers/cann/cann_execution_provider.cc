@@ -1197,7 +1197,7 @@ std::unique_ptr<IndexedSubGraph> CANNExecutionProvider::GetSubGraph(
 
   // Generate unique kernel name for CANN subgraph
   HashValue model_hash = 0;
-  int id = GenerateMetaDefId(graph_viewer, model_hash);
+  int id = ModelMetadefIdGenerator::GenerateMetaDefId(graph_viewer, model_hash);
   auto meta_def = IndexedSubGraph_MetaDef::Create();
   meta_def->name() = graph_viewer.Name() + "_" + std::to_string(model_hash) + "_" + std::to_string(id);
 

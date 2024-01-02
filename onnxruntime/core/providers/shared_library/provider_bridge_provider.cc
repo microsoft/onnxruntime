@@ -329,10 +329,6 @@ common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
   return g_host->IExecutionProvider__Compile(this, fused_nodes_and_graphs, node_compute_funcs);
 }
 
-int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const {
-  return g_host->IExecutionProvider__GenerateMetaDefId(this, graph_viewer, model_hash);
-}
-
 #ifdef USE_TENSORRT
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAAllocator(device_id, name);

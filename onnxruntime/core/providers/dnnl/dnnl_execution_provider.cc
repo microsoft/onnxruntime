@@ -229,7 +229,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DnnlExecutionProvider::GetCapabi
 
     // Assign inputs and outputs to subgraph's meta_def
     HashValue model_hash;
-    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
+    int metadef_id = ModelMetadefIdGenerator::GenerateMetaDefId(graph_viewer, model_hash);
     auto meta_def = ::onnxruntime::IndexedSubGraph_MetaDef::Create();
     meta_def->name() = "DNNL_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
     meta_def->domain() = kMSDomain;
@@ -264,7 +264,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DnnlExecutionProvider::GetCapabi
     graph_viewer.ToProto(*model_proto->mutable_graph(), false, true);
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     HashValue model_hash;
-    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
+    int metadef_id = ModelMetadefIdGenerator::GenerateMetaDefId(graph_viewer, model_hash);
     std::fstream dump("DNNL_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id) + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
     model_proto->SerializeToOstream(dump);
   }
