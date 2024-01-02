@@ -40,4 +40,4 @@ gpgcheck=1
 gpgkey=https://repo.radeon.com/rocm/rocm.gpg.key
 EOF
 
-dnf install -y rocm-dev
+dnf install -y rocm-dev rocm-libs
