@@ -15,13 +15,13 @@ Abstract:
 
 --*/
 
+#include "sqnbitgemm.h"
+
 #include <arm_neon.h>
 
 #include <algorithm>
 #include <cassert>
 #include <utility>
-
-#include "sqnbitgemm.h"
 
 namespace
 {

@@ -433,15 +433,12 @@ InitializeWorkspace_CompInt8(
 {
     MLAS_UNREFERENCED_PARAMETER(N);
 
-    // Note: Multi-threading did not bring a significant performance gain. Using a single thread for simplicity.
-    MLAS_UNREFERENCED_PARAMETER(ThreadPool);
-
     const auto QuantizeARow = GetMlasPlatform().SQNBitGemmDispatch->QuantizeARow_CompInt8;
 
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
     const size_t QuantAStride = BlockCountK * Q8BlkSize(BlkLen);
 
-    for (size_t gemm_idx = 0; gemm_idx < BatchN; ++gemm_idx) {
+    MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
         const auto& data = DataParams[gemm_idx];
 
         const float* ARowPtr = data.A;
@@ -453,7 +450,7 @@ InitializeWorkspace_CompInt8(
             ARowPtr += data.lda;
             QuantARowPtr += QuantAStride;
         }
-    }
+    });
 }
 
 struct Operations {
