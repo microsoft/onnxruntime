@@ -69,7 +69,7 @@ class ComputeContextImpl implements ComputeContext {
     const heapU32 = module.HEAPU32;
 
     // extract context data
-    let dataIndex = (contextDataOffset >> 2);
+    let dataIndex = (contextDataOffset >>> 2);
     this.opKernelContext = heapU32[dataIndex++];
     const inputCount = heapU32[dataIndex++];
     this.outputCount = heapU32[dataIndex++];

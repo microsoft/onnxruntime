@@ -160,6 +160,8 @@ stages:
       StageSuffix: 'GPU'
       Skipx86Tests: 'true'
       CudaVersion: ${{ parameters.CudaVersion }}
+      SpecificArtifact: ${{ parameters.SpecificArtifact }}
+      BuildId: ${{ parameters.BuildId }}
   ## Linux GPU Testing
   - template: nuget/templates/test_linux.yml
     parameters:
