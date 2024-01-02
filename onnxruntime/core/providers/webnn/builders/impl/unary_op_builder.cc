@@ -48,7 +48,7 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   } else if (op_type == "Neg") {
     output = model_builder.GetBuilder().call<emscripten::val>("neg", input);
   } else if (op_type == "Not") {
-    output = model_builder.GetBuilder().call<emscripten::val>("logicalNot", input);
+    output = model_builder.GetBuilder().call<emscripten::val>("not", input);
   } else if (op_type == "Reciprocal") {
     output = model_builder.GetBuilder().call<emscripten::val>("reciprocal", input);
   } else if (op_type == "Sin") {
