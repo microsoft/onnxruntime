@@ -357,6 +357,8 @@ namespace Dml::GraphDescBuilder
 
                             if (constantInput && tensorDesc->totalTensorSizeInBytes < c_maxConstNodeDataSize)
                             {
+                                // The tensor description's size should be no larger than the constant input unless it was rounded to 
+                                // the required alignment.
                                 assert(((constantInput->GetTensorByteSize() + 3) & ~3) >= tensorDesc->totalTensorSizeInBytes);
                                 size_t minimumConstantSize = std::min(constantInput->GetTensorByteSize(), tensorDesc->totalTensorSizeInBytes);
                                 auto data = static_cast<const uint8_t*>(constantInput->GetData());
