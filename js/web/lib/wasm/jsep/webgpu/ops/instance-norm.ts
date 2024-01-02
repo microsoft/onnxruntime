@@ -13,10 +13,6 @@ export interface InstanceNormAttributes {
   format: 'NHWC'|'NCHW';
 }
 
-const metadata = {
-  name: 'InstanceNormalization'
-};
-
 const createInstanceNormProgramInfo =
     (inputs: readonly TensorView[], attributes: InstanceNormAttributes): ProgramInfo => {
       const xShape = inputs[0].dims;
@@ -26,11 +22,10 @@ const createInstanceNormProgramInfo =
       const normSize = ShapeUtil.sizeFromDimension(xShape, axis);
       const components = getMaxComponents(normSize);
       const normPackedSize = normSize / components;
-      const C = xShape[1];
       const inputShape = [xShape[0], xShape[1], normPackedSize];
-      const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank', 'rank'];
+      const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'type', 'type'];
       const programUniforms: ProgramUniform[] =
-          [{type: 'uint32', data: C}, {type: 'uint32', data: normSize}, {type: 'uint32', data: normPackedSize}];
+          [{type: 'uint32', data: normSize}, {type: 'uint32', data: normPackedSize}];
       programUniforms.push(
           ...createTensorShapeVariables(inputShape), ...createTensorShapeVariables(inputs[1].dims),
           ...createTensorShapeVariables(inputs[2].dims), ...createTensorShapeVariables(inputShape));
@@ -45,8 +40,7 @@ const createInstanceNormProgramInfo =
         const f32Type = components === 1 ? 'f32' : `vec${components}<f32>`;
         const workgroupSize = 64;
 
-        const uniforms: UniformsArrayType =
-            [{name: 'C', type: 'u32'}, {name: 'normSize', type: 'u32'}, {name: 'normPackedSize', type: 'u32'}];
+        const uniforms: UniformsArrayType = [{name: 'normSize', type: 'u32'}, {name: 'normPackedSize', type: 'u32'}];
         return `
   var<workgroup> meanShared : f32;
   var<workgroup> squaredNormShared : f32;
@@ -55,8 +49,8 @@ const createInstanceNormProgramInfo =
   ${shaderHelper.registerUniforms(uniforms).declareVariables(...variables)}
   ${shaderHelper.mainStart(workgroupSize)}
     let norm = global_idx / workgroupSize;
-    let batch = norm / uniforms.C;
-    let channel = norm % uniforms.C;
+    let batch = norm / uniforms.x_shape[1];
+    let channel = norm % uniforms.x_shape[1];
     let localIndex = local_id.x;
 
     // initialize workgroup memory
@@ -111,9 +105,9 @@ const createInstanceNormProgramInfo =
   }`;
       };
       return {
-        ...metadata,
+        ...{name: 'InstanceNormalization'},
         // TODO: use epsilon as uniform. Currently epsilon as uniform fails test_instancenorm_epsilon.
-        shaderCache: {hint: `${attributes.epsilon}`, inputDependencies},
+        shaderCache: {hint: `${attributes.epsilon};${components}`, inputDependencies},
         getRunData: () => ({
           outputs: [
             {dims: outputShape, dataType: inputs[0].dataType},
@@ -138,7 +132,7 @@ const computeMean =
       const unitsOfWork = n * c / components;
       const wgSize = Math.ceil(h / WG);
 
-      const meanInputDependencies: ProgramInputTensorInfoDependency[] = ['rank'];
+      const meanInputDependencies: ProgramInputTensorInfoDependency[] = ['type'];
       const meanProgramUniforms: ProgramUniform[] = [
         {type: 'uint32', data: wgSize}, {type: 'uint32', data: h}, {type: 'uint32', data: Math.floor(c / components)},
         {type: 'uint32', data: Math.floor(h * c / components)}
@@ -193,7 +187,7 @@ const computeMean =
         {type: 'uint32', data: unitsOfWork}, {type: 'uint32', data: h},
         {type: 'uint32', data: Math.floor(c / components)}, {type: 'uint32', data: Math.floor(WG * c / components)}
       ];
-      const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank', 'rank'];
+      const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type', 'type'];
       const getShaderSource = (shaderHelper: ShaderHelper) => {
         const scaleHelper = inputVariable('scale', scale.dataType, scale.dims, components);
         const biasHelper = inputVariable('bias', bias.dataType, bias.dims, components);
@@ -255,8 +249,7 @@ const createInstanceNormNHWCProgramInfo =
       const outputSize = ShapeUtil.size(outputShape) / components;
       const programUniforms: ProgramUniform[] =
           [{type: 'uint32', data: H}, {type: 'uint32', data: Math.floor(C / components)}];
-      const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
-
+      const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
       // first compute mean
       const channelScaleShift = computeMean(context, inputs[0], inputs[1], inputs[2], N, H, C, attributes.epsilon);
       const getShaderSource = (shaderHelper: ShaderHelper) => {
@@ -285,7 +278,7 @@ const createInstanceNormNHWCProgramInfo =
       };
       context.compute(
           {
-            name: 'InstanceNormalization',
+            name: 'InstanceNormalizationNHWC',
             shaderCache: {hint: `${components}`, inputDependencies},
             getRunData: () => ({
               outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
