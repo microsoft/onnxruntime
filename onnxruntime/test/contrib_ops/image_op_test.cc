@@ -13,6 +13,7 @@
 #include "test/util/include/asserts.h"
 
 #include <fstream>
+#include <memory>
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::test;
@@ -62,13 +63,13 @@ Status ReadRGBRawImageData(const std::string& file_path, std::vector<uint8_t>& i
       *height = std::stoi(tokens[tokens.size() - 2]);
       *width = std::stoi(tokens[tokens.size() - 1]);
 
-      ORT_RETURN_IF_NOT(image_data_size != (*channels) * (*width) * (*height), "image dimensions do not match image data size: ", file_path);
+      ORT_RETURN_IF_NOT(image_data_size == (*channels) * (*width) * (*height), "image dimensions do not match image data size: ", file_path);
     }
   }
   return Status::OK();
 }
 
-TEST(ImageEncoderOpTest, EncodeRGB) {
+TEST(ImageEncoderDecoderOpTest, EncodeRGB) {
   OpTester test("ImageEncoder", 1, kMSDomain);
   test.AddAttribute("pixel_format", "RGB");
 
@@ -80,10 +81,30 @@ TEST(ImageEncoderOpTest, EncodeRGB) {
 
   test.AddInput<uint8_t>("input", {1, 3, height, width}, input_image_data);
   test.AddOutput<uint8_t>("encoded_stream", {static_cast<int64_t>(output_image_data.size())}, output_image_data);
-  test.Run();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+
+  test.Run(ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-TEST(ImageDecoderOpTest, DecodeRGB) {
+TEST(ImageEncoderDecoderOpTest, DecodeRGB) {
+  OpTester test("ImageDecoder", 20, kOnnxDomain);
+  test.AddAttribute("pixel_format", "RGB");
+
+  std::vector<uint8_t> input_image_data;
+  EXPECT_STATUS_OK(ReadRGBRawImageData(IMAGE_URI_JPG, input_image_data));
+  std::vector<uint8_t> output_image_data;
+  int64_t width, height, channels;
+  EXPECT_STATUS_OK(ReadRGBRawImageData(IMAGE_URI_RGB_RAW, output_image_data, &width, &height, &channels));
+
+  test.AddInput<uint8_t>("encoded_stream", {static_cast<int64_t>(input_image_data.size()),}, input_image_data);
+  test.AddOutput<uint8_t>("output", {channels, height, width}, output_image_data);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+
+  test.Run(ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 // #endif // USE_CUDA
 }  // namespace test

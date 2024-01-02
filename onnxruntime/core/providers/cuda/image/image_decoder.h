@@ -19,6 +19,10 @@ class ImageDecoder final : public CudaKernel {
 
  private:
   std::string pixel_format_;
+  nvjpegOutputFormat_t fmt_;
+
+  nvjpegJpegState_t nvjpeg_state_;
+  nvjpegHandle_t nvjpeg_handle_;
 };
 
 }  // namespace cuda

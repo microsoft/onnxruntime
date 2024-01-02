@@ -19,6 +19,7 @@ namespace cuda {
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create()) \
+          .OutputMemoryType(OrtMemTypeCPUOutput, 0) \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       ImageEncoder);
 
@@ -144,8 +145,8 @@ Status ImageEncoder::ComputeInternal(OpKernelContext* context) const {
       encode_params_,
       &imgdesc,
       input_rgb_format_,
-      W,
-      H,
+      static_cast<int>(W),
+      static_cast<int>(H),
       NULL));
   } else {
     NVJPEG_CALL_THROW(nvjpegEncodeYUV(
@@ -154,8 +155,8 @@ Status ImageEncoder::ComputeInternal(OpKernelContext* context) const {
       encode_params_,
       &imgdesc,
       subsampling_,
-      W,
-      H,
+      static_cast<int>(W),
+      static_cast<int>(H),
       NULL));
   }
 
@@ -166,21 +167,24 @@ Status ImageEncoder::ComputeInternal(OpKernelContext* context) const {
       NULL,
       &length,
       NULL));
+
+  TensorShape output_shape{static_cast<int64_t>(length)};
+  Tensor* encoded_stream = context->Output(0, output_shape);
+  uint8_t* encoded_stream_data = encoded_stream->MutableData<uint8_t>();
+
   std::vector<unsigned char> obuffer;
   obuffer.resize(length);
   NVJPEG_CALL_THROW(nvjpegEncodeRetrieveBitstream(
       nvjpeg_handle_,
       encoder_state_,
-      obuffer.data(),
+      encoded_stream_data,
       &length,
       NULL));
 
 
-  // ...
-
   // Save the binary data to a file
   std::ofstream outfile("c:/temp/encoded.jpg", std::ofstream::binary);
-  outfile.write(reinterpret_cast<const char*>(obuffer.data()), obuffer.size());
+  outfile.write(reinterpret_cast<const char*>(encoded_stream_data), length);
   outfile.close();
 
   return Status::OK();
