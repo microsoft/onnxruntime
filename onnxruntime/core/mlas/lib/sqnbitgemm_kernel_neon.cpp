@@ -670,10 +670,16 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
                 dot[i] = vdotq_s32(dot[i], av, bv[i]);
             });
 
-            // convert to float and add to `acc`
+            // convert dot product result to float
+            float32x4_t dot_f32[NCols];
+            UnrolledLoop<NCols>([&](size_t i) {
+                dot_f32[i] = vcvtq_f32_s32(dot[i]);
+            });
+
+            // multiply dot product result by scale and update accumulator
             UnrolledLoop<NCols>([&](size_t i) {
                 const float32x4_t scale_v = vdupq_n_f32(a_scale * b_scale[i]);
-                acc[i] = vfmaq_f32(acc[i], vcvtq_f32_s32(dot[i]), scale_v);
+                acc[i] = vfmaq_f32(acc[i], dot_f32[i], scale_v);
             });
         }
 
