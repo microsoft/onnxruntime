@@ -36,6 +36,8 @@ std::conditional_t<THRW, void, Status> CudaCall(
 
 #define CUFFT_CALL_THROW(expr) (CudaCall<cufftResult, true>((expr), #expr, "CUFFT", CUFFT_SUCCESS, "", __FILE__, __LINE__))
 
+#define NVJPEG_CALL_THROW(expr) (CudaCall<nvjpegStatus_t, true>((expr), #expr, "NVJPEG", NVJPEG_STATUS_SUCCESS, "", __FILE__, __LINE__))
+
 #ifdef ORT_USE_NCCL
 #define NCCL_CALL(expr) (CudaCall<ncclResult_t, false>((expr), #expr, "NCCL", ncclSuccess, "", __FILE__, __LINE__))
 #define NCCL_CALL_THROW(expr) (CudaCall<ncclResult_t, true>((expr), #expr, "NCCL", ncclSuccess, "", __FILE__, __LINE__))

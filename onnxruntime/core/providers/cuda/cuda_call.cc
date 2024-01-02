@@ -140,6 +140,7 @@ template Status CudaCall<curandStatus_t, false>(curandStatus_t retCode, const ch
 template void CudaCall<curandStatus_t, true>(curandStatus_t retCode, const char* exprString, const char* libName, curandStatus_t successCode, const char* msg, const char* file, const int line);
 template Status CudaCall<cufftResult, false>(cufftResult retCode, const char* exprString, const char* libName, cufftResult successCode, const char* msg, const char* file, const int line);
 template void CudaCall<cufftResult, true>(cufftResult retCode, const char* exprString, const char* libName, cufftResult successCode, const char* msg, const char* file, const int line);
+template void CudaCall<nvjpegStatus_t, true>(nvjpegStatus_t retCode, const char* exprString, const char* libName, nvjpegStatus_t successCode, const char* msg, const char* file, const int line);
 
 #ifdef ORT_USE_NCCL
 template Status CudaCall<ncclResult_t, false>(ncclResult_t retCode, const char* exprString, const char* libName, ncclResult_t successCode, const char* msg, const char* file, const int line);

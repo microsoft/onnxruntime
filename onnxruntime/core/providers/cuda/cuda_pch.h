@@ -16,6 +16,7 @@
 #include <cudnn.h>
 #include <cufft.h>
 #include <cublasLt.h>
+#include <nvjpeg.h>
 
 #ifdef ORT_USE_NCCL
 #include <nccl.h>

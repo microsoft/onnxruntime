@@ -156,7 +156,7 @@
     endif()
 
     add_dependencies(${target} onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
-    target_link_libraries(${target} PRIVATE cublasLt cublas cudnn curand cufft ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
+    target_link_libraries(${target} PRIVATE cublasLt cublas cudnn curand cufft nvjpeg ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
     if(onnxruntime_CUDNN_HOME)
       target_include_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/include)
       target_link_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/lib)
