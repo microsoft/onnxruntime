@@ -31,7 +31,7 @@ static nvjpegDevAllocator_t dev_allocator = {&dev_malloc, &dev_free};
 
 ImageEncoder::ImageEncoder(const OpKernelInfo& info) : CudaKernel(info) {
   pixel_format_ = info.GetAttrOrDefault<std::string>("pixel_format", "RGB");
-  quality_ = info.GetAttrOrDefault<int64_t>("quality", 70);
+  quality_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("quality", 70));
   std::string subsampling = info.GetAttrOrDefault<std::string>("subsampling", "420");
 
   ORT_ENFORCE(
@@ -91,8 +91,8 @@ Status ImageEncoder::ComputeInternal(OpKernelContext* context) const {
   }
 
   // TODO: process N images
-  const int64_t N = dims[0];
-  const int64_t C = dims[1];
+  // const int64_t N = dims[0];
+  // const int64_t C = dims[1];
   const int64_t H = dims[2];
   const int64_t W = dims[3];
 
@@ -156,7 +156,7 @@ Status ImageEncoder::ComputeInternal(OpKernelContext* context) const {
       &length,
       NULL));
 
-  //// Save the binary data to a file 
+  //// Save the binary data to a file
   //{
   //  std::string out_filename;
   //  if (pixel_format_ == "Grayscale")
