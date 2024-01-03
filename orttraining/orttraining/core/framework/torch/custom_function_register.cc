@@ -88,11 +88,14 @@ void OrtTorchFunctionPool::RegisterTorchAutogradFunction(
   PythonObjectPtr forward(PyObject_GetAttrString(obj, "apply"), PythonObjectDeleter);
   PythonObjectPtr backward(PyObject_GetAttrString(obj, "backward"), PythonObjectDeleter);
 
+  PythonObjectPtr unsafe_forward(PyObject_GetAttrString(obj, "forward"), PythonObjectDeleter);
   ORT_ENFORCE(forward.get(), "apply attribute not found when registering ", key);
   ORT_ENFORCE(backward.get(), "backward attribute not found when registering ", key);
+  ORT_ENFORCE(unsafe_forward.get(), "forward attribute not found when registering ", key);
 
   RegisterEntry(mutex_, key, forward.get(), forward_core_pool_);
   RegisterEntry(mutex_, key, backward.get(), backward_core_pool_);
+  RegisterEntry(mutex_, key, unsafe_forward.get(), unsafe_forward_core_pool_);
 }
 
 void OrtTorchFunctionPool::RegisterShapeInferenceFunction(const std::string& key,
@@ -105,46 +108,27 @@ void OrtTorchFunctionPool::RegisterInputAliasFunction(const std::string& key,
   RegisterEntry(mutex_, key, obj, input_alias_function_pool_);
 }
 
-static void RegisterEntry(
-    std::mutex& mutex,
-    PyObject* obj,
-    PythonObjectPtr& storage) {
-  std::lock_guard<std::mutex> lock(mutex);
-  // Basic checks.
-  ORT_ENFORCE(obj, "Cannot register NULL PyObject*.");
-
-  // Skip registration if storage already stores a Python object.
-  if (storage.get() != nullptr) {
-    return;
-  }
-
-  // Own the Python object.
-  Py_INCREF(obj);
-  PythonObjectPtr ptr(obj, PythonObjectDeleter);
-
-  // If an obj has been registered, this old ownership is automatically released
-  // after this move-assignment. Then, the "storage" owns the new object.
-  storage = std::move(ptr);
+void OrtTorchFunctionPool::RegisterForwardRunner(size_t function_address) {
+  void* p_forward_runner_func = reinterpret_cast<void*>(function_address);
+  forward_runner_ = reinterpret_cast<CustomFunctionRunnerType>(p_forward_runner_func);
 }
 
-void OrtTorchFunctionPool::RegisterForwardRunner(PyObject* obj) {
-  RegisterEntry(mutex_, obj, forward_runner_);
+void OrtTorchFunctionPool::RegisterBackwardRunner(size_t function_address) {
+  void* p_backward_runner_func = reinterpret_cast<void*>(function_address);
+  backward_runner_ = reinterpret_cast<CustomFunctionRunnerType>(p_backward_runner_func);
 }
 
-void OrtTorchFunctionPool::RegisterBackwardRunner(PyObject* obj) {
-  RegisterEntry(mutex_, obj, backward_runner_);
+CustomFunctionRunnerType OrtTorchFunctionPool::GetForwardRunner() {
+  ORT_ENFORCE(forward_runner_,
+              "Forward runner cannot be NULL. Did you forget to register it by calling RegisterForwardRunner(...)?");
+
+  return forward_runner_;
 }
 
-PyObject* OrtTorchFunctionPool::GetForwardRunner() {
-  std::lock_guard<std::mutex> lock(mutex_);
-  ORT_ENFORCE(forward_runner_.get(), "Forward runner cannot be NULL. Do you forget register it by calling RegisterForwardRunner(...)?");
-  return forward_runner_.get();
-}
-
-PyObject* OrtTorchFunctionPool::GetBackwardRunner() {
-  std::lock_guard<std::mutex> lock(mutex_);
-  ORT_ENFORCE(backward_runner_.get(), "backward runner cannot be NULL. Do you forget register it by calling RegisterBackwardRunner(...)?");
-  return backward_runner_.get();
+CustomFunctionRunnerType OrtTorchFunctionPool::GetBackwardRunner() {
+  ORT_ENFORCE(backward_runner_,
+              "backward runner cannot be NULL. Did you forget to register it by calling RegisterBackwardRunner(...)?");
+  return backward_runner_;
 }
 
 PyObject* OrtTorchFunctionPool::GetForwardCore(const std::string& key) {
@@ -160,6 +144,14 @@ PyObject* OrtTorchFunctionPool::GetBackwardCore(const std::string& key) {
   std::lock_guard<std::mutex> lock(mutex_);
   auto iter = backward_core_pool_.find(key);
   ORT_ENFORCE(iter != backward_core_pool_.end(), "No backward registered for ", key);
+  return iter->second.get();
+}
+
+PyObject* OrtTorchFunctionPool::GetUnsafeForwardCore(const std::string& key) {
+  ORT_ENFORCE(!key.empty(), "Cannot be empty string.");
+  std::lock_guard<std::mutex> lock(mutex_);
+  auto iter = unsafe_forward_core_pool_.find(key);
+  ORT_ENFORCE(iter != unsafe_forward_core_pool_.end(), "No unsafe forward registered for ", key);
   return iter->second.get();
 }
 
@@ -201,10 +193,9 @@ int64_t OrtTorchFunctionPool::RegisterContext(PyObject* autograd_context) {
                                                autograd_context, "autograd_context_register");
 
   ORT_ENFORCE(autograd_context, "Cannot register NULL autograd context.");
-  Py_INCREF(autograd_context);
 
   func_context_pool_.insert({index_, PythonObjectPtr(autograd_context, PythonObjectDeleter)});
-  // We don't need increase the context refcnt because PyTorch already did it during .apply().
+
   return index_;
 }
 
@@ -227,14 +218,13 @@ PyObject* OrtTorchFunctionPool::GetContext(int64_t context_index) {
 }
 
 void OrtTorchFunctionPool::UnRegisterGlobalFunctions() {
-  forward_runner_.reset();
-  backward_runner_.reset();
   func_context_pool_.clear();
 }
 
 void OrtTorchFunctionPool::UnRegisterModelSpecificFunctions() {
   forward_core_pool_.clear();
   backward_core_pool_.clear();
+  unsafe_forward_core_pool_.clear();
   shape_inference_function_pool_.clear();
   input_alias_function_pool_.clear();
   miscellaneous_const_input_pool_.clear();

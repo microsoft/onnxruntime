@@ -27,36 +27,29 @@ export interface ArgMinMaxAttributes extends AttributeWithCacheKey {
   selectLastIndex: number;
 }
 
-const createArgMinMaxAttributesFromInputs =
-    (inputs: readonly TensorView[], attributes: ArgMinMaxAttributes): ArgMinMaxAttributes =>
-        createAttributeWithCacheKey(
-            {axis: attributes.axis, keepDims: attributes.keepDims, selectLastIndex: attributes.selectLastIndex});
-
 export const argMin = (context: ComputeContext, attributes: ArgMinMaxAttributes): void => {
   validateInputs(context.inputs);
   const argMinMaxOp: ReduceOp = (input, output, axes) => {
     const idxZero = [];
     for (let k = 0; k < input.rank; k++) {
       if (axes.indexOf(k) >= 0 || axes.length === 0) {
-        idxZero.push(`inputIndices[${k}] = 0;`);  // first element
+        idxZero.push(`input_indices[${k}] = 0;`);  // first element
       }
     }
     return [
-      `${idxZero.join('\n')}`, `var value = ${input.getByOffset('inputOffset')};\nvar bestIndex : i32 = 0;`,
-      `if (${input.getByOffset('inputOffset')} ${attributes.selectLastIndex > 0 ? '<=' : '<'} value) {
-         value = ${input.getByOffset('inputOffset')};
-         bestIndex = i32(lastIndex);
+      `${idxZero.join('\n')}`, `var value = ${input.getByIndices('input_indices')};\nvar best_index : i32 = 0;`,
+      `if (${input.getByIndices('input_indices')} ${attributes.selectLastIndex > 0 ? '<=' : '<'} value) {
+         value = ${input.getByIndices('input_indices')};
+         best_index = i32(last_index);
        }`,
-      '', output.setByOffset('global_idx', 'bestIndex')
+      '', output.setByOffset('global_idx', 'best_index')
     ];
   };
 
-  const updatedAttributes: ArgMinMaxAttributes =
-      context.inputs.length === 1 ? attributes : createArgMinMaxAttributesFromInputs(context.inputs, attributes);
   context.compute(
       createReduceProgramInfo(
-          'ArgMin', {hint: updatedAttributes.cacheKey}, [context.inputs[0]], argMinMaxOp, [updatedAttributes.axis],
-          DataType.int64, updatedAttributes.keepDims),
+          'ArgMin', {hint: attributes.cacheKey, inputDependencies: ['rank']}, [context.inputs[0]], argMinMaxOp,
+          [attributes.axis], DataType.int64, attributes.keepDims),
       {inputs: [0]});
 };
 
@@ -66,25 +59,23 @@ export const argMax = (context: ComputeContext, attributes: ArgMinMaxAttributes)
     const idxZero = [];
     for (let k = 0; k < input.rank; k++) {
       if (axes.indexOf(k) >= 0 || axes.length === 0) {
-        idxZero.push(`inputIndices[${k}] = 0;`);  // first element
+        idxZero.push(`input_indices[${k}] = 0;`);  // first element
       }
     }
     return [
-      `${idxZero.join('\n')}`, `var value = ${input.getByOffset('inputOffset')};\nvar bestIndex : i32 = 0;`,
-      `if (${input.getByOffset('inputOffset')} ${attributes.selectLastIndex > 0 ? '>=' : '>'} value) {
-         value = ${input.getByOffset('inputOffset')};
-         bestIndex = i32(lastIndex);
+      `${idxZero.join('\n')}`, `var value = ${input.getByIndices('input_indices')};\nvar best_index : i32 = 0;`,
+      `if (${input.getByIndices('input_indices')} ${attributes.selectLastIndex > 0 ? '>=' : '>'} value) {
+         value = ${input.getByIndices('input_indices')};
+         best_index = i32(last_index);
        }`,
-      '', output.setByOffset('global_idx', 'bestIndex')
+      '', output.setByOffset('global_idx', 'best_index')
     ];
   };
 
-  const updatedAttributes: ArgMinMaxAttributes =
-      context.inputs.length === 1 ? attributes : createArgMinMaxAttributesFromInputs(context.inputs, attributes);
   context.compute(
       createReduceProgramInfo(
-          'argMax', {hint: updatedAttributes.cacheKey}, [context.inputs[0]], argMinMaxOp, [updatedAttributes.axis],
-          DataType.int64, updatedAttributes.keepDims),
+          'argMax', {hint: attributes.cacheKey, inputDependencies: ['rank']}, [context.inputs[0]], argMinMaxOp,
+          [attributes.axis], DataType.int64, attributes.keepDims),
       {inputs: [0]});
 };
 

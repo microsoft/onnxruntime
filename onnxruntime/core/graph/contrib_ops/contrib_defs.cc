@@ -1375,6 +1375,27 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Sampling, 1,
                                   GreedySearchShapeInference(ctx);
                                 }));
 
+constexpr const char* MoE_ver1_doc = R"DOC(
+      Mixture of experts. Examples: Switch transformer(https://arxiv.org/pdf/2101.03961.pdf) use top 1,
+      GLaM(https://arxiv.org/abs/2112.06905) activates top 2 FFN, and Vision MOE(https://arxiv.org/pdf/2106.05974.pdf)
+      usually uses top 32 experts.
+      )DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(MoE, 1,
+                            OpSchema()
+                                .SetDoc(MoE_ver1_doc)
+                                .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu and identity. Default is relu", AttributeProto::STRING, std::string("relu"))
+                                .Attr("k", "Number of top experts to select from expert pool", AttributeProto::INT, static_cast<int64_t>(1))
+                                .Input(0, "input", "2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+                                .Input(1, "router_probs", "2D input tensor with shape (num_rows, num_experts)", "T")
+                                .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, hidden_size, inter_size)", "T")
+                                .Input(3, "fc2_experts_weights", "3D input tensor with shape (num_experts, inter_size, hidden_size)", "T")
+                                .Input(4, "fc1_experts_bias", "2D optional input tensor with shape (num_experts, inter_size)", "T", OpSchema::Optional)
+                                .Input(5, "fc2_experts_bias", "2D optional input tensor with shape (num_experts, hidden_size)", "T", OpSchema::Optional)
+                                .Output(0, "output", "2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+                                .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or float16 tensors.")
+                                .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+
 ONNX_MS_OPERATOR_SET_SCHEMA(SampleOp, 1,
                             OpSchema()
                                 .Input(0, "X", "input", "T")
@@ -3227,7 +3248,7 @@ void RegisterContribSchemas() {
           "List of tensors for inputs",
           "T",
           OpSchema::Variadic,
-          true,
+          false,
           1,
           OpSchema::NonDifferentiable)
       .Output(
@@ -3236,7 +3257,7 @@ void RegisterContribSchemas() {
           "One or more outputs, list of tensors for outputs",
           "T",
           OpSchema::Variadic,
-          true,
+          false,
           1,
           OpSchema::NonDifferentiable)
       .TypeConstraint(
@@ -3252,11 +3273,7 @@ void RegisterContribSchemas() {
            "tensor(float16)",
            "tensor(float)",
            "tensor(double)"},
-          "Constrain input and output types.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        // Type inference
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-      });
+          "Constrain input and output types.");
 
   static const char* BitmaskDropout_ver1_doc = R"DOC(
 BitmaskDropout takes an input floating-point tensor, an optional input ratio (floating-point scalar) and an optional input training_mode (boolean scalar).
@@ -3342,6 +3359,13 @@ Input zero_points is stored as uint8_t. If bits <= 4, two zero points are stored
       .Attr("N", "size of each output feature", AttributeProto::INT)
       .Attr("bits", "number of bits used for weight quantization (default 4)", AttributeProto::INT)
       .Attr("block_size", "number of groupsize used for weight quantization,(default 128). It needs to be a power of 2 and not smaller than 16.", AttributeProto::INT)
+      .Attr("accuracy_level",
+            "The minimum accuracy level of input A, can be: 0(unset), 1(fp32), 2(fp16), 3(bf16), or 4(int8) "
+            "(default unset). It is used to control how input A is quantized or downcast internally while "
+            "doing computation, for example: 0 means input A will not be quantized or downcast while doing "
+            "computation. 4 means input A can be quantized with the same block_size to int8 internally from "
+            "type T1.",
+            AttributeProto::INT, static_cast<int64_t>(0))
       .Input(0, "A", "The input tensor, not quantized", "T1")
       .Input(1, "B", "1-dimensional data blob", "T2")
       .Input(2, "scales", "quantization scale", "T1")
@@ -3410,7 +3434,7 @@ MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4
       .Input(1, "B", "1-dimensional quantized data for weight", "T2")
       .Input(2, "absmax", "quantization constants", "T1")
       .Output(0, "Y", "tensor. The output tensor has the same rank as the input. ", "T1")
-      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float/half_float tensors.")
+      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float/half_float/brain_float tensors.")
       .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain quantized weight types to uint8.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Type inference

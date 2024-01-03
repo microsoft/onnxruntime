@@ -61,7 +61,6 @@ from onnxruntime.capi.onnxruntime_inference_collection import IOBinding  # noqa:
 from onnxruntime.capi.onnxruntime_inference_collection import OrtDevice  # noqa: F401
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue  # noqa: F401
 from onnxruntime.capi.onnxruntime_inference_collection import SparseTensor  # noqa: F401
-from onnxruntime.capi.training import *  # noqa: F403
 
 # TODO: thiagofc: Temporary experimental namespace for new PyTorch front-end
 try:  # noqa: SIM105

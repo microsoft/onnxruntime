@@ -3,100 +3,115 @@
 
 /// <reference lib="webworker" />
 
-import {OrtWasmMessage} from '../proxy-messages';
-import {createSession, createSessionAllocate, createSessionFinalize, endProfiling, extractTransferableBuffers, initRuntime, isOrtEnvInitialized, releaseSession, run} from '../wasm-core-impl';
+//
+// * type hack for "HTMLImageElement"
+//
+// in typescript, the type of "HTMLImageElement" is defined in lib.dom.d.ts, which is conflict with lib.webworker.d.ts.
+// when we use webworker, the lib.webworker.d.ts will be used, which does not have HTMLImageElement defined.
+//
+// we will get the following errors complaining that HTMLImageElement is not defined:
+//
+// ====================================================================================================================
+//
+// ../common/dist/cjs/tensor-factory.d.ts:187:29 - error TS2552: Cannot find name 'HTMLImageElement'. Did you mean
+// 'HTMLLIElement'?
+//
+// 187     fromImage(imageElement: HTMLImageElement, options?: TensorFromImageElementOptions):
+// Promise<TypedTensor<'float32'> | TypedTensor<'uint8'>>;
+//                                 ~~~~~~~~~~~~~~~~
+//
+// node_modules/@webgpu/types/dist/index.d.ts:83:7 - error TS2552: Cannot find name 'HTMLImageElement'. Did you mean
+// 'HTMLLIElement'?
+//
+// 83     | HTMLImageElement
+//          ~~~~~~~~~~~~~~~~
+//
+// ====================================================================================================================
+//
+// `HTMLImageElement` is only used in type declaration and not in real code. So we define it as `unknown` here to
+// bypass the type check.
+//
+declare global {
+  type HTMLImageElement = unknown;
+}
+
+import {OrtWasmMessage, SerializableTensorMetadata} from '../proxy-messages';
+import {createSession, copyFromExternalBuffer, endProfiling, extractTransferableBuffers, initEp, initRuntime, releaseSession, run} from '../wasm-core-impl';
 import {initializeWebAssembly} from '../wasm-factory';
 
 self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
-  switch (ev.data.type) {
-    case 'init-wasm':
-      try {
-        initializeWebAssembly(ev.data.in)
+  const {type, in : message} = ev.data;
+  try {
+    switch (type) {
+      case 'init-wasm':
+        initializeWebAssembly(message!.wasm)
             .then(
-                () => postMessage({type: 'init-wasm'} as OrtWasmMessage),
-                err => postMessage({type: 'init-wasm', err} as OrtWasmMessage));
-      } catch (err) {
-        postMessage({type: 'init-wasm', err} as OrtWasmMessage);
-      }
-      break;
-    case 'init-ort':
-      try {
-        initRuntime(ev.data.in).then(() => postMessage({type: 'init-ort'} as OrtWasmMessage), err => postMessage({
-                                                                                                type: 'init-ort',
-                                                                                                err
-                                                                                              } as OrtWasmMessage));
-      } catch (err) {
-        postMessage({type: 'init-ort', err} as OrtWasmMessage);
-      }
-      break;
-    case 'create_allocate':
-      try {
-        const {model} = ev.data.in!;
-        const modeldata = createSessionAllocate(model);
-        postMessage({type: 'create_allocate', out: modeldata} as OrtWasmMessage);
-      } catch (err) {
-        postMessage({type: 'create_allocate', err} as OrtWasmMessage);
-      }
-      break;
-    case 'create_finalize':
-      try {
-        const {modeldata, options} = ev.data.in!;
-        const sessionMetadata = createSessionFinalize(modeldata, options);
-        postMessage({type: 'create_finalize', out: sessionMetadata} as OrtWasmMessage);
-      } catch (err) {
-        postMessage({type: 'create_finalize', err} as OrtWasmMessage);
-      }
-      break;
-    case 'create':
-      try {
-        const {model, options} = ev.data.in!;
-        const sessionMetadata = createSession(model, options);
-        postMessage({type: 'create', out: sessionMetadata} as OrtWasmMessage);
-      } catch (err) {
-        postMessage({type: 'create', err} as OrtWasmMessage);
-      }
-      break;
-    case 'release':
-      try {
-        const handler = ev.data.in!;
-        releaseSession(handler);
-        postMessage({type: 'release'} as OrtWasmMessage);
-      } catch (err) {
-        postMessage({type: 'release', err} as OrtWasmMessage);
-      }
-      break;
-    case 'run':
-      try {
-        const {sessionId, inputIndices, inputs, outputIndices, options} = ev.data.in!;
-        run(sessionId, inputIndices, inputs, outputIndices, options)
-            .then(
-                outputs => {
-                  postMessage({type: 'run', out: outputs} as OrtWasmMessage, extractTransferableBuffers(outputs));
+                () => {
+                  initRuntime(message!).then(
+                      () => {
+                        postMessage({type});
+                      },
+                      err => {
+                        postMessage({type, err});
+                      });
                 },
                 err => {
-                  postMessage({type: 'run', err} as OrtWasmMessage);
+                  postMessage({type, err});
                 });
-      } catch (err) {
-        postMessage({type: 'run', err} as OrtWasmMessage);
+        break;
+      case 'init-ep': {
+        const {epName, env} = message!;
+        initEp(env, epName)
+            .then(
+                () => {
+                  postMessage({type});
+                },
+                err => {
+                  postMessage({type, err});
+                });
+        break;
       }
-      break;
-    case 'end-profiling':
-      try {
-        const handler = ev.data.in!;
-        endProfiling(handler);
-        postMessage({type: 'end-profiling'} as OrtWasmMessage);
-      } catch (err) {
-        postMessage({type: 'end-profiling', err} as OrtWasmMessage);
+      case 'copy-from': {
+        const {buffer} = message!;
+        const bufferData = copyFromExternalBuffer(buffer);
+        postMessage({type, out: bufferData} as OrtWasmMessage);
+        break;
       }
-      break;
-    case 'is-ort-env-initialized':
-      try {
-        const ortEnvInitialized = isOrtEnvInitialized();
-        postMessage({type: 'is-ort-env-initialized', out: ortEnvInitialized} as OrtWasmMessage);
-      } catch (err) {
-        postMessage({type: 'is-ort-env-initialized', err} as OrtWasmMessage);
+      case 'create': {
+        const {model, options} = message!;
+        const sessionMetadata = createSession(model, options);
+        postMessage({type, out: sessionMetadata} as OrtWasmMessage);
+        break;
       }
-      break;
-    default:
+      case 'release':
+        releaseSession(message!);
+        postMessage({type});
+        break;
+      case 'run': {
+        const {sessionId, inputIndices, inputs, outputIndices, options} = message!;
+        run(sessionId, inputIndices, inputs, outputIndices, new Array(outputIndices.length).fill(null), options)
+            .then(
+                outputs => {
+                  if (outputs.some(o => o[3] !== 'cpu')) {
+                    postMessage({type, err: 'Proxy does not support non-cpu tensor location.'});
+                  } else {
+                    postMessage(
+                        {type, out: outputs} as OrtWasmMessage,
+                        extractTransferableBuffers(outputs as SerializableTensorMetadata[]));
+                  }
+                },
+                err => {
+                  postMessage({type, err});
+                });
+        break;
+      }
+      case 'end-profiling':
+        endProfiling(message!);
+        postMessage({type});
+        break;
+      default:
+    }
+  } catch (err) {
+    postMessage({type, err} as OrtWasmMessage);
   }
 };

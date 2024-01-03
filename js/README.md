@@ -344,13 +344,13 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
       Full build:
 
       ```sh
-      python tools/ci_build/github/apple/build_ios_framework.py tools/ci_build/github/apple/default_full_ios_framework_build_settings.json --config Release
+      python tools/ci_build/github/apple/build_apple_framework.py tools/ci_build/github/apple/default_full_apple_framework_build_settings.json --config Release
       ```
 
       Reduced size build:
 
       ```sh
-      python tools/ci_build/github/apple/build_ios_framework.py tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json --config MinSizeRel --include_ops_by_config <required_ops_and_types_for_your_models.config> --enable_reduced_operator_type_support
+      python tools/ci_build/github/apple/build_apple_framework.py tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json --config MinSizeRel --include_ops_by_config <required_ops_and_types_for_your_models.config> --enable_reduced_operator_type_support
       ```
 
       The build creates `Headers`, `LICENSE`, and `onnxruntime.xcframework` in `build/iOS_framework/framework_out` directory. From `framework_out` directory, create an archive file named `onnxruntime-c.zip` for a full build or `onnxruntime-mobile-c.zip` for a reduced size build and copy to `<ORT_ROOT>/js/react_native/local_pods` directory.

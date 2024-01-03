@@ -115,6 +115,24 @@ class VariadicNodeGroupSelector : public NodeGroupSelector {
   bool allow_16bit_;
 };
 
+// DQ node -> Split -> multiple Q nodes with equal quantization types.
+// Optionally, the selector can require all input and output quantization parameters to be
+// equal and constant.
+class SplitNodeGroupSelector : public NodeGroupSelector {
+ public:
+  explicit SplitNodeGroupSelector(bool req_equal_quant_params = false)
+      : req_equal_quant_params_(req_equal_quant_params) {}
+
+ private:
+  bool Check(const GraphViewer& graph_viewer, const Node& node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+
+  bool req_equal_quant_params_;  // If true, only selects a node group if the input and output
+                                 // quantization parameters are all equal/constant, which enables the
+                                 // optimizer to drop the Q/DQ ops if the group is assigned to the CPU EP.
+};
+
 // DQ nodes for X, W and optionally B -> node -> Q
 class ConvNodeGroupSelector : public NodeGroupSelector {
  public:
@@ -288,10 +306,11 @@ class InputVariadicSelector : public BaseSelector {
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };
 
-//  DQ -> node -> Variadic Q nodes
-class OutputVariadicSelector : public BaseSelector {
+//  DQ -> Split -> variadic Q nodes
+class SplitSelector : public BaseSelector {
  public:
-  OutputVariadicSelector() : BaseSelector(std::make_unique<VariadicNodeGroupSelector>()) {}
+  SplitSelector(bool req_equal_quant_params = false)
+      : BaseSelector(std::make_unique<SplitNodeGroupSelector>(req_equal_quant_params)) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
 };

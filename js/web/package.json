@@ -24,6 +24,7 @@
     "build:doc": "node ./script/generate-webgl-operator-md && node ./script/generate-webgpu-operator-md",
     "pull:wasm": "node ./script/pull-prebuilt-wasm-artifacts",
     "test:e2e": "node ./test/e2e/run",
+    "prebuild": "tsc -p . --noEmit && tsc -p lib/wasm/proxy-worker --noEmit",
     "build": "node ./script/build",
     "test": "tsc --build ../scripts && node ../scripts/prepare-onnx-node-tests && node ./script/test-runner-cli",
     "prepack": "node ./script/build && node ./script/prepack"
@@ -42,7 +43,7 @@
     "@types/minimatch": "^5.1.2",
     "@types/minimist": "^1.2.2",
     "@types/platform": "^1.3.4",
-    "@webgpu/types": "^0.1.30",
+    "@webgpu/types": "^0.1.38",
     "base64-js": "^1.5.1",
     "chai": "^4.3.7",
     "electron": "^23.1.2",

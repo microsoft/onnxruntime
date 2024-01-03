@@ -79,6 +79,7 @@ jobs:
             /onnxruntime_src/tools/ci_build/build.py \
               --config ${{ parameters.BuildConfig }} \
               --use_rocm \
+              --use_migraphx \
               --rocm_version=${{ parameters.RocmVersion }} \
               --rocm_home=/opt/rocm \
               --nccl_home=/opt/rocm \

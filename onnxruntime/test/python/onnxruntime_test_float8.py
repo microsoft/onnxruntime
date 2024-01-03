@@ -334,7 +334,7 @@ class TestInferenceSession(unittest.TestCase):
         ]
     )
     @unittest.skipIf(not hasattr(TensorProto, "FLOAT8E4M3FN"), reason="needs onnx>=1.14.0")
-    @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running on CUDA.")
+    @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running without CUDA.")
     def test_model_cast_cast_cuda(self, name: str, float_name: str, saturate: int, provider: str):
         so = onnxruntime.SessionOptions()
         so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
@@ -373,7 +373,7 @@ class TestInferenceSession(unittest.TestCase):
         ]
     )
     @unittest.skipIf(not hasattr(TensorProto, "FLOAT8E4M3FN"), reason="needs onnx>=1.14.0")
-    @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running on CUDA.")
+    @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running without CUDA.")
     def test_model_cast_cast_cuda_ortvalue(self, name: str, float_name: str, saturate: int, provider: str):
         so = onnxruntime.SessionOptions()
         so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
@@ -627,7 +627,7 @@ class TestInferenceSession(unittest.TestCase):
         ]
     )
     @unittest.skipIf(not hasattr(TensorProto, "FLOAT8E4M3FN"), reason="needs onnx>=1.14.0")
-    @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running on CUDA.")
+    @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running without CUDA.")
     def test_model_qdq_cuda(self, name: str, float_name: str, saturate: int, provider: str):
         so = onnxruntime.SessionOptions()
         so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
@@ -693,7 +693,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(expect.shape, y.shape)
         self.assertEqual(expect.dtype, y.dtype)
 
-    @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running on CUDA.")
+    @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running without CUDA.")
     def test_compare_cpu_cuda_e4m3fn(self):
         folder = os.path.join(os.path.dirname(__file__), "..", "testdata", "float8")
         model = os.path.join(folder, "te.cast_fp8_1_fp32.onnx")

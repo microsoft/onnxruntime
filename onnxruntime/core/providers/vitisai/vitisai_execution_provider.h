@@ -4,6 +4,10 @@
 #pragma once
 
 #include <ctime>
+#include <vector>
+#include <memory>
+#include <set>
+#include <string>
 
 #include "core/framework/execution_provider.h"
 #include "core/framework/customregistry.h"
@@ -18,34 +22,19 @@ class ExecutionProvider;
 }  // namespace vaip_core
 namespace onnxruntime {
 
-// Information needed to construct execution providers.
-struct VitisAIExecutionProviderInfo {
-  VitisAIExecutionProviderInfo(const ProviderOptions& provider_options);
-
-  const char* get_json_config_str() const {
-    return json_config_.c_str();
-  }
-
- private:
-  ProviderOptions provider_options_;
-  const std::string json_config_;
-};
-
 // Logical device representation.
 class VitisAIExecutionProvider : public IExecutionProvider {
  public:
-  explicit VitisAIExecutionProvider(const VitisAIExecutionProviderInfo& info);
+  explicit VitisAIExecutionProvider(const ProviderOptions& info);
   ~VitisAIExecutionProvider() = default;
 
-  std::vector<std::unique_ptr<ComputeCapability>>
-  GetCapability(const onnxruntime::GraphViewer& graph,
-                const IKernelLookup& /*kernel_lookup*/) const override;
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph,
+                                                                const IKernelLookup& /*kernel_lookup*/) const override;
 
   int GetDeviceId() const { return 0; }
 
-  common::Status Compile(
-      const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-      std::vector<NodeComputeInfo>& node_compute_funcs) override;
+  common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                         std::vector<NodeComputeInfo>& node_compute_funcs) override;
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
  private:
@@ -54,7 +43,7 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   using my_ep_uptr_t = std::shared_ptr<my_ep_t>;
   // we have to hide the implementation by forward declaration.
   mutable my_ep_uptr_t execution_providers_;
-  VitisAIExecutionProviderInfo info_;
+  ProviderOptions info_;
   std::vector<OrtCustomOpDomain*> custom_op_domains_;
   std::shared_ptr<KernelRegistry> registry_;
   std::set<std::string> vitisai_optypes_;

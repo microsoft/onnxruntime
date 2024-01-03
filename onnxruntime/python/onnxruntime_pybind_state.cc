@@ -49,15 +49,11 @@ namespace onnxruntime {
 }  // namespace onnxruntime
 
 #if defined(_MSC_VER)
-#pragma warning(disable : 4267 4996 4503 4003)
+#pragma warning(disable : 4267 4996 4503)
 #endif  // _MSC_VER
 
 #include <iterator>
 #include <algorithm>
-
-#if defined(_MSC_VER)
-#pragma warning(disable : 4267 4996 4503 4003)
-#endif  // _MSC_VER
 
 namespace onnxruntime {
 namespace python {
@@ -907,10 +903,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             ORT_THROW("Invalid value passed for enable_opencl_throttling: ", option.second);
           }
           OV_provider_options_map[option.first] = option.second;
-        } else if (option.first == "enable_dynamic_shapes") {
+        } else if (option.first == "disable_dynamic_shapes") {
           if (!(option.second == "True" || option.second == "true" ||
                 option.second == "False" || option.second == "false")) {
-            ORT_THROW("Invalid value passed for enable_dynamic_shapes: ", option.second);
+            ORT_THROW("Invalid value passed for disable_dynamic_shapes: ", option.second);
           }
           OV_provider_options_map[option.first] = option.second;
         } else if (option.first == "device_id") {
@@ -2059,15 +2055,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .export_values();
 }
 
-void CreateInferencePybindStateModule(py::module& m) {
+bool CreateInferencePybindStateModule(py::module& m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
   RegisterExceptions(m);
 
-  // Initialization of the module
-  ([]() -> void {
-    // import_array1() forces a void return value.
-    import_array1();
-  })();
+  import_array1(false);
 
   auto env = GetEnv();
 
@@ -2087,13 +2079,13 @@ void CreateInferencePybindStateModule(py::module& m) {
   addGlobalSchemaFunctions(m);
   addOpSchemaSubmodule(m);
   addOpKernelSubmodule(m);
+  return true;
 }
 
-void InitArray() {
-  ([]() -> void {
-    // import_array1() forces a void return value.
-    import_array1();
-  })();
+// This function is only used by orttraining module
+bool InitArray() {
+  import_array1(false);
+  return true;
 }
 
 namespace {
@@ -2136,8 +2128,6 @@ class EnvInitializer {
 
  private:
   EnvInitializer() {
-    // Initialization of the module
-    InitArray();
     std::unique_ptr<Environment> env_ptr;
     Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
     OrtPybindThrowIfError(Environment::Create(std::make_unique<LoggingManager>(

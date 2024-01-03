@@ -93,5 +93,34 @@
         ]
       }
     ]
+  },
+  {
+    "name": "Gather - bool",
+    "operator": "Gather",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "data[2,4] indices[1]",
+        "inputs": [
+          {
+            "data": [true, false, false, true, false, false, true, true],
+            "dims": [2, 4],
+            "type": "bool"
+          },
+          {
+            "data": [1],
+            "dims": [1],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [false, false, true, true],
+            "dims": [1, 4],
+            "type": "bool"
+          }
+        ]
+      }
+    ]
   }
 ]

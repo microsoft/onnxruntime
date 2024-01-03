@@ -63,6 +63,16 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
   const int head_size = parameters.head_size;
   const int position_ids_format = parameters.position_ids_format;
   const int half_head_size = head_size / 2;
+  // Default input tensor shape is [batch, seq_len, hidden_size]
+  int head_stride = head_size;
+  int seq_stride = num_heads * head_stride;
+  int batch_stride = sequence_length * seq_stride;
+  if (parameters.transposed) {
+    // Transposed input tensor shape is [batch, num_heads, seq_len, head_size]
+    seq_stride = head_size;
+    head_stride = sequence_length * seq_stride;
+    batch_stride = num_heads * head_stride;
+  }
 
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
@@ -76,11 +86,10 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
       const int s = static_cast<int>((ptr / num_heads) % sequence_length);
       const int n = static_cast<int>(ptr % num_heads);
 
-      const int block_offset = b * sequence_length * num_heads + s * num_heads + n;
-      const int data_offset = block_offset * head_size;
+      const int block_offset = b * batch_stride + s * seq_stride + n * head_stride;
 
-      const T* input_data = input_src + data_offset;
-      T* output_data = output_dest + data_offset;
+      const T* input_data = input_src + block_offset;
+      T* output_data = output_dest + block_offset;
 
       // Cache is (M, H/2)
       const int position_id = (position_ids_format == 0)

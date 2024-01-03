@@ -22,76 +22,68 @@
 
 import coloredlogs
 from cuda import cudart
-from demo_utils import init_pipeline, parse_arguments, repeat_prompt
-from diffusion_models import PipelineInfo
-from engine_builder import EngineType, get_engine_type
-from pipeline_txt2img import Txt2ImgPipeline
+from demo_utils import (
+    add_controlnet_arguments,
+    arg_parser,
+    get_metadata,
+    load_pipelines,
+    parse_arguments,
+    process_controlnet_arguments,
+    repeat_prompt,
+)
 
 if __name__ == "__main__":
     coloredlogs.install(fmt="%(funcName)20s: %(message)s")
 
-    args = parse_arguments(is_xl=False, description="Options for Stable Diffusion Demo")
+    parser = arg_parser("Options for Stable Diffusion Demo")
+    add_controlnet_arguments(parser)
+    args = parse_arguments(is_xl=False, parser=parser)
+
+    controlnet_images, controlnet_scale = process_controlnet_arguments(args)
+
+    pipeline, refiner = load_pipelines(args)
+    assert refiner is None
+
     prompt, negative_prompt = repeat_prompt(args)
-
-    image_height = args.height
-    image_width = args.width
-
-    # Register TensorRT plugins
-    engine_type = get_engine_type(args.engine)
-    if engine_type == EngineType.TRT:
-        from trt_utilities import init_trt_plugins
-
-        init_trt_plugins()
-
-    max_batch_size = 16
-    if engine_type != EngineType.ORT_CUDA and (args.build_dynamic_shape or image_height > 512 or image_width > 512):
-        max_batch_size = 4
-
     batch_size = len(prompt)
-    if batch_size > max_batch_size:
-        raise ValueError(
-            f"Batch size {len(prompt)} is larger than allowed {max_batch_size}. If dynamic shape is used, then maximum batch size is 4"
-        )
-
-    pipeline_info = PipelineInfo(args.version)
-    pipeline = init_pipeline(Txt2ImgPipeline, pipeline_info, engine_type, args, max_batch_size, batch_size)
-
-    if engine_type == EngineType.TRT:
-        max_device_memory = max(pipeline.backend.max_device_memory(), pipeline.backend.max_device_memory())
-        _, shared_device_memory = cudart.cudaMalloc(max_device_memory)
-        pipeline.backend.activate_engines(shared_device_memory)
-
-    if engine_type == EngineType.ORT_CUDA and args.enable_vae_slicing:
-        pipeline.backend.enable_vae_slicing()
-
-    pipeline.load_resources(image_height, image_width, batch_size)
+    pipeline.load_resources(args.height, args.width, batch_size)
 
     def run_inference(warmup=False):
         return pipeline.run(
             prompt,
             negative_prompt,
-            image_height,
-            image_width,
-            warmup=warmup,
+            args.height,
+            args.width,
             denoising_steps=args.denoising_steps,
             guidance=args.guidance,
             seed=args.seed,
-            return_type="image",
+            controlnet_images=controlnet_images,
+            controlnet_scales=controlnet_scale,
+            show_latency=not warmup,
+            output_type="pil",
         )
 
     if not args.disable_cuda_graph:
         # inference once to get cuda graph
-        _image, _latency = run_inference(warmup=True)
+        _, _ = run_inference(warmup=True)
 
     print("[I] Warming up ..")
     for _ in range(args.num_warmup_runs):
-        _image, _latency = run_inference(warmup=True)
+        _, _ = run_inference(warmup=True)
 
     print("[I] Running StableDiffusion pipeline")
     if args.nvtx_profile:
         cudart.cudaProfilerStart()
-    _image, _latency = run_inference(warmup=False)
+    images, perf_data = run_inference(warmup=False)
     if args.nvtx_profile:
         cudart.cudaProfilerStop()
+
+    metadata = get_metadata(args, False)
+    metadata.update(pipeline.metadata())
+    if perf_data:
+        metadata.update(perf_data)
+    metadata["images"] = len(images)
+    print(metadata)
+    pipeline.save_images(images, prompt, negative_prompt, metadata)
 
     pipeline.teardown()

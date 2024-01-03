@@ -94,8 +94,8 @@ Status InstanceNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                             bool do_op_validation) const {
   const auto& inputs = node_unit.Inputs();
 
-  OnnxInputInfo input0_info = {};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[0], input0_info));
+  TensorInfo input0_info = {};
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[0], input0_info));
 
   // HTP backend can only handle rank 3 inputs if the batch size is 1. If the batch size is not 1,
   // QNN EP must reshape the input and output to (N, 1, W, C) and process the InstanceNorm as rank 4.
@@ -168,8 +168,8 @@ Status InstanceNormOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_m
 
   const auto& outputs = node_unit.Outputs();
 
-  OnnxInputInfo output_info = {};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(outputs[0], output_info));
+  TensorInfo output_info = {};
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(outputs[0], output_info));
 
   // HTP backend can only handle rank 3 inputs/outputs if the batch size is 1. If the batch size is not 1,
   // QNN EP must reshape the input and output to (N, 1, W, C) and process the InstanceNorm as rank 4.

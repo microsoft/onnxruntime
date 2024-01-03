@@ -135,8 +135,7 @@ static void RunQDQPadOpTest(const TestInputDef<float>& data_def,
                                                       has_constant_value, constant_value_quantized),
                        provider_options,
                        opset,
-                       expected_ep_assignment,
-                       1e-5f);
+                       expected_ep_assignment);
 }
 
 //

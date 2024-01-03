@@ -30,6 +30,14 @@ class SplitOpBuilder : public BaseOpBuilder {
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
+
+  Status OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                  const NodeUnit& node_unit,
+                                  const logging::Logger& logger,
+                                  const std::vector<std::string>& input_names,
+                                  size_t output_index,
+                                  Qnn_DataType_t qnn_data_type,
+                                  Qnn_QuantizeParams_t& quant_param) const override ORT_MUST_USE_RESULT;
 };
 
 Status SplitOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
@@ -119,6 +127,23 @@ Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
                                      logger, do_op_validation, GetQnnOpType(node_unit.OpType())));
 
   return Status::OK();
+}
+
+Status SplitOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
+                                                const NodeUnit& node_unit,
+                                                const logging::Logger& logger,
+                                                const std::vector<std::string>& input_names,
+                                                size_t output_index,
+                                                Qnn_DataType_t qnn_data_type,
+                                                Qnn_QuantizeParams_t& quant_param) const {
+  // Force Split outputs to use the same quantization parameters as the input if nearly equal.
+  // This helps the HTP backend employ certain optimizations.
+  //
+  // The quantization tool assigns equal qparams to the input and outputs.
+  // However, Sigmoid/Tanh may override their output qparams,
+  // which requires us to explicitly handle this in case a Split is consumer of a Sigmoid/Tanh node.
+  return SetOutputQParamEqualToInputIfNearlyEqual(qnn_model_wrapper, node_unit, logger, input_names,
+                                                  0 /*input_index*/, output_index, qnn_data_type, quant_param);
 }
 
 void CreateSplitOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
