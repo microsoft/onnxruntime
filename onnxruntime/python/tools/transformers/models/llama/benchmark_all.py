@@ -257,11 +257,11 @@ def save_results(results, filename):
         record.config.measured_runs = row["Measured Runs"]
         record.config.batch_size = row["Batch Size"]
         record.config.seq_length = row["Sequence Length"]
-        record.config.measure_step = row["Step"]
-        record.config.engine = row["Engine"]
-        record.metrics.latency_s_mean = row["Latency (s)"]
+        record.config.customized["measure_step"] = row["Step"]
+        record.config.customized["engine"] = row["Engine"]
+        record.metrics.customized["latency_s_mean"] = row["Latency (s)"]
         record.metrics.latency_ms_mean = row["Latency (ms)"]
-        record.metrics.throughput_tps = row["Throughput (tps)"]
+        record.metrics.customized["throughput_tps"] = row["Throughput (tps)"]
         record.metrics.max_memory_usage_GB = row["Memory (GB)"]
 
         records.append(record)

@@ -65,8 +65,6 @@ class Config(BaseObject):
         precision: Optional[str] = "fp32",
         warmup_runs: Optional[int] = 1,
         measured_runs: Optional[int] = 10,
-        measure_step: Optional[str] = "",
-        engine: Optional[str] = ""
     ):
         super().__init__()
         self.backend = backend
@@ -77,8 +75,6 @@ class Config(BaseObject):
         self.measured_runs = measured_runs
         self.model_info = ModelInfo()
         self.backend_options = BackendOptions()
-        self.measure_step = measure_step
-        self.engine = engine
 
 
 class Metadata(BaseObject):
@@ -102,16 +98,12 @@ class Metrics(BaseObject):
     def __init__(
         self,
         latency_ms_mean: Optional[float] = 0.0,
-        latency_s_mean: Optional[float] = 0.0,
         throughput_qps: Optional[float] = 0.0,
-        throughput_tps: Optional[float] = 0.0,
         max_memory_usage_GB: Optional[float] = 0.0,
     ):
         super().__init__()
         self.latency_ms_mean = latency_ms_mean
-        self.latency_s_mean = latency_s_mean
         self.throughput_qps = throughput_qps
-        self.throughput_tps = throughput_tps
         self.max_memory_usage_GB = max_memory_usage_GB
 
 
