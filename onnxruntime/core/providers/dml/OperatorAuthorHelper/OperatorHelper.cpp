@@ -2525,7 +2525,6 @@ namespace OperatorHelper
                     m_regionOfInterest = newRois;
                 }
             }
-
         }
         else if (opsetVersion >= 9)
         {
