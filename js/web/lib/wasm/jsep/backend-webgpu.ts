@@ -129,9 +129,6 @@ export class WebGpuBackend {
     return data;
   }
 
-  // required min regular runs before graph capture for the necessary memory allocations.
-  // const int min_num_runs_before_webgpu_graph_capture_ = 1
-
   /**
    * a KernelID -> kernel info mapping. value is
    * [ op_type, name, run function, [optional] preprocess_attribute_once function ]
@@ -530,32 +527,6 @@ export class WebGpuBackend {
   }
   // #endregion
 
-  runStart(sessionId: number): void {
-    LOG_DEBUG('info', () => `runStart sessionId: ${sessionId}`);
-    /*
-    // Begin webgpu graph capture.
-    if (webgpu_graph_enable_ && IsGraphCaptureAllowed() && !IsGraphCaptured()) {
-      LOG_DEBUG('info', () => 'Capturing the webgpu graph for this model');
-      CaptureBegin();
-    }
-    */
-  }
-  runEnd(sessionId: number): void {
-    LOG_DEBUG('info', () => `runEnd sessionId: ${sessionId}`);
-    // End webgpu graph capture.
-    /*
-    if (webgpu_graph_enable_ && !IsGraphCaptured()) {
-      if (IsGraphCaptureAllowed()) {
-        CaptureEnd();
-        // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
-        // so run the captured graph here to actually execute the work.
-        ReplayGraph();
-      } else {
-        IncrementRegularRunCountBeforeGraphCapture();
-      }
-    }
-    */
-  }
   captureBegin(): void {
     LOG_DEBUG('info', () => 'captureBegin');
     this.capturedCommandList = [];

@@ -406,7 +406,6 @@ export const run = async(
   const outputNamesOffset = wasm.stackAlloc(outputCount * 4);
 
   try {
-    wasm.jsepRunStart(sessionId);
     [runOptionsHandle, runOptionsAllocs] = setRunOptions(options);
 
     // create input tensors
@@ -582,7 +581,6 @@ export const run = async(
     if (ioBindingState) {
       wasm._OrtClearBoundOutputs(ioBindingState.handle);
     }
-    wasm.jsepRunEnd(sessionId);
     return output;
   } finally {
     wasm.stackRestore(beforeRunStack);

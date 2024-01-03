@@ -790,20 +790,6 @@ bool JsExecutionProvider::IsGraphCaptureAllowed() const {
 }
 
 void JsExecutionProvider::IncrementRegularRunCountBeforeGraphCapture() {
-  // Please note that this function is not thread safe.
-  // ORT TRT calls this function in compute_func() where synchronization is enforced due to lock_guard(),
-  // therefore following increment is guaranteed to be thread safe.
   ++regular_run_count_before_graph_capture_;
 }
-/*
-void JsExecutionProvider::CaptureBegin() {
-  cuda_graph_.Reset();
-  cuda_graph_.CaptureBegin();
-}
-
-void JsExecutionProvider::CaptureEnd() {
-  cuda_graph_.CaptureEnd();
-  is_graph_captured_ = true;
-}
-*/
 }  // namespace onnxruntime
