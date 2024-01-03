@@ -1310,8 +1310,7 @@ Graph::Graph(const Model& owning_model,
   }
 
   for (const auto& node_proto : graph_proto_->node()) {
-    auto& new_node = AddNode(node_proto, name_to_type_map);
-    SetOpSchemaFromRegistryForNode(new_node);
+    AddNode(node_proto, name_to_type_map);
   }
 
   if (is_loaded_from_model_file_) {
