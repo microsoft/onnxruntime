@@ -309,9 +309,6 @@ inline const ONNX_NAMESPACE::TensorShapeProto& GetShape(const ONNX_NAMESPACE::Ty
 template <typename T>
 const std::vector<T> ParseData(const ONNX_NAMESPACE::TensorProto& ten_proto);
 
-template <typename T>
-const T ParseScalar(const ONNX_NAMESPACE::TensorProto& ten_proto);
-
 inline bool HasRawData(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   // Can not be UNDEFINED and can not be STRING but test for STRING is usually performed separately
   // to return an error
