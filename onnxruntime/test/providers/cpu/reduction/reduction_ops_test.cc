@@ -5789,6 +5789,7 @@ void test_empty_set(const std::string& op, int opset, bool axes_as_input, float 
           kMIGraphXExecutionProvider,
           kOpenVINOExecutionProvider,
           kQnnExecutionProvider,
+          kRocmExecutionProvider,
           kTensorrtExecutionProvider,
       });
 }
@@ -5806,106 +5807,54 @@ TEST(ReductionOpTest, empty_set_ReduceL2) {
 }
 
 TEST(ReductionOpTest, empty_set_ReduceL2_13) {
-  if (DefaultDnnlExecutionProvider().get() != nullptr || DefaultMIGraphXExecutionProvider().get() != nullptr || DefaultRocmExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Expected shape from model of {2,1,4} does not match actual shape of {1,0,1} for output reduced";
-  }
-
   test_empty_set("ReduceL2", 13, false, 0);
 }
 
 TEST(ReductionOpTest, empty_set_ReduceLogSum) {
-  if (DefaultDnnlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,1,4}] did not match run output shape [{2,0,4}] for reduced";
-  }
-
   test_empty_set("ReduceLogSum", 20, true, -std::numeric_limits<float>::infinity());
 }
 
 TEST(ReductionOpTest, empty_set_ReduceLogSum_13) {
-  if (DefaultDnnlExecutionProvider().get() != nullptr || DefaultMIGraphXExecutionProvider().get() != nullptr || DefaultRocmExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,1,4}] did not match run output shape [{1,0,1}] for reduced";
-  }
-
   test_empty_set("ReduceLogSum", 13, false, -std::numeric_limits<float>::infinity());
 }
 
 TEST(ReductionOpTest, empty_set_ReduceLogSumExp) {
-  if (DefaultDnnlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,1,4}] did not match run output shape [{2,0,4}] for reduced";
-  }
-
   test_empty_set("ReduceLogSumExp", 20, true, -std::numeric_limits<float>::infinity());
 }
 
 TEST(ReductionOpTest, empty_set_ReduceLogSumExp_13) {
-  if (DefaultDnnlExecutionProvider().get() != nullptr || DefaultMIGraphXExecutionProvider().get() != nullptr || DefaultRocmExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,1,4}] did not match run output shape [{1,0,1}] for reduced";
-  }
-
   test_empty_set("ReduceLogSumExp", 13, false, -std::numeric_limits<float>::infinity());
 }
 
 TEST(ReductionOpTest, empty_set_ReduceMin) {
-  if (DefaultDnnlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,1,4}] did not match run output shape [{2,0,4}] for reduced";
-  }
-
   test_empty_set("ReduceMin", 20, true, std::numeric_limits<float>::infinity());
 }
 
 TEST(ReductionOpTest, empty_set_ReduceMin_13) {
-  if (DefaultDnnlExecutionProvider().get() != nullptr || DefaultMIGraphXExecutionProvider().get() != nullptr || DefaultRocmExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,1,4}] did not match run output shape [{1,0,1}] for reduced";
-  }
-
   test_empty_set("ReduceMin", 13, false, std::numeric_limits<float>::infinity());
 }
 
 TEST(ReductionOpTest, empty_set_ReduceProd) {
-  if (DefaultDnnlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,1,4}] did not match run output shape [{2,0,4}] for reduced";
-  }
-
   test_empty_set("ReduceProd", 20, true, 1.0f);
 }
 
 TEST(ReductionOpTest, empty_set_ReduceProd_13) {
-  if (DefaultDnnlExecutionProvider().get() != nullptr || DefaultMIGraphXExecutionProvider().get() != nullptr || DefaultRocmExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,1,4}] did not match run output shape [{2,0,4}] for reduced";
-  }
-
   test_empty_set("ReduceProd", 13, false, 1.0f);
 }
 
 TEST(ReductionOpTest, empty_set_ReduceSum) {
-  if (DefaultDnnlExecutionProvider().get() != nullptr || DefaultMIGraphXExecutionProvider().get() != nullptr || DefaultRocmExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,1,4}] did not match run output shape [{2,0,4}] for reduced";
-  }
-
   test_empty_set("ReduceSum", 20, true, 0.0f);
 }
 
 TEST(ReductionOpTest, empty_set_ReduceSum_13) {
-  if (DefaultDnnlExecutionProvider().get() != nullptr || DefaultMIGraphXExecutionProvider().get() != nullptr || DefaultRocmExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,1,4}] did not match run output shape [{1,0,1}] for reduced";
-  }
-
   test_empty_set("ReduceSum", 11, false, 0.0f);
 }
 
 TEST(ReductionOpTest, empty_set_ReduceSumSquare) {
-  if (DefaultDnnlExecutionProvider().get() != nullptr || DefaultMIGraphXExecutionProvider().get() != nullptr || DefaultRocmExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,1,4}] did not match run output shape [{2,0,4}] for reduced";
-  }
-
   test_empty_set("ReduceSumSquare", 20, true, 0.0f);
 }
 
 TEST(ReductionOpTest, empty_set_ReduceSumSquare_13) {
-  if (DefaultDnnlExecutionProvider().get() != nullptr || DefaultMIGraphXExecutionProvider().get() != nullptr || DefaultRocmExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,1,4}] did not match run output shape [{2,0,4}] for reduced";
-  }
-
   test_empty_set("ReduceSumSquare", 13, false, 0.0f);
 }
 #endif  // USE_MIGRAPHX
