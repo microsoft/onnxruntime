@@ -3540,6 +3540,7 @@ TEST(ReductionOpTest, ReduceDimWithZero1) {
 
     tester.Run(expect, error_msg,
                // exclude EPs that don't handle this
+               // TODO: fix reduce kernel for zero set cases. see: https://github.com/microsoft/onnxruntime/issues/18588
                {
                    kCoreMLExecutionProvider,
                    kCudaExecutionProvider,
@@ -3590,6 +3591,7 @@ TEST(ReductionOpTest, ReduceDimWithZero2) {
 
     tester.Run(expect, error_msg,
                // exclude EPs that don't handle this
+               // TODO: fix reduce kernel for zero set cases. see: https://github.com/microsoft/onnxruntime/issues/18588
                {
                    kCoreMLExecutionProvider,
                    kCudaExecutionProvider,
@@ -5792,9 +5794,9 @@ void test_empty_set(const std::string& op, int opset, bool axes_as_input, float 
 }
 
 TEST(ReductionOpTest, empty_set_ReduceL1) {
-  if (DefaultDnnlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,1,4}] did not match run output shape [{1,0,1}] for reduced";
-  }
+  //if (DefaultDnnlExecutionProvider().get() != nullptr) {
+  //  GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,1,4}] did not match run output shape [{1,0,1}] for reduced";
+  //}
 
   test_empty_set("ReduceL1", 20, true, 0);
 }

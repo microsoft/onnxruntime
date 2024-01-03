@@ -845,7 +845,7 @@ static void ValidateKeepDims(const Tensor* input, int64_t keepdims) {
 }
 
 template <typename AGG>
-bool check_and_reduce_empty_set_input(OpKernelContext* ctx, const gsl::span<const int64_t>& axes, bool keepdims) {
+bool check_and_reduce_empty_set_input(OpKernelContext* ctx, const gsl::span<const int64_t> axes, bool keepdims) {
   const Tensor* input = ctx->Input<Tensor>(0);
   const TensorShape& input_shape = input->Shape();
   if (input_shape.Size() != 0) {
@@ -855,7 +855,7 @@ bool check_and_reduce_empty_set_input(OpKernelContext* ctx, const gsl::span<cons
   // input is an empty set
   std::vector<int64_t> input_axes;
   if (ctx->InputCount() == 2) {
-    ORT_ENFORCE(axes.empty(), "Axes input and attribute should not both present for reduction.");
+    ORT_ENFORCE(axes.empty(), "Axes input and attribute should not both be present for reduction.");
     // second input holds the axes.
     const Tensor* axes_tensor = ctx->Input<Tensor>(1);
     auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
@@ -889,7 +889,7 @@ bool check_and_reduce_empty_set_input(OpKernelContext* ctx, const gsl::span<cons
 
 template <typename AGG>
 void CommonReduce1Loop(OpKernelContext* ctx,
-                       const gsl::span<const int64_t>& axes_, int64_t keepdims_,
+                       const gsl::span<const int64_t> axes_, int64_t keepdims_,
                        bool noop_with_empty_axes) {
   if (check_and_reduce_empty_set_input<AGG>(ctx, axes_, keepdims_ != 0)) {
     return;
@@ -926,9 +926,9 @@ void CommonReduce1Loop(OpKernelContext* ctx,
 
 template <typename AGG>
 void CommonReduce2Loops(OpKernelContext* ctx,
-                        const gsl::span<const int64_t>& axes_, int64_t keepdims_,
+                        const gsl::span<const int64_t> axes_, int64_t keepdims_,
                         bool noop_with_empty_axes) {
-  if (check_and_reduce_empty_set_input<AGG>(ctx, axes_, keepdims_)) {
+  if (check_and_reduce_empty_set_input<AGG>(ctx, axes_, keepdims_ != 0)) {
     return;
   }
 
@@ -1126,16 +1126,16 @@ template class ReduceSum<double>;
 template class ReduceSum<int64_t>;
 
 template void CommonReduce1Loop<ReduceAggregatorSum<float>>(OpKernelContext* ctx,
-                                                            const gsl::span<const int64_t>& axes_, int64_t keepdims_,
+                                                            const gsl::span<const int64_t> axes_, int64_t keepdims_,
                                                             bool noop_with_empty_axes);
 template void CommonReduce1Loop<ReduceAggregatorSum<int32_t>>(OpKernelContext* ctx,
-                                                              const gsl::span<const int64_t>& axes_, int64_t keepdims_,
+                                                              const gsl::span<const int64_t> axes_, int64_t keepdims_,
                                                               bool noop_with_empty_axes);
 template void CommonReduce1Loop<ReduceAggregatorSum<double>>(OpKernelContext* ctx,
-                                                             const gsl::span<const int64_t>& axes_, int64_t keepdims_,
+                                                             const gsl::span<const int64_t> axes_, int64_t keepdims_,
                                                              bool noop_with_empty_axes);
 template void CommonReduce1Loop<ReduceAggregatorSum<int64_t>>(OpKernelContext* ctx,
-                                                              const gsl::span<const int64_t>& axes_, int64_t keepdims_,
+                                                              const gsl::span<const int64_t> axes_, int64_t keepdims_,
                                                               bool noop_with_empty_axes);
 
 }  // namespace onnxruntime
