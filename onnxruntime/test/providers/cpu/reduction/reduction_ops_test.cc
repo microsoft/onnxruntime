@@ -5794,26 +5794,14 @@ void test_empty_set(const std::string& op, int opset, bool axes_as_input, float 
 }
 
 TEST(ReductionOpTest, empty_set_ReduceL1) {
-  // if (DefaultDnnlExecutionProvider().get() != nullptr) {
-  //   GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,1,4}] did not match run output shape [{1,0,1}] for reduced";
-  // }
-
   test_empty_set("ReduceL1", 20, true, 0);
 }
 
 TEST(ReductionOpTest, empty_set_ReduceL1_13) {
-  if (DefaultDnnlExecutionProvider().get() != nullptr || DefaultMIGraphXExecutionProvider().get() != nullptr || DefaultRocmExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,1,4}] did not match run output shape [{1,0,1}] for reduced";
-  }
-
   test_empty_set("ReduceL1", 13, false, 0);
 }
 
 TEST(ReductionOpTest, empty_set_ReduceL2) {
-  if (DefaultDnnlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,1,4}] did not match run output shape [{2,0,4}] for reduced";
-  }
-
   test_empty_set("ReduceL2", 20, true, 0);
 }
 
