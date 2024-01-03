@@ -17,9 +17,13 @@ interface KernelInfo {
   nodeName: string;
   kernelEntry: RunFunction;
   attributes: [((attribute: unknown) => unknown)|undefined, unknown];
-  programName?: string;
-  inputTensorViews?: readonly TensorView[];
-  outputTensorViews?: readonly TensorView[];
+}
+
+interface PendingKernelInfo {
+  kernelId: number;
+  programName: string;
+  inputTensorViews: readonly TensorView[];
+  outputTensorViews: readonly TensorView[];
 }
 
 const getProgramInputTensorInfoDependencyKey =
@@ -141,11 +145,10 @@ export class WebGpuBackend {
   maxDispatchNumber = 16;
   pendingDispatchNumber = 0;
 
-
   // info of kernels pending submission for a single batch
-  private pendingKernels: number[] = [];
+  private pendingKernels: PendingKernelInfo[] = [];
   // queryReadData -> pendingKernels mapping for all the batches
-  private pendingQueries: Map<number, number[]> = new Map();
+  private pendingQueries: Map<number, PendingKernelInfo[]> = new Map();
   private queryResolveData?: GpuData;
   private querySet?: GPUQuerySet;
   private queryTimeBase?: bigint;
@@ -285,15 +288,16 @@ export class WebGpuBackend {
     if (this.queryType !== QueryType.none) {
       void queryReadData!.buffer.mapAsync(GPUMapMode.READ).then(() => {
         const mappedData = new BigUint64Array(queryReadData.buffer.getMappedRange());
-        const pendingKernels = this.pendingQueries.get(queryReadData.id);
+        const pendingKernels = this.pendingQueries.get(queryReadData.id)!;
         for (let i = 0; i < mappedData.length / 2; i++) {
-          const kernelId = pendingKernels![i];
+          const pendingKernelInfo = pendingKernels[i];
+          const kernelId = pendingKernelInfo.kernelId;
           const kernelInfo = this.kernels.get(kernelId)!;
           const opType = kernelInfo.opType;
           const nodeName = kernelInfo.nodeName;
-          const programName = kernelInfo.programName;
-          const inputTensorViews = kernelInfo.inputTensorViews;
-          const outputTensorViews = kernelInfo.outputTensorViews;
+          const programName = pendingKernelInfo.programName;
+          const inputTensorViews = pendingKernelInfo.inputTensorViews;
+          const outputTensorViews = pendingKernelInfo.outputTensorViews;
           const startTimeU64 = mappedData[i * 2];
           const endTimeU64 = mappedData[i * 2 + 1];
 
@@ -311,24 +315,25 @@ export class WebGpuBackend {
           if (this.env.webgpu.profiling?.ondata) {
             this.env.webgpu.profiling.ondata({
               version: 1,
-              inputsMetadata: inputTensorViews!.map(
+              inputsMetadata: inputTensorViews.map(
                   value => ({dims: value.dims, dataType: tensorDataTypeEnumToString(value.dataType)})),
-              outputsMetadata: outputTensorViews!.map(
+              outputsMetadata: outputTensorViews.map(
                   value => ({dims: value.dims, dataType: tensorDataTypeEnumToString(value.dataType)})),
               kernelId,
               kernelType: opType,
               kernelName: nodeName,
+              programName,
               startTime,
               endTime,
             });
           } else {
             // if no callback is provided, print the profiling message to console
             let inputShapes = '';
-            inputTensorViews!.forEach((value, i) => {
+            inputTensorViews.forEach((value, i) => {
               inputShapes += `input[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
             });
             let outputShapes = '';
-            outputTensorViews!.forEach((value, i) => {
+            outputTensorViews.forEach((value, i) => {
               outputShapes += `output[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
             });
             // eslint-disable-next-line no-console
@@ -472,11 +477,6 @@ export class WebGpuBackend {
       this.programManager.setArtifact(key, artifact);
       LOG_DEBUG('info', () => `[artifact] key: ${key}, programName: ${program.name}`);
     }
-    // update kernels
-    const kernelInfo = this.kernels.get(this.currentKernelId!)!;
-    kernelInfo.programName = artifact.programInfo.name;
-    kernelInfo.inputTensorViews = inputTensorViews;
-    kernelInfo.outputTensorViews = outputTensorViews;
 
     LOG_DEBUG(
         'info',
@@ -484,7 +484,13 @@ export class WebGpuBackend {
             normalizedDispatchGroup[1]}x${normalizedDispatchGroup[2]}`);
 
     if (this.queryType !== QueryType.none) {
-      this.pendingKernels.push(this.currentKernelId!);
+      const pendingKernelInfo: PendingKernelInfo = {
+        kernelId: this.currentKernelId!,
+        programName: artifact.programInfo.name,
+        inputTensorViews,
+        outputTensorViews,
+      };
+      this.pendingKernels.push(pendingKernelInfo);
     }
 
     this.programManager.run(artifact, inputDatas, outputDatas, normalizedDispatchGroup, uniformBufferBinding);

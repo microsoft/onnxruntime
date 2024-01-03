@@ -10,7 +10,7 @@ import {WebGpuBackend} from './backend-webgpu';
 import {LOG_DEBUG} from './log';
 import {TensorView} from './tensor-view';
 import {ShapeUtil} from './util';
-import {ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo, QueryType} from './webgpu/types';
+import {ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo} from './webgpu/types';
 
 /* eslint-disable no-bitwise */
 
@@ -186,10 +186,8 @@ export const init = async(module: OrtWasmModule, env: Env, gpuAdapter: GPUAdapte
           },
 
       // jsepCreateKernel
-      (opType: string, kernelId: number, attribute: unknown) => backend.createKernel(
-          opType, kernelId, attribute,
-          env.debug || backend.queryType !== QueryType.none ? module.UTF8ToString(module._JsepGetNodeName(kernelId)) :
-                                                              `${opType}`),
+      (opType: string, kernelId: number, attribute: unknown) =>
+          backend.createKernel(opType, kernelId, attribute, module.UTF8ToString(module._JsepGetNodeName(kernelId))),
 
       // jsepReleaseKernel
       (kernel: number) => backend.releaseKernel(kernel),
