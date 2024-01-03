@@ -37,9 +37,12 @@ const validateScales = (scales: number[], attributes: ResizeAttributes): void =>
   // Check scales dims based on mode: LINEAR, CUBIC
   if (scales.length > 0) {
     if (attributes.mode === 'linear') {
-      if (!(scales.length === 2 || (scales.length === 4 && scales[0] === 1 && scales[1] === 1) ||
-            (scales.length === 4 && scales[0] === 1 && scales[3] === 1))) {
-        throw new Error('Resize requires scales input size to be 2 or 4 for linear mode');
+      if (!(scales.length === 2 || scales.length === 3 || (scales.length === 4 && scales[0] === 1 && scales[1] === 1) ||
+            (scales.length === 4 && scales[0] === 1 && scales[3] === 1) ||
+            (scales.length === 5 && scales[0] === 1 && scales[1] === 1))) {
+        throw new Error(
+            `For linear mode, Resize requires scales to be 2D, 3D, 4D with either two outermost or one innermost and
+            one outermost scale values equal to 1, or 5D with two outermost scale values equal to 1`);
       }
     } else if (attributes.mode === 'cubic') {
       if (!(scales.length === 2 || (scales.length === 4 && scales[0] === 1 && scales[1] === 1) ||
@@ -342,7 +345,7 @@ const bilinearInterpolation =
       var col:${dType} = originalIndices[${widthIdx}];
       ${
           useExtrapolation ?
-              `if (row < 0 || row > (${inputShape[heightIdx]} - 1) || col < 0 || col > (${inputShape[widthIdx]} - 1))) {
+              `if (row < 0 || row > (${inputShape[heightIdx]} - 1) || col < 0 || col > (${inputShape[widthIdx]} - 1)) {
         return ${extrapolationValue};
       }` :
               ''};
@@ -475,7 +478,7 @@ const trilinearInterpolation =
       var width:${dType} = originalIndices[${widthIdx}];
       ${
           useExtrapolation ? `if (depth < 0 || depth > (${inputShape[depthIdx]} - 1) || height < 0 || height > (${
-                                 inputShape[heightIdx]} - 1) || width < 0 || (width > ${inputShape[widthIdx]} - 1))) {
+                                 inputShape[heightIdx]} - 1) || width < 0 || (width > ${inputShape[widthIdx]} - 1)) {
       return ${extrapolationValue};
         }` :
                              ''};
