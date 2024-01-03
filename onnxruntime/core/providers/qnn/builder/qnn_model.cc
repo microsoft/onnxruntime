@@ -240,15 +240,29 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context) {
   auto qnn_interface = qnn_backend_manager_->GetQnnInterface();
   auto profile_backend_handle = qnn_backend_manager_->GetQnnProfileHandle();
   Qnn_ErrorHandle_t execute_status = QNN_GRAPH_NO_ERROR;
-  execute_status = qnn_interface.graphExecute(graph_info_->Graph(),
-                                              qnn_inputs.data(),
-                                              static_cast<uint32_t>(qnn_inputs.size()),
-                                              qnn_outputs.data(),
-                                              static_cast<uint32_t>(qnn_outputs.size()),
-                                              profile_backend_handle,
-                                              nullptr);
 
-  ORT_RETURN_IF_ERROR(qnn_backend_manager_->ExtractBackendProfilingInfo());
+  {
+    // Acquire mutex before calling graphExecute API to support calling session.Run() from multiple threads.
+    std::unique_lock<std::mutex> lock(graph_exec_mutex_);
+    execute_status = qnn_interface.graphExecute(graph_info_->Graph(),
+                                                qnn_inputs.data(),
+                                                static_cast<uint32_t>(qnn_inputs.size()),
+                                                qnn_outputs.data(),
+                                                static_cast<uint32_t>(qnn_outputs.size()),
+                                                profile_backend_handle,
+                                                nullptr);
+  }
+
+  if (qnn_backend_manager_->IsProfilingEnabled()) {
+    // Acquire mutex before calling profile event APIs to support calling session.Run() from multiple threads.
+    //
+    // This code path does a lot of work that is all locked behind a single mutex.
+    // However, profiling is typically only enabled for debugging purposes, so this approach should suffice for now.
+    // We can improve this path if it becomes an issue in the future.
+    std::unique_lock<std::mutex> lock(profile_events_mutex_);
+    ORT_RETURN_IF_ERROR(qnn_backend_manager_->ExtractBackendProfilingInfo());
+  }
+
   if (QNN_GRAPH_NO_ERROR != execute_status) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN graph execute error. Error code: ", execute_status);
   }

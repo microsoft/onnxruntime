@@ -819,14 +819,11 @@ void QnnBackendManager::ReleaseResources() {
 }
 
 Status QnnBackendManager::ExtractBackendProfilingInfo() {
-  if (ProfilingLevel::OFF == profiling_level_ || ProfilingLevel::INVALID == profiling_level_) {
+  if (!IsProfilingEnabled()) {
     return Status::OK();
   }
-  ORT_RETURN_IF(nullptr == profile_backend_handle_, "Backend profile handle not valid.");
 
-  // If enabled, profile data is extracted directly after graph execution, which may occur on multiple threads.
-  // Therefore, need to acquire a mutex to ensure only one thread is extracting/saving profile data at a time.
-  std::unique_lock<std::mutex> lock(profile_mutex_);
+  ORT_RETURN_IF(nullptr == profile_backend_handle_, "Backend profile handle not valid.");
 
   const QnnProfile_EventId_t* profile_events{nullptr};
   uint32_t num_events{0};
