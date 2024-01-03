@@ -1361,7 +1361,7 @@ TEST(ReductionOpTest, ReduceMax_int32) {
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          // TensorRT: axis must be 0
 #endif
 }
 
@@ -1382,7 +1382,7 @@ TEST(ReductionOpTest, ReduceMax_int64) {
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: axis must be 0
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});                          // TensorRT: axis must be 0
 #endif
 }
 
@@ -5794,9 +5794,9 @@ void test_empty_set(const std::string& op, int opset, bool axes_as_input, float 
 }
 
 TEST(ReductionOpTest, empty_set_ReduceL1) {
-  //if (DefaultDnnlExecutionProvider().get() != nullptr) {
-  //  GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,1,4}] did not match run output shape [{1,0,1}] for reduced";
-  //}
+  // if (DefaultDnnlExecutionProvider().get() != nullptr) {
+  //   GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,1,4}] did not match run output shape [{1,0,1}] for reduced";
+  // }
 
   test_empty_set("ReduceL1", 20, true, 0);
 }
