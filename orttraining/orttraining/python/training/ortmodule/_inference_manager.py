@@ -141,12 +141,12 @@ class InferenceManager(GraphExecutionManager):
 
                 create_execution_session = (
                     build_graph
-                    or self._graph_transition_manager._device != module_device
+                    or self._device != module_device
                     or torch.are_deterministic_algorithms_enabled() is not _are_deterministic_algorithms_enabled()
                 )
                 _use_deterministic_algorithms(torch.are_deterministic_algorithms_enabled())
 
-                if self._graph_transition_manager._device != module_device:
+                if self._device != module_device:
                     self._graph_transition_manager._device = module_device
 
             if create_execution_session:
@@ -158,29 +158,19 @@ class InferenceManager(GraphExecutionManager):
 
             if self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
                 # Assert that the input and model device match
-                _utils._check_same_device(self._graph_transition_manager._device, "Input argument to forward", *inputs)
+                _utils._check_same_device(self._device, "Input argument to forward", *inputs)
 
             if self._runtime_options.enable_zero_stage3_support:
-                self._append_pull_weight_trigger_as_input(kwargs, self._graph_transition_manager._device)
+                self._append_pull_weight_trigger_as_input(kwargs, self._device)
 
             prepared_input_map = self._graph_transition_manager._post_export_processed_model_info.construct_inputs(
                 inputs, kwargs, True
             )
 
-            if (
-                self._runtime_inspector.memory_ob.is_enabled()
-                and not self._runtime_inspector.memory_ob.symbolic_dim_collecting_completed
-            ):
-                self._runtime_inspector.memory_ob.collect_symbolic_dim_values(
-                    self._graph_transition_manager._post_export_processed_model_info.onnx_graph_input_dynamic_axes_map,
-                    prepared_input_map,
-                )
-                self._runtime_inspector.memory_ob.symbolic_dim_collecting_completed = True
-
             user_outputs, _ = InferenceManager.execution_session_run_forward(
                 self._execution_agent,
                 self._onnx_models.optimized_model,
-                self._graph_transition_manager._device,
+                self._device,
                 *prepared_input_map.values(),
             )
 
@@ -193,10 +183,8 @@ class InferenceManager(GraphExecutionManager):
                     self._execution_agent._inference_session, False, self._runtime_options.tuning_results_path
                 )
 
-            # print("user_outputs: ", user_outputs)
-            # print("self._module_output_schema: ", self._module_output_schema)
             return self._graph_transition_manager._post_export_processed_model_info.restore_outputs(user_outputs)
-            # return unflatten_user_output(self._module_output_schema, user_outputs)
+
         except ORTModuleFallbackException as e:
             # Exceptions subject to fallback are handled here
             self._fallback_manager.handle_exception(exception=e, log_level=self._debug_options.logging.log_level)

@@ -311,16 +311,6 @@ class TrainingManager(GraphExecutionManager):
                 inputs, kwargs, True
             )
 
-            if (
-                self._runtime_inspector.memory_ob.is_enabled()
-                and not self._runtime_inspector.memory_ob.symbolic_dim_collecting_completed
-            ):
-                self._runtime_inspector.memory_ob.collect_symbolic_dim_values(
-                    self._graph_transition_manager._post_export_processed_model_info.onnx_graph_input_dynamic_axes_map,
-                    prepared_input_map,
-                )
-                self._runtime_inspector.memory_ob.symbolic_dim_collecting_completed = True
-
             user_outputs = self._forward_class.apply(*prepared_input_map.values())
 
             outputs = self._graph_transition_manager._post_export_processed_model_info.restore_outputs(user_outputs)

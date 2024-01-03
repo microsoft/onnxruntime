@@ -3466,6 +3466,13 @@ def test_train_eval_with_various_outputs():
     _test_helpers.assert_values_are_close(pt_out, ort_out)
 
 
+def _repr_schema(ortmodule):
+    tm = ortmodule._torch_module._execution_manager(ortmodule._is_training())._graph_transition_manager
+    return repr(tm._exported_model_info.module_forward_args_schema) + repr(
+        tm._exported_model_info.module_forward_kwargs_schema
+    )
+
+
 def test_forward_dynamic_args():
     os.environ["ORTMODULE_SKIPCHECK_POLICY"] = "SKIP_CHECK_DISABLED"
 
@@ -3490,30 +3497,21 @@ def test_forward_dynamic_args():
         for _ in range(10):
             output = model(*args_size1)
             assert output is not None
-        hash_args_size1 = hash(
-            repr(model._torch_module._execution_manager(model._is_training())._args_input_schema)
-            + repr(model._torch_module._execution_manager(model._is_training())._kwargs_input_schema)
-        )
+        hash_args_size1 = hash(_repr_schema(model))
         assert hash_args_size1 is not None
 
         # Decrease number of inputs and train some more
         for _ in range(10):
             output = model(*args_size2)
             assert output is not None
-        hash_args_size2 = hash(
-            repr(model._torch_module._execution_manager(model._is_training())._args_input_schema)
-            + repr(model._torch_module._execution_manager(model._is_training())._kwargs_input_schema)
-        )
+        hash_args_size2 = hash(_repr_schema(model))
         assert hash_args_size2 != hash_args_size1
 
         # Increase number of inputs and train some more
         for _ in range(10):
             output = model(*args_size3)
             assert output is not None
-        hash_args_size3 = hash(
-            repr(model._torch_module._execution_manager(model._is_training())._args_input_schema)
-            + repr(model._torch_module._execution_manager(model._is_training())._kwargs_input_schema)
-        )
+        hash_args_size3 = hash(_repr_schema(model))
         assert hash_args_size3 != hash_args_size2
 
     del os.environ["ORTMODULE_SKIPCHECK_POLICY"]
@@ -3538,50 +3536,35 @@ def test_forward_dynamic_kwargs():
         for _ in range(10):
             output = model(one)
             assert output is not None
-        hash_x = hash(
-            repr(model._torch_module._execution_manager(model._is_training())._args_input_schema)
-            + repr(model._torch_module._execution_manager(model._is_training())._kwargs_input_schema)
-        )
+        hash_x = hash(_repr_schema(model))
         assert hash_x is not None
 
         # Train with x and y as inputs
         for _ in range(10):
             output = model(one, y=one)
             assert output is not None
-        hash_x_y = hash(
-            repr(model._torch_module._execution_manager(model._is_training())._args_input_schema)
-            + repr(model._torch_module._execution_manager(model._is_training())._kwargs_input_schema)
-        )
+        hash_x_y = hash(_repr_schema(model))
         assert hash_x_y != hash_x
 
         # Train with x and z as inputs
         for _ in range(10):
             output = model(one, z=one)
             assert output is not None
-        hash_x_z = hash(
-            repr(model._torch_module._execution_manager(model._is_training())._args_input_schema)
-            + repr(model._torch_module._execution_manager(model._is_training())._kwargs_input_schema)
-        )
+        hash_x_z = hash(_repr_schema(model))
         assert hash_x_z != hash_x_y
 
         # Train with x, y and z as inputs
         for _ in range(10):
             output = model(one, y=one, z=one)
             assert output is not None
-        hash_x_y_z = hash(
-            repr(model._torch_module._execution_manager(model._is_training())._args_input_schema)
-            + repr(model._torch_module._execution_manager(model._is_training())._kwargs_input_schema)
-        )
+        hash_x_y_z = hash(_repr_schema(model))
         assert hash_x_y_z != hash_x_z
 
         # Return to original input with x as input
         for _ in range(10):
             output = model(one)
             assert output is not None
-        hash_x2 = hash(
-            repr(model._torch_module._execution_manager(model._is_training())._args_input_schema)
-            + repr(model._torch_module._execution_manager(model._is_training())._kwargs_input_schema)
-        )
+        hash_x2 = hash(_repr_schema(model))
         assert hash_x2 != hash_x_y_z
         assert hash_x2 == hash_x
 
@@ -4847,11 +4830,21 @@ def test_ortmodule_setattr_signals_model_changed():
     )._graph_transition_manager._exported_model_info.exported_model
 
     for training_mode in [False, True]:
-        assert ort_model._torch_module._execution_manager(training_mode)._original_model_has_changed is False
+        assert (
+            ort_model._torch_module._execution_manager(
+                training_mode
+            )._graph_transition_manager._original_model_has_changed
+            is False
+        )
     ort_model.input_flag = False
 
     for training_mode in [False, True]:
-        assert ort_model._torch_module._execution_manager(training_mode)._original_model_has_changed is True
+        assert (
+            ort_model._torch_module._execution_manager(
+                training_mode
+            )._graph_transition_manager._original_model_has_changed
+            is True
+        )
 
     _ = ort_model(torch.randn(N, D_in, device=device))
     exported_model2 = ort_model._torch_module._execution_manager(
