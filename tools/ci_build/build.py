@@ -1604,6 +1604,9 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
             ]
             run_subprocess(cmd_args)
 
+    if args.minimal_build is not None:
+        raise BuildError("use_dml and minimal_build may not both be set")
+
 
 def setup_rocm_build(args):
     rocm_home = None

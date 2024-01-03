@@ -142,8 +142,9 @@ void BinaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
 #endif
   }
 
+#ifdef USE_DML
   {
-    const std::string action_name{"Add"};
+    const std::string action_name{"2DQ_DML"};
     std::unique_ptr<Action> action = std::make_unique<QDQ::BinaryReplaceWithQLinear>(kMSDomain);
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -156,9 +157,10 @@ void BinaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
                                                            std::move(action));
 
 #else
-    qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
+#error "ORT_MINIMAL_BUILD and USE_DML are not expected simultaneously. This would require RegisterAction to be called here."
 #endif
   }
+#endif
 }
 
 void VariadicOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
