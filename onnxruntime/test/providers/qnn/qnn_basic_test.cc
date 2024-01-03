@@ -404,7 +404,7 @@ TEST_F(QnnCPUBackendTests, MultithreadSessionRun) {
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Returns a function that builds a QDQ model that adds 3 tensors. Forces all scales and zero-points to be (1.0f, 0),
-// so it is only accurate when using non-fractional inputs.
+// so it is only accurate when using non-fractional positive inputs.
 template <typename QuantType>
 static GetTestModelFn QDQBuildAdd3Tensors(const TestInputDef<float>& input0_def,
                                           const TestInputDef<float>& input1_def,
