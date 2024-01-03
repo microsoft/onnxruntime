@@ -64,7 +64,7 @@ void QuantizeDequantize(std::vector<float>& raw_vals,
 }
 
 void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, MLAS_SQNBIT_COMPUTE_TYPE comp_type,
-             bool has_zeropoint, bool use_float16) {
+             bool has_zeropoint, bool use_float16, float fp16_abs_error = 0.02f) {
   RandomValueGenerator random{1234};
   std::vector<float> input0_vals(random.Gaussian<float>(std::vector<int64_t>({M, K}), 0.0f, 0.25f));
   std::vector<float> input1_f_vals(random.Gaussian<float>(std::vector<int64_t>({K, N}), 0.0f, 0.25f));
@@ -120,7 +120,7 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, MLAS_SQNBIT_CO
     }
 
     test.AddOutput<MLFloat16>("Y", {M, N}, ToFloat16(expected_vals));
-    test.SetOutputAbsErr("Y", 0.02f);
+    test.SetOutputAbsErr("Y", fp16_abs_error);
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
@@ -167,6 +167,16 @@ TEST(MatMulNBits, Float16) {
           RunTest(M, N, K, block_size, CompUndef, true, true);
         }
       }
+    }
+  }
+}
+
+TEST(MatMulNBits, Float16Large) {
+  for (auto block_size : {16, 32, 64, 128}) {
+    for (auto symmetric : {false, true}) {
+      RunTest(1, 4096, 4096, block_size, CompUndef, symmetric, true, 0.05f);
+      RunTest(1, 4096, 11008, block_size, CompUndef, symmetric, true, 0.05f);
+      RunTest(1, 11008, 4096, block_size, CompUndef, symmetric, true, 0.05f);
     }
   }
 }
