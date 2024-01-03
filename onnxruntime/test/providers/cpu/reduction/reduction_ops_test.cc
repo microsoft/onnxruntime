@@ -5760,7 +5760,6 @@ TEST(ReductionOpTest, ReduceSum_RKRK_keepdims) {
   test.Run();
 }
 
-#ifndef USE_MIGRAPHX
 void test_empty_set(const std::string& op, int opset, bool axes_as_input, float empty_value) {
   OpTester test(op, opset);
   std::vector<int64_t> input_shape = {2, 0, 4};
@@ -5857,6 +5856,5 @@ TEST(ReductionOpTest, empty_set_ReduceSumSquare) {
 TEST(ReductionOpTest, empty_set_ReduceSumSquare_13) {
   test_empty_set("ReduceSumSquare", 13, false, 0.0f);
 }
-#endif  // USE_MIGRAPHX
 }  // namespace test
 }  // namespace onnxruntime
