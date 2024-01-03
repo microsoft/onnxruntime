@@ -524,6 +524,8 @@ class InferenceSession {
    */
   Status AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container);
 
+  void SetExternalIniPath(const PathString& external_ini_path);
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -589,6 +591,9 @@ class InferenceSession {
 
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
   PathString model_location_;
+
+  // The folder path of the external initializers
+  PathString external_ini_path_;
 
   // The list of execution providers.
   ExecutionProviders execution_providers_;

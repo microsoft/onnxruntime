@@ -1407,7 +1407,7 @@ static void SparsifyGeneric(const void* dense_raw_data, size_t n_dense_elements,
 }
 
 common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto& dense_proto,
-                                              const Path& model_path,
+                                              const Path& external_ini_path,
                                               ONNX_NAMESPACE::SparseTensorProto& result) {
   ORT_ENFORCE(HasDataType(dense_proto), "Must have a valid data type");
 
@@ -1433,7 +1433,7 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
   size_t element_size = ml_data->Size();
 
   std::vector<uint8_t> dense_raw_data;
-  ORT_RETURN_IF_ERROR(UnpackInitializerData(dense_proto, model_path, dense_raw_data));
+  ORT_RETURN_IF_ERROR(UnpackInitializerData(dense_proto, external_ini_path, dense_raw_data));
 
   size_t nnz = 0;
   void* dense_data = dense_raw_data.data();
@@ -1501,7 +1501,7 @@ template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::T
   }
 
 Status UnpackInitializerData(const onnx::TensorProto& initializer,
-                             const Path& model_path,
+                             const Path& external_ini_folder_path,
                              std::vector<uint8_t>& unpacked_tensor) {
   // TODO, if std::vector does not use a custom allocator, the default std::allocator will
   // allocation the memory aligned to std::max_align_t, need look into allocating
@@ -1509,7 +1509,7 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
   if (initializer.data_location() == TensorProto_DataLocation_EXTERNAL) {
     ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(
         initializer,
-        (model_path.IsEmpty() || model_path.ParentPath().IsEmpty()) ? nullptr : model_path.ParentPath().ToPathString().c_str(),
+        external_ini_folder_path.IsEmpty() ? nullptr : external_ini_folder_path.ToPathString().c_str(),
         unpacked_tensor));
     return Status::OK();
   }

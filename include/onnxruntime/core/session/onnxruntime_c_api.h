@@ -4515,6 +4515,23 @@ struct OrtApi {
    * \since Version 1.17.
    */
   ORT_API2_STATUS(ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ OrtOpAttrType type, _Inout_ void* data, _In_ size_t len, _Out_ size_t* out);
+
+  /** \brief Create session from memory with external initializer data
+   *
+   * Same functionality offered by OrtApi::CreateSessionFromArray except that it provides folder path to the external initializers.
+   *
+   * \param[in] env
+   * \param[in] model_data Array of bytes holding the model
+   * \param[in] model_data_length Number of bytes in `model_data_model`
+   * \param[in] external_data_path external initializer data folder path
+   * \param[in] options
+   * \param[out] out Newly created ::OrtSession. Must be freed with OrtApi::ReleaseSession
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(CreateSessionFromArrayWithExternalData, _In_ const OrtEnv* env,
+                  _In_ const void* model_data, size_t model_data_length, _In_ const ORTCHAR_T* external_data_path,
+                  _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);
 };
 
 /*

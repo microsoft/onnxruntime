@@ -1044,6 +1044,11 @@ inline Session::Session(const Env& env, const void* model_data, size_t model_dat
                                                                             prepacked_weights_container, &this->p_));
 }
 
+inline Session::Session(const Env& env, const void* model_data, size_t model_data_length, const ORTCHAR_T* external_data_path,
+                        const SessionOptions& options) {
+  ThrowOnError(GetApi().CreateSessionFromArrayWithExternalData(env, model_data, model_data_length, external_data_path, options, &this->p_));
+}
+
 inline AllocatedStringPtr ModelMetadata::GetProducerNameAllocated(OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().ModelMetadataGetProducerName(p_, allocator, &out));

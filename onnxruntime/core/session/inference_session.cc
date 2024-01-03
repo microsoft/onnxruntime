@@ -1843,8 +1843,9 @@ common::Status InferenceSession::Initialize() {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
+    auto graph_location = external_ini_path_.empty() ? model_location_ : external_ini_path_ + PathString(L"/model.onnx");
     ORT_RETURN_IF_ERROR_SESSIONID_(
-        session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
+        session_state_->FinalizeSessionState(graph_location, kernel_registry_manager_,
                                              // need to keep the initializers if saving the optimized model
                                              !saving_model,
                                              saving_ort_format));
@@ -3017,6 +3018,11 @@ common::Status InferenceSession::WaitForNotification(Notification* p_executor_do
   p_executor_done->Wait();
 
   return Status::OK();
+}
+
+void InferenceSession::SetExternalIniPath(const PathString& external_ini_path) {
+  model_->SetExternalIniPath(external_ini_path);
+  external_ini_path_ = external_ini_path;
 }
 
 SessionIOBinding::SessionIOBinding(InferenceSession* session) : sess_(session) {

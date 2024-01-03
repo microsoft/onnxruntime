@@ -124,7 +124,7 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
 // Convert a SparseTensorProto to a dense TensorProto
 // If the SparseTensorProto contains external data then it loads the data and converts to dense tensor proto
 // The resulting TensorProto will contain the data as raw data.
-// model_path is used for contructing full path for external_data
+// model_path is used for constructing full path for external_data
 common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseTensorProto& sparse,
                                                    const Path& model_path,
                                                    ONNX_NAMESPACE::TensorProto& dense);
@@ -133,9 +133,9 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
 // Convert a TensorProto to a SparseTensorProto
 // If the tensorproto contains external data then it loads the data and converts to sparse tensor
 // The resulting SparseTensorProto will contain the data as raw data
-// model_path is used for contructing full path for external_data
+// external_ini_path is used for constructing full path for external_data
 common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto& dense,
-                                              const Path& model_path,
+                                              const Path& external_ini_path,
                                               ONNX_NAMESPACE::SparseTensorProto& sparse);
 #endif  // !ORT_MINIMAL_BUILD
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
@@ -452,13 +452,13 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model
 /**
  * Unpack the data from an initializer tensor
  * Please note, this function does not unpack string_data of an initializer tensor
- * @param initializer       given initializer tensor
- * @param model_path        model_path to construct external data dir path. When this is empty, current dir is used.
- * @param unpacked_tensor   the vector holds data from the initializer in byte form
- * @returns                 Status::OK() if data is unpacked successfully
+ * @param initializer               given initializer tensor
+ * @param external_ini_folder_path  external data dir path. When this is empty, current dir is used.
+ * @param unpacked_tensor           the vector holds data from the initializer in byte form
+ * @returns                         Status::OK() if data is unpacked successfully
  */
 common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
-                                     const Path& model_path,
+                                     const Path& external_ini_folder_path,
                                      std::vector<uint8_t>& unpacked_tensor);
 
 /**

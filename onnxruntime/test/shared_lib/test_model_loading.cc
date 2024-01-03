@@ -105,6 +105,26 @@ TEST(CApiTest, TestExternalInitializersInjection) {
   EXPECT_NO_THROW(Ort::Session(*ort_env, model_path, so));
 }
 
+TEST(CApiTest, TestLoadModelFromArrayWithExternalInitiliazers) {
+  constexpr auto model_path = ORT_TSTR("testdata/model_with_external_initializers.onnx");
+  std::vector<char> buffer;
+  {
+    std::ifstream file(model_path, std::ios::binary | std::ios::ate);
+    if (!file)
+      ORT_THROW("Error reading model");
+    buffer.resize(narrow<size_t>(file.tellg()));
+    file.seekg(0, std::ios::beg);
+    if (!file.read(buffer.data(), buffer.size()))
+      ORT_THROW("Error reading model");
+  }
+
+  Ort::SessionOptions so;
+  const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/model_with_external_initializers_opt.onnx");
+  so.SetOptimizedModelFilePath(ort_model_path);
+  constexpr auto external_ini_path = ORT_TSTR("testdata");
+  Ort::Session session(*ort_env.get(), buffer.data(), buffer.size(), external_ini_path, so);
+}
+
 #endif
 }  // namespace test
 }  // namespace onnxruntime

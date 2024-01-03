@@ -683,7 +683,7 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
                                                 _In_opt_z_ const ORTCHAR_T* model_path,
                                                 _In_opt_ const void* model_data,
                                                 size_t model_data_length,
-
+                                                _In_opt_z_ const ORTCHAR_T* external_ini_path,
                                                 std::unique_ptr<onnxruntime::InferenceSession>& sess) {
   // quick check here to decide load path. InferenceSession will provide error message for invalid values.
   // TODO: Could move to a helper
@@ -733,6 +733,10 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
     }
   }
 
+  if (external_ini_path != nullptr) {
+    sess->SetExternalIniPath(external_ini_path);
+  }
+
   return nullptr;
 }
 
@@ -776,7 +780,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
   *out = nullptr;
 
   ORT_TRY {
-    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, model_path, nullptr, 0, sess));
+    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, model_path, nullptr, 0, nullptr, sess));
     ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess));
 
     *out = reinterpret_cast<OrtSession*>(sess.release());
@@ -799,7 +803,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
   *out = nullptr;
 
   ORT_TRY {
-    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, nullptr, model_data, model_data_length, sess));
+    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, nullptr, model_data, model_data_length, nullptr, sess));
     ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess));
 
     *out = reinterpret_cast<OrtSession*>(sess.release());
@@ -2269,7 +2273,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionWithPrepackedWeightsContainer, _In_ co
   *out = nullptr;
 
   ORT_TRY {
-    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, model_path, nullptr, 0, sess));
+    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, model_path, nullptr, 0, nullptr, sess));
     ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess, prepacked_weights_container));
 
     *out = reinterpret_cast<OrtSession*>(sess.release());
@@ -2295,7 +2299,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer
 
   ORT_TRY {
     ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, nullptr, model_data,
-                                                      model_data_length, sess));
+                                                      model_data_length, nullptr, sess));
     ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess, prepacked_weights_container));
 
     *out = reinterpret_cast<OrtSession*>(sess.release());
@@ -2352,6 +2356,30 @@ ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
 
   return nullptr;
 #endif
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithExternalData, _In_ const OrtEnv* env, _In_ const void* model_data,
+                    size_t model_data_length, _In_ const ORTCHAR_T* external_data_path,
+                    _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out) {
+  API_IMPL_BEGIN
+  std::unique_ptr<onnxruntime::InferenceSession> sess;
+  OrtStatus* status = nullptr;
+  *out = nullptr;
+
+  ORT_TRY {
+    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, nullptr, model_data, model_data_length, external_data_path, sess));
+    ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess));
+
+    *out = reinterpret_cast<OrtSession*>(sess.release());
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = OrtApis::CreateStatus(ORT_FAIL, e.what());
+    });
+  }
+
+  return status;
+  API_IMPL_END
 }
 
 static constexpr OrtApiBase ort_api_base = {
@@ -2721,6 +2749,7 @@ static constexpr OrtApi ort_api_1_to_17 = {
     &OrtApis::ShapeInferContext_SetOutputTypeShape,
     &OrtApis::SetSymbolicDimensions,
     &OrtApis::ReadOpAttr,
+    &OrtApis::CreateSessionFromArrayWithExternalData,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

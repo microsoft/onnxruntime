@@ -2861,6 +2861,10 @@ const Path& Graph::ModelPath() const {
   return owning_model_.ModelPath();
 }
 
+const Path& Graph::ExternalIniPath() const {
+  return owning_model_.ExternalIniPath();
+}
+
 template <typename T, typename TIter>
 static void RemoveRepeatedFieldEntry(T& repeated_field, const TIter& entry_to_remove) {
   auto num_entries = repeated_field.size();
@@ -3411,7 +3415,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
   int64_t external_offset = 0;
 
   // Add the initializers to the result graph.
-  const auto& model_path = ModelPath();
+  const auto& external_ini_path = ExternalIniPath();
 #if !defined(DISABLE_SPARSE_TENSORS)
   const auto sparse_end = sparse_tensor_names_.end();
 #endif
@@ -3421,7 +3425,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
     if (sparse_end != sparse_tensor_names_.find(initializer.name())) {
       // Sparse tensors are added to the ONNX file.
       auto& sparse_initializer = *result.add_sparse_initializer();
-      auto status = utils::DenseTensorToSparseTensorProto(initializer, model_path, sparse_initializer);
+      auto status = utils::DenseTensorToSparseTensorProto(initializer, external_ini_path, sparse_initializer);
       ORT_ENFORCE(status.IsOK(), "Failed to convert dense initializer to sparse");
     } else {
 #endif
@@ -3429,7 +3433,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       TensorProto* output_proto = result.add_initializer();
 
       std::vector<uint8_t> raw_data;
-      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, model_path, raw_data));
+      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, external_ini_path, raw_data));
       size_t tensor_bytes_size = raw_data.size();
       if (tensor_bytes_size < initializer_size_threshold) {
         *output_proto = initializer;
