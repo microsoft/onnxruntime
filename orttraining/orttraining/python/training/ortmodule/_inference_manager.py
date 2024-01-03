@@ -11,7 +11,7 @@ import torch
 
 from onnxruntime.capi import _pybind_state as C
 
-from . import _are_deterministic_algorithms_enabled, _io, _use_deterministic_algorithms, _utils
+from . import _are_deterministic_algorithms_enabled, _use_deterministic_algorithms, _utils
 from ._execution_agent import InferenceAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
@@ -110,15 +110,20 @@ class InferenceManager(GraphExecutionManager):
             build_graph = False
             if (
                 self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False
-                or not self._onnx_models.exported_model
+                or not self._exported_model
             ):
                 self.time_tracker.start(ORTModuleInitPhase.EndToEnd)
 
                 # Exporting module to ONNX for the first time
-                build_graph = self._export_model(*inputs, **kwargs)
-                if build_graph:
-                    # If model was exported, then initialize the graph builder.
-                    self._initialize_graph_builder()
+                build_graph, pre_grad_graph_info, exported_graph_info = self.use_cached_exported_model_or_reexport(
+                    inputs, kwargs, self._device
+                )
+
+                build_graph = self.use_cached_pre_grad_model_or_reinitialize(build_graph, pre_grad_graph_info)
+                # build_graph = self._export_model(*inputs, **kwargs)
+                # if build_graph:
+                #     # If model was exported, then initialize the graph builder.
+                #     self._initialize_graph_builder()
 
                 # Build the inference graph
                 if build_graph:
@@ -162,23 +167,22 @@ class InferenceManager(GraphExecutionManager):
             if self._runtime_options.enable_zero_stage3_support:
                 self._append_pull_weight_trigger_as_input(kwargs, self._device)
 
-            prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
-                self._graph_initializers,
-                self._graph_info.user_input_names,
-                self._input_info,
-                self._flattened_module.named_buffers(),
-                inputs,
-                kwargs,
-                self._device,
-                self._runtime_inspector,
-                self._zero_stage3_param_map,
-            )
+            prepared_input_map = self.construct_inputs(inputs, kwargs, True, self._device)
+
+            if (
+                self._runtime_inspector.memory_ob.is_enabled()
+                and not self._runtime_inspector.memory_ob.symbolic_dim_collecting_completed
+            ):
+                self._runtime_inspector.memory_ob.collect_symbolic_dim_values(
+                    self._finalized_graph_info.onnx_graph_input_dynamic_axes_map, prepared_input_map
+                )
+                self._runtime_inspector.memory_ob.symbolic_dim_collecting_completed = True
 
             user_outputs, _ = InferenceManager.execution_session_run_forward(
                 self._execution_agent,
                 self._onnx_models.optimized_model,
                 self._device,
-                *prepared_input_list,
+                *prepared_input_map.values(),
             )
 
             if (
@@ -189,6 +193,9 @@ class InferenceManager(GraphExecutionManager):
                 save_tuning_results(
                     self._execution_agent._inference_session, False, self._runtime_options.tuning_results_path
                 )
+
+            # print("user_outputs: ", user_outputs)
+            # print("self._module_output_schema: ", self._module_output_schema)
 
             return unflatten_user_output(self._module_output_schema, user_outputs)
         except ORTModuleFallbackException as e:
