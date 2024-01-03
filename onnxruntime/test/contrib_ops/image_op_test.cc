@@ -70,7 +70,20 @@ Status ReadImageData(const std::string& file_path, std::vector<uint8_t>& image_d
   return Status::OK();
 }
 
+bool get_endocer_decoder_eps(std::vector<std::unique_ptr<IExecutionProvider>>& execution_providers) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep) {
+    execution_providers.push_back(std::move(cuda_ep));
+  }
+  return !execution_providers.empty();
+}
+
 TEST(ImageEncoderDecoderOpTest, EncodeRGB) {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  if (!get_endocer_decoder_eps(execution_providers)) {
+    GTEST_SKIP() << "Skipping because there is no EP that supports ImageEncoderDecoderOpTest.";
+  }
+
   OpTester test("ImageEncoder", 1, kMSDomain);
   test.AddAttribute("pixel_format", "RGB");
 
@@ -82,14 +95,15 @@ TEST(ImageEncoderDecoderOpTest, EncodeRGB) {
 
   test.AddInput<uint8_t>("input", {1, 3, height, width}, input_image_data);
   test.AddOutput<uint8_t>("encoded_stream", {static_cast<int64_t>(output_image_data.size())}, output_image_data);
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-
   test.Run(ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(ImageEncoderDecoderOpTest, EncodeBGR) {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  if (!get_endocer_decoder_eps(execution_providers)) {
+    GTEST_SKIP() << "Skipping because there is no EP that supports ImageEncoderDecoderOpTest.";
+  }
+
   OpTester test("ImageEncoder", 1, kMSDomain);
   test.AddAttribute("pixel_format", "BGR");
 
@@ -101,14 +115,15 @@ TEST(ImageEncoderDecoderOpTest, EncodeBGR) {
 
   test.AddInput<uint8_t>("input", {1, 3, height, width}, input_image_data);
   test.AddOutput<uint8_t>("encoded_stream", {static_cast<int64_t>(output_image_data.size())}, output_image_data);
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-
   test.Run(ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(ImageEncoderDecoderOpTest, EncodeGrayscale) {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  if (!get_endocer_decoder_eps(execution_providers)) {
+    GTEST_SKIP() << "Skipping because there is no EP that supports ImageEncoderDecoderOpTest.";
+  }
+
   OpTester test("ImageEncoder", 1, kMSDomain);
   test.AddAttribute("pixel_format", "Grayscale");
   test.AddAttribute("subsampling", "400");
@@ -121,14 +136,15 @@ TEST(ImageEncoderDecoderOpTest, EncodeGrayscale) {
 
   test.AddInput<uint8_t>("input", {1, 1, height, width}, input_image_data);
   test.AddOutput<uint8_t>("encoded_stream", {static_cast<int64_t>(output_image_data.size())}, output_image_data);
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-
   test.Run(ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(ImageEncoderDecoderOpTest, DecodeRGB) {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  if (!get_endocer_decoder_eps(execution_providers)) {
+    GTEST_SKIP() << "Skipping because there is no EP that supports ImageEncoderDecoderOpTest.";
+  }
+
   OpTester test("ImageDecoder", 20, kOnnxDomain);
   test.AddAttribute("pixel_format", "RGB");
 
@@ -140,13 +156,15 @@ TEST(ImageEncoderDecoderOpTest, DecodeRGB) {
 
   test.AddInput<uint8_t>("encoded_stream", {static_cast<int64_t>(input_image_data.size()),}, input_image_data);
   test.AddOutput<uint8_t>("output", {channels, height, width}, output_image_data);
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-
   test.Run(ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
+
 TEST(ImageEncoderDecoderOpTest, DecodeBGR) {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  if (!get_endocer_decoder_eps(execution_providers)) {
+    GTEST_SKIP() << "Skipping because there is no EP that supports ImageEncoderDecoderOpTest.";
+  }
+
   OpTester test("ImageDecoder", 20, kOnnxDomain);
   test.AddAttribute("pixel_format", "BGR");
 
@@ -158,14 +176,15 @@ TEST(ImageEncoderDecoderOpTest, DecodeBGR) {
 
   test.AddInput<uint8_t>("encoded_stream", {static_cast<int64_t>(input_image_data.size()),}, input_image_data);
   test.AddOutput<uint8_t>("output", {channels, height, width}, output_image_data);
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-
   test.Run(ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(ImageEncoderDecoderOpTest, DecodeGrayscale) {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  if (!get_endocer_decoder_eps(execution_providers)) {
+    GTEST_SKIP() << "Skipping because there is no EP that supports ImageEncoderDecoderOpTest.";
+  }
+
   OpTester test("ImageDecoder", 20, kOnnxDomain);
   test.AddAttribute("pixel_format", "Grayscale");
 
@@ -177,10 +196,6 @@ TEST(ImageEncoderDecoderOpTest, DecodeGrayscale) {
 
   test.AddInput<uint8_t>("encoded_stream", {static_cast<int64_t>(input_image_data.size()),}, input_image_data);
   test.AddOutput<uint8_t>("output", {channels, height, width}, output_image_data);
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-
   test.Run(ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 // #endif // USE_CUDA
