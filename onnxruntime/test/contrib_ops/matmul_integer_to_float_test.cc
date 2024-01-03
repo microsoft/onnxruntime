@@ -103,7 +103,6 @@ void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
   } else {
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
   }
-
 }
 
 template <typename IType, typename WType, typename OType, bool HasZeroPoint, bool HasBias>
@@ -113,43 +112,43 @@ void RunMatMulIntegerToFloatTest(const string& model_path) {
   std::vector<int64_t> Y_dims{4, 128};
 
   TestMatMulIntegerToFloat<IType, WType, OType>(
-                                         A_dims,
-                                         B_dims,
-                                         model_path,
-                                         false,        /*is_matrix_b_constant*/
-                                         false,        /*per_column*/
-                                         HasZeroPoint, /*has_zp*/
-                                         HasBias       /*has_bias*/
+      A_dims,
+      B_dims,
+      model_path,
+      false,        /*is_matrix_b_constant*/
+      false,        /*per_column*/
+      HasZeroPoint, /*has_zp*/
+      HasBias       /*has_bias*/
   );
 
   TestMatMulIntegerToFloat<IType, WType, OType>(
-                                         A_dims,
-                                         B_dims,
-                                         model_path,
-                                         true,         /*is_matrix_b_constant*/
-                                         false,        /*per_column*/
-                                         HasZeroPoint, /*has_zp*/
-                                         HasBias       /*has_bias*/
+      A_dims,
+      B_dims,
+      model_path,
+      true,         /*is_matrix_b_constant*/
+      false,        /*per_column*/
+      HasZeroPoint, /*has_zp*/
+      HasBias       /*has_bias*/
   );
 
   TestMatMulIntegerToFloat<IType, WType, OType>(
-                                         A_dims,
-                                         B_dims,
-                                         model_path,
-                                         false,        /*is_matrix_b_constant*/
-                                         true,         /*per_column*/
-                                         HasZeroPoint, /*has_zp*/
-                                         HasBias       /*has_bias*/
+      A_dims,
+      B_dims,
+      model_path,
+      false,        /*is_matrix_b_constant*/
+      true,         /*per_column*/
+      HasZeroPoint, /*has_zp*/
+      HasBias       /*has_bias*/
   );
 
   TestMatMulIntegerToFloat<IType, WType, OType>(
-                                         A_dims,
-                                         B_dims,
-                                         model_path,
-                                         true,         /*is_matrix_b_constant*/
-                                         true,         /*per_column*/
-                                         HasZeroPoint, /*has_zp*/
-                                         HasBias       /*has_bias*/
+      A_dims,
+      B_dims,
+      model_path,
+      true,         /*is_matrix_b_constant*/
+      true,         /*per_column*/
+      HasZeroPoint, /*has_zp*/
+      HasBias       /*has_bias*/
   );
 }
 
@@ -171,7 +170,7 @@ TEST(MatMulIntegerToFloat, HasZeroPoint_NoBias_test_S8S8_FP16) {
 TEST(MatMulIntegerToFloat, NoZeroPoint_HasBias_test_S8S8_FP16) {
   RunMatMulIntegerToFloatTest<int8_t, int8_t, MLFloat16, false, true>("testdata/matmul_integer_to_float16_int8_int8_bias.onnx");
 }
-#endif // USE_DML
+#endif  // USE_DML
 
 TEST(MatMulIntegerToFloat, HasZeroPoint_NoBias_test_U8X8) {
   RunMatMulIntegerToFloatTest<uint8_t, int8_t, float, true, false>("testdata/matmul_integer_to_float_int8.onnx");
