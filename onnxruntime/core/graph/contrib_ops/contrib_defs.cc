@@ -1089,9 +1089,20 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .SetDoc(ImageEncoder_ver1_doc)
         .Attr(
             "pixel_format",
-            "Pixel format. Can be one of \"RGB\", \"BGR\", \"RGBI\", \"BGRI\", \"YUV\", \"Y\"",
+            "Pixel format. Can be one of \"RGB\", \"BGR\", \"Grayscale\"",
             AttributeProto::STRING,
             std::string("RGB"))
+        .Attr(
+            "subsampling",
+            "Chroma subsampling to be used. Can be one of \"444\", \"422\", \"420\", \"440\", \"411\", \"410\", \"400\""
+            "default value is \"420\"",
+            AttributeProto::STRING,
+            std::string("420"))
+        .Attr(
+            "quality",
+            "Integer value of quality between 1 and 100, where 100 is the highest quality. Default value is 70.",
+            AttributeProto::INT,
+            std::int64_t(70))
         .Input(0, "image", "original image", "T", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
         .Output(0, "encoded_stream", "Encoded stream", "T", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
         .TypeConstraint("T", {"tensor(uint8)"}, "Constrain input types to 8-bit unsigned integer tensor.")

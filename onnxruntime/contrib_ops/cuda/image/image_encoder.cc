@@ -31,56 +31,46 @@ static nvjpegDevAllocator_t dev_allocator = {&dev_malloc, &dev_free};
 
 ImageEncoder::ImageEncoder(const OpKernelInfo& info) : CudaKernel(info) {
   pixel_format_ = info.GetAttrOrDefault<std::string>("pixel_format", "RGB");
+  quality_ = info.GetAttrOrDefault<int64_t>("quality", 70);
+  std::string subsampling = info.GetAttrOrDefault<std::string>("subsampling", "420");
+
   ORT_ENFORCE(
     pixel_format_ == "RGB" ||
     pixel_format_ == "BGR" ||
-    pixel_format_ == "RGBI" ||
-    pixel_format_ == "BGRI" ||
-    pixel_format_ == "YUV" ||
-    pixel_format_ == "Y",
+    pixel_format_ == "Grayscale",
     "ImageEncoder: invalid pixel_format: ", pixel_format_);
+  input_rgb_format_ = pixel_format_ == "RGB" ? NVJPEG_INPUT_RGB : NVJPEG_INPUT_BGR;
 
-  if (pixel_format_ == "RGB" || pixel_format_ == "BGR") {
-    input_rgb_format_ = pixel_format_ == "RGB" ? NVJPEG_INPUT_RGB : NVJPEG_INPUT_BGR;
-  } else if (pixel_format_ == "RGBI" || pixel_format_ == "BGRI") {
-    input_rgb_format_ = pixel_format_ == "RGB" ? NVJPEG_INPUT_RGBI : NVJPEG_INPUT_BGRI;
-  } else if (pixel_format_ == "YUV" || pixel_format_ == "Y") {
-    // nvjpegEncodeYUV does not need input_rgb_format_.
+  nvjpegChromaSubsampling_t chroma_subsampling;
+  if (subsampling == "444") {
+    chroma_subsampling = NVJPEG_CSS_444;
+  } else if (subsampling == "422") {
+    chroma_subsampling = NVJPEG_CSS_422;
+  } else if (subsampling == "420") {
+    chroma_subsampling = NVJPEG_CSS_420;
+  } else if (subsampling == "440") {
+    chroma_subsampling = NVJPEG_CSS_440;
+  } else if (subsampling == "411") {
+    chroma_subsampling = NVJPEG_CSS_411;
+  } else if (subsampling == "410") {
+    chroma_subsampling = NVJPEG_CSS_410;
+  } else if (subsampling == "400") {
+    chroma_subsampling = NVJPEG_CSS_GRAY;
+  } else {
+    ORT_THROW("Unknown or unsupported subsampling: ", subsampling);
   }
 
+  if (pixel_format_ == "Grayscale" && chroma_subsampling != NVJPEG_CSS_GRAY) {
+    // log warning attribute mismatch
+    chroma_subsampling = NVJPEG_CSS_GRAY;
+  }
   NVJPEG_CALL_THROW(nvjpegCreate(NVJPEG_BACKEND_DEFAULT, &dev_allocator, &nvjpeg_handle_));
   NVJPEG_CALL_THROW(nvjpegJpegStateCreate(nvjpeg_handle_, &jpeg_state_));
   NVJPEG_CALL_THROW(nvjpegEncoderStateCreate(nvjpeg_handle_, &encoder_state_, NULL));
   NVJPEG_CALL_THROW(nvjpegEncoderParamsCreate(nvjpeg_handle_, &encode_params_, NULL));
 
-  // sample input parameters
+  NVJPEG_CALL_THROW(nvjpegEncoderParamsSetSamplingFactors(encode_params_, chroma_subsampling, NULL));
   NVJPEG_CALL_THROW(nvjpegEncoderParamsSetQuality(encode_params_, quality_, NULL));
-  NVJPEG_CALL_THROW(nvjpegEncoderParamsSetOptimizedHuffman(encode_params_, huf_, NULL));
-
-  if (subsampling_attr_ == "444") {
-    NVJPEG_CALL_THROW(nvjpegEncoderParamsSetSamplingFactors(encode_params_, NVJPEG_CSS_444, NULL));
-    subsampling_ = NVJPEG_CSS_444;
-  } else if (subsampling_attr_ == "422") {
-    NVJPEG_CALL_THROW(nvjpegEncoderParamsSetSamplingFactors(encode_params_, NVJPEG_CSS_422, NULL));
-    subsampling_ = NVJPEG_CSS_422;
-  } else if (subsampling_attr_ == "420") {
-    NVJPEG_CALL_THROW(nvjpegEncoderParamsSetSamplingFactors(encode_params_, NVJPEG_CSS_420, NULL));
-    subsampling_ = NVJPEG_CSS_420;
-  } else if (subsampling_attr_ == "440") {
-    NVJPEG_CALL_THROW(nvjpegEncoderParamsSetSamplingFactors(encode_params_, NVJPEG_CSS_440, NULL));
-    subsampling_ = NVJPEG_CSS_440;
-  } else if (subsampling_attr_ == "411") {
-    NVJPEG_CALL_THROW(nvjpegEncoderParamsSetSamplingFactors(encode_params_, NVJPEG_CSS_411, NULL));
-    subsampling_ = NVJPEG_CSS_411;
-  } else if (subsampling_attr_ == "410") {
-    NVJPEG_CALL_THROW(nvjpegEncoderParamsSetSamplingFactors(encode_params_, NVJPEG_CSS_410, NULL));
-    subsampling_ = NVJPEG_CSS_410;
-  } else if (subsampling_attr_ == "400") {
-    NVJPEG_CALL_THROW(nvjpegEncoderParamsSetSamplingFactors(encode_params_, NVJPEG_CSS_GRAY, NULL));
-    subsampling_ = NVJPEG_CSS_GRAY;
-  } else {
-
-  }
 }
 
 ImageEncoder::~ImageEncoder() {
@@ -100,26 +90,11 @@ Status ImageEncoder::ComputeInternal(OpKernelContext* context) const {
                            "Input is expected to have four dimensions corresponding to [N,C,H,W], got ", dims.size());
   }
 
+  // TODO: process N images
   const int64_t N = dims[0];
   const int64_t C = dims[1];
   const int64_t H = dims[2];
   const int64_t W = dims[3];
-
-  bool is_interleaved = false;
-  bool is_rgb;
-  if (pixel_format_ == "RGB" || pixel_format_ == "BGR") {
-    is_rgb = true;
-  }
-  else if (pixel_format_ == "RGBI" || pixel_format_ == "BGRI") {
-    is_interleaved = true;
-    is_rgb = true;
-  }
-  else if (pixel_format_ == "YUV") {
-    is_rgb = false;
-  }
-  else if (pixel_format_ == "Y") {
-    is_rgb = false;
-  }
 
   uint8_t* image_data_ = const_cast<uint8_t*>(image_data);
   nvjpegImage_t imgdesc =
@@ -128,17 +103,17 @@ Status ImageEncoder::ComputeInternal(OpKernelContext* context) const {
       image_data_,
       image_data_ + W * H,
       image_data_ + W * H * 2,
-      image_data_ + W * H * 3,
+      //image_data_ + W * H * 3,
     },
     {
-      (unsigned int)(is_interleaved ? W * 3 : W),
       (unsigned int)W,
       (unsigned int)W,
-      (unsigned int)W
+      (unsigned int)W,
+      //(unsigned int)W
     }
   };
 
-  if (is_rgb) {
+  if (pixel_format_ == "RGB" || pixel_format_ == "BGR") {
     NVJPEG_CALL_THROW(nvjpegEncodeImage(
       nvjpeg_handle_,
       encoder_state_,
@@ -148,13 +123,13 @@ Status ImageEncoder::ComputeInternal(OpKernelContext* context) const {
       static_cast<int>(W),
       static_cast<int>(H),
       NULL));
-  } else {
+  } else { // pixel_format_ == "Grayscale"
     NVJPEG_CALL_THROW(nvjpegEncodeYUV(
       nvjpeg_handle_,
       encoder_state_,
       encode_params_,
       &imgdesc,
-      subsampling_,
+      NVJPEG_CSS_GRAY,
       static_cast<int>(W),
       static_cast<int>(H),
       NULL));
@@ -181,12 +156,20 @@ Status ImageEncoder::ComputeInternal(OpKernelContext* context) const {
       &length,
       NULL));
 
+  //// Save the binary data to a file 
+  //{
+  //  std::string out_filename;
+  //  if (pixel_format_ == "Grayscale")
+  //    out_filename = "c:/temp/encoder_test_grayscale_encoded.jpg";
+  //  else if(pixel_format_ == "RGB")
+  //    out_filename = "c:/temp/encoder_test_rgb_encoded.jpg";
+  //  else
+  //    out_filename = "c:/temp/encoder_test_bgr_encoded.jpg";
 
-  // Save the binary data to a file
-  std::ofstream outfile("c:/temp/encoded.jpg", std::ofstream::binary);
-  outfile.write(reinterpret_cast<const char*>(encoded_stream_data), length);
-  outfile.close();
-
+  //  std::ofstream outfile(out_filename, std::ofstream::binary);
+  //  outfile.write(reinterpret_cast<const char*>(encoded_stream_data), length);
+  //  outfile.close();
+  //}
   return Status::OK();
 }
 

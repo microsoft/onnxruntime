@@ -80,6 +80,11 @@ Status ImageDecoder::ComputeInternal(OpKernelContext* context) const {
   NVJPEG_CALL_THROW(nvjpegGetImageInfo(
       nvjpeg_handle_, encoded_stream_data, dims[0],
       &channels, &subsampling, widths, heights));
+
+  if (fmt_ == NVJPEG_OUTPUT_Y) {
+    channels = 1;
+  }
+
   // we do not work with yuv output type so the output per-channel image size is always the original image size.
   int64_t width = widths[0], height = heights[0];
   TensorShape output_shape{static_cast<int64_t>(channels), static_cast<int64_t>(height), static_cast<int64_t>(width)};
@@ -91,12 +96,10 @@ Status ImageDecoder::ComputeInternal(OpKernelContext* context) const {
     out_planes.channel[c] = image_data + c * height * width;
   }
 
-
   NVJPEG_CALL_THROW(nvjpegDecode(nvjpeg_handle_, nvjpeg_state_,
                                  encoded_stream_data,
                                  dims[0], fmt_, &out_planes,
                                  Stream(context)));
-
   return Status::OK();
 }
 }  // namespace cuda

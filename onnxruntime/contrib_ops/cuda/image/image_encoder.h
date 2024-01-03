@@ -24,9 +24,7 @@ class ImageEncoder final : public CudaKernel {
   std::string pixel_format_;
   nvjpegInputFormat_t input_rgb_format_;
   int quality_{70};
-  int huf_{0};
 
-  std::string subsampling_attr_{"420"};
   nvjpegChromaSubsampling_t subsampling_;
 
   nvjpegEncoderParams_t encode_params_;
