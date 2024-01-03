@@ -116,10 +116,6 @@ class QnnBackendManager {
 
   void Split(std::vector<std::string>& split_string, const std::string& tokenized_string, const char separator);
 
-  bool IsProfilingEnabled() const {
-    return profiling_level_ != ProfilingLevel::OFF && profiling_level_ != ProfilingLevel::INVALID;
-  }
-
   Status ExtractBackendProfilingInfo();
   Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id, std::ofstream& outfile, bool backendSupportsExtendedEventData);
   Status ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel, std::ofstream& outfile, bool backendSupportsExtendedEventData);

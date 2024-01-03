@@ -819,10 +819,9 @@ void QnnBackendManager::ReleaseResources() {
 }
 
 Status QnnBackendManager::ExtractBackendProfilingInfo() {
-  if (!IsProfilingEnabled()) {
+  if (ProfilingLevel::OFF == profiling_level_ || ProfilingLevel::INVALID == profiling_level_) {
     return Status::OK();
   }
-
   ORT_RETURN_IF(nullptr == profile_backend_handle_, "Backend profile handle not valid.");
 
   const QnnProfile_EventId_t* profile_events{nullptr};

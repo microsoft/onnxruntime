@@ -242,7 +242,7 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context) {
   Qnn_ErrorHandle_t execute_status = QNN_GRAPH_NO_ERROR;
 
   {
-    // Acquire mutex before calling graphExecute API to support calling session.Run() from multiple threads.
+    // Acquire mutex before calling graphExecute and profiling APIs to support calling session.Run() from multiple threads.
     std::unique_lock<std::mutex> lock(graph_exec_mutex_);
     execute_status = qnn_interface.graphExecute(graph_info_->Graph(),
                                                 qnn_inputs.data(),
@@ -251,15 +251,10 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context) {
                                                 static_cast<uint32_t>(qnn_outputs.size()),
                                                 profile_backend_handle,
                                                 nullptr);
-  }
 
-  if (qnn_backend_manager_->IsProfilingEnabled()) {
-    // Acquire mutex before calling profile event APIs to support calling session.Run() from multiple threads.
-    //
-    // This code path does a lot of work that is all locked behind a single mutex.
-    // However, profiling is typically only enabled for debugging purposes, so this approach should suffice for now.
-    // We can improve this path if it becomes an issue in the future.
-    std::unique_lock<std::mutex> lock(profile_events_mutex_);
+    // NOTE: This function returns immediately when profiling is disabled.
+    // Extracting profiling data can be expensive, but it is typically only enabled for debugging purposes
+    // and not in production. We can improve synchronization for event profiling if it becomes an issue.
     ORT_RETURN_IF_ERROR(qnn_backend_manager_->ExtractBackendProfilingInfo());
   }
 
