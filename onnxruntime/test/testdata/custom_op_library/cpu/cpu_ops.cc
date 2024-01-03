@@ -78,7 +78,7 @@ void KernelTwo(OrtKernelContext* context,
   const auto& shape = X.Shape();
   auto X_raw = X.Data();
   auto Y_raw = Y.Allocate(shape);
-  std::vector<float> floats(X.NumberOfElement(), 0.f);
+  std::vector<float> floats(static_cast<size_t>(X.NumberOfElement()), 0.f);
 
   DataI data_i = {X_raw, floats.data()};
   auto total = std::accumulate(shape.begin(), shape.end(), 1LL, std::multiplies<int64_t>());
