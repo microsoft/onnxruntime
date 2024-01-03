@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#ifdef USE_CUTLASS
+
 // Ignore CUTLASS warnings about type punning
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -426,3 +428,5 @@ void MoeGemmRunner<T, WeightType>::moe_gemm(const T* A, const WeightType* B, con
 }
 
 }  // namespace ort_fastertransformer
+
+#endif

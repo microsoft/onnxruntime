@@ -81,28 +81,26 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto onnx_kernel_shape = helper.Get("kernel_shape", std::vector<int64_t>{0, 0});
   const auto onnx_strides = helper.Get("strides", std::vector<int64_t>{1, 1});
   const auto onnx_pads = helper.Get("pads", std::vector<int64_t>{0, 0, 0, 0});
-
+  auto pads = helper.Get("pads", std::vector<int32_t>{0, 0, 0, 0});
   std::vector<int64_t> input_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
-  AutoPadType auto_pad_type;
-  ORT_RETURN_IF_ERROR(HandleAutoPad(input_shape, onnx_kernel_shape[0], onnx_kernel_shape[1],
-                                    onnx_pads, onnx_strides, {1, 1} /* dilations */,
-                                    StringToAutoPadType(helper.Get("auto_pad", "NOTSET")),
-                                    auto_pad_type));
-
+  AutoPadType auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
   if (AutoPadType::SAME_UPPER == auto_pad_type || AutoPadType::SAME_LOWER == auto_pad_type) {
-    if (AutoPadType::SAME_LOWER == auto_pad_type) {  // default is SAME_UPPER
-      options.set("autoPad", "same-lower");
-    } else {
-      options.set("autoPad", "same-upper");
-    }
-  } else {
-    const std::vector<int32_t> pads = helper.Get("pads", std::vector<int32_t>{0, 0, 0, 0});
-    // Permute the ONNX's pads, which is [beginning_height, beginning_width, ending_height, ending_width],
-    // while WebNN's padding is [beginning_height, ending_height, beginning_width, ending_width].
-    const std::vector<int32_t> padding{pads[0], pads[2], pads[1], pads[3]};
-    options.set("padding", emscripten::val::array(padding));
+    std::vector<int64_t> pads_out;
+    ORT_RETURN_IF_ERROR(HandleAutoPad(input_shape, onnx_kernel_shape[0], onnx_kernel_shape[1],
+                                      onnx_pads,
+                                      helper.Get("strides", std::vector<int64_t>{1, 1}),
+                                      helper.Get("dilations", std::vector<int64_t>{1, 1}),
+                                      auto_pad_type,
+                                      pads_out,
+                                      model_builder.GetPreferredLayout() == DataLayout::NCHW));
+    std::transform(pads_out.begin(), pads_out.end(), pads.begin(),
+                   [](int64_t pad) -> int32_t { return static_cast<int32_t>(pad); });
   }
+  // Permute the ONNX's pads, which is [beginning_height, beginning_width, ending_height, ending_width],
+  // while WebNN's padding is [beginning_height, ending_height, beginning_width, ending_width].
+  const std::vector<int32_t> padding{pads[0], pads[2], pads[1], pads[3]};
+  options.set("padding", emscripten::val::array(padding));
 
   const auto ceil_mode = helper.Get("ceil_mode", 0);
   options.set("roundingType", ceil_mode == 0 ? emscripten::val("floor")

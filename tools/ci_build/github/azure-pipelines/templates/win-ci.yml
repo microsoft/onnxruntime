@@ -193,7 +193,7 @@ stages:
         - template: nodejs-artifacts-package-and-publish-steps-windows.yml
           parameters:
             arch: ${{ parameters.packageName }}
-            artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.packageName }}'
+            artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.packageName }}${{ parameters.artifact_name_suffix }}'
             DoEsrp: ${{ parameters.DoEsrp }}
 
       #Upload protoc.exe, which will be used in nuget build for generating C# files
@@ -260,7 +260,7 @@ stages:
         displayName: 'Publish Java temp binaries'
         inputs:
           pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
-          artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}'
+          artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
 
       - ${{ if eq(parameters['DoCompliance'], 'true') }}:
         - task: CredScan@3

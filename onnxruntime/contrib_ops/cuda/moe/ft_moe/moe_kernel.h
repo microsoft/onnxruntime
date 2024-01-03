@@ -16,6 +16,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef USE_CUTLASS
+
 #pragma once
 
 #include "moe_gemm_kernels.h"
@@ -173,3 +175,5 @@ class CutlassMoeFCRunner<float, WeightType, typename std::enable_if_t<!std::is_s
 };
 
 }  // namespace ort_fastertransformer
+
+#endif

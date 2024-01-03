@@ -141,7 +141,6 @@ export const createReduceSharedProgramInfo =
           return ((a - 1u) / b + 1u);
          }
          ${shaderHelper.mainStart(workgroupSize)}
-          let local_idx = local_id.x;
 
           let outputIndex = global_idx / ${workgroupSize};
           let offset = outputIndex * uniforms.reduceSize;

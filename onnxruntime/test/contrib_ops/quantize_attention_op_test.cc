@@ -20,7 +20,8 @@ namespace test {
 enum class EP : char {
   CPU,
   CUDA,
-  DNNL
+  DNNL,
+  DML
 };
 
 // input:      [batch_size, sequence_length, hidden_size]
@@ -111,6 +112,8 @@ void RunQAttention(const std::vector<float>& input_data,
     execution_providers.push_back(DefaultCudaExecutionProvider());
   } else if constexpr (ep == EP::CPU) {
     execution_providers.push_back(DefaultCpuExecutionProvider());
+  } else if constexpr (ep == EP::DML) {
+    execution_providers.push_back(DefaultDmlExecutionProvider());
   } else {  // onednn ep
     execution_providers.push_back(DefaultDnnlExecutionProvider());
   }
@@ -176,6 +179,52 @@ static void RunQAttentionDNNL(
   RunQAttention<uint8_t, int8_t, EP::DNNL>(
       input_data, weights_data, bias_data, mask_index_data, output_data, input_quant_params, weights_quant_params,
       batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional, false, input_hidden_size);
+#else
+  ORT_UNUSED_PARAMETER(input_data);
+  ORT_UNUSED_PARAMETER(weights_data);
+  ORT_UNUSED_PARAMETER(bias_data);
+  ORT_UNUSED_PARAMETER(mask_index_data);
+  ORT_UNUSED_PARAMETER(output_data);
+  ORT_UNUSED_PARAMETER(batch_size);
+  ORT_UNUSED_PARAMETER(sequence_length);
+  ORT_UNUSED_PARAMETER(hidden_size);
+  ORT_UNUSED_PARAMETER(number_of_heads);
+  ORT_UNUSED_PARAMETER(use_special_quantize_parameter);
+  ORT_UNUSED_PARAMETER(is_unidirectional);
+  ORT_UNUSED_PARAMETER(input_hidden_size);
+#endif
+}
+
+static void RunQAttentionDML(
+    const std::vector<float>& input_data,
+    const std::vector<float>& weights_data,
+    const std::vector<float>& bias_data,
+    const std::vector<int32_t>& mask_index_data,
+    const std::vector<float>& output_data,
+    int batch_size,
+    int sequence_length,
+    int hidden_size,
+    int number_of_heads,
+    bool use_special_quantize_parameter = true,
+    bool is_unidirectional = false,
+    int input_hidden_size = 0) {
+  // Return without running code if USE_DML is not defined
+#ifdef USE_DML
+  bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get());
+  if (enable_dml) {
+    quantization::Params<uint8_t> input_quant_params(/*scale=*/0.0f, /*zero_point=*/0);
+    quantization::Params<int8_t> weights_quant_params(/*scale=*/0.0f, /*zero_point=*/0);
+    if (use_special_quantize_parameter) {
+      input_quant_params.scale = 0.1f;
+      weights_quant_params.scale = 0.1f;
+      input_quant_params.zero_point = 128;
+      weights_quant_params.zero_point = 1;
+    }
+
+    RunQAttention<uint8_t, int8_t, EP::DML>(
+        input_data, weights_data, bias_data, mask_index_data, output_data, input_quant_params, weights_quant_params,
+        batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional, false, input_hidden_size);
+  }
 #else
   ORT_UNUSED_PARAMETER(input_data);
   ORT_UNUSED_PARAMETER(weights_data);
@@ -272,6 +321,9 @@ static void RunQAttentionAll(
   RunQAttentionDNNL(input_data, weight_data, bias_data, mask_index_data, output_data,
                     batch_size, sequence_length, hidden_size, number_of_heads,
                     use_special_quantize_parameter, is_unidirectional, input_hidden_size);
+  RunQAttentionDML(input_data, weight_data, bias_data, mask_index_data, output_data,
+                   batch_size, sequence_length, hidden_size, number_of_heads,
+                   use_special_quantize_parameter, is_unidirectional, input_hidden_size);
 }
 
 // ONEDNN EP only supports 2D raw mask
