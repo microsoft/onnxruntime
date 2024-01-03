@@ -20,7 +20,7 @@ jobs:
   workspace:
     clean: all
   steps:
-  - template: win-ci-prebuild-steps.yml
+  - template: templates/jobs/win-ci-prebuild-steps.yml
     parameters:
       EnvSetupScript: $(EnvSetupScript)
       DownloadCUDA: false
