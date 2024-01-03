@@ -10,10 +10,10 @@ from .operators.embed_layernorm import EmbedLayerNormalizationQuant
 from .operators.gather import GatherQuant, QDQGather
 from .operators.gavgpool import QGlobalAveragePool
 from .operators.gemm import QDQGemm, QLinearGemm
-from .operators.instnorm import QDQInstanceNormalization
 from .operators.lstm import LSTMQuant
 from .operators.matmul import MatMulInteger, QDQMatMul, QLinearMatMul
 from .operators.maxpool import QDQMaxPool, QMaxPool
+from .operators.norm import QDQNormalization
 from .operators.pad import QPad
 from .operators.pooling import QLinearPool
 from .operators.qdq_base_operator import QDQOperatorBase
@@ -81,7 +81,8 @@ QDQRegistry = {
     "Gather": QDQGather,
     "Softmax": QDQSoftmax,
     "Where": QDQWhere,
-    "InstanceNormalization": QDQInstanceNormalization,
+    "InstanceNormalization": QDQNormalization,
+    "LayerNormalization": QDQNormalization,
 }
 
 

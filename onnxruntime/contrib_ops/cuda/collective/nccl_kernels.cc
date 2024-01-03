@@ -24,9 +24,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define NCCL_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(NCCL_CALL(expr))
-
-static ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type) {
+ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type) {
   if (type == DataTypeImpl::GetType<uint8_t>()) {
     return ncclUint8;
   } else if (type == DataTypeImpl::GetType<bool>()) {

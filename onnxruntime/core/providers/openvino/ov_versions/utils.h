@@ -45,7 +45,6 @@ void GetInputsOutputsOfCluster(const GraphViewer& graph_viewer,
                                const std::unordered_set<std::string>& ng_required_initializers,
                                /*out*/ std::vector<std::string>& cluster_graph_inputs,
                                /*out*/ std::vector<std::string>& cluster_inputs,
-                               /*out*/ std::vector<std::string>& constant_inputs,
                                /*out*/ std::vector<std::string>& cluster_outputs);
 
 }  // namespace openvino_ep

@@ -2,6 +2,10 @@
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 #include "vaip/global_api.h"
+
+#include <atomic>
+#include <fstream>
+
 #include "./vai_assert.h"
 #include "core/common/exceptions.h"
 #include "core/common/logging/logging.h"
@@ -10,10 +14,10 @@
 
 #include "core/graph/model.h"
 #include "core/session/ort_env.h"
-
-#include <atomic>
-
 #include "core/session/onnxruntime_cxx_api.h"
+
+#include <nlohmann/json.hpp>
+
 #include "vaip/dll_safe.h"
 #include "vaip/vaip_ort_api.h"
 #include "vaip/graph.h"
@@ -24,28 +28,107 @@
 #include "./attr_proto.h"
 #include "./register_xir_ops.h"
 
-#include "onnxruntime_vitisai_ep/onnxruntime_vitisai_ep.h"
-
 #include "onnxruntime_config.h"
 #include "version_info.h"  // version_info.hpp.in
 
 using namespace onnxruntime;
+using json = nlohmann::json;
+
+// The filename extension for a shared library is different per platform
+#ifdef _WIN32
+#define LIBRARY_PREFIX
+#define LIBRARY_EXTENSION ORT_TSTR(".dll")
+#elif defined(__APPLE__)
+#define LIBRARY_PREFIX "lib"
+#define LIBRARY_EXTENSION ".dylib"
+#else
+#define LIBRARY_PREFIX "lib"
+#define LIBRARY_EXTENSION ".so"
+#endif
+
 vaip_core::OrtApiForVaip* create_org_api_hook();
+struct OrtVitisAIEpAPI {
+  void (*initialize_onnxruntime_vitisai_ep)(vaip_core::OrtApiForVaip* api, std::vector<OrtCustomOpDomain*>& ret_domain);
+  std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_3)(const std::string& model_path,
+                                                                                      const onnxruntime::Graph& graph,
+                                                                                      const char* json_config);
+  std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* (*compile_onnx_model_with_options)(
+      const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options);
+  void Ensure() {
+    if (handle_) return;
+    auto full_path = Env::Default().GetRuntimePath() +
+                     PathString(LIBRARY_PREFIX ORT_TSTR("onnxruntime_vitisai_ep") LIBRARY_EXTENSION);
+    ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, true, &handle_));
+    ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(
+        handle_, "initialize_onnxruntime_vitisai_ep", reinterpret_cast<void**>(&initialize_onnxruntime_vitisai_ep)));
+    auto status1 = Env::Default().GetSymbolFromLibrary(handle_, "compile_onnx_model_vitisai_ep_with_options",
+                                                       reinterpret_cast<void**>(&compile_onnx_model_with_options));
+    auto status2 = Env::Default().GetSymbolFromLibrary(handle_, "compile_onnx_model_vitisai_ep",
+                                                       reinterpret_cast<void**>(&compile_onnx_model_3));
+    if (!status1.IsOK() && !status2.IsOK()) {
+      ::onnxruntime::LogRuntimeError(0, status1, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__);
+      ORT_THROW(status1);
+    }
+  }
+
+ private:
+  void* handle_{};
+};
+
+static OrtVitisAIEpAPI s_library_vitisaiep;
+static std::string config_to_json_str(const onnxruntime::ProviderOptions& config) {
+  auto iter = config.find("config_file");
+  if (iter == config.end()) {
+    std::cerr << "Error: Key 'config_file' not found in config" << std::endl;
+    return "";
+  }
+  const auto& filename = config.at("config_file");
+  std::ifstream f(filename);
+  if (!f.is_open()) {
+    std::cerr << "Error: Failed to open file: " << filename << std::endl;
+    return "";
+  }
+  nlohmann::json data;
+  try {
+    data = nlohmann::json::parse(f);
+  } catch (const std::exception& e) {
+    std::cerr << "Error: Failed to parse JSON from file: " << filename << ", Reason: " << e.what() << std::endl;
+    return "";
+  }
+  for (const auto& entry : config) {
+    data[entry.first] = entry.second;
+  }
+  try {
+    return data.dump();
+  } catch (const std::exception& e) {
+    std::cerr << "Error: Failed to convert JSON data to string, Reason: " << e.what() << std::endl;
+    return "";
+  }
+}
+vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>> compile_onnx_model_with_options(
+    const std::string& model_path, const onnxruntime::Graph& graph, const onnxruntime::ProviderOptions& options) {
+  if (s_library_vitisaiep.compile_onnx_model_with_options) {
+    return vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_with_options(model_path, graph, options));
+  } else {
+    auto json_str = config_to_json_str(options);
+    return vaip_core::DllSafe(s_library_vitisaiep.compile_onnx_model_3(model_path, graph, json_str.c_str()));
+  }
+}
 
 std::vector<OrtCustomOpDomain*> initialize_vitisai_ep() {
+  s_library_vitisaiep.Ensure();
   Status status = Status::OK();
   try {
-    OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, ORT_LOGGING_LEVEL_WARNING, "onnxruntime-vitisai-ep"};
+    OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, ORT_LOGGING_LEVEL_WARNING,
+                                                   "onnxruntime-vitisai-ep"};
     std::ignore = OrtEnv::GetInstance(lm_info, status);
   } catch (onnxruntime::OnnxRuntimeException& /*e*/) {
   }
   auto domains = std::vector<OrtCustomOpDomain*>();
   domains.reserve(100);
-  onnxruntime_vitisai_ep::initialize_onnxruntime_vitisai_ep(create_org_api_hook(), domains);
-  auto& domainToVersionRangeInstance =
-      ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
-  if (domainToVersionRangeInstance.Map().find("com.xilinx") ==
-      domainToVersionRangeInstance.Map().end()) {
+  s_library_vitisaiep.initialize_onnxruntime_vitisai_ep(create_org_api_hook(), domains);
+  auto& domainToVersionRangeInstance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
+  if (domainToVersionRangeInstance.Map().find("com.xilinx") == domainToVersionRangeInstance.Map().end()) {
     vaip::register_xir_ops(domains);
   }
 
@@ -68,17 +151,14 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   the_global_api.model_delete = [](Model* model) { delete model; };
   the_global_api.model_clone = [](const Model& model) -> Model* {
     auto& logger = logging::LoggingManager::DefaultLogger();
-    auto model_proto =
-        const_cast<onnxruntime::Model&>(model).ToProto();
+    auto model_proto = const_cast<onnxruntime::Model&>(model).ToProto();
     auto file_path = model.ModelPath().ToPathString();
     auto ret = std::make_unique<Model>(std::move(model_proto), file_path, nullptr, logger);
     auto status = ret->MainGraph().Resolve();
     vai_assert(status.IsOK(), status.ErrorMessage());
     return ret.release();
   };
-  the_global_api.model_set_meta_data = [](Model& model, const std::string& key,
-                                          const std::string& value)
-      -> void {
+  the_global_api.model_set_meta_data = [](Model& model, const std::string& key, const std::string& value) -> void {
     const_cast<ModelMetaData&>(model.MetaData())[key] = value;
   };
   the_global_api.model_get_meta_data = [](const Model& model,
@@ -97,14 +177,9 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     return m.find(key) != m.end() ? 1 : 0;
   };
 
-  the_global_api.model_main_graph = [](Model& model) -> Graph& {
-    return model.MainGraph();
-  };
-  the_global_api.graph_get_model = [](const Graph& graph) -> const Model& {
-    return graph.GetModel();
-  };
-  the_global_api.graph_get_inputs_unsafe =
-      [](const Graph& graph) -> vaip_core::DllSafe<std::vector<const NodeArg*>> {
+  the_global_api.model_main_graph = [](Model& model) -> Graph& { return model.MainGraph(); };
+  the_global_api.graph_get_model = [](const Graph& graph) -> const Model& { return graph.GetModel(); };
+  the_global_api.graph_get_inputs_unsafe = [](const Graph& graph) -> vaip_core::DllSafe<std::vector<const NodeArg*>> {
     auto ret = std::vector<const NodeArg*>();
     auto inputs = graph.GetInputs();
     for (auto input : inputs) {
@@ -113,47 +188,35 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     }
     return vaip_core::DllSafe(std::move(ret));
   };
-  the_global_api.graph_get_outputs_unsafe =
-      [](const Graph& graph) -> vaip_core::DllSafe<std::vector<const NodeArg*>> {
+  the_global_api.graph_get_outputs_unsafe = [](const Graph& graph) -> vaip_core::DllSafe<std::vector<const NodeArg*>> {
     return vaip_core::DllSafe(graph.GetOutputs());
   };
 
-  the_global_api.graph_set_outputs =
-      [](Graph& graph, gsl::span<const NodeArg* const> outputs) -> void {
+  the_global_api.graph_set_outputs = [](Graph& graph, gsl::span<const NodeArg* const> outputs) -> void {
     return graph.SetOutputs(outputs);
   };
 
-  the_global_api.graph_get_node_arg =
-      [](const Graph& graph, const std::string& name) -> const NodeArg* {
+  the_global_api.graph_get_node_arg = [](const Graph& graph, const std::string& name) -> const NodeArg* {
     return graph.GetNodeArg(name);
   };
   the_global_api.graph_producer_node = [](const Graph& graph, const std::string& name) -> const Node* {
     return graph.GetProducerNode(name);
   };
 
-  the_global_api.graph_get_node = [](const Graph& graph,
-                                     size_t index) -> const Node* {
-    return graph.GetNode(index);
-  };
+  the_global_api.graph_get_node = [](const Graph& graph, size_t index) -> const Node* { return graph.GetNode(index); };
 
   the_global_api.graph_save = vaip::graph_save;
   the_global_api.graph_fuse = vaip::graph_fuse;
   the_global_api.graph_remove_node = vaip::graph_remove_node;
-  the_global_api.graph_add_node =
-      [](Graph& graph, const std::string& name, const std::string& op_type,
-         const std::string& description,
-         const std::vector<const NodeArg*>& input_args,
-         const std::vector<const NodeArg*>& output_args,
-         vaip_core::NodeAttributes& attributes,
-         const std::string& domain) -> Node& {
-    return vaip::graph_add_node(
-        graph, name, op_type, description, input_args, output_args,
-        std::move(reinterpret_cast<onnxruntime::NodeAttributes&>(attributes)),
-        domain);
+  the_global_api.graph_add_node = [](Graph& graph, const std::string& name, const std::string& op_type,
+                                     const std::string& description, const std::vector<const NodeArg*>& input_args,
+                                     const std::vector<const NodeArg*>& output_args,
+                                     vaip_core::NodeAttributes& attributes, const std::string& domain) -> Node& {
+    return vaip::graph_add_node(graph, name, op_type, description, input_args, output_args,
+                                std::move(reinterpret_cast<onnxruntime::NodeAttributes&>(attributes)), domain);
   };
 
-  the_global_api.graph_get_all_initialized_tensors =
-      [](const Graph& graph) -> const InitializedTensorSet& {
+  the_global_api.graph_get_all_initialized_tensors = [](const Graph& graph) -> const InitializedTensorSet& {
     return graph.GetAllInitializedTensors();
   };
 
@@ -166,66 +229,46 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   };
 
   the_global_api.graph_get_consumer_nodes_unsafe =
-      [](const Graph& graph,
-         const std::string& node_arg_name) -> vaip_core::DllSafe<std::vector<const Node*>> {
+      [](const Graph& graph, const std::string& node_arg_name) -> vaip_core::DllSafe<std::vector<const Node*>> {
     return vaip_core::DllSafe(graph.GetConsumerNodes(node_arg_name));
   };
-  the_global_api.graph_nodes_unsafe =
-      [](const Graph& graph) -> vaip_core::DllSafe<std::vector<const Node*>> {
+  the_global_api.graph_nodes_unsafe = [](const Graph& graph) -> vaip_core::DllSafe<std::vector<const Node*>> {
     auto& node_refererence = graph.Nodes();
-    std::vector<const Node*> nodes((size_t)graph.NumberOfNodes(), nullptr);
-    std::transform(node_refererence.begin(), node_refererence.end(),
-                   nodes.begin(), [](const Node& n) { return &n; });
+    std::vector<const Node*> nodes(static_cast<size_t>(graph.NumberOfNodes()), nullptr);
+    std::transform(node_refererence.begin(), node_refererence.end(), nodes.begin(), [](const Node& n) { return &n; });
     return vaip_core::DllSafe(std::move(nodes));
   };
-  the_global_api.graph_get_name = [](const Graph& graph) -> const std::string& {
-    return graph.Name();
+  the_global_api.graph_get_name = [](const Graph& graph) -> const std::string& { return graph.Name(); };
+  the_global_api.graph_reverse_dfs_from = [](const Graph& graph, gsl::span<const Node* const> from,
+                                             const std::function<void(const Node*)>& enter,
+                                             const std::function<void(const Node*)>& leave,
+                                             const std::function<bool(const Node* from, const Node* to)>& stop) {
+    graph.ReverseDFSFrom(from, enter, leave, nullptr, stop);
   };
-  the_global_api.graph_reverse_dfs_from =
-      [](const Graph& graph, gsl::span<const Node* const> from,
-         const std::function<void(const Node*)>& enter,
-         const std::function<void(const Node*)>& leave,
-         const std::function<bool(const Node* from, const Node* to)>& stop) {
-        graph.ReverseDFSFrom(from, enter, leave, nullptr, stop);
-      };
   // node
   the_global_api.node_get_inputs_unsafe = vaip::node_get_inputs;
   the_global_api.node_get_output_node_args_unsafe = vaip::node_get_output_node_args;
 
-  the_global_api.node_op_type = [](const Node& node) -> const std::string& {
-    return node.OpType();
-  };
-  the_global_api.node_op_domain = [](const Node& node) -> const std::string& {
-    return node.Domain();
-  };
-  the_global_api.node_get_index = [](const Node& node) -> size_t {
-    return (size_t)node.Index();
-  };
-  the_global_api.node_get_name = [](const Node& node) -> const std::string& {
-    return node.Name();
-  };
-  the_global_api.node_description = [](const Node& node) -> const std::string& {
-    return node.Description();
-  };
+  the_global_api.node_op_type = [](const Node& node) -> const std::string& { return node.OpType(); };
+  the_global_api.node_op_domain = [](const Node& node) -> const std::string& { return node.Domain(); };
+  the_global_api.node_get_index = [](const Node& node) -> size_t { return static_cast<size_t>(node.Index()); };
+  the_global_api.node_get_name = [](const Node& node) -> const std::string& { return node.Name(); };
+  the_global_api.node_description = [](const Node& node) -> const std::string& { return node.Description(); };
 
-  the_global_api.node_get_attributes =
-      [](Node& node) -> vaip_core::NodeAttributes& {
-    return reinterpret_cast<vaip_core::NodeAttributes&>(
-        node.GetMutableAttributes());
+  the_global_api.node_get_attributes = [](Node& node) -> vaip_core::NodeAttributes& {
+    return reinterpret_cast<vaip_core::NodeAttributes&>(node.GetMutableAttributes());
   };
 
   the_global_api.node_type_is_fused = [](const Node& node) {
     return node.NodeType() == onnxruntime::Node::Type::Fused;
   };
-  the_global_api.node_get_function_body =
-      [](const Node& node) -> const onnxruntime::Graph& {
+  the_global_api.node_get_function_body = [](const Node& node) -> const onnxruntime::Graph& {
     assert(node.GetFunctionBody() != nullptr);
     return node.GetFunctionBody()->Body();
   };
 
   // node_arg
-  the_global_api.node_arg_get_name_unsafe =
-      [](const NodeArg& node_arg) -> const std::string& {
+  the_global_api.node_arg_get_name_unsafe = [](const NodeArg& node_arg) -> const std::string& {
     return node_arg.Name();
   };
   the_global_api.node_arg_clone = vaip::node_arg_clone;
@@ -236,8 +279,7 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   the_global_api.node_arg_set_shape_i64 = vaip::node_arg_set_shape_i64;
   the_global_api.node_arg_get_denotation_unsafe = vaip::node_arg_get_denotation;
   the_global_api.node_arg_set_denotation = vaip::node_arg_set_denotation;
-  the_global_api.node_arg_get_const_data_as_tensor =
-      vaip::node_arg_get_const_data_as_tensor;
+  the_global_api.node_arg_get_const_data_as_tensor = vaip::node_arg_get_const_data_as_tensor;
 
   the_global_api.node_arg_get_element_type = vaip::node_arg_get_element_type;
   the_global_api.node_arg_set_element_type = [](NodeArg& node_arg, int type) {
@@ -299,16 +341,13 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   };
   /// attr proto
   the_global_api.attr_proto_delete = [](onnx::AttributeProto* v) { delete v; };
-  the_global_api.attr_proto_clone =
-      [](const onnx::AttributeProto& v) -> onnx::AttributeProto* {
+  the_global_api.attr_proto_clone = [](const onnx::AttributeProto& v) -> onnx::AttributeProto* {
     return new onnx::AttributeProto(v);
   };
-  the_global_api.attr_proto_get_name =
-      [](const onnx::AttributeProto& attr_proto) -> const std::string& {
+  the_global_api.attr_proto_get_name = [](const onnx::AttributeProto& attr_proto) -> const std::string& {
     return attr_proto.name();
   };
-  the_global_api.attr_proto_set_name = [](onnx::AttributeProto* attr_proto,
-                                          const std::string& name) {
+  the_global_api.attr_proto_set_name = [](onnx::AttributeProto* attr_proto, const std::string& name) {
     attr_proto->set_name(name);
   };
   the_global_api.attr_proto_new_int = vaip::attr_proto_new_int;
@@ -325,17 +364,14 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   the_global_api.attr_proto_get_ints = vaip::attr_proto_get_ints;
   the_global_api.attr_proto_get_floats = vaip::attr_proto_get_floats;
   the_global_api.attr_proto_get_strings = vaip::attr_proto_get_strings;
-  the_global_api.attr_proto_get_type =
-      [](const onnx::AttributeProto& attr) -> int { return attr.type(); };
+  the_global_api.attr_proto_get_type = [](const onnx::AttributeProto& attr) -> int { return attr.type(); };
 
   /// node attributes
   the_global_api.node_attributes_new = []() {
     return reinterpret_cast<vaip_core::NodeAttributes*>(new NodeAttributes());
   };
-  the_global_api.node_attributes_add = [](vaip_core::NodeAttributes& p,
-                                          onnx::AttributeProto&& attr) {
-    reinterpret_cast<NodeAttributes&>(p).insert_or_assign(attr.name(),
-                                                          std::move(attr));
+  the_global_api.node_attributes_add = [](vaip_core::NodeAttributes& p, onnx::AttributeProto&& attr) {
+    reinterpret_cast<NodeAttributes&>(p).insert_or_assign(attr.name(), std::move(attr));
   };
   the_global_api.node_attributes_delete = [](vaip_core::NodeAttributes* p) {
     delete reinterpret_cast<NodeAttributes*>(p);
@@ -349,7 +385,8 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     }
     return &it->second;
   };
-  the_global_api.node_attributes_get_keys = [](vaip_core::NodeAttributes& p) -> vaip_core::DllSafe<std::vector<std::string>> {
+  the_global_api.node_attributes_get_keys =
+      [](vaip_core::NodeAttributes& p) -> vaip_core::DllSafe<std::vector<std::string>> {
     auto ret = std::vector<std::string>();
     auto& attr = reinterpret_cast<NodeAttributes&>(p);
     ret.reserve(attr.size());
@@ -359,34 +396,29 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     return vaip_core::DllSafe(std::move(ret));
   };
   /// tensor proto
-  the_global_api.tensor_proto_get_shape_unsafe = [](const onnx::TensorProto& t) -> vaip_core::DllSafe<std::vector<int64_t>> {
+  the_global_api.tensor_proto_get_shape_unsafe =
+      [](const onnx::TensorProto& t) -> vaip_core::DllSafe<std::vector<int64_t>> {
     return vaip_core::DllSafe<std::vector<int64_t>>(vaip::tensor_proto_get_shape(t));
   };
 
-  the_global_api.tensor_proto_data_type =
-      [](const onnx::TensorProto& t) -> int { return t.data_type(); };
+  the_global_api.tensor_proto_data_type = [](const onnx::TensorProto& t) -> int { return t.data_type(); };
 
   the_global_api.tensor_proto_delete = [](onnx::TensorProto* tp) { delete tp; };
 
-  the_global_api.tensor_proto_new_floats =
-      [](const std::string& name, const std::vector<int64_t>& shape,
-         const std::vector<float>& data) -> onnx::TensorProto* {
-    return new onnx::TensorProto{
-        vaip::tensor_proto_new_floats(name, shape, data)};
+  the_global_api.tensor_proto_new_floats = [](const std::string& name, const std::vector<int64_t>& shape,
+                                              const std::vector<float>& data) -> onnx::TensorProto* {
+    return new onnx::TensorProto{vaip::tensor_proto_new_floats(name, shape, data)};
   };
-  the_global_api.tensor_proto_new_i32 =
-      [](const std::string& name, const std::vector<int64_t>& shape,
-         const std::vector<int32_t>& data) -> onnx::TensorProto* {
+  the_global_api.tensor_proto_new_i32 = [](const std::string& name, const std::vector<int64_t>& shape,
+                                           const std::vector<int32_t>& data) -> onnx::TensorProto* {
     return new onnx::TensorProto{vaip::tensor_proto_new_i32(name, shape, data)};
   };
-  the_global_api.tensor_proto_new_i64 =
-      [](const std::string& name, const std::vector<int64_t>& shape,
-         const std::vector<int64_t>& data) -> onnx::TensorProto* {
+  the_global_api.tensor_proto_new_i64 = [](const std::string& name, const std::vector<int64_t>& shape,
+                                           const std::vector<int64_t>& data) -> onnx::TensorProto* {
     return new onnx::TensorProto{vaip::tensor_proto_new_i64(name, shape, data)};
   };
-  the_global_api.tensor_proto_new_i8 =
-      [](const std::string& name, const std::vector<int64_t>& shape,
-         const std::vector<int8_t>& data) -> onnx::TensorProto* {
+  the_global_api.tensor_proto_new_i8 = [](const std::string& name, const std::vector<int64_t>& shape,
+                                          const std::vector<int8_t>& data) -> onnx::TensorProto* {
     return new onnx::TensorProto{vaip::tensor_proto_new_i8(name, shape, data)};
   };
   the_global_api.tensor_proto_raw_data_size = vaip::tensor_proto_raw_data_size;

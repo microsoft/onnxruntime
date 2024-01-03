@@ -56,8 +56,8 @@ Status BaseOpBuilder::ProcessInput(QnnModelWrapper& qnn_model_wrapper,
     return Status::OK();
   }
 
-  OnnxInputInfo input_info = {};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(input, input_info));
+  TensorInfo input_info = {};
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input, input_info));
 
   std::vector<uint8_t> unpacked_tensor;
   if (input_info.is_initializer) {
@@ -126,44 +126,38 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
   for (size_t output_i = 0; output_i < output_count; ++output_i) {
     const auto& output_name = outputs[output_i].node_arg.Name();
 
-    Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-    bool is_quantized_tensor = outputs[output_i].quant_param.has_value();
-    utils::InitializeQuantizeParam(quantize_param, is_quantized_tensor);
+    TensorInfo output_info = {};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(outputs[output_i], output_info));
 
-    const auto* type_proto = outputs[output_i].node_arg.TypeAsProto();
-    Qnn_DataType_t qnn_data_type = QNN_DATATYPE_UNDEFINED;
-    ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_tensor, type_proto, qnn_data_type));
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(outputs[output_i].quant_param,
-                                                                     quantize_param.scaleOffsetEncoding.scale,
-                                                                     quantize_param.scaleOffsetEncoding.offset),
-                      "Cannot get quantization parameter");
-    std::vector<uint32_t> output_shape;
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(outputs[output_i].node_arg, output_shape),
-                      "Cannot get shape");
-    Qnn_DataType_t supported_qnn_data_type = GetSupportedOutputDataType(output_i, qnn_data_type);
+    if (output_info.quant_param.encodingDefinition == QNN_DEFINITION_DEFINED) {
+      ORT_RETURN_IF_ERROR(OverrideOutputQuantParam(qnn_model_wrapper, node_unit, logger, input_names,
+                                                   output_i, output_info.qnn_data_type, output_info.quant_param));
+    }
+
+    Qnn_DataType_t supported_qnn_data_type = GetSupportedOutputDataType(output_i, output_info.qnn_data_type);
     bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
-    if (supported_qnn_data_type != qnn_data_type && is_graph_output && !do_op_validation) {
+    if (supported_qnn_data_type != output_info.qnn_data_type && is_graph_output && !do_op_validation) {
       std::string cast_node_name = output_name + "_ort_qnn_ep_cast";
       std::string cast_input_name = output_name + "_ort_qnn_ep_aux";
-      std::vector<uint32_t> cast_output_shape = output_shape;
+      std::vector<uint32_t> cast_output_shape = output_info.shape;
       QnnTensorWrapper cast_input_tensorwrapper(cast_input_name,
                                                 QNN_TENSOR_TYPE_NATIVE,
                                                 supported_qnn_data_type,
-                                                quantize_param,
+                                                output_info.quant_param,
                                                 std::move(cast_output_shape));
       ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_input_tensorwrapper)), "Failed to add tensor.");
       output_names.push_back(cast_input_name);
       cast_node_info_vec.push_back({cast_node_name, cast_input_name, output_name});
     } else {
-      qnn_data_type = supported_qnn_data_type;
+      output_info.qnn_data_type = supported_qnn_data_type;
       output_names.push_back(output_name);
     }
     Qnn_TensorType_t tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
     QnnTensorWrapper output_tensorwrapper(output_name,
                                           tensor_type,
-                                          qnn_data_type,
-                                          quantize_param,
-                                          std::move(output_shape));
+                                          output_info.qnn_data_type,
+                                          output_info.quant_param,
+                                          std::move(output_info.shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
   }
 
@@ -185,6 +179,46 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                       {}),
                       " Failed to add Cast node");
   }
+  return Status::OK();
+}
+
+Status BaseOpBuilder::SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& qnn_model_wrapper,
+                                                               const NodeUnit& node_unit,
+                                                               const logging::Logger& logger,
+                                                               const std::vector<std::string>& input_names,
+                                                               size_t input_index,
+                                                               size_t output_index,
+                                                               Qnn_DataType_t qnn_data_type,
+                                                               Qnn_QuantizeParams_t& quant_param) const {
+  const QnnTensorWrapper& input_tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(input_names[input_index]);
+  ORT_RETURN_IF_NOT(input_tensor_wrapper.GetTensorDataType() == qnn_data_type,
+                    "Input and output data types do not match");
+  Qnn_QuantizeParams_t input_quant_param = GetQnnTensorQParams(input_tensor_wrapper.GetQnnTensor());
+
+  float scale_diff = 0.0f;
+  int32_t offset_diff = 0;
+  ORT_RETURN_IF_ERROR(CompareQnnQuantParams(quant_param, input_quant_param, scale_diff, offset_diff));
+  constexpr float NEARLY_EQUAL_THRESHOLD = 1e-9f;
+  constexpr float WARN_THRESHOLD = 1e-6f;
+
+  if (scale_diff != 0.0f && offset_diff == 0) {
+    if (scale_diff <= NEARLY_EQUAL_THRESHOLD) {
+      // Quantization params are nearly equal, so make them equal. This may allow QNN backends to employ certain graph
+      // optimizations that improve inference latency.
+      LOGS(logger, WARNING) << "QNN EP will override the output quantization parameters for " << node_unit.OpType()
+                            << " operators to be equal to the input quantization parameters. Operator name: "
+                            << node_unit.Name() << ", input_index: " << input_index << ", output index: "
+                            << output_index << ".";
+      quant_param = input_quant_param;  // Copy input quantization params to the output.
+    } else if (scale_diff <= WARN_THRESHOLD) {
+      // Quantization params are just outside of the "nearly equal" threshold, so warn user of potential latency
+      // degradation.
+      LOGS(logger, WARNING) << "The quantization parameters for the " << node_unit.OpType() << " operator '"
+                            << node_unit.Name() << "' are not equal, which may result in latency degradation. "
+                            << "input_index: " << input_index << ", output index: " << output_index << ".";
+    }
+  }
+
   return Status::OK();
 }
 

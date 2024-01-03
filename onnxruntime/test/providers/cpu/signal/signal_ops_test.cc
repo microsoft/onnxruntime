@@ -16,9 +16,10 @@ namespace onnxruntime {
 namespace test {
 
 static constexpr int kMinOpsetVersion = 17;
+static constexpr int kOpsetVersion20 = 20;
 
-static void TestNaiveDFTFloat(bool onesided) {
-  OpTester test("DFT", kMinOpsetVersion);
+static void TestNaiveDFTFloat(bool onesided, int since_version) {
+  OpTester test("DFT", since_version);
 
   vector<int64_t> shape = {1, 5, 1};
   vector<int64_t> output_shape = {1, 5, 2};
@@ -37,8 +38,8 @@ static void TestNaiveDFTFloat(bool onesided) {
   test.Run();
 }
 
-static void TestRadix2DFTFloat(bool onesided) {
-  OpTester test("DFT", kMinOpsetVersion);
+static void TestRadix2DFTFloat(bool onesided, int since_version) {
+  OpTester test("DFT", since_version);
 
   vector<int64_t> shape = {1, 8, 1};
   vector<int64_t> output_shape = {1, 8, 2};
@@ -57,20 +58,8 @@ static void TestRadix2DFTFloat(bool onesided) {
   test.Run();
 }
 
-TEST(SignalOpsTest, DFTFloat_naive) {
-  TestNaiveDFTFloat(false);
-}
-
-TEST(SignalOpsTest, DFTFloat_naive_onesided) {
-  TestNaiveDFTFloat(true);
-}
-
-TEST(SignalOpsTest, DFTFloat_radix2) { TestRadix2DFTFloat(false); }
-
-TEST(SignalOpsTest, DFTFloat_radix2_onesided) { TestRadix2DFTFloat(true); }
-
-TEST(SignalOpsTest, DFTFloat_inverse) {
-  OpTester test("DFT", kMinOpsetVersion);
+static void TestInverseFloat(int since_version) {
+  OpTester test("DFT", since_version);
 
   vector<int64_t> shape = {1, 5, 2};
   vector<float> input = {15.000000f, 0.0000000f, -2.499999f, 3.4409550f, -2.500000f,
@@ -83,12 +72,44 @@ TEST(SignalOpsTest, DFTFloat_inverse) {
   test.Run();
 }
 
+TEST(SignalOpsTest, DFT17_Float_naive) {
+  TestNaiveDFTFloat(false, kMinOpsetVersion);
+}
+
+TEST(SignalOpsTest, DFT20_Float_naive) {
+  TestNaiveDFTFloat(false, kOpsetVersion20);
+}
+
+TEST(SignalOpsTest, DFT17_Float_naive_onesided) {
+  TestNaiveDFTFloat(true, kMinOpsetVersion);
+}
+
+TEST(SignalOpsTest, DFT20_Float_naive_onesided) {
+  TestNaiveDFTFloat(true, kOpsetVersion20);
+}
+
+TEST(SignalOpsTest, DFT17_Float_radix2) { TestRadix2DFTFloat(false, kMinOpsetVersion); }
+
+TEST(SignalOpsTest, DFT20_Float_radix2) { TestRadix2DFTFloat(false, kOpsetVersion20); }
+
+TEST(SignalOpsTest, DFT17_Float_radix2_onesided) { TestRadix2DFTFloat(true, kMinOpsetVersion); }
+
+TEST(SignalOpsTest, DFT20_Float_radix2_onesided) { TestRadix2DFTFloat(true, kOpsetVersion20); }
+
+TEST(SignalOpsTest, DFT17_Float_inverse) {
+  TestInverseFloat(kMinOpsetVersion);
+}
+
+TEST(SignalOpsTest, DFT20_Float_inverse) {
+  TestInverseFloat(kOpsetVersion20);
+}
+
 // Tests that FFT(FFT(x), inverse=true) == x
-static void TestDFTInvertible(bool complex) {
+static void TestDFTInvertible(bool complex, int since_version) {
   // TODO: test dft_length
   class DFTInvertibleTester : public OpTester {
    public:
-    DFTInvertibleTester(int64_t axis) : OpTester("DFT", kMinOpsetVersion), axis_(axis) {}
+    DFTInvertibleTester(int64_t axis, int since_version) : OpTester("DFT", since_version), axis_(axis) {}
 
    protected:
     void AddNodes(Graph& graph, vector<NodeArg*>& graph_inputs, vector<NodeArg*>& graph_outputs,
@@ -98,11 +119,20 @@ static void TestDFTInvertible(bool complex) {
 
       // call base implementation to add the DFT node.
       OpTester::AddNodes(graph, graph_inputs, intermediate_outputs, add_attribute_funcs);
-      OpTester::AddAttribute("axis", axis_);
+      if (this->Opset() < kOpsetVersion20) {
+        OpTester::AddAttribute("axis", axis_);
+      } else {
+        assert(intermediate_outputs.size() == 1);
+        assert(graph_inputs.size() == 3);
+        intermediate_outputs.push_back(graph_inputs[1]);
+        intermediate_outputs.push_back(graph_inputs[2]);
+      }
 
       Node& inverse = graph.AddNode("inverse", "DFT", "inverse", intermediate_outputs, graph_outputs);
       inverse.AddAttribute("inverse", static_cast<int64_t>(true));
-      inverse.AddAttribute("axis", axis_);
+      if (this->Opset() < kOpsetVersion20) {
+        inverse.AddAttribute("axis", axis_);
+      }
     }
 
    private:
@@ -112,13 +142,20 @@ static void TestDFTInvertible(bool complex) {
   RandomValueGenerator random(GetTestRandomSeed());
   // TODO(smk2007): Add tests for different dft_length values.
   constexpr int64_t num_batches = 2;
-  for (int64_t axis = 1; axis < 2; axis += 1) {
+  for (int64_t axis = 0; axis < 2; axis += 1) {
     for (int64_t signal_dim1 = 2; signal_dim1 <= 5; signal_dim1 += 1) {
       for (int64_t signal_dim2 = 2; signal_dim2 <= 5; signal_dim2 += 1) {
-        DFTInvertibleTester test(axis);
+        if (axis == 0 && since_version < kOpsetVersion20)
+          continue;
+        DFTInvertibleTester test(axis, since_version);
         vector<int64_t> input_shape{num_batches, signal_dim1, signal_dim2, 1 + (complex ? 1 : 0)};
         vector<float> input_data = random.Uniform<float>(input_shape, -100.f, 100.f);
         test.AddInput("input", input_shape, input_data);
+
+        if (since_version >= kOpsetVersion20) {
+          test.AddInput<int64_t>("", {0}, {});
+          test.AddInput<int64_t>("axis", {1}, {axis});
+        }
 
         vector<int64_t> output_shape(input_shape);
         vector<float>* output_data_p;
@@ -141,12 +178,20 @@ static void TestDFTInvertible(bool complex) {
   }
 }
 
-TEST(SignalOpsTest, DFT_invertible_real) {
-  TestDFTInvertible(false);
+TEST(SignalOpsTest, DFT17_invertible_real) {
+  TestDFTInvertible(false, kMinOpsetVersion);
 }
 
-TEST(SignalOpsTest, DFT_invertible_complex) {
-  TestDFTInvertible(true);
+TEST(SignalOpsTest, DFT20_invertible_real) {
+  TestDFTInvertible(false, kOpsetVersion20);
+}
+
+TEST(SignalOpsTest, DFT17_invertible_complex) {
+  TestDFTInvertible(true, kMinOpsetVersion);
+}
+
+TEST(SignalOpsTest, DFT20_invertible_complex) {
+  TestDFTInvertible(true, kOpsetVersion20);
 }
 
 TEST(SignalOpsTest, STFTFloat) {

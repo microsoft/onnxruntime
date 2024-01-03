@@ -172,7 +172,7 @@ export class TextureManager {
         throw new Error(`TensorData type ${dataType} is not supported`);
     }
   }
-  toTextureData(dataType: Tensor.DataType, data: Tensor.NumberType|undefined): Encoder.DataArrayType|undefined {
+  toTextureData(_dataType: Tensor.DataType, data: Tensor.NumberType|undefined): Encoder.DataArrayType|undefined {
     if (!data) {
       return undefined;
     }

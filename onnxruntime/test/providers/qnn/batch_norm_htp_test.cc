@@ -168,8 +168,7 @@ static void RunBatchNormQDQTest(const TestInputDef<float>& input_def,
                        BuildQDQBatchNormTestCase<uint8_t, uint8_t, uint8_t>(input_def, scale_def, bias_def),
                        provider_options,
                        11,
-                       expected_ep_assignment,
-                       1e-5f);
+                       expected_ep_assignment);
 }
 
 // TODO: FIX TRANSLATION!!!

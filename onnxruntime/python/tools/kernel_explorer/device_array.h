@@ -34,16 +34,14 @@ namespace onnxruntime {
 
 class DeviceArray {
  public:
-  DeviceArray(py::array x) {
-    py::buffer_info buf = x.request();
-    size_ = buf.size;
-    itemsize_ = buf.itemsize;
+  DeviceArray(size_t ptr, ssize_t size, ssize_t itemsize)
+      : host_{reinterpret_cast<void*>(ptr)}, size_{size}, itemsize_{itemsize} {
     void* dev_ptr;
     CALL_THROW(MALLOC(&dev_ptr, size_ * itemsize_));
     device_.reset(dev_ptr, [](void* dev_ptr) { CALL_THROW(FREE(dev_ptr)); });
-    host_ = x.request().ptr;
     CALL_THROW(MEMCPY(device_.get(), host_, size_ * itemsize_, MEMCPY_HOST_TO_DEVICE));
   }
+  explicit DeviceArray(py::array x) : DeviceArray(x.request()) {}
   DeviceArray(const DeviceArray&) = default;
   DeviceArray& operator=(const DeviceArray&) = default;
 
@@ -60,6 +58,8 @@ class DeviceArray {
   }
 
  private:
+  explicit DeviceArray(py::buffer_info buf) : DeviceArray(reinterpret_cast<size_t>(buf.ptr), buf.size, buf.itemsize) {}
+
   std::shared_ptr<void> device_;
   void* host_;
   py::ssize_t size_;

@@ -183,7 +183,8 @@ void CPUIDInfo::ArmLinuxInit() {
 #elif defined(_WIN32)
 
 void CPUIDInfo::ArmWindowsInit() {
-
+// ARM32 certainly doesn't have fp16, so we will skip the logic to avoid using RegGetValueA Windows API
+#ifndef _M_ARM
 #pragma region Application Family or OneCore Family
 #if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP | WINAPI_PARTITION_SYSTEM)
   // Read MIDR from windows registry
@@ -270,6 +271,9 @@ void CPUIDInfo::ArmWindowsInit() {
 #endif /* Application Family or OneCore Family */
 
   has_arm_neon_dot_ = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
+#else
+  has_arm_neon_dot_ = false;
+#endif
   has_fp16_ |= has_arm_neon_dot_;
   /* TODO: implement them when hw+sw is available for testing these features */
   has_arm_neon_i8mm_ = false;

@@ -19,8 +19,6 @@
 //
 // modified to fit the needs of the project
 
-export declare type Activation = 'linear' | 'relu' | 'prelu' | 'elu' | 'relu6' | 'leakyrelu' | 'sigmoid' | 'gelu';
-
 export const typeSnippet = (component: number, dataType: string) => {
   switch (component) {
     case 1:
@@ -36,17 +34,6 @@ export const typeSnippet = (component: number, dataType: string) => {
   }
 };
 
-export const activationFnSnippet =
-    (activation?: Activation, _hasPreluActivationWeights = false, _packed = false, _coordsLength = 3): string => {
-      if (!activation) {
-        return '';
-      }
-      // TODO: add implementations
-      return '';
-    };
-
-export const biasActivationSnippet = (hasBias: boolean, activation?: Activation): string => `
+export const biasSnippet = (hasBias: boolean): string => `
       ${hasBias ? 'value = value + getBiasByOutputCoords(coords);' : ''}
-      // TODO uncomment the following line when activation is supported above.
-      // ${activation ? 'value = activation(value, coords);' : ''}
       `;

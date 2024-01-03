@@ -62,7 +62,8 @@ const char* CudaDataTypeToString(cudaDataType_t dt) {
       return "CUDA_R_16BF";
     case CUDA_R_32F:
       return "CUDA_R_32F";
-#if (CUDA_VERSION >= 11080)
+#if !defined(DISABLE_FLOAT8_TYPES)
+    // Note: CUDA_R_8F_E4M3 is defined with CUDA>=11.8
     case CUDA_R_8F_E4M3:
       return "CUDA_R_8F_E4M3";
     case CUDA_R_8F_E5M2:
@@ -101,7 +102,7 @@ cudaDataType_t ToCudaDataType(int32_t element_type) {
       return CUDA_R_16F;
     case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
       return CUDA_R_16BF;
-#if (!defined(DISABLE_FLOAT8_TYPES) && (CUDA_VERSION >= 11080))
+#if !defined(DISABLE_FLOAT8_TYPES)
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN:
       return CUDA_R_8F_E4M3;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2:

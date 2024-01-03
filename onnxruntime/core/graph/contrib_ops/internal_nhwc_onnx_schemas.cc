@@ -101,6 +101,7 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, AveragePool, 11);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, AveragePool, 19);
 
+  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, BatchNormalization, 7);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, BatchNormalization, 9);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, BatchNormalization, 14);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, BatchNormalization, 15);

@@ -18,7 +18,7 @@ struct RocmContext : public CustomOpContext {
   miopenHandle_t miopen_handle = {};
   rocblas_handle rblas_handle = {};
 
-  void Init(const OrtKernelContext& kernel_ctx) override {
+  void Init(const OrtKernelContext& kernel_ctx) {
     const auto& ort_api = Ort::GetApi();
     void* resource = {};
     OrtStatus* status = nullptr;

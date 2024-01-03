@@ -51,32 +51,6 @@ struct OptimizerCtx {
   // Handlers for ops that are not in the ONNX opset, or for ONNX ops where special handling is required.
   // If a handler is not found in this map, the default handlers will be used.
   const HandlerMap& extended_handlers;
-
-  // When we update a shared constant initializer as part of pushing a transpose through a node we update the
-  // initializer in-place and insert Squeeze (in UnsqueezeInput if the initializer is broadcast) or
-  // Transpose (in TransposeInput) nodes between the updated initializer and the other usages.
-  // This map contains the set of nodes that had a Squeeze or Transpose added between them and the initializer.
-  // The entry contains the node id (key) and original input index/es (value) that were connected to the initializer
-  // prior to the insertion of the Squeeze/Transpose.
-  //
-  // Assuming we also transpose the other usages of the initializer in the same way (which would be expected) the
-  // Squeeze and Transpose nodes would be cancelled out, and the other usages will end up using the original
-  // initializer that was updated in-place.
-  //
-  // We use this information in two ways.
-  //
-  // 1. In the IsConstant calculation that determines the cost of pushing a transpose through a node.
-  //   - as we expect the transpose to be making the same modification to all shared usages of the initializer we
-  //     expect the Squeeze/Transpose nodes to be cancelled out, resulting in no runtime cost to push the transpose
-  //     through that input.
-  //
-  // 2. To enable and track a special case in a QDQ format model where there is the added complexity of a DQ node
-  //    between the initializer and each usage.
-  //   - we look past a DQ node in UnsqueezeInput and TransposeInput to determine if there is a constant initializer
-  //     that can be updated in-place as the DQ node is not sensitive to any rank or layout changes
-  //     - NOTE we currently ignore DQ nodes with per-channel quantization as they are sensitive to changes
-  //   - we also look past DQ nodes when processing the other usages in order to cancel out the Squeeze/Transpose
-  NodeIdToInputIdxsMap nodes_using_updated_shared_initializer;
 };
 
 /// <summary>

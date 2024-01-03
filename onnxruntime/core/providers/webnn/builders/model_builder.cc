@@ -64,12 +64,15 @@ void ModelBuilder::PreprocessActivations() {
     const auto& op_type(node->OpType());
 
     if (op_type == "Clip") {
-      float minValue, maxValue;
-      GetClipMinMax(GetInitializerTensors(), *node, minValue, maxValue, logger_);
-      emscripten::val options = emscripten::val::object();
-      options.set("minValue", minValue);
-      options.set("maxValue", maxValue);
-      activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("clamp", options));
+      // Temporarily disable clamp fusion for WebNN GPU as which is not supported yet.
+      if (wnn_device_type_ == WebnnDeviceType::CPU) {
+        float minValue, maxValue;
+        GetClipMinMax(GetInitializerTensors(), *node, minValue, maxValue, logger_);
+        emscripten::val options = emscripten::val::object();
+        options.set("minValue", minValue);
+        options.set("maxValue", maxValue);
+        activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("clamp", options));
+      }
     } else if (op_type == "Elu") {
       NodeAttrHelper helper(*node);
       emscripten::val options = emscripten::val::object();

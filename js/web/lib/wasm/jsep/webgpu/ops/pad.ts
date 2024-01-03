@@ -36,8 +36,8 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 };
 
 const getPadConstant =
-    (output: IndicesHelper, outputDims: readonly number[], inputDims: readonly number[],
-     inputStrides: readonly number[], pads: number[], dataType: string, constantValue: number): string => {
+    (output: IndicesHelper, inputDims: readonly number[], inputStrides: readonly number[], pads: number[],
+     dataType: string, constantValue: number): string => {
       const inputRank = inputDims.length;
 
       let block = '';
@@ -66,8 +66,7 @@ const getPadConstant =
     };
 
 const getPadReflect =
-    (output: IndicesHelper, outputDims: readonly number[], inputDims: readonly number[],
-     inputStrides: readonly number[], pads: number[]): string => {
+    (output: IndicesHelper, inputDims: readonly number[], inputStrides: readonly number[], pads: number[]): string => {
       const inputRank = inputDims.length;
 
       let block = '';
@@ -97,8 +96,7 @@ const getPadReflect =
     };
 
 const getPadEdge =
-    (output: IndicesHelper, outputDims: readonly number[], inputDims: readonly number[],
-     inputStrides: readonly number[], pads: number[]): string => {
+    (output: IndicesHelper, inputDims: readonly number[], inputStrides: readonly number[], pads: number[]): string => {
       const inputRank = inputDims.length;
 
       let block = '';
@@ -124,8 +122,7 @@ const getPadEdge =
     };
 
 const getPadWrap =
-    (output: IndicesHelper, outputDims: readonly number[], inputDims: readonly number[],
-     inputStrides: readonly number[], pads: number[]): string => {
+    (output: IndicesHelper, inputDims: readonly number[], inputStrides: readonly number[], pads: number[]): string => {
       const inputRank = inputDims.length;
 
       let block = '';
@@ -151,18 +148,17 @@ const getPadWrap =
     };
 
 const getPadSnippet =
-    (output: IndicesHelper, outputDims: readonly number[], inputDims: readonly number[],
-     inputStrides: readonly number[], attributes: PadAttributes, dataType: string): string => {
+    (output: IndicesHelper, inputDims: readonly number[], inputStrides: readonly number[], attributes: PadAttributes,
+     dataType: string): string => {
       switch (attributes.mode) {
         case 0:
-          return getPadConstant(
-              output, outputDims, inputDims, inputStrides, attributes.pads, dataType, attributes.value);
+          return getPadConstant(output, inputDims, inputStrides, attributes.pads, dataType, attributes.value);
         case 1:
-          return getPadReflect(output, outputDims, inputDims, inputStrides, attributes.pads);
+          return getPadReflect(output, inputDims, inputStrides, attributes.pads);
         case 2:
-          return getPadEdge(output, outputDims, inputDims, inputStrides, attributes.pads);
+          return getPadEdge(output, inputDims, inputStrides, attributes.pads);
         case 3:
-          return getPadWrap(output, outputDims, inputDims, inputStrides, attributes.pads);
+          return getPadWrap(output, inputDims, inputStrides, attributes.pads);
         default:
           throw new Error('Invalid mode');
       }
@@ -179,7 +175,7 @@ const generatePadCode =
           const output = outputVariable('output', inputs[0].dataType, outputDims);
           const input = inputVariable('x', inputs[0].dataType, inputDims);
 
-          const padSnippet = getPadSnippet(output, outputDims, inputDims, inputStrides, attributes, dataType);
+          const padSnippet = getPadSnippet(output, inputDims, inputStrides, attributes, dataType);
           const padCode = `
               ${shaderHelper.declareVariables(input, output)}
               ${shaderHelper.mainStart()}

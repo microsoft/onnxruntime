@@ -335,7 +335,7 @@ stages:
       pool:
         vmImage: 'macOS-13'
       variables:
-        MACOSX_DEPLOYMENT_TARGET: '10.15'
+        MACOSX_DEPLOYMENT_TARGET: '11.0'
       strategy:
         matrix:
           Python38:

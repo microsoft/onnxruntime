@@ -35,7 +35,9 @@ void set_params_fprop(Flash_fwd_params& params,
                       void* softmax_lse_d,
                       float softmax_scale,
                       bool is_causal,
-                      bool kv_bsnh = true) {
+                      bool kv_bsnh = true,
+                      int window_size_left = -1,
+                      int window_size_right = -1) {
   // Set the pointers and strides.
   params.q_ptr = q;
   params.k_ptr = k;
@@ -102,7 +104,21 @@ void set_params_fprop(Flash_fwd_params& params,
   params.scale_softmax = softmax_scale;
   params.scale_softmax_log2 = softmax_scale * M_LOG2E;
 
+  // In our API, causal/unidirectional determines if we only look at prior tokens. However, the flash API seperates
+  // local and causal, meaning when we have local window size
   params.is_causal = is_causal;
+  if (is_causal && (window_size_left >= 0 || window_size_right != 0)) {
+    params.is_causal = false;
+  }
+  if (window_size_left < 0 && window_size_right >= 0) {
+    window_size_left = seqlen_k;
+  }
+  if (window_size_left >= 0 && window_size_right < 0) {
+    window_size_right = seqlen_k;
+  }
+  params.window_size_left = window_size_left;
+  params.window_size_right = window_size_right;
+
   params.is_seqlens_k_cumulative = true;
 }
 
@@ -227,7 +243,8 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                int num_splits,
                void* softmax_lse_accum,  // num_splits x batch_size x seqlen_q x num_heads
                void* out_accum,          // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
-               bool kv_bsnh) {
+               bool kv_bsnh,
+               int local_window_size) {
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
   const int head_size_rounded = round_multiple(head_size, 32);
   const int seqlen_q_rounded = round_multiple(seqlen_q, 128);
@@ -247,7 +264,9 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                    softmax_lse,
                    softmax_scale,
                    is_causal,
-                   kv_bsnh);
+                   kv_bsnh,
+                   local_window_size,
+                   is_causal ? 0 : -1);
   params.dprops = &dprops;
   params.knew_ptr = nullptr;
   params.vnew_ptr = nullptr;
@@ -306,7 +325,10 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                    nullptr,
                    softmax_lse,
                    softmax_scale,
-                   is_causal);
+                   is_causal,
+                   true,
+                   -1,
+                   is_causal ? 0 : -1);
   params.dprops = &dprops;
   params.num_splits = 0;
   params.softmax_lseaccum_ptr = nullptr;
@@ -347,11 +369,11 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        bool past_bsnh,  // otherwise bnsh
                        int num_splits,
                        void* softmax_lse_accum,  // num_splits x batch_size x seqlen_q x num_heads
-                       void* out_accum           // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
-) {
-  if (seqlen_q == 1) {
-    is_causal = false;
-  }  // causal=true is the same as causal=false in this case
+                       void* out_accum,          // num_splits x batch_size x seqlen_q x num_heads x head_size_rounded
+                       int local_window_size) {
+  // if (seqlen_q == 1) {
+  //   is_causal = false;
+  // }  // causal=true is the same as causal=false in this case
 
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
   const int head_size_rounded = round_multiple(head_size, 32);
@@ -372,7 +394,9 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                    softmax_lse,
                    softmax_scale,
                    is_causal,
-                   past_bsnh);
+                   past_bsnh,
+                   local_window_size,
+                   is_causal ? 0 : -1);
   params.dprops = &dprops;
 
   if (k != nullptr && v != nullptr) {

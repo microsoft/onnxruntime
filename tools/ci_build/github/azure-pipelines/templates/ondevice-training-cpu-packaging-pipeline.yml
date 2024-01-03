@@ -53,7 +53,6 @@ stages:
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: Training_CPU_x86_${{ parameters.BuildVariant }}
     artifact_name_suffix: -training
-    EnvSetupScript: setup_env_x86.bat
     buildArch: x86
     msbuildPlatform: Win32
     packageName: x86
@@ -68,7 +67,6 @@ stages:
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: Training_CPU_arm_${{ parameters.BuildVariant }}
     artifact_name_suffix: -training
-    EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: arm
     packageName: arm
@@ -84,7 +82,6 @@ stages:
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: Training_CPU_arm64_${{ parameters.BuildVariant }}
     artifact_name_suffix: -training
-    EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: arm64
     packageName: arm64
@@ -99,7 +96,6 @@ stages:
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: Training_CPU_x64_${{ parameters.BuildVariant }}
     artifact_name_suffix: -training
-    EnvSetupScript: setup_env.bat
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64
@@ -141,7 +137,7 @@ stages:
       clean: all
     # we need to use the 2022 pool to create the nuget package with both pre-net6+Xamarin and net6 targets.
     # VS2019 has no support for net6 and we need to use msbuild (from the VS install) to do the packing
-    pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
+    pool: 'Onnxruntime-Win-CPU-2022'
     variables:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
