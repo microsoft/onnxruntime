@@ -395,7 +395,7 @@ def _update_python_op_input_related_attributes(
 
 
 @contextmanager
-def stage3_export_context(enable: bool, graph_execution_manager):
+def stage3_export_context(enable: bool, stage3_param_handle, flattened_module):
     """Context manager for stage3 specific model export.
     Some export functions are overridden when entering the context; the original functions are restored when
     exiting the context.
@@ -411,9 +411,7 @@ def stage3_export_context(enable: bool, graph_execution_manager):
 
         # Delay collecting stage3 parameters here instead of in the graph execution manager,
         # to make sure DeepSpeed initialization is done, so that the parameters ds_status are correct.
-        graph_execution_manager._zero_stage3_param_map = _get_all_zero_stage3_params(
-            graph_execution_manager._flattened_module
-        )
+        stage3_param_handle._zero_stage3_param_map = _get_all_zero_stage3_params(flattened_module)
 
         try:
             from torch.onnx._internal import _beartype
@@ -428,8 +426,8 @@ def stage3_export_context(enable: bool, graph_execution_manager):
                 from torch.onnx.symbolic_helper import _is_tensor
 
                 input_name = x.debugName()
-                if input_name in graph_execution_manager._zero_stage3_param_map:
-                    rank = len(graph_execution_manager._zero_stage3_param_map[input_name].ds_shape)
+                if input_name in stage3_param_handle._zero_stage3_param_map:
+                    rank = len(stage3_param_handle._zero_stage3_param_map[input_name].ds_shape)
                     return rank
 
                 if not _is_tensor(x) or x.type() is None:

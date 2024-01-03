@@ -624,7 +624,7 @@ def test_torch_nn_module_to_api(original_device, to_argument):
     x = x.to(to_argument)
     model(x)
     assert _utils.get_device_str(
-        model._torch_module._execution_manager(model._is_training())._device
+        model._torch_module._execution_manager(model._is_training())._graph_transition_manager._device
     ) == _utils.get_device_str(torch.device(to_argument))
 
 
@@ -690,12 +690,12 @@ def test_input_requires_grad_saved(device):
     model(x)
     assert model._torch_module._execution_manager(
         model._is_training()
-    )._pre_export_graph_info.onnx_graph_input_names_require_grad == ["input1"]
+    )._graph_transition_manager._model_info_for_export.onnx_graph_input_names_require_grad == ["input1"]
     assert (
         "input1"
         in model._torch_module._execution_manager(
             model._is_training()
-        )._finalized_graph_info.onnx_graph_input_names_require_grad
+        )._graph_transition_manager._post_export_processed_model_info.onnx_graph_input_names_require_grad
     )
 
 
@@ -855,7 +855,7 @@ def _run_gradient_correctness_transpose(perm, shape):
 
     x = torch.randn(*shape, device=device, requires_grad=True)
     # pt_prediction = run_step(pt_model, x)
-    ort_prediction = run_step(ort_model, x)
+    run_step(ort_model, x)
 
     # _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
     # _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
@@ -2967,7 +2967,7 @@ def test_forward_data_and_model_on_different_devices(data_device, model_device):
         with pytest.raises(_fallback.ORTModuleDeviceException) as runtime_error:
             ort_model(x)
         assert (
-            f"Input argument to forward found on device {torch.device(x.device)}, but expected it to be on module device {ort_model._torch_module._execution_manager(ort_model._is_training())._device}."
+            f"Input argument to forward found on device {torch.device(x.device)}, but expected it to be on module device {ort_model._torch_module._execution_manager(ort_model._is_training())._graph_transition_manager._device}."
             in str(runtime_error.value)
         )
 
@@ -3723,7 +3723,10 @@ def test_forward_call_default_input():
     # Modeling
     device = "cuda"
     model = UnusedNet().to(device)
-    model = ORTModule(model)
+    from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule
+
+    model = ORTModule(model, DebugOptions(log_level=LogLevel.INFO))
+    # model = ORTModule(model)
 
     # Dummy data
     one = torch.FloatTensor([1]).to(device)
@@ -4005,10 +4008,14 @@ def test_changing_bool_input_re_exports_model(bool_arguments):
 
     input1 = torch.randn(N, D_in, device=device)
     ort_model(input1, bool_arguments[0])
-    exported_model1 = ort_model._torch_module._execution_manager(ort_model._is_training())._exported_model
+    exported_model1 = ort_model._torch_module._execution_manager(
+        ort_model._is_training()
+    )._graph_transition_manager._exported_model_info.exported_model
 
     ort_model(input1, bool_arguments[1])
-    exported_model2 = ort_model._torch_module._execution_manager(ort_model._is_training())._exported_model
+    exported_model2 = ort_model._torch_module._execution_manager(
+        ort_model._is_training()
+    )._graph_transition_manager._exported_model_info.exported_model
 
     assert exported_model1 != exported_model2
 
@@ -4195,7 +4202,7 @@ def test_stateless_model_unspecified_device():
 
 #     input_info = _io.parse_inputs_for_onnx_export(
 #         training_manager._module_parameters,
-#         training_manager._exported_model,
+#         training_manager._graph_transition_manager._exported_model_info.exported_model,
 #         training_manager._input_info.schema,
 #         x,
 #         {},
@@ -4678,7 +4685,9 @@ def test_ortmodule_list_dict_input_with_kwargs_and_registered_buffer():
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10  # noqa: F841, N806
     pt_model = ListDictKwargsNet(N, D_in).to(device)
-    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="kwargsanddict"))
+    ort_model = ORTModule(
+        copy.deepcopy(pt_model), DebugOptions(save_onnx=True, log_level=LogLevel.INFO, onnx_prefix="kwargsanddict")
+    )
     x = {
         "one_value": [torch.randn(N, D_in, device=device)],
         "two_value": [torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device)],
@@ -4833,7 +4842,9 @@ def test_ortmodule_setattr_signals_model_changed():
     ort_model = ORTModule(pt_model)
 
     _ = ort_model(torch.randn(N, D_in, device=device))
-    exported_model1 = ort_model._torch_module._execution_manager(True)._exported_model
+    exported_model1 = ort_model._torch_module._execution_manager(
+        True
+    )._graph_transition_manager._exported_model_info.exported_model
 
     for training_mode in [False, True]:
         assert ort_model._torch_module._execution_manager(training_mode)._original_model_has_changed is False
@@ -4843,7 +4854,9 @@ def test_ortmodule_setattr_signals_model_changed():
         assert ort_model._torch_module._execution_manager(training_mode)._original_model_has_changed is True
 
     _ = ort_model(torch.randn(N, D_in, device=device))
-    exported_model2 = ort_model._torch_module._execution_manager(True)._exported_model
+    exported_model2 = ort_model._torch_module._execution_manager(
+        True
+    )._graph_transition_manager._exported_model_info.exported_model
 
     assert exported_model1 != exported_model2
 
@@ -5282,7 +5295,9 @@ def test_sigmoid_grad_opset13():
         ort_prediction, ort_loss = run_step(ort_model, ort_x)
         pt_prediction, pt_loss = run_step(pt_model, pt_x)
         if step == 0:
-            exported_model = ort_model._torch_module._execution_manager._training_manager._exported_model
+            exported_model = (
+                ort_model._torch_module._execution_manager._training_manager._graph_transition_manager._exported_model_info.exported_model
+            )
             # optimized_model = ort_model._torch_module._execution_manager._training_manager._optimized_model
             for onx in [
                 exported_model,
@@ -5328,7 +5343,9 @@ def test_opset_version_change(opset_version):
     prediction.backward()
 
     # Check opset version on ONNX model
-    exported_model = ort_model._torch_module._execution_manager(ort_model._is_training())._exported_model
+    exported_model = ort_model._torch_module._execution_manager(
+        ort_model._is_training()
+    )._graph_transition_manager._exported_model_info.exported_model
     assert exported_model.opset_import[0].version == opset_version
 
     if original_env is not None:

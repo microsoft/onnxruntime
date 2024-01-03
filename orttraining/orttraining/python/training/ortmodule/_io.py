@@ -77,69 +77,6 @@ class _OutputIdentityOp(torch.autograd.Function):
         return g.op("Identity", self)
 
 
-class _PreExportGraphInfo:
-    def __init__(self):
-        # Input names parsed and then flatten from the model's forward function signature
-        self.onnx_graph_input_names: List[str] = []
-
-        # A subset of onnx_graph_input_names.
-        # Input names that require gradient parsed and then flatten from the model's forward function signature
-        # This should contains ONLY the user input names
-        self.onnx_graph_input_names_require_grad: List[str] = []
-
-        # Create symbolic names for each dimension of the graph input (e.g. onnx_graph_input_names).
-        # The key is the input name, the value is a dict of {dim_index: symbolic_dim_name}
-        # e.g. {"input1": {0: "input1_dim0", 1: "input1_dim1"}, "input2": {0: "input2_dim0"}}
-        self.onnx_graph_input_dynamic_axes_map: Dict[str, Dict[int, str]] = {}
-
-        self.onnx_graph_input_shapes: List[List[int]] = []
-
-
-class _ExportedGraphInfo:
-    def __init__(self):
-        # Input names parsed and then flatten from the model's forward function signature + buffers + parameters (since we use
-        # keep_initializers_as_inputs=True for model export)
-        self.onnx_graph_input_names: List[str] = []
-
-        # A subset of onnx_graph_input_names.
-        # Input names that require gradient parsed and then flatten from the model's forward function signature
-        # This should contains both the user input names, the buffer names, and the parameter names (since we use
-        # keep_initializers_as_inputs=True for model export)
-        self.onnx_graph_input_names_require_grad: List[str] = []
-
-    def need_reexport(self, __value: object) -> bool:
-        assert isinstance(
-            __value, _ExportedGraphInfo
-        ), f"__value must be an instance of _ExportedGraphInfo, but got {type(__value)}"
-
-        return self.onnx_graph_input_names != __value.onnx_graph_input_names
-
-
-class _FinalizedGraphInfo:
-    def __init__(self):
-        # Input names for the pre-gradient-build graph.
-        # This may be different with the one in ExportedGraph since we may modify the graph inputs as needed
-        # for example when memory efficient gradient management is enabled.
-        self.onnx_graph_input_names: List[str] = []
-
-        # A subset of onnx_graph_input_names.
-        # Input names that require gradients for the pre-gradient-build graph.
-        self.onnx_graph_input_names_require_grad: List[str] = []
-
-        # Create symbolic names for each dimension of the graph input (e.g. onnx_graph_input_names).
-        # The key is the input name, the value is a dict of {dim_index: symbolic_dim_name}
-        # e.g. {"input1": {0: "input1_dim0", 1: "input1_dim1"}, "input2": {0: "input2_dim0"}}
-        self.onnx_graph_input_dynamic_axes_map: Dict[str, Dict[int, str]] = {}
-
-        # self._graph_initializers: List[torch.nn.parameter.Parameter] = []
-
-        self._buffer_for_ort_runs: Dict[str, torch.Tensor] = OrderedDict()
-        self._onnx_graph_input_names_user_defined = []  # The ONNX graph input names excluding the parameters, buffers.
-        self._onnx_graph_input_names_require_grad_user_defined = (
-            []
-        )  # The ONNX graph input names excluding the parameters, buffers.
-
-
 def flatten_kwargs(kwargs, device):
     def _flatten_kwargs(value, name):
         if PrimitiveType.is_primitive_type(value):
@@ -342,17 +279,24 @@ class _FlattenedModule(torch.nn.Module):
         super().__init__()
         self._original_module: torch.nn.Module = original_module
 
-        # Before `forward` is called, _ort_module must be assigned
-        # Updated input info is needed to expand args into *args, **kwargs
-        # self._input_info: Optional[_InputInfo] = None
-        self._unflatten_functor: Optional[Callable] = None
+        # Before ONNX export, we flatten the args and kwargs into a 1-D list of tensors to make torch.export happy.
+        # As a result, we need to unflatten the args and kwargs back to the original structure before calling the
+        # original module's forward function.
+        # So we need set those information that are needed to unflatten the args and kwargs, before calling the
+        # torch.export.
+        self._device: Optional[torch.device] = None
+        self._args_schema: Optional[ORTModelInputOutputSchemaType] = None
+        self._kwargs_schema: Optional[ORTModelInputOutputSchemaType] = None
+        self._num_positionals: Optional[int] = None
 
-        self.device: Optional[torch.device] = None
-
+        # Similarly, to make torch.export happy, we need to flatten the original module's outputs into a 1-D list of tensors.
+        # Need to keep the output schema to unflatten the outputs back to the original structure.
+        # Then those code depends on the original structure of the outputs can work properly.
         self._output_schema: Optional[ORTModelInputOutputSchemaType] = None
 
     def forward(self, *args):
-        new_args, new_kwargs = self._unflatten_functor(args)
+        new_args = unflatten_data_using_schema(args[: self._num_positionals], self._args_schema)
+        new_kwargs = unflatten_data_using_schema(args[self._num_positionals :], self._kwargs_schema)
 
         # print("unflatten args: ", [v.shape for v in new_args])
         # print("unflatten kwargs: ", {k: v.shape for k, v in new_kwargs.items()})
@@ -360,7 +304,7 @@ class _FlattenedModule(torch.nn.Module):
         original_outputs = self._original_module(*new_args, **new_kwargs)
 
         # Flatten the outputs
-        flatten_outputs, self._output_schema = _extract_schema(original_outputs, self.device)
+        flatten_outputs, self._output_schema = _extract_schema(original_outputs, self._device)
 
         # Append _OutputIdentityOp to the outputs to support passthrough outputs
         final_flatten_outputs = []
@@ -370,15 +314,67 @@ class _FlattenedModule(torch.nn.Module):
         return final_flatten_outputs
 
 
+class ModelInfoForExport:
+    def __init__(
+        self,
+        onnx_graph_input_names: List[str],
+        onnx_graph_input_names_require_grad: List[str],
+        onnx_graph_input_dynamic_axes_map: Dict[str, Dict[int, str]],
+        onnx_graph_input_shapes: List[List[int]],
+        data_accessor: Optional[List[callable]] = None,
+        export_mode: Optional[int] = None,
+    ):
+        # Value can be either torch.onnx.TrainingMode.TRAINING or torch.onnx.TrainingMode.EVAL
+        self.export_mode = export_mode
+
+        # Exporter can take extra arguments for ORTModule extensions
+        # It cannot overlap with required/immutable arguments (validated in runtime)
+        self.export_extra_kwargs = {}
+
+        # Input names parsed and then flatten from the model's forward function signature.
+        # This should contains ONLY the user defined input names
+        # Be noted: some of the input might not be used by the model for its compute.
+        self.onnx_graph_input_names: List[str] = onnx_graph_input_names
+
+        # A subset of onnx_graph_input_names.
+        # Input names that require gradient parsed and then flatten from the model's forward function signature
+        # This should contains ONLY the user defined input names
+        # Be noted: some of the input might not be used by the model for its compute.
+        self.onnx_graph_input_names_require_grad: List[str] = onnx_graph_input_names_require_grad
+
+        # Create symbolic names for each dimension of the graph input (e.g. onnx_graph_input_names).
+        # The key is the input name, the value is a dict of {dim_index: symbolic_dim_name}
+        # e.g. {"input1": {0: "input1_dim0", 1: "input1_dim1"}, "input2": {0: "input2_dim0"}}
+        self.onnx_graph_input_dynamic_axes_map: Dict[str, Dict[int, str]] = onnx_graph_input_dynamic_axes_map
+
+        self.onnx_graph_input_shapes: List[List[int]] = onnx_graph_input_shapes
+
+        # A function to access the input data from the args and kwargs.
+        # If it is not None, the length is same as onnx_graph_input_names.
+        # For i-th input name, we can use the i-th function to get the input data from args and kwargs.
+        self.data_accessor: Optional[List[callable]] = data_accessor
+
+    def __str__(self) -> str:
+        return f"""ModelInfoForExport class:
+            \tExport mode:                      {self.export_mode}
+            \tExport extra kwargs:              {self.export_extra_kwargs}
+            \tInput names:                      {self.onnx_graph_input_names}
+            \tInput names require grad:         {self.onnx_graph_input_names_require_grad}
+            \tInput dynamic axes:               {self.onnx_graph_input_dynamic_axes_map}
+            \tInput shapes:                     {self.onnx_graph_input_shapes}"""
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+
 def parse_inputs_for_onnx_export(
     all_input_parameters: List[inspect.Parameter],
-    # onnx_graph: Optional[onnx.ModelProto],
-    # schema: ORTModelInputOutputSchemaType,
     args: Sequence[ORTModelInputOutputType],
     kwargs: Mapping[str, ORTModelInputOutputType],
     constant_as_tensor: bool,
     device: torch.device,
-) -> Tuple[_PreExportGraphInfo, Dict[str, Callable]]:
+    export_mode: int,
+) -> ModelInfoForExport:
     """Parses through the model inputs and returns _InputInfo.
 
     Loop through all input parameters, try to flatten them into a 1-D list of inputs. For nested data in the inputs,
@@ -398,10 +394,10 @@ def parse_inputs_for_onnx_export(
 
     Args:
         all_input_parameters: All inspected input parameters from the original model forward function signature.
-        onnx_graph: (optional) The onnx graph.
-        schema: The schema extracted from the positional arguments and keyword arguments of the model.
         args: The positional arguments of the model.
         kwargs: The keyword arguments of the model.
+        constant_as_tensor: Whether to treat constant inputs as tensors.
+        device: The device to be used for constant inputs.
 
     """
 
@@ -555,13 +551,22 @@ def parse_inputs_for_onnx_export(
                     partial(lambda name, args, kwargs: kwargs[name], name),
                 )
 
-    exported_graph = _PreExportGraphInfo()
-    exported_graph.onnx_graph_input_names = onnx_graph_input_names
-    exported_graph.onnx_graph_input_names_require_grad = input_names_require_grad
-    exported_graph.onnx_graph_input_dynamic_axes_map = dynamic_axes
-    exported_graph.onnx_graph_input_shapes = input_shape
+    exported_graph = ModelInfoForExport(
+        onnx_graph_input_names=onnx_graph_input_names,
+        onnx_graph_input_names_require_grad=input_names_require_grad,
+        onnx_graph_input_dynamic_axes_map=dynamic_axes,
+        onnx_graph_input_shapes=input_shape,
+        data_accessor=data_accessors,
+        export_mode=export_mode,
+    )
+    # exported_graph.onnx_graph_input_names = onnx_graph_input_names
+    # exported_graph.onnx_graph_input_names_require_grad = input_names_require_grad
+    # exported_graph.onnx_graph_input_dynamic_axes_map = dynamic_axes
+    # exported_graph.onnx_graph_input_shapes = input_shape
+    # exported_graph.data_accessor = data_accessors
+    # exported_graph._export_mode = export_mode
 
-    return exported_graph, data_accessors
+    return exported_graph
 
 
 def calculate_total_parameter_size_in_bytes(module: torch.nn.Module) -> int:
@@ -598,20 +603,19 @@ def can_module_be_deep_cloned(module: torch.nn.Module, device: Optional[torch.de
 
 def parse_outputs_for_onnx_export_and_extract_schema(
     module,
-    args: Sequence[ORTModelInputOutputType],
-    kwargs: Mapping[str, ORTModelInputOutputType],
+    flatten_args: Sequence[ORTModelInputOutputType],
     logger: Logger,
-    device: Optional[torch.device],
     clone_module: bool,
 ):
     # Perform a forward call to grab outputs
     output_names = None
     output_dynamic_axes = None
     deep_copied = False
+    kwargs = {}
     logger.info("Running model forward to infer output schema and dynamic axes...")
     with torch.no_grad():
         # Deepcopy inputs, since input values may change after model run.
-        sample_args_copy, sample_kwargs_copy = deepcopy_model_input(*args, **kwargs)
+        sample_args_copy, sample_kwargs_copy = deepcopy_model_input(*flatten_args, **kwargs)
         try:
             if clone_module:
                 # Deepcopy model, in case model is stateful and changes after model run.
@@ -652,8 +656,6 @@ def parse_outputs_for_onnx_export_and_extract_schema(
             output_dynamic_axes[output_name] = {}
             for dim_idx in range(len(output.shape)):
                 output_dynamic_axes[output_name].update({dim_idx: f"{output_name}_dim{dim_idx}"})
-
-        _, flattend_module_output_schema = _extract_schema(sample_outputs, device)
 
         original_module_output_schema = model_copy._output_schema
 
