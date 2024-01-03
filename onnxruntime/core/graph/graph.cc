@@ -1182,7 +1182,7 @@ Graph::Graph(const Model& owning_model,
       is_loaded_from_model_file_(GraphLoadedFromModelFile(graph_proto_)) {
   ORT_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
   ArgNameToTypeMap name_to_type_map;
-  const auto& model_path = ModelPath();
+  const auto& external_ini_path = ExternalIniPath();
 
   // Process 'Constant' nodes
   // Put the 'TensorProto' stored in the 'Constant' nodes attribute into the graphs initializer list
@@ -1192,7 +1192,7 @@ Graph::Graph(const Model& owning_model,
     }
 
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
-    auto status = utils::ConstantNodeProtoToTensorProto(node, model_path, *tensor);
+    auto status = utils::ConstantNodeProtoToTensorProto(node, external_ini_path, *tensor);
     ORT_ENFORCE(status.IsOK(), status.ToString());
     // Ensure initializers are also graph inputs.
     if (ir_version_ < 4) {
@@ -1226,7 +1226,7 @@ Graph::Graph(const Model& owning_model,
     for (const auto& sparse_tensor : graph_proto_->sparse_initializer()) {
       ORT_ENFORCE(utils::HasName(sparse_tensor), "Sparse initializer must have a name. This model is invalid");
       const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
-      auto status = utils::SparseTensorProtoToDenseTensorProto(sparse_tensor, model_path, *tensor);
+      auto status = utils::SparseTensorProtoToDenseTensorProto(sparse_tensor, external_ini_path, *tensor);
       ORT_ENFORCE(status.IsOK(), status.ToString());
       auto p = sparse_tensor_names_.emplace(tensor->name());
       ORT_ENFORCE(p.second, "Duplicate sparse_tensor_initializer: '", tensor->name(), "' Model is invalid.");
@@ -3136,22 +3136,22 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 #else
   initializers_data.reserve(name_to_initial_tensor_.size());
 #endif
-  const auto& model_path = ModelPath();
+  const auto& external_ini_path = ExternalIniPath();
 
   for (const auto& pair : name_to_initial_tensor_) {
     if (sparse_tensor_names_.find(pair.first) == sparse_end) {
       flatbuffers::Offset<fbs::Tensor> fbs_tensor;
       ORT_RETURN_IF_ERROR(
-          fbs::utils::SaveInitializerOrtFormat(builder, *pair.second, model_path, fbs_tensor));
+          fbs::utils::SaveInitializerOrtFormat(builder, *pair.second, external_ini_path, fbs_tensor));
       initializers_data.push_back(fbs_tensor);
     }
 #if !defined(DISABLE_SPARSE_TENSORS)
     else {
       SparseTensorProto sparse_initializer;
-      ORT_RETURN_IF_ERROR(utils::DenseTensorToSparseTensorProto(*pair.second, model_path, sparse_initializer));
+      ORT_RETURN_IF_ERROR(utils::DenseTensorToSparseTensorProto(*pair.second, external_ini_path, sparse_initializer));
       flatbuffers::Offset<fbs::SparseTensor> fbs_sparse_tensor;
       ORT_RETURN_IF_ERROR(
-          fbs::utils::SaveSparseInitializerOrtFormat(builder, sparse_initializer, model_path, fbs_sparse_tensor));
+          fbs::utils::SaveSparseInitializerOrtFormat(builder, sparse_initializer, external_ini_path, fbs_sparse_tensor));
       sparse_initializers_data.push_back(fbs_sparse_tensor);
     }
 #endif
@@ -3371,7 +3371,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
   // if it exists
 
 #if !defined(DISABLE_SPARSE_TENSORS)
-  const auto& model_path = ModelPath();
+  const auto& external_ini_path = ExternalIniPath();
   // We want to make sure that sparse initializers do not appear
   // as dense duplicates within the initializers list.
   if (!sparse_tensor_names_.empty()) {
@@ -3382,7 +3382,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
         *mutable_initializer->Add() = initializer;
       } else {
         auto& sparse_initializer = *result.add_sparse_initializer();
-        auto status = utils::DenseTensorToSparseTensorProto(initializer, model_path, sparse_initializer);
+        auto status = utils::DenseTensorToSparseTensorProto(initializer, external_ini_path, sparse_initializer);
         ORT_ENFORCE(status.IsOK(), "Failed to convert dense initializer to sparse");
       }
     }
@@ -4751,7 +4751,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
 #if !defined(DISABLE_SPARSE_TENSORS)
   if (fbs_sparse_initializers) {
     sparse_tensor_names_.reserve(fbs_sparse_initializers->size());
-    const auto& model_path = ModelPath();
+    const auto& external_ini_path = ExternalIniPath();
 
     for (const auto* fbs_sparse_tensor : *fbs_sparse_initializers) {
       ORT_RETURN_IF(nullptr == fbs_sparse_tensor, "Sparse Initializer tensor is missing. Invalid ORT format model.");
@@ -4759,7 +4759,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
       ORT_RETURN_IF_ERROR(fbs::utils::LoadSparseInitializerOrtFormat(*fbs_sparse_tensor, sparse_initializer,
                                                                      load_options));
       TensorProto& initializer = *deserialized_proto_data_.add_initializer();
-      ORT_RETURN_IF_ERROR(utils::SparseTensorProtoToDenseTensorProto(sparse_initializer, model_path, initializer));
+      ORT_RETURN_IF_ERROR(utils::SparseTensorProtoToDenseTensorProto(sparse_initializer, external_ini_path, initializer));
       auto p = name_to_initial_tensor_.emplace(initializer.name(), &initializer);
       if (!p.second) {
         LOGS(logger_, WARNING) << "Duplicate initializer (dense, sparse or ConstantNode): '" << initializer.name()
