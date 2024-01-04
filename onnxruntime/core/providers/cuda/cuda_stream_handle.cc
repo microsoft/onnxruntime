@@ -197,7 +197,7 @@ void* CudaStream::GetResource(int version, int id) const {
       return reinterpret_cast<void*>(ep_info_.gpu_mem_limit);
       break;
     case CudaResource::arena_extend_strategy_t:
-      return reinterpret_cast<void*>(ep_info_.gpu_mem_limit);
+      return reinterpret_cast<void*>(ep_info_.arena_extend_strategy);
       break;
     case CudaResource::cudnn_conv_algo_search_t:
       return reinterpret_cast<void*>(ep_info_.cudnn_conv_algo_search);
