@@ -3527,7 +3527,7 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero1b) {
 // test that PrepareForReduce handles this case. Called by all reduction ops so any op can be used in the test
 TEST(ReductionOpTest, ReduceDimWithZero1) {
   // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr || DefaultMIGraphXExecutionProvider().get() != nullptr || DefaultRocmExecutionProvider().get() != nullptr) {
+  if (DefaultDmlExecutionProvider().get() != nullptr || DefaultRocmExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{1,0,1}] did not match run output shape [{1,1,1}] for reduced";
   }
 
@@ -3542,6 +3542,7 @@ TEST(ReductionOpTest, ReduceDimWithZero1) {
                    kCoreMLExecutionProvider,
                    kCudaExecutionProvider,
                    kDnnlExecutionProvider,
+                   kMIGraphXExecutionProvider,
                    kOpenVINOExecutionProvider,
                    kQnnExecutionProvider,
                    kTensorrtExecutionProvider,
@@ -3574,6 +3575,7 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero2) {
   ASSERT_EQ(fast_axes, expected_fast_axes);
 }
 
+#ifndef USE_MIGRAPHX
 TEST(ReductionOpTest, ReduceDimWithZero2) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr || DefaultMIGraphXExecutionProvider().get() != nullptr || DefaultRocmExecutionProvider().get() != nullptr) {
@@ -3605,6 +3607,7 @@ TEST(ReductionOpTest, ReduceDimWithZero2) {
   test2.AddOutput<float>("reduced", {}, {0.0f});
   run(test2);
 }
+#endif
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero3) {
   FastReduceKind fast_kind;
