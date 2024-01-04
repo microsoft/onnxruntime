@@ -1843,11 +1843,11 @@ common::Status InferenceSession::Initialize() {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
-    if (external_ini_path_.empty() && !model_location_.empty()) {
-      external_ini_path_ = Path::Parse(model_location_).ParentPath().ToPathString();
+    if (external_data_path_.empty() && !model_location_.empty()) {
+      external_data_path_ = Path::Parse(model_location_).ParentPath().ToPathString();
     }
     ORT_RETURN_IF_ERROR_SESSIONID_(
-        session_state_->FinalizeSessionState(external_ini_path_, kernel_registry_manager_,
+        session_state_->FinalizeSessionState(external_data_path_, kernel_registry_manager_,
                                              // need to keep the initializers if saving the optimized model
                                              !saving_model,
                                              saving_ort_format));
@@ -3022,9 +3022,9 @@ common::Status InferenceSession::WaitForNotification(Notification* p_executor_do
   return Status::OK();
 }
 
-void InferenceSession::SetExternalIniPath(const PathString& external_ini_path) {
-  model_->SetExternalIniPath(external_ini_path);
-  external_ini_path_ = external_ini_path;
+void InferenceSession::SetExternalDataPath(const PathString& external_data_path) {
+  model_->SetExternalDataPath(external_data_path);
+  external_data_path_ = external_data_path;
 }
 
 SessionIOBinding::SessionIOBinding(InferenceSession* session) : sess_(session) {

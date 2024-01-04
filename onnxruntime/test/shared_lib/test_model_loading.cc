@@ -121,8 +121,8 @@ TEST(CApiTest, TestLoadModelFromArrayWithExternalInitiliazers) {
   Ort::SessionOptions so;
   const ORTCHAR_T* ort_model_path = ORT_TSTR("testdata/model_with_external_initializers_opt.onnx");
   so.SetOptimizedModelFilePath(ort_model_path);
-  constexpr auto external_ini_path = ORT_TSTR("testdata");
-  Ort::Session session(*ort_env.get(), buffer.data(), buffer.size(), external_ini_path, so);
+  constexpr auto external_data_path = ORT_TSTR("testdata");
+  Ort::Session session(*ort_env.get(), buffer.data(), buffer.size(), external_data_path, so);
 }
 
 #endif

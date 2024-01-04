@@ -45,6 +45,9 @@ class GraphViewer {
   /** Gets the path of the owning model if any **/
   const Path& ModelPath() const noexcept { return graph_->ModelPath(); }
 
+  /** Gets the folder path of the external data if any **/
+  const Path& ExternalDataPath() const noexcept { return graph_->ExternalDataPath(); }
+
   /**
   Gets a tensor created from an initializer.
   @param tensor_name The tensor name

@@ -798,11 +798,11 @@ static Status GetFileContent(
   return Status::OK();
 }
 
-Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* external_ini_path,
+Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* external_data_path,
                                  const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                  void*& ext_data_buf, SafeInt<size_t>& ext_data_len, OrtCallback& ext_data_deleter) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
-  std::basic_string<ORTCHAR_T> tensor_proto_dir(external_ini_path);
+  std::basic_string<ORTCHAR_T> tensor_proto_dir(external_data_path);
   const ORTCHAR_T* t_prot_dir_s = tensor_proto_dir.empty() ? nullptr : tensor_proto_dir.c_str();
   std::basic_string<ORTCHAR_T> external_data_file_path;
   FileOffsetType file_offset;
@@ -1020,7 +1020,7 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std:
 }
 
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
-                                              const Path& external_ini_path,
+                                              const Path& external_data_path,
                                               ONNX_NAMESPACE::TensorProto& tensor, const std::string& tensor_name) {
   ORT_RETURN_IF_NOT(node.attribute_size() > 0, "Constant node: ", node.name(), " has no data attributes");
 
@@ -1061,7 +1061,7 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
 #if !defined(DISABLE_SPARSE_TENSORS)
     case AttributeProto_AttributeType_SPARSE_TENSOR: {
       auto& s = constant_attribute.sparse_tensor();
-      ORT_RETURN_IF_ERROR(SparseTensorProtoToDenseTensorProto(s, external_ini_path, tensor));
+      ORT_RETURN_IF_ERROR(SparseTensorProtoToDenseTensorProto(s, external_data_path, tensor));
       break;
     }
 #else
@@ -1079,15 +1079,15 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
 }
 
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
-                                              const Path& external_ini_path,
+                                              const Path& external_data_path,
                                               ONNX_NAMESPACE::TensorProto& tensor) {
-  return ConstantNodeProtoToTensorProto(node, external_ini_path, tensor, node.output(0));
+  return ConstantNodeProtoToTensorProto(node, external_data_path, tensor, node.output(0));
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 static Status CopySparseData(size_t n_sparse_elements,
                              const ONNX_NAMESPACE::TensorProto& indices,
-                             const Path& external_ini_path,
+                             const Path& external_data_path,
                              gsl::span<const int64_t> dims,
                              std::function<void(size_t from_idx, size_t to_idx)> copier) {
   Status status = Status::OK();
@@ -1103,7 +1103,7 @@ static Status CopySparseData(size_t n_sparse_elements,
       if (has_raw_data) {
         ORT_RETURN_IF_NOT(indices.raw_data().size() == (elements * sizeof(int64_t)),
                           "Sparse Indices raw data size does not match expected.");
-        ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, external_ini_path, unpack_buffer));
+        ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, external_data_path, unpack_buffer));
         indices_data = ReinterpretAsSpan<const int64_t>(gsl::make_span(unpack_buffer));
       } else {
         ORT_RETURN_IF_NOT(indices.int64_data_size() == static_cast<int64_t>(elements), "Sparse indices int64 data size does not match expected");
@@ -1114,7 +1114,7 @@ static Status CopySparseData(size_t n_sparse_elements,
       if (has_raw_data) {
         ORT_RETURN_IF_NOT(indices.raw_data().size() == (elements * sizeof(int32_t)),
                           "Sparse Indices raw data size does not match expected.");
-        ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, external_ini_path, unpack_buffer));
+        ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, external_data_path, unpack_buffer));
         auto int32_span = ReinterpretAsSpan<const int32_t>(gsl::make_span(unpack_buffer));
         indices_values.insert(indices_values.cend(), int32_span.begin(), int32_span.end());
         unpack_buffer.clear();
@@ -1130,7 +1130,7 @@ static Status CopySparseData(size_t n_sparse_elements,
       if (has_raw_data) {
         ORT_RETURN_IF_NOT(indices.raw_data().size() == (elements * sizeof(int16_t)),
                           "Sparse Indices raw data size does not match expected.");
-        ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, external_ini_path, unpack_buffer));
+        ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, external_data_path, unpack_buffer));
         auto int16_span = ReinterpretAsSpan<const int16_t>(gsl::make_span(unpack_buffer));
         indices_values.insert(indices_values.cend(), int16_span.begin(), int16_span.end());
         indices_data = gsl::make_span(indices_values);
@@ -1146,7 +1146,7 @@ static Status CopySparseData(size_t n_sparse_elements,
       if (has_raw_data) {
         ORT_RETURN_IF_NOT(indices.raw_data().size() == elements,
                           "Sparse Indices raw data size does not match expected.");
-        ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, external_ini_path, unpack_buffer));
+        ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, external_data_path, unpack_buffer));
         auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(unpack_buffer));
         indices_values.insert(indices_values.cend(), int8_span.begin(), int8_span.end());
         indices_data = gsl::make_span(indices_values);
@@ -1206,7 +1206,7 @@ static Status CopySparseData(size_t n_sparse_elements,
 }
 
 common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseTensorProto& sparse,
-                                                   const Path& external_ini_path,
+                                                   const Path& external_data_path,
                                                    ONNX_NAMESPACE::TensorProto& dense) {
   Status status = Status::OK();
 
@@ -1235,7 +1235,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
 
     // need to read in sparse data first as it could be in a type specific field, in raw data, or in external data
     std::vector<uint8_t> sparse_data_storage;
-    ORT_RETURN_IF_ERROR(UnpackInitializerData(sparse_values, external_ini_path, sparse_data_storage));
+    ORT_RETURN_IF_ERROR(UnpackInitializerData(sparse_values, external_data_path, sparse_data_storage));
     void* sparse_data = sparse_data_storage.data();
 
     // by putting the data into a std::string we can avoid a copy as set_raw_data can do a std::move
@@ -1248,7 +1248,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
         case 1: {
           status = CopySparseData(
               n_sparse_elements,
-              indices, external_ini_path, dims,
+              indices, external_data_path, dims,
               [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
                 static_cast<uint8_t*>(dense_data)[to_idx] = static_cast<const uint8_t*>(sparse_data)[from_idx];
               });
@@ -1258,7 +1258,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
         case 2: {
           status = CopySparseData(
               n_sparse_elements,
-              indices, external_ini_path, dims,
+              indices, external_data_path, dims,
               [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
                 const auto* src = static_cast<const uint16_t*>(sparse_data) + from_idx;
                 auto* dst = static_cast<uint16_t*>(dense_data) + to_idx;
@@ -1270,7 +1270,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
         case 4: {
           status = CopySparseData(
               n_sparse_elements,
-              indices, external_ini_path, dims,
+              indices, external_data_path, dims,
               [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
                 const auto* src = static_cast<const uint32_t*>(sparse_data) + from_idx;
                 auto* dst = static_cast<uint32_t*>(dense_data) + to_idx;
@@ -1282,7 +1282,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
         case 8: {
           status = CopySparseData(
               n_sparse_elements,
-              indices, external_ini_path, dims,
+              indices, external_data_path, dims,
               [sparse_data, dense_data](size_t from_idx, size_t to_idx) {
                 const auto* src = static_cast<const uint64_t*>(sparse_data) + from_idx;
                 auto* dst = static_cast<uint64_t*>(dense_data) + to_idx;
@@ -1404,7 +1404,7 @@ static void SparsifyGeneric(const void* dense_raw_data, size_t n_dense_elements,
 }
 
 common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto& dense_proto,
-                                              const Path& external_ini_path,
+                                              const Path& external_data_path,
                                               ONNX_NAMESPACE::SparseTensorProto& result) {
   ORT_ENFORCE(HasDataType(dense_proto), "Must have a valid data type");
 
@@ -1430,7 +1430,7 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
   size_t element_size = ml_data->Size();
 
   std::vector<uint8_t> dense_raw_data;
-  ORT_RETURN_IF_ERROR(UnpackInitializerData(dense_proto, external_ini_path, dense_raw_data));
+  ORT_RETURN_IF_ERROR(UnpackInitializerData(dense_proto, external_data_path, dense_raw_data));
 
   size_t nnz = 0;
   void* dense_data = dense_raw_data.data();
@@ -1498,7 +1498,7 @@ template common::Status GetSizeInBytesFromTensorProto<0>(const ONNX_NAMESPACE::T
   }
 
 Status UnpackInitializerData(const onnx::TensorProto& initializer,
-                             const Path& external_ini_folder_path,
+                             const Path& external_data_folder_path,
                              std::vector<uint8_t>& unpacked_tensor) {
   // TODO, if std::vector does not use a custom allocator, the default std::allocator will
   // allocation the memory aligned to std::max_align_t, need look into allocating
@@ -1506,7 +1506,7 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
   if (initializer.data_location() == TensorProto_DataLocation_EXTERNAL) {
     ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(
         initializer,
-        external_ini_folder_path.IsEmpty() ? nullptr : external_ini_folder_path.ToPathString().c_str(),
+        external_data_folder_path.IsEmpty() ? nullptr : external_data_folder_path.ToPathString().c_str(),
         unpacked_tensor));
     return Status::OK();
   }

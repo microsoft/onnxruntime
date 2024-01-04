@@ -302,7 +302,7 @@ class SessionState {
   const InlinedHashSet<NodeIndex>* GetToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs) const;
 #endif
 
-  Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& external_ini_path,
+  Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& external_data_path,
                               const KernelRegistryManager& kernel_registry_manager,
                               bool remove_initializers = true,
                               bool saving_ort_format = false);
@@ -384,7 +384,7 @@ class SessionState {
   Status PopulateKernelCreateInfo(const KernelRegistryManager& kernel_registry_manager,
                                   bool saving_ort_format);
 
-  Status FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& external_ini_path,
+  Status FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& external_data_path,
                                   const KernelRegistryManager& kernel_registry_manager,
                                   _In_opt_ const Node* parent_node,
                                   const SessionOptions& session_options,

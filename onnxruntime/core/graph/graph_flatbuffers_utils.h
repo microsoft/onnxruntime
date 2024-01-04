@@ -42,12 +42,12 @@ namespace utils {
 
 Status SaveInitializerOrtFormat(
     flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::TensorProto& initializer,
-    const Path& external_ini_path, flatbuffers::Offset<fbs::Tensor>& fbs_tensor);
+    const Path& external_data_path, flatbuffers::Offset<fbs::Tensor>& fbs_tensor);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 Status SaveSparseInitializerOrtFormat(
     flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::SparseTensorProto& initializer,
-    const Path& external_ini_path, flatbuffers::Offset<fbs::SparseTensor>& fbs_sparse_tensor);
+    const Path& external_data_path, flatbuffers::Offset<fbs::SparseTensor>& fbs_sparse_tensor);
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 // Convert a given AttributeProto into fbs::Attribute
@@ -56,7 +56,7 @@ Status SaveSparseInitializerOrtFormat(
 //       instead of the GraphProto in attr_proto
 Status SaveAttributeOrtFormat(
     flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::AttributeProto& attr_proto,
-    flatbuffers::Offset<fbs::Attribute>& fbs_attr, const Path& external_ini_path,
+    flatbuffers::Offset<fbs::Attribute>& fbs_attr, const Path& external_data_path,
     const onnxruntime::Graph* subgraph);
 
 /// <summary>

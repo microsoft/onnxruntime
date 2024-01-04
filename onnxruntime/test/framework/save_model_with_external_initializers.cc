@@ -18,7 +18,6 @@ namespace onnxruntime {
 namespace test {
 
 void LoadSaveAndCompareModel(const std::string& input_onnx,
-                             const std::string& input_external_init_file,
                              const std::string& output_onnx,
                              const std::string& output_external_init_file,
                              size_t initializer_size_threshold) {
@@ -52,14 +51,15 @@ void LoadSaveAndCompareModel(const std::string& input_onnx,
 
     std::vector<uint8_t> tensor_proto_data;
     model_path = Path::Parse(ToPathString(input_onnx));
-    external_data_path = (input_external_init_file.size()) ? model_path.ParentPath().Append(Path::Parse(ToPathString(input_external_init_file))) : Path();
+    external_data_path = model_path.ParentPath();
+    // the file name of the external initializer data is tracked inside the tensor protocol
     ORT_THROW_IF_ERROR(utils::UnpackInitializerData(*tensor_proto, external_data_path, tensor_proto_data));
     size_t tensor_proto_size = tensor_proto_data.size();
 
     std::vector<uint8_t> from_external_tensor_proto_data;
     model_path = Path::Parse(ToPathString(output_onnx));
-    external_data_path = model_path.ParentPath().Append(Path::Parse(ToPathString(output_external_init_file)));
-    ORT_THROW_IF_ERROR(utils::UnpackInitializerData(*from_external_tensor_proto, model_path, from_external_tensor_proto_data));
+    external_data_path = model_path.ParentPath();
+    ORT_THROW_IF_ERROR(utils::UnpackInitializerData(*from_external_tensor_proto, external_data_path, from_external_tensor_proto_data));
     size_t from_external_tensor_proto_size = from_external_tensor_proto_data.size();
 
     if (from_external_tensor_proto_size < initializer_size_threshold) {
@@ -80,12 +80,12 @@ void LoadSaveAndCompareModel(const std::string& input_onnx,
 
 // Original model does not have external initializers
 TEST(SaveWithExternalInitializers, Mnist) {
-  LoadSaveAndCompareModel("testdata/mnist.onnx", "", "testdata/mnist_with_external_initializers.onnx", "mnist_external_initializers.bin", 100);
+  LoadSaveAndCompareModel("testdata/mnist.onnx", "testdata/mnist_with_external_initializers.onnx", "mnist_external_initializers.bin", 100);
 }
 
 // Original model has external initializers
 TEST(SaveWithExternalInitializers, ModelWithOriginalExternalData) {
-  LoadSaveAndCompareModel("testdata/model_with_orig_ext_data.onnx", "model_with_orig_ext_data.onnx.data", "testdata/model_with_new_external_initializers.onnx", "model_with_new_external_initializers.bin", 0);
+  LoadSaveAndCompareModel("testdata/model_with_orig_ext_data.onnx", "testdata/model_with_new_external_initializers.onnx", "model_with_new_external_initializers.bin", 0);
 }
 
 }  // namespace test

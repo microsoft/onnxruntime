@@ -524,7 +524,7 @@ class InferenceSession {
    */
   Status AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container);
 
-  void SetExternalIniPath(const PathString& external_ini_path);
+  void SetExternalDataPath(const PathString& external_data_path);
 
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
@@ -593,7 +593,7 @@ class InferenceSession {
   PathString model_location_;
 
   // The folder path of the external initializers
-  PathString external_ini_path_;
+  PathString external_data_path_;
 
   // The list of execution providers.
   ExecutionProviders execution_providers_;

@@ -1172,7 +1172,7 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
   return Status::OK();
 }
 
-Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& external_ini_path,
+Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& external_data_path,
                                           const KernelRegistryManager& kernel_registry_manager,
                                           bool remove_initializers,
                                           bool saving_ort_format) {
@@ -1186,7 +1186,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
 
   InlinedHashMap<std::string, size_t> constant_initializers_use_count;
   ComputeConstantInitializerUseCount(graph_, constant_initializers_use_count);
-  return FinalizeSessionStateImpl(external_ini_path, kernel_registry_manager, nullptr, sess_options_,
+  return FinalizeSessionStateImpl(external_data_path, kernel_registry_manager, nullptr, sess_options_,
                                   remove_initializers, constant_initializers_use_count);
 }
 
@@ -1315,7 +1315,7 @@ static void AccumulateAllNestedSubgraphsInfo(
   }
 }
 
-Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& external_ini_path,
+Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& external_data_path,
                                               const KernelRegistryManager& kernel_registry_manager,
                                               _In_opt_ const Node* parent_node,
                                               const SessionOptions& session_options,
@@ -1475,7 +1475,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
   ORT_RETURN_IF_ERROR(
       session_state_utils::SaveInitializedTensors(
-          Env::Default(), external_ini_path, *graph_viewer_,
+          Env::Default(), external_data_path, *graph_viewer_,
           GetAllocator(OrtDevice()),
           ort_value_name_idx_map_, initializer_allocation_order, *tensor_allocator,
           [this, remove_initializers](const std::string& name, int idx, const OrtValue& value, const OrtCallback& d,
@@ -1542,7 +1542,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                                subgraph_session_state.GetGraphViewer(),
                                                                subgraph_outer_scope_node_arg_to_location_map));
       ORT_RETURN_IF_ERROR(subgraph_session_state.FinalizeSessionStateImpl(
-          external_ini_path, kernel_registry_manager, &node, subgraph_session_options, remove_initializers,
+          external_data_path, kernel_registry_manager, &node, subgraph_session_options, remove_initializers,
           constant_initializers_use_count, subgraph_outer_scope_node_arg_to_location_map, true));
 
       // setup all the info for handling the feeds and fetches used in subgraph execution

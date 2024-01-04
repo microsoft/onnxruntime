@@ -177,10 +177,10 @@ class Model {
   const Path& ModelPath() const noexcept { return model_path_; }
 
   // Gets the folder path for the external initializer data
-  const Path& ExternalIniPath() const noexcept { return external_ini_path_; }
+  const Path& ExternalDataPath() const noexcept { return external_data_path_; }
 
-  void SetExternalIniPath(const PathString& external_ini_path) {
-    external_ini_path_ = Path::Parse(external_ini_path);
+  void SetExternalDataPath(const PathString& external_data_path) {
+    external_data_path_ = Path::Parse(external_data_path);
   }
 
   // Get model's main graph.
@@ -354,6 +354,6 @@ class Model {
   std::unique_ptr<Graph> graph_;
 
   // Path to external initializer data folder. May be empty
-  Path external_ini_path_;
+  Path external_data_path_;
 };
 }  // namespace onnxruntime

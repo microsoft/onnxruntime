@@ -680,7 +680,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   const Path& ModelPath() const;
 
   /** Gets the path of the external initializer data, if any. */
-  const Path& ExternalIniPath() const;
+  const Path& ExternalDataPath() const;
 
   /** Returns true if this is a subgraph or false if it is a high-level graph. */
   bool IsSubgraph() const { return parent_graph_ != nullptr; }

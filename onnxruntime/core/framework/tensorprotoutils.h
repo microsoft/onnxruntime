@@ -100,7 +100,7 @@ constexpr const ORTCHAR_T* kTensorProtoMemoryAddressTag = ORT_TSTR("*/_ORT_MEM_A
 
 // Given a tensor proto with external data obtain a pointer to the data and its length.
 // The ext_data_deleter argument is updated with a callback that owns/releases the data.
-common::Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* external_ini_path,
+common::Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* external_data_path,
                                          const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                          void*& ext_data_buf, SafeInt<size_t>& ext_data_len,
                                          OrtCallback& ext_data_deleter);
@@ -110,32 +110,32 @@ common::Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* extern
 // the data location is external. i.e. it does not load the external data.
 // However if AttributeProto contains SparseTensorProto then it converts the data into dense tensor proto
 // (including loading external data when applicable).
-// external_ini_path is used for contructing full path for external_data
+// external_data_path is used for constructing full path for external_data
 // tensor_name specifies the name for the new TensorProto TensorProto
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
-                                              const Path& external_ini_path,
+                                              const Path& external_data_path,
                                               ONNX_NAMESPACE::TensorProto& tensor, const std::string& tensor_name);
 
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
-                                              const Path& external_ini_path,
+                                              const Path& external_data_path,
                                               ONNX_NAMESPACE::TensorProto& tensor);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 // Convert a SparseTensorProto to a dense TensorProto
 // If the SparseTensorProto contains external data then it loads the data and converts to dense tensor proto
 // The resulting TensorProto will contain the data as raw data.
-// external_ini_path is used for constructing full path for external_data
+// external_data_path is used for constructing full path for external_data
 common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseTensorProto& sparse,
-                                                   const Path& external_ini_path,
+                                                   const Path& external_data_path,
                                                    ONNX_NAMESPACE::TensorProto& dense);
 
 #if !defined(ORT_MINIMAL_BUILD)
 // Convert a TensorProto to a SparseTensorProto
 // If the tensorproto contains external data then it loads the data and converts to sparse tensor
 // The resulting SparseTensorProto will contain the data as raw data
-// external_ini_path is used for constructing full path for external_data
+// external_data_path is used for constructing full path for external_data
 common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto& dense,
-                                              const Path& external_ini_path,
+                                              const Path& external_data_path,
                                               ONNX_NAMESPACE::SparseTensorProto& sparse);
 #endif  // !ORT_MINIMAL_BUILD
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
@@ -453,12 +453,12 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model
  * Unpack the data from an initializer tensor
  * Please note, this function does not unpack string_data of an initializer tensor
  * @param initializer               given initializer tensor
- * @param external_ini_folder_path  external data dir path. When this is empty, current dir is used.
+ * @param external_data_folder_path  external data dir path. When this is empty, current dir is used.
  * @param unpacked_tensor           the vector holds data from the initializer in byte form
  * @returns                         Status::OK() if data is unpacked successfully
  */
 common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
-                                     const Path& external_ini_folder_path,
+                                     const Path& external_data_folder_path,
                                      std::vector<uint8_t>& unpacked_tensor);
 
 /**

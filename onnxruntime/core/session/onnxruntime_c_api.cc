@@ -683,7 +683,7 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
                                                 _In_opt_z_ const ORTCHAR_T* model_path,
                                                 _In_opt_ const void* model_data,
                                                 size_t model_data_length,
-                                                _In_opt_z_ const ORTCHAR_T* external_ini_path,
+                                                _In_opt_z_ const ORTCHAR_T* external_data_path,
                                                 std::unique_ptr<onnxruntime::InferenceSession>& sess) {
   // quick check here to decide load path. InferenceSession will provide error message for invalid values.
   // TODO: Could move to a helper
@@ -733,8 +733,8 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
     }
   }
 
-  if (external_ini_path != nullptr) {
-    sess->SetExternalIniPath(external_ini_path);
+  if (external_data_path != nullptr) {
+    sess->SetExternalDataPath(external_data_path);
   }
 
   return nullptr;

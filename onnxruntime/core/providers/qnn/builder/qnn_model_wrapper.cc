@@ -506,7 +506,7 @@ void QnnModelWrapper::GetGraphInputOutputTensorWrapper(const std::vector<std::st
 Status QnnModelWrapper::UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
                                               std::vector<uint8_t>& unpacked_tensor) const {
   if (initializer.data_location() == onnx::TensorProto_DataLocation_EXTERNAL) {
-    return onnxruntime::utils::UnpackInitializerData(initializer, graph_viewer_.ModelPath(), unpacked_tensor);
+    return onnxruntime::utils::UnpackInitializerData(initializer, graph_viewer_.ExternalDataPath(), unpacked_tensor);
   }
 
   return onnxruntime::utils::UnpackInitializerData(initializer, unpacked_tensor);
