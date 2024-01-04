@@ -78,7 +78,7 @@ stages:
 #      job_name_suffix: 'Mobile'
 #      packageName: 'onnxruntime-mobile'
 #
-
+#
 #- stage: Android_Java_API_AAR_Packaging_Full
 #  dependsOn: []
 #  jobs:
@@ -93,7 +93,7 @@ stages:
 #    parameters:
 #      artifactName: 'onnxruntime-android-full-aar'
 #      job_name_suffix: 'Full'
-
+#
 #- stage: iOS_Full_xcframework
 #  dependsOn: []
 #  jobs:
@@ -290,40 +290,40 @@ stages:
 #      displayName: 'Clean Agent Directories'
 #      condition: always()
 
-#- stage: NuGet_Packaging_CPU
-#  dependsOn:
-#  - Setup
-#  - Linux_C_API_Packaging_CPU
-#  - MacOS_C_API_Package_Publish
+- stage: NuGet_Packaging_CPU
+  dependsOn:
+  - Setup
+  - Linux_C_API_Packaging_CPU
+  - MacOS_C_API_Package_Publish
 #  - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
-#  - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
+  - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
 #  - Windows_Packaging_CPU_arm_${{ parameters.BuildVariant }}
-#  - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
+  - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
 #  - Android_Java_API_AAR_Packaging_Full
 #  - iOS_Full_xcframework
-#  condition: succeeded()
-#  jobs:
-#  - job:
-#    workspace:
-#      clean: all
-#    pool: 'onnxruntime-Win-CPU-2022'
-#    variables:
-#      OrtPackageId: ${{ parameters.OrtNugetPackageId }}
-#      breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
-#      ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
-#
-#    steps:
-#    - checkout: self
-#      submodules: true
-#
-#    - template: flex-downloadPipelineArtifact.yml
-#      parameters:
-#        StepName: 'Download Pipeline Artifact - Win x64'
-#        ArtifactName: 'onnxruntime-win-x64'
-#        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-#        SpecificArtifact: ${{ parameters.specificArtifact }}
-#        BuildId: ${{ parameters.BuildId }}
-#
+  condition: succeeded()
+  jobs:
+  - job:
+    workspace:
+      clean: all
+    pool: 'onnxruntime-Win-CPU-2022'
+    variables:
+      OrtPackageId: ${{ parameters.OrtNugetPackageId }}
+      breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
+      ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
+
+    steps:
+    - checkout: self
+      submodules: true
+
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - Win x64'
+        ArtifactName: 'onnxruntime-win-x64'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+
 #    - template: flex-downloadPipelineArtifact.yml
 #      parameters:
 #        StepName: 'Download win-x86 Pipeline Artifact'
@@ -331,15 +331,15 @@ stages:
 #        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 #        SpecificArtifact: ${{ parameters.specificArtifact }}
 #        BuildId: ${{ parameters.BuildId }}
-#
-#    - template: flex-downloadPipelineArtifact.yml
-#      parameters:
-#        StepName: 'Download win-arm64 Pipeline Artifact'
-#        ArtifactName: 'onnxruntime-win-arm64'
-#        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-#        SpecificArtifact: ${{ parameters.specificArtifact }}
-#        BuildId: ${{ parameters.BuildId }}
-#
+
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download win-arm64 Pipeline Artifact'
+        ArtifactName: 'onnxruntime-win-arm64'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+
 #    - template: flex-downloadPipelineArtifact.yml
 #      parameters:
 #        StepName: 'Download win-arm Pipeline Artifact'
@@ -347,7 +347,7 @@ stages:
 #        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 #        SpecificArtifact: ${{ parameters.specificArtifact }}
 #        BuildId: ${{ parameters.BuildId }}
-#
+
 #    - template: flex-downloadPipelineArtifact.yml
 #      parameters:
 #        StepName: 'Download osx-x64 Pipeline Artifact'
@@ -355,23 +355,23 @@ stages:
 #        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 #        SpecificArtifact: ${{ parameters.specificArtifact }}
 #        BuildId: ${{ parameters.BuildId }}
-#
-#    - template: flex-downloadPipelineArtifact.yml
-#      parameters:
-#        StepName: 'Download linux-x64 Pipeline Artifact'
-#        ArtifactName: 'onnxruntime-linux-x64'
-#        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-#        SpecificArtifact: ${{ parameters.specificArtifact }}
-#        BuildId: ${{ parameters.BuildId }}
-#
-#    - template: flex-downloadPipelineArtifact.yml
-#      parameters:
-#        StepName: 'Download linux-aarch64 Pipeline Artifact'
-#        ArtifactName: 'onnxruntime-linux-aarch64'
-#        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-#        SpecificArtifact: ${{ parameters.specificArtifact }}
-#        BuildId: ${{ parameters.BuildId }}
-#
+
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download linux-x64 Pipeline Artifact'
+        ArtifactName: 'onnxruntime-linux-x64'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download linux-aarch64 Pipeline Artifact'
+        ArtifactName: 'onnxruntime-linux-aarch64'
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+
 #    - template: flex-downloadPipelineArtifact.yml
 #      parameters:
 #        StepName: 'Download iOS Pipeline Artifact'
@@ -379,7 +379,7 @@ stages:
 #        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 #        SpecificArtifact: ${{ parameters.specificArtifact }}
 #        BuildId: ${{ parameters.BuildId }}
-#
+
 #    - template: flex-downloadPipelineArtifact.yml
 #      parameters:
 #        StepName: 'Download Android-full-aar Pipeline Artifact'
@@ -387,143 +387,143 @@ stages:
 #        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 #        SpecificArtifact: ${{ parameters.specificArtifact }}
 #        BuildId: ${{ parameters.BuildId }}
-#
-#    - template: flex-downloadPipelineArtifact.yml
-#      parameters:
-#        StepName: 'Download drop-extra Pipeline Artifact'
-#        ArtifactName: 'drop-extra'
-#        TargetPath: '$(Build.BinariesDirectory)/extra-artifact'
-#        SpecificArtifact: ${{ parameters.specificArtifact }}
-#        BuildId: ${{ parameters.BuildId }}
-#
-#    - script: |
-#       dir
-#      workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact'
-#      displayName: 'List artifacts'
-#
-#    # Reconstruct the build dir
-#    - task: PowerShell@2
-#      displayName: 'Extract native libraries for addition to nuget native package'
-#      inputs:
-#        targetType: filePath
-#        filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\extract_nuget_files.ps1
-#
-#    - script: |
-#       mklink /D /J models C:\local\models
-#      workingDirectory: '$(Build.BinariesDirectory)'
-#      displayName: 'Create models link'
-#    - task: NuGetToolInstaller@0
-#      displayName: Use Nuget 6.2.1
-#      inputs:
-#        versionSpec: 6.2.1
-#
-#    - task: PowerShell@2
-#      displayName: Install mobile workloads
-#      inputs:
-#        targetType: 'inline'
-#        script: |
-#          dotnet workload install android ios
-#        workingDirectory: '$(Build.SourcesDirectory)\csharp'
-#
-#    - task: MSBuild@1
-#      displayName: 'Restore NuGet Packages and create project.assets.json'
-#      inputs:
-#        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-#        platform: 'Any CPU'
-#        configuration: RelWithDebInfo
-#        msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
-#        workingDirectory: '$(Build.SourcesDirectory)\csharp'
-#
-#    - task: MSBuild@1
-#      displayName: 'Build C# bindings'
-#      inputs:
-#        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-#        platform: 'Any CPU'
-#        configuration: RelWithDebInfo
-#        msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
-#        workingDirectory: '$(Build.SourcesDirectory)\csharp'
-#
-#    - ${{ if eq(parameters.DoEsrp, true) }}:
-#      - template: win-esrp-dll.yml
-#        parameters:
-#          FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
-#          DisplayName: 'ESRP - Sign C# dlls'
-#          DoEsrp: ${{ parameters.DoEsrp }}
-#
-#    - task: MSBuild@1
-#      displayName: 'Build Nuget Packages'
-#      inputs:
-#        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
-#        platform: 'Any CPU'
-#        configuration: RelWithDebInfo
-#        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
-#        workingDirectory: '$(Build.SourcesDirectory)\csharp'
-#
-#    - task: CopyFiles@2
-#      displayName: 'Copy native nuget package to: $(Build.ArtifactStagingDirectory)'
-#      inputs:
-#        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-#        Contents: '*.nupkg'
-#        TargetFolder: '$(Build.ArtifactStagingDirectory)'
-#
-#    - task: CopyFiles@2
-#      displayName: 'Copy native nuget symbols package to: $(Build.ArtifactStagingDirectory)'
-#      inputs:
-#        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-#        Contents: '*.snupkg'
-#        TargetFolder: '$(Build.ArtifactStagingDirectory)'
-#
-#    - task: CopyFiles@2
-#      displayName: 'Copy managed nuget package to: $(Build.ArtifactStagingDirectory)'
-#      inputs:
-#        SourceFolder: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
-#        Contents: '*.nupkg'
-#        TargetFolder: '$(Build.ArtifactStagingDirectory)'
-#
-#    - template: esrp_nuget.yml
-#      parameters:
-#        DisplayName: 'ESRP - sign NuGet package'
-#        FolderPath: '$(Build.ArtifactStagingDirectory)'
-#        DoEsrp: ${{ parameters.DoEsrp }}
-#
-#    - template: validate-package.yml
-#      parameters:
-#        PackageType: 'nuget'
-#        PackagePath: '$(Build.ArtifactStagingDirectory)'
-#        PackageName: 'Microsoft.ML.OnnxRuntime.*nupkg'
-#        PlatformsSupported: 'win-x64,win-x86,linux-x64,linux-arm64,osx-x64'
-#        VerifyNugetSigning: false
-#
-#    - task: PublishPipelineArtifact@0
-#      displayName: 'Publish Pipeline NuGet Artifact'
-#      inputs:
-#        artifactName: 'drop-signed-nuget-CPU'
-#        targetPath: '$(Build.ArtifactStagingDirectory)'
-#
-#
-#    - task: MSBuild@1
-#      displayName: 'Clean C#'
-#      inputs:
-#        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-#        platform: 'Any CPU'
-#        configuration: RelWithDebInfo
-#        msbuildArguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
-#        workingDirectory: '$(Build.SourcesDirectory)\csharp'
-#
-#    - task: RoslynAnalyzers@2
-#      displayName: 'Run Roslyn Analyzers'
-#      inputs:
-#        userProvideBuildInfo: msBuildInfo
-#        msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\msbuild.exe" $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln -p:configuration="RelWithDebInfo" -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
-#      condition: and(succeeded(), eq('${{ parameters.DoCompliance }}', true))
-#
-#    - template: component-governance-component-detection-steps.yml
-#      parameters :
-#        condition : 'succeeded'
-#
-#    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-#      displayName: 'Clean Agent Directories'
-#      condition: always()
+
+    - template: flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download drop-extra Pipeline Artifact'
+        ArtifactName: 'drop-extra'
+        TargetPath: '$(Build.BinariesDirectory)/extra-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+
+    - script: |
+       dir
+      workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact'
+      displayName: 'List artifacts'
+
+    # Reconstruct the build dir
+    - task: PowerShell@2
+      displayName: 'Extract native libraries for addition to nuget native package'
+      inputs:
+        targetType: filePath
+        filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\extract_nuget_files.ps1
+
+    - script: |
+       mklink /D /J models C:\local\models
+      workingDirectory: '$(Build.BinariesDirectory)'
+      displayName: 'Create models link'
+    - task: NuGetToolInstaller@0
+      displayName: Use Nuget 6.2.1
+      inputs:
+        versionSpec: 6.2.1
+
+    - task: PowerShell@2
+      displayName: Install mobile workloads
+      inputs:
+        targetType: 'inline'
+        script: |
+          dotnet workload install android ios
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - task: MSBuild@1
+      displayName: 'Restore NuGet Packages and create project.assets.json'
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        platform: 'Any CPU'
+        configuration: RelWithDebInfo
+        msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - task: MSBuild@1
+      displayName: 'Build C# bindings'
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        platform: 'Any CPU'
+        configuration: RelWithDebInfo
+        msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - ${{ if eq(parameters.DoEsrp, true) }}:
+      - template: win-esrp-dll.yml
+        parameters:
+          FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
+          DisplayName: 'ESRP - Sign C# dlls'
+          DoEsrp: ${{ parameters.DoEsrp }}
+
+    - task: MSBuild@1
+      displayName: 'Build Nuget Packages'
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+        platform: 'Any CPU'
+        configuration: RelWithDebInfo
+        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - task: CopyFiles@2
+      displayName: 'Copy native nuget package to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+        Contents: '*.nupkg'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: CopyFiles@2
+      displayName: 'Copy native nuget symbols package to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+        Contents: '*.snupkg'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: CopyFiles@2
+      displayName: 'Copy managed nuget package to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
+        Contents: '*.nupkg'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - template: esrp_nuget.yml
+      parameters:
+        DisplayName: 'ESRP - sign NuGet package'
+        FolderPath: '$(Build.ArtifactStagingDirectory)'
+        DoEsrp: ${{ parameters.DoEsrp }}
+
+    - template: validate-package.yml
+      parameters:
+        PackageType: 'nuget'
+        PackagePath: '$(Build.ArtifactStagingDirectory)'
+        PackageName: 'Microsoft.ML.OnnxRuntime.*nupkg'
+        PlatformsSupported: 'win-x64,win-x86,linux-x64,linux-arm64,osx-x64'
+        VerifyNugetSigning: false
+
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline NuGet Artifact'
+      inputs:
+        artifactName: 'drop-signed-nuget-CPU'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+
+
+    - task: MSBuild@1
+      displayName: 'Clean C#'
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        platform: 'Any CPU'
+        configuration: RelWithDebInfo
+        msbuildArguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - task: RoslynAnalyzers@2
+      displayName: 'Run Roslyn Analyzers'
+      inputs:
+        userProvideBuildInfo: msBuildInfo
+        msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\msbuild.exe" $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln -p:configuration="RelWithDebInfo" -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
+      condition: and(succeeded(), eq('${{ parameters.DoCompliance }}', true))
+
+    - template: component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
+
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
 
 - stage: Nodejs_Packaging_CPU
   dependsOn:
@@ -773,22 +773,22 @@ stages:
       displayName: 'Clean Agent Directories'
       condition: always()
 
-- template: ../nuget/templates/test_win.yml
-  parameters:
-    AgentPool : 'onnxruntime-Win-CPU-2022'
-    Skipx86Tests : false
-    NugetPackageName : 'Microsoft.ML.OnnxRuntime'
-    ArtifactSuffix: 'CPU'
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
-
-- template: ../nuget/templates/test_linux.yml
-  parameters:
-    AgentPool : onnxruntime-Ubuntu2004-AMD-CPU
-    NugetPackageName : 'Microsoft.ML.OnnxRuntime'
-    ArtifactSuffix: 'CPU'
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    BuildId: ${{ parameters.BuildId }}
+#- template: ../nuget/templates/test_win.yml
+#  parameters:
+#    AgentPool : 'onnxruntime-Win-CPU-2022'
+#    Skipx86Tests : false
+#    NugetPackageName : 'Microsoft.ML.OnnxRuntime'
+#    ArtifactSuffix: 'CPU'
+#    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+#    BuildId: ${{ parameters.BuildId }}
+#
+#- template: ../nuget/templates/test_linux.yml
+#  parameters:
+#    AgentPool : onnxruntime-Ubuntu2004-AMD-CPU
+#    NugetPackageName : 'Microsoft.ML.OnnxRuntime'
+#    ArtifactSuffix: 'CPU'
+#    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+#    BuildId: ${{ parameters.BuildId }}
 
 #- template: ../nuget/templates/test_macos.yml
 #  parameters:
