@@ -304,7 +304,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             "_onnx_models",
             "_graph_builder",
             "_graph_info",
-            "_graph_transition_manager",
+            "_graph_transition_manager", # Not pickled as it is re-constructed in __setstate__
             "_execution_agent",
             "_torch_alloc",
             "_torch_free",
