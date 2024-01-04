@@ -479,17 +479,37 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 2);
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
 
-        Initialize(kernelInfo, std::nullopt, std::nullopt, kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0));
+        auto constExpTensor = kernelInfo.TryGetConstantCpuInputTensor(1);
+        if (constExpTensor && constExpTensor->GetTotalElementCount() == 1)
+        {
+            std::vector<std::optional<uint32_t>> kernelInputIndices = {0};
 
-        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
-        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+            Initialize(kernelInfo, kernelInputIndices, std::nullopt, kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0));
 
-        DML_ELEMENT_WISE_POW_OPERATOR_DESC opDesc = {};
-        opDesc.InputTensor = &inputDescs[0];
-        opDesc.ExponentTensor = &inputDescs[1];
-        opDesc.OutputTensor = &outputDescs[0];
+            std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+            std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_POW, &opDesc}, kernelInfo);
+            DML_ELEMENT_WISE_CONSTANT_POW_OPERATOR_DESC opDesc = {};
+            opDesc.InputTensor = &inputDescs[0];
+            opDesc.OutputTensor = &outputDescs[0];
+            opDesc.Exponent = static_cast<float>(ReadScalarTensorCastToFloat64(*constExpTensor));
+
+            SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_CONSTANT_POW, &opDesc}, kernelInfo);
+        }
+        else
+        {
+            Initialize(kernelInfo, std::nullopt, std::nullopt, kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0));
+
+            std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+            std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+
+            DML_ELEMENT_WISE_POW_OPERATOR_DESC opDesc = {};
+            opDesc.InputTensor = &inputDescs[0];
+            opDesc.ExponentTensor = &inputDescs[1];
+            opDesc.OutputTensor = &outputDescs[0];
+
+            SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_POW, &opDesc}, kernelInfo);
+        }
     }
 };
 
@@ -576,97 +596,12 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        if (hasZeroPointTensor)
-        {
-            TOperatorDesc opDesc = {};
-            opDesc.InputTensor = &inputDescs[OnnxInputIndex::inputIndex];
-            opDesc.ScaleTensor = &inputDescs[OnnxInputIndex::scaleIndex];
-            opDesc.ZeroPointTensor = &inputDescs[OnnxInputIndex::zeroPointIndex];
-            opDesc.OutputTensor = &outputDescs[0];
-
-            SetDmlOperatorDesc({ApiTraits::OperatorDescTraits<TOperatorDesc>::Type, &opDesc}, kernelInfo);
-        }
-        // Create a zero point tensor, since it's a required input by DML
-        else
-        {
-            auto inputSizes = m_inputTensorDescs[0].GetSizes();
-            TensorDesc intermediateOutputTensorDesc = TensorDesc(
-                    GetMlDataTypeFromDmlDataType(inputDataType),
-                    inputSizes,
-                    inputSizes,
-                    TensorAxis::DoNotCoerce,
-                    TensorAxis::W,
-                    TensorAxis::RightAligned,
-                    NchwDimensionCount, // minDimensionCount
-                    0 // guaranteedBaseOffsetAlignment
-                );
-            DML_TENSOR_DESC namedIntermediateOutputTensorDesc = intermediateOutputTensorDesc.GetDmlDesc();
-
-            // Create a tensor full of zeros
-            DML_FILL_VALUE_CONSTANT_OPERATOR_DESC zerosDesc = {};
-            zerosDesc.ValueDataType = inputDataType;
-            zerosDesc.OutputTensor = &namedIntermediateOutputTensorDesc;
-            const DML_OPERATOR_DESC opDesc1 = { DML_OPERATOR_FILL_VALUE_CONSTANT, &zerosDesc };
-
-            TOperatorDesc qLinearDesc = {};
-            qLinearDesc.InputTensor = &inputDescs[OnnxInputIndex::inputIndex];
-            qLinearDesc.ScaleTensor = &inputDescs[OnnxInputIndex::scaleIndex];
-            qLinearDesc.ZeroPointTensor = zerosDesc.OutputTensor;
-            qLinearDesc.OutputTensor = &outputDescs[0];
-            const DML_OPERATOR_DESC opDesc2 = { ApiTraits::OperatorDescTraits<TOperatorDesc>::Type, &qLinearDesc};
-
-            // Construct the graph
-            DML_INPUT_GRAPH_EDGE_DESC inputEdges[2];
-            DML_INTERMEDIATE_GRAPH_EDGE_DESC intermediateEdges[1];
-            DML_OUTPUT_GRAPH_EDGE_DESC outputEdges[1];
-
-            MLOperatorGraphDesc operatorGraphDesc = {};
-            operatorGraphDesc.nodeCount = 2;
-            const DML_OPERATOR_DESC* opDescs[] = {&opDesc1, &opDesc2};
-            operatorGraphDesc.nodesAsOpDesc = std::data(opDescs);
-
-            const uint32_t fillValueNodeIndex = 0;
-            const uint32_t dequantizeNodeIndex = 1;
-
-            // Input edges
-            DML_INPUT_GRAPH_EDGE_DESC inputToDequantizeEdge = {};
-            inputToDequantizeEdge.GraphInputIndex = OnnxInputIndex::inputIndex;
-            inputToDequantizeEdge.ToNodeIndex = dequantizeNodeIndex;
-            inputToDequantizeEdge.ToNodeInputIndex = 0;
-            inputEdges[0] = inputToDequantizeEdge;
-
-            DML_INPUT_GRAPH_EDGE_DESC scaleToDequantizeEdge = {};
-            scaleToDequantizeEdge.GraphInputIndex = OnnxInputIndex::scaleIndex;
-            scaleToDequantizeEdge.ToNodeIndex = dequantizeNodeIndex;
-            scaleToDequantizeEdge.ToNodeInputIndex = 1;
-            inputEdges[1] = scaleToDequantizeEdge;
-
-            operatorGraphDesc.inputEdgeCount = gsl::narrow_cast<uint32_t>(std::size(inputEdges));
-            operatorGraphDesc.inputEdges = std::data(inputEdges);
-            
-            // intermediate edges
-            DML_INTERMEDIATE_GRAPH_EDGE_DESC fillValueToDequantizeEdge = {};
-            fillValueToDequantizeEdge.FromNodeIndex = 0;
-            fillValueToDequantizeEdge.FromNodeOutputIndex = 0;
-            fillValueToDequantizeEdge.ToNodeIndex = 1;
-            fillValueToDequantizeEdge.ToNodeInputIndex = zeroPointIndex;
-            intermediateEdges[0] = fillValueToDequantizeEdge;
-
-            operatorGraphDesc.intermediateEdgeCount = gsl::narrow_cast<uint32_t>(std::size(intermediateEdges));
-            operatorGraphDesc.intermediateEdges = std::data(intermediateEdges);
-
-            // output edges
-            DML_OUTPUT_GRAPH_EDGE_DESC outputEdge = {};
-            outputEdge.FromNodeIndex = 1;
-            outputEdge.FromNodeOutputIndex = 0;
-            outputEdge.GraphOutputIndex = 0;
-            outputEdges[0] = outputEdge;
-
-            operatorGraphDesc.outputEdgeCount = gsl::narrow_cast<uint32_t>(std::size(outputEdges));
-            operatorGraphDesc.outputEdges = std::data(outputEdges);
-
-            SetDmlOperatorGraphDesc(std::move(operatorGraphDesc), kernelInfo);
-        }
+        TOperatorDesc opDesc = {};
+        opDesc.InputTensor = &inputDescs[0];
+        opDesc.ScaleTensor = &inputDescs[1];
+        opDesc.ZeroPointTensor = hasZeroPointTensor ? &inputDescs[2] : nullptr;
+        opDesc.OutputTensor = &outputDescs[0];
+        SetDmlOperatorDesc({ApiTraits::OperatorDescTraits<TOperatorDesc>::Type, &opDesc}, kernelInfo);
     }
 };
 
