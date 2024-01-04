@@ -87,12 +87,19 @@ std::vector<NodeAndMoveInfo> WhereMoves() {
       MoveAll(q, ArgType::kOutput)};
   return moves;
 }
-QDQReplaceWithNew SplitReplacer() {
+QDQReplaceWithNew SplitReplacer(bool has_split_as_input) {
   NTO::NodeLocation dq{NTO::NodeType::kInput, 0};
+  NTO::NodeLocation target{NTO::NodeType::kTarget, 0};
   NTO::NodeLocation q{NTO::NodeType::kOutput, 0};
-  std::vector<NodeAndMoveInfo> moves{
-      MoveAndAppend(dq, ArgType::kInput, 0, ArgType::kInput),
-      MoveAll(q, ArgType::kOutput)};
+  std::vector<NodeAndMoveInfo> moves{MoveAndAppend(dq, ArgType::kInput, 0, ArgType::kInput)};
+
+  if (has_split_as_input) {
+    // Move the optional split input to the new node.
+    moves.push_back(MoveAndAppend(target, ArgType::kInput, 1, ArgType::kInput, true));
+  }
+
+  moves.push_back(MoveAll(q, ArgType::kOutput));
+
   return QDQReplaceWithNew(kOnnxDomain, "Split", std::move(moves));
 }
 
@@ -247,7 +254,12 @@ MatMulReplaceWithQLinear::MatMulReplaceWithQLinear()
 }
 
 Status SplitReplaceWithQuant::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
-  return SplitReplacer().Run(graph, selected_nodes);
+  const auto& target_node = selected_nodes.Target();
+  const auto& input_defs = target_node.InputDefs();
+
+  // The 'split' attribute became an optional input at opset 13.
+  bool has_split_as_input = target_node.SinceVersion() >= 13 && input_defs.size() == 2;
+  return SplitReplacer(has_split_as_input).Run(graph, selected_nodes);
 }
 
 Status MatMulReplaceWithQLinear::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {

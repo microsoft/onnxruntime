@@ -202,7 +202,7 @@ add_dependencies(winml_lib_telemetry winml_api_native)
 add_dependencies(winml_lib_telemetry winml_api_native_internal)
 
 # Link libraries
-target_link_libraries(winml_lib_telemetry PRIVATE WIL::WIL)
+target_link_libraries(winml_lib_telemetry PRIVATE ${WIL_TARGET})
 
 ###########################
 # Add winml_lib_ort
@@ -282,7 +282,7 @@ add_dependencies(winml_lib_ort winml_api_native_internal)
 if (onnxruntime_USE_DML)
   target_add_dml(winml_lib_ort)
 endif()
-target_link_libraries(winml_lib_ort PRIVATE WIL::WIL)
+target_link_libraries(winml_lib_ort PRIVATE ${WIL_TARGET})
 target_link_libraries(winml_lib_ort INTERFACE winml_lib_api)
 target_link_libraries(winml_lib_ort INTERFACE winml_lib_telemetry)
 
@@ -339,7 +339,7 @@ set_target_properties(winml_adapter
   ${target_folder})
 
 # Link libraries
-target_link_libraries(winml_adapter PRIVATE WIL::WIL)
+target_link_libraries(winml_adapter PRIVATE ${WIL_TARGET})
 if (onnxruntime_USE_DML)
   target_add_dml(winml_adapter)
 endif()
@@ -423,7 +423,7 @@ add_dependencies(winml_lib_image winml_api_native)
 add_dependencies(winml_lib_image winml_api_native_internal)
 
 # Link libraries
-target_link_libraries(winml_lib_image PRIVATE dxgi d3d11 d3d12 WIL::WIL winml_lib_common)
+target_link_libraries(winml_lib_image PRIVATE dxgi d3d11 d3d12 ${WIL_TARGET} winml_lib_common)
 
 get_target_property(winml_lib_image_include_directories winml_lib_image INCLUDE_DIRECTORIES)
 
@@ -451,6 +451,8 @@ onnxruntime_add_static_library(winml_lib_api
   ${winml_lib_api_dir}/impl/TensorKindFrom.h
   ${winml_lib_api_dir}/impl/TensorMemoryBufferReference.h
   ${winml_lib_api_dir}/NumericData.cpp
+  ${winml_lib_api_dir}/HardwareCoreEnumerator.cpp
+  ${winml_lib_api_dir}/HardwareCoreEnumerator.h
   ${winml_lib_api_dir}/ImageFeatureDescriptor.cpp
   ${winml_lib_api_dir}/ImageFeatureDescriptor.h
   ${winml_lib_api_dir}/ImageFeatureValue.cpp
@@ -531,7 +533,7 @@ add_dependencies(winml_lib_api winml_api_native)
 add_dependencies(winml_lib_api winml_api_native_internal)
 
 # Link libraries
-target_link_libraries(winml_lib_api PRIVATE WIL::WIL winml_lib_telemetry)
+target_link_libraries(winml_lib_api PRIVATE ${WIL_TARGET} winml_lib_telemetry)
 if (onnxruntime_USE_DML)
   target_add_dml(winml_lib_api)
 endif(onnxruntime_USE_DML)
@@ -619,7 +621,7 @@ add_dependencies(winml_lib_api_experimental winml_api_native_internal)
 add_dependencies(winml_lib_api_experimental winml_api_experimental)
 
 # Link libraries
-target_link_libraries(winml_lib_api_experimental PRIVATE WIL::WIL winml_lib_telemetry)
+target_link_libraries(winml_lib_api_experimental PRIVATE ${WIL_TARGET} winml_lib_telemetry)
 if (onnxruntime_USE_DML)
   target_add_dml(winml_lib_api_experimental)
 endif(onnxruntime_USE_DML)
@@ -648,7 +650,7 @@ onnxruntime_add_static_library(winml_lib_common
 set_target_properties(winml_lib_common PROPERTIES CXX_STANDARD 17)
 set_target_properties(winml_lib_common PROPERTIES CXX_STANDARD_REQUIRED ON)
 target_compile_options(winml_lib_common PRIVATE /GR- /await /bigobj /wd4238)
-target_link_libraries(winml_lib_common PRIVATE WIL::WIL)
+target_link_libraries(winml_lib_common PRIVATE ${WIL_TARGET})
 target_include_directories(winml_lib_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)
 
 # Compiler flags
@@ -786,7 +788,7 @@ add_dependencies(winml_dll winml_api_native_internal)
 
 # Link libraries
 target_link_libraries(winml_dll PRIVATE re2)
-target_link_libraries(winml_dll PRIVATE WIL::WIL)
+target_link_libraries(winml_dll PRIVATE ${WIL_TARGET})
 target_link_libraries(winml_dll PRIVATE winml_lib_api)
 if (NOT winml_is_inbox)
   target_link_libraries(winml_dll PRIVATE winml_lib_api_experimental)

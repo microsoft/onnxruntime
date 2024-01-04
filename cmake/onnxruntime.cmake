@@ -18,35 +18,21 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
   set(OUTPUT_STYLE xcode)
 endif()
 
-set(ONNXRUNTIME_PUBLIC_HEADERS
-  "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_c_api.h"
-  "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_api.h"
-  "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_float16.h"
-  "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_inline.h"
-  "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h"
-  "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h"
-)
-
-if (onnxruntime_ENABLE_TRAINING_APIS)
-  list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_c_api.h")
-  list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_api.h")
-  list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_inline.h")
-endif()
-
-# This macro is to get the path of header files for mobile packaging, for iOS and Android
-macro(get_mobile_api_headers _HEADERS)
-  # include both c and cxx api
-  set(${_HEADERS}
+# Gets the public C/C++ API header files
+function(get_c_cxx_api_headers HEADERS_VAR)
+  set(_headers
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_c_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_api.h"
-    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_float16.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_inline.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_float16.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h"
   )
 
   if (onnxruntime_ENABLE_TRAINING_APIS)
-    list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_c_api.h")
-    list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_api.h")
-    list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_inline.h")
+    list(APPEND _headers "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_c_api.h")
+    list(APPEND _headers "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_api.h")
+    list(APPEND _headers "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_inline.h")
   endif()
 
   # need to add header files for enabled EPs
@@ -54,10 +40,13 @@ macro(get_mobile_api_headers _HEADERS)
     file(GLOB _provider_headers CONFIGURE_DEPENDS
       "${REPO_ROOT}/include/onnxruntime/core/providers/${f}/*.h"
     )
-    list(APPEND ${_HEADERS} "${_provider_headers}")
-    unset(_provider_headers)
+    list(APPEND _headers ${_provider_headers})
   endforeach()
-endmacro()
+
+  set(${HEADERS_VAR} ${_headers} PARENT_SCOPE)
+endfunction()
+
+get_c_cxx_api_headers(ONNXRUNTIME_PUBLIC_HEADERS)
 
 #If you want to verify if there is any extra line in symbols.txt, run
 # nm -C -g --defined libonnxruntime.so |grep -v '\sA\s' | cut -f 3 -d ' ' | sort
@@ -84,11 +73,9 @@ if(WIN32)
     "${ONNXRUNTIME_ROOT}/core/dll/onnxruntime.rc"
   )
 elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
-  get_mobile_api_headers(APPLE_FRAMEWORK_HEADERS)
-
   # apple framework requires the header file be part of the library
   onnxruntime_add_shared_library(onnxruntime
-    ${APPLE_FRAMEWORK_HEADERS}
+    ${ONNXRUNTIME_PUBLIC_HEADERS}
     "${CMAKE_CURRENT_BINARY_DIR}/generated_source.c"
   )
 
@@ -107,10 +94,9 @@ elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
   set_target_properties(onnxruntime PROPERTIES
     FRAMEWORK TRUE
     FRAMEWORK_VERSION A
-    PUBLIC_HEADER "${APPLE_FRAMEWORK_HEADERS}"
-    MACOSX_FRAMEWORK_INFO_PLIST ${CMAKE_CURRENT_BINARY_DIR}/Info.plist
-    VERSION ${ORT_VERSION}
-    SOVERSION  ${ORT_VERSION}
+    MACOSX_FRAMEWORK_INFO_PLIST ${INFO_PLIST_PATH}
+    SOVERSION ${ORT_VERSION}
+    # Note: The PUBLIC_HEADER and VERSION properties for the 'onnxruntime' target will be set later in this file.
   )
 else()
   onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
@@ -180,11 +166,10 @@ endif()
 
 # we need to copy C/C++ API headers to be packed into Android AAR package
 if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_BUILD_JAVA)
-  get_mobile_api_headers(ANDROID_AAR_HEADERS)
   set(ANDROID_HEADERS_DIR ${CMAKE_CURRENT_BINARY_DIR}/android/headers)
   file(MAKE_DIRECTORY ${ANDROID_HEADERS_DIR})
   # copy the header files one by one
-  foreach(h_ ${ANDROID_AAR_HEADERS})
+  foreach(h_ ${ONNXRUNTIME_PUBLIC_HEADERS})
     get_filename_component(HEADER_NAME_ ${h_} NAME)
     add_custom_command(TARGET onnxruntime POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different ${h_} ${ANDROID_HEADERS_DIR}/${HEADER_NAME_})
   endforeach()
@@ -232,6 +217,7 @@ if (onnxruntime_USE_EXTENSIONS)
   list(APPEND onnxruntime_INTERNAL_LIBRARIES
     onnxruntime_extensions
     ocos_operators
+    noexcep_operators
   )
 endif()
 
@@ -255,7 +241,7 @@ install(TARGETS onnxruntime
         PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime
         ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
         FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 
@@ -296,44 +282,73 @@ endif()
 
 # Assemble the Apple static framework (iOS and macOS)
 if(onnxruntime_BUILD_APPLE_FRAMEWORK)
+  set(STATIC_FRAMEWORK_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}-${CMAKE_OSX_SYSROOT})
+
+  # Setup the various directories required. Remove any existing ones so we start with a clean directory.
   set(STATIC_LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/static_libraries)
-  file(MAKE_DIRECTORY ${STATIC_LIB_DIR})
+  set(STATIC_LIB_TEMP_DIR ${STATIC_LIB_DIR}/temp)
+  add_custom_command(TARGET onnxruntime PRE_BUILD COMMAND ${CMAKE_COMMAND} -E rm -rf ${STATIC_LIB_DIR})
+  add_custom_command(TARGET onnxruntime PRE_BUILD COMMAND ${CMAKE_COMMAND} -E make_directory ${STATIC_LIB_DIR})
+  add_custom_command(TARGET onnxruntime PRE_BUILD COMMAND ${CMAKE_COMMAND} -E make_directory ${STATIC_LIB_TEMP_DIR})
 
-  # Remove the existing files in the STATIC_LIB_DIR folder
-  file(GLOB _OLD_STATIC_LIBS ${STATIC_LIB_DIR}/*.a)
-  file(REMOVE "${_OLD_STATIC_LIBS}")
+  set(STATIC_FRAMEWORK_DIR ${STATIC_FRAMEWORK_OUTPUT_DIR}/static_framework/onnxruntime.framework)
+  add_custom_command(TARGET onnxruntime PRE_BUILD COMMAND ${CMAKE_COMMAND} -E rm -rf ${STATIC_FRAMEWORK_DIR})
+  add_custom_command(TARGET onnxruntime PRE_BUILD COMMAND ${CMAKE_COMMAND} -E make_directory ${STATIC_FRAMEWORK_DIR})
 
-  # Go through all the static libraries, and create symbolic links
-  foreach(_LIB ${onnxruntime_INTERNAL_LIBRARIES} ${onnxruntime_EXTERNAL_LIBRARIES})
+  # replicate XCode's Single Object Pre-Link
+  # link the internal onnxruntime .o files with the external .a files into a single relocatable object
+  # to enforce symbol visibility. doing it this way limits the symbols included from the .a files to symbols used
+  # by the ORT .o files.
+
+  # If it's an onnxruntime library, extract .o files to a separate directory for each library to avoid any clashes
+  # with filenames (e.g. utils.o)
+  foreach(_LIB ${onnxruntime_INTERNAL_LIBRARIES} )
     GET_TARGET_PROPERTY(_LIB_TYPE ${_LIB} TYPE)
     if(_LIB_TYPE STREQUAL "STATIC_LIBRARY")
-      add_custom_command(TARGET onnxruntime POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:${_LIB}> ${STATIC_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:${_LIB}>)
+      set(CUR_STATIC_LIB_OBJ_DIR ${STATIC_LIB_TEMP_DIR}/$<TARGET_LINKER_FILE_BASE_NAME:${_LIB}>)
+      add_custom_command(TARGET onnxruntime POST_BUILD
+                         COMMAND ${CMAKE_COMMAND} -E make_directory ${CUR_STATIC_LIB_OBJ_DIR})
+
+      add_custom_command(TARGET onnxruntime POST_BUILD
+                         COMMAND ar ARGS -x $<TARGET_FILE:${_LIB}>
+                         WORKING_DIRECTORY ${CUR_STATIC_LIB_OBJ_DIR})
     endif()
   endforeach()
 
-  if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
-    set(STATIC_FRAMEWORK_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}-${CMAKE_OSX_SYSROOT})
-  else() # macOS
-    set(STATIC_FRAMEWORK_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR})
-  endif()
+  # for external libraries we create a symlink to the .a file
+  foreach(_LIB ${onnxruntime_EXTERNAL_LIBRARIES})
+    GET_TARGET_PROPERTY(_LIB_TYPE ${_LIB} TYPE)
+    if(_LIB_TYPE STREQUAL "STATIC_LIBRARY")
+      add_custom_command(TARGET onnxruntime POST_BUILD
+                         COMMAND ${CMAKE_COMMAND} -E create_symlink
+                           $<TARGET_FILE:${_LIB}> ${STATIC_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:${_LIB}>)
+    endif()
+  endforeach()
 
-  # Assemble the static framework
-  set(STATIC_FRAMEWORK_DIR ${STATIC_FRAMEWORK_OUTPUT_DIR}/static_framework/onnxruntime.framework)
+  # do the pre-link with `ld -r` to create a single relocatable object with correct symbol visibility
+  add_custom_command(TARGET onnxruntime POST_BUILD
+                     COMMAND ld ARGS -r -o ${STATIC_LIB_DIR}/prelinked_objects.o */*.o ../*.a
+                     WORKING_DIRECTORY ${STATIC_LIB_TEMP_DIR})
+
+  # create the static library
+  add_custom_command(TARGET onnxruntime POST_BUILD
+                     COMMAND libtool -static -o ${STATIC_FRAMEWORK_DIR}/onnxruntime prelinked_objects.o
+                     WORKING_DIRECTORY ${STATIC_LIB_DIR})
+
+  # Assemble the other pieces of the static framework
+  add_custom_command(TARGET onnxruntime POST_BUILD
+                     COMMAND ${CMAKE_COMMAND} -E
+                       copy_if_different ${INFO_PLIST_PATH} ${STATIC_FRAMEWORK_DIR}/Info.plist)
+
+  # add the framework header files
   set(STATIC_FRAMEWORK_HEADER_DIR ${STATIC_FRAMEWORK_DIR}/Headers)
-  file(MAKE_DIRECTORY ${STATIC_FRAMEWORK_DIR})
-  # Remove all files under STATIC_FRAMEWORK_DIR (if any)
-  file(GLOB_RECURSE _OLD_STATIC_FRAMEWORK ${STATIC_FRAMEWORK_DIR}/*.*)
-  file(REMOVE "${_OLD_STATIC_FRAMEWORK}")
-
   file(MAKE_DIRECTORY ${STATIC_FRAMEWORK_HEADER_DIR})
 
-  # copy the header files one by one, and the Info.plist
-  foreach(h_ ${APPLE_FRAMEWORK_HEADERS})
+  foreach(h_ ${ONNXRUNTIME_PUBLIC_HEADERS})
     get_filename_component(HEADER_NAME_ ${h_} NAME)
-    add_custom_command(TARGET onnxruntime POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different ${h_} ${STATIC_FRAMEWORK_HEADER_DIR}/${HEADER_NAME_})
+    add_custom_command(TARGET onnxruntime POST_BUILD
+                       COMMAND ${CMAKE_COMMAND} -E
+                         copy_if_different ${h_} ${STATIC_FRAMEWORK_HEADER_DIR}/${HEADER_NAME_})
   endforeach()
-  add_custom_command(TARGET onnxruntime POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different ${INFO_PLIST_PATH} ${STATIC_FRAMEWORK_DIR}/Info.plist)
 
-  # link the static library
-  add_custom_command(TARGET onnxruntime POST_BUILD COMMAND libtool -static -o ${STATIC_FRAMEWORK_DIR}/onnxruntime *.a WORKING_DIRECTORY ${STATIC_LIB_DIR})
 endif()

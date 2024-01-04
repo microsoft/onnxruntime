@@ -13,57 +13,46 @@
 
 namespace WINMLP {
 
-struct LearningModelSession : LearningModelSessionT<LearningModelSession, ILearningModelSessionNative, ILearningModelSessionNative1> {
+struct LearningModelSession
+  : LearningModelSessionT<LearningModelSession, ILearningModelSessionNative, ILearningModelSessionNative1> {
   /* LearningModelSession constructors (MachineLearningContract 1). */
   LearningModelSession(_winml::IEngine* engine);
 
-  LearningModelSession(
-      winml::LearningModel const& model);
+  LearningModelSession(winml::LearningModel const& model);
 
-  LearningModelSession(
-      winml::LearningModel const& model,
-      winml::LearningModelDevice const& deviceToRunOn);
+  LearningModelSession(winml::LearningModel const& model, winml::LearningModelDevice const& deviceToRunOn);
 
   /* LearningModelSession constructors (MachineLearningContract 2). */
   LearningModelSession(
-      winml::LearningModel const& model,
-      winml::LearningModelDevice const& deviceToRunOn,
-      winml::LearningModelSessionOptions const& sessionOptions);
+    winml::LearningModel const& model,
+    winml::LearningModelDevice const& deviceToRunOn,
+    winml::LearningModelSessionOptions const& sessionOptions
+  );
 
   /* IClosable methods. */
-  void
-  Close();
+  void Close();
 
   /* LearningModelSession properties (MachineLearningContract 1). */
-  wfc::IPropertySet
-  EvaluationProperties();
+  wfc::IPropertySet EvaluationProperties();
 
-  winml::LearningModel
-  Model();
+  winml::LearningModel Model();
 
-  winml::LearningModelDevice
-  Device();
+  winml::LearningModelDevice Device();
 
   /* LearningModelSession methods (MachineLearningContract 1). */
-  winml::LearningModelEvaluationResult
-  Evaluate(
-      winml::LearningModelBinding binding,
-      hstring const& correlationId);
+  winml::LearningModelEvaluationResult Evaluate(winml::LearningModelBinding binding, hstring const& correlationId);
 
-  wf::IAsyncOperation<winml::LearningModelEvaluationResult>
-  EvaluateAsync(
-      winml::LearningModelBinding binding,
-      hstring const correlationId);
+  wf::IAsyncOperation<winml::LearningModelEvaluationResult> EvaluateAsync(
+    winml::LearningModelBinding binding, hstring const correlationId
+  );
 
-  winml::LearningModelEvaluationResult
-  EvaluateFeatures(
-      wfc::IMap<hstring, wf::IInspectable> const features,
-      hstring const correlationId);
+  winml::LearningModelEvaluationResult EvaluateFeatures(
+    wfc::IMap<hstring, wf::IInspectable> const features, hstring const correlationId
+  );
 
-  wf::IAsyncOperation<winml::LearningModelEvaluationResult>
-  EvaluateFeaturesAsync(
-      wfc::IMap<hstring, wf::IInspectable> const features,
-      hstring const correlationId);
+  wf::IAsyncOperation<winml::LearningModelEvaluationResult> EvaluateFeaturesAsync(
+    wfc::IMap<hstring, wf::IInspectable> const features, hstring const correlationId
+  );
 
   STDMETHOD(GetIntraOpNumThreads)
   (uint32_t* numThreads);
@@ -74,52 +63,33 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession, ILearn
  public:
   /* Non-ABI methods */
 
-  _winml::IEngine*
-  GetEngine();
+  _winml::IEngine* GetEngine();
 
-  void
-  CheckClosed();
+  void CheckClosed();
 
   // LearningModelBinding needs to leverage the lock
-  CWinMLLock *
-  GetDMLEPLock()
-  {
-    return &dml_ep_lock_;
-  }
+  CWinMLLock* GetDMLEPLock() { return &dml_ep_lock_; }
 
-  static
-  winml::LearningModelSession
-  CreateInertSession(
-    _winml::IEngine* engine);
+  static winml::LearningModelSession CreateInertSession(_winml::IEngine* engine);
 
-  winml::LearningModelSessionOptions
-  Options();
+  winml::LearningModelSessionOptions Options();
 
  private:
-  void
-  Initialize();
+  void Initialize();
 
-  _winml::IModel*
-  GetOptimizedModel();
+  _winml::IModel* GetOptimizedModel();
 
-  _winml::IModel*
-  GetOptimizedModel(bool should_close_model);
+  _winml::IModel* GetOptimizedModel(bool should_close_model);
 
-  uint64_t
-  Run(
-      winrt::com_ptr<winmlp::LearningModelBinding> bindingImpl);
+  uint64_t Run(winrt::com_ptr<winmlp::LearningModelBinding> bindingImpl);
 
-  winml::LearningModelEvaluationResult
-  GetResults(
-      winrt::com_ptr<winmlp::LearningModelBinding> bindingImpl,
-      hstring const& correlationId,
-      uint64_t fenceValueForDML);
+  winml::LearningModelEvaluationResult GetResults(
+    winrt::com_ptr<winmlp::LearningModelBinding> bindingImpl, hstring const& correlationId, uint64_t fenceValueForDML
+  );
 
-  void
-  ApplyEvaluationProperties();
+  void ApplyEvaluationProperties();
 
-  void
-  ToggleProfiler();
+  void ToggleProfiler();
 
  private:
   com_ptr<_winml::IEngineFactory> engine_factory_;
@@ -142,7 +112,6 @@ struct LearningModelSession : LearningModelSessionT<LearningModelSession, ILearn
 
 namespace WINML::factory_implementation {
 
-struct LearningModelSession : LearningModelSessionT<LearningModelSession, implementation::LearningModelSession> {
-};
+struct LearningModelSession : LearningModelSessionT<LearningModelSession, implementation::LearningModelSession> {};
 
 }  // namespace WINML::factory_implementation

@@ -10,9 +10,6 @@
 #ifdef USE_TVM
 #include "core/providers/tvm/tvm_provider_factory.h"
 #endif
-#ifdef USE_TENSORRT
-#include "core/providers/tensorrt/tensorrt_provider_factory.h"
-#endif
 #ifdef USE_OPENVINO
 #include "core/providers/openvino/openvino_provider_factory.h"
 #endif

@@ -252,8 +252,9 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
 
     modified = true;
   }
-
-  LOGS(logger, INFO) << "Total shared scalar initializer count: " << shared_count;
+  if (shared_count > 0) {
+    LOGS(logger, INFO) << "Total shared scalar initializer count: " << shared_count;
+  }
   return Status::OK();
 }
 

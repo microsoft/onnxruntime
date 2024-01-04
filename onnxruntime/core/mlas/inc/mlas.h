@@ -69,6 +69,9 @@ Abstract:
 #endif
 #endif
 
+#if defined(__loongarch64)
+#define MLAS_TARGET_LARCH64
+#endif
 //
 // Define the support levels for the target architecture.
 //
@@ -87,7 +90,7 @@ Abstract:
 
 #define MLAS_F16VEC_INTRINSICS_SUPPORTED
 
-#endif // 
+#endif //
 #endif // ARM64
 #endif // Visual Studio 16 or earlier does not support fp16 intrinsic
 
@@ -1619,7 +1622,7 @@ MlasHalfGemmConvertPackB(
  * @param Channels      # of input channels
  * @param OutputCount   # of output pixels
  * @param KernelSize    # kernel size
- * @return 
+ * @return
 */
 void
 MLASCALL
@@ -1657,7 +1660,7 @@ MlasTranspose(
  * @param Channels      C in NHWC
  * @param OutputCount   Number of output pixels
  * @param KernelSize    Size of the kernel
- * @return 
+ * @return
 */
 void
 MLASCALL
@@ -1676,7 +1679,7 @@ MlasNhwcMaxPool(
  * @param Channels      C in NHWC
  * @param OutputCount   Number of output pixels
  * @param KernelSize    size of the kernel
- * @return 
+ * @return
 */
 void
 MLASCALL

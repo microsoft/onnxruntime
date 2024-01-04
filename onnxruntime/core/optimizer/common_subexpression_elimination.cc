@@ -324,7 +324,8 @@ bool IsNodeSupported(const Node& node) {
   // would result in it having multiple consumers for its output, and it being used in multiple QDQ node groups.
   return !node.ContainsSubgraph() &&
          optimizer_utils::IsOperationDeterministic(node.Domain(), node.OpType()) &&
-         !(node.Domain() == kOnnxDomain && node.OpType() == "DequantizeLinear");
+         !(node.Domain() == kOnnxDomain && node.OpType() == "DequantizeLinear") &&
+         !(node.Domain() == kMSDomain && node.OpType() == "DequantizeLinear");
 }
 }  // namespace
 

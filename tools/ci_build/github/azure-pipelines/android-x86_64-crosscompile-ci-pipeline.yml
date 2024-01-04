@@ -1,3 +1,32 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
 # Known Limits
 # 1. Anchors are not supported in GHA
 # https://github.community/t/support-for-yaml-anchors/16128/90
@@ -17,7 +46,11 @@ parameters:
   default: 0
 
 stages:
-- stage: BUILD_STAGE
+# Separate stage for building CPU vs NNAPI as we only want CodeQL to run on one of them so we don't get duplicate
+# issues for code that is built in both. We pick NNAPI as that includes the NNAPI EP code.
+- stage: BUILD_CPU_STAGE
+  variables:
+    Codeql.Enabled: false
   jobs:
   - job: Build_CPU_EP
     pool: onnxruntime-Linux-CPU-For-Android-CI
@@ -46,14 +79,6 @@ stages:
 
     - template: "templates/use-android-ndk.yml"
 
-    # We build the host protoc to <ORT_ROOT>/protobuf_install
-    - script: |
-        /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
-          $(Build.SourcesDirectory) \
-          $(Build.BinariesDirectory)/protobuf \
-          $(Build.SourcesDirectory)/protobuf_install
-      displayName: Build Host Protoc
-
     - script: |
         env | grep ANDROID
       displayName: View Android ENVs
@@ -69,7 +94,6 @@ stages:
           --skip_submodule_sync \
           --parallel \
           --cmake_generator=Ninja \
-          --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
           --build_java \
           --skip_tests
       displayName: CPU EP, Build
@@ -104,9 +128,20 @@ stages:
 
     - template: templates/clean-agent-build-directory-step.yml
 
+- stage: BUILD_NNAPI_STAGE
+  variables:
+    Codeql.ProjectConfigPath: .github/workflows
+    Codeql.Enabled: true
+    Codeql.Language: cpp
+    ${{ if variables['Codeql.Enabled'] }}:
+      JobsTimeout: 120
+    ${{ else }}:
+      JobsTimeout: 60
+
+  jobs:
   - job: Build_NNAPI_EP
     pool: onnxruntime-Linux-CPU-For-Android-CI
-    timeoutInMinutes: 60
+    timeoutInMinutes: ${{ variables.JobsTimeout }}
     workspace:
       clean: all
     condition: notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
@@ -128,14 +163,6 @@ stages:
 
     - template: "templates/use-android-ndk.yml"
 
-    # We build the host protoc to <ORT_ROOT>/protobuf_install
-    - script: |
-        /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
-          $(Build.SourcesDirectory) \
-          $(Build.BinariesDirectory)/protobuf \
-          $(Build.SourcesDirectory)/protobuf_install
-      displayName: Build Host Protoc
-
     - script: |
         env | grep ANDROID
       displayName: View Android ENVs
@@ -152,7 +179,6 @@ stages:
           --parallel \
           --use_nnapi \
           --cmake_generator=Ninja \
-          --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
           --build_java \
           --skip_tests
       displayName: NNAPI EP, Build
@@ -188,7 +214,7 @@ stages:
     - template: templates/clean-agent-build-directory-step.yml
 
 - stage: TEST_STAGE
-  dependsOn: BUILD_STAGE
+  dependsOn: [BUILD_CPU_STAGE, BUILD_NNAPI_STAGE]
   jobs:
   - job: Test_CPU_EP
     pool:
@@ -231,13 +257,10 @@ stages:
 
       - template: "templates/use-android-ndk.yml"
 
-      - script: |
-          python3 tools/python/run_android_emulator.py \
-          --android-sdk-root ${ANDROID_SDK_ROOT} \
-          --create-avd --system-image "system-images;android-31;default;x86_64" \
-          --start --emulator-extra-args="-partition-size 4096" \
-          --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-        displayName: Start Android emulator
+      - template: templates/use-android-emulator.yml
+        parameters:
+          create: true
+          start: true
 
       - script: |
           python3 tools/ci_build/build.py \
@@ -251,13 +274,9 @@ stages:
           --test
         displayName: CPU EP, Test on Android Emulator
 
-      - script: |
-          python3 tools/python/run_android_emulator.py \
-            --android-sdk-root ${ANDROID_SDK_ROOT} \
-            --stop \
-            --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-        displayName: Stop Android emulator
-        condition: always()
+      - template: templates/use-android-emulator.yml
+        parameters:
+          stop: true
 
       - template: templates/clean-agent-build-directory-step.yml
 
@@ -303,13 +322,10 @@ stages:
 
       - template: "templates/use-android-ndk.yml"
 
-      - script: |
-          python3 tools/python/run_android_emulator.py \
-          --android-sdk-root ${ANDROID_SDK_ROOT} \
-          --create-avd --system-image "system-images;android-31;default;x86_64" \
-          --start --emulator-extra-args="-partition-size 4096" \
-          --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-        displayName: Start Android emulator
+      - template: templates/use-android-emulator.yml
+        parameters:
+          create: true
+          start: true
 
       - script: |
           python3 tools/ci_build/build.py \
@@ -328,25 +344,14 @@ stages:
       - script: brew install coreutils ninja
         displayName: Install coreutils and ninja
 
-      # We build the host protoc to <ORT_ROOT>/protobuf_install
-      - script: |
-          /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
-            $(Build.SourcesDirectory) \
-            $(Build.BinariesDirectory)/protobuf \
-            $(Build.SourcesDirectory)/protobuf_install
-        displayName: Build Host Protoc
-
       - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
         # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
         displayName: Build Minimal ORT with NNAPI and run tests
 
-      - script: |
-          python3 tools/python/run_android_emulator.py \
-            --android-sdk-root ${ANDROID_SDK_ROOT} \
-            --stop \
-            --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-        displayName: Stop Android emulator
-        condition: always()
+      - template: templates/use-android-emulator.yml
+        parameters:
+          stop: true
+
       - template: templates/clean-agent-build-directory-step.yml
 
 - stage: MASTER_BUILD_STAGE
@@ -397,13 +402,10 @@ stages:
             $(Build.SourcesDirectory)/protobuf_install
         displayName: Build Host Protoc
 
-      - script: |
-          python3 tools/python/run_android_emulator.py \
-          --android-sdk-root ${ANDROID_SDK_ROOT} \
-          --create-avd --system-image "system-images;android-31;default;x86_64" \
-          --start --emulator-extra-args="-partition-size 4096" \
-          --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-        displayName: Start Android emulator
+      - template: templates/use-android-emulator.yml
+        parameters:
+          create: true
+          start: true
 
       - script: |
           python3 tools/ci_build/build.py \
@@ -418,7 +420,6 @@ stages:
           --use_nnapi \
           --build_shared_lib \
           --cmake_generator=Ninja \
-          --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
           --build_java \
           --code_coverage
         displayName: NNAPI EP, Build, Test, CodeCoverage on Android Emulator
@@ -443,13 +444,10 @@ stages:
         # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
         displayName: Build Minimal ORT with NNAPI and run tests
 
-      - script: |
-          python3 tools/python/run_android_emulator.py \
-            --android-sdk-root ${ANDROID_SDK_ROOT} \
-            --stop \
-            --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-        displayName: Stop Android emulator
-        condition: always()
+      - template: templates/use-android-emulator.yml
+        parameters:
+          stop: true
+
       - template: templates/clean-agent-build-directory-step.yml
 
   - job: Update_Dashboard

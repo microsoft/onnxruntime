@@ -10,25 +10,22 @@ import argparse
 import csv
 import logging
 import os
-import sys
 from datetime import datetime
 
 import psutil
 import torch
-from gpt2_helper import DEFAULT_TOLERANCE, MODEL_CLASSES, PRETRAINED_GPT2_MODELS, Gpt2Helper
-from packaging import version
-from transformers import AutoConfig
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-
-from benchmark_helper import (  # noqa: E402
+from benchmark_helper import (
     Precision,
     create_onnxruntime_session,
     get_ort_environment_variables,
     prepare_environment,
     setup_logger,
 )
-from quantize_helper import QuantizeHelper  # noqa: E402
+from gpt2_helper import DEFAULT_TOLERANCE, MODEL_CLASSES, PRETRAINED_GPT2_MODELS, Gpt2Helper
+from packaging import version
+from quantize_helper import QuantizeHelper
+from transformers import AutoConfig
+from transformers import __version__ as transformers_version
 
 logger = logging.getLogger("")
 
@@ -169,8 +166,6 @@ def parse_arguments(argv=None):
 
 
 def main(args):
-    from transformers import __version__ as transformers_version
-
     if version.parse(transformers_version) < version.parse(
         "3.1.0"
     ):  # past_key_values name does not exist in 3.0.2 or older
@@ -364,7 +359,7 @@ def main(args):
                                 # Results of IO binding might be in GPU. Copy outputs to CPU for comparison.
                                 copy_outputs = []
                                 for output in ort_outputs:
-                                    copy_outputs.append(output.cpu().numpy())  # noqa: PERF401
+                                    copy_outputs.append(output.cpu().numpy())
 
                             if gpt2helper.compare_outputs(
                                 outputs,
@@ -404,7 +399,7 @@ def main(args):
                             "onnxruntime_latency": f"{ort_latency:.2f}",
                         }
                         csv_writer.writerow(row)
-                    except Exception:  # noqa: PERF203
+                    except Exception:
                         logger.error("Exception", exc_info=True)
                         return None
 

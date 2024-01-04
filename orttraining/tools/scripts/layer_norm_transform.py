@@ -141,7 +141,7 @@ def main():
     all_nodes = []
     for node in graph_proto.node:
         if node not in removed_nodes:
-            all_nodes.append(node)  # noqa: PERF401
+            all_nodes.append(node)
 
     for node in layer_norm_nodes:
         all_nodes.append(node)  # noqa: PERF402

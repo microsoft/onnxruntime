@@ -99,7 +99,7 @@ common::Status OnnxRuntimeOpSchemaRegistry::RegisterOpSchemaInternal(ONNX_NAMESP
         << "than the operator set version " << ver_range_it->second.opset_version << std::endl;
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostream.str());
   }
-  GSL_SUPPRESS(es .84)
+  GSL_SUPPRESS(es.84)
   map_[op_name][op_domain].emplace(std::make_pair(ver, op_schema));
   return common::Status::OK();
 }
@@ -172,7 +172,7 @@ void SchemaRegistryManager::GetDomainToVersionMapForRegistries(DomainToVersionMa
       // If the map doesn't yet contain this domain, insert it with this registry's value.
       // Otherwise, merge the existing range in the map.
       if (iter == domain_version_map.end()) {
-        GSL_SUPPRESS(es .84)
+        GSL_SUPPRESS(es.84)
         domain_version_map.insert(local_domain);
       } else {
         iter->second = std::max(iter->second, local_domain.second);
@@ -194,7 +194,7 @@ DomainToVersionMap SchemaRegistryManager::GetLastReleasedOpsetVersions(bool is_o
       continue;
     auto it = domain_version_map.find(domain.first);
     if (it == domain_version_map.end()) {
-      GSL_SUPPRESS(es .84)
+      GSL_SUPPRESS(es.84)
       domain_version_map.insert(std::make_pair(domain.first, domain.second));
     } else {
       it->second = std::max(it->second, domain.second);
@@ -217,7 +217,7 @@ DomainToVersionMap SchemaRegistryManager::GetLatestOpsetVersions(bool is_onnx_on
       continue;
     auto it = domain_version_map.find(domain.first);
     if (it == domain_version_map.end()) {
-      GSL_SUPPRESS(es .84)
+      GSL_SUPPRESS(es.84)
       domain_version_map.insert(std::make_pair(domain.first, domain.second.second));
     } else {
       it->second = std::max(it->second, domain.second.second);
@@ -271,7 +271,7 @@ void SchemaRegistryManager::GetSchemaAndHistory(
     }
 
     if (new_version < version) {
-      GSL_SUPPRESS(es .84)
+      GSL_SUPPRESS(es.84)
       unchecked_registry_indices.insert(unchecked_registry_indices.end(),
                                         checked_registry_indices.begin(),
                                         checked_registry_indices.end());

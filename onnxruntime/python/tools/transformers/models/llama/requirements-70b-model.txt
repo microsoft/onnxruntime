@@ -1,0 +1,4 @@
+-r requirements.txt
+git+https://github.com/frankdongms/transformers.git@frdong/shard_llama
+mpi4py
+psutil

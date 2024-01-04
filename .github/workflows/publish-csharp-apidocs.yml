@@ -24,9 +24,9 @@ jobs:
     env:
       DOCFXVERSION: 2.62.2
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Setup .NET
-      uses: actions/setup-dotnet@v3
+      uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 6.0.x
     - name: Restore dependencies
@@ -51,7 +51,7 @@ jobs:
         rm -rf _site/docs/api/csharp
         mv csharp/ApiDocs/csharp _site/docs/api/csharp
     - name: Upload docs artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: onnxruntime-csharp-apidocs
         path: _site

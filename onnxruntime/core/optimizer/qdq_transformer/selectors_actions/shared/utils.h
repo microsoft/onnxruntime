@@ -10,7 +10,7 @@
 #include "core/graph/basic_types.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
-#include "onnx/defs/schema.h"
+#include "core/graph/onnx_protobuf.h"
 #endif
 
 namespace onnxruntime {

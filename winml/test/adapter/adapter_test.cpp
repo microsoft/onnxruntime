@@ -13,12 +13,16 @@ static void AdapterTestSetup() {
 #endif
   ort_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   winml_adapter_api = OrtGetWinMLAdapter(ORT_API_VERSION);
-  
+
   // for model tests
   std::wstring module_path = FileHelpers::GetModulePath();
-  std::string squeezenet_path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(module_path + L"squeezenet_modifiedforruntimestests.onnx");
-  std::string metadata_path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(module_path + L"modelWith2MetaData.onnx");
-  std::string float16_path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(module_path + L"starry-night-fp16.onnx");
+  std::string squeezenet_path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(
+    module_path + L"squeezenet_modifiedforruntimestests.onnx"
+  );
+  std::string metadata_path =
+    std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(module_path + L"modelWith2MetaData.onnx");
+  std::string float16_path =
+    std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(module_path + L"starry-night-fp16.onnx");
   winml_adapter_api->CreateModelFromPath(squeezenet_path.c_str(), squeezenet_path.size(), &squeezenet_model);
   winml_adapter_api->CreateModelFromPath(metadata_path.c_str(), metadata_path.size(), &metadata_model);
   winml_adapter_api->CreateModelFromPath(float16_path.c_str(), float16_path.size(), &float16_Model);
@@ -168,7 +172,7 @@ static void ModelGetInputTypeInfo() {
   ort_api->GetDimensionsCount(tensor_info, &dim_count);
   WINML_EXPECT_EQUAL(dim_count, 4u);
 
-  int64_t dim_values[4]; 
+  int64_t dim_values[4];
   ort_api->GetDimensions(tensor_info, dim_values, 4);
   WINML_EXPECT_EQUAL(dim_values[0], 1);
   WINML_EXPECT_EQUAL(dim_values[1], 3);
@@ -219,13 +223,17 @@ static void ModelGetMetadata() {
   const char* metadata_value;
   size_t metadata_value_len;
 
-  winml_adapter_api->ModelGetMetadata(metadata_model, 0, &metadata_key, &metadata_key_len, &metadata_value, &metadata_value_len);
+  winml_adapter_api->ModelGetMetadata(
+    metadata_model, 0, &metadata_key, &metadata_key_len, &metadata_value, &metadata_value_len
+  );
   WINML_EXPECT_EQUAL(std::string(metadata_key), "thisisalongkey");
   WINML_EXPECT_EQUAL(metadata_key_len, 14u);
   WINML_EXPECT_EQUAL(std::string(metadata_value), "thisisalongvalue");
   WINML_EXPECT_EQUAL(metadata_value_len, 16u);
 
-  winml_adapter_api->ModelGetMetadata(metadata_model, 1, &metadata_key, &metadata_key_len, &metadata_value, &metadata_value_len);
+  winml_adapter_api->ModelGetMetadata(
+    metadata_model, 1, &metadata_key, &metadata_key_len, &metadata_value, &metadata_value_len
+  );
   WINML_EXPECT_EQUAL(std::string(metadata_key), "key2");
   WINML_EXPECT_EQUAL(metadata_key_len, 4u);
   WINML_EXPECT_EQUAL(std::string(metadata_value), "val2");
@@ -243,8 +251,14 @@ static void ModelEnsureNoFloat16() {
   WINML_EXPECT_EQUAL(ort_api->GetErrorCode(float16_error_status), ORT_INVALID_GRAPH);
 }
 
-static void __stdcall TestLoggingCallback(void* param, OrtLoggingLevel severity, const char* category,
-                                          const char* logger_id, const char* code_location, const char* message) noexcept {
+static void __stdcall TestLoggingCallback(
+  void* param,
+  OrtLoggingLevel severity,
+  const char* category,
+  const char* logger_id,
+  const char* code_location,
+  const char* message
+) noexcept {
   UNREFERENCED_PARAMETER(param);
   UNREFERENCED_PARAMETER(severity);
   UNREFERENCED_PARAMETER(category);
@@ -262,9 +276,15 @@ static void __stdcall TestProfileEventCallback(const OrtProfilerEventRecord* pro
 static void EnvConfigureCustomLoggerAndProfiler() {
   OrtEnv* ort_env = nullptr;
   ort_api->CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env);
-  winml_adapter_api->EnvConfigureCustomLoggerAndProfiler(ort_env,
-                                                    &TestLoggingCallback, &TestProfileEventCallback, nullptr,
-                                                    OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env);
+  winml_adapter_api->EnvConfigureCustomLoggerAndProfiler(
+    ort_env,
+    &TestLoggingCallback,
+    &TestProfileEventCallback,
+    nullptr,
+    OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE,
+    "Default",
+    &ort_env
+  );
   logging_function_called = false;
   OrtSession* ort_session = nullptr;
   std::wstring squeezenet_path = FileHelpers::GetModulePath() + L"relu.onnx";
@@ -286,7 +306,15 @@ static void EnvConfigureCustomLoggerAndProfiler() {
   OrtMemoryInfo* memory_info;
   ort_api->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info);
   OrtValue* input_tensor = nullptr;
-  ort_api->CreateTensorWithDataAsOrtValue(memory_info, input_tensor_values.data(), input_tensor_size * sizeof(float), input_dimensions, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor);
+  ort_api->CreateTensorWithDataAsOrtValue(
+    memory_info,
+    input_tensor_values.data(),
+    input_tensor_size * sizeof(float),
+    input_dimensions,
+    1,
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+    &input_tensor
+  );
   int is_tensor;
   ort_api->IsTensor(input_tensor, &is_tensor);
   assert(is_tensor);
@@ -294,7 +322,16 @@ static void EnvConfigureCustomLoggerAndProfiler() {
   OrtValue* output_tensor = nullptr;
   winml_adapter_api->SessionStartProfiling(ort_env, ort_session);
   profiling_function_called = false;
-  ort_api->Run(ort_session, nullptr, input_node_names.data(), (const OrtValue* const*)&input_tensor, 1, output_node_names.data(), 1, &output_tensor);
+  ort_api->Run(
+    ort_session,
+    nullptr,
+    input_node_names.data(),
+    (const OrtValue* const*)&input_tensor,
+    1,
+    output_node_names.data(),
+    1,
+    &output_tensor
+  );
   WINML_EXPECT_TRUE(profiling_function_called);
   winml_adapter_api->SessionEndProfiling(ort_session);
 
@@ -305,30 +342,29 @@ static void EnvConfigureCustomLoggerAndProfiler() {
 }
 
 const AdapterTestApi& getapi() {
-  static constexpr AdapterTestApi api =
-      {
-          AdapterTestSetup,
-          AdapterTestTeardown,
-          CreateModelFromPath,
-          CreateModelFromData,
-          CloneModel,
-          ModelGetAuthor,
-          ModelGetName,
-          ModelGetDomain,
-          ModelGetDescription,
-          ModelGetVersion,
-          ModelGetInputCount,
-          ModelGetOutputCount,
-          ModelGetInputName,
-          ModelGetOutputName,
-          ModelGetInputDescription,
-          ModelGetOutputDescription,
-          ModelGetInputTypeInfo,
-          ModelGetOutputTypeInfo,
-          ModelGetMetadataCount,
-          ModelGetMetadata,
-          ModelEnsureNoFloat16,
-          EnvConfigureCustomLoggerAndProfiler,
-          };
+  static constexpr AdapterTestApi api = {
+    AdapterTestSetup,
+    AdapterTestTeardown,
+    CreateModelFromPath,
+    CreateModelFromData,
+    CloneModel,
+    ModelGetAuthor,
+    ModelGetName,
+    ModelGetDomain,
+    ModelGetDescription,
+    ModelGetVersion,
+    ModelGetInputCount,
+    ModelGetOutputCount,
+    ModelGetInputName,
+    ModelGetOutputName,
+    ModelGetInputDescription,
+    ModelGetOutputDescription,
+    ModelGetInputTypeInfo,
+    ModelGetOutputTypeInfo,
+    ModelGetMetadataCount,
+    ModelGetMetadata,
+    ModelEnsureNoFloat16,
+    EnvConfigureCustomLoggerAndProfiler,
+  };
   return api;
 }

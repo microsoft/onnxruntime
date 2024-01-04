@@ -12,7 +12,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     1, 12,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+        .TypeConstraint("T", JsepSupportedDataTypes()),
     Transpose);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -21,7 +21,7 @@ ONNX_OPERATOR_KERNEL_EX(
     13,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+        .TypeConstraint("T", JsepSupportedDataTypes()),
     Transpose);
 
 }  // namespace js

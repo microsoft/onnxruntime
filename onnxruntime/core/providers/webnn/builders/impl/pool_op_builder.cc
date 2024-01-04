@@ -38,15 +38,22 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
 
   bool is_global_pooling = false;
-  bool is_average_pool = false;
+  std::string webnn_op_name;
   if (op_type == "GlobalAveragePool") {
     is_global_pooling = true;
-    is_average_pool = true;
+    webnn_op_name = "averagePool2d";
   } else if (op_type == "GlobalMaxPool") {
     is_global_pooling = true;
+    webnn_op_name = "maxPool2d";
+  } else if (op_type == "GlobalLpPool") {
+    is_global_pooling = true;
+    webnn_op_name = "l2Pool2d";
   } else if (op_type == "AveragePool") {
-    is_average_pool = true;
+    webnn_op_name = "averagePool2d";
   } else if (op_type == "MaxPool") {
+    webnn_op_name = "maxPool2d";
+  } else if (op_type == "LpPool") {
+    webnn_op_name = "l2Pool2d";
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "PoolOpBuilder, unknown op: ", op_type);
   }
@@ -74,35 +81,32 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto onnx_kernel_shape = helper.Get("kernel_shape", std::vector<int64_t>{0, 0});
   const auto onnx_strides = helper.Get("strides", std::vector<int64_t>{1, 1});
   const auto onnx_pads = helper.Get("pads", std::vector<int64_t>{0, 0, 0, 0});
-  const auto pads = helper.Get("pads", std::vector<int32_t>{0, 0, 0, 0});
+  auto pads = helper.Get("pads", std::vector<int32_t>{0, 0, 0, 0});
   std::vector<int64_t> input_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
-  AutoPadType auto_pad_type;
-  ORT_RETURN_IF_ERROR(HandleAutoPad(input_shape, onnx_kernel_shape[0], onnx_kernel_shape[1],
-                                    onnx_pads, onnx_strides, {1, 1} /* dilations */,
-                                    StringToAutoPadType(helper.Get("auto_pad", "NOTSET")),
-                                    auto_pad_type));
-
+  AutoPadType auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
   if (AutoPadType::SAME_UPPER == auto_pad_type || AutoPadType::SAME_LOWER == auto_pad_type) {
-    if (AutoPadType::SAME_LOWER == auto_pad_type) {  // default is SAME_UPPER
-      options.set("autoPad", "same-lower");
-    } else {
-      options.set("autoPad", "same-upper");
-    }
-  } else {
-    options.set("padding", emscripten::val::array(pads));
+    std::vector<int64_t> pads_out;
+    ORT_RETURN_IF_ERROR(HandleAutoPad(input_shape, onnx_kernel_shape[0], onnx_kernel_shape[1],
+                                      onnx_pads,
+                                      helper.Get("strides", std::vector<int64_t>{1, 1}),
+                                      helper.Get("dilations", std::vector<int64_t>{1, 1}),
+                                      auto_pad_type,
+                                      pads_out,
+                                      model_builder.GetPreferredLayout() == DataLayout::NCHW));
+    std::transform(pads_out.begin(), pads_out.end(), pads.begin(),
+                   [](int64_t pad) -> int32_t { return static_cast<int32_t>(pad); });
   }
+  // Permute the ONNX's pads, which is [beginning_height, beginning_width, ending_height, ending_width],
+  // while WebNN's padding is [beginning_height, ending_height, beginning_width, ending_width].
+  const std::vector<int32_t> padding{pads[0], pads[2], pads[1], pads[3]};
+  options.set("padding", emscripten::val::array(padding));
 
   const auto ceil_mode = helper.Get("ceil_mode", 0);
   options.set("roundingType", ceil_mode == 0 ? emscripten::val("floor")
                                              : emscripten::val("ceil"));
 
-  emscripten::val output = emscripten::val::object();
-  if (is_average_pool) {
-    output = model_builder.GetBuilder().call<emscripten::val>("averagePool2d", input, options);
-  } else {
-    output = model_builder.GetBuilder().call<emscripten::val>("maxPool2d", input, options);
-  }
+  emscripten::val output = model_builder.GetBuilder().call<emscripten::val>(webnn_op_name.c_str(), input, options);
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
 }
@@ -127,21 +131,36 @@ bool PoolOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializer
     return false;
   }
 
-  if (op_type == "AveragePool" || op_type == "MaxPool") {
-    NodeAttrHelper helper(node);
-    const auto storage_order = helper.Get("storage_order", 0);
-    if (storage_order == 1) {
-      LOGS(logger, VERBOSE) << "storage_order == 1 is not supported";
-      return false;
-    }
-
+  NodeAttrHelper helper(node);
+  if (op_type == "AveragePool" || op_type == "LpPool" || op_type == "MaxPool") {
     if (helper.Get("kernel_shape", std::vector<int32_t>{1, 1}).size() != 2) {
       LOGS(logger, VERBOSE) << "Only pooling 2d is supported";
       return false;
     }
+  }
 
+  if (op_type == "AveragePool") {
+    if (helper.Get("count_include_pad", 0) != 0) {
+      LOGS(logger, VERBOSE) << "AveragePool only supports count_include_pad == 0";
+      return false;
+    }
+  }
+
+  if (op_type == "MaxPool") {
+    if (helper.Get("storage_order", 0) == 1) {
+      LOGS(logger, VERBOSE) << "MaxPool storage_order == 1 is not supported";
+      return false;
+    }
     if (node.OutputDefs().size() != 1) {
-      LOGS(logger, VERBOSE) << "Argmax in maxpooling is not supported";
+      LOGS(logger, VERBOSE) << "MaxPool only supports one output";
+      return false;
+    }
+  }
+
+  if (op_type == "GlobalLpPool" || op_type == "LpPool") {
+    // WebNN only supports l2Pool2d.
+    if (helper.Get("p", 2) != 2) {
+      LOGS(logger, VERBOSE) << op_type << " only supports p == 2";
       return false;
     }
   }
@@ -150,14 +169,16 @@ bool PoolOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializer
 }
 
 void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
+  if (op_registrations.op_builder_map.count(op_type) > 0)
     return;
 
   static std::vector<std::string> op_types =
       {
+          "AveragePool",
           "GlobalAveragePool",
           "GlobalMaxPool",
-          "AveragePool",
+          "GlobalLpPool",
+          "LpPool",
           "MaxPool",
       };
 

@@ -2,9 +2,10 @@ numpy==1.21.6 ; python_version < '3.11'
 numpy==1.24.2 ; python_version >= '3.11'
 mypy
 pytest
-setuptools>=41.4.0
+setuptools>=68.2.2
 wheel
-onnx==1.14.0
-protobuf==3.20.2
-sympy==1.10.1
+onnx==1.15.0
+protobuf==4.21.12
+sympy==1.12
 flatbuffers
+neural-compressor>=2.2.1

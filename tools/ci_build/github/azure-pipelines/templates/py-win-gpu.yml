@@ -14,24 +14,32 @@ parameters:
 
 - name: ENV_SETUP_SCRIPT
   type: string
+  default: ''
 
 - name: BUILD_PY_PARAMETERS
   displayName: >
     Extra parameters to pass to build.py. Don't put newlines in here.
   type: string
   default: ''
-
+- name: CudaVersion
+  type: string
+  default: '11.8'
+  values:
+    - 11.8
+    - 12.2
 jobs:
 - job: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}
   timeoutInMinutes: 240
   workspace:
     clean: all
-  pool: ${{ parameters.MACHINE_POOL }}
+  pool:
+    name: ${{ parameters.MACHINE_POOL }}
+#    demands:
+#      - ImageVersionOverride -equals 1.0.367516
   variables:
-    ${{if or(eq(parameters.MACHINE_POOL, 'onnxruntime-gpu-winbuild-T4'), eq(parameters.MACHINE_POOL, 'onnxruntime-Win2019-GPU-dml-A10'))}}:
-      VSGenerator: 'Visual Studio 16 2019'
-    ${{else}}:
-      VSGenerator: 'Visual Studio 17 2022'
+    GRADLE_OPTS: '-Dorg.gradle.daemon=false'
+    VSGenerator: 'Visual Studio 17 2022'
+    CUDA_MODULE_LOADING: 'LAZY'
   steps:
       - checkout: self
         clean: true
@@ -51,13 +59,6 @@ jobs:
           tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
           appendSourceBranchName: false
 
-      - task: BatchScript@1
-        displayName: 'setup env'
-        inputs:
-          filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.ENV_SETUP_SCRIPT }}'
-          modifyEnvironment: true
-          workingFolder: '$(Build.BinariesDirectory)'
-
       - task: PythonScript@0
         inputs:
           scriptSource: inline
@@ -71,8 +72,21 @@ jobs:
 
       - template: download-deps.yml
 
-      - powershell: |
-         azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" $(Agent.TempDirectory)
+      - ${{ if ne(parameters.ENV_SETUP_SCRIPT, '') }}:
+        - template: jobs/set-winenv.yml
+          parameters:
+            EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
+            ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt')) }}:
+              DownloadCUDA: true
+
+      - ${{ if eq(parameters.ENV_SETUP_SCRIPT, '') }}:
+        - template: jobs/download_win_gpu_library.yml
+          parameters:
+            CudaVersion: ${{ parameters.CudaVersion }}
+            ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt')) }}:
+              DownloadCUDA: true
+            ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt') }}:
+              DownloadTRT: true
 
       - task: PythonScript@0
         displayName: 'Update deps.txt'
@@ -161,7 +175,6 @@ jobs:
         inputs:
           AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll;-:file|$(Build.ArtifactStagingDirectory)\**\DirectML.dll'
 
-
       - powershell: |
          python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
          Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
@@ -170,36 +183,12 @@ jobs:
         workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
         displayName: 'Run Python Tests'
 
-      - ${{ if eq(parameters.PYTHON_VERSION, '3.8') }}:
-          - task: DeleteFiles@1
-            displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
-            condition: succeeded()
-            inputs:
-              SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-              Contents: |
-                **/*.obj
-                **/*.pdb
-                **/*.dll
-
-          #Manually set msBuildCommandline so that we can also set CAExcludePath
-          - task: SDLNativeRules@3
-            displayName: 'Run the PREfast SDL Native Rules for MSBuild'
-            inputs:
-              msBuildArchitecture: amd64
-              setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "$(VSGenerator)" --enable_pybind --enable_onnx_tests --parallel $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }} --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
-              ${{if eq(variables.VSGenerator, 'Visual Studio 16 2019')}}:
-                msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform=x64 /p:configuration="RelWithDebInfo" /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
-              ${{else}}:
-                msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform=x64 /p:configuration="RelWithDebInfo" /p:VisualStudioVersion="17.0" /m /p:PreferredToolArchitecture=x64'
-              excludedPaths: '$(Build.BinariesDirectory)#$(Build.SourcesDirectory)\cmake#C:\program files (x86)#C:\Program Files'
-
-          - task: TSAUpload@2
-            displayName: 'TSA upload'
-            condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-            inputs:
-              GdnPublishTsaOnboard: false
-              GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
-            continueOnError: true
+      - task: TSAUpload@2
+        displayName: 'TSA upload'
+        condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+        inputs:
+          GdnPublishTsaOnboard: false
+          GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa' 
 
       - template: component-governance-component-detection-steps.yml
         parameters:

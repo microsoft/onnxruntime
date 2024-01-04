@@ -1,0 +1,15 @@
+<!-- csproj for use with `dotnet pack` on linux via build.py's `build_nuget` option.
+
+     Expected usage is to create a Microsoft.ML.OnnxRuntime native nuget package containing only the linux
+     libonnxruntime.so for local testing.
+     We only enable netstandard2.0 due to that, but additional frameworks can be added as needed.
+
+     If you need a more sophisticated package for testing, you can run the production packaging pipeline against your
+     branch and download the resulting nuget package from the build artifacts.
+ -->
+<Project Sdk="MSBuild.Sdk.Extras/3.0.22">
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.0</TargetFrameworks>
+    <NuspecFile>$(OnnxRuntimeBuildDirectory)/NativeNuget.nuspec</NuspecFile>
+  </PropertyGroup>
+</Project>

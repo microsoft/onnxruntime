@@ -45,17 +45,15 @@ class TritonCodegen(NodeVisitor):
     Specialized codegen for Triton backend.
     """
 
-    def __init__(self):
-        super().__init__()
-
     def codegen(self, node: IRNode, context: CodegenContext, code_buffer: CodeBuffer, indent: int):
         func = getattr(self, node.__class__.__name__)
-        assert func is not None, "unimplemented node: %s" % node.__class__.__name__
+        assert func is not None, f"unimplemented node: {node.__class__.__name__}"
         func(node, context, code_buffer, indent)
 
     def _get_elementwise_offset_mask(self, offset_calc: OffsetCalculator, arg_name: str) -> Tuple[str, str]:
         if offset_calc.is_x_reduced(arg_name):
-            return "", ""
+            # Scalar.
+            return "tl.full([1], 0, tl.int32)", ""
         if offset_calc.is_same_x_shape(arg_name):
             return "xindex", "xmask" if offset_calc.requires_x_mask else ""
         strides = offset_calc.get_input_strides(arg_name)
@@ -91,13 +89,16 @@ class TritonCodegen(NodeVisitor):
             if offset_calc.requires_r_mask:
                 mask_strs.append("rmask")
 
+        # If both is_x_reduced and is_r_reduced are True, it's scalar.
+        if len(offset_strs) == 0:
+            offset_strs.append("tl.full([1, 1], 0, tl.int32)")
         return " + ".join(offset_strs), " & ".join(mask_strs)
 
-    def _get_offset_mask(self, node: OffsetCalculator, arg_name: str) -> Tuple[str, str]:
+    def _get_offset_mask(self, offset_calc: OffsetCalculator, arg_name: str) -> Tuple[str, str]:
         return (
-            self._get_reduce_offset_mask(node, arg_name)
-            if node.is_reduction
-            else self._get_elementwise_offset_mask(node, arg_name)
+            self._get_reduce_offset_mask(offset_calc, arg_name)
+            if offset_calc.is_reduction
+            else self._get_elementwise_offset_mask(offset_calc, arg_name)
         )
 
     def IONode(self, node: IONode, context: CodegenContext, code_buffer: CodeBuffer, indent: int):  # noqa: N802
@@ -125,18 +126,29 @@ class TritonCodegen(NodeVisitor):
     def _gen_kernel_signature(self, node: KernelNode, context: CodegenContext, code_buffer: CodeBuffer, indent: int):
         is_reduction = node.offset_calc.is_reduction
         space_indent = " " * indent
-        autotune_configs_str = ""
-        for config in node.offset_calc.autotune_configs.configs:
-            if is_reduction:
-                autotune_configs_str += (
-                    f'{space_indent}        triton.Config({{"XBLOCK": {config[0]}, "RBLOCK": {config[1]}}}, '
-                    f"num_warps={config[2]}),\n"
-                )
-            else:
-                autotune_configs_str += (
-                    f'{space_indent}        triton.Config({{"XBLOCK": {config[0]}}}, num_warps={config[2]}),\n'
-                )
-        keys_str = '"xnumel", "rnumel"' if is_reduction else '"xnumel"'
+
+        if len(node.offset_calc.autotune_configs.configs) > 1:
+            autotune_configs_str = ""
+            for config in node.offset_calc.autotune_configs.configs:
+                if is_reduction:
+                    autotune_configs_str += (
+                        f'{space_indent}        triton.Config({{"XBLOCK": {config[0]}, "RBLOCK": {config[1]}}}, '
+                        f"num_warps={config[2]}),\n"
+                    )
+                else:
+                    autotune_configs_str += (
+                        f'{space_indent}        triton.Config({{"XBLOCK": {config[0]}}}, num_warps={config[2]}),\n'
+                    )
+            keys_str = '"xnumel", "rnumel"' if is_reduction else '"xnumel"'
+            code_buffer += (
+                f"{space_indent}@triton.autotune(\n"
+                f"{space_indent}    configs=[\n"
+                f"{autotune_configs_str}"
+                f"{space_indent}    ],\n"
+                f"{space_indent}    key=[{keys_str}],\n"
+                f"{space_indent})\n"
+            )
+
         input_args = [context.get_variable_name(input.name) for input in node.inputs]
         input_args_str = ", ".join(input_args)
         if input_args_str:
@@ -147,7 +159,7 @@ class TritonCodegen(NodeVisitor):
 
         other_input_args = "seed_cuda, " if node.has_dropout else ""
         # Support symbolic shape if any.
-        symbolic_shape_args_str = ", ".join(node.symbolic_shape_variables)
+        symbolic_shape_args_str = ", ".join(sorted(node.offset_calc.symbolic_shape_variables))
         if symbolic_shape_args_str:
             other_input_args += f"{symbolic_shape_args_str}, "
 
@@ -158,12 +170,6 @@ class TritonCodegen(NodeVisitor):
         )
 
         code_buffer += (
-            f"{space_indent}@triton.autotune(\n"
-            f"{space_indent}    configs=[\n"
-            f"{autotune_configs_str}"
-            f"{space_indent}    ],\n"
-            f"{space_indent}    key=[{keys_str}],\n"
-            f"{space_indent})\n"
             f"{space_indent}@triton.jit\n"
             f"{space_indent}def {node.name}({input_args_str}{output_args_str}{other_input_args}{blocks_str}):\n"
         )
@@ -175,8 +181,10 @@ class TritonCodegen(NodeVisitor):
         offset_calc = node.offset_calc
         indent += 4
         space_indent = " " * indent
+        x_numel_str = str(offset_calc.x_numel)
+        if x_numel_str.isnumeric():
+            code_buffer += f"{space_indent}xnumel = {x_numel_str}\n"
         code_buffer += (
-            f"{space_indent}xnumel = {offset_calc.x_numel}\n"
             f"{space_indent}xoffset = tl.program_id(0) * XBLOCK\n"
             f"{space_indent}xindex = xoffset + tl.arange(0, XBLOCK)\n"
         )
@@ -207,9 +215,13 @@ class TritonCodegen(NodeVisitor):
         offset_calc = node.offset_calc
         indent += 4
         space_indent = " " * indent
+        x_numel_str = str(offset_calc.x_numel)
+        if x_numel_str.isnumeric():
+            code_buffer += f"{space_indent}xnumel = {x_numel_str}\n"
+        r_numel_str = str(offset_calc.r_numel)
+        if r_numel_str.isnumeric():
+            code_buffer += f"{space_indent}rnumel = {r_numel_str}\n"
         code_buffer += (
-            f"{space_indent}xnumel = {offset_calc.x_numel}\n"
-            f"{space_indent}rnumel = {offset_calc.r_numel}\n"
             f"{space_indent}xoffset = tl.program_id(0) * XBLOCK\n"
             f"{space_indent}xindex = xoffset + tl.arange(0, XBLOCK)[:, None]\n"
             f"{space_indent}rbase = tl.arange(0, RBLOCK)[None, :]\n"
@@ -263,14 +275,24 @@ class TritonCodegen(NodeVisitor):
         "Rsqrt": "{indent}{o0} = 1.0 / tl.sqrt({i0})\n",
         "Cast": "{indent}{o0} = {i0}.to(tl.{dtype})\n",
         "CastBool": "{indent}{o0} = {i0} != 0\n",
-        "Erf": "{indent}{o0} = tl.libdevice.erf({i0})\n",
-        "Gelu": "{indent}{o0} = (tl.libdevice.erf({i0} / 1.41421356237) + 1.0) * 0.5\n",
+        "Erf": "{indent}{o0} = tl.erf({i0})\n",
+        "Gelu": "{indent}{o0} = {i0} * 0.5 * (tl.math.erf({i0} * 0.70710678118654752440) + 1.0)\n",
+        "QuickGelu": "{indent}{o0} = {i0} * tl.sigmoid({i0} * {alpha})\n",
+        "GeluGrad": (
+            "{indent}{o0} = {i0} * (0.5 * (1.0 + tl.math.erf(0.70710678118654752440 * {i1})) + "
+            "{i1} * 1.12837916709551257390 * 0.70710678118654752440 * 0.5 * tl.exp(-0.5 * {i1} * {i1}))\n"
+        ),
+        "QuickGeluGrad": (
+            "{indent}tmp_v = {i1} * {alpha}\n"
+            "{indent}tmp_sigmoid = tl.sigmoid(tmp_v)\n"
+            "{indent}{o0} = {i0} * tmp_sigmoid * (1.0 + tmp_v * (1.0 - tmp_sigmoid))\n"
+        ),
         "Exp": "{indent}{o0} = tl.exp({i0})\n",
-        "Tanh": "{indent}{o0} = tl.libdevice.tanh({i0})\n",
+        "Tanh": "{indent}{o0} = tl.math.tanh({i0})\n",
         "Where": "{indent}{o0} = tl.where({i0}, {i1}, {i2})\n",
         "Sigmoid": "{indent}{o0} = tl.sigmoid({i0})\n",
         "Log": "{indent}{o0} = tl.log({i0})\n",
-        "DropoutGrad": "{indent}p = 1 - {i2}\n{indent}{o0} = tl.where({i1}, {i0} / p, 0.0)\n",
+        "DropoutGrad": "{indent}p = 1.0 - {i2}\n{indent}{o0} = tl.where({i1}, {i0} / p, 0.0)\n",
         "Identity": "{indent}{o0} = {i0}\n",
     }
 
@@ -302,6 +324,9 @@ class TritonCodegen(NodeVisitor):
                 op_type = "CastBool"
             else:
                 kwargs["dtype"] = to_dtype.__name__
+
+        if op_type == "QuickGelu" or op_type == "QuickGeluGrad":
+            kwargs["alpha"] = str(node.attributes.get("alpha", 1.702))
 
         if op_type == "Sum":
             output_var = kwargs["o0"]
@@ -407,7 +432,7 @@ class TritonCodegen(NodeVisitor):
         offset_str = f"{node.global_offset} + " if node.global_offset != sympy.Integer(0) else ""
         offset_str += self._get_offset_mask(node.offset_calc, node.inputs[0].name)[0]
         code_buffer += (
-            f"{space_indent}p = 1 - {p_var_name}\n"
+            f"{space_indent}p = 1.0 - {p_var_name}\n"
             f"{space_indent}random = tl.rand(t_seed_cuda, {offset_str})\n"
             f"{space_indent}{mask_var_name} = random < p\n"
             f"{space_indent}{output_var_name} = tl.where({mask_var_name}, {input_var_name} / p, 0.0)\n"
@@ -430,6 +455,13 @@ class TritonCodegen(NodeVisitor):
 
         indent += 4
         space_indent = " " * indent
+
+        seen_symbolic_shape = set()
+        for input in node.inputs:
+            for idx, dim in enumerate(input.shape):
+                if dim.is_symbol and dim not in seen_symbolic_shape:
+                    code_buffer += f"{space_indent}{dim} = {context.get_variable_name(input.name)}.size()[{idx}]\n"
+                    seen_symbolic_shape.add(dim)
 
         if node.has_dropout:
             code_buffer += (
@@ -457,18 +489,31 @@ class TritonCodegen(NodeVisitor):
             if kernel_node.has_dropout:
                 kernel_args_str += ", seed_cuda"
 
+            # Support symbolic shape if any.
+            symbolic_shape_args_str = ", ".join(sorted(kernel_node.offset_calc.symbolic_shape_variables))
+            if symbolic_shape_args_str:
+                kernel_args_str += f", {symbolic_shape_args_str}"
+
+            block_str = ""
+            if len(kernel_node.offset_calc.autotune_configs.configs) == 1:
+                config = kernel_node.offset_calc.autotune_configs.configs[0]
+                if kernel_node.offset_calc.is_reduction:
+                    block_str = f", XBLOCK={config[0]}, RBLOCK={config[1]}, num_warps={config[2]}"
+                else:
+                    block_str = f", XBLOCK={config[0]}, num_warps={config[2]}"
+
             if isinstance(kernel_node, ReduceKernelNode):
                 code_buffer += (
                     f"{space_indent}x_numel = {kernel_node.offset_calc.x_numel}\n"
                     f"{space_indent}r_numel = {kernel_node.offset_calc.r_numel}\n"
                     f'{space_indent}grid = lambda meta: (triton.cdiv(x_numel, meta["XBLOCK"]),)\n'
-                    f"{space_indent}{kernel_node.name}[grid]({kernel_args_str}, x_numel, r_numel)\n"
+                    f"{space_indent}{kernel_node.name}[grid]({kernel_args_str}, x_numel, r_numel{block_str})\n"
                 )
             else:
                 code_buffer += (
                     f"{space_indent}n_elements = {kernel_node.offset_calc.x_numel}\n"
                     f'{space_indent}grid = lambda meta: (triton.cdiv(n_elements, meta["XBLOCK"]),)\n'
-                    f"{space_indent}{kernel_node.name}[grid]({kernel_args_str}, n_elements)\n"
+                    f"{space_indent}{kernel_node.name}[grid]({kernel_args_str}, n_elements{block_str})\n"
                 )
 
             for name in node.cross_kernel_args_to_delete[idx]:

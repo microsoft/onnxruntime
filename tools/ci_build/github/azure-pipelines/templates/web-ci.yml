@@ -26,17 +26,23 @@ parameters:
 
 - name: WASMTemplate
   type: string
-  default: win-wasm-ci.yml
-- name: WebTemplate
-  type: string
-  default: win-web-ci.yml
+  default: linux-wasm-ci.yml
 # parameter couldn't be compared by string, so add one boolean parameter.
 - name: UseWebPoolName
   type: boolean
   default: false
-- name: WebPoolName
+- name: RunWebGpuTestsForReleaseBuild
+  type: boolean
+  default: false
+- name: RunWebGpuTestsForDebugBuild
+  type: boolean
+  default: false
+- name: WebGpuPoolName
   type: string
-  default: ''
+  default: 'onnxruntime-Win2022-webgpu-A10'
+- name: WebCpuPoolName
+  type: string
+  default: 'onnxruntime-Win-CPU-2022-web'
 
 - name: ExtraBuildArgs
   displayName: 'Extra build command line arguments'
@@ -48,9 +54,9 @@ parameters:
   default: false
 
 stages:
-- stage: Extract_commit
+- stage: Precheck_and_extract_commit
   jobs:
-  - job: Extract_commit
+  - job: Precheck_and_extract_commit
     pool: ${{ parameters.PoolName }}
     variables:
       runCodesignValidationInjection: false
@@ -58,23 +64,32 @@ stages:
     workspace:
       clean: all
     steps:
-    - checkout: none
-      fetchDepth: 1
+    - checkout: self
       submodules: false
+    - script: |
+       git submodule sync -- cmake/external/onnx
+       git submodule update --init -- cmake/external/onnx
+      workingDirectory: '$(Build.SourcesDirectory)'
+      displayName: 'Checkout submodule onnx'
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '18.x'
+    - template: linux-web-init-and-check.yml
     - task: Bash@3
+      displayName: 'Extract commit SHA and save to __commit.txt'
       inputs:
         targetType: 'inline'
         script: |
           echo $(Build.SourceVersion)
           echo $(Build.SourceVersion) > "$(Build.ArtifactStagingDirectory)"/__commit.txt
     - task: PublishPipelineArtifact@0
-      displayName: 'Publish Pipeline Artifact'
+      displayName: 'Publish __commit.txt'
       inputs:
         artifactName: '__commit'
         targetPath: '$(Build.ArtifactStagingDirectory)'
 
 - stage: Build_wasm_Debug
-  dependsOn: Extract_commit
+  dependsOn: Precheck_and_extract_commit
   jobs:
   - template: ${{ parameters.WASMTemplate }}
     parameters:
@@ -88,19 +103,23 @@ stages:
 - stage: Build_web_Debug
   dependsOn: Build_wasm_Debug
   jobs:
-  - template: ${{ parameters.WebTemplate }}
+  - template: win-web-ci.yml
     parameters:
       CommitOverride: true
       BuildConfig: 'Debug'
       NpmPackagingMode: ${{ parameters.NpmPackagingMode }}
       ${{ if eq(parameters.UseWebPoolName, true)}}:
-        PoolName: ${{ parameters.WebPoolName }}
+        ${{ if eq(parameters.RunWebGpuTestsForDebugBuild, true)}}:
+          PoolName: ${{ parameters.WebGpuPoolName }}
+        ${{ else }}:
+          PoolName: ${{ parameters.WebCpuPoolName }}
       ${{ else }}:
         PoolName: ${{ parameters.PoolName }}
       PackageName: ${{ parameters.PackageName }}
+      RunWebGpuTests: ${{ parameters.RunWebGpuTestsForDebugBuild }}
 
 - stage: Build_wasm_Release
-  dependsOn: Extract_commit
+  dependsOn: Precheck_and_extract_commit
   jobs:
   - template: ${{ parameters.WASMTemplate }}
     parameters:
@@ -113,7 +132,7 @@ stages:
 
 - ${{ if eq(parameters.BuildStaticLib, 'true') }}:
   - stage: Build_wasm_Release_static_library
-    dependsOn: Extract_commit
+    dependsOn: Precheck_and_extract_commit
     jobs:
     - template: ${{ parameters.WASMTemplate }}
       parameters:
@@ -129,24 +148,31 @@ stages:
 - stage: Build_web_Release
   dependsOn: Build_wasm_Release
   jobs:
-  - template: ${{ parameters.WebTemplate }}
+  - template: win-web-ci.yml
     parameters:
       CommitOverride: true
       BuildConfig: 'Release'
       NpmPackagingMode: ${{ parameters.NpmPackagingMode }}
       ${{ if eq(parameters.UseWebPoolName, true)}}:
-        PoolName: ${{ parameters.WebPoolName }}
+        ${{ if eq(parameters.RunWebGpuTestsForReleaseBuild, true)}}:
+          PoolName: ${{ parameters.WebGpuPoolName }}
+        ${{ else }}:
+          PoolName: ${{ parameters.WebCpuPoolName }}
       ${{ else }}:
         PoolName: ${{ parameters.PoolName }}
       PackageName: ${{ parameters.PackageName }}
+      RunWebGpuTests: ${{ parameters.RunWebGpuTestsForReleaseBuild }}
 
-- ${{ if ne(parameters.IsReleasePipeline, true) }}:
-  - stage: Test_web_BrowserStack
-    dependsOn: Build_wasm_Release
-    jobs:
-    - template: web-browserstack-ci.yml
-      parameters:
-        CommitOverride: true
+# Disable BrowserStack test
+# TODO: fix and re-enable in PostMerge test
+#
+# - ${{ if ne(parameters.IsReleasePipeline, true) }}:
+#   - stage: Test_web_BrowserStack
+#     dependsOn: Build_wasm_Release
+#     jobs:
+#     - template: web-browserstack-ci.yml
+#       parameters:
+#         CommitOverride: true
 
 - ${{ if ne(parameters.IsReleasePipeline, true) }}:
   - stage: Test_web_MultiBrowsers

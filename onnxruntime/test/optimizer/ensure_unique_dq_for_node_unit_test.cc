@@ -20,15 +20,17 @@ struct GraphConfig {
   bool has_subgraph_consumer{false};
 };
 
-auto GetGraphBuilder(GraphConfig config) {
-  return [=](ModelTestBuilder& builder) {
+template <typename QuantType>
+std::function<void(ModelTestBuilder&)> GetGraphBuilder(const GraphConfig& config, bool use_ms_domain_qdq_ops) {
+  return [config, use_ms_domain_qdq_ops](ModelTestBuilder& builder) {
     const auto input_shape = std::vector<int64_t>{1, 2, 4};
     constexpr float scale = 0.5f;
-    constexpr uint8_t zero_point = 0;
+    constexpr QuantType zero_point = 0;
 
-    auto* dq_input = builder.MakeInput<uint8_t>(input_shape, uint8_t{0}, uint8_t{255});
+    auto* dq_input = builder.MakeInput<QuantType>(input_shape, std::numeric_limits<QuantType>::min(),
+                                                  std::numeric_limits<QuantType>::max());
     auto* dq_output = config.has_graph_output ? builder.MakeOutput() : builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode(dq_input, scale, zero_point, dq_output);
+    builder.AddDequantizeLinearNode<QuantType>(dq_input, scale, zero_point, dq_output, use_ms_domain_qdq_ops);
 
     for (size_t i = 0; i < config.num_explicit_consumer_nodes; ++i) {
       // use Concat for the explicit consumer node as it supports a variadic number of inputs
@@ -61,7 +63,8 @@ auto GetGraphBuilder(GraphConfig config) {
         return graph.ToGraphProto();
       };
 
-      auto* if_input = builder.MakeInitializerBool({}, {true});
+      // Make this an input to prevent If constant folding affecting this test
+      auto* if_input = builder.MakeInput<bool>({1}, {true});
       auto* if_output = builder.MakeOutput();
       Node& if_node = builder.AddNode("If", {if_input}, {if_output});
       if_node.AddAttribute("then_branch", create_if_subgraph(true));
@@ -70,48 +73,60 @@ auto GetGraphBuilder(GraphConfig config) {
   };
 }
 
-void RunEnsureUniqueDQForNodeUnitTest(std::function<void(ModelTestBuilder&)> graph_builder_fn,
-                                      int expected_dq_count) {
-  constexpr int opset_version = 12;
+void RunEnsureUniqueDQForNodeUnitTest(const GraphConfig& config, int expected_dq_count) {
+  auto run_tests = [config, expected_dq_count](bool use_ms_domain_qdq_ops, bool use_16bit_qdq_ops) {
+    constexpr int opset_version = 12;
+    const char* dequantize_linear_key = use_ms_domain_qdq_ops ? "com.microsoft.DequantizeLinear" : "DequantizeLinear";
+    std::function<void(ModelTestBuilder&)> graph_builder_fn = use_16bit_qdq_ops
+                                                                  ? GetGraphBuilder<uint16_t>(config, use_ms_domain_qdq_ops)
+                                                                  : GetGraphBuilder<uint8_t>(config, use_ms_domain_qdq_ops);
 
-  {
-    SCOPED_TRACE("test with standalone transformer");
+    {
+      SCOPED_TRACE("test with standalone transformer");
 
-    auto post_transform_check_fn = [expected_dq_count](const Graph& graph) {
-      const auto op_counts = CountOpsInGraph(graph);
-      const auto actual_dq_count = OpCount(op_counts, "DequantizeLinear");
-      ORT_RETURN_IF_NOT(actual_dq_count == expected_dq_count,
-                        "Expected DQ count: ", expected_dq_count, ", actual: ", actual_dq_count);
-      return Status::OK();
-    };
+      auto post_transform_check_fn = [expected_dq_count, dequantize_linear_key](const Graph& graph) {
+        const auto op_counts = CountOpsInGraph(graph);
+        const auto actual_dq_count = OpCount(op_counts, dequantize_linear_key);
+        ORT_RETURN_IF_NOT(actual_dq_count == expected_dq_count,
+                          "Expected DQ count: ", expected_dq_count, ", actual: ", actual_dq_count);
+        return Status::OK();
+      };
 
-    EXPECT_STATUS_OK(TestGraphTransformer(
-        graph_builder_fn,
-        opset_version,
-        DefaultLoggingManager().DefaultLogger(),
-        std::make_unique<EnsureUniqueDQForNodeUnit>(),
-        TransformerLevel::Level1,
-        5,
-        {},
-        post_transform_check_fn));
-  }
+      EXPECT_STATUS_OK(TestGraphTransformer(
+          graph_builder_fn,
+          opset_version,
+          DefaultLoggingManager().DefaultLogger(),
+          std::make_unique<EnsureUniqueDQForNodeUnit>(),
+          TransformerLevel::Level1,
+          5,
+          {},
+          post_transform_check_fn));
+    }
 
-  {
-    SCOPED_TRACE("test with basic transformers");
+    {
+      SCOPED_TRACE("test with basic transformers");
 
-    auto post_transform_check_fn = [expected_dq_count](const InferenceSessionWrapper& session) {
-      const auto& graph = session.GetGraph();
-      const auto op_counts = CountOpsInGraph(graph);
-      ASSERT_EQ(OpCount(op_counts, "DequantizeLinear"), expected_dq_count);
-    };
+      auto post_transform_check_fn = [expected_dq_count,
+                                      dequantize_linear_key](const InferenceSessionWrapper& session) {
+        const auto& graph = session.GetGraph();
+        const auto op_counts = CountOpsInGraph(graph);
+        ASSERT_EQ(OpCount(op_counts, dequantize_linear_key), expected_dq_count);
+      };
 
-    TransformerTester(
-        graph_builder_fn,
-        post_transform_check_fn,
-        TransformerLevel::Default,
-        TransformerLevel::Level1,
-        opset_version);
-  }
+      TransformerTester(
+          graph_builder_fn,
+          post_transform_check_fn,
+          TransformerLevel::Default,
+          TransformerLevel::Level1,
+          opset_version);
+    }
+  };
+
+  run_tests(false, false);
+#if !defined(DISABLE_CONTRIB_OPS)
+  run_tests(true, false);  // Use contrib QDQ ops.
+  run_tests(true, true);   // Use 16-bit contrib QDQ ops.
+#endif
 }
 
 }  // namespace
@@ -122,7 +137,7 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodes) {
   config.num_inputs_per_explicit_consumer_node = 1;
 
   // expected count = one for each explicit consumer node (3), reusing the original one = 3
-  RunEnsureUniqueDQForNodeUnitTest(GetGraphBuilder(config), 3);
+  RunEnsureUniqueDQForNodeUnitTest(config, 3);
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodesWithGraphOutput) {
@@ -132,7 +147,7 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodesWithGraphOutput) {
   config.has_graph_output = true;
 
   // expected count = preserved original (1) + one for each explicit consumer node (3) = 4
-  RunEnsureUniqueDQForNodeUnitTest(GetGraphBuilder(config), 4);
+  RunEnsureUniqueDQForNodeUnitTest(config, 4);
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodesWithSubgraphConsumer) {
@@ -142,7 +157,7 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodesWithSubgraphConsumer) {
   config.has_subgraph_consumer = true;
 
   // expected count = preserved original (1) + one for each explicit consumer node (3) = 4
-  RunEnsureUniqueDQForNodeUnitTest(GetGraphBuilder(config), 4);
+  RunEnsureUniqueDQForNodeUnitTest(config, 4);
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodesWithSubgraphConsumerAndGraphOutput) {
@@ -153,7 +168,7 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodesWithSubgraphConsumerAndGr
   config.has_subgraph_consumer = true;
 
   // expected count = preserved original (1) + one for each explicit consumer node (3) = 4
-  RunEnsureUniqueDQForNodeUnitTest(GetGraphBuilder(config), 4);
+  RunEnsureUniqueDQForNodeUnitTest(config, 4);
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputs) {
@@ -162,7 +177,7 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputs) {
   config.num_inputs_per_explicit_consumer_node = 5;
 
   // expected count = one for each explicit consumer node input (2 * 5), reusing the original one = 10
-  RunEnsureUniqueDQForNodeUnitTest(GetGraphBuilder(config), 10);
+  RunEnsureUniqueDQForNodeUnitTest(config, 10);
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithGraphOutput) {
@@ -172,7 +187,7 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithGraphOutput) {
   config.has_graph_output = true;
 
   // expected count = preserved original (1) + one for each explicit consumer node input (2 * 5) = 11
-  RunEnsureUniqueDQForNodeUnitTest(GetGraphBuilder(config), 11);
+  RunEnsureUniqueDQForNodeUnitTest(config, 11);
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithSubgraphConsumer) {
@@ -182,7 +197,7 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithSubgraphConsumer
   config.has_subgraph_consumer = true;
 
   // expected count = preserved original (1) + one for each explicit consumer node input (2 * 5) = 11
-  RunEnsureUniqueDQForNodeUnitTest(GetGraphBuilder(config), 11);
+  RunEnsureUniqueDQForNodeUnitTest(config, 11);
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithSubgraphConsumerAndGraphOutput) {
@@ -193,7 +208,7 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithSubgraphConsumer
   config.has_subgraph_consumer = true;
 
   // expected count = preserved original (1) + one for each explicit consumer node input (2 * 5) = 11
-  RunEnsureUniqueDQForNodeUnitTest(GetGraphBuilder(config), 11);
+  RunEnsureUniqueDQForNodeUnitTest(config, 11);
 }
 
 TEST(EnsureUniqueDQForNodeUnitTests, QDQWithMultiConsumerDQNodes) {

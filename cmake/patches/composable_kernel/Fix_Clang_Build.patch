@@ -1,17 +1,17 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index f861e3020..f0b6bceae 100644
+index 04674124c..12e8b8b00 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -1,7 +1,7 @@
- cmake_minimum_required(VERSION 3.14)
+@@ -19,7 +19,7 @@ endif()
  
+ set(version 1.1.0)
  # Check support for CUDA/HIP in Cmake
--project(composable_kernel)
-+project(composable_kernel LANGUAGES CXX HIP)
+-project(composable_kernel VERSION ${version})
++project(composable_kernel VERSION ${version} LANGUAGES CXX HIP)
  
  list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
  
-@@ -41,27 +41,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+@@ -173,27 +173,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
  set(CMAKE_CXX_EXTENSIONS OFF)
  message("CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}")
  
@@ -39,7 +39,7 @@ index f861e3020..f0b6bceae 100644
  ## HIP
  find_package(HIP REQUIRED)
  # Override HIP version in config.h, if necessary.
-@@ -83,8 +62,6 @@ if( DEFINED CK_OVERRIDE_HIP_VERSION_PATCH )
+@@ -215,8 +194,6 @@ if( DEFINED CK_OVERRIDE_HIP_VERSION_PATCH )
      message(STATUS "CK_HIP_VERSION_PATCH overriden with ${CK_OVERRIDE_HIP_VERSION_PATCH}")
  endif()
  message(STATUS "Build with HIP ${HIP_VERSION}")
@@ -48,17 +48,18 @@ index f861e3020..f0b6bceae 100644
  
  ## tidy
  include(EnableCompilerWarnings)
-@@ -273,9 +250,6 @@ rocm_package_setup_component(profiler
- )
+@@ -376,7 +353,9 @@ if(BUILD_DEV)
+     add_compile_options(-Werror -Weverything)
+ endif()
+ #add flags to reduce the size of binaries
+-add_compile_options(-Oz -flto=thin)
++# -flto requires ORT to use a linker that support LTO and -flto flag shoud be passed to linker together.
++# add_compile_options(-Oz -flto=thin)
++add_compile_options(-Oz)
+ message("CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
  
- add_subdirectory(library)
--add_subdirectory(example)
--add_subdirectory(test)
--add_subdirectory(profiler)
- 
- #Create an interface target for the include only files and call it "composablekernels"
- include(CMakePackageConfigHelpers)
-@@ -301,11 +275,3 @@ rocm_install(FILES
+ add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -C ${CMAKE_CFG_INTDIR})
+@@ -482,11 +461,3 @@ rocm_install(FILES
  
  set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
  set(CPACK_RPM_PACKAGE_LICENSE "MIT")
@@ -71,20 +72,21 @@ index f861e3020..f0b6bceae 100644
 -    HEADER_ONLY
 -)
 diff --git a/library/src/tensor_operation_instance/gpu/CMakeLists.txt b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
-index c206c4dc0..b283eeb64 100644
+index 9cb5d0e9a..141a46f3d 100644
 --- a/library/src/tensor_operation_instance/gpu/CMakeLists.txt
 +++ b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
-@@ -1,7 +1,13 @@
- function(add_instance_library INSTANCE_NAME)
-     message("adding instance ${INSTANCE_NAME}")
-+    set_source_files_properties(${ARGN} PROPERTIES LANGUAGE HIP)
-     add_library(${INSTANCE_NAME} OBJECT ${ARGN})
-+    # Always disable debug symbol and C debug assert due to
-+    # - Linker error: ... relocation truncated to fit ..., caused by object files to be linked are too huge.
-+    # - https://github.com/ROCmSoftwarePlatform/composable_kernel/issues/622
-+    target_compile_options(${INSTANCE_NAME} PRIVATE -g0 -DNDEBUG)
-     target_compile_features(${INSTANCE_NAME} PUBLIC)
-+    target_compile_definitions(${INSTANCE_NAME} PRIVATE "__HIP_PLATFORM_AMD__=1" "__HIP_PLATFORM_HCC__=1")
-     set_target_properties(${INSTANCE_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
-     clang_tidy_check(${INSTANCE_NAME})
- endfunction(add_instance_library INSTANCE_NAME)
+@@ -44,8 +44,14 @@ function(add_instance_library INSTANCE_NAME)
+     endforeach()
+     #only continue if there are some source files left on the list
+     if(ARGN)
++        set_source_files_properties(${ARGN} PROPERTIES LANGUAGE HIP)
+         add_library(${INSTANCE_NAME} OBJECT ${ARGN})
++        # Always disable debug symbol and C debug assert due to
++        # - Linker error: ... relocation truncated to fit ..., caused by object files to be linked are too huge.
++        # - https://github.com/ROCmSoftwarePlatform/composable_kernel/issues/622
++        target_compile_options(${INSTANCE_NAME} PRIVATE -g0 -DNDEBUG)
+         target_compile_features(${INSTANCE_NAME} PUBLIC)
++        target_compile_definitions(${INSTANCE_NAME} PRIVATE "__HIP_PLATFORM_AMD__=1" "__HIP_PLATFORM_HCC__=1")
+         set_target_properties(${INSTANCE_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+         clang_tidy_check(${INSTANCE_NAME})
+         set(result 0)

@@ -15,7 +15,11 @@ from .options import DebugOptions
 
 class GraphExecutionManagerFactory:
     def __init__(
-        self, module: _FlattenedModule, debug_options: DebugOptions, fallback_manager: _FallbackManager, logger: Logger
+        self,
+        module: _FlattenedModule,
+        debug_options: DebugOptions,
+        fallback_manager: _FallbackManager,
+        logger: Logger,
     ):
         self._training_manager = TrainingManager(module, debug_options, fallback_manager, logger)
         self._inference_manager = InferenceManager(module, debug_options, fallback_manager, logger)

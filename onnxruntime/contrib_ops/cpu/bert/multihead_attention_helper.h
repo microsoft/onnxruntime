@@ -103,7 +103,8 @@ Status CheckInputs(const T* query,
     }
     if (past_key_dims[2] != past_value_dims[2]) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'past_key' and 'past_value' shall have same dim 2 (past_sequence_length)");
+                             "Input 'past_key' and 'past_value' shall have same dim 2 (past_sequence_length). ",
+                             past_key_dims[2], " vs ", past_value_dims[2]);
     }
     if (past_key_dims[3] != head_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -205,6 +206,7 @@ Status CheckInputs(const T* query,
     }
   }
 
+  int total_sequence_length = past_sequence_length + kv_sequence_length;
   AttentionMaskType mask_type = AttentionMaskType::MASK_NONE;
   if (key_padding_mask != nullptr) {
     mask_type = AttentionMaskType::MASK_UNKNOWN;
@@ -215,13 +217,21 @@ Status CheckInputs(const T* query,
       } else if (mask_dims[0] == static_cast<int64_t>(3) * static_cast<int64_t>(batch_size) + static_cast<int64_t>(2)) {
         mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START;
       }
-    } else if (mask_dims.size() == 2 && mask_dims[0] == static_cast<int64_t>(batch_size) && mask_dims[1] == static_cast<int64_t>(kv_sequence_length)) {
+    } else if (mask_dims.size() == 2 && mask_dims[0] == static_cast<int64_t>(batch_size) &&
+               mask_dims[1] == static_cast<int64_t>(kv_sequence_length)) {
       mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
+    } else if (mask_dims.size() == 2 && mask_dims[0] == static_cast<int64_t>(batch_size) &&
+               mask_dims[1] == static_cast<int64_t>(total_sequence_length)) {
+      mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
+    } else if (mask_dims.size() == 3 && mask_dims[0] == static_cast<int64_t>(batch_size) &&
+               mask_dims[1] == static_cast<int64_t>(sequence_length) &&
+               mask_dims[2] == static_cast<int64_t>(total_sequence_length)) {
+      mask_type = AttentionMaskType::MASK_3D_ATTENTION;
     }
 
     if (mask_type == AttentionMaskType::MASK_UNKNOWN) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'key_padding_mask' shape shall be (batch_size) or (batch_size, kv_sequence_length)");
+                             "Input 'key_padding_mask' shape shall be 1D, 2D, or 3D");
     }
   }
 
@@ -256,7 +266,6 @@ Status CheckInputs(const T* query,
     }
   }
 
-  int total_sequence_length = past_sequence_length + kv_sequence_length;
   bool broadcast_res_pos_bias = false;
   if (relative_position_bias != nullptr) {
     const auto& relative_position_bias_dims = relative_position_bias->Shape().GetDims();

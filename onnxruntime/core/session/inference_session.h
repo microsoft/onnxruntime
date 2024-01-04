@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -103,6 +104,22 @@ struct ModelMetadata {
  */
 
 class InferenceSession {
+  struct InputOutputDefMetaData {
+    InputOutputDefMetaData(const NodeArg* node_arg0, MLDataType ml_data_type0, TensorShape&& tensor_shape0)
+        : node_arg(node_arg0), ml_data_type(ml_data_type0), tensor_shape(std::move(tensor_shape0)) {
+    }
+
+    InputOutputDefMetaData(const NodeArg* node_arg0, MLDataType ml_data_type0)
+        : node_arg(node_arg0), ml_data_type(ml_data_type0) {
+    }
+
+    gsl::not_null<const NodeArg*> node_arg;
+    MLDataType ml_data_type;
+    std::optional<TensorShape> tensor_shape;  // not applicable if the input is non-tensor type
+  };
+
+  using InputOutputDefMetaMap = InlinedHashMap<std::string_view, InputOutputDefMetaData>;
+
  public:
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -570,9 +587,6 @@ class InferenceSession {
   // if they need.
   std::shared_ptr<onnxruntime::Model> model_;
 
-  // names of model outputs used for quick validation.
-  std::unordered_set<std::string> model_output_names_;
-
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
   PathString model_location_;
 
@@ -581,7 +595,8 @@ class InferenceSession {
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
-
+  void SetLoggingManager(const SessionOptions& session_options,
+                         const Environment& session_env);
   void ConstructorCommon(const SessionOptions& session_options,
                          const Environment& session_env);
 
@@ -627,14 +642,21 @@ class InferenceSession {
 
   void InitLogger(logging::LoggingManager* logging_manager);
 
+  void TraceSessionOptions(const SessionOptions& session_options);
+
   [[nodiscard]] common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape,
-                                           const TensorShape& expected_shape) const;
+                                           const TensorShape& expected_shape, const char* input_output_moniker) const;
 
   [[nodiscard]] common::Status ValidateInputs(gsl::span<const std::string> feed_names,
                                               gsl::span<const OrtValue> feeds) const;
 
   [[nodiscard]] common::Status ValidateOutputs(gsl::span<const std::string> output_names,
                                                const std::vector<OrtValue>* p_fetches) const;
+
+  [[nodiscard]] common::Status ValidateInputsOutputs(gsl::span<const std::string> feed_fetches_names,
+                                                     gsl::span<const OrtValue> feeds_fetches,
+                                                     const InputOutputDefMetaMap& input_output_meta_map,
+                                                     ArgType arg_type) const;
 
   [[nodiscard]] common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms);
 
@@ -679,7 +701,10 @@ class InferenceSession {
   SessionOptions session_options_;
 
   /// Logging manager if provided.
-  logging::LoggingManager* const logging_manager_;
+  logging::LoggingManager* logging_manager_;
+
+  /// User specified logging mgr; logging_manager_ is simply the ptr in this unique_ptr when available
+  std::unique_ptr<logging::LoggingManager> user_logging_manager_;
 
   /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
   std::unique_ptr<logging::Logger> owned_session_logger_ = nullptr;
@@ -737,19 +762,9 @@ class InferenceSession {
 #endif
 
   ModelMetadata model_metadata_;
-  std::unordered_set<std::string> required_inputs_;
 
-  struct InputDefMetaData {
-    InputDefMetaData(const NodeArg* node_arg0, MLDataType ml_data_type0, TensorShape&& tensor_shape0)
-        : node_arg(node_arg0), ml_data_type(ml_data_type0), tensor_shape(std::move(tensor_shape0)) {
-    }
-    const NodeArg* node_arg;
-    MLDataType ml_data_type;
-    TensorShape tensor_shape;  // not applicable if the input is non-tensor type
-  };
-
-  std::unordered_map<std::string, InputDefMetaData> input_def_map_;
-  OutputDefList output_def_list_;
+  InputOutputDefMetaMap input_def_map_;
+  InputOutputDefMetaMap output_def_map_;
 
   // Data transfer manager.
   DataTransferManager data_transfer_mgr_;

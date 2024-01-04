@@ -1,12 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <cstdlib>
+#include <optional>
+#include <string>
+
 #ifndef USE_ONNXRUNTIME_DLL
 #ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wignored-qualifiers"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
-#else
 #endif
 #include <google/protobuf/message_lite.h>
 #ifdef __GNUC__
@@ -14,9 +18,11 @@
 #endif
 #endif
 
+#include "gtest/gtest.h"
+
+#include "core/platform/env_var_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/util/thread_utils.h"
-#include "gtest/gtest.h"
 #include "test/test_environment.h"
 
 std::unique_ptr<Ort::Env> ort_env;
@@ -54,8 +60,19 @@ int TEST_MAIN(int argc, char** argv) {
 
   ORT_TRY {
     ::testing::InitGoogleTest(&argc, argv);
-
     ortenv_setup();
+
+    // allow verbose logging to be enabled by setting this environment variable to a numeric log level
+    constexpr auto kLogLevelEnvironmentVariableName = "ORT_UNIT_TEST_MAIN_LOG_LEVEL";
+    if (auto log_level = onnxruntime::ParseEnvironmentVariable<int>(kLogLevelEnvironmentVariableName);
+        log_level.has_value()) {
+      *log_level = std::clamp(*log_level,
+                              static_cast<int>(ORT_LOGGING_LEVEL_VERBOSE),
+                              static_cast<int>(ORT_LOGGING_LEVEL_FATAL));
+      std::cout << "Setting log level to " << *log_level << "\n";
+      ort_env->UpdateEnvWithCustomLogLevel(static_cast<OrtLoggingLevel>(*log_level));
+    }
+
     status = RUN_ALL_TESTS();
   }
   ORT_CATCH(const std::exception& ex) {

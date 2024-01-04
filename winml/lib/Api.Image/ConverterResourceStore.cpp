@@ -12,10 +12,11 @@
 
 using namespace _winml;
 
-ConverterResources::ConverterResources(Pool& pool, ConverterResourceDescription& descriptor) : Descriptor(descriptor),
-                                                                                          Tensorizer(std::make_unique<VideoFrameToTensorConverter>()),
-                                                                                          Detensorizer(std::make_unique<TensorToVideoFrameConverter>()),
-                                                                                          m_pool(pool) {
+ConverterResources::ConverterResources(Pool& pool, ConverterResourceDescription& descriptor)
+  : Descriptor(descriptor),
+    Tensorizer(std::make_unique<VideoFrameToTensorConverter>()),
+    Detensorizer(std::make_unique<TensorToVideoFrameConverter>()),
+    m_pool(pool) {
 }
 
 void ConverterResources::ReturnToCache() {
@@ -42,11 +43,9 @@ std::shared_ptr<ConverterResources> ConverterResourceStore::Fetch(ConverterResou
 
 std::shared_ptr<ConverterResources> ConverterResourceStore::FetchAndRemoveObject(ConverterResourceDescription& desc) {
   // Iterate through the resources and find all the resources which are completed and unallocate
-  auto foundIt =
-      std::find_if(std::begin(m_objects), std::end(m_objects),
-                   [&](const auto& cachedObject) {
-                     return desc == cachedObject.Resource->Descriptor;
-                   });
+  auto foundIt = std::find_if(std::begin(m_objects), std::end(m_objects), [&](const auto& cachedObject) {
+    return desc == cachedObject.Resource->Descriptor;
+  });
 
   if (foundIt == std::end(m_objects)) {
     return nullptr;
@@ -62,37 +61,29 @@ std::shared_ptr<ConverterResources> ConverterResourceStore::FetchAndRemoveObject
 void ConverterResourceStore::Store(std::shared_ptr<ConverterResources> object) {
   std::lock_guard<std::mutex> lock(m_mutex);
 
-  auto foundIt = std::find_if(std::begin(m_objects), std::end(m_objects),
-                              [&](const auto& cachedObject) {
-                                return object == cachedObject.Resource;
-                              });
+  auto foundIt = std::find_if(std::begin(m_objects), std::end(m_objects), [&](const auto& cachedObject) {
+    return object == cachedObject.Resource;
+  });
 
   if (foundIt == std::end(m_objects)) {
     // If the resource is not already cached
     if (m_objects.size() < m_cacheSize) {
       // If the cache has free slots, then use one
-      m_objects.push_back(
-          PoolObject{
-              object,
-              storeId++});
+      m_objects.push_back(PoolObject{object, storeId++});
     } else {
       // If the cache has no free slots, then evict the oldest
       EvictOldestPoolObject();
 
-      m_objects.push_back(
-          PoolObject{
-              object,
-              storeId++});
+      m_objects.push_back(PoolObject{object, storeId++});
     }
   }
 }
 
 void ConverterResourceStore::EvictOldestPoolObject() {
   auto oldestIt =
-      std::min_element(std::begin(m_objects), std::end(m_objects),
-                       [&](const auto& left, const auto& right) {
-                         return left.StoreId < right.StoreId;
-                       });
+    std::min_element(std::begin(m_objects), std::end(m_objects), [&](const auto& left, const auto& right) {
+      return left.StoreId < right.StoreId;
+    });
 
   // Remove the oldest item from the cache
   m_objects.erase(oldestIt);

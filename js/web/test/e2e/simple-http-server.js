@@ -29,35 +29,33 @@ const validRequests = {
   '/dist/ort.wasm-core.min.js': ['dist/ort.wasm-core.min.js', 'text/javascript'],
 };
 
-module.exports = function (dir) {
-  http.createServer(function (request, response) {
-    console.log('request ', request.url);
+module.exports = function(dir) {
+  http.createServer(function(request, response) {
+        console.log(`request ${request.url.replace(/\n|\r/g, '')}`);
 
-    const requestData = validRequests[request.url];
-    if (!request) {
-      response.writeHead(404);
-      response.end('404');
-    } else {
-      const [filePath, contentType] = requestData;
-      fs.readFile(path.resolve(dir, filePath), function (error, content) {
-        if (error) {
-          if (error.code == 'ENOENT') {
-            response.writeHead(404);
-            response.end('404');
-          }
-          else {
-            response.writeHead(500);
-            response.end('500');
-          }
+        const requestData = validRequests[request.url];
+        if (!request) {
+          response.writeHead(404);
+          response.end('404');
+        } else {
+          const [filePath, contentType] = requestData;
+          fs.readFile(path.resolve(dir, filePath), function(error, content) {
+            if (error) {
+              if (error.code == 'ENOENT') {
+                response.writeHead(404);
+                response.end('404');
+              } else {
+                response.writeHead(500);
+                response.end('500');
+              }
+            } else {
+              response.setHeader('access-control-allow-origin', '*');
+              response.writeHead(200, {'Content-Type': contentType});
+              response.end(content, 'utf-8');
+            }
+          });
         }
-        else {
-          response.setHeader('access-control-allow-origin', '*');
-          response.writeHead(200, { 'Content-Type': contentType });
-          response.end(content, 'utf-8');
-        }
-      });
-    }
-
-  }).listen(8081);
+      })
+      .listen(8081);
   console.log('Server running at http://127.0.0.1:8081/');
 };

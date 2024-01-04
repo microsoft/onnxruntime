@@ -249,13 +249,13 @@ By default, the WebAssembly artifacts from onnxruntime-web package allows use of
 
 By default, the main bundle file `ort.min.js` of ONNX Runtime Web contains all features. However, its size is over 500kB and for some scenarios we want a smaller sized bundle file, if we don't use all the features. The following table lists all available bundles with their support status of features.
 
-|bundle file name|file size|file size (gzipped)|WebGL|WASM-core|WASM-proxy|WASM-threads|ES5 backward compatibility|
-|-|-|-|-|------|-----|---|-|
-|ort.es5.min.js|594.15KB|134.25KB|O|O|O|O|O|
-|ort.min.js|526.02KB|125.07KB|O|O|O|O|X|
-|ort.webgl.min.js|385.25KB|83.83KB|O|X|X|X|X|
-|ort.wasm.min.js|148.56|44KB|X|O|O|O|X|
-|ort.wasm-core.min.js|40.56KB|12.74KB|X|O|X|X|X|
+| bundle file name     | file size | file size (gzipped) | WebGL | WASM-core | WASM-proxy | WASM-threads | ES5 backward compatibility |
+| -------------------- | --------- | ------------------- | ----- | --------- | ---------- | ------------ | -------------------------- |
+| ort.es5.min.js       | 594.15KB  | 134.25KB            | O     | O         | O          | O            | O                          |
+| ort.min.js           | 526.02KB  | 125.07KB            | O     | O         | O          | O            | X                          |
+| ort.webgl.min.js     | 385.25KB  | 83.83KB             | O     | X         | X          | X            | X                          |
+| ort.wasm.min.js      | 148.56    | 44KB                | X     | O         | O          | O            | X                          |
+| ort.wasm-core.min.js | 40.56KB   | 12.74KB             | X     | O         | X          | X            | X                          |
 
 #### Build ONNX Runtime as a WebAssembly static library
 
@@ -304,19 +304,20 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
 
    3. In `<ORT_ROOT>`, run the below python script to build the ONNX Runtime Android archive file. On a Windows machine, this requires an admin account to build.
 
-   You can build a 'full' package that supports all operators and types, or a reduced size 'mobile' package that supports a limited set of operators and types based on your model/s to miminize the binary size. 
+   You can build a 'full' package that supports all operators and types, or a reduced size 'mobile' package that supports a limited set of operators and types based on your model/s to miminize the binary size.
    See [here](https://onnxruntime.ai/docs/build/custom.html) for information about how the reduced build works, including creating the configuration file using your model/s.
 
+   Full build:
 
-      Full build:
-      ```sh
-      python tools/ci_build/github/android/build_aar_package.py tools/ci_build/github/android/default_full_aar_build_settings.json --config Release --android_sdk_path <ANDROID_SDK_PATH> --android_ndk_path <ANDROID_NDK_PATH> --build_dir <BUILD_DIRECTORY>
-      ```
+   ```sh
+   python tools/ci_build/github/android/build_aar_package.py tools/ci_build/github/android/default_full_aar_build_settings.json --config Release --android_sdk_path <ANDROID_SDK_PATH> --android_ndk_path <ANDROID_NDK_PATH> --build_dir <BUILD_DIRECTORY>
+   ```
 
-      Reduced size build with configuration file generated from your model/s. Note that either Release or MinSizeRel could be used as the config, depending on your priorities:
-      ```sh
-      python tools/ci_build/github/android/build_aar_package.py tools/ci_build/github/android/default_mobile_aar_build_settings.json --config MinSizeRel --android_sdk_path <ANDROID_SDK_PATH> --android_ndk_path <ANDROID_NDK_PATH> --build_dir <BUILD_DIRECTORY> --include_ops_by_config <required_ops_and_types_for_your_models.config> --enable_reduced_operator_type_support
-      ```
+   Reduced size build with configuration file generated from your model/s. Note that either Release or MinSizeRel could be used as the config, depending on your priorities:
+
+   ```sh
+   python tools/ci_build/github/android/build_aar_package.py tools/ci_build/github/android/default_mobile_aar_build_settings.json --config MinSizeRel --android_sdk_path <ANDROID_SDK_PATH> --android_ndk_path <ANDROID_NDK_PATH> --build_dir <BUILD_DIRECTORY> --include_ops_by_config <required_ops_and_types_for_your_models.config> --enable_reduced_operator_type_support
+   ```
 
    4. Move the generated ONNX Runtime Android archive file to `<ORT_ROOT>/js/react_native/android/libs/`.
 
@@ -325,7 +326,6 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
 
       Reduced size build:
       Copy `<BUILD_DIRECTORY>/aar_out/MinSizeRel/com/microsoft/onnxruntime/onnxruntime-mobile/<version>/onnxruntime-mobile-<version>.aar` into `<ORT_ROOT>/js/react_native/android/libs` directory and update to dependencies in [js/react_native/android/build.gradle](https://github.com/microsoft/onnxruntime/blob/365a01397dbd1293e0c2773380c57fd271432b72/js/react_native/android/build.gradle#L136-L137) to use onnxruntime-mobile instead of onnxruntime-android.
-
 
    5. To verify, open the Android Emulator and run this command from `<ORT_ROOT>/js/react_native/android`
 
@@ -342,23 +342,27 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
    3. Build a fat ONNX Runtime Mobile Framework for iOS and iOS simulator from `<ORT_ROOT>` using this command:
 
       Full build:
+
       ```sh
-      python tools/ci_build/github/apple/build_ios_framework.py tools/ci_build/github/apple/default_full_ios_framework_build_settings.json --config Release
+      python tools/ci_build/github/apple/build_apple_framework.py tools/ci_build/github/apple/default_full_apple_framework_build_settings.json --config Release
       ```
 
       Reduced size build:
+
       ```sh
-      python tools/ci_build/github/apple/build_ios_framework.py tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json --config MinSizeRel --include_ops_by_config <required_ops_and_types_for_your_models.config> --enable_reduced_operator_type_support
+      python tools/ci_build/github/apple/build_apple_framework.py tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json --config MinSizeRel --include_ops_by_config <required_ops_and_types_for_your_models.config> --enable_reduced_operator_type_support
       ```
 
-      The build creates `Headers`, `LICENSE`, and `onnxruntime.xcframework` in `build/iOS_framework/framework_out` directory. From `framework_out` directory, create an archive file named `onnxruntime-c.zip` for a full build or  `onnxruntime-mobile-c.zip` for a reduced size build and copy to `<ORT_ROOT>/js/react_native/local_pods` directory.
+      The build creates `Headers`, `LICENSE`, and `onnxruntime.xcframework` in `build/iOS_framework/framework_out` directory. From `framework_out` directory, create an archive file named `onnxruntime-c.zip` for a full build or `onnxruntime-mobile-c.zip` for a reduced size build and copy to `<ORT_ROOT>/js/react_native/local_pods` directory.
 
       Full build:
+
       ```sh
       zip -r onnxruntime-c.zip .
       ```
 
       Reduced size build:
+
       ```sh
       zip -r onnxruntime-mobile-c.zip .
       ```
@@ -366,9 +370,10 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
    4. To verify, open the iOS Simulator and run the below command from `<ORT_ROOT>/js/react_native/ios`. Change the destination argument as needed to specify a running iOS Simulator.
 
       If using the reduced size build it is necessary to first update some configuration to use the mobile ORT package:
-        - replace `onnxruntime/onnxruntime.framework` with `onnxruntime-mobile/onnxruntime.framework` in /js/react_native/ios/OnnxruntimeModule.xcodeproj/project.pbxproj
-        - replace `onnxruntime-c` with `onnxruntime-mobile-c` in /js/react_native/ios/Podfile
-        - For reference, [this PR](https://github.com/microsoft/onnxruntime/pull/13037) shows the changes made to switch from using the 'mobile' ORT package to the 'full' package.
+
+      - replace `onnxruntime/onnxruntime.framework` with `onnxruntime-mobile/onnxruntime.framework` in /js/react_native/ios/OnnxruntimeModule.xcodeproj/project.pbxproj
+      - replace `onnxruntime-c` with `onnxruntime-mobile-c` in /js/react_native/ios/Podfile
+      - For reference, [this PR](https://github.com/microsoft/onnxruntime/pull/13037) shows the changes made to switch from using the 'mobile' ORT package to the 'full' package.
 
       ```sh
       pod install
@@ -394,74 +399,82 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
    When testing with a custom built ONNX Runtime iOS package, copy `onnxruntime-[mobile-]c.zip` into the `<ORT_ROOT>/js/react_native/local_pods` directory.
 
    If using the reduced size build it is necessary to update some configuration to use the mobile ORT package:
-     - replace `com.microsoft.onnxruntime:onnxruntime-android` with `com.microsoft.onnxruntime:onnxruntime-mobile` in /js/react_native/e2e/android/app/build.gradle
-     - replace `onnxruntime-c` with `onnxruntime-mobile-c` in /js/react_native/e2e/ios/Podfile
 
-  - Run E2E Testing with Detox framework
+   - replace `com.microsoft.onnxruntime:onnxruntime-android` with `com.microsoft.onnxruntime:onnxruntime-mobile` in /js/react_native/e2e/android/app/build.gradle
+   - replace `onnxruntime-c` with `onnxruntime-mobile-c` in /js/react_native/e2e/ios/Podfile
 
-    When testing with integrated [Detox](https://wix.github.io/Detox/docs/next/introduction/getting-started) framework for Android and iOS e2e apps:
-    - Detox prerequisites:
+- Run E2E Testing with Detox framework
 
-      Install detox command line tools:
-      ```
-      yarn global add detox-cli
-      ```
-      Install applesimutils which is required by Detox to work with iOS simulators. (Requires a MacOS device)
-      ```
-      brew tap wix/brew
-      brew install applesimutils
-      ```
-      Main Detox project files:
-        - `.detoxrc.js` -Detox config file;
-        - `e2e/jest.config.js` -Jest configuration;
-        - `e2e/OnnxruntimeModuleExample.test.js` - initial react native onnxruntimemodule e2e detox test.
-    - Build the detox e2e testing app.
+  When testing with integrated [Detox](https://wix.github.io/Detox/docs/next/introduction/getting-started) framework for Android and iOS e2e apps:
 
-      From `<ORT_ROOT>/js/react_native/e2e`, run the command to build the e2e testing app. Before that ensure you have android emulator/ios simulator started locally.
+  - Detox prerequisites:
 
-      iOS (Debug):
+    Install detox command line tools:
 
-      ```
-      detox build --configuration ios.sim.debug
-      ```
-      
-      Android (Debug):
+    ```
+    yarn global add detox-cli
+    ```
 
-      ```
-      detox build --configuration android.emu.debug
-      ```
-      
-      * Note: If names of local testing android/ios devices do not match the default setting in `.detoxrc.js` file, 
+    Install applesimutils which is required by Detox to work with iOS simulators. (Requires a MacOS device)
+
+    ```
+    brew tap wix/brew
+    brew install applesimutils
+    ```
+
+    Main Detox project files:
+
+    - `.detoxrc.js` -Detox config file;
+    - `e2e/jest.config.js` -Jest configuration;
+    - `e2e/OnnxruntimeModuleExample.test.js` - initial react native onnxruntimemodule e2e detox test.
+
+  - Build the detox e2e testing app.
+
+    From `<ORT_ROOT>/js/react_native/e2e`, run the command to build the e2e testing app. Before that ensure you have android emulator/ios simulator started locally.
+
+    iOS (Debug):
+
+    ```
+    detox build --configuration ios.sim.debug
+    ```
+
+    Android (Debug):
+
+    ```
+    detox build --configuration android.emu.debug
+    ```
+
+    - Note: If names of local testing android/ios devices do not match the default setting in `.detoxrc.js` file,
       modify the device name in config files accordingly to match local device name otherwise would cause a build failure.
 
-    - Run the detox e2e tests.
-      
-      In a debug configuration, you need to have React Native packager running in parallel before you start Detox tests:
+  - Run the detox e2e tests.
 
-      ```
-      npm start
+    In a debug configuration, you need to have React Native packager running in parallel before you start Detox tests:
 
-      > react-native start
-      ```
-      
-      From `<ORT_ROOT>/js/react_native/e2e`, run Detox tests using the following command:
+    ```
+    npm start
 
-      iOS (Debug):
+    > react-native start
+    ```
 
-      ```
-      detox test --configuration ios.sim.debug
-      ```
+    From `<ORT_ROOT>/js/react_native/e2e`, run Detox tests using the following command:
 
-      Android (Debug):
+    iOS (Debug):
 
-      ```
-      detox test --configuration android.emu.debug
-      ```
+    ```
+    detox test --configuration ios.sim.debug
+    ```
 
-      To record logs for testing results, add `--record-logs`. Output logs and test results will be produced in the `e2e/artifacts/` folder.
-      See: [Detox/logger#artifacts](https://wix.github.io/Detox/docs/api/logger#artifacts)
-    
-      ***`yarn bootstrap` changes `packages.json` and `yarn.lock` files. Once testing is done, restore changes to avoid unwanted commit.***
+    Android (Debug):
+
+    ```
+    detox test --configuration android.emu.debug
+    ```
+
+    To record logs for testing results, add `--record-logs`. Output logs and test results will be produced in the `e2e/artifacts/` folder.
+    See: [Detox/logger#artifacts](https://wix.github.io/Detox/docs/api/logger#artifacts)
+
+    **_`yarn bootstrap` changes `packages.json` and `yarn.lock` files. Once testing is done, restore changes to avoid unwanted commit._**
 
 5. Run Android and iOS apps.
 
@@ -469,6 +482,7 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
    yarn e2e android
    yarn e2e ios
    ```
+
 ### NPM Packaging
 
 1. Update a version using `npm version <version>` from `<ORT_ROOT>/js/react_native` folder. If it's for a dev, use `npm version <version>-dev.<subversion>`

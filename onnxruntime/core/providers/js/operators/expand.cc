@@ -13,7 +13,11 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     12,
     kJsExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<TypeList<float,
+                                                                            MLFloat16,
+                                                                            int32_t,
+                                                                            uint32_t,
+                                                                            bool>>())
         .InputMemoryType(OrtMemTypeCPU, 1),
     Expand);
 
@@ -23,7 +27,11 @@ ONNX_OPERATOR_KERNEL_EX(
     13,
     kJsExecutionProvider,
     KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<TypeList<float,
+                                                                            MLFloat16,
+                                                                            int32_t,
+                                                                            uint32_t,
+                                                                            bool>>())
         .InputMemoryType(OrtMemTypeCPU, 1),
     Expand);
 }  // namespace js

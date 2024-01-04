@@ -95,7 +95,7 @@ class TestONNXModel(unittest.TestCase):
         for use_quant_config in [True, False]:
             self.dynamic_quant_conv_test(QuantType.QUInt8, extra_options={}, use_quant_config=use_quant_config)
 
-    # TODO: uncomment following after ConvInteger s8 supportted
+    # TODO: uncomment following after ConvInteger s8 supported
     # def test_quant_conv_s8s8(self):
     #    self.dynamic_quant_conv_test(QuantType.QInt8, extra_options={'ActivationSymmetric': True})
 

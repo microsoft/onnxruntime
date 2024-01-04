@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, 2023 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -110,6 +110,16 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
     return createSparseTensor(env, env.defaultAllocator, tensor);
   }
 
+  /**
+   * Creates a Sparse Tensor in ORT from the Java side representation.
+   *
+   * @param env The OrtEnvironment.
+   * @param allocator The memory allocator.
+   * @param tensor The Java side representation.
+   * @param <T> The buffer type.
+   * @return The sparse tensor in ORT.
+   * @throws OrtException If the tensor could not be created or was invalid.
+   */
   static <T extends Buffer> OnnxSparseTensor createSparseTensor(
       OrtEnvironment env, OrtAllocator allocator, SparseTensor<T> tensor) throws OrtException {
     if (!allocator.isClosed()) {
@@ -601,6 +611,8 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    *
    * <p>Will be sealed to {@link COOTensor}, {@link CSRCTensor} and {@link BlockSparseTensor} one
    * day.
+   *
+   * @param <T> The type of the indices buffer.
    */
   public abstract static class SparseTensor<T extends Buffer> {
     private final long[] indicesShape;
@@ -609,7 +621,9 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
     private final OnnxJavaType type;
     private final long numNonZero;
 
+    /** The buffer holding the indices. */
     final T indices;
+    /** The buffer holding the values. */
     final Buffer values;
 
     SparseTensor(

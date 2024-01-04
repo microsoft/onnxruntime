@@ -24,6 +24,7 @@ from perf_utils import (
     memory_name,
     memory_over_time_name,
     model_title,
+    op_metrics_name,
     ort_provider_list,
     provider_list,
     second,
@@ -146,7 +147,7 @@ def get_memory(memory, model_group):
     memory_columns = [model_title]
     for provider in provider_list:
         if cpu not in provider:
-            memory_columns.append(provider + memory_ending)  # noqa: PERF401
+            memory_columns.append(provider + memory_ending)
     memory_db_columns = [
         model_title,
         cuda,
@@ -273,7 +274,7 @@ def get_latency(latency, model_group):
 
     latency_columns = [model_title]
     for provider in provider_list:
-        latency_columns.append(provider + avg_ending)  # noqa: PERF401
+        latency_columns.append(provider + avg_ending)
     latency_db_columns = table_headers
     latency = adjust_columns(latency, latency_columns, latency_db_columns, model_group)
     return latency
@@ -415,6 +416,7 @@ def main():
             specs_name,
             session_name,
             session_over_time_name,
+            op_metrics_name,
         ]
 
         table_results = {}
@@ -456,6 +458,11 @@ def main():
                 elif status_name in csv:
                     table_results[status_name] = pd.concat(
                         [table_results[status_name], get_status(table, model_group)], ignore_index=True
+                    )
+                elif op_metrics_name in csv:
+                    table = table.assign(Group=model_group)
+                    table_results[op_metrics_name] = pd.concat(
+                        [table_results[op_metrics_name], table], ignore_index=True
                     )
             os.chdir(result_file)
 

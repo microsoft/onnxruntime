@@ -93,7 +93,7 @@ class TestDataReader(CalibrationDataReader):
         self.count = 2
         self.input_data_list = []
         for _ in range(self.count):
-            self.input_data_list.append(np.random.normal(0, 0.33, input_shape).astype(np.float32))  # noqa: PERF401
+            self.input_data_list.append(np.random.normal(0, 0.33, input_shape).astype(np.float32))
 
     def get_next(self):
         if self.preprocess_flag:
@@ -144,7 +144,7 @@ class TestSaveActivations(unittest.TestCase):
         data_reader.rewind()
         oracle_outputs = []
         for input_d in data_reader:
-            oracle_outputs.append(infer_session.run(None, input_d))  # noqa: PERF401
+            oracle_outputs.append(infer_session.run(None, input_d))
 
         output_dict = {}
         output_info = infer_session.get_outputs()

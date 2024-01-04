@@ -58,12 +58,13 @@ struct CallSignImpl {
 template <>
 struct CallSignImpl<MLFloat16> {
   void operator()(const Tensor* input, Tensor* output) const {
-    ConstEigenVectorMap<Eigen::half> input_data(
-        reinterpret_cast<const Eigen::half*>(input->Data<MLFloat16>()),
-        narrow<ptrdiff_t>(input->Shape().Size()));
-
-    EigenVectorMap<Eigen::half>(reinterpret_cast<Eigen::half*>(output->MutableData<MLFloat16>()),
-                                narrow<ptrdiff_t>(output->Shape().Size())) = input_data.array().cwiseSign();
+    auto span = input->DataAsSpan<MLFloat16>();
+    auto output_data = output->MutableData<MLFloat16>();
+    std::transform(span.begin(), span.end(), output_data, [](const MLFloat16& val) {
+      // Return 0 as TF does for NaN.
+      if (val.IsNaNOrZero()) return MLFloat16::Zero;
+      return (val.IsNegative()) ? MLFloat16::MinusOne : MLFloat16::One;
+    });
   }
 };
 

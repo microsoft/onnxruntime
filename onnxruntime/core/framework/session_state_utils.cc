@@ -254,10 +254,11 @@ common::Status SaveInitializedTensors(
   auto initialized_tensors_to_allocate = id_to_initialized_tensor;
   for (int ort_value_index : initializer_allocation_order) {
     const auto entry = initialized_tensors_to_allocate.find(ort_value_index);
+    ORT_ENFORCE(entry != initialized_tensors_to_allocate.end(),
+                "OrtValue index: ", ort_value_index, " from initializer_allocation_order not found among initialized tensors");
     if (!(utils::HasExternalData(*entry->second) && exec_plan.GetLocation(ort_value_index).Type() == OrtDevice::CPU)) {
       // can not trace string tensor
-      ORT_ENFORCE(entry != initialized_tensors_to_allocate.end() &&
-                  entry->second->data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING);
+      ORT_ENFORCE(entry->second->data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING, "Can not trace string tensor");
       ORT_RETURN_IF_ERROR(planner.Trace(entry->first, entry->second));
     }
     initialized_tensors_to_allocate.erase(entry);
@@ -454,11 +455,10 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
   // utils::CopyOneInputAcrossDevices is happy.
 
   auto& input_map = session_state.GetInputNodeInfoMap();
-  auto end_map = input_map.cend();
 
   for (const auto& graph_input : graph_inputs) {
     const auto& name = graph_input->Name();
-    if (input_map.find(name) == end_map) {
+    if (input_map.find(name) == input_map.cend()) {
       // dummy entry for an input that we didn't find a use of in the graph. log it in case that's a bug.
       // utils::CopyOneInputAcrossDevices will use the input OrtValue as is given we don't believe it's used anywhere.
       LOGS(session_state.Logger(), INFO) << (graph.IsSubgraph() ? "Subgraph" : "Graph") << " input with name "

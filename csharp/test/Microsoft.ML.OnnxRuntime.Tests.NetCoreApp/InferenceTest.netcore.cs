@@ -73,13 +73,21 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 
+            string defaultDeviceId = "0";
+            string deviceIdFromEnv = System.Environment.GetEnvironmentVariable("OnnxruntimeTestGpuDeviceId");
+            if (!string.IsNullOrEmpty(deviceIdFromEnv) && int.TryParse(deviceIdFromEnv, out int deviceId) && deviceId >= 0)
+            {
+                defaultDeviceId = deviceIdFromEnv;
+                output.WriteLine($"Parsed ID: {deviceIdFromEnv}");
+            }
+
             using (var cleanUp = new DisposableListTest<IDisposable>())
             {
                 var cudaProviderOptions = new OrtCUDAProviderOptions();
                 cleanUp.Add(cudaProviderOptions);
 
                 var providerOptionsDict = new Dictionary<string, string>();
-                providerOptionsDict["device_id"] = "0";
+                providerOptionsDict["device_id"] = defaultDeviceId;
                 // 256MB
                 providerOptionsDict["gpu_mem_limit"] = "268435456";
                 providerOptionsDict["arena_extend_strategy"] = "kSameAsRequested";
@@ -137,10 +145,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void CanRunInferenceOnAModelWithTensorRT()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
+            
+            int deviceId = 0;
+            string deviceIdStr = System.Environment.GetEnvironmentVariable("ONNXRUNTIME_TEST_GPU_DEVICE_ID");
+            if (!string.IsNullOrEmpty(deviceIdStr) && int.TryParse(deviceIdStr, out int parsedValue) && parsedValue >= 0)
+            {
+                deviceId = parsedValue;
+                output.WriteLine($"Parsed ID: {parsedValue}");
+            }
 
             using (var cleanUp = new DisposableListTest<IDisposable>())
             {
-                SessionOptions options = SessionOptions.MakeSessionOptionWithTensorrtProvider(0);
+                SessionOptions options = SessionOptions.MakeSessionOptionWithTensorrtProvider(deviceId);
                 cleanUp.Add(options);
 
                 var session = new InferenceSession(modelPath, options);
@@ -172,6 +188,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             string calTablePath = "squeezenet_calibration.flatbuffers";
             string enginePath = "./";
             string engineDecrptLibPath = "engine_decryp";
+            string defaultDeviceId = "0";
+            string deviceIdFromEnv = System.Environment.GetEnvironmentVariable("OnnxruntimeTestGpuDeviceId");
+            if (!string.IsNullOrEmpty(deviceIdFromEnv) && int.TryParse(deviceIdFromEnv, out int deviceId) && deviceId >= 0)
+            {
+                defaultDeviceId = deviceIdFromEnv;
+                output.WriteLine($"Parsed ID: {deviceIdFromEnv}");
+            }
 
             using (var cleanUp = new DisposableListTest<IDisposable>())
             {
@@ -179,7 +202,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 cleanUp.Add(trtProviderOptions);
 
                 var providerOptionsDict = new Dictionary<string, string>();
-                providerOptionsDict["device_id"] = "0";
+                providerOptionsDict["device_id"] = defaultDeviceId;
                 providerOptionsDict["trt_fp16_enable"] = "1";
                 providerOptionsDict["trt_int8_enable"] = "1";
                 providerOptionsDict["trt_int8_calibration_table_name"] = calTablePath;
@@ -195,7 +218,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 // test provider options configuration
                 string value;
                 value = resultProviderOptionsDict["device_id"];
-                Assert.Equal("0", value);
+                Assert.Equal(defaultDeviceId, value);
                 value = resultProviderOptionsDict["trt_fp16_enable"];
                 Assert.Equal("1", value);
                 value = resultProviderOptionsDict["trt_int8_enable"];

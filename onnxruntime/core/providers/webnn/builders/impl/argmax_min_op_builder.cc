@@ -41,9 +41,11 @@ Status ArgMaxMinOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto select_last_index = helper.Get("select_last_index", 0);
 
   axis = HandleNegativeAxis(axis, input_rank);
+  emscripten::val axes = emscripten::val::array();
+  axes.call<void>("push", static_cast<uint32_t>(axis));
 
   emscripten::val options = emscripten::val::object();
-  options.set("axis", static_cast<int32_t>(axis));
+  options.set("axes", axes);
   options.set("keepDimensions", keep_dims == 1);
   options.set("selectLastIndex", select_last_index == 1);
   emscripten::val output = emscripten::val::object();
@@ -76,7 +78,7 @@ bool ArgMaxMinOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initia
 }
 
 void CreateArgMaxMinOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
+  if (op_registrations.op_builder_map.count(op_type) > 0)
     return;
 
   static std::vector<std::string> op_types =

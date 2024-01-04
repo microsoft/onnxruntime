@@ -193,7 +193,7 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
     def is_typed_registration_needed(
         self, type_in_registration: str, globally_allowed_types: typing.Optional[typing.Set[str]]
     ):
-        if 0 not in self._input_types.keys():
+        if 0 not in self._input_types:
             # currently all standard typed registrations are for input 0.
             # custom registrations can be handled by operator specific processors (e.g. OneHotProcessor below).
             raise RuntimeError(f"Expected typed registration to use type from input 0. Node:{self.name}")
@@ -205,7 +205,7 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
         domain = _ort_constant_for_domain(self.domain)
         for i in sorted(self._input_types.keys()):
             if self._input_types[i]:
-                entries.append(  # noqa: PERF401
+                entries.append(
                     "ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES({}, {}, Input, {}, {});".format(
                         domain, self.optype, i, ", ".join(sorted(self._input_types[i]))
                     )
@@ -213,7 +213,7 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
 
         for o in sorted(self._output_types.keys()):
             if self._output_types[o]:
-                entries.append(  # noqa: PERF401
+                entries.append(
                     "ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES({}, {}, Output, {}, {});".format(
                         domain, self.optype, o, ", ".join(sorted(self._output_types[o]))
                     )

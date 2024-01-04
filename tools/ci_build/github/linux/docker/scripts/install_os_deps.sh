@@ -3,11 +3,11 @@ set -e -x
 
 SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
 INSTALL_DEPS_DISTRIBUTED_SETUP=false
-
+INSTALL_PREFIX='/usr'
 while getopts p:d:v:tmur parameter_Option
 do case "${parameter_Option}"
 in
-p) echo "Python version is no longer accepted as an input to this script. Ignoring the input argument -p.";;
+p) INSTALL_PREFIX=${OPTARG};;
 d) DEVICE_TYPE=${OPTARG};;
 v) echo "Cuda version is no longer accepted as an input to this script. Ignoring the input argument -v.";;
 t) echo "Installing python training dependencies argument is no longer accepted as an input to this script. Ignoring the input argument -t.";;
@@ -59,7 +59,7 @@ GLIBC_VERSION=$(getconf GNU_LIBC_VERSION | cut -f 2 -d \.)
 
 DISTRIBUTOR=$(lsb_release -i -s)
 
-if [[ "$DISTRIBUTOR" = "CentOS" && $SYS_LONG_BIT = "64" ]]; then
+if [[ ("$DISTRIBUTOR" = "CentOS" || "$DISTRIBUTOR" = "RedHatEnterprise") && $SYS_LONG_BIT = "64" ]]; then
   LIBDIR="lib64"
 else
   LIBDIR="lib"
@@ -71,17 +71,18 @@ if [[ $SYS_LONG_BIT = "64" && "$GLIBC_VERSION" -gt "9" ]]; then
   tar --strip 1 -xf /tmp/azcopy/azcopy.tar.gz -C /tmp/azcopy
   cp /tmp/azcopy/azcopy /usr/bin
   echo "Installing cmake"
-  GetFile https://github.com/Kitware/CMake/releases/download/v3.26.3/cmake-3.26.3-Linux-x86_64.tar.gz /tmp/src/cmake-3.26.3-Linux-x86_64.tar.gz
-  tar -zxf /tmp/src/cmake-3.26.3-Linux-x86_64.tar.gz --strip=1 -C /usr
+  GetFile https://github.com/Kitware/CMake/releases/download/v3.27.3/cmake-3.27.3-Linux-x86_64.tar.gz /tmp/src/cmake-3.27.3-Linux-x86_64.tar.gz
+  tar -zxf /tmp/src/cmake-3.27.3-Linux-x86_64.tar.gz --strip=1 -C /usr
   echo "Installing Node.js"
-  GetFile https://nodejs.org/dist/v16.14.2/node-v16.14.2-linux-x64.tar.xz /tmp/src/node-v16.14.2-linux-x64.tar.xz
-  tar -xf /tmp/src/node-v16.14.2-linux-x64.tar.xz --strip=1 -C /usr
+  # The EOL for nodejs v18.17.1 LTS is April 2025
+  GetFile https://nodejs.org/dist/v18.17.1/node-v18.17.1-linux-x64.tar.xz /tmp/src/node-v18.17.1-linux-x64.tar.xz
+  tar -xf /tmp/src/node-v18.17.1-linux-x64.tar.xz --strip=1 -C /usr
 else
   echo "Installing cmake"
-  GetFile https://github.com/Kitware/CMake/releases/download/v3.26.3/cmake-3.26.3.tar.gz /tmp/src/cmake-3.26.3.tar.gz
-  tar -xf /tmp/src/cmake-3.26.3.tar.gz -C /tmp/src
+  GetFile https://github.com/Kitware/CMake/releases/download/v3.27.3/cmake-3.27.3.tar.gz /tmp/src/cmake-3.27.3.tar.gz
+  tar -xf /tmp/src/cmake-3.27.3.tar.gz -C /tmp/src
   pushd .
-  cd /tmp/src/cmake-3.26.3
+  cd /tmp/src/cmake-3.27.3
   ./bootstrap --prefix=/usr --parallel=$(getconf _NPROCESSORS_ONLN) --system-bzip2 --system-curl --system-zlib --system-expat
   make -j$(getconf _NPROCESSORS_ONLN)
   make install
@@ -91,7 +92,7 @@ fi
 cd /tmp/src
 
 if ! [ -x "$(command -v protoc)" ]; then
-  source ${0/%install_os_deps\.sh/install_protobuf\.sh}
+  $SCRIPT_DIR/install_protobuf.sh -p $INSTALL_PREFIX  
 fi
 
 if [ $DEVICE_TYPE = "gpu" ]; then

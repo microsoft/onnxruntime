@@ -38,7 +38,9 @@ public partial class MainPage : ContentPage
         _currentExecutionProvider = ExecutionProviders.CPU;
 
         // start creating session in background.
+#pragma warning disable CS4014 // intentionally not awaiting this task
         CreateInferenceSession();
+#pragma warning restore CS4014
     }
 
     private async Task CreateInferenceSession()
@@ -79,13 +81,17 @@ public partial class MainPage : ContentPage
     private void ExecutionProviderOptions_SelectedIndexChanged(object sender, EventArgs e)
     {
         // update in background
+#pragma warning disable CS4014 // intentionally not awaiting this task
         UpdateExecutionProvider();
+#pragma warning restore CS4014
     }
 
     private void OnRunClicked(object sender, EventArgs e)
     {
         // run in background
+#pragma warning disable CS4014 // intentionally not awaiting this task
         RunAsync();
+#pragma warning restore CS4014
     }
 
     private async Task UpdateExecutionProvider()

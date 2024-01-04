@@ -12,7 +12,7 @@ ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=main
 ARG CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80
 
-ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:/code/cmake-3.26.3-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:/code/cmake-3.27.3-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -31,7 +31,7 @@ RUN apt-get install -y --no-install-recommends \
     ln -s /usr/bin/pip3 pip;
 
 RUN pip install --upgrade pip 
-RUN pip install setuptools>=41.0.0
+RUN pip install setuptools>=68.2.2
 
 # Install TensorRT
 RUN v="8.4.1-1+cuda11.6" &&\
@@ -43,6 +43,9 @@ RUN v="8.4.1-1+cuda11.6" &&\
 
 # Compile trtexec
 RUN cd /usr/src/tensorrt/samples/trtexec && make
+
+# Install Valgrind
+RUN apt-get install -y valgrind
 
 ARG BUILD_USER=onnxruntimedev
 ARG BUILD_UID=1000

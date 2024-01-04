@@ -78,7 +78,7 @@ class BertOnnxModelShapeOptimizer(OnnxModel):
         shape_inputs = []
         for node in self.model.graph.node:
             if node.op_type == "Reshape":
-                shape_inputs.append(node.input[1])  # noqa: PERF401
+                shape_inputs.append(node.input[1])
 
         return shape_inputs
 

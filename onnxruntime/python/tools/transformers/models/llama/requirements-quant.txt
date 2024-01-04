@@ -1,0 +1,2 @@
+-r requirements-cpu.txt
+neural-compressor>=2.2.1

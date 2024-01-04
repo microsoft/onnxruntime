@@ -32,7 +32,7 @@ Status TernaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   emscripten::val input2 = model_builder.GetOperand(node.InputDefs()[2]->Name());
   emscripten::val output = emscripten::val::object();
   if (op_type == "Where") {
-    output = model_builder.GetBuilder().call<emscripten::val>("elementwiseIf", input0, input1, input2);
+    output = model_builder.GetBuilder().call<emscripten::val>("where", input0, input1, input2);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "TernaryOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
@@ -43,7 +43,7 @@ Status TernaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 }
 
 void CreateTernaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
+  if (op_registrations.op_builder_map.count(op_type) > 0)
     return;
 
   static std::vector<std::string> op_types =

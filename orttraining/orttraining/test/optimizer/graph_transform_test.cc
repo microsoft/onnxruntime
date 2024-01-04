@@ -18,6 +18,7 @@
 #include "orttraining/core/optimizer/concat_replacement.h"
 #include "orttraining/core/optimizer/batchnorm_replacement.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
+#include "orttraining/core/optimizer/transpose_replacement.h"
 #include "test/optimizer/graph_transform_test_builder.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/util/include/default_providers.h"
@@ -26,12 +27,15 @@
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/optimizer/loss_rewriter.h"
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
-#include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #include "orttraining/core/optimizer/qdq_fusion.h"
+#include "orttraining/core/optimizer/scaled_sum_fusion.h"
+#include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #include "orttraining/core/optimizer/lstm_replacement.h"
+#include "orttraining/core/optimizer/gru_replacement.h"
 #ifdef ENABLE_TRITON
 #include "orttraining/core/optimizer/triton_fusion.h"
 #endif
+#include "orttraining/core/optimizer/conv1d_replacement.h"
 
 #include <random>
 
@@ -549,6 +553,46 @@ TEST_F(GraphTransformationTests, ConcatReplacement) {
   ASSERT_EQ(op_to_count["com.microsoft.ConcatTraining"], 1);
 }
 
+TEST_F(GraphTransformationTests, TransposeReplacement) {
+  {
+    auto model_uri = MODEL_FOLDER "transpose_to_reshape_valid.onnx";
+    std::shared_ptr<Model> p_model;
+    ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
+    Graph& graph = p_model->MainGraph();
+
+    auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("TransposeReplacement");
+    ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<TransposeReplacement>()));
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+    ASSERT_EQ(op_to_count["Transpose"], 0);
+    ASSERT_EQ(op_to_count["Reshape"], 1);
+  }
+
+  {
+    auto model_uri = MODEL_FOLDER "transpose_to_reshape_invalid.onnx";
+    std::shared_ptr<Model> p_model;
+    ASSERT_TRUE(Model::Load(model_uri, p_model, nullptr, *logger_).IsOK());
+    Graph& graph = p_model->MainGraph();
+
+    auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("TransposeReplacement");
+    ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<TransposeReplacement>()));
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+    ASSERT_EQ(op_to_count["Transpose"], 1);
+    ASSERT_EQ(op_to_count["Reshape"], 0);
+  }
+}
+
 TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
   auto model_uri = MODEL_FOLDER "model_parallel/mlp_megatron_basic_test.onnx";
   std::shared_ptr<Model> p_model;
@@ -1023,7 +1067,7 @@ TEST_P(LSTMReplacementTestsParameterized, CheckLSTMReplacement) {
 
   std::map<std::string, int> op_to_count1 = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count1.count("LSTM") && op_to_count1["LSTM"] == 1);
-  ASSERT_FALSE(op_to_count1.count("LSTMTraining"));
+  ASSERT_FALSE(op_to_count1.count("com.microsoft.LSTMTraining"));
 
   auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("LSTMReplacement");
   ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<LSTMReplacement>()));
@@ -1050,6 +1094,88 @@ INSTANTIATE_TEST_SUITE_P(
         std::make_tuple(3, false, false, true),
         std::make_tuple(3, true, true, true)));
 
+class GRUReplacementTestsParameterized : public GraphTransformationTests,
+                                         public ::testing::WithParamInterface<std::tuple<int, bool, bool>> {
+};
+
+TEST_P(GRUReplacementTestsParameterized, CheckGRUReplacement) {
+  Model model("GRUReplacement", true, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{"", 14}, {"com.microsoft", 1}}, {}, *logger_);
+  auto& graph = model.MainGraph();
+
+  TypeProto tensor;
+  tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  onnxruntime::NodeArg X("X", &tensor);
+  onnxruntime::NodeArg W("W", &tensor);
+  onnxruntime::NodeArg R("R", &tensor);
+  onnxruntime::NodeArg B("B", &tensor);
+  onnxruntime::NodeArg SL("", nullptr);
+  onnxruntime::NodeArg H0("H0", &tensor);
+
+  onnxruntime::NodeArg HAll("HAll", &tensor);
+  onnxruntime::NodeArg HAllDummy("", nullptr);
+  onnxruntime::NodeArg Ht("Ht", &tensor);
+  onnxruntime::NodeArg HtDummy("", nullptr);
+
+  InlinedVector<onnxruntime::NodeArg*> outputs;
+  const int num_outputs = std::get<0>(GetParam());
+  outputs.reserve(num_outputs);
+  const bool output_hall = std::get<1>(GetParam());
+  const bool output_final_h = std::get<2>(GetParam());
+
+  if (num_outputs > 0) {
+    if (output_hall) {
+      outputs.push_back(&HAll);
+    } else {
+      outputs.push_back(&HAllDummy);
+    }
+  }
+
+  if (num_outputs > 1) {
+    if (output_final_h) {
+      outputs.push_back(&Ht);
+    } else {
+      outputs.push_back(&HtDummy);
+    }
+  }
+
+  Node& gru_node = graph.AddNode(
+      "gru", "GRU", "GRU operator",
+      {&X, &W, &R, &B, &SL, &H0}, outputs, nullptr);
+  gru_node.AddAttribute("hidden_size", static_cast<int64_t>(128));
+
+  auto status = graph.Resolve();
+  EXPECT_EQ(status, Status::OK());
+
+  std::map<std::string, int> op_to_count1 = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count1.count("GRU") && op_to_count1["GRU"] == 1);
+  ASSERT_FALSE(op_to_count1.count("com.microsoft.GRUTraining"));
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("GRUReplacement");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<GRUReplacement>()));
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count2 = CountOpsInGraph(graph);
+  ASSERT_FALSE(op_to_count2.count("GRU"));
+  ASSERT_TRUE(op_to_count2.count("com.microsoft.GRUTraining") && op_to_count2["com.microsoft.GRUTraining"] == 1);
+
+  const auto nodes = graph.Nodes();
+  ASSERT_FALSE(nodes.empty());
+  const auto& gru_outputs = nodes.begin()->OutputDefs();
+  ASSERT_EQ(gru_outputs.size(), 3U);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    GRUReplacementTests,
+    GRUReplacementTestsParameterized,
+    ::testing::Values(
+        std::make_tuple(0, false, false),
+        std::make_tuple(1, true, false),
+        std::make_tuple(1, false, true),
+        std::make_tuple(2, true, true)));
+
 class QDQFusionTestsParameterized : public GraphTransformationTests,
                                     public ::testing::WithParamInterface<std::tuple<PathString>> {
 };
@@ -1072,6 +1198,103 @@ TEST_P(QDQFusionTestsParameterized, CheckModelComposition) {
   ASSERT_EQ(op_to_count_post_fusion["QuantizeLinear"], 0);
   ASSERT_EQ(op_to_count_post_fusion["DequantizeLinear"], 0);
   ASSERT_EQ(op_to_count_post_fusion["com.microsoft.FakeQuant"], 1);
+}
+
+TEST_F(GraphTransformationTests, Conv1dReplacement) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_count_map = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_map["Conv"] == 1);
+    return Status::OK();
+  };
+
+  for (auto opset : {11, 12, 13, 14, 15, 16, 17, 18}) {
+    for (auto group : {1, 2}) {
+      auto build_test_case = [&](ModelTestBuilder& builder) {
+        auto [batch_size, in_channel, in_length] = std::make_tuple(8, 16, 128);
+        auto out_channel = 64;
+        auto* data_arg = builder.MakeInput<float>({{batch_size, in_channel, in_length}});
+
+        auto* weight_arg = builder.MakeInitializer<float>({out_channel, in_channel / group, 1}, {-1.0f, 1.0f});
+        auto* conv_output = builder.MakeOutput();
+
+        auto& conv_node = builder.AddNode("Conv", {data_arg, weight_arg}, {conv_output});
+        conv_node.AddAttribute("dilations", std::vector<int64_t>{1});
+        conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{1});
+        conv_node.AddAttribute("strides", std::vector<int64_t>{1});
+        conv_node.AddAttribute("group", static_cast<int64_t>(group));
+      };
+
+      auto post_graph_checker = [&](Graph& graph) {
+        auto op_count_map = CountOpsInGraph(graph);
+        TEST_RETURN_IF_NOT(op_count_map["Conv"] == 0);
+        // after graph transformation, the graph should have 1 squeeze, 2 split, group matmul, 1 concat
+        TEST_RETURN_IF_NOT(op_count_map["Squeeze"] == 1);
+        TEST_RETURN_IF_NOT(op_count_map["Split"] == 2);
+        TEST_RETURN_IF_NOT(op_count_map["MatMul"] == group);
+        TEST_RETURN_IF_NOT(op_count_map["Concat"] == 1);
+        return Status::OK();
+      };
+
+      std::unique_ptr<GraphTransformer> transformer = std::make_unique<Conv1dReplacement>();
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer),
+                                            TransformerLevel::Level1, 1,
+                                            pre_graph_checker, post_graph_checker));
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, Conv1dReplacement_NoTakeEffect) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_count_map = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_map["Conv"] == 1);
+    return Status::OK();
+  };
+
+  // "group" is 3 so conv not replaced
+  for (auto opset : {11, 12, 13, 14, 15, 16, 17, 18}) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto [batch_size, in_channel, in_length] = std::make_tuple(8, 16, 128);
+      auto out_channel = 64;
+      auto* data_arg = builder.MakeInput<float>({{batch_size, in_channel, in_length}});
+
+      auto* weight_arg = builder.MakeInitializer<float>({out_channel, in_channel / 3, 1}, {-1.0f, 1.0f});
+      auto* conv_output = builder.MakeOutput();
+
+      auto& conv_node = builder.AddNode("Conv", {data_arg, weight_arg}, {conv_output});
+      conv_node.AddAttribute("dilations", std::vector<int64_t>{1});
+      conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{1});
+      conv_node.AddAttribute("strides", std::vector<int64_t>{1});
+      conv_node.AddAttribute("group", static_cast<int64_t>(3));
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<Conv1dReplacement>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1,
+                                          pre_graph_checker, pre_graph_checker));
+  }
+
+  // "kernel_shape" is not 1 so conv not replaced
+  for (auto opset : {11, 12, 13, 14, 15, 16, 17, 18}) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto [batch_size, in_channel, in_length] = std::make_tuple(8, 16, 128);
+      auto out_channel = 64;
+      auto* data_arg = builder.MakeInput<float>({{batch_size, in_channel, in_length}});
+
+      auto* weight_arg = builder.MakeInitializer<float>({out_channel, in_channel, 1}, {-1.0f, 1.0f});
+      auto* conv_output = builder.MakeOutput();
+
+      auto& conv_node = builder.AddNode("Conv", {data_arg, weight_arg}, {conv_output});
+      conv_node.AddAttribute("dilations", std::vector<int64_t>{1});
+      conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+      conv_node.AddAttribute("strides", std::vector<int64_t>{1});
+      conv_node.AddAttribute("group", static_cast<int64_t>(1));
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<Conv1dReplacement>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1,
+                                          pre_graph_checker, pre_graph_checker));
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -1218,6 +1441,284 @@ TEST_F(GraphTransformationTests, MegatronBARTSelfAttentionPartitionCorrectnessTe
 
 // end of USE_CUDA
 #endif
+
+/*
+Test graph as below.
+      graph input [1, 1, 256, 256] (float)  scalar_0     graph input [1, 1, 256, 256] (float)
+                                         \   /          /
+                                           Div         Div -- scalar_1
+[1, 1, 256, 256] (float)  scalar_3           \         /
+                \           /                  Add
+                      Div                       /
+                        \                     /
+                          \                /
+                                Add
+                                 |
+                               Identity
+                                 |
+                graph out [1, 1, 256, 256] (float)
+
+*/
+TEST_F(GraphTransformationTests, ScaledSumFusionThreeInputs) {
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_count_pre = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_pre["Div"] == 3);
+    TEST_RETURN_IF_NOT(op_count_pre["Add"] == 2);
+    TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
+    TEST_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 3U);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.size() == 2U);
+    TEST_RETURN_IF_NOT(op_count["com.microsoft.ScaledSum"] == 1);
+    TEST_RETURN_IF_NOT(op_count["Identity"] == 1);
+
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "ScaledSum") {
+        TEST_RETURN_IF_NOT(node.InputDefs().size() == 3U);
+
+        auto& attrs = node.GetAttributes();
+        TEST_RETURN_IF_NOT(attrs.find("scale_0") != attrs.end());
+        TEST_RETURN_IF_NOT(attrs.find("scale_1") != attrs.end());
+        TEST_RETURN_IF_NOT(attrs.find("scale_2") != attrs.end());
+        TEST_RETURN_IF_NOT(1.0f / 0.5f == attrs.at("scale_0").f());
+        TEST_RETURN_IF_NOT(1.0f / 0.3f == attrs.at("scale_1").f());
+        TEST_RETURN_IF_NOT(1.0f / 0.2f == attrs.at("scale_2").f());
+      }
+    }
+
+    return Status::OK();
+  };
+
+  InlinedVector<bool> switch_orders{false, true};
+  for (bool switch_order : switch_orders) {
+    auto build_test_case = [switch_order](ModelTestBuilder& builder) {
+      auto* input_0_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+      auto* input_1_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+      auto* input_2_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+      auto* scalar_0_arg = builder.MakeScalarInitializer<float>(0.5f);
+      auto* scalar_1_arg = builder.MakeScalarInitializer<float>(0.3f);
+      auto* scalar_2_arg = builder.MakeScalarInitializer<float>(0.2f);
+      auto* div0_out = builder.MakeIntermediate();
+      auto* div1_out = builder.MakeIntermediate();
+      auto* div2_out = builder.MakeIntermediate();
+      builder.AddNode("Div", {input_0_arg, scalar_0_arg}, {div0_out});
+      builder.AddNode("Div", {input_1_arg, scalar_1_arg}, {div1_out});
+
+      auto* add1_out = builder.MakeIntermediate();
+      builder.AddNode("Add", {div0_out, div1_out}, {add1_out});
+
+      builder.AddNode("Div", {input_2_arg, scalar_2_arg}, {div2_out});
+      auto* add2_out = builder.MakeIntermediate();
+      if (switch_order) {
+        builder.AddNode("Add", {div2_out, add1_out}, {add2_out});
+      } else {
+        builder.AddNode("Add", {add1_out, div2_out}, {add2_out});
+      }
+
+      auto* graph_out = builder.MakeOutput();
+      builder.AddNode("Identity", {add2_out}, {graph_out});
+    };
+
+    const std::vector<int> opsets{12, 13, 14, 15};
+    for (auto& opset_version : opsets) {
+      std::unique_ptr<GraphTransformer> transformer = std::make_unique<ScaledSumFusion>();
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer),
+                                            TransformerLevel::Level1,
+                                            1, pre_graph_checker, post_graph_checker));
+    }
+  }
+}
+
+/*
+Test graph as below.
+      graph input [1, 1, 256, 256] (float)  scalar_0   graph input [1, 1, 256, 256] (float)
+                                         \   /          |
+                                           Div         Div -- scalar_1
+[1, 1, 256, 256] (float)  scalar_3           \         /
+                \           /                  Add
+                      Sub                       /
+                        \                     /
+                          \                /
+                                Add
+                                 |
+                               Identity
+                                 |
+                graph out [1, 1, 256, 256] (float)
+
+*/
+TEST_F(GraphTransformationTests, ScaledSumFusionThreeInputs_LastAddNotHaveScaleInput) {
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_count_pre = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 4U);
+    TEST_RETURN_IF_NOT(op_count_pre["Div"] == 2);
+    TEST_RETURN_IF_NOT(op_count_pre["Add"] == 2);
+    TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Sub"] == 1);
+    TEST_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 3U);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count["com.microsoft.ScaledSum"] == 1);
+    TEST_RETURN_IF_NOT(op_count["Identity"] == 1);
+    TEST_RETURN_IF_NOT(op_count["Sub"] == 1);
+
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "ScaledSum") {
+        TEST_RETURN_IF_NOT(node.InputDefs().size() == 3U);
+
+        auto& attrs = node.GetAttributes();
+        TEST_RETURN_IF_NOT(attrs.find("scale_0") != attrs.end());
+        TEST_RETURN_IF_NOT(attrs.find("scale_1") != attrs.end());
+        TEST_RETURN_IF_NOT(attrs.find("scale_2") != attrs.end());
+        TEST_RETURN_IF_NOT(1.0f / 0.5f == attrs.at("scale_0").f());
+        TEST_RETURN_IF_NOT(1.0f / 0.3f == attrs.at("scale_1").f());
+        TEST_RETURN_IF_NOT(1.0f == attrs.at("scale_2").f());
+      }
+    }
+
+    return Status::OK();
+  };
+
+  InlinedVector<bool> switch_orders{false, true};
+  for (bool switch_order : switch_orders) {
+    auto build_test_case = [switch_order](ModelTestBuilder& builder) {
+      auto* input_0_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+      auto* input_1_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+      auto* input_2_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+      auto* scalar_0_arg = builder.MakeScalarInitializer<float>(0.5f);
+      auto* scalar_1_arg = builder.MakeScalarInitializer<float>(0.3f);
+      auto* scalar_2_arg = builder.MakeScalarInitializer<float>(0.2f);
+      auto* div0_out = builder.MakeIntermediate();
+      auto* div1_out = builder.MakeIntermediate();
+      auto* sub0_out = builder.MakeIntermediate();
+      builder.AddNode("Div", {input_0_arg, scalar_0_arg}, {div0_out});
+      builder.AddNode("Div", {input_1_arg, scalar_1_arg}, {div1_out});
+
+      auto* add1_out = builder.MakeIntermediate();
+      builder.AddNode("Add", {div0_out, div1_out}, {add1_out});
+
+      builder.AddNode("Sub", {input_2_arg, scalar_2_arg}, {sub0_out});
+      auto* add2_out = builder.MakeIntermediate();
+      if (switch_order) {
+        builder.AddNode("Add", {sub0_out, add1_out}, {add2_out});
+      } else {
+        builder.AddNode("Add", {add1_out, sub0_out}, {add2_out});
+      }
+
+      auto* graph_out = builder.MakeOutput();
+      builder.AddNode("Identity", {add2_out}, {graph_out});
+    };
+
+    const std::vector<int> opsets{12, 13, 14, 15};
+    for (auto& opset_version : opsets) {
+      std::unique_ptr<GraphTransformer> transformer = std::make_unique<ScaledSumFusion>();
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer),
+                                            TransformerLevel::Level1,
+                                            1, pre_graph_checker, post_graph_checker));
+    }
+  }
+}
+
+/*
+Test graph as below.
+      graph input [1, 1, 256, 256] (float)  scalar_0     graph input [1, 1, 256, 256] (float)
+                                         \   /          /
+                                           Div         Div -- scalar_1
+[1, 1, 256, 256] (float)  scalar_3           \         /
+                \           /                  Add
+                      Div                       / \
+                        \                     /  Identity
+                          \                /       |
+                                Add              graph out [1, 1, 256, 256] (float)
+                                 |
+                               Identity
+                                 |
+                graph out [1, 1, 256, 256] (float)
+
+*/
+TEST_F(GraphTransformationTests, ScaledSumFusionTwoInputs) {
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_count_pre = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_pre["Div"] == 3);
+    TEST_RETURN_IF_NOT(op_count_pre["Add"] == 2);
+    TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 2);
+    TEST_RETURN_IF_NOT(graph.GetAllInitializedTensors().size() == 3U);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.size() == 4U);
+    TEST_RETURN_IF_NOT(op_count["Div"] == 1);
+    TEST_RETURN_IF_NOT(op_count["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count["com.microsoft.ScaledSum"] == 1);
+    TEST_RETURN_IF_NOT(op_count["Identity"] == 2);
+
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "ScaledSum") {
+        TEST_RETURN_IF_NOT(node.InputDefs().size() == 2U);
+
+        auto& attrs = node.GetAttributes();
+        TEST_RETURN_IF_NOT(attrs.find("scale_0") != attrs.end());
+        TEST_RETURN_IF_NOT(attrs.find("scale_1") != attrs.end());
+        TEST_RETURN_IF_NOT(attrs.find("scale_2") == attrs.end());
+        TEST_RETURN_IF_NOT(1.0f / 0.5f == attrs.at("scale_0").f());
+        TEST_RETURN_IF_NOT(1.0f / 0.3f == attrs.at("scale_1").f());
+      }
+    }
+    return Status::OK();
+  };
+
+  InlinedVector<bool> switch_orders{false, true};
+  for (bool switch_order : switch_orders) {
+    auto build_test_case = [switch_order](ModelTestBuilder& builder) {
+      auto* input_0_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+      auto* input_1_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+      auto* input_2_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+      auto* scalar_0_arg = builder.MakeScalarInitializer<float>(0.5f);
+      auto* scalar_1_arg = builder.MakeScalarInitializer<float>(0.3f);
+      auto* scalar_2_arg = builder.MakeScalarInitializer<float>(0.2f);
+      auto* div0_out = builder.MakeIntermediate();
+      auto* div1_out = builder.MakeIntermediate();
+      auto* div2_out = builder.MakeIntermediate();
+      builder.AddNode("Div", {input_0_arg, scalar_0_arg}, {div0_out});
+      builder.AddNode("Div", {input_1_arg, scalar_1_arg}, {div1_out});
+
+      auto* add1_out = builder.MakeIntermediate();
+      builder.AddNode("Add", {div0_out, div1_out}, {add1_out});
+
+      builder.AddNode("Div", {input_2_arg, scalar_2_arg}, {div2_out});
+      auto* add2_out = builder.MakeIntermediate();
+      if (switch_order) {
+        builder.AddNode("Add", {div2_out, add1_out}, {add2_out});
+      } else {
+        builder.AddNode("Add", {add1_out, div2_out}, {add2_out});
+      }
+
+      auto* graph_out = builder.MakeOutput();
+      builder.AddNode("Identity", {add2_out}, {graph_out});
+
+      auto* graph_output2 = builder.MakeOutput();
+      builder.AddNode("Identity", {add1_out}, {graph_output2});
+    };
+
+    const std::vector<int> opsets{12, 13, 14, 15};
+    for (auto& opset_version : opsets) {
+      std::unique_ptr<GraphTransformer> transformer = std::make_unique<ScaledSumFusion>();
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer),
+                                            TransformerLevel::Level1,
+                                            1, pre_graph_checker, post_graph_checker));
+    }
+  }
+}
 
 // end of DISABLE_CONTRIB_OPS
 #endif

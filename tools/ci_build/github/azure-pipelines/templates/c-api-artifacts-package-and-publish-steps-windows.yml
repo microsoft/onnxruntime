@@ -39,6 +39,15 @@ steps:
           mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
 
+          if exist $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_cuda.dll (
+            echo "cuda context headers copied"
+            mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\core\providers\cuda
+            copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\resource.h $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\core\providers
+            copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\custom_op_context.h $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\core\providers
+            copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\cuda\cuda_context.h $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\core\providers\cuda
+            copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\cuda\cuda_resource.h $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\core\providers\cuda
+          )
+
           echo "Directories created"
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_shared.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
@@ -58,7 +67,6 @@ steps:
           copy $(Build.SourcesDirectory)\include\onnxruntime\core\session\onnxruntime_*.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
           copy $(Build.SourcesDirectory)\include\onnxruntime\core\framework\provider_options.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
           copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\cpu\cpu_provider_factory.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
-          copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\tensorrt\tensorrt_provider_factory.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
           copy $(Build.SourcesDirectory)\orttraining\orttraining\training_api\include\onnxruntime_training*.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
 
           REM copy the README, license and TPN

@@ -42,11 +42,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "The number of groups of channels. It should be a divisor of the number of channels C",
               AttributeProto::INT)
         .Attr("activation",
-              "Activation after group normalization: 0 for None, 1 for Swish",
+              "Activation after group normalization: 0 for None, 1 for SiLU",
               AttributeProto::INT)
+        .Attr("channels_last",
+              "1 if the input and output are in the NHWC layout, 0 if it is in the NCHW layout. Defaults to 1.",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
         .Input(0,
                "X",
-               "Input data tensor. Dimensions are (N x H x W x C), where N is the batch size, C is the number of channels, and H and W are the height and width of the data",
+               "Input data tensor. Dimensions are (N x H x W x C) when channels_last is 1 or (N x C x H x W) otherwise, where N is the batch size, C is the number of channels, and H and W are the height and width of the data",
                "T")
         .Input(1,
                "gamma",
@@ -61,8 +65,87 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "The output tensor of the same shape as X",
                 "T")
         .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input X and output Y types to float tensors.")
-        .TypeConstraint("M", {"tensor(float)"}, "Constrain gamma and beta to float tensors.")
+        .TypeConstraint("M", {"tensor(float16)", "tensor(float)"}, "Constrain gamma and beta to float tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+
+constexpr const char* SkipGroupNorm_ver1_doc = R"DOC(
+This operator element-wise adds x, skip and bias, then apply group normalization and optional activation.
+
+This operator transforms input according to
+  s = x + skip + bias
+  y = gamma * (s - mean) / sqrt(variance + epsilon) + beta
+
+The input channels are separated into num_groups groups, each containing num_channels / num_groups channels.
+The num_channels must be divisible by num_groups.
+The mean and standard-deviation of s are calculated separately over the each group.
+The weight and bias are per-channel affine transform parameter vectors of size num_channels.
+
+The activation attribute can be used to enable activation after group normalization.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    SkipGroupNorm, 1,
+    OpSchema()
+        .SetDoc(SkipGroupNorm_ver1_doc)
+        .Attr("epsilon", "The epsilon value to use to avoid division by zero",
+              AttributeProto::FLOAT, static_cast<float>(1e-5))
+        .Attr("groups",
+              "The number of groups of channels. It should be a divisor of the number of channels C",
+              AttributeProto::INT)
+        .Attr("activation",
+              "Activation after group normalization: 0 for None, 1 for SiLU",
+              AttributeProto::INT)
+        .Attr("channels_last",
+              "1 if the input and output are in the NHWC layout, 0 if it is in the NCHW layout. Defaults to 1.",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
+        .Input(0,
+               "X",
+               "Input data tensor. Dimensions are (N x H x W x C) when channels_last is 1 "
+               " or (N x C x H x W) otherwise, where N is the batch size, C is the number of channels,"
+               " and H and W are the height and width of the data",
+               "T")
+        .Input(1,
+               "gamma",
+               "1D gamma tensor for normalization with shape (C), where C is number of channels",
+               "M")
+        .Input(2,
+               "beta",
+               "1D beta tensor for normalization with shape (C), where C is number of channels",
+               "M")
+        .Input(3,
+               "skip",
+               "4D or 2D skip tensor. The shape can be (N x H x W x C) or (N x 1 x 1 x C) or (N x C)",
+               "T")
+        .Input(4,
+               "bias",
+               "1D bias tensor. Dimensions are (C), where C is number of channels",
+               "T",
+               OpSchema::Optional)
+        .Output(0,
+                "Y",
+                "The output tensor of the same shape as X",
+                "T")
+        .Output(1,
+                "S",
+                "The element-wise sum of input x, skip and bias tensors. It has the same shape as X",
+                "T",
+                OpSchema::Optional)
+        .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input X, skip, bias and output Y, S types to float tensors.")
+        .TypeConstraint("M", {"tensor(float16)", "tensor(float)"}, "Constrain gamma and beta to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (ctx.getNumOutputs() > 1) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          }
+
+          if (hasInputShape(ctx, 0)) {
+            propagateShapeFromInputToOutput(ctx, 0, 0);
+            if (ctx.getNumOutputs() > 1) {
+              propagateShapeFromInputToOutput(ctx, 0, 1);
+            }
+          }
+        }));
 
 constexpr const char* BiasSplitGelu_ver1_doc = R"DOC(
 A fusion used in diffusion model that after adding bias, hidden state is sliced into two tensors of same size, then left

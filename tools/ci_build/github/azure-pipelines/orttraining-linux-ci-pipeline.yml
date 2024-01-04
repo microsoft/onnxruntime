@@ -1,3 +1,32 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
 resources:
   repositories:
   - repository: manylinux # The name used to reference this repository in the checkout step
@@ -25,10 +54,6 @@ jobs:
     clean: true
     submodules: none
 
-  - task: NodeTool@0
-    inputs:
-      versionSpec: '16.x'
-
   - task: UsePythonVersion@0
     inputs:
       versionSpec: '3.8'
@@ -36,10 +61,10 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
-      Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-      Repository: onnxruntimecpubuild
+      Dockerfile: tools/ci_build/github/linux/docker/inference/x64/python/cpu/Dockerfile.manylinux2_28_cpu
+      Context: tools/ci_build/github/linux/docker/inference/x64/python/cpu
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=registry.access.redhat.com/ubi8/ubi --build-arg PLATFORM=x86_64 --build-arg PREPEND_PATH=/opt/rh/gcc-toolset-12/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/gcc-toolset-12/root/usr/lib64:/opt/rh/gcc-toolset-12/root/usr/lib:/opt/rh/gcc-toolset-12/root/usr/lib64/dyninst:/opt/rh/gcc-toolset-12/root/usr/lib/dyninst:/usr/local/lib64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/gcc-toolset-12/root"
+      Repository: onnxruntimecpubuildpythonx86_64
 
   - task: Cache@2
     inputs:
@@ -59,6 +84,7 @@ jobs:
         mkdir -p $(Pipeline.Workspace)/ccache
         docker run --rm \
           --volume /data/onnx:/data/onnx:ro \
+          --volume /data/models:/build/models:ro \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
@@ -67,12 +93,12 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           -e CCACHE_DIR=/cache \
-          onnxruntimecpubuild \
+          onnxruntimecpubuildpythonx86_64 \
           /bin/bash -c "
             set -ex; \
             ccache -s; \
             /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-              --build_dir /build --cmake_generator Ninja \
+              --build_dir /build --cmake_generator 'Unix Makefiles' \
               --config Release \
               --skip_submodule_sync \
               --build_shared_lib \
@@ -80,53 +106,10 @@ jobs:
               --build_wheel \
               --enable_onnx_tests \
               --enable_training \
-              --use_cache \
-              --build_java --build_nodejs --update --build; \
+              --use_cache; \
                 ccache -sv; \
                 ccache -z"
       workingDirectory: $(Build.SourcesDirectory)
-
-  - task: CmdLine@2
-    displayName: 'Install python deps and run java tests'
-    inputs:
-      script: |
-         set -e -x
-         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq
-         cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
-         # Test ORT with the latest ONNX release.
-         sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/" $(Build.BinariesDirectory)/requirements.txt
-         python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
-         mkdir $(Build.BinariesDirectory)/requirements_torch_cpu/
-         cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu/requirements.txt $(Build.BinariesDirectory)/requirements_torch_cpu/requirements.txt
-         python3 -m pip install -r $(Build.BinariesDirectory)/requirements_torch_cpu/requirements.txt
-         cd $(Build.SourcesDirectory)/java
-         $(Build.SourcesDirectory)/java/gradlew "cmakeCheck" "-DcmakeBuildDir=$(Build.BinariesDirectory)/Release"
-
-  - task: CmdLine@2
-    displayName: 'Install Release python package'
-    inputs:
-      script: |
-         rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
-         python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
-
-  - task: PythonScript@0
-    displayName: 'Run Release unit tests'
-    inputs:
-       scriptPath: $(Build.SourcesDirectory)/tools/ci_build/build.py
-       workingDirectory: $(Build.BinariesDirectory)/Release
-       arguments: >-
-          --build_dir $(Build.BinariesDirectory)
-          --cmake_generator Ninja
-          --config Release
-          --test
-          --skip_submodule_sync
-          --build_shared_lib
-          --parallel
-          --build_wheel
-          --enable_onnx_tests
-          --enable_training
-          --build_nodejs
-          --ctest_path ""
 
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'

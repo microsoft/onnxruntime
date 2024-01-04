@@ -12,5 +12,6 @@
 
 #include "cppwinrt_onnx.h"
 #include "dx.h"
+#include "FeatureValues.h"
 
 #pragma warning(pop)

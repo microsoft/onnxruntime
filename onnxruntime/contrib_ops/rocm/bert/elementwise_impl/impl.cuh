@@ -92,7 +92,7 @@ __global__ void ElementwiseKernelVec(
 
 template <typename Fn, typename T>
 Status LaunchElementwiseKernel(
-    RocmTuningContext* tuning_ctx, hipStream_t stream,
+    RocmTuningContext* tuning_ctx, Stream* stream,
     const T* input, int input_length,
     const T* bias, int bias_length,
     T* output) {
@@ -109,8 +109,8 @@ namespace internal {
 
 template <typename Fn, typename T, int ThreadsPerBlock, int VecSize>
 Status ElementwiseOp<Fn, T, ThreadsPerBlock, VecSize>::operator()(const ElementwiseParams<T>* params) {
-  ElementwiseKernelVec<Fn, T, ThreadsPerBlock, VecSize>
-      <<<dim3(CeilDiv(params->input_length, ThreadsPerBlock * VecSize)), dim3(ThreadsPerBlock), 0, params->stream>>>(
+  dim3 blocks(CeilDiv(params->input_length, ThreadsPerBlock * VecSize));
+  ElementwiseKernelVec<Fn, T, ThreadsPerBlock, VecSize><<<blocks, ThreadsPerBlock, 0, params->StreamHandle()>>>(
           params->input, params->input_length,
           params->bias, params->bias_length,
           params->output);
@@ -136,43 +136,43 @@ Status ElementwiseStaticSelection(const ElementwiseParams<T>* params) {
     if (params->bias != nullptr) {
       if (0 == (params->bias_length % 8) && (params->input_length >= 3145728)) {  // 3145728=8*128*3072
         const int grid_size = (params->input_length / 8 + block_size - 1) / block_size;
-        ElementwiseKernelVec<Fn, half, block_size, 8><<<dim3(grid_size), dim3(block_size), 0, params->stream>>>(
+        ElementwiseKernelVec<Fn, half, block_size, 8><<<dim3(grid_size), dim3(block_size), 0, params->StreamHandle()>>>(
             params->input, params->input_length, params->bias, params->bias_length, params->output);
       } else if (0 == (params->bias_length % 4)) {
         const int grid_size = (params->input_length / 4 + block_size - 1) / block_size;
-        ElementwiseKernelVec<Fn, half, block_size, 4><<<dim3(grid_size), dim3(block_size), 0, params->stream>>>(
+        ElementwiseKernelVec<Fn, half, block_size, 4><<<dim3(grid_size), dim3(block_size), 0, params->StreamHandle()>>>(
             params->input, params->input_length, params->bias, params->bias_length, params->output);
       } else if (0 == (params->bias_length % 2)) {
         const int grid_size = (params->input_length / 2 + block_size - 1) / block_size;
-        ElementwiseKernelVec<Fn, half, block_size, 2><<<dim3(grid_size), dim3(block_size), 0, params->stream>>>(
+        ElementwiseKernelVec<Fn, half, block_size, 2><<<dim3(grid_size), dim3(block_size), 0, params->StreamHandle()>>>(
             params->input, params->input_length, params->bias, params->bias_length, params->output);
       } else {
         const int grid_size = (params->input_length + block_size - 1) / block_size;
-        ElementwiseKernel<Fn, half, block_size><<<dim3(grid_size), dim3(block_size), 0, params->stream>>>(
+        ElementwiseKernel<Fn, half, block_size><<<dim3(grid_size), dim3(block_size), 0, params->StreamHandle()>>>(
             params->input, params->input_length, params->bias, params->bias_length, params->output);
       }
     } else {
       if (0 == (params->input_length % 8) && (params->input_length >= 3145728)) {  // 3145728=8*128*3072
         const int grid_size = (params->input_length / 8 + block_size - 1) / block_size;
-        ElementwiseKernelVec<Fn, half, block_size, 8><<<dim3(grid_size), dim3(block_size), 0, params->stream>>>(
+        ElementwiseKernelVec<Fn, half, block_size, 8><<<dim3(grid_size), dim3(block_size), 0, params->StreamHandle()>>>(
             params->input, params->input_length, params->bias, params->bias_length, params->output);
       } else if (0 == (params->input_length % 4)) {
         const int grid_size = (params->input_length / 4 + block_size - 1) / block_size;
-        ElementwiseKernelVec<Fn, half, block_size, 4><<<dim3(grid_size), dim3(block_size), 0, params->stream>>>(
+        ElementwiseKernelVec<Fn, half, block_size, 4><<<dim3(grid_size), dim3(block_size), 0, params->StreamHandle()>>>(
             params->input, params->input_length, params->bias, params->bias_length, params->output);
       } else if (0 == (params->input_length % 2)) {
         const int grid_size = (params->input_length / 2 + block_size - 1) / block_size;
-        ElementwiseKernelVec<Fn, half, block_size, 2><<<dim3(grid_size), dim3(block_size), 0, params->stream>>>(
+        ElementwiseKernelVec<Fn, half, block_size, 2><<<dim3(grid_size), dim3(block_size), 0, params->StreamHandle()>>>(
             params->input, params->input_length, params->bias, params->bias_length, params->output);
       } else {
         const int grid_size = (params->input_length + block_size - 1) / block_size;
-        ElementwiseKernel<Fn, half, block_size><<<dim3(grid_size), dim3(block_size), 0, params->stream>>>(
+        ElementwiseKernel<Fn, half, block_size><<<dim3(grid_size), dim3(block_size), 0, params->StreamHandle()>>>(
             params->input, params->input_length, params->bias, params->bias_length, params->output);
       }
     }
   } else {
     const int grid_size = (params->input_length + block_size - 1) / block_size;
-    ElementwiseKernel<Fn, T, block_size><<<dim3(grid_size), dim3(block_size), 0, params->stream>>>(
+    ElementwiseKernel<Fn, T, block_size><<<dim3(grid_size), dim3(block_size), 0, params->StreamHandle()>>>(
         params->input, params->input_length, params->bias, params->bias_length, params->output);
   }
   return HIP_CALL(hipGetLastError());
@@ -244,7 +244,7 @@ ElementwiseTunableOp<Fn, T>::ElementwiseTunableOp() {
   namespace contrib {                                         \
   namespace rocm {                                            \
   template Status LaunchElementwiseKernel<Fn, T>(             \
-      RocmTuningContext * tuning_ctx, hipStream_t stream,     \
+      RocmTuningContext * tuning_ctx, Stream* stream,     \
       const T* input, int input_length,                       \
       const T* bias, int bias_length,                         \
       T* output);                                             \

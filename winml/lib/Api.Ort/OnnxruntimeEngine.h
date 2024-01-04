@@ -3,6 +3,7 @@
 
 #include "iengine.h"
 #include "UniqueOrtPtr.h"
+#include "core/common/gsl.h"
 
 #include <memory>
 #include <mutex>
@@ -18,9 +19,8 @@ class OnnxruntimeThreading;
 
 struct IOrtSessionBuilder;
 
-class OnnxruntimeValue : public Microsoft::WRL::RuntimeClass<
-                             Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
-                             IValue> {
+class OnnxruntimeValue
+  : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IValue> {
  public:
   OnnxruntimeValue();
   ~OnnxruntimeValue();
@@ -58,14 +58,15 @@ class OnnxruntimeValue : public Microsoft::WRL::RuntimeClass<
   UniqueOrtAllocator allocator_;
 };
 
-class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
-                              Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
-                              IEngine> {
+class OnnxruntimeEngine
+  : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IEngine> {
  public:
   OnnxruntimeEngine();
   ~OnnxruntimeEngine();
 
-  HRESULT RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, UniqueOrtSession&& session, IOrtSessionBuilder* session_builder);
+  HRESULT RuntimeClassInitialize(
+    OnnxruntimeEngineFactory* engine_factory, UniqueOrtSession&& session, IOrtSessionBuilder* session_builder
+  );
 
   STDMETHOD(LoadModel)
   (_In_ IModel* model) override;
@@ -90,7 +91,8 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(CreateTensorValueFromExternalD3DResource)
   (ID3D12Resource* resource, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) override;
   STDMETHOD(CreateTensorValueFromExternalBuffer)
-  (void* data, size_t size_in_bytes, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) override;
+  (void* data, size_t size_in_bytes, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out
+  ) override;
   STDMETHOD(CreateStringTensorValueFromDataWithCopy)
   (const char* const* data, size_t num_elements, const int64_t* shape, size_t count, _Out_ IValue** out) override;
   STDMETHOD(CreateNullValue)
@@ -100,21 +102,26 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(CreateSequenceOfMapsValue)
   (IInspectable* map, winml::TensorKind key_kind, winml::TensorKind value_kind, _Out_ IValue** out) override;
   STDMETHOD(CreateSequenceOfValuesValue)
-  (IValue ** values, size_t size, IValue * *out) override;
+  (IValue** values, size_t size, IValue** out) override;
 
   STDMETHOD(CreateOneInputAcrossDevices)
   (const char* name, IValue* src, IValue** dest) override;
   STDMETHOD(CopyValueAcrossDevices)
   (IValue* src, IValue* dest) override;
   STDMETHOD(Run)
-  (const char** input_names, IValue** inputs, size_t num_inputs, const char** output_names, IValue** outputs, size_t num_outputs) override;
+  (const char** input_names,
+   IValue** inputs,
+   size_t num_inputs,
+   const char** output_names,
+   IValue** outputs,
+   size_t num_outputs) override;
   STDMETHOD(FillFromMapValue)
   (IInspectable* map, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue* value) override;
   STDMETHOD(FillSequenceOfMapsValue)
   (IInspectable* sequence, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue* value) override;
 
   STDMETHOD(GetSequenceOfTensorValues)
-  (_In_  _winml::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<_winml::IValue>>& out_values) override;
+  (_In_ _winml::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<_winml::IValue>>& out_values) override;
 
   STDMETHOD(GetNumberOfIntraOpThreads)
   (uint32_t* num_threads) override;
@@ -128,7 +135,8 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   OrtSession* UseOrtSession();
   const OrtApi* UseOrtApi();
   OnnxruntimeEngineFactory* GetEngineFactory();
-  HRESULT CreateTensorValueFromDefaultAllocator(const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out);
+  HRESULT
+  CreateTensorValueFromDefaultAllocator(const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out);
 
   HRESULT RegisterCustomOpLibraryHandles(const gsl::span<void*> handles);
 
@@ -139,9 +147,8 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   std::vector<void*> custom_op_library_handles_;
 };
 
-class OnnxruntimeEngineFactory : public Microsoft::WRL::RuntimeClass<
-                                     Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
-                                     IEngineFactory> {
+class OnnxruntimeEngineFactory
+  : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IEngineFactory> {
  public:
   HRESULT RuntimeClassInitialize();
   STDMETHOD(CreateModel)
@@ -181,10 +188,9 @@ class OnnxruntimeEngineFactory : public Microsoft::WRL::RuntimeClass<
   std::mutex mutex_;
 };
 
-class OnnxruntimeThreading : public Microsoft::WRL::RuntimeClass<
-                                  Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
-                                  IThreading> {
-public:
+class OnnxruntimeThreading
+  : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IThreading> {
+ public:
   OnnxruntimeThreading();
   ~OnnxruntimeThreading();
 
@@ -195,11 +201,10 @@ public:
   OrtThreadPool* UseIntraOpThreadPool();
   OrtThreadPool* UseInterOpThreadPool();
 
-private:
+ private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_ = nullptr;
   UniqueOrtThreadPool inter_op_ort_pool_;
   UniqueOrtThreadPool intra_op_ort_pool_;
-
 };
 
 }  // namespace _winml

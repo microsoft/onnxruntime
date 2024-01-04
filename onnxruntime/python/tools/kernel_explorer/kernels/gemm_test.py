@@ -58,7 +58,7 @@ def _test_gemm(func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: 
 
         try:
             np.testing.assert_allclose(my_c, ref_c, rtol=bound)
-        except Exception as err:  # noqa: PERF203
+        except Exception as err:
             header = "*" * 30 + impl + "*" * 30
             print(header)
             print(err)
@@ -132,14 +132,14 @@ class GemmMetric(ke.ComputeMetric):
     k: int
 
     def report(self):
-        prefix = (
-            f"{self.name:<50} {self.dtype} {transab_to_suffix((self.transa, self.transb))} "
-            f"m={self.m:<4} n={self.n:<4} k={self.k:<4} "
+        common = (
+            f"{self.dtype} {transab_to_suffix((self.transa, self.transb))} "
+            f"m={self.m:<4} n={self.n:<4} k={self.k:<4} {self.name}"
         )
         if self.duration <= 0:
-            return prefix + "not supported"
+            return "not supported          " + common
 
-        return prefix + f"{self.duration:>8.4f} us {self.tflops:>5.2f} tflops"
+        return f"{self.duration:>6.2f} us {self.tflops:>5.2f} tflops " + common
 
 
 def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int, k: int):
@@ -179,6 +179,7 @@ def profile_with_args(dtype, transa, transb, m, n, k, sort):
         profile_gemm_func(getattr(ke, "RocBlasGemm" + dtype_suffix), dtype, transa, transb, m, n, k)
         profile_gemm_func(getattr(ke, "CKGemm" + dtype_suffix + transab_suffix), dtype, transa, transb, m, n, k)
         profile_gemm_func(getattr(ke, "GemmTunable" + dtype_suffix + transab_suffix), dtype, transa, transb, m, n, k)
+        profile_gemm_func(getattr(ke, "GemmBenchmark" + dtype_suffix), dtype, transa, transb, m, n, k)
         if ke.is_hipblaslt_available():
             profile_gemm_func(
                 getattr(ke, "GemmHipBlasLt" + dtype_suffix + transab_suffix), dtype, transa, transb, m, n, k

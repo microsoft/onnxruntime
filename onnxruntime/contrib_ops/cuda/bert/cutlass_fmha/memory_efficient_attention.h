@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #pragma once
 
-#if USE_FLASH_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION
 
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
@@ -14,10 +14,12 @@ namespace cuda {
 struct MemoryEfficientAttentionParams {
   int32_t sm;
   bool is_half;
+  bool is_kv_bsnh = true;
   int32_t batch_size;
   int32_t num_heads;
   int32_t sequence_length;
   int32_t kv_sequence_length;
+  int32_t max_sequence_length;
   int32_t qk_head_size;
   int32_t v_head_size;
   bool causal;
@@ -41,6 +43,8 @@ struct MemoryEfficientAttentionParams {
   static bool need_workspace(size_t v_head_size, bool is_float) {
     return (v_head_size > 128 && !is_float);
   }
+
+  bool has_custom_right_padding = false;
 };
 
 void run_memory_efficient_attention(const MemoryEfficientAttentionParams& params);
@@ -58,4 +62,4 @@ void run_memory_efficient_attention_sm50(const MemoryEfficientAttentionParams& p
 }  // namespace contrib
 }  // namespace onnxruntime
 
-#endif  // USE_FLASH_ATTENTION
+#endif  // USE_MEMORY_EFFICIENT_ATTENTION

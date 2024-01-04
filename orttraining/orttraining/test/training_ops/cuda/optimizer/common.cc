@@ -186,7 +186,7 @@ void AdamWTestLoop(
 
     // Add test outputs as baseline.
     if (update_signal == nullptr || *update_signal) {
-      test.AddOutput<int64_t>("updated_flag", {}, {1});
+      test.AddOutput<bool>("updated_flag", {}, {1});
       test.AddSeqOutput("updated_weights", data.UpdatedWeightSeq(), weight_tolerance.first, weight_tolerance.second);
       test.AddSeqOutput("updated_momentums_1", data.UpdatedMomentum_1_Seq(), momentum_1_tolerance.first,
                         momentum_1_tolerance.second);
@@ -195,7 +195,7 @@ void AdamWTestLoop(
 
     } else {
       // No update happens.
-      test.AddOutput<int64_t>("updated_flag", {}, {0});
+      test.AddOutput<bool>("updated_flag", {}, {0});
       test.AddSeqOutput("updated_weights", data.WeightSeq(), weight_tolerance.first, weight_tolerance.second);
       test.AddSeqOutput("updated_momentums_1", data.Momentum_1_Seq(), momentum_1_tolerance.first,
                         momentum_1_tolerance.second);

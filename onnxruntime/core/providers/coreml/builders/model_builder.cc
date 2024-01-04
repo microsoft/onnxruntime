@@ -9,9 +9,10 @@
 #include "op_builder_factory.h"
 
 #include "core/providers/common.h"
-#include "core/providers/coreml/model/model.h"
-#include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/coreml/builders/impl/builder_utils.h"
+#include "core/providers/coreml/model/host_utils.h"
+#include "core/providers/coreml/model/model.h"
+#include "core/providers/coreml/shape_utils.h"
 
 namespace onnxruntime {
 namespace coreml {
@@ -60,12 +61,7 @@ void ModelBuilder::PreprocessInitializers() {
     // find all initializers consumed. AddInitializersToSkip will potentially decrement the usage count.
     for (const auto* input : node.InputDefs()) {
       if (input->Exists() && Contains(initializers, input->Name())) {
-        auto entry = initializer_usage_.find(input->Name());
-        if (entry == initializer_usage_.end()) {
-          initializer_usage_[input->Name()] = 1;
-        } else {
-          entry->second++;
-        }
+        initializer_usage_[input->Name()]++;
       }
     }
     if (const auto* op_builder = GetOpBuilder(node)) {
@@ -128,40 +124,56 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
 
   input_output.set_name(name);
   auto* multi_array = input_output.mutable_type()->mutable_multiarraytype();
+
   std::vector<int64_t> shape;
+  ORT_RETURN_IF_NOT(GetShape(node_arg, shape, logger_),
+                    "Unable to get shape for ", input_output_type, ": ", name);
 
-  {  // input_output shape
-    const auto* shape_proto = node_arg.Shape();
-    ORT_RETURN_IF(shape_proto == nullptr,
-                  "shape_proto cannot be null for ", input_output_type, ": ", name);
-    const auto& dims = shape_proto->dim();
-    if (dims.empty()) {
-      // If we have an empty shape, this is a scalar input,
-      // Since all the input output of CoreML EP is MultiArray, we will make the scalar input output as a {1} MultiArray
-      shape.push_back(1);
+  if (shape.empty()) {
+    // If we have an empty shape, this is a scalar input,
+    // Since all the input output of CoreML EP is MultiArray, we will make the scalar input output as a {1} MultiArray
+    shape.push_back(1);
 
-      // we need to change the shapes of these scalar outputs back to {} when CoreML EP returns these values to ORT
-      if (!is_input) {
-        AddScalarOutput(name);
-      }
-    } else {
-      shape.reserve(dims.size());
-      for (const auto& dim : dims) {
-        ORT_RETURN_IF_NOT(dim.has_dim_value(),
-                          "Dynamic shape is not supported yet, for ", input_output_type, ": ", name);
-        shape.push_back(dim.dim_value());
-      }
+    // we need to change the shapes of these scalar outputs back to {} when CoreML EP returns these values to ORT
+    if (!is_input) {
+      AddScalarOutput(name);
     }
   }
 
-  *multi_array->mutable_shape() = {shape.cbegin(), shape.cend()};
+  if (IsStaticShape(shape)) {
+    *multi_array->mutable_shape() = {shape.cbegin(), shape.cend()};
+  } else {
+    if (is_input) {
+      auto& multi_array_shape_range = *multi_array->mutable_shaperange();
+      auto& multi_array_shape = *multi_array->mutable_shape();
+
+      for (const auto dim : shape) {
+        auto& multi_array_dim_size_range = *multi_array_shape_range.mutable_sizeranges()->Add();
+        if (dim == -1) {
+          multi_array_dim_size_range.set_lowerbound(0);
+          multi_array_dim_size_range.set_upperbound(-1);  // unbounded
+
+          multi_array_shape.Add(1);  // pick 1 as an arbitrary default dynamic dimension value
+        } else {
+          multi_array_dim_size_range.set_lowerbound(dim);
+          multi_array_dim_size_range.set_upperbound(dim);
+
+          multi_array_shape.Add(dim);
+        }
+      }
+    } else {
+      // Leave dynamic output shapes unspecified.
+      // If we specify an output shape that doesn't match the actual output shape at runtime, CoreML returns a 5D shape
+      // padded with ones.
+    }
+  }
 
   int32_t data_type;
   {  // type
     const auto* type_proto = node_arg.TypeAsProto();
     if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "The  ", input_output_type, " of graph doesn't have elem_type: ", name);
+                             "The ", input_output_type, " of graph doesn't have elem_type: ", name);
     }
 
     data_type = type_proto->tensor_type().elem_type();
@@ -173,10 +185,10 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
         multi_array->set_datatype(COREML_SPEC::ArrayFeatureType::INT32);
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+        // If we have an int64 input/output type, since COREML_SPEC:ArrayFeatureType does not support INT64
+        // we assign it to be INT32 here
+        multi_array->set_datatype(COREML_SPEC::ArrayFeatureType::INT32);
         if (!is_input) {
-          // If we have an int64 output type, since COREML_SPEC:ArrayFeatureType does not support INT64
-          // we assign it to be INT32 here
-          multi_array->set_datatype(COREML_SPEC::ArrayFeatureType::INT32);
           // Record the output names and we need to change them back to Int64 when CoreML EP returns these values to ORT
           AddInt64Output(name);
         }
@@ -184,7 +196,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
       default: {
         // TODO: support other type
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "The  ", input_output_type, " of graph doesn't have valid type, name: ", name,
+                               "The ", input_output_type, " of graph doesn't have valid type, name: ", name,
                                " type: ", type_proto->tensor_type().elem_type());
       }
     }
@@ -204,11 +216,12 @@ Status ModelBuilder::RegisterModelInputs() {
 }
 
 Status ModelBuilder::AddOperations() {
+  const auto builder_params = MakeOpBuilderParams(graph_viewer_, coreml_flags_);
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
     if (const auto* op_builder = GetOpBuilder(*node)) {
-      ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(*this, *node, logger_));
+      ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(*this, *node, builder_params, logger_));
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Node [", node->Name(), "], type [", node->OpType(), "] is not supported");

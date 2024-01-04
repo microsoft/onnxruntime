@@ -74,10 +74,10 @@ class TestSymmetricFlag(unittest.TestCase):
 
         # Extract quantization parameters: scales and zero points for activations, weights, and results
         model = onnx.load("quantized-model.onnx")
-        act_zp = [init for init in model.graph.initializer if init.name == "ACT_zero_point"][0].int32_data[0]
-        act_sc = [init for init in model.graph.initializer if init.name == "ACT_scale"][0].float_data[0]
-        wgt_zp = [init for init in model.graph.initializer if init.name == "WGT_zero_point"][0].int32_data[0]
-        wgt_sc = [init for init in model.graph.initializer if init.name == "WGT_scale"][0].float_data[0]
+        act_zp = next(init for init in model.graph.initializer if init.name == "ACT_zero_point").int32_data[0]
+        act_sc = next(init for init in model.graph.initializer if init.name == "ACT_scale").float_data[0]
+        wgt_zp = next(init for init in model.graph.initializer if init.name == "WGT_zero_point").int32_data[0]
+        wgt_sc = next(init for init in model.graph.initializer if init.name == "WGT_scale").float_data[0]
 
         # Return quantization parameters
         return act_zp, act_sc, wgt_zp, wgt_sc

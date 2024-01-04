@@ -4,7 +4,7 @@
 import {Logger, Profiler} from '../../instrument';
 import {Tensor} from '../../tensor';
 
-import {Encoder} from './texture-data-encoder';
+import {Encoder, EncoderUsage} from './texture-data-encoder';
 import {TextureLayoutStrategy} from './texture-layout-strategy';
 import {TextureData, TextureLayout} from './types';
 import {WebGLContext} from './webgl-context';
@@ -39,11 +39,11 @@ export class TextureManager {
     }
   }
   createTextureFromLayout(
-      dataType: Tensor.DataType, layout: TextureLayout, data?: Tensor.NumberType, usage?: Encoder.Usage) {
+      dataType: Tensor.DataType, layout: TextureLayout, data?: Tensor.NumberType, usage?: EncoderUsage) {
     const textureDataType = this.toEncoderType(dataType);
 
     const encoder = this.glContext.getEncoder(textureDataType, layout.channels || 1, usage);
-    if (layout.isPacked && usage === Encoder.Usage.UploadOnly) {
+    if (layout.isPacked && usage === EncoderUsage.UploadOnly) {
       throw new Error('not implemented');
     }
     const width = layout.width;
@@ -63,7 +63,7 @@ export class TextureManager {
       if (idleTextures && idleTextures.length > 0) {
         const texture = idleTextures.pop()!;
         inUseTextures.push(texture);
-        if (usage === Encoder.Usage.UploadOnly) {
+        if (usage === EncoderUsage.UploadOnly) {
           this.glContext.updateTexture(texture, width, height, encoder, this.toTextureData(dataType, data)!);
         }
         return texture;
@@ -172,7 +172,7 @@ export class TextureManager {
         throw new Error(`TensorData type ${dataType} is not supported`);
     }
   }
-  toTextureData(dataType: Tensor.DataType, data: Tensor.NumberType|undefined): Encoder.DataArrayType|undefined {
+  toTextureData(_dataType: Tensor.DataType, data: Tensor.NumberType|undefined): Encoder.DataArrayType|undefined {
     if (!data) {
       return undefined;
     }

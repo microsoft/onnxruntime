@@ -13,8 +13,7 @@ namespace onnxruntime {
 class MaxUnpool : public OpKernel {
  public:
   MaxUnpool(const OpKernelInfo& info) : OpKernel(info) {
-    ORT_ENFORCE(info.GetAttrs<int64_t>("kernel_shape", kernel_shape_).IsOK(),
-                "No kernel shape is set.");
+    ORT_THROW_IF_ERROR(info.GetAttrs<int64_t>("kernel_shape", kernel_shape_));
 
     num_inputs_ = OpKernel::Node().InputDefs().size();
 

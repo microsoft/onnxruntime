@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -19,10 +19,13 @@ public abstract class OnnxTensorLike implements OnnxValue {
     }
   }
 
+  /** The native pointer. */
   protected final long nativeHandle;
 
+  /** The pointer to the native memory allocator. */
   protected final long allocatorHandle;
 
+  /** The size and shape information for this tensor. */
   protected final TensorInfo info;
 
   /**

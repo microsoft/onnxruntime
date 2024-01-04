@@ -104,17 +104,17 @@ __device__ void cuWelfordMuSigma2(
     const int numx = blockDim.x * blockDim.y;
     const int thrx = threadIdx.x + threadIdx.y * blockDim.x;
     const T* lvals = vals + i1 * n2;
-    const T* skip_vals = (skip != NULL) ? skip + i1 * n2 : NULL;
+    const T* skip_vals = (skip != nullptr) ? skip + i1 * n2 : nullptr;
     int l = 4 * thrx;
     for (; l + 3 < n2; l += 4 * numx) {
       for (int k = 0; k < 4; ++k) {
         U curr = static_cast<U>(lvals[l + k]);
 
-        if (bias != NULL) {
+        if (bias != nullptr) {
           curr += static_cast<U>(bias[l + k]);
         }
 
-        if (skip_vals != NULL) {
+        if (skip_vals != nullptr) {
           curr += static_cast<U>(skip_vals[l + k]);
         }
 
@@ -124,11 +124,11 @@ __device__ void cuWelfordMuSigma2(
     for (; l < n2; ++l) {
       U curr = static_cast<U>(lvals[l]);
 
-      if (bias != NULL) {
+      if (bias != nullptr) {
         curr += static_cast<U>(bias[l]);
       }
 
-      if (skip_vals != NULL) {
+      if (skip_vals != nullptr) {
         curr += static_cast<U>(skip_vals[l]);
       }
 
@@ -301,7 +301,7 @@ namespace {
 //      {
 //          extern __device__ void error(void);
 //          error();
-//          return NULL;
+//          return nullptr;
 //      }
 //  };
 // https://github.com/NVIDIA/apex/issues/246
@@ -348,33 +348,35 @@ __global__ void cuApplyLayerNorm(
     U* buf = shared.getPointer();
     U mu, sigma2;
     cuWelfordMuSigma2<T, U, simplified>(vals, n1, n2, i1, mu, sigma2, buf, skip, bias);
-    const T* lvals = vals + i1 * n2;
-    const T* skip_vals = (skip != NULL) ? skip + i1 * n2 : NULL;
-    V* ovals = output_vals + i1 * n2;
-    T* skip_input_bias_add_ovals = (skip_input_bias_add_output != NULL) ? skip_input_bias_add_output + i1 * n2 : NULL;
+    const int offset = i1 * n2;
+    const T* lvals = vals + offset;
+    const T* skip_vals = (skip != nullptr) ? skip + offset : nullptr;
+
+    V* ovals = output_vals + offset;
+    T* skip_input_bias_add_ovals = (skip_input_bias_add_output != nullptr) ? skip_input_bias_add_output + offset : nullptr;
     U c_inv_std_dev = rsqrt(sigma2 + epsilon);
     const int numx = blockDim.x * blockDim.y;
     const int thrx = threadIdx.x + threadIdx.y * blockDim.x;
     for (int i = thrx; i < n2; i += numx) {
       U curr = static_cast<U>(lvals[i]);
 
-      if (bias != NULL) {
+      if (bias != nullptr) {
         curr += static_cast<U>(bias[i]);
       }
 
-      if (skip_vals != NULL) {
+      if (skip_vals != nullptr) {
         curr += static_cast<U>(skip_vals[i]);
       }
 
-      U gamma_i = (gamma != NULL) ? (U)gamma[i] : (U)1;
-      U beta_i = (beta != NULL) ? (U)beta[i] : (U)0;
+      U gamma_i = (gamma != nullptr) ? (U)gamma[i] : (U)1;
+      U beta_i = (beta != nullptr) ? (U)beta[i] : (U)0;
       if (simplified) {
         ovals[i] = static_cast<V>(gamma_i * c_inv_std_dev * curr);
       } else {
         ovals[i] = static_cast<V>(gamma_i * c_inv_std_dev * (curr - mu) + beta_i);
       }
 
-      if (skip_input_bias_add_ovals != NULL) {
+      if (skip_input_bias_add_ovals != nullptr) {
         skip_input_bias_add_ovals[i] = static_cast<T>(curr);
       }
     }

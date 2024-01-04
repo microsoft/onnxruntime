@@ -150,7 +150,7 @@ def main(output_path: pathlib.Path, provider_filter: [str]):
                             tnameindex += 1
                             tclist = []
                             for tc in sorted(tcset):
-                                tclist.append(tc)  # noqa: PERF402
+                                tclist.append(tc)
                             fout.write("**" + tname + "** = " + format_type_constraints(tclist))
                             if tnameindex < len(typemap):
                                 fout.write("<br/> ")

@@ -113,7 +113,7 @@ TestImpl(ForwardIter first, ForwardIter last, OutputIter out) {
 
 TEST(MathOpTest, Sign_uint64) {
   using namespace test_sign_internal;
-  OpTester test("Sign", 9);
+  OpTester test("Sign", 13);
 
   std::vector<int64_t> input_dims{7};
   std::vector<uint64_t> input;
@@ -129,7 +129,7 @@ TEST(MathOpTest, Sign_uint64) {
 // we disable this test for openvino as openvino ep supports only FP32 Precision
 TEST(MathOpTest, Sign_int64) {
   using namespace test_sign_internal;
-  OpTester test("Sign", 9);
+  OpTester test("Sign", 13);
 
   std::vector<int64_t> input_dims{7};
   std::vector<int64_t> input;
@@ -140,13 +140,12 @@ TEST(MathOpTest, Sign_int64) {
   std::vector<int64_t> output;
   TestImpl<int64_t>(input.cbegin(), input.cend(), std::back_inserter(output));
   test.AddOutput<int64_t>("output", input_dims, output);
-  // TODO: QNN execute error, need further investigation
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kQnnExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
 TEST(MathOpTest, Sign_float) {
   using namespace test_sign_internal;
-  OpTester test("Sign", 9);
+  OpTester test("Sign", 13);
 
   std::vector<int64_t> input_dims{7};
   std::vector<float> input;
@@ -162,7 +161,7 @@ TEST(MathOpTest, Sign_float) {
 
 TEST(MathOpTest, Sign_double) {
   using namespace test_sign_internal;
-  OpTester test("Sign", 9);
+  OpTester test("Sign", 13);
 
   std::vector<int64_t> input_dims{7};
   std::vector<double> input;
@@ -177,7 +176,7 @@ TEST(MathOpTest, Sign_double) {
 }
 TEST(MathOpTest, Sign_MLFloat16) {
   using namespace test_sign_internal;
-  OpTester test("Sign", 9);
+  OpTester test("Sign", 13);
 
   std::vector<int64_t> input_dims{7};
   std::vector<MLFloat16> input;

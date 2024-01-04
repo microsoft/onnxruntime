@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 import torch
 
-from onnxruntime import InferenceSession, SessionOptions
+from onnxruntime import InferenceSession, SessionOptions, get_available_providers
 
 
 class TestTimestampProcessor(unittest.TestCase):
@@ -32,7 +32,7 @@ class TestTimestampProcessor(unittest.TestCase):
     def run_timestamp(self, provider: str):
         self.generate_model("-m openai/whisper-tiny --optimize_onnx --precision fp32 -l -e")
         [input_features, processor] = self.generate_dataset()
-        model_path = "./onnx_models/openai/whisper-tiny_beamsearch.onnx"
+        model_path = "./onnx_models/whisper-tiny_beamsearch.onnx"
         sess_options = SessionOptions()
         sess_options.log_severity_level = 4
         sess = InferenceSession(model_path, sess_options, providers=[provider])
@@ -52,12 +52,13 @@ class TestTimestampProcessor(unittest.TestCase):
         ort_transcription = processor.batch_decode(
             ort_out_tensor[0][0].view(1, -1), skip_special_tokens=True, output_offsets=True
         )
+        print(ort_transcription)
         expected_transcription = [
             {
-                "text": " Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel.",
+                "text": "<|0.00|> Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel.<|5.44|>",
                 "offsets": [
                     {
-                        "text": " Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel.",
+                        "text": "<|0.00|> Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel.<|5.44|>",
                         "timestamp": (0.0, 5.44),
                     }
                 ],
@@ -69,6 +70,12 @@ class TestTimestampProcessor(unittest.TestCase):
     def test_timestamp_cpu(self):
         provider = "CPUExecutionProvider"
         self.run_timestamp(provider)
+
+    @pytest.mark.slow
+    def test_timestamp_cuda(self):
+        cuda_provider = "CUDAExecutionProvider"
+        if cuda_provider in get_available_providers():
+            self.run_timestamp(cuda_provider)
 
 
 if __name__ == "__main__":

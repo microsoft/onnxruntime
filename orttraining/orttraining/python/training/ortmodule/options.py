@@ -7,12 +7,14 @@ from enum import IntFlag
 from functools import reduce
 from logging import Logger
 
+from packaging import version
+
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.training import ortmodule
 
 from ._fallback import _FallbackPolicy
 from ._logger import LogLevel
-from ._utils import parse_os_env_skip_check_flags
+from ._utils import get_runtime_pytorch_version, parse_os_env_skip_check_flags
 
 
 class _SaveOnnxOptions:
@@ -131,6 +133,42 @@ class DebugOptions:
 
         return self._logging
 
+    @property
+    def torch_exporter_filter(self):
+        """Accessor for the filter export logs configuration."""
+        torch_version = get_runtime_pytorch_version()
+        if self.log_level > LogLevel.DEVINFO:
+            if torch_version < version.parse("2.0"):
+                return [
+                    # WARNING: The shape inference of com.microsoft::SoftmaxCrossEntropyLossInternal type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
+                    # WARNING: The shape inference of com.microsoft::PythonOp type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
+                    # WARNING: The shape inference of org.pytorch.aten::ATen type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
+                    # WARNING: The shape inference of prim::Constant type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
+                    "type is missing, so it may result in wrong shape inference",
+                    # Warning: Checker does not support models with experimental ops: ATen
+                    "Checker does not support models with experimental ops:",
+                    "Dropout is a training op and should not be exported in inference mode.",
+                    # Warning: Shape inference does not support models with experimental operators: ATen
+                    "Shape inference does not support models with experimental operators:",
+                    # Warning: Unsupported operator Trilu. No schema registered for this operator.
+                    # Warning: Unsupported operator ATen. No schema registered for this operator.
+                    # Warning: Unsupported operator SoftmaxCrossEntropyLossInternal. No schema registered for this operator.
+                    "No schema registered for this operator.",
+                ]
+            return [
+                # [W shape_type_inference.cpp:1974] Warning: The shape inference of com.microsoft::PythonOp type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function. (function UpdateReliable)
+                "type is missing, so it may result in wrong shape inference",
+                #  diagnostics [WARNING] - None
+                "[WARNING] - None",
+            ]
+
+        return None
+
+    @property
+    def onnxruntime_log_filter(self):
+        """Accessor for the filter onnxruntime logs configuration."""
+        return None
+
 
 class _SkipCheck(IntFlag):
     """Enumeration to specify which checks should be skipped, allowing faster execution"""
@@ -152,6 +190,23 @@ class _SkipCheck(IntFlag):
         """Check whether `_SkipCheck.SKIP_CHECK_DISABLED is set on the `_SkipCheck instance"""
 
         return _SkipCheck.SKIP_CHECK_DISABLED in self
+
+
+class _MemoryOptimizationLevel(IntFlag):
+    """Enumeration to specify memory optimization level"""
+
+    USER_SPECIFIED = 0  # Fully respect user-specified config
+    TRANSFORMER_LAYERWISE_RECOMPUTE = 1  # Enable all recomputable subgraphs per layer
+
+    @staticmethod
+    def to_string(memory_optimization_level):
+        if memory_optimization_level == _MemoryOptimizationLevel.USER_SPECIFIED:
+            return "USER_SPECIFIED"
+
+        if memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
+            return "TRANSFORMER_LAYERWISE_RECOMPUTE"
+
+        return ""
 
 
 class _RuntimeOptions:
@@ -219,12 +274,17 @@ class _RuntimeOptions:
         self.enable_embedding_sparse_optimizer = False  # TODO(pengwa): remove once validation on more models are done.
 
         # Configuration for memory optimization.
-        self.memory_optimizer_config = ""
-        self.probe_level = "1"
+        self.memory_optimization_level = (
+            _MemoryOptimizationLevel.USER_SPECIFIED
+        )  # 0: use `memory_optimizer_config`; 1: aggressive optimization, enable all recomputable subgraphs.
+        self.memory_optimizer_config = ""  # This is an advanced config, please refer to onnxruntime docs for details.
+        # 1 is the op set level; 0 indicates whether consider the Transformer-based model's layer boundary when
+        # detecting recompute subgraphs.
+        self.recompute_probe_config = "1:0"
 
         # Configuration for dev tools.
         self.print_input_density = False
-        self.print_memory_stat = False
+        self.print_memory_stat_by_step = False
 
         # Configuration for fallback.
         self.fallback_policy = ortmodule.ORTMODULE_FALLBACK_POLICY
@@ -241,6 +301,14 @@ class _RuntimeOptions:
         self.enable_tuning = False
         self.max_tuning_duration_ms = 0
         self.tuning_results_path = ""
+
+        # Cache exported model
+        self.ortmodule_cache_dir = ""
+
+        # Experimental features.
+        self.enable_zero_stage3_support = False  # Once enabled, cannot be disabled.
+
+        self.deepcopy_before_model_export = True
 
         # Override the feature config if it exists in os env.
         self._override_from_env_vars()
@@ -270,14 +338,19 @@ class _RuntimeOptions:
             )
 
         # Configuration for memory optimization.
-        self.memory_optimizer_config = os.getenv("ORTMODULE_MEMORY_OPT_CONFIG", self.memory_optimizer_config)
-        self.probe_level = os.getenv("ORTMODULE_MEMORY_OPT_PROBE_RECOMPUTE_LEVEL", self.probe_level)
+        self.memory_optimization_level = int(os.getenv("ORTMODULE_MEMORY_OPT_LEVEL", self.memory_optimization_level))
+        user_given_memory_optimizer_config = os.getenv("ORTMODULE_MEMORY_OPT_CONFIG", self.memory_optimizer_config)
+        self.memory_optimizer_config = ",".join([c for c in user_given_memory_optimizer_config.split(",") if c])
+        if self.memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
+            # For transformer layer-wise recompute, we enable layer boundary when detecting subgraphs.
+            # Then all detected subgraphs will not cross different layers.
+            self.recompute_probe_config = "1:1"
 
         # Configuration for dev tools.
         if "ORTMODULE_PRINT_INPUT_DENSITY" in os.environ:
             self.print_input_density = int(os.getenv("ORTMODULE_PRINT_INPUT_DENSITY")) == 1
         if "ORTMODULE_PRINT_MEMORY_STATS" in os.environ:
-            self.print_memory_stat = int(os.getenv("ORTMODULE_PRINT_MEMORY_STATS")) == 1
+            self.print_memory_stat_by_step = int(os.getenv("ORTMODULE_PRINT_MEMORY_STATS")) == 1
 
         # Configuration for fallback.
         if "ORTMODULE_FALLBACK_POLICY" in os.environ:
@@ -314,3 +387,15 @@ class _RuntimeOptions:
                 self.max_tuning_duration_ms = max_tuning_duration_ms
         if "ORTMODULE_TUNING_RESULTS_PATH" in os.environ:
             self.tuning_results_path = os.getenv("ORTMODULE_TUNING_RESULTS_PATH")
+
+        # Cache exported model
+        if "ORTMODULE_CACHE_DIR" in os.environ:
+            self._logger.warning("ORTModule optimization for caching exported model is ON.")
+            self.ortmodule_cache_dir = os.getenv("ORTMODULE_CACHE_DIR")
+
+        # Experimental features.
+        if "ORTMODULE_ENABLE_ZERO_STAGE3" in os.environ and int(os.getenv("ORTMODULE_ENABLE_ZERO_STAGE3")) == 1:
+            self.enable_zero_stage3_support = True
+
+        if "ORTMODULE_DEEPCOPY_BEFORE_MODEL_EXPORT" in os.environ:
+            self.deepcopy_before_model_export = int(os.getenv("ORTMODULE_DEEPCOPY_BEFORE_MODEL_EXPORT")) == 1

@@ -1,19 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/common.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_shape.h"
-#include "core/providers/coreml/builders/helper.h"
-#include "core/providers/shared/utils/utils.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/optimizer/initializer.h"
+#include "core/providers/common.h"
+#include "core/providers/coreml/builders/helper.h"
+#include "core/providers/coreml/builders/impl/base_op_builder.h"
+#include "core/providers/coreml/builders/op_builder_factory.h"
+#include "core/providers/coreml/shape_utils.h"
+#include "core/providers/shared/utils/utils.h"
 
 #ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
 #endif
-#include "core/providers/coreml/builders/op_builder_factory.h"
-
-#include "base_op_builder.h"
 
 namespace onnxruntime {
 namespace coreml {
@@ -141,6 +141,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     return false;
   }
 
+  // TODO is it ok if the shape is dynamic and empty?
   const TensorShape shape(input_shape);
   if (shape.Size() == 0) {
     LOGS(logger, VERBOSE) << "Cases that input data being empty due to a dimension with value of 0 is not supported";

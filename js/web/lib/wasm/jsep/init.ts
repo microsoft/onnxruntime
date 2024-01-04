@@ -8,9 +8,9 @@ import {DataType, getTensorElementSize} from '../wasm-common';
 
 import {WebGpuBackend} from './backend-webgpu';
 import {LOG_DEBUG} from './log';
-import {TensorView} from './tensor';
+import {TensorView} from './tensor-view';
 import {ShapeUtil} from './util';
-import {ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
+import {ComputeContext, ComputeContextInputsOutputsMapping, ProgramInfo} from './webgpu/types';
 
 /* eslint-disable no-bitwise */
 
@@ -37,6 +37,14 @@ class TensorViewImpl implements TensorView {
                                 new BigInt64Array(this.module.HEAP8.buffer, this.data, elementCount);
   }
 
+  getInt32Array(): Int32Array {
+    if (this.dataType !== DataType.int32) {
+      throw new Error('Invalid data type');
+    }
+    const elementCount = ShapeUtil.size(this.dims);
+    return elementCount === 0 ? new Int32Array() : new Int32Array(this.module.HEAP8.buffer, this.data, elementCount);
+  }
+
   reshape(newDims: readonly number[]): TensorView {
     if (ShapeUtil.size(newDims) !== ShapeUtil.size(this.dims)) {
       throw new Error('Invalid new shape');
@@ -48,6 +56,7 @@ class TensorViewImpl implements TensorView {
 class ComputeContextImpl implements ComputeContext {
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];
+  readonly outputCount: number;
   get kernelCustomData(): {[key: string]: unknown} {
     return this.backend.currentKernelCustomData;
   }
@@ -60,9 +69,10 @@ class ComputeContextImpl implements ComputeContext {
     const heapU32 = module.HEAPU32;
 
     // extract context data
-    let dataIndex = (contextDataOffset >> 2);
+    let dataIndex = (contextDataOffset >>> 2);
     this.opKernelContext = heapU32[dataIndex++];
     const inputCount = heapU32[dataIndex++];
+    this.outputCount = heapU32[dataIndex++];
     this.customDataOffset = heapU32[dataIndex++];
     this.customDataSize = heapU32[dataIndex++];
 
@@ -80,8 +90,7 @@ class ComputeContextImpl implements ComputeContext {
     this.inputs = inputs;
   }
 
-  compute(program: ProgramInfoLoader|ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping):
-      TensorView[] {
+  compute(program: ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping): TensorView[] {
     // prepare inputs. inputs should always be valid data.
     const mappedInputs =
         inputsOutputsMapping?.inputs?.map(i => typeof i === 'number' ? this.inputs[i] : i) ?? this.inputs;
@@ -110,65 +119,87 @@ class ComputeContextImpl implements ComputeContext {
         this.module.HEAPU32[offset++] = dims[i];
       }
       return this.module._JsepOutput(this.opKernelContext, index, data);
+    } catch (e) {
+      throw new Error(
+          `Failed to generate kernel's output[${index}] with dims [${dims}]. ` +
+          'If you are running with pre-allocated output, please make sure the output type/dims are correct. ' +
+          `Error: ${e}`);
     } finally {
       this.module.stackRestore(stack);
     }
   }
 }
 
-export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
-  const init = module.jsepInit;
-  if (init && navigator.gpu) {
-    if (!env.wasm.simd) {
-      throw new Error(
-          'Not supported for WebGPU=ON and SIMD=OFF. Please set `env.wasm.simd` to true when using WebGPU EP');
-    }
-    const backend = new WebGpuBackend();
-    await backend.initialize(env);
-
-    init(
-        // backend
-        {backend},
-
-        // jsepAlloc()
-        (size: number) => backend.alloc(size),
-
-        // jsepFree()
-        (ptr: number) => backend.free(ptr),
-
-        // jsepCopy(src, dst, size, isSourceGpu)
-        (src: number, dst: number, size: number, isSourceGpu = false) => {
-          if (isSourceGpu) {
-            LOG_DEBUG('verbose', () => `[WebGPU] jsepCopyGpuToGpu: src=${src}, dst=${dst}, size=${size}`);
-            backend.memcpy(src, dst);
-          } else {
-            LOG_DEBUG('verbose', () => `[WebGPU] jsepCopyCpuToGpu: dataOffset=${src}, gpuDataId=${dst}, size=${size}`);
-            const data = module.HEAPU8.subarray(src, src + size);
-            backend.upload(dst, data);
-          }
-        },
-
-        // jsepCopyAsync(src, dst, size)
-        async(gpuDataId: number, dataOffset: number, size: number):
-            Promise<void> => {
-              LOG_DEBUG(
-                  'verbose',
-                  () => `[WebGPU] jsepCopyGpuToCpu: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
-
-              await backend.download(gpuDataId, () => module.HEAPU8.subarray(dataOffset, dataOffset + size));
-            },
-
-        // jsepCreateKernel
-        (name: string, kernel: number, attribute: unknown) => backend.createKernel(name, kernel, attribute),
-
-        // jsepReleaseKernel
-        (kernel: number) => backend.releaseKernel(kernel),
-
-        // jsepRun
-        (kernel: number, contextDataOffset: number) => {
-          LOG_DEBUG('verbose', () => `[WebGPU] jsepRun: kernel=${kernel}, contextDataOffset=${contextDataOffset}`);
-          const context = new ComputeContextImpl(module, backend, contextDataOffset);
-          return backend.computeKernel(kernel, context);
-        });
+/**
+ * Initialize JSEP with WebGPU backend.
+ *
+ * This function will be called only once after the WebAssembly module is loaded and initialized ("_OrtInit" is called).
+ * This function expects:
+ *  - WebGPU is enabled in build (BUILD_DEFS.DISABLE_WEBGPU === false).
+ *  - WebGPU is available in current environment. (a valid GPUAdapter is passed in)
+ * If the WebAssembly module is not built with JSEP support, this function will throw an error. This will invalidate
+ * 'webgpu' backend.
+ *
+ * @param module - the ORT WebAssembly module
+ * @param env - the ORT environment variable (ort.env)
+ * @param gpuAdapter - the pre-created GPU adapter
+ */
+export const init = async(module: OrtWasmModule, env: Env, gpuAdapter: GPUAdapter): Promise<void> => {
+  const jsepInit = module.jsepInit;
+  if (!jsepInit) {
+    throw new Error('Failed to initialize JSEP. The WebAssembly module is not built with JSEP support.');
   }
+
+  const backend = new WebGpuBackend();
+  await backend.initialize(env, gpuAdapter);
+
+  jsepInit(
+      // backend
+      backend,
+
+      // jsepAlloc()
+      (size: number) => backend.alloc(size),
+
+      // jsepFree()
+      (ptr: number) => backend.free(ptr),
+
+      // jsepCopy(src, dst, size, isSourceGpu)
+      (src: number, dst: number, size: number, isSourceGpu = false) => {
+        if (isSourceGpu) {
+          LOG_DEBUG('verbose', () => `[WebGPU] jsepCopyGpuToGpu: src=${src}, dst=${dst}, size=${size}`);
+          backend.memcpy(src, dst);
+        } else {
+          LOG_DEBUG('verbose', () => `[WebGPU] jsepCopyCpuToGpu: dataOffset=${src}, gpuDataId=${dst}, size=${size}`);
+          const data = module.HEAPU8.subarray(src, src + size);
+          backend.upload(dst, data);
+        }
+      },
+
+      // jsepCopyAsync(src, dst, size)
+      async(gpuDataId: number, dataOffset: number, size: number):
+          Promise<void> => {
+            LOG_DEBUG(
+                'verbose',
+                () => `[WebGPU] jsepCopyGpuToCpu: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
+
+            await backend.download(gpuDataId, () => module.HEAPU8.subarray(dataOffset, dataOffset + size));
+          },
+
+      // jsepCreateKernel
+      (name: string, kernel: number, attribute: unknown) => backend.createKernel(
+          name, kernel, attribute,
+          env.debug || backend.isQueryEnabled() ? module.UTF8ToString(module._JsepGetNodeName(kernel)) : `${kernel}`),
+
+      // jsepReleaseKernel
+      (kernel: number) => backend.releaseKernel(kernel),
+
+      // jsepRun
+      (kernel: number, contextDataOffset: number, sessionHandle: number, errors: Array<Promise<string|null>>) => {
+        LOG_DEBUG(
+            'verbose',
+            () => `[WebGPU] jsepRun: sessionHandle=${sessionHandle}, kernel=${kernel}, contextDataOffset=${
+                contextDataOffset}`);
+        const context = new ComputeContextImpl(module, backend, contextDataOffset);
+        return backend.computeKernel(kernel, context, errors);
+      });
 };

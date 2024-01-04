@@ -5,7 +5,10 @@
 #pragma warning(disable : 4267)
 #endif
 
+#include <string>
 #include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "core/common/gsl.h"
 #include "core/framework/data_types.h"
@@ -25,6 +28,12 @@
 #if !defined(ORT_MINIMAL_BUILD)
 static constexpr uint32_t min_ort_version_with_optional_io_support = 8;
 static constexpr uint32_t min_ort_version_with_variadic_io_support = 14;
+static constexpr uint32_t min_ort_version_with_custom_version = 17;
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+static constexpr uint32_t min_ort_version_with_compute_v2_support = 16;
+static constexpr uint32_t min_ort_version_with_shape_inference = 17;
 #endif
 
 #if !defined(DISABLE_FLOAT8_TYPES)
@@ -32,6 +41,231 @@ static constexpr uint32_t min_ort_version_with_variadic_io_support = 14;
 #else
 #define SUPPORTED_TENSOR_TYPES DataTypeImpl::AllTensorTypesIRv4()
 #endif
+
+#if defined(ORT_MINIMAL_BUILD)
+struct OrtShapeInferContext {
+  size_t GetInputCount() const { return 0; }
+  OrtTensorTypeAndShapeInfo* GetInputTypeShape(size_t) const { return {}; }
+  onnxruntime::Status SetOutputTypeShape(size_t, const OrtTensorTypeAndShapeInfo*) const {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "OrtShapeInferContext::SetOutputTypeShape not implemented for minimal build");
+  }
+  const ONNX_NAMESPACE::AttributeProto* GetAttr(const char*) const { return {}; }
+};
+#else
+struct OrtShapeInferContext {
+  OrtShapeInferContext(ONNX_NAMESPACE::InferenceContext& ctx) : ctx_(ctx) {
+    auto num_inputs = ctx_.getNumInputs();
+    for (size_t ith_input = 0; ith_input < num_inputs; ++ith_input) {
+      const auto* input_type = ctx_.getInputType(ith_input);
+      const auto& value_case = input_type->value_case();
+      ORT_ENFORCE(value_case == ONNX_NAMESPACE::TypeProto::kTensorType, "shape inference not yet supported for non-tensor types");
+      const auto& shape_proto = input_type->tensor_type().shape();
+      const auto& type_proto = input_type->tensor_type();
+      auto elem_type = ::onnxruntime::utils::CApiElementTypeFromProtoType(type_proto.elem_type());
+      auto tensor_shape = ::onnxruntime::utils::GetTensorShapeFromTensorShapeProto(shape_proto);
+      auto symbolic_dims = GetSymbolicDims(shape_proto);
+      input_type_shapes_.emplace_back(OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(elem_type, tensor_shape, &symbolic_dims).release());
+    }
+  }
+
+  ~OrtShapeInferContext() = default;
+  size_t GetInputCount() const { return input_type_shapes_.size(); }
+
+  OrtTensorTypeAndShapeInfo* GetInputTypeShape(size_t idx) const {
+    return input_type_shapes_.at(idx).get();
+  }
+
+  onnxruntime::Status SetOutputTypeShape(size_t index, const OrtTensorTypeAndShapeInfo* info) const {
+    ORT_RETURN_IF_NOT(info, "Invalid shape info");
+    ONNX_NAMESPACE::TensorShapeProto shape_proto;
+    const auto& symbolic_dims = info->dim_params;
+    const auto& integer_dims = info->shape.GetDims();
+    ORT_RETURN_IF_NOT(symbolic_dims.size() == integer_dims.size(), "symbolic and integer dims mismatch!");
+    for (size_t ith = 0; ith < symbolic_dims.size(); ith++) {
+      auto* dim_proto = shape_proto.add_dim();
+      if (symbolic_dims[ith].size() > 0) {
+        dim_proto->set_dim_param(symbolic_dims[ith]);
+      } else {
+        dim_proto->set_dim_value(integer_dims[ith]);
+      }
+    }
+    ONNX_NAMESPACE::updateOutputShape(ctx_, index, shape_proto);
+    return onnxruntime::Status::OK();
+  }
+
+  const ONNX_NAMESPACE::AttributeProto* GetAttr(const char* attr_name) const {
+    return ctx_.getAttribute(attr_name);
+  }
+
+ private:
+  static std::vector<std::string> GetSymbolicDims(const ONNX_NAMESPACE::TensorShapeProto& shape_proto) {
+    std::vector<std::string> symblic_dims;
+    for (int ith = 0; ith < shape_proto.dim_size(); ith++) {
+      const auto& dim = shape_proto.dim(ith);
+      if (::onnxruntime::utils::HasDimValue(dim)) {
+        symblic_dims.emplace_back();
+      } else {
+        symblic_dims.emplace_back(dim.dim_param());
+      }
+    }
+    return symblic_dims;
+  }
+  ONNX_NAMESPACE::InferenceContext& ctx_;
+  using TypeShapePtr = std::unique_ptr<OrtTensorTypeAndShapeInfo>;
+  onnxruntime::InlinedVector<TypeShapePtr> input_type_shapes_;
+};
+#endif
+
+ORT_API_STATUS_IMPL(OrtApis::ShapeInferContext_GetInputCount, _In_ const OrtShapeInferContext* context, _Out_ size_t* out) {
+  API_IMPL_BEGIN
+  *out = context->GetInputCount();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ShapeInferContext_GetInputTypeShape, _In_ const OrtShapeInferContext* context, _In_ size_t index, _Outptr_ OrtTensorTypeAndShapeInfo** info) {
+  API_IMPL_BEGIN
+  *info = context->GetInputTypeShape(index);
+  if (*info) {
+    return nullptr;
+  } else {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Failed to fetch type shape info for the index.");
+  }
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ShapeInferContext_GetAttribute, _In_ const OrtShapeInferContext* context, _In_ const char* attr_name, _Outptr_ const OrtOpAttr** attr) {
+  API_IMPL_BEGIN
+  *attr = reinterpret_cast<const OrtOpAttr*>(context->GetAttr(attr_name));
+  if (*attr) {
+    return nullptr;
+  } else {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Attribute does not exist.");
+  }
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ReadOpAttr,
+                    _In_ const OrtOpAttr* op_attr,
+                    _In_ OrtOpAttrType type,
+                    _Inout_ void* data,
+                    _In_ size_t len,
+                    _Out_ size_t* out) {
+  API_IMPL_BEGIN
+
+  if (!op_attr) {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Invalid attribute.");
+  }
+
+  auto attr = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(op_attr);
+  OrtStatusPtr ret = nullptr;
+  *out = 0;
+
+  if (type == OrtOpAttrType::ORT_OP_ATTR_FLOAT) {
+    if (len < sizeof(float)) {
+      ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold a float.");
+    } else {
+      if (attr->has_f()) {
+        auto output_f = reinterpret_cast<float*>(data);
+        *output_f = attr->f();
+      } else {
+        ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Attribute has no float value.");
+      }
+    }
+    *out = sizeof(float);
+
+  } else if (type == OrtOpAttrType::ORT_OP_ATTR_FLOATS) {
+    const auto& floats = attr->floats();
+    auto num_floats = floats.size();
+
+    if (len < sizeof(float) * num_floats) {
+      ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold the array of floats.");
+    } else {
+      auto output_f = reinterpret_cast<float*>(data);
+      for (auto f : floats) {
+        *output_f = f;
+        output_f++;
+      }
+    }
+    *out = num_floats * sizeof(float);
+
+  } else if (type == OrtOpAttrType::ORT_OP_ATTR_INT) {
+    if (len < sizeof(int)) {
+      ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold an int64.");
+    } else {
+      if (attr->has_i()) {
+        auto output_i = reinterpret_cast<int64_t*>(data);
+        *output_i = attr->i();
+      } else {
+        ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Attribute has no int64 value.");
+      }
+    }
+    *out = sizeof(int64_t);
+
+  } else if (type == OrtOpAttrType::ORT_OP_ATTR_INTS) {
+    const auto& ints = attr->ints();
+    auto num_ints = ints.size();
+
+    if (len < sizeof(int64_t) * num_ints) {
+      ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold the array of int64.");
+    } else {
+      auto output_i = reinterpret_cast<int64_t*>(data);
+      for (auto i : ints) {
+        *output_i = i;
+        output_i++;
+      }
+    }
+    *out = num_ints * sizeof(int64_t);
+
+  } else if (type == OrtOpAttrType::ORT_OP_ATTR_STRING) {
+    const auto& s = attr->s();
+    if (len < s.size() + 1) {
+      ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold the string.");
+    } else {
+      char* output_c = reinterpret_cast<char*>(data);
+      for (char c : s) {
+        *output_c++ = c;
+      }
+      *output_c = '\0';
+    }
+    *out = s.size() + 1;
+
+  } else if (type == OrtOpAttrType::ORT_OP_ATTR_STRINGS) {
+    const auto& ss = attr->strings();
+    size_t num_bytes = 0;
+    for_each(ss.begin(), ss.end(), [&num_bytes](const std::string& s) { num_bytes += s.size() + 1; });
+
+    if (len < num_bytes) {
+      ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Size of data not large enough to hold the array of strings.");
+    } else {
+      char* output_c = reinterpret_cast<char*>(data);
+      for (const auto& s : ss) {
+        for (char c : s) {
+          *output_c++ = c;
+        }
+        *output_c++ = '\0';
+      }
+    }
+    *out = num_bytes;
+
+  } else {
+    ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Unknown attribute type.");
+  }
+
+  return ret;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ShapeInferContext_SetOutputTypeShape, _In_ const OrtShapeInferContext* context, _In_ size_t index, _In_ const OrtTensorTypeAndShapeInfo* info) {
+  API_IMPL_BEGIN
+  auto status = context->SetOutputTypeShape(index, info);
+  if (status.IsOK()) {
+    return nullptr;
+  } else {
+    return OrtApis::CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
+  }
+  API_IMPL_END
+}
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
   API_IMPL_BEGIN
@@ -126,6 +360,22 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetAllocator, _In_ const OrtKernelCon
   }
   std::unique_ptr<onnxruntime::OrtAllocatorImplWrappingIAllocator> p = std::make_unique<onnxruntime::OrtAllocatorImplWrappingIAllocator>(std::move(allocator));
   *out = p.release();
+  return nullptr;
+  API_IMPL_END
+};
+
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetResource, _In_ const OrtKernelContext* context, _In_ int resource_version, _In_ int resource_id, _Outptr_ void** resource) {
+  API_IMPL_BEGIN
+  *resource = {};
+  const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContext*>(context);
+  auto* stream = reinterpret_cast<onnxruntime::Stream*>(ctx->GetComputeStream());
+  if (!stream) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Failed to fetch a stream hosting the requested resource");
+  }
+  *resource = stream->GetResource(resource_version, resource_id);
+  if (!(*resource)) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Requested resource does not exist");
+  }
   return nullptr;
   API_IMPL_END
 };
@@ -408,7 +658,8 @@ struct CustomOpKernel : OpKernel {
       ORT_THROW("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
     }
 
-    if (op_.version > 15 && op_.KernelCompute == 0) {
+    if (op_.version >= min_ort_version_with_compute_v2_support &&
+        op_.CreateKernelV2) {
       op_kernel_ = nullptr;
       Ort::ThrowOnError(
           op_.CreateKernelV2(
@@ -427,13 +678,14 @@ struct CustomOpKernel : OpKernel {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-    if (op_.version > 15 && op_.KernelCompute == 0) {
+    if (op_.version >= min_ort_version_with_compute_v2_support &&
+        op_.KernelComputeV2) {
       auto status_ptr = op_.KernelComputeV2(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
       return ToStatus(status_ptr);
+    } else {
+      op_.KernelCompute(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
+      return Status::OK();
     }
-
-    op_.KernelCompute(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
-    return Status::OK();
   }
 
  private:
@@ -450,8 +702,19 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
 
   KernelDefBuilder def_builder;
   def_builder.SetName(op->GetName(op))
-      .SetDomain(domain)
-      .SinceVersion(1);
+      .SetDomain(domain);
+
+  if (op->version >= min_ort_version_with_custom_version) {
+    if (op->GetStartVersion && op->GetEndVersion) {
+      def_builder.SinceVersion(op->GetStartVersion(op), op->GetEndVersion(op));
+    } else if (op->GetStartVersion) {
+      def_builder.SinceVersion(op->GetStartVersion(op));
+    } else {
+      def_builder.SinceVersion(1);
+    }
+  } else {
+    def_builder.SinceVersion(1);
+  }
 
   // GetInputMemoryType was introduced in ver 13. This check allows custom ops compiled using older versions
   // to work with newer versions (> 12) of the ORT binary.
@@ -495,14 +758,16 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
   return KernelCreateInfo(def_builder.Build(), kernel_create_fn);
 }
 
-ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustomOp* op) {
-  const size_t input_count = op->GetInputTypeCount(op);
-  const size_t output_count = op->GetOutputTypeCount(op);
+ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vector<const OrtCustomOp*>& ops) {
+  // The function registers the first schema assuming all the other one are the same except the types constraints.
+  ORT_ENFORCE(ops.size() > 0, "No kernels to registers.");
   int undefined = 0;
 
+  // Creation of the schema for the first kernel in ops.
+  const OrtCustomOp* op = *ops.begin();
   ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "custom op registered at runtime", 0);
 
-  for (size_t i = 0; i < input_count; i++) {
+  auto create_type_constraint = [&ops, &schema, &undefined](const OrtCustomOp* op, int count, int i, bool is_input) {
     onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
     bool is_homogeneous = true;
     int min_arity = 1;
@@ -510,51 +775,79 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
     // The OrtCustomOp interface did not support the methods to query input/output characteristics before
     // ORT API version 8. So, query the relevant methods ONLY from API version 8 onwards.
     if (op->version >= min_ort_version_with_optional_io_support) {
-      const auto characteristic = op->GetInputCharacteristic(op, i);
+      const auto characteristic = is_input ? op->GetInputCharacteristic(op, i) : op->GetOutputCharacteristic(op, i);
 
       // Support for optional and variadic inputs/output was added in versions 8 and 14, respectively.
       if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
         option = onnx::OpSchema::FormalParameterOption::Optional;
       } else if ((op->version >= min_ort_version_with_variadic_io_support) &&
                  (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC)) {
-        ORT_ENFORCE(i == input_count - 1, "Only the last input to a custom op may be marked variadic.");
+        ORT_ENFORCE(i == count - 1, "Only the last ", (is_input ? "input" : "output"),
+                    " to a custom op may be marked variadic.");
         option = onnx::OpSchema::FormalParameterOption::Variadic;
-        min_arity = op->GetVariadicInputMinArity(op);
-        is_homogeneous = static_cast<bool>(op->GetVariadicInputHomogeneity(op));
+        min_arity = is_input ? op->GetVariadicInputMinArity(op) : op->GetVariadicOutputMinArity(op);
+        is_homogeneous = static_cast<bool>(is_input
+                                               ? op->GetVariadicInputHomogeneity(op)
+                                               : op->GetVariadicOutputHomogeneity(op));
       }
     }
 
-    const auto type = op->GetInputType(op, i);
-    if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
+    // The loop goes through all operators sharing the same schema to build
+    // the minimal type constraints for all of them. All kernels must have
+    // the same number of inputs / outputs among themselves to be able to build
+    // the type constraints. Any kind of incompatibility between a schema and
+    // a kernel is checked by method IsCompatible once the schema is created
+    // by this method.
+    std::unordered_set<ONNXTensorElementDataType> all_types;
+    for (auto o : ops) {
+      ORT_ENFORCE(static_cast<size_t>(i) != (is_input ? o->GetInputTypeCount(o) : o->GetOutputTypeCount(o)),
+                  "Another version of operator '", schema.Name(),
+                  "'has a different number of ", (is_input ? "inputs" : "outputs"),
+                  ". onnxruntime allows the overloading of an operator "
+                  "if all versions have the same number of declared ",
+                  (is_input ? "inputs" : "outputs"), ".");
+      const auto type = is_input ? o->GetInputType(o, i) : o->GetOutputType(o, i);
+      if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
+        // If 'type' is undefined, all types are allowed regardless of what other versions of the same operator
+        // define. In that case, all_types is cleared, that's the convention used by the code following this loop
+        // to declare all types as possible types.
+        all_types.clear();
+        break;
+      }
+      all_types.insert(type);
+    }
+
+    std::string prefix = is_input ? "Input" : "Output";
+    std::string name = prefix + std::to_string(i);
+    if (is_input) {
+      schema.Input(gsl::narrow_cast<int>(i), name, "", name, option, is_homogeneous, min_arity);
+    } else {
+      schema.Output(gsl::narrow_cast<int>(i), name, "", name, option, is_homogeneous, min_arity);
+    }
+
+    if (!all_types.empty()) {
+      // all_types is not empty then only the types in this container are allowed of this input.
+      std::vector<std::string> types;
+      for (auto type : all_types) {
+        const ONNX_NAMESPACE::TypeProto* type_proto =
+            DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(type))->GetTypeProto();
+        types.push_back(*ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto));
+      }
+      schema.TypeConstraint(name, types, "defined list of types");
+    } else {
+      // all_types is empty. As mentioned in the previous loop, all types are allowed.
+      schema.TypeConstraint(name, DataTypeImpl::ToString(SUPPORTED_TENSOR_TYPES), "all types");
       undefined++;
     }
-    std::string input_name = "Input" + std::to_string(i);
-    schema.Input(gsl::narrow_cast<int>(i), input_name, "", input_name, option, is_homogeneous, min_arity);
-    // support all types as input here in schema, and handle the type inference in TypeShapeInference func
-    schema.TypeConstraint(input_name, DataTypeImpl::ToString(SUPPORTED_TENSOR_TYPES), "all types");
+  };
+
+  const size_t input_count = op->GetInputTypeCount(op);
+  for (size_t i = 0; i < input_count; i++) {
+    create_type_constraint(op, static_cast<int>(input_count), static_cast<int>(i), true);
   }
 
+  const size_t output_count = op->GetOutputTypeCount(op);
   for (size_t i = 0; i < output_count; i++) {
-    onnx::OpSchema::FormalParameterOption option = onnx::OpSchema::FormalParameterOption::Single;
-    bool is_homogeneous = true;
-    int min_arity = 1;
-
-    // The OrtCustomOp interface did not support the methods to query input/output characteristics before
-    // ORT API version 8. So, query the relevant methods ONLY from API version 8 onwards.
-    if (op->version >= min_ort_version_with_optional_io_support) {
-      const auto characteristic = op->GetOutputCharacteristic(op, i);
-
-      // Support for optional and variadic inputs/output was added in versions 8 and 14, respectively.
-      if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
-        option = onnx::OpSchema::FormalParameterOption::Optional;
-      } else if ((op->version >= min_ort_version_with_variadic_io_support) &&
-                 (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC)) {
-        ORT_ENFORCE(i == output_count - 1, "Only the last output to a custom op may be marked variadic.");
-        option = onnx::OpSchema::FormalParameterOption::Variadic;
-        min_arity = op->GetVariadicOutputMinArity(op);
-        is_homogeneous = static_cast<bool>(op->GetVariadicOutputHomogeneity(op));
-      }
-    }
     const auto type = op->GetOutputType(op, i);
     if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {
       if (op->GetOutputCharacteristic(op, i) == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED) {
@@ -566,14 +859,23 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
                     "cannot be inferred without which model loading cannot proceed.");
       }
     }
-    std::string output_name = "Output" + std::to_string(i);
-    schema.Output(gsl::narrow_cast<int>(i), output_name, "", output_name, option, is_homogeneous, min_arity);
-    // support all types as input here in schema, and handle the type inference in TypeShapeInference func
-    schema.TypeConstraint(output_name, DataTypeImpl::ToString(SUPPORTED_TENSOR_TYPES), "all types");
+    create_type_constraint(op, static_cast<int>(output_count), static_cast<int>(i), false);
   }
+
   schema.SetDomain(domain);
-  schema.SinceVersion(1);
+  if (op->version >= min_ort_version_with_custom_version && op->GetStartVersion) {
+    schema.SinceVersion(op->GetStartVersion(op));
+  } else {
+    schema.SinceVersion(1);
+  }
   schema.AllowUncheckedAttributes();
+
+  if (op->version >= min_ort_version_with_shape_inference && op->InferOutputShapeFn) {
+    schema.TypeAndShapeInferenceFunction([op](ONNX_NAMESPACE::InferenceContext& infer_ctx) {
+      OrtShapeInferContext ctx(infer_ctx);
+      op->InferOutputShapeFn(op, &ctx);
+    });
+  }
   return schema;
 }
 
@@ -634,7 +936,7 @@ Status IsCompatible(const ONNX_NAMESPACE::OpSchema& schema, const OrtCustomOp* o
                         "custom op schemas mismatch, expecting ", i + 1,
                         i == 0 ? "st" : (i == 1 ? "nd" : "th"),
                         " output to keep same homogeneity");
-      ORT_RETURN_IF_NOT(formal_parameter.GetMinArity() == op->GetVariadicInputMinArity(op),
+      ORT_RETURN_IF_NOT(formal_parameter.GetMinArity() == op->GetVariadicOutputMinArity(op),
                         "custom op schemas mismatch, expecting ", i + 1,
                         i == 0 ? "st" : (i == 1 ? "nd" : "th"),
                         " output to keep same arity");
@@ -723,18 +1025,36 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       }
     }
 
+    // domain_kernels aggregate all custom operator per names.
+    std::unordered_map<std::string, std::vector<const OrtCustomOp*>> domain_kernels;
     for (const auto* op : domain->custom_ops_) {
       // define kernel
-      auto kernel_create_info = CreateKernelCreateInfo(domain->domain_, op);
-      kernel_def_map[op->GetName(op)].push_back(kernel_create_info.kernel_def.get());
-      ORT_RETURN_IF_ERROR(output->RegisterCustomKernel(kernel_create_info));
-      // define schema
-      auto schema_map_iter = schema_map.find(op->GetName(op));
-      if (schema_map_iter == schema_map.end()) {
-        auto schema = CreateSchema(domain->domain_, op);
-        schema_map.emplace(schema.Name(), schema);
+      auto it = domain_kernels.find(op->GetName(op));
+      if (it == domain_kernels.end()) {
+        domain_kernels[op->GetName(op)] = {op};
       } else {
-        ORT_RETURN_IF_ERROR(IsCompatible(schema_map_iter->second, op));
+        domain_kernels[op->GetName(op)].push_back(op);
+      }
+    }
+
+    // Creation of the schemas, one per unique name.
+    for (auto& [name, ops] : domain_kernels) {
+      auto schema = CreateSchema(domain->domain_, ops);
+      // schema.Name() is equal to ops[0]->GetName(ops[0]) and op->GetName(op) is the value
+      // used as a key for dictionary domain_kernels, therefore name == schema.Name().
+      schema_map.emplace(schema.Name(), schema);
+
+      // This loops checks that all custom operators sharing the same name are compatible with the defined schema.
+      for (const auto* op : ops) {
+        // define kernel
+        auto kernel_create_info = CreateKernelCreateInfo(domain->domain_, op);
+        kernel_def_map[op->GetName(op)].push_back(kernel_create_info.kernel_def.get());
+        ORT_RETURN_IF_ERROR(output->RegisterCustomKernel(kernel_create_info));
+        // If IsCompatible returns false, then all custom operators named
+        // 'op->GetName(op)' are not compatible among themselves.
+        // They should have the same number of inputs and outputs, the same characteristics,
+        // (optional, ...). Only the type can change.
+        ORT_RETURN_IF_ERROR(IsCompatible(schema, op));
       }
     }
 
@@ -742,10 +1062,14 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
     for (auto schema_iter : schema_map) {
       schemas.push_back(schema_iter.second);
       InlinedVector<const KernelDef*> kernel_defs = std::move(kernel_def_map[schema_iter.first]);
-      ONNX_NAMESPACE::InferenceFunction infer_fn = [kernel_defs](ONNX_NAMESPACE::InferenceContext& infer_ctx) {
+      auto infer_fn = schemas.back().GetTypeAndShapeInferenceFunction();
+      ONNX_NAMESPACE::InferenceFunction extended_infer_fn = [infer_fn, kernel_defs](ONNX_NAMESPACE::InferenceContext& infer_ctx) {
         InferOutputTypes(kernel_defs, infer_ctx);
+        if (infer_fn) {
+          infer_fn(infer_ctx);
+        }
       };
-      schemas.back().TypeAndShapeInferenceFunction(infer_fn);
+      schemas.back().TypeAndShapeInferenceFunction(extended_infer_fn);
     }
 
     ORT_RETURN_IF_ERROR(output->RegisterOpSet(schemas,
@@ -773,7 +1097,6 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       // GetInputMemoryType was introduced in ver 13. This check allows custom ops compiled using older versions
       // to work with newer versions (> 12) of the ORT binary.
       if (op->version > 12) {
-        auto input_count = op->GetInputTypeCount(op);
         for (size_t i = 0; i < input_count; i++) {
           def_builder.InputMemoryType(op->GetInputMemoryType(op, i), i);
         }

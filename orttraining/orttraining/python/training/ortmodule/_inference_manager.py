@@ -15,7 +15,8 @@ from . import _are_deterministic_algorithms_enabled, _io, _use_deterministic_alg
 from ._execution_agent import InferenceAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
-from ._logger import TimeTrackerPhase, TrackTime
+from ._io import unflatten_user_output
+from ._logger import ORTModuleInitPhase, TrackTime
 from ._utils import save_tuning_results, set_tuning_results
 from .options import DebugOptions, _SkipCheck
 
@@ -111,7 +112,7 @@ class InferenceManager(GraphExecutionManager):
                 self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False
                 or not self._onnx_models.exported_model
             ):
-                self.time_tracker.start(TimeTrackerPhase.EndToEnd)
+                self.time_tracker.start(ORTModuleInitPhase.EndToEnd)
 
                 # Exporting module to ONNX for the first time
                 build_graph = self._export_model(*inputs, **kwargs)
@@ -151,12 +152,15 @@ class InferenceManager(GraphExecutionManager):
                 # Create execution session creates the inference_session
                 self._create_execution_agent()
 
-                self.time_tracker.end(TimeTrackerPhase.EndToEnd)
+                self.time_tracker.end(ORTModuleInitPhase.EndToEnd)
                 self._log_feature_stats()
 
             if self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
                 # Assert that the input and model device match
                 _utils._check_same_device(self._device, "Input argument to forward", *inputs)
+
+            if self._runtime_options.enable_zero_stage3_support:
+                self._append_pull_weight_trigger_as_input(kwargs, self._device)
 
             prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
                 self._graph_initializers,
@@ -167,6 +171,7 @@ class InferenceManager(GraphExecutionManager):
                 kwargs,
                 self._device,
                 self._runtime_inspector,
+                self._zero_stage3_param_map,
             )
 
             user_outputs, _ = InferenceManager.execution_session_run_forward(
@@ -185,7 +190,7 @@ class InferenceManager(GraphExecutionManager):
                     self._execution_agent._inference_session, False, self._runtime_options.tuning_results_path
                 )
 
-            return _io.unflatten_user_output(self._module_output_schema, user_outputs)
+            return unflatten_user_output(self._module_output_schema, user_outputs)
         except ORTModuleFallbackException as e:
             # Exceptions subject to fallback are handled here
             self._fallback_manager.handle_exception(exception=e, log_level=self._debug_options.logging.log_level)
@@ -201,7 +206,7 @@ class InferenceManager(GraphExecutionManager):
         if self._fallback_manager.is_pending():
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
-    @TrackTime(TimeTrackerPhase.BUILD_GRAPH)
+    @TrackTime(ORTModuleInitPhase.BUILD_GRAPH)
     def _build_graph(self, graph_transformer_config):
         """Build an inference graph using the module_graph_builder"""
 
@@ -214,7 +219,7 @@ class InferenceManager(GraphExecutionManager):
                 self._export_mode,
             )
 
-    @TrackTime(TimeTrackerPhase.CREATE_SESSION)
+    @TrackTime(ORTModuleInitPhase.CREATE_SESSION)
     def _create_execution_agent(self):
         """Creates an InferenceAgent that can run forward graph on an inference model"""
 
