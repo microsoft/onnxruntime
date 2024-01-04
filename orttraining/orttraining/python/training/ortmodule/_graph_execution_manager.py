@@ -7,7 +7,7 @@ import copy
 import logging
 import os
 from abc import ABC, abstractmethod  # noqa: F401
-from typing import Dict, List, OrderedDict, Tuple
+from typing import Dict, List, Optional, OrderedDict, Tuple
 
 import onnx
 import torch
@@ -66,28 +66,9 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Original and flattened (transformed) output module
         self._flattened_module = module
 
-        # Device where the model is placed.
-        # self._device: Optional[torch.device] = _utils.get_device_from_module(module)
-
-        # Model export and post export processing before inference optimization && building gradient.
         self._onnx_models = _onnx_models.ONNXModels()
         self._export_mode = export_mode
-        self._graph_transition_manager = GraphTransitionManager(
-            flatten_module=module,
-            export_mode=export_mode,
-            save=debug_options.save_onnx_models.save,
-            save_path=debug_options.save_onnx_models.path,
-            save_name_prefix=debug_options.save_onnx_models.name_prefix,
-            deepcopy_before_model_export=self._runtime_options.deepcopy_before_model_export,
-            torch_exporter_verbose_log=self._debug_options.logging.log_level <= LogLevel.INFO,
-            enable_zero_stage3_support=self._runtime_options.enable_zero_stage3_support,
-            onnx_opset_version=self._runtime_options.onnx_opset_version,
-            enable_custom_autograd_function=self._runtime_options.enable_custom_autograd_function,
-            enable_symbolic_shape_infer=self._runtime_options.run_symbolic_shape_infer,
-            exported_model_cache_dir=self._runtime_options.ortmodule_cache_dir,
-            logger=logger,
-        )
-        self._post_export_processed_model_info = None
+        self._graph_transition_manager: Optional[GraphTransitionManager] = None
 
         # Model after inference optimization && gradient building.
         self._graph_builder = None
@@ -127,6 +108,8 @@ class GraphExecutionManager(GraphExecutionInterface):
 
             configure_ort_compatible_zero_stage3(debug=False, stats_output_dir="ort_output", stats_overwrite=True)
 
+        self._initialize_graph_transition_manager()
+
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._runtime_options.use_external_gpu_allocator and torch.cuda.is_available():
             # CPP extension to get torch GPU allocator's alloc and free function addresses
@@ -135,6 +118,24 @@ class GraphExecutionManager(GraphExecutionInterface):
             self._torch_alloc = torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
             self._torch_free = torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
             self._torch_empty_cache = torch_gpu_allocator.gpu_caching_allocator_empty_cache_address()
+
+    def _initialize_graph_transition_manager(self):
+        """Creates a new GraphTransitionManager, initializes it and saves it to self._graph_transition_manager"""
+        self._graph_transition_manager = GraphTransitionManager(
+            flatten_module=self._flattened_module,
+            export_mode=self._export_mode,
+            save=self._debug_options.save_onnx_models.save,
+            save_path=self._debug_options.save_onnx_models.path,
+            save_name_prefix=self._debug_options.save_onnx_models.name_prefix,
+            deepcopy_before_model_export=self._runtime_options.deepcopy_before_model_export,
+            torch_exporter_verbose_log=self._debug_options.logging.log_level <= LogLevel.INFO,
+            enable_zero_stage3_support=self._runtime_options.enable_zero_stage3_support,
+            onnx_opset_version=self._runtime_options.onnx_opset_version,
+            enable_custom_autograd_function=self._runtime_options.enable_custom_autograd_function,
+            enable_symbolic_shape_infer=self._runtime_options.run_symbolic_shape_infer,
+            exported_model_cache_dir=self._runtime_options.ortmodule_cache_dir,
+            logger=self._logger,
+        )
 
     def _validate_module_type(self, module):
         """Raises ORTModuleTorchModelException if the module is not a torch.nn.Module"""
@@ -166,8 +167,9 @@ class GraphExecutionManager(GraphExecutionInterface):
 
     def _build_graph(self, config):
         if self._runtime_options.use_static_shape:
-            # (TODO): add the shape for the onnx graph inputs.
-            self._graph_builder.build(config)  # , self._input_info.shape)
+            self._graph_builder.build(
+                config, self._graph_transition_manager._model_info_for_export.onnx_graph_input_shapes
+            )
         else:
             self._graph_builder.build(config)
 
@@ -302,6 +304,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             "_onnx_models",
             "_graph_builder",
             "_graph_info",
+            "_graph_transition_manager",
             "_execution_agent",
             "_torch_alloc",
             "_torch_free",
@@ -317,8 +320,11 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         _utils.reinitialize_graph_execution_manager(self)
 
+        self._initialize_graph_transition_manager()
+
     @property
     def _device(self):
+        # Graph transition manager is responsible for detecting and managing the device to use.
         return self._graph_transition_manager._device
 
     @_logger.TrackTime(_logger.ORTModuleInitPhase.DETECTION)
@@ -343,15 +349,13 @@ class GraphExecutionManager(GraphExecutionInterface):
             )
 
             if self._runtime_options.enable_sparse_optimizer:
-                detected_device = _utils.get_device_from_module(self._original_module) or _utils.get_device_from_inputs(
-                    inputs, kwargs
-                )
+                detected_device = _utils.get_device_from_module_and_inputs(self._original_module, inputs, kwargs)
 
                 if self._runtime_options.enable_zero_stage3_support:
                     self._append_pull_weight_trigger_as_input(kwargs, detected_device)
 
                 prepared_input_map = self._graph_transition_manager._post_export_processed_model_info.construct_inputs(
-                    inputs, kwargs, True
+                    inputs, kwargs, True, self._device
                 )
 
                 embed_sparsity_results = OrderedDict()

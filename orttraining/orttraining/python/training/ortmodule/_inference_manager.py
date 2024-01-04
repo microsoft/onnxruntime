@@ -114,9 +114,10 @@ class InferenceManager(GraphExecutionManager):
 
                 # Exporting module to ONNX for the first time
 
-                build_graph, post_export_processed_model_info = self._graph_transition_manager.use_cache_or_reconstruct(
-                    inputs, kwargs
-                )
+                (
+                    build_graph,
+                    post_export_processed_model_info,
+                ) = self._graph_transition_manager.use_cache_or_reconstruct_post_processed_model(inputs, kwargs)
                 if build_graph:
                     # TODO(): do we need call it for inferencing mode???
                     self._initialize_graph_builder(post_export_processed_model_info)
@@ -137,7 +138,7 @@ class InferenceManager(GraphExecutionManager):
                 self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT) is False
                 or not self._execution_agent
             ):
-                module_device = _utils.get_device_from_module(self._original_module)
+                module_device = _utils.get_device_from_module_and_inputs(self._original_module, inputs, kwargs)
 
                 create_execution_session = (
                     build_graph
@@ -164,7 +165,7 @@ class InferenceManager(GraphExecutionManager):
                 self._append_pull_weight_trigger_as_input(kwargs, self._device)
 
             prepared_input_map = self._graph_transition_manager._post_export_processed_model_info.construct_inputs(
-                inputs, kwargs, True
+                inputs, kwargs, True, self._device
             )
 
             user_outputs, _ = InferenceManager.execution_session_run_forward(

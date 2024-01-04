@@ -256,7 +256,7 @@ class TrainingManager(GraphExecutionManager):
                 (
                     build_gradient_graph,
                     post_export_processed_model_info,
-                ) = self._graph_transition_manager.use_cache_or_reconstruct(inputs, kwargs)
+                ) = self._graph_transition_manager.use_cache_or_reconstruct_post_processed_model(inputs, kwargs)
 
                 if build_gradient_graph:
                     self._initialize_graph_builder(post_export_processed_model_info)
@@ -277,9 +277,7 @@ class TrainingManager(GraphExecutionManager):
                 self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT) is False
                 or not self._execution_agent
             ):
-                device = _utils.get_device_from_module(self._original_module) or _utils.get_device_from_inputs(
-                    inputs, kwargs
-                )
+                device = _utils.get_device_from_module_and_inputs(self._original_module, inputs, kwargs)
                 create_execution_session = (
                     build_gradient_graph
                     or self._device != device
@@ -305,17 +303,13 @@ class TrainingManager(GraphExecutionManager):
             if self._runtime_options.enable_zero_stage3_support:
                 self._append_pull_weight_trigger_as_input(kwargs, self._device)
 
-            # prepared_input_list = self.construct_inputs(inputs, kwargs)
-
             prepared_input_map = self._graph_transition_manager._post_export_processed_model_info.construct_inputs(
-                inputs, kwargs, True
+                inputs, kwargs, True, self._device
             )
 
             user_outputs = self._forward_class.apply(*prepared_input_map.values())
 
             outputs = self._graph_transition_manager._post_export_processed_model_info.restore_outputs(user_outputs)
-
-            # print("outputs: ", outputs)
 
             if (
                 create_execution_session

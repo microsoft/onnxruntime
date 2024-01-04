@@ -28,26 +28,22 @@ from onnxruntime.training.utils.torch_io_helper import _TensorStub
 
 from . import _io, _utils
 from ._fallback import ORTModuleDeviceException, ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
+from ._onnx_models import _get_onnx_file_name, _save_model
 from ._utils import check_function_has_param, get_rank
 from ._zero_stage3_compatibility import stage3_export_context
 
 
-def _get_onnx_file_name(name_prefix, name, export_mode):
-    suffix = "training" if export_mode == torch.onnx.TrainingMode.TRAINING else "inference"
-    return f"{name_prefix}_{name}_{suffix}.onnx"
-
-
-def _save_model(model: onnx.ModelProto, file_path: str):
-    onnx.save(model, file_path)
-
-
 class ExportedModelInfo:
+    """Encapsulates the information of the exported model."""
+
     def __init__(
         self,
         module_forward_args_schema: ORTModelInputOutputSchemaType,
         module_forward_kwargs_schema: ORTModelInputOutputSchemaType,
         onnx_graph_input_names: list[str],
         onnx_graph_input_names_require_grad: list[str],
+        onnx_graph_input_names_user_defined: list[str],
+        onnx_graph_input_names_require_grad_user_defined: list[str],
         exported_model: onnx.ModelProto,
         module_forward_output_schema: ORTModelInputOutputSchemaType,
     ):
@@ -63,12 +59,21 @@ class ExportedModelInfo:
         # Be noted: all inputs are used by the model for its compute.
         self.onnx_graph_input_names_require_grad: list[str] = onnx_graph_input_names_require_grad
 
+        self.onnx_graph_input_names_user_defined = (
+            onnx_graph_input_names_user_defined  # The ONNX graph input names excluding the parameters, buffers.
+        )
+
+        # The ONNX graph input names excluding the parameters, buffers.
+        self.onnx_graph_input_names_require_grad_user_defined = onnx_graph_input_names_require_grad_user_defined
+
         # Exported model proto.
         self.exported_model: onnx.ModelProto | None = exported_model
 
+        # Used as a baseline to compare with the current inputs (args/kwargs) to see if the model needs to be re-exported.
         self.module_forward_args_schema: ORTModelInputOutputSchemaType | None = module_forward_args_schema
         self.module_forward_kwargs_schema: ORTModelInputOutputSchemaType | None = module_forward_kwargs_schema
 
+        # Used for unflattening the outputs from the ORT forward run.
         self.module_forward_output_schema: ORTModelInputOutputSchemaType | None = module_forward_output_schema
 
     def __str__(self):
@@ -85,10 +90,11 @@ class ExportedModelInfo:
 
 
 class PostExportProcessedModelInfo:
+    """Encapsulates the information of the post-export processed model."""
+
     def __init__(
         self,
         flatten_module: torch.nn.Module,
-        device: torch.device | None,
         onnx_graph_input_names_user_defined: list[str],
         onnx_graph_input_names_require_grad_user_defined: list[str],
         onnx_graph_input_names: list[str],
@@ -98,8 +104,6 @@ class PostExportProcessedModelInfo:
         post_export_processed_model: onnx.ModelProto,
         data_accessor: list[callable],
     ):
-        self.device = device
-
         self._flattened_module = flatten_module
 
         # Input names for the pre-gradient-build graph.
@@ -148,7 +152,6 @@ class PostExportProcessedModelInfo:
 
     def __str__(self):
         return f"""PostExportProcessedModelInfo class:
-            \tdevice: {self.device}
             \tonnx_graph_input_names: {self.onnx_graph_input_names}
             \tonnx_graph_input_names_require_grad: {self.onnx_graph_input_names_require_grad}
             \tonnx_graph_input_dynamic_axes_map: {self.onnx_graph_input_dynamic_axes_map}
@@ -165,6 +168,7 @@ class PostExportProcessedModelInfo:
         args: Sequence[ORTModelInputOutputType],
         kwargs: Mapping[str, ORTModelInputOutputType],
         constant_as_tensor: bool,
+        device: torch.device,
     ):
         """Constructs the inputs for the forward method
 
@@ -176,7 +180,7 @@ class PostExportProcessedModelInfo:
                 assert name in self.buffer_for_ort_runs, f"{name} is not in buffer_for_ort_runs"
                 data = self.data_accessor[name](args, kwargs)
                 if PrimitiveType.is_primitive_type(data) and constant_as_tensor:
-                    data = PrimitiveType.get_tensor(data, self.device)
+                    data = PrimitiveType.get_tensor(data, device)
                 self.buffer_for_ort_runs[name] = data
             else:
                 raise wrap_exception(
@@ -213,14 +217,14 @@ class GraphTransitionManager:
         save_name_prefix: str,
         deepcopy_before_model_export: bool,
         torch_exporter_verbose_log: bool,
-        enable_zero_stage3_support: bool,
+        enable_zero_stage3_support: bool,  # TODO(): implement as a plugin
         onnx_opset_version: int,
-        enable_custom_autograd_function: bool,
+        enable_custom_autograd_function: bool,  # TODO(): implement as a plugin
         enable_symbolic_shape_infer: bool,
         exported_model_cache_dir: str,
         logger: logging.Logger,
     ):
-        self._device = _utils.get_device_from_module(flatten_module)
+        self._device = _utils._get_device_from_module(flatten_module)
         self._export_mode = export_mode
 
         # Debug options
@@ -236,6 +240,8 @@ class GraphTransitionManager:
         self._enable_custom_autograd_function = enable_custom_autograd_function
         self._run_symbolic_shape_infer = enable_symbolic_shape_infer
         self._ortmodule_cache_dir = exported_model_cache_dir
+
+        self._export_extra_kwargs = {}
 
         self._logger = logger
 
@@ -260,10 +266,10 @@ class GraphTransitionManager:
         # Model info after export and post export processing.
         self._post_export_processed_model_info = None
 
-    def use_cache_or_reconstruct(
+    def use_cache_or_reconstruct_post_processed_model(
         self, args: Sequence[ORTModelInputOutputType], kwargs: Mapping[str, ORTModelInputOutputType]
     ) -> tuple[bool, PostExportProcessedModelInfo]:
-        """Check if the model can be reused, otherwise, reconstruct the model.
+        """Check if the post-export processed ONNX model can be reused, otherwise, reconstruct the model.
 
         Return True if the model can be reused, otherwise, return False.
         The model can be reused when the following conditions are met:
@@ -271,22 +277,26 @@ class GraphTransitionManager:
             b. In training mode, the graph inputs requiring gradient are the same as the previous ones.
 
         """
-        (
-            need_export_model,
-            cur_model_info_for_export,
-            flatten_args,
-            flatten_kwargs,
-            cur_args_schema,
-            cur_kwargs_schema,
-        ) = GraphTransitionManager._export_check(
-            prev_exported_model_info=self._model_info_for_export,
+
+        if self._device is None:
+            device = _utils.get_device_from_module_and_inputs(self._flatten_module._original_module, args, kwargs)
+            if not self._device or self._device != device:
+                self._device = device
+                if not self._device:
+                    raise wrap_exception(
+                        ORTModuleDeviceException, RuntimeError("A device must be specified in the model or inputs!")
+                    )
+
+        # Extract the schema from the args and kwargs, and compare with the cached one.
+        # This check ideally is not needed as we already have the above check, but it is added as a safeguard.
+        flatten_args, cur_args_schema = _io._extract_schema(copy.copy(args), self._device)
+        flatten_kwargs, cur_kwargs_schema = _io._extract_schema(copy.copy(kwargs), self._device)
+
+        need_export_model = GraphTransitionManager._export_check(
             prev_model_info_for_export=self._exported_model_info,
-            args=args,
-            kwargs=kwargs,
-            device=self._device,
             original_model_has_changed=self._original_model_has_changed,
-            module_forward_func_parameters=self._module_forward_func_parameters,
-            export_mode=self._export_mode,
+            cur_args_schema=cur_args_schema,
+            cur_kwargs_schema=cur_kwargs_schema,
             logger=self._logger,
         )
 
@@ -299,7 +309,18 @@ class GraphTransitionManager:
             self._flatten_module._num_positionals = len(flatten_args)
 
             flatten_inputs = flatten_args + flatten_kwargs
-            self._set_device_from_module(flatten_inputs, {})
+
+            # Check graph inputs parsed from the model's forward function signature and current inputs,
+            # if they are different, we need to re-export the model.
+            cur_model_info_for_export = _io.parse_inputs_for_onnx_export(
+                self._module_forward_func_parameters,
+                args,
+                kwargs,
+                True,
+                self._device,
+                self._export_mode,
+                self._export_extra_kwargs,
+            )
 
             # Start exporting the model by passing the 1-D flatten tensor list containing all args plus kwargs.
             (
@@ -323,11 +344,28 @@ class GraphTransitionManager:
                 logger=self._logger,
             )
 
+            # Get the intersection of all user defined input names (parsed from forward function signature) and
+            # the exported model input names including both user defined names and parameter/buffer names.
+            # It is possible some user defined input names are not in the exported model input names, if it is not used
+            # by the model for its compute.
+            onnx_graph_input_names_user_defined = [
+                input_name
+                for input_name in cur_model_info_for_export.onnx_graph_input_names
+                if input_name in onnx_graph_input_names
+            ]
+            onnx_graph_input_names_require_grad_user_defined = [
+                input_name
+                for input_name in cur_model_info_for_export.onnx_graph_input_names_require_grad
+                if input_name in onnx_graph_input_names_require_grad
+            ]
+
             self._exported_model_info = ExportedModelInfo(
                 module_forward_args_schema=cur_args_schema,
                 module_forward_kwargs_schema=cur_kwargs_schema,
                 onnx_graph_input_names=onnx_graph_input_names,
                 onnx_graph_input_names_require_grad=onnx_graph_input_names_require_grad,
+                onnx_graph_input_names_user_defined=onnx_graph_input_names_user_defined,
+                onnx_graph_input_names_require_grad_user_defined=onnx_graph_input_names_require_grad_user_defined,
                 exported_model=exported_model,
                 module_forward_output_schema=module_output_schema,
             )
@@ -357,19 +395,24 @@ class GraphTransitionManager:
                 flatten_module=self._flatten_module,
                 prev_exported_model_info=self._exported_model_info,
                 export_mode=self._export_mode,
-                cur_model_info_for_export=cur_model_info_for_export,
+                cur_model_info_for_export=self._model_info_for_export,
             )
             if need_re_processed:
-                # Update the onnx_graph_input_names_require_grads to make it a new default baseline to compare using new iteration data.
+                # Update the onnx_graph_input_names_require_grads to make it a new default baseline to compare
+                # using new iteration data.
                 self._exported_model_info.onnx_graph_input_names_require_grad = updated_onnx_graph_input_requires_grads
 
         if need_re_processed:
-            # At this point, the exported model is ready, and we can start post export processing.
+            # At this point, the exported model is ready, and we can start post-export processing.
             self._post_export_processed_model_info = GraphTransitionManager._post_export_process(
                 flatten_module=self._flatten_module,
                 device=self._device,
+                export_mode=self._export_mode,
                 exported_model_info=self._exported_model_info,
                 model_info_for_export=self._model_info_for_export,
+                enable_custom_autograd_function=self._enable_custom_autograd_function,
+                enable_zero_stage3_support=self._enable_zero_stage3_support,
+                stage3_param_handle=self,
                 logger=self._logger,
             )
 
@@ -387,21 +430,16 @@ class GraphTransitionManager:
 
     @staticmethod
     def _export_check(
-        prev_model_info_for_export: _io.ModelInfoForExport,
         prev_exported_model_info: ExportedModelInfo,
-        args: Sequence[ORTModelInputOutputType],
-        kwargs: Mapping[str, ORTModelInputOutputType],
-        device: torch.device | None,
         original_model_has_changed: bool,
-        module_forward_func_parameters: list[inspect.Parameter],
-        export_mode: int,
+        cur_args_schema: ORTModelInputOutputSchemaType,
+        cur_kwargs_schema: ORTModelInputOutputSchemaType,
         logger: logging.Logger,
     ):
         """Check if the model needs to be exported, if yes, return True.
 
         For the following cases, return True:
             1. The model has never been exported before.
-            2. The model's input names parsed from args and kwargs changed.
             3. The model input schema parsed from args and kwargs has changed.
         """
 
@@ -409,39 +447,22 @@ class GraphTransitionManager:
 
         need_export_model = need_export_model or original_model_has_changed
 
-        # Check graph inputs parsed from the model's forward function signature and current inputs,
-        # if they are different, we need to re-export the model.
-        model_info_for_export = _io.parse_inputs_for_onnx_export(
-            module_forward_func_parameters, args, kwargs, True, device, export_mode
-        )
-
         need_export_model = (
             need_export_model
-            or prev_model_info_for_export.onnx_graph_input_names != model_info_for_export.onnx_graph_input_names
+            or cur_args_schema != prev_exported_model_info.module_forward_args_schema
+            or cur_kwargs_schema != prev_exported_model_info.module_forward_kwargs_schema
         )
 
-        # Extract the schema from the args and kwargs, and compare with the cached one.
-        # This check ideally is not needed as we already have the above check, but it is added as a safeguard.
-        flatten_args, args_schema = _io._extract_schema(copy.copy(args), device)
-        flatten_kwargs, kwargs_schema = _io._extract_schema(copy.copy(kwargs), device)
+        logger.info(f"_export_check completed - need_export_model: {need_export_model}")
 
-        need_export_model = (
-            need_export_model
-            or args_schema != prev_exported_model_info.module_forward_args_schema
-            or kwargs_schema != prev_exported_model_info.module_forward_kwargs_schema
-        )
-
-        logger.info(
-            f"_export_check completed - need_export_model: {need_export_model}, model_info_for_export: {model_info_for_export}"
-        )
-
-        return need_export_model, model_info_for_export, flatten_args, flatten_kwargs, args_schema, kwargs_schema
+        return need_export_model
 
     @staticmethod
     def _reprocess_check(
         flatten_module, prev_exported_model_info, export_mode, cur_model_info_for_export: _io.ModelInfoForExport
     ) -> bool:
-        """Check if the exported model needs to be re-processed, if yes, return True and the updated onnx_graph_input_requires_grads.
+        """Check if the exported model needs to be re-processed, if yes,
+        return True and the updated onnx_graph_input_requires_grads.
 
         For the following cases, return True:
             1. The export mode is TRAINING and the model's input names (including both user input and module parameters)
@@ -475,8 +496,12 @@ class GraphTransitionManager:
     def _post_export_process(
         flatten_module,
         device,
+        export_mode,
         exported_model_info: ExportedModelInfo,
         model_info_for_export: _io.ModelInfoForExport,
+        enable_custom_autograd_function: bool,
+        enable_zero_stage3_support: bool,
+        stage3_param_handle: type,
         logger: logging.Logger,
     ):
         """Post process the exported model, generate the processed model which will be used for initializing graph builder."""
@@ -484,30 +509,32 @@ class GraphTransitionManager:
         # Deepcopy the exported model, in case modification affects the exported model.
 
         # TODO(): Do pre-grad graph modification as needed, for memory efficient gradient management, etc.
-        # Currently, we don't do any modifications.
-
         post_processed_model = copy.deepcopy(exported_model_info.exported_model)
 
-        # Get the intersection of all user defined input names (parsed from forward function signature) and
-        # the exported model input names including both user defined names and parameter/buffer names.
-        # It is possible some user defined input names are not in the exported model input names, if it is not used
-        # by the model for its compute.
-        onnx_graph_input_names_user_defined = [
-            input_name
-            for input_name in model_info_for_export.onnx_graph_input_names
-            if input_name in exported_model_info.onnx_graph_input_names
-        ]
-        onnx_graph_input_names_require_grad = [
-            input_name
-            for input_name in model_info_for_export.onnx_graph_input_names_require_grad
-            if input_name in exported_model_info.onnx_graph_input_names_require_grad
-        ]
+        if export_mode == torch.onnx.TrainingMode.TRAINING:
+            if enable_custom_autograd_function:
+                from ._custom_autograd_function_exporter import post_process_enabling_autograd_function
+
+                post_processed_model = post_process_enabling_autograd_function(post_processed_model)
+
+            if enable_zero_stage3_support:
+                from ._zero_stage3_compatibility import post_processing_enable_zero_stage3_compat
+
+                post_processed_model = post_processing_enable_zero_stage3_compat(
+                    post_processed_model,
+                    stage3_param_handle._zero_stage3_param_map,
+                    [name for name, _ in flatten_module.named_parameters()],
+                )
+
+                # Cannot append pull weight trigger name to input names as following, otherwise, the later check (
+                # https://github.com/microsoft/onnxruntime/blob/068300d97eb25e5b52324e7af54a45ed1fa6a4c3/orttraining/orttraining/python/training/ortmodule/_training_manager.py#L466C18-L466C18)
+                # find input info mismatch, will re-initialize the graph builder.
+                # self._input_info.require_grad_names.append(STAGE3_PULL_WEIGHT_TRIGGER_NAME)
 
         post_export_processed_model_info = PostExportProcessedModelInfo(
             flatten_module,
-            device,
-            onnx_graph_input_names_user_defined,
-            onnx_graph_input_names_require_grad,
+            exported_model_info.onnx_graph_input_names_user_defined,
+            exported_model_info.onnx_graph_input_names_require_grad_user_defined,
             exported_model_info.onnx_graph_input_names,
             exported_model_info.onnx_graph_input_names_require_grad,
             model_info_for_export.onnx_graph_input_dynamic_axes_map,
@@ -642,11 +669,6 @@ class GraphTransitionManager:
 
         # Export torch.nn.Module to ONNX
         f = io.BytesIO()
-        print("pre_export_graph_info.onnx_graph_input_names: ", model_info_for_export.onnx_graph_input_names)
-        print(
-            "pre_export_graph_info.onnx_graph_input_names_require_grad: ",
-            model_info_for_export.onnx_graph_input_names_require_grad,
-        )
 
         # Deepcopy inputs, since input values may change after model run.
         # NOTE: Inputs may contain tensors that have attributes preventing their deepcopy (example grad_fn).
@@ -655,8 +677,6 @@ class GraphTransitionManager:
         sample_inputs_copy, sample_kwargs_copy = _io.deepcopy_model_input(*flatten_module_inputs, **kwargs)
         assert len(sample_kwargs_copy) == 0, "Currently, kwargs are not supported for ONNX export."
         sample_inputs_as_tuple = sample_inputs_copy
-
-        print(">>>shapes for the flatten args and kwargs", [v.shape for v in sample_inputs_as_tuple])
 
         # Ops behaving differently under train/eval mode need to be exported with the
         # correct training flag to reflect the expected behavior.
@@ -708,25 +728,6 @@ class GraphTransitionManager:
             )
         exported_model = onnx.load_model_from_string(f.getvalue())
 
-        if enable_custom_autograd_function:
-            from ._custom_autograd_function_exporter import post_process_enabling_autograd_function
-
-            exported_model = post_process_enabling_autograd_function(exported_model)
-
-        if enable_zero_stage3_support:
-            from ._zero_stage3_compatibility import post_processing_enable_zero_stage3_compat
-
-            exported_model = post_processing_enable_zero_stage3_compat(
-                exported_model,
-                stage3_param_handle._zero_stage3_param_map,
-                [name for name, _ in flattened_module.named_parameters()],
-            )
-
-            # Cannot append pull weight trigger name to input names as following, otherwise, the later check (
-            # https://github.com/microsoft/onnxruntime/blob/068300d97eb25e5b52324e7af54a45ed1fa6a4c3/orttraining/orttraining/python/training/ortmodule/_training_manager.py#L466C18-L466C18)
-            # find input info mismatch, will re-initialize the graph builder.
-            # self._input_info.require_grad_names.append(STAGE3_PULL_WEIGHT_TRIGGER_NAME)
-
         # Cache model for future runs
         if cache_dir:
             if not os.path.exists(cache_dir):
@@ -738,19 +739,6 @@ class GraphTransitionManager:
             onnx.save(exported_model, filename)
 
         return exported_model, module_output_schema
-
-    def _set_device_from_module(self, inputs, kwargs):
-        """Get the device from the module and save it to self._device"""
-
-        device = _utils.get_device_from_module(self._flatten_module._original_module) or _utils.get_device_from_inputs(
-            inputs, kwargs
-        )
-        if not self._device or self._device != device:
-            self._device = device
-            if not self._device:
-                raise wrap_exception(
-                    ORTModuleDeviceException, RuntimeError("A device must be specified in the model or inputs!")
-                )
 
     def signal_model_changed(self):
         """Signals the execution manager to re-export the model on the next forward call"""

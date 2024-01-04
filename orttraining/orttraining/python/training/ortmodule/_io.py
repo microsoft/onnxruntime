@@ -155,13 +155,14 @@ class ModelInfoForExport:
         onnx_graph_input_shapes: List[List[int]],
         data_accessor: Optional[List[callable]] = None,
         export_mode: Optional[int] = None,
+        export_extra_kwargs: Optional[Dict[str, any]] = None,
     ):
         # Value can be either torch.onnx.TrainingMode.TRAINING or torch.onnx.TrainingMode.EVAL
         self.export_mode = export_mode
 
         # Exporter can take extra arguments for ORTModule extensions
         # It cannot overlap with required/immutable arguments (validated in runtime)
-        self.export_extra_kwargs = {}
+        self.export_extra_kwargs = export_extra_kwargs
 
         # Input names parsed and then flatten from the model's forward function signature.
         # This should contains ONLY the user defined input names
@@ -199,6 +200,10 @@ class ModelInfoForExport:
         return self.__str__()
 
 
+def _arg_access__with_index_func(arg_index, args, kwargs):
+    return args[arg_index]
+
+
 def parse_inputs_for_onnx_export(
     all_input_parameters: List[inspect.Parameter],
     args: Sequence[ORTModelInputOutputType],
@@ -206,6 +211,7 @@ def parse_inputs_for_onnx_export(
     constant_as_tensor: bool,
     device: torch.device,
     export_mode: int,
+    export_extra_kwargs: Optional[Dict[str, any]] = None,
 ) -> ModelInfoForExport:
     """Parses through the model inputs and returns _InputInfo.
 
@@ -244,7 +250,7 @@ def parse_inputs_for_onnx_export(
     def _warn_of_constant_inputs(data):
         warnings.warn(f"Received input of type {type(data)} is treated as a constant by ORT by default.")
 
-    def _add_input(name, input_value, onnx_graph_input_names, cur_func):
+    def _add_input(name: str, input_value, onnx_graph_input_names: List[str], cur_func: Callable):
         """Returns number of expanded non none inputs that _add_input processed"""
 
         # in case the input is already handled.
@@ -272,11 +278,15 @@ def parse_inputs_for_onnx_export(
             for i, val in enumerate(value):
                 # Name each input with the index appended to the original name of the
                 # argument.
+
+                def _access_func1(i, cur_func, args, kwargs):
+                    return cur_func(args, kwargs)[i]
+
                 _add_input(
                     f"{name}_{i}",
                     val,
                     onnx_graph_input_names,
-                    partial(lambda i, args, kwargs: cur_func(args, kwargs)[i], i),
+                    partial(_access_func1, i, cur_func),
                 )
 
             # Return here since the list by itself is not a valid input.
@@ -286,11 +296,15 @@ def parse_inputs_for_onnx_export(
             # If the input is a mapping (like a dict), expand the dict so that
             # each element of the dict is an input by itself.
             for key, val in value.items():
+
+                def _access_func2(key, cur_func, args, kwargs):
+                    return cur_func(args, kwargs)[key]
+
                 _add_input(
                     f"{name}_{key}",
                     val,
                     onnx_graph_input_names,
-                    partial(lambda key, args, kwargs: cur_func(args, kwargs)[key], key),
+                    partial(_access_func2, key, cur_func),
                 )
 
             # Return here since the dict by itself is not a valid input.
@@ -339,13 +353,8 @@ def parse_inputs_for_onnx_export(
                 name = f"{input_parameter.name}_{var_positional_idx}"
                 var_positional_idx += 1
                 inp = args[args_i]
-                _add_input(
-                    name,
-                    inp,
-                    # onnx_graph,
-                    onnx_graph_input_names,
-                    partial(lambda args_i, args, kwargs: args[args_i], args_i),
-                )
+
+                _add_input(name, inp, onnx_graph_input_names, partial(_arg_access__with_index_func, args_i))
         elif (
             input_parameter.kind == inspect.Parameter.POSITIONAL_ONLY
             or input_parameter.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
@@ -359,22 +368,29 @@ def parse_inputs_for_onnx_export(
             if input_idx < len(args) and args[input_idx] is not None:
                 inp = args[input_idx]
 
-                access_func = partial(lambda input_idx, args, kwargs: args[input_idx], input_idx)
+                access_func = partial(_arg_access__with_index_func, input_idx)
 
             elif name in kwargs and kwargs[name] is not None:
                 inp = kwargs[name]
 
-                access_func = partial(lambda name, args, kwargs: kwargs[name], name)
+                def _access_func5(name, args, kwargs):
+                    return kwargs[name]
+
+                access_func = partial(_access_func5, name)
 
             _add_input(name, inp, onnx_graph_input_names, access_func)
         elif input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
             # **kwargs is always the last argument of forward()
             for name, inp in kwargs.items():
+
+                def _access_func6(name, args, kwargs):
+                    return kwargs[name]
+
                 _add_input(
                     name,
                     inp,
                     onnx_graph_input_names,
-                    partial(lambda name, args, kwargs: kwargs[name], name),
+                    partial(_access_func6, name),
                 )
 
     exported_graph = ModelInfoForExport(
@@ -384,6 +400,7 @@ def parse_inputs_for_onnx_export(
         onnx_graph_input_shapes=input_shape,
         data_accessor=data_accessors,
         export_mode=export_mode,
+        export_extra_kwargs=export_extra_kwargs,
     )
 
     return exported_graph

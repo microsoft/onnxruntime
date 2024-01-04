@@ -30,7 +30,7 @@ from transformers.modeling_outputs import SequenceClassifierOutput
 
 import onnxruntime.training.ortmodule as ortmodule_module
 from onnxruntime.training.optim import AdamWMode, FusedAdam
-from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule, _fallback, _io, _utils
+from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule, _fallback, _utils
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
 from onnxruntime.training.ortmodule.options import _SkipCheck
 
@@ -447,14 +447,12 @@ def test_forward_call_single_positional_argument():
 
     N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
-    # ort_model = ORTModule(model)
-    from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule
-
-    ort_model = ORTModule(model, DebugOptions(save_onnx=True, log_level=LogLevel.INFO, onnx_prefix="2024_0102_01"))
+    ort_model = ORTModule(model)
 
     # Check that the original forward signature is preserved.
     assert inspect.signature(model.forward) == inspect.signature(ort_model.forward)
     x = torch.randn(N, D_in, device=device)
+
     # Make sure model runs without any exception
     prediction = ort_model(x)
     assert prediction is not None
@@ -624,7 +622,7 @@ def test_torch_nn_module_to_api(original_device, to_argument):
     x = x.to(to_argument)
     model(x)
     assert _utils.get_device_str(
-        model._torch_module._execution_manager(model._is_training())._graph_transition_manager._device
+        model._torch_module._execution_manager(model._is_training())._device
     ) == _utils.get_device_str(torch.device(to_argument))
 
 
@@ -839,13 +837,7 @@ def _run_gradient_correctness_transpose(perm, shape):
     device = "cuda"
     pt_model = NeuralNetTranspose(perm).to(device)
 
-    from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule
-
-    ort_model = ORTModule(
-        copy.deepcopy(pt_model), DebugOptions(save_onnx=True, log_level=LogLevel.INFO, onnx_prefix="2024_0103_01")
-    )
-
-    # ort_model = ORTModule(copy.deepcopy(pt_model))
+    ort_model = ORTModule(copy.deepcopy(pt_model))
 
     def run_step(model, x):
         prediction = model(x)
@@ -854,11 +846,11 @@ def _run_gradient_correctness_transpose(perm, shape):
         return prediction
 
     x = torch.randn(*shape, device=device, requires_grad=True)
-    # pt_prediction = run_step(pt_model, x)
-    run_step(ort_model, x)
+    pt_prediction = run_step(pt_model, x)
+    ort_prediction = run_step(ort_model, x)
 
-    # _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
-    # _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
 
 @pytest.mark.parametrize(
@@ -2963,12 +2955,11 @@ def test_forward_data_and_model_on_different_devices(data_device, model_device):
             runtime_error.value
         )
     else:
-        # ORT backend
-        with pytest.raises(_fallback.ORTModuleDeviceException) as runtime_error:
+        # ORT backend also throw the same exception because PyTorch run failed during export.
+        with pytest.raises(RuntimeError) as runtime_error:
             ort_model(x)
-        assert (
-            f"Input argument to forward found on device {torch.device(x.device)}, but expected it to be on module device {ort_model._torch_module._execution_manager(ort_model._is_training())._graph_transition_manager._device}."
-            in str(runtime_error.value)
+        assert "Expected all tensors to be on the same device, but found at least two devices" in str(
+            runtime_error.value
         )
 
     del os.environ["ORTMODULE_SKIPCHECK_POLICY"]
@@ -3645,11 +3636,7 @@ def test_forward_call_kwargs_input(forward_function):
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
     model = KwargsNet(input_size=D_in, hidden_size=H, num_classes=D_out).to(device)
-    # model = ORTModule(model)
-
-    from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule
-
-    model = ORTModule(model, DebugOptions(save_onnx=True, log_level=LogLevel.INFO, onnx_prefix="2024_0102_02"))
+    model = ORTModule(model)
 
     # Dummy inputs used
     pos_0 = torch.randn(N, D_in, device=device)
@@ -3706,10 +3693,7 @@ def test_forward_call_default_input():
     # Modeling
     device = "cuda"
     model = UnusedNet().to(device)
-    from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule
-
-    model = ORTModule(model, DebugOptions(log_level=LogLevel.INFO))
-    # model = ORTModule(model)
+    model = ORTModule(model)
 
     # Dummy data
     one = torch.FloatTensor([1]).to(device)
@@ -4162,36 +4146,6 @@ def test_stateless_model_unspecified_device():
     ort_y = ort_model(ort_x)
 
     _test_helpers.assert_values_are_close(pt_y, ort_y)
-
-
-# @pytest.mark.parametrize(
-#     "model",
-#     [
-#         (UnusedBeginParameterNet(784, 500, 400, 10)),
-#         (UnusedMiddleParameterNet(784, 500, 400, 10)),
-#         (UnusedEndParameterNet(784, 500, 400, 10)),
-#     ],
-# )
-# def test_unused_parameters_does_not_unnecessarily_reinitialize(model):
-#     device = "cuda"
-
-#     N, D_in, H1, H2, D_out = 64, 784, 500, 400, 10
-#     model = model.to(device)
-#     ort_model = ORTModule(copy.deepcopy(model))
-#     training_manager = ort_model._torch_module._execution_manager(ort_model._is_training())
-
-#     x = torch.randn(N, D_in, device=device)
-#     _ = ort_model(x)
-
-#     input_info = _io.parse_inputs_for_onnx_export(
-#         training_manager._module_parameters,
-#         training_manager._graph_transition_manager._exported_model_info.exported_model,
-#         training_manager._input_info.schema,
-#         x,
-#         {},
-#     )
-
-#     assert not training_manager._reinitialize_graph_builder(input_info)
 
 
 def test_load_state_dict_for_wrapped_ortmodule():
@@ -4668,9 +4622,7 @@ def test_ortmodule_list_dict_input_with_kwargs_and_registered_buffer():
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10  # noqa: F841, N806
     pt_model = ListDictKwargsNet(N, D_in).to(device)
-    ort_model = ORTModule(
-        copy.deepcopy(pt_model), DebugOptions(save_onnx=True, log_level=LogLevel.INFO, onnx_prefix="kwargsanddict")
-    )
+    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="kwargsanddict"))
     x = {
         "one_value": [torch.randn(N, D_in, device=device)],
         "two_value": [torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device)],
@@ -5007,7 +4959,9 @@ def test_override_pytorch_exporter_kwargs():
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
 
     ort_model = ORTModule(model)
-    ort_model._torch_module._execution_manager(True)._export_extra_kwargs = {"custom_opsets": None}
+    ort_model._torch_module._execution_manager(True)._graph_transition_manager._export_extra_kwargs = {
+        "custom_opsets": None
+    }
 
     # Make sure model runs without any exception
     prediction = ort_model(x)
@@ -5024,7 +4978,7 @@ def test_override_pytorch_exporter_kwargs__invalid():
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
 
     ort_model = ORTModule(model)
-    ort_model._torch_module._execution_manager(True)._export_extra_kwargs = {"verbose": False}
+    ort_model._torch_module._execution_manager(True)._graph_transition_manager._export_extra_kwargs = {"verbose": False}
     with pytest.raises(_fallback.ORTModuleONNXModelException) as type_error:
         _ = ort_model(x)
     assert "The following PyTorch exporter arguments cannot be specified: '{'verbose'}'." in str(type_error.value)
@@ -5037,7 +4991,9 @@ def test_override_pytorch_exporter_kwargs_using_ortmodule_extension__invalid():
         def __init__(self, module, debug_options=None):
             super().__init__(module, debug_options)
             for training_mode in [False, True]:
-                self._torch_module._execution_manager(training_mode)._export_extra_kwargs = {"verbose": None}
+                self._torch_module._execution_manager(training_mode)._graph_transition_manager._export_extra_kwargs = {
+                    "verbose": None
+                }
 
     N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
     x = torch.randn(N, D_in, device=device)
@@ -5057,7 +5013,9 @@ def test_override_pytorch_exporter_kwargs_using_ortmodule_extension():
             super().__init__(module, debug_options)
             # modify GraphExecutionManager internally
             for training_mode in [False, True]:
-                self._torch_module._execution_manager(training_mode)._export_extra_kwargs = {"custom_opsets": None}
+                self._torch_module._execution_manager(
+                    training_mode
+                )._graph_transition_manager._model_info_for_export.export_extra_kwargs = {"custom_opsets": None}
 
     N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
     x = torch.randn(N, D_in, device=device)
@@ -5288,16 +5246,12 @@ def test_sigmoid_grad_opset13():
         ort_prediction, ort_loss = run_step(ort_model, ort_x)
         pt_prediction, pt_loss = run_step(pt_model, pt_x)
         if step == 0:
-            exported_model = (
-                ort_model._torch_module._execution_manager._training_manager._graph_transition_manager._exported_model_info.exported_model
-            )
-            # optimized_model = ort_model._torch_module._execution_manager._training_manager._optimized_model
-            for onx in [
-                exported_model,
+            for onnx_model in [
+                ort_model._torch_module._execution_manager._training_manager._graph_transition_manager._exported_model_info.exported_model,
+                ort_model._torch_module._execution_manager._training_manager._onnx_models.optimized_model,
             ]:
-                # "optimized_model"]:
                 opv = None
-                for op in onx.opset_import:
+                for op in onnx_model.opset_import:
                     if not op.domain:
                         opv = op.version
                 assert opv == 13
@@ -5349,7 +5303,11 @@ def test_serialize_ortmodule():
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
     pt_model = SerializationNet(D_in, H, D_out).to(device)
-    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    from onnxruntime.training.ortmodule import DebugOptions, LogLevel
+
+    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(log_level=LogLevel.INFO))
+    # ort_model = ORTModule(copy.deepcopy(pt_model))
 
     x_1 = torch.randn(N, D_in, device=device)
     x_2 = copy.deepcopy(x_1)
