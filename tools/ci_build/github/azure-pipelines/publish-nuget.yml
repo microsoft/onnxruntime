@@ -2,7 +2,10 @@ resources:
   pipelines:
   - pipeline: build
     source: 'Zip-Nuget-Java-Nodejs Packaging Pipeline'
-    trigger: true
+    trigger: 
+      branches:
+        include:
+        - main
     branch: main
 
 stages:
@@ -13,7 +16,7 @@ stages:
       clean: all
     variables:
     - name: GDN_CODESIGN_TARGETDIRECTORY
-      value: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
+      value: '$(Agent.TempDirectory)\binfiles'
     pool: 'onnxruntime-Win-CPU-2022'
 
     steps:
@@ -91,6 +94,40 @@ stages:
       displayName: 'Download Pipeline Artifact - Signed NuGet ROCm Package'
       artifact: 'drop-signed-nuget-ROCm'
     - script: move "$(Pipeline.Workspace)\build\drop-signed-nuget-ROCm\*" $(Build.BinariesDirectory)\nuget-artifact\final-package
+
+    - script: |
+        dir $(Build.BinariesDirectory)\nuget-artifact\final-package
+        cd $(Build.BinariesDirectory)\nuget-artifact\final-package
+        nuget verify -Signatures *.nupkg
+      displayName: List Downloaded Package
+
+    - powershell: |
+        New-Item -Path $(Agent.TempDirectory) -Name "binfiles" -ItemType "directory"
+        $base_path_name = Join-Path -Path $(Agent.TempDirectory) -ChildPath "binfiles"
+        Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact\final-package -Filter *.nupkg |
+            Foreach-Object {
+             $dir_name = Join-Path -Path $base_path_name -ChildPath $_.Basename
+             $cmd = "7z.exe x $($_.FullName) -y -o$dir_name"
+             Write-Output $cmd
+             Invoke-Expression -Command $cmd
+            }
+        dir $(Agent.TempDirectory)
+        tree $(Agent.TempDirectory)
+      workingDirectory: '$(Agent.TempDirectory)'
+
+    - task: CodeSign@1
+      displayName: 'Run Codesign Validation'
+      
+
+    - task: PublishSecurityAnalysisLogs@3
+      displayName: 'Publish Security Analysis Logs'
+      continueOnError: true
+
+    - task: PostAnalysis@2
+      inputs:
+        GdnBreakAllTools: true
+        GdnBreakPolicy: M365
+        GdnBreakPolicyMinSev: Error
 
     #TODO: allow choosing different feeds
     - task: NuGetCommand@2

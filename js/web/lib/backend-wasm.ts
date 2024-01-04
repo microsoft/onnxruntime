@@ -4,7 +4,7 @@
 import {cpus} from 'node:os';
 import {Backend, env, InferenceSession, InferenceSessionHandler} from 'onnxruntime-common';
 
-import {initializeWebAssemblyInstance} from './wasm/proxy-wrapper';
+import {initializeOrtEp, initializeWebAssemblyAndOrtRuntime} from './wasm/proxy-wrapper';
 import {OnnxruntimeWebAssemblySessionHandler} from './wasm/session-handler-inference';
 
 /**
@@ -26,6 +26,10 @@ export const initializeFlags = (): void => {
     env.wasm.proxy = false;
   }
 
+  if (typeof env.wasm.trace !== 'boolean') {
+    env.wasm.trace = false;
+  }
+
   if (typeof env.wasm.numThreads !== 'number' || !Number.isInteger(env.wasm.numThreads) || env.wasm.numThreads <= 0) {
     const numCpuLogicalCores = typeof navigator === 'undefined' ? cpus().length : navigator.hardwareConcurrency;
     env.wasm.numThreads = Math.min(4, Math.ceil((numCpuLogicalCores || 1) / 2));
@@ -33,12 +37,23 @@ export const initializeFlags = (): void => {
 };
 
 export class OnnxruntimeWebAssemblyBackend implements Backend {
-  async init(): Promise<void> {
+  /**
+   * This function initializes the WebAssembly backend.
+   *
+   * This function will be called only once for each backend name. It will be called the first time when
+   * `ort.InferenceSession.create()` is called with a registered backend name.
+   *
+   * @param backendName - the registered backend name.
+   */
+  async init(backendName: string): Promise<void> {
     // populate wasm flags
     initializeFlags();
 
     // init wasm
-    await initializeWebAssemblyInstance();
+    await initializeWebAssemblyAndOrtRuntime();
+
+    // performe EP specific initialization
+    await initializeOrtEp(backendName);
   }
   createInferenceSessionHandler(path: string, options?: InferenceSession.SessionOptions):
       Promise<InferenceSessionHandler>;

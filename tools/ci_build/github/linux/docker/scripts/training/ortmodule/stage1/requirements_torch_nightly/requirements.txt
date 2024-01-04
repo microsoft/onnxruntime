@@ -1,4 +1,5 @@
 scikit-learn
 packaging==21.3
 transformers==v4.30.0
+accelerate==0.20.1
 wget
