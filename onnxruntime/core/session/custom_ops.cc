@@ -1049,7 +1049,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
         auto kernel_create_info = CreateKernelCreateInfo(domain->domain_, op);
         kernel_def_map[op->GetName(op)].push_back(kernel_create_info.kernel_def.get());
         ORT_RETURN_IF_ERROR(output->RegisterCustomKernel(kernel_create_info));
-        // If IsCompabible returns false, then all custom operators named
+        // If IsCompatible returns false, then all custom operators named
         // 'op->GetName(op)' are not compatible among themselves.
         // They should have the same number of inputs and outputs, the same characteristics,
         // (optional, ...). Only the type can change.
