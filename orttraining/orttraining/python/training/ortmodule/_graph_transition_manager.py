@@ -293,7 +293,7 @@ class GraphTransitionManager:
         flatten_kwargs, cur_kwargs_schema = _io._extract_schema(copy.copy(kwargs), self._device)
 
         need_export_model = GraphTransitionManager._export_check(
-            prev_model_info_for_export=self._exported_model_info,
+            prev_exported_model_info=self._exported_model_info,
             original_model_has_changed=self._original_model_has_changed,
             cur_args_schema=cur_args_schema,
             cur_kwargs_schema=cur_kwargs_schema,
