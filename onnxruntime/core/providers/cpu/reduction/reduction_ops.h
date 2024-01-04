@@ -668,11 +668,11 @@ class ReduceAggregatorMin : public ReduceAggregator<T, T> {
                       .minCoeff()
                       .cast<bool>();
             } else {
-            EigenVectorMap<T>(out + j * strideo, onnxruntime::narrow<size_t>(strideo)) =
-                ConstEigenMatrixMap<T>(
-                    data + j * stridei, onnxruntime::narrow<size_t>(fast_shape[2]), onnxruntime::narrow<size_t>(fast_shape[1]))
-                    .rowwise()
-                    .minCoeff();
+              EigenVectorMap<T>(out + j * strideo, onnxruntime::narrow<size_t>(strideo)) =
+                  ConstEigenMatrixMap<T>(
+                      data + j * stridei, onnxruntime::narrow<size_t>(fast_shape[2]), onnxruntime::narrow<size_t>(fast_shape[1]))
+                      .rowwise()
+                      .minCoeff();
             }
           }
         });
