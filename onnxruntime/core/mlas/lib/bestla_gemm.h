@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    jblas_gemm.h
+    bestla_gemm.h
 
 Abstract:
 
@@ -18,10 +18,10 @@ Abstract:
 #include "mlas_qnbit.h"
 
 size_t
-JblasQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, MLAS_SQNBIT_COMPUTE_TYPE CompType);
+BTLAQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, MLAS_SQNBIT_COMPUTE_TYPE CompType);
 
 bool
-JblasQ4GemmPackB(
+BTLAQ4GemmPackB(
     void* PackedBuf,
     const uint8_t* QData,
     const float* Scale,
@@ -37,11 +37,11 @@ JblasQ4GemmPackB(
 );
 
 bool
-JblasQ4GemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb
+BTLAQ4GemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb
 	, MLAS_THREADPOOL* ThreadPool);
 
 bool
-JblasSQ4GemmBatchDriver(
+BTLASQ4GemmBatchDriver(
     const size_t M,
     const size_t N,
     const size_t K,
@@ -52,7 +52,7 @@ JblasSQ4GemmBatchDriver(
 );
 
 size_t
-JblasSQ4GemmBatchWorkspaceSize(
+BTLASQ4GemmBatchWorkspaceSize(
     const size_t M,
     const size_t N,
     const size_t K,

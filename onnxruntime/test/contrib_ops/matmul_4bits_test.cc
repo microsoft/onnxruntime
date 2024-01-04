@@ -341,7 +341,7 @@ void RunSharedPrepackedWeightsTest(int64_t M, int64_t N, int64_t K, int block_si
   }
 }
 
-#ifdef MLAS_JBLAS
+#ifdef MLAS_NEURAL_SPEED
 TEST(MatMulNBits, SharedPrepackedWeights) {
   RunSharedPrepackedWeightsTest(2, 4096, 4096, 32, true, CompFp32);
   RunSharedPrepackedWeightsTest(2, 4096, 4096, 32, false, CompFp32);

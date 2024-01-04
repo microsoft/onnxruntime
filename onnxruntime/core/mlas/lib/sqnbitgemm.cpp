@@ -19,8 +19,8 @@ Abstract:
 
 #include <cassert>
 
-#ifdef MLAS_JBLAS
-#include "jblas_gemm.h"
+#ifdef MLAS_NEURAL_SPEED
+#include "bestla_gemm.h"
 #endif
 
 namespace
@@ -700,9 +700,9 @@ MlasNBitsGemmPackBSize(
     size_t N, size_t K, size_t BlkSize, int nbits, bool isAsym, MLAS_SQNBIT_COMPUTE_TYPE CompType
 )
 {
-#ifdef MLAS_JBLAS
+#ifdef MLAS_NEURAL_SPEED
     if (nbits == 4) {
-        auto jsize = JblasQ4GemmPackBSize(N, K, BlkSize, isAsym, CompType);
+        auto jsize = BTLAQ4GemmPackBSize(N, K, BlkSize, isAsym, CompType);
         if (jsize) {
             return jsize;
         }
@@ -734,9 +734,9 @@ MlasNBitsGemmPackB(
     MLAS_THREADPOOL* ThreadPool
 )
 {
-#ifdef MLAS_JBLAS
+#ifdef MLAS_NEURAL_SPEED
     if (nbits == 4) {
-        if (JblasQ4GemmPackB(PackedBuf, QData, Scale, Zp, N, K, ldb, BlkSize, isAsym, lastCall, CompType, ThreadPool)) {
+        if (BTLAQ4GemmPackB(PackedBuf, QData, Scale, Zp, N, K, ldb, BlkSize, isAsym, lastCall, CompType, ThreadPool)) {
             return;
         }
     }
@@ -759,8 +759,8 @@ MlasNBitsGemmPackB(
 void MLASCALL
 MlasNBitsGemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb, MLAS_THREADPOOL* ThreadPool)
 {
-#ifdef MLAS_JBLAS
-    if (JblasQ4GemmUnPackB(FpData, PackedBuf, N, K, ldb, ThreadPool)) {
+#ifdef MLAS_NEURAL_SPEED
+    if (BTLAQ4GemmUnPackB(FpData, PackedBuf, N, K, ldb, ThreadPool)) {
         return;
     }
 #endif
@@ -781,8 +781,8 @@ MlasSQNBitsGemmBatchPackedBWorkspaceSize(
     const MLAS_SQNBITS_GEMM_DATA_PACKED_PARAMS* DataParams
 )
 {
-#ifdef MLAS_JBLAS
-    return JblasSQ4GemmBatchWorkspaceSize(M, N, K, BatchN, DataParams);
+#ifdef MLAS_NEURAL_SPEED
+    return BTLASQ4GemmBatchWorkspaceSize(M, N, K, BatchN, DataParams);
 #endif
     (void)(M);
     (void)(N);
@@ -804,9 +804,9 @@ MlasSQNBitsGemmBatchPackedB(
 )
 {
     GetMlasPlatform();
-#ifdef MLAS_JBLAS
-    if (JblasSQ4GemmBatchDriver(M, N, K, BatchN, DataParams, reinterpret_cast<int8_t*>(WorkSpace), ThreadPool)) {
-        // PackedWeight is created by jblas
+#ifdef MLAS_NEURAL_SPEED
+    if (BTLASQ4GemmBatchDriver(M, N, K, BatchN, DataParams, reinterpret_cast<int8_t*>(WorkSpace), ThreadPool)) {
+        // PackedWeight is created by bestla
         return;
     }
 #endif
