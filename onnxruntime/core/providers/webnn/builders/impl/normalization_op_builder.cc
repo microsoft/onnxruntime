@@ -93,29 +93,26 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     output = model_builder.GetBuilder().call<emscripten::val>("layerNormalization", input, options);
   } else if (op_type == "InstanceNormalization") {
     // WebNN spec only supports 4D input for instanceNormalization.
-    // Supports 3D input by prepanding 1 size dimension.
+    // Supports 3D input by prepending 1 size dimension.
     // For models with dimensions greater than 4, they will be reshaped into 4D.
-    if (input_shape.size() != 4) {
+    constexpr size_t webnn_shape_rank = 4;
+    if (input_shape.size() != webnn_shape_rank) {
       std::vector<uint32_t> new_shape;
+      new_shape.reserve(std::max(input_shape.size(), size_t(4)));
       std::transform(input_shape.begin(), input_shape.end(),
                      std::back_inserter(new_shape),
                      [](int64_t dim) -> uint32_t { return SafeInt<uint32_t>(dim); });
-      if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
-        if (input_shape.size() == 3) {
-          new_shape.insert(new_shape.begin() + 2, 1);
-        } else {
-          uint32_t sum = std::accumulate(new_shape.begin() + 2, new_shape.end() - 1, 1, std::multiplies<uint32_t>());
-          new_shape.erase(new_shape.begin() + 2, new_shape.end() - 1);
-          new_shape.insert(new_shape.begin() + 2, sum);
-        }
+
+      size_t insertion_offset = (model_builder.GetPreferredLayout() == DataLayout::NHWC) ? 2 : 3;
+      ptrdiff_t excess_rank = new_shape.size() - webnn_shape_rank;
+      auto insertion_point = new_shape.begin() + insertion_offset;
+      if (input_shape.size() < 4) {
+        new_shape.insert(insertion_point, -excess_rank, 1);
       } else {
-        if (input_shape.size() == 3) {
-          new_shape.emplace_back(1);
-        } else {
-          uint32_t sum = std::accumulate(new_shape.begin() + 3, new_shape.end(), 1, std::multiplies<uint32_t>());
-          new_shape.erase(new_shape.begin() + 3, new_shape.end());
-          new_shape.insert(new_shape.begin() + 3, sum);
-        }
+        uint32_t sum = std::accumulate(
+            insertion_point, insertion_point + excess_rank + 1, 1, std::multiplies<uint32_t>());
+        new_shape.erase(insertion_point, insertion_point + excess_rank);
+        *insertion_point = sum;
       }
       input = model_builder.GetBuilder().call<emscripten::val>("reshape", input, emscripten::val::array(new_shape));
     }
