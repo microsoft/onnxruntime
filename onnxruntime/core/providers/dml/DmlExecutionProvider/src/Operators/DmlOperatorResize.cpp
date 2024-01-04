@@ -177,7 +177,7 @@ class DmlOperatorResize : public DmlOperator, public ResizeHelper
 public:
     // Resample a multidimensional image to a new size.
     DmlOperatorResize(const MLOperatorKernelCreationContext& kernelCreationContext, uint32_t opsetVersion)
-    :   DmlOperator(kernelCreationContext), 
+    :   DmlOperator(kernelCreationContext),
         ResizeHelper(kernelCreationContext, kernelCreationContext.GetTensorShapeDescription(), opsetVersion)
     {
         ML_CHECK_VALID_ARGUMENT(!m_scales.empty(), "Resize/Upsample expect scales, either a 2nd input tensors or 'scales' attribute.");
@@ -250,6 +250,13 @@ public:
         std::string mode = kernelCreationContext.GetOptionalAttribute<std::string>(AttrName::Mode, "NEAREST");
         DML_INTERPOLATION_MODE interpolationMode = Dml::MapStringToInteropolationMode(mode);
 
+<<<<<<< HEAD
+=======
+#if DML_TARGET_VERSION >= 0x6300
+        const int antialiased = kernelCreationContext.GetOptionalAttribute<int>(AttrName::Antialiased, 0);
+#endif
+
+>>>>>>> 6e9bbb3be6 (feature version gate)
         // Map ONNX to DML's mode using offsets and rounding direction.
         // These offsets are in addition to the coordinate transform offsets.
         DML_AXIS_DIRECTION roundingDirection = DML_AXIS_DIRECTION_DECREASING;
@@ -289,7 +296,12 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
+#if DML_TARGET_VERSION >= 0x6300
+        DML_RESAMPLE3_OPERATOR_DESC operatorDesc = {};
+        operatorDesc.Antialiased = static_cast<BOOL>(antialiased);
+#else
         DML_RESAMPLE2_OPERATOR_DESC operatorDesc = {};
+#endif
         operatorDesc.InputTensor = inputDescs.data();
         operatorDesc.OutputTensor = outputDescs.data();
         operatorDesc.InterpolationMode = interpolationMode;
@@ -298,8 +310,11 @@ public:
         operatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(paddedScales.size());
         operatorDesc.InputPixelOffsets = inputPixelOffsets.data();
         operatorDesc.OutputPixelOffsets = outputPixelOffsets.data();
-
+#if DML_TARGET_VERSION >= 0x6300
+        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_RESAMPLE3, &operatorDesc };
+#else
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_RESAMPLE2, &operatorDesc };
+#endif
         SetDmlOperatorDesc(opDesc, kernelCreationContext);
     }
 };
