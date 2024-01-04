@@ -20,4 +20,5 @@ class GraphViewer;
                 virtual, and ModelMetadefIdGenerator but be defined in the header as well.
  */
 int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash);
-}
+
+}  // namespace onnxruntime

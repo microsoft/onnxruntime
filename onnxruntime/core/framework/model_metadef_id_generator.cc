@@ -4,7 +4,7 @@
 #include "model_metadef_id_generator.h"
 #include "core/platform/ort_mutex.h"
 #include "core/graph/graph_viewer.h"
-#include "core/framework/murmurhash3.h
+#include "core/framework/murmurhash3.h"
 
 namespace onnxruntime {
 int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) {
@@ -73,4 +73,5 @@ int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& m
   // return the current unique id, and increment to update
   return model_metadef_id_[model_hash]++;
 }
-}
+
+}  // namespace onnxruntime
