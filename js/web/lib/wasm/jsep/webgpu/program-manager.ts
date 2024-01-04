@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {TRACE_FUNC_BEGIN, TRACE_FUNC_END} from 'onnxruntime-common';
+
 import {WebGpuBackend} from '../backend-webgpu';
 import {LOG_DEBUG} from '../log';
 
@@ -32,6 +34,7 @@ export class ProgramManager {
   }
   run(buildArtifact: Artifact, inputs: GpuData[], outputs: GpuData[], dispatchGroup: [number, number, number],
       uniformBufferBinding: GPUBindingResource|undefined): void {
+    TRACE_FUNC_BEGIN(buildArtifact.programInfo.name);
     const device = this.backend.device;
     const computePassEncoder = this.backend.getComputePassEncoder();
     this.backend.writeTimeStamp(this.backend.pendingDispatchNumber * 2);
@@ -61,11 +64,13 @@ export class ProgramManager {
     if (this.backend.pendingDispatchNumber >= this.backend.maxDispatchNumber) {
       this.backend.flush();
     }
+    TRACE_FUNC_END(buildArtifact.programInfo.name);
   }
   dispose(): void {
     // this.repo.forEach(a => this.glContext.deleteProgram(a.program));
   }
   build(programInfo: ProgramInfo, normalizedDispatchGroupSize: [number, number, number]): Artifact {
+    TRACE_FUNC_BEGIN(programInfo.name);
     const device = this.backend.device;
     const extensions: string[] = [];
     if (device.features.has('shader-f16')) {
@@ -80,6 +85,7 @@ export class ProgramManager {
     const computePipeline = device.createComputePipeline(
         {compute: {module: shaderModule, entryPoint: 'main'}, layout: 'auto', label: programInfo.name});
 
+    TRACE_FUNC_END(programInfo.name);
     return {programInfo, computePipeline};
   }
 

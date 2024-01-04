@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Env, Tensor} from 'onnxruntime-common';
+import {Env, Tensor, TRACE, TRACE_FUNC_BEGIN, TRACE_FUNC_END} from 'onnxruntime-common';
 
 import {tensorDataTypeEnumToString} from '../wasm-common';
 
@@ -267,6 +267,7 @@ export class WebGpuBackend {
       return;
     }
 
+    TRACE_FUNC_BEGIN();
     let queryReadData: GpuData;
     if (this.queryType !== QueryType.none) {
       this.commandEncoder.resolveQuerySet(
@@ -340,12 +341,14 @@ export class WebGpuBackend {
             console.log(`[profiling] kernel "${kernelId}|${kernelType}|${kernelName}|${programName}" ${inputShapes}${
                 outputShapes}execution time: ${endTime - startTime} ns`);
           }
+          TRACE('GPU', `${programName}::${startTimeU64}::${endTimeU64}`);
         }
         queryReadData.buffer.unmap();
         this.gpuDataManager.release(queryReadData.id);
         this.pendingQueries.delete(queryReadData.id);
       });
     }
+    TRACE_FUNC_END();
   }
 
   /**
@@ -362,6 +365,7 @@ export class WebGpuBackend {
   run(program: ProgramInfo, inputTensorViews: readonly TensorView[], outputIndices: readonly number[],
       createKernelOutput: (index: number, dataType: number, dims: readonly number[]) => TensorView,
       createIntermediateOutput: (dataType: number, dims: readonly number[]) => TensorView): TensorView[] {
+    TRACE_FUNC_BEGIN(program.name);
     // create info for inputs
     const inputDatas: GpuData[] = [];
     for (let i = 0; i < inputTensorViews.length; ++i) {
@@ -495,6 +499,7 @@ export class WebGpuBackend {
 
     this.programManager.run(artifact, inputDatas, outputDatas, normalizedDispatchGroup, uniformBufferBinding);
 
+    TRACE_FUNC_END(program.name);
     return outputTensorViews;
   }
 
@@ -641,7 +646,7 @@ export class WebGpuBackend {
   }
   setQueryType(): void {
     this.queryType = QueryType.none;
-    if (this.env.webgpu.profiling?.mode === 'default') {
+    if (this.env.webgpu.profiling?.mode === 'default' || this.env.wasm.trace) {
       if (this.device.features.has('chromium-experimental-timestamp-query-inside-passes')) {
         this.queryType = QueryType.insidePasses;
       } else if (this.device.features.has('timestamp-query')) {
