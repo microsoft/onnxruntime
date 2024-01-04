@@ -1040,7 +1040,8 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
     // Creation of the schemas, one per unique name.
     for (auto& [name, ops] : domain_kernels) {
       auto schema = CreateSchema(domain->domain_, ops);
-      ORT_ENFORCE(name == schema.Name());
+      // schema.Name() is equal to ops[0]->GetName(ops[0]) and op->GetName(op) is the value
+      // used as a key for dictionary domain_kernels, therefore name == schema.Name().
       schema_map.emplace(schema.Name(), schema);
 
       // This loops checks that all custom operators sharing the same name are compatible with the defined schema.
