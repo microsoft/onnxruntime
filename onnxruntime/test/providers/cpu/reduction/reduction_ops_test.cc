@@ -927,7 +927,6 @@ TEST(ReductionOpTest, ReduceMax_default_axes_do_not_keep_dims) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch //TensorRT: axis must be 0
 }
 
-#ifndef USE_MIGRAPHX
 TEST(ReductionOpTest, test_bool_ReduceMax_0) {
   OpTester test("ReduceMax", 20);
   test.AddAttribute("keepdims", static_cast<int64_t>(0));
@@ -1200,7 +1199,6 @@ TEST(ReductionOpTest, test_bool_ReduceMin_19) {
           kOpenVINOExecutionProvider,
       });
 }
-#endif  // USE_MIGRAPHX
 
 TEST(ReductionOpTest, ReduceMax_do_not_keepdims) {
   OpTester test("ReduceMax");
