@@ -9,11 +9,6 @@ parameters:
   type: string
   default: qnn-v2.17.0.231124_win
 
-- name: ort_package_version
-  displayName: OnnxRuntime Nuget package version
-  type: string
-  default: 1.15.0
-  
 - name: build_config
   displayName: Build Configuration
   type: string
@@ -90,7 +85,7 @@ jobs:
         displayName: 'Generating nuspec for the native Nuget package x64'
         inputs:
           script: |
-            python "$(Build.SourcesDirectory)\tools\nuget\generate_nuspec_for_native_nuget.py" --package_version ${{ parameters.ort_package_version }} --package_name Microsoft.ML.OnnxRuntime.QNN --target_architecture x64 --build_config ${{ parameters.build_config }} --native_build_path=$(Build.BinariesDirectory)\Windows\${{ parameters.build_config }}\${{ parameters.build_config }} --packages_path $(Build.BinariesDirectory)\Windows\packages --ort_build_path $(Build.BinariesDirectory)\Windows --sources_path $(Build.SourcesDirectory) --commit_id $(OnnxRuntimeGitCommitHash) --is_release_build ${{ parameters.IsReleaseBuild }} --sdk_info ${{ parameters.qnn_sdk_info }}
+            python "$(Build.SourcesDirectory)\tools\nuget\generate_nuspec_for_native_nuget.py" --package_version $(OnnxRuntimeVersion) --package_name Microsoft.ML.OnnxRuntime.QNN --target_architecture x64 --build_config ${{ parameters.build_config }} --native_build_path=$(Build.BinariesDirectory)\Windows\${{ parameters.build_config }}\${{ parameters.build_config }} --packages_path $(Build.BinariesDirectory)\Windows\packages --ort_build_path $(Build.BinariesDirectory)\Windows --sources_path $(Build.SourcesDirectory) --commit_id $(OnnxRuntimeGitCommitHash) --is_release_build ${{ parameters.IsReleaseBuild }} --sdk_info ${{ parameters.qnn_sdk_info }}
             cd $(Build.BinariesDirectory)\Windows\${{ parameters.build_config }}\${{ parameters.build_config }}
             nuget pack NativeNuget.nuspec
             mkdir $(Build.ArtifactStagingDirectory)\x64
@@ -178,7 +173,7 @@ jobs:
         displayName: 'Generating nuspec for the native Nuget package arm64'
         inputs:
           script: |
-            python "$(Build.SourcesDirectory)\tools\nuget\generate_nuspec_for_native_nuget.py" --package_version ${{ parameters.ort_package_version }} --package_name Microsoft.ML.OnnxRuntime.QNN --target_architecture arm64 --build_config ${{ parameters.build_config }} --native_build_path=$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}\${{ parameters.build_config }} --packages_path $(Build.BinariesDirectory)\Win_arm64\packages --ort_build_path $(Build.BinariesDirectory)\Win_arm64 --sources_path $(Build.SourcesDirectory) --commit_id $(OnnxRuntimeGitCommitHash) --is_release_build ${{ parameters.IsReleaseBuild }} --sdk_info ${{ parameters.qnn_sdk_info }}
+            python "$(Build.SourcesDirectory)\tools\nuget\generate_nuspec_for_native_nuget.py" --package_version $(OnnxRuntimeVersion) --package_name Microsoft.ML.OnnxRuntime.QNN --target_architecture arm64 --build_config ${{ parameters.build_config }} --native_build_path=$(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}\${{ parameters.build_config }} --packages_path $(Build.BinariesDirectory)\Win_arm64\packages --ort_build_path $(Build.BinariesDirectory)\Win_arm64 --sources_path $(Build.SourcesDirectory) --commit_id $(OnnxRuntimeGitCommitHash) --is_release_build ${{ parameters.IsReleaseBuild }} --sdk_info ${{ parameters.qnn_sdk_info }}
             cd $(Build.BinariesDirectory)\Win_arm64\${{ parameters.build_config }}\${{ parameters.build_config }}
             nuget pack NativeNuget.nuspec
             mkdir $(Build.ArtifactStagingDirectory)\arm64
