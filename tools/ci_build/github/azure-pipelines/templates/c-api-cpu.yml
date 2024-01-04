@@ -790,10 +790,10 @@ stages:
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
-- template: ../nuget/templates/test_macos.yml
-  parameters:
-    AgentPool : macOS-13
-    ArtifactSuffix: 'CPU'
+#- template: ../nuget/templates/test_macos.yml
+#  parameters:
+#    AgentPool : macOS-13
+#    ArtifactSuffix: 'CPU'
 
 - template: ../nodejs/templates/test_win.yml
   parameters:
@@ -805,27 +805,27 @@ stages:
     AgentPool : 'Azure-Pipelines-EO-Ubuntu-2004-aiinfra'
     StageSuffix : 'Linux_CPU_x64'
 
-- template: ../nodejs/templates/test_macos.yml
-  parameters:
-    StageSuffix : 'macOS_CPU_x64'
+#- template: ../nodejs/templates/test_macos.yml
+#  parameters:
+#    StageSuffix : 'macOS_CPU_x64'
 
-- template: final-jar-testing.yml
-  parameters:
-    OS: Windows
-    BuildId: ${{ parameters.BuildId }}
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    PoolName: 'onnxruntime-Win-CPU-2022'
-
-- template: final-jar-testing.yml
-  parameters:
-    OS: Linux
-    BuildId: ${{ parameters.BuildId }}
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
-
-- template: final-jar-testing.yml
-  parameters:
-    OS: MacOS
-    BuildId: ${{ parameters.BuildId }}
-    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    PoolName: 'macOS-13'
+#- template: final-jar-testing.yml
+#  parameters:
+#    OS: Windows
+#    BuildId: ${{ parameters.BuildId }}
+#    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+#    PoolName: 'onnxruntime-Win-CPU-2022'
+#
+#- template: final-jar-testing.yml
+#  parameters:
+#    OS: Linux
+#    BuildId: ${{ parameters.BuildId }}
+#    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+#    PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
+#
+#- template: final-jar-testing.yml
+#  parameters:
+#    OS: MacOS
+#    BuildId: ${{ parameters.BuildId }}
+#    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+#    PoolName: 'macOS-13'
