@@ -1232,6 +1232,7 @@ public class InferenceTest {
       options.setLoggerId("monkeys");
       options.setSessionLogLevel(OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL);
       options.setSessionLogVerbosityLevel(5);
+      options.setDeterministicCompute(true);
       Map<String, String> configEntries = options.getConfigEntries();
       assertTrue(configEntries.isEmpty());
       options.addConfigEntry("key", "value");
