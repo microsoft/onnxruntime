@@ -169,55 +169,55 @@ stages:
 #    AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
 #    BuildVariant: 'default'
 
-- stage: Linux_C_API_Packaging_GPU_x64
-  dependsOn: []
-  jobs:
-  - job:
-    workspace:
-      clean: all
-    timeoutInMinutes: 120
-    pool: 'Onnxruntime-Linux-GPU'
-    variables:
-      - name: CUDA_VERSION_MAJOR
-        ${{ if eq(parameters.CudaVersion, '11.8') }}:
-          value: '11'
-        ${{ if eq(parameters.CudaVersion, '12.2') }}:
-          value: '12'
-      - name: CUDA_VERSION
-        value: ${{ parameters.CudaVersion }}
-    steps:
-    - template: templates/set-version-number-variables-step.yml
-    - template: templates/get-docker-image-steps.yml
-      parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/inference/x64/default/gpu/Dockerfile
-        Context: tools/ci_build/github/linux/docker/inference/x64/default/gpu
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-        Repository: onnxruntimecuda$(CUDA_VERSION_MAJOR)build
-
-    - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
-      workingDirectory: $(Build.SourcesDirectory)
-      displayName: 'Build and Test'
-
-#    - template: templates/java-api-artifacts-package-and-publish-steps-posix.yml
+#- stage: Linux_C_API_Packaging_GPU_x64
+#  dependsOn: []
+#  jobs:
+#  - job:
+#    workspace:
+#      clean: all
+#    timeoutInMinutes: 120
+#    pool: 'Onnxruntime-Linux-GPU'
+#    variables:
+#      - name: CUDA_VERSION_MAJOR
+#        ${{ if eq(parameters.CudaVersion, '11.8') }}:
+#          value: '11'
+#        ${{ if eq(parameters.CudaVersion, '12.2') }}:
+#          value: '12'
+#      - name: CUDA_VERSION
+#        value: ${{ parameters.CudaVersion }}
+#    steps:
+#    - template: templates/set-version-number-variables-step.yml
+#    - template: templates/get-docker-image-steps.yml
 #      parameters:
-#          arch: 'linux-x64'
-#          buildConfig: 'Release'
-#          artifactName: 'onnxruntime-java-linux-x64-cuda'
-#          version: '$(OnnxRuntimeVersion)'
-#          libraryName: 'libonnxruntime.so'
-#          nativeLibraryName: 'libonnxruntime4j_jni.so'
-
-    - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
-      parameters:
-        buildConfig: 'Release'
-        artifactName: 'onnxruntime-linux-x64-cuda-$(OnnxRuntimeVersion)'
-        artifactNameNoVersionString: 'onnxruntime-linux-x64-cuda'
-        libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
-
-    - template: templates/component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
-    - template: templates/clean-agent-build-directory-step.yml
+#        Dockerfile: tools/ci_build/github/linux/docker/inference/x64/default/gpu/Dockerfile
+#        Context: tools/ci_build/github/linux/docker/inference/x64/default/gpu
+#        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+#        Repository: onnxruntimecuda$(CUDA_VERSION_MAJOR)build
+#
+#    - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
+#      workingDirectory: $(Build.SourcesDirectory)
+#      displayName: 'Build and Test'
+#
+##    - template: templates/java-api-artifacts-package-and-publish-steps-posix.yml
+##      parameters:
+##          arch: 'linux-x64'
+##          buildConfig: 'Release'
+##          artifactName: 'onnxruntime-java-linux-x64-cuda'
+##          version: '$(OnnxRuntimeVersion)'
+##          libraryName: 'libonnxruntime.so'
+##          nativeLibraryName: 'libonnxruntime4j_jni.so'
+#
+#    - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
+#      parameters:
+#        buildConfig: 'Release'
+#        artifactName: 'onnxruntime-linux-x64-cuda-$(OnnxRuntimeVersion)'
+#        artifactNameNoVersionString: 'onnxruntime-linux-x64-cuda'
+#        libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
+#
+#    - template: templates/component-governance-component-detection-steps.yml
+#      parameters:
+#        condition: 'succeeded'
+#    - template: templates/clean-agent-build-directory-step.yml
 
 #- template: templates/linux-gpu-tensorrt-packaging-pipeline.yml
 #  parameters:

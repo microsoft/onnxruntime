@@ -148,32 +148,32 @@ stages:
 #      parameters:
 #        condition: 'succeeded'
 
-- template: win-ci.yml
-  parameters:
-    DoCompliance: ${{ parameters.DoCompliance }}
-    DoEsrp: ${{ parameters.DoEsrp }}
-    stage_name_suffix: CPU_x86_${{ parameters.BuildVariant }}
-    buildArch: x86
-    msbuildPlatform: Win32
-    packageName: x86
-    buildparameter: ${{ parameters.AdditionalBuildFlags }} ${{ parameters.AdditionalWinBuildFlags}}
-    runTests: ${{ parameters.RunOnnxRuntimeTests }}
-    buildJava: false
-    buildNodejs: false
-
-- template: win-ci.yml
-  parameters:
-    DoCompliance: ${{ parameters.DoCompliance }}
-    DoEsrp: ${{ parameters.DoEsrp }}
-    stage_name_suffix: CPU_arm_${{ parameters.BuildVariant }}
-    buildArch: x64
-    msbuildPlatform: arm
-    packageName: arm
-    buildparameter: --arm ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}} --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
-    runTests: false
-    buildJava: false
-    buildNodejs: false
-    ort_build_pool_name: onnxruntime-Win-CPU-2022
+#- template: win-ci.yml
+#  parameters:
+#    DoCompliance: ${{ parameters.DoCompliance }}
+#    DoEsrp: ${{ parameters.DoEsrp }}
+#    stage_name_suffix: CPU_x86_${{ parameters.BuildVariant }}
+#    buildArch: x86
+#    msbuildPlatform: Win32
+#    packageName: x86
+#    buildparameter: ${{ parameters.AdditionalBuildFlags }} ${{ parameters.AdditionalWinBuildFlags}}
+#    runTests: ${{ parameters.RunOnnxRuntimeTests }}
+#    buildJava: false
+#    buildNodejs: false
+#
+#- template: win-ci.yml
+#  parameters:
+#    DoCompliance: ${{ parameters.DoCompliance }}
+#    DoEsrp: ${{ parameters.DoEsrp }}
+#    stage_name_suffix: CPU_arm_${{ parameters.BuildVariant }}
+#    buildArch: x64
+#    msbuildPlatform: arm
+#    packageName: arm
+#    buildparameter: --arm ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}} --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+#    runTests: false
+#    buildJava: false
+#    buildNodejs: false
+#    ort_build_pool_name: onnxruntime-Win-CPU-2022
 
 - template: win-ci.yml
   parameters:
