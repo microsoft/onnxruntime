@@ -224,12 +224,18 @@ def fetch_onnx_inputs_outputs_name(
     if not num_of_past_key:
         num_of_past_key = model.config.num_hidden_layers
 
-    onnx_inp_names = ("input_ids", "attention_mask")
+    #filter out constant inputs
+    onnx_inp_names = tuple([torch_input_names[i] for i in range(len(torch_input_names)) if isinstance(onnx_inputs[i], torch.Tensor)])
     onnx_out_names = ("logits",)
     onnx_dynamic_axes = {
         "input_ids": {0: "batch_size", 1: "seq_len"},
         "attention_mask": {0: "batch_size", 1: "seq_len"},
     }
+    # add dyanmic dimensions for the unkonw inputs
+    for idx, name in enumerate(onnx_inp_names):
+        if name not in onnx_dynamic_axes:
+            unknown_dims = {i: f"{idx}__unknown_dims__{i}" for i in range(onnx_inputs[idx].dim())}
+            onnx_dynamic_axes[name] = unknown_dims
     if input_with_past:
         for i in range(num_of_past_key):
             onnx_inp_names += (f"present_key.{i}",)
