@@ -66,11 +66,12 @@ ImageEncoder::ImageEncoder(const OpKernelInfo& info) : CudaKernel(info) {
   }
   NVJPEG_CALL_THROW(nvjpegCreate(NVJPEG_BACKEND_DEFAULT, &dev_allocator, &nvjpeg_handle_));
   NVJPEG_CALL_THROW(nvjpegJpegStateCreate(nvjpeg_handle_, &jpeg_state_));
-  NVJPEG_CALL_THROW(nvjpegEncoderStateCreate(nvjpeg_handle_, &encoder_state_, NULL));
-  NVJPEG_CALL_THROW(nvjpegEncoderParamsCreate(nvjpeg_handle_, &encode_params_, NULL));
+  NVJPEG_CALL_THROW(nvjpegEncoderStateCreate(nvjpeg_handle_, &encoder_state_, nullptr));
+  NVJPEG_CALL_THROW(nvjpegEncoderParamsCreate(nvjpeg_handle_, &encode_params_, nullptr));
 
-  NVJPEG_CALL_THROW(nvjpegEncoderParamsSetSamplingFactors(encode_params_, chroma_subsampling, NULL));
-  NVJPEG_CALL_THROW(nvjpegEncoderParamsSetQuality(encode_params_, quality_, NULL));
+  NVJPEG_CALL_THROW(nvjpegEncoderParamsSetSamplingFactors(encode_params_, chroma_subsampling, nullptr));
+  NVJPEG_CALL_THROW(nvjpegEncoderParamsSetQuality(encode_params_, quality_, nullptr));
+  CUDA_CALL_THROW(cudaStreamSynchronize(nullptr));
 }
 
 ImageEncoder::~ImageEncoder() {
@@ -122,7 +123,7 @@ Status ImageEncoder::ComputeInternal(OpKernelContext* context) const {
       input_rgb_format_,
       static_cast<int>(W),
       static_cast<int>(H),
-      NULL));
+      Stream(context)));
   } else { // pixel_format_ == "Grayscale"
     NVJPEG_CALL_THROW(nvjpegEncodeYUV(
       nvjpeg_handle_,
@@ -132,16 +133,16 @@ Status ImageEncoder::ComputeInternal(OpKernelContext* context) const {
       NVJPEG_CSS_GRAY,
       static_cast<int>(W),
       static_cast<int>(H),
-      NULL));
+      Stream(context)));
   }
 
   size_t length;
   NVJPEG_CALL_THROW(nvjpegEncodeRetrieveBitstream(
       nvjpeg_handle_,
       encoder_state_,
-      NULL,
+      nullptr,
       &length,
-      NULL));
+      Stream(context)));
 
   TensorShape output_shape{static_cast<int64_t>(length)};
   Tensor* encoded_stream = context->Output(0, output_shape);
@@ -154,7 +155,7 @@ Status ImageEncoder::ComputeInternal(OpKernelContext* context) const {
       encoder_state_,
       encoded_stream_data,
       &length,
-      NULL));
+      Stream(context)));
 
   //// Save the binary data to a file
   //{
