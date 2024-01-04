@@ -201,94 +201,94 @@ stages:
     buildJava: true
     buildNodejs: true
 
-- stage: Jar_Packaging
-  dependsOn:
-  - Linux_C_API_Packaging_CPU
-  - MacOS_C_API_Package_Publish
-  - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
-  - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
-  - Windows_Packaging_CPU_arm_${{ parameters.BuildVariant }}
-  - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
-  - Download_Java_Tools
-  condition: succeeded()
-  jobs:
-  - job:
-    workspace:
-      clean: all
-    pool: 'onnxruntime-Win-CPU-2022'
-
-    steps:
-    - checkout: self
-      submodules: false
-    - template: set-version-number-variables-step.yml
-
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Pipeline Artifact - Win x64'
-        ArtifactName: 'drop-onnxruntime-java-win-x64'
-        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Pipeline Artifact - Linux x64'
-        ArtifactName: 'drop-onnxruntime-java-linux-x64'
-        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Pipeline Artifact - Linux AARCH64'
-        ArtifactName: 'drop-onnxruntime-java-linux-aarch64'
-        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-aarch64'
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Pipeline Artifact - MacOS x64'
-        ArtifactName: 'drop-onnxruntime-java-osx-x86_64'
-        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-x86_64'
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Pipeline Artifact - MacOS ARM64'
-        ArtifactName: 'drop-onnxruntime-java-osx-arm64'
-        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-arm64'
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - task: PowerShell@2
-      displayName: 'PowerShell Script'
-      inputs:
-        targetType: filePath
-        filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\jar_packaging.ps1
-        failOnStderr: true
-        showWarnings: true
-        workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
-
-    - task: CopyFiles@2
-      displayName: 'Copy Java Files to Artifact Staging Directory'
-      inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
-        TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-    - task: PublishPipelineArtifact@1
-      displayName: 'Publish Pipeline Artifact'
-      inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-        artifact: 'onnxruntime-java'
-
-    - template: component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
+#- stage: Jar_Packaging
+#  dependsOn:
+#  - Linux_C_API_Packaging_CPU
+#  - MacOS_C_API_Package_Publish
+#  - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
+#  - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
+#  - Windows_Packaging_CPU_arm_${{ parameters.BuildVariant }}
+#  - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
+#  - Download_Java_Tools
+#  condition: succeeded()
+#  jobs:
+#  - job:
+#    workspace:
+#      clean: all
+#    pool: 'onnxruntime-Win-CPU-2022'
+#
+#    steps:
+#    - checkout: self
+#      submodules: false
+#    - template: set-version-number-variables-step.yml
+#
+#    - template: flex-downloadPipelineArtifact.yml
+#      parameters:
+#        StepName: 'Download Pipeline Artifact - Win x64'
+#        ArtifactName: 'drop-onnxruntime-java-win-x64'
+#        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+#        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+#        BuildId: ${{ parameters.BuildId }}
+#
+#    - template: flex-downloadPipelineArtifact.yml
+#      parameters:
+#        StepName: 'Download Pipeline Artifact - Linux x64'
+#        ArtifactName: 'drop-onnxruntime-java-linux-x64'
+#        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
+#        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+#        BuildId: ${{ parameters.BuildId }}
+#
+#    - template: flex-downloadPipelineArtifact.yml
+#      parameters:
+#        StepName: 'Download Pipeline Artifact - Linux AARCH64'
+#        ArtifactName: 'drop-onnxruntime-java-linux-aarch64'
+#        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-aarch64'
+#        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+#        BuildId: ${{ parameters.BuildId }}
+#
+#    - template: flex-downloadPipelineArtifact.yml
+#      parameters:
+#        StepName: 'Download Pipeline Artifact - MacOS x64'
+#        ArtifactName: 'drop-onnxruntime-java-osx-x86_64'
+#        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-x86_64'
+#        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+#        BuildId: ${{ parameters.BuildId }}
+#
+#    - template: flex-downloadPipelineArtifact.yml
+#      parameters:
+#        StepName: 'Download Pipeline Artifact - MacOS ARM64'
+#        ArtifactName: 'drop-onnxruntime-java-osx-arm64'
+#        TargetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-arm64'
+#        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+#        BuildId: ${{ parameters.BuildId }}
+#
+#    - task: PowerShell@2
+#      displayName: 'PowerShell Script'
+#      inputs:
+#        targetType: filePath
+#        filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\jar_packaging.ps1
+#        failOnStderr: true
+#        showWarnings: true
+#        workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
+#
+#    - task: CopyFiles@2
+#      displayName: 'Copy Java Files to Artifact Staging Directory'
+#      inputs:
+#        SourceFolder: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+#        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+#
+#    - task: PublishPipelineArtifact@1
+#      displayName: 'Publish Pipeline Artifact'
+#      inputs:
+#        targetPath: '$(Build.ArtifactStagingDirectory)'
+#        artifact: 'onnxruntime-java'
+#
+#    - template: component-governance-component-detection-steps.yml
+#      parameters :
+#        condition : 'succeeded'
+#    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+#      displayName: 'Clean Agent Directories'
+#      condition: always()
 
 - stage: NuGet_Packaging_CPU
   dependsOn:
