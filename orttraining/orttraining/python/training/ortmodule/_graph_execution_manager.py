@@ -124,16 +124,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._graph_transition_manager = GraphTransitionManager(
             flatten_module=self._flattened_module,
             export_mode=self._export_mode,
-            save=self._debug_options.save_onnx_models.save,
-            save_path=self._debug_options.save_onnx_models.path,
-            save_name_prefix=self._debug_options.save_onnx_models.name_prefix,
-            deepcopy_before_model_export=self._runtime_options.deepcopy_before_model_export,
-            torch_exporter_verbose_log=self._debug_options.logging.log_level <= LogLevel.INFO,
-            enable_zero_stage3_support=self._runtime_options.enable_zero_stage3_support,
-            onnx_opset_version=self._runtime_options.onnx_opset_version,
-            enable_custom_autograd_function=self._runtime_options.enable_custom_autograd_function,
-            enable_symbolic_shape_infer=self._runtime_options.run_symbolic_shape_infer,
-            exported_model_cache_dir=self._runtime_options.ortmodule_cache_dir,
+            debug_options=self._debug_options,
+            runtime_options=self._runtime_options,
             logger=self._logger,
         )
 
@@ -304,7 +296,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             "_onnx_models",
             "_graph_builder",
             "_graph_info",
-            "_graph_transition_manager", # Not pickled as it is re-constructed in __setstate__
+            "_graph_transition_manager",  # Not pickled as it is re-constructed in __setstate__
             "_execution_agent",
             "_torch_alloc",
             "_torch_free",

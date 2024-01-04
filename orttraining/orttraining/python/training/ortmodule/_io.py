@@ -200,8 +200,12 @@ class ModelInfoForExport:
         return self.__str__()
 
 
-def _arg_access__with_index_func(arg_index, args, kwargs):
+def _arg_access_with_index_func(arg_index, args, kwargs):
     return args[arg_index]
+
+
+def _kwarg_access_with_name_func(name, args, kwargs):
+    return kwargs[name]
 
 
 def parse_inputs_for_onnx_export(
@@ -354,7 +358,7 @@ def parse_inputs_for_onnx_export(
                 var_positional_idx += 1
                 inp = args[args_i]
 
-                _add_input(name, inp, onnx_graph_input_names, partial(_arg_access__with_index_func, args_i))
+                _add_input(name, inp, onnx_graph_input_names, partial(_arg_access_with_index_func, args_i))
         elif (
             input_parameter.kind == inspect.Parameter.POSITIONAL_ONLY
             or input_parameter.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
@@ -368,29 +372,22 @@ def parse_inputs_for_onnx_export(
             if input_idx < len(args) and args[input_idx] is not None:
                 inp = args[input_idx]
 
-                access_func = partial(_arg_access__with_index_func, input_idx)
+                access_func = partial(_arg_access_with_index_func, input_idx)
 
             elif name in kwargs and kwargs[name] is not None:
                 inp = kwargs[name]
 
-                def _access_func5(name, args, kwargs):
-                    return kwargs[name]
-
-                access_func = partial(_access_func5, name)
+                access_func = partial(_kwarg_access_with_name_func, name)
 
             _add_input(name, inp, onnx_graph_input_names, access_func)
         elif input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
             # **kwargs is always the last argument of forward()
             for name, inp in kwargs.items():
-
-                def _access_func6(name, args, kwargs):
-                    return kwargs[name]
-
                 _add_input(
                     name,
                     inp,
                     onnx_graph_input_names,
-                    partial(_access_func6, name),
+                    partial(_kwarg_access_with_name_func, name),
                 )
 
     exported_graph = ModelInfoForExport(

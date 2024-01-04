@@ -206,9 +206,6 @@ class TrainingManager(GraphExecutionManager):
 
                 self._runtime_inspector.memory_ob.inspect_memory(Phase.POST_BACKWARD)
 
-                # print("transferred_backward_outputs: ", transferred_backward_outputs)
-                # print("self._gradient_map: ", self._gradient_map)
-
                 return tuple(transferred_backward_outputs[idx] if idx != -1 else None for idx in self._gradient_map)
 
         return _ORTModuleFunction
