@@ -29,7 +29,7 @@ namespace js {
                                  static_cast<int32_t>(keepdims_),                                            \
                                  static_cast<int32_t>(noop_with_empty_axes_),                                \
                                  gsl::narrow_cast<int32_t>(axes.size()),                                     \
-                                 reinterpret_cast<int32_t>((axes.size() > 0) ? axes.data() : nullptr) >> 2); \
+                                 JSEP_HEAP_PTR((axes.size() > 0) ? axes.data() : nullptr) >> 2);             \
     }                                                                                                        \
   };
 
