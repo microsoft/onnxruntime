@@ -1264,6 +1264,49 @@ TEST(CApiTest, test_custom_op_get_const_input) {
 }
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#if defined(__ANDROID__)
+// Disable on android because custom op libraries are not copied to the emulator.
+TEST(CApiTest, DISABLED_test_custom_op_local_function) {
+#else
+TEST(CApiTest, test_custom_op_local_function) {
+#endif  // defined(__ANDROID__)
+  const auto* model_path = TSTR("testdata/custom_op_local_function/custom_ops_type_inference_fails_0.onnx");
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> input_names;
+
+  // input 0 (float type)
+  input_names.emplace_back("X");
+  std::vector<float> input_0_data = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<int64_t> input_0_dims = {2, 2};
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_0_data.data()),
+                                      input_0_data.size(), input_0_dims.data(), input_0_dims.size()));
+  const char* output_name = "Y";
+
+  const ORTCHAR_T* lib_name;
+#if defined(_WIN32)
+  lib_name = ORT_TSTR("custom_op_local_function.dll");
+#elif defined(__APPLE__)
+  lib_name = ORT_TSTR("libcustom_op_local_function.dylib");
+#else
+lib_name = ORT_TSTR("./libcustom_op_local_function.so");
+#endif
+
+  Ort::SessionOptions session_opts;
+
+  session_opts.RegisterCustomOpsLibrary(lib_name);
+
+  Ort::Session session(*ort_env, model_path, session_opts);
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
+
+  session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
+              &output_name, 1);
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+
 #if defined(USE_OPENVINO) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
 TEST(CApiTest, test_custom_op_openvino_wrapper_library) {
   // Tests a custom operator that wraps an OpenVINO MNIST model (.xml and .bin files serialized into node attributes).
