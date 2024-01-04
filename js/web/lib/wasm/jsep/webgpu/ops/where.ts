@@ -74,8 +74,8 @@ const createWhereOpProgramInfo = (inputs: readonly TensorView[]): ProgramInfo =>
   const outputDataType = inputs[1].dataType;
 
   const isBroadcast = !(ShapeUtil.areEqual(dimsA, dimsB) && ShapeUtil.areEqual(dimsB, dimsC));
-  let outputShape = dimsA;
-  let outputSize = ShapeUtil.size(dimsA);
+  let outputShape = dimsC;
+  let outputSize = ShapeUtil.size(dimsC);
   const vecSize = Math.ceil(outputSize / 4);
   // TODO: deal with zero-sized tensors (eg. dims=[1,0])
 
