@@ -250,7 +250,9 @@ public:
         std::string mode = kernelCreationContext.GetOptionalAttribute<std::string>(AttrName::Mode, "NEAREST");
         DML_INTERPOLATION_MODE interpolationMode = Dml::MapStringToInteropolationMode(mode);
 
+#if DML_TARGET_VERSION >= 0x6300
         const int antialiased = kernelCreationContext.GetOptionalAttribute<int>(AttrName::Antialiased, 0);
+#endif
 
         // Map ONNX to DML's mode using offsets and rounding direction.
         // These offsets are in addition to the coordinate transform offsets.
@@ -291,7 +293,12 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
+#if DML_TARGET_VERSION >= 0x6300
         DML_RESAMPLE3_OPERATOR_DESC operatorDesc = {};
+        operatorDesc.Antialiased = static_cast<BOOL>(antialiased);
+#else
+        DML_RESAMPLE2_OPERATOR_DESC operatorDesc = {};
+#endif
         operatorDesc.InputTensor = inputDescs.data();
         operatorDesc.OutputTensor = outputDescs.data();
         operatorDesc.InterpolationMode = interpolationMode;
@@ -300,9 +307,11 @@ public:
         operatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(paddedScales.size());
         operatorDesc.InputPixelOffsets = inputPixelOffsets.data();
         operatorDesc.OutputPixelOffsets = outputPixelOffsets.data();
-        operatorDesc.Antialiased = static_cast<BOOL>(antialiased);
-
+#if DML_TARGET_VERSION >= 0x6300
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_RESAMPLE3, &operatorDesc };
+#else
+        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_RESAMPLE2, &operatorDesc };
+#endif
         SetDmlOperatorDesc(opDesc, kernelCreationContext);
     }
 };
