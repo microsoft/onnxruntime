@@ -3575,10 +3575,9 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero2) {
   ASSERT_EQ(fast_axes, expected_fast_axes);
 }
 
-#ifndef USE_MIGRAPHX
 TEST(ReductionOpTest, ReduceDimWithZero2) {
   // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr || DefaultMIGraphXExecutionProvider().get() != nullptr || DefaultRocmExecutionProvider().get() != nullptr) {
+  if (DefaultDmlExecutionProvider().get() != nullptr || DefaultRocmExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Can't reduce on dim with value of 0 if 'keepdims' is false. Invalid output shape would be produced. input_shape:{?,0,?}";
   }
 
@@ -3593,6 +3592,7 @@ TEST(ReductionOpTest, ReduceDimWithZero2) {
                    kCoreMLExecutionProvider,
                    kCudaExecutionProvider,
                    kDnnlExecutionProvider,
+                   kMIGraphXExecutionProvider,
                    kOpenVINOExecutionProvider,
                    kQnnExecutionProvider,
                    kTensorrtExecutionProvider,
@@ -3607,7 +3607,6 @@ TEST(ReductionOpTest, ReduceDimWithZero2) {
   test2.AddOutput<float>("reduced", {}, {0.0f});
   run(test2);
 }
-#endif
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero3) {
   FastReduceKind fast_kind;
