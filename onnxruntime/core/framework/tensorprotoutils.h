@@ -100,7 +100,7 @@ constexpr const ORTCHAR_T* kTensorProtoMemoryAddressTag = ORT_TSTR("*/_ORT_MEM_A
 
 // Given a tensor proto with external data obtain a pointer to the data and its length.
 // The ext_data_deleter argument is updated with a callback that owns/releases the data.
-common::Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
+common::Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* external_ini_path,
                                          const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                          void*& ext_data_buf, SafeInt<size_t>& ext_data_len,
                                          OrtCallback& ext_data_deleter);

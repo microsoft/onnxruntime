@@ -188,7 +188,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 }
 
 common::Status SaveInitializedTensors(
-    const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
+    const Env& env, const std::basic_string<PATH_CHAR_TYPE>& external_ini_path,
     const GraphViewer& graph, const AllocatorPtr& default_cpu_alloc,
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const std::vector<OrtValueIndex>& initializer_allocation_order,
@@ -317,7 +317,7 @@ common::Status SaveInitializedTensors(
       bool use_device_allocator_for_initializers =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
 
-      Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, (m.has_value()) ? &*m : nullptr, alloc,
+      Status st = DeserializeTensorProto(env, external_ini_path, tensor_proto, (m.has_value()) ? &*m : nullptr, alloc,
                                          default_cpu_alloc, ort_value, data_transfer_mgr,
                                          use_device_allocator_for_initializers);
       if (!st.IsOK()) {

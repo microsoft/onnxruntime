@@ -35,7 +35,7 @@ using SaveTensorFunction = std::function<Status(const std::string& name, int idx
 using MemoryProfileFunction = std::function<void(ITensorAllocator& planner)>;
 
 common::Status SaveInitializedTensors(
-    const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
+    const Env& env, const std::basic_string<PATH_CHAR_TYPE>& external_ini_path,
     const GraphViewer& graph, const AllocatorPtr& default_cpu_memory_info,
     const OrtValueNameIdxMap& ort_value_name_idx_map, const std::vector<OrtValueIndex>& initializer_allocation_order,
     ITensorAllocator& planner,

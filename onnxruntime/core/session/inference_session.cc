@@ -1843,9 +1843,11 @@ common::Status InferenceSession::Initialize() {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
-    auto graph_location = external_ini_path_.empty() ? model_location_ : external_ini_path_ + PathString(L"/model.onnx");
+    if (external_ini_path_.empty() && !model_location_.empty()) {
+      external_ini_path_ = Path::Parse(model_location_).ParentPath().ToPathString();
+    }
     ORT_RETURN_IF_ERROR_SESSIONID_(
-        session_state_->FinalizeSessionState(graph_location, kernel_registry_manager_,
+        session_state_->FinalizeSessionState(external_ini_path_, kernel_registry_manager_,
                                              // need to keep the initializers if saving the optimized model
                                              !saving_model,
                                              saving_ort_format));

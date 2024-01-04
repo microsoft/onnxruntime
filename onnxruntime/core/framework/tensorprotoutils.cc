@@ -798,15 +798,12 @@ static Status GetFileContent(
   return Status::OK();
 }
 
-Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
+Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* external_ini_path,
                                  const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                  void*& ext_data_buf, SafeInt<size_t>& ext_data_len, OrtCallback& ext_data_deleter) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
-  std::basic_string<ORTCHAR_T> tensor_proto_dir;
-  if (model_path != nullptr) {
-    ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
-  }
-  const ORTCHAR_T* t_prot_dir_s = tensor_proto_dir.size() == 0 ? nullptr : tensor_proto_dir.c_str();
+  std::basic_string<ORTCHAR_T> tensor_proto_dir(external_ini_path);
+  const ORTCHAR_T* t_prot_dir_s = tensor_proto_dir.empty() ? nullptr : tensor_proto_dir.c_str();
   std::basic_string<ORTCHAR_T> external_data_file_path;
   FileOffsetType file_offset;
   SafeInt<size_t> raw_data_safe_len = 0;
