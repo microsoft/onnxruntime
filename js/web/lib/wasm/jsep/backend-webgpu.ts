@@ -13,8 +13,8 @@ import {ProgramManager} from './webgpu/program-manager';
 import {ComputeContext, GpuData, ProgramInfo, ProgramInputTensorInfoDependency, QueryType} from './webgpu/types';
 
 interface KernelInfo {
-  opType: string;
-  nodeName: string;
+  kernelType: string;
+  kernelName: string;
   kernelEntry: RunFunction;
   attributes: [((attribute: unknown) => unknown)|undefined, unknown];
 }
@@ -293,8 +293,8 @@ export class WebGpuBackend {
           const pendingKernelInfo = pendingKernels[i];
           const kernelId = pendingKernelInfo.kernelId;
           const kernelInfo = this.kernels.get(kernelId)!;
-          const opType = kernelInfo.opType;
-          const nodeName = kernelInfo.nodeName;
+          const kernelType = kernelInfo.kernelType;
+          const kernelName = kernelInfo.kernelName;
           const programName = pendingKernelInfo.programName;
           const inputTensorViews = pendingKernelInfo.inputTensorViews;
           const outputTensorViews = pendingKernelInfo.outputTensorViews;
@@ -320,8 +320,8 @@ export class WebGpuBackend {
               outputsMetadata: outputTensorViews.map(
                   value => ({dims: value.dims, dataType: tensorDataTypeEnumToString(value.dataType)})),
               kernelId,
-              kernelType: opType,
-              kernelName: nodeName,
+              kernelType,
+              kernelName,
               programName,
               startTime,
               endTime,
@@ -337,7 +337,7 @@ export class WebGpuBackend {
               outputShapes += `output[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
             });
             // eslint-disable-next-line no-console
-            console.log(`[profiling] kernel "${kernelId}|${opType}|${nodeName}|${programName}" ${inputShapes}${
+            console.log(`[profiling] kernel "${kernelId}|${kernelType}|${kernelName}|${programName}" ${inputShapes}${
                 outputShapes}execution time: ${endTime - startTime} ns`);
           }
         }
@@ -520,15 +520,15 @@ export class WebGpuBackend {
     return this.gpuDataManager.release(ptr);
   }
 
-  createKernel(opType: string, kernelId: number, attribute: unknown, nodeName: string): void {
-    const op = WEBGPU_OP_RESOLVE_RULES.get(opType);
+  createKernel(kernelType: string, kernelId: number, attribute: unknown, kernelName: string): void {
+    const op = WEBGPU_OP_RESOLVE_RULES.get(kernelType);
     if (!op) {
-      throw new Error(`kernel not implemented: ${opType}`);
+      throw new Error(`kernel not implemented: ${kernelType}`);
     }
 
     const kernelInfo: KernelInfo = {
-      opType,
-      nodeName,
+      kernelType,
+      kernelName,
       kernelEntry: op[0],
       attributes: [op[1], attribute],
     };
@@ -553,12 +553,12 @@ export class WebGpuBackend {
     if (!kernel) {
       throw new Error(`kernel not created: ${kernelId}`);
     }
-    const opType = kernel.opType;
-    const nodeName = kernel.nodeName;
+    const kernelType = kernel.kernelType;
+    const kernelName = kernel.kernelName;
     const kernelEntry = kernel.kernelEntry;
     const attributes = kernel.attributes;
     if (this.currentKernelId !== null) {
-      throw new Error(`kernel "[${opType}] ${nodeName}" is not allowed to be called recursively`);
+      throw new Error(`kernel "[${kernelType}] ${kernelName}" is not allowed to be called recursively`);
     }
     this.currentKernelId = kernelId;
 
@@ -568,7 +568,7 @@ export class WebGpuBackend {
       attributes[0] = undefined;
     }
 
-    LOG_DEBUG('info', () => `[WebGPU] Start to run kernel "[${opType}] ${nodeName}"...`);
+    LOG_DEBUG('info', () => `[WebGPU] Start to run kernel "[${kernelType}] ${kernelName}"...`);
 
     const useErrorScope = this.env.debug;
 
@@ -581,12 +581,12 @@ export class WebGpuBackend {
       kernelEntry(context, attributes[1]);
       return 0;  // ORT_OK
     } catch (e) {
-      errors.push(Promise.resolve(`[WebGPU] Kernel "[${opType}] ${nodeName}" failed. ${e}`));
+      errors.push(Promise.resolve(`[WebGPU] Kernel "[${kernelType}] ${kernelName}" failed. ${e}`));
       return 1;  // ORT_FAIL
     } finally {
       if (useErrorScope) {
         errors.push(this.device.popErrorScope().then(
-            err => err ? `GPU validation error for kernel "[${opType}] ${nodeName}": ${err.message}` : null));
+            err => err ? `GPU validation error for kernel "[${kernelType}] ${kernelName}": ${err.message}` : null));
       }
 
       for (const data of this.temporaryData) {
