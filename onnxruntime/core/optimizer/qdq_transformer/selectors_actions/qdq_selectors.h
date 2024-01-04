@@ -337,9 +337,10 @@ class WhereSelector : public BaseSelector {
 // 2 DQ nodes for input -> node -> optional Q if QLinearMatMul, MatMulIntegerToFloat if not
 class MatMulSelector : public BaseSelector {
  public:
-  MatMulSelector(bool int8_allowed, bool allow_16bit = false)
+  MatMulSelector(gsl::span<const char*> compatible_providers, bool int8_allowed, bool allow_16bit = false)
       : BaseSelector(std::make_unique<MatMulNodeGroupSelector>(int8_allowed, /*matmulintegertofloat_allowed*/ true,
-                                                               allow_16bit)) {}
+                                                               allow_16bit),
+                     compatible_providers) {}
 };
 
 // Input: DQ nodes for A, B and optional C
