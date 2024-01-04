@@ -58,8 +58,8 @@ __device__ T PixelAtGrid(const T* input_data, int64_t bIdx, int64_t cIdx, int64_
       pixel = input_data[bIdx * C * H * W + cIdx * H * W + y * W + x];
     }
   } else if (padding_mode == 1) {  //border
-    x = max((int64_t)0, min((int64_t)W - 1, (int64_t)x));
-    y = max((int64_t)0, min((int64_t)H - 1, (int64_t)y));
+    x = std::clamp<int64_t>(x, 0, W - 1);
+    y = std::clamp<int64_t>(y, 0, H - 1);
     pixel = input_data[bIdx * C * H * W + cIdx * H * W + y * W + x];
   } else {  // Reflection
     x = (int64_t) GsReflect<T>(x, border[0], border[2]);
@@ -125,12 +125,6 @@ __global__ void _GridSampleKernel(
     T grid_Y = grid_data[grid_idx * 2 + 1];
     int outIdx = idx;
 
-    T grid_x_imgSpace = GsDenormalize(grid_X, W_in, align_corners == 1);
-    T grid_y_imgSpace = GsDenormalize(grid_Y, H_in, align_corners == 1);
-    if (mode == 1) {  //nearest
-      grid_x_imgSpace = nearbyint(grid_x_imgSpace);
-      grid_y_imgSpace = nearbyint(grid_y_imgSpace);
-    }
     float x_min = -0.5f;
     float x_max = W_in - 0.5f;
     float y_min = -0.5f;
@@ -143,16 +137,9 @@ __global__ void _GridSampleKernel(
       y_max = H_in - 1.0f;
     }
     float border[] = {x_min, y_min, x_max, y_max};  // l-t-r-b
-    if (grid_x_imgSpace < x_min || grid_x_imgSpace > x_max ||
-        grid_y_imgSpace < y_min || grid_y_imgSpace > y_max) { // out of bound
-      if (padding_mode == 1) {  // border
-        grid_x_imgSpace = max(0.0f, min(grid_x_imgSpace, W_in - 1.0f));
-        grid_y_imgSpace = max(0.0f, min(grid_y_imgSpace, H_in - 1.0f));
-      } else if (padding_mode == 2) {  // reflection
-        grid_x_imgSpace = GsReflect(grid_x_imgSpace, x_min, x_max);
-        grid_y_imgSpace = GsReflect(grid_y_imgSpace, y_min, y_max);
-      }
-    }
+
+    T grid_x_imgSpace = GsDenormalize(grid_X, W_in, align_corners == 1);
+    T grid_y_imgSpace = GsDenormalize(grid_Y, H_in, align_corners == 1);
 
     if (mode == 0) {  // bilinear
       int x1 = floor(grid_x_imgSpace);
@@ -183,6 +170,8 @@ __global__ void _GridSampleKernel(
       return;
     }
     if (mode == 1) {  // nearest
+      grid_x_imgSpace = nearbyint(grid_x_imgSpace);
+      grid_y_imgSpace = nearbyint(grid_y_imgSpace);
       int x_n = grid_x_imgSpace;
       int y_n = grid_y_imgSpace;
       output_data[outIdx] = PixelAtGrid(input_data, BIdx, cIdx, y_n, x_n, padding_mode, N, C, H_in, W_in, border);

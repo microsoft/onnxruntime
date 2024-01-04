@@ -76,6 +76,16 @@ for opset_version in [16, 20]:
                     print('test.AddAttribute("padding_mode", padding_mode);')
                     print('test.AddAttribute("align_corners", align_corners);')
                     print('test.AddOutput<float>("Y", Y_shape, Y_data);')
-                    print("test.Run();")
+                    print('std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;')
+                    if ndim == 5:
+                        print('execution_providers.emplace_back(DefaultCpuExecutionProvider());')
+                    else:
+                        print('auto cuda_ep = DefaultCudaExecutionProvider();')
+                        print('if (cuda_ep) {')
+                        print('execution_providers.emplace_back(std::move(cuda_ep));')
+                        print('} else {')
+                        print('execution_providers.emplace_back(DefaultCpuExecutionProvider());')
+                        print('}')
+                    print('test.ConfigEps(std::move(execution_providers)).RunWithConfig();')
                     print("}")
                     print("\n")
