@@ -13,6 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+#ifdef USE_CUTLASS
+
 #pragma once
 
 #include <cuda_runtime_api.h>
@@ -49,3 +52,5 @@ inline int compute_occupancy_for_kernel() {
 }
 
 }  // namespace ort_fastertransformer
+
+#endif
