@@ -224,8 +224,10 @@ def fetch_onnx_inputs_outputs_name(
     if not num_of_past_key:
         num_of_past_key = model.config.num_hidden_layers
 
-    #filter out constant inputs
-    onnx_inp_names = tuple([torch_input_names[i] for i in range(len(torch_input_names)) if isinstance(onnx_inputs[i], torch.Tensor)])
+    # filter out constant inputs
+    onnx_inp_names = tuple(
+        [torch_input_names[i] for i in range(len(torch_input_names)) if isinstance(onnx_inputs[i], torch.Tensor)]
+    )
     onnx_out_names = ("logits",)
     onnx_dynamic_axes = {
         "input_ids": {0: "batch_size", 1: "seq_len"},
