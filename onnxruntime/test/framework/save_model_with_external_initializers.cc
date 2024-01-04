@@ -44,6 +44,7 @@ void LoadSaveAndCompareModel(const std::string& input_onnx,
   // Compare the initializers of the two versions.
   Path model_path{};
   Path external_data_path{};
+  Path external_data_folder_path{};
   for (auto i : initializers) {
     const std::string kInitName = i.first;
     const ONNX_NAMESPACE::TensorProto* tensor_proto = i.second;
@@ -51,15 +52,16 @@ void LoadSaveAndCompareModel(const std::string& input_onnx,
 
     std::vector<uint8_t> tensor_proto_data;
     model_path = Path::Parse(ToPathString(input_onnx));
-    external_data_path = model_path.ParentPath();
+    external_data_folder_path = model_path.ParentPath();
     // the file name of the external initializer data is tracked inside the tensor protocol
-    ORT_THROW_IF_ERROR(utils::UnpackInitializerData(*tensor_proto, external_data_path, tensor_proto_data));
+    ORT_THROW_IF_ERROR(utils::UnpackInitializerData(*tensor_proto, external_data_folder_path, tensor_proto_data));
     size_t tensor_proto_size = tensor_proto_data.size();
 
     std::vector<uint8_t> from_external_tensor_proto_data;
     model_path = Path::Parse(ToPathString(output_onnx));
-    external_data_path = model_path.ParentPath();
-    ORT_THROW_IF_ERROR(utils::UnpackInitializerData(*from_external_tensor_proto, external_data_path, from_external_tensor_proto_data));
+    external_data_folder_path = model_path.ParentPath();
+    external_data_path = model_path.ParentPath().Append(Path::Parse(ToPathString(output_external_init_file)));
+    ORT_THROW_IF_ERROR(utils::UnpackInitializerData(*from_external_tensor_proto, external_data_folder_path, from_external_tensor_proto_data));
     size_t from_external_tensor_proto_size = from_external_tensor_proto_data.size();
 
     if (from_external_tensor_proto_size < initializer_size_threshold) {
