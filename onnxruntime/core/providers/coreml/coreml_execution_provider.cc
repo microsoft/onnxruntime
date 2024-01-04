@@ -11,6 +11,7 @@
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/framework/model_metadef_id_generator.h"
 
 #ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
@@ -24,7 +25,7 @@ namespace onnxruntime {
 constexpr const char* COREML = "CoreML";
 
 CoreMLExecutionProvider::CoreMLExecutionProvider(uint32_t coreml_flags)
-    : IExecutionProvider{onnxruntime::kCoreMLExecutionProvider, true},
+    : IExecutionProvider{onnxruntime::kCoreMLExecutionProvider},
       coreml_flags_(coreml_flags) {
 }
 
@@ -54,7 +55,7 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
   const auto gen_metadef_name = [&]() {
     HashValue model_hash;
-    int metadef_id = ModelMetadefIdGenerator::GenerateMetaDefId(graph_viewer, model_hash);
+    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
     return MakeString(COREML, "_", model_hash, "_", metadef_id);
   };
 

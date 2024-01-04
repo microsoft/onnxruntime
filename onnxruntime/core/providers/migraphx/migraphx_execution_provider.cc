@@ -19,6 +19,7 @@
 
 // TODO: find a better way to share this
 #include "core/providers/rocm/rocm_stream_handle.h"
+#include "core/framework/model_metadef_id_generator.h"
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4244 4245)
@@ -102,7 +103,7 @@ std::shared_ptr<KernelRegistry> MIGraphXExecutionProvider::GetKernelRegistry() c
 }
 
 MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info.device_id), true}, device_id_(info.device_id) {
+    : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info.device_id)}, device_id_(info.device_id) {
   InitProviderOrtApi();
   // Set GPU device to be used
   HIP_CALL_THROW(hipSetDevice(device_id_));
@@ -757,7 +758,7 @@ std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const st
 
   // Generate unique kernel name for MIGraphX subgraph
   uint64_t model_hash = 0;
-  int id = ModelMetadefIdGenerator::GenerateMetaDefId(graph, model_hash);
+  int id = GenerateMetaDefId(graph, model_hash);
   std::string subgraph_id = std::to_string(model_hash) + "_" + std::to_string(id);
   auto meta_def = IndexedSubGraph_MetaDef::Create();
   const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";

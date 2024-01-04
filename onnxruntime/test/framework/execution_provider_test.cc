@@ -6,6 +6,7 @@
 #include "test_utils.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
+#include "core/framework/model_metadef_id_generator.h"
 
 #include "gtest/gtest.h"
 
@@ -21,7 +22,7 @@ class TestEP : public IExecutionProvider {
   TestEP() : IExecutionProvider{kEPType} {}
 
   int GetId(const GraphViewer& viewer, HashValue& model_hash) {
-    return ModelMetadefIdGenerator::GenerateMetaDefId(viewer, model_hash);
+    return GenerateMetaDefId(viewer, model_hash);
   }
 };
 

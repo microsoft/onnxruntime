@@ -40,7 +40,7 @@ using OnGroupClosedFn = std::function<bool(const std::vector<const Node*>& group
 
 /**
 Called to create a metadef name.
-Most likely should call IExecutionProvider::GenerateMetaDefId.
+Most likely should call GenerateMetaDefId.
 See onnxruntime/test/providers/internal_testing/internal_testing_execution_provider.cc for example usage.
 
 @return The metadef name.

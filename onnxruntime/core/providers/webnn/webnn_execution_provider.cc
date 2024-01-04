@@ -14,12 +14,13 @@
 #include "builders/model.h"
 #include "builders/helper.h"
 #include "builders/model_builder.h"
+#include "core/framework/model_metadef_id_generator.h"
 
 namespace onnxruntime {
 
 WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_flags,
                                                const std::string& webnn_threads_number, const std::string& webnn_power_flags)
-    : IExecutionProvider{onnxruntime::kWebNNExecutionProvider, true} {
+    : IExecutionProvider{onnxruntime::kWebNNExecutionProvider} {
   // Create WebNN context and graph builder.
   const emscripten::val ml = emscripten::val::global("navigator")["ml"];
   if (!ml.as<bool>()) {
@@ -158,7 +159,7 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
     // Assign inputs and outputs to subgraph's meta_def.
     uint64_t model_hash;
-    int metadef_id = ModelMetadefIdGenerator::GenerateMetaDefId(graph_viewer, model_hash);
+    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
     auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
     meta_def->name = "WEBNN_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
     meta_def->domain = kMSDomain;
