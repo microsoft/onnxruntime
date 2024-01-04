@@ -94,15 +94,28 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
   } else if (op_type == "InstanceNormalization") {
     // WebNN spec only supports 4D input for instanceNormalization.
     // Supports 3D input by prepanding 1 size dimension.
-    if (input_shape.size() == 3) {
+    // For models with dimensions greater than 4, they will be reshaped into 4D.
+    if (input_shape.size() != 4) {
       std::vector<uint32_t> new_shape;
       std::transform(input_shape.begin(), input_shape.end(),
                      std::back_inserter(new_shape),
                      [](int64_t dim) -> uint32_t { return SafeInt<uint32_t>(dim); });
       if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
-        new_shape.insert(new_shape.begin() + 2, 1);
+        if (input_shape.size() == 3) {
+          new_shape.insert(new_shape.begin() + 2, 1);
+        } else {
+          uint32_t sum = std::accumulate(new_shape.begin() + 2, new_shape.end() - 1, 1, std::multiplies<uint32_t>());
+          new_shape.erase(new_shape.begin() + 2, new_shape.end() - 1);
+          new_shape.insert(new_shape.begin() + 2, sum);
+        }
       } else {
-        new_shape.emplace_back(1);
+        if (input_shape.size() == 3) {
+          new_shape.emplace_back(1);
+        } else {
+          uint32_t sum = std::accumulate(new_shape.begin() + 3, new_shape.end(), 1, std::multiplies<uint32_t>());
+          new_shape.erase(new_shape.begin() + 3, new_shape.end());
+          new_shape.insert(new_shape.begin() + 3, sum);
+        }
       }
       input = model_builder.GetBuilder().call<emscripten::val>("reshape", input, emscripten::val::array(new_shape));
     }
@@ -112,7 +125,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     }
     output = model_builder.GetBuilder().call<emscripten::val>("instanceNormalization", input, options);
     // Reshape back to the original output shape for 3D input.
-    if (input_shape.size() == 3) {
+    if (input_shape.size() != 4) {
       std::vector<uint32_t> output_shape;
       std::transform(input_shape.begin(), input_shape.end(),
                      std::back_inserter(output_shape),
@@ -160,18 +173,6 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initi
     return false;
   }
 
-  if (op_type == "InstanceNormalization") {
-    std::vector<int64_t> input_shape;
-    if (!GetShape(*input_defs[0], input_shape, logger)) {
-      LOGS(logger, VERBOSE) << "Cannot get input shape";
-      return false;
-    }
-    const auto rank = input_shape.size();
-    if (rank > 4) {
-      LOGS(logger, VERBOSE) << "InstanceNormalization only supports up to 4D input.";
-      return false;
-    }
-  }
   return true;
 }
 
