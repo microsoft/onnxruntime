@@ -62,11 +62,13 @@ CudaStream::CudaStream(cudaStream_t stream,
                        bool release_cpu_buffer_on_cuda_stream,
                        bool own_flag,
                        cudnnHandle_t external_cudnn_handle,
-                       cublasHandle_t external_cublas_handle) : Stream(stream, device),
-                                                                own_stream_(own_flag),
-                                                                cpu_allocator_(cpu_allocator),
-                                                                release_cpu_buffer_on_cuda_stream_(release_cpu_buffer_on_cuda_stream),
-                                                                deferred_cpu_allocator_(*this) {
+                       cublasHandle_t external_cublas_handle,
+                       const CUDAExecutionProviderInfo& ep_info) : Stream(stream, device),
+                                                                   own_stream_(own_flag),
+                                                                   cpu_allocator_(cpu_allocator),
+                                                                   release_cpu_buffer_on_cuda_stream_(release_cpu_buffer_on_cuda_stream),
+                                                                   deferred_cpu_allocator_(*this),
+                                                                   ep_info_(ep_info) {
   if (own_flag) {
     CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
     CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
@@ -185,6 +187,60 @@ void* CudaStream::GetResource(int version, int id) const {
     case CudaResource::deferred_cpu_allocator_t:
       return const_cast<DeferredCpuAllocator*>(&deferred_cpu_allocator_);
       break;
+    case CudaResource::device_id_t:
+      return reinterpret_cast<void*>(ep_info_.device_id);
+      break;
+    case CudaResource::has_user_compute_stream_t:
+      return reinterpret_cast<void*>(ep_info_.has_user_compute_stream);
+      break;
+    case CudaResource::gpu_mem_limit_t:
+      return reinterpret_cast<void*>(ep_info_.gpu_mem_limit);
+      break;
+    case CudaResource::arena_extend_strategy_t:
+      return reinterpret_cast<void*>(ep_info_.gpu_mem_limit);
+      break;
+    case CudaResource::cudnn_conv_algo_search_t:
+      return reinterpret_cast<void*>(ep_info_.cudnn_conv_algo_search);
+      break;
+    case CudaResource::do_copy_in_default_stream_t:
+      return reinterpret_cast<void*>(ep_info_.do_copy_in_default_stream);
+      break;
+    case CudaResource::gpu_external_alloc_t:
+      return reinterpret_cast<void*>(ep_info_.external_allocator_info.alloc);
+      break;
+    case CudaResource::gpu_external_free_t:
+      return reinterpret_cast<void*>(ep_info_.external_allocator_info.free);
+      break;
+    case CudaResource::gpu_external_empty_cache_t:
+      return reinterpret_cast<void*>(ep_info_.external_allocator_info.empty_cache);
+      break;
+    case CudaResource::cudnn_conv_use_max_workspace_t:
+      return reinterpret_cast<void*>(ep_info_.cudnn_conv_use_max_workspace);
+      break;
+    case CudaResource::enable_cuda_graph_t:
+      return reinterpret_cast<void*>(ep_info_.enable_cuda_graph);
+      break;
+    case CudaResource::cudnn_conv1d_pad_to_nc1d_t:
+      return reinterpret_cast<void*>(ep_info_.cudnn_conv1d_pad_to_nc1d);
+      break;
+    case CudaResource::tunable_op_enable_t:
+      return reinterpret_cast<void*>(ep_info_.tunable_op.enable);
+      break;
+    case CudaResource::tunable_op_tuning_enable_t:
+      return reinterpret_cast<void*>(ep_info_.tunable_op.tuning_enable);
+      break;
+    case CudaResource::tunable_op_max_tuning_duration_ms_t:
+      return reinterpret_cast<void*>(ep_info_.tunable_op.max_tuning_duration_ms);
+      break;
+    case CudaResource::enable_skip_layer_norm_strict_mode_t:
+      return reinterpret_cast<void*>(ep_info_.enable_skip_layer_norm_strict_mode);
+      break;
+    case CudaResource::prefer_nhwc_t:
+      return reinterpret_cast<void*>(ep_info_.prefer_nhwc);
+      break;
+    case CudaResource::use_ep_level_unified_stream_t:
+      return reinterpret_cast<void*>(ep_info_.use_ep_level_unified_stream);
+      break;
     default:
       break;
   }
@@ -207,26 +263,28 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
                                cudaStream_t external_stream,
                                bool use_existing_stream,
                                cudnnHandle_t external_cudnn_handle,
-                               cublasHandle_t external_cublas_handle) {
+                               cublasHandle_t external_cublas_handle,
+                               const CUDAExecutionProviderInfo& ep_info) {
   // wait cuda notification on cuda ep
   stream_handle_registry.RegisterWaitFn(device_type, device_type, WaitCudaNotificationOnDevice);
   // wait cuda notification on cpu ep
   stream_handle_registry.RegisterWaitFn(device_type, OrtDevice::CPU, WaitCudaNotificationOnHost);
   if (!use_existing_stream)
-    stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator, release_cpu_buffer_on_cuda_stream](const OrtDevice& device) {
+    stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator, release_cpu_buffer_on_cuda_stream, ep_info](const OrtDevice& device) {
       CUDA_CALL_THROW(cudaSetDevice(device.Id()));
       cudaStream_t stream = nullptr;
       CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
       // CUDA_CALL_THROW(cudaStreamCreate(&stream));
-      return std::make_unique<CudaStream>(stream, device, cpu_allocator, release_cpu_buffer_on_cuda_stream, true, nullptr, nullptr);
+      return std::make_unique<CudaStream>(stream, device, cpu_allocator, release_cpu_buffer_on_cuda_stream, true, nullptr, nullptr, ep_info);
     });
   else
     stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator,
                                                                 release_cpu_buffer_on_cuda_stream,
                                                                 external_stream,
                                                                 external_cudnn_handle,
-                                                                external_cublas_handle](const OrtDevice& device) {
-      return std::make_unique<CudaStream>(external_stream, device, cpu_allocator, release_cpu_buffer_on_cuda_stream, false, external_cudnn_handle, external_cublas_handle);
+                                                                external_cublas_handle,
+                                                                ep_info](const OrtDevice& device) {
+      return std::make_unique<CudaStream>(external_stream, device, cpu_allocator, release_cpu_buffer_on_cuda_stream, false, external_cudnn_handle, external_cublas_handle, ep_info);
     });
 }
 
