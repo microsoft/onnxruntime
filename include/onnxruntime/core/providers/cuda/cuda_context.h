@@ -86,7 +86,7 @@ struct CudaContext : public CustomOpContext {
     if (status) {
       ORT_CXX_API_THROW("Failed to fetch cuda ep resource, resouce type: " + std::to_string(resource_type), OrtErrorCode::ORT_RUNTIME_EXCEPTION);
     }
-    return *reinterpret_cast<T*>(&resource);
+    return static_cast<T>(*reinterpret_cast<T*>(&resource));
   }
 
   void* AllocDeferredCpuMem(size_t size) const {

@@ -52,7 +52,7 @@ struct CudaStream : Stream {
   AllocatorPtr cpu_allocator_;
   bool release_cpu_buffer_on_cuda_stream_{true};
   DeferredCpuAllocator deferred_cpu_allocator_;
-  const CUDAExecutionProviderInfo& ep_info_;
+  const CUDAExecutionProviderInfo ep_info_;
 };
 
 void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_registry,
