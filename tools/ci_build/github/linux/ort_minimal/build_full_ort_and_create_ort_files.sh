@@ -8,7 +8,6 @@ set -x
 export PATH=/opt/python/cp38-cp38/bin:$PATH
 
 BUILD_DIR=${1:?"usage: $0 <build directory>"}
-export LD_PRELOAD=/usr/lib64/libasan.so.8
 # Validate the operator kernel registrations, as the ORT model uses hashes of the kernel registration details
 # to find kernels. If the hashes from the registration details are incorrect we will produce a model that will break
 # when the registration is fixed in the future.
@@ -29,6 +28,9 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --enable_pybind --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp38-cp38/include/python3.8 PYTHON_LIBRARY=/usr/lib64/librt.so \
     --use_nnapi \
     --use_coreml
+
+
+export LD_PRELOAD=/usr/lib64/libasan.so.8
 
 # Install the ORT python wheel
 python3 -m pip install --user ${BUILD_DIR}/Debug/dist/*
