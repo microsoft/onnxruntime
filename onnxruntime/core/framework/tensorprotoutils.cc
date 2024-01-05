@@ -803,9 +803,11 @@ Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* external_data_
                                  void*& ext_data_buf, SafeInt<size_t>& ext_data_len, OrtCallback& ext_data_deleter) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
   std::basic_string<ORTCHAR_T> external_data_file_path;
+  std::basic_string<ORTCHAR_T> tensor_proto_dir(external_data_path);
+  const ORTCHAR_T* t_prot_dir_s = tensor_proto_dir.size() == 0 ? nullptr : tensor_proto_dir.c_str();
   FileOffsetType file_offset;
   SafeInt<size_t> raw_data_safe_len = 0;
-  ORT_RETURN_IF_ERROR(GetExternalDataInfo(tensor_proto, external_data_path, external_data_file_path, file_offset,
+  ORT_RETURN_IF_ERROR(GetExternalDataInfo(tensor_proto, t_prot_dir_s, external_data_file_path, file_offset,
                                           raw_data_safe_len));
 
   if (external_data_file_path == onnxruntime::utils::kTensorProtoMemoryAddressTag) {
