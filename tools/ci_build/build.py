@@ -1494,7 +1494,9 @@ def generate_build_tree(
                 cxxflags = cflags.copy()
                 cxxflags += ["/EHsc"]
             elif is_linux() or is_macOS():
-                ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now"]
+                ldflags = ["-Wl,-z,relro", "-Wl,-z,now"]
+                if is_linux():
+                    ldflags += ["-Wl,-Bsymbolic-functions"]
                 if config == "Release":
                     cflags = [
                         "-DNDEBUG",
