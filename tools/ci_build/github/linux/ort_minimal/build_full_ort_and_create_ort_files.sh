@@ -8,7 +8,7 @@ set -x
 export PATH=/opt/python/cp38-cp38/bin:$PATH
 
 BUILD_DIR=${1:?"usage: $0 <build directory>"}
-
+export LD_PRELOAD=/usr/lib64/libasan.so.8
 # Validate the operator kernel registrations, as the ORT model uses hashes of the kernel registration details
 # to find kernels. If the hashes from the registration details are incorrect we will produce a model that will break
 # when the registration is fixed in the future.
