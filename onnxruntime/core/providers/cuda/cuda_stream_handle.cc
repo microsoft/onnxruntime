@@ -230,7 +230,7 @@ void* CudaStream::GetResource(int version, int id) const {
       return reinterpret_cast<void*>(ep_info_.tunable_op.tuning_enable);
       break;
     case CudaResource::tunable_op_max_tuning_duration_ms_t:
-      return reinterpret_cast<void*>(ep_info_.tunable_op.max_tuning_duration_ms);
+      return reinterpret_cast<void*>(static_cast<size_t>(ep_info_.tunable_op.max_tuning_duration_ms));
       break;
     case CudaResource::enable_skip_layer_norm_strict_mode_t:
       return reinterpret_cast<void*>(ep_info_.enable_skip_layer_norm_strict_mode);
