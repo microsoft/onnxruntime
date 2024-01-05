@@ -18,7 +18,7 @@ Abstract:
 #include "mlas_qnbit.h"
 
 size_t
-JblasQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, MLAS_SQNBIT_COMPUTE_TYPE CompType);
+JblasQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, MLAS_SQNBIT_GEMM_COMPUTE_TYPE CompType);
 
 bool
 JblasQ4GemmPackB(
@@ -32,7 +32,7 @@ JblasQ4GemmPackB(
     size_t BlkSize,
     bool isAsym,
     bool lastCall,
-    MLAS_SQNBIT_COMPUTE_TYPE CompType,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE CompType,
     MLAS_THREADPOOL* ThreadPool
 );
 

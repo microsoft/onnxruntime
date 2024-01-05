@@ -584,7 +584,7 @@ MlasSQNBitGemmBatch(
 
 size_t MLASCALL
 MlasNBitsGemmPackBSize(
-    size_t N, size_t K, size_t BlkSize, int nbits, bool isAsym, MLAS_SQNBIT_COMPUTE_TYPE CompType
+    size_t N, size_t K, size_t BlkSize, int nbits, bool isAsym, MLAS_SQNBIT_GEMM_COMPUTE_TYPE CompType
 )
 {
 #ifdef MLAS_JBLAS
@@ -617,7 +617,7 @@ MlasNBitsGemmPackB(
     int nbits,
     bool isAsym,
     bool lastCall,
-    MLAS_SQNBIT_COMPUTE_TYPE CompType,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE CompType,
     MLAS_THREADPOOL* ThreadPool
 )
 {

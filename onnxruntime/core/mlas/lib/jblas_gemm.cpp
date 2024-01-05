@@ -357,7 +357,7 @@ JblasQ4BuSize(size_t block_size, size_t N, size_t K, bool isAsym)
 }
 
 size_t
-JblasQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, MLAS_SQNBIT_COMPUTE_TYPE CompType)
+JblasQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, MLAS_SQNBIT_GEMM_COMPUTE_TYPE CompType)
 {
     GetCPUDevice();
     if (K % BlkSize != 0) {
@@ -434,7 +434,7 @@ JblasQ4GemmPackB(
     size_t BlkSize,
     bool isAsym,
     bool lastCall,
-    MLAS_SQNBIT_COMPUTE_TYPE CompType,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE CompType,
     MLAS_THREADPOOL* ThreadPool
 )
 {

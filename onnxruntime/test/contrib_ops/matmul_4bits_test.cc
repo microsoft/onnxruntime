@@ -63,7 +63,7 @@ void QuantizeDequantize(std::vector<float>& raw_vals,
       tp.get());
 }
 
-void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, MLAS_SQNBIT_COMPUTE_TYPE comp_type,
+void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, MLAS_SQNBIT_GEMM_COMPUTE_TYPE comp_type,
              bool has_zeropoint, bool use_float16, float fp16_abs_error = 0.02f) {
   RandomValueGenerator random{1234};
   std::vector<float> input0_vals(random.Gaussian<float>(std::vector<int64_t>({M, K}), 0.0f, 0.25f));
@@ -184,7 +184,7 @@ TEST(MatMulNBits, Float16Large) {
 #endif
 
 void RunSharedPrepackedWeightsTest(int64_t M, int64_t N, int64_t K, int block_size, bool is_asym,
-                                   MLAS_SQNBIT_COMPUTE_TYPE acc_lvl) {
+                                   MLAS_SQNBIT_GEMM_COMPUTE_TYPE acc_lvl) {
   // (M x K) X (K x N)
 
   OpTester test("MatMulNBits", 1, kMSDomain);

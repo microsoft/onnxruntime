@@ -37,9 +37,7 @@ typedef enum {
 
     CompMostAccurate = CompUndef,
     CompLeastAccurate = CompInt8,
-} MLAS_SQNBIT_COMPUTE_TYPE;
-
-using MLAS_SQNBIT_GEMM_COMPUTE_TYPE = MLAS_SQNBIT_COMPUTE_TYPE;  // TODO consolidate these
+} MLAS_SQNBIT_GEMM_COMPUTE_TYPE;
 
 /**
  * @brief Data parameters for float/n-bit quantized int GEMM routine.
@@ -164,7 +162,7 @@ struct MLAS_SQNBITS_GEMM_DATA_PACKED_PARAMS {
  */
 size_t MLASCALL
 MlasNBitsGemmPackBSize(
-    size_t N, size_t K, size_t block_size, int nbits, bool is_asym, MLAS_SQNBIT_COMPUTE_TYPE comp_type
+    size_t N, size_t K, size_t block_size, int nbits, bool is_asym, MLAS_SQNBIT_GEMM_COMPUTE_TYPE comp_type
 );
 
 /**
@@ -202,7 +200,7 @@ MlasNBitsGemmPackB(
     int nbits,
     bool is_asym,
     bool last_call,
-    MLAS_SQNBIT_COMPUTE_TYPE comp_type,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE comp_type,
     MLAS_THREADPOOL* thread_pool
 );
 
