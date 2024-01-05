@@ -1485,7 +1485,7 @@ def generate_build_tree(
                     # Mimalloc is incompatible with address sanitizer.
                     # Address sanitizer itself is also a memory leak checker, so we should not enable two memory leak checker
                     # at the same time.
-                    if platform.architecture()[0] != "32bit" and not args.use_mimalloc and args.disable_memleak_checker:
+                    if platform.architecture()[0] != "32bit" and not args.use_mimalloc and args.disable_memleak_checker and  not args.build_shared_lib and not args.enable_pybind:
                         cflags += ["/fsanitize=address"]
                 elif config == "MinSizeRel":
                     cflags += ["/O1", "/Ob1", "/DNDEBUG"]

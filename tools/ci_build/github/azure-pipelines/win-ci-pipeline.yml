@@ -52,6 +52,31 @@ stages:
         WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
 
+    - job: build_x86_asan
+      pool: 'onnxruntime-Win-CPU-2022'
+      timeoutInMinutes:  300
+      steps:
+      - checkout: self
+        clean: true
+        submodules: none
+
+      - template: win-ci-prebuild-steps.yml
+        parameters:
+          EnvSetupScript: setup_env.bat
+          DownloadCUDA: false
+          BuildArch: x64
+          BuildConfig: Debug
+          MachinePool: 'onnxruntime-Win-CPU-2022'
+          WithCache: false
+
+      - task: PythonScript@0
+        displayName: 'Build and Test'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+          arguments: --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --cmake_generator "Visual Studio 17 2022"
+          workingDirectory: '$(Build.BinariesDirectory)'
+
+
 - stage: x64_release
   dependsOn: []
   jobs:
