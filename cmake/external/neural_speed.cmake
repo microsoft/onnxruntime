@@ -1,7 +1,7 @@
 include (ExternalProject)
 
 set(BTLA_URL https://github.com/intel/neural-speed.git)
-set(BTLA_TAG origin/bestla)
+set(BTLA_TAG sync_main)
 
 set(USE_NEURAL_SPEED FALSE)
 if (onnxruntime_USE_NEURAL_SPEED)

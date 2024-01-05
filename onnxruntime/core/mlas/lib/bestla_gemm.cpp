@@ -32,6 +32,7 @@ ORTThreading::parallel_for(const parallel::thread_func& func) const
         func(static_cast<int>(tid));
     });
 }
+
 template <class GemmCore_T>
 static void
 BTLASQ4GemmCompF32(
@@ -196,7 +197,7 @@ BTLASQ4GemmBatchDriver(
     bestla::ORTThreading orth(ThreadPool);
     bool processed = true;
     for (size_t i = 0; i < BatchN; i++) {
-        auto ptr = bestla::storage::gemm::PackedWeightParser::deserialBuffer(const_cast<void*>(DataParams[i].B));
+        auto ptr = bestla::storage::gemm::PackedWeightParser::deserialBuffer(DataParams[i].B);
         auto uptr = std::unique_ptr<bestla::storage::gemm::IWeightBase>(ptr);
         if (ptr) {
             auto NTile =
@@ -258,7 +259,7 @@ BTLASQ4GemmBatchWorkspaceSize(
     GetCPUDevice();
     size_t size = 0;
     for (size_t i = 0; i < BatchN; i++) {
-        auto ptr = storage::gemm::PackedWeightParser::deserialBuffer(const_cast<void*>(DataParams[i].B));
+        auto ptr = storage::gemm::PackedWeightParser::deserialBuffer(DataParams[i].B);
         auto uptr = std::unique_ptr<storage::gemm::IWeightBase>(ptr);
         if (ptr) {
             if (ptr->mPrologueID == BTLA_PROLOGUEB_IDS::WeightKBlockNInteger) {
@@ -461,7 +462,7 @@ BTLAQ4GemmPackB(
 bool
 BTLAQ4GemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb, MLAS_THREADPOOL* ThreadPool)
 {
-    auto ptr = storage::gemm::PackedWeightParser::deserialBuffer(const_cast<void*>(PackedBuf));
+    auto ptr = storage::gemm::PackedWeightParser::deserialBuffer(PackedBuf);
     auto uptr = std::unique_ptr<storage::gemm::IWeightBase>(ptr);
     ORTThreading orth(ThreadPool);
     auto N_ = static_cast<int>(N);
