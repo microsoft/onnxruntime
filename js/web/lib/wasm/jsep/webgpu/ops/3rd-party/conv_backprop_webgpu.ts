@@ -157,7 +157,7 @@ const createConvTranspose2DOpProgramShaderSource =
         }
 
         for (var i: u32 = 0; i < ${workPerThread}; i = i + 1) {
-          let value = dotProd[i] + ${hasBias ? 'bias[c+i]' : '0.0'};
+          let value = dotProd[i] + ${hasBias ? 'bias[c+i]' : `vec4<${dataType}>(0.0)`};
           ${output.set('batch', 'r', 'c + i', 'd1', 'value')};
         }
       }`;
@@ -174,7 +174,7 @@ const createConvTranspose2DOpProgramShaderSource =
           let wOutChannel = d1 - groupId * ${outputChannelsPerGroup};
           // Convolve dy(?, ?, d2) with w(:, :, d1, d2) to compute dx(xR, xC, d1).
           // ? = to be determined. : = across all values in that axis.
-          var dotProd = 0.0;
+          var dotProd = ${dataType}(0.0);
           for (var wR: u32 = 0; wR < effectiveFilterDims.x; wR = wR + 1) {
             if (wR % dilations.x != 0) {
               continue;
@@ -209,7 +209,7 @@ const createConvTranspose2DOpProgramShaderSource =
               }
             }
           }
-          let value = dotProd + ${hasBias ? 'bias[d1]' : '0.0'};
+          let value = dotProd + ${hasBias ? 'bias[d1]' : `${dataType}(0.0)`};
           ${output.setByOffset('global_idx', 'value')};
         `;
 
