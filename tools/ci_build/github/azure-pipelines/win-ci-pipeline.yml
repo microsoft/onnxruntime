@@ -52,7 +52,7 @@ stages:
         WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
 
-    - job: build_x86_asan
+    - job: build_x64_asan
       pool: 'onnxruntime-Win-CPU-2022'
       timeoutInMinutes:  300
       steps:
