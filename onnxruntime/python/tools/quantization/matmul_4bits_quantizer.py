@@ -4,10 +4,11 @@
 # license information.
 # --------------------------------------------------------------------------
 
+from __future__ import annotations
+
 import argparse
 import logging
 import os
-from typing import List, Tuple
 
 import numpy as np
 import numpy.typing as npt
@@ -26,16 +27,24 @@ logger = logging.getLogger(__name__)
 class MatMul4BitsQuantizer:
     """Perform 4b quantization of constant MatMul weights"""
 
-    def __init__(self, model: ModelProto, block_size: int, is_symmetric: bool, nodes_to_exclude=None):
+    def __init__(
+        self,
+        model: ModelProto,
+        block_size: int,
+        is_symmetric: bool,
+        accuracy_level: int | None = None,
+        nodes_to_exclude: list[str] | None = None,
+    ):
         if nodes_to_exclude is None:
             nodes_to_exclude = []
         self.model = ONNXModel(model)
         self.block_size = block_size
         self.is_symmetric = is_symmetric
+        self.accuracy_level = accuracy_level
         self.nodes_to_exclude = set(nodes_to_exclude)
 
     @staticmethod
-    def __get_initializer(name, graph_path: List[GraphProto]) -> Tuple[TensorProto, GraphProto]:
+    def __get_initializer(name, graph_path: list[GraphProto]) -> tuple[TensorProto, GraphProto]:
         for gid in range(len(graph_path) - 1, -1, -1):
             graph = graph_path[gid]
             for tensor in graph.initializer:
@@ -66,7 +75,7 @@ class MatMul4BitsQuantizer:
 
         return (packed, scales, zero_point)
 
-    def _q4_matmul_node_weight(self, node: NodeProto, graph_stack: List[GraphProto]) -> NodeProto:
+    def _q4_matmul_node_weight(self, node: NodeProto, graph_stack: list[GraphProto]) -> NodeProto:
         """If the node is MatMul with fp32 const weight, quantize the weight with int4, and return the new node"""
 
         if node.op_type != "MatMul":
@@ -113,6 +122,8 @@ class MatMul4BitsQuantizer:
         kwargs["N"] = cols
         kwargs["bits"] = 4
         kwargs["block_size"] = self.block_size
+        if self.accuracy_level is not None:
+            kwargs["accuracy_level"] = self.accuracy_level
 
         matmul_q4_node = onnx.helper.make_node(
             "MatMulNBits",
@@ -127,7 +138,7 @@ class MatMul4BitsQuantizer:
 
         return matmul_q4_node
 
-    def _process_subgraph(self, graph_stack: List[GraphProto]):
+    def _process_subgraph(self, graph_stack: list[GraphProto]):
         new_nodes = []
         graph = graph_stack[-1]
 
@@ -201,6 +212,14 @@ set of 4b integers with a scaling factor and an optional offset.
         type=bool,
         help="Indicate whether to quantize the model symmetrically",
     )
+    parser.add_argument(
+        "--accuracy_level",
+        required=False,
+        type=int,
+        help="Accuracy level of the 4-bit quantized MatMul computation. "
+        "Refer to the MatMulNBits contrib op's 'accuracy_level' attribute for details "
+        "(https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#commicrosoftmatmulnbits).",
+    )
     parser.add_argument("-v", "--verbose", required=False, action="store_true")
     parser.set_defaults(verbose=False)
     parser.add_argument(
@@ -228,6 +247,12 @@ if __name__ == "__main__":
         raise Exception(f"file {output_model_path} already exists")
 
     model = onnx.load(input_model_path)
-    quant = MatMul4BitsQuantizer(model, args.block_size, args.symmetric, nodes_to_exclude=args.nodes_to_exclude)
+    quant = MatMul4BitsQuantizer(
+        model=model,
+        block_size=args.block_size,
+        is_symmetric=args.symmetric,
+        accuracy_level=args.accuracy_level,
+        nodes_to_exclude=args.nodes_to_exclude,
+    )
     quant.process()
     quant.model.save_model_to_file(output_model_path, True)
