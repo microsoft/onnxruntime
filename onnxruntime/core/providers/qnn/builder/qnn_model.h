@@ -3,8 +3,11 @@
 
 #pragma once
 
+#include <vector>
+
 #include "core/common/status.h"
 #include "core/graph/graph_viewer.h"
+#include "core/platform/ort_mutex.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/qnn_backend_manager.h"
@@ -13,6 +16,12 @@
 
 namespace onnxruntime {
 namespace qnn {
+
+struct QnnTensorInfo {
+  const QnnTensorWrapper* tensor_wrapper = nullptr;
+  uint32_t tensor_byte_size = 0;
+  size_t ort_index = 0;
+};
 
 class QnnModel {
  public:
@@ -103,7 +112,8 @@ class QnnModel {
                                 Qnn_DataType_t data_type,
                                 size_t& data_length) const;
 
-  Status SetupTensors(std::vector<Qnn_Tensor_t>& tensors, const std::vector<QnnTensorWrapper>& tensor_wrappers, bool is_input = true);
+  Status SetupTensors(std::vector<QnnTensorInfo>& tensors, const std::vector<QnnTensorWrapper>& tensor_wrappers,
+                      bool is_input = true);
 
   QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
 
@@ -126,9 +136,12 @@ class QnnModel {
   std::vector<std::string> output_names_;
   std::unordered_map<std::string, OnnxTensorInfo> inputs_info_;
   std::unordered_map<std::string, OnnxTensorInfo> outputs_info_;
-  std::vector<Qnn_Tensor_t> qnn_inputs_;
-  std::vector<Qnn_Tensor_t> qnn_outputs_;
+  std::vector<QnnTensorInfo> qnn_input_infos_;
+  std::vector<QnnTensorInfo> qnn_output_infos_;
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
+
+  // Mutex acquired during graph execution to support multi-threaded inference of a single session.
+  OrtMutex graph_exec_mutex_;
 };
 
 }  // namespace qnn

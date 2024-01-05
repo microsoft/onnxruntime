@@ -167,6 +167,7 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
     };
 
     if (!BUILD_DEFS.DISABLE_WASM_THREAD && useThreads) {
+      config.numThreads = numThreads;
       if (typeof Blob === 'undefined') {
         config.mainScriptUrlOrBlob = path.join(__dirname, 'ort-wasm-threaded.js');
       } else {
