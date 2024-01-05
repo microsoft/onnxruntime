@@ -68,6 +68,7 @@ stages:
           BuildConfig: Debug
           MachinePool: 'onnxruntime-Win-CPU-2022'
           WithCache: false
+          Today: $(TODAY)
 
       - task: PythonScript@0
         displayName: 'Build and Test'
