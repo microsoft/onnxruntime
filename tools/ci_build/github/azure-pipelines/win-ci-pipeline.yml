@@ -60,7 +60,7 @@ stages:
         clean: true
         submodules: none
 
-      - template: win-ci-prebuild-steps.yml
+      - template: templates/win-ci-prebuild-steps.yml
         parameters:
           EnvSetupScript: setup_env.bat
           DownloadCUDA: false
