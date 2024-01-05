@@ -29,7 +29,7 @@ class MSELoss(blocks.Block):
 
         reduction_blocks = {"mean": blocks.ReduceMean, "sum": blocks.ReduceSum, "none": blocks.PassThrough}
 
-        self._reduce = reduction_blocks[reduction]()
+        self._reduce = reduction_blocks[reduction](keepdims = False)
         self._sub = blocks.Sub()
         self._square = blocks.Pow(2.0)
 
@@ -139,7 +139,7 @@ class BCEWithLogitsLoss(blocks.Block):
         reduction_blocks = {"mean": blocks.ReduceMean, "sum": blocks.ReduceSum, "none": blocks.PassThrough}
 
         self._weight = weight
-        self._reduce = reduction_blocks[reduction]()
+        self._reduce = reduction_blocks[reduction](keepdims = False)
         self._pos_weight = pos_weight
 
         self._sigmoid = blocks.Sigmoid()
@@ -225,7 +225,7 @@ class L1Loss(blocks.Block):
             raise RuntimeError(f"Reduction {reduction} not supported.")
 
         reduction_blocks = {"mean": blocks.ReduceMean, "sum": blocks.ReduceSum, "none": blocks.PassThrough}
-        self._reduce = reduction_blocks[reduction]()
+        self._reduce = reduction_blocks[reduction](keepdims = False)
         self._abs = blocks.Abs()
         self._sub = blocks.Sub()
 
