@@ -1264,7 +1264,7 @@ TEST(CApiTest, test_custom_op_get_const_input) {
 }
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#if !defined(DISABLE_ML_OPS) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
 #if defined(__ANDROID__)
 // Disable on android because custom op libraries are not copied to the emulator.
 TEST(CApiTest, DISABLED_test_custom_op_local_function) {
@@ -1305,7 +1305,7 @@ lib_name = ORT_TSTR("./libcustom_op_local_function.so");
   session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(),
               &output_name, 1);
 }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#endif  // !defined(DISABLE_ML_OPS) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
 
 #if defined(USE_OPENVINO) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
 TEST(CApiTest, test_custom_op_openvino_wrapper_library) {
