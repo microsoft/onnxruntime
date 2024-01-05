@@ -22,6 +22,7 @@ from transformers import AutoConfig, AutoModelForCausalLM
 from onnxruntime import quantization as ort_quantization
 from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
 
+torch_export_onnx_opset_version = 14
 logger = logging.getLogger("")
 init_dist()
 
@@ -230,7 +231,7 @@ def run_torchscript_separate_export(
         input_names=input_names,
         output_names=output_names,
         dynamic_axes=dynamic_axes,
-        opset_version=13,
+        opset_version=torch_export_onnx_opset_version,
         do_constant_folding=True,
         verbose=args.verbose,
     )
@@ -289,7 +290,7 @@ def run_torchscript_separate_export(
         input_names=input_names,
         output_names=output_names,
         dynamic_axes=dynamic_axes,
-        opset_version=13,
+        opset_version=torch_export_onnx_opset_version,
         do_constant_folding=True,
         verbose=args.verbose,
     )
@@ -369,7 +370,7 @@ def run_torchscript_merged_export(
         input_names=input_names,
         output_names=output_names,
         dynamic_axes=dynamic_axes,
-        opset_version=13,
+        opset_version=torch_export_onnx_opset_version,
         do_constant_folding=True,
         verbose=args.verbose,
     )
