@@ -155,9 +155,9 @@ T GridSample<T>::PixelAtGrid3D(const T* image, int64_t d, int64_t h, int64_t w, 
 //
 template <typename T>
 Status GridSample<T>::Compute(OpKernelContext* context) const {
-  const auto* input = context->Input<Tensor>(0);
+  const auto* X = context->Input<Tensor>(0);
   const auto* grid = context->Input<Tensor>(1);
-  const auto& input_dims = input->Shape();
+  const auto& input_dims = X->Shape();
   const auto& grid_dims = grid->Shape();
 
   int64_t data_dims = input_dims.NumDimensions() - 2;
@@ -209,7 +209,7 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
       concurrency::ThreadPool::TrySimpleParallelFor(
           tp, onnxruntime::narrow<std::ptrdiff_t>(C),
           [&](std::ptrdiff_t c) {
-            const T* X_data = input->Data<T>() + (n * C + c) * (H_in * W_in);
+            const T* X_data = X->Data<T>() + (n * C + c) * (H_in * W_in);
             T* Y_data = Y.MutableData<T>() + (n * C + c) * (H_out * W_out);
 
             for (int64_t oy = 0; oy < H_out; oy++) {
@@ -298,7 +298,7 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
       concurrency::ThreadPool::TrySimpleParallelFor(
           tp, onnxruntime::narrow<std::ptrdiff_t>(C),
           [&](std::ptrdiff_t c) {
-            const T* X_data = input->Data<T>() + (n * C + c) * (D_in * H_in * W_in);
+            const T* X_data = X->Data<T>() + (n * C + c) * (D_in * H_in * W_in);
             T* Y_data = Y.MutableData<T>() + (n * C + c) * (D_out * H_out * W_out);
 
             for (int64_t oz = 0; oz < D_out; oz++) {

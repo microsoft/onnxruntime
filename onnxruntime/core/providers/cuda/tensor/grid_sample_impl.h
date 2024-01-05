@@ -20,5 +20,18 @@ void GridSampleImpl(
     const int64_t W_out,
     T* output_data);
 
+template <typename T>
+void GridSampleImpl3D(
+    cudaStream_t stream,
+    const T* input_data,
+    const T* grid_data,
+    const int64_t mode,
+    const int64_t padding_mode,
+    const int64_t align_corners,
+    const int64_t dims_input[5],
+    const int64_t D_out,
+    const int64_t H_out,
+    const int64_t W_out,
+    T* output_data);
 }  // namespace cuda
 }  // namespace onnxruntime

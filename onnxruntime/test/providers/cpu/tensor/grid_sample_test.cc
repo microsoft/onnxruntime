@@ -541,7 +541,12 @@ TEST(GridsampleTest, test_grid_sample_20_5D_nearest_zeros_align_corners) {
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep) {
+    execution_providers.emplace_back(std::move(cuda_ep));
+  } else {
+    execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  }
   test.ConfigEps(std::move(execution_providers)).RunWithConfig();
 }
 
@@ -590,7 +595,12 @@ TEST(GridsampleTest, test_grid_sample_20_5D_nearest_zeros_no_align_corners) {
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep) {
+    execution_providers.emplace_back(std::move(cuda_ep));
+  } else {
+    execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  }
   test.ConfigEps(std::move(execution_providers)).RunWithConfig();
 }
 
@@ -639,7 +649,12 @@ TEST(GridsampleTest, test_grid_sample_20_5D_nearest_border_align_corners) {
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep) {
+    execution_providers.emplace_back(std::move(cuda_ep));
+  } else {
+    execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  }
   test.ConfigEps(std::move(execution_providers)).RunWithConfig();
 }
 
@@ -688,7 +703,12 @@ TEST(GridsampleTest, test_grid_sample_20_5D_nearest_border_no_align_corners) {
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep) {
+    execution_providers.emplace_back(std::move(cuda_ep));
+  } else {
+    execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  }
   test.ConfigEps(std::move(execution_providers)).RunWithConfig();
 }
 
@@ -737,7 +757,12 @@ TEST(GridsampleTest, test_grid_sample_20_5D_nearest_reflection_align_corners) {
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep) {
+    execution_providers.emplace_back(std::move(cuda_ep));
+  } else {
+    execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  }
   test.ConfigEps(std::move(execution_providers)).RunWithConfig();
 }
 
@@ -786,7 +811,12 @@ TEST(GridsampleTest, test_grid_sample_20_5D_nearest_reflection_no_align_corners)
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep) {
+    execution_providers.emplace_back(std::move(cuda_ep));
+  } else {
+    execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  }
   test.ConfigEps(std::move(execution_providers)).RunWithConfig();
 }
 
@@ -835,7 +865,12 @@ TEST(GridsampleTest, test_grid_sample_20_5D_bilinear_zeros_align_corners) {
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep) {
+    execution_providers.emplace_back(std::move(cuda_ep));
+  } else {
+    execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  }
   test.ConfigEps(std::move(execution_providers)).RunWithConfig();
 }
 
@@ -884,7 +919,12 @@ TEST(GridsampleTest, test_grid_sample_20_5D_bilinear_zeros_no_align_corners) {
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep) {
+    execution_providers.emplace_back(std::move(cuda_ep));
+  } else {
+    execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  }
   test.ConfigEps(std::move(execution_providers)).RunWithConfig();
 }
 
@@ -933,7 +973,12 @@ TEST(GridsampleTest, test_grid_sample_20_5D_bilinear_border_align_corners) {
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep) {
+    execution_providers.emplace_back(std::move(cuda_ep));
+  } else {
+    execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  }
   test.ConfigEps(std::move(execution_providers)).RunWithConfig();
 }
 
@@ -982,7 +1027,12 @@ TEST(GridsampleTest, test_grid_sample_20_5D_bilinear_border_no_align_corners) {
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep) {
+    execution_providers.emplace_back(std::move(cuda_ep));
+  } else {
+    execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  }
   test.ConfigEps(std::move(execution_providers)).RunWithConfig();
 }
 
@@ -1031,7 +1081,12 @@ TEST(GridsampleTest, test_grid_sample_20_5D_bilinear_reflection_align_corners) {
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep) {
+    execution_providers.emplace_back(std::move(cuda_ep));
+  } else {
+    execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  }
   test.ConfigEps(std::move(execution_providers)).RunWithConfig();
 }
 
@@ -1080,7 +1135,12 @@ TEST(GridsampleTest, test_grid_sample_20_5D_bilinear_reflection_no_align_corners
   test.AddAttribute("align_corners", align_corners);
   test.AddOutput<float>("Y", Y_shape, Y_data);
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep) {
+    execution_providers.emplace_back(std::move(cuda_ep));
+  } else {
+    execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  }
   test.ConfigEps(std::move(execution_providers)).RunWithConfig();
 }
 
