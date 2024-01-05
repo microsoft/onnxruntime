@@ -30,10 +30,18 @@ struct JsExecutionProviderInfo {
         data_layout = DataLayout::NHWC;
       }
     }
+    const std::string& graph_capture_enabled_str = po.at("graph_capture_enabled");
+    if (graph_capture_enabled_str == "true")
+    {
+        graph_capture_enabled = true;
+    } else {
+        graph_capture_enabled = false;
+    }
   }
 
   // JSEP default preferred layout is NHWC
   DataLayout data_layout = DataLayout::NHWC;
+  bool graph_capture_enabled = false;
 };
 
 class JsExecutionProvider : public IExecutionProvider {
@@ -69,6 +77,7 @@ class JsExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptureAllowed() const;
   void IncrementRegularRunCountBeforeGraphCapture();
   DataLayout preferred_data_layout_;
+  bool graph_capture_enabled_ = false;
   bool is_graph_captured_ = false;
   int regular_run_count_before_graph_capture_ = 0;
   const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.

@@ -682,7 +682,7 @@ using namespace js;
 
 JsExecutionProvider::JsExecutionProvider(const JsExecutionProviderInfo& info)
     : IExecutionProvider{kJsExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0), true},
-      preferred_data_layout_{info.data_layout} {
+      preferred_data_layout_{info.data_layout}, graph_capture_enabled_(info.graph_capture_enabled) {
 }
 
 std::vector<AllocatorPtr> JsExecutionProvider::CreatePreferredAllocators() {
@@ -772,7 +772,7 @@ Status JsExecutionProvider::OnRunEnd(bool sync_stream) {
 }
 
 bool JsExecutionProvider::IsGraphCaptureEnabled() const {
-  return true;
+  return graph_capture_enabled_;
 }
 
 bool JsExecutionProvider::IsGraphCaptured() const {

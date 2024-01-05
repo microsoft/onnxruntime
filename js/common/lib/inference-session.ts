@@ -237,6 +237,7 @@ export declare namespace InferenceSession {
   export interface WebGpuExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'webgpu';
     preferredLayout?: 'NCHW'|'NHWC';
+    graphCaptureEnabled?: boolean;
   }
   export interface WebNNExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'webnn';

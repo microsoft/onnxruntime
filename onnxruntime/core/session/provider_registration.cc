@@ -141,6 +141,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     if (options->value.config_options.TryGetConfigEntry("preferredLayout", preferred_layout)) {
       provider_options["preferred_layout"] = preferred_layout;
     }
+    std::string graph_capture_enabled = options->value.config_options.GetConfigOrDefault("graphCaptureEnabled", "false");
+    provider_options["graph_capture_enabled"] = graph_capture_enabled;
     options->provider_factories.push_back(JsProviderFactoryCreator::Create(provider_options));
 #else
     status = create_not_supported_status();

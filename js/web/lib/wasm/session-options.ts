@@ -115,6 +115,19 @@ const setExecutionProviders =
                       `Can't set a session config entry: 'preferredLayout' - ${webgpuOptions.preferredLayout}.`);
                 }
               }
+              if (webgpuOptions?.graphCaptureEnabled) {
+                if (webgpuOptions.graphCaptureEnabled !== true && webgpuOptions.graphCaptureEnabled !== false) {
+                  throw new Error(
+                      `graphCaptureEnabled must be either 'true' or 'false': ${webgpuOptions.graphCaptureEnabled}`);
+                }
+                const keyDataOffset = allocWasmString('graphCaptureEnabled', allocs);
+                const valueDataOffset = allocWasmString(webgpuOptions.graphCaptureEnabled.toString(), allocs);
+                if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
+                    0) {
+                  checkLastError(`Can't set a session config entry: 'graphCaptureEnabled' - ${
+                      webgpuOptions.graphCaptureEnabled}.`);
+                }
+              }
             }
             break;
           case 'wasm':
