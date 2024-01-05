@@ -1464,7 +1464,7 @@ def generate_build_tree(
     cxxflags = None
     ldflags = None
     for config in configs:
-        if "CFLAGS" not in os.environ and "CXXFLAGS" not in os.environ:
+        if "CFLAGS" not in os.environ and "CXXFLAGS" not in os.environ and not args.ios and not args.android and not args.build_wasm:
             if is_windows():
                 cflags = [
                     "/MP",
@@ -1481,7 +1481,11 @@ def generate_build_tree(
                     cflags += ["/O2", "/Ob1", "/DNDEBUG"]
                 elif config == "Debug":
                     cflags += ["/Ob0", "/Od", "/RTC1", "/fsanitize=address"]
-                    if platform.architecture()[0] != "32bit":
+                    # A 32-bit progress doesn't have enough memory to run all the tests in onnxruntime_test_all.
+                    # Mimalloc is incompatible with address sanitizer.
+                    # Address sanitizer itself is also a memory leak checker, so we should not enable two memory leak checker
+                    # at the same time.
+                    if platform.architecture()[0] != "32bit" and not args.use_mimalloc and args.disable_memleak_checker:
                         cflags += ["/fsanitize=address"]
                 elif config == "MinSizeRel":
                     cflags += ["/O1", "/Ob1", "/DNDEBUG"]
