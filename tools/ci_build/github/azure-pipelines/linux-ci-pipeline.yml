@@ -181,7 +181,7 @@ stages:
             /bin/bash -c "
               set -ex; \
               pushd /onnxruntime_src/csharp; \
-              export LD_PRELOAD=/opt/rh/gcc-toolset-12/root/usr/lib/gcc/x86_64-redhat-linux/12/libasan.so; \
+              export LD_PRELOAD=/usr/lib64/libasan.so.8; \
               dotnet restore /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; \
               dotnet build /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; \
               dotnet test /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln -f net6.0 --no-build -l \"console;verbosity=normal\"; \

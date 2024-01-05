@@ -7,7 +7,7 @@ export build_dir=$2
 export config=$3
 
 if [ "$BUILD_CONFIG" == "Debug" ]; then
-  export LD_PRELOAD=/opt/rh/gcc-toolset-12/root/usr/lib/gcc/x86_64-redhat-linux/12/libasan.so
+  export LD_PRELOAD=/usr/lib64/libasan.so.8
 fi
 # it's for manylinux image
 export PATH=/opt/python/cp38-cp38/bin:$PATH
