@@ -165,6 +165,24 @@ class TrackTime:
         return wrapper
 
 
+class TrackTimeForStaticFunction:
+    """A function decorator to track time spent in different phases of ORT backend first-time initialization."""
+
+    def __init__(self, phase: ORTModuleInitPhase):
+        self.phase = phase
+
+    def __call__(self, func: Callable):
+        def wrapper(*args, **kwargs):
+            if "time_tracker" not in kwargs:
+                raise RuntimeError("The function to be tracked must have a 'time_tracker' kwarg.")
+            kwargs["time_tracker"].start(self.phase)
+            result = func(*args, **kwargs)
+            kwargs["time_tracker"].end(self.phase)
+            return result
+
+        return wrapper
+
+
 @contextmanager
 def _suppress_os_stream_output(enable=True, on_exit: Optional[Callable] = None):
     """Suppress output from being printed to stdout and stderr.
@@ -255,25 +273,25 @@ class SuppressLogs:
         self.is_ort_filter = is_ort_filter
 
     def __call__(self, func: Callable):
-        def wrapper(graph_execution_manager, *args, **kwargs):
-            if not hasattr(graph_execution_manager, "_logger"):
-                raise RuntimeError("The class of the function to be tracked must have a '_logger' attribute.")
+        def wrapper(*args, **kwargs):
+            if "logger" not in kwargs:
+                raise RuntimeError("The function to be tracked must have a 'logger' kwarg.")
 
-            if not hasattr(graph_execution_manager, "_debug_options"):
-                raise RuntimeError("The class of the function to be tracked must have a '_debug_options' attribute.")
+            if "debug_options" not in kwargs:
+                raise RuntimeError("The function to be tracked must have a 'debug_options' kwarg.")
 
             with _suppress_os_stream_output(
-                enable=graph_execution_manager._debug_options.log_level >= LogLevel.DEVINFO,
+                enable=kwargs["debug_options"].log_level >= LogLevel.DEVINFO,
                 on_exit=partial(
                     _log_with_filter,
-                    graph_execution_manager._logger,
-                    graph_execution_manager._debug_options.onnxruntime_log_filter
+                    kwargs["logger"],
+                    kwargs["debug_options"].onnxruntime_log_filter
                     if self.is_ort_filter
-                    else graph_execution_manager._debug_options.torch_exporter_filter,
+                    else kwargs["debug_options"].torch_exporter_filter,
                     self.phase.to_string(),
                 ),
             ):
-                result = func(graph_execution_manager, *args, **kwargs)
+                result = func(*args, **kwargs)
             return result
 
         return wrapper

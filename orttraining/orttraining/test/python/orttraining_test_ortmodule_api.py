@@ -2955,11 +2955,12 @@ def test_forward_data_and_model_on_different_devices(data_device, model_device):
             runtime_error.value
         )
     else:
-        # ORT backend also throw the same exception because PyTorch run failed during export.
-        with pytest.raises(RuntimeError) as runtime_error:
+        # ORT backend
+        with pytest.raises(_fallback.ORTModuleDeviceException) as runtime_error:
             ort_model(x)
-        assert "Expected all tensors to be on the same device, but found at least two devices" in str(
-            runtime_error.value
+        assert (
+            f"Input argument to forward found on device {torch.device(x.device)}, but expected it to be on module device {ort_model._torch_module._execution_manager(ort_model._is_training())._device}."
+            in str(runtime_error.value)
         )
 
     del os.environ["ORTMODULE_SKIPCHECK_POLICY"]
@@ -5013,9 +5014,9 @@ def test_override_pytorch_exporter_kwargs_using_ortmodule_extension():
             super().__init__(module, debug_options)
             # modify GraphExecutionManager internally
             for training_mode in [False, True]:
-                self._torch_module._execution_manager(
-                    training_mode
-                )._graph_transition_manager._model_info_for_export.export_extra_kwargs = {"custom_opsets": None}
+                self._torch_module._execution_manager(training_mode)._graph_transition_manager._export_extra_kwargs = {
+                    "custom_opsets": None
+                }
 
     N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
     x = torch.randn(N, D_in, device=device)
@@ -5304,10 +5305,7 @@ def test_serialize_ortmodule():
     N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
     pt_model = SerializationNet(D_in, H, D_out).to(device)
 
-    from onnxruntime.training.ortmodule import DebugOptions, LogLevel
-
-    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(log_level=LogLevel.INFO))
-    # ort_model = ORTModule(copy.deepcopy(pt_model))
+    ort_model = ORTModule(copy.deepcopy(pt_model))
 
     x_1 = torch.randn(N, D_in, device=device)
     x_2 = copy.deepcopy(x_1)

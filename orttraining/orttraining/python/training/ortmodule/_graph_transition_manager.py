@@ -27,7 +27,7 @@ from onnxruntime.training.utils import (
 
 from . import _io, _utils
 from ._fallback import ORTModuleDeviceException, ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
-from ._logger import LogLevel
+from ._logger import LogLevel, ORTModuleInitPhase, SuppressLogs, TimeTracker, TrackTimeForStaticFunction
 from ._onnx_models import _get_onnx_file_name, _save_model
 from ._utils import check_function_has_param, get_rank
 from ._zero_stage3_compatibility import stage3_export_context
@@ -218,6 +218,7 @@ class GraphTransitionManager:
         export_mode: int,
         debug_options: DebugOptions,
         runtime_options: _RuntimeOptions,
+        time_tracker: TimeTracker,
         logger: logging.Logger,
     ):
         self._device = _utils._get_device_from_module(flatten_module)
@@ -229,7 +230,9 @@ class GraphTransitionManager:
         self._export_extra_kwargs = {}
 
         self._logger = logger
-        self._torch_exporter_verbose_log = self._debug_options.log_level < LogLevel.WARNING
+
+        # Tracker for ORTModule model export.
+        self._time_tracker = time_tracker
 
         # A signal to indicate if the original model has changed and need a re-export.
         self._original_model_has_changed = False
@@ -343,8 +346,9 @@ class GraphTransitionManager:
                 enable_custom_autograd_function=self._runtime_options.enable_custom_autograd_function,
                 enable_zero_stage3_support=self._runtime_options.enable_zero_stage3_support,
                 onnx_opset_version=self._runtime_options.onnx_opset_version,
-                torch_exporter_verbose_log=self._torch_exporter_verbose_log,
                 stage3_param_handle=self,
+                debug_options=self._debug_options,
+                time_tracker=self._time_tracker,
                 logger=self._logger,
             )
 
@@ -494,16 +498,17 @@ class GraphTransitionManager:
             onnx_graph_input_requires_grads = []
             parameter_names = {k: v for k, v in flatten_module.named_parameters()}
             for input_name in exported_model_info.onnx_graph_input_names:
-                if input_name in parameter_names and parameter_names[input_name].requires_grad:
-                    onnx_graph_input_requires_grads.append(input_name)
-                else:
-                    # If not in the parameter list, then it would come from user-defined inputs.
+                if input_name in exported_model_info.onnx_graph_input_names_user_defined:
                     assert (
                         input_name in model_info_for_export.data_accessor
-                    ), f"{input_name} is not in model_info_for_export.onnx_graph_input_names_user_defined"
+                    ), f"{input_name} model_info_for_export.data_accessor"
                     # We assume the data accessor should be the same as the one used for the previous export, because
                     # there is args and kwargs schema check during export check phase.
                     if model_info_for_export.data_accessor[input_name](args, kwargs).requires_grad:
+                        onnx_graph_input_requires_grads.append(input_name)
+                else:
+                    assert input_name in parameter_names, f"{input_name} not exist parameter_names"
+                    if parameter_names[input_name].requires_grad:
                         onnx_graph_input_requires_grads.append(input_name)
 
             if onnx_graph_input_requires_grads == exported_model_info.onnx_graph_input_names_require_grad:
@@ -563,10 +568,11 @@ class GraphTransitionManager:
 
         return post_export_processed_model_info
 
-    # @_logger.TrackTime(_logger.ORTModuleInitPhase.EXPORT)
-    # @_logger.SuppressLogs(_logger.ORTModuleInitPhase.EXPORT, is_ort_filter=False)
     @staticmethod
+    @TrackTimeForStaticFunction(ORTModuleInitPhase.EXPORT)
+    @SuppressLogs(ORTModuleInitPhase.EXPORT, is_ort_filter=False)
     def _export_model(
+        *,
         flattened_module: torch.nn.Module,
         model_info_for_export: _io.ModelInfoForExport,
         flatten_module_inputs: Sequence[ORTModelInputOutputType],
@@ -577,14 +583,16 @@ class GraphTransitionManager:
         enable_custom_autograd_function: bool,
         enable_zero_stage3_support: bool,
         onnx_opset_version: int,
-        torch_exporter_verbose_log: bool,
         stage3_param_handle: type,
+        debug_options: DebugOptions,
+        time_tracker: TimeTracker,
         logger: logging.Logger,
     ) -> tuple[onnx.ModelProto, ORTModelInputOutputSchemaType, list[str], list[str]]:
         # Record random states here and restore later in case any of them gets changed during the export,
         # e.g., some sympy functions in symbolic_shape_infer will change Python's random state.
         random_states = _utils.get_random_states()
 
+        torch_exporter_verbose_log = debug_options.log_level < LogLevel.WARNING
         from onnxruntime.training.utils.hooks._subscriber_manager import no_increase_global_step
 
         with no_increase_global_step():

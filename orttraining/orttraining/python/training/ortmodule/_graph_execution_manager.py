@@ -52,7 +52,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         """Manages construction and execution of ONNX graphs"""
 
         super().__init__(module._original_module)
-        super(GraphExecutionInterface, self).__init__()
 
         # IMPORTANT: Debug and Fallback must the configured first
         self._debug_options = debug_options
@@ -83,7 +82,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._runtime_inspector = RuntimeInspector(self._logger, self._original_module)
         self._runtime_inspector.memory_ob.enable_memory_stats_by_step(self._runtime_options.print_memory_stat_by_step)
 
-        # Tracker for ORTModule model export, session creation overhead.
+        # Tracker for session creation overhead.
         self.time_tracker = _logger.TimeTracker()
 
         self.is_rocm_pytorch = bool(torch.version.hip is not None and ROCM_HOME is not None)
@@ -126,6 +125,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             export_mode=self._export_mode,
             debug_options=self._debug_options,
             runtime_options=self._runtime_options,
+            time_tracker=self.time_tracker,
             logger=self._logger,
         )
 
