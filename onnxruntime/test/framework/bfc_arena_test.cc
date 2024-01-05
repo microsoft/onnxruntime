@@ -169,7 +169,6 @@ void TestCustomMemoryLimit_ProcessException(const OnnxRuntimeException& ex) {
 // Address Sanitizer would report allocation-size-too-big if we don't disable this test.
 TEST(BFCArenaTest, DISABLED_TestCustomMemoryLimit) {
 #  endif
-#endif
 #else
 TEST(BFCArenaTest, TestCustomMemoryLimit) {
 #endif
