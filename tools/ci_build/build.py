@@ -1494,9 +1494,10 @@ def generate_build_tree(
                 cxxflags = cflags.copy()
                 cxxflags += ["/EHsc"]
             elif is_linux() or is_macOS():
-                ldflags = ["-Wl,-z,relro", "-Wl,-z,now"]
                 if is_linux():
-                    ldflags += ["-Wl,-Bsymbolic-functions"]
+                    ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now"]
+                else:
+                    ldflags = []
                 if config == "Release":
                     cflags = [
                         "-DNDEBUG",
@@ -1552,7 +1553,7 @@ def generate_build_tree(
                 "-DCMAKE_C_FLAGS=%s" % (" ".join(cflags)),
                 "-DCMAKE_CXX_FLAGS=%s" % (" ".join(cxxflags)),
             ]
-        if ldflags is not None:
+        if ldflags is not None and len(ldflags) != 0:
             temp_cmake_args += [
                 "-DCMAKE_EXE_LINKER_FLAGS_INIT=%s" % (" ".join(ldflags)),
                 "-DCMAKE_MODULE_LINKER_FLAGS_INIT=%s" % (" ".join(ldflags)),
