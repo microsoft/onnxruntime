@@ -164,8 +164,12 @@ void TestCustomMemoryLimit_ProcessException(const OnnxRuntimeException& ex) {
 #endif  // #ifdef GTEST_USES_POSIX_RE
 }
 
-#ifdef __SANITIZE_ADDRESS__
+#if defined(__has_feature) || defined(__SANITIZE_ADDRESS__)
+#  if __has_feature(address_sanitizer) || defined(__SANITIZE_ADDRESS__)
+// Address Sanitizer would report allocation-size-too-big if we don't disable this test.
 TEST(BFCArenaTest, DISABLED_TestCustomMemoryLimit) {
+#  endif
+#endif
 #else
 TEST(BFCArenaTest, TestCustomMemoryLimit) {
 #endif
