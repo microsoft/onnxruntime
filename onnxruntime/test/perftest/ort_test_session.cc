@@ -307,7 +307,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_npu_fast_compile', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling', 'disable_dynamic_shapes'] \n");
       }
     }
-    session_options.AppendExecutionProvider("OpenVINO", ov_options);
+    session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
 #endif
