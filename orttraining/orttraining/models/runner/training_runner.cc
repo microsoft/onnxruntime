@@ -1274,7 +1274,7 @@ Status TrainingRunner::LoadCheckpoint(const PathString& checkpoint_path) {
       checkpointed_tensors, checkpointed_properties));
 
   ORT_RETURN_IF_ERROR(WithOrtValuesFromTensorProtos(
-      session_.GetModelLocation(), checkpointed_tensors,
+      session_.GetExternalDataPath(), checkpointed_tensors,
       [this](const NameMLValMap& name_to_ort_value) -> Status {
         ORT_RETURN_IF_ERROR(session_.SetStateTensors(name_to_ort_value, true));
         return Status::OK();

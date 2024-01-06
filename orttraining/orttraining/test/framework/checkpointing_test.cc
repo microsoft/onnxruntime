@@ -46,7 +46,7 @@ class OrtValueTensorData {
 };
 
 void CompareOrtValuesToTensorProtoValues(
-    const PathString& model_path,
+    const PathString& external_data_path,
     const NameMLValMap& name_to_ort_value,
     const std::unordered_map<std::string, ONNX_NAMESPACE::TensorProto>& name_to_tensor_proto) {
   ASSERT_EQ(name_to_ort_value.size(), name_to_tensor_proto.size());
@@ -60,7 +60,7 @@ void CompareOrtValuesToTensorProtoValues(
     TensorShape shape{tensor_proto.dims().data(), static_cast<size_t>(tensor_proto.dims().size())};
     ASSERT_EQ(tensor_proto.data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     OrtValue ort_value;
-    ASSERT_STATUS_OK(utils::TensorProtoToOrtValue(Env::Default(), model_path.c_str(), tensor_proto,
+    ASSERT_STATUS_OK(utils::TensorProtoToOrtValue(Env::Default(), external_data_path.c_str(), tensor_proto,
                                                   tmp_allocator, ort_value));
 
     name_to_ort_value_from_tensor_proto.emplace(name, ort_value);
@@ -100,7 +100,8 @@ TEST(CheckpointingTest, SaveAndLoad) {
       {"three", "3"},
   };
 
-  TemporaryDirectory tmp_dir{ORT_TSTR("checkpointing_test_dir")};
+  PathString model_folder(ORT_TSTR("checkpointing_test_dir"));
+  TemporaryDirectory tmp_dir{model_folder};
 
   PathString checkpoint_path{
       ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("test_checkpoint"))};
@@ -131,7 +132,7 @@ TEST(CheckpointingTest, SaveAndLoad) {
       });
 
   CompareOrtValuesToTensorProtoValues(
-      model_path, name_to_ort_value, name_to_loaded_tensor_proto);
+      model_folder, name_to_ort_value, name_to_loaded_tensor_proto);
 }
 
 }  // namespace test

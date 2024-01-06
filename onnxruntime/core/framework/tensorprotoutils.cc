@@ -946,16 +946,16 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* external_data_path,
   return Status::OK();
 }
 
-Status TensorProtoToOrtValue(const Env& env, const ORTCHAR_T* model_path,
+Status TensorProtoToOrtValue(const Env& env, const ORTCHAR_T* external_data_path,
                              const ONNX_NAMESPACE::TensorProto& tensor_proto,
                              const MemBuffer& m, OrtValue& value) {
-  return TensorProtoToOrtValueImpl(env, model_path, tensor_proto, &m, nullptr, value);
+  return TensorProtoToOrtValueImpl(env, external_data_path, tensor_proto, &m, nullptr, value);
 }
 
-Status TensorProtoToOrtValue(const Env& env, const ORTCHAR_T* model_path,
+Status TensorProtoToOrtValue(const Env& env, const ORTCHAR_T* external_data_path,
                              const ONNX_NAMESPACE::TensorProto& tensor_proto,
                              AllocatorPtr alloc, OrtValue& value) {
-  return TensorProtoToOrtValueImpl(env, model_path, tensor_proto, nullptr, alloc, value);
+  return TensorProtoToOrtValueImpl(env, external_data_path, tensor_proto, nullptr, alloc, value);
 }
 
 #define CASE_TYPE(X)                             \

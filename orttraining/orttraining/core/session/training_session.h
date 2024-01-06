@@ -369,6 +369,9 @@ class TrainingSession : public InferenceSession {
   /** Gets the model location. */
   const PathString& GetModelLocation() const { return model_location_; }
 
+  /** Gets the folder path of the external initializers. */
+  const PathString& GetExternalDataPath() const { return external_data_path_; }
+
   /**
    * Checks to be see if given graph output is produced by an fp32-only node.
    * @param The name of the output.
