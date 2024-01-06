@@ -147,18 +147,23 @@ struct MLAS_SQNBITS_GEMM_DATA_PACKED_PARAMS {
 /**
  * @brief Compute the byte size of the parameter combination
  *
- * @param N      the number of columns of matrix B.
- * @param K      the number of rows of matrix B.
- * @param block_size    size of the block to quantize, elements from the same block share the same
+ * @param N             the number of columns of matrix B.
+ * @param K             the number of rows of matrix B.
+ * @param BlkBitWidth   number of bits used for weight quantization
+ * @param BlkLen        size of the block to quantize, elements from the same block share the same
  * scale and zero point
- * @param nbits  number of bits used for weight quantization
- * @param is_asym  flag for asymmetric quantization
- * @param comp_type  specify input data type and accumulator data type
+ * @param IsAsymmetric  flag for asymmetric quantization
+ * @param ComputeType   specify input data type and accumulator data type
  * @return size of the packing buffer, 0 if the operation is not yet supported.
  */
 size_t MLASCALL
-MlasNBitsGemmPackBSize(
-    size_t N, size_t K, size_t block_size, int nbits, bool is_asym, MLAS_SQNBIT_GEMM_COMPUTE_TYPE comp_type
+MlasSQNBitGemmPackBSize(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool IsAsymmetric,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 );
 
 /**
@@ -171,33 +176,33 @@ MlasNBitsGemmPackBSize(
  * @param N             the number of columns of matrix B.
  * @param K             the number of rows of matrix B.
  * @param ldb           leading dimension of B
- * @param block_size    size of the block to quantize, elements from the same block share the same
+ * @param BlkBitWidth   number of bits used for weight quantization
+ * @param BlkLen        size of the block to quantize, elements from the same block share the same
  * scale and zero point
- * @param nbits         number of bits used for weight quantization (default 4)
- * @param is_asym       flag for asymmetric quantization
- * @param comp_type     specify input data type and accumulator data type
- * @param last_call     flag to activate the epilogue process of packB. OpKernel::PrePack will query input tensor
- * one by one: QData, Scale, Zp (if is_asym is true). But kernel prefers to pack all tensors into one blob data where
- * they can share the common attributes like: block_size. Meanwhile, kernel has some pre-computations to speed up
+ * @param IsAsymmetric  flag for asymmetric quantization
+ * @param IsLastCall    flag to activate the epilogue process of packB. OpKernel::PrePack will query input tensor
+ * one by one: QData, Scale, Zp (if IsAsymmetric is true). But kernel prefers to pack all tensors into one blob data
+ * where they can share the common attributes like: block_size. Meanwhile, kernel has some pre-computations to speed up
  * inference which require that all blob data are ready. So, you need to set this flag to true when passing Scale
- * (is_asym is false) and Zp(is_asym is true).
- * @param thread_pool
+ * (IsAsymmetric is false) and Zp(IsAsymmetric is true).
+ * @param ComputeType   specify input data type and accumulator data type
+ * @param ThreadPool
  */
 void MLASCALL
-MlasNBitsGemmPackB(
+MlasSQNBitGemmPackB(
     void* PackedBuf,
-    const uint8_t* QData,
+    const void* QData,
     const float* Scale,
-    const uint8_t* Zp,
+    const void* Zp,
     size_t N,
     size_t K,
     size_t ldb,
-    size_t block_size,
-    int nbits,
-    bool is_asym,
-    bool last_call,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE comp_type,
-    MLAS_THREADPOOL* thread_pool
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool IsAsymmetric,
+    bool IsLastCall,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    MLAS_THREADPOOL* ThreadPool
 );
 
 /**

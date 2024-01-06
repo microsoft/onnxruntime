@@ -67,12 +67,12 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
   auto compt_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level_);
   MLAS_THREADPOOL* pool = NULL;
   if (input_idx == 1) {
-    packed_b_size_ = MlasNBitsGemmPackBSize(N_, K_, block_size_, static_cast<int>(nbits_), is_asym_, compt_type);
+    packed_b_size_ = MlasSQNBitGemmPackBSize(N_, K_, nbits_, block_size_, is_asym_, compt_type);
     if (packed_b_size_ == 0) return Status::OK();
-    auto qptr = tensor.Data<uint8_t>();
+    const auto* qptr = tensor.DataRaw();
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
     std::memset(packed_b_.get(), 0, packed_b_size_);
-    MlasNBitsGemmPackB(packed_b_.get(), qptr, nullptr, nullptr, N_, K_, K_, block_size_, static_cast<int>(nbits_),
+    MlasSQNBitGemmPackB(packed_b_.get(), qptr, nullptr, nullptr, N_, K_, K_, nbits_, block_size_,
                        is_asym_, false, compt_type, pool);
     if (prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
@@ -81,8 +81,8 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     is_packed = true;
   }
   if (input_idx == 2 && packed_b_ != nullptr) {
-    auto sptr = tensor.Data<float>();
-    MlasNBitsGemmPackB(packed_b_.get(), nullptr, sptr, nullptr, N_, K_, K_, block_size_, static_cast<int>(nbits_),
+    const auto* sptr = tensor.Data<float>();
+    MlasSQNBitGemmPackB(packed_b_.get(), nullptr, sptr, nullptr, N_, K_, K_, nbits_, block_size_,
                        is_asym_, !is_asym_, compt_type, pool);
     if (prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
@@ -91,8 +91,8 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     is_packed = true;
   }
   if (input_idx == 3 && packed_b_ != nullptr) {
-    auto zptr = tensor.Data<uint8_t>();
-    MlasNBitsGemmPackB(packed_b_.get(), nullptr, nullptr, zptr, N_, K_, K_, block_size_, static_cast<int>(nbits_),
+    const auto* zptr = tensor.DataRaw();
+    MlasSQNBitGemmPackB(packed_b_.get(), nullptr, nullptr, zptr, N_, K_, K_, nbits_, block_size_,
                        is_asym_, is_asym_, compt_type, pool);
     if (prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));

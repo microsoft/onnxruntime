@@ -116,7 +116,7 @@ void Q4GEMM_Jblas(benchmark::State& state, int block_size, bool is_asym, MLAS_SQ
   const size_t K = static_cast<size_t>(state.range(2));
   const size_t threads = static_cast<size_t>(state.range(3));
   block_size = block_size == -1 ? static_cast<int>(K) : block_size;
-  const size_t pack_b_size = MlasNBitsGemmPackBSize(N, K, block_size, 4, is_asym, cmp_type);
+  const size_t pack_b_size = MlasNBitsGemmPackBSize(N, K, 4, block_size, is_asym, cmp_type);
 
   OrtThreadPoolParams tpo;
   tpo.thread_pool_size = static_cast<int>(threads);
@@ -132,8 +132,8 @@ void Q4GEMM_Jblas(benchmark::State& state, int block_size, bool is_asym, MLAS_SQ
   auto B_zp = RandomVectorUniform<uint8_t>(static_cast<size_t>(N * blk_num / 2), 0, 255);
 
   std::vector<int8_t> B1_packed(pack_b_size);
-  MlasNBitsGemmPackB(B1_packed.data(), B1.data(), B_scale.data(), is_asym ? B_zp.data() : nullptr, N, K, K, block_size,
-                     4, is_asym, true, cmp_type, tp.get());
+  MlasNBitsGemmPackB(B1_packed.data(), B1.data(), B_scale.data(), is_asym ? B_zp.data() : nullptr, N, K, K,
+                     4, block_size, is_asym, true, cmp_type, tp.get());
 
   MLAS_SQNBITS_GEMM_DATA_PACKED_PARAMS params1;
   params1.A = A1.data();

@@ -526,13 +526,18 @@ MlasSQNBitGemmBatch(
 }
 
 size_t MLASCALL
-MlasNBitsGemmPackBSize(
-    size_t N, size_t K, size_t BlkSize, int nbits, bool isAsym, MLAS_SQNBIT_GEMM_COMPUTE_TYPE CompType
+MlasSQNBitGemmPackBSize(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool IsAsymmetric,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
 #ifdef MLAS_JBLAS
-    if (nbits == 4) {
-        auto jsize = JblasQ4GemmPackBSize(N, K, BlkSize, isAsym, CompType);
+    if (BlkBitWidth == 4) {
+        auto jsize = JblasQ4GemmPackBSize(N, K, BlkLen, IsAsymmetric, ComputeType);
         if (jsize) {
             return jsize;
         }
@@ -540,33 +545,36 @@ MlasNBitsGemmPackBSize(
 #endif
     (void)(N);
     (void)(K);
-    (void)(BlkSize);
-    (void)(nbits);
-    (void)(isAsym);
-    (void)(CompType);
+    (void)(BlkBitWidth);
+    (void)(BlkLen);
+    (void)(IsAsymmetric);
+    (void)(ComputeType);
     return 0;
 }
 
 void MLASCALL
-MlasNBitsGemmPackB(
+MlasSQNBitGemmPackB(
     void* PackedBuf,
-    const uint8_t* QData,
+    const void* QData,
     const float* Scale,
-    const uint8_t* Zp,
+    const void* Zp,
     size_t N,
     size_t K,
     size_t ldb,
-    size_t BlkSize,
-    int nbits,
-    bool isAsym,
-    bool lastCall,
-    MLAS_SQNBIT_GEMM_COMPUTE_TYPE CompType,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool IsAsymmetric,
+    bool IsLastCall,
+    MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType,
     MLAS_THREADPOOL* ThreadPool
 )
 {
 #ifdef MLAS_JBLAS
-    if (nbits == 4) {
-        if (JblasQ4GemmPackB(PackedBuf, QData, Scale, Zp, N, K, ldb, BlkSize, isAsym, lastCall, CompType, ThreadPool)) {
+    if (BlkBitWidth == 4) {
+        if (JblasQ4GemmPackB(
+                PackedBuf, static_cast<const uint8_t*>(QData), Scale, static_cast<const uint8_t*>(Zp), N, K, ldb,
+                BlkLen, IsAsymmetric, IsLastCall, ComputeType, ThreadPool
+            )) {
             return;
         }
     }
@@ -578,11 +586,11 @@ MlasNBitsGemmPackB(
     (void)(N);
     (void)(K);
     (void)(ldb);
-    (void)(BlkSize);
-    (void)(nbits);
-    (void)(isAsym);
-    (void)(lastCall);
-    (void)(CompType);
+    (void)(BlkBitWidth);
+    (void)(BlkLen);
+    (void)(IsAsymmetric);
+    (void)(IsLastCall);
+    (void)(ComputeType);
     (void)(ThreadPool);
 }
 
