@@ -40,6 +40,11 @@ parameters:
   type: boolean
   default: true
 
+- name: enable_windows_arm64_qnn
+  displayName: 'Whether Windows ARM64 package with QNN EP is built.'
+  type: boolean
+  default: true
+
 # TODO: Now the Windows jobs use a different cmake build type. Consider to merge it.
 - name: cmake_build_type
   type: string
@@ -423,3 +428,10 @@ stages:
           machine_pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
+
+  - ${{ if eq(parameters.enable_windows_arm64_qnn, true) }}:
+      - template: py-win-arm64-qnn.yml
+        parameters:
+          MACHINE_POOL: 'onnxruntime-qnn-windows-vs-2022-arm64'
+          PYTHON_VERSION: '3.11.7'
+          QNN_SDK_PATH_WIN: 'C:\data\qnnsdk\qnn-v2.17.0.231124_win'
