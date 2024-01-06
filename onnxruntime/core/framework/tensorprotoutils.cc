@@ -188,7 +188,7 @@ Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto
 
 // TODO(unknown): Change the current interface to take Path object for model path
 // so that validating and manipulating path for reading external data becomes easy
-Status TensorProtoToOrtValueImpl(const Env& env, const ORTCHAR_T* model_path,
+Status TensorProtoToOrtValueImpl(const Env& env, const ORTCHAR_T* external_data_path,
                                  const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                  const MemBuffer* m, AllocatorPtr alloc,
                                  OrtValue& value) {
@@ -220,7 +220,7 @@ Status TensorProtoToOrtValueImpl(const Env& env, const ORTCHAR_T* model_path,
     tensor = std::make_unique<Tensor>(type, tensor_shape, alloc);
   }
 
-  ORT_RETURN_IF_ERROR(TensorProtoToTensor(env, model_path, tensor_proto, *tensor));
+  ORT_RETURN_IF_ERROR(TensorProtoToTensor(env, external_data_path, tensor_proto, *tensor));
 
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   value.Init(tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
@@ -803,8 +803,14 @@ Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* external_data_
                                  void*& ext_data_buf, SafeInt<size_t>& ext_data_len, OrtCallback& ext_data_deleter) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
   std::basic_string<ORTCHAR_T> external_data_file_path;
-  std::basic_string<ORTCHAR_T> tensor_proto_dir(external_data_path);
-  const ORTCHAR_T* t_prot_dir_s = tensor_proto_dir.size() == 0 ? nullptr : tensor_proto_dir.c_str();
+  std::basic_string<ORTCHAR_T> tensor_proto_dir;
+  const ORTCHAR_T* t_prot_dir_s = nullptr;
+  if (external_data_path != nullptr) {
+    tensor_proto_dir.assign(external_data_path);
+    if (tensor_proto_dir.size() != 0) {
+      t_prot_dir_s = tensor_proto_dir.c_str();
+    }
+  }
   FileOffsetType file_offset;
   SafeInt<size_t> raw_data_safe_len = 0;
   ORT_RETURN_IF_ERROR(GetExternalDataInfo(tensor_proto, t_prot_dir_s, external_data_file_path, file_offset,
@@ -853,7 +859,7 @@ Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* external_data_
  * @param tensor        pre-allocated tensor object, where we store the data
  * @return
  */
-Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
+Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* external_data_path,
                            const ONNX_NAMESPACE::TensorProto& tensor_proto,
                            Tensor& tensor) {
   // Validate tensor compatibility
@@ -874,7 +880,7 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
   OrtCallback& d = deleter_for_file_data.d;
 
   if (utils::HasExternalData(tensor_proto)) {
-    ORT_RETURN_IF_ERROR(GetExtDataFromTensorProto(env, model_path, tensor_proto, raw_data, raw_data_len, d));
+    ORT_RETURN_IF_ERROR(GetExtDataFromTensorProto(env, external_data_path, tensor_proto, raw_data, raw_data_len, d));
   } else if (utils::HasRawData(tensor_proto)) {
     raw_data = const_cast<char*>(tensor_proto.raw_data().data());
     // TODO The line above has const-correctness issues. Below is a possible fix which copies the tensor_proto data

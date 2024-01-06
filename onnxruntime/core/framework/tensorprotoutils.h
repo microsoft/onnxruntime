@@ -64,12 +64,12 @@ common::Status TensorProtoToOrtValue(const Env& env, const ORTCHAR_T* tensor_pro
 /**
  * @brief Deserialize a TensorProto into a preallocated empty Tensor
  * @param env
- * @param model_path
+ * @param external_data_path
  * @param tensor_proto  source data
  * @param tensorp       destination empty tensor
  * @return
  */
-common::Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
+common::Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* external_data_path,
                                    const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                    Tensor& tensor);
 

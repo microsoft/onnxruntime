@@ -28,7 +28,7 @@ class Initializer final {
               gsl::span<const int64_t> dims);
 
   Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-              const Path& model_path = {});
+              const Path& external_data_path = {});
 
   ~Initializer() = default;
 

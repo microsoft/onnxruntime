@@ -46,12 +46,12 @@ class ApiValueInfo final : public api::ValueInfoRef {
 class ApiTensor final : public api::TensorRef {
  private:
   const onnx::TensorProto& tensor_proto_;
-  const Path& model_path_;
+  const Path& external_data_path_;
   AllocatorPtr cpu_allocator_;
 
  public:
-  explicit ApiTensor(const onnx::TensorProto& tensor_proto, const Path& model_path, AllocatorPtr cpu_allocator)
-      : tensor_proto_(tensor_proto), model_path_(model_path), cpu_allocator_(std::move(cpu_allocator)) {}
+  explicit ApiTensor(const onnx::TensorProto& tensor_proto, const Path& external_data_path, AllocatorPtr cpu_allocator)
+      : tensor_proto_(tensor_proto), external_data_path_(external_data_path), cpu_allocator_(std::move(cpu_allocator)) {}
 
   const onnx::TensorProto& TensorProto() {
     return tensor_proto_;
@@ -289,7 +289,7 @@ std::vector<uint8_t> ApiTensor::Data() const {
   auto tensor_shape_dims = utils::GetTensorShapeFromTensorProto(tensor_proto_);
   TensorShape tensor_shape{std::move(tensor_shape_dims)};
   onnxruntime::Tensor tensor(tensor_dtype, tensor_shape, cpu_allocator_);
-  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), model_path_.ToPathString().c_str(),
+  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), external_data_path_.ToPathString().c_str(),
                                                 tensor_proto_, tensor));
   size_t num_bytes = gsl::narrow_cast<size_t>(tensor.SizeInBytes());
   const uint8_t* data = static_cast<const uint8_t*>(tensor.DataRaw());
@@ -465,7 +465,7 @@ std::unique_ptr<api::TensorRef> ApiGraph::GetConstant(std::string_view name) con
     return nullptr;
   }
 
-  return std::make_unique<ApiTensor>(*tensor, graph_.ModelPath(), cpu_allocator_);
+  return std::make_unique<ApiTensor>(*tensor, graph_.ExternalDataPath(), cpu_allocator_);
 }
 
 std::unique_ptr<api::TensorRef> ApiGraph::GetLocalConstant(std::string_view name) const {
@@ -474,7 +474,7 @@ std::unique_ptr<api::TensorRef> ApiGraph::GetLocalConstant(std::string_view name
     return nullptr;
   }
 
-  return std::make_unique<ApiTensor>(*tensor, graph_.ModelPath(), cpu_allocator_);
+  return std::make_unique<ApiTensor>(*tensor, graph_.ExternalDataPath(), cpu_allocator_);
 }
 
 std::unique_ptr<api::ValueInfoRef> ApiGraph::GetValueInfo(std::string_view name) const {
@@ -554,7 +554,7 @@ void ApiGraph::TransposeInitializer(std::string_view name, const std::vector<int
   TensorShape new_tensor_shape(new_tensor_shape_dims);
   Tensor out_tensor(tensor_dtype, new_tensor_shape, cpu_allocator_);
 
-  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), graph_.ModelPath().ToPathString().c_str(),
+  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), graph_.ExternalDataPath().ToPathString().c_str(),
                                                 *tensor_proto, in_tensor));
 
   ORT_THROW_IF_ERROR(Transpose::DoTranspose(permutations, in_tensor, out_tensor));
