@@ -81,8 +81,7 @@ Model::Model(const std::string& graph_name,
              const std::vector<ONNX_NAMESPACE::FunctionProto>& model_local_functions,
              const logging::Logger& logger,
              const ModelOptions& options)
-    : model_path_(std::move(Path::Parse(model_path)))
-    , external_data_path_(std::move(model_path_.ParentPath())) {
+    : model_path_(std::move(Path::Parse(model_path))), external_data_path_(std::move(model_path_.ParentPath())) {
   model_proto_.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   model_proto_.mutable_graph()->set_name(graph_name);
   model_metadata_ = model_metadata;
@@ -160,8 +159,7 @@ Model::Model(const ModelProto& model_proto, const PathString& model_path,
 Model::Model(ModelProto&& model_proto, const PathString& model_path,
              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
              const logging::Logger& logger, const ModelOptions& options)
-    : model_path_(std::move(Path::Parse(model_path)))
-    , external_data_path_(std::move(model_path_.ParentPath())) {
+    : model_path_(std::move(Path::Parse(model_path))), external_data_path_(std::move(model_path_.ParentPath())) {
   if (!utils::HasGraph(model_proto)) {
     ORT_THROW("ModelProto does not have a graph.");
   }
