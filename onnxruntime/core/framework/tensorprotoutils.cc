@@ -1071,7 +1071,7 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
       break;
     }
 #else
-      ORT_UNUSED_PARAMETER(model_path);
+      ORT_UNUSED_PARAMETER(external_data_path);
 #endif
     default:
       ORT_THROW("Unsupported attribute value type of ", constant_attribute.type(),
