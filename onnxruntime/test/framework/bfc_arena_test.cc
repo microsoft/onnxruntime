@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <absl/base/config.h>
 #include "core/framework/bfc_arena.h"
 #include "core/framework/allocator_utils.h"
 #include "gtest/gtest.h"
@@ -164,14 +165,9 @@ void TestCustomMemoryLimit_ProcessException(const OnnxRuntimeException& ex) {
 #endif  // #ifdef GTEST_USES_POSIX_RE
 }
 
-#if defined(__has_feature) || defined(__SANITIZE_ADDRESS__)
-#  if __has_feature(address_sanitizer) || defined(__SANITIZE_ADDRESS__)
 // Address Sanitizer would report allocation-size-too-big if we don't disable this test.
-TEST(BFCArenaTest, DISABLED_TestCustomMemoryLimit) {
-#  endif
-#else
+#ifndef ABSL_HAVE_ADDRESS_SANITIZER
 TEST(BFCArenaTest, TestCustomMemoryLimit) {
-#endif
   {
     // Configure a 1MiB byte limit
     BFCArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 20);
@@ -221,6 +217,7 @@ TEST(BFCArenaTest, TestCustomMemoryLimit) {
     b.Free(first_ptr);
   }
 }
+#endif
 
 TEST(BFCArenaTest, AllocationsAndDeallocationsWithGrowth) {
   // Max of 2GiB, but starts out small.
