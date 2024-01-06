@@ -66,7 +66,6 @@ void SQNBITGEMM(benchmark::State& state) {
   params.QuantBData = QuantBData.data();
   params.QuantBScale = QuantBScale.data();
   params.QuantBZeroPoint = Symmetric ? nullptr : QuantBZeroPoint.data();
-  params.Bias = nullptr;
   params.C = C.data();
   params.ldc = N;
 

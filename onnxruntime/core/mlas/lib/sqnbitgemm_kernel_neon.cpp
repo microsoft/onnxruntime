@@ -107,8 +107,7 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
     size_t CountK,
     size_t StrideQuantBData,
     size_t StrideQuantBScale,
-    size_t StrideQuantBZeroPoint,
-    const float* BiasPtr
+    size_t StrideQuantBZeroPoint
 )
 {
     constexpr size_t BlkBitWidth = 4;
@@ -248,18 +247,10 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
 
     if constexpr (NCols == 4) {
         float32x4_t sum = FoldAccumulators(acc[0], acc[1], acc[2], acc[3]);
-
-        if (BiasPtr != nullptr) {
-            sum = vaddq_f32(sum, vld1q_f32(BiasPtr));
-        }
-
         vst1q_f32(SumPtr, sum);
     } else {
         for (size_t i = 0; i < NCols; ++i) {
             SumPtr[i] = vaddvq_f32(acc[i]);
-            if (BiasPtr != nullptr) {
-                SumPtr[i] += BiasPtr[i];
-            }
         }
     }
 }
@@ -274,8 +265,7 @@ SQNBitGemmM1Kernel_BlkBitWidth4_CompFp32(
     float* C,
     size_t CountN,
     size_t CountK,
-    size_t BlockStrideQuantB,
-    const float* Bias
+    size_t BlockStrideQuantB
 )
 {
     constexpr size_t BlkBitWidth = 4;
@@ -290,8 +280,6 @@ SQNBitGemmM1Kernel_BlkBitWidth4_CompFp32(
     const size_t StrideQuantBScale = BlockCountK;
     const size_t StrideQuantBZeroPoint = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockCountK);
 
-    const float* BiasPtr = Bias;
-
     const std::byte* QuantBDataColPtr = QuantBData;
     const float* QuantBScaleColPtr = QuantBScale;
     const std::byte* QuantBZeroPointColPtr = QuantBZeroPoint;
@@ -304,8 +292,7 @@ SQNBitGemmM1Kernel_BlkBitWidth4_CompFp32(
         ComputeDotProducts_BlkBitWidth4_CompFp32<NCols>(
             BlkLen,
             ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
-            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
-            BiasPtr
+            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint
         );
 
         // move to next `NCols` columns
@@ -316,7 +303,6 @@ SQNBitGemmM1Kernel_BlkBitWidth4_CompFp32(
             QuantBZeroPointColPtr += NCols * StrideQuantBZeroPoint;
         }
 
-        BiasPtr += BiasPtr != nullptr ? NCols : 0;
         SumPtr += NCols;
 
         nblk -= NCols;
@@ -328,8 +314,7 @@ SQNBitGemmM1Kernel_BlkBitWidth4_CompFp32(
         ComputeDotProducts_BlkBitWidth4_CompFp32<1>(
             BlkLen,
             ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
-            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
-            BiasPtr
+            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint
         );
 
         // move to next column
@@ -340,7 +325,6 @@ SQNBitGemmM1Kernel_BlkBitWidth4_CompFp32(
             QuantBZeroPointColPtr += StrideQuantBZeroPoint;
         }
 
-        BiasPtr += BiasPtr != nullptr ? 1 : 0;
         SumPtr += 1;
     }
 }
@@ -542,8 +526,7 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
     size_t CountK,
     size_t StrideQuantBData,
     size_t StrideQuantBScale,
-    size_t StrideQuantBZeroPoint,
-    const float* BiasPtr
+    size_t StrideQuantBZeroPoint
 )
 {
     static_assert(NCols == 1 || NCols == 4, "NCols must be 1 or 4");
@@ -647,18 +630,10 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
 
     if constexpr (NCols == 4) {
         float32x4_t sum = FoldAccumulators(acc[0], acc[1], acc[2], acc[3]);
-
-        if (BiasPtr != nullptr) {
-            sum = vaddq_f32(sum, vld1q_f32(BiasPtr));
-        }
-
         vst1q_f32(SumPtr, sum);
     } else {
         for (size_t i = 0; i < NCols; ++i) {
             SumPtr[i] = vaddvq_f32(acc[i]);
-            if (BiasPtr != nullptr) {
-                SumPtr[i] += BiasPtr[i];
-            }
         }
     }
 }
@@ -674,8 +649,7 @@ SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8(
     float* C,
     size_t CountN,
     size_t CountK,
-    size_t BlockStrideQuantB,
-    const float* Bias
+    size_t BlockStrideQuantB
 )
 {
     constexpr size_t BlkBitWidth = 4;
@@ -690,8 +664,6 @@ SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8(
     const size_t StrideQuantBScale = BlockCountK;
     const size_t StrideQuantBZeroPoint = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockCountK);
 
-    const float* BiasPtr = Bias;
-
     const std::byte* QuantBDataColPtr = QuantBData;
     const float* QuantBScaleColPtr = QuantBScale;
     const std::byte* QuantBZeroPointColPtr = QuantBZeroPoint;
@@ -704,8 +676,7 @@ SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8(
         ComputeDotProducts_BlkBitWidth4_CompInt8<NCols>(
             BlkLen,
             QuantARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
-            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
-            BiasPtr
+            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint
         );
 
         // move to next `NCols` columns
@@ -716,7 +687,6 @@ SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8(
             QuantBZeroPointColPtr += NCols * StrideQuantBZeroPoint;
         }
 
-        BiasPtr += BiasPtr != nullptr ? NCols : 0;
         SumPtr += NCols;
 
         nblk -= NCols;
@@ -728,8 +698,7 @@ SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8(
         ComputeDotProducts_BlkBitWidth4_CompInt8<1>(
             BlkLen,
             QuantARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
-            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
-            BiasPtr
+            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint
         );
 
         // move to next column
@@ -740,7 +709,6 @@ SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8(
             QuantBZeroPointColPtr += StrideQuantBZeroPoint;
         }
 
-        BiasPtr += BiasPtr != nullptr ? 1 : 0;
         SumPtr += 1;
     }
 }

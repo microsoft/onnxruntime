@@ -48,12 +48,8 @@ struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
     const void* QuantBData = nullptr;       ///< address of quantized B (quantized n-bit int values)
     const float* QuantBScale = nullptr;     ///< address of scale values of quantized B, one per block
     const void* QuantBZeroPoint = nullptr;  ///< optional address of zero point values of quantized B, one per block
-    const float* Bias = nullptr;            ///< optional address of Bias, vector size N
     float* C = nullptr;                     ///< address of result matrix
     size_t ldc = 0;                         ///< leading dimension of C
-
-    ///< optional post processing to apply to result matrix
-    MLAS_GEMM_POSTPROCESSOR<float>* PostProcessor = nullptr;
 };
 
 /**

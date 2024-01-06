@@ -185,32 +185,6 @@ MlasSQNBitGemmBatchWorkspaceSize(
 namespace
 {
 
-MLAS_FORCEINLINE void
-AddBiasForGemm(const float* Bias, float* C, size_t CountM, size_t CountN, size_t ldc)
-{
-    for (size_t m = 0; m < CountM; m++) {
-        const float* bias = Bias;
-        float* sum = C;
-        for (size_t n = 0; n < CountN; n += 4) {
-            if (CountN - n < 4) {
-                for (size_t nn = n; nn < CountN; nn++) {
-                    *sum += *bias;
-                    sum++;
-                    bias++;
-                }
-                break;
-            }
-
-            MLAS_FLOAT32X4 acc_x = MlasLoadFloat32x4(sum);
-            acc_x = MlasAddFloat32x4(acc_x, MlasLoadFloat32x4(bias));
-            MlasStoreFloat32x4(sum, acc_x);
-            bias += 4;
-            sum += 4;
-        }
-        C += ldc;
-    }
-}
-
 typedef void(SQNBitGemmFn)(
     size_t BlkLen,
     size_t K,
@@ -256,8 +230,6 @@ SQNBitGemm_BlkBitWidth4_CompFp32(
 
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
 
-    const float* Bias = (DataParams->Bias == nullptr) ? nullptr : DataParams->Bias + RangeStartN;
-
     if (RangeCountM == 1) {
         size_t CountN;
         for (size_t n = 0; n < RangeCountN; n += CountN) {
@@ -269,19 +241,11 @@ SQNBitGemm_BlkBitWidth4_CompFp32(
             const std::byte* b_col_zp =
                 (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
             float* c_blk = C + n;
-            const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
 
             GetMlasPlatform().SQNBitGemmDispatch->SQNBitGemmM1Kernel_BlkBitWidth4_CompFp32(
                 BlkLen,
-                a_row, b_col, b_col_scale, b_col_zp, c_blk, CountN, K, k_blks, bias
+                a_row, b_col, b_col_scale, b_col_zp, c_blk, CountN, K, k_blks
             );
-
-            if (DataParams->PostProcessor != nullptr) {
-                DataParams->PostProcessor->Process(
-                    DataParams->C, RangeStartM, RangeStartN + n,
-                    RangeCountM, CountN, ldc
-                );
-            }
         }
         return;
     }
@@ -307,7 +271,6 @@ SQNBitGemm_BlkBitWidth4_CompFp32(
         const std::byte* b_col_zp =
             (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
         float* c_blk = C + n;
-        const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
 
         GetMlasPlatform().SQNBitGemmDispatch->QNBitBlkDequantBForSgemm_BlkBitWidth4_CompFp32(
             BlkLen,
@@ -323,16 +286,6 @@ SQNBitGemm_BlkBitWidth4_CompFp32(
 #else
             auto RowsHandled = MlasSgemmKernelZero(a_row, dequant_b, c_blk, K, RowsRemaining, CountN, lda, ldc, 1.f);
 #endif
-
-            if (bias) {
-                AddBiasForGemm(bias, c_blk, RowsHandled, CountN, ldc);
-            }
-            if (DataParams->PostProcessor != nullptr) {
-                DataParams->PostProcessor->Process(
-                    DataParams->C, RangeStartM + RangeCountM - RowsRemaining, RangeStartN,
-                    RowsHandled, CountN, ldc
-                );
-            }
 
             c_blk += ldc * RowsHandled;
             a_row += lda * RowsHandled;
@@ -373,8 +326,6 @@ SQNBitGemm_BlkBitWidth4_CompInt8(
 
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
 
-    const float* Bias = (DataParams->Bias == nullptr) ? nullptr : DataParams->Bias + RangeStartN;
-
     if (RangeCountM == 1) {
         size_t CountN;
         for (size_t n = 0; n < RangeCountN; n += CountN) {
@@ -386,19 +337,11 @@ SQNBitGemm_BlkBitWidth4_CompInt8(
             const std::byte* b_col_zp =
                 (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
             float* c_blk = C + n;
-            const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
 
             GetMlasPlatform().SQNBitGemmDispatch->SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8(
                 BlkLen,
-                a_row, b_col, b_col_scale, b_col_zp, c_blk, CountN, K, k_blks, bias
+                a_row, b_col, b_col_scale, b_col_zp, c_blk, CountN, K, k_blks
             );
-
-            if (DataParams->PostProcessor != nullptr) {
-                DataParams->PostProcessor->Process(
-                    DataParams->C, RangeStartM, RangeStartN + n,
-                    RangeCountM, CountN, ldc
-                );
-            }
         }
         return;
     }

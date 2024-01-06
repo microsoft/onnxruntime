@@ -117,7 +117,6 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
      * @param       CountN              Number of columns of B and C.
      * @param       CountK              Number of columns of A and rows of B.
      * @param       BlockStrideQuantB   Number of blocks between adjacent columns of the quantized B matrix.
-     * @param       Bias                Bias vector of length N.
      */
     typedef void(SQNBitGemmM1Kernel_BlkBitWidth4_CompFp32_Fn)(
         size_t BlkLen,
@@ -128,8 +127,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
         float* C,
         size_t CountN,
         size_t CountK,
-        size_t BlockStrideQuantB,
-        const float* Bias
+        size_t BlockStrideQuantB
     );
 
     SQNBitGemmM1Kernel_BlkBitWidth4_CompFp32_Fn* SQNBitGemmM1Kernel_BlkBitWidth4_CompFp32 = nullptr;
@@ -181,7 +179,6 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
      * @param       CountN              Number of columns of B and C.
      * @param       CountK              Number of columns of A and rows of B.
      * @param       BlockStrideQuantB   Number of blocks between adjacent columns of the quantized B matrix.
-     * @param       Bias                Bias vector of length N.
      */
     typedef void(SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8_Fn)(
         size_t BlkLen,
@@ -192,8 +189,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
         float* C,
         size_t CountN,
         size_t CountK,
-        size_t BlockStrideQuantB,
-        const float* Bias
+        size_t BlockStrideQuantB
     );
 
     SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8_Fn* SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8 = nullptr;
