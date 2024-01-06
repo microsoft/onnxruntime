@@ -1035,11 +1035,8 @@ def test_custom_loss_function():
             self._loss2 = onnxblock.loss.BCEWithLogitsLoss()
             self._add = onnxblock.blocks.Add()
 
-
         def build(self, input1, input2):
-            return self._add(
-                self._loss1(input1, target_name="target1"),
-                self._loss2(input2, target_name="target2"))
+            return self._add(self._loss1(input1, target_name="target1"), self._loss2(input2, target_name="target2"))
 
     model = ModelWithTwoOutputs()
     onnx_model = _get_onnx_model(model, (torch.randn(20, 100, 35, 45), torch.randn(40, 100, 70)))
