@@ -6,7 +6,7 @@ parameters:
 
 - name: PYTHON_VERSION
   type: string
-  default: '3.11.7'
+  default: '3.11'
 
 - name: ENV_SETUP_SCRIPT
   type: string
@@ -39,6 +39,19 @@ jobs:
         submodules: recursive
 
       - template: telemetry-steps.yml
+
+      - script: |
+          DIR C:\data\qnnsdk
+        displayName: Check available QNN SDKs
+
+      - script: |
+          MKDIR $(Agent.ToolsDirectory)\Python\3.11.0\arm64
+          XCOPY /s /y /h /e /c /q "C:\Python\Python311\*.*" $(Agent.ToolsDirectory)\Python\3.11.0\arm64\
+          COPY NUL $(Agent.ToolsDirectory)\Python\3.11.0\arm64.complete
+          DIR $(Agent.ToolsDirectory)\Python
+          DIR $(Agent.ToolsDirectory)\Python\3.11.0
+          DIR $(Agent.ToolsDirectory)\Python\3.11.0\arm64
+        displayName: Copy python 3.11.0 version to agent tools directory
 
       - task: UsePythonVersion@0
         inputs:
