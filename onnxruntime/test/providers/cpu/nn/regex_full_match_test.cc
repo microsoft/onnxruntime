@@ -32,7 +32,6 @@ TEST(RegexFullMatch, MultibyteMatch) {
 }
 
 TEST(RegexFullMatch, InvalidPattern) {
-  std::cout << "TRYING RUN\n";
   OpTester test("RegexFullMatch", 20, kOnnxDomain);
   test.AddAttribute("pattern", R"([a-z)");
   test.AddInput<std::string>("Input", {1,}, {"abcdef",});
