@@ -94,6 +94,27 @@ class AllToAll final : public NcclKernel {
   int64_t group_size_ = -1;
 };
 
+class NcclSend final : public NcclKernel {
+ public:
+  explicit NcclSend(const OpKernelInfo& info);
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  int64_t peer_ = -1;
+};
+
+class NcclReceive final : public NcclKernel {
+ public:
+  explicit NcclReceive(const OpKernelInfo& info);
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  int64_t peer_ = -1;
+  ncclDataType_t dtype_;
+};
+
 Status FuncAllReduce(
     ncclComm_t comm,
     cudaStream_t stream,

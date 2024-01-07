@@ -388,6 +388,115 @@ class ORTBertPretrainTest(unittest.TestCase):
 
         np.testing.assert_allclose(y[0], y_expected, err_msg=f"{rank}: AllToAll (bool): results mismatch")
 
+    @unittest.skipIf(not ort.has_collective_ops(), reason="onnx not compiled with mpi support")
+    @parameterized.expand([
+        TensorProto.INT32, TensorProto.INT64,
+        TensorProto.UINT32, TensorProto.UINT64,
+        TensorProto.FLOAT16, TensorProto.FLOAT, TensorProto.DOUBLE
+    ])
+    def test_sendrecv(self, tp_dtype):
+        rank, _ = self._get_rank_size()
+        np_dtype = helper.tensor_dtype_to_np_dtype(tp_dtype)
+
+        if rank == 0:
+            A = helper.make_tensor_value_info("A", tp_dtype, (2, 2))
+            B = helper.make_tensor_value_info("B", tp_dtype, (2, 2))
+            R = helper.make_tensor_value_info("R", TensorProto.BOOL, ())
+
+            node_def1 = helper.make_node("MatMul", ["A", "B"], ["AB"])
+            node_def2 = helper.make_node("NcclSend", ["AB"], ["R"], peer=1, domain="com.microsoft")
+
+            graph_def = helper.make_graph(
+                [node_def1, node_def2],
+                "",
+                [A, B],
+                [R],
+            )
+
+            inputs = {
+                'A': np.ones((2, 2), np_dtype) * 2,
+                'B': np.ones((2, 2), np_dtype) * 2,
+            }
+        elif rank == 1:
+            S = helper.make_tensor_value_info("S", TensorProto.INT64, (2,))
+            C = helper.make_tensor_value_info("C", tp_dtype, (2, 2))
+            R = helper.make_tensor_value_info("R", TensorProto.BOOL, ())
+
+            node_def1 = helper.make_node("NcclReceive", ["S"], ["AB"], peer=0, dtype=tp_dtype, domain="com.microsoft")
+            node_def2 = helper.make_node("Add", ["AB", "C"], ["ABC"])
+            node_def3 = helper.make_node("NcclSend", ["ABC"], ["R"], peer=2, domain="com.microsoft")
+
+            graph_def = helper.make_graph(
+                [node_def1, node_def2, node_def3],
+                "",
+                [S, C],
+                [R],
+            )
+
+            inputs = {
+                'S': np.ones(2, np.int64) * 2,
+                'C': np.ones((2, 2), np_dtype) * 2,
+            }
+        elif rank == 2:
+            S = helper.make_tensor_value_info("S", TensorProto.INT64, (2,))
+            D = helper.make_tensor_value_info("D", tp_dtype, (2, 2))
+            R = helper.make_tensor_value_info("R", TensorProto.BOOL, ())
+
+            node_def1 = helper.make_node("NcclReceive", ["S"], ["ABC"], peer=1, dtype=tp_dtype, domain="com.microsoft")
+            node_def2 = helper.make_node("MatMul", ["ABC", "D"], ["ABCD"])
+            node_def3 = helper.make_node("NcclSend", ["ABCD"], ["R"], peer=3, domain="com.microsoft")
+
+            graph_def = helper.make_graph(
+                [node_def1, node_def2, node_def3],
+                "",
+                [S, D],
+                [R],
+            )
+
+            inputs = {
+                'S': np.ones(2, np.int64) * 2,
+                'D': np.ones((2, 2), np_dtype) * 2,
+            }
+        else:
+            S = helper.make_tensor_value_info("S", TensorProto.INT64, (2,))
+            E = helper.make_tensor_value_info("E", tp_dtype, (2, 2))
+            R = helper.make_tensor_value_info("R", tp_dtype, (2, 2))
+
+            node_def1 = helper.make_node("NcclReceive", ["S"], ["ABCD"], peer=2, dtype=tp_dtype, domain="com.microsoft")
+            node_def2 = helper.make_node("Add", ["ABCD", "E"], ["R"])
+
+            graph_def = helper.make_graph(
+                [node_def1, node_def2],
+                "",
+                [S, E],
+                [R],
+            )
+
+            inputs = {
+                'S': np.ones(2, np.int64) * 2,
+                'E': np.ones((2, 2), np_dtype) * 2,
+            }
+
+        model = ORTBertPretrainTest._create_model_with_opsets(graph_def)
+
+        session = ort.InferenceSession(
+            model.SerializeToString(),
+            providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+            provider_options=[{"device_id": str(rank)}, {}],
+        )
+        outputs = session.run(None, inputs)
+
+        if rank < 3:
+            np.testing.assert_allclose(
+                outputs[0], np.array([True]), err_msg=f"{rank}: SendRecv {tp_dtype}: results mismatch"
+            )
+        else:
+            part = np.ones((2, 2), np_dtype) * 2
+            expected = np.matmul(np.matmul(part, part) + part, part) + part
+            np.testing.assert_allclose(
+                outputs[0], expected, err_msg=f"{rank}: SendRecv {tp_dtype}: results mismatch"
+            )
+
 
 if __name__ == "__main__":
     unittest.main(module=__name__, buffer=True)

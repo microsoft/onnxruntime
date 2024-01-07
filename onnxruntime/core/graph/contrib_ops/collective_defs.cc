@@ -3,6 +3,7 @@
 
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/constants.h"
+#include "onnx/defs/shape_inference.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -78,6 +79,84 @@ void RegisterCollectiveOps() {
           "Constrain to bool, float, float16 and double tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(NcclSend)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("peer",
+            "Node in the group to send from",
+            AttributeProto::INT,
+            static_cast<int64_t>(1))
+      .Input(0, "input", "tensors to be sent", "T", OpSchema::Variadic, false)
+      .Output(0, "output", "constant boolean", "TBool")
+      .TypeConstraint(
+            "T",
+            {
+              "tensor(uint8)",
+              "tensor(uint32)",
+              "tensor(uint64)",
+              "tensor(int8)",
+              "tensor(int32)",
+              "tensor(int64)",
+              "tensor(float16)",
+              "tensor(float)",
+              "tensor(double)",
+              "tensor(bool)"
+            },
+            "All MPI supported types.")
+      .TypeConstraint("TBool", {"tensor(bool)"}, "Constrain output to bool tensor.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputShape(ctx, 0, {});
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(NcclReceive)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("peer",
+            "Node in the group to send to",
+            AttributeProto::INT,
+            static_cast<int64_t>(1))
+      .Attr(
+            "dtype",
+            "The data type of elements to receive. "
+            "Strictly must be one of the types from DataType enum in TensorProto",
+            AttributeProto::INT)
+      .Input(
+            0,
+            "shape",
+            "Specified shape to receive.",
+            "tensor(int64)",
+            OpSchema::Single,
+            true,
+            1,
+            OpSchema::NonDifferentiable)
+      .Output(0, "output", "Received tensors", "T", OpSchema::Variadic, false)
+      .TypeConstraint(
+            "T",
+            {
+              "tensor(uint8)",
+              "tensor(uint32)",
+              "tensor(uint64)",
+              "tensor(int8)",
+              "tensor(int32)",
+              "tensor(int64)",
+              "tensor(float16)",
+              "tensor(float)",
+              "tensor(double)",
+              "tensor(bool)"
+            },
+            "All MPI supported types.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromAttributeToOutput(ctx, "dtype", 0);
+
+        bool found = false;
+        onnx::TensorShapeProto shape = getShapeInput(ctx, 0, found);
+
+        if (found) {
+          updateOutputShape(ctx, 0, shape);
+        }
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ShardedMoE)

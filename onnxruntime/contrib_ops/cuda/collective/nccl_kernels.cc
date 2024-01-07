@@ -27,6 +27,10 @@ namespace cuda {
 ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type) {
   if (type == DataTypeImpl::GetType<uint8_t>()) {
     return ncclUint8;
+  } else if (type == DataTypeImpl::GetType<uint32_t>()) {
+    return ncclUint32;
+  } else if (type == DataTypeImpl::GetType<uint64_t>()) {
+    return ncclUint64;
   } else if (type == DataTypeImpl::GetType<bool>()) {
     // CUDA bool is 8-bit large.
     return ncclUint8;
@@ -371,6 +375,68 @@ Status AllToAll::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
+NcclSend::NcclSend(const OpKernelInfo& info) : NcclKernel(info) {
+  int64_t peer = nccl_->Rank() + 1;
+  if (peer >= nccl_->Size()) {
+    peer = 0;
+  }
+  info.GetAttrOrDefault("peer", &peer_, static_cast<int64_t>(peer));
+}
+
+Status NcclSend::ComputeInternal(OpKernelContext* context) const {
+  const ncclComm_t comm = nccl_->Comm();
+  const Tensor *const input_tensor = context->Input<Tensor>(0);
+  const char *const input_data = static_cast<const char*>(input_tensor->DataRaw());
+  const int64_t input_count = input_tensor->Shape().Size();
+  const ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());
+
+  CheckIfMemoryOnCurrentGpuDevice(input_data);
+  NCCL_RETURN_IF_ERROR(ncclSend(input_data, input_count, dtype, peer_, comm, Stream(context)));
+
+  // Since there's nothing to return, return a dummy boolean tensor
+  bool *const output_data = context->Output(0, {})->MutableData<bool>();
+  *output_data = true;
+
+  return Status::OK();
+}
+
+NcclReceive::NcclReceive(const OpKernelInfo& info) : NcclKernel(info) {
+  int64_t peer = nccl_->Rank() - 1;
+  if (peer < 0) {
+    peer = nccl_->Size() - 1;
+  }
+  info.GetAttrOrDefault("peer", &peer_, static_cast<int64_t>(peer));
+
+  int64_t dtype;
+  info.GetAttrOrDefault<int64_t>("dtype", &dtype, ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  ONNX_NAMESPACE::TensorProto::DataType tensor_dtype = static_cast<ONNX_NAMESPACE::TensorProto::DataType>(dtype);
+  ORT_ENFORCE(
+    ONNX_NAMESPACE::TensorProto::DataType_IsValid(tensor_dtype) && tensor_dtype != ONNX_NAMESPACE::TensorProto::UNDEFINED,
+    "Invalid dtype of ", tensor_dtype);
+
+  dtype_ = GetNcclDataType(DataTypeImpl::GetTypeFromOnnxType(static_cast<int>(tensor_dtype)));
+}
+
+Status NcclReceive::ComputeInternal(OpKernelContext* context) const {
+  const ncclComm_t comm = nccl_->Comm();
+  const Tensor *const shape_tensor = context->Input<Tensor>(0);
+  if (shape_tensor->Shape().NumDimensions() != 1) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, FAIL, "The shape tensor for receive must be a vector, but got ", shape_tensor->Shape(), ".");
+  }
+
+  const gsl::span<const int64_t>& shape_span = shape_tensor->template DataAsSpan<int64_t>();
+  const TensorShape output_shape(shape_span);
+  const int64_t output_count = output_shape.Size();
+
+  void *const output_data = context->Output(0, output_shape)->MutableDataRaw();
+  CheckIfMemoryOnCurrentGpuDevice(output_data);
+
+  NCCL_RETURN_IF_ERROR(ncclRecv(output_data, output_count, dtype_, peer_, comm, Stream(context)));
+
+  return Status::OK();
+}
+
 ONNX_OPERATOR_KERNEL_EX(
     AllReduce,
     kMSDomain,
@@ -401,6 +467,30 @@ ONNX_OPERATOR_KERNEL_EX(
         .AllocateInputsContiguously()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     AllToAll);
+
+ONNX_OPERATOR_KERNEL_EX(
+    NcclSend,
+    kMSDomain,
+    1,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .AllocateInputsContiguously()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("TBool", DataTypeImpl::GetTensorType<bool>())
+        .OutputMemoryType(OrtMemTypeCPUOutput, 0),
+    NcclSend);
+
+ONNX_OPERATOR_KERNEL_EX(
+    NcclReceive,
+    kMSDomain,
+    1,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .AllocateInputsContiguously()
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>())
+        .InputMemoryType(OrtMemTypeCPUInput, 0),
+    NcclReceive);
 
 Status FuncAllReduce(
     ncclComm_t comm,
