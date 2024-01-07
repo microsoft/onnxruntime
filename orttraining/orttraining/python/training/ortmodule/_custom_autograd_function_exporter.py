@@ -71,10 +71,10 @@ def register_high_priority_handler(func_name):
 
 
 def register_custom_function_schema_supplementary(kclass: torch.autograd.Function) -> None:
-    """Register a shape inference function for a torch.autograd.Function if there is staticmethod
-    "infer_shape" defined.
+    """Register schema summplementaries, for example custom shape inference function and
+     alias input function for a custom autograd.Function.
 
-    The signature of the shape inference function should be:
+    1. The signature of the shape inference function should be:
         @staticmethod
         def infer_shape(
             node: onnx.NodeProto,
@@ -91,7 +91,7 @@ def register_custom_function_schema_supplementary(kclass: torch.autograd.Functio
     Be noted: we only pass in tensor inputs, and return tensor outputs, non-tensor inputs/outputs are ignored.
 
 
-    The signature of the alias input function should be:
+    2. The signature of the alias input function should be:
         @staticmethod
         def alias_input(node_proto_str: str) -> Tuple[List[int], List[int]]:
             fw_alias_map = [1, -1, -1]

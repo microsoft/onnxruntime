@@ -106,8 +106,7 @@ stages:
           ls $(Build.BinariesDirectory)/gccbin/bin
           mkdir $(Build.BinariesDirectory)/arm32build
           cd $(Build.BinariesDirectory)/arm32build
-          # TODO: fix the warnings and remove the --compile-no-warning-as-error arg
-          cmake --compile-no-warning-as-error $(Build.SourcesDirectory)/cmake -Donnxruntime_ENABLE_CPUINFO=OFF -DPython_EXECUTABLE=/usr/bin/python3 -DPYTHON_EXECUTABLE=/usr/bin/python3 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$(Build.SourcesDirectory)/cmake/linux_arm32_crosscompile_toolchain.cmake -G Ninja
+          cmake $(Build.SourcesDirectory)/cmake -Donnxruntime_ENABLE_CPUINFO=OFF -DPython_EXECUTABLE=/usr/bin/python3 -DPYTHON_EXECUTABLE=/usr/bin/python3 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$(Build.SourcesDirectory)/cmake/linux_arm32_crosscompile_toolchain.cmake -G Ninja
           ninja
           rm -rf $(Build.BinariesDirectory)/arm32build $(Build.BinariesDirectory)/gccbin
         displayName: Cross-compile for Linux ARM32 and ARM64

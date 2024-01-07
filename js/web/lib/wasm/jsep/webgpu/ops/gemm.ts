@@ -97,8 +97,8 @@ const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAt
   ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
-    let m = global_id.x / N;
-    let n = global_id.x % N;
+    let m = global_idx / N;
+    let n = global_idx % N;
 
     var value = ${dataType}(0);
     for (var k: u32 = 0u; k<${K}u; k++) {
@@ -107,7 +107,7 @@ const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAt
 
     ${calculateAlpha}
     ${calculateC}
-    output[global_id.x] = value;
+    output[global_idx] = value;
 
   }`;
   return {
