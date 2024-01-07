@@ -49,9 +49,9 @@ parameters:
   default: '0'
 
 stages:
-- template: linux-cpu-packaging-pipeline.yml
-  parameters:
-    AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+#- template: linux-cpu-packaging-pipeline.yml
+#  parameters:
+#    AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
 
 #- template: mac-cpu-packaging-pipeline.yml
 #  parameters:
@@ -527,7 +527,7 @@ stages:
 
 - stage: Nodejs_Packaging_CPU
   dependsOn:
-  - Linux_C_API_Packaging_CPU
+  - Linux_C_API_Packaging_GPU_TensorRT_x64
 #  - MacOS_C_API_Package_Publish
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
@@ -547,7 +547,6 @@ stages:
     steps:
     - checkout: self
       submodules: true
-
     - script: |
        echo.>>.gitattributes
        echo /js/** text=auto eol=lf>>.gitattributes
@@ -556,37 +555,18 @@ stages:
        git checkout -- .gitattributes
       workingDirectory: '$(Build.SourcesDirectory)'
       displayName: 'Testing: force EOL to lf on windows for /js/**'
-
+# Windows - nuget
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - NuGet (Win x64)'
       inputs:
         artifactName: 'onnxruntime-win-x64'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - NuGet (Win ARM64)'
       inputs:
         artifactName: 'onnxruntime-win-arm64'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-
-#    - task: DownloadPipelineArtifact@0
-#      displayName: 'Download Pipeline Artifact - NuGet (OSX)'
-#      inputs:
-#        artifactName: 'onnxruntime-osx'
-#        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - NuGet (Linux x64)'
-      inputs:
-        artifactName: 'onnxruntime-linux-x64'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - NuGet (Linux aarch64)'
-      inputs:
-        artifactName: 'onnxruntime-linux-aarch64'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-
+# Windows - Nodejs
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Nodejs (Win x64)'
       inputs:
@@ -598,30 +578,50 @@ stages:
       inputs:
         artifactName: 'drop-onnxruntime-nodejs-win-arm64'
         targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/arm64/'
+# Linux - Nuget
+    - task: DownloadPipelineArtifact@0
+      displayName: 'Download Pipeline Artifact - NuGet (Linux x64)'
+      inputs:
+        artifactName: 'onnxruntime-linux-x64-tensorrt'
+        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
+#    - task: DownloadPipelineArtifact@0
+#      displayName: 'Download Pipeline Artifact - NuGet (Linux aarch64)'
+#      inputs:
+#        artifactName: 'onnxruntime-linux-aarch64'
+#        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
+# Linux - Nodejs
+    - task: DownloadPipelineArtifact@0
+      displayName: 'Download Pipeline Artifact - Nodejs (Linux x64)'
+      inputs:
+        artifactName: 'drop-onnxruntime-nodejs-linux-x64-tensorrt'
+        targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/linux/x64/'
+
+#    - task: DownloadPipelineArtifact@0
+#      displayName: 'Download Pipeline Artifact - Nodejs (Linux aarch64)'
+#      inputs:
+#        artifactName: 'drop-onnxruntime-nodejs-linux-aarch64'
+#        targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/linux/arm64/'
+
+# Mac Nuget
+#    - task: DownloadPipelineArtifact@0
+#      displayName: 'Download Pipeline Artifact - NuGet (OSX)'
+#      inputs:
+#        artifactName: 'onnxruntime-osx'
+#        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+# Mac Nodejs
 #    - task: DownloadPipelineArtifact@0
 #      displayName: 'Download Pipeline Artifact - Nodejs (macOS x86_64)'
 #      inputs:
 #        artifactName: 'drop-onnxruntime-nodejs-osx-x86_64'
 #        targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/darwin/x64/'
-#
 #    - task: DownloadPipelineArtifact@0
 #      displayName: 'Download Pipeline Artifact - Nodejs (macOS arm64)'
 #      inputs:
 #        artifactName: 'drop-onnxruntime-nodejs-osx-arm64'
 #        targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/darwin/arm64/'
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - Nodejs (Linux x64)'
-      inputs:
-        artifactName: 'drop-onnxruntime-nodejs-linux-x64'
-        targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/linux/x64/'
-
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - Nodejs (Linux aarch64)'
-      inputs:
-        artifactName: 'drop-onnxruntime-nodejs-linux-aarch64'
-        targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/linux/arm64/'
 
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - NuGet'
@@ -634,7 +634,6 @@ stages:
       inputs:
         targetType: filePath
         filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\extract_nuget_files.ps1
-
     - script: |
        dir
       workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact'
