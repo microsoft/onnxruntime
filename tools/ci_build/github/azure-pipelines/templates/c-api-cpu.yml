@@ -175,31 +175,31 @@ stages:
 #    buildNodejs: false
 #    ort_build_pool_name: onnxruntime-Win-CPU-2022
 
-- template: win-ci.yml
-  parameters:
-    DoCompliance: ${{ parameters.DoCompliance }}
-    DoEsrp: ${{ parameters.DoEsrp }}
-    stage_name_suffix: CPU_arm64_${{ parameters.BuildVariant }}
-    buildArch: x64
-    msbuildPlatform: arm64
-    packageName: arm64
-    buildparameter: --build_nodejs --arm64 ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}} --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
-    runTests: false
-    buildJava: false
-    buildNodejs: true
+#- template: win-ci.yml
+#  parameters:
+#    DoCompliance: ${{ parameters.DoCompliance }}
+#    DoEsrp: ${{ parameters.DoEsrp }}
+#    stage_name_suffix: CPU_arm64_${{ parameters.BuildVariant }}
+#    buildArch: x64
+#    msbuildPlatform: arm64
+#    packageName: arm64
+#    buildparameter: --build_nodejs --arm64 ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}} --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+#    runTests: false
+#    buildJava: false
+#    buildNodejs: true
 
-- template: win-ci.yml
-  parameters:
-    DoCompliance: ${{ parameters.DoCompliance }}
-    DoEsrp: ${{ parameters.DoEsrp }}
-    stage_name_suffix: CPU_x64_${{ parameters.BuildVariant }}
-    buildArch: x64
-    msbuildPlatform: x64
-    packageName: x64
-    buildparameter: --build_java --build_nodejs ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
-    runTests: ${{ parameters.RunOnnxRuntimeTests }}
-    buildJava: true
-    buildNodejs: true
+#- template: win-ci.yml
+#  parameters:
+#    DoCompliance: ${{ parameters.DoCompliance }}
+#    DoEsrp: ${{ parameters.DoEsrp }}
+#    stage_name_suffix: CPU_x64_${{ parameters.BuildVariant }}
+#    buildArch: x64
+#    msbuildPlatform: x64
+#    packageName: x64
+#    buildparameter: --build_java --build_nodejs ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
+#    runTests: ${{ parameters.RunOnnxRuntimeTests }}
+#    buildJava: true
+#    buildNodejs: true
 
 #- stage: Jar_Packaging
 #  dependsOn:
@@ -528,9 +528,10 @@ stages:
 - stage: Nodejs_Packaging_CPU
   dependsOn:
   - Linux_C_API_Packaging_GPU_TensorRT_x64
+  - Windows_Packaging_tensorrt
 #  - MacOS_C_API_Package_Publish
-  - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
-  - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
+#  - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
+#  - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
   condition: succeeded()
   jobs:
   - job:
@@ -559,25 +560,25 @@ stages:
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - NuGet (Win x64)'
       inputs:
-        artifactName: 'onnxruntime-win-x64'
+        artifactName: 'onnxruntime-win-x64-tensorrt'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - NuGet (Win ARM64)'
-      inputs:
-        artifactName: 'onnxruntime-win-arm64'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+#    - task: DownloadPipelineArtifact@0
+#      displayName: 'Download Pipeline Artifact - NuGet (Win ARM64)'
+#      inputs:
+#        artifactName: 'onnxruntime-win-arm64'
+#        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 # Windows - Nodejs
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - Nodejs (Win x64)'
       inputs:
-        artifactName: 'drop-onnxruntime-nodejs-win-x64'
+        artifactName: 'drop-onnxruntime-nodejs-win-x64-dml'
         targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/x64/'
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - Nodejs (Win ARM64)'
-      inputs:
-        artifactName: 'drop-onnxruntime-nodejs-win-arm64'
-        targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/arm64/'
+#    - task: DownloadPipelineArtifact@0
+#      displayName: 'Download Pipeline Artifact - Nodejs (Win ARM64)'
+#      inputs:
+#        artifactName: 'drop-onnxruntime-nodejs-win-arm64-dml'
+#        targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/arm64/'
 # Linux - Nuget
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - NuGet (Linux x64)'
@@ -656,7 +657,7 @@ stages:
     - task: CopyFiles@2
       displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64\'
       inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-win-x64\lib'
+        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-win-x64-tensorrt\lib'
         Contents: '*.dll'
         TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
     - task: CopyFiles@2
@@ -666,25 +667,25 @@ stages:
         Contents: '*.node'
         TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
 
-    # Node.js binding win32/arm64
-    - task: CopyFiles@2
-      displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64\'
-      inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-win-arm64\lib'
-        Contents: '*.dll'
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64'
-    - task: CopyFiles@2
-      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64\'
-      inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\win32\arm64'
-        Contents: '*.node'
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64'
+#    # Node.js binding win32/arm64
+#    - task: CopyFiles@2
+#      displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64\'
+#      inputs:
+#        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-win-arm64\lib'
+#        Contents: '*.dll'
+#        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64'
+#    - task: CopyFiles@2
+#      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64\'
+#      inputs:
+#        SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\win32\arm64'
+#        Contents: '*.node'
+#        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64'
 
     # Node.js binding linux/x64
     - task: CopyFiles@2
       displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64\'
       inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-linux-x64\lib'
+        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-linux-x64-tensorrt\lib'
         Contents: 'libonnxruntime.so.*'
         TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64'
     - task: CopyFiles@2
@@ -694,19 +695,19 @@ stages:
         Contents: '*.node'
         TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64'
 
-    # Node.js binding linux/arm64
-    - task: CopyFiles@2
-      displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64\'
-      inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-linux-aarch64\lib'
-        Contents: 'libonnxruntime.so.*'
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64'
-    - task: CopyFiles@2
-      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64\'
-      inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\linux\arm64'
-        Contents: '*.node'
-        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64'
+#    # Node.js binding linux/arm64
+#    - task: CopyFiles@2
+#      displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64\'
+#      inputs:
+#        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-linux-aarch64\lib'
+#        Contents: 'libonnxruntime.so.*'
+#        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64'
+#    - task: CopyFiles@2
+#      displayName: 'Copy nodejs binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64\'
+#      inputs:
+#        SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\linux\arm64'
+#        Contents: '*.node'
+#        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\arm64'
 
 #    # Node.js binding darwin/x64
 #    - task: CopyFiles@2
