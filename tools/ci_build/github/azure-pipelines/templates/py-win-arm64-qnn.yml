@@ -112,7 +112,7 @@ jobs:
         parameters:
           FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime\capi'
           DisplayName: 'ESRP - Sign Native dlls'
-          DoEsrp: true
+          DoEsrp: false
           Pattern: '*.pyd,*.dll'
 
       - task: PythonScript@0
