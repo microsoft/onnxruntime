@@ -1415,10 +1415,12 @@ def test_pythonop_training_mode():
         ## make sure the ort's PythonOp's training_mode is correct
         if is_eval_mode:
             onnx_nodes = (
-                model._torch_module._execution_manager._inference_manager._onnx_models.exported_model.graph.node
+                model._torch_module._execution_manager._inference_manager._graph_transition_manager._exported_model_info.exported_model.graph.node
             )
         else:
-            onnx_nodes = model._torch_module._execution_manager._training_manager._onnx_models.exported_model.graph.node
+            onnx_nodes = (
+                model._torch_module._execution_manager._training_manager._graph_transition_manager._exported_model_info.exported_model.graph.node
+            )
 
         found_pythonop = False
         for node in onnx_nodes:
