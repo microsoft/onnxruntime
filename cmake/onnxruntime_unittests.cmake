@@ -1669,6 +1669,10 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND (NOT onnxruntime_MINIMAL_BUI
         "${TEST_SRC_DIR}/testdata/custom_op_local_function/custom_op_local_function.h"
         "${TEST_SRC_DIR}/testdata/custom_op_local_function/dummy_gemm.cc"
         "${TEST_SRC_DIR}/testdata/custom_op_local_function/dummy_gemm.h"
+        #
+        "${TEST_SRC_DIR}/testdata/custom_op_local_function/c_op_allocation.cpp"
+        "${TEST_SRC_DIR}/testdata/custom_op_local_function/c_op_common_parameters.cpp"
+        "${TEST_SRC_DIR}/testdata/custom_op_local_function/onnx_extended_helpers.cpp"
   )
 
   onnxruntime_add_shared_library_module(custom_op_local_function ${custom_op_local_function_test_library_src})
