@@ -203,9 +203,9 @@ export const init = async(module: OrtWasmModule, env: Env, gpuAdapter: GPUAdapte
         return backend.computeKernel(kernel, context, errors);
       },
       // jsepCaptureBegin
-      () => backend.captureBegin(),
+      (sessionHandle: number) => backend.captureBegin(sessionHandle),
       // jsepCaptureEnd
-      () => backend.captureEnd(),
+      (sessionHandle: number) => backend.captureEnd(sessionHandle),
       // jsepReplay
-      () => backend.replay());
+      (sessionHandle: number) => backend.replay(sessionHandle));
 };

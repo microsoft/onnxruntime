@@ -13,9 +13,9 @@ export declare namespace JSEP {
   type ReleaseKernelFunction = (kernel: number) => void;
   type RunFunction =
       (kernel: number, contextDataOffset: number, sessionHandle: number, errors: Array<Promise<string|null>>) => number;
-  type CaptureBeginFunction = () => void;
-  type CaptureEndFunction = () => void;
-  type ReplayFunction = () => void;
+  type CaptureBeginFunction = (sessionHandle: number) => void;
+  type CaptureEndFunction = (sessionHandle: number) => void;
+  type ReplayFunction = (sessionHandle: number) => void;
 }
 
 export interface OrtWasmModule extends EmscriptenModule {

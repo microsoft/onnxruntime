@@ -753,7 +753,7 @@ JsExecutionProvider::~JsExecutionProvider() {
 Status JsExecutionProvider::OnRunStart() {
   if (IsGraphCaptureEnabled() && IsGraphCaptureAllowed() && !IsGraphCaptured()) {
     LOGS(*GetLogger(), INFO) << "Capturing the webgpu graph for this model";
-    EM_ASM({ Module.jsepCaptureBegin(); });
+    EM_ASM({ Module.jsepCaptureBegin(Module.jsepSessionState.sessionHandle); });
   }
   return Status::OK();
 }
@@ -761,7 +761,7 @@ Status JsExecutionProvider::OnRunStart() {
 Status JsExecutionProvider::OnRunEnd(bool sync_stream) {
   if (IsGraphCaptureEnabled() && !IsGraphCaptured()) {
     if (IsGraphCaptureAllowed()) {
-      EM_ASM({ Module.jsepCaptureEnd(); });
+      EM_ASM({ Module.jsepCaptureEnd(Module.jsepSessionState.sessionHandle); });
       is_graph_captured_ = true;
     } else {
       IncrementRegularRunCountBeforeGraphCapture();
@@ -781,7 +781,7 @@ bool JsExecutionProvider::IsGraphCaptured() const {
 
 Status JsExecutionProvider::ReplayGraph() {
   ORT_ENFORCE(IsGraphCaptured());
-  EM_ASM({ Module.jsepReplay(); });
+  EM_ASM({ Module.jsepReplay(Module.jsepSessionState.sessionHandle); });
   return Status::OK();
 }
 

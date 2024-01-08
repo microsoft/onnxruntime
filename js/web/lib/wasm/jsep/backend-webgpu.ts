@@ -95,6 +95,13 @@ export class WebGpuBackend {
   programManager: ProgramManager;
 
   /**
+   * representing the session ID of which is currently being captured/replay.
+   * `null` means no session is being captured.
+   * only valid when captureGraphEnabled = true.
+   */
+  currentSessionId: number|null = null;
+
+  /**
    * representing the kernel ID of which is currently being computed (CPU code perspective).
    * `null` means no kernel is being computed.
    * only one kernel can be computed at a moment.
@@ -146,7 +153,10 @@ export class WebGpuBackend {
 
   env: Env;
   status: StatusType = StatusType.default;
-  capturedCommandList: CommandInfo[] = [];
+  /**
+   * a SessionID -> CommandInfo[] mapping.
+   */
+  capturedCommandList: Map<number, CommandInfo[]> = new Map();
 
   /**
    * a SessionID -> a Map of (InputOutputIndex -> [ID, GPUBuffer]) mapping.
@@ -527,22 +537,30 @@ export class WebGpuBackend {
   }
   // #endregion
 
-  captureBegin(): void {
-    LOG_DEBUG('info', () => 'captureBegin');
-    this.capturedCommandList = [];
+  captureBegin(sessionHandle: number): void {
+    LOG_DEBUG('info', () => `captureBegin ${sessionHandle}`);
+    this.currentSessionId = sessionHandle;
+    let sessionCommandList = this.capturedCommandList.get(sessionHandle);
+    if (!sessionCommandList) {
+      sessionCommandList = [];
+      this.capturedCommandList.set(sessionHandle, sessionCommandList);
+    }
     this.status = StatusType.capture;
   }
-  captureEnd(): void {
-    LOG_DEBUG('info', () => 'captureEnd');
+  captureEnd(sessionHandle: number): void {
+    LOG_DEBUG('info', () => `captureEnd ${sessionHandle}`);
+    this.currentSessionId = null;
     this.status = StatusType.default;
   }
-  replay(): void {
-    LOG_DEBUG('info', () => 'replay');
+  replay(sessionHandle: number): void {
+    LOG_DEBUG('info', () => `replay ${sessionHandle}`);
+    this.currentSessionId = sessionHandle;
     this.status = StatusType.replay;
-    const length = this.capturedCommandList.length;
+    const sessionCommandList = this.capturedCommandList.get(sessionHandle);
+    const length = sessionCommandList!.length;
     for (let i = 0; i < length; i++) {
       const computePassEncoder = this.getComputePassEncoder();
-      const command = this.capturedCommandList[i];
+      const command = sessionCommandList![i];
       computePassEncoder.setPipeline(command.computePipeline);
       computePassEncoder.setBindGroup(0, command.bindGroup);
       computePassEncoder.dispatchWorkgroups(...command.dispatchGroup);
