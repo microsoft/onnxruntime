@@ -4,12 +4,14 @@
 # license information.
 # --------------------------------------------------------------------------
 
+from __future__ import annotations
+
 import argparse
 import copy
 import importlib
 import logging
 import os
-from typing import List, Tuple, Union
+from typing import Union
 
 import numpy as np
 import numpy.typing as npt
@@ -30,25 +32,20 @@ logger = logging.getLogger(__name__)
 class WeightOnlyQuantConfig:
     def __init__(
         self,
-        algorithm,
-        accuracy_level=0,
+        algorithm
     ):
         """This is the Base class for Weight Only Quant Configuration.
 
         Args:
             algorithm:
                 weight only quantize algorithm name.
-            accuracy_level:
-                support 0 (default fp32), 1 (optimized fp32 for intel CPU), 2 (fp16), 3 (bf16), 4 (int8). Set to 0 by default.
         """
         self.algorithm = algorithm
-        self.accuracy_level = accuracy_level
 
 
 class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
     def __init__(
         self,
-        accuracy_level=0,
         ratios=None,
     ):
         """
@@ -56,8 +53,6 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         RTN is the most straightforward way to quantize weight using scale maps.
 
         Args:
-            accuracy_level:
-                support 0 (default fp32), 1 (optimized fp32 for intel CPU), 2 (fp16), 3 (bf16), 4 (int8). Set to 0 by default.
             ratios:
                 percentile of clip. Defaults to {}.
         """
@@ -65,7 +60,6 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
             ratios = {}
         super().__init__(
             algorithm="RTN",
-            accuracy_level=accuracy_level,
         )
         self.ratios = ratios
 
@@ -79,7 +73,6 @@ class GPTQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         actorder=False,
         mse=False,
         perchannel=True,
-        accuracy_level=0,
     ):
         """
         This is a class for GPTQ algorithm Weight Only Quant Configuration.
@@ -98,12 +91,9 @@ class GPTQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
                 whether get scale and zero point with mse error.
             perchannel (bool, optional):
                 whether quantize weight per-channel.
-            accuracy_level:
-                support 0 (default fp32), 1 (optimized fp32 for intel CPU), 2 (fp16), 3 (bf16), 4 (int8). Set to 0 by default.
         """
         super().__init__(
             algorithm="GPTQ",
-            accuracy_level=accuracy_level,
         )
         self.calibration_data_reader = calibration_data_reader
         self.percdamp = percdamp
@@ -121,6 +111,7 @@ class MatMul4BitsQuantizer:
         model: Union[ModelProto, str],
         block_size: int,
         is_symmetric: bool,
+        accuracy_level: int | None = None,
         nodes_to_exclude=None,
         algo_config: WeightOnlyQuantConfig = None,
     ):
@@ -130,11 +121,12 @@ class MatMul4BitsQuantizer:
         self.model_path = model if isinstance(model, str) else None
         self.block_size = block_size
         self.is_symmetric = is_symmetric
+        self.accuracy_level = accuracy_level
         self.nodes_to_exclude = set(nodes_to_exclude)
         self.algo_config = algo_config
 
     @staticmethod
-    def __get_initializer(name, graph_path: List[GraphProto]) -> Tuple[TensorProto, GraphProto]:
+    def __get_initializer(name, graph_path: list[GraphProto]) -> tuple[TensorProto, GraphProto]:
         for gid in range(len(graph_path) - 1, -1, -1):
             graph = graph_path[gid]
             for tensor in graph.initializer:
@@ -165,7 +157,7 @@ class MatMul4BitsQuantizer:
 
         return (packed, scales, zero_point)
 
-    def _q4_matmul_node_weight(self, node: NodeProto, graph_stack: List[GraphProto]) -> NodeProto:
+    def _q4_matmul_node_weight(self, node: NodeProto, graph_stack: list[GraphProto]) -> NodeProto:
         """If the node is MatMul with fp32 const weight, quantize the weight with int4, and return the new node"""
 
         if node.op_type != "MatMul":
@@ -212,6 +204,8 @@ class MatMul4BitsQuantizer:
         kwargs["N"] = cols
         kwargs["bits"] = 4
         kwargs["block_size"] = self.block_size
+        if self.accuracy_level is not None:
+            kwargs["accuracy_level"] = self.accuracy_level
 
         matmul_q4_node = onnx.helper.make_node(
             "MatMulNBits",
@@ -226,7 +220,7 @@ class MatMul4BitsQuantizer:
 
         return matmul_q4_node
 
-    def _process_subgraph(self, graph_stack: List[GraphProto]):
+    def _process_subgraph(self, graph_stack: list[GraphProto]):
         new_nodes = []
         graph = graph_stack[-1]
 
@@ -289,7 +283,9 @@ class MatMul4BitsQuantizer:
             for data in data_reader:
                 yield data, None
 
-        accuracy_level = self.algo_config.accuracy_level
+        kwargs = {}
+        if self.accuracy_level is not None:
+            kwargs["accuracy_level"] = self.accuracy_level
         weight_only_node_config = self._generate_q4_node_config()
 
         algorithm = self.algo_config.algorithm
@@ -297,35 +293,29 @@ class MatMul4BitsQuantizer:
         if algorithm == "RTN":
             from neural_compressor.adaptor.ox_utils.weight_only import rtn_quantize
 
-            ratios = self.algo_config.ratios
+            kwargs["ratios"] = self.algo_config.ratios
 
             self.model = rtn_quantize(
                 model=self.model_path if self.model_path is not None else self.model.model,
                 weight_config=weight_only_node_config,
-                ratios=ratios,
-                accuracy_level=accuracy_level,
+                **kwargs,
             )
         elif algorithm == "GPTQ":
             from neural_compressor.adaptor.ox_utils.weight_only import gptq_quantize
 
-            percdamp = self.algo_config.percdamp
-            blocksize = self.algo_config.blocksize
-            actorder = self.algo_config.actorder
-            mse = self.algo_config.mse
-            perchannel = self.algo_config.perchannel
+            kwargs["percdamp"] = self.algo_config.percdamp
+            kwargs["blocksize"] = self.algo_config.blocksize
+            kwargs["actorder"] = self.algo_config.actorder
+            kwargs["mse"] = self.algo_config.mse
+            kwargs["perchannel"] = self.algo_config.perchannel
+            kwargs["n_samples"] = -1
             dataloader = inc_dataloader()
 
             self.model = gptq_quantize(
                 model=self.model_path if self.model_path is not None else self.model.model,
                 weight_config=weight_only_node_config,
                 dataloader=dataloader,
-                n_samples=-1,
-                percdamp=percdamp,
-                blocksize=blocksize,
-                actorder=actorder,
-                mse=mse,
-                perchannel=perchannel,
-                accuracy_level=accuracy_level,
+                **kwargs,
             )
         logger.info(f"complete quantization of model with {algorithm} algorithm.")
 
@@ -383,6 +373,14 @@ set of 4b integers with a scaling factor and an optional offset.
         type=bool,
         help="Indicate whether to quantize the model symmetrically",
     )
+    parser.add_argument(
+        "--accuracy_level",
+        required=False,
+        type=int,
+        help="Accuracy level of the 4-bit quantized MatMul computation. "
+        "Refer to the MatMulNBits contrib op's 'accuracy_level' attribute for details "
+        "(https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#commicrosoftmatmulnbits).",
+    )
     parser.add_argument("-v", "--verbose", required=False, action="store_true")
     parser.set_defaults(verbose=False)
     parser.add_argument(
@@ -410,6 +408,12 @@ if __name__ == "__main__":
         raise Exception(f"file {output_model_path} already exists")
 
     model = onnx.load(input_model_path)
-    quant = MatMul4BitsQuantizer(model, args.block_size, args.symmetric, nodes_to_exclude=args.nodes_to_exclude)
+    quant = MatMul4BitsQuantizer(
+        model=model,
+        block_size=args.block_size,
+        is_symmetric=args.symmetric,
+        accuracy_level=args.accuracy_level,
+        nodes_to_exclude=args.nodes_to_exclude,
+    )
     quant.process()
     quant.model.save_model_to_file(output_model_path, True)
