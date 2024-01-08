@@ -84,10 +84,10 @@ void KernelTwo(OrtKernelContext* context,
   auto total = std::accumulate(shape.begin(), shape.end(), 1LL, std::multiplies<int64_t>());
 
   Ort::KernelContext ctx(context);
-  ctx.ParallelFor(CopyI, static_cast<int>(total), 0, &data_i);  // test simple parallel for
+  ctx.ParallelFor(CopyI, static_cast<size_t>(total), 0, &data_i);  // test simple parallel for
 
   DataII data_ii = {floats.data(), Y_raw};
-  ctx.ParallelFor(CopyII, static_cast<int>(total), 2, &data_ii);  // test batch parallel for
+  ctx.ParallelFor(CopyII, static_cast<size_t>(total), 2, &data_ii);  // test batch parallel for
 }
 
 template <typename T>
