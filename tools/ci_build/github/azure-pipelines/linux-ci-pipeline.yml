@@ -93,7 +93,7 @@ stages:
         parameters:
           WithCache: true
           Today: $(TODAY)
-          AdditionalKey: onnxruntime
+          AdditionalKey: onnxruntime_linux_debug_with_address_sanitizer
           CacheDir: $(ORT_CACHE_DIR)
           ChangeEveryCommit: true
           BuildStep:
