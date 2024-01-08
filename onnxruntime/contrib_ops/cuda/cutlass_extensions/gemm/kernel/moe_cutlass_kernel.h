@@ -494,7 +494,7 @@ struct MoeFCGemm {
     KernelRunner<compile_needed>::run_kernel(params, shared_storage);
 #else
     CUTLASS_NOT_IMPLEMENTED();
-#endifs
+#endif
   }
 };
 
