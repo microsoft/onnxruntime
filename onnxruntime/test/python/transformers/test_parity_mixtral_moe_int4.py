@@ -45,22 +45,24 @@ def print_tensor(name, numpy_array):
     print(f"const std::vector<float> {name} = {value_string_of(numpy_array)};")
 
 
-def quant_dequant(weights, quant_mode:bool=True):
+def quant_dequant(weights, quant_mode: bool = True):
     # use the test version `_symmetric_...` to get the non-interleaved weights
     type = torch.quint4x2 if quant_mode else torch.int8
-    quant_weights, processed_q_weight, torch_weight_scales = torch.ops.fastertransformer._symmetric_quantize_last_axis_of_batched_matrix(
-        weights.T.cpu().contiguous(), type)
+    (
+        quant_weights,
+        processed_q_weight,
+        torch_weight_scales,
+    ) = torch.ops.fastertransformer._symmetric_quantize_last_axis_of_batched_matrix(weights.T.cpu().contiguous(), type)
 
     # Unpack the int4s int int8s
     if quant_mode:
-        upper = (quant_weights >> 4)
+        upper = quant_weights >> 4
         lower = (quant_weights << 4) >> 4  # Arithmetic right shift sign extends
         dq_quant_weights = torch.stack((lower, upper), dim=2).view(weights.T.shape)
 
     dq_quant_weights = dq_quant_weights.to(dtype=weights.dtype)
-    result = torch.multiply(dq_quant_weights,
-                            torch_weight_scales.unsqueeze(0)).T.contiguous()
-    return torch_weight_scales,processed_q_weight, result.to(device=weights.device)
+    result = torch.multiply(dq_quant_weights, torch_weight_scales.unsqueeze(0)).T.contiguous()
+    return torch_weight_scales, processed_q_weight, result.to(device=weights.device)
 
 
 def create_moe_onnx_graph(
@@ -102,9 +104,9 @@ def create_moe_onnx_graph(
         ),
     ]
 
-    fc1_shape = [num_experts, hidden_size, inter_size//2]
-    fc2_shape = [num_experts, inter_size, hidden_size//2]
-    fc3_shape = [num_experts, hidden_size, inter_size//2]
+    fc1_shape = [num_experts, hidden_size, inter_size // 2]
+    fc2_shape = [num_experts, inter_size, hidden_size // 2]
+    fc3_shape = [num_experts, hidden_size, inter_size // 2]
 
     torch_type = torch.float16 if ORT_DTYPE == TensorProto.FLOAT16 else torch.float32
     np_type = numpy.uint8

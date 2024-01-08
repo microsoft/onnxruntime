@@ -48,7 +48,7 @@ class MoEBase {
     int64_t hidden_size = input_dims[input_dims.size() - 1];
     int64_t local_num_experts = fc1_experts_weights_dims[0];
     int64_t num_experts = router_probs_dims[1];
-    int64_t inter_size = fc1_experts_weights_dims[2] * (is_uint8_t?2:1);
+    int64_t inter_size = fc1_experts_weights_dims[2] * (is_uint8_t ? 2 : 1);
 
     if (fc1_experts_weights_dims.size() != 3) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "fc1_experts_weights_dims must be 3D, got ",
@@ -69,17 +69,17 @@ class MoEBase {
                              fc2_experts_weights_dims[1],
                              " and ", inter_size);
     }
-    //if (fc1_experts_weights_dims[2] != inter_size) {
-    //  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-    //                         "fc1_experts_weights_dims[2] must be equal to inter_size, got ",
-    //                         fc1_experts_weights_dims[2],
-    //                         " and ", inter_size);
-    //}
-    //if (fc2_experts_weights_dims[2] != hidden_size) {
-    //  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-    //                         "fc2_experts_weights_dims[2] must be equal to hidden_size, got ",
-    //                         fc2_experts_weights_dims[2], " and ", hidden_size);
-    //}
+    // if (fc1_experts_weights_dims[2] != inter_size) {
+    //   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+    //                          "fc1_experts_weights_dims[2] must be equal to inter_size, got ",
+    //                          fc1_experts_weights_dims[2],
+    //                          " and ", inter_size);
+    // }
+    // if (fc2_experts_weights_dims[2] != hidden_size) {
+    //   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+    //                          "fc2_experts_weights_dims[2] must be equal to hidden_size, got ",
+    //                          fc2_experts_weights_dims[2], " and ", hidden_size);
+    // }
     if (router_probs_dims.size() != 2) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "router_probs_dims must be 2D, got ",
                              router_probs_dims.size());

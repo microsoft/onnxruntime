@@ -141,4 +141,3 @@ struct MixedGemmArchTraits<
 }  // namespace kernel
 }  // namespace gemm
 }  // namespace cutlass
-

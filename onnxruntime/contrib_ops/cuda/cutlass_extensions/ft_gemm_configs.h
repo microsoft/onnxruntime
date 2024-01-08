@@ -54,4 +54,3 @@ struct CutlassGemmConfig {
   int stages = -1;
 };
 }  // namespace ort_fastertransformer
-
