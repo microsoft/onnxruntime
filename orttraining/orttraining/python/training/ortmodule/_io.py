@@ -21,6 +21,7 @@ from onnxruntime.training.utils import (
     extract_data_and_schema,
     unflatten_data_using_schema,
 )
+from onnxruntime.training.utils.torch_io_helper import _TensorStub
 
 from ._fallback import ORTModuleIOError, wrap_exception
 
@@ -153,7 +154,10 @@ class ModelInfoForExport:
         onnx_graph_input_names_require_grad: List[str],
         onnx_graph_input_dynamic_axes_map: Dict[str, Dict[int, str]],
         onnx_graph_input_shapes: List[List[int]],
-        data_accessor: Optional[List[callable]] = None,
+        onnx_graph_input_data_accessor: Optional[Dict[str, callable]] = None,
+        onnx_graph_input_arg_schema: Optional[Dict[str, ORTModelInputOutputSchemaType]] = None,
+        onnx_graph_input_kwarg_schema: Optional[Dict[str, ORTModelInputOutputSchemaType]] = None,
+        num_positional_args: int = 0,
         export_mode: Optional[int] = None,
         export_extra_kwargs: Optional[Dict[str, any]] = None,
     ):
@@ -182,10 +186,22 @@ class ModelInfoForExport:
 
         self.onnx_graph_input_shapes: List[List[int]] = onnx_graph_input_shapes
 
+        # The input args schema for the original model's forward function.
+        # Only contains the schema for those inputs used by the model for its compute (e.g. as the inputs
+        # of the export model).
+        self.onnx_graph_input_arg_schema: Dict[str, ORTModelInputOutputSchemaType] = onnx_graph_input_arg_schema
+
+        # The input kwargs schema for the original model's forward function.
+        # Only contains the schema for those inputs used by the model for its compute (e.g. as the inputs
+        # of the export model).
+        self.onnx_graph_input_kwarg_schema: Dict[str, ORTModelInputOutputSchemaType] = onnx_graph_input_kwarg_schema
+
+        self.num_positional_args: int = num_positional_args
+
         # A function to access the input data from the args and kwargs.
         # If it is not None, the length is same as onnx_graph_input_names.
         # For i-th input name, we can use the i-th function to get the input data from args and kwargs.
-        self.data_accessor: Optional[List[callable]] = data_accessor
+        self.onnx_graph_input_data_accessor: Optional[Dict[str, callable]] = onnx_graph_input_data_accessor
 
     def __str__(self) -> str:
         return f"""ModelInfoForExport class:
@@ -206,6 +222,12 @@ def _arg_access_with_index_func(arg_index, args, kwargs):
 
 def _kwarg_access_with_name_func(name, args, kwargs):
     return kwargs[name]
+
+
+class SkipRetValue:
+    """A placeholder class to indicate that the return value of a function should be skipped"""
+
+    pass
 
 
 def parse_inputs_for_onnx_export(
@@ -243,7 +265,7 @@ def parse_inputs_for_onnx_export(
 
     """
 
-    data_accessors: Dict[str, Callable] = OrderedDict()
+    tensor_idx = [-1]
 
     def _add_dynamic_shape(name, input) -> Dict[str, Dict[int, str]]:
         dynamic_axes[name] = {}
@@ -258,62 +280,84 @@ def parse_inputs_for_onnx_export(
         """Returns number of expanded non none inputs that _add_input processed"""
 
         # in case the input is already handled.
-        if name in input_names:  # or input_value is None or isinstance(input_value, str):
-            # Drop all None and string inputs and return 0.
-            return
+        if name in visited_input_names:
+            return SkipRetValue()
 
-        # InputInfo should contain all the names irrespective of whether they are
-        # a part of the onnx graph or not.
-        input_names.append(name)
+        visited_input_names.append(name)
 
         value = input_value
         if value is None:
             _warn_of_constant_inputs(value)
+            return value
         elif isinstance(value, str):
             _warn_of_constant_inputs(value)
+            return value
         elif PrimitiveType.is_primitive_type(value):
             if constant_as_tensor:
                 value = PrimitiveType.get_tensor(value, device)
             else:
                 _warn_of_constant_inputs(value)
+                return value
         elif isinstance(value, abc.Sequence):
+            sequence_type = type(value)
+            stubbed_schema = []
+
             # If the input is a sequence (like a list), expand the list so that
             # each element of the list is an input by itself.
             for i, val in enumerate(value):
                 # Name each input with the index appended to the original name of the
                 # argument.
 
-                def _access_func1(i, cur_func, args, kwargs):
+                def _access_func(i, cur_func, args, kwargs):
                     return cur_func(args, kwargs)[i]
 
-                _add_input(
+                input_schema = _add_input(
                     f"{name}_{i}",
                     val,
                     onnx_graph_input_names,
-                    partial(_access_func1, i, cur_func),
+                    partial(_access_func, i, cur_func),
                 )
+
+                if not isinstance(input_schema, SkipRetValue):
+                    stubbed_schema.append(input_schema)
 
             # Return here since the list by itself is not a valid input.
             # All the elements of the list have already been added as inputs individually.
-            return
+
+            try:
+                # namedtuple can be created by passing the list sequence to method _make
+                stubbed_schema = sequence_type._make(stubbed_schema)
+            except AttributeError:
+                # If attribute error is encountered, create the sequence directly
+                stubbed_schema = sequence_type(stubbed_schema)
+            return stubbed_schema
+
         elif isinstance(value, abc.Mapping):
+            dict_type = type(value)
+            stubbed_schema = OrderedDict()
+
             # If the input is a mapping (like a dict), expand the dict so that
             # each element of the dict is an input by itself.
             for key, val in value.items():
 
-                def _access_func2(key, cur_func, args, kwargs):
+                def _access_func(key, cur_func, args, kwargs):
                     return cur_func(args, kwargs)[key]
 
-                _add_input(
+                input_schema = _add_input(
                     f"{name}_{key}",
                     val,
                     onnx_graph_input_names,
-                    partial(_access_func2, key, cur_func),
+                    partial(_access_func, key, cur_func),
                 )
+
+                if not isinstance(input_schema, SkipRetValue):
+                    stubbed_schema[key] = input_schema
 
             # Return here since the dict by itself is not a valid input.
             # All the elements of the dict have already been added as inputs individually.
-            return
+
+            stubbed_schema = dict_type(**stubbed_schema)
+            return stubbed_schema
 
         if isinstance(value, torch.Tensor):
             onnx_graph_input_names.append(name)
@@ -322,12 +366,25 @@ def parse_inputs_for_onnx_export(
                 input_names_require_grad.append(name)
             dynamic_axes.update(_add_dynamic_shape(name, value))
             input_shape.append(list(value.size()))
+            tensor_idx[0] += 1
+            return _TensorStub(
+                tensor_idx[0],
+                dtype=str(value.dtype),
+                shape_dims=len(value.size()),
+                name=name,
+            )
+
+    visited_input_names: List[str] = []
 
     onnx_graph_input_names: List[str] = []
-    input_names: List[str] = []
     dynamic_axes: Dict[str, Dict[int, str]] = {}
     input_names_require_grad: List[str] = []
     input_shape: List[List[int]] = []
+    input_arg_schema: Dict[str, ORTModelInputOutputSchemaType] = OrderedDict()
+    input_kwarg_schema: Dict[str, ORTModelInputOutputSchemaType] = OrderedDict()
+    data_accessors: Dict[str, Callable] = OrderedDict()
+    num_positional_args: int = 0
+
     var_positional_idx = 0
 
     # Be noted, all_input_parameters is a list of inspect.Parameters parsed from the original module's forward method.
@@ -356,9 +413,11 @@ def parse_inputs_for_onnx_export(
             for args_i in range(input_idx, len(args)):
                 name = f"{input_parameter.name}_{var_positional_idx}"
                 var_positional_idx += 1
+                num_positional_args += 1
                 inp = args[args_i]
-
-                _add_input(name, inp, onnx_graph_input_names, partial(_arg_access_with_index_func, args_i))
+                schema = _add_input(name, inp, onnx_graph_input_names, partial(_arg_access_with_index_func, args_i))
+                if not isinstance(schema, SkipRetValue):
+                    input_arg_schema[name] = schema
         elif (
             input_parameter.kind == inspect.Parameter.POSITIONAL_ONLY
             or input_parameter.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
@@ -369,33 +428,44 @@ def parse_inputs_for_onnx_export(
             inp = None
             input_idx += var_positional_idx  # noqa: PLW2901
             access_func = None
+            schema_to_write = None
             if input_idx < len(args) and args[input_idx] is not None:
                 inp = args[input_idx]
-
+                num_positional_args += 1
                 access_func = partial(_arg_access_with_index_func, input_idx)
-
+                schema_to_write = input_arg_schema
             elif name in kwargs and kwargs[name] is not None:
                 inp = kwargs[name]
-
                 access_func = partial(_kwarg_access_with_name_func, name)
+                schema_to_write = input_kwarg_schema
+            else:
+                continue
 
-            _add_input(name, inp, onnx_graph_input_names, access_func)
+            schema = _add_input(name, inp, onnx_graph_input_names, access_func)
+            if not isinstance(schema, SkipRetValue):
+                schema_to_write[name] = schema
+
         elif input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
             # **kwargs is always the last argument of forward()
             for name, inp in kwargs.items():
-                _add_input(
+                schema = _add_input(
                     name,
                     inp,
                     onnx_graph_input_names,
                     partial(_kwarg_access_with_name_func, name),
                 )
+                if not isinstance(schema, SkipRetValue):
+                    input_kwarg_schema[name] = schema
 
     exported_graph = ModelInfoForExport(
         onnx_graph_input_names=onnx_graph_input_names,
         onnx_graph_input_names_require_grad=input_names_require_grad,
         onnx_graph_input_dynamic_axes_map=dynamic_axes,
         onnx_graph_input_shapes=input_shape,
-        data_accessor=data_accessors,
+        onnx_graph_input_data_accessor=data_accessors,
+        onnx_graph_input_arg_schema=input_arg_schema,
+        onnx_graph_input_kwarg_schema=input_kwarg_schema,
+        num_positional_args=num_positional_args,
         export_mode=export_mode,
         export_extra_kwargs=export_extra_kwargs,
     )

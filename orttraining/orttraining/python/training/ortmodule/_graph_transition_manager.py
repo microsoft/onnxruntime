@@ -104,7 +104,7 @@ class PostExportProcessedModelInfo:
         onnx_graph_input_dynamic_axes_map: dict[str, dict[int, str]],
         module_forward_output_schema: ORTModelInputOutputSchemaType,
         post_export_processed_model: onnx.ModelProto,
-        data_accessor: list[callable],
+        onnx_graph_input_data_accessor: dict[str, callable],
     ):
         self._flattened_module = flatten_module
 
@@ -135,7 +135,7 @@ class PostExportProcessedModelInfo:
         # A function to access the input data from the args and kwargs.
         # If it is not None, the length is same as onnx_graph_input_names_user_defined.
         # For i-th input name, we can use the i-th function to get the input data from args and kwargs.
-        self.data_accessor: list[callable] | None = data_accessor
+        self.onnx_graph_input_data_accessor: dict[str, callable] | None = onnx_graph_input_data_accessor
 
         # Used for unflattening the outputs from the ORT forward run.
         self.module_forward_output_schema: ORTModelInputOutputSchemaType | None = module_forward_output_schema
@@ -183,9 +183,9 @@ class PostExportProcessedModelInfo:
                     self._buffer_for_ort_runs[input_name] = None
 
         for name in self.onnx_graph_input_names_user_defined:
-            if name in self.data_accessor:
+            if name in self.onnx_graph_input_data_accessor:
                 assert name in self._buffer_for_ort_runs, f"{name} is not in buffer_for_ort_runs"
-                data = self.data_accessor[name](args, kwargs)
+                data = self.onnx_graph_input_data_accessor[name](args, kwargs)
                 if PrimitiveType.is_primitive_type(data) and constant_as_tensor:
                     data = PrimitiveType.get_tensor(data, device)
                 self._buffer_for_ort_runs[name] = data
@@ -277,14 +277,22 @@ class GraphTransitionManager:
                     )
 
         # Extract the schema from the args and kwargs, and compare it with the pre-exported one if already exported.
-        flatten_args, cur_args_schema = _io._extract_schema(copy.copy(args), self._device)
-        flatten_kwargs, cur_kwargs_schema = _io._extract_schema(copy.copy(kwargs), self._device)
+
+        cur_model_info_for_export = _io.parse_inputs_for_onnx_export(
+            self._module_forward_func_parameters,
+            args,
+            kwargs,
+            True,
+            self._device,
+            self._export_mode,
+            self._export_extra_kwargs,
+        )
 
         need_export_model = GraphTransitionManager._export_check(
             prev_exported_model_info=self._exported_model_info,
             original_model_has_changed=self._original_model_has_changed,
-            cur_args_schema=cur_args_schema,
-            cur_kwargs_schema=cur_kwargs_schema,
+            cur_args_schema=cur_model_info_for_export.onnx_graph_input_arg_schema,
+            cur_kwargs_schema=cur_model_info_for_export.onnx_graph_input_kwarg_schema,
             logger=self._logger,
         )
 
@@ -314,21 +322,19 @@ class GraphTransitionManager:
             # 6. The 1-D flattened output tensors retain the same order as the outputs from the ONNX Runtime (ORT)
             #    forward run. To facilitate unflattening during subsequent ORT runs, the output schema is saved as
             #    an attribute named `_output_schema` in the _io.FlattenedModule.
-            flatten_inputs = flatten_args + flatten_kwargs
-            self._flatten_module._device = self._device
-            self._flatten_module._args_schema = cur_args_schema
-            self._flatten_module._kwargs_schema = cur_kwargs_schema
-            self._flatten_module._num_positionals = len(flatten_args)
 
-            cur_model_info_for_export = _io.parse_inputs_for_onnx_export(
-                self._module_forward_func_parameters,
-                args,
-                kwargs,
-                True,
-                self._device,
-                self._export_mode,
-                self._export_extra_kwargs,
-            )
+            copied_args = copy.copy(args)
+            copied_kwargs = copy.copy(kwargs)
+            flatten_inputs = [
+                data_accessor(copied_args, copied_kwargs)
+                for _, data_accessor in cur_model_info_for_export.onnx_graph_input_data_accessor.items()
+            ]
+            self._flatten_module._device = self._device
+            self._flatten_module._args_schema = cur_model_info_for_export.onnx_graph_input_arg_schema
+            self._flatten_module._kwargs_schema = cur_model_info_for_export.onnx_graph_input_kwarg_schema
+            self._flatten_module._num_positionals = cur_model_info_for_export.num_positional_args
+
+            self._logger.info(f"do_export started, model info for export: {cur_model_info_for_export}")
 
             (
                 exported_model,
@@ -368,8 +374,8 @@ class GraphTransitionManager:
             ]
 
             self._exported_model_info = ExportedModelInfo(
-                module_forward_args_schema=cur_args_schema,
-                module_forward_kwargs_schema=cur_kwargs_schema,
+                module_forward_args_schema=cur_model_info_for_export.onnx_graph_input_arg_schema,
+                module_forward_kwargs_schema=cur_model_info_for_export.onnx_graph_input_kwarg_schema,
                 onnx_graph_input_names=onnx_graph_input_names,
                 onnx_graph_input_names_require_grad=onnx_graph_input_names_require_grad,
                 onnx_graph_input_names_user_defined=onnx_graph_input_names_user_defined,
@@ -500,11 +506,11 @@ class GraphTransitionManager:
             for input_name in exported_model_info.onnx_graph_input_names:
                 if input_name in exported_model_info.onnx_graph_input_names_user_defined:
                     assert (
-                        input_name in model_info_for_export.data_accessor
-                    ), f"{input_name} model_info_for_export.data_accessor"
+                        input_name in model_info_for_export.onnx_graph_input_data_accessor
+                    ), f"{input_name} model_info_for_export.onnx_graph_input_data_accessor"
                     # We assume the data accessor should be the same as the one used for the previous export, because
                     # there is args and kwargs schema check during export check phase.
-                    if model_info_for_export.data_accessor[input_name](args, kwargs).requires_grad:
+                    if model_info_for_export.onnx_graph_input_data_accessor[input_name](args, kwargs).requires_grad:
                         onnx_graph_input_requires_grads.append(input_name)
                 else:
                     assert input_name in parameter_names, f"{input_name} not exist parameter_names"
@@ -559,7 +565,7 @@ class GraphTransitionManager:
             model_info_for_export.onnx_graph_input_dynamic_axes_map,
             exported_model_info.module_forward_output_schema,
             post_processed_model,
-            model_info_for_export.data_accessor,
+            model_info_for_export.onnx_graph_input_data_accessor,
         )
 
         logger.info(
@@ -664,14 +670,16 @@ class GraphTransitionManager:
                 )
         (
             output_names,
-            dynamic_axes,
+            output_dynamic_axes,
             module_output_schema,
         ) = _io.parse_outputs_for_onnx_export_and_extract_schema(
             flattened_module, flatten_module_inputs, logger, need_deep_copy
         )
 
         # Combine the dynamic axes from inputs and outputs
-        dynamic_axes.update(model_info_for_export.onnx_graph_input_dynamic_axes_map)
+        dynamic_axes = copy.deepcopy(model_info_for_export.onnx_graph_input_dynamic_axes_map)
+
+        dynamic_axes.update(output_dynamic_axes)
 
         logger.info("Exporting the PyTorch model to ONNX...")
 
