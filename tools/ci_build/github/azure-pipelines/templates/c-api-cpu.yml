@@ -529,6 +529,7 @@ stages:
   dependsOn:
   - Linux_C_API_Packaging_GPU_TensorRT_x64
   - Windows_Packaging_tensorrt
+  - Windows_CI_GPU_DML_Dev
 #  - MacOS_C_API_Package_Publish
 #  - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
 #  - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
