@@ -76,11 +76,7 @@ class EtwRegistrationManager {
   ~EtwRegistrationManager();
   void LazyInitialize();
 
-  // Copy and move constructors/operators are disabled
-  EtwRegistrationManager(const EtwRegistrationManager&) = delete;
-  EtwRegistrationManager& operator=(const EtwRegistrationManager&) = delete;
-  EtwRegistrationManager(EtwRegistrationManager&&) = delete;
-  EtwRegistrationManager& operator=(EtwRegistrationManager&&) = delete;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(EtwRegistrationManager);
 
   void InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword,
                        ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext);
