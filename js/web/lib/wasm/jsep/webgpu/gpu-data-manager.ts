@@ -60,9 +60,15 @@ export interface GpuDataManager {
   unregisterExternalBuffer(buffer: GPUBuffer): void;
 
   /**
-   * destroy all gpu buffers. Call this when the session.release is called.
+   * destroy all gpu buffers.
    */
   dispose(): void;
+
+  /**
+   * release session related data.
+   * @param sessionId - specify the session ID.
+   */
+  releaseSession(sessionId: number): void;
 }
 
 interface StorageCacheValue {
@@ -139,6 +145,10 @@ class GpuDataManagerImpl implements GpuDataManager {
   // The external buffers registered users for IO Binding.
   private externalBuffers: Map<GPUBuffer, GpuDataId>;
 
+  // The pendingBuffers for capture graph.
+  // a SessionID -> GPUBuffer[] mapping.
+  private capturedPendingBuffers: Map<number, GPUBuffer[]>;
+
   constructor(private backend: WebGpuBackend) {
     this.storageCache = new Map();
     this.freeBuffers = new Map();
@@ -146,6 +156,7 @@ class GpuDataManagerImpl implements GpuDataManager {
     this.buffersForUploadingPending = [];
     this.buffersPending = [];
     this.externalBuffers = new Map();
+    this.capturedPendingBuffers = new Map();
   }
 
   upload(id: GpuDataId, data: Uint8Array): void {
@@ -313,6 +324,10 @@ class GpuDataManagerImpl implements GpuDataManager {
     }
     this.buffersForUploadingPending = [];
 
+    if (this.buffersPending.length === 0) {
+      return;
+    }
+
     // Don't release intermediate tensors in non-default mode.
     if (this.backend.status === StatusType.default) {
       for (const buffer of this.buffersPending) {
@@ -327,6 +342,16 @@ class GpuDataManagerImpl implements GpuDataManager {
         } else {
           buffer.destroy();
         }
+      }
+      this.buffersPending = [];
+    } else {
+      let capturedBuffers = this.capturedPendingBuffers.get(this.backend.currentSessionId!);
+      if (!capturedBuffers) {
+        capturedBuffers = [];
+        this.capturedPendingBuffers.set(this.backend.currentSessionId!, capturedBuffers);
+      }
+      for (const buffer of this.buffersPending) {
+        capturedBuffers.push(buffer);
       }
       this.buffersPending = [];
     }
@@ -348,9 +373,23 @@ class GpuDataManagerImpl implements GpuDataManager {
       storage.gpuData.buffer.destroy();
     });
 
+    this.capturedPendingBuffers.forEach((buffers) => {
+      buffers.forEach(buffer => {
+        buffer.destroy();
+      });
+    });
     this.storageCache = new Map();
     this.freeBuffers = new Map();
     this.freeUniformBuffers = new Map();
+    this.capturedPendingBuffers = new Map();
+  }
+
+  releaseSession(sessionId: number) {
+    // release the captured pending buffers.
+    const pendingBffers = this.capturedPendingBuffers.get(sessionId);
+    pendingBffers!.forEach(buffer => {
+      buffer.destroy();
+    });
   }
 }
 

@@ -303,6 +303,7 @@ export const releaseSession = (sessionId: number): void => {
   }
 
   wasm.jsepUnregisterBuffers?.(sessionId);
+  wasm.jsepReleaseSession?.(sessionId);
 
   inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
   outputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));

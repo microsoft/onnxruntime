@@ -169,4 +169,7 @@ Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, relea
   Module['jsepCreateDownloader'] = (gpuBuffer, size, type) => {
     return backend['createDownloader'](gpuBuffer, size, type);
   };
+  Module['jsepReleaseSession'] = sessionId => {
+    backend['releaseSession'](sessionId);
+  };
 };

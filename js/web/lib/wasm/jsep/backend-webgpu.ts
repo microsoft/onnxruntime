@@ -571,4 +571,11 @@ export class WebGpuBackend {
     }
     this.status = StatusType.default;
   }
+
+  releaseSession(sessionId: number): void {
+    if (this.capturedCommandList.has(sessionId)) {
+      this.capturedCommandList.delete(sessionId);
+    }
+    this.gpuDataManager.releaseSession(sessionId);
+  }
 }
