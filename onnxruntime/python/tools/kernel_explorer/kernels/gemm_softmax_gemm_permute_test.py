@@ -90,6 +90,7 @@ def _make_causal_mask(
     """
     Make causal mask used for Attention with attribute unidirectional == 1.
     The mask is a upper triangular matrix with shape [sequence_length, total_sequence_length].
+    Putting a 1 indicates that the token at this position should be masked.
     For Example:
     sequence_length = 5, total_sequence_length = 5,
     mask: [[0. 1. 1. 1. 1.]
