@@ -98,7 +98,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     constexpr size_t webnn_shape_rank = 4;
     if (input_shape.size() != webnn_shape_rank) {
       std::vector<uint32_t> new_shape;
-      new_shape.reserve(std::max(input_shape.size(), size_t(4)));
+      new_shape.reserve(std::max(input_shape.size(), webnn_shape_rank));
       std::transform(input_shape.begin(), input_shape.end(),
                      std::back_inserter(new_shape),
                      [](int64_t dim) -> uint32_t { return SafeInt<uint32_t>(dim); });
@@ -106,9 +106,11 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       size_t insertion_offset = (model_builder.GetPreferredLayout() == DataLayout::NHWC) ? 2 : 3;
       ptrdiff_t excess_rank = new_shape.size() - webnn_shape_rank;
       auto insertion_point = new_shape.begin() + insertion_offset;
-      if (input_shape.size() < 4) {
+      if (input_shape.size() < webnn_shape_rank) {
+        // Pad the shape with extra 1's to satisfy WebNN v1's rank requirements.
         new_shape.insert(insertion_point, -excess_rank, 1);
       } else {
+        // Fold the extra range to fit within WebNN v1's rank requirements.
         uint32_t sum = std::accumulate(
             insertion_point, insertion_point + excess_rank + 1, 1, std::multiplies<uint32_t>());
         new_shape.erase(insertion_point, insertion_point + excess_rank);
