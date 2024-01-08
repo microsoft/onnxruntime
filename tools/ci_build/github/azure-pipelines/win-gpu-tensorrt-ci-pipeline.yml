@@ -33,8 +33,6 @@ jobs:
   variables:
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
     EnvSetupScript: setup_env_trt.bat
-    buildArch: x64
-    BuildConfig: 'RelWithDebInfo'
     skipComponentGovernanceDetection: true
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   timeoutInMinutes: 150
@@ -45,8 +43,8 @@ jobs:
     parameters:
       EnvSetupScript: $(EnvSetupScript)
       DownloadCUDA: true
-      BuildArch: $(buildArch)
-      BuildConfig: $(BuildConfig)
+      BuildArch: 'x64'
+      BuildConfig: RelWithDebInfo
       MachinePool: 'onnxruntime-Win2022-GPU-T4'
       WithCache: true
       Today: $(Today)
@@ -55,28 +53,28 @@ jobs:
     parameters:
       WithCache: True
       Today: $(TODAY)
-      AdditionalKey: "gpu-tensorrt | $(BuildConfig)"
-      BuildPyArguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75'
+      AdditionalKey: "gpu-tensorrt | RelWithDebInfo"
+      BuildPyArguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75'
       MsbuildArguments: $(MsbuildArguments)
-      BuildArch: $(buildArch)
+      BuildArch: 'x64'
       Platform: 'x64'
-      BuildConfig: $(BuildConfig)
+      BuildConfig: RelWithDebInfo
 
   - task: PythonScript@0
     displayName: 'Build wheel'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\setup.py'
       arguments: 'bdist_wheel'
-      workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+      workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
 
   - script: |
-     mklink  /D /J $(Build.BinariesDirectory)\$(BuildConfig)\models $(Build.BinariesDirectory)\models
+     mklink  /D /J $(Build.BinariesDirectory)\RelWithDebInfo\models $(Build.BinariesDirectory)\models
      DIR dist\ /S /B > wheel_filename_file
      set /p WHEEL_FILENAME=<wheel_filename_file
      del wheel_filename_file
      python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
-     set PATH=$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig);%PATH%
-     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8"  --cuda_home="$(Agent.TempDirectory)\v11.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75
+     set PATH=$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo;%PATH%
+     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8"  --cuda_home="$(Agent.TempDirectory)\v11.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75
 
-    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+    workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
     displayName: 'Run tests'

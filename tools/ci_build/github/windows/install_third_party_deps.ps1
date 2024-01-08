@@ -42,7 +42,10 @@ if($build_config -eq 'Release'){
 } elseif($build_config -eq 'RelWithDebInfo'){
   $compile_flags += "$debug_info_format", "/O2", "/Ob1", "/DNDEBUG", "/Gw", "/GL"
 } elseif($build_config -eq 'Debug'){
-  $compile_flags += "$debug_info_format", "/Ob0", "/Od", "/RTC1"
+  $compile_flags += "$debug_info_format", "/Ob0", "/Od", "/RTC1", "/fsanitize=address"
+  if($cpu_arch -eq 'x64'){
+    $compile_flags += "/fsanitize=address"
+  }
 } elseif($build_config -eq 'MinSizeRel'){
   $compile_flags += "/O1", "/Ob1", "/DNDEBUG", "/Gw", "/GL"
 }
@@ -93,11 +96,11 @@ if(-not (Test-Path $vshwere_path -PathType Leaf)){
 
 $msbuild_path = &$vshwere_path -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | select-object -first 1
 
-Install-Pybind -cmake_path $cmake_path -src_root $ort_src_root -build_config $build_config  -cmake_extra_args $cmake_extra_args -msbuild_path $msbuild_path
+Install-Pybind -cmake_path $cmake_path -src_root $ort_src_root -build_config $build_config  -cmake_extra_args $cmake_extra_args -msbuild_path $msbuild_path -cpu_arch $cpu_arch
 
-Install-Abseil -cmake_path $cmake_path -src_root $ort_src_root -build_config $build_config -cmake_extra_args $cmake_extra_args -msbuild_path $msbuild_path
+Install-Abseil -cmake_path $cmake_path -src_root $ort_src_root -build_config $build_config -cmake_extra_args $cmake_extra_args -msbuild_path $msbuild_path -cpu_arch $cpu_arch
 
-Install-Protobuf -cmake_path $cmake_path -src_root $ort_src_root -build_config $build_config -cmake_extra_args $cmake_extra_args -msbuild_path $msbuild_path
+Install-Protobuf -cmake_path $cmake_path -src_root $ort_src_root -build_config $build_config -cmake_extra_args $cmake_extra_args -msbuild_path $msbuild_path -cpu_arch $cpu_arch
 
 $protobuf_version="4.21.12"
 
