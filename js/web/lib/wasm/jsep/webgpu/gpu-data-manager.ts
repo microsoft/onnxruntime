@@ -143,7 +143,7 @@ class GpuDataManagerImpl implements GpuDataManager {
   private freeUniformBuffers: Map<number, GPUBuffer[]>;
 
   // The external buffers registered users for IO Binding.
-  private externalBuffers: Map<GPUBuffer, [GpuDataId, GpuDataId]>;
+  private externalBuffers: Map<GPUBuffer, GpuDataId>;
 
   // The pendingBuffers for capture graph.
   // a SessionID -> GPUBuffer[] mapping.
@@ -219,41 +219,38 @@ class GpuDataManagerImpl implements GpuDataManager {
   }
 
   registerExternalBuffer(buffer: GPUBuffer, originalSize: number, previousBuffer?: GPUBuffer): number {
+    let id: number|undefined;
     if (previousBuffer) {
-      const ids = this.externalBuffers.get(previousBuffer);
-      if (ids === undefined) {
+      id = this.externalBuffers.get(previousBuffer);
+      if (id === undefined) {
         throw new Error('previous buffer is not registered');
       }
       if (buffer === previousBuffer) {
         LOG_DEBUG(
             'verbose',
             () => `[WebGPU] GpuDataManager.registerExternalBuffer(size=${originalSize}) => id=${
-              ids[0]}, buffer is the same, skip.`);
-        return ids[1];
+                id}, buffer is the same, skip.`);
+        return id;
       }
       this.externalBuffers.delete(previousBuffer);
+    } else {
+      id = createNewGpuDataId();
     }
 
-    const id = createNewGpuDataId();
     this.storageCache.set(id, {gpuData: {id, type: GpuDataType.default, buffer}, originalSize});
+    this.externalBuffers.set(buffer, id);
     LOG_DEBUG(
         'verbose',
         () => `[WebGPU] GpuDataManager.registerExternalBuffer(size=${originalSize}) => id=${id}, registered.`);
-
-    // copy the externl data to an internal gpu buffer.
-    const internalGpuData = this.create(originalSize);
-    const internalId = internalGpuData.id;
-    this.memcpy(id, internalId);
-    this.externalBuffers.set(buffer, [id, internalId]);
-    return internalId;
+    return id;
   }
 
   unregisterExternalBuffer(buffer: GPUBuffer): void {
     const id = this.externalBuffers.get(buffer);
     if (id !== undefined) {
-      this.storageCache.delete(id[0]);
+      this.storageCache.delete(id);
       this.externalBuffers.delete(buffer);
-      LOG_DEBUG('verbose', () => `[WebGPU] GpuDataManager.unregisterExternalBuffer() => id=${id[0]}`);
+      LOG_DEBUG('verbose', () => `[WebGPU] GpuDataManager.unregisterExternalBuffer() => id=${id}`);
     }
   }
 
