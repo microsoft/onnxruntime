@@ -555,7 +555,7 @@ public:
         // Explicitly reshape each of the inputs after the first input (scale tensor and optional zero point tensor).
         for (uint32_t index = 1, inputCount = gsl::narrow_cast<uint32_t>(m_inputTensorDescs.size()); index < inputCount; ++index)
         {
-            if(!kernelInfo.IsInputValid(index))
+            if (!kernelInfo.IsInputValid(index))
             {
                 continue;
             }
