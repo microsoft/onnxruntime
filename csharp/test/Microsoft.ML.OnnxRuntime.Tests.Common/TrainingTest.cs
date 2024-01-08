@@ -612,6 +612,85 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        [Fact(DisplayName = "TestTrainingSessionTrainStepWithOrtValues")]
+        public void TestTrainingSessionTrainStepWithOrtValues()
+        {
+            string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                var state = CheckpointState.LoadCheckpoint(checkpointPath);
+                cleanUp.Add(state);
+                Assert.NotNull(state);
+                string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
+                string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
+
+                var trainingSession = new TrainingSession(state, trainingPath, optimizerPath);
+                cleanUp.Add(trainingSession);
+
+                float[] expectedOutput = TestDataLoader.LoadTensorFromFile("loss_1.out");
+                var expectedOutputDimensions = new int[] { 1 };
+                float[] inputData = TestDataLoader.LoadTensorFromFile("input-0.in");
+                long[] inputShape = { 2, 784 };
+                Int32[] labelsData = { 1, 1 };
+                long[] labelsShape = { 2 };
+
+                var inputOrtValue = OrtValue.CreateTensorValueFromMemory<float>(inputData, inputShape);
+                cleanUp.Add(inputOrtValue);
+                var labelsOrtValue = OrtValue.CreateTensorValueFromMemory<Int32>(labelsData, labelsShape);
+                cleanUp.Add(labelsOrtValue);
+
+                var inputValues = new List<OrtValue> { inputOrtValue, labelsOrtValue }.AsReadOnly();
+                using (var results = trainingSession.TrainStep(inputValues))
+                {
+                    Assert.Single(results);
+                    var outputOrtValue = results[0];
+                    Assert.True(outputOrtValue.IsTensor);
+                    var resultSpan = outputOrtValue.GetTensorDataAsSpan<float>().ToArray();
+                    Assert.Equal(expectedOutput, resultSpan, new FloatComparer());
+                }
+            }
+        }
+
+        [Fact(DisplayName = "TestTrainingSessionEvalStepWithOrtValues")]
+        public void TestTrainingSessionEvalStepWithOrtValues()
+        {
+            string checkpointPath = Path.Combine(Directory.GetCurrentDirectory(), "checkpoint.ckpt");
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                var state = CheckpointState.LoadCheckpoint(checkpointPath);
+                cleanUp.Add(state);
+                Assert.NotNull(state);
+                string trainingPath = Path.Combine(Directory.GetCurrentDirectory(), "training_model.onnx");
+                string optimizerPath = Path.Combine(Directory.GetCurrentDirectory(), "adamw.onnx");
+                string evalPath = Path.Combine(Directory.GetCurrentDirectory(), "eval_model.onnx");
+
+                var trainingSession = new TrainingSession(state, trainingPath, evalPath, optimizerPath);
+                cleanUp.Add(trainingSession);
+
+                float[] expectedOutput = TestDataLoader.LoadTensorFromFile("loss_1.out");
+                var expectedOutputDimensions = new int[] { 1 };
+                float[] inputData = TestDataLoader.LoadTensorFromFile("input-0.in");
+                long[] inputShape = { 2, 784 };
+                Int32[] labelsData = { 1, 1 };
+                long[] labelsShape = { 2 };
+
+                var inputOrtValue = OrtValue.CreateTensorValueFromMemory<float>(inputData, inputShape);
+                cleanUp.Add(inputOrtValue);
+                var labelsOrtValue = OrtValue.CreateTensorValueFromMemory<Int32>(labelsData, labelsShape);
+                cleanUp.Add(labelsOrtValue);
+
+                var inputValues = new List<OrtValue> { inputOrtValue, labelsOrtValue }.AsReadOnly();
+                using (var results = trainingSession.EvalStep(inputValues))
+                {
+                    Assert.Single(results);
+                    var outputOrtValue = results[0];
+                    Assert.True(outputOrtValue.IsTensor);
+                    var resultSpan = outputOrtValue.GetTensorDataAsSpan<float>().ToArray();
+                    Assert.Equal(expectedOutput, resultSpan, new FloatComparer());
+                }
+            }
+        }
+
         internal class FloatComparer : IEqualityComparer<float>
         {
             private float atol = 1e-3f;
