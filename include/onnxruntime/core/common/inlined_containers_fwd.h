@@ -23,6 +23,7 @@
 #endif  // _MSC_VER
 
 #include <absl/container/inlined_vector.h>
+#include <absl/container/flat_hash_map.h>
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -138,13 +139,23 @@ template <typename T,
           typename Allocator = std::allocator<T>>
 class InlinedHashSet;
 
-template <typename Key, typename Value,
-          typename Allocator = std::allocator<std::pair<const Key, Value>>>
-class InlinedHashMap;
+#ifndef DISABLE_ABSEIL
 
 template <typename Key, typename Value,
-          typename Allocator = std::allocator<std::pair<const Key, Value>>>
-class InlinedHashMapNaNSensitive;
+          typename Allocator = std::allocator<std::pair<const Key, Value>>,
+          typename Hash = absl::container_internal::hash_default_hash<Key>,
+          typename Equal = absl::container_internal::hash_default_eq<Key>>
+class InlinedHashMap;
+
+#else
+
+template <typename Key, typename Value,
+          typename Allocator = std::allocator<std::pair<const Key, Value>>,
+          typename Hash = std::hash<Key>,
+          typename Equal = std::equal_to<Key>>
+class InlinedHashMap;
+
+#endif  // DISABLE_ABSEIL
 
 template <typename T, typename Allocator = std::allocator<T>>
 class NodeHashSet;

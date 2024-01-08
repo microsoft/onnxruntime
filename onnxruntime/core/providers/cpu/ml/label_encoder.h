@@ -144,6 +144,44 @@ T GetDefault(const OpKernelInfo& info, const std::string& attr_name, const T& ba
   }
 }
 
+#ifndef DISABLE_ABSEIL
+template <typename T>
+using HashFunc = absl::container_internal::hash_default_hash<T>;
+
+template <typename T>
+using EqualFunc = absl::container_internal::hash_default_eq<T>;
+#else
+template <typename T>
+using HashFunc = std::hash<T>;
+
+template <typename T>
+using EqualFunc = std::equal_to<T>;
+#endif  // DISABLE_ABSEIL
+
+template <typename T>
+struct NaNHash {
+  size_t operator()(const T& value) const {
+    if constexpr (std::is_floating_point_v<T>) {
+      if (std::isnan(value)) {
+        return 0;
+      }
+    }
+    return HashFunc<T>{}(value);
+  }
+};
+
+template <typename T>
+struct NaNEqual {
+  bool operator()(const T& lhs, const T& rhs) const {
+    if constexpr (std::is_floating_point_v<T>) {
+      if (std::isnan(lhs) && std::isnan(rhs)) {
+        return true;
+      }
+    }
+    return EqualFunc<T>{}(lhs, rhs);
+  }
+};
+
 template <typename TKey, typename TValue>
 class LabelEncoder_4 final : public OpKernel {
  public:
@@ -175,8 +213,9 @@ class LabelEncoder_4 final : public OpKernel {
   }
 
  private:
+  using Allocator = std::allocator<std::pair<const TKey, TValue>>;
   void InitializeAttrFields(const OpKernelInfo& kernel_info);
-  InlinedHashMapNaNSensitive<TKey, TValue> map_;
+  InlinedHashMap<TKey, TValue, Allocator, NaNHash<TKey>, NaNEqual<TKey>> map_;
   TValue default_value_;
   std::string key_field_name_;
   std::string value_field_name_;
