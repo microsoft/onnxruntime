@@ -126,6 +126,13 @@ jobs:
       - script: 'python3 -m pip install pandas azure-kusto-data[pandas] azure-kusto-ingest[pandas] coloredlogs'
         displayName: 'Install dashboard dependencies'
 
+      - script: |
+          az --version || {
+              echo "Azure CLI not found, installing..."
+              curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+          }
+        displayName: 'Check and Install Azure CLI'
+
       - task: AzureCLI@2
         displayName: 'Azure CLI Post to Dashboard'
         inputs:

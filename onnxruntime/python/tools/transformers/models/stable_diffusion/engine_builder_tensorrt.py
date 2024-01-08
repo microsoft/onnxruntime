@@ -26,8 +26,6 @@ import pathlib
 from collections import OrderedDict
 
 import numpy as np
-import onnx
-import onnx_graphsurgeon as gs
 import tensorrt as trt
 import torch
 from cuda import cudart
@@ -43,7 +41,6 @@ from polygraphy.backend.trt import (
     network_from_onnx_path,
     save_engine,
 )
-from trt_utilities import TRT_LOGGER
 
 # Map of numpy dtype -> torch dtype
 numpy_to_torch_dtype_dict = {
@@ -83,115 +80,11 @@ class TensorrtEngine:
         del self.buffers
         del self.tensors
 
-    def refit(self, onnx_path, onnx_refit_path):
-        def convert_int64(arr):
-            if len(arr.shape) == 0:
-                return np.int32(arr)
-            return arr
-
-        def add_to_map(refit_dict, name, values):
-            if name in refit_dict:
-                assert refit_dict[name] is None
-                if values.dtype == np.int64:
-                    values = convert_int64(values)
-                refit_dict[name] = values
-
-        print(f"Refitting TensorRT engine with {onnx_refit_path} weights")
-        refit_nodes = gs.import_onnx(onnx.load(onnx_refit_path)).toposort().nodes
-
-        # Construct mapping from weight names in refit model -> original model
-        name_map = {}
-        for n, node in enumerate(gs.import_onnx(onnx.load(onnx_path)).toposort().nodes):
-            refit_node = refit_nodes[n]
-            assert node.op == refit_node.op
-            # Constant nodes in ONNX do not have inputs but have a constant output
-            if node.op == "Constant":
-                name_map[refit_node.outputs[0].name] = node.outputs[0].name
-            # Handle scale and bias weights
-            elif node.op == "Conv":
-                if node.inputs[1].__class__ == gs.Constant:
-                    name_map[refit_node.name + "_TRTKERNEL"] = node.name + "_TRTKERNEL"
-                if node.inputs[2].__class__ == gs.Constant:
-                    name_map[refit_node.name + "_TRTBIAS"] = node.name + "_TRTBIAS"
-            # For all other nodes: find node inputs that are initializers (gs.Constant)
-            else:
-                for i, inp in enumerate(node.inputs):
-                    if inp.__class__ == gs.Constant:
-                        name_map[refit_node.inputs[i].name] = inp.name
-
-        def map_name(name):
-            if name in name_map:
-                return name_map[name]
-            return name
-
-        # Construct refit dictionary
-        refit_dict = {}
-        refitter = trt.Refitter(self.engine, TRT_LOGGER)
-        all_weights = refitter.get_all()
-        for layer_name, role in zip(all_weights[0], all_weights[1]):
-            # for specialized roles, use a unique name in the map:
-            if role == trt.WeightsRole.KERNEL:
-                name = layer_name + "_TRTKERNEL"
-            elif role == trt.WeightsRole.BIAS:
-                name = layer_name + "_TRTBIAS"
-            else:
-                name = layer_name
-
-            assert name not in refit_dict, "Found duplicate layer: " + name
-            refit_dict[name] = None
-
-        for n in refit_nodes:
-            # Constant nodes in ONNX do not have inputs but have a constant output
-            if n.op == "Constant":
-                name = map_name(n.outputs[0].name)
-                print(f"Add Constant {name}\n")
-                add_to_map(refit_dict, name, n.outputs[0].values)
-
-            # Handle scale and bias weights
-            elif n.op == "Conv":
-                if n.inputs[1].__class__ == gs.Constant:
-                    name = map_name(n.name + "_TRTKERNEL")
-                    add_to_map(refit_dict, name, n.inputs[1].values)
-
-                if n.inputs[2].__class__ == gs.Constant:
-                    name = map_name(n.name + "_TRTBIAS")
-                    add_to_map(refit_dict, name, n.inputs[2].values)
-
-            # For all other nodes: find node inputs that are initializers (AKA gs.Constant)
-            else:
-                for inp in n.inputs:
-                    name = map_name(inp.name)
-                    if inp.__class__ == gs.Constant:
-                        add_to_map(refit_dict, name, inp.values)
-
-        for layer_name, weights_role in zip(all_weights[0], all_weights[1]):
-            if weights_role == trt.WeightsRole.KERNEL:
-                custom_name = layer_name + "_TRTKERNEL"
-            elif weights_role == trt.WeightsRole.BIAS:
-                custom_name = layer_name + "_TRTBIAS"
-            else:
-                custom_name = layer_name
-
-            # Skip refitting Trilu for now; scalar weights of type int64 value 1 - for clip model
-            if layer_name.startswith("onnx::Trilu"):
-                continue
-
-            if refit_dict[custom_name] is not None:
-                refitter.set_weights(layer_name, weights_role, refit_dict[custom_name])
-            else:
-                print(f"[W] No refit weights for layer: {layer_name}")
-
-        if not refitter.refit_cuda_engine():
-            print("Failed to refit!")
-            exit(0)
-
     def build(
         self,
         onnx_path,
         fp16,
         input_profile=None,
-        enable_refit=False,
-        enable_preview=False,
         enable_all_tactics=False,
         timing_cache=None,
         update_output_names=None,
@@ -214,7 +107,7 @@ class TensorrtEngine:
         engine = engine_from_network(
             network,
             config=CreateConfig(
-                fp16=fp16, refittable=enable_refit, profiles=[p], load_timing_cache=timing_cache, **config_kwargs
+                fp16=fp16, refittable=False, profiles=[p], load_timing_cache=timing_cache, **config_kwargs
             ),
             save_timing_cache=timing_cache,
         )
@@ -294,7 +187,6 @@ class TensorrtEngineBuilder(EngineBuilder):
         self,
         pipeline_info: PipelineInfo,
         max_batch_size=16,
-        hf_token=None,
         device="cuda",
         use_cuda_graph=False,
     ):
@@ -306,8 +198,6 @@ class TensorrtEngineBuilder(EngineBuilder):
                 Version and Type of pipeline.
             max_batch_size (int):
                 Maximum batch size for dynamic batch engine.
-            hf_token (str):
-                HuggingFace User Access Token to use for downloading Stable Diffusion model checkpoints.
             device (str):
                 device to run.
             use_cuda_graph (bool):
@@ -317,7 +207,6 @@ class TensorrtEngineBuilder(EngineBuilder):
             EngineType.TRT,
             pipeline_info,
             max_batch_size=max_batch_size,
-            hf_token=hf_token,
             device=device,
             use_cuda_graph=use_cuda_graph,
         )
@@ -348,16 +237,10 @@ class TensorrtEngineBuilder(EngineBuilder):
         opt_batch_size,
         opt_image_height,
         opt_image_width,
-        force_export=False,
-        force_optimize=False,
-        force_build=False,
         static_batch=False,
         static_shape=True,
-        enable_refit=False,
-        enable_preview=False,
         enable_all_tactics=False,
         timing_cache=None,
-        onnx_refit_dir=None,
     ):
         """
         Build and load engines for TensorRT accelerated inference.
@@ -378,26 +261,14 @@ class TensorrtEngineBuilder(EngineBuilder):
                 Image height to optimize for during engine building. Must be a multiple of 8.
             opt_image_width (int):
                 Image width to optimize for during engine building. Must be a multiple of 8.
-            force_export (bool):
-                Force re-exporting the ONNX models.
-            force_optimize (bool):
-                Force re-optimizing the ONNX models.
-            force_build (bool):
-                Force re-building the TensorRT engine.
             static_batch (bool):
                 Build engine only for specified opt_batch_size.
             static_shape (bool):
                 Build engine only for specified opt_image_height & opt_image_width. Default = True.
-            enable_refit (bool):
-                Build engines with refit option enabled.
-            enable_preview (bool):
-                Enable TensorRT preview features.
             enable_all_tactics (bool):
                 Enable all tactic sources during TensorRT engine builds.
             timing_cache (str):
                 Path to the timing cache to accelerate build or None
-            onnx_refit_dir (str):
-                Directory containing refit ONNX models.
         """
         # Create directory
         for directory in [engine_dir, onnx_dir]:
@@ -417,11 +288,11 @@ class TensorrtEngineBuilder(EngineBuilder):
                     opt_batch_size, opt_image_height, opt_image_width, static_batch, static_shape
                 )
                 engine_path = self.get_engine_path(engine_dir, model_name, profile_id)
-                if force_export or force_build or not os.path.exists(engine_path):
+                if not os.path.exists(engine_path):
                     onnx_path = self.get_onnx_path(model_name, onnx_dir, opt=False)
                     onnx_opt_path = self.get_onnx_path(model_name, onnx_dir, opt=True)
-                    if force_export or not os.path.exists(onnx_opt_path):
-                        if force_export or not os.path.exists(onnx_path):
+                    if not os.path.exists(onnx_opt_path):
+                        if not os.path.exists(onnx_path):
                             load_lora = True
                             break
 
@@ -436,11 +307,11 @@ class TensorrtEngineBuilder(EngineBuilder):
                 opt_batch_size, opt_image_height, opt_image_width, static_batch, static_shape
             )
             engine_path = self.get_engine_path(engine_dir, model_name, profile_id)
-            if force_export or force_build or not os.path.exists(engine_path):
+            if not os.path.exists(engine_path):
                 onnx_path = self.get_onnx_path(model_name, onnx_dir, opt=False)
                 onnx_opt_path = self.get_onnx_path(model_name, onnx_dir, opt=True)
-                if force_export or not os.path.exists(onnx_opt_path):
-                    if force_export or not os.path.exists(onnx_path):
+                if not os.path.exists(onnx_opt_path):
+                    if not os.path.exists(onnx_path):
                         print(f"Exporting model: {onnx_path}")
                         model = self.get_or_load_model(pipe, model_name, model_obj, framework_model_dir)
 
@@ -464,7 +335,7 @@ class TensorrtEngineBuilder(EngineBuilder):
                         print(f"Found cached model: {onnx_path}")
 
                     # Optimize onnx
-                    if force_optimize or not os.path.exists(onnx_opt_path):
+                    if not os.path.exists(onnx_opt_path):
                         print(f"Generating optimizing model: {onnx_opt_path}")
                         model_obj.optimize_trt(onnx_path, onnx_opt_path)
                     else:
@@ -482,7 +353,7 @@ class TensorrtEngineBuilder(EngineBuilder):
             engine = TensorrtEngine(engine_path)
             onnx_opt_path = self.get_onnx_path(model_name, onnx_dir, opt=True)
 
-            if force_build or not os.path.exists(engine.engine_path):
+            if not os.path.exists(engine.engine_path):
                 engine.build(
                     onnx_opt_path,
                     fp16=True,
@@ -493,8 +364,6 @@ class TensorrtEngineBuilder(EngineBuilder):
                         static_batch,
                         static_shape,
                     ),
-                    enable_refit=enable_refit,
-                    enable_preview=enable_preview,
                     enable_all_tactics=enable_all_tactics,
                     timing_cache=timing_cache,
                     update_output_names=None,
@@ -506,10 +375,6 @@ class TensorrtEngineBuilder(EngineBuilder):
             if model_name == "vae" and self.vae_torch_fallback:
                 continue
             self.engines[model_name].load()
-            if onnx_refit_dir:
-                onnx_refit_path = self.get_onnx_path(model_name, onnx_refit_dir, opt=True)
-                if os.path.exists(onnx_refit_path):
-                    self.engines[model_name].refit(onnx_opt_path, onnx_refit_path)
 
     def max_device_memory(self):
         max_device_memory = 0
