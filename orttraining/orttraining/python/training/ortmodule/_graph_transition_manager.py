@@ -584,15 +584,8 @@ class GraphTransitionManager:
     @staticmethod
     def _infer_shapes(model: onnx.ModelProto) -> onnx.ModelProto:
         """Infer shapes for the exported model."""
-        # Record random states here and restore later in case any of them gets changed during the export,
-        # e.g., some sympy functions in symbolic_shape_infer will change Python's random state.
-        random_states = _utils.get_random_states()
 
         model = SymbolicShapeInference.infer_shapes(model, auto_merge=True, guess_output_rank=True)
-
-        # Restore the recorded random states
-        _utils.set_random_states(random_states)
-
         return model
 
     @staticmethod
@@ -614,6 +607,10 @@ class GraphTransitionManager:
         time_tracker: TimeTracker,
         logger: logging.Logger,
     ) -> tuple[onnx.ModelProto, ORTModelInputOutputSchemaType, list[str], list[str]]:
+        # Record random states here and restore later in case any of them gets changed during the export,
+        # e.g., some sympy functions in symbolic_shape_infer will change Python's random state.
+        random_states = _utils.get_random_states()
+
         torch_exporter_verbose_log = debug_options.log_level < LogLevel.WARNING
         from onnxruntime.training.utils.hooks._subscriber_manager import no_increase_global_step
 
@@ -640,6 +637,9 @@ class GraphTransitionManager:
             for input in exported_model.graph.input
             if input.name in parameter_names or input.name in model_info_for_export.onnx_graph_input_names_require_grad
         ]
+
+        # Restore the recorded random states
+        _utils.set_random_states(random_states)
 
         return exported_model, module_output_schema, onnx_graph_input_names, onnx_graph_input_names_require_grad
 
