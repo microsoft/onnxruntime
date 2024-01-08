@@ -179,7 +179,7 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Min", {"min", true}},
     {"Mul", {"mul", true}},
     {"Neg", {"neg", true}},
-    {"Not", {"not", false}},
+    {"Not", {"logicalNot", false}},
     {"Pad", {"pad", true}},
     {"Pow", {"pow", false}},
     {"PRelu", {"prelu", true}},
