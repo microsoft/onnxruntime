@@ -76,20 +76,13 @@ TEST(LayerNormTest, LayerNorm) {
 }
 
 TEST(LayerNormTest, LayerNorm_BFloat16Input) {
-  #ifdef USE_CUDA
-    int min_cuda_architecture = 530;
-    if (!HasCudaEnvironment(min_cuda_architecture)) {
-      LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
-      return;
-    }
-  #endif 
   OpTester test("LayerNormalization");
   test.AddAttribute<float>("epsilon", 1e-05f);
 
   std::vector<int64_t> dims{1, 2, 3};
-  test.AddInput<BFloat16>("x", dims, ToBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f}));
-  test.AddInput<BFloat16>("gamma", {3}, ToBFloat16({1.0f, 1.0f, 1.0f}));
-  test.AddOutput<BFloat16>("output", dims, ToBFloat16({-1.2247f, 0.0f, 1.2247f, -1.2247f, 0.0f, 1.2247f}));
+  test.AddInput<BFloat16>("x", dims, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f}));
+  test.AddInput<BFloat16>("gamma", {3}, MakeBFloat16({1.0f, 1.0f, 1.0f}));
+  test.AddOutput<BFloat16>("output", dims, MakeBFloat16({-1.2247f, 0.0f, 1.2247f, -1.2247f, 0.0f, 1.2247f}));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
 }
 
