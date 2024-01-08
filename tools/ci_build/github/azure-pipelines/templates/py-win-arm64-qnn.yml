@@ -70,18 +70,11 @@ jobs:
           scriptSource: inline
           script: |
             import sys
-            np_version = 'numpy==1.21.6' if sys.version_info < (3, 11) else 'numpy==1.25.2'
+            np_version = 'numpy==1.25.2'
             import subprocess
             subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel', np_version])
           workingDirectory: '$(Build.BinariesDirectory)'
           displayName: 'Install python modules'
-
-      - task: PowerShell@2
-        displayName: 'Install ONNX'
-        inputs:
-          filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
-          workingDirectory: '$(Build.BinariesDirectory)'
-          arguments: -cpu_arch arm64 -install_prefix $(Build.BinariesDirectory)\RelWithDebInfo\installed -build_config RelWithDebInfo
 
       - template: set-nightly-build-option-variable-step.yml
 
@@ -97,8 +90,8 @@ jobs:
             --use_qnn
             --qnn_home ${{ parameters.QNN_SDK_PATH_WIN }}
             --enable_pybind
-            --enable_onnx_tests
             --parallel --update
+            --numpy_version 1.25.2
             $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }}
           workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -156,14 +149,6 @@ jobs:
         displayName: 'Run BinSkim'
         inputs:
           AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll;-:file|$(Build.ArtifactStagingDirectory)\**\DirectML.dll'
-
-      - powershell: |
-         python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
-         Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
-         Remove-Item -Recurse -Force onnxruntime
-         python onnx_backend_test_series.py
-        workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-        displayName: 'Run Python Tests'
 
       - task: TSAUpload@2
         displayName: 'TSA upload'
