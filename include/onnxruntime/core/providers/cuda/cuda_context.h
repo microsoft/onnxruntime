@@ -16,9 +16,10 @@
 #include "core/providers/custom_op_context.h"
 #include <cuda.h>
 #include <cuda_runtime.h>
+#ifndef USE_CUDA_MINIMAL
 #include <cublas_v2.h>
 #include <cudnn.h>
-
+#endif
 namespace Ort {
 
 namespace Custom {
