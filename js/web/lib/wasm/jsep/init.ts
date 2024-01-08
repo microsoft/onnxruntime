@@ -104,7 +104,12 @@ class ComputeContextImpl implements ComputeContext {
         throw new Error(`Unsupported data type: ${dataType}`);
       }
       const bufferSize = elementSize * ShapeUtil.size(dims);
-      return new TensorViewImpl(this.module, dataType, this.backend.gpuDataManager.create(bufferSize).id, dims);
+      return new TensorViewImpl(
+          this.module, dataType,
+          this.backend.gpuDataManager
+              .create(bufferSize, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST, true)
+              .id,
+          dims);
     };
     return this.backend.run(program, mappedInputs, outputIndices, createKernelOutput, createTemporaryOutput);
   }
