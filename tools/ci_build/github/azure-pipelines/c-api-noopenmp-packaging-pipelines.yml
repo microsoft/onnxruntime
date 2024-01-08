@@ -1178,27 +1178,27 @@ stages:
 #    CustomOpArtifactName: 'onnxruntime-linux-x64-rocm'
 #    BuildId: ${{ parameters.BuildId }}
 #
-#- template: nuget/templates/dml-vs-2022.yml
-#  parameters:
-#    AgentPool : 'onnxruntime-Win2022-GPU-dml-A10'
-#    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-#    ArtifactName: 'drop-nuget-dml'
-#    StageName: 'Windows_CI_GPU_DML_Dev'
-#    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --build_nodejs --cmake_generator "Visual Studio 17 2022"
-#    BuildArch: 'x64'
-#    msbuildArchitecture: 'amd64'
-#    EnvSetupScript: 'setup_env.bat'
-#    sln_platform: 'x64'
-#    DoDebugBuild: 'false'
-#    DoNugetPack : 'true'
-#    DoCompliance: 'false'
-#    DoEsrp: ${{ parameters.DoEsrp }}
-#    NuPackScript: |
-#     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
-#     copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
-#     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
-#     mkdir $(Build.ArtifactStagingDirectory)\testdata
-#     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
+- template: nuget/templates/dml-vs-2022.yml
+  parameters:
+    AgentPool : 'onnxruntime-Win2022-GPU-dml-A10'
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+    ArtifactName: 'drop-nuget-dml'
+    StageName: 'Windows_CI_GPU_DML_Dev'
+    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --build_nodejs --cmake_generator "Visual Studio 17 2022"
+    BuildArch: 'x64'
+    msbuildArchitecture: 'amd64'
+    EnvSetupScript: 'setup_env.bat'
+    sln_platform: 'x64'
+    DoDebugBuild: 'false'
+    DoNugetPack : 'true'
+    DoCompliance: 'false'
+    DoEsrp: ${{ parameters.DoEsrp }}
+    NuPackScript: |
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
+     copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+     mkdir $(Build.ArtifactStagingDirectory)\testdata
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 #
 #- template: nuget/templates/dml-vs-2022.yml
 #  parameters:
