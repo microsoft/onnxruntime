@@ -39,5 +39,13 @@ TEST(RegexFullMatch, InvalidPattern) {
   test.Run(BaseTester::ExpectResult::kExpectFailure, "Invalid regex pattern: [a-z");
 }
 
+TEST(RegexFullMatch, NonUtf8Pattern) {
+  uint8_t invalid_bytes[] = { 0xC0, 0xC1, 0x41, 0x42, 0xC3, 0x80, 0xC2, 0x80, 0xC2, 0xC3, 0xC4, 0x00 };
+  OpTester test("RegexFullMatch", 20, kOnnxDomain);
+  test.AddAttribute("pattern", std::string((char*) invalid_bytes, sizeof(invalid_bytes)));
+  test.AddInput<std::string>("Input", {1,}, {"abcd",});
+  test.AddOutput<bool>("Output", {1,}, {false,});
+  test.Run(BaseTester::ExpectResult::kExpectFailure, "Invalid regex pattern");
+}
 }  // namespace test
 }  // namespace onnxruntime
