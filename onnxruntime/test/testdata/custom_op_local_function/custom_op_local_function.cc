@@ -12,6 +12,7 @@
 #include "core/framework/ortdevice.h"
 #include "core/framework/ortmemoryinfo.h"
 #include "dummy_gemm.h"
+#include "ort_tree_ensemble.hpp"
 
 static const char* c_OpDomain = "onnx_extented.ortops.tutorial.cpu";
 
@@ -37,12 +38,15 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options,
       ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
       false);
   OrtStatus* result = nullptr;
+  static ortops::TreeEnsembleRegressor<onnx_c_ops::DenseFeatureAccessor<float>, float, float>
+      c_TreeEnsembleRegressor;
 
   ORT_TRY {
     Ort::CustomOpDomain domain{c_OpDomain};
 
     domain.Add(&c_CustomGemmFloat);
     domain.Add(&c_CustomGemmFloat8E4M3FN);
+    domain.Add(&c_TreeEnsembleRegressor);
 
     session_options.Add(domain);
     AddOrtCustomOpDomainToContainer(std::move(domain));
