@@ -106,3 +106,10 @@ jobs:
       inputs:
         artifactName: 'drop-linux-cpu-${{ parameters.arch }}'
         targetPath: '$(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}'
+
+    - template: component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
