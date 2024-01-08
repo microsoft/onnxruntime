@@ -853,7 +853,7 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
     auto& provider = env.GetTelemetryProvider();
     if (provider.IsEnabled()) {
       auto keyword = provider.Keyword();
-      if ((keyword & static_cast<uint64_t>(onnxruntime::logging::TLKeyword::Profiling)) != 0) {
+      if ((keyword & static_cast<uint64_t>(onnxruntime::logging::TraceLoggingKeyword::Profiling)) != 0) {
         tracelogging_provider_ep_enabled = true;
       }
     }
@@ -1033,7 +1033,7 @@ void QnnBackendManager::LogQnnProfileEventAsTraceLogging(
   TraceLoggingWrite(
       telemetry_provider_handle,
       "QNNProfilingEvent",
-      TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::TLKeyword::Profiling)),
+      TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::TraceLoggingKeyword::Profiling)),
       TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
       TraceLoggingValue(timestamp, "Timestamp"),
       TraceLoggingString(message.c_str(), "Message"),

@@ -268,7 +268,7 @@ std::unique_ptr<ISink> EnhanceLoggerWithEtw(std::unique_ptr<ISink> existingLogge
 Severity OverrideLevelWithEtw(Severity originalSeverity) {
 #ifdef _WIN32
   auto& manager = logging::EtwRegistrationManager::Instance();
-  if (manager.IsEnabled() && (manager.Keyword() & static_cast<ULONGLONG>(onnxruntime::logging::TLKeyword::Logs)) != 0) {
+  if (manager.IsEnabled() && (manager.Keyword() & static_cast<ULONGLONG>(onnxruntime::logging::TraceLoggingKeyword::Logs)) != 0) {
     return manager.MapLevelToSeverity();
   }
 #endif  // _WIN32

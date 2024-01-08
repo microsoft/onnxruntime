@@ -75,11 +75,13 @@ struct Category {
   // TODO: What other high level categories are meaningful? Model? Optimizer? Execution?
 };
 
-// TraceLogging keywords for categories of dynamic logging enablement
-enum class TLKeyword : uint64_t {
-  Session = 0x1,  // ORT Session TraceLoggingWrite
-  Logs = 0x2,     // LOGS() Macro ORT logs. Pair with an appropiate level depending on detail required
-  Reserved1 = 0x4,
+/// <summary>
+/// TraceLogging keywords for categories of dynamic logging enablement
+/// </summary>
+enum class TraceLoggingKeyword : uint64_t {
+  Session = 0x1,    // ORT Session TraceLoggingWrite
+  Logs = 0x2,       // LOGS() Macro ORT logs. Pair with an appropiate level depending on detail required
+  Reserved1 = 0x4,  // Reserved if we want to add some specific sub-categories instead of just LOGS() or other uses
   Reserved2 = 0x8,
   Reserved3 = 0x10,
   Reserved4 = 0x20,

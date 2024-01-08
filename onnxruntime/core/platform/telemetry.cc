@@ -17,6 +17,7 @@ bool Telemetry::IsEnabled() const {
 }
 
 // Get the current logging level
+// The Level defined as uchar is coming from the ETW Enable callback in TraceLoggingRegisterEx.
 unsigned char Telemetry::Level() const {
   return 0;
 }
