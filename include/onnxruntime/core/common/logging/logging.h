@@ -77,15 +77,15 @@ struct Category {
 
 // TraceLogging keywords for categories of dynamic logging enablement
 enum class TLKeyword : uint64_t {
-  Session = 0x1,      // ORT Session TraceLoggingWrite
-  Logs = 0x2,         // LOGS() Macro ORT logs. Pair with an appropiate level depending on detail required
+  Session = 0x1,  // ORT Session TraceLoggingWrite
+  Logs = 0x2,     // LOGS() Macro ORT logs. Pair with an appropiate level depending on detail required
   Reserved1 = 0x4,
   Reserved2 = 0x8,
   Reserved3 = 0x10,
   Reserved4 = 0x20,
   Reserved5 = 0x40,
   Reserved6 = 0x80,
-  Profiling = 0x100   // Enables profiling. At higher levels >5 can impact inference performance
+  Profiling = 0x100  // Enables profiling. At higher levels >5 can impact inference performance
 };
 
 class ISink;
