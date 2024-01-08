@@ -243,25 +243,13 @@ TEST(LabelEncoder, Int64toInt64Opset4) {
 
   test.AddAttribute("keys_int64s", key_data);
   test.AddAttribute("values_int64s", value_data);
-  test.AddAttribute("default_int64", (std::int64_t)42);
 
-  test.AddInput<int64_t>("X", dims, input);
-  test.AddOutput<int64_t>("Y", dims, output);
-  test.Run();
-}
-
-TEST(LabelEncoder, Int64toInt64NoDefaultOpset4) {
-  std::vector<std::int64_t> dims{1, 5};
-
-  std::vector<int64_t> input{1, 2, 3, 4, 5};
-  std::vector<int64_t> output{12, 13, 14, 15, -1};
-  std::vector<int64_t> key_data{1, 2, 3, 4};
-  std::vector<int64_t> value_data{12, 13, 14, 15};
-
-  OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
-
-  test.AddAttribute("keys_int64s", key_data);
-  test.AddAttribute("values_int64s", value_data);
+  ONNX_NAMESPACE::TensorProto default_proto;
+  default_proto.set_name("default_tensor");
+  default_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  default_proto.add_dims(1);
+  default_proto.add_int64_data(42);
+  test.AddAttribute("default_tensor", default_proto);
 
   test.AddInput<int64_t>("X", dims, input);
   test.AddOutput<int64_t>("Y", dims, output);
@@ -281,7 +269,7 @@ TEST(LabelEncoder, Int64toStringOpset4) {
   ONNX_NAMESPACE::TensorProto keys_proto;
   keys_proto.set_name("keys_tensor");
   keys_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  keys_proto.add_dims(1);
+  keys_proto.add_dims(key_data.size());
   for (const auto key : key_data) {
     keys_proto.add_int64_data(key);
   }
@@ -290,11 +278,18 @@ TEST(LabelEncoder, Int64toStringOpset4) {
   ONNX_NAMESPACE::TensorProto values_proto;
   values_proto.set_name("values_tensor");
   values_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
-  values_proto.add_dims(1);
+  values_proto.add_dims(value_data.size());
   for (const auto& value : value_data) {
     values_proto.add_string_data(value);
   }
   test.AddAttribute("values_tensor", values_proto);
+
+  ONNX_NAMESPACE::TensorProto default_proto;
+  default_proto.set_name("default_tensor");
+  default_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  default_proto.add_dims(1);
+  default_proto.add_string_data("_Unused");
+  test.AddAttribute("default_tensor", default_proto);
 
   test.AddInput<int64_t>("X", dims, input);
   test.AddOutput<std::string>("Y", dims, output);
@@ -315,7 +310,7 @@ TEST(LabelEncoder, StringToFloatOpset4) {
   ONNX_NAMESPACE::TensorProto keys_proto;
   keys_proto.set_name("keys_tensor");
   keys_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
-  keys_proto.add_dims(1);
+  keys_proto.add_dims(key_data.size());
   for (const auto& key : key_data) {
     keys_proto.add_string_data(key);
   }
@@ -324,12 +319,18 @@ TEST(LabelEncoder, StringToFloatOpset4) {
   ONNX_NAMESPACE::TensorProto values_proto;
   values_proto.set_name("values_tensor");
   values_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  values_proto.add_dims(1);
+  values_proto.add_dims(value_data.size());
   for (const auto& value : value_data) {
     values_proto.add_float_data(value);
   }
   test.AddAttribute("values_tensor", values_proto);
 
+  ONNX_NAMESPACE::TensorProto default_proto;
+  default_proto.set_name("default_tensor");
+  default_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  default_proto.add_dims(1);
+  default_proto.add_float_data(-0.0f);
+  test.AddAttribute("default_tensor", default_proto);
   test.AddInput<std::string>("X", dims, input);
   test.AddOutput<float>("Y", dims, output);
 
@@ -349,7 +350,7 @@ TEST(LabelEncoder, TensorBasedAttributesOpset4) {
   ONNX_NAMESPACE::TensorProto keys_proto;
   keys_proto.set_name("keys_tensor");
   keys_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  keys_proto.add_dims(1);
+  keys_proto.add_dims(key_data.size());
   for (const auto key : key_data) {
     keys_proto.add_int64_data(key);
   }
@@ -358,7 +359,7 @@ TEST(LabelEncoder, TensorBasedAttributesOpset4) {
   ONNX_NAMESPACE::TensorProto values_proto;
   values_proto.set_name("values_tensor");
   values_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  values_proto.add_dims(1);
+  values_proto.add_dims(value_data.size());
   for (const auto value : value_data) {
     values_proto.add_int64_data(value);
   }
@@ -388,7 +389,13 @@ TEST(LabelEncoder, NaNsMappedTogetherOpset4) {
 
   test.AddAttribute("keys_floats", key_data);
   test.AddAttribute("values_strings", value_data);
-  test.AddAttribute("default_string", "onnxruntime");
+
+  ONNX_NAMESPACE::TensorProto default_proto;
+  default_proto.set_name("default_tensor");
+  default_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  default_proto.add_dims(1);
+  default_proto.add_string_data("onnxruntime");
+  test.AddAttribute("default_tensor", default_proto);
 
   test.AddInput<float>("X", dims, input);
   test.AddOutput<std::string>("Y", dims, output);

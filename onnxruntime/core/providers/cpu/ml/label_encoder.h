@@ -54,19 +54,19 @@ class LabelEncoder_2 final : public OpKernel {
     std::vector<TKey> keys;
     std::vector<TValue> values;
 
-    ORT_THROW_IF_ERROR(info.GetAttrs<TKey>(_key_field_name, keys));
-    ORT_THROW_IF_ERROR(info.GetAttrs<TValue>(_value_field_name, values));
+    ORT_THROW_IF_ERROR(info.GetAttrs<TKey>(key_field_name_, keys));
+    ORT_THROW_IF_ERROR(info.GetAttrs<TValue>(value_field_name_, values));
 
     auto num_keys = keys.size();
     auto num_values = values.size();
     ORT_ENFORCE(num_keys == num_values,
-                "The ", _key_field_name, " and ", _value_field_name, " attribtues in LabelEncoder ",
+                "The ", key_field_name_, " and ", value_field_name_, " attribtues in LabelEncoder ",
                 "(name: ", info.node().Name(), ") must have the same length. ",
                 "However, the number of key is ", num_keys, " and the number of ",
                 "values is ", num_values, ".");
-    _map.reserve(num_keys);
+    map_.reserve(num_keys);
     for (size_t i = 0; i < num_keys; ++i)
-      _map.emplace(keys[i], values[i]);
+      map_.emplace(keys[i], values[i]);
   }
 
   Status Compute(OpKernelContext* context) const override {
@@ -79,8 +79,8 @@ class LabelEncoder_2 final : public OpKernel {
     auto input_iter = input.begin();
     auto output_iter = output.begin();
     while (input_iter != input.end()) {
-      const auto found = _map.find(*input_iter);
-      *output_iter = found == _map.end() ? _default_value : found->second;
+      const auto found = map_.find(*input_iter);
+      *output_iter = found == map_.end() ? default_value_ : found->second;
       output_iter++;
       input_iter++;
     }
@@ -89,19 +89,19 @@ class LabelEncoder_2 final : public OpKernel {
 
  private:
   // Specialize this method to set attribute names. For example, if keys' type
-  // is 64-bit integer, _key_field_name should be "keys_int64s". Field names
+  // is 64-bit integer, key_field_name_ should be "keys_int64s". Field names
   // for other types can be found in ONNX spec.
   void InitializeSomeFields(const OpKernelInfo& info);
 
   // A collection of key-value pairs. Each (a_key, a_value) pair
   // means that the "a_key" in the input would be mapped to "a_value".
-  // If _map doesn't contain "a_key", we use _default_value as its output.
-  InlinedHashMap<TKey, TValue> _map;
-  TValue _default_value;
+  // If map_ doesn't contain "a_key", we use default_value_ as its output.
+  InlinedHashMap<TKey, TValue> map_;
+  TValue default_value_;
   // ONNX attribute name to load keys.
-  std::string _key_field_name;
+  std::string key_field_name_;
   // ONNX attribute name to load values.
-  std::string _value_field_name;
+  std::string value_field_name_;
 };
 
 template <typename T>
@@ -111,8 +111,15 @@ std::vector<T> GetAttribute(const OpKernelInfo& info, const std::string& name, c
   if (!result.IsOK()) {
     ONNX_NAMESPACE::TensorProto attr_tensor_proto;
     result = info.GetAttr(tensor_name, &attr_tensor_proto);
-    ORT_ENFORCE(result.IsOK(), "LabelEncoder is missing an attribute");
-    return utils::ParseData<T>(attr_tensor_proto);
+    ORT_ENFORCE(result.IsOK(), "LabelEncoder is missing attribute ", name);
+    size_t tensor_size = 1;
+    for (auto dim : attr_tensor_proto.dims()) {
+      tensor_size *= dim;
+    }
+    std::vector<T> out(tensor_size);
+    result = utils::UnpackTensor<T>(attr_tensor_proto, Path(), out.data(), tensor_size);
+    ORT_ENFORCE(result.IsOK(), "LabelEncoder could not unpack tensor attribute ", name);
+    return out;
   }
   return attrs;
 }
@@ -122,9 +129,10 @@ T GetDefault(const OpKernelInfo& info, const std::string& attr_name, const T& ba
   ONNX_NAMESPACE::TensorProto attr_tensor_proto;
   auto result = info.GetAttr("default_tensor", &attr_tensor_proto);
   if (result.IsOK() && utils::HasDataType(attr_tensor_proto)) {
-    auto default_value = utils::ParseData<T>(attr_tensor_proto);
-    ORT_ENFORCE(default_value.size() == 1, "default_tensor must have exactly one element");
-    return default_value[0];
+    T default_value;
+    result = utils::UnpackTensor<T>(attr_tensor_proto, Path(), &default_value, 1);
+    ORT_ENFORCE(result.IsOK(), "LabelEncoder could not unpack default tensor ", attr_name);
+    return default_value;
   } else {
     T default_value;
     result = info.GetAttr<T>(attr_name, &default_value);
@@ -141,11 +149,11 @@ class LabelEncoder_4 final : public OpKernel {
  public:
   LabelEncoder_4(const OpKernelInfo& kernel_info) : OpKernel(kernel_info) {
     InitializeAttrFields(kernel_info);
-    auto keys = GetAttribute<TKey>(kernel_info, _key_field_name, "keys_tensor");
-    auto values = GetAttribute<TValue>(kernel_info, _value_field_name, "values_tensor");
+    auto keys = GetAttribute<TKey>(kernel_info, key_field_name_, "keys_tensor");
+    auto values = GetAttribute<TValue>(kernel_info, value_field_name_, "values_tensor");
     ORT_ENFORCE(keys.size() == values.size(), "Keys and values must have the same length.");
     for (size_t i = 0; i < keys.size(); ++i) {
-      _map.emplace(keys[i], values[i]);
+      map_.emplace(keys[i], values[i]);
     }
   }
   Status Compute(OpKernelContext* context) const override {
@@ -158,8 +166,8 @@ class LabelEncoder_4 final : public OpKernel {
     auto input_iter = input.begin();
     auto output_iter = output.begin();
     while (input_iter != input.end()) {
-      const auto found = _map.find(*input_iter);
-      *output_iter = found == _map.end() ? _default_value : found->second;
+      const auto found = map_.find(*input_iter);
+      *output_iter = found == map_.end() ? default_value_ : found->second;
       output_iter++;
       input_iter++;
     }
@@ -168,10 +176,10 @@ class LabelEncoder_4 final : public OpKernel {
 
  private:
   void InitializeAttrFields(const OpKernelInfo& kernel_info);
-  InlinedHashMapNaNSensitive<TKey, TValue> _map;
-  TValue _default_value;
-  std::string _key_field_name;
-  std::string _value_field_name;
+  InlinedHashMapNaNSensitive<TKey, TValue> map_;
+  TValue default_value_;
+  std::string key_field_name_;
+  std::string value_field_name_;
 };
 
 }  // namespace ml
