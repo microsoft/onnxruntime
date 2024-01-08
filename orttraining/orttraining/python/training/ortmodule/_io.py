@@ -374,14 +374,16 @@ def parse_inputs_for_onnx_export(
                 name=name,
             )
 
+        raise TypeError(f"ORTModule does not support input type {type(value)} for input {name}")
+
     visited_input_names: List[str] = []
 
     onnx_graph_input_names: List[str] = []
     dynamic_axes: Dict[str, Dict[int, str]] = {}
     input_names_require_grad: List[str] = []
     input_shape: List[List[int]] = []
-    input_arg_schema: Dict[str, ORTModelInputOutputSchemaType] = OrderedDict()
-    input_kwarg_schema: Dict[str, ORTModelInputOutputSchemaType] = OrderedDict()
+    input_arg_schema: ORTModelInputOutputSchemaType = []
+    input_kwarg_schema: ORTModelInputOutputSchemaType = OrderedDict()
     data_accessors: Dict[str, Callable] = OrderedDict()
     num_positional_args: int = 0
 
@@ -417,7 +419,7 @@ def parse_inputs_for_onnx_export(
                 inp = args[args_i]
                 schema = _add_input(name, inp, onnx_graph_input_names, partial(_arg_access_with_index_func, args_i))
                 if not isinstance(schema, SkipRetValue):
-                    input_arg_schema[name] = schema
+                    input_arg_schema.append(schema)
         elif (
             input_parameter.kind == inspect.Parameter.POSITIONAL_ONLY
             or input_parameter.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
@@ -428,22 +430,19 @@ def parse_inputs_for_onnx_export(
             inp = None
             input_idx += var_positional_idx  # noqa: PLW2901
             access_func = None
-            schema_to_write = None
             if input_idx < len(args) and args[input_idx] is not None:
                 inp = args[input_idx]
                 num_positional_args += 1
                 access_func = partial(_arg_access_with_index_func, input_idx)
-                schema_to_write = input_arg_schema
+                schema = _add_input(name, inp, onnx_graph_input_names, access_func)
+                if not isinstance(schema, SkipRetValue):
+                    input_arg_schema.append(schema)
             elif name in kwargs and kwargs[name] is not None:
                 inp = kwargs[name]
                 access_func = partial(_kwarg_access_with_name_func, name)
-                schema_to_write = input_kwarg_schema
-            else:
-                continue
-
-            schema = _add_input(name, inp, onnx_graph_input_names, access_func)
-            if not isinstance(schema, SkipRetValue):
-                schema_to_write[name] = schema
+                schema = _add_input(name, inp, onnx_graph_input_names, access_func)
+                if not isinstance(schema, SkipRetValue):
+                    input_kwarg_schema[name] = schema
 
         elif input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
             # **kwargs is always the last argument of forward()

@@ -329,6 +329,7 @@ class GraphTransitionManager:
                 data_accessor(copied_args, copied_kwargs)
                 for _, data_accessor in cur_model_info_for_export.onnx_graph_input_data_accessor.items()
             ]
+
             self._flatten_module._device = self._device
             self._flatten_module._args_schema = cur_model_info_for_export.onnx_graph_input_arg_schema
             self._flatten_module._kwargs_schema = cur_model_info_for_export.onnx_graph_input_kwarg_schema
@@ -345,7 +346,6 @@ class GraphTransitionManager:
                 flattened_module=self._flatten_module,
                 model_info_for_export=cur_model_info_for_export,
                 flatten_module_inputs=flatten_inputs,
-                run_symbolic_shape_infer=self._runtime_options.run_symbolic_shape_infer,
                 deepcopy_before_model_export=self._runtime_options.deepcopy_before_model_export,
                 device=self._device,
                 ortmodule_cache_dir=self._runtime_options.ortmodule_cache_dir,
@@ -429,6 +429,7 @@ class GraphTransitionManager:
                 model_info_for_export=self._model_info_for_export,
                 enable_custom_autograd_function=self._runtime_options.enable_custom_autograd_function,
                 enable_zero_stage3_support=self._runtime_options.enable_zero_stage3_support,
+                run_symbolic_shape_infer=self._runtime_options.run_symbolic_shape_infer,
                 stage3_param_handle=self,
                 logger=self._logger,
             )
@@ -531,6 +532,7 @@ class GraphTransitionManager:
         model_info_for_export: _io.ModelInfoForExport,
         enable_custom_autograd_function: bool,
         enable_zero_stage3_support: bool,
+        run_symbolic_shape_infer: bool,
         stage3_param_handle: type,
         logger: logging.Logger,
     ):
@@ -541,12 +543,17 @@ class GraphTransitionManager:
         # TODO(): Do pre-grad graph modification as needed, for memory-efficient gradient management, etc.
         post_processed_model = copy.deepcopy(exported_model_info.exported_model)
 
+        if enable_custom_autograd_function:
+            from ._custom_autograd_function_exporter import post_process_enabling_autograd_function
+
+            post_processed_model = post_process_enabling_autograd_function(post_processed_model)
+
+        if run_symbolic_shape_infer:
+            # MUST call symbolic shape inference after custom autograd function post-processing is done,
+            # Otherwise, there is no ctx output for PythonOp.
+            post_processed_model = GraphTransitionManager._infer_shapes(post_processed_model)
+
         if export_mode == torch.onnx.TrainingMode.TRAINING:
-            if enable_custom_autograd_function:
-                from ._custom_autograd_function_exporter import post_process_enabling_autograd_function
-
-                post_processed_model = post_process_enabling_autograd_function(post_processed_model)
-
             if enable_zero_stage3_support:
                 from ._zero_stage3_compatibility import post_processing_enable_zero_stage3_compat
 
@@ -575,6 +582,20 @@ class GraphTransitionManager:
         return post_export_processed_model_info
 
     @staticmethod
+    def _infer_shapes(model: onnx.ModelProto) -> onnx.ModelProto:
+        """Infer shapes for the exported model."""
+        # Record random states here and restore later in case any of them gets changed during the export,
+        # e.g., some sympy functions in symbolic_shape_infer will change Python's random state.
+        random_states = _utils.get_random_states()
+
+        model = SymbolicShapeInference.infer_shapes(model, auto_merge=True, guess_output_rank=True)
+
+        # Restore the recorded random states
+        _utils.set_random_states(random_states)
+
+        return model
+
+    @staticmethod
     @TrackTimeForStaticFunction(ORTModuleInitPhase.EXPORT)
     @SuppressLogs(ORTModuleInitPhase.EXPORT, is_ort_filter=False)
     def _export_model(
@@ -582,7 +603,6 @@ class GraphTransitionManager:
         flattened_module: torch.nn.Module,
         model_info_for_export: _io.ModelInfoForExport,
         flatten_module_inputs: Sequence[ORTModelInputOutputType],
-        run_symbolic_shape_infer: bool,
         deepcopy_before_model_export: bool,
         device: torch.device,
         ortmodule_cache_dir: str,
@@ -594,10 +614,6 @@ class GraphTransitionManager:
         time_tracker: TimeTracker,
         logger: logging.Logger,
     ) -> tuple[onnx.ModelProto, ORTModelInputOutputSchemaType, list[str], list[str]]:
-        # Record random states here and restore later in case any of them gets changed during the export,
-        # e.g., some sympy functions in symbolic_shape_infer will change Python's random state.
-        random_states = _utils.get_random_states()
-
         torch_exporter_verbose_log = debug_options.log_level < LogLevel.WARNING
         from onnxruntime.training.utils.hooks._subscriber_manager import no_increase_global_step
 
@@ -624,14 +640,6 @@ class GraphTransitionManager:
             for input in exported_model.graph.input
             if input.name in parameter_names or input.name in model_info_for_export.onnx_graph_input_names_require_grad
         ]
-
-        if run_symbolic_shape_infer:
-            exported_model = SymbolicShapeInference.infer_shapes(
-                exported_model, auto_merge=True, guess_output_rank=True
-            )
-
-        # Restore the recorded random states
-        _utils.set_random_states(random_states)
 
         return exported_model, module_output_schema, onnx_graph_input_names, onnx_graph_input_names_require_grad
 
