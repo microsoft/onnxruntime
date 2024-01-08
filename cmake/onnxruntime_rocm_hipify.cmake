@@ -44,6 +44,7 @@ set(contrib_ops_excluded_files
   "bert/packed_multihead_attention.cc"
   "bert/packed_multihead_attention_impl.h"
   "bert/packed_multihead_attention_impl.cu"
+  "cutlass_extensions/*"
   "diffusion/group_norm.cc"
   "diffusion/group_norm_impl.cu"
   "diffusion/group_norm_impl.h"
