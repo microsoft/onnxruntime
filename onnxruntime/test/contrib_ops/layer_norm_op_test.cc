@@ -7,6 +7,7 @@
 #include "core/session/inference_session.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "test/providers/provider_test_utils.h"
@@ -76,6 +77,13 @@ TEST(LayerNormTest, LayerNorm) {
 }
 
 TEST(LayerNormTest, LayerNorm_BFloat16Input) {
+  #ifdef USE_CUDA
+    int min_cuda_architecture = 530;
+    if (!HasCudaEnvironment(min_cuda_architecture)) {
+      LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+      return;
+    }
+  #endif 
   OpTester test("LayerNormalization");
   test.AddAttribute<float>("epsilon", 1e-05f);
 
