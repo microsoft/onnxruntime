@@ -2426,286 +2426,6 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   return result;
 }
 
-Status TensorrtExecutionProvider::CreateNodeComputeFromPrecompiledEngine(const GraphViewer& graph_body_viewer,
-                                                                         const Node& fused_node,
-                                                                         std::unordered_map<std::string, size_t>& input_map,
-                                                                         std::unordered_map<std::string, size_t>& output_map,
-                                                                         std::vector<NodeComputeInfo>& node_compute_funcs) {
-  std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
-  std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
-  std::unordered_map<std::string, size_t> input_indexes;   // TRT engine input name -> ORT kernel context input index
-  std::unordered_map<std::string, size_t> output_indexes;  // TRT engine output name -> ORT kernel context output index
-  std::unordered_map<std::string, size_t> output_types;    // TRT engine output name -> ORT output tensor type
-
-  // Get engine binary data and deserialize it
-  auto trt_cache_model_handler = TensorRTCacheModelHandler(&trt_engine, runtime_.get(), device_id_);
-  auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer);
-  if (status != Status::OK()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
-  }
-
-  // Build context
-  //
-  // Note: Creating an execution context from an engine is thread safe per TRT doc
-  // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-  if (context_memory_sharing_enable_) {
-    size_t mem_size = trt_engine->getDeviceMemorySize();
-    if (mem_size > max_ctx_mem_size_) {
-      max_ctx_mem_size_ = mem_size;
-    }
-    trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
-  } else {
-    trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
-  }
-  if (!trt_context) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                           "TensorRT EP could not build execution context for fused node: " + fused_node.Name());
-  }
-
-  // Create input/output to index maps
-  for (int32_t i = 0; i < trt_engine->getNbIOTensors(); ++i) {
-    auto const& name = trt_engine->getIOTensorName(i);
-    auto const& mode = trt_engine->getTensorIOMode(name);
-    if (mode == nvinfer1::TensorIOMode::kINPUT) {
-      const auto& iter = input_map.find(name);
-      if (iter != input_map.end()) {
-        input_indexes[name] = iter->second;
-      }
-    } else {
-      const auto& iter = output_map.find(name);
-      if (iter != output_map.end()) {
-        output_indexes[name] = iter->second;
-      }
-    }
-  }
-
-  // Create output to type map
-  for (auto node_arg : graph_body_viewer.GetOutputs()) {
-    auto output_name = node_arg->Name();
-    auto& type = node_arg->TypeAsProto()->tensor_type();
-    output_types[output_name] = type.elem_type();
-  }
-
-  // Save TRT engine, TRT context and input/output info to map
-  engines_.emplace(fused_node.Name(), std::move(trt_engine));
-  contexts_.emplace(fused_node.Name(), std::move(trt_context));
-  input_info_[fused_node.Name()].push_back(input_indexes);
-  output_info_[fused_node.Name()].push_back(output_indexes);
-  output_info_[fused_node.Name()].push_back(output_types);
-
-  // Create function state
-  // TODO: remove default capture
-  NodeComputeInfo compute_info;
-  compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
-    std::unique_ptr<TensorrtShortFuncState> p = std::make_unique<TensorrtShortFuncState>();
-    *p = {context->allocate_func,
-          context->release_func,
-          context->allocator_handle,
-          &engines_[context->node_name],
-          &contexts_[context->node_name],
-          input_info_[context->node_name],
-          output_info_[context->node_name],
-          sync_stream_after_enqueue_,
-          dds_output_allocator_map_[context->node_name],
-          context_memory_sharing_enable_,
-          &max_ctx_mem_size_,
-          &tensorrt_mu_};
-    *state = p.release();
-    return 0;
-  };
-
-  // Release function state
-  compute_info.release_state_func = [](FunctionState state) {
-    delete static_cast<TensorrtShortFuncState*>(state);
-  };
-
-  // Create compute function
-  compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
-    Ort::KernelContext ctx(context);
-
-    TensorrtShortFuncState* trt_state = reinterpret_cast<TensorrtShortFuncState*>(state);
-
-    // The whole compute_function should be considered the critical section.
-    // More details here, https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-    std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
-
-    const std::unordered_map<std::string, size_t>& input_indexes = (trt_state->input_info)[0];
-    const std::unordered_map<std::string, size_t>& output_indexes = (trt_state->output_info)[0];
-    const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
-    bool sync_stream_after_enqueue = trt_state->sync_stream_after_enqueue;
-    auto& dds_output_allocator_map = trt_state->dds_output_allocator_map;
-    auto trt_engine = trt_state->engine->get();
-    auto trt_context = trt_state->context->get();
-    auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
-    // int num_inputs = static_cast<int>(input_indexes.size());
-    int num_outputs = static_cast<int>(output_indexes.size());
-
-    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id_), device_id_);
-    if (alloc_ == nullptr) {
-      Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc_));
-    }
-    OrtAllocator* alloc = alloc_;
-
-    void* cuda_stream;
-    Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
-    cudaStream_t stream = static_cast<cudaStream_t>(cuda_stream);
-
-    // Get input and output binding names
-    int total_bindings = trt_engine->getNbIOTensors();
-    std::vector<char const*> input_binding_names, output_binding_names;
-    for (int i = 0, end = total_bindings; i < end; ++i) {
-      auto const& name = trt_engine->getIOTensorName(i);
-      auto const& mode = trt_engine->getTensorIOMode(name);
-      if (mode == nvinfer1::TensorIOMode::kINPUT) {
-        input_binding_names.push_back(name);
-      } else {
-        output_binding_names.push_back(name);
-      }
-    }
-
-    /*
-     * Set input shapes and bind input buffers
-     */
-    std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
-    for (size_t i = 0, end = input_binding_names.size(); i < end; ++i) {
-      char const* input_name = input_binding_names[i];
-
-      size_t input_index = 0;
-      const auto iter = input_indexes.find(input_name);
-      if (iter != input_indexes.end()) {
-        input_index = iter->second;
-      }
-
-      // Only use for "shape tensor" input
-      std::vector<int32_t> shape_values;
-
-      Status status = BindContextInput(ctx, trt_engine, trt_context, input_name, input_index, shape_values, scratch_buffers, alloc, stream);
-      if (status != Status::OK()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
-      }
-    }
-
-    /*
-     * Set output shapes and bind output buffers
-     */
-    std::unordered_map<char const*, void*> buffers;
-    buffers.reserve(num_outputs);
-    using OutputOrtValue = Ort::UnownedValue;
-    std::unordered_map<size_t, OutputOrtValue> output_tensors;
-    output_tensors.reserve(num_outputs);
-    std::unordered_map<size_t, int> output_dim_sizes;
-    output_dim_sizes.reserve(num_outputs);
-    std::unordered_set<char const*> dds_output_set;
-
-    for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
-      char const* output_name = output_binding_names[i];
-
-      size_t output_index = 0;
-      const auto& index_iter = output_indexes.find(output_name);
-      if (index_iter != output_indexes.end()) {
-        output_index = index_iter->second;
-      }
-
-      size_t output_type = 0;
-      const auto type_iter = output_types.find(output_name);
-      if (type_iter != output_types.end()) {
-        output_type = type_iter->second;
-      }
-
-      Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i, output_tensors, output_dim_sizes,
-                                        dds_output_set, dds_output_allocator_map, scratch_buffers, alloc, buffers);
-      if (status != Status::OK()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
-      }
-    }
-
-    // Set execution context memory
-    if (trt_state->context_memory_sharing_enable) {
-      size_t mem_size = trt_engine->getDeviceMemorySize();
-      if (mem_size > *max_context_mem_size_ptr) {
-        *max_context_mem_size_ptr = mem_size;
-      }
-      trt_context->setDeviceMemory(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr).get());
-    }
-
-    // Start CUDA graph capture.
-    // Note: The reason we don't put graph capture in OnRunStart() like CUDA EP does is because
-    // current ORT TRT doesn't get cuda stream until compute time and graph capture requires cuda stream.
-    if (cuda_graph_enable_ && IsGraphCaptureAllowed() && !IsGraphCaptured()) {
-      LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
-      cuda_graph_.SetStream(stream);
-      CaptureBegin();
-    }
-
-    // Run TRT inference
-    if (!trt_context->enqueueV3(stream)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
-    }
-
-    if (sync_stream_after_enqueue || dds_output_set.size() > 0) {
-      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
-    }
-
-    // Assign TRT output back to ORT output
-    // (1) Bind TRT DDS output to ORT kernel context output. (It needs to wait until enqueueV3 is finished)
-    // (2) Cast TRT INT32 output to ORT INT64 output or TRT double output to float output
-    for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
-      char const* output_name = output_binding_names[i];
-
-      size_t output_type = 0;
-      const auto& iter = output_types.find(output_name);
-      if (iter != output_types.end()) {
-        output_type = iter->second;
-      }
-
-      if (dds_output_set.find(output_name) != dds_output_set.end()) {
-        size_t output_index = 0;
-        const auto& index_iter = output_indexes.find(output_name);
-        if (index_iter != output_indexes.end()) {
-          output_index = index_iter->second;
-        }
-        auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type);
-        if (status != Status::OK()) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
-        }
-      }
-
-      auto& output_tensor = output_tensors[i];
-      if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
-        auto output_tensor_ptr = output_tensor.GetTensorMutableData<int64_t>();
-        if (output_tensor_ptr != nullptr) {
-          cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
-        }
-      } else if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
-        auto output_tensor_ptr = output_tensor.GetTensorMutableData<double>();
-        if (output_tensor_ptr != nullptr) {
-          cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
-        }
-      }
-    }
-
-    // End CUDA graph capture.
-    // Note: One reason we don't put end of graph capture in OnRunEnd() like CUDA EP does is because of cuda stream mentioned in graph capture
-    // above, another reason is because OnRunEnd() is not synchronized with OnRunStart() and ExecuteGraph() per inference_session.cc.
-    // It's safe to start/end CUDA graph capture in compute_func() here since cuda graph object is maintained by a per thread basis.
-    if (cuda_graph_enable_ && !IsGraphCaptured()) {
-      if (IsGraphCaptureAllowed()) {
-        CaptureEnd();
-        // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
-        // so run the captured graph here to actually execute the work.
-        ORT_RETURN_IF_ERROR(ReplayGraph());
-      } else {
-        IncrementRegularRunCountBeforeGraphCapture();
-      }
-    }
-
-    return Status::OK();
-  };
-
-  node_compute_funcs.push_back(compute_info);
-  return Status::OK();
-}
-
 Status TensorrtExecutionProvider::CreateNodeComputeFromGraph(const GraphViewer& graph_body_viewer,
                                                              const Node& fused_node,
                                                              std::unordered_map<std::string, size_t>& input_map,
@@ -3589,6 +3309,286 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromGraph(const GraphViewer& 
       }
 
       auto status = BindContextInput(ctx, trt_engine, trt_context, input_name, input_index, shape_values, scratch_buffers, alloc, stream);
+      if (status != Status::OK()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
+      }
+    }
+
+    /*
+     * Set output shapes and bind output buffers
+     */
+    std::unordered_map<char const*, void*> buffers;
+    buffers.reserve(num_outputs);
+    using OutputOrtValue = Ort::UnownedValue;
+    std::unordered_map<size_t, OutputOrtValue> output_tensors;
+    output_tensors.reserve(num_outputs);
+    std::unordered_map<size_t, int> output_dim_sizes;
+    output_dim_sizes.reserve(num_outputs);
+    std::unordered_set<char const*> dds_output_set;
+
+    for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
+      char const* output_name = output_binding_names[i];
+
+      size_t output_index = 0;
+      const auto& index_iter = output_indexes.find(output_name);
+      if (index_iter != output_indexes.end()) {
+        output_index = index_iter->second;
+      }
+
+      size_t output_type = 0;
+      const auto type_iter = output_types.find(output_name);
+      if (type_iter != output_types.end()) {
+        output_type = type_iter->second;
+      }
+
+      Status status = BindContextOutput(ctx, trt_context, output_name, output_index, output_type, i, output_tensors, output_dim_sizes,
+                                        dds_output_set, dds_output_allocator_map, scratch_buffers, alloc, buffers);
+      if (status != Status::OK()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
+      }
+    }
+
+    // Set execution context memory
+    if (trt_state->context_memory_sharing_enable) {
+      size_t mem_size = trt_engine->getDeviceMemorySize();
+      if (mem_size > *max_context_mem_size_ptr) {
+        *max_context_mem_size_ptr = mem_size;
+      }
+      trt_context->setDeviceMemory(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr).get());
+    }
+
+    // Start CUDA graph capture.
+    // Note: The reason we don't put graph capture in OnRunStart() like CUDA EP does is because
+    // current ORT TRT doesn't get cuda stream until compute time and graph capture requires cuda stream.
+    if (cuda_graph_enable_ && IsGraphCaptureAllowed() && !IsGraphCaptured()) {
+      LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
+      cuda_graph_.SetStream(stream);
+      CaptureBegin();
+    }
+
+    // Run TRT inference
+    if (!trt_context->enqueueV3(stream)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
+    }
+
+    if (sync_stream_after_enqueue || dds_output_set.size() > 0) {
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+    }
+
+    // Assign TRT output back to ORT output
+    // (1) Bind TRT DDS output to ORT kernel context output. (It needs to wait until enqueueV3 is finished)
+    // (2) Cast TRT INT32 output to ORT INT64 output or TRT double output to float output
+    for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
+      char const* output_name = output_binding_names[i];
+
+      size_t output_type = 0;
+      const auto& iter = output_types.find(output_name);
+      if (iter != output_types.end()) {
+        output_type = iter->second;
+      }
+
+      if (dds_output_set.find(output_name) != dds_output_set.end()) {
+        size_t output_index = 0;
+        const auto& index_iter = output_indexes.find(output_name);
+        if (index_iter != output_indexes.end()) {
+          output_index = index_iter->second;
+        }
+        auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type);
+        if (status != Status::OK()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
+        }
+      }
+
+      auto& output_tensor = output_tensors[i];
+      if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
+        auto output_tensor_ptr = output_tensor.GetTensorMutableData<int64_t>();
+        if (output_tensor_ptr != nullptr) {
+          cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
+        }
+      } else if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
+        auto output_tensor_ptr = output_tensor.GetTensorMutableData<double>();
+        if (output_tensor_ptr != nullptr) {
+          cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
+        }
+      }
+    }
+
+    // End CUDA graph capture.
+    // Note: One reason we don't put end of graph capture in OnRunEnd() like CUDA EP does is because of cuda stream mentioned in graph capture
+    // above, another reason is because OnRunEnd() is not synchronized with OnRunStart() and ExecuteGraph() per inference_session.cc.
+    // It's safe to start/end CUDA graph capture in compute_func() here since cuda graph object is maintained by a per thread basis.
+    if (cuda_graph_enable_ && !IsGraphCaptured()) {
+      if (IsGraphCaptureAllowed()) {
+        CaptureEnd();
+        // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
+        // so run the captured graph here to actually execute the work.
+        ORT_RETURN_IF_ERROR(ReplayGraph());
+      } else {
+        IncrementRegularRunCountBeforeGraphCapture();
+      }
+    }
+
+    return Status::OK();
+  };
+
+  node_compute_funcs.push_back(compute_info);
+  return Status::OK();
+}
+
+Status TensorrtExecutionProvider::CreateNodeComputeFromPrecompiledEngine(const GraphViewer& graph_body_viewer,
+                                                                         const Node& fused_node,
+                                                                         std::unordered_map<std::string, size_t>& input_map,
+                                                                         std::unordered_map<std::string, size_t>& output_map,
+                                                                         std::vector<NodeComputeInfo>& node_compute_funcs) {
+  std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
+  std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
+  std::unordered_map<std::string, size_t> input_indexes;   // TRT engine input name -> ORT kernel context input index
+  std::unordered_map<std::string, size_t> output_indexes;  // TRT engine output name -> ORT kernel context output index
+  std::unordered_map<std::string, size_t> output_types;    // TRT engine output name -> ORT output tensor type
+
+  // Get engine binary data and deserialize it
+  auto trt_cache_model_handler = TensorRTCacheModelHandler(&trt_engine, runtime_.get(), device_id_);
+  auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer);
+  if (status != Status::OK()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
+  }
+
+  // Build context
+  //
+  // Note: Creating an execution context from an engine is thread safe per TRT doc
+  // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
+  if (context_memory_sharing_enable_) {
+    size_t mem_size = trt_engine->getDeviceMemorySize();
+    if (mem_size > max_ctx_mem_size_) {
+      max_ctx_mem_size_ = mem_size;
+    }
+    trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
+  } else {
+    trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
+  }
+  if (!trt_context) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                           "TensorRT EP could not build execution context for fused node: " + fused_node.Name());
+  }
+
+  // Create input/output to index maps
+  for (int32_t i = 0; i < trt_engine->getNbIOTensors(); ++i) {
+    auto const& name = trt_engine->getIOTensorName(i);
+    auto const& mode = trt_engine->getTensorIOMode(name);
+    if (mode == nvinfer1::TensorIOMode::kINPUT) {
+      const auto& iter = input_map.find(name);
+      if (iter != input_map.end()) {
+        input_indexes[name] = iter->second;
+      }
+    } else {
+      const auto& iter = output_map.find(name);
+      if (iter != output_map.end()) {
+        output_indexes[name] = iter->second;
+      }
+    }
+  }
+
+  // Create output to type map
+  for (auto node_arg : graph_body_viewer.GetOutputs()) {
+    auto output_name = node_arg->Name();
+    auto& type = node_arg->TypeAsProto()->tensor_type();
+    output_types[output_name] = type.elem_type();
+  }
+
+  // Save TRT engine, TRT context and input/output info to map
+  engines_.emplace(fused_node.Name(), std::move(trt_engine));
+  contexts_.emplace(fused_node.Name(), std::move(trt_context));
+  input_info_[fused_node.Name()].push_back(input_indexes);
+  output_info_[fused_node.Name()].push_back(output_indexes);
+  output_info_[fused_node.Name()].push_back(output_types);
+
+  // Create function state
+  // TODO: remove default capture
+  NodeComputeInfo compute_info;
+  compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
+    std::unique_ptr<TensorrtShortFuncState> p = std::make_unique<TensorrtShortFuncState>();
+    *p = {context->allocate_func,
+          context->release_func,
+          context->allocator_handle,
+          &engines_[context->node_name],
+          &contexts_[context->node_name],
+          input_info_[context->node_name],
+          output_info_[context->node_name],
+          sync_stream_after_enqueue_,
+          dds_output_allocator_map_[context->node_name],
+          context_memory_sharing_enable_,
+          &max_ctx_mem_size_,
+          &tensorrt_mu_};
+    *state = p.release();
+    return 0;
+  };
+
+  // Release function state
+  compute_info.release_state_func = [](FunctionState state) {
+    delete static_cast<TensorrtShortFuncState*>(state);
+  };
+
+  // Create compute function
+  compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
+    Ort::KernelContext ctx(context);
+
+    TensorrtShortFuncState* trt_state = reinterpret_cast<TensorrtShortFuncState*>(state);
+
+    // The whole compute_function should be considered the critical section.
+    // More details here, https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
+    std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
+
+    const std::unordered_map<std::string, size_t>& input_indexes = (trt_state->input_info)[0];
+    const std::unordered_map<std::string, size_t>& output_indexes = (trt_state->output_info)[0];
+    const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
+    bool sync_stream_after_enqueue = trt_state->sync_stream_after_enqueue;
+    auto& dds_output_allocator_map = trt_state->dds_output_allocator_map;
+    auto trt_engine = trt_state->engine->get();
+    auto trt_context = trt_state->context->get();
+    auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
+    // int num_inputs = static_cast<int>(input_indexes.size());
+    int num_outputs = static_cast<int>(output_indexes.size());
+
+    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id_), device_id_);
+    if (alloc_ == nullptr) {
+      Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc_));
+    }
+    OrtAllocator* alloc = alloc_;
+
+    void* cuda_stream;
+    Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
+    cudaStream_t stream = static_cast<cudaStream_t>(cuda_stream);
+
+    // Get input and output binding names
+    int total_bindings = trt_engine->getNbIOTensors();
+    std::vector<char const*> input_binding_names, output_binding_names;
+    for (int i = 0, end = total_bindings; i < end; ++i) {
+      auto const& name = trt_engine->getIOTensorName(i);
+      auto const& mode = trt_engine->getTensorIOMode(name);
+      if (mode == nvinfer1::TensorIOMode::kINPUT) {
+        input_binding_names.push_back(name);
+      } else {
+        output_binding_names.push_back(name);
+      }
+    }
+
+    /*
+     * Set input shapes and bind input buffers
+     */
+    std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
+    for (size_t i = 0, end = input_binding_names.size(); i < end; ++i) {
+      char const* input_name = input_binding_names[i];
+
+      size_t input_index = 0;
+      const auto iter = input_indexes.find(input_name);
+      if (iter != input_indexes.end()) {
+        input_index = iter->second;
+      }
+
+      // Only use for "shape tensor" input
+      std::vector<int32_t> shape_values;
+
+      Status status = BindContextInput(ctx, trt_engine, trt_context, input_name, input_index, shape_values, scratch_buffers, alloc, stream);
       if (status != Status::OK()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
       }
