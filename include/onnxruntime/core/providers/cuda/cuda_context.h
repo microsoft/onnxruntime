@@ -80,13 +80,18 @@ struct CudaContext : public CustomOpContext {
 
   template<typename T>
   T FetchResource(const OrtKernelContext& kernel_ctx, CudaResource resource_type) {
+    if (sizeof(T) > sizeof(void*)) {
+      ORT_CXX_API_THROW("void* is not large enough to hold resource type: " + std::to_string(resource_type), OrtErrorCode::ORT_INVALID_ARGUMENT);
+    }
     const auto& ort_api = Ort::GetApi();
     void* resource = {};
     OrtStatus* status = ort_api.KernelContext_GetResource(&kernel_ctx, ORT_CUDA_RESOUCE_VERSION, resource_type, &resource);
     if (status) {
       ORT_CXX_API_THROW("Failed to fetch cuda ep resource, resouce type: " + std::to_string(resource_type), OrtErrorCode::ORT_RUNTIME_EXCEPTION);
     }
-    return static_cast<T>(*reinterpret_cast<T*>(&resource));
+    T t = {};
+    memcpy(&t, &resource, sizeof(T));
+    return t;
   }
 
   void* AllocDeferredCpuMem(size_t size) const {

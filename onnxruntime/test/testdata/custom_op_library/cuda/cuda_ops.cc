@@ -31,7 +31,7 @@ void KernelOne(const Ort::Custom::CudaContext& cuda_ctx,
   CUSTOM_ENFORCE(cuda_ctx.cuda_stream, "failed to fetch cuda stream");
   CUSTOM_ENFORCE(cuda_ctx.cudnn_handle, "failed to fetch cudnn handle");
   CUSTOM_ENFORCE(cuda_ctx.cublas_handle, "failed to fetch cublas handle");
-  CUSTOM_ENFORCE(cuda_ctx.gpu_mem_limit == std::numeric_limits<size_t>::max(), "");
+  CUSTOM_ENFORCE(cuda_ctx.gpu_mem_limit == std::numeric_limits<size_t>::max(), "gpu_mem_limit mismatch");
   void* deferred_cpu_mem = cuda_ctx.AllocDeferredCpuMem(sizeof(int32_t));
   CUSTOM_ENFORCE(deferred_cpu_mem, "failed to allocate deferred cpu allocator");
   cuda_ctx.FreeDeferredCpuMem(deferred_cpu_mem);
