@@ -53,7 +53,7 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
     // Get all registered TRT plugins from registry
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Getting all registered TRT plugins from TRT plugin registry ...";
     TensorrtLogger trt_logger = GetTensorrtLogger();
-    initLibNvInferPlugins(&trt_logger, "");
+//    initLibNvInferPlugins(&trt_logger, "");
 
     int num_plugin_creator = 0;
     auto plugin_creators = getPluginRegistry()->getPluginCreatorList(&num_plugin_creator);

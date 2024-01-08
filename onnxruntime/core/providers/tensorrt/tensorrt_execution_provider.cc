@@ -13,7 +13,7 @@
 #include "tensorrt_execution_provider_custom_ops.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
-#include "core/providers/cuda/gpu_data_transfer.h"
+#include "core/providers/cuda/common/gpu_data_transfer.h"
 #include "core/session/allocator_adapters.h"
 #include "cuda_runtime_api.h"
 #include "core/common/gsl.h"
@@ -24,7 +24,7 @@
 #include <memory>
 #include <filesystem>
 // TODO: find a better way to share this
-#include "core/providers/cuda/cuda_stream_handle.h"
+#include "core/providers/cuda/common/cuda_stream_handle.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -257,35 +257,35 @@ void Impl_Cast(
 }
 }  // namespace cuda
 
-template <>
-Status CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg, const char* file, const int line) {
-  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg, file, line);
-}
+//template <>
+//Status CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg, const char* file, const int line) {
+//  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg, file, line);
+//}
+//
+//template <>
+//void CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg, const char* file, const int line) {
+//  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg, file, line);
+//}
 
-template <>
-void CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg, const char* file, const int line) {
-  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg, file, line);
-}
-
-template <>
-Status CudaCall<cublasStatus_t, false>(cublasStatus_t retCode, const char* exprString, const char* libName, cublasStatus_t successCode, const char* msg, const char* file, const int line) {
-  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg, file, line);
-}
-
-template <>
-void CudaCall<cublasStatus_t, true>(cublasStatus_t retCode, const char* exprString, const char* libName, cublasStatus_t successCode, const char* msg, const char* file, const int line) {
-  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg, file, line);
-}
-
-template <>
-Status CudaCall<cudnnStatus_t, false>(cudnnStatus_t retCode, const char* exprString, const char* libName, cudnnStatus_t successCode, const char* msg, const char* file, const int line) {
-  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg, file, line);
-}
-
-template <>
-void CudaCall<cudnnStatus_t, true>(cudnnStatus_t retCode, const char* exprString, const char* libName, cudnnStatus_t successCode, const char* msg, const char* file, const int line) {
-  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg, file, line);
-}
+//template <>
+//Status CudaCall<cublasStatus_t, false>(cublasStatus_t retCode, const char* exprString, const char* libName, cublasStatus_t successCode, const char* msg, const char* file, const int line) {
+//  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg, file, line);
+//}
+//
+//template <>
+//void CudaCall<cublasStatus_t, true>(cublasStatus_t retCode, const char* exprString, const char* libName, cublasStatus_t successCode, const char* msg, const char* file, const int line) {
+//  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg, file, line);
+//}
+//
+//template <>
+//Status CudaCall<cudnnStatus_t, false>(cudnnStatus_t retCode, const char* exprString, const char* libName, cudnnStatus_t successCode, const char* msg, const char* file, const int line) {
+//  return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg, file, line);
+//}
+//
+//template <>
+//void CudaCall<cudnnStatus_t, true>(cudnnStatus_t retCode, const char* exprString, const char* libName, cudnnStatus_t successCode, const char* msg, const char* file, const int line) {
+//  return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg, file, line);
+//}
 
 void* OutputAllocator::reallocateOutput(char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment) noexcept {
   // Some memory allocators return nullptr when allocating zero bytes, but TensorRT requires a non-null ptr
@@ -1177,20 +1177,20 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
 TensorrtExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, bool has_user_compute_stream, cudaStream_t stream) {
   if (has_user_compute_stream) {
     CUDA_CALL_THROW(cudaSetDevice(device_id));
-    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasCreate(&external_cublas_handle_)));
-    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasSetStream(external_cublas_handle_, stream)));
-    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnCreate(&external_cudnn_handle_)));
-    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnSetStream(external_cudnn_handle_, stream)));
+//    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasCreate(&external_cublas_handle_)));
+//    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasSetStream(external_cublas_handle_, stream)));
+//    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnCreate(&external_cudnn_handle_)));
+//    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnSetStream(external_cudnn_handle_, stream)));
   }
 }
 
 TensorrtExecutionProvider::PerThreadContext::~PerThreadContext() {
-  if (external_cublas_handle_ != nullptr) {
-    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasDestroy(external_cublas_handle_)));
-  }
-  if (external_cudnn_handle_ != nullptr) {
-    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(external_cudnn_handle_)));
-  }
+//  if (external_cublas_handle_ != nullptr) {
+//    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasDestroy(external_cublas_handle_)));
+//  }
+//  if (external_cudnn_handle_ != nullptr) {
+//    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(external_cudnn_handle_)));
+//  }
   trt_context_map_.clear();
 }
 
@@ -1318,10 +1318,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   if (info.has_user_compute_stream) {
     external_stream_ = true;
     stream_ = static_cast<cudaStream_t>(info.user_compute_stream);
-    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasCreate(&external_cublas_handle_)));
-    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasSetStream(external_cublas_handle_, stream_)));
-    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnCreate(&external_cudnn_handle_)));
-    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnSetStream(external_cudnn_handle_, stream_)));
+//    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasCreate(&external_cublas_handle_)));
+//    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasSetStream(external_cublas_handle_, stream_)));
+//    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnCreate(&external_cudnn_handle_)));
+//    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnSetStream(external_cudnn_handle_, stream_)));
   }
 
   std::string profile_min_shapes, profile_max_shapes, profile_opt_shapes;
@@ -1679,12 +1679,10 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
       ORT_IGNORE_RETURN_VALUE(cache->erase(this));
     }
   }
-
-  if (external_stream_) {
-    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasDestroy(external_cublas_handle_)));
-    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(external_cudnn_handle_)));
-  }
-
+//  if (external_stream_) {
+//    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasDestroy(external_cublas_handle_)));
+//    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(external_cudnn_handle_)));
+//  }
   if (!external_stream_ && stream_) {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
@@ -3472,8 +3470,9 @@ void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegis
                             true /* release_cpu_buffer_on_cuda_stream */,
                             stream_,
                             external_stream_ /* use_existing_stream */,
-                            external_cudnn_handle_,
-                            external_cublas_handle_);
+                            0,0);
+//                            external_cudnn_handle_,
+//                            external_cublas_handle_);
 }
 
 OrtDevice TensorrtExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {

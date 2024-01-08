@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/common/status.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 #include "core/providers/cuda/tunable/cuda_tunable.h"
 #include "core/providers/cuda/math/gemm.h"
 

@@ -7,7 +7,7 @@
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
-#include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/common/cuda_allocator.h"
 #include "common.h"
 
 namespace onnxruntime {

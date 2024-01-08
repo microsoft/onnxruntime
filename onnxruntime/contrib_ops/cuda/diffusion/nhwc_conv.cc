@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/span_utils.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/tensor/slice.h"
 #include "core/providers/cuda/nn/conv.h"

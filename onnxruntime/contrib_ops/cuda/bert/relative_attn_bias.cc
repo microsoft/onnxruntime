@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 #include "relative_attn_bias.h"
 #include "core/common/safeint.h"
 #include "relative_attn_bias_impl.h"

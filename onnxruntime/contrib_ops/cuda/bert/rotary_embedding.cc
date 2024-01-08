@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 #include "contrib_ops/cpu/bert/rotary_embedding_helper.h"
 #include "contrib_ops/cuda/bert/rotary_embedding.h"
 #include "contrib_ops/cuda/bert/rotary_embedding_impl.h"

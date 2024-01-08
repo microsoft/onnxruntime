@@ -540,7 +540,7 @@ message("Finished fetching external dependencies")
 
 
 set(onnxruntime_LINK_DIRS )
-if (onnxruntime_USE_CUDA)
+if (onnxruntime_USE_CUDA OR onnxruntime_USE_TENSORRT)
       #TODO: combine onnxruntime_CUDNN_HOME and onnxruntime_CUDA_HOME, assume they are the same
       if (WIN32)
         if(onnxruntime_CUDNN_HOME)

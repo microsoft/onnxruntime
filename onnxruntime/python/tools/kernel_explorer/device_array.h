@@ -7,7 +7,7 @@
 #include <pybind11/numpy.h>
 #include <pybind11/stl_bind.h>
 #ifdef USE_CUDA
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 #include "core/providers/cuda/tunable/util.h"
 
 #define CALL_THROW CUDA_CALL_THROW

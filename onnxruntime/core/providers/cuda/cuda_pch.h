@@ -9,13 +9,19 @@
 #endif
 
 #include <cuda.h>
+#include <cuda_fp16.h>
 #include <cuda_runtime.h>
+#ifdef USE_CUDA
 #include <cublas_v2.h>
 #include <cusparse.h>
 #include <curand.h>
 #include <cudnn.h>
 #include <cufft.h>
 #include <cublasLt.h>
+#else
+typedef void* cudnnHandle_t;
+typedef void* cublasHandle_t;
+#endif
 
 #ifdef ORT_USE_NCCL
 #include <nccl.h>

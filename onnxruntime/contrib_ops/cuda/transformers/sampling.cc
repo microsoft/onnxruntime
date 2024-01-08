@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "contrib_ops/cuda/transformers/sampling.h"
 #include "contrib_ops/cuda/transformers/generation_device_helper.h"

@@ -4,7 +4,7 @@
 #ifdef USE_CUTLASS
 
 #include "core/common/safeint.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 #include "moe.h"
 
 using namespace onnxruntime::cuda;

@@ -14,10 +14,7 @@
 
 #include "cuda_resource.h"
 #include "core/providers/custom_op_context.h"
-#include <cuda.h>
-#include <cuda_runtime.h>
-#include <cublas_v2.h>
-#include <cudnn.h>
+#include "core/providers/cuda/cuda_pch.h"
 
 namespace Ort {
 

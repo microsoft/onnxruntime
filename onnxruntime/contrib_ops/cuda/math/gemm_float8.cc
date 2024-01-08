@@ -3,7 +3,7 @@
 
 #include <string>
 #include "core/providers/cuda/math/gemm.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cpu/math/gemm_helper.h"
 #include "contrib_ops/cuda/math/gemm_float8.h"

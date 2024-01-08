@@ -38,7 +38,7 @@
 #include <dlfcn.h>
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
 #include <cuda_runtime.h>
 #endif
 

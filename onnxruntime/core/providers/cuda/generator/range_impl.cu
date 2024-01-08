@@ -5,7 +5,7 @@
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 #include "range_impl.h"
 
 using namespace onnxruntime::cuda;

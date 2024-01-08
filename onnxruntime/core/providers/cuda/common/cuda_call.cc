@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
-#include "shared_inc/cuda_call.h"
+#include "core/providers/cuda/shared_inc/cuda_call.h"
 #include <core/platform/env.h>
 
 #ifdef _WIN32
@@ -30,6 +30,7 @@ const char* CudaErrString<cudaError_t>(cudaError_t x) {
   return cudaGetErrorString(x);
 }
 
+#ifdef USE_CUDA
 template <>
 const char* CudaErrString<cublasStatus_t>(cublasStatus_t e) {
   cudaDeviceSynchronize();
@@ -84,6 +85,7 @@ const char* CudaErrString<ncclResult_t>(ncclResult_t e) {
   return ncclGetErrorString(e);
 }
 #endif
+#endif
 
 template <typename ERRTYPE, bool THRW>
 std::conditional_t<THRW, void, Status> CudaCall(
@@ -132,6 +134,7 @@ std::conditional_t<THRW, void, Status> CudaCall(
 
 template Status CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg, const char* file, const int line);
 template void CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg, const char* file, const int line);
+#ifdef USE_CUDA
 template Status CudaCall<cublasStatus_t, false>(cublasStatus_t retCode, const char* exprString, const char* libName, cublasStatus_t successCode, const char* msg, const char* file, const int line);
 template void CudaCall<cublasStatus_t, true>(cublasStatus_t retCode, const char* exprString, const char* libName, cublasStatus_t successCode, const char* msg, const char* file, const int line);
 template Status CudaCall<cudnnStatus_t, false>(cudnnStatus_t retCode, const char* exprString, const char* libName, cudnnStatus_t successCode, const char* msg, const char* file, const int line);
@@ -140,6 +143,7 @@ template Status CudaCall<curandStatus_t, false>(curandStatus_t retCode, const ch
 template void CudaCall<curandStatus_t, true>(curandStatus_t retCode, const char* exprString, const char* libName, curandStatus_t successCode, const char* msg, const char* file, const int line);
 template Status CudaCall<cufftResult, false>(cufftResult retCode, const char* exprString, const char* libName, cufftResult successCode, const char* msg, const char* file, const int line);
 template void CudaCall<cufftResult, true>(cufftResult retCode, const char* exprString, const char* libName, cufftResult successCode, const char* msg, const char* file, const int line);
+#endif
 
 #ifdef ORT_USE_NCCL
 template Status CudaCall<ncclResult_t, false>(ncclResult_t retCode, const char* exprString, const char* libName, ncclResult_t successCode, const char* msg, const char* file, const int line);

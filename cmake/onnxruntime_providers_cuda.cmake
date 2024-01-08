@@ -1,6 +1,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+  include(onnxruntime_providers_cuda_common.cmake)
+
   file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
@@ -9,6 +11,10 @@
   list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
+  )
+  # Remove common files
+  list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
+          ${onnxruntime_providers_cuda_common_src}
   )
 
   # The shared_library files are in a separate list since they use precompiled headers, and the above files have them disabled.
@@ -118,32 +124,6 @@
       add_op_reduction_include_dirs(${target})
     endif()
 
-    if (HAS_GUARD_CF)
-      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /guard:cf>")
-    endif()
-    if (HAS_QSPECTRE)
-      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Qspectre>")
-    endif()
-    foreach(ORT_FLAG ${ORT_WARNING_FLAGS})
-        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler \"${ORT_FLAG}\">")
-    endforeach()
-    # CUDA 11.3+ supports parallel compilation
-    # https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#options-for-guiding-compiler-driver-threads
-    if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.3)
-      option(onnxruntime_NVCC_THREADS "Number of threads that NVCC can use for compilation." 1)
-      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
-    endif()
-    if (UNIX)
-      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
-                  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
-      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
-                  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
-    else()
-      #mutex.cuh(91): warning C4834: discarding return value of function with 'nodiscard' attribute
-      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4834>")
-      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>")
-    endif()
-
     onnxruntime_add_include_to_target(${target} onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers)
     if (onnxruntime_ENABLE_TRAINING_OPS)
       onnxruntime_add_include_to_target(${target} onnxruntime_training)
@@ -155,8 +135,10 @@
       endif()
     endif()
 
+    config_cuda_compile_opts(${target})
+
     add_dependencies(${target} onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
-    target_link_libraries(${target} PRIVATE cublasLt cublas cudnn curand cufft ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
+    target_link_libraries(${target} PRIVATE cublasLt cublas cudnn curand cufft ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface onnxruntime_providers_cuda_common)
     if(onnxruntime_CUDNN_HOME)
       target_include_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/include)
       target_link_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/lib)

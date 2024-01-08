@@ -22,8 +22,8 @@
 
 #ifdef ENABLE_NVTX_PROFILE
 // This header is for profile using Nvidia's visual profilier.
-#include "core/providers/cuda/nvtx_profile.h"
-#include "core/providers/cuda/nvtx_profile_context.h"
+#include "core/providers/cuda/common/nvtx_profile.h"
+#include "core/providers/cuda/common/nvtx_profile_context.h"
 #endif
 
 // #define TRACE_EXECUTION

@@ -6,10 +6,10 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
-#include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/common/cuda_common.h"
+#include "core/providers/cuda/common/cuda_allocator.h"
 #include "core/providers/cuda/cuda_fwd.h"
-#include "core/providers/cuda/gpu_data_transfer.h"
+#include "core/providers/cuda/common/gpu_data_transfer.h"
 #include "core/providers/cuda/cuda_profiler.h"
 
 #ifndef DISABLE_CONTRIB_OPS
@@ -28,7 +28,7 @@
 #include "core/providers/cuda/triton_kernel.h"
 #endif
 
-#include "core/providers/cuda/cuda_stream_handle.h"
+#include "core/providers/cuda/common/cuda_stream_handle.h"
 
 using namespace onnxruntime::common;
 

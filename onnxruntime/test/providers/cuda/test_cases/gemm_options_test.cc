@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/common.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 
 #include "gtest/gtest.h"
 

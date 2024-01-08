@@ -9,7 +9,7 @@
 #include "core/framework/tuning_context_impl.h"
 #undef TUNING_CONTEXT_IMPL
 #include <core/providers/cuda/cuda_execution_provider.h>
-#include <core/providers/cuda/cuda_stream_handle.h>
+#include <core/providers/cuda/common/cuda_stream_handle.h>
 
 namespace onnxruntime {
 namespace cuda {

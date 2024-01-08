@@ -5,7 +5,7 @@
 
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 
 #include "core/common/gsl.h"
 #include "contrib_ops/cpu/transformers/sequences.h"

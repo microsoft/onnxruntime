@@ -3,7 +3,7 @@
 
 #include "core/providers/shared_library/provider_api.h"
 
-#include "core/providers/cuda/gpu_data_transfer.h"
+#include "core/providers/cuda/common/gpu_data_transfer.h"
 #include "cuda_common.h"
 
 namespace onnxruntime {

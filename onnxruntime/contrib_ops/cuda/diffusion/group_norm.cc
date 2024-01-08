@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 #include "contrib_ops/cuda/diffusion/group_norm.h"
 #include "contrib_ops/cuda/diffusion/group_norm_impl.h"
 

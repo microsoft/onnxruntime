@@ -3,7 +3,7 @@
 
 #include "orttraining/training_ops/cuda/math/bias_softmax_dropout.h"
 
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 #include "orttraining/training_ops/cuda/math/bias_softmax_dropout_impl.h"
 
 namespace onnxruntime {

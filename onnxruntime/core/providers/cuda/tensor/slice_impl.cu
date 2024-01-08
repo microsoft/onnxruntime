@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 #include "core/providers/cuda/tensor/slice_impl.h"
 
 namespace onnxruntime {

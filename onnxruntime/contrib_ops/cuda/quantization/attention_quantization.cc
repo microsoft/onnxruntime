@@ -5,7 +5,7 @@
 #include "attention_quantization_impl.cuh"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "core/common/safeint.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/shared_inc/integer_gemm.h"
 #include "core/providers/cuda/tensor/quantize_linear.h"

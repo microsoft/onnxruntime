@@ -11,7 +11,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
-#include "core/providers/cuda/cuda_graph.h"
+#include "core/providers/cuda/common/cuda_graph.h"
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"

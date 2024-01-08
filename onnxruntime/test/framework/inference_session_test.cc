@@ -33,7 +33,7 @@
 #include "core/providers/cpu/math/element_wise_ops.h"
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
-#include "core/providers/cuda/gpu_data_transfer.h"
+#include "core/providers/cuda/common/gpu_data_transfer.h"
 #endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_options.h"

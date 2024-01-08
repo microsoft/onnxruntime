@@ -155,7 +155,7 @@ struct ProviderHost {
   virtual std::string demangle(const char* name) = 0;
   virtual std::string demangle(const std::string& name) = 0;
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined (USE_TENSORRT)
   virtual std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) = 0;
   virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() = 0;

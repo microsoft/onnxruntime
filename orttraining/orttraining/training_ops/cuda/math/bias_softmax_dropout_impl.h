@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/framework/random_generator.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 
 namespace onnxruntime {
 namespace cuda {

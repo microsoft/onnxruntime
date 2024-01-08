@@ -4,7 +4,7 @@
 #include "orttraining/training_ops/cuda/optimizer/adam.h"
 #include "orttraining/training_ops/cuda/optimizer/adam_impl.h"
 
-#include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/common/cuda_allocator.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 #include "orttraining/training_ops/cuda/optimizer/common.h"

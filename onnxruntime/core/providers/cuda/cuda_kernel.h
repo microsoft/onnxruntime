@@ -3,11 +3,11 @@
 
 #pragma once
 
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_fwd.h"
 #include "core/platform/ort_mutex.h"
-#include "core/providers/cuda/cuda_stream_handle.h"
+#include "core/providers/cuda/common/cuda_stream_handle.h"
 
 namespace onnxruntime {
 namespace cuda {

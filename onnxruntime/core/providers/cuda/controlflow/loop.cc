@@ -3,7 +3,7 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/controlflow/loop.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 #include "core/providers/cuda/cuda_fwd.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 

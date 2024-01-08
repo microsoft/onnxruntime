@@ -40,7 +40,7 @@
 #endif
 #endif
 #ifdef ENABLE_NVTX_PROFILE
-#include "core/providers/cuda/nvtx_profile.h"
+#include "core/providers/cuda/common/nvtx_profile.h"
 #endif
 #if defined(ORT_USE_NCCL) && defined(ENABLE_TRAINING)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
@@ -212,7 +212,12 @@ struct ProviderHostImpl : ProviderHost {
   void* CPUAllocator__Alloc(CPUAllocator* p, size_t size) override { return p->CPUAllocator::Alloc(size); }
   void CPUAllocator__Free(CPUAllocator* p, void* allocation) override { return p->CPUAllocator::Free(allocation); }
 
-#ifdef USE_CUDA
+#if defined(USE_TENSORRT) && !defined(USE_CUDA)
+  std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_TensorRT().CreateCUDAAllocator(device_id, name); }
+  std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) override { return GetProviderInfo_TensorRT().CreateCUDAPinnedAllocator(name); }
+  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override { return GetProviderInfo_TensorRT().CreateGPUDataTransfer(); }
+#endif
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
   std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_CUDA().CreateCUDAAllocator(device_id, name); }
   std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) override { return GetProviderInfo_CUDA().CreateCUDAPinnedAllocator(name); }
   std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override { return GetProviderInfo_CUDA().CreateGPUDataTransfer(); }

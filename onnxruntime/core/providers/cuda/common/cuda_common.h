@@ -22,12 +22,14 @@ namespace onnxruntime {
 namespace cuda {
 
 #define CUDA_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUDA_CALL(expr))
+#ifdef USE_CUDA
 #define CUBLAS_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUBLAS_CALL(expr))
 #define CUSPARSE_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUSPARSE_CALL(expr))
 #define CURAND_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CURAND_CALL(expr))
 #define CUDNN_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUDNN_CALL(expr))
 #define CUDNN2_RETURN_IF_ERROR(expr, m) ORT_RETURN_IF_ERROR(CUDNN_CALL2(expr, m))
 #define CUFFT_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUFFT_CALL(expr))
+#endif
 
 // Type mapping for MLFloat16 to half
 template <typename T>
@@ -94,6 +96,7 @@ inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int6
   return true;
 }
 
+#ifdef USE_CUDA
 class CublasMathModeSetter {
  public:
   CublasMathModeSetter(const cudaDeviceProp& prop, cublasHandle_t handle, cublasMath_t mode) : handle_(handle) {
@@ -186,9 +189,10 @@ class HalfGemmOptions {
 
 const char* cublasGetErrorEnum(cublasStatus_t error);
 
-const char* CudaDataTypeToString(cudaDataType_t dt);
-
 const char* CublasComputeTypeToString(cublasComputeType_t ct);
+#endif
+
+const char* CudaDataTypeToString(cudaDataType_t dt);
 
 cudaDataType_t ToCudaDataType(int32_t element_type);
 

@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/providers/cuda/cuda_resource.h"
-#include "core/providers/cuda/cuda_stream_handle.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "cuda_stream_handle.h"
+#include "cuda_common.h"
 #include "core/common/spin_pause.h"
 
 namespace onnxruntime {
@@ -61,12 +61,13 @@ CudaStream::CudaStream(cudaStream_t stream,
                        AllocatorPtr cpu_allocator,
                        bool release_cpu_buffer_on_cuda_stream,
                        bool own_flag,
-                       cudnnHandle_t external_cudnn_handle,
-                       cublasHandle_t external_cublas_handle) : Stream(stream, device),
+                       [[maybe_unused]] cudnnHandle_t external_cudnn_handle,
+                       [[maybe_unused]] cublasHandle_t external_cublas_handle) : Stream(stream, device),
                                                                 own_stream_(own_flag),
                                                                 cpu_allocator_(cpu_allocator),
                                                                 release_cpu_buffer_on_cuda_stream_(release_cpu_buffer_on_cuda_stream),
                                                                 deferred_cpu_allocator_(*this) {
+#ifdef USE_CUDA
   if (own_flag) {
     CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
     CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
@@ -78,10 +79,12 @@ CudaStream::CudaStream(cudaStream_t stream,
     cudnn_handle_ = external_cudnn_handle;
     CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
   }
+#endif
 }
 
 CudaStream::~CudaStream() {
   ORT_IGNORE_RETURN_VALUE(CleanUpOnRunEnd());
+#ifdef USE_CUDA
   if (own_stream_) {
     cublasDestroy(cublas_handle_);
     cudnnDestroy(cudnn_handle_);
@@ -89,6 +92,7 @@ CudaStream::~CudaStream() {
     if (handle)
       cudaStreamDestroy(static_cast<cudaStream_t>(handle));
   }
+#endif
 }
 
 std::unique_ptr<synchronize::Notification> CudaStream::CreateNotification(size_t /*num_consumers*/) {

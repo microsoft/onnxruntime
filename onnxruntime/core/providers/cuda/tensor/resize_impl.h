@@ -6,7 +6,7 @@
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/common/common.h"
 #include "core/providers/cpu/tensor/upsamplebase.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 
 namespace onnxruntime {
 namespace cuda {

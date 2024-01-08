@@ -23,8 +23,8 @@
 
 // the includes would be dummy for ROCm, we will ignore them for now
 #ifdef ENABLE_NVTX_PROFILE
-#include "core/providers/cuda/nvtx_profile.h"
-#include "core/providers/cuda/nvtx_profile_context.h"
+#include "core/providers/cuda/common/nvtx_profile.h"
+#include "core/providers/cuda/common/nvtx_profile_context.h"
 #endif
 
 #include "sampling_cuda_helper.h"

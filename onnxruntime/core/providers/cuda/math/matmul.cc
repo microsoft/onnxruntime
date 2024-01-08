@@ -4,7 +4,7 @@
 #include "core/providers/cuda/math/matmul.h"
 
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
-#include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/common/cuda_allocator.h"
 #include "core/providers/cuda/tunable/math/matmul.h"
 
 namespace onnxruntime {

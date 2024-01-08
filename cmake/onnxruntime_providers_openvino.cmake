@@ -16,6 +16,8 @@
   endif()
 
   # Header paths
+  set(CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH};M:/w_openvino_toolkit_windows_2023.2.0.13089.cfd42bd2cb0_x86_64/runtime/cmake")
+
   find_package(InferenceEngine REQUIRED)
   find_package(ngraph REQUIRED)
 

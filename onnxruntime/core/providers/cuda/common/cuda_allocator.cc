@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "cuda_allocator.h"
-#include "cuda_common.h"
+#include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "gpu_data_transfer.h"
+#include "core/providers/cuda/cuda_execution_provider_info.h"
 
 namespace onnxruntime {
 

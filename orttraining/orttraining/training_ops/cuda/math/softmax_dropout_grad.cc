@@ -3,7 +3,7 @@
 
 #include "orttraining/training_ops/cuda/math/softmax_dropout_grad.h"
 
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 #include "core/providers/common.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "orttraining/training_ops/cuda/math/softmax_dropout_grad_impl.h"

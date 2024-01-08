@@ -7,8 +7,8 @@
 //  2. increase binary size of ORT.
 #include <iostream>
 #include "core/providers/cuda/cuda_execution_provider.h"
-#include "core/providers/cuda/cuda_allocator.h"
-#include "core/providers/cuda/cuda_stream_handle.h"
+#include "core/providers/cuda/common/cuda_allocator.h"
+#include "core/providers/cuda/common/cuda_stream_handle.h"
 #include "gtest/gtest.h"
 
 namespace onnxruntime {

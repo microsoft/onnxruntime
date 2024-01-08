@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/platform/threadpool.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 #include "core/providers/cpu/math/einsum.h"
 #include "einsum_utils/einsum_auxiliary_ops.h"
 #include "core/providers/cuda/cuda_execution_provider.h"

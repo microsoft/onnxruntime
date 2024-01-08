@@ -7,6 +7,8 @@
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_provider_factory_creator.h"
 #include "core/framework/provider_options.h"
+#include "core/providers/cuda/common/cuda_allocator.h"
+#include "core/providers/cuda/common/gpu_data_transfer.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/providers/tensorrt/tensorrt_execution_provider_custom_ops.h"
 #include <string.h>
@@ -45,6 +47,23 @@ struct ProviderInfo_TensorRT_Impl final : ProviderInfo_TensorRT {
     return nullptr;
   }
 
+//  std::shared_ptr<IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, const OrtArenaCfg* default_memory_arena_cfg) override {
+////    return CUDAExecutionProvider::CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
+//      return std::shared_ptr<IAllocator>{ nullptr};
+//  }
+
+    std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override {
+      return std::make_unique<CUDAAllocator>(device_id, name);
+    }
+
+    std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) override {
+      return std::make_unique<CUDAPinnedAllocator>(name);
+    }
+
+    std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override {
+//      return std::make_unique<GPUDataTransfer>();
+      return std::unique_ptr<IDataTransfer>(nullptr);
+    }
 } g_info;
 
 struct TensorrtProviderFactory : IExecutionProviderFactory {

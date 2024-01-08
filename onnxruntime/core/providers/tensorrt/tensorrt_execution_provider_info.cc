@@ -7,7 +7,7 @@
 #include "core/common/make_string.h"
 #include "core/common/parse_string.h"
 #include "core/framework/provider_options_utils.h"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 
 namespace onnxruntime {
 namespace tensorrt {

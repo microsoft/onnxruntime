@@ -5,7 +5,7 @@
 
 #include <cuda_runtime_api.h>
 
-#include "core/providers/cuda/cuda_common.h"  // avoid provider_api.h ODR violation
+#include "core/providers/cuda/common/cuda_common.h"  // avoid provider_api.h ODR violation
 #include "core/framework/tunable.h"
 #include "core/providers/cuda/tunable/cuda_tuning_context.h"
 #include "core/providers/cuda/tunable/util.h"

@@ -3,7 +3,7 @@
 
 #include "contrib_ops/cuda/bert/packed_attention.h"
 
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/packed_attention_impl.h"

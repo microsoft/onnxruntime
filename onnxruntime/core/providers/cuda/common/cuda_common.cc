@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/cuda_common.h"
+#include "cuda_common.h"
 #include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
@@ -13,6 +13,8 @@ namespace cuda {
 //   0x02 - disallow reduced precision reduction. No effect when aggregate in fp16.
 //   0x04 - pedantic
 constexpr const char* kCudaGemmOptions = "ORT_CUDA_GEMM_OPTIONS";
+
+#ifdef USE_CUDA
 
 // Initialize the singleton instance
 HalfGemmOptions HalfGemmOptions::instance;
@@ -54,6 +56,26 @@ const char* cublasGetErrorEnum(cublasStatus_t error) {
   }
 }
 
+const char* CublasComputeTypeToString(cublasComputeType_t ct) {
+  switch (ct) {
+    case CUBLAS_COMPUTE_16F:
+      return "CUBLAS_COMPUTE_16F";
+    case CUBLAS_COMPUTE_32F:
+      return "CUBLAS_COMPUTE_32F";
+    case CUBLAS_COMPUTE_32F_FAST_16F:
+      return "CUBLAS_COMPUTE_32F_FAST_16F";
+    case CUBLAS_COMPUTE_32F_FAST_16BF:
+      return "CUBLAS_COMPUTE_32F_FAST_16BF";
+    case CUBLAS_COMPUTE_32F_FAST_TF32:
+      return "CUBLAS_COMPUTE_32F_FAST_TF32";
+    case CUBLAS_COMPUTE_64F:
+      return "CUBLAS_COMPUTE_64F";
+    default:
+      return "<unknown>";
+  }
+}
+#endif
+
 const char* CudaDataTypeToString(cudaDataType_t dt) {
   switch (dt) {
     case CUDA_R_16F:
@@ -74,24 +96,6 @@ const char* CudaDataTypeToString(cudaDataType_t dt) {
   }
 }
 
-const char* CublasComputeTypeToString(cublasComputeType_t ct) {
-  switch (ct) {
-    case CUBLAS_COMPUTE_16F:
-      return "CUBLAS_COMPUTE_16F";
-    case CUBLAS_COMPUTE_32F:
-      return "CUBLAS_COMPUTE_32F";
-    case CUBLAS_COMPUTE_32F_FAST_16F:
-      return "CUBLAS_COMPUTE_32F_FAST_16F";
-    case CUBLAS_COMPUTE_32F_FAST_16BF:
-      return "CUBLAS_COMPUTE_32F_FAST_16BF";
-    case CUBLAS_COMPUTE_32F_FAST_TF32:
-      return "CUBLAS_COMPUTE_32F_FAST_TF32";
-    case CUBLAS_COMPUTE_64F:
-      return "CUBLAS_COMPUTE_64F";
-    default:
-      return "<unknown>";
-  }
-}
 
 // It must exist somewhere already.
 cudaDataType_t ToCudaDataType(int32_t element_type) {

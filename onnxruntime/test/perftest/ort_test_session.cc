@@ -209,13 +209,14 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     }
 
     session_options.AppendExecutionProvider_TensorRT_V2(*tensorrt_options);
-
+#ifdef USE_CUDA
     OrtCUDAProviderOptions cuda_options;
     cuda_options.device_id = tensorrt_options->device_id;
     cuda_options.cudnn_conv_algo_search = static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo);
     cuda_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
     // TODO: Support arena configuration for users of perf test
     session_options.AppendExecutionProvider_CUDA(cuda_options);
+#endif
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
 #endif

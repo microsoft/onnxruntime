@@ -20,7 +20,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cuda.h>
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 
 #define cuErrCheck(stat, wrap)                                                 \
   {                                                                            \

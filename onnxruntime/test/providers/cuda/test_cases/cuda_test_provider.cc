@@ -14,12 +14,12 @@
 
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
-#include "core/providers/cuda/cuda_allocator.h"
-#include "core/providers/cuda/gpu_data_transfer.h"
+#include "core/providers/cuda/common/cuda_allocator.h"
+#include "core/providers/cuda/common/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 
 #ifdef ENABLE_NVTX_PROFILE
-#include "core/providers/cuda/nvtx_profile.h"
+#include "core/providers/cuda/common/nvtx_profile.h"
 #endif
 
 using namespace onnxruntime;

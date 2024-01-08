@@ -3,12 +3,11 @@
 
 #pragma once
 #include <ctime>
-#include <cudnn.h>
-#include <cublas_v2.h>
+#include "core/providers/cuda/cuda_pch.h"
 #include "NvInfer.h"
 #include "NvOnnxParser.h"
 #include "core/platform/ort_mutex.h"
-#include "core/providers/cuda/cuda_graph.h"
+#include "core/providers/cuda/common/cuda_graph.h"
 #include "tensorrt_execution_provider_info.h"
 
 namespace onnxruntime {
@@ -193,13 +192,13 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   explicit TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info);
   virtual ~TensorrtExecutionProvider();
 
-  cublasHandle_t PerThreadDefaultCublasHandle() {
-    return GetPerThreadContext().CublasHandle();
-  }
-
-  cudnnHandle_t PerThreadDefaultCudnnHandle() {
-    return GetPerThreadContext().CudnnHandle();
-  }
+//  cublasHandle_t PerThreadDefaultCublasHandle() {
+//    return GetPerThreadContext().CublasHandle();
+//  }
+//
+//  cudnnHandle_t PerThreadDefaultCudnnHandle() {
+//    return GetPerThreadContext().CudnnHandle();
+//  }
 
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
@@ -299,8 +298,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, DDSOutputAllocatorMap> dds_output_allocator_maps_;
 
   // for external stream, we need to create its cudnn/cublass handle before cuda EP enable cuda graph capture
-  cudnnHandle_t external_cudnn_handle_ = nullptr;
-  cublasHandle_t external_cublas_handle_ = nullptr;
+//  cudnnHandle_t external_cudnn_handle_ = nullptr;
+//  cublasHandle_t external_cublas_handle_ = nullptr;
 
   // Call cudaStreamSynchronize() after TRT enqueueV2()/enqueueV3()
   mutable bool sync_stream_after_enqueue_ = false;
@@ -323,13 +322,13 @@ class TensorrtExecutionProvider : public IExecutionProvider {
     PerThreadContext(OrtDevice::DeviceId device_id, bool has_user_compute_stream, cudaStream_t stream);
     ~PerThreadContext();
 
-    cublasHandle_t CublasHandle() const {
-      return external_cublas_handle_;
-    }
-
-    cudnnHandle_t CudnnHandle() const {
-      return external_cudnn_handle_;
-    }
+//    cublasHandle_t CublasHandle() const {
+//      return external_cublas_handle_;
+//    }
+//
+//    cudnnHandle_t CudnnHandle() const {
+//      return external_cudnn_handle_;
+//    }
 
     bool IsTensorRTContextInMap(std::string fused_node);
     nvinfer1::IExecutionContext& GetTensorRTContext(std::string fused_node);
@@ -348,8 +347,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
     void IncrementRegularRunCountBeforeGraphCapture();
 
    private:
-    cudnnHandle_t external_cudnn_handle_ = nullptr;
-    cublasHandle_t external_cublas_handle_ = nullptr;
+//    cudnnHandle_t external_cudnn_handle_ = nullptr;
+//    cublasHandle_t external_cublas_handle_ = nullptr;
 
     // Maintaining execution context on a per thread basis is suggested by TRT doc.
     // Also, for enqueueV2() in execution context, to perform inference concurrently in multiple streams, use one execution context per stream.

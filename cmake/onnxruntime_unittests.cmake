@@ -67,14 +67,15 @@ function(AddTest)
     if(onnxruntime_USE_CUDA)
       #XXX: we should not need to do this. onnxruntime_test_all.exe should not have direct dependency on CUDA DLLs,
       # otherwise it will impact when CUDA DLLs can be unloaded.
-      target_link_libraries(${_UT_TARGET} PRIVATE cudart)
+      target_link_libraries(${_UT_TARGET} PRIVATE CUDA::cudart CUDA::cuda_driver)
+      target_link_directories(${_UT_TARGET} PRIVATE ${onnxruntime_CUDA_HOME}/lib/x64)
     endif()
     target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock ${onnxruntime_EXTERNAL_LIBRARIES})
   endif()
 
   onnxruntime_add_include_to_target(${_UT_TARGET} date::date flatbuffers::flatbuffers)
   target_include_directories(${_UT_TARGET} PRIVATE ${TEST_INC_DIR})
-  if (onnxruntime_USE_CUDA)
+  if (onnxruntime_USE_CUDA OR onnxruntime_USE_TENSORRT)
     target_include_directories(${_UT_TARGET} PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} ${onnxruntime_CUDNN_HOME}/include)
     if (onnxruntime_USE_NCCL)
       target_include_directories(${_UT_TARGET} PRIVATE ${NCCL_INCLUDE_DIRS})
@@ -628,7 +629,7 @@ if(onnxruntime_USE_TENSORRT)
   list(APPEND onnxruntime_test_framework_src_patterns  "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/tensorrt_execution_provider_utils.h")
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_tensorrt)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tensorrt onnxruntime_providers_shared)
-  list(APPEND onnxruntime_test_providers_libs ${TENSORRT_LIBRARY_INFER})
+  list(APPEND onnxruntime_test_providers_libs ${TENSORRT_LIBRARY_INFER} CUDA::cudart CUDA::cuda_driver)
 endif()
 
 if(onnxruntime_USE_MIGRAPHX)
@@ -1274,8 +1275,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       list(APPEND onnxruntime_shared_lib_test_LIBS cpuinfo)
     endif()
-    if (onnxruntime_USE_CUDA)
-      list(APPEND onnxruntime_shared_lib_test_LIBS cudart)
+    if (onnxruntime_USE_CUDA OR onnxruntime_USE_TENSORRT)
+      list(APPEND onnxruntime_shared_lib_test_LIBS CUDA::cudart CUDA::cuda_driver)
     endif()
     if (onnxruntime_USE_TENSORRT)
       list(APPEND onnxruntime_shared_lib_test_LIBS ${TENSORRT_LIBRARY_INFER})
@@ -1290,7 +1291,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
             LIBS ${onnxruntime_shared_lib_test_LIBS}
             DEPENDS ${all_dependencies}
     )
-    if (onnxruntime_USE_CUDA)
+    if (onnxruntime_USE_CUDA OR onnxruntime_USE_TENSORRT)
       target_include_directories(onnxruntime_shared_lib_test PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
       target_sources(onnxruntime_shared_lib_test PRIVATE ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu)
     endif()
@@ -1324,6 +1325,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
               LIBS ${onnxruntime_shared_lib_test_LIBS}
               DEPENDS ${all_dependencies}
       )
+      target_link_directories(onnxruntime_global_thread_pools_test PUBLIC ${onnxruntime_CUDA_HOME}/lib/x64)
     endif()
   endif()
 
@@ -1492,7 +1494,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set(custom_op_lib_option)
   set(custom_op_lib_link ${GSL_TARGET})
 
-  if (onnxruntime_USE_CUDA)
+  if (onnxruntime_USE_CUDA OR onnxruntime_USE_TENSORRT)
     list(APPEND custom_op_src_patterns
         "${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu"
         "${TEST_SRC_DIR}/testdata/custom_op_library/cuda/cuda_ops.*")
@@ -1581,7 +1583,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       list(APPEND onnxruntime_customopregistration_test_LIBS cpuinfo)
     endif()
     if (onnxruntime_USE_TENSORRT)
-      list(APPEND onnxruntime_customopregistration_test_LIBS ${TENSORRT_LIBRARY_INFER})
+      list(APPEND onnxruntime_customopregistration_test_LIBS ${TENSORRT_LIBRARY_INFER} CUDA::cudart CUDA::cuda_driver)
     endif()
     AddTest(DYN
             TARGET onnxruntime_customopregistration_test

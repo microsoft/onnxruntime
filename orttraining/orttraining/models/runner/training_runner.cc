@@ -13,7 +13,7 @@
 #include "core/platform/env.h"
 #include "core/platform/path_lib.h"
 #ifdef ENABLE_NVTX_PROFILE
-#include "core/providers/cuda/nvtx_profile_context.h"
+#include "core/providers/cuda/common/nvtx_profile_context.h"
 #endif
 #include "core/session/environment.h"
 #include "orttraining/core/framework/checkpointing.h"

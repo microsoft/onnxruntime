@@ -3,7 +3,7 @@
 
 #include "contrib_ops/cuda/math/bias_softmax.h"
 
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 #include "contrib_ops/cuda/math/bias_softmax_impl.h"
 
 using namespace onnxruntime;

@@ -6,6 +6,8 @@
 #include "core/common/inlined_containers.h"
 #include "core/framework/allocator.h"
 #include "core/platform/ort_mutex.h"
+#include "core/framework/allocator_utils.h"
+#include "core/framework/arena_extend_strategy.h"
 
 namespace onnxruntime {
 

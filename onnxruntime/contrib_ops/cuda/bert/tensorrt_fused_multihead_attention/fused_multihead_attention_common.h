@@ -17,7 +17,7 @@
 #pragma once
 
 #include <cstdint>
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 
 namespace onnxruntime {
 namespace contrib {

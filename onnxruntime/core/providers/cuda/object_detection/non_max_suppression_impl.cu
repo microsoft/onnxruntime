@@ -21,8 +21,7 @@ limitations under the License.
 #include "non_max_suppression_impl.h"
 #include "core/providers/cpu/object_detection/non_max_suppression_helper.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "core/providers/cuda/cuda_common.h"
-
+#include "core/providers/cuda/common/cuda_common.h"
 
 #include <cub/cub.cuh>
 //TODO:fix the warnings

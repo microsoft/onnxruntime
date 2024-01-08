@@ -4,7 +4,7 @@
 #include <cub/cub.cuh>
 
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/common/cuda_common.h"
 
 //TODO:fix the warnings
 #ifdef _MSC_VER
