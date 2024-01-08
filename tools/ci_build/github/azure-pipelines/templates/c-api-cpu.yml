@@ -188,18 +188,18 @@ stages:
 #    buildJava: false
 #    buildNodejs: true
 
-#- template: win-ci.yml
-#  parameters:
-#    DoCompliance: ${{ parameters.DoCompliance }}
-#    DoEsrp: ${{ parameters.DoEsrp }}
-#    stage_name_suffix: CPU_x64_${{ parameters.BuildVariant }}
-#    buildArch: x64
-#    msbuildPlatform: x64
-#    packageName: x64
-#    buildparameter: --build_java --build_nodejs ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
-#    runTests: ${{ parameters.RunOnnxRuntimeTests }}
-#    buildJava: true
-#    buildNodejs: true
+- template: win-ci.yml
+  parameters:
+    DoCompliance: ${{ parameters.DoCompliance }}
+    DoEsrp: ${{ parameters.DoEsrp }}
+    stage_name_suffix: CPU_x64_${{ parameters.BuildVariant }}
+    buildArch: x64
+    msbuildPlatform: x64
+    packageName: x64
+    buildparameter: --build_java --build_nodejs ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
+    runTests: ${{ parameters.RunOnnxRuntimeTests }}
+    buildJava: true
+    buildNodejs: true
 
 #- stage: Jar_Packaging
 #  dependsOn:
@@ -531,7 +531,7 @@ stages:
   - Windows_Packaging_tensorrt
   - Windows_CI_GPU_DML_Dev
 #  - MacOS_C_API_Package_Publish
-#  - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
+  - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
 #  - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
   condition: succeeded()
   jobs:
