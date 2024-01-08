@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef USE_CUTLASS
+
 #include <type_traits>
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
@@ -165,3 +167,5 @@ Status MoE<T, WeightT>::ComputeInternal(OpKernelContext* context) const {
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif

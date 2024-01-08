@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#ifdef USE_CUTLASS
+
 #pragma once
 
 #include <cuda_runtime_api.h>
@@ -66,3 +68,5 @@ class MoeGemmRunner {
 };
 
 }  // namespace ort_fastertransformer
+
+#endif

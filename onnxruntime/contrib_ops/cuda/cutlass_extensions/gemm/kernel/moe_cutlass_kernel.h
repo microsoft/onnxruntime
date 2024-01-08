@@ -22,11 +22,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  **************************************************************************************************/
-
 /*! \file
     \brief
 */
-
 #pragma once
 
 #include "cutlass/complex.h"
@@ -496,7 +494,7 @@ struct MoeFCGemm {
     KernelRunner<compile_needed>::run_kernel(params, shared_storage);
 #else
     CUTLASS_NOT_IMPLEMENTED();
-#endif
+#endifs
   }
 };
 
@@ -507,3 +505,4 @@ struct MoeFCGemm {
 }  // namespace cutlass
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
+

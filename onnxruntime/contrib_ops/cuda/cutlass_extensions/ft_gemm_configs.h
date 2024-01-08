@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #pragma once
 
 namespace ort_fastertransformer {
@@ -54,5 +53,5 @@ struct CutlassGemmConfig {
   int split_k_factor = -1;
   int stages = -1;
 };
-
 }  // namespace ort_fastertransformer
+

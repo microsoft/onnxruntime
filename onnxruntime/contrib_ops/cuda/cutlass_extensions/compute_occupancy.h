@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #pragma once
 
 #include <cuda_runtime_api.h>
@@ -46,5 +47,4 @@ inline int compute_occupancy_for_kernel() {
 
   return max_active_blocks;
 }
-
 }  // namespace ort_fastertransformer

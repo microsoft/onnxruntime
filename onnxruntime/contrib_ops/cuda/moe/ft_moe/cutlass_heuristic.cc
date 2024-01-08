@@ -13,8 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "cutlass_heuristic.h"
+#ifdef USE_CUTLASS
 
+#include "cutlass_heuristic.h"
 #include <cuda_runtime_api.h>
 #include <vector>
 #include <stdexcept>
@@ -184,3 +185,5 @@ CutlassGemmConfig estimate_best_config_from_occupancies(const std::vector<Cutlas
 }
 
 }  // namespace ort_fastertransformer
+
+#endif
