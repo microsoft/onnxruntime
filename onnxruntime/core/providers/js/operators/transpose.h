@@ -27,7 +27,7 @@ class Transpose final : public JsKernel, public TransposeBase {
                                gsl::narrow_cast<int32_t>(perm_specified_ ? perm_.size() : 0),
                                // $2: index to HEAP32 of the first int32 element. calculated from right shift memory
                                //     address by 2
-                               reinterpret_cast<int32_t>(perm_specified_ && !perm.empty() ? perm.data() : nullptr) >> 2);
+                               JSEP_HEAP_PTR(perm_specified_ && !perm.empty() ? perm.data() : nullptr) >> 2);
   }
 };
 

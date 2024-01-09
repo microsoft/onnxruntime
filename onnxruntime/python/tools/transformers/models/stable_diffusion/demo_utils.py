@@ -29,9 +29,11 @@ import controlnet_aux
 import cv2
 import numpy as np
 import torch
+from cuda import cudart
 from diffusion_models import PipelineInfo
-from engine_builder import EngineType, get_engine_paths
+from engine_builder import EngineType, get_engine_paths, get_engine_type
 from PIL import Image
+from pipeline_stable_diffusion import StableDiffusionPipeline
 
 
 class RawTextArgumentDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter):
@@ -40,7 +42,8 @@ class RawTextArgumentDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatte
 
 def arg_parser(description: str):
     return argparse.ArgumentParser(
-        description=description, formatter_class=RawTextArgumentDefaultsHelpFormatter, add_help=False
+        description=description,
+        formatter_class=RawTextArgumentDefaultsHelpFormatter,
     )
 
 
@@ -65,8 +68,7 @@ def set_default_arguments(args):
 
 
 def parse_arguments(is_xl: bool, parser):
-    engines = ["ORT_CUDA", "ORT_TRT", "TRT"]
-    parser.add_argument("--help", action="store_true", help="show this help message and exit")
+    engines = ["ORT_CUDA", "ORT_TRT", "TRT", "TORCH"]
 
     parser.add_argument(
         "-e",
@@ -89,14 +91,14 @@ def parse_arguments(is_xl: bool, parser):
     )
 
     parser.add_argument(
-        "-h",
+        "-y",
         "--height",
         type=int,
         default=None,
         help="Height of image to generate (must be multiple of 8).",
     )
     parser.add_argument(
-        "-w", "--width", type=int, default=None, help="Height of image to generate (must be multiple of 8)."
+        "-x", "--width", type=int, default=None, help="Height of image to generate (must be multiple of 8)."
     )
 
     parser.add_argument(
@@ -113,6 +115,13 @@ def parse_arguments(is_xl: bool, parser):
         "--work-dir",
         default=".",
         help="Root Directory to store torch or ONNX models, built engines and output images etc.",
+    )
+
+    parser.add_argument(
+        "-i",
+        "--engine-dir",
+        default=None,
+        help="Root Directory to store built engines or optimized ONNX models etc.",
     )
 
     parser.add_argument("prompt", nargs="*", default=[""], help="Text prompt(s) to guide image generation.")
@@ -208,23 +217,8 @@ def parse_arguments(is_xl: bool, parser):
         choices=range(14, 18),
         help="Select ONNX opset version to target for exported models.",
     )
-    parser.add_argument(
-        "--force-onnx-export", action="store_true", help="Force ONNX export of CLIP, UNET, and VAE models."
-    )
-    parser.add_argument(
-        "--force-onnx-optimize", action="store_true", help="Force ONNX optimizations for CLIP, UNET, and VAE models."
-    )
-
-    # Framework model ckpt
-    parser.add_argument(
-        "--framework-model-dir",
-        default="pytorch_model",
-        help="Directory for HF saved models. Default is pytorch_model.",
-    )
-    parser.add_argument("--hf-token", type=str, help="HuggingFace API access token for downloading model checkpoints.")
 
     # Engine build options.
-    parser.add_argument("--force-engine-build", action="store_true", help="Force rebuilding the TensorRT engine.")
     parser.add_argument(
         "-db",
         "--build-dynamic-batch",
@@ -252,33 +246,13 @@ def parse_arguments(is_xl: bool, parser):
 
     # TensorRT only options
     group = parser.add_argument_group("Options for TensorRT (--engine=TRT) only")
-    group.add_argument("--onnx-refit-dir", help="ONNX models to load the weights from.")
-    group.add_argument(
-        "--build-enable-refit", action="store_true", help="Enable Refit option in TensorRT engines during build."
-    )
-    group.add_argument(
-        "--build-preview-features", action="store_true", help="Build TensorRT engines with preview features."
-    )
     group.add_argument(
         "--build-all-tactics", action="store_true", help="Build TensorRT engines using all tactic sources."
     )
 
     args = parser.parse_args()
-    if args.help:
-        parser.print_help()
-        sys.exit()
 
     set_default_arguments(args)
-
-    if (
-        args.engine in ["ORT_CUDA", "ORT_TRT"]
-        and (args.force_onnx_export or args.force_onnx_optimize)
-        and not args.force_engine_build
-    ):
-        raise ValueError(
-            "For ORT_CUDA or ORT_TRT, --force_onnx_export and --force_onnx_optimize are not supported. "
-            "Please use --force_engine_build instead."
-        )
 
     # Validate image dimensions
     if args.height % 64 != 0 or args.width % 64 != 0:
@@ -404,77 +378,222 @@ def repeat_prompt(args):
     return prompt, negative_prompt
 
 
-def init_pipeline(
-    pipeline_class, pipeline_info, engine_type, args, max_batch_size, opt_batch_size, opt_image_height, opt_image_width
+def initialize_pipeline(
+    version="xl-turbo",
+    is_refiner: bool = False,
+    is_inpaint: bool = False,
+    engine_type=EngineType.ORT_CUDA,
+    work_dir: str = ".",
+    engine_dir=None,
+    onnx_opset: int = 17,
+    scheduler="EulerA",
+    height=512,
+    width=512,
+    nvtx_profile=False,
+    use_cuda_graph=True,
+    build_dynamic_batch=False,
+    build_dynamic_shape=False,
+    min_image_size: int = 512,
+    max_image_size: int = 1024,
+    max_batch_size: int = 16,
+    opt_batch_size: int = 1,
+    build_all_tactics=False,
+    do_classifier_free_guidance=False,
+    lcm=False,
+    controlnet=None,
+    lora_weights=None,
+    lora_scale=1.0,
+    use_fp16_vae=True,
+    use_vae=True,
 ):
-    onnx_dir, engine_dir, output_dir, framework_model_dir, timing_cache = get_engine_paths(
-        work_dir=args.work_dir, pipeline_info=pipeline_info, engine_type=engine_type
+    pipeline_info = PipelineInfo(
+        version,
+        is_refiner=is_refiner,
+        is_inpaint=is_inpaint,
+        use_vae=use_vae,
+        min_image_size=min_image_size,
+        max_image_size=max_image_size,
+        use_fp16_vae=use_fp16_vae,
+        use_lcm=lcm,
+        do_classifier_free_guidance=do_classifier_free_guidance,
+        controlnet=controlnet,
+        lora_weights=lora_weights,
+        lora_scale=lora_scale,
     )
 
-    # Initialize demo
-    pipeline = pipeline_class(
+    input_engine_dir = engine_dir
+
+    onnx_dir, engine_dir, output_dir, framework_model_dir, timing_cache = get_engine_paths(
+        work_dir=work_dir, pipeline_info=pipeline_info, engine_type=engine_type
+    )
+
+    pipeline = StableDiffusionPipeline(
         pipeline_info,
-        scheduler=args.refiner_scheduler if pipeline_info.is_xl_refiner() else args.scheduler,
+        scheduler=scheduler,
         output_dir=output_dir,
-        hf_token=args.hf_token,
         verbose=False,
-        nvtx_profile=args.nvtx_profile,
+        nvtx_profile=nvtx_profile,
         max_batch_size=max_batch_size,
-        use_cuda_graph=not args.disable_cuda_graph,
+        use_cuda_graph=use_cuda_graph,
         framework_model_dir=framework_model_dir,
         engine_type=engine_type,
     )
 
+    import_engine_dir = None
+    if input_engine_dir:
+        if not os.path.exists(input_engine_dir):
+            raise RuntimeError(f"--engine_dir directory does not exist: {input_engine_dir}")
+
+        # Support importing from optimized diffusers onnx pipeline
+        if engine_type == EngineType.ORT_CUDA and os.path.exists(os.path.join(input_engine_dir, "model_index.json")):
+            import_engine_dir = input_engine_dir
+        else:
+            engine_dir = input_engine_dir
+
+    opt_image_height = pipeline_info.default_image_size() if build_dynamic_shape else height
+    opt_image_width = pipeline_info.default_image_size() if build_dynamic_shape else width
+
     if engine_type == EngineType.ORT_CUDA:
-        # Build CUDA EP engines and load pytorch modules
         pipeline.backend.build_engines(
             engine_dir=engine_dir,
             framework_model_dir=framework_model_dir,
             onnx_dir=onnx_dir,
-            tmp_dir=os.path.join(args.work_dir or ".", engine_type.name, pipeline_info.short_name(), "tmp"),
-            force_engine_rebuild=args.force_engine_build,
+            tmp_dir=os.path.join(work_dir or ".", engine_type.name, pipeline_info.short_name(), "tmp"),
             device_id=torch.cuda.current_device(),
+            import_engine_dir=import_engine_dir,
         )
     elif engine_type == EngineType.ORT_TRT:
-        # Build TensorRT EP engines and load pytorch modules
         pipeline.backend.build_engines(
             engine_dir,
             framework_model_dir,
             onnx_dir,
-            args.onnx_opset,
+            onnx_opset,
             opt_image_height=opt_image_height,
             opt_image_width=opt_image_width,
             opt_batch_size=opt_batch_size,
-            force_engine_rebuild=args.force_engine_build,
-            static_batch=not args.build_dynamic_batch,
-            static_image_shape=not args.build_dynamic_shape,
+            static_batch=not build_dynamic_batch,
+            static_image_shape=not build_dynamic_shape,
             max_workspace_size=0,
             device_id=torch.cuda.current_device(),
             timing_cache=timing_cache,
         )
     elif engine_type == EngineType.TRT:
-        # Load TensorRT engines and pytorch modules
         pipeline.backend.load_engines(
             engine_dir,
             framework_model_dir,
             onnx_dir,
-            args.onnx_opset,
+            onnx_opset,
             opt_batch_size=opt_batch_size,
             opt_image_height=opt_image_height,
             opt_image_width=opt_image_width,
-            force_export=args.force_onnx_export,
-            force_optimize=args.force_onnx_optimize,
-            force_build=args.force_engine_build,
-            static_batch=not args.build_dynamic_batch,
-            static_shape=not args.build_dynamic_shape,
-            enable_refit=args.build_enable_refit,
-            enable_preview=args.build_preview_features,
-            enable_all_tactics=args.build_all_tactics,
+            static_batch=not build_dynamic_batch,
+            static_shape=not build_dynamic_shape,
+            enable_all_tactics=build_all_tactics,
             timing_cache=timing_cache,
-            onnx_refit_dir=args.onnx_refit_dir,
         )
+    elif engine_type == EngineType.TORCH:
+        pipeline.backend.build_engines(framework_model_dir)
+    else:
+        raise RuntimeError("invalid engine type")
 
     return pipeline
+
+
+def load_pipelines(args, batch_size=None):
+    engine_type = get_engine_type(args.engine)
+
+    # Register TensorRT plugins
+    if engine_type == EngineType.TRT:
+        from trt_utilities import init_trt_plugins
+
+        init_trt_plugins()
+
+    max_batch_size = max_batch(args)
+
+    if batch_size is None:
+        assert isinstance(args.prompt, list)
+        batch_size = len(args.prompt) * args.batch_size
+
+    if batch_size > max_batch_size:
+        raise ValueError(f"Batch size {batch_size} is larger than allowed {max_batch_size}.")
+
+    # For TensorRT,  performance of engine built with dynamic shape is very sensitive to the range of image size.
+    # Here, we reduce the range of image size for TensorRT to trade-off flexibility and performance.
+    # This range can cover most frequent shape of landscape (832x1216), portrait (1216x832) or square (1024x1024).
+    if args.version == "xl-turbo":
+        min_image_size = 512
+        max_image_size = 768 if args.engine != "ORT_CUDA" else 1024
+    elif args.version == "xl-1.0":
+        min_image_size = 832 if args.engine != "ORT_CUDA" else 512
+        max_image_size = 1216 if args.engine != "ORT_CUDA" else 2048
+    else:
+        # This range can cover common used shape of landscape 512x768, portrait 768x512, or square 512x512 and 768x768.
+        min_image_size = 512 if args.engine != "ORT_CUDA" else 256
+        max_image_size = 768 if args.engine != "ORT_CUDA" else 1024
+
+    params = {
+        "version": args.version,
+        "is_refiner": False,
+        "is_inpaint": False,
+        "engine_type": engine_type,
+        "work_dir": args.work_dir,
+        "engine_dir": args.engine_dir,
+        "onnx_opset": args.onnx_opset,
+        "scheduler": args.scheduler,
+        "height": args.height,
+        "width": args.width,
+        "nvtx_profile": args.nvtx_profile,
+        "use_cuda_graph": not args.disable_cuda_graph,
+        "build_dynamic_batch": args.build_dynamic_batch,
+        "build_dynamic_shape": args.build_dynamic_shape,
+        "min_image_size": min_image_size,
+        "max_image_size": max_image_size,
+        "max_batch_size": max_batch_size,
+        "opt_batch_size": 1 if args.build_dynamic_batch else batch_size,
+        "build_all_tactics": args.build_all_tactics,
+        "do_classifier_free_guidance": args.guidance > 1.0,
+        "controlnet": args.controlnet_type,
+        "lora_weights": args.lora_weights,
+        "lora_scale": args.lora_scale,
+        "use_fp16_vae": "xl" in args.version,
+        "use_vae": True,
+    }
+
+    if "xl" in args.version:
+        params["lcm"] = args.lcm
+        params["use_vae"] = not args.enable_refiner
+    base = initialize_pipeline(**params)
+
+    refiner = None
+    if "xl" in args.version and args.enable_refiner:
+        params["version"] = "xl-1.0"  # Allow SDXL Turbo to use refiner.
+        params["is_refiner"] = True
+        params["scheduler"] = args.refiner_scheduler
+        params["do_classifier_free_guidance"] = args.refiner_guidance > 1.0
+        params["lcm"] = False
+        params["controlnet"] = None
+        params["lora_weights"] = None
+        params["use_vae"] = True
+        params["use_fp16_vae"] = True
+        refiner = initialize_pipeline(**params)
+
+    if engine_type == EngineType.TRT:
+        max_device_memory = max(base.backend.max_device_memory(), (refiner or base).backend.max_device_memory())
+        _, shared_device_memory = cudart.cudaMalloc(max_device_memory)
+        base.backend.activate_engines(shared_device_memory)
+        if refiner:
+            refiner.backend.activate_engines(shared_device_memory)
+
+    if engine_type == EngineType.ORT_CUDA:
+        enable_vae_slicing = args.enable_vae_slicing
+        if batch_size > 4 and not enable_vae_slicing and (args.height >= 1024 and args.width >= 1024):
+            print(
+                "Updating enable_vae_slicing to be True to avoid cuDNN error for batch size > 4 and resolution >= 1024."
+            )
+            enable_vae_slicing = True
+        if enable_vae_slicing:
+            (refiner or base).backend.enable_vae_slicing()
+    return base, refiner
 
 
 def get_depth_image(image):
@@ -542,7 +661,7 @@ def add_controlnet_arguments(parser, is_xl: bool = False):
     """
     Add control net related arguments.
     """
-    group = parser.add_argument_group("Options for ControlNet (only supports SD 1.5 or XL).")
+    group = parser.add_argument_group("Options for ControlNet (supports 1.5, sd-turbo, xl-turbo, xl-1.0).")
 
     group.add_argument(
         "-ci",
@@ -622,7 +741,7 @@ def process_controlnet_arguments(args):
     if len(args.controlnet_type) == 0:
         return None, None
 
-    if args.version not in ["1.5", "xl-1.0", "xl-turbo"]:
+    if args.version not in ["1.5", "xl-1.0", "xl-turbo", "sd-turbo"]:
         raise ValueError("This demo only supports ControlNet in Stable Diffusion 1.5, XL or Turbo.")
 
     is_xl = "xl" in args.version

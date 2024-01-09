@@ -71,7 +71,7 @@ export interface Backend {
   /**
    * Initialize the backend asynchronously. Should throw when failed.
    */
-  init(): Promise<void>;
+  init(backendName: string): Promise<void>;
 
   createInferenceSessionHandler(uriOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
       Promise<InferenceSessionHandler>;

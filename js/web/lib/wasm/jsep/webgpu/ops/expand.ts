@@ -47,7 +47,7 @@ const createExpandProgramInfo = (inputs: readonly TensorView[]): ProgramInfo => 
   const outputShape: number[] = calculateOutputShape(inputShape, shape);
   const dataType = inputs[0].dataType;
   const components = dataType === DataType.bool ? 4 : 1;
-  const outputSize = ShapeUtil.size(outputShape) / components;
+  const outputSize = Math.ceil(ShapeUtil.size(outputShape) / components);
 
   const enableInputShapeUniform = enableShapesUniforms(inputShape.length);
   const enableOutputShapeUniform = enableShapesUniforms(outputShape.length);

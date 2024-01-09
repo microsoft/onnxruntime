@@ -96,6 +96,7 @@ option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to prov
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 option(onnxruntime_USE_LLVM "Build TVM with LLVM" OFF)
 
+cmake_dependent_option(onnxruntime_USE_CUTLASS "Build with cutlass support" ON "onnxruntime_USE_CUDA" OFF)
 cmake_dependent_option(onnxruntime_USE_FLASH_ATTENTION "Build flash attention kernel for scaled dot product attention" ON "NOT WIN32; onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON)
 
@@ -353,13 +354,7 @@ if (onnxruntime_USE_ROCM)
   endif()
 endif()
 
-if (APPLE)
-    if (NOT CMAKE_OSX_ARCHITECTURES)
-        message("Building ONNX Runtime for ${CMAKE_HOST_SYSTEM_PROCESSOR}")
-    endif()
-elseif (NOT WIN32 AND NOT APPLE)
-    message("Building ONNX Runtime for ${CMAKE_SYSTEM_PROCESSOR}")
-endif()
+
 
 # Single output director for all binaries
 set(RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
@@ -491,6 +486,14 @@ if (onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_MINIMAL_BUILD)
 endif()
 
 include(adjust_global_compile_flags.cmake)
+
+if (APPLE)
+  if (NOT CMAKE_OSX_ARCHITECTURES)
+    message("Building ONNX Runtime for ${CMAKE_HOST_SYSTEM_PROCESSOR} CPU ARCH")
+  endif()
+elseif (NOT WIN32 AND NOT APPLE)
+  message("Building ONNX Runtime for ${onnxruntime_target_platform} CPU ARCH")
+endif()
 
 # We need to link with libatomic on systems that do not have built-in atomics, or
 # don't have built-in support for 8 byte atomics
@@ -638,7 +641,16 @@ else()
   check_cxx_compiler_flag(-Wunused-variable HAS_UNUSED_VARIABLE)
   check_cxx_compiler_flag(-Wuseless-cast HAS_USELESS_CAST)
   check_function_exists(reallocarray HAS_REALLOCARRAY)
-
+  if (NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_target_platform STREQUAL "aarch64")
+   check_cxx_compiler_flag(-march=armv8.2-a+bf16 HAS_ARM64_BFLOAT16)
+   if(NOT HAS_ARM64_BFLOAT16)
+     message(FATAL_ERROR  "The compiler doesn't support BFLOAT16!!!")
+   endif()
+   check_cxx_compiler_flag(-march=armv8.2-a+fp16 HAS_ARM64_FLOAT16)
+   if(NOT HAS_ARM64_FLOAT16)
+     message(FATAL_ERROR  "The compiler doesn't support FLOAT16!!!")
+   endif()
+  endif()
   if (HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
     list(APPEND ORT_WARNING_FLAGS -Wno-tautological-pointer-compare)
@@ -693,16 +705,20 @@ if (onnxruntime_USE_CUDA)
   enable_language(CUDA)
   message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
 
-  if (onnxruntime_DISABLE_CONTRIB_OPS)
-    set(onnxruntime_USE_FLASH_ATTENTION OFF)
-    set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
-  endif()
   if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11.6)
-    message( STATUS "Turn off flash attention since CUDA compiler version < 11.6")
-    set(onnxruntime_USE_FLASH_ATTENTION OFF)
-    set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
+    message( STATUS "Turn off cutlass since CUDA compiler version < 11.6")
+    set(onnxruntime_USE_CUTLASS OFF)
   endif()
 else()
+  set(onnxruntime_USE_CUTLASS OFF)
+endif()
+
+if (NOT onnxruntime_USE_CUTLASS OR onnxruntime_DISABLE_CONTRIB_OPS)
+    if (onnxruntime_DISABLE_CONTRIB_OPS)
+      message( STATUS "Turn off flash attention/memory efficient attention since contrib ops are disabled")
+    else()
+      message( STATUS "Turn off flash attention/memory efficient attention since cutlass is not enabled")
+    endif()
   set(onnxruntime_USE_FLASH_ATTENTION OFF)
   set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
 endif()
@@ -887,6 +903,11 @@ function(onnxruntime_set_compile_flags target_name)
     if (onnxruntime_ENABLE_ATEN)
       target_compile_definitions(${target_name} PRIVATE ENABLE_ATEN)
     endif()
+
+    if (onnxruntime_USE_CUTLASS)
+      target_compile_definitions(${target_name} PRIVATE USE_CUTLASS)
+    endif()
+
     set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
     if (onnxruntime_USE_CUDA)
       # Suppress a "conversion_function_not_usable" warning in gsl/span

@@ -281,6 +281,7 @@ else()
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s EXPORT_NAME=ortWasmThreaded"
       "SHELL:-s DEFAULT_PTHREAD_STACK_SIZE=131072"
+      "SHELL:-s PTHREAD_POOL_SIZE=Module[\\\"numThreads\\\"]"
     )
   else()
     target_link_options(onnxruntime_webassembly PRIVATE

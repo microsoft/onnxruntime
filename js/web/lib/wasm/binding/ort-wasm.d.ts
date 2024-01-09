@@ -111,6 +111,7 @@ export interface OrtWasmModule extends EmscriptenModule {
   // #endregion
 
   // #region config
+  numThreads?: number;
   mainScriptUrlOrBlob?: string|Blob;
   // #endregion
 
