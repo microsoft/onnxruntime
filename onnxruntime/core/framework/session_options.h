@@ -65,8 +65,7 @@ struct FreeDimensionOverride {
  * Configuration information for a session.
  */
 struct SessionOptions {
-// #if defined(__wasm__) && defined(__EMSCRIPTEN_PTHREADS__)
-#if 1
+#if defined(__wasm__) && defined(__EMSCRIPTEN_PTHREADS__)
   static constexpr bool DEFAULT_USE_PER_SESSION_THREADS = false;
 #else
   static constexpr bool DEFAULT_USE_PER_SESSION_THREADS = true;
