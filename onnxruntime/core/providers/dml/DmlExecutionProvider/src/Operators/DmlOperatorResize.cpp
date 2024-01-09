@@ -355,6 +355,9 @@ void CALLBACK QueryResize(IMLOperatorSupportQueryContextPrivate* context, bool* 
 DML_OP_DEFINE_CREATION_FUNCTION(Resize10, VersionedKernel<DmlOperatorResize, 10>);
 DML_OP_DEFINE_CREATION_FUNCTION(Resize11, VersionedKernel<DmlOperatorResize, 11>);
 DML_OP_DEFINE_CREATION_FUNCTION(Resize13, VersionedKernel<DmlOperatorResize, 13>);
+#if DML_TARGET_VERSION >= 0x6300
+DML_OP_DEFINE_CREATION_FUNCTION(Resize18, VersionedKernel<DmlOperatorResize, 18>);
+#endif
 DML_OP_DEFINE_CREATION_FUNCTION(Upsample7, VersionedKernel<DmlOperatorResize, 7>);
 DML_OP_DEFINE_CREATION_FUNCTION(Upsample9, VersionedKernel<DmlOperatorResize, 9>);
 DML_OP_DEFINE_CREATION_FUNCTION(Upsample10, VersionedKernel<DmlOperatorResize, 10>);

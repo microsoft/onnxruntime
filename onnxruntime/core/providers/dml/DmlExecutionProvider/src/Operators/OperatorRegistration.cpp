@@ -482,9 +482,6 @@ DML_OP_EXTERN_CREATION_FUNCTION(Scatter13);
 DML_OP_EXTERN_CREATION_FUNCTION(Resize10);
 DML_OP_EXTERN_CREATION_FUNCTION(Resize11);
 DML_OP_EXTERN_CREATION_FUNCTION(Resize13);
-#if DML_TARGET_VERSION >= 0x6300
-DML_OP_EXTERN_CREATION_FUNCTION(Resize18);
-#endif
 DML_OP_EXTERN_CREATION_FUNCTION(ConstantOfShape);
 DML_OP_EXTERN_CREATION_FUNCTION(IsInf);
 DML_OP_EXTERN_CREATION_FUNCTION(Mod);
@@ -509,6 +506,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(Trilu);
 
 #if DML_TARGET_VERSION >= 0x6300
 DML_OP_EXTERN_CREATION_FUNCTION(Col2Im);
+DML_OP_EXTERN_CREATION_FUNCTION(Resize18);
 #endif
 
 DML_OP_EXTERN_CREATION_FUNCTION(Shape);
@@ -601,6 +599,7 @@ constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListSigned
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListRange = {SupportedTensorDataTypes::Int16|SupportedTensorDataTypes::Int32|SupportedTensorDataTypes::Int64|SupportedTensorDataTypes::Float32};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListResize11 = {SupportedTensorDataTypes::Float16to32 | SupportedTensorDataTypes::Int8 | SupportedTensorDataTypes::UInt8, SupportedTensorDataTypes::Float16to32 /* ROI read by CPU */};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListResize13 = supportedTypeListResize11;
+constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListResize18 = supportedTypeListResize11;
 constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListInteger = {SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8, SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8, SupportedTensorDataTypes::Int32 };
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListInteger8 = {SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8 };
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListRoiAlign = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Int32|SupportedTensorDataTypes::Int64 };
