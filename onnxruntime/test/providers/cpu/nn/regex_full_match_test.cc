@@ -21,30 +21,98 @@ TEST(RegexFullMatch, EmailMatch) {
 
 TEST(RegexFullMatch, MultibyteMatch) {
   RunTest({1, 2}, {"ä", "a"}, "ä", {true, false});
-  RunTest({1,}, {"une cédille like in Besançon"}, R"(.*Besançon.*)", {true,});
-  RunTest({1,}, {"une cédille like in Besançon"}, R"(.*Besancon.*)", {false,});
-  RunTest({1,}, {"Mit freundlichen Grüßen"}, R"(.*Grüßen$)", {true,});
-  RunTest({1,}, {"Mit freundlichen Grüßen"}, R"(.*Grußen$)", {false,});
-  RunTest({3,}, {"HПонедельник", "Понедельник", "недельник"}, R"(^Понед.*)", {false, true, false,});
-  RunTest({3,}, {"thank you", "どうもありがとうございます", "こんにちは世界"}, R"(^こんにちは世界.*)", {false, false, true,});
-  RunTest({3,}, {"नमस्ते, आपसे मिलकर अच्छा लगा", "नमस्ते", "स्वागत एवं नमस्ते"}, R"(.+नमस्ते$)", {false, false, true,});
-  RunTest({3,}, {"你好，你好吗?", "你好呀", "你好呀!"}, R"(^你好.*\?$)", {true, false, false,});
+  RunTest({
+              1,
+          },
+          {"une cédille like in Besançon"}, R"(.*Besançon.*)", {
+                                                                   true,
+                                                               });
+  RunTest({
+              1,
+          },
+          {"une cédille like in Besançon"}, R"(.*Besancon.*)", {
+                                                                   false,
+                                                               });
+  RunTest({
+              1,
+          },
+          {"Mit freundlichen Grüßen"}, R"(.*Grüßen$)", {
+                                                           true,
+                                                       });
+  RunTest({
+              1,
+          },
+          {"Mit freundlichen Grüßen"}, R"(.*Grußen$)", {
+                                                           false,
+                                                       });
+  RunTest({
+              3,
+          },
+          {"HПонедельник", "Понедельник", "недельник"}, R"(^Понед.*)", {
+                                                                           false,
+                                                                           true,
+                                                                           false,
+                                                                       });
+  RunTest({
+              3,
+          },
+          {"thank you", "どうもありがとうございます", "こんにちは世界"}, R"(^こんにちは世界.*)", {
+                                                                                                     false,
+                                                                                                     false,
+                                                                                                     true,
+                                                                                                 });
+  RunTest({
+              3,
+          },
+          {"नमस्ते, आपसे मिलकर अच्छा लगा", "नमस्ते", "स्वागत एवं नमस्ते"}, R"(.+नमस्ते$)", {
+                                                                                   false,
+                                                                                   false,
+                                                                                   true,
+                                                                               });
+  RunTest({
+              3,
+          },
+          {"你好，你好吗?", "你好呀", "你好呀!"}, R"(^你好.*\?$)", {
+                                                                       true,
+                                                                       false,
+                                                                       false,
+                                                                   });
 }
 
 TEST(RegexFullMatch, InvalidPattern) {
   OpTester test("RegexFullMatch", 20, kOnnxDomain);
   test.AddAttribute("pattern", R"([a-z)");
-  test.AddInput<std::string>("Input", {1,}, {"abcdef",});
-  test.AddOutput<bool>("Output", {1,}, {false,});
+  test.AddInput<std::string>("Input", {
+                                          1,
+                                      },
+                             {
+                                 "abcdef",
+                             });
+  test.AddOutput<bool>("Output", {
+                                     1,
+                                 },
+                       {
+                           false,
+                       });
   test.Run(BaseTester::ExpectResult::kExpectFailure, "Invalid regex pattern: [a-z");
 }
 
 TEST(RegexFullMatch, NonUtf8Pattern) {
-  uint8_t invalid_bytes[] = { 0xC0, 0xC1, 0x41, 0x42, 0xC3, 0x80, 0xC2, 0x80, 0xC2, 0xC3, 0xC4, 0x00 };
+  uint8_t invalid_bytes[] = {0xC0, 0xC1, 0x41, 0x42, 0xC3, 0x80, 0xC2, 0x80, 0xC2, 0xC3, 0xC4, 0x00};
   OpTester test("RegexFullMatch", 20, kOnnxDomain);
-  test.AddAttribute("pattern", std::string((char*) invalid_bytes, sizeof(invalid_bytes)));
-  test.AddInput<std::string>("Input", {1,}, {"abcd",});
-  test.AddOutput<bool>("Output", {1,}, {false,});
+  test.AddAttribute("pattern", std::string((char*)invalid_bytes, sizeof(invalid_bytes)));
+  test.AddInput<std::string>("Input", {
+                                          1,
+                                      },
+                             {
+                                 "abcd",
+                             });
+  test.AddOutput<bool>("Output", {
+                                     1,
+                                 },
+                       {
+                           false,
+                       });
   test.Run(BaseTester::ExpectResult::kExpectFailure, "Invalid regex pattern");
 }
 }  // namespace test
