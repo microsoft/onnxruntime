@@ -42,32 +42,11 @@ TEST(StringConcat, BidirectionalBroadcastingConcatenation) {
   OpTester test("StringConcat", 20, onnxruntime::kOnnxDomain);
   test.AddInput<std::string>("X", {2, 1, 3}, {"a", "b", "c", "d", "e", "f"});
   test.AddInput<std::string>("Y", {1, 4, 3}, {"a", "b", "c", "d", "e", "f", "g", "h", "i", "k", "l", "m"});
-  test.AddOutput<std::string>("Z", {2, 4, 3}, {
-                                                  "aa",
-                                                  "bb",
-                                                  "cc",
-                                                  "ad",
-                                                  "be",
-                                                  "cf",
-                                                  "ag",
-                                                  "bh",
-                                                  "ci",
-                                                  "ak",
-                                                  "bl",
-                                                  "cm",
-                                                  "da",
-                                                  "eb",
-                                                  "fc",
-                                                  "dd",
-                                                  "ee",
-                                                  "ff",
-                                                  "dg",
-                                                  "eh",
-                                                  "fi",
-                                                  "dk",
-                                                  "el",
-                                                  "fm",
-                                              });
+  test.AddOutput<std::string>("Z", {2, 4, 3},
+                              {
+                                  "aa", "bb", "cc", "ad", "be", "cf", "ag", "bh", "ci", "ak", "bl", "cm",
+                                  "da", "eb", "fc", "dd", "ee", "ff", "dg", "eh", "fi", "dk", "el", "fm",
+                              });
   test.Run();
 }
 
