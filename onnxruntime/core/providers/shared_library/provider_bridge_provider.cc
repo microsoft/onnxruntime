@@ -496,6 +496,10 @@ template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int64_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint64_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
+Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path,
+                             /*out*/ std::vector<uint8_t>& unpacked_tensor) {
+  return g_host->UnpackInitializerData(tensor, model_path, unpacked_tensor);
+}
 
 }  // namespace utils
 
