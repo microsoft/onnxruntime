@@ -46,6 +46,7 @@ stages:
                         --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF \
                         --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 \
                         --allow_running_as_root; \
+                        --use_cache; \
           "
       displayName: 'Build Onnxruntime'
       workingDirectory: $(Build.SourcesDirectory)
@@ -59,12 +60,12 @@ stages:
             pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion; \
             python3 -m pip install -r requirements-cuda12.txt; \
             python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com; \
-            echo "Generate an image guided by a text prompt"; \
+            echo Generate an image guided by a text prompt; \
             python3 demo_txt2img.py "astronaut riding a horse on mars"; \
-            echo "Generate an image with Stable Diffusion XL guided by a text prompt"; \
-            python3 demo_txt2img_xl.py "starry night over Golden Gate Bridge by van gogh"; \
-            python3 demo_txt2img_xl.py --enable-refiner "starry night over Golden Gate Bridge by van gogh"; \
-            echo "Generate an image guided by a text prompt using LCM LoRA"; \
+            echo Generate an image with Stable Diffusion XL guided by a text prompt; \
+            python3 demo_txt2img_xl.py 'starry night over Golden Gate Bridge by van gogh'; \
+            python3 demo_txt2img_xl.py --enable-refiner 'starry night over Golden Gate Bridge by van gogh'; \
+            echo Generate an image guided by a text prompt using LCM LoRA; \
             python3 demo_txt2img_xl.py --scheduler LCM --lora-weights latent-consistency/lcm-lora-sdxl --denoising-steps 4 "Self-portrait oil painting, a beautiful cyborg with golden hair, 8k"; \
             popd; \
           "
