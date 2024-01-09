@@ -544,6 +544,16 @@ package_data["onnxruntime"] = data + examples + extra
 version_number = ""
 with open("VERSION_NUMBER") as f:
     version_number = f.readline().strip()
+
+with_git_commit_id = True
+if with_git_commit_id:
+    cmd_output = subprocess.run("git rev-parse --short HEAD", capture_output=True, shell=True, cwd=this)
+    if cmd_output.returncode == 0:
+        git_commit_id = cmd_output.stdout.decode("utf-8").strip()
+    else:
+        git_commit_id = "unknown"
+    version_number = version_number + "+" + git_commit_id
+
 if nightly_build:
     # https://docs.microsoft.com/en-us/azure/devops/pipelines/build/variables
     build_suffix = environ.get("BUILD_BUILDNUMBER")
