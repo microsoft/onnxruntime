@@ -335,6 +335,19 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
   }
 
+  if (op_type == "LpNormalization") {
+    int32_t default_axis = -1;
+    Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
+    ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, default_axis));
+    QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), QNN_OP_L2_NORM_PARAM_AXIS, axis_qnn_scalar);
+    param_tensor_names.push_back(axis_param.GetParamTensorName());
+    qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
+
+    NodeAttrHelper node_helper(node_unit);
+    int64_t norm_p_order = node_helper.Get("p", static_cast<int64_t>(2));
+    ORT_RETURN_IF(norm_p_order != 2, "QNN EP only supports LpNormalization with 'p' attribute equal to 2.");
+  }
+
   if (op_type == "MatMul") {
     Qnn_Scalar_t scalar_param = QNN_SCALAR_INIT;
     scalar_param.dataType = QNN_DATATYPE_BOOL_8;

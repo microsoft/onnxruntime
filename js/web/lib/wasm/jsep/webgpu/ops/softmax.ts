@@ -73,8 +73,8 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
       }
       ${shaderHelper.registerUniform('packedCols', 'i32').declareVariables(x, output)}
       ${shaderHelper.mainStart()}
-        let gindex = i32(global_id.x);
-        let lindex = i32(local_id.x);
+        let gindex = i32(global_idx);
+        let lindex = i32(local_idx);
         const wg = ${WG};
         let row = gindex / wg;
         let cols = uniforms.packedCols;

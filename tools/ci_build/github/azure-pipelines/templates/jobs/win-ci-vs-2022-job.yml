@@ -4,6 +4,7 @@ parameters:
 
 - name: EnvSetupScript
   type: string
+  default: setup_env.bat
 
 - name: job_name_suffix
   type: string

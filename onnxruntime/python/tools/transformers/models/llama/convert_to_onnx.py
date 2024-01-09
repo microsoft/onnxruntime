@@ -1,9 +1,10 @@
+from __future__ import annotations
+
 import argparse
 import logging
 import os
 import shutil
 from itertools import chain
-from typing import List
 
 import onnx
 import torch
@@ -21,11 +22,12 @@ from transformers import AutoConfig, AutoModelForCausalLM
 from onnxruntime import quantization as ort_quantization
 from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
 
+torch_export_onnx_opset_version = 14
 logger = logging.getLogger("")
 init_dist()
 
 
-def get_model_dynamic_axes(input_names: List[str], output_names: List[str]):
+def get_model_dynamic_axes(input_names: list[str], output_names: list[str]):
     dynamic_axes = {}
     for name in input_names + output_names:
         if name in input_names:
@@ -42,7 +44,7 @@ def get_model_dynamic_axes(input_names: List[str], output_names: List[str]):
     return dynamic_axes
 
 
-def get_model_with_past_kv_dynamic_axes(input_names: List[str], output_names: List[str]):
+def get_model_with_past_kv_dynamic_axes(input_names: list[str], output_names: list[str]):
     dynamic_axes = {}
     for name in input_names + output_names:
         if name in {"input_ids", "position_ids"}:
@@ -65,7 +67,7 @@ def get_model_with_past_kv_dynamic_axes(input_names: List[str], output_names: Li
     return dynamic_axes
 
 
-def get_merged_model_dynamic_axes(input_names: List[str], output_names: List[str]):
+def get_merged_model_dynamic_axes(input_names: list[str], output_names: list[str]):
     dynamic_axes = {}
     for name in input_names + output_names:
         if name in {"input_ids", "position_ids"}:
@@ -229,7 +231,7 @@ def run_torchscript_separate_export(
         input_names=input_names,
         output_names=output_names,
         dynamic_axes=dynamic_axes,
-        opset_version=13,
+        opset_version=torch_export_onnx_opset_version,
         do_constant_folding=True,
         verbose=args.verbose,
     )
@@ -288,7 +290,7 @@ def run_torchscript_separate_export(
         input_names=input_names,
         output_names=output_names,
         dynamic_axes=dynamic_axes,
-        opset_version=13,
+        opset_version=torch_export_onnx_opset_version,
         do_constant_folding=True,
         verbose=args.verbose,
     )
@@ -368,7 +370,7 @@ def run_torchscript_merged_export(
         input_names=input_names,
         output_names=output_names,
         dynamic_axes=dynamic_axes,
-        opset_version=13,
+        opset_version=torch_export_onnx_opset_version,
         do_constant_folding=True,
         verbose=args.verbose,
     )
@@ -391,7 +393,7 @@ def run_torchscript_merged_export(
 
 
 # Optimize the model as FP32
-def optimize_export(config: AutoConfig, input_path: str, output_path: str):
+def optimize_export(config: AutoConfig, input_path: str, output_path: str, remove_model: bool = True):
     from fusion_options import FusionOptions
 
     optimization_options = FusionOptions("gpt2")
@@ -407,11 +409,12 @@ def optimize_export(config: AutoConfig, input_path: str, output_path: str):
     )
     model_opt.save_model_to_file(output_path, use_external_data_format=True)
     logger.info(f"The ONNX model at {input_path} has been successfully optimized and saved at {output_path}!")
-    remove_existing_model(input_path)
+    if remove_model:
+        remove_existing_model(input_path)
 
 
 def convert_to_float16(
-    args: argparse.Namespace, config: AutoConfig, old_paths: List[str], rank: int = 0, world_size: int = 1
+    args: argparse.Namespace, config: AutoConfig, old_paths: list[str], rank: int = 0, world_size: int = 1
 ):
     decoder_model_fp16_path = os.path.join(args.output, f"rank_{rank}_{args.model_name}_decoder_model_fp16.onnx")
     decoder_with_past_model_fp16_path = os.path.join(
@@ -438,7 +441,7 @@ def convert_to_float16(
     return new_paths
 
 
-def use_group_query_attention(config: AutoConfig, fp16_model_opt: OnnxModel, world_size: int = 1):
+def use_group_query_attention(config: AutoConfig, fp16_model_opt: OnnxModel, world_size: int = 1, window_size: int = 0):
     # Replace MultiHeadAttention with GroupQueryAttention
     fp16_model_opt = replace_mha_with_gqa(fp16_model_opt, "attention_mask", config.num_key_value_heads, world_size)
     fp16_model_opt.prune_graph()
@@ -539,6 +542,23 @@ def remove_existing_files(output_path: str):
             logger.warning(f"Removed {filepath}")
 
 
+def optimize_optimum(config: AutoConfig, args: argparse.Namespace):
+    tmp_file = os.path.join(args.output, args.model_name + ".tmp.onnx")
+    output_file = os.path.join(args.output, args.model_name + ".onnx")
+    optimize_export(config, args.input, tmp_file, remove_model=False)
+    logger.info(f"Model successfully optimized to {tmp_file}")
+    opt_model = OnnxModel(onnx.load_model(tmp_file, load_external_data=True))
+    if args.precision == Precision.FLOAT16:
+        opt_model.convert_float_to_float16(keep_io_types=False)
+        window_size = 0 if not hasattr(config, "sliding_window") else config.sliding_window
+        opt_model = use_group_query_attention(config, opt_model, args.world_size, window_size)
+        logger.info("Model successfully fused and quantized to FP16!")
+    opt_model.save_model_to_file(output_file, use_external_data_format=True)
+    logger.info(f"Output model successfully saved to {output_file}")
+    logger.info(f"Removing {tmp_file}")
+    remove_existing_model(tmp_file)
+
+
 def get_args():
     parser = argparse.ArgumentParser()
 
@@ -554,7 +574,7 @@ def get_args():
         "--input",
         required=False,
         default=os.path.join("."),
-        help="Directory path to PyTorch model and associated files if saved on disk",
+        help="Directory path to PyTorch model and associated files if saved on disk, or ONNX model file location if optimize_optimum is passed.",
     )
 
     parser.add_argument(
@@ -617,7 +637,7 @@ def get_args():
         help="Run a specific quantization algorithm (blockwise for int4, smooth_quant for int8, quantize_dynamic for int8). Blockwise is recommended. Need to install extra packages in `requirements-quant.txt` for SmoothQuant.",
     )
 
-    blockwise_group = parser.add_argument_group("4-bit quantization")
+    blockwise_group = parser.add_argument_group("blockwise (4-bit quantization)")
 
     blockwise_group.add_argument(
         "--block_size",
@@ -625,6 +645,15 @@ def get_args():
         default=32,
         type=int,
         help="Block size to quantize with. See https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/quantization/matmul_4bits_quantizer.py for details.",
+    )
+
+    blockwise_group.add_argument(
+        "--int4_accuracy_level",
+        required=False,
+        type=int,
+        help="Accuracy level of the 4-bit quantized MatMul computation. "
+        "Refer to the MatMulNBits contrib op's 'accuracy_level' attribute for details "
+        "(https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#commicrosoftmatmulnbits).",
     )
 
     smooth_quant_group = parser.add_argument_group("smooth_quant (8-bit quantization)")
@@ -720,6 +749,13 @@ def get_args():
         help="model cache dir to override default HF cache dir to avoid overflood the /home dir",
     )
 
+    parser.add_argument(
+        "--optimize_optimum",
+        action="store_true",
+        help="Avoid exporting model, only apply quantizations and optimizations to existing model exported from optimum.",
+    )
+    parser.set_defaults(optimize_optimum=False)
+
     args = parser.parse_args()
     return args
 
@@ -740,6 +776,7 @@ def main():
 
     world_size = get_size()
     rank = get_rank()
+    args.world_size = world_size
 
     # Load model and config
     use_auth_token = args.input == os.path.join(".")
@@ -753,6 +790,11 @@ def main():
     setattr(args, "device", torch.device(args.device_name))  # noqa: B010
 
     location = args.original_model_name if use_auth_token else args.input
+
+    if args.optimize_optimum:
+        config = AutoConfig.from_pretrained(args.original_model_name)
+        optimize_optimum(config, args)
+        return
 
     # Use CUDA for LLaMA-2-70B to speed up export and CPU for other models
     l_config, llama = setup_torch_model(
@@ -906,7 +948,13 @@ def main():
                 for fp_path, int4_path in zip(old_paths, new_paths):
                     if os.path.exists(fp_path):
                         model = onnx.load_model(fp_path, load_external_data=True)
-                        quant = MatMul4BitsQuantizer(model, args.block_size, is_symmetric=True, nodes_to_exclude=[])
+                        quant = MatMul4BitsQuantizer(
+                            model=model,
+                            block_size=args.block_size,
+                            is_symmetric=True,
+                            accuracy_level=args.int4_accuracy_level,
+                            nodes_to_exclude=[],
+                        )
                         quant.process()
                         quant.model.save_model_to_file(int4_path, use_external_data_format=True)
                         del model

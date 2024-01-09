@@ -13,6 +13,7 @@
         "editor.codeActionsOnSave": {
             "source.organizeImports": true
         },
+        "editor.defaultFormatter": "ms-python.black-formatter"
     },
     // Enable Python linting and Pylance type checking
     "python.analysis.typeCheckingMode": "basic",

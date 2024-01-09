@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {TRACE_FUNC_BEGIN, TRACE_FUNC_END} from 'onnxruntime-common';
+
 import {tensorDataTypeEnumToString} from '../../wasm-common';
 import {WebGpuBackend} from '../backend-webgpu';
 import {LOG_DEBUG} from '../log';
@@ -35,6 +37,7 @@ export class ProgramManager {
   run(buildArtifact: Artifact, inputTensorViews: readonly TensorView[], outputTensorViews: readonly TensorView[],
       inputs: GpuData[], outputs: GpuData[], dispatchGroup: [number, number, number],
       uniformBufferBinding: GPUBindingResource|undefined): void {
+    TRACE_FUNC_BEGIN(buildArtifact.programInfo.name);
     const device = this.backend.device;
 
     const computePassEncoder = this.backend.getComputePassEncoder();
@@ -75,12 +78,11 @@ export class ProgramManager {
 
       const kernelId = this.backend.currentKernelId!;
       const kernelInfo = this.backend.kernels.get(kernelId)!;
-      const kernelName = `[${kernelInfo[0]}] ${kernelInfo[1]}`;
 
       void syncData.buffer.mapAsync(GPUMapMode.READ).then(() => {
         const mappedData = new BigUint64Array(syncData.buffer.getMappedRange());
-        const startTimeU64 = mappedData[0];
-        const endTimeU64 = mappedData[1];
+        const [startTimeU64, endTimeU64] = mappedData;
+        const [kernelType, kernelName] = kernelInfo;
 
         syncData.buffer.unmap();
 
@@ -96,28 +98,46 @@ export class ProgramManager {
         }
 
         this.backend.gpuDataManager.release(syncData.id);
-        let inputShapes = '';
-        inputTensorViews.forEach((value, i) => {
-          inputShapes += `input[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
-        });
-        let outputShapes = '';
-        outputTensorViews.forEach((value, i) => {
-          outputShapes += `output[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
-        });
-        // eslint-disable-next-line no-console
-        console.log(`[profiling] kernel "${kernelId}|${kernelName}" ${inputShapes}${outputShapes}execution time: ${
-            endTime - startTime} ns`);
+        if (this.backend.env.webgpu.profiling?.ondata) {
+          this.backend.env.webgpu.profiling.ondata({
+            version: 1,
+            inputsMetadata: inputTensorViews.map(
+                value => ({dims: value.dims, dataType: tensorDataTypeEnumToString(value.dataType)})),
+            outputsMetadata: outputTensorViews.map(
+                value => ({dims: value.dims, dataType: tensorDataTypeEnumToString(value.dataType)})),
+            kernelId,
+            kernelType,
+            kernelName,
+            startTime,
+            endTime,
+          });
+        } else {
+          // if no callback is provided, print the profiling message to console
+          let inputShapes = '';
+          inputTensorViews.forEach((value, i) => {
+            inputShapes += `input[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
+          });
+          let outputShapes = '';
+          outputTensorViews.forEach((value, i) => {
+            outputShapes += `output[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
+          });
+          // eslint-disable-next-line no-console
+          console.log(`[profiling] kernel "${kernelId}|${kernelName}|${buildArtifact.programInfo.name}" ${inputShapes}${
+              outputShapes}execution time: ${endTime - startTime} ns`);
+        }
       });
     }
 
     if (this.backend.pendingDispatchNumber >= 16) {
       this.backend.flush();
     }
+    TRACE_FUNC_END(buildArtifact.programInfo.name);
   }
   dispose(): void {
     // this.repo.forEach(a => this.glContext.deleteProgram(a.program));
   }
   build(programInfo: ProgramInfo, normalizedDispatchGroupSize: [number, number, number]): Artifact {
+    TRACE_FUNC_BEGIN(programInfo.name);
     const device = this.backend.device;
     const extensions: string[] = [];
     if (device.features.has('shader-f16')) {
@@ -132,6 +152,7 @@ export class ProgramManager {
     const computePipeline = device.createComputePipeline(
         {compute: {module: shaderModule, entryPoint: 'main'}, layout: 'auto', label: programInfo.name});
 
+    TRACE_FUNC_END(programInfo.name);
     return {programInfo, computePipeline};
   }
 

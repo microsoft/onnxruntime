@@ -293,3 +293,10 @@ ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializers, _In_ OrtSessionOptions* op
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "External initializers are not supported in this build");
 #endif
 }
+
+ORT_API_STATUS_IMPL(OrtApis::SetDeterministicCompute, _Inout_ OrtSessionOptions* options, bool value) {
+  API_IMPL_BEGIN
+  options->value.use_deterministic_compute = value;
+  return nullptr;
+  API_IMPL_END
+}

@@ -141,7 +141,7 @@ struct CastSat<Float8E5M2, half> {
 
 #endif
 
-#endif
+#endif  // DISABLE_FLOAT8_TYPES
 
 template <int NumThreadsPerBlock, int NumElementsPerThread, typename OutT, typename InT>
 __global__ void CastKernelStd(const InT* input, OutT* output, CUDA_LONG N, CastStd<OutT, InT> cast) {

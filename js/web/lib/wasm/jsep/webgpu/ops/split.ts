@@ -4,9 +4,9 @@
 import {TensorView} from '../../tensor-view';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, ProgramInfo, TensorInfo} from '../types';
+import {ComputeContext, ProgramInfo, ProgramUniform, TensorInfo} from '../types';
 
-import {IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, getElementAt, IndicesHelper, inputVariable, outputVariable, ShaderHelper} from './common';
 
 export interface SplitAttributes extends AttributeWithCacheKey {
   readonly axis: number;
@@ -34,7 +34,7 @@ const createSplitAttributesFromInputs =
 const calculateOutputIndexImpl = (numberOfTensors: number): string => `
 fn calculateOutputIndex(index: u32) -> u32 {
     for (var i: u32 = 0u; i < ${numberOfTensors}u; i += 1u ) {
-    if (index < sizeInConcatAxis[i]) {
+    if (index < ${getElementAt('uniforms.size_in_split_axis', 'i', numberOfTensors)}) {
         return i;
     }
     }
@@ -48,15 +48,15 @@ const writeBufferDataImpl = (outputs: readonly IndicesHelper[]) => {
     if (numberOfTensors === 1) {
       codeLines.push(returnSnippet);
     } else if (i === 0) {
-      codeLines.push(`if (outputNumber == ${i}u) { ${returnSnippet} }`);
+      codeLines.push(`if (output_number == ${i}u) { ${returnSnippet} }`);
     } else if (i === numberOfTensors - 1) {
       codeLines.push(`else { ${returnSnippet} }`);
     } else {
-      codeLines.push(`else if (outputNumber == ${i}) { ${returnSnippet} }`);
+      codeLines.push(`else if (output_number == ${i}) { ${returnSnippet} }`);
     }
   }
   return `
-      fn writeBufferData(outputNumber: u32, indices: ${outputs[0].type.indices}, global_idx: u32) {
+      fn writeBufferData(output_number: u32, indices: ${outputs[0].type.indices}, global_idx: u32) {
         ${codeLines.join('\n')}
       }`;
 };
@@ -65,48 +65,54 @@ const createSplitProgramInfo = (inputs: readonly TensorView[], attributes: Split
   const inputShape = inputs[0].dims;
   const inputSize = ShapeUtil.size(inputShape);
   const dataType = inputs[0].dataType;
-  const rank = inputShape.length;
-  const axis = attributes.axis;
-  const adjustedAxis = (axis < 0) ? inputShape.length + axis : axis;
+  const axis = ShapeUtil.normalizeAxis(attributes.axis, inputShape.length);
   const outputs = new Array<IndicesHelper>(attributes.numOutputs);
   const input = inputVariable('input', dataType, inputShape);
-  const sizeInConcatAxis = new Array<number>(attributes.numOutputs);
+  const sizeInSplitAxis = new Array<number>(attributes.numOutputs);
   const outputsTensorInfo: TensorInfo[] = [];
   const outputShapes: number[][] = [];
   let previousSum = 0;
+  const programUniforms: ProgramUniform[] = [{type: 'uint32', data: inputSize}];
   for (let i = 0; i < attributes.numOutputs; i++) {
     previousSum += attributes.splitSizes[i];
-    sizeInConcatAxis[i] = previousSum;
+    sizeInSplitAxis[i] = previousSum;
     const outputShape = inputShape.slice();
     outputShape[attributes.axis] = attributes.splitSizes[i];
     outputShapes.push(outputShape);
-    outputs[i] = outputVariable(`output${i}`, dataType, outputShapes[i]);
+    outputs[i] = outputVariable(`output${i}`, dataType, outputShape);
     outputsTensorInfo.push({dims: outputShapes[i], dataType: inputs[0].dataType});
   }
-  const indicesAxis = rank < 2 ? 'indices' : `indices[${adjustedAxis}]`;
+  programUniforms.push({type: 'uint32', data: sizeInSplitAxis});
+  programUniforms.push(...createTensorShapeVariables(inputShape));
+  outputShapes.forEach((outputShape) => programUniforms.push(...createTensorShapeVariables(outputShape)));
   const getShaderSource = (shaderHelper: ShaderHelper) => `
-  ${shaderHelper.declareVariables(input, ...outputs)}
-  const sizeInConcatAxis = array<u32, ${sizeInConcatAxis.length}>(${sizeInConcatAxis.map(i => `${i}u`).join(',')});
-  ${calculateOutputIndexImpl(sizeInConcatAxis.length)}
+  ${
+      shaderHelper.registerUniform('input_size', 'u32')
+          .registerUniform('size_in_split_axis', 'u32', sizeInSplitAxis.length)
+          .declareVariables(input, ...outputs)}
+  ${calculateOutputIndexImpl(sizeInSplitAxis.length)}
   ${writeBufferDataImpl(outputs)}
 
   ${shaderHelper.mainStart()}
-    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(inputSize)}
+    ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.input_size')}
 
     var indices = ${input.offsetToIndices('global_idx')};
-    let outputNumber = calculateOutputIndex(${indicesAxis});
-    if (outputNumber != 0) {
-        ${indicesAxis} -= sizeInConcatAxis[outputNumber - 1u];
+    var index = ${input.indicesGet('indices', axis)};
+    let output_number = calculateOutputIndex(index);
+    if (output_number != 0) {
+      index -= ${getElementAt('uniforms.size_in_split_axis', 'output_number - 1u', sizeInSplitAxis.length)};
+      ${input.indicesSet('indices', axis, 'index')};
     }
-    writeBufferData(outputNumber, indices, global_idx);
+    writeBufferData(output_number, indices, global_idx);
   }`;
   return {
     name: 'Split',
-    shaderCache: {hint: attributes.cacheKey},
+    shaderCache: {hint: attributes.cacheKey, inputDependencies: ['rank']},
     getShaderSource,
     getRunData: () => ({
       outputs: outputsTensorInfo,
       dispatchGroup: {x: Math.ceil(inputSize / 64 /* workgroup size */)},
+      programUniforms
     })
   };
 };

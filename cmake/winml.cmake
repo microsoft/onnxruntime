@@ -451,6 +451,8 @@ onnxruntime_add_static_library(winml_lib_api
   ${winml_lib_api_dir}/impl/TensorKindFrom.h
   ${winml_lib_api_dir}/impl/TensorMemoryBufferReference.h
   ${winml_lib_api_dir}/NumericData.cpp
+  ${winml_lib_api_dir}/HardwareCoreEnumerator.cpp
+  ${winml_lib_api_dir}/HardwareCoreEnumerator.h
   ${winml_lib_api_dir}/ImageFeatureDescriptor.cpp
   ${winml_lib_api_dir}/ImageFeatureDescriptor.h
   ${winml_lib_api_dir}/ImageFeatureValue.cpp

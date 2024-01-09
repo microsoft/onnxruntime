@@ -1035,8 +1035,11 @@ class PlannerImpl {
       std::function<void(NodeIndex)> dfs = [&](NodeIndex curr) {
         if (dependents.find(curr) == dependents.end()) {
           dependents.insert(curr);
-          for (NodeIndex dep : dependence_graph_[curr]) {
-            dfs(dep);
+          auto dep_graph_iter = dependence_graph_.find(curr);
+          if (dep_graph_iter != dependence_graph_.end()) {
+            for (NodeIndex dep : dep_graph_iter->second) {
+              dfs(dep);
+            }
           }
         }
       };

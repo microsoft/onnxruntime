@@ -7,7 +7,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo, ProgramUniform, TensorInfo} from '../types';
 
-import {createTensorShapeVariables, enableShapesUniforms, IndicesHelper, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
+import {createTensorShapeVariables, getElementAt, IndicesHelper, inputVariable, outputVariable, ShaderHelper, UniformsArrayType} from './common';
 
 export interface SliceAttributes extends AttributeWithCacheKey {
   readonly starts: number[];
@@ -77,30 +77,25 @@ const fixStartEndValues =
         };
 
 const calculateInputIndicesImpl =
-    (input: IndicesHelper, output: IndicesHelper, inputShape: readonly number[], outputShape: readonly number[],
-     enableInputShapeUniforms: boolean): string =>
-        `fn calculateInputIndices(outputIndices: ${output.type.indices}) -> ${input.type.indices} {
-          var inputIndices: ${input.type.indices};
+    (input: IndicesHelper, output: IndicesHelper, inputShape: readonly number[]): string =>
+        `fn calculateInputIndices(output_indices: ${output.type.indices}) -> ${input.type.indices} {
+          var input_indices: ${input.type.indices};
           var carry = 0u;
           for (var i = ${inputShape.length}; i >= 0; i--) {
-            let input_shape_i = ${
-            enableInputShapeUniforms ? `uniforms.input_shape${inputShape.length > 1 ? '[i]' : ''}` : 'inputShape[i]'};
-            let steps_i  = ${
-            enableInputShapeUniforms ? `uniforms.steps${inputShape.length > 1 ? '[i]' : ''}` : 'steps[i]'};
-            let signs_i  = ${
-            enableInputShapeUniforms ? `uniforms.signs${inputShape.length > 1 ? '[i]' : ''}` : 'signs[i]'};
-            let starts_i  = ${
-            enableInputShapeUniforms ? `uniforms.starts${inputShape.length > 1 ? '[i]' : ''}` : 'starts[i]'};
-            var outputIndex = ${outputShape.length === 1 ? 'outputIndices' : 'outputIndices[i]'};
-            var inputIndex = outputIndex * steps_i + starts_i + carry;
-            carry = inputIndex / input_shape_i;
-            inputIndex = inputIndex % input_shape_i;
+            let input_shape_i = ${getElementAt('uniforms.input_shape', 'i', inputShape.length)};
+            let steps_i = ${getElementAt('uniforms.steps', 'i', inputShape.length)};
+            let signs_i = ${getElementAt('uniforms.signs', 'i', inputShape.length)};
+            let starts_i = ${getElementAt('uniforms.starts', 'i', inputShape.length)};
+            var output_index = ${output.indicesGet('output_indices', 'i')};
+            var input_index = output_index * steps_i + starts_i + carry;
+            carry = input_index / input_shape_i;
+            input_index = input_index % input_shape_i;
             if (signs_i < 0) {
-              inputIndex = input_shape_i - inputIndex - 1u + starts_i;
+              input_index = input_shape_i - input_index - 1u + starts_i;
             }
-            ${inputShape.length === 1 ? 'inputIndices' : 'inputIndices[i]'} = inputIndex;
+            ${input.indicesSet('input_indices', 'i', 'input_index')};
           }
-          return inputIndices;
+          return input_indices;
       }`;
 
 const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: SliceAttributes): ProgramInfo => {
@@ -145,60 +140,38 @@ const createSliceProgramInfo = (inputs: readonly TensorView[], attributes: Slice
     }
   });
   // Output rank is expected to be less than or equal to the input rank.
-  const enableShapeUniforms = enableShapesUniforms(inputs[0].dims.length);
-  const inputShapeOrRank = enableShapeUniforms ? inputs[0].dims.length : inputs[0].dims;
-
   const outputShape = inputShape.slice(0);
   axes.forEach((axis, _) => {
     outputShape[axis] = Math.ceil((ends[axis] - starts[axis]) / steps[axis]);
   });
-  const outputShapeOrRank = enableShapeUniforms ? outputShape.length : outputShape;
-
   const outputTensorInfo: TensorInfo = {dims: outputShape, dataType: inputs[0].dataType};
 
-  const output = outputVariable('output', inputs[0].dataType, outputShapeOrRank);
-  const input = inputVariable('input', inputs[0].dataType, inputShapeOrRank);
+  const output = outputVariable('output', inputs[0].dataType, outputShape.length);
+  const input = inputVariable('input', inputs[0].dataType, inputs[0].dims.length);
   const outputSize = ShapeUtil.size(outputShape);
-  const programUniforms: ProgramUniform[] = [];
-  const uniforms: UniformsArrayType = [];
-  if (enableShapeUniforms) {
-    uniforms.push({name: 'starts', type: starts.length > 1 ? `vec${starts.length}<u32>` : 'u32'});
-    uniforms.push({name: 'signs', type: signs.length > 1 ? `vec${signs.length}<i32>` : 'i32'});
-    uniforms.push({name: 'steps', type: steps.length > 1 ? `vec${steps.length}<u32>` : 'u32'});
-    programUniforms.push({type: 'uint32', data: starts});
-    programUniforms.push({type: 'int32', data: signs});
-    programUniforms.push({type: 'uint32', data: steps});
-  }
-  uniforms.push({name: 'outputSize', type: 'u32'});
-  programUniforms.push({type: 'uint32', data: outputSize});
-  if (enableShapeUniforms) {
-    programUniforms.push(...createTensorShapeVariables(inputs[0].dims));
-    programUniforms.push(...createTensorShapeVariables(outputShape));
-  }
+  const uniforms: UniformsArrayType = [
+    {name: 'outputSize', type: 'u32'}, {name: 'starts', type: 'u32', length: starts.length},
+    {name: 'signs', type: 'i32', length: signs.length}, {name: 'steps', type: 'u32', length: steps.length}
+  ];
+
+  const programUniforms: ProgramUniform[] = [
+    {type: 'uint32', data: outputSize}, {type: 'uint32', data: starts}, {type: 'int32', data: signs},
+    {type: 'uint32', data: steps}, ...createTensorShapeVariables(inputs[0].dims),
+    ...createTensorShapeVariables(outputShape)
+  ];
 
   const getShaderSource = (shaderHelper: ShaderHelper) => `
       ${shaderHelper.registerUniforms(uniforms).declareVariables(input, output)}
-        ${enableShapeUniforms ? '' : [
-    `const signs = array<i32, ${signs.length}>(${signs.map(i => `${i}i`).join(',')});`,
-    `const starts = array<u32, ${starts.length}>(${starts.map(i => `${i}u`).join(',')});`,
-    `const steps = array<u32, ${steps.length}>(${steps.map(i => `${i}u`).join(',')});`,
-    `const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});`
-  ].join('\n')}
-
-        ${calculateInputIndicesImpl(input, output, inputShape, outputShape, enableShapeUniforms)}
+        ${calculateInputIndicesImpl(input, output, inputShape)}
         ${shaderHelper.mainStart()}
           ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
-          let outputIndices = ${output.offsetToIndices('global_idx')};
-          let inputIndices = calculateInputIndices(outputIndices);
-          ${output.setByOffset('global_idx', input.getByIndices('inputIndices'))}
+          let output_indices = ${output.offsetToIndices('global_idx')};
+          let input_indices = calculateInputIndices(output_indices);
+          ${output.setByOffset('global_idx', input.getByIndices('input_indices'))}
       }`;
   return {
     name: 'Slice',
-    shaderCache: {
-      hint: enableShapeUniforms ? `${signs.length}_${starts.length}_${steps.length}` :
-                                  `${attributes.cacheKey} | ${inputs[4]?.dims ?? ''}`,
-      inputDependencies: [enableShapeUniforms ? 'rank' : 'dims']
-    },
+    shaderCache: {hint: `${signs.length}_${starts.length}_${steps.length}`, inputDependencies: ['rank']},
     getShaderSource,
     getRunData: () => ({
       outputs: [outputTensorInfo],
