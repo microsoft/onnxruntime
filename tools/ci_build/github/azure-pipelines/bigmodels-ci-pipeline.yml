@@ -38,5 +38,5 @@ stages:
             python3 demo_txt2img_xl.py "starry night over Golden Gate Bridge by van gogh"; \
             popd; \
           "
-      displayName: 'Hello world'
+      displayName: 'Build Onnxruntime and run stable diffusion demo'
       workingDirectory: $(Build.SourcesDirectory)
