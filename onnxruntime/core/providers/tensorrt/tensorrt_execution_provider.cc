@@ -2675,6 +2675,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromGraph(const GraphViewer& 
     trt_config->setFlag(nvinfer1::BuilderFlag::kENABLE_TACTIC_HEURISTIC);
     LOGS_DEFAULT(WARNING) << "[TensorRT EP] Builder heuristics are enabled."
                           << " For TRT > 8.5, trt_build_heuristics_enable is deprecated, please set builder optimization level as 2 to enable builder heuristics.";
+  }
 #elif NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR > 5 || NV_TENSORRT_MAJOR > 8
   // for TRT 8.6 onwards, heuristic-based tactic option is automatically enabled by setting builder optimization level 2
   if (build_heuristics_enable_) {
