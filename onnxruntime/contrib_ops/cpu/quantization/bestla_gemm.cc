@@ -181,8 +181,6 @@ bool NSSQ4GemmBatchDriver(
   GetCPUDevice();
   bestla::ORTThreading orth(ThreadPool);
   bool processed = true;
-  bestla::utils::timer<utils::microseconds> tm;
-  tm.start();
   for (size_t i = 0; i < BatchN; i++) {
     auto ptr = bestla::storage::gemm::PackedWeightParser::deserialBuffer(DataParams[i].B);
     auto uptr = std::unique_ptr<bestla::storage::gemm::IWeightBase>(ptr);
@@ -225,9 +223,6 @@ bool NSSQ4GemmBatchDriver(
       processed = false;
       break;
     }
-  }
-  if (N == 4096 && K == 14336) {
-    printf("%f\n", tm.stop());
   }
   return processed;
 }
