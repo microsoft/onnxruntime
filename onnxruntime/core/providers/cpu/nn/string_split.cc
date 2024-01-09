@@ -94,8 +94,7 @@ Status StringSplit::Compute(OpKernelContext* context) const {
   auto splits_data = context->Output(0, splits_shape)->template MutableDataAsSpan<std::string>();
   auto slices_iter = input_slices.begin();
   for (auto output_splits_iter = splits_data.begin(); output_splits_iter != splits_data.end(); output_splits_iter += last_dim, slices_iter++) {
-    const auto output_slices = *slices_iter;
-    std::copy(output_slices.begin(), output_slices.end(), output_splits_iter);
+    std::copy(slices_iter->begin(), slices_iter->end(), output_splits_iter);
   }
 
   return Status::OK();
