@@ -186,7 +186,7 @@ AllocatorPtr OpKernelContext::GetAllocator(const OrtDevice& device) const {
   return execution_frame_->GetAllocator(device);
 }
 
-#if defined(ENABLE_ATEN) || defined(USE_TENSORRT)
+#ifdef ENABLE_ATEN
 Status OpKernelContext::SetOutputMLValue(int index, const OrtValue& ort_value) {
   if (index < 0 || index >= OutputCount()) {
     return Status(common::ONNXRUNTIME, common::FAIL,

@@ -54,7 +54,7 @@ class IExecutionFrame {
   const OrtValue* GetNodeInputOrOutputMLValue(int index) const;
   OrtValue* GetMutableNodeInputOrOutputMLValue(int index);
 
-#if defined(ENABLE_ATEN) || defined(USE_TENSORRT)
+#ifdef ENABLE_ATEN
   // Override the index-th output with ort_value
   Status SetOutputMLValue(int index, const OrtValue& ort_value);
 #endif
