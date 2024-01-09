@@ -21,8 +21,8 @@ TEST(RegexFullMatch, EmailMatch) {
 
 TEST(RegexFullMatch, MultibyteMatch) {
   RunTest({1, 2}, {"ä", "a"}, "ä", {true, false});
-  RunTest({1,}, {"une cédille like in Besançon"}, R"(.*cédille.*)", {true,});
-  RunTest({1,}, {"une cédille like in Besançon"}, R"(.*cedille.*)", {false,});
+  RunTest({1,}, {"une cédille like in Besançon"}, R"(.*Besançon.*)", {true,});
+  RunTest({1,}, {"une cédille like in Besançon"}, R"(.*Besancon.*)", {false,});
   RunTest({1,}, {"Mit freundlichen Grüßen"}, R"(.*Grüßen$)", {true,});
   RunTest({1,}, {"Mit freundlichen Grüßen"}, R"(.*Grußen$)", {false,});
   RunTest({3,}, {"HПонедельник", "Понедельник", "недельник"}, R"(^Понед.*)", {false, true, false,});
