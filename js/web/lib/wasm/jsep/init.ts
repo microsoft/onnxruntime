@@ -62,7 +62,7 @@ class ComputeContextImpl implements ComputeContext {
   }
   get customDataBuffer(): Uint8Array {
     return this.module.HEAPU8.subarray(
-      this.customDataOffset >>> 0, (this.customDataOffset >>> 0) + this.customDataSize);
+        this.customDataOffset >>> 0, (this.customDataOffset >>> 0) + this.customDataSize);
   }
   private customDataOffset = 0;
   private customDataSize = 0;
@@ -183,8 +183,8 @@ export const init = async(module: OrtWasmModule, env: Env, gpuAdapter: GPUAdapte
                 'verbose',
                 () => `[WebGPU] jsepCopyGpuToCpu: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
 
-            await backend.download(gpuDataId,
-              () => module.HEAPU8.subarray(dataOffset >>> 0, (dataOffset >>> 0) + size));
+            await backend.download(
+                gpuDataId, () => module.HEAPU8.subarray(dataOffset >>> 0, (dataOffset >>> 0) + size));
           },
 
       // jsepCreateKernel
