@@ -185,7 +185,7 @@ stages:
             FolderPath: '$(Build.ArtifactStagingDirectory)'
             DoEsrp: ${{ parameters.DoEsrp }}
 
-        - template: templates/validate-package.yml
+        - template: ../templates/validate-package.yml
           parameters:
             PackageType: 'nuget'
             PackagePath: '$(Build.ArtifactStagingDirectory)'
@@ -194,7 +194,7 @@ stages:
             PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.1*nupkg'
             VerifyNugetSigning: false
 
-        - template: templates/validate-package.yml
+        - template: ../templates/validate-package.yml
           parameters:
             PackageType: 'nuget'
             PackagePath: '$(Build.ArtifactStagingDirectory)'
@@ -202,7 +202,7 @@ stages:
             PlatformsSupported: 'win-x64'
             VerifyNugetSigning: false
 
-        - template: templates/validate-package.yml
+        - template: ../templates/validate-package.yml
           parameters:
             PackageType: 'nuget'
             PackagePath: '$(Build.ArtifactStagingDirectory)'
