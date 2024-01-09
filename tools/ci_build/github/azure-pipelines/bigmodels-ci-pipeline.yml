@@ -2,41 +2,41 @@ stages:
 - stage: Stale diffusion
   jobs:
   - job: Stale diffusion
-  variables:
-    skipComponentGovernanceDetection: true
-  workspace:
-    clean: all
-  pool: onnxruntime-Linux-GPU-A10-16G
-  steps:
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
+    variables:
+      skipComponentGovernanceDetection: true
+    workspace:
+      clean: all
+    pool: onnxruntime-Linux-GPU-A10-16G
+    steps:
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
 
-  - checkout: self
-    clean: true
-    submodules: none
+    - checkout: self
+      clean: true
+      submodules: none
 
-  - script: |
-      docker run --rm --gpus all -v $PWD:/workspace nvcr.io/nvidia/pytorch:23.10-py3 \
-        bash -c "
-          set -ex; \
-          export CUDACXX=/usr/local/cuda-12.2/bin/nvcc; \
-          git config --global --add safe.directory '*'; \
-          sh build.sh --config Release  --build_shared_lib --parallel --use_cuda --cuda_version 12.2 \
-                      --cuda_home /usr/local/cuda-12.2 --cudnn_home /usr/lib/x86_64-linux-gnu/ --build_wheel --skip_tests \
-                      --use_tensorrt --tensorrt_home /usr/src/tensorrt \
-                      --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF \
-                      --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 \
-                      --allow_running_as_root; \
-          python3 -m pip install --upgrade pip; \
-          python3 -m pip install build/Linux/Release/dist/onnxruntime_gpu-1.17.0-cp310-cp310-linux_x86_64.whl --force-reinstall; \
-          pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion; \
-          python3 -m pip install -r requirements-cuda12.txt; \
-          python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com; \
-          echo "Generate an image guided by a text prompt"
-          python3 demo_txt2img.py "astronaut riding a horse on mars";\
-          python3 demo_txt2img_xl.py "starry night over Golden Gate Bridge by van gogh"; \
-          popd; \
-        "
-    displayName: 'Hello world'
-    workingDirectory: $(Build.SourcesDirectory)
+    - script: |
+        docker run --rm --gpus all -v $PWD:/workspace nvcr.io/nvidia/pytorch:23.10-py3 \
+          bash -c "
+            set -ex; \
+            export CUDACXX=/usr/local/cuda-12.2/bin/nvcc; \
+            git config --global --add safe.directory '*'; \
+            sh build.sh --config Release  --build_shared_lib --parallel --use_cuda --cuda_version 12.2 \
+                        --cuda_home /usr/local/cuda-12.2 --cudnn_home /usr/lib/x86_64-linux-gnu/ --build_wheel --skip_tests \
+                        --use_tensorrt --tensorrt_home /usr/src/tensorrt \
+                        --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF \
+                        --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 \
+                        --allow_running_as_root; \
+            python3 -m pip install --upgrade pip; \
+            python3 -m pip install build/Linux/Release/dist/onnxruntime_gpu-1.17.0-cp310-cp310-linux_x86_64.whl --force-reinstall; \
+            pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion; \
+            python3 -m pip install -r requirements-cuda12.txt; \
+            python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com; \
+            echo "Generate an image guided by a text prompt"; \
+            python3 demo_txt2img.py "astronaut riding a horse on mars"; \
+            python3 demo_txt2img_xl.py "starry night over Golden Gate Bridge by van gogh"; \
+            popd; \
+          "
+      displayName: 'Hello world'
+      workingDirectory: $(Build.SourcesDirectory)
