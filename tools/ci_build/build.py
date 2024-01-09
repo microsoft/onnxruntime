@@ -1520,7 +1520,7 @@ def generate_build_tree(
                     ]
                 elif config == "Debug":
                     cflags = ["-ggdb3", "-O0"]
-                    if platform.architecture()[0] != "32bit" and not (args.enable_training_apis and args.use_cuda):
+                    if False and platform.architecture()[0] != "32bit" and not (args.enable_training_apis and args.use_cuda) and not args.build_nodejs:
                         cflags += ["-fsanitize=address"]
                         ldflags += ["-fsanitize=address"]
                 elif config == "MinSizeRel":
@@ -1533,6 +1533,7 @@ def generate_build_tree(
                         "-pipe",
                         "-ggdb3",
                     ]
+                cxxflags = cflags.copy()
 
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
