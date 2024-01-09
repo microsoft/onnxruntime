@@ -113,7 +113,7 @@ stages:
                         --parallel \
                         --build_csharp \
                         --enable_onnx_tests --enable_address_sanitizer \
-                        --use_cache --test;"
+                        --test;"
                 workingDirectory: $(Build.SourcesDirectory)
 
       - task: PublishTestResults@2
