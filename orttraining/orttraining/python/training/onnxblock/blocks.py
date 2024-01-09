@@ -176,14 +176,14 @@ class _UnaryOp(Block):
 class ReduceMean(_UnaryOp):
     """Adds ReduceMean node to the onnx model."""
 
-    def __init__(self, keepdims = True):
+    def __init__(self, keepdims=True):
         super().__init__("ReduceMean", keepdims=keepdims)
 
 
 class ReduceSum(_UnaryOp):
     """Adds ReduceSum node to the onnx model."""
 
-    def __init__(self, keepdims = True):
+    def __init__(self, keepdims=True):
         super().__init__("ReduceSum", keepdims=keepdims)
 
 
