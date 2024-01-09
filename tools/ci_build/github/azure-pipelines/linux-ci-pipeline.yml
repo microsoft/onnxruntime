@@ -95,7 +95,7 @@ stages:
                     -e NIGHTLY_BUILD \
                     -e BUILD_BUILDNUMBER \
                     -e CCACHE_DIR=/cache \
-                    onnxruntimecpubuild \
+                    onnxruntimecpubuildcentos8x64 \
                     /bin/bash -c "
                       set -ex; \
                       ccache -s; \
