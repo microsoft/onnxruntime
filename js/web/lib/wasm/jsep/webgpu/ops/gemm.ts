@@ -49,7 +49,7 @@ const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAt
     {type: 'float32', data: attributes.alpha}, {type: 'float32', data: attributes.beta},
     ...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(inputs[1].dims)
   ];
-  const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'rank'];
+  const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
   if (inputs.length === 3) {
     programUniforms.push(...createTensorShapeVariables(inputs[2].dims));
     inputDependencies.push('rank');
