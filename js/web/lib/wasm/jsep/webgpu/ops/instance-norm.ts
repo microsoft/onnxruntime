@@ -26,14 +26,12 @@ const createInstanceNormProgramInfo =
       const inputDependencies: ProgramInputTensorInfoDependency[] = ['rank', 'type', 'type'];
       const programUniforms: ProgramUniform[] =
           [{type: 'uint32', data: normSize}, {type: 'uint32', data: normPackedSize}];
-      programUniforms.push(
-          ...createTensorShapeVariables(inputShape), ...createTensorShapeVariables(inputs[1].dims),
-          ...createTensorShapeVariables(inputs[2].dims), ...createTensorShapeVariables(inputShape));
+      programUniforms.push(...createTensorShapeVariables(inputShape), ...createTensorShapeVariables(inputShape));
 
       const getShaderSource = (shaderHelper: ShaderHelper) => {
         const x = inputVariable('x', inputs[0].dataType, inputShape.length, components);
-        const scale = inputVariable('scale', inputs[1].dataType, inputs[1].dims.length);
-        const bias = inputVariable('bias', inputs[2].dataType, inputs[2].dims.length);
+        const scale = inputVariable('scale', inputs[1].dataType, inputs[1].dims);
+        const bias = inputVariable('bias', inputs[2].dataType, inputs[2].dims);
         const output = outputVariable('output', inputs[0].dataType, inputShape.length, components);
         const variables = [x, scale, bias, output];
         const dataType = x.type.value;
