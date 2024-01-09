@@ -61,7 +61,7 @@ stages:
             python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com; \
             echo "Generate an image guided by a text prompt"; \
             python3 demo_txt2img.py "astronaut riding a horse on mars"; \
-            echo "Generate an image with Stable Diffusion XL guided by a text prompt"
+            echo "Generate an image with Stable Diffusion XL guided by a text prompt"; \
             python3 demo_txt2img_xl.py "starry night over Golden Gate Bridge by van gogh"; \
             python3 demo_txt2img_xl.py --enable-refiner "starry night over Golden Gate Bridge by van gogh"; \
             echo "Generate an image guided by a text prompt using LCM LoRA"; \
