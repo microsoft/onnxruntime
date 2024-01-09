@@ -190,7 +190,7 @@ stages:
             PackageType: 'nuget'
             PackagePath: '$(Build.ArtifactStagingDirectory)'
             PlatformsSupported: 'win-x64,linux-x64'
-            # 1* stands for version number. we use it to fileter Gpu.Windows and Gpu.Linux packages
+            # 1* stands for version number. we use it to filter Gpu.Windows and Gpu.Linux packages
             PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.1*nupkg'
             VerifyNugetSigning: false
 
