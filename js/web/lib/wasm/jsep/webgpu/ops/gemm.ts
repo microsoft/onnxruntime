@@ -46,8 +46,7 @@ const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAt
   const outputSize = ShapeUtil.size(outputShape);
   const programUniforms: ProgramUniform[] = [
     {type: 'uint32', data: outputSize}, {type: 'uint32', data: M}, {type: 'uint32', data: N}, {type: 'uint32', data: K},
-    {type: 'float32', data: attributes.alpha}, {type: 'float32', data: attributes.beta},
-    ...createTensorShapeVariables(inputs[0].dims), ...createTensorShapeVariables(inputs[1].dims)
+    {type: 'float32', data: attributes.alpha}, {type: 'float32', data: attributes.beta}
   ];
   const inputDependencies: ProgramInputTensorInfoDependency[] = ['type', 'type'];
   if (inputs.length === 3) {
@@ -69,8 +68,8 @@ const createGemmProgramInfo = (inputs: readonly TensorView[], attributes: GemmAt
     }
 
     const calculateAlpha = attributes.alpha === 1 ? '' : 'value *= uniforms.alpha;';
-    const a = inputVariable('a', inputs[0].dataType, inputs[0].dims.length);
-    const b = inputVariable('b', inputs[1].dataType, inputs[1].dims.length);
+    const a = inputVariable('a', inputs[0].dataType, inputs[0].dims);
+    const b = inputVariable('b', inputs[1].dataType, inputs[1].dims);
     const dataType = a.type.value;
     let c: IndicesHelper|null = null;
     const variables = [a, b];
