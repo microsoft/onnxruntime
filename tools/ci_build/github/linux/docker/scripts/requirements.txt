@@ -3,8 +3,8 @@ numpy==1.21.6 ; python_version < '3.11'
 numpy==1.24.2 ; python_version >= '3.11'
 mypy
 pytest
-setuptools>=68.2.2
-wheel>=0.35.1
+setuptools==69.0.3
+wheel==0.42.0
 onnx==1.15.0
 argparse
 sympy==1.12

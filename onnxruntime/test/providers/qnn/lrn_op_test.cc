@@ -84,7 +84,7 @@ template <typename QuantType>
 static void RunQDQLRNOpTest(const TestInputDef<float>& input_def, int64_t size,
                             ExpectedEPNodeAssignment expected_ep_assignment,
                             float alpha = 0.0001f, float beta = 0.75f, float bias = 1.0f,
-                            int opset = 13) {
+                            int opset = 13, QDQTolerance tolerance = QDQTolerance()) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -97,7 +97,7 @@ static void RunQDQLRNOpTest(const TestInputDef<float>& input_def, int64_t size,
                        provider_options,
                        opset,
                        expected_ep_assignment,
-                       1e-5f);
+                       tolerance);
 }
 
 //
@@ -130,19 +130,42 @@ TEST_F(QnnCPUBackendTests, LRN_size_larger_than_channel) {
 TEST_F(QnnHTPBackendTests, LRNSize3) {
   RunQDQLRNOpTest<uint8_t>(TestInputDef<float>({1, 128, 4, 5}, false, -10.0f, 10.0f),
                            3,  // Size
-                           ExpectedEPNodeAssignment::All);
+                           ExpectedEPNodeAssignment::All,
+                           0.0001f,  // alpha
+                           0.75f,    // beta
+                           1.0f,     // bias
+                           13,       // opset
+                           // Need to use tolerance of 0.405% of output range after QNN SDK 2.17
+                           QDQTolerance(0.00405f));
 }
 
 TEST_F(QnnHTPBackendTests, LRNSize5) {
   RunQDQLRNOpTest<uint8_t>(TestInputDef<float>({1, 128, 4, 5}, false, -10.0f, 10.0f),
                            5,  // Size
-                           ExpectedEPNodeAssignment::All);
+                           ExpectedEPNodeAssignment::All,
+                           0.0001f,  // alpha
+                           0.75f,    // beta
+                           1.0f,     // bias
+                           13,       // opset
+                           // Need to use tolerance of 0.407% of output range after QNN SDK 2.17
+                           QDQTolerance(0.00407f));
 }
 
 TEST_F(QnnHTPBackendTests, LRN_size_larger_than_channel) {
+#ifdef __linux__
+  // On Linux QNN SDK 2.17: Need a tolerance of 0.407% of output range to pass.
+  QDQTolerance tolerance = QDQTolerance(0.00407f);
+#else
+  QDQTolerance tolerance = QDQTolerance();
+#endif
   RunQDQLRNOpTest<uint8_t>(TestInputDef<float>({1, 128, 4, 5}, false, -10.0f, 10.0f),
                            255,  // Size
-                           ExpectedEPNodeAssignment::All);
+                           ExpectedEPNodeAssignment::All,
+                           0.0001f,  // alpha
+                           0.75f,    // beta
+                           1.0f,     // bias
+                           13,       // opset
+                           tolerance);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

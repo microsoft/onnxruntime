@@ -14,6 +14,9 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
 
+// enable to dump model for debugging
+#define SAVE_TEST_GRAPH 0
+
 namespace onnxruntime {
 namespace test {
 
@@ -73,7 +76,7 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        std::unique_ptr<GraphTransformer> transformer = nullptr) {
     SessionOptions session_options;
     session_options.graph_optimization_level = transformer ? baseline_level : level;
-#if 0  // enable to dump model for debugging
+#if SAVE_TEST_GRAPH
     session_options.optimized_model_filepath =
         ToPathString("model" + std::to_string(static_cast<int>(level)) + ".onnx");
 #endif
@@ -156,11 +159,17 @@ Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>&
     if (pre_graph_checker) {
       ORT_RETURN_IF_ERROR(pre_graph_checker(graph));
     }
+#if SAVE_TEST_GRAPH
+    ORT_RETURN_IF_ERROR(Model::Save(model, "model_original.onnx"));
+#endif
     ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(graph, level, logger));
     if (post_graph_checker) {
       ORT_RETURN_IF_ERROR(post_graph_checker(graph));
     }
-  }
+#if SAVE_TEST_GRAPH
+    ORT_RETURN_IF_ERROR(Model::Save(model, "model_optimized.onnx"));
+#endif
+  };
 
   return Status::OK();
 }

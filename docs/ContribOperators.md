@@ -155,6 +155,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Corresponding past and present are same tensor, its size is (2, batch_size, num_heads, max_sequence_length, head_size)</dd>
 <dt><tt>qkv_hidden_sizes</tt> : list of ints</dt>
 <dd>Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size</dd>
+<dt><tt>rotary_embedding_dim</tt> : int</dt>
+<dd>Dimension of rotary embedding. Limited to 32, 64 or 128. Default value is head_size</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 <dt><tt>unidirectional</tt> : int</dt>
@@ -1599,14 +1601,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs (1 - &#8734;)
 
 <dl>
-<dt><tt>inputs</tt> (variadic) : T</dt>
+<dt><tt>inputs</tt> (variadic, heterogeneous) : T</dt>
 <dd>List of tensors for inputs</dd>
 </dl>
 
 #### Outputs (1 - &#8734;)
 
 <dl>
-<dt><tt>outputs</tt> (variadic) : T</dt>
+<dt><tt>outputs</tt> (variadic, heterogeneous) : T</dt>
 <dd>One or more outputs, list of tensors for outputs</dd>
 </dl>
 
@@ -2649,8 +2651,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T1</tt> : tensor(float), tensor(float16)</dt>
-<dd>Constrain input and output types to float/half_float tensors.</dd>
+<dt><tt>T1</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float/half_float/brain_float tensors.</dd>
 <dt><tt>T2</tt> : tensor(uint8)</dt>
 <dd>Constrain quantized weight types to uint8.</dd>
 </dl>
@@ -2824,6 +2826,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>size of each input feature</dd>
 <dt><tt>N</tt> : int (required)</dt>
 <dd>size of each output feature</dd>
+<dt><tt>accuracy_level</tt> : int</dt>
+<dd>The minimum accuracy level of input A, can be: 0(unset), 1(fp32), 2(fp16), 3(bf16), or 4(int8) (default unset). It is used to control how input A is quantized or downcast internally while doing computation, for example: 0 means input A will not be quantized or downcast while doing computation. 4 means input A can be quantized with the same block_size to int8 internally from type T1.</dd>
 <dt><tt>bits</tt> : int (required)</dt>
 <dd>number of bits used for weight quantization (default 4)</dd>
 <dt><tt>block_size</tt> : int (required)</dt>

@@ -100,42 +100,18 @@ template <typename T>
 using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
 };  // namespace tensorrt_ptr
 
-template <typename T>
-inline T RoundUp(T m, T n) {
-  return ((m + n - 1) / n) * n;
-}
-
 //
 // Class to allocate memory for outputs with data-dependent shapes. The sizes of those are unknown so pre-allocation is
 // not possible.
 //
 class OutputAllocator : public nvinfer1::IOutputAllocator {
  public:
-  OutputAllocator(OrtAllocator* alloc)
-      : allocator(alloc) {
-  }
+  void* reallocateOutput(char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment) noexcept override;
 
-  void* reallocateOutput(
-      char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment) noexcept override {
-    // Some memory allocators return nullptr when allocating zero bytes, but TensorRT requires a non-null ptr
-    // even for empty tensors, so allocate a dummy byte.
-    size = std::max(size, static_cast<uint64_t>(1));
-    if (size > allocated_size) {
-      buffer = IAllocator::MakeUniquePtrFromOrtAllocator<void>(allocator, RoundUp(size, alignment));
-      allocated_size = size;
-    }
-    return buffer.get();
-  }
+  void notifyShape(char const* tensorName, nvinfer1::Dims const& dims) noexcept override;
 
   void* getBuffer() {
-    return buffer.get();
-  }
-
-  void notifyShape(char const* tensorName, nvinfer1::Dims const& dims) noexcept override {
-    output_shapes.reserve(dims.nbDims);
-    for (int i = 0; i < dims.nbDims; i++) {
-      output_shapes.push_back(dims.d[i]);
-    }
+    return outputPtr;
   }
 
   std::vector<int64_t>& getOutputShape() {
@@ -146,11 +122,12 @@ class OutputAllocator : public nvinfer1::IOutputAllocator {
     return allocated_size;
   }
 
-  ~OutputAllocator() override {}
+  ~OutputAllocator() override {
+    cudaFree(outputPtr);
+  }
 
  private:
-  OrtAllocator* allocator = nullptr;
-  IAllocatorUniquePtr<void> buffer;
+  void* outputPtr{nullptr};
   uint64_t allocated_size = 0;
   std::vector<int64_t> output_shapes;
 };
@@ -227,7 +204,7 @@ struct SubGraphContext {
 };
 
 using SubGraphContextMap = std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>;
-using DDSOutputAllocatorMap = std::unordered_map<char const*, OutputAllocator*>;
+using DDSOutputAllocatorMap = std::unordered_map<std::string, std::unique_ptr<OutputAllocator>>;
 
 // Logical device representation.
 class TensorrtExecutionProvider : public IExecutionProvider {
@@ -344,7 +321,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_opt_shapes_;
   std::unordered_map<std::string, ShapeRangesMap> input_shape_ranges_;  // The profile shape ranges that the engine is built with
   std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
-  std::unordered_map<std::string, DDSOutputAllocatorMap> dds_output_allocator_map_;  // For DDS output tensor
+  std::unordered_map<std::string, DDSOutputAllocatorMap> dds_output_allocator_maps_;
 
   // for external stream, we need to create its cudnn/cublass handle before cuda EP enable cuda graph capture
   cudnnHandle_t external_cudnn_handle_ = nullptr;

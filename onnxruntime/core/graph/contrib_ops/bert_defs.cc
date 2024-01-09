@@ -259,7 +259,6 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
       *output_shape.add_dim() = query_dims[1];
       *output_shape.add_dim() = query_dims[2];
       updateOutputShape(ctx, 0, output_shape);
-      return;
     } else {
       fail_shape_inference("Missing input 2 (value)");
     }
@@ -332,6 +331,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               OPTIONAL_VALUE)
         .Attr("do_rotary",
               "Whether to use rotary position embedding. Default value is 0.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("rotary_embedding_dim",
+              "Dimension of rotary embedding. Limited to 32, 64 or 128. Default value is head_size",
               AttributeProto::INT,
               OPTIONAL_VALUE)
         .Attr("mask_filter_value",

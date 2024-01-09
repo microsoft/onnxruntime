@@ -44,7 +44,6 @@ jobs:
   pool:
     name: ${{ parameters.PoolName }}
   variables:
-    EnvSetupScript: setup_env.bat
     buildArch: x64
     CommonBuildArgs: '--parallel --config ${{ parameters.BuildConfig }} --skip_submodule_sync --build_wasm ${{ parameters.ExtraBuildArgs }}'
     runCodesignValidationInjection: false

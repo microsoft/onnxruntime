@@ -84,7 +84,7 @@ stages:
       skipComponentGovernanceDetection: true
     workspace:
       clean: all
-    pool: Azure-Pipelines-EO-Windows2022-aiinfra
+    pool: Onnxruntime-Win-CPU-2022
     steps:
     - task: PowerShell@2
       displayName: 'Add Build Tag'

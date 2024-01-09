@@ -668,7 +668,7 @@ class Node {
 The Graph representation containing the graph inputs and outputs, the Node instances,
 and the edges connecting the nodes.
 */
-class Graph {
+class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve existing data member order for readability
  public:
   /** Gets the Graph name. */
   const std::string& Name() const noexcept;

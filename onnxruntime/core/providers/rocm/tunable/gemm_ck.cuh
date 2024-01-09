@@ -36,9 +36,11 @@ using Col = ck::tensor_layout::gemm::ColumnMajor;
 
 using Nop = ck::tensor_operation::element_wise::PassThrough;
 
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 auto GetCKGemmTypeStringAndOps() {
   using CKDataType = typename CKDataTypeAdaptor<T>::type;
+  using ALayout = typename CKBlasOpAdaptor<OpA>::type;
+  using BLayout = typename CKBlasOpAdaptor<OpB>::type;
   using DeviceGemm = ck::tensor_operation::device::DeviceGemm<
       ALayout, BLayout, Row,
       CKDataType, CKDataType, CKDataType,
@@ -70,9 +72,11 @@ auto GetCKGemmTypeStringAndOps() {
   return ret;
 }
 
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 auto GetCKStreamKGemmTypeStringAndOps() {
   using CKDataType = typename CKDataTypeAdaptor<T>::type;
+  using ALayout = typename CKBlasOpAdaptor<OpA>::type;
+  using BLayout = typename CKBlasOpAdaptor<OpB>::type;
   using DeviceGemm = ck::tensor_operation::device::DeviceGemmStreamK<
       ALayout, BLayout, Row,
       CKDataType, CKDataType, CKDataType,
@@ -104,9 +108,11 @@ auto GetCKStreamKGemmTypeStringAndOps() {
   return ret;
 }
 
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 auto GetCKSplitKGemmTypeStringAndOps() {
   using CKDataType = typename CKDataTypeAdaptor<T>::type;
+  using ALayout = typename CKBlasOpAdaptor<OpA>::type;
+  using BLayout = typename CKBlasOpAdaptor<OpB>::type;
   using DeviceGemm = ck::tensor_operation::device::DeviceGemmSplitK<
       ALayout, BLayout, Row,
       CKDataType, CKDataType, CKDataType,
@@ -144,9 +150,11 @@ auto GetCKSplitKGemmTypeStringAndOps() {
   return ret;
 }
 
-template <typename T, typename ALayout, typename BLayout>
+template <typename T, BlasOp OpA, BlasOp OpB>
 auto GetCKStridedBatchedGemmTypeStringAndOps() {
   using CKDataType = typename CKDataTypeAdaptor<T>::type;
+  using ALayout = typename CKBlasOpAdaptor<OpA>::type;
+  using BLayout = typename CKBlasOpAdaptor<OpB>::type;
   using DeviceStridedBatchedGemm = ck::tensor_operation::device::DeviceBatchedGemm<
       ALayout, BLayout, Row,
       CKDataType, CKDataType, CKDataType,

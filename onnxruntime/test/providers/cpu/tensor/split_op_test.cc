@@ -94,7 +94,7 @@ constexpr T ValueFromIdx(size_t idx) {
 }
 
 template <typename T>
-void SplitTestAxis0EqualSplit(bool use_opset_13 = false) {
+void SplitTestAxis0EqualSplit() {
   SCOPED_TRACE(onnxruntime::MakeString("data type: ", utils::ToTensorProtoElementType<T>()));
 
   constexpr int64_t axis = 0;
@@ -117,11 +117,20 @@ void SplitTestAxis0EqualSplit(bool use_opset_13 = false) {
                      {V(5), V(6),
                       V(7), V(8)}});
 
+  // BFloat16 added in opset 13
+  if constexpr (!std::is_same_v<T, BFloat16>) {
+    RunTest<T>(axis, {}, input, outputs,
+               // TensorRT parser: Assertion failed: axis != BATCH_DIM
+               {kTensorrtExecutionProvider},  // is_tensorrt_supported
+               false,                         // expect_failure
+               false /*split_as_input*/);
+  }
+
   RunTest<T>(axis, {}, input, outputs,
              // TensorRT parser: Assertion failed: axis != BATCH_DIM
              {kTensorrtExecutionProvider},  // is_tensorrt_supported
              false,                         // expect_failure
-             use_opset_13);                 // split_as_input
+             true /*split_as_input*/);
 }
 
 }  // namespace
@@ -130,7 +139,7 @@ TEST(SplitOperatorTest, Axis0EqualSplit) {
   SplitTestAxis0EqualSplit<float>();
   SplitTestAxis0EqualSplit<double>();
   SplitTestAxis0EqualSplit<MLFloat16>();
-  SplitTestAxis0EqualSplit<BFloat16>(true);  // BFloat16 added in opset 13
+  SplitTestAxis0EqualSplit<BFloat16>();
   SplitTestAxis0EqualSplit<int8_t>();
   SplitTestAxis0EqualSplit<int16_t>();
   SplitTestAxis0EqualSplit<int32_t>();
@@ -162,8 +171,11 @@ TEST(SplitOperatorTest, Axis0UnequalSplitFloat) {
                      {3.f, 4.f,
                       5.f, 6.f,
                       7.f, 8.f}});
+
   // TensorRT parser: Assertion failed: axis != BATCH_DIM
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider});
+  // CoreML EP, etc. requires split to be an input. Same applies to below sets of tests.
+  RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, false, true);
 }
 
 TEST(SplitOperatorTest, Axis0UnequalSplitString) {
@@ -186,6 +198,7 @@ TEST(SplitOperatorTest, Axis0UnequalSplitString) {
                       "e", "f",
                       "g", "h"}});
   // TensorRT parser: Assertion failed: axis != BATCH_DIM
+  RunTest<std::string>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, false, true);
   RunTest<std::string>(axis, splits, input, outputs, {kTensorrtExecutionProvider});
 }
 
@@ -205,7 +218,7 @@ TEST(SplitOperatorTest, Axis1EqualSplitFloat) {
   outputs.push_back({{2, 2},
                      {3.f, 4.f,
                       7.f, 8.f}});
-
+  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true);
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider});
 }
 
@@ -226,6 +239,7 @@ TEST(SplitOperatorTest, Axis1EqualSplitString) {
                      {"c", "d",
                       "g", "h"}});
 
+  RunTest<std::string>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true);
   RunTest<std::string>(axis, {}, input, outputs, {kTensorrtExecutionProvider});
 }
 
@@ -248,6 +262,7 @@ TEST(SplitOperatorTest, Axis1UnequalSplitFloat) {
                      {4.f,
                       8.f}});
 
+  RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, false, true);
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider});
 }
 
@@ -270,6 +285,7 @@ TEST(SplitOperatorTest, Axis1UnequalSplitString) {
                      {"d",
                       "h"}});
 
+  RunTest<std::string>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, false, true);
   RunTest<std::string>(axis, splits, input, outputs, {kTensorrtExecutionProvider});
 }
 
@@ -312,6 +328,7 @@ TEST(SplitOperatorTest, Axis2EqualSplit) {
                       17.f, 18.f,
                       23.f, 24.f}});
 
+  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true);
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider});
 }
 
@@ -344,6 +361,9 @@ TEST(SplitOperatorTest, Axis2UnequalSplit) {
                       16.f, 17.f, 18.f,
                       22.f, 23.f, 24.f}});
 
+  // Note: temporarily marked qnn ep as excluded when running tests with split_as_input=true.
+  // TODO: Need to resolve to see if it's not supported or test case failure.
+  RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true);
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider});
 }
 
@@ -353,7 +373,7 @@ TEST(SplitOperatorTest, ZeroSizeInput) {
 
   ShapeAndFloatData input = CreateInput<float>({0, 2});
 
-  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider});
+  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider});
 }
 
 // test a split of a dimension that has leading and trailing dimensions
@@ -377,6 +397,7 @@ TEST(SplitOperatorTest, Axis1SplitMiddleDimensionEqually) {
                       25.f, 26.f, 27.f, 28.f,
                       29.f, 30.f, 31.f, 32.f}});
 
+  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true);
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider});
 }
 
@@ -403,6 +424,7 @@ TEST(SplitOperatorTest, Axis1SplitMiddleDimensionUnequally) {
                       25.f, 26.f, 27.f, 28.f,
                       29.f, 30.f, 31.f, 32.f}});
 
+  RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, false, true);
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider});
 }
 
@@ -423,6 +445,7 @@ TEST(SplitOperatorTest, NegativeAxis) {
                      {3.f, 4.f,
                       7.f, 8.f}});
 
+  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true);
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider});
 }
 
@@ -439,6 +462,7 @@ TEST(SplitOperatorTest, InvalidAxis) {
 
   outputs.push_back({{1}, {0.f}});
 
+  RunTest<float>(axis, {}, input, outputs, {}, true, true, -1, true, "Invalid value of attribute 'axis'");
   RunTest<float>(axis, {}, input, outputs, {}, true, false, -1, true, "Invalid value of attribute 'axis'");
 }
 
@@ -459,6 +483,8 @@ TEST(SplitOperatorTest, SplitAttributeSumTooSmall) {
   outputs.push_back({{1, 2}, {1.f, 2.f}});
   outputs.push_back({{2, 2}, {3.f, 4.f, 5.f, 6.f}});
 
+  RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, true, true, -1, true,
+                 "[ShapeInferenceError] Mismatch between the sum of 'split'");
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, true, false, -1, true,
                  "[ShapeInferenceError] Mismatch between the sum of 'split'");  // TensorRT parser: Assertion failed: axis != BATCH_DIM
 }
@@ -478,6 +504,8 @@ TEST(SplitOperatorTest, InvalidValueInSplitAttribute) {
   outputs.push_back({{1, 2}, {1.f, 2.f}});
   outputs.push_back({{3, 2}, {3.f, 4.f, 5.f, 6.f, 7.f, 8.f}});
 
+  RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, true, true, -1, true,
+                 "[ShapeInferenceError] Mismatch between number of splits");
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, true, false, -1, true,
                  "[ShapeInferenceError] Mismatch between number of splits");  // TensorRT parser: Assertion failed: axis != BATCH_DIM
 }
@@ -654,7 +682,8 @@ TEST(SplitOperatorTest, MissingOptionalInputAdded) {
                      {3.f, 4.f,
                       7.f, 8.f}});
 
-  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true, -1, false, {}, false);
+  // CoreML EP does not support the case when split_is_input==true but missing providing the split as initializer.
+  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kCoreMLExecutionProvider}, false, true, -1, false, {}, false);
 }
 
 TEST(SplitOperatorTest, Split18_NumOutputs_EvenSplit) {
@@ -677,6 +706,8 @@ TEST(SplitOperatorTest, Split18_NumOutputs_EvenSplit) {
                       7.f, 8.f}});
 
   int64_t num_outputs = 2;
+
+  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true, num_outputs, true);
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true, num_outputs, false);
 }
 
@@ -703,6 +734,8 @@ TEST(SplitOperatorTest, Split18_NumOutputs_UnevenSplit) {
   outputs.push_back({{1, 2}, {9.f, 10.f}});
 
   int64_t num_outputs = 3;
+
+  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true, num_outputs, true);
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true, num_outputs, false);
 }
 
@@ -728,6 +761,8 @@ TEST(SplitOperatorTest, Split18_InvalidNumOutputs) {
       };
   RunTest<float>(axis, {}, input, outputs, excluded_providers, true, true, num_outputs, false,
                  "Attribute `num_outputs` value cannot be lower than 1");
+  RunTest<float>(axis, {}, input, outputs, excluded_providers, true, true, num_outputs, true,
+                 "Attribute `num_outputs` value cannot be lower than 1");
 
   outputs.clear();
   outputs.push_back({{1, 2},
@@ -736,7 +771,10 @@ TEST(SplitOperatorTest, Split18_InvalidNumOutputs) {
                      {0.f, 0.f}});
 
   num_outputs = 3;
+
   RunTest<float>(axis, {}, input, outputs, excluded_providers, true, true, num_outputs, false,
+                 "Invalid num_outputs value of 3. Size of dimension being split is 2");
+  RunTest<float>(axis, {}, input, outputs, excluded_providers, true, true, num_outputs, true,
                  "Invalid num_outputs value of 3. Size of dimension being split is 2");
 }
 
@@ -755,6 +793,7 @@ TEST(SplitOperatorTest, Split18_NumOutputsEvenSplitAxis1) {
 
   int64_t num_outputs = 3;
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true, num_outputs, false);
+  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider}, false, true, num_outputs);
 }
 
 TEST(SplitOperatorTest, Split18_NumOutputsUnevenSplitAxis1) {
@@ -772,6 +811,7 @@ TEST(SplitOperatorTest, Split18_NumOutputsUnevenSplitAxis1) {
   outputs.push_back({{2, 1}, {3.f, 6.f}});
 
   int64_t num_outputs = 2;
+  RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true, num_outputs);
   RunTest<float>(axis, {}, input, outputs, {kTensorrtExecutionProvider, kQnnExecutionProvider}, false, true, num_outputs, false);
 }
 

@@ -204,6 +204,17 @@ class QDQQuantizer(ONNXQuantizer):
             logging.warning(f"only support per-channel quantization on weight. Tensor: {tensor_name} is not quantized.")
 
     def quantize_bias_tensor(self, bias_name, input_name, weight_name, beta=1.0):
+        # If the user provided quantization overrides for this tensor, treat it as a regular weight.
+        if self.tensor_quant_overrides.get(bias_name):
+            logging.info(
+                f"Quantizing bias tensor '{bias_name}' as a weight due to the presence of user-specified overrides"
+            )
+            if self.per_channel:
+                self.quantize_weight_tensor_per_channel(bias_name, 0)
+            else:
+                self.quantize_weight_tensor(bias_name)
+            return
+
         weight = find_by_name(bias_name, self.model.initializer())
         if weight is not None:
             if weight.data_type == onnx_proto.TensorProto.FLOAT:

@@ -1,3 +1,7 @@
+# --------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------------------
 from pathlib import Path
 
 import onnx
@@ -114,6 +118,14 @@ class ONNXModel:
     def opset_import(self):
         return self.model.opset_import
 
+    def set_opset_import(self, domain, version):
+        for opset in self.model.opset_import:
+            if opset.domain == domain:
+                opset.version = version
+                return
+
+        self.model.opset_import.extend([onnx_helper.make_opsetid(domain, version)])
+
     def remove_node(self, node):
         if node in self.model.graph.node:
             self.model.graph.node.remove(node)
@@ -138,6 +150,49 @@ class ONNXModel:
         for tensor in self.model.graph.initializer:
             if tensor.name == name:
                 return tensor
+        return None
+
+    def find_graph_input(self, input_name):
+        for input in self.model.graph.input:
+            if input.name == input_name:
+                return input
+        return None
+
+    def find_graph_output(self, output_name):
+        for output in self.model.graph.output:
+            if output.name == output_name:
+                return output
+        return None
+
+    def get_tensor_type(self, tensor_name: str):
+        tensor_type_map = {obj.name: obj.type for obj in self.model.graph.value_info}
+
+        if tensor_name in tensor_type_map:
+            return tensor_type_map[tensor_name].tensor_type
+
+        g_input = self.find_graph_input(tensor_name)
+        if g_input:
+            return g_input.type.tensor_type
+
+        g_output = self.find_graph_output(tensor_name)
+        if g_output:
+            return g_output.type.tensor_type
+
+        return None
+
+    def get_constant_value(self, output_name):
+        for node in self.model.graph.node:
+            if node.op_type == "Constant":
+                if node.output[0] == output_name:
+                    for attr in node.attribute:
+                        if attr.name == "value":
+                            return onnx_numpy_helper.to_array(attr.t)
+
+        # Fallback to initializer since constant folding may have been applied.
+        initializer = self.get_initializer(output_name)
+        if initializer is not None:
+            return onnx_numpy_helper.to_array(initializer)
+
         return None
 
     def get_initializer_name_set(self):
@@ -167,17 +222,19 @@ class ONNXModel:
         input_name_to_nodes = {}
         for node in self.model.graph.node:
             for input_name in node.input:
-                if input_name not in input_name_to_nodes:
-                    input_name_to_nodes[input_name] = [node]
-                else:
-                    input_name_to_nodes[input_name].append(node)
+                if input_name:  # Could be empty when it is optional
+                    if input_name not in input_name_to_nodes:
+                        input_name_to_nodes[input_name] = [node]
+                    else:
+                        input_name_to_nodes[input_name].append(node)
         return input_name_to_nodes
 
     def output_name_to_node(self):
         output_name_to_node = {}
         for node in self.model.graph.node:
             for output_name in node.output:
-                output_name_to_node[output_name] = node
+                if output_name:  # Could be empty when it is optional
+                    output_name_to_node[output_name] = node
         return output_name_to_node
 
     def get_children(self, node, input_name_to_nodes=None):

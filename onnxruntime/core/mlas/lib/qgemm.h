@@ -871,7 +871,7 @@ MlasGemmQuantGetDispatch(
         GemmQuantDispatch = &MlasGemmQuantDispatchDefault;
     }
 
-#if defined(MLAS_TARGET_AMD64_IX86)
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_LARCH64)
     if (!AIsSigned) {
         if (BIsSigned) {
             GemmQuantDispatch = GetMlasPlatform().GemmU8S8Dispatch;

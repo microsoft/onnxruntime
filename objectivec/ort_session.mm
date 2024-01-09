@@ -23,6 +23,7 @@ enum class NamedValueType {
 NS_ASSUME_NONNULL_BEGIN
 
 @implementation ORTSession {
+  ORTEnv* _env;  // keep a strong reference so the ORTEnv doesn't get destroyed before this does
   std::optional<Ort::Session> _session;
 }
 
@@ -44,6 +45,7 @@ NS_ASSUME_NONNULL_BEGIN
       }
     }
 
+    _env = env;
     _session = Ort::Session{[env CXXAPIOrtEnv],
                             path.UTF8String,
                             [sessionOptions CXXAPIOrtSessionOptions]};

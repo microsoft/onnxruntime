@@ -15,7 +15,7 @@ class LabelEncoder final : public OpKernel {
   LabelEncoder(const OpKernelInfo& info) : OpKernel(info) {
     std::vector<std::string> string_classes;
 
-    ORT_ENFORCE(info.GetAttrs<std::string>("classes_strings", string_classes).IsOK());
+    ORT_THROW_IF_ERROR(info.GetAttrs<std::string>("classes_strings", string_classes));
 
     ORT_ENFORCE(info.GetAttr<std::string>("default_string", &default_string_).IsOK());
     ORT_ENFORCE(info.GetAttr<int64_t>("default_int64", &default_int_).IsOK());
@@ -53,8 +53,8 @@ class LabelEncoder_2 final : public OpKernel {
     std::vector<TKey> keys;
     std::vector<TValue> values;
 
-    ORT_ENFORCE(info.GetAttrs<TKey>(_key_field_name, keys).IsOK());
-    ORT_ENFORCE(info.GetAttrs<TValue>(_value_field_name, values).IsOK());
+    ORT_THROW_IF_ERROR(info.GetAttrs<TKey>(_key_field_name, keys));
+    ORT_THROW_IF_ERROR(info.GetAttrs<TValue>(_value_field_name, values));
 
     auto num_keys = keys.size();
     auto num_values = values.size();

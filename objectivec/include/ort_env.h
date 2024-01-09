@@ -24,6 +24,9 @@ NSString* _Nullable ORTVersion(void);
 
 /**
  * The ORT environment.
+ * It maintains shared state including the default logger.
+ *
+ * @note One ORTEnv should be created before and destroyed after other ORT API usage.
  */
 @interface ORTEnv : NSObject
 

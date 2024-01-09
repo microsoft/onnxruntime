@@ -29,7 +29,7 @@ stages:
         objcPodName: onnxruntime-mobile-objc
 
       ${{ if eq(parameters.packageVariant, 'Full') }}:
-        buildSettingsFile: "tools/ci_build/github/apple/default_full_ios_framework_build_settings.json"
+        buildSettingsFile: "tools/ci_build/github/apple/default_full_apple_framework_build_settings.json"
         cPodName: onnxruntime-c
         objcPodName: onnxruntime-objc
 
@@ -38,7 +38,7 @@ stages:
         cPodName: onnxruntime-training-c
         objcPodName: onnxruntime-training-objc
 
-    timeoutInMinutes: 120
+    timeoutInMinutes: 210
 
     steps:
     - script: |
@@ -84,8 +84,8 @@ stages:
 
     # create and test mobile pods
     - script: |
-        python tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
-          --build-dir "$(Build.BinariesDirectory)/ios_framework" \
+        python tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
+          --build-dir "$(Build.BinariesDirectory)/apple_framework" \
           --staging-dir "$(Build.BinariesDirectory)/staging" \
           --pod-version "$(ortPodVersion)" \
           --test \
@@ -93,13 +93,13 @@ stages:
           --build-settings-file "${{ variables.buildSettingsFile }}" \
           ${{ variables.optionalIncludeOpsByConfigOption }} \
           -b="--path_to_protoc_exe=$(Build.BinariesDirectory)/protobuf_install/bin/protoc"
-      displayName: "Build iOS framework and assemble pod package files"
+      displayName: "Build macOS/iOS framework and assemble pod package files"
 
     - script: |
-        python tools/ci_build/github/apple/test_ios_packages.py \
+        python tools/ci_build/github/apple/test_apple_packages.py \
           --fail_if_cocoapods_missing \
-          --framework_info_file "$(Build.BinariesDirectory)/ios_framework/framework_info.json" \
-          --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
+          --framework_info_file "$(Build.BinariesDirectory)/apple_framework/xcframework_info.json" \
+          --c_framework_dir "$(Build.BinariesDirectory)/apple_framework/framework_out" \
           --variant ${{ parameters.packageVariant }} \
           --test_project_stage_dir "$(Build.BinariesDirectory)/app_center_test" \
           --prepare_test_project_only
@@ -109,7 +109,7 @@ stages:
       inputs:
         actions: 'build-for-testing'
         configuration: 'Debug'
-        xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test/ios_package_test/ios_package_test.xcworkspace'
+        xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/apple_package_test.xcworkspace'
         sdk: 'iphoneos'
         scheme: 'ios_package_test'
         xcodeVersion: 'specifyPath'
@@ -118,8 +118,8 @@ stages:
         signingIdentity: '$(APPLE_CERTIFICATE_SIGNING_IDENTITY)'
         provisioningProfileName: 'temporary *'  # temporary name, change it back to the original below later
         #provisioningProfileName: 'iOS Team Provisioning Profile'
-        args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test/ios_package_test/DerivedData'
-        workingDirectory: '$(Build.BinariesDirectory)/app_center_test/ios_package_test/'
+        args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData'
+        workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
         useXcpretty: false  # xcpretty can hide useful error output so we will disable it
       displayName: 'Build App Center iPhone arm64 tests'
 
@@ -130,7 +130,7 @@ stages:
           --devices $(app_center_test_devices) \
           --test-series "master" \
           --locale "en_US" \
-          --build-dir $(Build.BinariesDirectory)/app_center_test/ios_package_test/DerivedData/Build/Products/Debug-iphoneos \
+          --build-dir $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData/Build/Products/Debug-iphoneos \
           --token $(app_center_api_token)
       displayName: "Run E2E tests on App Center"
 
@@ -139,7 +139,7 @@ stages:
 
         for POD_NAME in "${{ variables.cPodName}}" "${{ variables.objcPodName }}";
         do
-          ./tools/ci_build/github/apple/assemble_ios_packaging_artifacts.sh \
+          ./tools/ci_build/github/apple/assemble_apple_packaging_artifacts.sh \
             "$(Build.BinariesDirectory)/staging" \
             "$(Build.ArtifactStagingDirectory)" \
             "${POD_NAME}" \

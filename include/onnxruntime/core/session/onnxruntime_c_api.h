@@ -29,8 +29,9 @@
  */
 
 #pragma once
-#include <stdlib.h>
+#include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 /** \brief The API version defined in this header
@@ -3593,16 +3594,11 @@ struct OrtApi {
    *
    * QNN supported keys:
    *   "backend_path": file path to QNN backend library.
-   *   "qnn_context_cache_enable": 1 to enable QNN graph creation from cached QNN context file. If it's enabled: QNN EP will
-   *    load from cached QNN context binary if it exist. It will generate a context binary file if it's not exist
-   *   "qnn_context_cache_path": explicitly provide the QNN context cache file. Default to model_file.onnx.bin if not provided.
    *   "profiling_level": QNN profiling level, options: "off", "basic", "detailed". Default to off.
    *   "rpc_control_latency": QNN RPC control latency.
+   *   "vtcm_mb": QNN VTCM size in MB. default to 0(not set).
    *   "htp_performance_mode": QNN performance mode, options: "burst", "balanced", "default", "high_performance",
    *   "high_power_saver", "low_balanced", "low_power_saver", "power_saver", "sustained_high_performance". Default to "default".
-   *   "qnn_context_embed_mode", 1 means dump the QNN context binary into node attribute EPContext->ep_cache_context in the ONNX skeleton model.
-   *   0 means dump the QNN context binary into separate bin file and set the path to EPContext->ep_cache_context.
-   *   The path is relative path to the ONNX skeleton model file.
    *   "qnn_saver_path": File path to the QNN Saver backend library. If specified, QNN Saver will be enabled and will
    *   dump QNN API calls to disk for replay/debugging. QNN Saver produces incorrect model inference results and
    *   may alter model/EP partitioning. Use only for debugging.
@@ -4521,14 +4517,17 @@ struct OrtApi {
    */
   ORT_API2_STATUS(ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ OrtOpAttrType type, _Inout_ void* data, _In_ size_t len, _Out_ size_t* out);
 
-  /** \brief Used for custom operators, set an output of a kernel
+  /** \brief Set whether to use deterministic compute.
    *
-   * \see ::OrtCustomOp
+   * Default is false. If set to true, this will enable deterministic compute for GPU kernels where possible.
+   * Note that this most likely will have a performance cost.
+   *
+   * \param[in] options
+   * \param[in] value
    *
    * \since Version 1.17.
    */
-  ORT_API2_STATUS(KernelContext_SetOutput, _Inout_ OrtKernelContext* context, _In_ size_t index,
-                  _In_ const OrtValue* ort_value);
+  ORT_API2_STATUS(SetDeterministicCompute, _Inout_ OrtSessionOptions* options, bool value);
 };
 
 /*
