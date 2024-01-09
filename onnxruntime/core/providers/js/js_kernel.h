@@ -67,6 +67,7 @@ namespace js {
                             float value;                                           \
                             ORT_ENFORCE(info.GetAttr<float>(#attr_name, &value));, \
                                                                                  , ({#attr_name : $1}), static_cast<double>(value))
+#define JSEP_HEAP_PTR(ptr) reinterpret_cast<uintptr_t>(ptr)
 
 // TODO:
 // class JsMultiProgramKernel : public OpKernel { /* TBD */ };
