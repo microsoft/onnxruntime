@@ -639,14 +639,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var labelsOrtValue = OrtValue.CreateTensorValueFromMemory<Int32>(labelsData, labelsShape);
                 cleanUp.Add(labelsOrtValue);
 
-                var inputValues = new List<OrtValue> { inputOrtValue, labelsOrtValue }.AsReadOnly();
-                using (var results = trainingSession.TrainStep(inputValues))
+                using (var inputValues = new DisposableListTest<OrtValue>())
                 {
-                    Assert.Single(results);
-                    var outputOrtValue = results[0];
-                    Assert.True(outputOrtValue.IsTensor);
-                    var resultSpan = outputOrtValue.GetTensorDataAsSpan<float>().ToArray();
-                    Assert.Equal(expectedOutput, resultSpan, new FloatComparer());
+                    inputValues.Add(inputOrtValue);
+                    inputValues.Add(labelsOrtValue);
+                    using (var results = trainingSession.TrainStep(inputValues))
+                    {
+                        Assert.Single(results);
+                        var outputOrtValue = results[0];
+                        Assert.True(outputOrtValue.IsTensor);
+                        var resultSpan = outputOrtValue.GetTensorDataAsSpan<float>().ToArray();
+                        Assert.Equal(expectedOutput, resultSpan, new FloatComparer());
+                    }
                 }
             }
         }
@@ -679,14 +683,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var labelsOrtValue = OrtValue.CreateTensorValueFromMemory<Int32>(labelsData, labelsShape);
                 cleanUp.Add(labelsOrtValue);
 
-                var inputValues = new List<OrtValue> { inputOrtValue, labelsOrtValue }.AsReadOnly();
-                using (var results = trainingSession.EvalStep(inputValues))
+                using (var inputValues = new DisposableListTest<OrtValue>())
                 {
-                    Assert.Single(results);
-                    var outputOrtValue = results[0];
-                    Assert.True(outputOrtValue.IsTensor);
-                    var resultSpan = outputOrtValue.GetTensorDataAsSpan<float>().ToArray();
-                    Assert.Equal(expectedOutput, resultSpan, new FloatComparer());
+                    inputValues.Add(inputOrtValue);
+                    inputValues.Add(labelsOrtValue);
+                    using (var results = trainingSession.EvalStep(inputValues))
+                    {
+                        Assert.Single(results);
+                        var outputOrtValue = results[0];
+                        Assert.True(outputOrtValue.IsTensor);
+                        var resultSpan = outputOrtValue.GetTensorDataAsSpan<float>().ToArray();
+                        Assert.Equal(expectedOutput, resultSpan, new FloatComparer());
+                    }
                 }
             }
         }

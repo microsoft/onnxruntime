@@ -283,10 +283,8 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Computes the outputs of the training model and the gradients of the trainable parameters for the given OrtValue inputs
-        ///
         /// This function performs a training step that computes the outputs of the training model and the gradients
-        /// of the trainable parameters for the given  OrtValue inputs. The train step is performed based on the training model
+        /// of the trainable parameters for the given OrtValue inputs. The train step is performed based on the training model
         /// that was provided to the training session.
         /// The TrainStep method is equivalent of running forward propagation and backward propagation in a single
         /// step.
@@ -295,12 +293,14 @@ namespace Microsoft.ML.OnnxRuntime
         /// The gradients can be lazily reset by invoking the LazyResetGrad function.
         /// Example usage:
         /// <code>
-        /// var inputValues = new List&lt;OrtValue&gt;();
-        /// inputValues.Add(OrtValue.CreateTensorValue(...));
-        /// inputValues.Add(OrtValue.CreateTensorValue(...));
-        /// using (var results = trainingSession.TrainStep(inputValues))
+        /// using (var inputValues = new DisposableList<OrtValue>(numInputs))
         /// {
-        ///     // process output values
+        ///     inputValues.Add(OrtValue.CreateTensorValue(...));
+        ///     inputValues.Add(OrtValue.CreateTensorValue(...));
+        ///     using (var results = trainingSession.TrainStep(inputValues))
+        ///     {
+        ///         // process output values
+        ///     }
         /// }
         /// </code>
         /// </summary>
@@ -415,18 +415,19 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Computes the outputs for the eval model for the given OrtValue inputs
         /// This function performs an eval step that computes the outputs of the eval model for the given inputs.
         /// Inputs are expected to be of type OrtValue. The eval step is performed based on the eval model that was
         /// provided to the training session.
         /// Example usage:
         /// <code>
-        /// var inputValues = new List&lt;OrtValue&gt;();
-        /// inputValues.Add(OrtValue.CreateTensorValue(...));
-        /// inputValues.Add(OrtValue.CreateTensorValue(...));
-        /// using (var results = trainingSession.EvalStep(inputValues))
+        /// using (var inputValues = new DisposableList<OrtValue>(numInputs))
         /// {
-        ///     // process output values
+        ///     inputValues.Add(OrtValue.CreateTensorValue(...));
+        ///     inputValues.Add(OrtValue.CreateTensorValue(...));
+        ///     using (var results = trainingSession.EvalSteps(inputValues))
+        ///     {
+        ///         // process output values
+        ///     }
         /// }
         /// </code>
         /// </summary>
