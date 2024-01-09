@@ -1193,8 +1193,8 @@ if (onnxruntime_USE_DNNL)
   add_compile_definitions(DNNL_OPENMP)
 endif()
 
-
-if (onnxruntime_USE_NEURAL_SPEED AND NOT onnxruntime_MINIMAL_BUILD)
+set(USE_NEURAL_SPEED FALSE)
+if (onnxruntime_USE_NEURAL_SPEED)
   include(neural_speed)
 endif()
 

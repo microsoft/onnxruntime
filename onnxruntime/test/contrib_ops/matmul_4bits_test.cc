@@ -63,7 +63,7 @@ void QuantizeDequantize(std::vector<float>& raw_vals,
       tp.get());
 }
 
-void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, MLAS_SQNBIT_COMPUTE_TYPE comp_type,
+void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t comp_type,
              bool has_zeropoint, bool use_float16, float fp16_abs_error = 0.02f) {
   RandomValueGenerator random{1234};
   std::vector<float> input0_vals(random.Gaussian<float>(std::vector<int64_t>({M, K}), 0.0f, 0.25f));
@@ -134,7 +134,7 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, MLAS_SQNBIT_CO
     }
 
     test.AddOutput<float>("Y", {M, N}, expected_vals);
-    if (comp_type == CompInt8) {
+    if (comp_type == 4) {
       test.SetOutputAbsErr("Y", 0.1f);
     }
 
@@ -147,10 +147,17 @@ TEST(MatMulNBits, Float32) {
     for (auto N : {1, 2, 32, 288}) {
       for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
         for (auto block_size : {16, 32, 64, 128}) {
-          for (auto comp : {CompUndef, CompFp32, CompInt8}) {
-            RunTest(M, N, K, block_size, comp, false, false);
-            RunTest(M, N, K, block_size, comp, true, false);
+#ifdef ORT_NEURAL_SPEED
+          for (auto accuracy_level : {0, 1, 4}) {
+            RunTest(M, N, K, block_size, accuracy_level, false, false);
+            RunTest(M, N, K, block_size, accuracy_level, true, false);
           }
+#else
+          for (auto accuracy_level : {0}) {
+            RunTest(M, N, K, block_size, accuracy_level, false, false);
+            RunTest(M, N, K, block_size, accuracy_level, true, false);
+          }
+#endif
         }
       }
     }
@@ -163,8 +170,8 @@ TEST(MatMulNBits, Float16) {
     for (auto N : {1, 2, 32, 288}) {
       for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
         for (auto block_size : {16, 32, 64, 128}) {
-          RunTest(M, N, K, block_size, CompUndef, false, true);
-          RunTest(M, N, K, block_size, CompUndef, true, true);
+          RunTest(M, N, K, block_size, 0, false, true);
+          RunTest(M, N, K, block_size, 0, true, true);
         }
       }
     }
@@ -174,9 +181,9 @@ TEST(MatMulNBits, Float16) {
 TEST(MatMulNBits, Float16Large) {
   for (auto block_size : {16, 32, 64, 128}) {
     for (auto symmetric : {false, true}) {
-      RunTest(1, 4096, 4096, block_size, CompUndef, symmetric, true, 0.05f);
-      RunTest(1, 4096, 11008, block_size, CompUndef, symmetric, true, 0.05f);
-      RunTest(1, 11008, 4096, block_size, CompUndef, symmetric, true, 0.05f);
+      RunTest(1, 4096, 4096, block_size, 0, symmetric, true, 0.05f);
+      RunTest(1, 4096, 11008, block_size, 0, symmetric, true, 0.05f);
+      RunTest(1, 11008, 4096, block_size, 0, symmetric, true, 0.05f);
     }
   }
 }
@@ -184,11 +191,11 @@ TEST(MatMulNBits, Float16Large) {
 #endif
 
 void RunSharedPrepackedWeightsTest(int64_t M, int64_t N, int64_t K, int block_size, bool is_asym,
-                                   MLAS_SQNBIT_COMPUTE_TYPE acc_lvl) {
+                                   int64_t acc_lvl) {
   // (M x K) X (K x N)
 
   OpTester test("MatMulNBits", 1, kMSDomain);
-  test.AddAttribute<int64_t>("accuracy_level", int64_t(acc_lvl));
+  test.AddAttribute<int64_t>("accuracy_level", acc_lvl);
   test.AddAttribute<int64_t>("block_size", int64_t(block_size));
   test.AddAttribute<int64_t>("bits", QBits);
   test.AddAttribute<int64_t>("N", N);
@@ -268,7 +275,7 @@ void RunSharedPrepackedWeightsTest(int64_t M, int64_t N, int64_t K, int block_si
     test.AddInput<uint8_t>("zero_points", {N, static_cast<int64_t>(kblks / 2)}, input3_vals, true);
   }
   test.AddOutput<float>("Y", {M, N}, expected_vals, false);
-  if (acc_lvl == CompInt8) {
+  if (acc_lvl == 4) {
     test.SetOutputAbsErr("Y", 0.1f);
   }
 
@@ -341,14 +348,14 @@ void RunSharedPrepackedWeightsTest(int64_t M, int64_t N, int64_t K, int block_si
   }
 }
 
-#ifdef MLAS_NEURAL_SPEED
+#ifdef ORT_NEURAL_SPEED
 TEST(MatMulNBits, SharedPrepackedWeights) {
-  RunSharedPrepackedWeightsTest(2, 4096, 4096, 32, true, CompFp32);
-  RunSharedPrepackedWeightsTest(2, 4096, 4096, 32, false, CompFp32);
-  RunSharedPrepackedWeightsTest(2, 4096, 4096, 128, false, CompFp32);
-  RunSharedPrepackedWeightsTest(2, 4096, 4096, 128, false, CompInt8);
-  RunSharedPrepackedWeightsTest(2, 4096, 4096, 1024, false, CompInt8);
-  RunSharedPrepackedWeightsTest(2, 4096, 4096, 4096, false, CompInt8);
+  RunSharedPrepackedWeightsTest(2, 4096, 4096, 32, true, 1);
+  RunSharedPrepackedWeightsTest(2, 4096, 4096, 32, false, 1);
+  RunSharedPrepackedWeightsTest(2, 4096, 4096, 128, false, 1);
+  RunSharedPrepackedWeightsTest(2, 4096, 4096, 128, false, 4);
+  RunSharedPrepackedWeightsTest(2, 4096, 4096, 1024, false, 4);
+  RunSharedPrepackedWeightsTest(2, 4096, 4096, 4096, false, 4);
 }
 #endif
 }  // namespace test

@@ -11,8 +11,7 @@ Licensed under the MIT License.
 #include "bestla/bestla_prologue_a.h"
 #include "bestla/bestla_wrapper.h"
 
-namespace bestla
-{
+namespace bestla {
 
 using tAVX512F = gemm::SCoreRowNAvx512f<48, 8>;
 using tAMX_BF16 = gemm::HCoreRowNAmxbf16<64, 16>;
@@ -33,14 +32,13 @@ using tWeiNInt = prologue_b::gemm::WeightKBlockNInteger<GC_T, ISA_T>;
 template <class GC_T, BTLA_ISA ISA_T>
 using tWeiNFloat = prologue_b::gemm::WeightKBlockNFloat<GC_T, ISA_T>;
 
-class ORTThreading : public parallel::IThreading
-{
-   public:
-    ORTThreading(void* tp);
-    void parallel_for(const parallel::thread_func& func) const override;
-    void set_threads(int nthreads) override { assert(0); }
-    void sync() const override { assert(0); }
-    void* mTp;
+class ORTThreading : public parallel::IThreading {
+ public:
+  explicit ORTThreading(void* tp);
+  void parallel_for(const parallel::thread_func& func) const override;
+  void set_threads(int nthreads) override { assert(0); }
+  void sync() const override { assert(0); }
+  void* mTp;
 };
 
 }  // namespace bestla

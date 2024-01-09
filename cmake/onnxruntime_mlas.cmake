@@ -57,14 +57,6 @@ endif()
 
 set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)
 
-function(add_neural_speed)
-    target_link_libraries(onnxruntime_mlas PRIVATE bestla::bestla)
-    target_sources(onnxruntime_mlas PRIVATE
-        ${MLAS_SRC_DIR}/bestla_gemm.cpp
-     )
-    set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR OFF)
-endfunction()
-
 #TODO: set MASM flags properly
 function(setup_mlas_source_for_windows)
 
@@ -619,10 +611,6 @@ else()
           "${MLAS_SRC_DIR}/scalar/*.cpp")
     endif()
     target_sources(onnxruntime_mlas PRIVATE ${mlas_platform_srcs})
-endif()
-
-if(USE_NEURAL_SPEED)
-  add_neural_speed()
 endif()
 
 foreach(mlas_target ${ONNXRUNTIME_MLAS_LIBS})

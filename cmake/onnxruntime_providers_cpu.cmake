@@ -60,6 +60,13 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
       "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/aten_ops/aten_op_executor.cc"
     )
   endif()
+  if(NOT USE_NEURAL_SPEED)
+    list(REMOVE_ITEM onnxruntime_cpu_contrib_ops_srcs
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/bestla_defs.h"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/bestla_gemm.cc"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/bestla_gemm.h"
+    )
+  endif()
   # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
   source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cpu_contrib_ops_srcs})
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_contrib_ops_srcs})
@@ -142,6 +149,11 @@ endif()
 
 if (HAS_BITWISE_INSTEAD_OF_LOGICAL)
   target_compile_options(onnxruntime_providers PRIVATE "-Wno-bitwise-instead-of-logical")
+endif()
+
+if(USE_NEURAL_SPEED)
+  target_link_libraries(onnxruntime_providers PRIVATE bestla::bestla)
+  set_target_properties(onnxruntime_providers PROPERTIES COMPILE_WARNING_AS_ERROR OFF) # ignore warnings inside neural-speed
 endif()
 
 if (MSVC)
