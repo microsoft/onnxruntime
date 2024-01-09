@@ -1,7 +1,7 @@
 stages:
-- stage: Stale diffusion
+- stage: Stale_Diffusion
   jobs:
-  - job: Stale diffusion
+  - job: Stale_Diffusion
     variables:
       skipComponentGovernanceDetection: true
     workspace:
