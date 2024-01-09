@@ -59,14 +59,11 @@ class LabelEncoder_2 final : public OpKernel {
 
     auto num_keys = keys.size();
     auto num_values = values.size();
-    ORT_ENFORCE(num_keys == num_values,
-                "The ", key_field_name_, " and ", value_field_name_, " attribtues in LabelEncoder ",
-                "(name: ", info.node().Name(), ") must have the same length. ",
-                "However, the number of key is ", num_keys, " and the number of ",
-                "values is ", num_values, ".");
+    ORT_ENFORCE(num_keys == num_values, "The ", key_field_name_, " and ", value_field_name_,
+                " attribtues in LabelEncoder ", "(name: ", info.node().Name(), ") must have the same length. ",
+                "However, the number of key is ", num_keys, " and the number of ", "values is ", num_values, ".");
     map_.reserve(num_keys);
-    for (size_t i = 0; i < num_keys; ++i)
-      map_.emplace(keys[i], values[i]);
+    for (size_t i = 0; i < num_keys; ++i) map_.emplace(keys[i], values[i]);
   }
 
   Status Compute(OpKernelContext* context) const override {

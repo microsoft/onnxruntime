@@ -8,7 +8,8 @@ namespace onnxruntime {
 namespace test {
 
 template <typename TInput, typename TOutput>
-static void RunTest(const std::vector<int64_t>& dims, const std::vector<TInput>& input, const std::vector<TOutput>& output) {
+static void RunTest(const std::vector<int64_t>& dims, const std::vector<TInput>& input,
+                    const std::vector<TOutput>& output) {
   OpTester test("LabelEncoder", 1, onnxruntime::kMLDomain);
 
   static const std::vector<std::string> labels = {"Beer", "Wine", "Tequila"};

@@ -47,21 +47,16 @@ namespace onnxruntime {
 // when the number of items is known in advance.
 // This does not allocate a dummy 'end' node on default construction.
 template <typename T, typename Allocator>
-class InlinedHashSet : public absl::flat_hash_set<T,
-                                                  absl::container_internal::hash_default_hash<T>,
-                                                  absl::container_internal::hash_default_eq<T>,
-                                                  Allocator> {
-  using Base = absl::flat_hash_set<T,
-                                   absl::container_internal::hash_default_hash<T>,
-                                   absl::container_internal::hash_default_eq<T>,
-                                   Allocator>;
+class InlinedHashSet : public absl::flat_hash_set<T, absl::container_internal::hash_default_hash<T>,
+                                                  absl::container_internal::hash_default_eq<T>, Allocator> {
+  using Base = absl::flat_hash_set<T, absl::container_internal::hash_default_hash<T>,
+                                   absl::container_internal::hash_default_eq<T>, Allocator>;
 
  public:
   using Base::Base;
 };
 
-template <typename Key, typename Value,
-          typename Allocator, typename Hash, typename Equal>
+template <typename Key, typename Value, typename Allocator, typename Hash, typename Equal>
 class InlinedHashMap : public absl::flat_hash_map<Key, Value, Hash, Equal, Allocator> {
   using Base = absl::flat_hash_map<Key, Value, Hash, Equal, Allocator>;
 
@@ -74,28 +69,20 @@ class InlinedHashMap : public absl::flat_hash_map<Key, Value, Hash, Equal, Alloc
 // This does not allocate a dummy 'end' node on default construction.
 // Use reserve() when the number of elements is known.
 template <typename T, typename Allocator>
-class NodeHashSet : public absl::node_hash_set<T,
-                                               absl::container_internal::hash_default_hash<T>,
-                                               absl::container_internal::hash_default_eq<T>,
-                                               Allocator> {
-  using Base = absl::node_hash_set<T,
-                                   absl::container_internal::hash_default_hash<T>,
-                                   absl::container_internal::hash_default_eq<T>,
-                                   Allocator>;
+class NodeHashSet : public absl::node_hash_set<T, absl::container_internal::hash_default_hash<T>,
+                                               absl::container_internal::hash_default_eq<T>, Allocator> {
+  using Base = absl::node_hash_set<T, absl::container_internal::hash_default_hash<T>,
+                                   absl::container_internal::hash_default_eq<T>, Allocator>;
 
  public:
   using Base::Base;
 };
 
 template <typename Key, typename Value, typename Allocator>
-class NodeHashMap : public absl::node_hash_map<Key, Value,
-                                               absl::container_internal::hash_default_hash<Key>,
-                                               absl::container_internal::hash_default_eq<Key>,
-                                               Allocator> {
-  using Base = absl::node_hash_map<Key, Value,
-                                   absl::container_internal::hash_default_hash<Key>,
-                                   absl::container_internal::hash_default_eq<Key>,
-                                   Allocator>;
+class NodeHashMap : public absl::node_hash_map<Key, Value, absl::container_internal::hash_default_hash<Key>,
+                                               absl::container_internal::hash_default_eq<Key>, Allocator> {
+  using Base = absl::node_hash_map<Key, Value, absl::container_internal::hash_default_hash<Key>,
+                                   absl::container_internal::hash_default_eq<Key>, Allocator>;
 
  public:
   using Base::Base;
@@ -104,25 +91,15 @@ class NodeHashMap : public absl::node_hash_map<Key, Value,
 #else  // DISABLE_ABSEIL
 
 template <typename T, typename Allocator>
-class InlinedHashSet : public std::unordered_set<T,
-                                                 std::hash<T>,
-                                                 std::equal_to<T>,
-                                                 Allocator> {
-  using Base = std::unordered_set<T,
-                                  std::hash<T>,
-                                  std::equal_to<T>,
-                                  Allocator>;
+class InlinedHashSet : public std::unordered_set<T, std::hash<T>, std::equal_to<T>, Allocator> {
+  using Base = std::unordered_set<T, std::hash<T>, std::equal_to<T>, Allocator>;
 
  public:
   using Base::Base;
 };
 
-template <typename Key, typename Value,
-          typename Allocator, typename Hash, typename Equal>
-class InlinedHashMap : public std::unordered_map<Key, Value,
-                                                 Hash,
-                                                 Equal,
-                                                 Allocator> {
+template <typename Key, typename Value, typename Allocator, typename Hash, typename Equal>
+class InlinedHashMap : public std::unordered_map<Key, Value, Hash, Equal, Allocator> {
   using Base = std::unordered_map<Key, Value, Hash, Equal, Allocator>;
 
  public:
@@ -134,28 +111,16 @@ class InlinedHashMap : public std::unordered_map<Key, Value,
 // This does not allocate a dummy 'end' node on default construction.
 // Use reserve() when the number of elements is known.
 template <typename T, typename Allocator>
-class NodeHashSet : public std::unordered_set<T,
-                                              std::hash<T>,
-                                              std::equal_to<T>,
-                                              Allocator> {
-  using Base = std::unordered_set<T,
-                                  std::hash<T>,
-                                  std::equal_to<T>,
-                                  Allocator>;
+class NodeHashSet : public std::unordered_set<T, std::hash<T>, std::equal_to<T>, Allocator> {
+  using Base = std::unordered_set<T, std::hash<T>, std::equal_to<T>, Allocator>;
 
  public:
   using Base::Base;
 };
 
 template <typename Key, typename Value, typename Allocator>
-class NodeHashMap : public std::unordered_map<Key, Value,
-                                              std::hash<Key>,
-                                              std::equal_to<Key>,
-                                              Allocator> {
-  using Base = std::unordered_map<Key, Value,
-                                  std::hash<Key>,
-                                  std::equal_to<Key>,
-                                  Allocator>;
+class NodeHashMap : public std::unordered_map<Key, Value, std::hash<Key>, std::equal_to<Key>, Allocator> {
+  using Base = std::unordered_map<Key, Value, std::hash<Key>, std::equal_to<Key>, Allocator>;
 
  public:
   using Base::Base;
