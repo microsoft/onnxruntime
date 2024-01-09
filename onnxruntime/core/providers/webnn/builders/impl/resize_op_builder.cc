@@ -30,7 +30,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
   // Operator support related.
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+                         const WebnnDeviceType device_type, const logging::Logger& logger) const override;
 
   // Resize opset 10- is very different than Resize opset 11+, with many key attributes missing.
   // We only support Resize opset 11+ here.
@@ -161,7 +161,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
                                         const Node& node,
-                                        const WebnnDeviceType /* device_type */,
+                                        const WebnnDeviceType device_type,
                                         const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
 
@@ -181,9 +181,18 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
     const auto mode = helper.Get("mode", "nearest");
     bool is_linear_resize = mode == "linear";
     bool is_nearest_resize = mode == "nearest";
-    if (!is_linear_resize && !is_nearest_resize) {
-      LOGS(logger, VERBOSE) << "Resize unsupported input mode, " << mode;
-      return false;
+    // WebNN CPU backend only supports "linear" mode.
+    // WebNN GPU backend only supports "linear" and "nearest" modes.
+    if (device_type == WebnnDeviceType::CPU) {
+      if (!is_linear_resize) {
+        LOGS(logger, VERBOSE) << "Resize unsupported input mode, " << mode << " for CPU backend.";
+        return false;
+      }
+    } else {
+      if (!is_linear_resize && !is_nearest_resize) {
+        LOGS(logger, VERBOSE) << "Resize unsupported input mode, " << mode << " for GPU backend.";
+        return false;
+      }
     }
 
     const auto exclude_outside = helper.Get("exclude_outside", 0);

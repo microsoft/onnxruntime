@@ -79,6 +79,7 @@ Options:
  --webgl-texture-cache-mode    Set the WebGL texture cache mode (initializerOnly/full)
  --webgl-texture-pack-mode     Set the WebGL texture pack mode (true/false)
  --webgpu-profiling-mode       Set the WebGPU profiling mode (off/default)
+ --webnn-device-type           Set the WebNN device type (cpu/gpu)
 
 *** Browser Options ***
 
@@ -174,6 +175,7 @@ export interface TestRunnerCliArgs {
   cudaFlags?: Record<string, unknown>;
   wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
   webglOptions?: InferenceSession.WebGLExecutionProviderOption;
+  webnnOptions?: InferenceSession.WebNNExecutionProviderOption;
   globalEnvFlags?: Test.Options['globalEnvFlags'];
   noSandbox?: boolean;
   chromiumFlags: string[];
@@ -335,6 +337,14 @@ function parseWebgpuFlags(args: minimist.ParsedArgs): Partial<Env.WebGpuFlags> {
   return {profilingMode, validateInputContent};
 }
 
+function parseWebNNOptions(args: minimist.ParsedArgs): InferenceSession.WebNNExecutionProviderOption {
+  const deviceType = args['webnn-device-type'];
+  if (deviceType !== undefined && deviceType !== 'cpu' && deviceType !== 'gpu') {
+    throw new Error('Flag "webnn-device-type" is invalid');
+  }
+  return {name: 'webnn', deviceType};
+}
+
 function parseGlobalEnvFlags(args: minimist.ParsedArgs): NonNullable<TestRunnerCliArgs['globalEnvFlags']> {
   const wasm = parseWasmFlags(args);
   const webgl = parseWebglFlags(args);
@@ -449,6 +459,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   const wasmOptions = parseWasmOptions(args);
 
   const webglOptions = parseWebglOptions(args);
+  const webnnOptions = parseWebNNOptions(args);
 
   // Option: --no-sandbox
   const noSandbox = !!args['no-sandbox'];
@@ -487,6 +498,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     fileCache,
     cpuOptions,
     webglOptions,
+    webnnOptions,
     wasmOptions,
     globalEnvFlags,
     noSandbox,
