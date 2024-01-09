@@ -1,9 +1,11 @@
+# reference: https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/models/stable_diffusion/README.md
 stages:
 - stage: Stale_Diffusion
   jobs:
   - job: Stale_Diffusion
     variables:
       skipComponentGovernanceDetection: true
+      CCACHE_DIR: $(Pipeline.Workspace)/ccache
     workspace:
       clean: all
     pool: onnxruntime-Linux-GPU-A10-16G
@@ -16,8 +18,24 @@ stages:
       clean: true
       submodules: none
 
+    - task: Cache@2
+      inputs:
+        key: '"ccache" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
+        path: $(CCACHE_DIR)
+        restoreKeys: |
+          "ccache" | "$(Build.SourceBranch)"
+          "ccache"
+        cacheHitVar: CACHE_RESTORED
+      displayName: Cach Task
+
+    - script: |
+        sudo mkdir -p $(Pipeline.Workspace)/ccache
+      condition: ne(variables.CACHE_RESTORED, 'true')
+      displayName: Create Cache Dir
+
     - script: |
         docker run --rm --gpus all -v $PWD:/workspace nvcr.io/nvidia/pytorch:23.10-py3 \
+          -e CCACHE_DIR=/cache \
           bash -c "
             set -ex; \
             export CUDACXX=/usr/local/cuda-12.2/bin/nvcc; \
@@ -28,15 +46,28 @@ stages:
                         --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF \
                         --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 \
                         --allow_running_as_root; \
+          "
+      displayName: 'Build Onnxruntime'
+      workingDirectory: $(Build.SourcesDirectory)
+
+    - script: |
+        docker run --rm --gpus all -v $PWD:/workspace nvcr.io/nvidia/pytorch:23.10-py3 \
+          -e CCACHE_DIR=/cache \
+          bash -c "
+            set -ex; \
             python3 -m pip install --upgrade pip; \
-            python3 -m pip install build/Linux/Release/dist/onnxruntime_gpu-1.17.0-cp310-cp310-linux_x86_64.whl --force-reinstall; \
+            python3 -m pip install build/Linux/Release/dist/*.whl; \
             pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion; \
             python3 -m pip install -r requirements-cuda12.txt; \
             python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com; \
             echo "Generate an image guided by a text prompt"; \
             python3 demo_txt2img.py "astronaut riding a horse on mars"; \
+            echo "Generate an image with Stable Diffusion XL guided by a text prompt"
             python3 demo_txt2img_xl.py "starry night over Golden Gate Bridge by van gogh"; \
+            python3 demo_txt2img_xl.py --enable-refiner "starry night over Golden Gate Bridge by van gogh"; \
+            echo "Generate an image guided by a text prompt using LCM LoRA"; \
+            python3 demo_txt2img_xl.py --scheduler LCM --lora-weights latent-consistency/lcm-lora-sdxl --denoising-steps 4 "Self-portrait oil painting, a beautiful cyborg with golden hair, 8k"; \
             popd; \
           "
-      displayName: 'Build Onnxruntime and run stable diffusion demo'
+      displayName: 'Run stable diffusion demo'
       workingDirectory: $(Build.SourcesDirectory)
