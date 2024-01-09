@@ -1,9 +1,10 @@
+from __future__ import annotations
+
 import argparse
 import logging
 import os
 import shutil
 from itertools import chain
-from typing import List
 
 import onnx
 import torch
@@ -21,11 +22,12 @@ from transformers import AutoConfig, AutoModelForCausalLM
 from onnxruntime import quantization as ort_quantization
 from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
 
+torch_export_onnx_opset_version = 14
 logger = logging.getLogger("")
 init_dist()
 
 
-def get_model_dynamic_axes(input_names: List[str], output_names: List[str]):
+def get_model_dynamic_axes(input_names: list[str], output_names: list[str]):
     dynamic_axes = {}
     for name in input_names + output_names:
         if name in input_names:
@@ -42,7 +44,7 @@ def get_model_dynamic_axes(input_names: List[str], output_names: List[str]):
     return dynamic_axes
 
 
-def get_model_with_past_kv_dynamic_axes(input_names: List[str], output_names: List[str]):
+def get_model_with_past_kv_dynamic_axes(input_names: list[str], output_names: list[str]):
     dynamic_axes = {}
     for name in input_names + output_names:
         if name in {"input_ids", "position_ids"}:
@@ -65,7 +67,7 @@ def get_model_with_past_kv_dynamic_axes(input_names: List[str], output_names: Li
     return dynamic_axes
 
 
-def get_merged_model_dynamic_axes(input_names: List[str], output_names: List[str]):
+def get_merged_model_dynamic_axes(input_names: list[str], output_names: list[str]):
     dynamic_axes = {}
     for name in input_names + output_names:
         if name in {"input_ids", "position_ids"}:
@@ -229,7 +231,7 @@ def run_torchscript_separate_export(
         input_names=input_names,
         output_names=output_names,
         dynamic_axes=dynamic_axes,
-        opset_version=13,
+        opset_version=torch_export_onnx_opset_version,
         do_constant_folding=True,
         verbose=args.verbose,
     )
@@ -288,7 +290,7 @@ def run_torchscript_separate_export(
         input_names=input_names,
         output_names=output_names,
         dynamic_axes=dynamic_axes,
-        opset_version=13,
+        opset_version=torch_export_onnx_opset_version,
         do_constant_folding=True,
         verbose=args.verbose,
     )
@@ -368,7 +370,7 @@ def run_torchscript_merged_export(
         input_names=input_names,
         output_names=output_names,
         dynamic_axes=dynamic_axes,
-        opset_version=13,
+        opset_version=torch_export_onnx_opset_version,
         do_constant_folding=True,
         verbose=args.verbose,
     )
@@ -412,7 +414,7 @@ def optimize_export(config: AutoConfig, input_path: str, output_path: str, remov
 
 
 def convert_to_float16(
-    args: argparse.Namespace, config: AutoConfig, old_paths: List[str], rank: int = 0, world_size: int = 1
+    args: argparse.Namespace, config: AutoConfig, old_paths: list[str], rank: int = 0, world_size: int = 1
 ):
     decoder_model_fp16_path = os.path.join(args.output, f"rank_{rank}_{args.model_name}_decoder_model_fp16.onnx")
     decoder_with_past_model_fp16_path = os.path.join(
@@ -635,7 +637,7 @@ def get_args():
         help="Run a specific quantization algorithm (blockwise for int4, smooth_quant for int8, quantize_dynamic for int8). Blockwise is recommended. Need to install extra packages in `requirements-quant.txt` for SmoothQuant.",
     )
 
-    blockwise_group = parser.add_argument_group("4-bit quantization")
+    blockwise_group = parser.add_argument_group("blockwise (4-bit quantization)")
 
     blockwise_group.add_argument(
         "--block_size",
@@ -643,6 +645,15 @@ def get_args():
         default=32,
         type=int,
         help="Block size to quantize with. See https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/quantization/matmul_4bits_quantizer.py for details.",
+    )
+
+    blockwise_group.add_argument(
+        "--int4_accuracy_level",
+        required=False,
+        type=int,
+        help="Accuracy level of the 4-bit quantized MatMul computation. "
+        "Refer to the MatMulNBits contrib op's 'accuracy_level' attribute for details "
+        "(https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#commicrosoftmatmulnbits).",
     )
 
     smooth_quant_group = parser.add_argument_group("smooth_quant (8-bit quantization)")
@@ -937,7 +948,13 @@ def main():
                 for fp_path, int4_path in zip(old_paths, new_paths):
                     if os.path.exists(fp_path):
                         model = onnx.load_model(fp_path, load_external_data=True)
-                        quant = MatMul4BitsQuantizer(model, args.block_size, is_symmetric=True, nodes_to_exclude=[])
+                        quant = MatMul4BitsQuantizer(
+                            model=model,
+                            block_size=args.block_size,
+                            is_symmetric=True,
+                            accuracy_level=args.int4_accuracy_level,
+                            nodes_to_exclude=[],
+                        )
                         quant.process()
                         quant.model.save_model_to_file(int4_path, use_external_data_format=True)
                         del model
