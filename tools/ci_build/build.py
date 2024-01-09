@@ -418,6 +418,12 @@ def parse_arguments():
         "(e.g. macOS or iOS)"
         "This is only supported on MacOS",
     )
+    # A 32-bit progress doesn't have enough memory to run all the tests in onnxruntime_test_all.
+    # Mimalloc is incompatible with address sanitizer.
+    # Address sanitizer itself is also a memory leak checker, so when it is enabled we should disable_memleak_checker.
+    parser.add_argument(
+        "--enable_address_sanitizer", action="store_true", help="Enable address sanitizer"
+    )
     parser.add_argument(
         "--disable_memleak_checker", action="store_true", help="Disable memory leak checker from Windows build"
     )
@@ -1481,11 +1487,7 @@ def generate_build_tree(
                     cflags += ["/O2", "/Ob1", "/DNDEBUG"]
                 elif config == "Debug":
                     cflags += ["/Ob0", "/Od", "/RTC1", "/fsanitize=address"]
-                    # A 32-bit progress doesn't have enough memory to run all the tests in onnxruntime_test_all.
-                    # Mimalloc is incompatible with address sanitizer.
-                    # Address sanitizer itself is also a memory leak checker, so we should not enable two memory leak checker
-                    # at the same time.
-                    if platform.architecture()[0] != "32bit" and not args.use_mimalloc and args.disable_memleak_checker and  not args.build_shared_lib and not args.enable_pybind:
+                    if args.enable_address_sanitizer:
                         cflags += ["/fsanitize=address"]
                 elif config == "MinSizeRel":
                     cflags += ["/O1", "/Ob1", "/DNDEBUG"]
@@ -1520,7 +1522,7 @@ def generate_build_tree(
                     ]
                 elif config == "Debug":
                     cflags = ["-ggdb3", "-O0"]
-                    if False and platform.architecture()[0] != "32bit" and not (args.enable_training_apis and args.use_cuda) and not args.build_nodejs:
+                    if args.enable_address_sanitizer:
                         cflags += ["-fsanitize=address"]
                         ldflags += ["-fsanitize=address"]
                 elif config == "MinSizeRel":
@@ -1730,6 +1732,9 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
                 "RESTORE_PACKAGES",
             ]
             run_subprocess(cmd_args)
+
+    if args.minimal_build is not None:
+        raise BuildError("use_dml and minimal_build may not both be set")
 
 
 def setup_rocm_build(args):
@@ -2448,6 +2453,10 @@ def main():
 
     cmake_extra_defines = normalize_arg_list(args.cmake_extra_defines)
     cross_compiling = args.arm or args.arm64 or args.arm64ec or args.android
+
+    if args.enable_address_sanitizer:
+       # Disable ONNX Runtime's builtin memory checker
+       args.disable_memleak_checker = True
 
     # If there was no explicit argument saying what to do, default
     # to update, build and test (for native builds).
