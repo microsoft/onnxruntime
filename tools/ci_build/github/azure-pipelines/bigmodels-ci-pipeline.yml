@@ -34,8 +34,8 @@ stages:
       displayName: Create Cache Dir
 
     - script: |
-        docker run --rm --gpus all -v $PWD:/workspace nvcr.io/nvidia/pytorch:23.10-py3 \
-          -e CCACHE_DIR=/cache \
+        docker run --rm --gpus all -v $PWD:/workspace -e CCACHE_DIR=/cache \
+          nvcr.io/nvidia/pytorch:23.10-py3 \
           bash -c "
             set -ex; \
             export CUDACXX=/usr/local/cuda-12.2/bin/nvcc; \
@@ -52,7 +52,6 @@ stages:
 
     - script: |
         docker run --rm --gpus all -v $PWD:/workspace nvcr.io/nvidia/pytorch:23.10-py3 \
-          -e CCACHE_DIR=/cache \
           bash -c "
             set -ex; \
             python3 -m pip install --upgrade pip; \
