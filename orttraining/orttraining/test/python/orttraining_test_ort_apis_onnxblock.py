@@ -1020,6 +1020,10 @@ def test_save_ort_format():
 
 
 def test_custom_loss_function():
+    # This test tries to add a custom loss function to the model.
+    # The custom loss function tries to use two model outputs of two different ranks, computes the
+    # two losses and returns the sum of the two losses.
+    # If the artifacts are generated successfully, without an exception being raised, the test passes.
     class ModelWithTwoOutputs(torch.nn.Module):
         def __init__(self):
             super().__init__()
