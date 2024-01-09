@@ -73,7 +73,7 @@ stages:
 
       - template: templates/linux-build-step-with-cache.yml
         parameters:
-          WithCache: true
+          WithCache: false
           Today: $(TODAY)
           AdditionalKey: onnxruntime_linux_debug_with_address_sanitizer
           CacheDir: $(ORT_CACHE_DIR)
@@ -90,15 +90,12 @@ stages:
                     --volume $(Build.SourcesDirectory):/onnxruntime_src \
                     --volume $(Build.BinariesDirectory):/build \
                     --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-                    --volume $(ORT_CACHE_DIR):/cache \
                     -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
                     -e NIGHTLY_BUILD \
                     -e BUILD_BUILDNUMBER \
-                    -e CCACHE_DIR=/cache \
                     onnxruntimecpubuildcentos8x64 \
                     /bin/bash -c "
                       set -ex; \
-                      ccache -s; \
                       python3.9 /onnxruntime_src/tools/ci_build/build.py \
                         --build_dir /build --cmake_generator 'Ninja' \
                         --config Debug \
@@ -116,9 +113,7 @@ stages:
                         --parallel \
                         --build_csharp \
                         --enable_onnx_tests --enable_address_sanitizer \
-                        --use_cache --test;
-                      ccache -sv; \
-                      ccache -z"
+                        --use_cache --test;"
                 workingDirectory: $(Build.SourcesDirectory)
 
       - task: PublishTestResults@2
