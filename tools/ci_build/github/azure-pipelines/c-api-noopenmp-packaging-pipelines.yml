@@ -92,6 +92,9 @@ stages:
       vmImage: ubuntu-latest
     steps:
     - checkout: none
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
     - bash: |
         # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
         set +x
@@ -108,9 +111,6 @@ stages:
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
 
 
 - stage: Debug
@@ -123,13 +123,14 @@ stages:
       MyVar: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
     steps:
     - checkout: none
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
     - bash: echo $(MyVar)
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
+
 
 - stage: Download_Java_Tools
   dependsOn: []
@@ -139,6 +140,9 @@ stages:
       vmImage: ubuntu-latest
     steps:
     - checkout: none
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
     - task: CmdLine@2
       displayName: Download Java Tools
       inputs:
@@ -157,9 +161,6 @@ stages:
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
 
 - template: templates/c-api-cpu.yml
   parameters:
@@ -544,6 +545,9 @@ stages:
       submodules: false
     - checkout: manylinux                      # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/manylinux
       submodules: false
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
 
     - script: |
         set -e -x
@@ -625,9 +629,6 @@ stages:
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
 
 
 - stage: Windows_Packaging_combined_GPU
@@ -645,6 +646,10 @@ stages:
     - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
     - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
       submodules: false
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
+
     - script: dir $(Build.SourcesDirectory)
     - task: BatchScript@1
       displayName: 'setup env'
@@ -717,9 +722,6 @@ stages:
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
 
 - stage: NuGet_Packaging_GPU
   dependsOn:
@@ -1289,7 +1291,9 @@ stages:
       clean: all
     pool: 'onnxruntime-Win2022-GPU-dml-A10'
     steps:
-
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - NuGet DirectML'
       inputs:
@@ -1371,6 +1375,3 @@ stages:
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()

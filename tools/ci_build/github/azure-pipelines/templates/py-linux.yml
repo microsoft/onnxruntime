@@ -110,6 +110,3 @@ jobs:
     - template: component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
