@@ -46,7 +46,6 @@ stages:
                         --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF \
                         --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 \
                         --allow_running_as_root; \
-                        --use_cache; \
           "
       displayName: 'Build Onnxruntime'
       workingDirectory: $(Build.SourcesDirectory)
