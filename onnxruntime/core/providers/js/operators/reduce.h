@@ -8,29 +8,29 @@
 
 namespace onnxruntime {
 namespace js {
-#define JSEP_DEFINE_REDUCE_KERNEL(ReduceKernel)                                                         \
-  template <bool allow_multi_axes = true>                                                               \
-  class ReduceKernel : public JsKernel, public ReduceKernelBase<allow_multi_axes> {                     \
-   public:                                                                                              \
-    using ReduceKernelBase<allow_multi_axes>::axes_;                                                    \
-    using ReduceKernelBase<allow_multi_axes>::noop_with_empty_axes_;                                    \
-    using ReduceKernelBase<allow_multi_axes>::keepdims_;                                                \
-    ReduceKernel(const OpKernelInfo& info) : JsKernel(info), ReduceKernelBase<allow_multi_axes>(info) { \
-      std::vector<int32_t> axes(axes_.size());                                                          \
-      if (axes_.size() > 0) {                                                                           \
-        std::transform(axes_.begin(), axes_.end(), axes.begin(),                                        \
-                       [](int64_t axis) { return gsl::narrow_cast<int32_t>(axis); });                   \
-      }                                                                                                 \
-      JSEP_INIT_KERNEL_ATTRIBUTE(ReduceKernel, ({                                                       \
-                                   "keepDims" : !!$1,                                                   \
-                                   "noopWithEmptyAxes" : !!$2,                                          \
-                                   "axes" : $3 ? (Array.from(HEAP32.subarray($4, $4 + $3))) : [],       \
-                                 }),                                                                    \
-                                 static_cast<int32_t>(keepdims_),                                       \
-                                 static_cast<int32_t>(noop_with_empty_axes_),                           \
-                                 gsl::narrow_cast<int32_t>(axes.size()),                                \
-                                 JSEP_HEAP_PTR((axes.size() > 0) ? axes.data() : nullptr) >> 2);        \
-    }                                                                                                   \
+#define JSEP_DEFINE_REDUCE_KERNEL(ReduceKernel)                                                                 \
+  template <bool allow_multi_axes = true>                                                                       \
+  class ReduceKernel : public JsKernel, public ReduceKernelBase<allow_multi_axes> {                             \
+   public:                                                                                                      \
+    using ReduceKernelBase<allow_multi_axes>::axes_;                                                            \
+    using ReduceKernelBase<allow_multi_axes>::noop_with_empty_axes_;                                            \
+    using ReduceKernelBase<allow_multi_axes>::keepdims_;                                                        \
+    ReduceKernel(const OpKernelInfo& info) : JsKernel(info), ReduceKernelBase<allow_multi_axes>(info) {         \
+      std::vector<int32_t> axes(axes_.size());                                                                  \
+      if (axes_.size() > 0) {                                                                                   \
+        std::transform(axes_.begin(), axes_.end(), axes.begin(),                                                \
+                       [](int64_t axis) { return gsl::narrow_cast<int32_t>(axis); });                           \
+      }                                                                                                         \
+      JSEP_INIT_KERNEL_ATTRIBUTE(ReduceKernel, ({                                                               \
+                                   "keepDims" : !!$1,                                                           \
+                                   "noopWithEmptyAxes" : !!$2,                                                  \
+                                   "axes" : $3 ? (Array.from(HEAP32.subarray($4 >>> 0, ($4 >>> 0) + $3))) : [], \
+                                 }),                                                                            \
+                                 static_cast<int32_t>(keepdims_),                                               \
+                                 static_cast<int32_t>(noop_with_empty_axes_),                                   \
+                                 gsl::narrow_cast<int32_t>(axes.size()),                                        \
+                                 JSEP_HEAP_INDEX((axes.size() > 0) ? axes.data() : nullptr) >> 2);              \
+    }                                                                                                           \
   };
 
 JSEP_DEFINE_REDUCE_KERNEL(ReduceMax);

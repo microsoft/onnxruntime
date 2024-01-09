@@ -49,11 +49,11 @@ class Split : public JsKernel, public SplitBase {
 
     JSEP_INIT_KERNEL_ATTRIBUTE(Split, ({"axis" : $1,
                                         "numOutputs" : $2,
-                                        "splitSizes" : $3 ? Array.from(HEAP32.subarray($4, $4 + $3)) : []}),
+                                        "splitSizes" : $3 ? Array.from(HEAP32.subarray($4 >>> 0, ($4 >>> 0) + $3)) : []}),
                                static_cast<int32_t>(axis_),
                                static_cast<int32_t>(num_outputs_),
                                gsl::narrow_cast<int32_t>(split_sizes.size()),
-                               JSEP_HEAP_PTR((split_sizes.size() > 0) ? split_sizes.data() : nullptr) >> 2);
+                               JSEP_HEAP_INDEX((split_sizes.size() > 0) ? split_sizes.data() : nullptr) >> 2);
   }
 };
 

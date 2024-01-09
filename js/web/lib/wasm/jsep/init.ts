@@ -61,7 +61,8 @@ class ComputeContextImpl implements ComputeContext {
     return this.backend.currentKernelCustomData;
   }
   get customDataBuffer(): Uint8Array {
-    return this.module.HEAPU8.subarray(this.customDataOffset, this.customDataOffset + this.customDataSize);
+    return this.module.HEAPU8.subarray(
+      this.customDataOffset >>> 0, (this.customDataOffset >>> 0) + this.customDataSize);
   }
   private customDataOffset = 0;
   private customDataSize = 0;
@@ -170,7 +171,7 @@ export const init = async(module: OrtWasmModule, env: Env, gpuAdapter: GPUAdapte
           backend.memcpy(src, dst);
         } else {
           LOG_DEBUG('verbose', () => `[WebGPU] jsepCopyCpuToGpu: dataOffset=${src}, gpuDataId=${dst}, size=${size}`);
-          const data = module.HEAPU8.subarray(src, src + size);
+          const data = module.HEAPU8.subarray(src >>> 0, (src >>> 0) + size);
           backend.upload(dst, data);
         }
       },
@@ -182,7 +183,8 @@ export const init = async(module: OrtWasmModule, env: Env, gpuAdapter: GPUAdapte
                 'verbose',
                 () => `[WebGPU] jsepCopyGpuToCpu: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
 
-            await backend.download(gpuDataId, () => module.HEAPU8.subarray(dataOffset, dataOffset + size));
+            await backend.download(gpuDataId,
+              () => module.HEAPU8.subarray(dataOffset >>> 0, (dataOffset >>> 0) + size));
           },
 
       // jsepCreateKernel
