@@ -450,7 +450,7 @@ QuantizeBlock(
     const float scale = amax / range_max;
     const float scale_reciprocal = scale != 0.0f ? 1.0f / scale : 0.0f;
 
-    Q8BlkScale(QuantA) = scale;
+    Q8BlkSetScale(QuantA, scale);
 
     //
     // Compute quantized block values.

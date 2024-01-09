@@ -43,6 +43,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
   MatrixGuardBuffer<uint8_t> BufferQuantBData;
   MatrixGuardBuffer<uint8_t> BufferQuantBZeroPoint;
   MatrixGuardBuffer<float> BufferQuantBScale;
+  MatrixGuardBuffer<std::byte> BufferPackedQuantB;
   MatrixGuardBuffer<float> BufferDequantizedB;
   MatrixGuardBuffer<std::byte> BufferWorkspace;
   MatrixGuardBuffer<float> BufferC;
@@ -53,9 +54,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
                 size_t K,
                 const float* A,
                 size_t lda,
-                const uint8_t* QuantBData,
-                const float* QuantBScale,
-                const uint8_t* QuantBZeroPoint,
+                const void* PackedQuantB,
                 float* C,
                 size_t ldc,
                 void* Workspace,
@@ -66,9 +65,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     params.lda = lda;
     params.C = C;
     params.ldc = ldc;
-    params.QuantBData = QuantBData;
-    params.QuantBScale = QuantBScale;
-    params.QuantBZeroPoint = QuantBZeroPoint;
+    params.QuantB = PackedQuantB;
 
     MlasSQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace, Threadpool);
   }
@@ -132,7 +129,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
 
           static_assert(BlkBitWidth == 4, "only implemented for 4-bit quantized B");
 
-          uint8_t b_zp = 8;
+          int8_t b_zp = 8;
           if (QuantBZeroPoint != nullptr) {
             const uint8_t b_zp_byte = QuantBZeroPoint[n * ((BlockCountK + 1) / 2) + k_blk / 2];
             b_zp = (k_blk & 1) ? (b_zp_byte >> 4) : (b_zp_byte & 0x0F);
@@ -245,6 +242,14 @@ class MlasSQNBitGemmTest : public MlasTestBase {
       Workspace = BufferWorkspace.GetBuffer(WorkspaceSize);
     }
 
+      const auto PackedQuantBSize = MlasSQNBitGemmPackBSize2(N, K, BlkBitWidth, BlkLen, QuantBZeroPoint != nullptr);
+      ASSERT_GT(PackedQuantBSize, size_t{0});
+
+      void* PackedQuantB = BufferPackedQuantB.GetBuffer(PackedQuantBSize);
+      MlasSQNBitGemmPackBData(N, K, BlkBitWidth, BlkLen, QuantBData, PackedQuantB);
+      MlasSQNBitGemmPackBScale(N, K, BlkBitWidth, BlkLen, QuantBScale, PackedQuantB);
+      MlasSQNBitGemmPackBZeroPoint(N, K, BlkBitWidth, BlkLen, QuantBZeroPoint, PackedQuantB);
+
     if (ComputeType == CompFp32) {
       CallReferenceGemm_CompFp32(M, N, K, A, QuantBData, QuantBScale, QuantBZeroPoint, CReference);
     } else if (ComputeType == CompInt8) {
@@ -254,7 +259,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
              << ComputeType << " (" << ComputeTypeName(ComputeType) << ")";
     }
 
-    CallGemm(M, N, K, A, /* lda */ K, QuantBData, QuantBScale, QuantBZeroPoint, C, /* ldc */ N, Workspace,
+    CallGemm(M, N, K, A, /* lda */ K, PackedQuantB, C, /* ldc */ N, Workspace,
              ComputeType, Threadpool);
 
     size_t f = 0;

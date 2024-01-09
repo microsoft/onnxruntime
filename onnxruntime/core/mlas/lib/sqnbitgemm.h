@@ -25,8 +25,6 @@ Abstract:
 #include "mlas_qnbit.h"
 #include "mlasi.h"
 
-#include <cassert>
-
 constexpr MLAS_FORCEINLINE size_t
 MlasQNBitBlkDataSizeInBytes(size_t BlkBitWidth, size_t BlkLen)
 {
@@ -49,17 +47,19 @@ MlasQNBitZeroPointsForBlksSizeInBytes(size_t BlkCount)
 //
 
 MLAS_FORCEINLINE
-const float&
+float
 Q8BlkScale(const std::byte* BlkPtr)
 {
-    return *reinterpret_cast<const float*>(BlkPtr);
+    float Scale;
+    memcpy(&Scale, BlkPtr, sizeof(float));
+    return Scale;
 }
 
 MLAS_FORCEINLINE
-float&
-Q8BlkScale(std::byte* BlkPtr)
+void
+Q8BlkSetScale(std::byte* BlkPtr, float Scale)
 {
-    return *reinterpret_cast<float*>(BlkPtr);
+    memcpy(BlkPtr, &Scale, sizeof(float));
 }
 
 MLAS_FORCEINLINE
@@ -71,7 +71,7 @@ Q8BlkData(const std::byte* BlkPtr)
 
 MLAS_FORCEINLINE
 int8_t*
-Q8BlkData(std::byte* BlkPtr)
+Q8BlkMutableData(std::byte* BlkPtr)
 {
     return reinterpret_cast<int8_t*>(BlkPtr + sizeof(float));
 }
@@ -81,17 +81,61 @@ constexpr size_t
 Q8BlkSize(size_t BlkLen)
 {
     const size_t BlkSize = sizeof(float) + BlkLen * sizeof(int8_t);
-    // Currently, the strictest alignment requirement of a block is for a float.
-    // Ensure contiguous blocks are suitably aligned.
-    assert(BlkSize % alignof(float) == 0);
     return BlkSize;
+}
+
+//
+// Quantized int4 block helpers.
+
+MLAS_FORCEINLINE
+float
+Q4BlkScale(const std::byte* BlkPtr) {
+    float Scale;
+    memcpy(&Scale, BlkPtr, sizeof(float));
+    return Scale;
+}
+
+MLAS_FORCEINLINE
+void
+Q4BlkSetScale(std::byte* BlkPtr, float Scale)
+{
+    memcpy(BlkPtr, &Scale, sizeof(float));
+}
+
+MLAS_FORCEINLINE
+int8_t
+Q4BlkZeroPoint(const std::byte* BlkPtr) {
+    int8_t zp;
+    memcpy(&zp, BlkPtr + sizeof(float), sizeof(int8_t));
+    return zp;
+}
+
+MLAS_FORCEINLINE
+void
+Q4BlkSetZeroPoint(std::byte* BlkPtr, int8_t ZeroPoint)
+{
+    memcpy(BlkPtr + sizeof(float), &ZeroPoint, sizeof(int8_t));
+}
+
+MLAS_FORCEINLINE
+const std::byte*
+Q4BlkData(const std::byte* BlkPtr)
+{
+    return BlkPtr + sizeof(float) + sizeof(int8_t);
+}
+
+MLAS_FORCEINLINE
+std::byte*
+Q4BlkMutableData(std::byte* BlkPtr)
+{
+    return BlkPtr + sizeof(float) + sizeof(int8_t);
 }
 
 MLAS_FORCEINLINE
 constexpr size_t
-Q8BlkAlignment()
-{
-    return alignof(float);
+Q4BlkSize(size_t BlkLen) {
+    const size_t BlkSize = sizeof(float) + sizeof(int8_t) + (BlkLen + 1) / 2 * sizeof(std::byte);
+    return BlkSize;
 }
 
 //
@@ -110,9 +154,8 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
      *
      * @param       BlkLen              Number of values in a block.
      * @param       A                   Supplies the A matrix.
-     * @param       QuantBData          Supplies the quantized B matrix block data.
-     * @param       QuantBScale         Supplies the quantized B matrix block scale values.
-     * @param       QuantBZeroPoint     Supplies the quantized B matrix block zero point values. Optional.
+     * @param       QuantB              Supplies the quantized B matrix.
+     *                                  Binary data containing block quantized int4 data, zero point and scale values.
      * @param[out]  C                   Supplies the output C matrix.
      * @param       CountN              Number of columns of B and C.
      * @param       CountK              Number of columns of A and rows of B.
@@ -121,9 +164,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     typedef void(SQNBitGemmM1Kernel_BlkBitWidth4_CompFp32_Fn)(
         size_t BlkLen,
         const float* A,
-        const std::byte* QuantBData,
-        const float* QuantBScale,
-        const std::byte* QuantBZeroPoint,
+        const std::byte* QuantB,
         float* C,
         size_t CountN,
         size_t CountK,
@@ -140,9 +181,8 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
      *
      * @param       BlkLen              Number of values in a block.
      * @param[out]  FpData              Supplies the output buffer for the dequantized B float data.
-     * @param       QuantBData          Supplies the quantized B matrix block data.
-     * @param       QuantBScale         Supplies the quantized B matrix block scale values.
-     * @param       QuantBZeroPoint     Supplies the quantized B matrix block zero point values. Optional.
+     * @param       QuantB              Supplies the quantized B matrix.
+     *                                  Binary data containing block quantized int4 data, zero point and scale values.
      * @param       CountN              Number of columns of B.
      * @param       CountK              Number of rows of B.
      * @param       BlockStrideQuantB   Number of blocks between adjacent columns of the quantized B matrix.
@@ -150,9 +190,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     typedef void(QNBitBlkDequantBForSgemm_BlkBitWidth4_CompFp32_Fn)(
         size_t BlkLen,
         float* FpData,
-        const std::byte* QuantBData,
-        const float* QuantBScale,
-        const std::byte* QuantBZeroPoint,
+        const std::byte* QuantB,
         size_t CountN,
         size_t CountK,
         size_t BlockStrideQuantB
@@ -172,9 +210,8 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
      * @param       BlkLen              Number of values in a block.
      * @param       QuantA              Supplies the quantized A matrix.
                                         Binary data containing block quantized int8 data and scale values.
-     * @param       QuantBData          Supplies the quantized B matrix block data.
-     * @param       QuantBScale         Supplies the quantized B matrix block scale values.
-     * @param       QuantBZeroPoint     Supplies the quantized B matrix block zero point values. Optional.
+     * @param       QuantB              Supplies the quantized B matrix.
+     *                                  Binary data containing block quantized int4 data, zero point and scale values.
      * @param[out]  C                   Supplies the output C matrix.
      * @param       CountN              Number of columns of B and C.
      * @param       CountK              Number of columns of A and rows of B.
@@ -183,9 +220,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     typedef void(SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8_Fn)(
         size_t BlkLen,
         const std::byte* QuantA,
-        const std::byte* QuantBData,
-        const float* QuantBScale,
-        const std::byte* QuantBZeroPoint,
+        const std::byte* QuantB,
         float* C,
         size_t CountN,
         size_t CountK,

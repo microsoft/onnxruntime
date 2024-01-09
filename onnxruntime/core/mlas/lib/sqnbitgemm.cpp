@@ -41,6 +41,19 @@ enum SQNBitGemmVariant {
     SQNBitGemmVariantCount,
 };
 
+bool
+IsSupportedBlkLen(size_t BlkBitWidth, size_t BlkLen)
+{
+    if (BlkBitWidth == 4) {
+        return BlkLen == 16 ||
+               BlkLen == 32 ||
+               BlkLen == 64 ||
+               BlkLen == 128 ||
+               BlkLen == 256;
+    }
+    return false;
+}
+
 SQNBitGemmVariant
 GetSQNBitGemmVariant(
     size_t M,
@@ -54,8 +67,7 @@ GetSQNBitGemmVariant(
     MLAS_UNREFERENCED_PARAMETER(N);
     MLAS_UNREFERENCED_PARAMETER(K);
 
-    if (BlkBitWidth == 4 &&
-        (BlkLen == 16 || BlkLen == 32 || BlkLen == 64 || BlkLen == 128 || BlkLen == 256)) {
+    if (BlkBitWidth == 4 && IsSupportedBlkLen(BlkBitWidth, BlkLen)) {
         if (ComputeType == CompFp32 ||
             ComputeType == CompUndef) {  // treat CompUndef (undefined) as CompFp32
             return SQNBitGemmVariant_BitWidth4_CompFp32;
@@ -105,19 +117,6 @@ namespace
 {
 
 size_t
-SQNBitGemmWorkspaceAlignment(SQNBitGemmVariant Variant)
-{
-    switch (Variant) {
-        case SQNBitGemmVariant_BitWidth4_CompInt8: {
-            return Q8BlkAlignment();
-        }
-        default: {
-            return 1;
-        }
-    }
-}
-
-size_t
 SQNBitGemmPerGemmWorkspaceSize(
     SQNBitGemmVariant Variant,
     size_t M,
@@ -151,8 +150,7 @@ SQNBitGemmPerGemmWorkspaceStride(
 )
 {
     const auto Size = SQNBitGemmPerGemmWorkspaceSize(Variant, M, N, K, BlkLen);
-    const auto Alignment = SQNBitGemmWorkspaceAlignment(Variant);
-    return MlasDivRoundup(Size, Alignment) * Alignment;
+    return Size;
 }
 
 }  // namespace
@@ -175,11 +173,9 @@ MlasSQNBitGemmBatchWorkspaceSize(
         return 0;
     }
 
-    const size_t Alignment = SQNBitGemmWorkspaceAlignment(Variant);
-
     const size_t WorkspaceSize = BatchN * PerGemmWorkspaceStride;
 
-    return WorkspaceSize + Alignment - 1;
+    return WorkspaceSize;
 }
 
 namespace
@@ -216,17 +212,11 @@ SQNBitGemm_BlkBitWidth4_CompFp32(
     const size_t ldc = DataParams->ldc;
 
     const size_t k_blks = MlasDivRoundup(K, BlkLen);
-    const size_t ldb = k_blks * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-    const size_t k_blks_zp_bytes = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(k_blks);
+    const size_t ldb = k_blks * Q4BlkSize(BlkLen);
 
     const float* A = DataParams->A + RangeStartM * lda;
 
-    const std::byte* QuantBData = static_cast<const std::byte*>(DataParams->QuantBData) + RangeStartN * ldb;
-    const float* QuantBScale = DataParams->QuantBScale + RangeStartN * k_blks;
-    const std::byte* QuantBZeroPoint =
-        (DataParams->QuantBZeroPoint == nullptr)
-            ? nullptr
-            : static_cast<const std::byte*>(DataParams->QuantBZeroPoint) + RangeStartN * k_blks_zp_bytes;
+    const std::byte* QuantB = static_cast<const std::byte*>(DataParams->QuantB) + RangeStartN * ldb;
 
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
 
@@ -236,15 +226,12 @@ SQNBitGemm_BlkBitWidth4_CompFp32(
             CountN = std::min(RangeCountN - n, size_t{128});
 
             const float* a_row = A;
-            const std::byte* b_col = QuantBData + n * ldb;
-            const float* b_col_scale = QuantBScale + n * k_blks;
-            const std::byte* b_col_zp =
-                (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
+            const std::byte* b_col = QuantB + n * ldb;
             float* c_blk = C + n;
 
             GetMlasPlatform().SQNBitGemmDispatch->SQNBitGemmM1Kernel_BlkBitWidth4_CompFp32(
                 BlkLen,
-                a_row, b_col, b_col_scale, b_col_zp, c_blk, CountN, K, k_blks
+                a_row, b_col, c_blk, CountN, K, k_blks
             );
         }
         return;
@@ -266,15 +253,12 @@ SQNBitGemm_BlkBitWidth4_CompFp32(
         // Step through each slice of matrix A along the M dimension.
         //
         const float* a_row = A;
-        const std::byte* b_col = QuantBData + n * ldb;
-        const float* b_col_scale = QuantBScale + n * k_blks;
-        const std::byte* b_col_zp =
-            (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
+        const std::byte* b_col = QuantB + n * ldb;
         float* c_blk = C + n;
 
         GetMlasPlatform().SQNBitGemmDispatch->QNBitBlkDequantBForSgemm_BlkBitWidth4_CompFp32(
             BlkLen,
-            dequant_b, b_col, b_col_scale, b_col_zp, CountN, K, k_blks
+            dequant_b, b_col, CountN, K, k_blks
         );
 
         size_t RowsRemaining = RangeCountM;
@@ -312,17 +296,11 @@ SQNBitGemm_BlkBitWidth4_CompInt8(
 
     const size_t lda = k_blks * Q8BlkSize(BlkLen);
     const size_t ldc = DataParams->ldc;
-    const size_t ldb = k_blks * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-    const size_t k_blks_zp_bytes = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(k_blks);
+    const size_t ldb = k_blks * Q4BlkSize(BlkLen);
 
     const std::byte* QuantA = static_cast<const std::byte*>(PerGemmWorkspace) + RangeStartM * lda;
 
-    const std::byte* QuantBData = static_cast<const std::byte*>(DataParams->QuantBData) + RangeStartN * ldb;
-    const float* QuantBScale = DataParams->QuantBScale + RangeStartN * k_blks;
-    const std::byte* QuantBZeroPoint =
-        (DataParams->QuantBZeroPoint == nullptr)
-            ? nullptr
-            : static_cast<const std::byte*>(DataParams->QuantBZeroPoint) + RangeStartN * k_blks_zp_bytes;
+    const std::byte* QuantB = static_cast<const std::byte*>(DataParams->QuantB) + RangeStartN * ldb;
 
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
 
@@ -332,15 +310,12 @@ SQNBitGemm_BlkBitWidth4_CompInt8(
             CountN = std::min(RangeCountN - n, size_t{128});
 
             const std::byte* a_row = QuantA;
-            const std::byte* b_col = QuantBData + n * ldb;
-            const float* b_col_scale = QuantBScale + n * k_blks;
-            const std::byte* b_col_zp =
-                (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
+            const std::byte* b_col = QuantB + n * ldb;
             float* c_blk = C + n;
 
             GetMlasPlatform().SQNBitGemmDispatch->SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8(
                 BlkLen,
-                a_row, b_col, b_col_scale, b_col_zp, c_blk, CountN, K, k_blks
+                a_row, b_col, c_blk, CountN, K, k_blks
             );
         }
         return;
@@ -431,17 +406,6 @@ MlasSQNBitGemmBatch(
     const auto Variant = GetSQNBitGemmVariant(M, N, K, BlkBitWidth, BlkLen, ComputeType);
     assert(Variant != SQNBitGemmVariantInvalid);
 
-    //
-    // Ensure `Workspace` has correct alignment.
-    //
-    if (Workspace != nullptr) {
-        const size_t Alignment = SQNBitGemmWorkspaceAlignment(Variant);
-        const uintptr_t WorkspaceAddress = reinterpret_cast<uintptr_t>(Workspace);
-        Workspace = reinterpret_cast<void*>(
-            (WorkspaceAddress + Alignment - 1) & (~(Alignment - 1))
-        );
-    }
-
     const size_t PerGemmWorkspaceStride = SQNBitGemmPerGemmWorkspaceStride(Variant, M, N, K, BlkLen);
 
     if (const auto InitializeWorkspaceOperation = OperationMap[Variant].InitializeWorkspace;
@@ -523,6 +487,197 @@ MlasSQNBitGemmBatch(
 
         ComputeOperation(BlkLen, K, Data, PerGemmWorkspace, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
     });
+}
+
+namespace
+{
+void
+SQNBitGemmPackBData_BlkBitWidth4(
+    size_t N,
+    size_t BlockCountK,
+    size_t BlkLen,
+    const std::byte* QuantBData,
+    std::byte* PackedQuantB
+)
+{
+    assert(BlkLen % 16 == 0);
+
+    for (size_t n = 0; n < N; ++n) {
+        for (size_t k_blk = 0; k_blk < BlockCountK; ++k_blk) {
+            std::byte* BlkData = Q4BlkMutableData(PackedQuantB);
+
+            //
+            // Pack 16 4-bit values (8 bytes) at a time like this:
+            //
+            // src: | v0 v1 | v2 v3 | v4 v5 | v6 v7 | v8 v9 | vA vB | vC vD | vE vF |
+            //   =>
+            // dst: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
+            //
+            for (size_t kk = 0; kk < BlkLen; kk += 16) {
+                for (size_t byte_i = 0; byte_i < 4; ++byte_i) {
+                    const std::byte src0 = QuantBData[byte_i];
+                    const std::byte src1 = QuantBData[byte_i + 4];
+
+                    std::byte& dst0 = BlkData[2 * byte_i];
+                    std::byte& dst1 = BlkData[2 * byte_i + 1];
+
+                    dst0 = (src0 & std::byte{0x0F}) | ((src1 & std::byte{0x0F}) << 4);
+                    dst1 = (src0 >> 4) | ((src1 >> 4) << 4);
+                }
+
+                QuantBData += 8;
+                BlkData += 8;
+            }
+
+            PackedQuantB += Q4BlkSize(BlkLen);
+        }
+    }
+}
+
+void
+SQNBitGemmPackBScale_BlkBitWidth4(
+    size_t N,
+    size_t BlockCountK,
+    size_t BlkLen,
+    const float* QuantBScale,
+    std::byte* PackedQuantB
+)
+{
+    for (size_t n = 0; n < N; ++n) {
+        for (size_t k_blk = 0; k_blk < BlockCountK; ++k_blk) {
+            const float Scale = *QuantBScale;
+
+            Q4BlkSetScale(PackedQuantB, Scale);
+
+            QuantBScale += 1;
+            PackedQuantB += Q4BlkSize(BlkLen);
+        }
+    }
+}
+
+void
+SQNBitGemmPackBZeroPoint_BlkBitWidth4(
+    size_t N,
+    size_t BlockCountK,
+    size_t BlkLen,
+    const std::byte* QuantBZeroPoint,
+    std::byte* PackedQuantB
+)
+{
+    if (QuantBZeroPoint != nullptr) {
+        const std::byte* QuantBZeroPointCol = QuantBZeroPoint;
+        const size_t QuantBZeroPointStride = MlasQNBitZeroPointsForBlksSizeInBytes<4>(BlockCountK);
+
+        for (size_t n = 0; n < N; ++n) {
+            for (size_t k_blk = 0; k_blk < BlockCountK; ++k_blk) {
+                const std::byte zp_byte = QuantBZeroPointCol[k_blk / 2];
+                const int8_t zp =
+                    ((k_blk & 1) != 0)
+                        ? std::to_integer<int8_t>(zp_byte >> 4)
+                        : std::to_integer<int8_t>(zp_byte & std::byte{0x0F});
+
+                Q4BlkSetZeroPoint(PackedQuantB, zp);
+
+                PackedQuantB += Q4BlkSize(BlkLen);
+            }
+            QuantBZeroPointCol += QuantBZeroPointStride;
+        }
+    } else {
+        for (size_t n = 0; n < N; ++n) {
+            for (size_t k_blk = 0; k_blk < BlockCountK; ++k_blk) {
+                Q4BlkSetZeroPoint(PackedQuantB, 8);
+
+                PackedQuantB += Q4BlkSize(BlkLen);
+            }
+        }
+    }
+}
+}  // namespace
+
+size_t MLASCALL
+MlasSQNBitGemmPackBSize2(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool IsAsymmetric
+)
+{
+    MLAS_UNREFERENCED_PARAMETER(IsAsymmetric);
+
+    if (BlkBitWidth == 4 && IsSupportedBlkLen(BlkBitWidth, BlkLen)) {
+        const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+        const size_t PackBSize = N * BlockCountK * Q4BlkSize(BlkLen);
+        return PackBSize;
+    }
+
+    return 0;
+}
+
+void MLASCALL
+MlasSQNBitGemmPackBData(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    const void* QuantBData,
+    void* PackedQuantB
+)
+{
+    if (BlkBitWidth == 4) {
+        const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+        SQNBitGemmPackBData_BlkBitWidth4(
+            N,
+            BlockCountK,
+            BlkLen,
+            static_cast<const std::byte*>(QuantBData),
+            static_cast<std::byte*>(PackedQuantB)
+        );
+    }
+}
+
+void MLASCALL
+MlasSQNBitGemmPackBScale(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    const float* QuantBScale,
+    void* PackedQuantB
+)
+{
+    if (BlkBitWidth == 4) {
+        const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+        SQNBitGemmPackBScale_BlkBitWidth4(
+            N,
+            BlockCountK,
+            BlkLen,
+            QuantBScale,
+            static_cast<std::byte*>(PackedQuantB)
+        );
+    }
+}
+
+void MLASCALL
+MlasSQNBitGemmPackBZeroPoint(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    const void* QuantBZeroPoint,
+    void* PackedQuantB
+)
+{
+    if (BlkBitWidth == 4) {
+        const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+        SQNBitGemmPackBData_BlkBitWidth4(
+            N,
+            BlockCountK,
+            BlkLen,
+            static_cast<const std::byte*>(QuantBZeroPoint),
+            static_cast<std::byte*>(PackedQuantB)
+        );
+    }
 }
 
 size_t MLASCALL

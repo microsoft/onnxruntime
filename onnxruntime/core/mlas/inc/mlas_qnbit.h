@@ -45,9 +45,10 @@ typedef enum {
 struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
     const float* A = nullptr;               ///< address of A (float32 matrix)
     size_t lda = 0;                         ///< leading dimension of A
-    const void* QuantBData = nullptr;       ///< address of quantized B (quantized n-bit int values)
-    const float* QuantBScale = nullptr;     ///< address of scale values of quantized B, one per block
-    const void* QuantBZeroPoint = nullptr;  ///< optional address of zero point values of quantized B, one per block
+    const void* QuantB = nullptr;
+    //const void* QuantBData = nullptr;       ///< address of quantized B (quantized n-bit int values)
+    //const float* QuantBScale = nullptr;     ///< address of scale values of quantized B, one per block
+    //const void* QuantBZeroPoint = nullptr;  ///< optional address of zero point values of quantized B, one per block
     float* C = nullptr;                     ///< address of result matrix
     size_t ldc = 0;                         ///< leading dimension of C
 };
@@ -127,6 +128,56 @@ MlasSQNBitGemmBatchWorkspaceSize(
     size_t BlkBitWidth,
     size_t BlkLen,
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
+);
+
+/**
+ * @brief Compute the byte size of the parameter combination
+ *
+ * @param N             the number of columns of matrix B.
+ * @param K             the number of rows of matrix B.
+ * @param BlkBitWidth   number of bits used for weight quantization
+ * @param BlkLen        size of the block to quantize, elements from the same block share the same
+ *                      scale and zero point
+ * @param IsAsymmetric  flag for asymmetric quantization
+ * @return size of the packing buffer, 0 if the operation is not yet supported.
+ */
+size_t MLASCALL
+MlasSQNBitGemmPackBSize2(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    bool IsAsymmetric
+);
+
+void MLASCALL
+MlasSQNBitGemmPackBData(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    const void* QuantBData,
+    void* PackedQuantB
+);
+
+void MLASCALL
+MlasSQNBitGemmPackBScale(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    const float* QuantBScale,
+    void* PackedQuantB
+);
+
+void MLASCALL
+MlasSQNBitGemmPackBZeroPoint(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    const void* QuantBZeroPoint,
+    void* PackedQuantB
 );
 
 /**
