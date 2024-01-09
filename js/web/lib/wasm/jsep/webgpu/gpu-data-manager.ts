@@ -231,6 +231,9 @@ class GpuDataManagerImpl implements GpuDataManager {
             () => `[WebGPU] GpuDataManager.registerExternalBuffer(size=${originalSize}) => id=${
                 id}, buffer is the same, skip.`);
         return id;
+      } else if (this.backend.capturedCommandList.has(this.backend.currentSessionId!)) {
+        throw new Error(`Registering a different external buffer under graph capture mode is not supported yet.
+             Please use the previous external buffer!`);
       }
       this.externalBuffers.delete(previousBuffer);
     } else {
