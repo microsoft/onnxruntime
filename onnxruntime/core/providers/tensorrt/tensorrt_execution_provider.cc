@@ -2494,7 +2494,41 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   return result;
 }
 
-Status TensorrtExecutionProvider::CreateNodeComputeFromGraph(const GraphViewer& graph_body_viewer,
+common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                                  std::vector<NodeComputeInfo>& node_compute_funcs) {
+  for (auto& fused_node_graph : fused_nodes_and_graphs) {
+    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
+    const Node& fused_node = fused_node_graph.fused_node;
+    // Build map from input name to its index in input definitions
+    std::unordered_map<std::string, size_t> input_map;
+    const auto& input_defs = fused_node.InputDefs();
+    input_map.reserve(input_defs.size());
+    for (size_t i = 0, end = input_defs.size(); i < end; ++i) {
+      input_map[input_defs[i]->Name()] = i;
+    }
+
+    // Build map from output name to its index in output definitions
+    std::unordered_map<std::string, size_t> output_map;
+    const auto& output_defs = fused_node.OutputDefs();
+    output_map.reserve(output_defs.size());
+    for (size_t i = 0, end = output_defs.size(); i < end; ++i) {
+      output_map[output_defs[i]->Name()] = i;
+    }
+
+    Status status;
+    if (GraphHasCtxNode(graph_body_viewer)) {
+      status = CreateNodeComputeInfoFromPrecompiledEngine(graph_body_viewer, fused_node, input_map, output_map, node_compute_funcs);
+    } else {
+      status = CreateNodeComputeInfoFromGraph(graph_body_viewer, fused_node, input_map, output_map, node_compute_funcs);
+    }
+    if (status != Status::OK()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
+    }
+  }
+  return Status::OK();
+}
+
+Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& graph_body_viewer,
                                                              const Node& fused_node,
                                                              std::unordered_map<std::string, size_t>& input_map,
                                                              std::unordered_map<std::string, size_t>& output_map,
@@ -3032,7 +3066,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromGraph(const GraphViewer& 
     *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name, builder_.get(),
           &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name],
           &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
-          input_shape_ranges_[context->node_name], sync_stream_after_enqueue_, dds_output_allocator_map_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
+          input_shape_ranges_[context->node_name], sync_stream_after_enqueue_, &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
           dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
           runtime_.get(), profiles_[context->node_name], context_memory_sharing_enable_, &max_ctx_mem_size_,
           dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
@@ -3063,7 +3097,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromGraph(const GraphViewer& 
     bool sync_stream_after_enqueue = trt_state->sync_stream_after_enqueue;
     auto fused_node_name = trt_state->fused_node_name;
     auto& shape_ranges = trt_state->input_shape_ranges;
-    auto& dds_output_allocator_map = trt_state->dds_output_allocator_map;
+    auto& dds_output_allocator_map = this->dds_output_allocator_maps_[fused_node_name];
     auto trt_builder = trt_state->builder;
     auto trt_engine = trt_state->engine->get();
     auto trt_context = trt_state->context->get();
@@ -3515,7 +3549,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromGraph(const GraphViewer& 
   return Status::OK();
 }
 
-Status TensorrtExecutionProvider::CreateNodeComputeFromPrecompiledEngine(const GraphViewer& graph_body_viewer,
+Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const GraphViewer& graph_body_viewer,
                                                                          const Node& fused_node,
                                                                          std::unordered_map<std::string, size_t>& input_map,
                                                                          std::unordered_map<std::string, size_t>& output_map,
@@ -3590,12 +3624,12 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromPrecompiledEngine(const G
     *p = {context->allocate_func,
           context->release_func,
           context->allocator_handle,
+          context->node_name,
           &engines_[context->node_name],
           &contexts_[context->node_name],
           input_info_[context->node_name],
           output_info_[context->node_name],
           sync_stream_after_enqueue_,
-          dds_output_allocator_map_[context->node_name],
           context_memory_sharing_enable_,
           &max_ctx_mem_size_,
           &tensorrt_mu_};
@@ -3621,8 +3655,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromPrecompiledEngine(const G
     const std::unordered_map<std::string, size_t>& input_indexes = (trt_state->input_info)[0];
     const std::unordered_map<std::string, size_t>& output_indexes = (trt_state->output_info)[0];
     const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
+    auto fused_node_name = trt_state->fused_node_name;
     bool sync_stream_after_enqueue = trt_state->sync_stream_after_enqueue;
-    auto& dds_output_allocator_map = trt_state->dds_output_allocator_map;
+    auto& dds_output_allocator_map = this->dds_output_allocator_maps_[fused_node_name];
     auto trt_engine = trt_state->engine->get();
     auto trt_context = trt_state->context->get();
     auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
@@ -3792,40 +3827,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeFromPrecompiledEngine(const G
   };
 
   node_compute_funcs.push_back(compute_info);
-  return Status::OK();
-}
-
-common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                                  std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (auto& fused_node_graph : fused_nodes_and_graphs) {
-    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
-    const Node& fused_node = fused_node_graph.fused_node;
-    // Build map from input name to its index in input definitions
-    std::unordered_map<std::string, size_t> input_map;
-    const auto& input_defs = fused_node.InputDefs();
-    input_map.reserve(input_defs.size());
-    for (size_t i = 0, end = input_defs.size(); i < end; ++i) {
-      input_map[input_defs[i]->Name()] = i;
-    }
-
-    // Build map from output name to its index in output definitions
-    std::unordered_map<std::string, size_t> output_map;
-    const auto& output_defs = fused_node.OutputDefs();
-    output_map.reserve(output_defs.size());
-    for (size_t i = 0, end = output_defs.size(); i < end; ++i) {
-      output_map[output_defs[i]->Name()] = i;
-    }
-
-    Status status;
-    if (GraphHasCtxNode(graph_body_viewer)) {
-      status = CreateNodeComputeFromPrecompiledEngine(graph_body_viewer, fused_node, input_map, output_map, node_compute_funcs);
-    } else {
-      status = CreateNodeComputeFromGraph(graph_body_viewer, fused_node, input_map, output_map, node_compute_funcs);
-    }
-    if (status != Status::OK()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
-    }
-  }
   return Status::OK();
 }
 

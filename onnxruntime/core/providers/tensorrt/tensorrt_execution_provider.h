@@ -149,7 +149,6 @@ struct TensorrtFuncState {
   std::vector<std::unordered_map<std::string, size_t>> output_info;
   std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> input_shape_ranges;
   bool sync_stream_after_enqueue = false;
-  std::unordered_map<char const*, OutputAllocator*> dds_output_allocator_map;
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool fp16_enable = false;
   bool int8_enable = false;
@@ -181,16 +180,17 @@ struct TensorrtFuncState {
   bool cuda_graph_enable = 0;
 };
 
+// Minimum information to construct kernel function state for direct engine load code path
 struct TensorrtShortFuncState {
   AllocateFunc test_allocate_func = nullptr;
   DestroyFunc test_release_func = nullptr;
   AllocatorHandle allocator = nullptr;
+  std::string fused_node_name;
   std::unique_ptr<nvinfer1::ICudaEngine>* engine = nullptr;
   std::unique_ptr<nvinfer1::IExecutionContext>* context = nullptr;
   std::vector<std::unordered_map<std::string, size_t>> input_info;
   std::vector<std::unordered_map<std::string, size_t>> output_info;
   bool sync_stream_after_enqueue = false;
-  std::unordered_map<char const*, OutputAllocator*> dds_output_allocator_map;
   bool context_memory_sharing_enable = false;
   size_t* max_context_mem_size_ptr = nullptr;
   OrtMutex* tensorrt_mu_ptr = nullptr;
@@ -513,12 +513,20 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    */
   bool IsLocalValue(const Graph& graph, const std::string& name) const;
 
-  Status CreateNodeComputeFromPrecompiledEngine(const GraphViewer& graph_body_viewer,
+  /**
+   * Create a vector of NodeComputeInfo instances directly from "TRT engine" wrapped onnx model without
+   * going through the time-consuming processes of model parsing and engine building.
+   */
+  Status CreateNodeComputeInfoFromPrecompiledEngine(const GraphViewer& graph_body_viewer,
                                                 const Node& fused_node,
                                                 std::unordered_map<std::string, size_t>& input_map,
                                                 std::unordered_map<std::string, size_t>& output_map,
                                                 std::vector<NodeComputeInfo>& node_compute_funcs);
-  Status CreateNodeComputeFromGraph(const GraphViewer& graph_body_viewer,
+
+  /**
+   * Create a vector of NodeComputeInfo instances from graph.
+   */
+  Status CreateNodeComputeInfoFromGraph(const GraphViewer& graph_body_viewer,
                                     const Node& fused_node,
                                     std::unordered_map<std::string, size_t>& input_map,
                                     std::unordered_map<std::string, size_t>& output_map,
