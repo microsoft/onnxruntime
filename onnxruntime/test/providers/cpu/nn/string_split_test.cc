@@ -87,5 +87,22 @@ TEST(StringSplit, EmptyInputTest) {
   test.Run();
 }
 
+TEST(StringSplit, OnlyEmptyInputTest) {
+  OpTester test("StringSplit", 20);
+  test.AddAttribute<std::string>("delimiter", "*");
+  test.AddInput<std::string>("X", {1, 2, 1}, {"", ""});
+  test.AddOutput<std::string>("Y", {1, 2, 1, 1}, {"", ""});
+  test.AddOutput<int64_t>("Z", {1, 2, 1}, {0, 0});
+  test.Run();
+}
+
+TEST(StringSplit, OnlyEmptyNoDelimiterInputTest) {
+  OpTester test("StringSplit", 20);
+  test.AddInput<std::string>("X", {1, 2, 1}, {"", ""});
+  test.AddOutput<std::string>("Y", {1, 2, 1, 1}, {"", ""});
+  test.AddOutput<int64_t>("Z", {1, 2, 1}, {0, 0});
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
