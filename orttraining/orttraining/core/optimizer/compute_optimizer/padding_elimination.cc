@@ -628,6 +628,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
     return Status::OK();
   }
 
+  bool fallback_full_sized_shape = true;
 
   // Get the first two dims value of input_ids which is [batch_size, seq_len]
   NodeArg* first_two_dims_arg = GetDimsValue(graph,
@@ -647,8 +648,11 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
         // The type of node is one of Elementwise ops.
         // The input size must be 2 and there must be more than one input in the subgraph.
         ORT_ENFORCE(node->InputDefs().size() == 2);
-        if (skip_nodes.find(node) != skip_nodes.end()) {
-          continue;
+
+        if (fallback_full_sized_shape) {
+          if (skip_nodes.find(node) != skip_nodes.end()) {
+            continue;
+          }
         }
         // Because candidate_inputs are nodes iterated from embedding node, each of them must have at least one arg in
         // the subgraph and the i-th input of this node is not in the subgraph, so the other input must be in the subgraph
@@ -694,50 +698,55 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
 
   std::string token_dim_name = MakeString("valid_token_count_", utils::GetRandomSeed());
   // Update shape for each edge of the subgraph
-  // for (auto edge : subgraph) {
-  //   ONNX_NAMESPACE::TensorShapeProto flattened_shape;
-  //   flattened_shape.add_dim()->set_dim_param(token_dim_name);
-  //   auto input_shape = edge->Shape();
-  //   for (int k = 2; k < input_shape->dim_size(); k++) {
-  //     ORT_ENFORCE(input_shape->dim(k).has_dim_value());
-  //     flattened_shape.add_dim()->set_dim_value(input_shape->dim(k).dim_value());
-  //     edge->SetShape(flattened_shape);
-  //   }
-  // }
-
-  std::set<std::pair<Node*, int>> args_to_pad;
-  std::set<std::pair<Node*, int>> args_to_unpad;
-  for (auto skip_node : skip_nodes) {
-    for (uint32_t i = 0; i < skip_node->InputDefs().size(); ++i) {
-      if (subgraph.find(skip_node->MutableInputDefs()[i]) != subgraph.end()) {
-        args_to_pad.insert({skip_node, i});
+  if (!fallback_full_sized_shape) {
+    for (auto edge : subgraph) {
+      ONNX_NAMESPACE::TensorShapeProto flattened_shape;
+      flattened_shape.add_dim()->set_dim_param(token_dim_name);
+      auto input_shape = edge->Shape();
+      for (int k = 2; k < input_shape->dim_size(); k++) {
+        ORT_ENFORCE(input_shape->dim(k).has_dim_value());
+        flattened_shape.add_dim()->set_dim_value(input_shape->dim(k).dim_value());
+        edge->SetShape(flattened_shape);
       }
     }
-    for(auto iter = skip_node->OutputNodesBegin(); iter != skip_node->OutputNodesEnd(); ++iter) {
-      Node* temp_output_node = graph.GetNode(iter->Index());
-      for (size_t i = 0; i < temp_output_node->InputDefs().size(); ++i) {
-        if (temp_output_node->MutableInputDefs()[i] == skip_node->MutableOutputDefs()[0]) {
-          args_to_unpad.insert({temp_output_node, i});
+  }
+
+  if (fallback_full_sized_shape) {
+    std::set<std::pair<Node*, int>> args_to_pad;
+    std::set<std::pair<Node*, int>> args_to_unpad;
+    for (auto skip_node : skip_nodes) {
+      for (uint32_t i = 0; i < skip_node->InputDefs().size(); ++i) {
+        if (subgraph.find(skip_node->MutableInputDefs()[i]) != subgraph.end()) {
+          args_to_pad.insert({skip_node, i});
+        }
+      }
+      for (auto iter = skip_node->OutputNodesBegin(); iter != skip_node->OutputNodesEnd(); ++iter) {
+        Node* temp_output_node = graph.GetNode(iter->Index());
+        for (size_t i = 0; i < temp_output_node->InputDefs().size(); ++i) {
+          if (temp_output_node->MutableInputDefs()[i] == skip_node->MutableOutputDefs()[0]) {
+            args_to_unpad.insert({temp_output_node, i});
+          }
         }
       }
     }
-  }
-  for (auto arg_to_pad : args_to_pad) {
-    if (args_to_unpad.find(arg_to_pad) != args_to_unpad.end()) {
-      continue;
+
+    for (auto arg_to_pad : args_to_pad) {
+      if (args_to_unpad.find(arg_to_pad) != args_to_unpad.end()) {
+        continue;
+      }
+      InsertNodesForOutput(graph, *arg_to_pad.first, arg_to_pad.second, squeeze_out_arg, first_two_dims_arg, logger);
     }
-    InsertNodesForOutput(graph, *arg_to_pad.first, arg_to_pad.second, squeeze_out_arg, first_two_dims_arg, logger);
-  }
-  for (auto arg_to_unpad : args_to_unpad) {
-    if (args_to_pad.find(arg_to_unpad) != args_to_pad.end()) {
-      continue;
+    for (auto arg_to_unpad : args_to_unpad) {
+      if (args_to_pad.find(arg_to_unpad) != args_to_pad.end()) {
+        continue;
+      }
+      InsertFlattenPatternForInput(graph, *arg_to_unpad.first, arg_to_unpad.second, squeeze_out_arg, logger);
     }
-    InsertFlattenPatternForInput(graph, *arg_to_unpad.first, arg_to_unpad.second, squeeze_out_arg, logger);
-  }
-  if (handled_input_count > 0 || handled_output_count > 0) {
-    LOGS(logger, INFO) << "PaddingElimination::Total handled input node count:  " << handled_input_count
-                       << " output node count: " << handled_output_count
-                       << " expanded input count: " << expanded_input_count;
+    if (handled_input_count > 0 || handled_output_count > 0) {
+      LOGS(logger, INFO) << "PaddingElimination::Total handled input node count:  " << handled_input_count
+                         << " output node count: " << handled_output_count
+                         << " expanded input count: " << expanded_input_count;
+    }
   }
   return Status::OK();
 }

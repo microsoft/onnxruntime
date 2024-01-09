@@ -50,19 +50,29 @@ class _InspectActivation(torch.autograd.Function):
         if module_idx is not None:
             depth = run_ctx.global_states.module_index_to_depth[module_idx]
 
+        module = None
+        for m, m_index in run_ctx.global_states.module_to_module_index.items():
+            if m_index == module_idx:
+                module = m
+                break
+
+        if module is None:
+            print(f"Module with index {module_idx} not found.")
+
         input_tensor_copied = None
         if input_tensor is None or not isinstance(input_tensor, torch.Tensor):
             input_tensor_copied = input_tensor
         else:
-            input_tensor_copied = input_tensor.detach().clone()
+            input_tensor_copied = input_tensor.detach() #.clone()
 
         ctx.current_step = run_ctx.global_states.execution_step
         ctx.name = activation_name
         ctx.id = module_idx
         ctx.depth = depth
         ctx.module_pre_backward = module_pre_backward
+        ctx.module = module
 
-        module_post_forward(input_tensor_copied, depth, activation_name, ctx.current_step, None)
+        module_post_forward(input_tensor_copied, depth, activation_name, ctx.current_step, None, ctx.module)
 
         return input_tensor.detach() if input_tensor is not None else None
 
@@ -74,7 +84,7 @@ class _InspectActivation(torch.autograd.Function):
         else:
             val = grad_output.detach().clone()
 
-        ctx.module_pre_backward(val, ctx.depth, ctx.name, ctx.current_step, None)
+        ctx.module_pre_backward(val, ctx.depth, ctx.name, ctx.current_step, None, ctx.module)
 
         return (
             None,
@@ -136,11 +146,21 @@ class _InspectUnpadActivation(torch.autograd.Function):
         if module_idx is not None:
             depth = run_ctx.global_states.module_index_to_depth[module_idx]
 
+        module = None
+        for m, m_index in run_ctx.global_states.module_to_module_index.items():
+            if m_index == module_idx:
+                module = m
+                break
+
+        if module is None:
+            print(f"Module with index {module_idx} not found.")
+        ctx.module = module
+
         input_tensor_copied = None
         if input_tensor is None or not isinstance(input_tensor, torch.Tensor):
             input_tensor_copied = input_tensor
         else:
-            input_tensor_copied = input_tensor.detach().clone()
+            input_tensor_copied = input_tensor.detach() #.clone()
 
         ctx.current_step = run_ctx.global_states.execution_step
         ctx.name = activation_name
@@ -149,7 +169,7 @@ class _InspectUnpadActivation(torch.autograd.Function):
         ctx.module_pre_backward = module_pre_backward
         ctx.indices = indices.detach().clone()
 
-        module_post_forward(input_tensor_copied, depth, activation_name, ctx.current_step, indices)
+        module_post_forward(input_tensor_copied, depth, activation_name, ctx.current_step, indices, ctx.module)
 
         return input_tensor.detach() if input_tensor is not None else None
 
@@ -161,7 +181,7 @@ class _InspectUnpadActivation(torch.autograd.Function):
         else:
             val = grad_output.detach().clone()
 
-        ctx.module_pre_backward(val, ctx.depth, ctx.name, ctx.current_step, ctx.indices)
+        ctx.module_pre_backward(val, ctx.depth, ctx.name, ctx.current_step, ctx.indices, ctx.module)
 
         return (
             None,
@@ -253,16 +273,16 @@ class StatisticsSubscriber(SubscriberBase):
         )
 
     def module_post_forward_impl(
-        self, activation: torch.Tensor, depth: int, name: str, step: int, indices: Optional[torch.Tensor]
+        self, activation: torch.Tensor, depth: int, name: str, step: int, indices: Optional[torch.Tensor], module
     ):
         output_file_path = os.path.join(f"{self._output_dir}", f"step_{step}")
-        return self._summarize_activations(activation, indices, depth, name, output_file_path, True)
+        return self._summarize_activations(activation, indices, depth, name, output_file_path, True, step, module)
 
     def module_pre_backward_impl(
-        self, activation: torch.Tensor, depth: int, name: str, step: int, indices: Optional[torch.Tensor]
+        self, activation: torch.Tensor, depth: int, name: str, step: int, indices: Optional[torch.Tensor], module
     ):
         output_file_path = os.path.join(f"{self._output_dir}", f"step_{step}")
-        return self._summarize_activations(activation, indices, depth, name, output_file_path, False)
+        return self._summarize_activations(activation, indices, depth, name, output_file_path, False, step, module)
 
     def _summarize_activations(
         self,
@@ -272,6 +292,8 @@ class StatisticsSubscriber(SubscriberBase):
         name: str,
         step_folder: str,
         is_forward: bool,
+        step: int,
+        module
     ):
         display_name = name + " forward run" if is_forward is True else name + " backward run"
         output_file_name = name + "_forward" if is_forward is True else name + "_backward"
@@ -293,7 +315,7 @@ class StatisticsSubscriber(SubscriberBase):
             # If indices is given, we flatten the first two dims of tensor, and slice the tensor with indices.
             # Otherwise, we reuse the original tensor.
             tensor_to_analyze = tensor.flatten(start_dim=0, end_dim=1)[indices, ...] if indices is not None else tensor
-            _summarize_tensor(display_name, tensor_to_analyze, f, depth, self._run_on_cpu, self._bucket_size, indices is not None)
+            _summarize_tensor(display_name, tensor_to_analyze, f, depth, self._run_on_cpu, self._bucket_size, indices, step, module)
 
 
 def _summarize_tensor(
@@ -302,9 +324,31 @@ def _summarize_tensor(
     f: TextIOWrapper,
     depth: int = 0,
     run_on_cpu: bool = False,
-    bucket_size: int = 1024 * 1024 * 1024 // 2,
-    unpaded: bool = False,
+    bucket_size: int = 1024 * 1024 * 1024 // 8,
+    indices = None,
+    step: int = 0,
+    module = None,
 ):
+
+    unpaded = indices is not None
+    # import numpy as np
+
+    # if step == 3:
+    #     if display_name in ['DisentangledSelfAttention_10_0th_output forward run']:
+    #         # Move tensor from cuda to cpu and change to numpy and save it to file
+    #         np.save(f"{display_name}_output.npy", tensor.cpu().numpy())
+
+
+
+    #     if display_name in ['Linear_17_0th_output forward run']:
+    #         # Move tensor from cuda to cpu and change to numpy and save it to file
+    #         if indices is not None:
+    #             np.save(f"{display_name}_indices.npy", indices.cpu().numpy())
+
+    #         np.save(f"{display_name}_output.npy", tensor.cpu().numpy())
+    #         weight_data = module.weight.data.cpu().numpy()
+    #         np.save(f"{display_name}_weight.npy", weight_data)
+
     # This is to try the best effort to align the count of numbers per line for easier comparison in diff views,
     # though it does not always guarantee to do this way.
     torch.set_printoptions(precision=6, linewidth=128)

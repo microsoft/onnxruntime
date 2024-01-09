@@ -368,7 +368,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # correct training flag to reflect the expected behavior.
         # For example, the Dropout node in a model is dropped under eval mode.
         assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"
-
+        print(f"self._input_info.dynamic_axes: {self._input_info.dynamic_axes}, self._input_info.names: {self._input_info.names}, output_names: {output_names}")
         try:
             with torch.no_grad(), stage3_export_context(self._runtime_options.enable_zero_stage3_support, self):
                 required_export_kwargs = {
