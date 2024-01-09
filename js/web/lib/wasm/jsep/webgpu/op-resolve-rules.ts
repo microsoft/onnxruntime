@@ -17,7 +17,7 @@ import {gather, parseGatherAttributes} from './ops/gather';
 import {gatherElements, parseGatherElementsAttributes} from './ops/gather-elements';
 import {gemm, parseGemmAttributes} from './ops/gemm';
 import {instanceNorm, parseInstanceNormAttributes} from './ops/instance-norm';
-import {layerNorm, parseLayerNormAttributes} from './ops/layer-norm';
+import {layerNorm} from './ops/layer-norm';
 import {matMul} from './ops/matmul';
 import {multiHeadAttention, parseMultiHeadAttentionAttributes} from './ops/multi-head-attentiion';
 import {pad, parsePadAttributes} from './ops/pad';
@@ -83,7 +83,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Greater', [binaryOps.greater]],
   ['GreaterOrEqual', [binaryOps.greaterOrEqual]],
   ['InstanceNormalization', [instanceNorm, parseInstanceNormAttributes]],
-  ['LayerNormalization', [layerNorm, parseLayerNormAttributes]],
+  ['LayerNormalization', [layerNorm]],
   ['LeakyRelu', [unaryOps.leakyRelu, unaryOps.parseAlphaAttributes]],
   ['Less', [binaryOps.less]],
   ['LessOrEqual', [binaryOps.lessOrEqual]],
