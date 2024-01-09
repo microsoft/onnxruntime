@@ -2,20 +2,19 @@
 // Licensed under the MIT License.
 
 #include "string_split.h"
-#include "core/common/common.h"
 #include <algorithm>
+#include "core/common/common.h"
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_KERNEL(
-    StringSplit,
-    20,
-    KernelDefBuilder()
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<std::string>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<std::string>())
-        .TypeConstraint("T3", DataTypeImpl::GetTensorType<int64_t>()),
-    StringSplit);
+ONNX_CPU_OPERATOR_KERNEL(StringSplit, 20,
+                         KernelDefBuilder()
+                             .TypeConstraint("T1", DataTypeImpl::GetTensorType<std::string>())
+                             .TypeConstraint("T2", DataTypeImpl::GetTensorType<std::string>())
+                             .TypeConstraint("T3", DataTypeImpl::GetTensorType<int64_t>()),
+                         StringSplit);
 
-/// Count the number of instances of substring ``substr`` in ``str``. If ``substr`` is an empty string it counts the number of whitespace delimited words.
+/// Count the number of instances of substring ``substr`` in ``str``. If ``substr`` is an empty string it counts the
+/// number of whitespace delimited words.
 int64_t CountSubstrings(std::string_view str, std::string_view substr) {
   if (substr.empty()) {
     // Count consecutive whitespace as one delimiter
@@ -40,9 +39,11 @@ int64_t CountSubstrings(std::string_view str, std::string_view substr) {
   }
 }
 
-/// Fill substrings of ``str`` based on split delimiter ``delimiter`` into ``output`` span. Restrict maximum number of generated substrings to ``max_tokens``.
-/// The function returns the number of substrings generated (this is less or equal to ``max_tokens``).
-int64_t FillSubstrings(std::string_view str, std::string_view delimiter, gsl::details::span_iterator<std::string> output, size_t max_tokens) {
+/// Fill substrings of ``str`` based on split delimiter ``delimiter`` into ``output`` span. Restrict maximum number of
+/// generated substrings to ``max_tokens``. The function returns the number of substrings generated (this is less or
+/// equal to ``max_tokens``).
+int64_t FillSubstrings(std::string_view str, std::string_view delimiter,
+                       gsl::details::span_iterator<std::string> output, size_t max_tokens) {
   if (str.empty()) {
     return 0;
   }
@@ -112,7 +113,8 @@ Status StringSplit::Compute(OpKernelContext* context) const {
   auto num_substrings_data = num_substrings->template MutableDataAsSpan<int64_t>();
   auto output_num_tokens_iter = num_substrings_data.begin();
 
-  for (auto input_iter = input_data.begin(); input_iter != input_data.end(); input_iter++, output_splits_iter += last_dim, output_num_tokens_iter++) {
+  for (auto input_iter = input_data.begin(); input_iter != input_data.end();
+       input_iter++, output_splits_iter += last_dim, output_num_tokens_iter++) {
     *output_num_tokens_iter = FillSubstrings(*input_iter, delimiter_, output_splits_iter, last_dim);
   }
   return Status::OK();
