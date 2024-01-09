@@ -56,31 +56,13 @@ stages:
         clean: true
         submodules: none
 
-      - task: DownloadPackage@1
-        displayName: 'Download ARM64 GCC'
-        inputs:
-          packageType: upack
-          feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
-          definition: 'gcc_aarch64_linux_gnu_host_x86_64'
-          version: 13.2.1
-          downloadPath: $(Build.BinariesDirectory)/gcc
-
-      - task: DownloadPackage@1
-        displayName: 'Download ARM32 GCC'
-        inputs:
-          packageType: upack
-          feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
-          definition: 'gcc_aarch32_linux_gnu_host_x86_64'
-          version: 13.2.1
-          downloadPath: $(Build.BinariesDirectory)/gcc
-
-      - template: templates/get-docker-image-steps.yml
+      - template: get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
-          Context: tools/ci_build/github/linux/docker/
+          Dockerfile: tools/ci_build/github/linux/docker/inference/x64/default/cpu/Dockerfile
+          Context: tools/ci_build/github/linux/docker/inference/x64/default/cpu
           DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=registry.access.redhat.com/ubi8/ubi"
-          Repository: onnxruntimecpubuild
-
+          Repository: onnxruntimecpubuildcentos8x64
+          
       - task: PythonScript@0
         displayName: 'Update deps.txt'
         inputs:
@@ -117,7 +99,7 @@ stages:
                     /bin/bash -c "
                       set -ex; \
                       ccache -s; \
-                      /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                      python3.9 /onnxruntime_src/tools/ci_build/build.py \
                         --build_dir /build --cmake_generator 'Ninja' \
                         --config Debug \
                         --skip_submodule_sync \
@@ -125,7 +107,16 @@ stages:
                         --parallel \
                         --build_csharp \
                         --enable_onnx_tests --enable_address_sanitizer \
-                        --use_cache
+                        --use_cache --update --build;
+                      LD_PRELOAD=/usr/lib64/libasan.so.6 python3.9 /onnxruntime_src/tools/ci_build/build.py \
+                        --build_dir /build --cmake_generator 'Ninja' \
+                        --config Debug \
+                        --skip_submodule_sync \
+                        --build_shared_lib \
+                        --parallel \
+                        --build_csharp \
+                        --enable_onnx_tests --enable_address_sanitizer \
+                        --use_cache --test;
                       ccache -sv; \
                       ccache -z"
                 workingDirectory: $(Build.SourcesDirectory)
