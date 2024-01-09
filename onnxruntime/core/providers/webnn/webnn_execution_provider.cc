@@ -59,10 +59,15 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
                                       const IKernelLookup& /*kernel_registries*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
-  // We do not run WebNN EP on subgraph, instead we cover this in the control flow nodes.
-  // TODO investigate whether we want to support subgraph using WebNN EP.
-  if (graph_viewer.IsSubgraph()) {
-    return result;
+  // For subgraph which is the attribute of the control flow nodes, part of its initializers are stored in its
+  // ancestor graphs as common initializers shared for other subgraphs. We need to collect all of them used for
+  // identifying the required initializer names and storing into 'meta_def->constant_initializers'.
+  // Thus we are able to get the required initialized tensors for this subgraph via the GetInitializerTensors()
+  // method defined in the model_builder.h file.
+  InitializedTensorSet all_initializers;
+  const bool is_subgraph = graph_viewer.IsSubgraph();
+  if (is_subgraph) {
+    all_initializers = webnn::CollectAllInitializedTensors(graph_viewer);
   }
 
   /*
@@ -110,6 +115,7 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
     std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
 
+    std::vector<std::string> subgraph_initializers;
     InlinedHashSet<const NodeArg*> node_outputs;
     InlinedHashSet<const NodeArg*> subgraph_inputs;
     InlinedHashSet<const NodeArg*> subgraph_outputs;
@@ -126,7 +132,11 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
           // skip the placeholder inputs.
           continue;
         }
-        // if the node input was not produced by this subgraph, add it to the subgraph inputs.
+        // If it is a subgraph of a control flow node, collect the constant initializer.
+        if (is_subgraph && Contains(all_initializers, input->Name())) {
+          subgraph_initializers.push_back(input->Name());
+        }
+        // If the node input was not produced by this subgraph, add it to the subgraph inputs.
         if (node_outputs.count(input) == 0) {
           if (subgraph_inputs.count(input) == 0) {
             subgraph_inputs.insert(input);
@@ -164,6 +174,12 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     meta_def->domain = kMSDomain;
     meta_def->since_version = 1;
     meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
+
+    if (is_subgraph) {
+      for (const auto& initializer : subgraph_initializers) {
+        meta_def->constant_initializers.push_back(initializer);
+      }
+    }
 
     for (const auto& input : ordered_subgraph_inputs) {
       meta_def->inputs.push_back(input->Name());
