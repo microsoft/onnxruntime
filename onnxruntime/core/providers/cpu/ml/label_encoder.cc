@@ -171,7 +171,7 @@ template <>
 void LabelEncoder_2<std::string, std::int64_t>::InitializeSomeFields(const OpKernelInfo& info) {
   key_field_name_ = "keys_strings";
   value_field_name_ = "values_int64s";
-  info.GetAttrOrDefault<std::int64_t>("default_int64", &default_value_, (std::int64_t)-1);
+  info.GetAttrOrDefault<std::int64_t>("default_int64", &default_value_, static_cast<std::int64_t>(-1));
 };
 
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_ML_KERNEL(
@@ -185,7 +185,7 @@ template <>
 void LabelEncoder_2<std::int64_t, std::int64_t>::InitializeSomeFields(const OpKernelInfo& info) {
   key_field_name_ = "keys_int64s";
   value_field_name_ = "values_int64s";
-  info.GetAttrOrDefault<std::int64_t>("default_int64", &default_value_, (std::int64_t)-1);
+  info.GetAttrOrDefault<std::int64_t>("default_int64", &default_value_, static_cast<std::int64_t>(-1));
 };
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
@@ -227,7 +227,7 @@ template <>
 void LabelEncoder_4<std::int64_t, float>::InitializeAttrFields(const OpKernelInfo& kernel_info) {
   key_field_name_ = "keys_int64s";
   value_field_name_ = "values_floats";
-  default_value_ = GetDefault(kernel_info, "default_float", static_cast<float>(-0.f));
+  default_value_ = GetDefault(kernel_info, "default_float", 0.f);
 };
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(LabelEncoder, 4, float_float,
@@ -242,7 +242,7 @@ template <>
 void LabelEncoder_4<float, float>::InitializeAttrFields(const OpKernelInfo& kernel_info) {
   key_field_name_ = "keys_floats";
   value_field_name_ = "values_floats";
-  default_value_ = GetDefault(kernel_info, "default_float", static_cast<float>(-0.f));
+  default_value_ = GetDefault(kernel_info, "default_float", -0.f);
 };
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
@@ -298,7 +298,7 @@ template <>
 void LabelEncoder_4<std::string, float>::InitializeAttrFields(const OpKernelInfo& kernel_info) {
   key_field_name_ = "keys_strings";
   value_field_name_ = "values_floats";
-  default_value_ = GetDefault(kernel_info, "default_float", static_cast<float>(-0.f));
+  default_value_ = GetDefault(kernel_info, "default_float", 0.f);
 };
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
