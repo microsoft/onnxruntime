@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import {argMax, argMin, parseArgMinMaxAttributes} from './ops/argminmax';
-import {attention, parseAttentionAttributes} from './ops/attention';
+import {attention} from './ops/attention';
 import {batchNorm} from './ops/batch-norm';
 import {biasAdd} from './ops/bias-add';
 import {biasSplitGelu} from './ops/bias-split-gelu';
@@ -50,7 +50,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Asinh', [unaryOps.asinh]],
   ['Atan', [unaryOps.atan]],
   ['Atanh', [unaryOps.atanh]],
-  ['Attention', [attention, parseAttentionAttributes]],
+  ['Attention', [attention]],
   // TODO: support new attributes for AveragePool-10
   ['AveragePool', [pool.averagePool, pool.parseAveragePoolAttributes]],
   ['BatchNormalization', [batchNorm]],
