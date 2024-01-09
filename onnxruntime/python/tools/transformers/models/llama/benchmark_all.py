@@ -134,7 +134,7 @@ def get_args():
     setattr(args, "model_size", args.model_name.split("/")[-1].replace(".", "-"))  # noqa: B010
     log_folder_name = f"./{args.model_size}_{args.precision}"
     if not args.log_folder:
-        args.log_folder=log_folder_name  # noqa: B010
+        args.log_folder = log_folder_name
     os.makedirs(args.log_folder, exist_ok=True)
 
     # Convert timeout value to secs
@@ -232,7 +232,7 @@ def save_results(results, filename):
     df["Throughput (tps)"] = df["Throughput (tps)"].astype("float")
     df["Memory (GB)"] = df["Memory (GB)"].astype("float")
 
-    # get pakcage name and version
+    # get package name and version
     import pkg_resources
     installed_packages = pkg_resources.working_set
     installed_packages_list = sorted([f"{i.key}=={i.version}" for i in installed_packages if i.key in ['ort-nightly-gpu', 'ort-nightly', "onnxruntime", "onnxruntime-gpu"]])
@@ -240,19 +240,22 @@ def save_results(results, filename):
     ort_pkg_name = ""
     ort_pkg_version = ""
     if installed_packages_list:
-        ort_pkg_name = installed_packages_list[0].split('==')[0]
-        ort_pkg_version = installed_packages_list[0].split('==')[1]
+        ort_pkg_name = installed_packages_list[0].split("==")[0]
+        ort_pkg_version = installed_packages_list[0].split("==")[1]
 
     # Save results to csv with standard format
     records = []
     for _, row in df.iterrows():
-        if row['Engine'] == 'optimum-ort':
-            record = BenchmarkRecord(row['Model Name'], row['Precision'], "onnxruntime", row['Device'], ort_pkg_name, ort_pkg_version)
-        elif row['Engine'] in ['pytorch-eager', 'pytorch-compile']:
-            record = BenchmarkRecord(row['Model Name'], row['Precision'], "pytorch", row['Device'], torch.__name__, torch.__version__)
+        if row["Engine"] == "optimum-ort":
+            record = BenchmarkRecord(
+                 row["Model Name"], row["Precision"], "onnxruntime", row["Device"], ort_pkg_name, ort_pkg_version
+            )
+        elif row["Engine"] in ["pytorch-eager", "pytorch-compile"]:
+            record = BenchmarkRecord(
+                row["Model Name"], row["Precision"], "pytorch", row["Device"], torch.__name__, torch.__version__
+            )
         else:
-            record = BenchmarkRecord(row['Model Name'], row['Precision'], row['Engine'], row['Device'], "", "")
-
+            record = BenchmarkRecord(row["Model Name"], row["Precision"], row["Engine"], row["Device"], "", "")
         record.config.warmup_runs = row["Warmup Runs"]
         record.config.measured_runs = row["Measured Runs"]
         record.config.batch_size = row["Batch Size"]
@@ -268,7 +271,6 @@ def save_results(results, filename):
 
     BenchmarkRecord.save_as_csv(filename, records)
     BenchmarkRecord.save_as_json(filename.replace(".csv", ".json"), records)
-    # df.to_csv(filename, index=False)
     logger.info(f"Results saved in {filename}!")
 
 

@@ -8,9 +8,9 @@ import subprocess
 import librosa
 import torch
 from benchmark_helper import setup_logger
-from transformers import WhisperConfig, WhisperProcessor
 
 from metrics import BenchmarkRecord
+from transformers import WhisperConfig, WhisperProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -281,25 +281,33 @@ def save_results(results, filename):
     df["Memory (GB)"] = df["Memory (GB)"].astype("float")
     df["Real Time Factor (RTF)"] = df["Real Time Factor (RTF)"].astype("float")
 
-    # get pakcage name and version
+    # get package name and version
     import pkg_resources
     installed_packages = pkg_resources.working_set
-    installed_packages_list = sorted([f"{i.key}=={i.version}" for i in installed_packages if i.key in ['ort-nightly-gpu', 'ort-nightly', "onnxruntime", "onnxruntime-gpu"]])
-
+    installed_packages_list = sorted(
+        [
+            f"{i.key}=={i.version}"
+            for i in installed_packages
+            if i.key in ["ort-nightly-gpu", "ort-nightly", "onnxruntime", "onnxruntime-gpu"]
+        ]
+    )
     ort_pkg_name = ""
     ort_pkg_version = ""
     if installed_packages_list:
-        ort_pkg_name = installed_packages_list[0].split('==')[0]
-        ort_pkg_version = installed_packages_list[0].split('==')[1]
+        ort_pkg_name = installed_packages_list[0].split("==")[0]
+        ort_pkg_version = installed_packages_list[0].split("==")[1]
 
     # Save results to csv with standard format
     records = []
     for _, row in df.iterrows():
-        if row['Engine'] == 'onnxruntime':
-            record = BenchmarkRecord(row['Model Name'], row['Precision'], row['Engine'], row['Device'], ort_pkg_name, ort_pkg_version)
+        if row["Engine"] == "onnxruntime":
+            record = BenchmarkRecord(
+                row["Model Name"], row["Precision"], row["Engine"], row["Device"], ort_pkg_name, ort_pkg_version
+            )
         else:
-            record = BenchmarkRecord(row['Model Name'], row['Precision'], row['Engine'], row['Device'], torch.__name__, torch.__version__)
-
+            record = BenchmarkRecord(
+                row["Model Name"], row["Precision"], row["Engine"], row["Device"], torch.__name__, torch.__version__
+            )
         record.config.customized["audio_file"] = row["Audio File"]
         record.config.warmup_runs = row["Warmup Runs"]
         record.config.measured_runs = row["Measured Runs"]
@@ -321,7 +329,6 @@ def save_results(results, filename):
 
     BenchmarkRecord.save_as_csv(filename, records)
     BenchmarkRecord.save_as_json(filename.replace(".csv", ".json"), records)
-    # df.to_csv(filename, index=False)
     logger.info(f"Results saved in {filename}!")
 
 
@@ -337,7 +344,16 @@ def benchmark(args, benchmark_cmd, engine, audio_file, duration):
 
     # Create entries for csv
     logger.info("Gathering data from log files...")
-    base_results = [args.warmup_runs, args.num_runs, args.model_name, engine, args.precision, args.device, audio_file, duration]
+    base_results = [
+        args.warmup_runs,
+        args.num_runs,
+        args.model_name,
+        engine,
+        args.precision,
+        args.device,
+        audio_file,
+        duration,
+    ]
     results = process_log_file(args.device_id, log_path, base_results)
 
     return results
