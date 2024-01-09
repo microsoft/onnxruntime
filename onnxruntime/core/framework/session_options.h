@@ -65,6 +65,12 @@ struct FreeDimensionOverride {
  * Configuration information for a session.
  */
 struct SessionOptions {
+// #if defined(__wasm__) && defined(__EMSCRIPTEN_PTHREADS__)
+#if 1
+  static constexpr bool DEFAULT_USE_PER_SESSION_THREADS = false;
+#else
+  static constexpr bool DEFAULT_USE_PER_SESSION_THREADS = true;
+#endif
   ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL;
 
   // set the execution order of the graph
@@ -129,11 +135,8 @@ struct SessionOptions {
 
   // By default the session uses its own set of threadpools, unless this is set to false.
   // Use this in conjunction with the CreateEnvWithGlobalThreadPools API.
-#if defined(__wasm__) && defined(__EMSCRIPTEN_PTHREADS__)
-  bool use_per_session_threads = false;
-#else
-  bool use_per_session_threads = true;
-#endif
+  bool use_per_session_threads = DEFAULT_USE_PER_SESSION_THREADS;
+
   bool thread_pool_allow_spinning = true;
 
   // Deterministic compute is likely not as performant. This option is default to false.
