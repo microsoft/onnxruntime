@@ -12,7 +12,7 @@
 #pragma GCC diagnostic pop
 #endif
 #endif
-
+#include <absl/base/config.h>
 #include "gtest/gtest.h"
 
 // Manually initialize the Ort API object for every test.
@@ -169,7 +169,7 @@ TEST_F(RealCAPITestsFixture, CApiLoggerLogMessage) {
 
 // The code below where it tests for formatting error generates an out-of-bound memory access. Therefore we disable it 
 // when memory sanitizer is enabled.
-#if defined(__SANITIZE_ADDRESS__)
+#ifdef ABSL_HAVE_ADDRESS_SANITIZER
 TEST_F(RealCAPITestsFixture, DISABLED_CppApiORTCXXLOG) {
 #else
 TEST_F(RealCAPITestsFixture, CppApiORTCXXLOG) {
@@ -209,7 +209,7 @@ TEST_F(RealCAPITestsFixture, CppApiORTCXXLOG) {
   ORT_CXX_LOG_NOEXCEPT(cpp_ort_logger, OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO, "Ignored2");
 }
 
-#if defined(__SANITIZE_ADDRESS__)
+#ifdef ABSL_HAVE_ADDRESS_SANITIZER
 TEST_F(RealCAPITestsFixture, DISABLED_CppApiORTCXXLOGF) {
 #else
 TEST_F(RealCAPITestsFixture, CppApiORTCXXLOGF) {

@@ -6,9 +6,6 @@ export src_dir=$1
 export build_dir=$2
 export config=$3
 
-if [ "$BUILD_CONFIG" == "Debug" ]; then
-  export LD_PRELOAD=/usr/lib64/libasan.so.8
-fi
 # it's for manylinux image
 export PATH=/opt/python/cp38-cp38/bin:$PATH
 
