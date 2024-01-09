@@ -33,43 +33,15 @@ struct NS_SQNBITS_GEMM_DATA_PACKED_PARAMS {
   size_t ldc = 0;           /**< leading dimension of C*/
 };
 
-size_t
-NSQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, int64_t accuracy_level);
+size_t NSQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, int64_t accuracy_level);
 
-bool
-NSQ4GemmPackB(
-    void* PackedBuf,
-    const uint8_t* QData,
-    const float* Scale,
-    const uint8_t* Zp,
-    size_t N,
-    size_t K,
-    size_t ldb,
-    size_t BlkSize,
-    bool isAsym,
-    bool lastCall,
-    int64_t CompType,
-    void* ThreadPool
-);
+bool NSQ4GemmPackB(void* PackedBuf, const uint8_t* QData, const float* Scale, const uint8_t* Zp, size_t N, size_t K,
+                   size_t ldb, size_t BlkSize, bool isAsym, bool lastCall, int64_t CompType, void* ThreadPool);
 
-bool
-NSQ4GemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb
-	, void* ThreadPool);
+bool NSQ4GemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb, void* ThreadPool);
 
-bool
-NSSQ4GemmBatchDriver(
-    const size_t M,
-    const size_t N,
-    const size_t K,
-    const size_t BatchN,
-    const NS_SQNBITS_GEMM_DATA_PACKED_PARAMS* DataParams,
-    int8_t* WorkSpace,
-    void* ThreadPool);
+bool NSSQ4GemmBatchDriver(const size_t M, const size_t N, const size_t K, const size_t BatchN,
+                          const NS_SQNBITS_GEMM_DATA_PACKED_PARAMS* DataParams, int8_t* WorkSpace, void* ThreadPool);
 
-size_t
-NSSQ4GemmBatchWorkspaceSize(
-    const size_t M,
-    const size_t N,
-    const size_t K,
-    const size_t BatchN,
-    const NS_SQNBITS_GEMM_DATA_PACKED_PARAMS* DataParams);
+size_t NSSQ4GemmBatchWorkspaceSize(const size_t M, const size_t N, const size_t K, const size_t BatchN,
+                                   const NS_SQNBITS_GEMM_DATA_PACKED_PARAMS* DataParams);
