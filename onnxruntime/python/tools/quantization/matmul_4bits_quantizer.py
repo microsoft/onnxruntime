@@ -11,7 +11,6 @@ import copy
 import importlib
 import logging
 import os
-from typing import Union
 
 import numpy as np
 import numpy.typing as npt
@@ -108,7 +107,7 @@ class MatMul4BitsQuantizer:
 
     def __init__(
         self,
-        model: Union[ModelProto, str],
+        model: ModelProto | str,
         block_size: int,
         is_symmetric: bool,
         accuracy_level: int | None = None,
