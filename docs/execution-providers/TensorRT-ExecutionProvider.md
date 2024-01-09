@@ -99,6 +99,7 @@ There are two ways to configure TensorRT settings, either by **TensorRT Executio
 | trt_profile_min_shapes                | ORT_TENSORRT_PROFILE_MIN_SHAPES                | string |
 | trt_profile_max_shapes                | ORT_TENSORRT_PROFILE_MAX_SHAPES                | string |
 | trt_profile_opt_shapes                | ORT_TENSORRT_PROFILE_OPT_SHAPES                | string |
+| trt_cuda_graph_enable                 | ORT_TENSORRT_CUDA_GRAPH_ENABLE                 | bool   |
 
 > Note: for bool type options, assign them with **True**/**False** in python, or **1**/**0** in C++.
 
@@ -178,6 +179,8 @@ TensorRT configurations can be set by execution provider options. It's useful wh
 * `trt_detailed_build_log`: Enable detailed build step logging on TensorRT EP with timing for each engine build.
 
 * `trt_build_heuristics_enable`: Build engine using heuristics to reduce build time.
+
+* `trt_cuda_graph_enable`: This will capture a [CUDA graph](https://developer.nvidia.com/blog/cuda-graphs/) which can drastically help for a network with many small layers as it reduces launch overhead on the CPU.
 
 * `trt_sparsity_enable`: Control if sparsity can be used by TRT.
   * Check `--sparsity` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
