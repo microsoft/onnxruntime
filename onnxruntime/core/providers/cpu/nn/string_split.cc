@@ -15,9 +15,9 @@ ONNX_CPU_OPERATOR_KERNEL(StringSplit, 20,
                              .TypeConstraint("T3", DataTypeImpl::GetTensorType<int64_t>()),
                          StringSplit);
 
-/// Fill substrings of ``str`` based on split delimiter ``delimiter`` into ``output`` span. Restrict maximum number of
-/// generated substrings to ``max_tokens``. The function returns the number of substrings generated (this is less or
-/// equal to ``max_tokens``).
+/// Calculate substrings in ``str`` delimited by ``delimiter``. A maximum of ``max_splits`` splits are permitted.
+/// Returns a vector of string slices into ``str`` representing the substrings as string views. The user must ensure
+/// the returned views' lifetime does not exceed ``str``'s.
 InlinedVector<std::string_view> FillSubstrings(std::string_view str, std::string_view delimiter, int64_t max_splits) {
   InlinedVector<std::string_view> output;
   if (str.empty()) {
@@ -29,7 +29,7 @@ InlinedVector<std::string_view> FillSubstrings(std::string_view str, std::string
     int64_t token_count = 0;
     while (pos != std::string::npos) {
       if (token_count++ == max_splits) {
-        // trim down last substring as required in specification
+        // Trim down last substring as required in specification
         size_t next_pos = str.length() - 1;
         while (str[next_pos] == ' ') {
           next_pos--;
@@ -72,10 +72,10 @@ Status StringSplit::Compute(OpKernelContext* context) const {
   auto num_tokens_data = context->Output(1, input->Shape())->template MutableDataAsSpan<int64_t>();
   auto num_tokens_iter = num_tokens_data.begin();
 
-  int64_t last_dim = 1;
-
   InlinedVector<InlinedVector<std::string_view>> input_slices;
   input_slices.reserve(input_data.size());
+  int64_t last_dim = 1;
+
   auto input_slice_iterator = input_slices.begin();
   for (auto input_iter = input_data.begin(); input_iter != input_data.end(); input_iter++, input_slice_iterator++, num_tokens_iter++) {
     auto substrs = FillSubstrings(*input_iter, delimiter_, maxsplit_);
