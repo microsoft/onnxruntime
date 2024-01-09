@@ -77,7 +77,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     TraceLoggingWrite(
         telemetry_provider_handle,
         "ProviderOptionsAppendExecutionProvider",
-        TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::TraceLoggingKeyword::Session)),
+        TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
         TraceLoggingLevel(WINEVENT_LEVEL_INFO),
         TraceLoggingString(provider_name, "ProviderName"),
         TraceLoggingString(config_pair.first.c_str(), "Key"),
