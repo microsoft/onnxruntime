@@ -65,9 +65,6 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86
     conda update --all && \
     rm ~/miniconda.sh && conda clean -ya
 
-# Conda base patch
-RUN pip install cryptography==41.0.4
-
 # Create migraphx-ci environment
 ENV CONDA_ENVIRONMENT_PATH /opt/miniconda/envs/migraphx-ci
 ENV CONDA_DEFAULT_ENV migraphx-ci

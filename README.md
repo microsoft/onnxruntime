@@ -10,7 +10,7 @@
 
 * **General Information**: [onnxruntime.ai](https://onnxruntime.ai)
 
-* **Usage documention and tutorials**: [onnxruntime.ai/docs](https://onnxruntime.ai/docs)
+* **Usage documentation and tutorials**: [onnxruntime.ai/docs](https://onnxruntime.ai/docs)
 
 * **YouTube video tutorials**: [youtube.com/@ONNXRuntime](https://www.youtube.com/@ONNXRuntime)
 

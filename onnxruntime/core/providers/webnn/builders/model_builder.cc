@@ -38,6 +38,25 @@ Status ModelBuilder::Initialize() {
   return Status::OK();
 }
 
+InitializedTensorSet ModelBuilder::GetInitializerTensors() {
+  if (graph_viewer_.IsSubgraph()) {
+    auto all_initializers = CollectAllInitializedTensors(graph_viewer_);
+    const auto sub_graph_id = graph_viewer_.GetFilterInfo();
+    const auto subgraph_initializer_names = sub_graph_id->GetMetaDef()->constant_initializers;
+    InitializedTensorSet subgraph_initializers;
+
+    for (const auto& name : subgraph_initializer_names) {
+      auto it = all_initializers.find(name);
+      if (it != all_initializers.end()) {
+        subgraph_initializers.insert(*it);
+      }
+    }
+    return subgraph_initializers;
+  } else {
+    return graph_viewer_.GetAllInitializedTensors();
+  }
+}
+
 /* static */ const IOpBuilder* ModelBuilder::GetOpBuilder(const Node& node) {
   const auto& op_builders = GetOpBuilders();
   const auto it = op_builders.find(node.OpType());
