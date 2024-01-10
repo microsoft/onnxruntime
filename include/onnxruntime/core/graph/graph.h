@@ -294,17 +294,21 @@ class Node {
   Class to provide const access to Node instances iterated via an EdgeConstIterator. */
   class NodeConstIterator {
    public:
-    NodeConstIterator(EdgeConstIterator p_iter);
+    NodeConstIterator(EdgeConstIterator p_iter) { m_iter = p_iter; }
 
-    bool operator==(const NodeConstIterator& p_other) const;
+    bool operator==(const NodeConstIterator& p_other) const {
+      return m_iter == p_other.m_iter;
+    }
 
-    bool operator!=(const NodeConstIterator& p_other) const;
+    bool operator!=(const NodeConstIterator& p_other) const {
+      return m_iter != p_other.m_iter;
+    }
 
-    void operator++();
-    void operator--();
+    void operator++() { ++m_iter; }
+    void operator--() { --m_iter; }
 
-    const Node& operator*() const;
-    const Node* operator->() const;
+    const Node& operator*() const { return (*m_iter).GetNode(); }
+    const Node* operator->() const { return &(operator*()); };
 
    private:
     EdgeConstIterator m_iter;
@@ -394,6 +398,9 @@ class Node {
   /** Gets the Node's attributes. */
   const NodeAttributes& GetAttributes() const noexcept { return attributes_; }
 
+  /** @returns true if the Node is a forward node, false otherwise. **/
+  bool isForwardNode() const noexcept { return isForwardNode_; }
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /** Remove the specified attribute from this Node */
   bool ClearAttribute(const std::string& attr_name);
@@ -457,7 +464,7 @@ class Node {
   std::unordered_map<std::string, gsl::not_null<const Graph*>> GetAttributeNameToSubgraphMap() const;
 
   /** Gets the execution ProviderType that this node will be executed by. */
-  ProviderType GetExecutionProviderType() const noexcept { return execution_provider_type_; }
+  ProviderType const& GetExecutionProviderType() const noexcept { return execution_provider_type_; }
 
   /** Sets the execution ProviderType that this Node will be executed by. */
   void SetExecutionProviderType(ProviderType execution_provider_type) {
@@ -625,6 +632,10 @@ class Node {
 
   // Execution priority, lower value for higher priority
   int priority_ = 0;
+
+  // True is Node is a forwardNode and thus doesn't contain a attribute
+  // named kBackwardNodeAttributeName. False otherwise.
+  bool isForwardNode_;
 
   // set from op_->SinceVersion() or via deserialization when OpSchema is not available
   int since_version_ = -1;

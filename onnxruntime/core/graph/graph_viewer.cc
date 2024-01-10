@@ -14,8 +14,8 @@ bool NodeCompare::operator()(const Node* n1, const Node* n2) const {
 struct PriorityNodeCompare {
   inline bool IsHighPri(const Node* n) const {
     // local statics so we can compare std::strings in the checks
-    static const std::string shape_op("Shape");
-    static const std::string size_op("Size");
+    static constexpr std::string_view shape_op("Shape");
+    static constexpr std::string_view size_op("Size");
 
     const auto& op_type = n->OpType();
     return op_type == shape_op || op_type == size_op;
@@ -36,11 +36,11 @@ struct PriorityNodeCompare {
     }
 
     // nodes of forward pass will be output first
-    auto n1_attrs = n1->GetAttributes();
-    auto n2_attrs = n2->GetAttributes();
-    int64_t n1_is_forward = static_cast<int64_t>(n1_attrs.find(kBackwardNodeAttributeName) == n1_attrs.cend()) ||
+    auto const& n1_attrs = n1->GetAttributes();
+    auto const& n2_attrs = n2->GetAttributes();
+    int64_t n1_is_forward = static_cast<int64_t>(n1->isForwardNode()) ||
                             (n1_attrs.at(kBackwardNodeAttributeName).i() + 1) % 2;
-    int64_t n2_is_forward = static_cast<int64_t>(n2_attrs.find(kBackwardNodeAttributeName) == n2_attrs.cend()) ||
+    int64_t n2_is_forward = static_cast<int64_t>(n2->isForwardNode()) ||
                             (n2_attrs.at(kBackwardNodeAttributeName).i() + 1) % 2;
     if (n1_is_forward != n2_is_forward) {
       return n2_is_forward > n1_is_forward;
