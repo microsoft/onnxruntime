@@ -8,7 +8,6 @@ import subprocess
 import librosa
 import torch
 from benchmark_helper import setup_logger
-
 from metrics import BenchmarkRecord
 from transformers import WhisperConfig, WhisperProcessor
 
@@ -283,6 +282,7 @@ def save_results(results, filename):
 
     # get package name and version
     import pkg_resources
+    
     installed_packages = pkg_resources.working_set
     installed_packages_list = sorted(
         [
