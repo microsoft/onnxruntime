@@ -421,9 +421,7 @@ def parse_arguments():
     # A 32-bit progress doesn't have enough memory to run all the tests in onnxruntime_test_all.
     # Mimalloc is incompatible with address sanitizer.
     # Address sanitizer itself is also a memory leak checker, so when it is enabled we should disable_memleak_checker.
-    parser.add_argument(
-        "--enable_address_sanitizer", action="store_true", help="Enable address sanitizer"
-    )
+    parser.add_argument("--enable_address_sanitizer", action="store_true", help="Enable address sanitizer")
     parser.add_argument(
         "--disable_memleak_checker", action="store_true", help="Disable memory leak checker from Windows build"
     )
@@ -1471,7 +1469,13 @@ def generate_build_tree(
     cxxflags = None
     ldflags = None
     for config in configs:
-        if "CFLAGS" not in os.environ and "CXXFLAGS" not in os.environ and not args.ios and not args.android and not args.build_wasm:
+        if (
+            "CFLAGS" not in os.environ
+            and "CXXFLAGS" not in os.environ
+            and not args.ios
+            and not args.android
+            and not args.build_wasm
+        ):
             if is_windows():
                 cflags = [
                     "/MP",
@@ -1508,7 +1512,7 @@ def generate_build_tree(
                         "-Wp,-D_GLIBCXX_ASSERTIONS",
                         "-fstack-protector-strong",
                         "-O3",
-                        "-pipe"
+                        "-pipe",
                     ]
                     if is_linux():
                         ldflags += ["-Wl,--strip-all"]
@@ -2457,8 +2461,8 @@ def main():
     cross_compiling = args.arm or args.arm64 or args.arm64ec or args.android
 
     if args.enable_address_sanitizer:
-       # Disable ONNX Runtime's builtin memory checker
-       args.disable_memleak_checker = True
+        # Disable ONNX Runtime's builtin memory checker
+        args.disable_memleak_checker = True
 
     # If there was no explicit argument saying what to do, default
     # to update, build and test (for native builds).

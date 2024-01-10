@@ -17,9 +17,9 @@
 extern std::unique_ptr<Ort::Env> ort_env;
 
 [[maybe_unused]] static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& model_uri,
-                          const std::vector<Input>& inputs, const char* output_name,
-                          const std::vector<int64_t>& expected_dims_y, const std::vector<float>& expected_values_y,
-                          Ort::CustomOpDomain& custom_op_domain, void* cuda_compute_stream = nullptr) {
+                                           const std::vector<Input>& inputs, const char* output_name,
+                                           const std::vector<int64_t>& expected_dims_y, const std::vector<float>& expected_values_y,
+                                           Ort::CustomOpDomain& custom_op_domain, void* cuda_compute_stream = nullptr) {
   Ort::SessionOptions session_options;
   session_options.Add(custom_op_domain);
 
