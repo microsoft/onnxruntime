@@ -25,29 +25,11 @@ done
 
 BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel" "--build_wheel")
 
-if [ "$BUILD_CONFIG" == "Debug" ]; then
-    CFLAGS="-ggdb3"
-    CXXFLAGS="-ggdb3"
-else
-    CFLAGS="-DNDEBUG -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -O3 -pipe -Wl,--strip-all"
-    CXXFLAGS="-DNDEBUG -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -O3 -pipe -Wl,--strip-all"
+if [ "$BUILD_CONFIG" != "Debug" ]; then
     BUILD_ARGS+=("--enable_lto")
 fi
 
-# Depending on how the compiler has been configured when it was built, sometimes "gcc -dumpversion" shows the full version.
-GCC_VERSION=$(gcc -dumpversion | cut -d . -f 1)
-#-fstack-clash-protection prevents attacks based on an overlapping heap and stack.
-if [ "$GCC_VERSION" -ge 8 ]; then
-    CFLAGS="$CFLAGS -fstack-clash-protection"
-    CXXFLAGS="$CXXFLAGS -fstack-clash-protection"
-fi
-
 ARCH=$(uname -m)
-
-if [ "$ARCH" == "x86_64" ] && [ "$GCC_VERSION" -ge 9 ]; then
-    CFLAGS="$CFLAGS -fcf-protection"
-    CXXFLAGS="$CXXFLAGS -fcf-protection"
-fi
 
 echo "EXTRA_ARG:"
 echo "$EXTRA_ARG"
@@ -67,8 +49,6 @@ if [ "$BUILD_DEVICE" == "GPU" ]; then
     BUILD_ARGS+=("--nvcc_threads=1" "--use_cuda" "--use_tensorrt" "--cuda_version=$SHORT_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80")
 fi
 
-export CFLAGS
-export CXXFLAGS
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
   rm -rf /build/"$BUILD_CONFIG"
