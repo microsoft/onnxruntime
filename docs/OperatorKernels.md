@@ -305,6 +305,7 @@ Do not modify directly.*
 |||[13, 17]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
+|RegexFullMatch|*in* X:**T1**<br> *out* Y:**T2**|20+|**T1** = tensor(string)<br/> **T2** = tensor(bool)|
 |Relu|*in* X:**T**<br> *out* Y:**T**|14+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int8)|
 |||13|**T** = tensor(double), tensor(float)|
 |||[6, 12]|**T** = tensor(double), tensor(float)|
