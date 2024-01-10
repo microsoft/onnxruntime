@@ -35,6 +35,9 @@ typedef struct {
   bool isCpuSupported;  // The WebNN CPU backend XNNPack supports it (not about the CPU EP).
 } WebnnOpInfo;
 
+// Collects all the initializer tensors in the subGraph and its ancestor graphs.
+InitializedTensorSet CollectAllInitializedTensors(const GraphViewer& graph_viewer);
+
 bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger);
 
 template <typename T>
