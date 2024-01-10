@@ -558,7 +558,9 @@ public:
             {
                 ML_CHECK_VALID_ARGUMENT(axis < outputShapeDimCount);
                 uint32_t broadcastAxisLength = outputShape[axis];
-                ML_CHECK_VALID_ARGUMENT(inputTensorShape[0] == broadcastAxisLength);
+                ML_CHECK_VALID_ARGUMENT((inputTensorShape[0] == broadcastAxisLength) ||
+                                        // treat as broadcast dimension to match CPU behavior
+                                        (inputTensorShape[0] == 1)); 
                 inputTensorShape.insert(inputTensorShape.begin(), axis, 1);
                 inputTensorShape.insert(inputTensorShape.end(), outputShapeDimCount - 1 - axis, 1);
             }
