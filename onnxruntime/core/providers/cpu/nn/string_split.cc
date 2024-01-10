@@ -76,7 +76,7 @@ Status StringSplit::Compute(OpKernelContext* context) const {
   input_slices.reserve(input_data.size());
   int64_t last_dim = 1;
 
-  for (auto input_iter = input_data.begin(); input_iter != input_data.end(); input_iter++, num_tokens_iter++) {
+  for (auto input_iter = input_data.begin(); input_iter != input_data.end(); ++input_iter, ++num_tokens_iter) {
     auto substrs = ComputeSubstrings(*input_iter, delimiter_, maxsplit_);
     auto substr_count = static_cast<int64_t>(substrs.size());
     input_slices.push_back(std::move(substrs));
@@ -84,15 +84,13 @@ Status StringSplit::Compute(OpKernelContext* context) const {
     *num_tokens_iter = substr_count;
   }
 
-  last_dim = std::min(last_dim, maxsplit_ + 1);
-
   // Set up splits output
   auto splits_shape = input->Shape().AsShapeVector();
   splits_shape.push_back(last_dim);
 
   auto splits_data = context->Output(0, splits_shape)->template MutableDataAsSpan<std::string>();
   auto slices_iter = input_slices.begin();
-  for (auto output_splits_iter = splits_data.begin(); output_splits_iter != splits_data.end(); output_splits_iter += last_dim, slices_iter++) {
+  for (auto output_splits_iter = splits_data.begin(); output_splits_iter != splits_data.end(); output_splits_iter += last_dim, ++slices_iter) {
     std::copy(slices_iter->begin(), slices_iter->end(), output_splits_iter);
   }
 
