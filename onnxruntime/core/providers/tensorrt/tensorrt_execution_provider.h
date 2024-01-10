@@ -518,19 +518,19 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    * going through the time-consuming processes of model parsing and engine building.
    */
   Status CreateNodeComputeInfoFromPrecompiledEngine(const GraphViewer& graph_body_viewer,
-                                                const Node& fused_node,
-                                                std::unordered_map<std::string, size_t>& input_map,
-                                                std::unordered_map<std::string, size_t>& output_map,
-                                                std::vector<NodeComputeInfo>& node_compute_funcs);
+                                                    const Node& fused_node,
+                                                    std::unordered_map<std::string, size_t>& input_map,
+                                                    std::unordered_map<std::string, size_t>& output_map,
+                                                    std::vector<NodeComputeInfo>& node_compute_funcs);
 
   /**
    * Create a vector of NodeComputeInfo instances from graph.
    */
   Status CreateNodeComputeInfoFromGraph(const GraphViewer& graph_body_viewer,
-                                    const Node& fused_node,
-                                    std::unordered_map<std::string, size_t>& input_map,
-                                    std::unordered_map<std::string, size_t>& output_map,
-                                    std::vector<NodeComputeInfo>& node_compute_funcs);
+                                        const Node& fused_node,
+                                        std::unordered_map<std::string, size_t>& input_map,
+                                        std::unordered_map<std::string, size_t>& output_map,
+                                        std::vector<NodeComputeInfo>& node_compute_funcs);
 
   bool IsGraphCaptureAllowed() const;
   void CaptureBegin();

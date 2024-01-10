@@ -2529,10 +2529,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 }
 
 Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& graph_body_viewer,
-                                                             const Node& fused_node,
-                                                             std::unordered_map<std::string, size_t>& input_map,
-                                                             std::unordered_map<std::string, size_t>& output_map,
-                                                             std::vector<NodeComputeInfo>& node_compute_funcs) {
+                                                                 const Node& fused_node,
+                                                                 std::unordered_map<std::string, size_t>& input_map,
+                                                                 std::unordered_map<std::string, size_t>& output_map,
+                                                                 std::vector<NodeComputeInfo>& node_compute_funcs) {
   // Reconstruct graph proto from fused node's function body
   auto model = graph_body_viewer.CreateModel(*GetLogger());
   auto model_proto = model->ToProto();
@@ -3550,10 +3550,10 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 }
 
 Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const GraphViewer& graph_body_viewer,
-                                                                         const Node& fused_node,
-                                                                         std::unordered_map<std::string, size_t>& input_map,
-                                                                         std::unordered_map<std::string, size_t>& output_map,
-                                                                         std::vector<NodeComputeInfo>& node_compute_funcs) {
+                                                                             const Node& fused_node,
+                                                                             std::unordered_map<std::string, size_t>& input_map,
+                                                                             std::unordered_map<std::string, size_t>& output_map,
+                                                                             std::vector<NodeComputeInfo>& node_compute_funcs) {
   std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
   std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
   std::unordered_map<std::string, size_t> input_indexes;   // TRT engine input name -> ORT kernel context input index
