@@ -234,8 +234,15 @@ def save_results(results, filename):
 
     # get package name and version
     import pkg_resources
+
     installed_packages = pkg_resources.working_set
-    installed_packages_list = sorted([f"{i.key}=={i.version}" for i in installed_packages if i.key in ['ort-nightly-gpu', 'ort-nightly', "onnxruntime", "onnxruntime-gpu"]])
+    installed_packages_list = sorted(
+        [
+            f"{i.key}=={i.version}"
+            for i in installed_packages
+            if i.key in ["ort-nightly-gpu", "ort-nightly", "onnxruntime", "onnxruntime-gpu"]
+        ]
+    )
 
     ort_pkg_name = ""
     ort_pkg_version = ""
@@ -248,7 +255,7 @@ def save_results(results, filename):
     for _, row in df.iterrows():
         if row["Engine"] == "optimum-ort":
             record = BenchmarkRecord(
-                 row["Model Name"], row["Precision"], "onnxruntime", row["Device"], ort_pkg_name, ort_pkg_version
+                row["Model Name"], row["Precision"], "onnxruntime", row["Device"], ort_pkg_name, ort_pkg_version
             )
         elif row["Engine"] in ["pytorch-eager", "pytorch-compile"]:
             record = BenchmarkRecord(
