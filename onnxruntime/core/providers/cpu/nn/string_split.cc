@@ -76,12 +76,13 @@ Status StringSplit::Compute(OpKernelContext* context) const {
   input_slices.reserve(input_data.size());
   int64_t last_dim = 1;
 
-  for (auto input_iter = input_data.begin(); input_iter != input_data.end(); ++input_iter, ++num_tokens_iter) {
-    auto substrs = ComputeSubstrings(*input_iter, delimiter_, maxsplit_);
+  for (const auto& s : input_data) {
+    auto substrs = ComputeSubstrings(s, delimiter_, maxsplit_);
     auto substr_count = static_cast<int64_t>(substrs.size());
     input_slices.push_back(std::move(substrs));
     last_dim = std::max(last_dim, substr_count);
     *num_tokens_iter = substr_count;
+    ++num_tokens_iter;
   }
 
   // Set up splits output
