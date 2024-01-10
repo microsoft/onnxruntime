@@ -50,11 +50,12 @@ static void NSSQ4GemmCompF32(const size_t M, const size_t N, const size_t K, con
       ORTThreading single(nullptr);
       kernel.mProA.reduce({A, lda_, &reduceA}, M_, K_, B->mBlockSize, &single);
     }
-    typename Launcher::BEpiParam blkargs{
-        B->template SPtr<int8_t>(),     B->SDtype(), B->CStep(), B->template ZPtr<int8_t>(),
-        reduceA.template RPtr<float>(), reduceA.lda};
-
-    typename Launcher::Param args{gp, {A, lda_, &reduceA}, {B}, blkargs, {C, ldc_}};
+    typename Launcher::Param args{gp,
+                                  {A, lda_, &reduceA},
+                                  {B},
+                                  {B->template SPtr<int8_t>(), B->SDtype(), B->CStep(), B->template ZPtr<int8_t>(),
+                                   reduceA.template RPtr<float>(), reduceA.lda},
+                                  {C, ldc_}};
     parallel::GemmRun<Parallel>(kernel, args, th);
   } else {
     using Parallel = parallel::gemm::SchedulerBase<GemmCore_T>;
