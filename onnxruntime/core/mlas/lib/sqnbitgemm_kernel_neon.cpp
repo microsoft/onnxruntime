@@ -184,7 +184,7 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
             uint8x8_t bv_u8_unzipped[NCols][2];
             UnrolledLoop<NCols>([&](size_t i) {
                 bv_u8_unzipped[i][0] = vand_u8(bv_packed[i], LowMask);
-                bv_u8_unzipped[i][1] = vand_u8(vshr_n_u8(bv_packed[i], 4), LowMask);
+                bv_u8_unzipped[i][1] = vshr_n_u8(bv_packed[i], 4);
             });
 
             uint8x8_t bv_u8[NCols][2];
@@ -603,7 +603,7 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
             uint8x8_t bv_u8_unzipped[NCols][2];
             UnrolledLoop<NCols>([&](size_t i) {
                 bv_u8_unzipped[i][0] = vand_u8(bv_packed[i], LowMask);
-                bv_u8_unzipped[i][1] = vand_u8(vshr_n_u8(bv_packed[i], 4), LowMask);
+                bv_u8_unzipped[i][1] = vshr_n_u8(bv_packed[i], 4);
             });
 
             int8x16_t bv[NCols];
