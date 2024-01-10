@@ -1507,9 +1507,10 @@ def generate_build_tree(
                         "-Wp,-D_GLIBCXX_ASSERTIONS",
                         "-fstack-protector-strong",
                         "-O3",
-                        "-pipe",
-                        "-Wl,--strip-all",
+                        "-pipe"
                     ]
+                    if is_linux():
+                        ldflags += "-Wl,--strip-all"
                 elif config == "RelWithDebInfo":
                     cflags = [
                         "-DNDEBUG",
