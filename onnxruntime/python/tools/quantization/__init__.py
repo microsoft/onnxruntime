@@ -5,8 +5,6 @@ from .calibrate import (  # noqa: F401
     MinMaxCalibrater,
     create_calibrator,
 )
-from .matmul_4bits_quantizer import GPTQWeightOnlyQuantConfig  # noqa: F401
-from .matmul_4bits_quantizer import RTNWeightOnlyQuantConfig  # noqa: F401
 from .matmul_weight4_quantizer import MatMulWeight4Quantizer  # noqa: F401
 from .qdq_quantizer import QDQQuantizer  # noqa: F401
 from .quant_utils import QuantFormat, QuantType, write_calibration_table  # noqa: F401
