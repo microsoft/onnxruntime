@@ -6,7 +6,6 @@
 #include <string>
 #include <vector>
 #include <sstream>
-#include <algorithm>
 #include <iostream>
 #include <experimental/filesystem>
 #include "flatbuffers/idl.h"
@@ -733,7 +732,6 @@ std::string GetCacheSuffix(const std::string& fused_node_name, const std::string
     // Get index of model hash from fused_node_name
     std::string model_hash = split_fused_node_name[split_fused_node_name.size() - 3];
     size_t index = fused_node_name.find(model_hash);
-    
     // Parse suffix from trt_node_name_with_precision, as it has additional precision info
     std::vector<std::string> suffix_group = split(trt_node_name_with_precision.substr(index), '_');
     if (suffix_group.size() > 2) {

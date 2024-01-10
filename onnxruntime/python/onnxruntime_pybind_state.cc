@@ -577,7 +577,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               cache_prefix = option.second;
               params.trt_engine_cache_prefix = cache_prefix.c_str();
             } else {
-              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_prefix' should be a string to name engine cache prefix i.e. 'TRT_cache_'.\n");
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_prefix' should be a string to customize engine cache prefix i.e. 'FRCNN' or 'yolov4'.\n");
             }
           } else if (option.first == "trt_engine_decryption_enable") {
             if (option.second == "True" || option.second == "true") {

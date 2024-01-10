@@ -2686,7 +2686,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
     // Set precision flags
     std::string trt_node_name_with_precision = fused_node.Name();
-    LOGS_DEFAULT(INFO) << "Init trt_node_name_with_precision as " + trt_node_name_with_precision;
     if (fp16_enable_ && int8_enable_) {
       trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
       trt_node_name_with_precision += "_fp16_int8";
@@ -2794,9 +2793,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       // Customize cache prefix if assigned
       if (!cache_prefix_.empty()) {
         cache_path = GetCachePath(cache_path_, cache_prefix_) + cache_suffix;
-        LOGS_DEFAULT(WARNING) << "Engine cache path: " + cache_path;
-      }
-      else {
+        LOGS_DEFAULT(INFO) << "[TensorRT EP] Engine cache path: " + cache_path;
+      } else {
         cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
       }
       const std::string engine_cache_path = cache_path + "_sm" + compute_capability + ".engine";
@@ -3069,7 +3067,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       // Customize cache prefix if assigned
       if (!cache_prefix_.empty()) {
         cache_path = GetCachePath(cache_path_, cache_prefix_) + cache_suffix;
-        LOGS_DEFAULT(WARNING) << "Engine cache path: " + cache_path;
+        LOGS_DEFAULT(INFO) << "[TensorRT EP] Engine cache path: " + cache_path;
       } else {
         cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
       }
