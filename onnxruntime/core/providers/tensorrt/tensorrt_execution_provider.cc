@@ -1557,7 +1557,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     dla_core_ = 0;
   }
 
-  if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
+  if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_ || !cache_prefix_.empty()) {
     if (!cache_path_.empty() && !fs::is_directory(cache_path_)) {
       if (!fs::create_directory(cache_path_)) {
         throw std::runtime_error("Failed to create directory " + cache_path_);
@@ -2686,6 +2686,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
     // Set precision flags
     std::string trt_node_name_with_precision = fused_node.Name();
+    LOGS_DEFAULT(INFO) << "Init trt_node_name_with_precision as " + trt_node_name_with_precision;
     if (fp16_enable_ && int8_enable_) {
       trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
       trt_node_name_with_precision += "_fp16_int8";
@@ -2786,7 +2787,16 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     std::string compute_capability = GetComputeCapacity(prop);
 
     if (!has_dynamic_shape) {
-      const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
+      std::string cache_path = "";
+      // Customize cache prefix if assigned
+      if (!cache_prefix_.empty()) {
+        cache_path = GetCachePath(cache_path_, cache_prefix_) +
+                     GetCacheSuffix(fused_node.Name(), trt_node_name_with_precision);
+        LOGS_DEFAULT(WARNING) << "Engine cache path: " + cache_path;
+      }
+      else {
+        cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
+      }
       const std::string engine_cache_path = cache_path + "_sm" + compute_capability + ".engine";
       const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
       const std::string profile_cache_path = cache_path + "_sm" + compute_capability + ".profile";
@@ -3051,7 +3061,15 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       std::string compute_capability = GetComputeCapacity(prop);
 
       // Prepare cache name
-      const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
+      std::string cache_path = "";
+      // Customize cache prefix if assigned
+      if (!cache_prefix_.empty()) {
+        cache_path = GetCachePath(cache_path_, cache_prefix_) +
+                     GetCacheSuffix(fused_node.Name(), trt_node_name_with_precision);
+        LOGS_DEFAULT(WARNING) << "Engine cache path: " + cache_path;
+      } else {
+        cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
+      }
       const std::string engine_cache_path = cache_path + "_sm" + compute_capability + ".engine";
       const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
       const std::string profile_cache_path = cache_path + "_sm" + compute_capability + ".profile";
