@@ -657,6 +657,12 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetGraphOptimizationLevel(G
 }
 
 template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetDeterministicCompute(bool value) {
+  ThrowOnError(GetApi().SetDeterministicCompute(this->p_, value));
+  return *this;
+}
+
+template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetOptimizedModelFilePath(const ORTCHAR_T* optimized_model_filepath) {
   ThrowOnError(GetApi().SetOptimizedModelFilePath(this->p_, optimized_model_filepath));
   return *this;
@@ -1650,6 +1656,10 @@ inline Logger KernelContext::GetLogger() const {
   const OrtLogger* out = nullptr;
   ThrowOnError(GetApi().KernelContext_GetLogger(this->ctx_, &out));
   return Logger{out};
+}
+
+inline void KernelContext::ParallelFor(void (*fn)(void*, size_t), size_t total, size_t num_batch, void* usr_data) const {
+  ThrowOnError(GetApi().KernelContext_ParallelFor(ctx_, fn, total, num_batch, usr_data));
 }
 
 inline OpAttr::OpAttr(const char* name, const void* data, int len, OrtOpAttrType type) {

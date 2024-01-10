@@ -67,6 +67,7 @@ namespace js {
                             float value;                                           \
                             ORT_ENFORCE(info.GetAttr<float>(#attr_name, &value));, \
                                                                                  , ({#attr_name : $1}), static_cast<double>(value))
+#define JSEP_HEAP_PTR(ptr) reinterpret_cast<uintptr_t>(ptr)
 
 // TODO:
 // class JsMultiProgramKernel : public OpKernel { /* TBD */ };
@@ -197,7 +198,7 @@ class JsKernel : public OpKernel {
 
     int status_code = EM_ASM_INT(
         { return Module.jsepRunKernel($0, $1, Module.jsepSessionState.sessionHandle, Module.jsepSessionState.errors); },
-        this, reinterpret_cast<int32_t>(p_serialized_kernel_context));
+        this, reinterpret_cast<uint32_t>(p_serialized_kernel_context));
 
     LOGS_DEFAULT(VERBOSE) << "outputs = " << context->OutputCount() << ". Y.data="
                           << (size_t)(context->Output<Tensor>(0)->DataRaw()) << ".";

@@ -64,11 +64,11 @@ class ConvTranspose : public JsKernel {
                                  static_cast<int32_t>(pads_1),
                                  static_cast<int32_t>(strides),
                                  static_cast<int32_t>(channels_last),
-                                 reinterpret_cast<int32_t>(&w_is_const_),
+                                 JSEP_HEAP_PTR(&w_is_const_),
                                  gsl::narrow_cast<int32_t>(local_output_padding.size()),
-                                 reinterpret_cast<int32_t>(local_output_padding_ptr) >> 2,
+                                 JSEP_HEAP_PTR(local_output_padding_ptr) >> 2,
                                  gsl::narrow_cast<int32_t>(local_output_shape.size()),
-                                 reinterpret_cast<int32_t>(local_output_shape_ptr) >> 2,
+                                 JSEP_HEAP_PTR(local_output_shape_ptr) >> 2,
                                  conv_transpose_attrs_.activation.c_str());
     } else {
       constexpr size_t pads_vec_size = 4;
@@ -114,17 +114,17 @@ class ConvTranspose : public JsKernel {
                                    "activation" : UTF8ToString($13)
                                  }),
                                  static_cast<int32_t>(conv_transpose_attrs_.auto_pad),
-                                 reinterpret_cast<int32_t>(local_dilations.data()) >> 2,
+                                 JSEP_HEAP_PTR(local_dilations.data()) >> 2,
                                  static_cast<int32_t>(conv_transpose_attrs_.group),
-                                 reinterpret_cast<int32_t>(local_kernel_shape.data()) >> 2,
-                                 reinterpret_cast<int32_t>(local_pads.data()) >> 2,
-                                 reinterpret_cast<int32_t>(local_strides.data()) >> 2,
+                                 JSEP_HEAP_PTR(local_kernel_shape.data()) >> 2,
+                                 JSEP_HEAP_PTR(local_pads.data()) >> 2,
+                                 JSEP_HEAP_PTR(local_strides.data()) >> 2,
                                  static_cast<int32_t>(channels_last),
-                                 reinterpret_cast<int32_t>(&w_is_const_),
+                                 JSEP_HEAP_PTR(&w_is_const_),
                                  gsl::narrow_cast<int32_t>(local_output_padding.size()),
-                                 reinterpret_cast<int32_t>(local_output_padding_ptr) >> 2,
+                                 JSEP_HEAP_PTR(local_output_padding_ptr) >> 2,
                                  gsl::narrow_cast<int32_t>(local_output_shape.size()),
-                                 reinterpret_cast<int32_t>(local_output_shape_ptr) >> 2,
+                                 JSEP_HEAP_PTR(local_output_shape_ptr) >> 2,
                                  conv_transpose_attrs_.activation.c_str());
     }
   }

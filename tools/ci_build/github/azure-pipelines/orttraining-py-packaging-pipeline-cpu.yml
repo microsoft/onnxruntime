@@ -13,7 +13,7 @@ stages:
 
   jobs:
     - job: Linux_Training_CPU_Wheels
-      timeoutInMinutes: 120
+      timeoutInMinutes: 180
       workspace:
         clean: all
       pool: onnxruntime-Ubuntu2004-AMD-CPU

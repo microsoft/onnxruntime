@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from __future__ import annotations
 
 import numpy as np
 import torch
@@ -235,7 +235,7 @@ def get_past_kv_inputs(config: AutoConfig, batch_size: int, past_seq_len: int, u
 
 
 # Convert list of past_key_values to dict of past_key and past_value
-def flatten_past_kv_inputs(past_key_values: List[Tuple[torch.Tensor, torch.Tensor]]):
+def flatten_past_kv_inputs(past_key_values: list[tuple[torch.Tensor, torch.Tensor]]):
     past_kv = {}
     for i, (past_k, past_v) in enumerate(past_key_values):
         past_kv[f"past_key_values.{i}.key"] = past_k.detach().cpu().numpy()

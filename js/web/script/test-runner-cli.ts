@@ -165,6 +165,7 @@ async function main() {
       debug: args.debug,
       cpuOptions: args.cpuOptions,
       webglOptions: args.webglOptions,
+      webnnOptions: args.webnnOptions,
       wasmOptions: args.wasmOptions,
       globalEnvFlags: args.globalEnvFlags
     }
@@ -499,7 +500,7 @@ async function main() {
           args.bundleMode === 'perf' ? 'perf' :
               args.debug             ? 'debug' :
                                        'test',
-          webgpu, webnn);
+          webgpu);
       const karmaArgs = ['karma', 'start', `--browsers ${browser}`];
       const chromiumFlags = ['--enable-features=SharedArrayBuffer', ...args.chromiumFlags];
       if (args.debug) {
@@ -614,11 +615,10 @@ async function main() {
     fs.writeJSONSync(path.join(TEST_ROOT, './testdata-config.json'), config);
   }
 
-  function getBrowserNameFromEnv(
-      env: TestRunnerCliArgs['env'], mode: 'debug'|'perf'|'test', webgpu: boolean, webnn: boolean) {
+  function getBrowserNameFromEnv(env: TestRunnerCliArgs['env'], mode: 'debug'|'perf'|'test', webgpu: boolean) {
     switch (env) {
       case 'chrome':
-        return selectChromeBrowser(mode, webgpu, webnn);
+        return selectChromeBrowser(mode, webgpu);
       case 'edge':
         return 'EdgeTest';
       case 'firefox':
@@ -634,10 +634,8 @@ async function main() {
     }
   }
 
-  function selectChromeBrowser(mode: 'debug'|'perf'|'test', webgpu: boolean, webnn: boolean) {
-    if (webnn) {
-      return 'ChromeCanaryTest';
-    } else if (webgpu) {
+  function selectChromeBrowser(mode: 'debug'|'perf'|'test', webgpu: boolean) {
+    if (webgpu) {
       return 'ChromeTest';
     } else {
       switch (mode) {
