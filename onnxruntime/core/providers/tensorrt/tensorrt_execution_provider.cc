@@ -2722,6 +2722,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       }
     }
 
+    // Generate cache suffix in case user would like to customize cache prefix
+    std::string cache_suffix = GetCacheSuffix(fused_node_name, trt_node_name_with_precision);
+
     // enable sparse weights
     if (sparsity_enable_) {
       trt_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
@@ -2790,8 +2793,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       std::string cache_path = "";
       // Customize cache prefix if assigned
       if (!cache_prefix_.empty()) {
-        cache_path = GetCachePath(cache_path_, cache_prefix_) +
-                     GetCacheSuffix(fused_node.Name(), trt_node_name_with_precision);
+        cache_path = GetCachePath(cache_path_, cache_prefix_) + cache_suffix;
         LOGS_DEFAULT(WARNING) << "Engine cache path: " + cache_path;
       }
       else {
@@ -3005,7 +3007,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             runtime_.get(), profiles_[context->node_name], context_memory_sharing_enable_, &max_ctx_mem_size_,
             dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
             global_cache_path_, force_timing_cache_match_, detailed_build_log_, build_heuristics_enable_, sparsity_enable_,
-            builder_optimization_level_, auxiliary_streams_, !tactic_sources_.empty(), tactics, cuda_graph_enable_, cache_prefix_};
+            builder_optimization_level_, auxiliary_streams_, !tactic_sources_.empty(), tactics, cuda_graph_enable_, cache_prefix_, cache_suffix};
       *state = p.release();
       return 0;
     };
@@ -3064,8 +3066,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       std::string cache_path = "";
       // Customize cache prefix if assigned
       if (!cache_prefix_.empty()) {
-        cache_path = GetCachePath(cache_path_, cache_prefix_) +
-                     GetCacheSuffix(fused_node_name, trt_node_name_with_precision);
+        cache_path = GetCachePath(cache_path_, cache_prefix_) + cache_suffix;
         LOGS_DEFAULT(WARNING) << "Engine cache path: " + cache_path;
       } else {
         cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);

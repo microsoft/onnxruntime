@@ -177,6 +177,7 @@ struct TensorrtFuncState {
   nvinfer1::TacticSources tactic_sources;
   bool cuda_graph_enable = 0;
   std::string cache_prefix;
+  std::string cache_suffix;
 };
 
 // Holds important information for building valid ORT graph.
