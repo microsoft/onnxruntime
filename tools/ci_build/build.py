@@ -1486,7 +1486,7 @@ def generate_build_tree(
                 elif config == "RelWithDebInfo":
                     cflags += ["/O2", "/Ob1", "/DNDEBUG"]
                 elif config == "Debug":
-                    cflags += ["/Ob0", "/Od", "/RTC1", "/fsanitize=address"]
+                    cflags += ["/Ob0", "/Od", "/RTC1"]
                     if args.enable_address_sanitizer:
                         cflags += ["/fsanitize=address"]
                 elif config == "MinSizeRel":
