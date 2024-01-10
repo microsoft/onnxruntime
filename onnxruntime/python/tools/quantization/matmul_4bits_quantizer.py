@@ -29,10 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 class WeightOnlyQuantConfig:
-    def __init__(
-        self,
-        algorithm
-    ):
+    def __init__(self, algorithm):
         """This is the Base class for Weight Only Quant Configuration.
 
         Args:
@@ -263,7 +260,7 @@ class MatMul4BitsQuantizer:
         template_config_q4 = {
             "bits": 4,
             "group_size": self.block_size,
-            "scheme": "sym" if self.is_symmetric else "asym"
+            "scheme": "sym" if self.is_symmetric else "asym",
         }
         for node in self.model.model.graph.node:
             if node.op_type in ["MatMul"]:
