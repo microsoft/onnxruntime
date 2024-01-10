@@ -2723,7 +2723,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     }
 
     // Generate cache suffix in case user would like to customize cache prefix
-    std::string cache_suffix = GetCacheSuffix(fused_node.Name(), trt_node_name_with_precision);
+    std::string cache_suffix = "_" + GetCacheSuffix(fused_node.Name(), trt_node_name_with_precision);
 
     // enable sparse weights
     if (sparsity_enable_) {
