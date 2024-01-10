@@ -2791,7 +2791,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       // Customize cache prefix if assigned
       if (!cache_prefix_.empty()) {
         cache_path = GetCachePath(cache_path_, cache_prefix_) +
-                     GetCacheSuffix(fused_node_name, trt_node_name_with_precision);
+                     GetCacheSuffix(fused_node.Name(), trt_node_name_with_precision);
         LOGS_DEFAULT(WARNING) << "Engine cache path: " + cache_path;
       }
       else {
