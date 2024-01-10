@@ -18,10 +18,9 @@ ONNX_CPU_OPERATOR_KERNEL(StringSplit, 20,
 /// Calculate substrings in ``str`` delimited by ``delimiter``. A maximum of ``max_splits`` splits are permitted.
 /// Returns a vector of string slices into ``str`` representing the substrings as string views. The user must ensure
 /// the returned views' lifetime does not exceed ``str``'s.
-InlinedVector<std::string_view> ComputeSubstrings(std::string_view str, std::string_view delimiter, int64_t max_splits) {
-  InlinedVector<std::string_view> output;
+void ComputeSubstrings(std::string_view str, std::string_view delimiter, int64_t max_splits, InlinedVector<std::string_view>& out) {
   if (str.empty()) {
-    return output;
+    return;
   }
   if (delimiter.empty()) {
     // Count consecutive whitespace as one delimiter. Preceding and trailing whitespace is meant to be ignored.
@@ -34,28 +33,26 @@ InlinedVector<std::string_view> ComputeSubstrings(std::string_view str, std::str
         while (str[next_pos] == ' ') {
           next_pos--;
         }
-        output.push_back(str.substr(pos, next_pos - pos + 1));
+        out.push_back(str.substr(pos, next_pos - pos + 1));
         break;
       } else {
         auto next_pos = str.find_first_of(" ", pos);
-        output.push_back(str.substr(pos, next_pos - pos));
+        out.push_back(str.substr(pos, next_pos - pos));
         pos = str.find_first_not_of(" ", next_pos);
       }
     }
-    return output;
   } else {
     size_t pos = 0;
     int64_t token_count = 0;
     while (pos != std::string::npos) {
       auto next_pos = str.find(delimiter, pos);
       if (token_count++ == max_splits || next_pos == std::string::npos) {
-        output.push_back(str.substr(pos));
+        out.push_back(str.substr(pos));
         break;
       }
-      output.push_back(str.substr(pos, next_pos - pos));
+      out.push_back(str.substr(pos, next_pos - pos));
       pos = next_pos + delimiter.size();
     }
-    return output;
   }
 }
 
@@ -74,12 +71,12 @@ Status StringSplit::Compute(OpKernelContext* context) const {
 
   InlinedVector<InlinedVector<std::string_view>> input_slices;
   input_slices.reserve(input_data.size());
-  int64_t last_dim = 1;
+  int64_t last_dim = 0;
 
   for (const auto& s : input_data) {
-    auto substrs = ComputeSubstrings(s, delimiter_, maxsplit_);
+    auto& substrs = input_slices.emplace_back();
+    ComputeSubstrings(s, delimiter_, maxsplit_, substrs);
     auto substr_count = static_cast<int64_t>(substrs.size());
-    input_slices.push_back(std::move(substrs));
     last_dim = std::max(last_dim, substr_count);
     *num_tokens_iter = substr_count;
     ++num_tokens_iter;

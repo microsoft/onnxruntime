@@ -383,6 +383,7 @@ Do not modify directly.*
 |||[11, 12]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |||[1, 10]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |StringNormalizer|*in* X:**tensor(string)**<br> *out* Y:**tensor(string)**|10+|**X** = tensor(string)|
+|StringSplit|*in* X:**T1**<br> *out* Y:**T2**<br> *out* Z:**T3**|20+|**T1** = tensor(string)<br/> **T2** = tensor(string)<br/> **T3** = tensor(int64)|
 |Sub|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T**|14+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
 |||13|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
 |||[7, 12]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)|

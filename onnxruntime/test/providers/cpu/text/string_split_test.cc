@@ -80,8 +80,8 @@ TEST(StringSplit, EdgeWhitespaceTest) {
 
 TEST(StringSplit, EmptyInputTest) {
   OpTester test("StringSplit", 20);
-  test.AddAttribute<std::string>("delimiter", "*");
   test.AddInput<std::string>("X", {1, 3, 1}, {"", "+", "*"});
+  test.AddAttribute<std::string>("delimiter", "*");
   test.AddOutput<std::string>("Y", {1, 3, 1, 2}, {"", "", "+", "", "", ""});
   test.AddOutput<int64_t>("Z", {1, 3, 1}, {0, 1, 2});
   test.Run();
@@ -91,7 +91,7 @@ TEST(StringSplit, OnlyEmptyInputTest) {
   OpTester test("StringSplit", 20);
   test.AddAttribute<std::string>("delimiter", "*");
   test.AddInput<std::string>("X", {1, 2, 1}, {"", ""});
-  test.AddOutput<std::string>("Y", {1, 2, 1, 1}, {"", ""});
+  test.AddOutput<std::string>("Y", {1, 2, 1, 0}, {});
   test.AddOutput<int64_t>("Z", {1, 2, 1}, {0, 0});
   test.Run();
 }
@@ -99,8 +99,26 @@ TEST(StringSplit, OnlyEmptyInputTest) {
 TEST(StringSplit, OnlyEmptyNoDelimiterInputTest) {
   OpTester test("StringSplit", 20);
   test.AddInput<std::string>("X", {1, 2, 1}, {"", ""});
-  test.AddOutput<std::string>("Y", {1, 2, 1, 1}, {"", ""});
+  test.AddOutput<std::string>("Y", {1, 2, 1, 0}, {});
   test.AddOutput<int64_t>("Z", {1, 2, 1}, {0, 0});
+  test.Run();
+}
+
+TEST(StringSplit, NoInputTest) {
+  OpTester test("StringSplit", 20);
+  test.AddInput<std::string>("X", {
+                                      0,
+                                  },
+                             {});
+  test.AddOutput<std::string>("Y", {
+                                       0,
+                                       0,
+                                   },
+                              {});
+  test.AddOutput<int64_t>("Z", {
+                                   0,
+                               },
+                          {});
   test.Run();
 }
 
