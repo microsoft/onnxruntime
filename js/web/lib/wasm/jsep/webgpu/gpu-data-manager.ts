@@ -389,10 +389,13 @@ class GpuDataManagerImpl implements GpuDataManager {
 
   releaseSession(sessionId: number) {
     // release the captured pending buffers.
-    const pendingBffers = this.capturedPendingBuffers.get(sessionId);
-    pendingBffers!.forEach(buffer => {
-      buffer.destroy();
-    });
+    const pendingBuffers = this.capturedPendingBuffers.get(sessionId);
+    if (pendingBuffers) {
+      pendingBuffers.forEach(buffer => {
+        buffer.destroy();
+      });
+      this.capturedPendingBuffers.delete(sessionId);
+    }
   }
 }
 
