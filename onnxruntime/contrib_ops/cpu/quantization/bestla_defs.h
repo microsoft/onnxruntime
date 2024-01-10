@@ -16,12 +16,11 @@ namespace bestla {
 using tAVX512F = gemm::SCoreRowNAvx512f<48, 8>;
 using tAMX_BF16 = gemm::HCoreRowNAmxbf16<64, 16>;
 using tAVX512_FP16 = gemm::HCoreRowNAvx512fp16<96, 8>;
-using tAVX_VNNI = gemm::ICoreRowNAvxvnni<24, 4>;  // TODO(Yu) use 24x4 for higher efficiency
+using tAVX_VNNI = gemm::ICoreRowNAvxvnni<24, 4>; 
 using tAVX512_VNNI = gemm::ICoreRowNAvx512vnni<48, 8>;
 using tAMX_INT8_US = gemm::ICoreRowNAmxint8<64, 16>;
 using tAMX_INT8_SS = gemm::ICoreRowNAmxint8SS<64, 16>;
-using tAVX2 = gemm::SCoreRowNAvx2<24, 4>;  // TODO(Yu) use 24x4 for higher efficiency
-
+using tAVX2 = gemm::SCoreRowNAvx2<24, 4>; 
 using tAVX_VNNI_KBlock = gemm::ICoreRowNAvxvnniKBlock<24, 2>;
 using tAVX512_VNNI_KBlock = gemm::ICoreRowNAvx512vnniKBlock<48, 4>;
 using tAMX_INT8_US_KBlock = gemm::ICoreRowNAmxint8KBlock<48, 16>;
@@ -39,6 +38,12 @@ class ORTThreading : public parallel::IThreading {
   void set_threads(int nthreads) override { assert(0); }
   void sync() const override { assert(0); }
   void* mTp;
+};
+
+class Platform {
+ public:
+  Platform();
+  static Platform* get();
 };
 
 }  // namespace bestla

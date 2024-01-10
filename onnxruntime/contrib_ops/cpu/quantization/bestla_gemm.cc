@@ -18,13 +18,27 @@ Abstract:
 #include "core/platform/threadpool.h"
 
 using ThreadPool = onnxruntime::concurrency::ThreadPool;
+
 namespace bestla {
+
 ORTThreading::ORTThreading(void* tp)
     : IThreading(ThreadPool::DegreeOfParallelism(reinterpret_cast<ThreadPool*>(tp))), mTp(tp) {}
 
 void ORTThreading::parallel_for(const parallel::thread_func& func) const {
   ThreadPool::TrySimpleParallelFor(reinterpret_cast<ThreadPool*>(mTp), mThreadNum,
                                    [&](ptrdiff_t tid) { func(static_cast<int>(tid)); });
+}
+
+Platform::Platform() {
+  GetCPUDevice();
+  if (_cd->AMX_INT8() || _cd->AMX_BF16()) {
+    utils::request_perm_xtile_data();
+  }
+}
+
+Platform* Platform::get() {
+  static Platform instance;
+  return &instance;
 }
 
 template <class GemmCore_T>
@@ -141,6 +155,9 @@ using namespace bestla;
 bool NSSQ4GemmBatchDriver(const size_t M, const size_t N, const size_t K, const size_t BatchN,
                           const NS_SQNBITS_GEMM_DATA_PACKED_PARAMS* DataParams, int8_t* WorkSpace, void* ThreadPool) {
   GetCPUDevice();
+  // Prepare system config for AMX instructions
+  auto p = Platform::get();
+  (void)(p);
   bestla::ORTThreading orth(ThreadPool);
   bool processed = true;
   for (size_t i = 0; i < BatchN; i++) {
@@ -241,14 +258,16 @@ static size_t NSQ4BuSize(size_t block_size, size_t N, size_t K, bool isAsym) {
   return stor.mSize;
 }
 
-size_t NSQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, int64_t CompType) {
+size_t NSQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, int64_t accuracy_level) {
   GetCPUDevice();
   if (K % BlkSize != 0) {
     return 0;
   }
+  // Convert accuracy_level attribute of MatMulNBits to local compute_type
+  auto CompType = static_cast<NS_SQNBIT_COMPUTE_TYPE>(accuracy_level);
   // from low precision to high precision
   switch (CompType) {
-    case 4:
+    case CompInt8:
       if (!isAsym) {  // asym int8 is not optimized, so fall through to others.
         if (_cd->AMX_INT8() && BlkSize % tAMX_INT8_SS_KBlock::KTILE == 0) {
           return NSQ4BuSize<tWeiNInt<tAMX_INT8_SS_KBlock, tAMX_INT8_SS_KBlock::ISA>>(BlkSize, N, K, isAsym);
@@ -260,10 +279,10 @@ size_t NSQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, int64_
           return NSQ4BuSize<tWeiNInt<tAVX_VNNI_KBlock, tAVX_VNNI_KBlock::ISA>>(BlkSize, N, K, isAsym);
         }
       }
-    case 3:
-    case 2:
-    case 1:
-    case 0:
+    case CompBf16:
+    case CompFp16:
+    case CompFp32:
+    case CompUndef:
       if (_cd->AVX512F() && BlkSize % tAVX512F::KTILE == 0) {
         return NSQ4BuSize<tWeiNInt<tAVX512F, tAVX512F::ISA>>(BlkSize, N, K, isAsym);
       }
@@ -295,11 +314,12 @@ static void NSQ4GemmPackBImpl(void* PackedBuf, size_t BlkSize, const uint8_t* QD
 }
 
 bool NSQ4GemmPackB(void* PackedBuf, const uint8_t* QData, const float* Scale, const uint8_t* Zp, size_t N, size_t K,
-                   size_t ldb, size_t BlkSize, bool isAsym, bool lastCall, int64_t CompType, void* ThreadPool) {
+                   size_t ldb, size_t BlkSize, bool isAsym, bool lastCall, int64_t accuracy_level, void* ThreadPool) {
   GetCPUDevice();
+  auto CompType = static_cast<NS_SQNBIT_COMPUTE_TYPE>(accuracy_level);
   // explicit statement fall through.
   switch (CompType) {
-    case 4:
+    case CompInt8:
       if (!isAsym) {  // asym int8 is not optimized, so fall through to others.
         if (_cd->AMX_INT8() && BlkSize % tAMX_INT8_SS_KBlock::KTILE == 0) {
           NSQ4GemmPackBImpl<tWeiNInt<tAMX_INT8_SS_KBlock, tAMX_INT8_SS_KBlock::ISA>>(
@@ -317,10 +337,10 @@ bool NSQ4GemmPackB(void* PackedBuf, const uint8_t* QData, const float* Scale, co
           return true;
         }
       }
-    case 3:
-    case 2:
-    case 1:
-    case 0:
+    case CompBf16:
+    case CompFp16:
+    case CompFp32:
+    case CompUndef:
       if (_cd->AVX512F() && BlkSize % tAVX512F::KTILE == 0) {
         NSQ4GemmPackBImpl<tWeiNInt<tAVX512F, tAVX512F::ISA>>(PackedBuf, BlkSize, QData, Scale, Zp, N, K, isAsym,
                                                              lastCall, ldb, ThreadPool);

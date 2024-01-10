@@ -19,6 +19,17 @@ Abstract:
 #include <cstddef>
 
 /**
+ * @brief Define compute types of block quantization
+ */
+typedef enum {
+  CompUndef = 0, /*!< undef */
+  CompFp32 = 1,  /*!< input fp32, accumulator fp32 */
+  CompFp16 = 2,  /*!< input fp16, accumulator fp16 */
+  CompBf16 = 3,  /*!< input bf16, accumulator fp32 */
+  CompInt8 = 4   /*!< input int8, accumulator int32 */
+} NS_SQNBIT_COMPUTE_TYPE;
+
+/**
  * @brief Data parameters for NBits GEMM routine
  *        C = A * B
  *        A, C must be a float32 matrix
@@ -36,7 +47,7 @@ struct NS_SQNBITS_GEMM_DATA_PACKED_PARAMS {
 size_t NSQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, int64_t accuracy_level);
 
 bool NSQ4GemmPackB(void* PackedBuf, const uint8_t* QData, const float* Scale, const uint8_t* Zp, size_t N, size_t K,
-                   size_t ldb, size_t BlkSize, bool isAsym, bool lastCall, int64_t CompType, void* ThreadPool);
+                   size_t ldb, size_t BlkSize, bool isAsym, bool lastCall, int64_t accuracy_level, void* ThreadPool);
 
 bool NSQ4GemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb, void* ThreadPool);
 
