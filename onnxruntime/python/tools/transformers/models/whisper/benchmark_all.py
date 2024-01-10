@@ -289,7 +289,6 @@ def save_results(results, filename):
 
     # get package name and version
     import pkg_resources
-
     installed_packages = pkg_resources.working_set
     installed_packages_list = sorted(
         [
