@@ -716,6 +716,15 @@ template Status QkvToContext<half>(
     contrib::GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<half>& data);
 
+template struct GroupQueryAttentionData<BFloat16>;
+
+template Status QkvToContext<BFloat16>(
+    const cudaDeviceProp& device_prop,
+    cublasHandle_t& cublas,
+    Stream* ort_stream,
+    contrib::GroupQueryAttentionParameters& parameters,
+    GroupQueryAttentionData<BFloat16>& data);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
