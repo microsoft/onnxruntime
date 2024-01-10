@@ -160,9 +160,10 @@ if (HAS_BITWISE_INSTEAD_OF_LOGICAL)
   target_compile_options(onnxruntime_providers PRIVATE "-Wno-bitwise-instead-of-logical")
 endif()
 
-if(USE_NEURAL_SPEED)
-  add_dependencies(onnxruntime_providers onnxruntime_neural_speed)
-  target_link_libraries(onnxruntime_providers PRIVATE onnxruntime_neural_speed)
+if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  if(USE_NEURAL_SPEED)
+    target_link_libraries(onnxruntime_providers PRIVATE onnxruntime_neural_speed)
+  endif()
 endif()
 
 if (MSVC)
