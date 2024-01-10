@@ -440,11 +440,14 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Floor", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Gather", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Greater", V_2023_0, {"NPU"}});
+  no_dimension_supported_.push_back({"Identity", V_2023_0, {"All"}});
   no_dimension_supported_.push_back({"Less", V_2022_1, {"CPU"}});
   no_dimension_supported_.push_back({"Loop", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"Max", V_2023_0, {"NPU"}});
   no_dimension_supported_.push_back({"Min", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Mul", V_2020_4, {"All"}});
+  no_dimension_supported_.push_back({"Neg", V_2023_0, {"CPU", "GPU"}});
+  no_dimension_supported_.push_back({"Pow", V_2023_0, {"CPU", "GPU"}});
   no_dimension_supported_.push_back({"QuantizeLinear", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"Range", V_2021_2, {"All"}});
   no_dimension_supported_.push_back({"ReduceMax", V_2021_4, {"All"}});
@@ -453,6 +456,7 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Reshape", V_2022_1, {"All"}});
   no_dimension_supported_.push_back({"Shape", V_2022_1, {"GPU"}});
   no_dimension_supported_.push_back({"Shape", V_2023_0, {"CPU"}});
+  no_dimension_supported_.push_back({"Sqrt", V_2023_0, {"All"}});
   no_dimension_supported_.push_back({"Squeeze", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Sub", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Unsqueeze", V_2020_4, {"All"}});
@@ -1126,9 +1130,6 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
       // Can't have no dimensions
       if (shape->dim_size() == 0) {
         if (op_is_supported(optype, no_dimension_supported_)) {
-          return;
-        }
-        if ((optype == "Identity") || (optype == "Sqrt")) {
           return;
         }
         has_unsupported_dimension = true;
