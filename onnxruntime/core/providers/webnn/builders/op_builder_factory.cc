@@ -111,7 +111,6 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Normalization
     CreateNormalizationOpBuilder("BatchNormalization", op_registrations);
-    CreateNormalizationOpBuilder("GroupNormalization", op_registrations);
     CreateNormalizationOpBuilder("InstanceNormalization", op_registrations);
     CreateNormalizationOpBuilder("LayerNormalization", op_registrations);
   }

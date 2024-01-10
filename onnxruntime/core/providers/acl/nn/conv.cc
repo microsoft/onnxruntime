@@ -105,7 +105,11 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   TensorShapeVector Y_dims;
   Y_dims.insert(Y_dims.begin(), {N, M});
   TensorShape input_shape = X->Shape().Slice(2);
+#ifdef ACL_2308
+  ORT_RETURN_IF_ERROR(conv_attrs_.InferPadsAndOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
+#else
   ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
+#endif
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
   LOGS_DEFAULT(VERBOSE) << "Y " << Y->Shape().ToString().c_str();
 
@@ -222,6 +226,15 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
                                                                                           1 /* depth multiplier */,
                                                                                           acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo(),
                                                                                           arm_compute::Size2D(aclDilation0, dilations[0])));
+#elif defined(ACL_2308)
+      bool optimizable = bool(arm_compute::NEDepthwiseConvolutionLayer::validate(tconv.in->info(),
+                                                                                 tconv.k->info(),
+                                                                                 (B != nullptr) ? tconv.b->info() : nullptr,
+                                                                                 tconv.out->info(),
+                                                                                 aclPadStride,
+                                                                                 1 /* depth multiplier */,
+                                                                                 acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo(),
+                                                                                 arm_compute::Size2D(aclDilation0, dilations[0])));
 #endif
 
       if (optimizable) {
@@ -230,7 +243,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
         auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayer3x3>();
 #elif defined(ACL_1908)
         auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayerOptimized>();
-#elif defined(ACL_2002)
+#elif defined(ACL_2002) || defined(ACL_2308)
         auto layer = std::make_shared<arm_compute::NEDepthwiseConvolutionLayer>();
 #endif
 
@@ -238,7 +251,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
         layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(),
                          aclPadStride, 1 /* depth multiplier */,
                          acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo());
-#elif defined(ACL_1905) || defined(ACL_1908) || defined(ACL_2002)
+#elif defined(ACL_1905) || defined(ACL_1908) || defined(ACL_2002) || defined(ACL_2308)
         layer->configure(tconv.in.get(), tconv.k.get(), (B != nullptr) ? tconv.b.get() : nullptr, tconv.out.get(),
                          aclPadStride, 1 /* depth multiplier */,
                          acl_activ_enabled ? arm_compute::ActivationLayerInfo(acl_activ_func, conv_attrs_.alpha) : arm_compute::ActivationLayerInfo(),

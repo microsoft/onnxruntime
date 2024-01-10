@@ -34,7 +34,7 @@ class Resize : public JsKernel, public UpsampleBase {
                                }),
                                static_cast<int32_t>(antialias_),
                                gsl::narrow_cast<int32_t>(axes.size()),
-                               reinterpret_cast<int32_t>((axes.size() > 0) ? axes.data() : nullptr) >> 2,
+                               JSEP_HEAP_PTR((axes.size() > 0) ? axes.data() : nullptr) >> 2,
                                resize_coordinate_transformation_mode.c_str(),
                                static_cast<double>(cubic_coeff_a_),
                                static_cast<int32_t>(exclude_outside_),
