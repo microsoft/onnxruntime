@@ -26,7 +26,7 @@ fs.copySync(TEST_E2E_SRC_FOLDER, TEST_E2E_RUN_FOLDER);
 // training data to copy
 const ORT_ROOT_FOLDER = path.resolve(JS_ROOT_FOLDER, '..');
 const TRAINING_DATA_FOLDER = path.resolve(ORT_ROOT_FOLDER, 'onnxruntime/test/testdata/training_api');
-const TRAININGDATA_DEST = path.resolve(TEST_E2E_SRC_FOLDER, 'data');
+const TRAININGDATA_DEST = path.resolve(TEST_E2E_RUN_FOLDER, 'data');
 
 // always use a new folder as user-data-dir
 let nextUserDataDirId = 0;
@@ -71,7 +71,7 @@ async function main() {
   await runInShell(`npm install --cache "${NPM_CACHE_FOLDER}" ${PACKAGES_TO_INSTALL.map(i => `"${i}"`).join(' ')}`);
 
   // prepare training data
-  await prepareTrainingDataByCopying();
+  prepareTrainingDataByCopying();
 
   console.log('===============================================================');
   console.log("Running self-hosted tests");
