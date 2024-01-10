@@ -11,11 +11,11 @@ const minimist = require('minimist');
 
 // copy whole folder to out-side of <ORT_ROOT>/js/ because we need to test in a folder that no `package.json` file
 // exists in its parent folder.
-// here we use <ORT_ROOT>/build/js/e2e/ for the test
+// here we use <ORT_ROOT>/build/js/e2e-training/ for the test
 
 const TEST_E2E_SRC_FOLDER = __dirname;
 const JS_ROOT_FOLDER = path.resolve(__dirname, '../../../..');
-const TEST_E2E_RUN_FOLDER = path.resolve(JS_ROOT_FOLDER, '../build/js/e2e');
+const TEST_E2E_RUN_FOLDER = path.resolve(JS_ROOT_FOLDER, '../build/js/e2e-training');
 const NPM_CACHE_FOLDER = path.resolve(TEST_E2E_RUN_FOLDER, '../npm_cache');
 const CHROME_USER_DATA_FOLDER = path.resolve(TEST_E2E_RUN_FOLDER, '../user_data');
 fs.emptyDirSync(TEST_E2E_RUN_FOLDER);
@@ -70,15 +70,18 @@ async function main() {
   // npm install with "--cache" to install packed packages with an empty cache folder
   await runInShell(`npm install --cache "${NPM_CACHE_FOLDER}" ${PACKAGES_TO_INSTALL.map(i => `"${i}"`).join(' ')}`);
 
-  // prepare .wasm files for path override testing
-  prepareWasmPathOverrideFiles();
-
   // prepare training data
   await prepareTrainingDataByCopying();
 
+  console.log('===============================================================');
+  console.log("Running self-hosted tests");
+  console.log('===============================================================');
   // test cases with self-host (ort hosted in same origin)
   await testAllBrowserCases({hostInKarma: true});
 
+  console.log('===============================================================');
+  console.log("Running not self-hosted tests");
+  console.log('===============================================================');
   // test cases without self-host (ort hosted in same origin)
   startServer(path.resolve(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web'));
   await testAllBrowserCases({hostInKarma: false});
@@ -87,22 +90,14 @@ async function main() {
   process.exit(0);
 }
 
-function prepareWasmPathOverrideFiles() {
-  const folder = path.join(TEST_E2E_RUN_FOLDER, 'test-wasm-path-override');
-  const sourceFile = path.join(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web', 'dist', 'ort-training-wasm-simd.wasm');
-  fs.emptyDirSync(folder);
-  fs.copyFileSync(sourceFile, path.join(folder, 'ort-training-wasm.wasm'));
-  fs.copyFileSync(sourceFile, path.join(folder, 'renamed.wasm'));
-}
-
 async function testAllBrowserCases({hostInKarma}) {
   await runKarma({hostInKarma, main: './browser-test-wasm.js'});
 }
 
 async function runKarma({hostInKarma, main, browser = BROWSER, ortMain = 'ort.training.wasm.min.js'}) {
-  console.log('Running karma =======================');
-  console.log(ortMain);
-  console.log('=======================');
+  console.log('===============================================================');
+  console.log(`Running karma with the following binary: ${ortMain}`);
+  console.log('===============================================================');
   const selfHostFlag = hostInKarma ? '--self-host' : '';
   await runInShell(`npx karma start --single-run --browsers ${browser} ${selfHostFlag} --ort-main=${
       ortMain} --test-main=${main} --user-data=${getNextUserDataDir()}`);
@@ -136,17 +131,8 @@ async function delay(ms) {
 }
 
 function prepareTrainingDataByCopying() {
-  const dirs = fs.readdirSync(TRAINING_DATA_FOLDER);
-
-  for (let i = 0; i < dirs.length; i++) {
-    const d = dirs[i];
-    if (fs.statSync(path.join(TRAINING_DATA_FOLDER, d)).isFile()) {
-      const src = path.join(TRAINING_DATA_FOLDER, d);
-      const dest = path.join(TRAININGDATA_DEST, d);
-      fs.copyFile(src, dest);
-      console.log(`Copied ${src} to ${dest}`);
-    }
-  }
+  fs.copySync(TRAINING_DATA_FOLDER, TRAININGDATA_DEST);
+  console.log(`Copied ${TRAINING_DATA_FOLDER} to ${TRAININGDATA_DEST}`);
 }
 
 main();
