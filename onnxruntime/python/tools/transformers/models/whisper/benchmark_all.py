@@ -8,7 +8,6 @@ import subprocess
 import librosa
 import torch
 from benchmark_helper import setup_logger
-
 from metrics import BenchmarkRecord
 from transformers import WhisperConfig, WhisperProcessor
 
@@ -183,9 +182,10 @@ def process_log_file(device_id, log_file, base_results):
 
             # Check metrics
             if latency_pattern in line:
-                latency_s = float(line[len(latency_pattern) : line.rfind(" ")])
+                latency_s = float(line[len(latency_pattern): line.rfind(" ")])
             elif throughput_pattern in line:
-                throughput = float(line[len(throughput_pattern) : line.rfind(" ")])
+                throughput = float(
+                    line[len(throughput_pattern): line.rfind(" ")])
                 if step == "load-audio":
                     load_audio_latency_s, load_audio_throughput_s = latency_s, throughput
                     step = None
@@ -193,18 +193,21 @@ def process_log_file(device_id, log_file, base_results):
                     feat_ext_latency_s, feat_ext_throughput_s = latency_s, throughput
                     step = None
             elif token_length_pattern in line:
-                token_length = int(line[len(token_length_pattern) : line.rfind(" ")])
+                token_length = int(
+                    line[len(token_length_pattern): line.rfind(" ")])
                 per_token_latency_s = latency_s / token_length
                 per_token_latency_ms = per_token_latency_s * 1000
             elif memory_pattern in line:
                 if "CPU" in line:
                     # Example format for log entry:
                     # CPU memory usage: before=1000.0 MB, peak=2000.0 MB
-                    memory = float(line[line.rfind("=") + 1 : line.rfind(" MB")]) / 1000
+                    memory = float(
+                        line[line.rfind("=") + 1: line.rfind(" MB")]) / 1000
                 else:
                     # Example format for log entry:
                     # GPU memory usage: before=[{'device_id': 0, 'name': 'Tesla V100-PCIE-16GB', 'max_used_MB': 1638.875}, {'device_id': 1, 'name': 'Tesla V100-PCIE-16GB', 'max_used_MB': 236.875},  peak=[{'device_id': 0, 'name': 'Tesla V100-PCIE-16GB', 'max_used_MB': 1780.875}, {'device_id': 1, 'name': 'Tesla V100-PCIE-16GB', 'max_used_MB': 236.875}]
-                    peak = line[line.find(memory_pattern) + len(memory_pattern) :].replace("'", '"')
+                    peak = line[line.find(memory_pattern) +
+                                len(memory_pattern):].replace("'", '"')
                     usage = json.loads(peak)[device_id]["max_used_MB"]
                     memory = float(usage) / 1000
 
@@ -272,9 +275,12 @@ def save_results(results, filename):
     df["Duration (s)"] = df["Duration (s)"].astype("float")
     df["Token Length"] = df["Token Length"].astype("int")
     df["Load Audio Latency (s)"] = df["Load Audio Latency (s)"].astype("float")
-    df["Load Audio Throughput (qps)"] = df["Load Audio Throughput (qps)"].astype("float")
-    df["Feature Extractor Latency (s)"] = df["Feature Extractor Latency (s)"].astype("float")
-    df["Feature Extractor Throughput (qps)"] = df["Feature Extractor Throughput (qps)"].astype("float")
+    df["Load Audio Throughput (qps)"] = df["Load Audio Throughput (qps)"].astype(
+        "float")
+    df["Feature Extractor Latency (s)"] = df["Feature Extractor Latency (s)"].astype(
+        "float")
+    df["Feature Extractor Throughput (qps)"] = df["Feature Extractor Throughput (qps)"].astype(
+        "float")
     df["Latency (s)"] = df["Latency (s)"].astype("float")
     df["Per Token Latency (ms/token)"] = df["Per Token Latency (ms/token)"].astype("float")
     df["Throughput (qps)"] = df["Throughput (qps)"].astype("float")
@@ -283,6 +289,7 @@ def save_results(results, filename):
 
     # get package name and version
     import pkg_resources
+
     installed_packages = pkg_resources.working_set
     installed_packages_list = sorted(
         [
@@ -314,11 +321,16 @@ def save_results(results, filename):
 
         record.metrics.customized["duration"] = row["Duration (s)"]
         record.metrics.customized["token_length"] = row["Token Length"]
-        record.metrics.customized["load_audio_latency"] = row["Load Audio Latency (s)"]
-        record.metrics.customized["load_audio_throughput"] = row["Load Audio Throughput (qps)"]
-        record.metrics.customized["feature_extractor_latency_s"] = row["Feature Extractor Latency (s)"]
-        record.metrics.customized["feature_extractor_throughput_qps"] = row["Feature Extractor Throughput (qps)"]
-        record.metrics.customized["per_token_latency_ms"] = row["Per Token Latency (ms/token)"]
+        record.metrics.customized["load_audio_latency"] = row[
+            "Load Audio Latency (s)"]
+        record.metrics.customized["load_audio_throughput"] = row[
+            "Load Audio Throughput (qps)"]
+        record.metrics.customized["feature_extractor_latency_s"] = row[
+            "Feature Extractor Latency (s)"]
+        record.metrics.customized["feature_extractor_throughput_qps"] = row[
+            "Feature Extractor Throughput (qps)"]
+        record.metrics.customized["per_token_latency_ms"] = row[
+            "Per Token Latency (ms/token)"]
         record.metrics.customized["rtf"] = row["Real Time Factor (RTF)"]
 
         record.metrics.latency_ms_mean = row["Latency (s)"] * 1000
@@ -336,7 +348,8 @@ def benchmark(args, benchmark_cmd, engine, audio_file, duration):
     log_filename = f"{engine}_{datetime.datetime.now():%Y-%m-%d_%H:%M:%S}.log"
     log_path = os.path.join(args.log_folder, log_filename)
     with open(log_path, "w") as log_file:
-        process = subprocess.Popen(benchmark_cmd, stdout=log_file, stderr=log_file)
+        process = subprocess.Popen(
+            benchmark_cmd, stdout=log_file, stderr=log_file)
         try:
             process.wait(args.timeout)
         except subprocess.TimeoutExpired:
@@ -369,15 +382,18 @@ def main():
     processor = WhisperProcessor.from_pretrained(args.model_name)
 
     # Calculate forced decoder input ids
-    hf_forced_decoder_ids = processor.get_decoder_prompt_ids(language=args.language, task=args.task)
+    hf_forced_decoder_ids = processor.get_decoder_prompt_ids(
+        language=args.language, task=args.task)
     ort_forced_decoder_ids = [config.decoder_start_token_id] + list(  # noqa: RUF005
         map(lambda token_id: token_id[1], hf_forced_decoder_ids)
     )
     hf_decoder_input_ids_cmd = (
-        ["--decoder-input-ids", str(hf_forced_decoder_ids)] if args.language and args.task else []
+        ["--decoder-input-ids", str(hf_forced_decoder_ids)
+         ] if args.language and args.task else []
     )
     ort_decoder_input_ids_cmd = (
-        ["--decoder-input-ids", str(ort_forced_decoder_ids)] if args.language and args.task else []
+        ["--decoder-input-ids",
+            str(ort_forced_decoder_ids)] if args.language and args.task else []
     )
     ort_tune_cmd = ["--tune"] if args.tune else []
 
@@ -388,7 +404,8 @@ def main():
             duration = librosa.get_duration(path=audio_path)
         except Exception as e:
             duration = -1
-            logger.warning(f"An error occurred while trying to calculate the audio duration: {e}", exc_info=True)
+            logger.warning(
+                f"An error occurred while trying to calculate the audio duration: {e}", exc_info=True)
             logger.warning(
                 f"If you get an error that says:\n\tsoundfile.LibsndfileError: Error opening '{audio_file}': File contains data in an unknown format.\nyou may not have installed `ffmpeg` in addition to installing `librosa`."
             )
@@ -420,7 +437,8 @@ def main():
                 args.log_folder,
             ] + hf_decoder_input_ids_cmd
             logger.info("Benchmark PyTorch without torch.compile")
-            results = benchmark(args, benchmark_cmd, "pytorch-eager", audio_file, duration)
+            results = benchmark(args, benchmark_cmd,
+                                "pytorch-eager", audio_file, duration)
             all_results.extend(results)
 
         # Benchmark PyTorch with torch.compile
@@ -449,7 +467,8 @@ def main():
                 args.log_folder,
             ] + hf_decoder_input_ids_cmd
             logger.info("Benchmark PyTorch with torch.compile")
-            results = benchmark(args, benchmark_cmd, "pytorch-compile", audio_file, duration)
+            results = benchmark(args, benchmark_cmd,
+                                "pytorch-compile", audio_file, duration)
             all_results.extend(results)
 
         # Benchmark Optimum + ONNX Runtime
@@ -480,7 +499,8 @@ def main():
                 args.log_folder,
             ] + hf_decoder_input_ids_cmd
             logger.info("Benchmark Optimum + ONNX Runtime")
-            results = benchmark(args, benchmark_cmd, "optimum-ort", audio_file, duration)
+            results = benchmark(args, benchmark_cmd,
+                                "optimum-ort", audio_file, duration)
             all_results.extend(results)
 
         # Benchmark ONNX Runtime
@@ -515,7 +535,8 @@ def main():
                 + ort_tune_cmd
             )
             logger.info("Benchmark ONNX Runtime")
-            results = benchmark(args, benchmark_cmd, "onnxruntime", audio_file, duration)
+            results = benchmark(args, benchmark_cmd,
+                                "onnxruntime", audio_file, duration)
             all_results.extend(results)
 
     csv_file = f"{args.model_size}-{args.precision}_{datetime.datetime.now():%Y-%m-%d_%H:%M:%S}.csv"
