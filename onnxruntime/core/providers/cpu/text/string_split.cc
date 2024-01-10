@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/nn/string_split.h"
+#include "string_split.h"
 #include <algorithm>
 #include <limits>
 #include <string>
