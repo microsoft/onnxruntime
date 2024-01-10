@@ -30,8 +30,6 @@ module.exports = function(config) {
     proxies: {
       '/model.onnx': '/base/model.onnx',
       '/data/': '/base/data/',
-      '/test-wasm-path-override/ort-wasm.wasm': '/base/node_modules/onnxruntime-web/dist/ort-wasm.wasm',
-      '/test-wasm-path-override/renamed.wasm': '/base/node_modules/onnxruntime-web/dist/ort-wasm.wasm',
     },
     client: {captureConsole: true, mocha: {expose: ['body'], timeout: 60000}},
     reporters: ['mocha'],

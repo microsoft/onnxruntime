@@ -37,6 +37,18 @@ function assertStrictEquals(actual, expected) {
   }
 }
 
+function assertTwoListsUnequal(list1, list2) {
+  if (list1.length !== list2.length) {
+    return;
+  }
+  for (let i = 0; i < list1.length; i++) {
+    if (list1[i] !== list2[i]) {
+      return;
+    }
+  }
+  throw new Error(`expected ${list1} and ${list2} to be unequal; got two equal lists`);
+}
+
 // HELPER METHODS FOR TESTS
 
 function generateGaussianRandom(mean=0, scale=1) {
@@ -133,7 +145,7 @@ var loadParametersBufferAndCheck = async function(trainingSession, paramsLength,
   const paramsAfterLoad = await trainingSession.getContiguousParameters();
 
   // check that the parameters have changed
-  assert(paramsAfterLoad.data != paramsBefore.data);
+  assertTwoListsUnequal(paramsAfterLoad.data, paramsBefore.data);
   assertStrictEquals(paramsAfterLoad.dims[0], paramsLength);
 
   // check that the parameters have changed to what they should be
@@ -219,7 +231,7 @@ var testTrainingFunctionAll = async function(ort, options) {
   feeds = {"input-0": input0, "labels": labels};
   // check getContiguousParameters after optimizerStep -- that the parameters have been updated
   const optimizedParams = await trainingSession.getContiguousParameters();
-  assert(originalParams.data != optimizedParams.data);
+  assertTwoListsUnequal(originalParams.data, optimizedParams.data);
 
   const results2 = await runTrainStepAndCheck(trainingSession, feeds);
 
