@@ -296,7 +296,10 @@ class MinMaxCalibrater(CalibraterBase):
             if tensor_name in value_infos:
                 onnx_type = value_infos[tensor_name].type.tensor_type.elem_type
             else:
-                raise ValueError(f"Unable to guess tensor type for tensor {tensor_name!r}")
+                raise ValueError(
+                    f"Unable to guess tensor type for tensor {tensor_name!r}, "
+                    f"running shape inference before quantization may resolve this issue."
+                )
             self.model.graph.output.append(helper.make_tensor_value_info(reduce_output, onnx_type, [1]))
 
         for tensor in tensors:
@@ -714,7 +717,9 @@ class HistogramCollector(CalibrationDataCollector):
                 # first time it uses num_bins to compute histogram.
                 hist, hist_edges = np.histogram(data_arr_np, bins=self.num_bins)
                 hist_edges = hist_edges.astype(data_arr_np.dtype)
-                assert data_arr_np.dtype != np.float64
+                assert (
+                    data_arr_np.dtype != np.float64
+                ), "only float32 or float16 is supported, every constant must be explicetly typed"
                 self.histogram_dict[tensor] = (hist, hist_edges, min_value, max_value)
             else:
                 old_histogram = self.histogram_dict[tensor]
@@ -732,7 +737,9 @@ class HistogramCollector(CalibrationDataCollector):
                 hist, hist_edges = np.histogram(data_arr_np, bins=old_hist_edges)
                 hist_edges = hist_edges.astype(data_arr_np.dtype)
                 hist[: len(old_hist)] += old_hist
-                assert data_arr_np.dtype != np.float64
+                assert (
+                    data_arr_np.dtype != np.float64
+                ), "only float32 or float16 is supported, every constant must be explicetly typed"
                 self.histogram_dict[tensor] = (hist, hist_edges, min(old_min, min_value), max(old_max, max_value))
 
     def collect_value(self, name_to_arr):
