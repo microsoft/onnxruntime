@@ -1,8 +1,9 @@
+from __future__ import annotations
+
 import argparse
 import logging
 import os
 import time
-from typing import List
 
 import numpy as np
 import torch
@@ -139,7 +140,7 @@ def verify_parity(
     return kv_cache_ortvalues
 
 
-def get_args(argv: List[str]):
+def get_args(argv: list[str]):
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -232,7 +233,7 @@ def get_args(argv: List[str]):
     return args
 
 
-def main(argv: List[str] = []):  # noqa: B006
+def main(argv: list[str] = []):  # noqa: B006
     args = get_args(argv)
     setup_logger(args.verbose)
     logger.info(f"Arguments: {args}")
