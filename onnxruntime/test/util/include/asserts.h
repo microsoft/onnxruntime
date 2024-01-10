@@ -34,14 +34,14 @@
     EXPECT_FALSE(_tmp_status.IsOK());  \
   } while (false)
 
-#define ASSERT_STATUS_NOT_OK_CHECK_MSG(function, msg)                   \
+#define ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(function, msg)              \
   do {                                                                  \
     Status _tmp_status = (function);                                    \
     ASSERT_FALSE(_tmp_status.IsOK());                                   \
     ASSERT_THAT(_tmp_status.ErrorMessage(), ::testing::HasSubstr(msg)); \
   } while (false)
 
-#define EXPECT_STATUS_NOT_OK_CHECK_MSG(function, msg)                   \
+#define EXPECT_STATUS_NOT_OK_AND_HAS_SUBSTR(function, msg)              \
   do {                                                                  \
     Status _tmp_status = (function);                                    \
     EXPECT_FALSE(_tmp_status.IsOK());                                   \

@@ -1263,18 +1263,12 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
       ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
     }
     // required, optional and invalid input
-    status = RunOptionalInputTest(true, true, true, version, sess_env);
-    ASSERT_FALSE(status.IsOK());
-    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid input name"));
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(RunOptionalInputTest(true, true, true, version, sess_env),
+                                        "Invalid input name");
 
     // missing required
-    status = RunOptionalInputTest(false, true, false, version, sess_env);
-    ASSERT_FALSE(status.IsOK());
-    if (version == 3) {
-      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid input name"));
-    } else {
-      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Missing Input:"));
-    }
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(RunOptionalInputTest(false, true, false, version, sess_env),
+                                        (version == 3 ? "Invalid input name" : "Missing Input:"));
   }
 }
 
@@ -1407,7 +1401,7 @@ TEST(ExecutionProviderTest, OpKernelInfoCanReadConfigOptions) {
   InferenceSession session{so, GetEnvironment()};
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::make_unique<::onnxruntime::FuseExecutionProvider>()));
   ASSERT_STATUS_OK(session.Load(model_file_name));
-  ASSERT_STATUS_NOT_OK_CHECK_MSG(session.Initialize(), "Test exception in ctor");
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Initialize(), "Test exception in ctor");
 }
 
 TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {

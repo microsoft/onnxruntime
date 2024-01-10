@@ -87,7 +87,7 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
                       s.GetOrtValueNameIdxMap(), s.GetDataTransferMgr(), s.GetAllocators(),
                       s.GetSessionOptions().config_options);
 
-  unique_ptr<TestOpKernel> p_kernel = std::make_unique<TestOpKernel>(p_info);
+  std::unique_ptr<TestOpKernel> p_kernel = std::make_unique<TestOpKernel>(p_info);
   size_t orig_num_outputs = p_kernel->Node().OutputDefs().size();
   std::cout << "node_idx: " << node.Index() << std::endl;
 
