@@ -43,6 +43,7 @@ void SetTensorProtoExternalData(const std::string& key, const std::string& value
 }
 }  // namespace
 
+#if !defined(__wasm__)
 TEST(OptimizerInitializerTest, LoadExternalData) {
   const std::vector<int32_t> tensor_data = []() {
     std::vector<int32_t> tensor_data(100);
@@ -106,6 +107,7 @@ TEST(OptimizerInitializerTest, LoadExternalData) {
     EXPECT_THROW(Initializer i(tensor_proto, tensor_data_dir_path), OnnxRuntimeException);
   }
 }
+#endif
 
 template <typename T>
 constexpr ONNX_NAMESPACE::TensorProto_DataType GetTensorProtoDataType();
