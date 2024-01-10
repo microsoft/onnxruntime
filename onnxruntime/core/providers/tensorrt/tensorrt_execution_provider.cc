@@ -2685,7 +2685,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     }
 
     // Set precision flags
-    std::string trt_node_name_with_precision = fused_node.Name();
+    std::string fused_node_name = fused_node.Name();
+    std::string trt_node_name_with_precision = fused_node_name;
     LOGS_DEFAULT(INFO) << "Init trt_node_name_with_precision as " + trt_node_name_with_precision;
     if (fp16_enable_ && int8_enable_) {
       trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
@@ -2791,7 +2792,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       // Customize cache prefix if assigned
       if (!cache_prefix_.empty()) {
         cache_path = GetCachePath(cache_path_, cache_prefix_) +
-                     GetCacheSuffix(fused_node.Name(), trt_node_name_with_precision);
+                     GetCacheSuffix(fused_node_name, trt_node_name_with_precision);
         LOGS_DEFAULT(WARNING) << "Engine cache path: " + cache_path;
       }
       else {
@@ -3001,7 +3002,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
             input_shape_ranges_[context->node_name], sync_stream_after_enqueue_, &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
-            dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
+            dla_enable_, dla_core_, &max_workspace_size_, fused_node_name, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
             runtime_.get(), profiles_[context->node_name], context_memory_sharing_enable_, &max_ctx_mem_size_,
             dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
             global_cache_path_, force_timing_cache_match_, detailed_build_log_, build_heuristics_enable_, sparsity_enable_,
@@ -3065,7 +3066,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       // Customize cache prefix if assigned
       if (!cache_prefix_.empty()) {
         cache_path = GetCachePath(cache_path_, cache_prefix_) +
-                     GetCacheSuffix(fused_node.Name(), trt_node_name_with_precision);
+                     GetCacheSuffix(fused_node_name, trt_node_name_with_precision);
         LOGS_DEFAULT(WARNING) << "Engine cache path: " + cache_path;
       } else {
         cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
