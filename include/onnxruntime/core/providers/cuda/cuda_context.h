@@ -55,7 +55,7 @@ struct CudaContext : public CustomOpContext {
     prefer_nhwc = FetchResource<bool>(kernel_ctx, CudaResource::prefer_nhwc_t);
   }
 
-  template<typename T>
+  template <typename T>
   T FetchResource(const OrtKernelContext& kernel_ctx, CudaResource resource_type) {
     if (sizeof(T) > sizeof(void*)) {
       ORT_CXX_API_THROW("void* is not large enough to hold resource type: " + std::to_string(resource_type), OrtErrorCode::ORT_INVALID_ARGUMENT);
