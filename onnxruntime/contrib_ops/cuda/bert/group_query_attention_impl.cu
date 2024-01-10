@@ -494,6 +494,9 @@ Status FlashAttention(
 
   bool is_causal = true;
 
+  // bugbug
+  bool is_bf16 = false;
+
   // Note: seqlens_k is past sequence length for flash
   if (parameters.is_prompt) {
     // Launch kernel to copy seqlen
@@ -529,7 +532,7 @@ Status FlashAttention(
         device_prop, stream, query, present_key, present_value, key, value, data.output, reinterpret_cast<void*>(data.softmax_lse),
         seqlens_k, batch_size, num_heads, kv_num_heads,
         head_size, sequence_length, present_sequence_length, kv_sequence_length,
-        scale, is_causal, past_bsnh, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
+        scale, is_causal, is_bf16, past_bsnh, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
         reinterpret_cast<void*>(data.out_accum), parameters.local_window_size));
   } else {
     // Not share buffer case
@@ -561,7 +564,7 @@ Status FlashAttention(
         device_prop, stream, query, present_key, present_value, nullptr, nullptr, data.output, reinterpret_cast<void*>(data.softmax_lse),
         seqlens_k, batch_size, num_heads, kv_num_heads,
         head_size, sequence_length, present_sequence_length, 0,
-        scale, is_causal, past_bsnh, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
+        scale, is_causal, is_bf16, past_bsnh, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
         reinterpret_cast<void*>(data.out_accum), parameters.local_window_size));
   }
 
