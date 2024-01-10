@@ -2723,7 +2723,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     }
 
     // Generate cache suffix in case user would like to customize cache prefix
-    std::string cache_suffix = GetCacheSuffix(fused_node_name, trt_node_name_with_precision);
+    std::string cache_suffix = GetCacheSuffix(fused_node.Name(), trt_node_name_with_precision);
 
     // enable sparse weights
     if (sparsity_enable_) {
@@ -3032,6 +3032,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
       bool sync_stream_after_enqueue = trt_state->sync_stream_after_enqueue;
       auto fused_node_name = trt_state->fused_node_name;
+      std::string cache_suffix = trt_state->cache_suffix;
       auto& shape_ranges = trt_state->input_shape_ranges;
       auto& dds_output_allocator_map = this->dds_output_allocator_maps_[fused_node_name];
       auto trt_builder = trt_state->builder;
