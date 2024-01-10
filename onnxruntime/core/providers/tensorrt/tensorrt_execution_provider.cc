@@ -2793,7 +2793,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       // Customize cache prefix if assigned
       if (!cache_prefix_.empty()) {
         cache_path = GetCachePath(cache_path_, cache_prefix_) + cache_suffix;
-        LOGS_DEFAULT(INFO) << "[TensorRT EP] Engine cache path: " + cache_path;
       } else {
         cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
       }
@@ -3067,7 +3066,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       // Customize cache prefix if assigned
       if (!cache_prefix_.empty()) {
         cache_path = GetCachePath(cache_path_, cache_prefix_) + cache_suffix;
-        LOGS_DEFAULT(INFO) << "[TensorRT EP] Engine cache path: " + cache_path;
       } else {
         cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
       }
