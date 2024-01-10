@@ -190,29 +190,11 @@ void* CudaStream::GetResource(int version, int id) const {
     case CudaResource::device_id_t:
       return reinterpret_cast<void*>(ep_info_.device_id);
       break;
-    case CudaResource::has_user_compute_stream_t:
-      return reinterpret_cast<void*>(ep_info_.has_user_compute_stream);
-      break;
-    case CudaResource::gpu_mem_limit_t:
-      return reinterpret_cast<void*>(ep_info_.gpu_mem_limit);
-      break;
     case CudaResource::arena_extend_strategy_t:
       return reinterpret_cast<void*>(ep_info_.arena_extend_strategy);
       break;
     case CudaResource::cudnn_conv_algo_search_t:
       return reinterpret_cast<void*>(ep_info_.cudnn_conv_algo_search);
-      break;
-    case CudaResource::do_copy_in_default_stream_t:
-      return reinterpret_cast<void*>(ep_info_.do_copy_in_default_stream);
-      break;
-    case CudaResource::gpu_external_alloc_t:
-      return reinterpret_cast<void*>(ep_info_.external_allocator_info.alloc);
-      break;
-    case CudaResource::gpu_external_free_t:
-      return reinterpret_cast<void*>(ep_info_.external_allocator_info.free);
-      break;
-    case CudaResource::gpu_external_empty_cache_t:
-      return reinterpret_cast<void*>(ep_info_.external_allocator_info.empty_cache);
       break;
     case CudaResource::cudnn_conv_use_max_workspace_t:
       return reinterpret_cast<void*>(ep_info_.cudnn_conv_use_max_workspace);
@@ -223,23 +205,11 @@ void* CudaStream::GetResource(int version, int id) const {
     case CudaResource::cudnn_conv1d_pad_to_nc1d_t:
       return reinterpret_cast<void*>(ep_info_.cudnn_conv1d_pad_to_nc1d);
       break;
-    case CudaResource::tunable_op_enable_t:
-      return reinterpret_cast<void*>(ep_info_.tunable_op.enable);
-      break;
-    case CudaResource::tunable_op_tuning_enable_t:
-      return reinterpret_cast<void*>(ep_info_.tunable_op.tuning_enable);
-      break;
-    case CudaResource::tunable_op_max_tuning_duration_ms_t:
-      return reinterpret_cast<void*>(static_cast<size_t>(ep_info_.tunable_op.max_tuning_duration_ms));
-      break;
     case CudaResource::enable_skip_layer_norm_strict_mode_t:
       return reinterpret_cast<void*>(ep_info_.enable_skip_layer_norm_strict_mode);
       break;
     case CudaResource::prefer_nhwc_t:
       return reinterpret_cast<void*>(ep_info_.prefer_nhwc);
-      break;
-    case CudaResource::use_ep_level_unified_stream_t:
-      return reinterpret_cast<void*>(ep_info_.use_ep_level_unified_stream);
       break;
     default:
       break;
