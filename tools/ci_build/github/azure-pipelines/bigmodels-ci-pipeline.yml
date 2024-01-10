@@ -8,7 +8,7 @@ stages:
       CCACHE_DIR: $(Pipeline.Workspace)/ccache
     workspace:
       clean: all
-    pool: onnxruntime-Linux-GPU-A10-16G
+    pool: onnxruntime-Linux-GPU-A10-12G
     steps:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
