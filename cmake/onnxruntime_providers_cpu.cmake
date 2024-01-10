@@ -161,6 +161,7 @@ if (HAS_BITWISE_INSTEAD_OF_LOGICAL)
 endif()
 
 if(USE_NEURAL_SPEED)
+  add_dependencies(onnxruntime_providers onnxruntime_neural_speed)
   target_link_libraries(onnxruntime_providers PRIVATE onnxruntime_neural_speed)
 endif()
 
