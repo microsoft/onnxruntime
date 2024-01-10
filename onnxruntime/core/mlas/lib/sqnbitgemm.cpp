@@ -204,8 +204,6 @@ SQNBitGemm_BlkBitWidth4_CompFp32(
     const size_t RangeCountN
 )
 {
-    constexpr size_t BlkBitWidth = 4;
-
     MLAS_UNREFERENCED_PARAMETER(PerGemmWorkspace);
 
     const size_t lda = DataParams->lda;
@@ -290,8 +288,6 @@ SQNBitGemm_BlkBitWidth4_CompInt8(
     const size_t RangeCountN
 )
 {
-    constexpr size_t BlkBitWidth = 4;
-
     const size_t k_blks = MlasDivRoundup(K, BlkLen);
 
     const size_t lda = k_blks * Q8BlkSize(BlkLen);
@@ -670,7 +666,7 @@ MlasSQNBitGemmPackBZeroPoint(
 {
     if (BlkBitWidth == 4) {
         const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-        SQNBitGemmPackBData_BlkBitWidth4(
+        SQNBitGemmPackBZeroPoint_BlkBitWidth4(
             N,
             BlockCountK,
             BlkLen,

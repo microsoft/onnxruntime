@@ -54,6 +54,14 @@ void SQNBITGEMM(benchmark::State& state) {
                                             static_cast<int>(K), static_cast<int>(N), static_cast<int>(N),
                                             tp.get());
 
+  const auto PackedQuantBSize = MlasSQNBitGemmPackBSize2(N, K, BlkBitWidth, BlkLen, !Symmetric);
+  std::vector<std::byte> PackedQuantB(PackedQuantBSize);
+
+  MlasSQNBitGemmPackBData(N, K, BlkBitWidth, BlkLen, QuantBData.data(), PackedQuantB.data());
+  MlasSQNBitGemmPackBScale(N, K, BlkBitWidth, BlkLen, QuantBScale.data(), PackedQuantB.data());
+  MlasSQNBitGemmPackBZeroPoint(N, K, BlkBitWidth, BlkLen, Symmetric ? QuantBZeroPoint.data() : nullptr,
+                               PackedQuantB.data());
+
   std::unique_ptr<std::byte[]> Workspace;
   if (const auto WorkspaceSize = MlasSQNBitGemmBatchWorkspaceSize(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType);
       WorkspaceSize > 0) {
@@ -63,9 +71,7 @@ void SQNBITGEMM(benchmark::State& state) {
   MLAS_SQNBIT_GEMM_DATA_PARAMS params{};
   params.A = A.data();
   params.lda = K;
-  params.QuantBData = QuantBData.data();
-  params.QuantBScale = QuantBScale.data();
-  params.QuantBZeroPoint = Symmetric ? nullptr : QuantBZeroPoint.data();
+  params.QuantB = PackedQuantB.data();
   params.C = C.data();
   params.ldc = N;
 
