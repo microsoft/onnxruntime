@@ -64,16 +64,14 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
   if (!all_constant_) {
     return Status::OK();
   }
-  auto compt_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level_);
-  MLAS_THREADPOOL* pool = NULL;
+
   if (input_idx == 1) {
-    packed_b_size_ = MlasSQNBitGemmPackBSize(N_, K_, nbits_, block_size_, is_asym_, compt_type);
+    packed_b_size_ = MlasSQNBitGemmPackBSize2(N_, K_, nbits_, block_size_, is_asym_);
     if (packed_b_size_ == 0) return Status::OK();
     const auto* qptr = tensor.DataRaw();
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
     std::memset(packed_b_.get(), 0, packed_b_size_);
-    MlasSQNBitGemmPackB(packed_b_.get(), qptr, nullptr, nullptr, N_, K_, K_, nbits_, block_size_,
-                       is_asym_, false, compt_type, pool);
+    MlasSQNBitGemmPackBData(N_, K_, nbits_, block_size_, qptr, packed_b_.get());
     if (prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
@@ -82,8 +80,13 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
   }
   if (input_idx == 2 && packed_b_ != nullptr) {
     const auto* sptr = tensor.Data<float>();
-    MlasSQNBitGemmPackB(packed_b_.get(), nullptr, sptr, nullptr, N_, K_, K_, nbits_, block_size_,
-                       is_asym_, !is_asym_, compt_type, pool);
+    MlasSQNBitGemmPackBScale(N_, K_, nbits_, block_size_, sptr, packed_b_.get());
+    if (!is_asym_) {
+        // symmetric, also pack nullptr zp
+        // TODO check that there is not a call with input_idx == 3 if symmetric. if there is, this is unnecessary.
+      MlasSQNBitGemmPackBZeroPoint(N_, K_, nbits_, block_size_, nullptr, packed_b_.get());
+    }
+
     if (prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
@@ -92,8 +95,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
   }
   if (input_idx == 3 && packed_b_ != nullptr) {
     const auto* zptr = tensor.DataRaw();
-    MlasSQNBitGemmPackB(packed_b_.get(), nullptr, nullptr, zptr, N_, K_, K_, nbits_, block_size_,
-                       is_asym_, is_asym_, compt_type, pool);
+    MlasSQNBitGemmPackBZeroPoint(N_, K_, nbits_, block_size_, zptr, packed_b_.get());
     if (prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
@@ -129,6 +131,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   const Tensor* a = ctx->Input<Tensor>(0);
   const auto* a_data = a->Data<float>();
 
+  #if 0
   if (packed_b_.get()) {
     TensorShape b_shape({static_cast<int64_t>(N_), static_cast<int64_t>(K_)});
 
@@ -165,13 +168,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
                                 thread_pool);
     return Status::OK();
   }
-
-  const Tensor* b = ctx->Input<Tensor>(1);
-  const Tensor* scales = ctx->Input<Tensor>(2);
-  const Tensor* zero_points = ctx->Input<Tensor>(3);
-  const uint8_t* b_data = b->Data<uint8_t>();
-  const auto* scales_data = scales->Data<float>();
-  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->Data<uint8_t>();
+  #endif
 
   TensorShape b_shape({static_cast<int64_t>(N_), static_cast<int64_t>(K_)});
 
@@ -192,50 +189,44 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   const size_t K = static_cast<size_t>(helper.K());
   const size_t lda = helper.Lda(false);
 
-  for (int64_t accuracy_level = accuracy_level_;
-       accuracy_level >= static_cast<int64_t>(CompMostAccurate);
-       --accuracy_level) {
-    const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level);
-    if (MlasIsSQNBitGemmAvailable(M, N, K, nbits_, block_size_, compute_type)) {
-      // number of bytes or elements between adjacent matrices
-      size_t b_data_matrix_stride_in_bytes, b_scale_matrix_stride, b_zero_point_matrix_stride_in_bytes;
-      MlasBlockwiseQuantizedBufferSizes(static_cast<int>(nbits_), static_cast<int>(block_size_), /* columnwise */ true,
-                                        static_cast<int>(K), static_cast<int>(N),
-                                        b_data_matrix_stride_in_bytes, b_scale_matrix_stride,
-                                        &b_zero_point_matrix_stride_in_bytes);
+  if (packed_b_) {
+    for (int64_t accuracy_level = accuracy_level_;
+         accuracy_level >= static_cast<int64_t>(CompMostAccurate);
+         --accuracy_level) {
+      const auto compute_type = static_cast<MLAS_SQNBIT_GEMM_COMPUTE_TYPE>(accuracy_level);
+      if (MlasIsSQNBitGemmAvailable(M, N, K, nbits_, block_size_, compute_type)) {
+        IAllocatorUniquePtr<std::byte> workspace{};
+        if (const size_t workspace_size = MlasSQNBitGemmBatchWorkspaceSize(M, N, K, batch_count,
+                                                                           nbits_, block_size_, compute_type);
+            workspace_size > 0) {
+          AllocatorPtr allocator;
+          ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
+          workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size);
+        }
 
-      const size_t b_matrix_size = K * N;
+        InlinedVector<MLAS_SQNBIT_GEMM_DATA_PARAMS> data(batch_count);
+        for (size_t i = 0; i < batch_count; ++i) {
+          data[i].A = a_data + helper.LeftOffsets()[i];
+          data[i].lda = lda;
+          data[i].QuantB = packed_b_.get();
+          data[i].C = y_data + helper.OutputOffsets()[i];
+          data[i].ldc = N;
+        }
 
-      IAllocatorUniquePtr<std::byte> workspace{};
-      if (const size_t workspace_size = MlasSQNBitGemmBatchWorkspaceSize(M, N, K, batch_count,
-                                                                         nbits_, block_size_, compute_type);
-          workspace_size > 0) {
-        AllocatorPtr allocator;
-        ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
-        workspace = IAllocator::MakeUniquePtr<std::byte>(allocator, workspace_size);
+        MlasSQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type, data.data(), workspace.get(),
+                            thread_pool);
+
+        return Status::OK();
       }
-
-      InlinedVector<MLAS_SQNBIT_GEMM_DATA_PARAMS> data(batch_count);
-      for (size_t i = 0; i < batch_count; ++i) {
-        const size_t b_matrix_offset = helper.RightOffsets()[i] / b_matrix_size;
-
-        data[i].A = a_data + helper.LeftOffsets()[i];
-        data[i].lda = lda;
-        data[i].QuantBData = b_data + b_matrix_offset * b_data_matrix_stride_in_bytes;
-        data[i].QuantBScale = scales_data + b_matrix_offset * b_scale_matrix_stride;
-        data[i].QuantBZeroPoint = zero_points_data != nullptr
-                                      ? zero_points_data + b_matrix_offset * b_zero_point_matrix_stride_in_bytes
-                                      : nullptr;
-        data[i].C = y_data + helper.OutputOffsets()[i];
-        data[i].ldc = N;
-      }
-
-      MlasSQNBitGemmBatch(M, N, K, batch_count, nbits_, block_size_, compute_type, data.data(), workspace.get(),
-                          thread_pool);
-
-      return Status::OK();
     }
   }
+
+  const Tensor* b = ctx->Input<Tensor>(1);
+  const Tensor* scales = ctx->Input<Tensor>(2);
+  const Tensor* zero_points = ctx->Input<Tensor>(3);
+  const uint8_t* b_data = b->Data<uint8_t>();
+  const auto* scales_data = scales->Data<float>();
+  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->Data<uint8_t>();
 
   const size_t ldb = helper.Ldb(true);
 
