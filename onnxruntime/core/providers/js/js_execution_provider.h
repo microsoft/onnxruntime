@@ -31,11 +31,10 @@ struct JsExecutionProviderInfo {
       }
     }
     const std::string& graph_capture_enabled_str = po.at("graph_capture_enabled");
-    if (graph_capture_enabled_str == "true")
-    {
-        graph_capture_enabled = true;
+    if (graph_capture_enabled_str == "true") {
+      graph_capture_enabled = true;
     } else {
-        graph_capture_enabled = false;
+      graph_capture_enabled = false;
     }
   }
 

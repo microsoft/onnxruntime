@@ -682,7 +682,8 @@ using namespace js;
 
 JsExecutionProvider::JsExecutionProvider(const JsExecutionProviderInfo& info)
     : IExecutionProvider{kJsExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0), true},
-      preferred_data_layout_{info.data_layout}, graph_capture_enabled_(info.graph_capture_enabled) {
+      preferred_data_layout_{info.data_layout},
+      graph_capture_enabled_(info.graph_capture_enabled) {
 }
 
 std::vector<AllocatorPtr> JsExecutionProvider::CreatePreferredAllocators() {

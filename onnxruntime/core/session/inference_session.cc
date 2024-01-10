@@ -140,8 +140,8 @@ static bool HasMemcpyNodes(const Graph& graph) {
   return false;
 }
 
-static bool AreAllComputeNodesAssignedToCudaJSEp(const Graph& graph) {
-  bool nodes_on_cpu_and_cuda_eps_only = true;
+static bool AreAllComputeNodesAssignedToCudaOrJsEp(const Graph& graph) {
+  bool nodes_on_cpu_and_cuda_and_js_eps_only = true;
 
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
@@ -151,18 +151,18 @@ static bool AreAllComputeNodesAssignedToCudaJSEp(const Graph& graph) {
         node_provider != kCudaExecutionProvider &&
         node_provider != kJsExecutionProvider &&
         node_provider != kCpuExecutionProvider) {
-      nodes_on_cpu_and_cuda_eps_only = false;
+      nodes_on_cpu_and_cuda_and_js_eps_only = false;
       break;
     }
   }
 
-  // If we see nodes assigned to EPs other than CPU or CUDA
+  // If we see nodes assigned to EPs other than CPU, or CUDA/JS
   // (or) if there are Memcpy nodes, then all compute nodes have
-  // not been parititoned to the CUDA EP.
+  // not been parititoned to the CUDA/JS EP.
   // We allow CPU EPs to show up in the EP list as long as thre is no Memcpy
   // involved as shape subgraphs will be forced onto CPU and these will not have
   // Memcpy nodes involved.
-  return nodes_on_cpu_and_cuda_eps_only && !HasMemcpyNodes(graph);
+  return nodes_on_cpu_and_cuda_and_js_eps_only && !HasMemcpyNodes(graph);
 }
 
 static bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, ProviderType provider) {
@@ -1693,7 +1693,7 @@ common::Status InferenceSession::Initialize() {
       // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
       ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
 
-      // Currently CUDA graph is only considered by CUDA EP and TRT EP.
+      // Currently graph capture is only considered by CUDA EP, TRT EP and JS EP.
       //
       // Check for CUDA EP:
       // If the CUDA EP is part of the providers list for this session AND
@@ -1706,50 +1706,61 @@ common::Status InferenceSession::Initialize() {
       // The TRT EP is configured to do a graph capture AND
       // All the graph nodes have been assigned to the TRT EP,
       // Then the TRT EP is cached for triggering a ReplayGraph() in Run().
-      std::vector<const char*> cuda_graph_support_ep_list = {onnxruntime::kTensorrtExecutionProvider,
-                                                             onnxruntime::kCudaExecutionProvider,
-                                                             onnxruntime::kJsExecutionProvider};
+      //
+      // Check for JS EP:
+      // If the JS EP is part of the providers list for this session AND
+      // The JS EP is configured to do a graph capture AND
+      // All the "compute" graph nodes have been assigned to the JS EP,
+      // Then the JS EP is cached for triggering a ReplayGraph() in Run().
+      //
+      std::vector<const char*> graph_support_ep_list = {onnxruntime::kTensorrtExecutionProvider,
+                                                        onnxruntime::kCudaExecutionProvider,
+                                                        onnxruntime::kJsExecutionProvider};
 
-      for (auto& it : cuda_graph_support_ep_list) {
+      for (auto& it : graph_support_ep_list) {
         auto* target_ep = execution_providers_.Get(it);
 
         if (target_ep && target_ep->IsGraphCaptureEnabled()) {
-          // CUDA Graphs can't work with control flow nodes
+          // Graphs capture can't work with control flow nodes
           if (HasControlflowNodes(graph)) {
-            LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
-                                          << "as the model has control flow nodes which can't be supported by CUDA Graphs.";
+            LOGS(*session_logger_, ERROR) << "This session cannot use the graph capture feature as requested by the user "
+                                          << "as the model has control flow nodes which can't be supported by "
+                                          << target_ep->Type();
 
             ORT_RETURN_IF_ERROR_SESSIONID_(
                 ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                "This session cannot use the CUDA Graph feature as requested by the user "
-                                "as the model has control flow nodes which can't be supported by CUDA Graphs."));
+                                "This session cannot use the graph capture feature as requested by the user "
+                                "as the model has control flow nodes which can't be supported by" +
+                                    target_ep->Type()));
           }
 
           if (strcmp(target_ep->Type().c_str(), onnxruntime::kCudaExecutionProvider) == 0 ||
               strcmp(target_ep->Type().c_str(), onnxruntime::kJsExecutionProvider) == 0) {
-            // Ensure that all nodes have been partitioned to CUDA or CPU EP && there are no memcpy nodes
+            // Ensure that all nodes have been partitioned to CUDA/JS or CPU EP && there are no memcpy nodes
             // The reasoning behind this logic is that certain shape nodes will be forced onto CPU
             // and as long as there are no memcpy nodes this is confirmation that no compute nodes have been placed on the CPU EP
             // which is all we care about.
-            if (!AreAllComputeNodesAssignedToCudaJSEp(graph)) {
-              LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
-                                            << " as all compute graph nodes have not been partitioned to the CUDA EP.";
+            if (!AreAllComputeNodesAssignedToCudaOrJsEp(graph)) {
+              LOGS(*session_logger_, ERROR) << "This session cannot use the graph capture feature as requested by the user "
+                                            << " as all compute graph nodes have not been partitioned to the "
+                                            << target_ep->Type();
 
               ORT_RETURN_IF_ERROR_SESSIONID_(
                   ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                  "This session cannot use the CUDA Graph feature as requested by the user "
-                                  " as all compute graph nodes have not been partitioned to the CUDA EP."));
+                                  "This session cannot use the graph capture feature as requested by the user "
+                                  " as all compute graph nodes have not been partitioned to the " +
+                                      target_ep->Type()));
             }
 
             // Log a warning for the user to know that there are shape subgraphs that will execute on CPU
             if (HasShapeSubgraphNodes(graph)) {
               LOGS(*session_logger_, WARNING) << "This model has shape massaging nodes that will execute on CPU. "
-                                              << "Use the CUDA Graph feature with caution. "
+                                              << "Use the graph capture feature with caution. "
                                               << "As long as the intermediate shapes produced in the model "
-                                              << "using the representative input used to capture the CUDA graph, "
+                                              << "using the representative input used to capture the graph, "
                                               << "will match the shapes produced in the model for other inputs "
                                               << "of the same shape as the representative input (common case), "
-                                              << "it is safe to use the CUDA Graph feature.";
+                                              << "it is safe to use the graph capture feature.";
             }
           } else {
             // Following code path is for TRT EP currently.
