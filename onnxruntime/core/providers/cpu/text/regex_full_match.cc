@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/nn/regex_full_match.h"
+#include "regex_full_match.h"
 #include "core/common/common.h"
 
 namespace onnxruntime {
