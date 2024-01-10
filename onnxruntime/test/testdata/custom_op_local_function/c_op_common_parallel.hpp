@@ -51,7 +51,7 @@ inline void TrySimpleParallelFor(int64_t n_threads, int64_t n_iterations, F &&fn
     return;
   }
 
-# #pragma omp parallel for
+// #pragma omp parallel for
   for (int64_t i = 0; i < n_iterations; ++i) {
     fn(i);
   }
@@ -75,7 +75,7 @@ inline void TryBatchParallelFor(int64_t n_threads, int64_t batch_size, int64_t t
 
   int64_t num_batches = total / batch_size + (total % batch_size == 0 ? 1 : 0);
 
-# #pragma omp parallel for
+// #pragma omp parallel for
   for (int64_t batch_idx = 0; batch_idx < num_batches; ++batch_idx) {
     WorkInfo work = PartitionWork(batch_idx, num_batches, total);
     for (int64_t i = work.start; i < work.end; ++i) {
@@ -100,7 +100,7 @@ inline void TryBatchParallelFor2(int64_t n_threads, int64_t batch_size, int64_t 
 
   int64_t num_batches = total / batch_size + (total % batch_size == 0 ? 1 : 0);
 
-# #pragma omp parallel for
+// #pragma omp parallel for
   for (int64_t batch_idx = 0; batch_idx < num_batches; ++batch_idx) {
     WorkInfo work = PartitionWork(batch_idx, num_batches, total);
     fn(work.start, work.end);
@@ -124,7 +124,7 @@ inline void TryBatchParallelFor2i(int64_t n_threads, int64_t batch_size, int64_t
 
   int64_t num_batches = total / batch_size + (total % batch_size == 0 ? 1 : 0);
 
-# #pragma omp parallel for
+// #pragma omp parallel for
   for (int64_t batch_idx = 0; batch_idx < num_batches; ++batch_idx) {
     WorkInfo work = PartitionWork(batch_idx, num_batches, total);
     fn(omp_get_thread_num(), work.start, work.end);
