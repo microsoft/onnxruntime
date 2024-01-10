@@ -1469,12 +1469,15 @@ def generate_build_tree(
     cxxflags = None
     ldflags = None
     for config in configs:
+        # Setup default values for cflags/cxxflags/ldflags.
+        # The values set here are purely for security and compliance purposes. ONNX Runtime should work fine without these flags.
         if (
             "CFLAGS" not in os.environ
             and "CXXFLAGS" not in os.environ
             and not args.ios
             and not args.android
             and not args.build_wasm
+            and not (is_linux() and platform.machine() != "aarch64" and platform.machine() != "x86_64")
         ):
             if is_windows():
                 cflags = [
@@ -1541,6 +1544,8 @@ def generate_build_tree(
                         "-pipe",
                         "-ggdb3",
                     ]
+                if is_linux() and platform.machine() == "x86_64":
+                    cflags += ["-fstack-clash-protection", "-fcf-protection"]
                 cxxflags = cflags.copy()
 
         config_build_dir = get_config_build_dir(build_dir, config)
