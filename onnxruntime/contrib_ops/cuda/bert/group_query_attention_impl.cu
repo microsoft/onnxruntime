@@ -494,8 +494,7 @@ Status FlashAttention(
 
   bool is_causal = true;
 
-  // bugbug
-  bool is_bf16 = false;
+  bool is_bf16 = std::is_same<T, BFloat16>::value;
 
   // Note: seqlens_k is past sequence length for flash
   if (parameters.is_prompt) {
