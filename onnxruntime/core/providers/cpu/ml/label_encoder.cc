@@ -328,5 +328,70 @@ void LabelEncoder_4<std::string, std::int16_t>::InitializeAttrFields(const OpKer
   default_value_ = static_cast<std::int16_t>(GetDefault(kernel_info, "", static_cast<std::int16_t>(-1)));
 };
 
+ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(LabelEncoder, 4, double_double,
+                                  KernelDefBuilder()
+                                      .TypeConstraint("T1",
+                                                      std::vector<MLDataType>{DataTypeImpl::GetTensorType<double>()})
+                                      .TypeConstraint("T2",
+                                                      std::vector<MLDataType>{DataTypeImpl::GetTensorType<double>()}),
+                                  LabelEncoder_4<double, double>)
+
+template <>
+void LabelEncoder_4<double, double>::InitializeAttrFields(const OpKernelInfo& kernel_info) {
+  default_value_ = GetDefault(kernel_info, "default_float", -0.);
+};
+
+ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
+    LabelEncoder, 4, double_string,
+    KernelDefBuilder()
+        .TypeConstraint("T1", std::vector<MLDataType>{DataTypeImpl::GetTensorType<double>()})
+        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::string>()}),
+    LabelEncoder_4<double, std::string>)
+
+template <>
+void LabelEncoder_4<double, std::string>::InitializeAttrFields(const OpKernelInfo& kernel_info) {
+  value_field_name_ = "values_strings";
+  default_value_ = GetDefault(kernel_info, "default_string", std::string("_Unused"));
+};
+
+ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
+    LabelEncoder, 4, string_double,
+    KernelDefBuilder()
+        .TypeConstraint("T1", std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::string>()})
+        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<double>()}),
+    LabelEncoder_4<std::string, double>)
+
+template <>
+void LabelEncoder_4<std::string, double>::InitializeAttrFields(const OpKernelInfo& kernel_info) {
+  key_field_name_ = "keys_strings";
+  default_value_ = GetDefault(kernel_info, "default_float", -0.);
+};
+
+ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
+    LabelEncoder, 4, double_int64,
+    KernelDefBuilder()
+        .TypeConstraint("T1", std::vector<MLDataType>{DataTypeImpl::GetTensorType<double>()})
+        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::int64_t>()}),
+    LabelEncoder_4<double, std::int64_t>)
+
+template <>
+void LabelEncoder_4<double, std::int64_t>::InitializeAttrFields(const OpKernelInfo& kernel_info) {
+  value_field_name_ = "values_int64s";
+  default_value_ = GetDefault(kernel_info, "default_int64", static_cast<int64_t>(-1));
+};
+
+ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
+    LabelEncoder, 4, int64_double,
+    KernelDefBuilder()
+        .TypeConstraint("T1", std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::int64_t>()})
+        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<double>()}),
+    LabelEncoder_4<std::int64_t, double>)
+
+template <>
+void LabelEncoder_4<std::int64_t, double>::InitializeAttrFields(const OpKernelInfo& kernel_info) {
+  key_field_name_ = "keys_int64s";
+  default_value_ = GetDefault(kernel_info, "default_float", -0.);
+};
+
 }  // namespace ml
 }  // namespace onnxruntime

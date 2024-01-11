@@ -372,6 +372,46 @@ TEST(LabelEncoder, StringToFloatOpset4) {
   test.Run();
 }
 
+TEST(LabelEncoder, StringToDoubleOpset4) {
+  std::vector<std::int64_t> dims{1, 5};
+
+  std::vector<std::string> input{"Hello", "world", "Random", "onnxruntime", "!"};
+  std::vector<double> output{0.1, 1.1231e30, -0.0, 2.718, 5.0};
+  std::vector<std::string> key_data{"Hello", "world", "onnxruntime", "!"};
+  std::vector<double> value_data{0.1, 1.1231e30, 2.718, 5.0};
+
+  OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
+
+  ONNX_NAMESPACE::TensorProto keys_proto;
+  keys_proto.set_name("keys_tensor");
+  keys_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  keys_proto.add_dims(key_data.size());
+  for (const auto& key : key_data) {
+    keys_proto.add_string_data(key);
+  }
+  test.AddAttribute("keys_tensor", keys_proto);
+
+  ONNX_NAMESPACE::TensorProto values_proto;
+  values_proto.set_name("values_tensor");
+  values_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE);
+  values_proto.add_dims(value_data.size());
+  for (const auto& value : value_data) {
+    values_proto.add_double_data(value);
+  }
+  test.AddAttribute("values_tensor", values_proto);
+
+  ONNX_NAMESPACE::TensorProto default_proto;
+  default_proto.set_name("default_tensor");
+  default_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE);
+  default_proto.add_dims(1);
+  default_proto.add_double_data(-0.0);
+  test.AddAttribute("default_tensor", default_proto);
+  test.AddInput<std::string>("X", dims, input);
+  test.AddOutput<double>("Y", dims, output);
+
+  test.Run();
+}
+
 TEST(LabelEncoder, TensorBasedAttributesOpset4) {
   std::vector<std::int64_t> dims{1, 5};
 
@@ -437,5 +477,39 @@ TEST(LabelEncoder, NaNsMappedTogetherOpset4) {
 
   test.Run();
 }
+
+TEST(LabelEncoder, DoubleNaNsMappedTogetherOpset4) {
+  std::vector<std::int64_t> dims{1, 6};
+  std::vector<double> input{3.14, std::nan("1"), 2.718, std::nan("2"), 5.0, -1};
+  std::vector<std::string> output{"a", "ONNX", "b", "ONNX", "c", "onnxruntime"};
+  std::vector<double> key_data{3.14, 2.718, 5.0, std::nan("3")};
+  std::vector<std::string> value_data{"a", "b", "c", "ONNX"};
+
+  OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
+
+  ONNX_NAMESPACE::TensorProto keys_proto;
+  keys_proto.set_name("keys_tensor");
+  keys_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE);
+  keys_proto.add_dims(key_data.size());
+  for (const auto key : key_data) {
+    keys_proto.add_double_data(key);
+  }
+  test.AddAttribute("keys_tensor", keys_proto);
+
+  test.AddAttribute("values_strings", value_data);
+
+  ONNX_NAMESPACE::TensorProto default_proto;
+  default_proto.set_name("default_tensor");
+  default_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  default_proto.add_dims(1);
+  default_proto.add_string_data("onnxruntime");
+  test.AddAttribute("default_tensor", default_proto);
+
+  test.AddInput<double>("X", dims, input);
+  test.AddOutput<std::string>("Y", dims, output);
+
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

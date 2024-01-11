@@ -105,8 +105,7 @@ template <typename T>
 std::vector<T> GetAttribute(const OpKernelInfo& info, const std::string& name, const std::string& tensor_name) {
   if constexpr (std::is_same_v<T, std::string> || std::is_same_v<T, float> || std::is_same_v<T, int64_t>) {
     std::vector<T> attrs;
-    auto result = info.GetAttrs<T>(name, attrs);
-    if (result.IsOK()) {
+    if (info.GetAttrs<T>(name, attrs).IsOK()) {
       return attrs;
     }
   }
