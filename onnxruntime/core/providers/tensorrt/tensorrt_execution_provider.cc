@@ -2812,6 +2812,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     LOGS_DEFAULT(WARNING) << "[TensorRT EP] Auxiliary streams can only be set on TRT 8.6 onwards!";
   }
 #endif
+
   // limit used tactic sources
   if (!tactic_sources_.empty()) {
     nvinfer1::TacticSources tactics = trt_config->getTacticSources();
@@ -3835,7 +3836,8 @@ void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegis
                             stream_,
                             external_stream_ /* use_existing_stream */,
                             external_cudnn_handle_,
-                            external_cublas_handle_);
+                            external_cublas_handle_,
+                            {});
 }
 
 OrtDevice TensorrtExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {

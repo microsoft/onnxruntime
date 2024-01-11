@@ -4,12 +4,13 @@
 #include "qnn_execution_provider.h"
 
 #include <filesystem>
-#include "core/providers/common.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/kernel_registry.h"
+#include "core/platform/env.h"
+#include "core/providers/common.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/partitioning_utils.h"
@@ -28,7 +29,7 @@ static void ParseProfilingLevel(std::string profiling_level_string,
                  profiling_level_string.end(),
                  profiling_level_string.begin(),
                  [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
-  LOGS_DEFAULT(VERBOSE) << "profiling_level: " << profiling_level_string;
+  LOGS_DEFAULT(INFO) << "profiling_level: " << profiling_level_string;
   if (profiling_level_string == "off") {
     profiling_level = qnn::ProfilingLevel::OFF;
   } else if (profiling_level_string == "basic") {
@@ -146,9 +147,30 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 
   static const std::string PROFILING_LEVEL = "profiling_level";
   qnn::ProfilingLevel profiling_level = qnn::ProfilingLevel::OFF;
-  auto profiling_level_pos = provider_options_map.find(PROFILING_LEVEL);
-  if (profiling_level_pos != provider_options_map.end()) {
-    ParseProfilingLevel(profiling_level_pos->second, profiling_level);
+  const Env& env = Env::Default();
+  auto& provider = env.GetTelemetryProvider();
+  if (provider.IsEnabled()) {
+    auto level = provider.Level();
+    auto keyword = provider.Keyword();
+    if ((keyword & static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0) {
+      if (level != 0) {
+        if (level == 5) {
+          LOGS_DEFAULT(INFO) << "Overriding profiling to basic based on ETW level: " << static_cast<int>(level);
+          ParseProfilingLevel("basic", profiling_level);
+        } else if (level < 5) {
+          LOGS_DEFAULT(INFO) << "QNN Profiler ETW level not supported below level 5. Level: "
+                             << static_cast<int>(level);
+        } else {
+          LOGS_DEFAULT(INFO) << "Overriding profiling to detailed based on ETW level: " << static_cast<int>(level);
+          ParseProfilingLevel("detailed", profiling_level);
+        }
+      }
+    }
+  } else {
+    auto profiling_level_pos = provider_options_map.find(PROFILING_LEVEL);
+    if (profiling_level_pos != provider_options_map.end()) {
+      ParseProfilingLevel(profiling_level_pos->second, profiling_level);
+    }
   }
 
   static const std::string RPC_CONTROL_LANTENCY = "rpc_control_latency";
