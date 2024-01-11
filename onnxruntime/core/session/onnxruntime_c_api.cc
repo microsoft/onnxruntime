@@ -683,7 +683,6 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
                                                 _In_opt_z_ const ORTCHAR_T* model_path,
                                                 _In_opt_ const void* model_data,
                                                 size_t model_data_length,
-
                                                 std::unique_ptr<onnxruntime::InferenceSession>& sess) {
   // quick check here to decide load path. InferenceSession will provide error message for invalid values.
   // TODO: Could move to a helper
@@ -693,7 +692,7 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
 
   if (load_config_from_model) {
 #if !defined(ORT_MINIMAL_BUILD)
-    if (model_path != nullptr) {
+    if (model_data == nullptr) {
       sess = std::make_unique<onnxruntime::InferenceSession>(
           options == nullptr ? onnxruntime::SessionOptions() : options->value,
           env->GetEnvironment(),
@@ -726,11 +725,16 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
     ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load());
 #endif
   } else {
-    if (model_path != nullptr) {
+    if (model_data == nullptr) {
       ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(model_path));
     } else {
       ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(model_data, static_cast<int>(model_data_length)));
     }
+  }
+
+  // External data path only works for loading model from memory
+  if (!options->value.external_data_path.empty() && model_data != nullptr) {
+    sess->SetExternalDataPath(options->value.external_data_path);
   }
 
   return nullptr;
@@ -2723,6 +2727,7 @@ static constexpr OrtApi ort_api_1_to_17 = {
     &OrtApis::ReadOpAttr,
     &OrtApis::SetDeterministicCompute,
     &OrtApis::KernelContext_ParallelFor,
+    &OrtApis::SetExternalDataPath,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

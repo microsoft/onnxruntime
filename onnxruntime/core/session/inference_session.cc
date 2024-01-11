@@ -471,6 +471,7 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
                     TraceLoggingUInt8(static_cast<UINT8>(session_options.execution_order), "execution_order"),
                     TraceLoggingBoolean(session_options.enable_profiling, "enable_profiling"),
                     TraceLoggingString(ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(session_options.optimized_model_filepath).c_str(), "optimized_model_filepath"),
+                    TraceLoggingString(ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(session_options.external_data_path).c_str(), "external_data_path"),
                     TraceLoggingBoolean(session_options.enable_mem_pattern, "enable_mem_pattern"),
                     TraceLoggingBoolean(session_options.enable_mem_reuse, "enable_mem_reuse"),
                     TraceLoggingBoolean(session_options.enable_cpu_mem_arena, "enable_cpu_mem_arena"),
@@ -2998,6 +2999,14 @@ common::Status InferenceSession::WaitForNotification(Notification* p_executor_do
   p_executor_done->Wait();
 
   return Status::OK();
+}
+
+// Only used while loading model from memory buffer.
+void InferenceSession::SetExternalDataPath(const PathString& external_data_path) {
+  // Pretend there's a virtural model in the external data folder.
+  // Because the external initializer path is relative to the filsystem directory whereh the ONNX protobuf model was stored
+  model_location_ = external_data_path + ORT_TSTR("/model_from_memory.onnx");
+  model_->SetModelPath(model_location_);
 }
 
 SessionIOBinding::SessionIOBinding(InferenceSession* session) : sess_(session) {

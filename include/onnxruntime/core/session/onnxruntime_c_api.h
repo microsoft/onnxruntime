@@ -4541,6 +4541,16 @@ struct OrtApi {
    * \since Version 1.17.
    */
   ORT_API2_STATUS(KernelContext_ParallelFor, _In_ const OrtKernelContext* context, _In_ void (*fn)(void*, size_t), _In_ size_t total, _In_ size_t num_batch, _In_ void* usr_data);
+
+  /** \brief Set external data folder path if the model loaded from memory
+   *
+   * \param[in] options
+   * \param[in] external_data_path
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(SetExternalDataPath, _Inout_ OrtSessionOptions* options,
+                  _In_ const ORTCHAR_T* external_data_path);
 };
 
 /*

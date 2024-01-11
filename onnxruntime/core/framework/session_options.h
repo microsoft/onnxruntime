@@ -82,6 +82,9 @@ struct SessionOptions {
   // unless the filepath ends in '.ort' (case insensitive).
   std::basic_string<ORTCHAR_T> optimized_model_filepath;
 
+  // external data folder path if the model is loaded from memory buffer
+  std::basic_string<ORTCHAR_T> external_data_path;
+
   // enable the memory pattern optimization.
   // The idea is if the input shapes are the same, we could trace the internal memory allocation
   // and generate a memory pattern for future request. So next time we could just do one allocation
@@ -178,6 +181,7 @@ inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_
      << " execution_order:" << session_options.execution_order
      << " enable_profiling:" << session_options.enable_profiling
      << " optimized_model_filepath:" << ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(session_options.optimized_model_filepath)
+     << " external_data_path:" << ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(session_options.external_data_path)
      << " enable_mem_pattern:" << session_options.enable_mem_pattern
      << " enable_mem_reuse:" << session_options.enable_mem_reuse
      << " enable_cpu_mem_arena:" << session_options.enable_cpu_mem_arena
