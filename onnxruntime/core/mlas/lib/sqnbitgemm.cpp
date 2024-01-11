@@ -184,8 +184,9 @@ MlasSQNBitGemmBatchWorkspaceSize(
 
 namespace
 {
+
 void
-SQNBitGemmPackQuantBData_BlkBitWidth4(
+SQ4BitGemmPackQuantBData(
     size_t N,
     size_t K,
     size_t BlkLen,
@@ -237,6 +238,7 @@ SQNBitGemmPackQuantBData_BlkBitWidth4(
         }
     );
 }
+
 }  // namespace
 
 size_t MLASCALL
@@ -247,6 +249,20 @@ MlasSQNBitGemmPackQuantBDataSize(
     size_t BlkLen
 )
 {
+    // Ensure that a general implementation is available on this platform.
+    // For now, all implementations share the same packed format.
+    {
+        // Currently, there are implementations specific to M = 1, so pick a more general M > 1.
+        constexpr size_t M = 2;
+        // A CompUndef implementation should be available if any is available.
+        constexpr MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType = CompUndef;
+        const bool HasGeneralImplementation =
+            MlasIsSQNBitGemmAvailable(M, N, K, BlkBitWidth, BlkLen, ComputeType);
+        if (!HasGeneralImplementation) {
+            return 0;
+        }
+    }
+
     if (BlkBitWidth == 4) {
         const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
         const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
@@ -268,7 +284,7 @@ MlasSQNBitGemmPackQuantBData(
 )
 {
     if (BlkBitWidth == 4) {
-        SQNBitGemmPackQuantBData_BlkBitWidth4(
+        SQ4BitGemmPackQuantBData(
             N,
             K,
             BlkLen,
