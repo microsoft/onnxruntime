@@ -144,4 +144,4 @@ stages:
           displayName: 'Publish Pipeline Combined GPU Package Artifact'
           inputs:
             artifactName: 'onnxruntime-win-x64-gpu'
-            targetPath: '$(Build.ArtifactStagingDirectory)'
+            targetPath: '$(Build.ArtifactStagingDirectory)/*.zip'
