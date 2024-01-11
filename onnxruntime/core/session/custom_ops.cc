@@ -414,7 +414,6 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_ParallelFor, _In_ const OrtKernelCont
 };
 #endif
 
-
 #ifdef _WIN32
 #pragma warning(pop)
 #endif
