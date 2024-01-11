@@ -65,6 +65,13 @@ struct MLAS_SQNBIT_GEMM_DATA_PARAMS {
  *
  *        Call MlasIsSQNBitGemmAvailable() with the same parameters to determine whether this function may be called.
  *
+ *        Call MlasSQNBitGemmPackQuantBDataSize() with the same parameters to determine whether
+ *          MLAS_SQNBIT_GEMM_DATA_PARAMS::QuantBData in `DataParams` should point to a buffer packed with
+ *          MlasSQNBitGemmPackQuantBData().
+ *
+ *        Call MlasSQNBitGemmBatchWorkspaceSize() with the same parameters to determine whether `Workspace` should
+ *          point to an intermediate workspace buffer.
+ *
  * @param[in]       M               row size of matrix A and C
  * @param[in]       N               column size of matrix B and C
  * @param[in]       K               column size of matrix A and row size of matrix B
@@ -135,6 +142,18 @@ MlasSQNBitGemmBatchWorkspaceSize(
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 );
 
+/**
+ * @brief Gets the size in bytes of the packed quantized B data.
+ * If non-zero, the quantized B data must first be packed by calling MlasSQNBitGemmPackQuantBData() with a buffer of
+ * this size, and then that packed quantized B data buffer must be passed to MlasSQNBitGemmBatch().
+ * If zero, MlasSQNBitGemmPackQuantBData() must not be called and the quantized B data must be directly passed to
+ * MlasSQNBitGemmBatch().
+ *
+ * @param[in]   N               column size of matrix B and C
+ * @param[in]   K               column size of matrix A and row size of matrix B
+ * @param[in]   BlkBitWidth     quantized value bit width (e.g., 4 means 4 bit ints)
+ * @param[in]   BlkLen          number of quantized values per block
+ */
 size_t MLASCALL
 MlasSQNBitGemmPackQuantBDataSize(
     size_t N,
@@ -143,6 +162,17 @@ MlasSQNBitGemmPackQuantBDataSize(
     size_t BlkLen
 );
 
+/**
+ * @brief Packs the quantized B data in a format that the kernel expects.
+ *
+ * @param[in]   N                   column size of matrix B and C
+ * @param[in]   K                   column size of matrix A and row size of matrix B
+ * @param[in]   BlkBitWidth         quantized value bit width (e.g., 4 means 4 bit ints)
+ * @param[in]   BlkLen              number of quantized values per block
+ * @param[in]   QuantBData          quantized B data
+ * @param[out]  PackedQuantBData    packed quantized B data
+ * @param[in]   ThreadPool          optional thread pool to use
+ */
 void MLASCALL
 MlasSQNBitGemmPackQuantBData(
     size_t N,

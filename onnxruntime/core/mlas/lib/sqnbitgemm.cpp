@@ -227,7 +227,7 @@ SQNBitGemmPackQuantBData_BlkBitWidth4(
         }
     }
 }
-}
+}  // namespace
 
 size_t MLASCALL
 MlasSQNBitGemmPackQuantBDataSize(
