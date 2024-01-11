@@ -3338,22 +3338,32 @@ MatMulNBits is a MatMul with weight quantized with N bits(e.g., 2, 3, 4, 5, 6, 7
      And block_size is not an arbitrary number and must be a power of 2 and not smaller than 16, like 16, 32, 64, 128,..
   3. Input B's scale and zero point are specified by input scales and zero_points.
 
-Input B is stored as uint8_t with shape: [N][n_blocks_per_col][blob_size] in which:
-- n_blocks_per_col = (K + block_size - 1) / block_size
-- blob_size = block_size / 8 * bits
+It support different packing style, ["default", "gptq", "hqq"]
+with "default", we have
+  Input B is stored as uint8_t with shape: [N][n_blocks_per_col][blob_size] in which:
+  - n_blocks_per_col = (K + block_size - 1) / block_size
+  - blob_size = block_size / 8 * bits
 
-  For a block blob. It is stored in format:
-  struct Blob {
-    uint8 one_bits[(bits & 0x1) * 1 * block_size / 8];  // highest 1 bit for 3, 5, 7 bits quantization
-    uint8 two_bits[(bits & 0x2) * 2 * block_size / 8];  // high 2 bits for 2, 6, 7 bits quantization
-    uint8 four_bits[(bits & 0x4) * 4 * block_size / 8]; // low 4 bits for 4, 5, 6 bits quantization
-  }
+    For a block blob. It is stored in format:
+    struct Blob {
+      uint8 one_bits[(bits & 0x1) * 1 * block_size / 8];  // highest 1 bit for 3, 5, 7 bits quantization
+      uint8 two_bits[(bits & 0x2) * 2 * block_size / 8];  // high 2 bits for 2, 6, 7 bits quantization
+      uint8 four_bits[(bits & 0x4) * 4 * block_size / 8]; // low 4 bits for 4, 5, 6 bits quantization
+    }
 
-Input scales is stored in same type as original type of B(float32, float16) with shape like: [N * n_blocks_per_col]
-Input zero_points is stored as uint8_t. If bits <= 4, two zero points are stored as one unit8_t. If bits > 4, one zero point is stored with one unit8_t. Thus, its shape is:
-  - [(N * n_blocks_per_col + 1) / 2] if bits <=4
-  - [N * n_blocks_per_col] if bits > 4
+  Input scales is stored in same type as original type of B(float32, float16) with shape like: [N * n_blocks_per_col]
+  Input zero_points is stored as uint8_t. If bits <= 4, two zero points are stored as one unit8_t. If bits > 4, one zero point is stored with one unit8_t. Thus, its shape is:
+    - [(N * n_blocks_per_col + 1) / 2] if bits <=4
+    - [N * n_blocks_per_col] if bits > 4
 
+with "gptq", we have:
+  Input B is stored as uint32_t with shape: [ceil(N, 32//bits), K]:
+  zero_points has shape uint32_t [N//block_size, K*bits//32]
+  scale has shape float16[N//block_size, K]
+with "hqq", we have:
+  Input B is stored as uint32_t with shape: [ceil(N, 32//bits), K]:
+  zero_points has shape float16 [N//block_size, K]
+  scale has shape [N//block_size, K]
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBits)
@@ -3364,6 +3374,7 @@ Input zero_points is stored as uint8_t. If bits <= 4, two zero points are stored
       .Attr("N", "size of each output feature", AttributeProto::INT)
       .Attr("bits", "number of bits used for weight quantization (default 4)", AttributeProto::INT)
       .Attr("block_size", "number of groupsize used for weight quantization,(default 128). It needs to be a power of 2 and not smaller than 16.", AttributeProto::INT)
+      .Attr("packing", "decribe how the quantized weight is packed, [default,gptq,hqq]", AttributeProto::STRING, std::string("default"))
       .Attr("accuracy_level",
             "The minimum accuracy level of input A, can be: 0(unset), 1(fp32), 2(fp16), 3(bf16), or 4(int8) "
             "(default unset). It is used to control how input A is quantized or downcast internally while "
@@ -3375,9 +3386,10 @@ Input zero_points is stored as uint8_t. If bits <= 4, two zero points are stored
       .Input(1, "B", "1-dimensional data blob", "T2")
       .Input(2, "scales", "quantization scale", "T1")
       .Input(3, "zero_points", "quantization zero points", "T2", OpSchema::Optional)
+      .Input(4, "g_idx", "group_idx for gptq", "T2", OpSchema::Optional)
       .Output(0, "Y", "tensor. The output tensor has the same rank as the input. ", "T1")
       .TypeConstraint("T1", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float/half_float tensors.")
-      .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain quantized weight types to uint8.")
+      .TypeConstraint("T2", {"tensor(uint8)", "tensor(uint32)", "tensor(int32)", "tensor(float16)"}, "Constrain quantized weight types to uint8/uint32/int32/float16.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Type inference
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
