@@ -15,35 +15,6 @@
 
 namespace onnxruntime::optimizer::memory_optimizer {
 
-std::string NodeOptimizationPlanBase::GetMemorySavingSymbolicString() const {
-  std::string saving_str;
-  for (auto output_index : activation_output_indices_) {
-    // If the output is reusing other node's buffer, then no memory saving.
-    if (reuse_buffers.find(output_index) != reuse_buffers.end()) {
-      continue;
-    }
-
-    const auto& output_def = node->OutputDefs()[output_index];
-    MLDataType ml_data_type = DataTypeImpl::TypeFromProto(*output_def->TypeAsProto());
-    ORT_ENFORCE(ml_data_type->IsTensorType(), "ml_type must be a tensor type, but it is ",
-                DataTypeImpl::ToString(ml_data_type));
-    const TensorTypeBase* tensor_type_base = ml_data_type->AsTensorType();
-    ORT_ENFORCE(nullptr != tensor_type_base);
-    MLDataType elt_type = tensor_type_base->GetElementType();
-    const auto byte_count_per_element = elt_type->Size();
-    if (!saving_str.empty()) {
-      saving_str += " + ";
-    }
-    saving_str = "(" + GetActivationOutputDimParamString(output_index) + " * " +
-                 std::to_string(byte_count_per_element) + " * " +
-                 std::to_string(GetSaveRatio()) + ")";
-  }
-  if (saving_str.empty()) {
-    return saving_str;
-  }
-  return "(" + saving_str + ")";
-}
-
 Status MemoryOptimizationPlanner::UpdateNodePlansFromExecutionPlan(const GraphViewer& graph_viewer,
                                                                    const OrtValueNameIdxMap& ortvalue_name_to_idx_map,
                                                                    const SequentialExecutionPlan& p_seq_exec_plan) {
