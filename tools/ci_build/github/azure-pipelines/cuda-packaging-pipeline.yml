@@ -155,7 +155,7 @@ stages:
   - template: nuget/templates/test_win.yml
     parameters:
       AgentPool: 'onnxruntime-Win2022-GPU-T4'
-      NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
+      NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Windows'
       ArtifactSuffix: 'GPU'
       StageSuffix: 'GPU'
       Skipx86Tests: 'true'
@@ -168,7 +168,7 @@ stages:
       AgentPool: Onnxruntime-Linux-GPU
       ArtifactSuffix: 'GPU'
       StageSuffix: 'GPU'
-      NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
+      NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Linux'
       SpecificArtifact: ${{ parameters.specificArtifact }}
       CudaVersion: ${{ parameters.CudaVersion }}
       BuildId: ${{ parameters.BuildId }}
