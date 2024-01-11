@@ -167,7 +167,7 @@ TEST_F(RealCAPITestsFixture, CApiLoggerLogMessage) {
                                                     ORT_FILE, line_num, static_cast<const char*>(__FUNCTION__)));
 }
 
-// The code below where it tests for formatting error generates an out-of-bound memory access. Therefore we disable it 
+// The code below where it tests for formatting error generates an out-of-bound memory access. Therefore we disable it
 // when memory sanitizer is enabled.
 #ifdef ABSL_HAVE_ADDRESS_SANITIZER
 TEST_F(RealCAPITestsFixture, DISABLED_CppApiORTCXXLOG) {
