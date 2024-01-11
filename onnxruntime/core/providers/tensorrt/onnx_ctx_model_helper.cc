@@ -143,10 +143,6 @@ ONNX_NAMESPACE::ModelProto* CreateCtxNodeModel(const GraphViewer& graph_viewer,
  */
 void DumpCtxNodeModel(ONNX_NAMESPACE::ModelProto* model_proto,
                       const std::string engine_cache_path) {
-  std::string string_buf;
-  model_proto->SerializeToString(string_buf);
-
-  // Dump EP context node model to disk
   std::fstream dump(engine_cache_path + "_wrapper.onnx", std::ios::out | std::ios::trunc | std::ios::binary);
   model_proto->SerializeToOstream(dump);
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path + "_wrapper.onnx";
