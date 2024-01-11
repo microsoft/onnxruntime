@@ -421,9 +421,13 @@ def parse_arguments():
     # A 32-bit progress doesn't have enough memory to run all the tests in onnxruntime_test_all.
     # Mimalloc is incompatible with address sanitizer.
     # Address sanitizer itself is also a memory leak checker, so when it is enabled we should disable_memleak_checker.
-    parser.add_argument("--enable_address_sanitizer", action="store_true", help="Enable address sanitizer")
     parser.add_argument(
-        "--disable_memleak_checker", action="store_true", help="Disable memory leak checker from Windows build"
+        "--enable_address_sanitizer", action="store_true", help="Enable address sanitizer. Windows/Linux/MacOS only."
+    )
+    # The following feature requires installing some special Visual Studio components that do not get installed by default. Therefore the options is default OFF.
+    parser.add_argument("--enable_qspectre", action="store_true", help="Enable Qspectre. Windows only.")
+    parser.add_argument(
+        "--disable_memleak_checker", action="store_true", help="Disable memory leak checker from Windows build. By default it is enabled in Windows Debug build. This option is Windows only."
     )
 
     # WebAssembly build
@@ -1489,6 +1493,11 @@ def generate_build_tree(
                     "/D_WIN32_WINNT=0x0A00",
                     "/DNTDDI_VERSION=0x0A000000",
                 ]
+                # The "/profile" flag implies "/DEBUG:FULL /DEBUGTYPE:cv,fixup /OPT:REF /OPT:NOICF /INCREMENTAL:NO /FIXED:NO". We set it for satisfying a Microsoft internal compliance requirement. External users
+                # do not need to have it.
+                ldflags = ["/profile", "/DYNAMICBASE"]
+                if args.enable_qspectre:
+                    ldflags += ["/Qspectre"]
                 if config == "Release":
                     cflags += ["/O2", "/Ob2", "/DNDEBUG"]
                 elif config == "RelWithDebInfo":
@@ -1545,6 +1554,7 @@ def generate_build_tree(
                         "-ggdb3",
                     ]
                 if is_linux() and platform.machine() == "x86_64":
+                    # The following flags needs GCC 8 and newer
                     cflags += ["-fstack-clash-protection", "-fcf-protection"]
                 cxxflags = cflags.copy()
 
