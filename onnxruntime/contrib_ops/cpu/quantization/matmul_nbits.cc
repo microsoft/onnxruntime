@@ -10,7 +10,7 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/common.h"
 #ifdef ORT_NEURAL_SPEED
-#include "bestla_gemm.h"
+#include "contrib_ops/cpu/quantization/bestla_gemm.h"
 #endif
 
 namespace onnxruntime {
@@ -27,15 +27,17 @@ class MatMulNBits final : public OpKernel {
         accuracy_level_{info.GetAttr<int64_t>("accuracy_level")} {
     ORT_ENFORCE(nbits_ == 4,
                 "Only 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
-    is_asym_ = info.GetInputCount() >= 4;
+#ifdef ORT_NEURAL_SPEED
     const Tensor* tensor_B = nullptr;
     const Tensor* tensor_scale = nullptr;
     const Tensor* tensor_zero_point = nullptr;
     bool B_constant = info.TryGetConstantInput(1, &tensor_B);
     bool scale_constant = info.TryGetConstantInput(2, &tensor_scale);
     bool zero_point_constant = info.TryGetConstantInput(3, &tensor_zero_point);
+    is_asym_ = info.GetInputCount() >= 4;
     all_constant_ = B_constant && scale_constant;
     all_constant_ = is_asym_ ? all_constant_ && zero_point_constant : all_constant_;
+#endif
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -54,20 +56,22 @@ class MatMulNBits final : public OpKernel {
   const size_t nbits_;
   const int64_t accuracy_level_;
   const bool column_wise_quant_{true};
+#ifdef ORT_NEURAL_SPEED
   IAllocatorUniquePtr<void> packed_b_;
   size_t packed_b_size_{0};
   bool is_asym_{false};
   bool all_constant_{false};
+#endif
 };
 
 Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                             /*out*/ bool& is_packed,
                             /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
+#ifdef ORT_NEURAL_SPEED
   if (!all_constant_) {
     return Status::OK();
   }
-#ifdef ORT_NEURAL_SPEED
   MLAS_THREADPOOL* pool = NULL;
   if (nbits_ != 4) {
     return Status::OK();
@@ -78,8 +82,8 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     auto qptr = tensor.Data<uint8_t>();
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
     std::memset(packed_b_.get(), 0, packed_b_size_);
-    NSQ4GemmPackB(packed_b_.get(), qptr, nullptr, nullptr, N_, K_, K_, block_size_,
-                  is_asym_, false, accuracy_level_, pool);
+    NSQ4GemmPackB(packed_b_.get(), qptr, nullptr, nullptr, N_, K_, K_, block_size_, is_asym_, false, accuracy_level_,
+                  pool);
     if (prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
@@ -88,8 +92,8 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
   }
   if (input_idx == 2 && packed_b_ != nullptr) {
     auto sptr = tensor.Data<float>();
-    NSQ4GemmPackB(packed_b_.get(), nullptr, sptr, nullptr, N_, K_, K_, block_size_,
-                  is_asym_, !is_asym_, accuracy_level_, pool);
+    NSQ4GemmPackB(packed_b_.get(), nullptr, sptr, nullptr, N_, K_, K_, block_size_, is_asym_, !is_asym_,
+                  accuracy_level_, pool);
     if (prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
@@ -98,8 +102,8 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
   }
   if (input_idx == 3 && packed_b_ != nullptr) {
     auto zptr = tensor.Data<uint8_t>();
-    NSQ4GemmPackB(packed_b_.get(), nullptr, nullptr, zptr, N_, K_, K_, block_size_,
-                  is_asym_, is_asym_, accuracy_level_, pool);
+    NSQ4GemmPackB(packed_b_.get(), nullptr, nullptr, zptr, N_, K_, K_, block_size_, is_asym_, is_asym_, accuracy_level_,
+                  pool);
     if (prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
@@ -194,8 +198,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
     auto ws_size = NSSQ4GemmBatchWorkspaceSize(M, N, K, max_len, gemm_params.data());
     // workspace for activation process(dynamic quantization and others)
     auto ws_ptr = IAllocator::MakeUniquePtr<int8_t>(allocator, ws_size);
-    NSSQ4GemmBatchDriver(M, N, K, max_len, gemm_params.data(), ws_ptr.get(),
-                         thread_pool);
+    NSSQ4GemmBatchDriver(M, N, K, max_len, gemm_params.data(), ws_ptr.get(), thread_pool);
     return Status::OK();
   }
 
@@ -274,14 +277,14 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
   // dequantize b, only 4b quantization is supported for now
   MlasDequantizeBlockwise<float, 4>(
       tmp_b_data_ptr.get(),               // dequantized output
-      b_data,                             // quantized input
-      scales_data,                        // quantization scales
-      zero_points_data,                   // quantization zero points
-      static_cast<int32_t>(block_size_),  // quantization block size
-      column_wise_quant_,                 // columnwise quantization or row-wise
-      static_cast<int32_t>(K_),           // number of rows in quantized input
-      static_cast<int32_t>(N_),           // number of columns in quantized input
-      thread_pool);
+                                    b_data,                             // quantized input
+                                    scales_data,                        // quantization scales
+                                    zero_points_data,                   // quantization zero points
+                                    static_cast<int32_t>(block_size_),  // quantization block size
+                                    column_wise_quant_,                 // columnwise quantization or row-wise
+                                    static_cast<int32_t>(K_),           // number of rows in quantized input
+                                    static_cast<int32_t>(N_),           // number of columns in quantized input
+                                    thread_pool);
 
 #if 0  // for debug
   auto tm_b_data_ptr_trans = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
@@ -311,10 +314,10 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
-    MatMulNBits);
+                        KernelDefBuilder()
+                            .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+                            .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
+                        MatMulNBits);
 
 }  // namespace contrib
 }  // namespace onnxruntime
