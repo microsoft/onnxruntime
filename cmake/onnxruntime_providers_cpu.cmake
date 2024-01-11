@@ -61,21 +61,14 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     )
   endif()
   set(onnxruntime_cpu_neural_speed_srcs 
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/bestla_wrapper.h"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/bestla_defs.h"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/bestla_gemm.cc"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/bestla_gemm.h"
   )
-  if(USE_NEURAL_SPEED)
-    onnxruntime_add_static_library(onnxruntime_neural_speed ${onnxruntime_cpu_neural_speed_srcs})
-    onnxruntime_add_include_to_target(onnxruntime_neural_speed ${ONNXRUNTIME_ROOT} onnxruntime_common safeint_interface)
-    set_target_properties(onnxruntime_neural_speed PROPERTIES LINKER_LANGUAGE CXX)
-    set_target_properties(onnxruntime_neural_speed PROPERTIES FOLDER "ONNXRuntime")
-    target_link_libraries(onnxruntime_neural_speed PRIVATE bestla::bestla)
-    set_target_properties(onnxruntime_neural_speed PROPERTIES COMPILE_WARNING_AS_ERROR OFF) # ignore warnings inside neural-speed
+  if(NOT USE_NEURAL_SPEED)
+    list(REMOVE_ITEM onnxruntime_cpu_contrib_ops_srcs ${onnxruntime_cpu_neural_speed_srcs})
   endif()
-  list(REMOVE_ITEM onnxruntime_cpu_contrib_ops_srcs ${onnxruntime_cpu_neural_speed_srcs})
-
-
   # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
   source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cpu_contrib_ops_srcs})
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_contrib_ops_srcs})
@@ -162,7 +155,7 @@ endif()
 
 if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   if(USE_NEURAL_SPEED)
-    target_link_libraries(onnxruntime_providers PRIVATE onnxruntime_neural_speed)
+    target_link_libraries(onnxruntime_providers PRIVATE bestla::bestla)
   endif()
 endif()
 

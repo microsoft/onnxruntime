@@ -8,8 +8,7 @@ Licensed under the MIT License.
 
 #pragma once
 
-#include "bestla/bestla_prologue_a.h"
-#include "bestla/bestla_wrapper.h"
+#include "contrib_ops/cpu/quantization/bestla_wrapper.h"
 
 namespace bestla {
 
@@ -35,7 +34,10 @@ class ORTThreading : public parallel::IThreading {
  public:
   explicit ORTThreading(void* tp);
   void parallel_for(const parallel::thread_func& func) const override;
-  void set_threads(int nthreads) override { assert(0); }
+  void set_threads(int nthreads) override {
+    (void)(nthreads);
+    assert(0);
+  }
   void sync() const override { assert(0); }
   void* mTp;
 };

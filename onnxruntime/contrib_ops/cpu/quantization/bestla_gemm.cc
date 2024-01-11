@@ -69,7 +69,7 @@ static void NSSQ4GemmCompF32(const size_t M, const size_t N, const size_t K, con
                                   {B},
                                   {B->template SPtr<int8_t>(), B->SDtype(), B->CStep(), B->template ZPtr<int8_t>(),
                                    reduceA.template RPtr<float>(), reduceA.lda},
-                                  {C, ldc_}};
+                                  {C, ldc_, nullptr}};
     parallel::GemmRun<Parallel>(kernel, args, th);
   } else {
     using Parallel = parallel::gemm::SchedulerBase<GemmCore_T>;
@@ -77,7 +77,7 @@ static void NSSQ4GemmCompF32(const size_t M, const size_t N, const size_t K, con
         wrapper::gemm::LauncherBase<GemmCore_T::ISA, GemmCore_T, prologue_a::gemm::ActivationBase,
                                     prologue_b::gemm::WeightKBlockNInteger, epilogue::gemm::AccumulatorWriteBackFp32>;
     static Launcher kernel;
-    typename Launcher::Param args{gp, {A, lda_}, {B}, {C, ldc_}};
+    typename Launcher::Param args{gp, {A, lda_}, {B}, {C, ldc_, nullptr}};
     parallel::GemmRun<Parallel>(kernel, args, th);
   }
 }
@@ -105,8 +105,8 @@ static void NSSQ4GemmCompInt8(const size_t M, const size_t N, const size_t K, co
   } else {
     kernel.mProA.quantize({A, lda_, &quanA}, M_, K_, th);
   }
-  utils::GemmProblem gp(1, M, N, K, B->mBlockSize);
-  typename Launcher::Param args{gp, {A, lda_, &quanA}, {B}, {C, ldc_}};
+  utils::GemmProblem gp(1, M_, N_, K_, B->mBlockSize);
+  typename Launcher::Param args{gp, {A, lda_, &quanA}, {B}, {C, ldc_, nullptr}};
   parallel::GemmRun<Parallel>(kernel, args, th);
 }
 
@@ -116,7 +116,9 @@ static size_t NSSQ4GemmCompF32WorkspaceSize(const size_t M, const size_t N, cons
                                             const size_t ldc) {
   auto M_ = static_cast<int>(M);
   auto K_ = static_cast<int>(K);
+  (void)(A);
   (void)(N);
+  (void)(C);
   (void)(lda);
   (void)(ldc);
   if (M <= 16) {
@@ -128,7 +130,7 @@ static size_t NSSQ4GemmCompF32WorkspaceSize(const size_t M, const size_t N, cons
     }
     return 0;
   } else {
-    using ProA = prologue_a::gemm::ActivationBase<GemmCore_T, GemmCore_T::ISA>;
+    // using ProA = prologue_a::gemm::ActivationBase<GemmCore_T, GemmCore_T::ISA>;
     return 0;
   }
   return 0;
@@ -141,6 +143,8 @@ static size_t NSSQ4GemmCompInt8WorkspaceSize(const size_t M, const size_t N, con
   (void)(N);
   (void)(lda);
   (void)(ldc);
+  (void)(A);
+  (void)(C);
   using ProA = prologue_a::gemm::ActivationF32KBlockQuantize<GemmCore_T, GemmCore_T::ISA>;
   static ProA proA;
   auto quanA =
@@ -258,6 +262,73 @@ static size_t NSQ4BuSize(size_t block_size, size_t N, size_t K, bool isAsym) {
   return stor.mSize;
 }
 
+bool NSQ4GemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb, void* ThreadPool) {
+  auto ptr = storage::gemm::PackedWeightParser::deserialBuffer(PackedBuf);
+  auto uptr = std::unique_ptr<storage::gemm::IWeightBase>(ptr);
+  ORTThreading orth(ThreadPool);
+  auto N_ = static_cast<int>(N);
+  auto K_ = static_cast<int>(K);
+  auto ldb_ = static_cast<int>(ldb);
+  GetCPUDevice();
+  if (ptr) {
+    auto NTile = gemm::CoreAttr::get_mask_val(ptr->mCoreId, gemm::CoreAttr::NTILE_MASK, gemm::CoreAttr::NTILE_SHIFT);
+    auto PackRow = gemm::CoreAttr::get_packrow(ptr->mCoreId);
+    auto CType = gemm::CoreAttr::get_comp(ptr->mCoreId);
+    auto btype = static_cast<gemm::CompType>(gemm::CompTypeHelper::get_B(CType));
+    if (ptr->mPrologueID == BTLA_PROLOGUEB_IDS::WeightKBlockNInteger) {
+      auto wptr = reinterpret_cast<storage::gemm::StorageWeightKBlockNInteger*>(ptr);
+      if (btype == gemm::CompType::tFP32 && PackRow == 1) {
+        if (NTile == tAVX512F::NTILE && _cd->AVX512F()) {
+          static tWeiNInt<tAVX512F, tAVX512F::ISA> proB;
+          proB.unpackWeight(N_, K_, wptr, FpData, ldb_, &orth);
+        } else if (NTile == tAVX2::NTILE && _cd->AVX2()) {
+          static tWeiNInt<tAVX2, tAVX2::ISA> proB;
+          proB.unpackWeight(N_, K_, wptr, FpData, ldb_, &orth);
+        }
+      }
+      if (btype == gemm::CompType::tS8 && PackRow == 4) {
+        if (NTile == tAMX_INT8_SS_KBlock::NTILE && _cd->AMX_INT8()) {
+          static tWeiNInt<tAMX_INT8_SS_KBlock, tAMX_INT8_SS_KBlock::ISA> proB;
+          proB.unpackWeight(N_, K_, wptr, FpData, ldb_, &orth);
+        } else if (NTile == tAVX512_VNNI_KBlock::NTILE && _cd->AVX512_VNNI()) {
+          static tWeiNInt<tAVX512_VNNI_KBlock, tAVX512_VNNI_KBlock::ISA> proB;
+          proB.unpackWeight(N_, K_, wptr, FpData, ldb_, &orth);
+        } else if (NTile == tAVX_VNNI_KBlock::NTILE && _cd->AVX_VNNI()) {
+          static tWeiNInt<tAVX_VNNI_KBlock, tAVX_VNNI_KBlock::ISA> proB;
+          proB.unpackWeight(N_, K_, wptr, FpData, ldb_, &orth);
+        }
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
+template <typename T>
+static void NSQ4GemmPackBImpl(void* PackedBuf, size_t BlkSize, const uint8_t* QData, const float* Scale,
+                              const uint8_t* Zp, size_t N, size_t K, bool IsAsym, bool lastCall, size_t ldb,
+                              void* ThreadPool) {
+  static T proB;
+  auto N_ = static_cast<int>(N);
+  auto K_ = static_cast<int>(K);
+  auto stor = proB.createStorage(N_, K_, static_cast<int>(BlkSize), BTLA_DTYPE::S4_CLIP, BTLA_DTYPE::F32,
+                                 BTLA_DTYPE::BF16, IsAsym);
+  stor.assign(reinterpret_cast<int8_t*>(PackedBuf));
+  ORTThreading orth(ThreadPool);
+  proB.packNbitsWeightQ4(N_, K_, IsAsym, QData, static_cast<int>(ldb), Scale, Zp, &stor, &orth);
+  if (lastCall) {
+    proB.reduceWeight(&stor, &orth);
+  }
+}
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wimplicit-fallthrough="
+#elif defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 26819)
+#endif
+
 size_t NSQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, int64_t accuracy_level) {
   GetCPUDevice();
   if (K % BlkSize != 0) {
@@ -294,23 +365,6 @@ size_t NSQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, int64_
       return 0;
   }
   return 0;
-}
-
-template <typename T>
-static void NSQ4GemmPackBImpl(void* PackedBuf, size_t BlkSize, const uint8_t* QData, const float* Scale,
-                              const uint8_t* Zp, size_t N, size_t K, bool IsAsym, bool lastCall, size_t ldb,
-                              void* ThreadPool) {
-  static T proB;
-  auto N_ = static_cast<int>(N);
-  auto K_ = static_cast<int>(K);
-  auto stor = proB.createStorage(N_, K_, static_cast<int>(BlkSize), BTLA_DTYPE::S4_CLIP, BTLA_DTYPE::F32,
-                                 BTLA_DTYPE::BF16, IsAsym);
-  stor.assign(reinterpret_cast<int8_t*>(PackedBuf));
-  ORTThreading orth(ThreadPool);
-  proB.packNbitsWeightQ4(N_, K_, IsAsym, QData, static_cast<int>(ldb), Scale, Zp, &stor, &orth);
-  if (lastCall) {
-    proB.reduceWeight(&stor, &orth);
-  }
 }
 
 bool NSQ4GemmPackB(void* PackedBuf, const uint8_t* QData, const float* Scale, const uint8_t* Zp, size_t N, size_t K,
@@ -357,44 +411,8 @@ bool NSQ4GemmPackB(void* PackedBuf, const uint8_t* QData, const float* Scale, co
   return false;
 }
 
-bool NSQ4GemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb, void* ThreadPool) {
-  auto ptr = storage::gemm::PackedWeightParser::deserialBuffer(PackedBuf);
-  auto uptr = std::unique_ptr<storage::gemm::IWeightBase>(ptr);
-  ORTThreading orth(ThreadPool);
-  auto N_ = static_cast<int>(N);
-  auto K_ = static_cast<int>(K);
-  auto ldb_ = static_cast<int>(ldb);
-  GetCPUDevice();
-  if (ptr) {
-    auto NTile = gemm::CoreAttr::get_mask_val(ptr->mCoreId, gemm::CoreAttr::NTILE_MASK, gemm::CoreAttr::NTILE_SHIFT);
-    auto PackRow = gemm::CoreAttr::get_packrow(ptr->mCoreId);
-    auto CType = gemm::CoreAttr::get_comp(ptr->mCoreId);
-    auto btype = static_cast<gemm::CompType>(gemm::CompTypeHelper::get_B(CType));
-    if (ptr->mPrologueID == BTLA_PROLOGUEB_IDS::WeightKBlockNInteger) {
-      auto wptr = reinterpret_cast<storage::gemm::StorageWeightKBlockNInteger*>(ptr);
-      if (btype == gemm::CompType::tFP32 && PackRow == 1) {
-        if (NTile == tAVX512F::NTILE && _cd->AVX512F()) {
-          static tWeiNInt<tAVX512F, tAVX512F::ISA> proB;
-          proB.unpackWeight(N_, K_, wptr, FpData, ldb_, &orth);
-        } else if (NTile == tAVX2::NTILE && _cd->AVX2()) {
-          static tWeiNInt<tAVX2, tAVX2::ISA> proB;
-          proB.unpackWeight(N_, K_, wptr, FpData, ldb_, &orth);
-        }
-      }
-      if (btype == gemm::CompType::tS8 && PackRow == 4) {
-        if (NTile == tAMX_INT8_SS_KBlock::NTILE && _cd->AMX_INT8()) {
-          static tWeiNInt<tAMX_INT8_SS_KBlock, tAMX_INT8_SS_KBlock::ISA> proB;
-          proB.unpackWeight(N_, K_, wptr, FpData, ldb_, &orth);
-        } else if (NTile == tAVX512_VNNI_KBlock::NTILE && _cd->AVX512_VNNI()) {
-          static tWeiNInt<tAVX512_VNNI_KBlock, tAVX512_VNNI_KBlock::ISA> proB;
-          proB.unpackWeight(N_, K_, wptr, FpData, ldb_, &orth);
-        } else if (NTile == tAVX_VNNI_KBlock::NTILE && _cd->AVX_VNNI()) {
-          static tWeiNInt<tAVX_VNNI_KBlock, tAVX_VNNI_KBlock::ISA> proB;
-          proB.unpackWeight(N_, K_, wptr, FpData, ldb_, &orth);
-        }
-      }
-    }
-    return true;
-  }
-  return false;
-}
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
+#endif
