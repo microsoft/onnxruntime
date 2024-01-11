@@ -19,6 +19,7 @@
 
 namespace onnxruntime {
 namespace test {
+#if !defined(__wasm__)
 namespace {
 template <typename T>
 Status WriteExternalDataFile(gsl::span<const T> data, const PathString& path, ScopedFileDeleter& file_deleter) {
@@ -43,7 +44,6 @@ void SetTensorProtoExternalData(const std::string& key, const std::string& value
 }
 }  // namespace
 
-#if !defined(__wasm__)
 TEST(OptimizerInitializerTest, LoadExternalData) {
   const std::vector<int32_t> tensor_data = []() {
     std::vector<int32_t> tensor_data(100);
