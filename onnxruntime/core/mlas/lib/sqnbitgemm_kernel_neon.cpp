@@ -181,16 +181,10 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
                 );
             });
 
-            uint8x8_t bv_u8_unzipped[NCols][2];
-            UnrolledLoop<NCols>([&](size_t i) {
-                bv_u8_unzipped[i][0] = vand_u8(bv_packed[i], LowMask);
-                bv_u8_unzipped[i][1] = vshr_n_u8(bv_packed[i], 4);
-            });
-
             uint8x8_t bv_u8[NCols][2];
             UnrolledLoop<NCols>([&](size_t i) {
-                bv_u8[i][0] = vzip1_u8(bv_u8_unzipped[i][0], bv_u8_unzipped[i][1]);
-                bv_u8[i][1] = vzip2_u8(bv_u8_unzipped[i][0], bv_u8_unzipped[i][1]);
+                bv_u8[i][0] = vand_u8(bv_packed[i], LowMask);
+                bv_u8[i][1] = vshr_n_u8(bv_packed[i], 4);
             });
 
             // dequantize B
@@ -384,9 +378,15 @@ QNBitBlkDequantBForSgemm_BlkBitWidth4_CompFp32(
                             : 8;
 
                     for (size_t kk = 0; kk < kklen; ++kk) {
-                        const std::byte b_packed = b_data[kk / 2];
-                        const std::byte b_byte = ((kk & 1) == 1) ? b_packed >> 4 : b_packed & std::byte{0x0F};
-                        const float b_value = (std::to_integer<uint8_t>(b_byte) - b_z) * b_s;
+                        const size_t packed_idx = kk % 16;
+
+                        const bool is_low_half = packed_idx < 8;
+                        const size_t packed_byte_idx = packed_idx % 8;
+                        const size_t packed_range_offset = (kk / 16) * 8;
+
+                        const std::byte b_packed = b_data[packed_range_offset + packed_byte_idx];
+                        const std::byte b_byte = is_low_half ? (b_packed & std::byte{0x0F}) : (b_packed >> 4);
+                        const float b_value = (std::to_integer<int8_t>(b_byte) - b_z) * b_s;
 
                         Dst[(k + kk) * 16 + nn] = b_value;
                     }
@@ -600,16 +600,10 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
                 );
             });
 
-            uint8x8_t bv_u8_unzipped[NCols][2];
-            UnrolledLoop<NCols>([&](size_t i) {
-                bv_u8_unzipped[i][0] = vand_u8(bv_packed[i], LowMask);
-                bv_u8_unzipped[i][1] = vshr_n_u8(bv_packed[i], 4);
-            });
-
             int8x16_t bv[NCols];
             UnrolledLoop<NCols>([&](size_t i) {
-                const int8x8_t lo = vreinterpret_s8_u8(vzip1_u8(bv_u8_unzipped[i][0], bv_u8_unzipped[i][1]));
-                const int8x8_t hi = vreinterpret_s8_u8(vzip2_u8(bv_u8_unzipped[i][0], bv_u8_unzipped[i][1]));
+                const int8x8_t lo = vreinterpret_s8_u8(vand_u8(bv_packed[i], LowMask));
+                const int8x8_t hi = vreinterpret_s8_u8(vshr_n_u8(bv_packed[i], 4));
                 bv[i] = vcombine_s8(lo, hi);
             });
 

@@ -41,6 +41,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
   MatrixGuardBuffer<float> BufferQuantAScale;
   MatrixGuardBuffer<float> BufferB;
   MatrixGuardBuffer<uint8_t> BufferQuantBData;
+  MatrixGuardBuffer<std::byte> BufferPackedQuantBData;
   MatrixGuardBuffer<uint8_t> BufferQuantBZeroPoint;
   MatrixGuardBuffer<float> BufferQuantBScale;
   MatrixGuardBuffer<float> BufferDequantizedB;
@@ -54,9 +55,10 @@ class MlasSQNBitGemmTest : public MlasTestBase {
                 size_t K,
                 const float* A,
                 size_t lda,
-                const uint8_t* QuantBData,
+                const void* QuantBData,
+                const void* PackedQuantBData,
                 const float* QuantBScale,
-                const uint8_t* QuantBZeroPoint,
+                const void* QuantBZeroPoint,
                 const float* Bias,
                 float* C,
                 size_t ldc,
@@ -69,7 +71,7 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     params.Bias = Bias;
     params.C = C;
     params.ldc = ldc;
-    params.QuantBData = QuantBData;
+    params.QuantBData = PackedQuantBData != nullptr ? PackedQuantBData : QuantBData;
     params.QuantBScale = QuantBScale;
     params.QuantBZeroPoint = QuantBZeroPoint;
     params.PostProcessor = nullptr;
@@ -256,6 +258,13 @@ class MlasSQNBitGemmTest : public MlasTestBase {
       Workspace = BufferWorkspace.GetBuffer(WorkspaceSize);
     }
 
+    void* PackedQuantBData = nullptr;
+    if (const auto PackedQuantBDataSize = MlasSQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen);
+        PackedQuantBDataSize > 0) {
+      PackedQuantBData = BufferPackedQuantBData.GetBuffer(PackedQuantBDataSize);
+      MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, QuantBData, PackedQuantBData, GetMlasThreadPool());
+    }
+
     if (ComputeType == CompFp32) {
       CallReferenceGemm_CompFp32(M, N, K, A, QuantBData, QuantBScale, QuantBZeroPoint, Bias, CReference);
     } else if (ComputeType == CompInt8) {
@@ -265,8 +274,14 @@ class MlasSQNBitGemmTest : public MlasTestBase {
              << ComputeType << " (" << ComputeTypeName(ComputeType) << ")";
     }
 
-    CallGemm(M, N, K, A, /* lda */ K, QuantBData, QuantBScale, QuantBZeroPoint, Bias, C, /* ldc */ N, Workspace,
-             ComputeType, Threadpool);
+    CallGemm(M, N, K,
+             A, /* lda */ K,
+             QuantBData, PackedQuantBData, QuantBScale, QuantBZeroPoint,
+             Bias,
+             C, /* ldc */ N,
+             Workspace,
+             ComputeType,
+             Threadpool);
 
     size_t f = 0;
     for (size_t m = 0; m < M; m++) {

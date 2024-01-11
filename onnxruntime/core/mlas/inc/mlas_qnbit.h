@@ -135,6 +135,25 @@ MlasSQNBitGemmBatchWorkspaceSize(
     MLAS_SQNBIT_GEMM_COMPUTE_TYPE ComputeType
 );
 
+size_t MLASCALL
+MlasSQNBitGemmPackQuantBDataSize(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen
+);
+
+void MLASCALL
+MlasSQNBitGemmPackQuantBData(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    const void* QuantBData,
+    void* PackedQuantBData,
+    MLAS_THREADPOOL* ThreadPool = nullptr
+);
+
 /**
  * @brief Data parameters for NBits GEMM routine
  *        C = A * B

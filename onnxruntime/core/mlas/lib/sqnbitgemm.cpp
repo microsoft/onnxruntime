@@ -184,6 +184,93 @@ MlasSQNBitGemmBatchWorkspaceSize(
 
 namespace
 {
+void
+SQNBitGemmPackQuantBData_BlkBitWidth4(
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    const std::byte* QuantBData,
+    std::byte* PackedQuantBData,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    MLAS_UNREFERENCED_PARAMETER(ThreadPool);  // TODO use ThreadPool
+
+    assert(BlkLen % 16 == 0);
+
+    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+
+    for (size_t n = 0; n < N; ++n) {
+        for (size_t k_blk = 0; k_blk < BlockCountK; ++k_blk) {
+            //
+            // Pack 16 4-bit values (8 bytes) at a time like this:
+            //
+            // src: | v0 v1 | v2 v3 | v4 v5 | v6 v7 | v8 v9 | vA vB | vC vD | vE vF |
+            //   =>
+            // dst: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
+            //
+            for (size_t kk = 0; kk < BlkLen; kk += 16) {
+                for (size_t byte_pair_idx = 0; byte_pair_idx < 4; ++byte_pair_idx) {
+                    const std::byte src0 = QuantBData[byte_pair_idx];
+                    const std::byte src1 = QuantBData[byte_pair_idx + 4];
+
+                    std::byte& dst0 = PackedQuantBData[2 * byte_pair_idx];
+                    std::byte& dst1 = PackedQuantBData[2 * byte_pair_idx + 1];
+
+                    dst0 = (src0 & std::byte{0x0F}) | ((src1 & std::byte{0x0F}) << 4);
+                    dst1 = (src0 >> 4) | ((src1 >> 4) << 4);
+                }
+
+                QuantBData += 8;
+                PackedQuantBData += 8;
+            }
+        }
+    }
+}
+}
+
+size_t MLASCALL
+MlasSQNBitGemmPackQuantBDataSize(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen
+)
+{
+    if (BlkBitWidth == 4) {
+        const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+        const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+        return PackedQuantBDataSize;
+    }
+
+    return 0;
+}
+
+void MLASCALL
+MlasSQNBitGemmPackQuantBData(
+    size_t N,
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    const void* QuantBData,
+    void* PackedQuantBData,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    if (BlkBitWidth == 4) {
+        SQNBitGemmPackQuantBData_BlkBitWidth4(
+            N,
+            K,
+            BlkLen,
+            static_cast<const std::byte*>(QuantBData),
+            static_cast<std::byte*>(PackedQuantBData),
+            ThreadPool
+        );
+    }
+}
+
+namespace
+{
 
 MLAS_FORCEINLINE void
 AddBiasForGemm(const float* Bias, float* C, size_t CountM, size_t CountN, size_t ldc)

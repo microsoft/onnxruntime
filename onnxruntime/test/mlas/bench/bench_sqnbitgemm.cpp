@@ -60,10 +60,19 @@ void SQNBITGEMM(benchmark::State& state) {
     Workspace = std::make_unique<std::byte[]>(WorkspaceSize);
   }
 
+  std::unique_ptr<std::byte[]> PackedQuantBData;
+  if (const auto PackedQuantBDataSize = MlasSQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen);
+      PackedQuantBDataSize > 0) {
+    PackedQuantBData = std::make_unique<std::byte[]>(PackedQuantBDataSize);
+    MlasSQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, QuantBData.data(), PackedQuantBData.get(), tp.get());
+  }
+
   MLAS_SQNBIT_GEMM_DATA_PARAMS params{};
   params.A = A.data();
   params.lda = K;
-  params.QuantBData = QuantBData.data();
+  params.QuantBData = PackedQuantBData != nullptr
+                          ? static_cast<const void*>(PackedQuantBData.get())
+                          : static_cast<const void*>(QuantBData.data());
   params.QuantBScale = QuantBScale.data();
   params.QuantBZeroPoint = Symmetric ? nullptr : QuantBZeroPoint.data();
   params.Bias = nullptr;
