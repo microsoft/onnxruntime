@@ -2475,7 +2475,8 @@ void CUDAExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry&
                             stream_,
                             use_ep_level_unified_stream_,
                             GetPerThreadContext().CudnnHandle(),
-                            GetPerThreadContext().CublasHandle());
+                            GetPerThreadContext().CublasHandle(),
+                            info_);
 }
 
 OrtDevice CUDAExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
