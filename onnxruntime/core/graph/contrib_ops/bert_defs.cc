@@ -927,6 +927,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
+        .Attr("unidirectional",
+              "Whether every token can only attend to previous tokens. Default value is 0.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape (batch_size, kv_sequence_length, num_heads, 3, head_size)",
