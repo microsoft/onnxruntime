@@ -455,9 +455,9 @@ TEST(LabelEncoder, TensorBasedAttributesOpset4) {
 
 TEST(LabelEncoder, NaNsMappedTogetherOpset4) {
   std::vector<std::int64_t> dims{1, 6};
-  std::vector<float> input{3.14, std::nanf("1"), 2.718, std::nanf("2"), 5.0, -1};
+  std::vector<float> input{3.14f, std::nanf("1"), 2.718f, std::nanf("2"), 5.f, -1.f};
   std::vector<std::string> output{"a", "ONNX", "b", "ONNX", "c", "onnxruntime"};
-  std::vector<float> key_data{3.14, 2.718, 5.0, std::nanf("3")};
+  std::vector<float> key_data{3.14f, 2.718f, 5.0f, std::nanf("3")};
   std::vector<std::string> value_data{"a", "b", "c", "ONNX"};
 
   OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
