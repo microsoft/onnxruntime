@@ -151,26 +151,44 @@ stages:
       DoEsrp: ${{ parameters.DoEsrp }}
       IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
   # Testing
-  ## Windows GPU Testing
   - template: nuget/templates/test_win.yml
     parameters:
-      AgentPool: 'onnxruntime-Win2022-GPU-T4'
-      NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Windows'
+      AgentPool : 'onnxruntime-Win2022-GPU-T4'
+      NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
       ArtifactSuffix: 'GPU'
       StageSuffix: 'GPU'
       Skipx86Tests: 'true'
-      CudaVersion: ${{ parameters.CudaVersion }}
       SpecificArtifact: ${{ parameters.SpecificArtifact }}
       BuildId: ${{ parameters.BuildId }}
-  ## Linux GPU Testing
-  - template: nuget/templates/test_linux.yml
+
+  - template: nuget/templates/test_win.yml
     parameters:
-      AgentPool: Onnxruntime-Linux-GPU
+      AgentPool : 'onnxruntime-Win2022-GPU-T4'
+      NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu.Windows'
       ArtifactSuffix: 'GPU'
       StageSuffix: 'GPU'
-      NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Linux'
+      MoreSuffix: '_Windows'
+      Skipx86Tests: 'true'
+      SpecificArtifact: ${{ parameters.SpecificArtifact }}
+      BuildId: ${{ parameters.BuildId }}
+
+  - template: nuget/templates/test_linux.yml
+    parameters:
+      AgentPool : Onnxruntime-Linux-GPU
+      ArtifactSuffix: 'GPU'
+      StageSuffix: 'GPU'
+      NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
       SpecificArtifact: ${{ parameters.specificArtifact }}
-      CudaVersion: ${{ parameters.CudaVersion }}
+      BuildId: ${{ parameters.BuildId }}
+
+  - template: nuget/templates/test_linux.yml
+    parameters:
+      AgentPool : Onnxruntime-Linux-GPU
+      ArtifactSuffix: 'GPU'
+      StageSuffix: 'GPU'
+      MoreSuffix: '_Linux'
+      NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu.Linux'
+      SpecificArtifact: ${{ parameters.specificArtifact }}
       BuildId: ${{ parameters.BuildId }}
 
 ## Win/Linux GPU Combined Publishing
