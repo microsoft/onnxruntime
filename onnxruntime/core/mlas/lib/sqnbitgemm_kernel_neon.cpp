@@ -259,7 +259,7 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
 }
 
 MLAS_FORCEINLINE void
-SQNBitGemmM1Kernel_BlkBitWidth4_CompFp32(
+SQ4BitGemmM1Kernel_CompFp32(
     size_t BlkLen,
     const float* A,
     const std::byte* QuantBData,
@@ -340,7 +340,7 @@ SQNBitGemmM1Kernel_BlkBitWidth4_CompFp32(
 }
 
 MLAS_FORCEINLINE void
-QNBitBlkDequantBForSgemm_BlkBitWidth4_CompFp32(
+Q4BitBlkDequantBForSgemm_CompFp32(
     size_t BlkLen,
     float* FpData,
     const std::byte* QuantBData,
@@ -659,7 +659,7 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
 
 MLAS_FORCEINLINE
 void
-SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8(
+SQ4BitGemmM1Kernel_CompInt8(
     size_t BlkLen,
     const std::byte* QuantA,
     const std::byte* QuantBData,
@@ -748,9 +748,9 @@ SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8(
 const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
     MLAS_SQNBIT_GEMM_DISPATCH d;
 
-    d.SQNBitGemmM1Kernel_BlkBitWidth4_CompFp32 = SQNBitGemmM1Kernel_BlkBitWidth4_CompFp32;
-    d.QNBitBlkDequantBForSgemm_BlkBitWidth4_CompFp32 = QNBitBlkDequantBForSgemm_BlkBitWidth4_CompFp32;
-    d.SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8 = SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8;
+    d.SQ4BitGemmM1Kernel_CompFp32 = SQ4BitGemmM1Kernel_CompFp32;
+    d.Q4BitBlkDequantBForSgemm_CompFp32 = Q4BitBlkDequantBForSgemm_CompFp32;
+    d.SQ4BitGemmM1Kernel_CompInt8 = SQ4BitGemmM1Kernel_CompInt8;
     d.QuantizeARow_CompInt8 = QuantizeARow_CompInt8;
 
     return d;

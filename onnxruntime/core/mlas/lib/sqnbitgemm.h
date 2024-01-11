@@ -22,10 +22,10 @@ Abstract:
 
 #pragma once
 
+#include <cassert>
+
 #include "mlas_qnbit.h"
 #include "mlasi.h"
-
-#include <cassert>
 
 constexpr MLAS_FORCEINLINE size_t
 MlasQNBitBlkDataSizeInBytes(size_t BlkBitWidth, size_t BlkLen)
@@ -104,7 +104,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
     //
 
     /**
-     * @brief Multiply float matrix A with quantized n-bit integer matrix B.
+     * @brief Multiply float matrix A with quantized 4-bit integer matrix B.
      *        B is block quantized and column major.
      *        This kernel handles the special case where M, the number of rows of A and C, is 1.
      *
@@ -119,7 +119,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
      * @param       BlockStrideQuantB   Number of blocks between adjacent columns of the quantized B matrix.
      * @param       Bias                Bias vector of length N.
      */
-    typedef void(SQNBitGemmM1Kernel_BlkBitWidth4_CompFp32_Fn)(
+    typedef void(SQ4BitGemmM1Kernel_CompFp32_Fn)(
         size_t BlkLen,
         const float* A,
         const std::byte* QuantBData,
@@ -132,13 +132,12 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
         const float* Bias
     );
 
-    SQNBitGemmM1Kernel_BlkBitWidth4_CompFp32_Fn* SQNBitGemmM1Kernel_BlkBitWidth4_CompFp32 = nullptr;
+    SQ4BitGemmM1Kernel_CompFp32_Fn* SQ4BitGemmM1Kernel_CompFp32 = nullptr;
 
     /**
      * @brief Dequantize B into the format expected by the Sgemm kernel.
-     *        B is block quantized and column major.
-     *        This is equivalent to dequantizing B and then running
-     *        MlasSgemmCopyPackB.
+     *        B is a quantized 4-bit integer matrix that is block quantized and column major.
+     *        This is equivalent to dequantizing B and then running MlasSgemmCopyPackB.
      *
      * @param       BlkLen              Number of values in a block.
      * @param[out]  FpData              Supplies the output buffer for the dequantized B float data.
@@ -149,7 +148,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
      * @param       CountK              Number of rows of B.
      * @param       BlockStrideQuantB   Number of blocks between adjacent columns of the quantized B matrix.
      */
-    typedef void(QNBitBlkDequantBForSgemm_BlkBitWidth4_CompFp32_Fn)(
+    typedef void(Q4BitBlkDequantBForSgemm_CompFp32_Fn)(
         size_t BlkLen,
         float* FpData,
         const std::byte* QuantBData,
@@ -160,14 +159,14 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
         size_t BlockStrideQuantB
     );
 
-    QNBitBlkDequantBForSgemm_BlkBitWidth4_CompFp32_Fn* QNBitBlkDequantBForSgemm_BlkBitWidth4_CompFp32 = nullptr;
+    Q4BitBlkDequantBForSgemm_CompFp32_Fn* Q4BitBlkDequantBForSgemm_CompFp32 = nullptr;
 
     //
     // CompInt8 kernel function prototypes.
     //
 
     /**
-     * @brief Multiply quantized int8 matrix A with quantized n-bit integer matrix B.
+     * @brief Multiply quantized 8-bit integer matrix A with quantized 4-bit integer matrix B.
      *        A and B are block quantized and B is column major.
      *        This kernel handles the special case where M, the number of rows of A and C, is 1.
      *
@@ -183,7 +182,7 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
      * @param       BlockStrideQuantB   Number of blocks between adjacent columns of the quantized B matrix.
      * @param       Bias                Bias vector of length N.
      */
-    typedef void(SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8_Fn)(
+    typedef void(SQ4BitGemmM1Kernel_CompInt8_Fn)(
         size_t BlkLen,
         const std::byte* QuantA,
         const std::byte* QuantBData,
@@ -196,10 +195,10 @@ struct MLAS_SQNBIT_GEMM_DISPATCH {
         const float* Bias
     );
 
-    SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8_Fn* SQNBitGemmM1Kernel_BlkBitWidth4_CompInt8 = nullptr;
+    SQ4BitGemmM1Kernel_CompInt8_Fn* SQ4BitGemmM1Kernel_CompInt8 = nullptr;
 
     /**
-     * @brief Block quantize values from one row of matrix A from float to int8.
+     * @brief Block quantize values from one row of matrix A from floats to quantized 8-bit integers.
      *
      * @param       BlkLen  Number of values in a block.
      * @param       A       Supplies the A matrix.
