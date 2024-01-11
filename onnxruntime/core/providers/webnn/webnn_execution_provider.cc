@@ -14,7 +14,6 @@
 #include "builders/model.h"
 #include "builders/helper.h"
 #include "builders/model_builder.h"
-#include "core/framework/model_metadef_id_generator.h"
 
 namespace onnxruntime {
 
@@ -51,6 +50,7 @@ WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_f
   if (!wnn_builder_.as<bool>()) {
     ORT_THROW("Failed to create WebNN builder.");
   }
+  metadef_id_generator_ = std::make_unique<ModelMetadefIdGenerator>();
 }
 
 WebNNExecutionProvider::~WebNNExecutionProvider() {}
@@ -159,7 +159,7 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
     // Assign inputs and outputs to subgraph's meta_def.
     uint64_t model_hash;
-    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
+    int metadef_id = metadef_id_generator_->GenerateId(graph_viewer, model_hash);
     auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
     meta_def->name = "WEBNN_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
     meta_def->domain = kMSDomain;

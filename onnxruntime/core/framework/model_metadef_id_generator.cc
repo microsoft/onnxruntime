@@ -7,10 +7,8 @@
 #include "core/framework/murmurhash3.h"
 
 namespace onnxruntime {
-int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) {
-  static std::unordered_map<HashValue, HashValue> main_graph_hash_;  // map graph instance hash to model contents hash
-  static std::unordered_map<HashValue, int> model_metadef_id_;       // current unique id for model
-
+int ModelMetadefIdGenerator::GenerateId(const onnxruntime::GraphViewer& graph_viewer,
+                                                            HashValue& model_hash) {
   // if the EP is shared across multiple sessions there's a very small potential for concurrency issues.
   // use a lock when generating an id to be paranoid
   static OrtMutex mutex;

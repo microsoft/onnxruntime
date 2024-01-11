@@ -6,6 +6,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/model_metadef_id_generator.h"
 #include "core/providers/webnn/builders/helper.h"
 
 #include <emscripten.h>
@@ -48,5 +49,6 @@ class WebNNExecutionProvider : public IExecutionProvider {
   DataLayout preferred_layout_;
   webnn::WebnnDeviceType wnn_device_type_;
   InlinedHashMap<std::string, std::unique_ptr<onnxruntime::webnn::Model>> models_;
+  std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
 };
 }  // namespace onnxruntime

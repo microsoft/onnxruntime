@@ -19,7 +19,6 @@
 #include "core/providers/cann/cann_fwd.h"
 #include "core/providers/cann/cann_stream_handle.h"
 #include "core/providers/cann/npu_data_transfer.h"
-#include "core/framework/model_metadef_id_generator.h"
 
 using onnxruntime::cann::BuildONNXModel;
 using onnxruntime::cann::CannModelPreparation;
@@ -1037,6 +1036,7 @@ CANNExecutionProvider::CANNExecutionProvider(const CANNExecutionProviderInfo& in
 
   soc_name_ = aclrtGetSocName();
   ORT_ENFORCE(soc_name_ != nullptr, "aclrtGetSocName return nullptr");
+  metadef_id_generator_ = std::make_unique<ModelMetadefIdGenerator>();
 }
 
 CANNExecutionProvider::~CANNExecutionProvider() {
@@ -1198,7 +1198,7 @@ std::unique_ptr<IndexedSubGraph> CANNExecutionProvider::GetSubGraph(
 
   // Generate unique kernel name for CANN subgraph
   HashValue model_hash = 0;
-  int id = GenerateMetaDefId(graph_viewer, model_hash);
+  int id = metadef_id_generator_->GenerateId(graph_viewer, model_hash);
   auto meta_def = IndexedSubGraph_MetaDef::Create();
   meta_def->name() = graph_viewer.Name() + "_" + std::to_string(model_hash) + "_" + std::to_string(id);
 

@@ -5,6 +5,7 @@
 
 #include "core/framework/execution_provider.h"
 #include "core/framework/session_options.h"
+#include "core/framework/model_metadef_id_generator.h"
 #include <string>
 #include "core/providers/qnn/builder/qnn_backend_manager.h"
 #include "core/providers/qnn/builder/qnn_model.h"
@@ -66,6 +67,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool disable_cpu_ep_fallback_ = false;  // True if CPU EP fallback has been disabled for this session.
   bool qnn_context_embed_mode_ = true;
   int32_t vtcm_size_in_mb_ = 0;
+  std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
 };
 
 }  // namespace onnxruntime

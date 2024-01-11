@@ -20,7 +20,6 @@
 #include "core/providers/dnnl/dnnl_fwd.h"
 #include "core/providers/dnnl/dnnl_node_capability.h"
 #include "core/providers/dnnl/subgraph/dnnl_subgraph_transformer.h"
-#include "core/framework/model_metadef_id_generator.h"
 
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
@@ -78,8 +77,8 @@ DnnlExecutionProvider::DnnlExecutionProvider(const DnnlExecutionProviderInfo& in
   // Log the number of threads used
   LOGS_DEFAULT(INFO) << "Allocated " << omp_get_max_threads() << " OpenMP threads for oneDNN ep\n";
 #endif  // defined(DNNL_OPENMP)
-
-}  // namespace onnxruntime
+  metadef_id_generator_ = std::make_unique<ModelMetadefIdGenerator>();
+}
 
 DnnlExecutionProvider::~DnnlExecutionProvider() {
 }
@@ -230,7 +229,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DnnlExecutionProvider::GetCapabi
 
     // Assign inputs and outputs to subgraph's meta_def
     HashValue model_hash;
-    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
+    int metadef_id = metadef_id_generator_->GenerateId(graph_viewer, model_hash);
     auto meta_def = ::onnxruntime::IndexedSubGraph_MetaDef::Create();
     meta_def->name() = "DNNL_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
     meta_def->domain() = kMSDomain;
@@ -265,7 +264,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DnnlExecutionProvider::GetCapabi
     graph_viewer.ToProto(*model_proto->mutable_graph(), false, true);
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     HashValue model_hash;
-    int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
+    int metadef_id = metadef_id_generator_->GenerateId(graph_viewer, model_hash);
     std::fstream dump("DNNL_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id) + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
     model_proto->SerializeToOstream(dump);
   }

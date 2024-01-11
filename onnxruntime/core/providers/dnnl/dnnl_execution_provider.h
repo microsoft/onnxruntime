@@ -8,6 +8,7 @@
 #include <memory>
 #include <memory.h>
 
+#include "core/framework/model_metadef_id_generator.h"
 #include "core/providers/dnnl/dnnl_execution_provider_info.h"
 #include "core/providers/dnnl/dnnl_threadpool.h"
 #include "core/providers/dnnl/dnnl_op_manager.h"
@@ -41,6 +42,7 @@ class DnnlExecutionProvider : public IExecutionProvider {
   bool debug_log_ = false;
   // enable fusion by default
   bool enable_fusion_ = true;
+  std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
 };
 
 }  // namespace onnxruntime
