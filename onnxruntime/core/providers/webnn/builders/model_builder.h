@@ -30,7 +30,7 @@ class ModelBuilder {
 
   // Accessors for members.
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
-  const InitializedTensorSet& GetInitializerTensors() const { return graph_viewer_.GetAllInitializedTensors(); }
+  InitializedTensorSet GetInitializerTensors();
 
   const emscripten::val& GetBuilder() const { return wnn_builder_; }
   const emscripten::val& GetContext() const { return wnn_context_; }

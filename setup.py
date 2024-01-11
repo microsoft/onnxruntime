@@ -464,7 +464,6 @@ if enable_training or enable_training_apis:
                 "onnxruntime.training.experimental",
                 "onnxruntime.training.experimental.gradient_graph",
                 "onnxruntime.training.optim",
-                "onnxruntime.training.torchdynamo",
                 "onnxruntime.training.ortmodule",
                 "onnxruntime.training.ortmodule.experimental",
                 "onnxruntime.training.ortmodule.experimental.json_config",

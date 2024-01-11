@@ -54,13 +54,13 @@ class ConvBase : public JsKernel {
                                  static_cast<int32_t>(conv_attrs_.group),
                                  static_cast<int32_t>(kernel_shape_0),
                                  static_cast<int32_t>(local_pads.size()),
-                                 reinterpret_cast<int32_t>(local_pads.size() > 0 ? local_pads.data() : nullptr) >> 2,
+                                 JSEP_HEAP_PTR(local_pads.size() > 0 ? local_pads.data() : nullptr) >> 2,
                                  static_cast<int32_t>(conv_attrs_.strides.size() > 0 ? conv_attrs_.strides[0] : 0),
                                  static_cast<int32_t>(channels_last),
-                                 reinterpret_cast<int32_t>(&w_is_const_),
+                                 JSEP_HEAP_PTR(&w_is_const_),
                                  conv_attrs_.activation.c_str(),
                                  activation_params.size(),
-                                 reinterpret_cast<int32_t>(activation_params_ptr) >> 2);
+                                 JSEP_HEAP_PTR(activation_params_ptr) >> 2);
     } else {
       JSEP_INIT_KERNEL_ATTRIBUTE(Conv, ({
                                    "format" : $11 ? "NHWC" : "NCHW",
@@ -81,14 +81,14 @@ class ConvBase : public JsKernel {
                                  static_cast<int32_t>(kernel_shape_0),
                                  static_cast<int32_t>(kernel_shape_1),
                                  static_cast<int32_t>(local_pads.size()),
-                                 reinterpret_cast<int32_t>(local_pads.size() > 0 ? local_pads.data() : nullptr) >> 2,
+                                 JSEP_HEAP_PTR(local_pads.size() > 0 ? local_pads.data() : nullptr) >> 2,
                                  static_cast<int32_t>(conv_attrs_.strides.size() > 0 ? conv_attrs_.strides[0] : 0),
                                  static_cast<int32_t>(conv_attrs_.strides.size() > 1 ? conv_attrs_.strides[1] : 0),
                                  static_cast<int32_t>(channels_last),
-                                 reinterpret_cast<int32_t>(&w_is_const_),
+                                 JSEP_HEAP_PTR(&w_is_const_),
                                  conv_attrs_.activation.c_str(),
                                  activation_params.size(),
-                                 reinterpret_cast<int32_t>(activation_params_ptr) >> 2);
+                                 JSEP_HEAP_PTR(activation_params_ptr) >> 2);
     }
   }
 
