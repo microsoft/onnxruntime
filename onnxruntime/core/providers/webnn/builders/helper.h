@@ -35,6 +35,9 @@ typedef struct {
   bool isCpuSupported;  // The WebNN CPU backend XNNPack supports it (not about the CPU EP).
 } WebnnOpInfo;
 
+// Collects all the initializer tensors in the subGraph and its ancestor graphs.
+InitializedTensorSet CollectAllInitializedTensors(const GraphViewer& graph_viewer);
+
 bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger);
 
 template <typename T>
@@ -139,7 +142,7 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"ArgMax", {"argMax", false}},
     {"ArgMin", {"argMin", false}},
     {"AveragePool", {"averagePool2d", true}},
-    {"BatchNormalization", {"meanVarianceNormalization", false}},
+    {"BatchNormalization", {"batchNormalization", false}},
     {"Cast", {"cast", false}},
     {"Ceil", {"ceil", true}},
     {"Clip", {"clamp", true}},
@@ -162,12 +165,11 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"GlobalLpPool", {"l2Pool2d", false}},
     {"Greater", {"greater", false}},
     {"GreaterOrEqual", {"greaterOrEqual", false}},
-    {"GroupNormalization", {"meanVarianceNormalization", false}},
     {"HardSigmoid", {"hardSigmoid", false}},
     {"HardSwish", {"hardSwish", true}},
     {"Identity", {"identity", false}},
-    {"InstanceNormalization", {"meanVarianceNormalization", false}},
-    {"LayerNormalization", {"meanVarianceNormalization", false}},
+    {"InstanceNormalization", {"instanceNormalization", false}},
+    {"LayerNormalization", {"layerNormalization", false}},
     {"LeakyRelu", {"leakyRelu", true}},
     {"Less", {"lesser", false}},
     {"LessOrEqual", {"lesserOrEqual", false}},
@@ -181,7 +183,7 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Neg", {"neg", true}},
     {"Not", {"logicalNot", false}},
     {"Pad", {"pad", true}},
-    {"Pow", {"pow", true}},
+    {"Pow", {"pow", false}},
     {"PRelu", {"prelu", true}},
     {"Reciprocal", {"reciprocal", false}},
     {"ReduceL1", {"reduceL1", false}},
@@ -192,7 +194,7 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"ReduceMean", {"reduceMean", true}},
     {"ReduceMin", {"reduceMin", false}},
     {"ReduceProd", {"reduceProduct", false}},
-    {"ReduceSum", {"reduceSum", true}},
+    {"ReduceSum", {"reduceSum", false}},
     {"ReduceSumSquare", {"reduceSumSquare", false}},
     {"Relu", {"relu", true}},
     {"Reshape", {"reshape", true}},
@@ -205,7 +207,7 @@ static const InlinedHashMap<std::string, WebnnOpInfo> op_map = {
     {"Slice", {"slice", true}},
     {"Softmax", {"softmax", true}},
     {"Split", {"split", true}},
-    {"Sqrt", {"sqrt", false}},
+    {"Sqrt", {"sqrt", true}},
     {"Squeeze", {"reshape", true}},
     {"Sub", {"sub", true}},
     {"Tan", {"tan", false}},

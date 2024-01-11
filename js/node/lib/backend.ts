@@ -20,7 +20,7 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
   }
 
   async dispose(): Promise<void> {
-    return Promise.resolve();
+    this.#inferenceSession.dispose();
   }
 
   readonly inputNames: string[];

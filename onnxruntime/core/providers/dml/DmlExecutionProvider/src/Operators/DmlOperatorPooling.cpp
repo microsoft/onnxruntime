@@ -34,7 +34,7 @@ public:
             kernelOutputIndices.emplace_back(1);
         }
         DmlOperator::Initialize(kernelInfo, std::nullopt, kernelOutputIndices);
-        
+
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
         ML_CHECK_VALID_ARGUMENT(inputDescs.size() >= 1, "MaxPool input count must be >=1.");
@@ -98,12 +98,44 @@ public:
                 SetOpDesc(desc);
                 break;
             }
+            case DML_OPERATOR_AVERAGE_POOLING1:
+            {
+                if (hasDilations) {
+                    DML_AVERAGE_POOLING1_OPERATOR_DESC desc = {};
+                    desc.IncludePadding = kernelInfo.GetOptionalAttribute<bool>(AttrName::CountIncludePad, false);
+                    desc.Dilations = m_kernel.dilations;
+                    SetOpDesc(desc);
+                }
+                else {
+                    DML_AVERAGE_POOLING_OPERATOR_DESC desc = {};
+                    desc.IncludePadding = kernelInfo.GetOptionalAttribute<bool>(AttrName::CountIncludePad, false);
+                    SetOpDesc(desc);
+                }
+                break;
+            }
             case DML_OPERATOR_LP_POOLING:
             {
                 DML_LP_POOLING_OPERATOR_DESC desc = {};
                 desc.P = kernelInfo.GetOptionalAttribute<int>(AttrName::P, 2);
                 ML_CHECK_VALID_ARGUMENT(desc.P > 0);
                 SetOpDesc(desc);
+                break;
+            }
+            case DML_OPERATOR_LP_POOLING1:
+            {
+                if (hasDilations) {
+                    DML_LP_POOLING1_OPERATOR_DESC desc = {};
+                    desc.P = kernelInfo.GetOptionalAttribute<int>(AttrName::P, 2);
+                    ML_CHECK_VALID_ARGUMENT(desc.P > 0);
+                    desc.Dilations = m_kernel.dilations;
+                    SetOpDesc(desc);
+                }
+                else {
+                    DML_LP_POOLING_OPERATOR_DESC desc = {};
+                    desc.P = kernelInfo.GetOptionalAttribute<int>(AttrName::P, 2);
+                    ML_CHECK_VALID_ARGUMENT(desc.P > 0);
+                    SetOpDesc(desc);
+                }
                 break;
             }
             case DML_OPERATOR_MAX_POOLING:
@@ -152,7 +184,7 @@ public:
 void CALLBACK QueryMaxPool(IMLOperatorSupportQueryContextPrivate* context, bool* isSupported)
 {
     *isSupported = false;
-    
+
     MLOperatorAttributes attributes(context);
 
     int storageOrder = attributes.GetOptionalAttribute<int>(AttrName::StorageOrder, 0);
@@ -164,11 +196,11 @@ void CALLBACK QueryMaxPool(IMLOperatorSupportQueryContextPrivate* context, bool*
     *isSupported = true;
 }
 
-DML_OP_DEFINE_CREATION_FUNCTION(AveragePool,           DmlOperatorPoolingTemplate<DML_OPERATOR_AVERAGE_POOLING, false>);
+DML_OP_DEFINE_CREATION_FUNCTION(AveragePool,           DmlOperatorPoolingTemplate<DML_OPERATOR_AVERAGE_POOLING1, false>);
 DML_OP_DEFINE_CREATION_FUNCTION(GlobalAveragePool,     DmlOperatorPoolingTemplate<DML_OPERATOR_AVERAGE_POOLING, true>);
 DML_OP_DEFINE_CREATION_FUNCTION(MaxPool,               DmlOperatorPoolingTemplate<DML_OPERATOR_MAX_POOLING2, false>);
 DML_OP_DEFINE_CREATION_FUNCTION(GlobalMaxPool,         DmlOperatorPoolingTemplate<DML_OPERATOR_MAX_POOLING, true>);
-DML_OP_DEFINE_CREATION_FUNCTION(LpPool,                DmlOperatorPoolingTemplate<DML_OPERATOR_LP_POOLING, false>);
+DML_OP_DEFINE_CREATION_FUNCTION(LpPool,                DmlOperatorPoolingTemplate<DML_OPERATOR_LP_POOLING1, false>);
 DML_OP_DEFINE_CREATION_FUNCTION(GlobalLpPool,          DmlOperatorPoolingTemplate<DML_OPERATOR_LP_POOLING, true>);
 
 } // namespace Dml
