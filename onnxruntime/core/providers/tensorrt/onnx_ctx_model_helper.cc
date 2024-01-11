@@ -46,15 +46,6 @@ std::filesystem::path LocateEngineRelativeToPath(std::string engine_cache_path, 
 }
 
 /*
- * Get compute capability
- *
- */
-std::string GetComputeCapacityString(const cudaDeviceProp& prop) {
-  const std::string compute_capability = std::to_string(prop.major) + "." + std::to_string(prop.minor);
-  return compute_capability;
-}
-
-/*
  * Update ep_cache_context attribute of the EP context node with the given engine binary data
  */
 void UpdateCtxNodeModelEngineContext(ONNX_NAMESPACE::ModelProto* model_proto,
@@ -84,7 +75,7 @@ ONNX_NAMESPACE::ModelProto* CreateCtxNodeModel(const GraphViewer& graph_viewer,
                                                size_t size,
                                                const int64_t embed_mode,
                                                bool compute_capability_enable,
-                                               int device_id,
+                                               std::string compute_capability,
                                                const logging::Logger* logger) {
   auto model_build = graph_viewer.CreateModel(*logger);
   auto& graph_build = model_build->MainGraph();
@@ -126,11 +117,9 @@ ONNX_NAMESPACE::ModelProto* CreateCtxNodeModel(const GraphViewer& graph_viewer,
   node_attributes->emplace(EP_CACHE_CONTEXT, *attr_1);
 
   if (compute_capability_enable) {
-    cudaDeviceProp prop;
-    CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id));
     attr_2->set_name(COMPUTE_CAPABILITY);
     attr_2->set_type(onnx::AttributeProto_AttributeType_STRING);
-    attr_2->set_s(GetComputeCapacityString(prop));
+    attr_2->set_s(compute_capability);
     node_attributes->emplace(COMPUTE_CAPABILITY, *attr_2);
   }
 
@@ -211,12 +200,10 @@ bool TensorRTCacheModelHandler::ValidateEPCtxNode(const GraphViewer& graph_viewe
   // Check hardware_architecture(compute_capability) if it's present as an attribute
   if (attrs.count(COMPUTE_CAPABILITY) > 0) {
     std::string model_compute_capability = attrs.at(COMPUTE_CAPABILITY).s();
-    cudaDeviceProp prop;
-    CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
-    if (model_compute_capability != GetComputeCapacityString(prop)) {
+    if (model_compute_capability != compute_capability_) {
       LOGS_DEFAULT(ERROR) << "The compute capability of the engine cache doesn't match with the GPU's compute capability";
       LOGS_DEFAULT(ERROR) << "The compute capability of the engine cache: " << model_compute_capability;
-      LOGS_DEFAULT(ERROR) << "The compute capability of the GPU: " << GetComputeCapacityString(prop);
+      LOGS_DEFAULT(ERROR) << "The compute capability of the GPU: " << compute_capability_;
       return false;
     }
   }
