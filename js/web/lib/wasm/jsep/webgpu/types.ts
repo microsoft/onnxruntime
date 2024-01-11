@@ -12,11 +12,7 @@ export enum GpuDataType {
 }
 export type GpuDataId = number;
 
-export enum QueryType {
-  none,
-  insidePasses,
-  atPasses,
-}
+export type TimestampQuery = 'none'|'inside-passes'|'at-passes';
 
 export interface GpuData {
   type: GpuDataType;

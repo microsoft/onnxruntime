@@ -10,20 +10,20 @@ import {createView, TensorView} from './tensor-view';
 import {createGpuDataManager, downloadGpuData, GpuDataManager} from './webgpu/gpu-data-manager';
 import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
 import {ProgramManager} from './webgpu/program-manager';
-import {ComputeContext, GpuData, ProgramInfo, ProgramInputTensorInfoDependency, QueryType} from './webgpu/types';
+import {ComputeContext, GpuData, ProgramInfo, ProgramInputTensorInfoDependency, TimestampQuery} from './webgpu/types';
 
 interface KernelInfo {
-  kernelType: string;
-  kernelName: string;
-  kernelEntry: RunFunction;
-  attributes: [((attribute: unknown) => unknown)|undefined, unknown];
+  readonly kernelType: string;
+  readonly kernelName: string;
+  readonly kernelEntry: RunFunction;
+  readonly attributes: [((attribute: unknown) => unknown)|undefined, unknown];
 }
 
 interface PendingKernelInfo {
-  kernelId: number;
-  programName: string;
-  inputTensorViews: readonly TensorView[];
-  outputTensorViews: readonly TensorView[];
+  readonly kernelId: number;
+  readonly programName: string;
+  readonly inputTensorViews: readonly TensorView[];
+  readonly outputTensorViews: readonly TensorView[];
 }
 
 const getProgramInputTensorInfoDependencyKey =
@@ -147,12 +147,12 @@ export class WebGpuBackend {
 
   // info of kernels pending submission for a single batch
   private pendingKernels: PendingKernelInfo[] = [];
-  // queryReadData -> pendingKernels mapping for all the batches
-  private pendingQueries: Map<number, PendingKernelInfo[]> = new Map();
-  private queryResolveData?: GpuData;
+  // queryReadBuffer -> pendingKernels mapping for all the batches
+  private pendingQueries: Map<GPUBuffer, PendingKernelInfo[]> = new Map();
+  private queryResolveBuffer?: GPUBuffer;
   private querySet?: GPUQuerySet;
   private queryTimeBase?: bigint;
-  queryType: QueryType;
+  queryType: TimestampQuery;
 
   env: Env;
 
@@ -225,14 +225,14 @@ export class WebGpuBackend {
 
       // refresh queryType, as sometimes we only need to enable query for a specific run
       this.setQueryType();
-      if (this.queryType !== QueryType.none && typeof this.querySet === 'undefined') {
+      if (this.queryType !== 'none' && typeof this.querySet === 'undefined') {
         this.querySet = this.device.createQuerySet({
           type: 'timestamp',
           count: this.maxDispatchNumber * 2,
         });
-        this.queryResolveData = this.gpuDataManager.create(
+        this.queryResolveBuffer = this.device.createBuffer(
             // eslint-disable-next-line no-bitwise
-            this.maxDispatchNumber * 2 * 8, GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE);
+            {size: this.maxDispatchNumber * 2 * 8, usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE});
       }
     }
     return this.commandEncoder;
@@ -242,7 +242,7 @@ export class WebGpuBackend {
     if (!this.computePassEncoder) {
       const computePassDescriptor: GPUComputePassDescriptor = {};
 
-      if (this.queryType === QueryType.atPasses) {
+      if (this.queryType === 'at-passes') {
         computePassDescriptor.timestampWrites = {
           querySet: this.querySet!,
           beginningOfPassWriteIndex: this.pendingDispatchNumber * 2,
@@ -268,17 +268,19 @@ export class WebGpuBackend {
     }
 
     TRACE_FUNC_BEGIN();
-    let queryReadData: GpuData;
-    if (this.queryType !== QueryType.none) {
+    let queryReadBuffer: GPUBuffer;
+    if (this.queryType !== 'none') {
       this.commandEncoder.resolveQuerySet(
-          this.querySet!, 0, this.pendingDispatchNumber * 2, this.queryResolveData!.buffer, 0);
-      queryReadData = this.gpuDataManager.create(
+          this.querySet!, 0, this.pendingDispatchNumber * 2, this.queryResolveBuffer!, 0);
+
+      queryReadBuffer = this.device.createBuffer(
           // eslint-disable-next-line no-bitwise
-          this.pendingDispatchNumber * 2 * 8, GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST);
-      this.pendingQueries.set(queryReadData.id, this.pendingKernels);
+          {size: this.pendingDispatchNumber * 2 * 8, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST});
+
+      this.pendingQueries.set(queryReadBuffer, this.pendingKernels);
       this.pendingKernels = [];
       this.commandEncoder.copyBufferToBuffer(
-          this.queryResolveData!.buffer, 0, queryReadData.buffer, 0, this.pendingDispatchNumber * 2 * 8);
+          this.queryResolveBuffer!, 0, queryReadBuffer, 0, this.pendingDispatchNumber * 2 * 8);
     }
 
     this.device.queue.submit([this.commandEncoder.finish()]);
@@ -286,10 +288,10 @@ export class WebGpuBackend {
     this.commandEncoder = null;
     this.pendingDispatchNumber = 0;
 
-    if (this.queryType !== QueryType.none) {
-      void queryReadData!.buffer.mapAsync(GPUMapMode.READ).then(() => {
-        const mappedData = new BigUint64Array(queryReadData.buffer.getMappedRange());
-        const pendingKernels = this.pendingQueries.get(queryReadData.id)!;
+    if (this.queryType !== 'none') {
+      void queryReadBuffer!.mapAsync(GPUMapMode.READ).then(() => {
+        const mappedData = new BigUint64Array(queryReadBuffer.getMappedRange());
+        const pendingKernels = this.pendingQueries.get(queryReadBuffer)!;
         for (let i = 0; i < mappedData.length / 2; i++) {
           const pendingKernelInfo = pendingKernels[i];
           const kernelId = pendingKernelInfo.kernelId;
@@ -343,9 +345,8 @@ export class WebGpuBackend {
           }
           TRACE('GPU', `${programName}::${startTimeU64}::${endTimeU64}`);
         }
-        queryReadData.buffer.unmap();
-        this.gpuDataManager.release(queryReadData.id);
-        this.pendingQueries.delete(queryReadData.id);
+        queryReadBuffer.unmap();
+        this.pendingQueries.delete(queryReadBuffer);
       });
     }
     TRACE_FUNC_END();
@@ -487,7 +488,7 @@ export class WebGpuBackend {
         () => `[ProgramManager] run "${program.name}" (key=${key}) with ${normalizedDispatchGroup[0]}x${
             normalizedDispatchGroup[1]}x${normalizedDispatchGroup[2]}`);
 
-    if (this.queryType !== QueryType.none) {
+    if (this.queryType !== 'none') {
       const pendingKernelInfo: PendingKernelInfo = {
         kernelId: this.currentKernelId!,
         programName: artifact.programInfo.name,
@@ -637,7 +638,7 @@ export class WebGpuBackend {
     };
   }
   writeTimeStamp(index: number): void {
-    if (this.queryType !== QueryType.insidePasses) {
+    if (this.queryType !== 'inside-passes') {
       return;
     }
 
@@ -645,12 +646,12 @@ export class WebGpuBackend {
     (this.computePassEncoder as any).writeTimestamp(this.querySet, index);
   }
   setQueryType(): void {
-    this.queryType = QueryType.none;
+    this.queryType = 'none';
     if (this.env.webgpu.profiling?.mode === 'default' || this.env.wasm.trace) {
       if (this.device.features.has('chromium-experimental-timestamp-query-inside-passes')) {
-        this.queryType = QueryType.insidePasses;
+        this.queryType = 'inside-passes';
       } else if (this.device.features.has('timestamp-query')) {
-        this.queryType = QueryType.atPasses;
+        this.queryType = 'at-passes';
       }
     }
   }

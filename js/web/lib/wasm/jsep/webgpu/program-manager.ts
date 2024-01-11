@@ -7,7 +7,7 @@ import {WebGpuBackend} from '../backend-webgpu';
 import {LOG_DEBUG} from '../log';
 
 import {createShaderHelper} from './ops/common';
-import {Artifact, GpuData, ProgramInfo, QueryType} from './types';
+import {Artifact, GpuData, ProgramInfo} from './types';
 
 /**
  * ProgramManager is the main class behind running computations
@@ -58,7 +58,7 @@ export class ProgramManager {
     this.backend.pendingDispatchNumber++;
 
     if (this.backend.pendingDispatchNumber >= this.backend.maxDispatchNumber ||
-        this.backend.queryType === QueryType.atPasses) {
+        this.backend.queryType === 'at-passes') {
       this.backend.endComputePass();
     }
     if (this.backend.pendingDispatchNumber >= this.backend.maxDispatchNumber) {
