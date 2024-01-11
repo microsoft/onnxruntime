@@ -158,6 +158,7 @@ stages:
       ArtifactSuffix: 'GPU'
       StageSuffix: 'GPU'
       Skipx86Tests: 'true'
+      CudaVersion: ${{ parameters.CudaVersion }}
       SpecificArtifact: ${{ parameters.SpecificArtifact }}
       BuildId: ${{ parameters.BuildId }}
 
@@ -169,6 +170,7 @@ stages:
       StageSuffix: 'GPU'
       MoreSuffix: '_Windows'
       Skipx86Tests: 'true'
+      CudaVersion: ${{ parameters.CudaVersion }}
       SpecificArtifact: ${{ parameters.SpecificArtifact }}
       BuildId: ${{ parameters.BuildId }}
 
@@ -178,6 +180,7 @@ stages:
       ArtifactSuffix: 'GPU'
       StageSuffix: 'GPU'
       NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
+      CudaVersion: ${{ parameters.CudaVersion }}
       SpecificArtifact: ${{ parameters.specificArtifact }}
       BuildId: ${{ parameters.BuildId }}
 
@@ -188,6 +191,7 @@ stages:
       StageSuffix: 'GPU'
       MoreSuffix: '_Linux'
       NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu.Linux'
+      CudaVersion: ${{ parameters.CudaVersion }}
       SpecificArtifact: ${{ parameters.specificArtifact }}
       BuildId: ${{ parameters.BuildId }}
 
