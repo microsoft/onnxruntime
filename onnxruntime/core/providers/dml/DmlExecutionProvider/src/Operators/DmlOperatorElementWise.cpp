@@ -563,8 +563,6 @@ public:
                     // Treat as broadcast dimension to match CPU behavior.
                     (inputTensorShape[0] == 1)
                 );
-                    // treat as broadcast dimension to match CPU behavior
-                    (inputTensorShape[0] == 1));
                 inputTensorShape.insert(inputTensorShape.begin(), axis, 1);
                 inputTensorShape.insert(inputTensorShape.end(), outputShapeDimCount - 1 - axis, 1);
             }
