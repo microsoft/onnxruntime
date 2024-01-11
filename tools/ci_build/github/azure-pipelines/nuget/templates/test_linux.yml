@@ -3,7 +3,6 @@ parameters:
   ArtifactSuffix: ''
   NugetPackageName : ''
   StageSuffix: 'CPU'
-  MoreSuffix: ''
   NativePackagePrefix: 'onnxruntime'
   SpecificArtifact: false
   CustomOpArtifactName: 'onnxruntime-linux-x64'
