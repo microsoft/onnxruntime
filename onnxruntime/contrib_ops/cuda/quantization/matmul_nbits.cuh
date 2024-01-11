@@ -32,34 +32,18 @@ void TryMatMul4BitsGidx(
     const int32_t* g_idx,
     const int64_t* shapes);
 
+template <typename ZEROT>
 void TryMatMul4Bits(
     cudaStream_t stream,
-    const void* vec_data,
-    const int32_t* mat_data,
+    const void* input_data,
+    const int32_t* qweight_data,
     void* mul_out_data,
     const void* scales_data,
-    const int32_t* zeros_data,
-    uint32_t MATRIX_M,
-    uint32_t MATRIX_K,
-    uint32_t MATRIX_N,
+    const ZEROT* zeros_data,
+    uint32_t matrix_M,
+    uint32_t matrix_K,
+    uint32_t matrix_N,
     uint32_t groupsize);
-
-void DequantWeightNbit(
-    cudaStream_t stream,
-    const int32_t* qweight_i32,
-    const void* scales_data,
-    const int32_t* zeros_data,
-    void* weight_out,
-    uint32_t MATRIX_K,
-    uint32_t MATRIX_N,
-    uint32_t bits,
-    uint32_t groupsize);
-void DequantWeightNbitGidx(cudaStream_t stream,
-                           const int32_t* qweight_i32_i, const void* scale_fp16,
-                           const int32_t* qzeros_i32_i, const int32_t* g_dix,
-                           void* b_fp16,
-                           uint32_t mat_k, uint32_t mat_n, int bits,
-                           int groupsize);
 }
 }  // namespace cuda
 }  // namespace contrib

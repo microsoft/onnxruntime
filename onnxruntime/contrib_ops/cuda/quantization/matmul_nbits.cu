@@ -2,6 +2,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cstdint>
 #include <cub/cub.cuh>
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
@@ -367,10 +368,10 @@ __device__ __forceinline__ float warpReduceSum(float sum) {
     sum += __shfl_down_sync(0xffffffff, sum, 1);  // 0-1, 2-3, 4-5, etc.
   return sum;
 }
-template <typename T>
-__global__ void MatMulW4A16Kernel(T* out, const T* inA, const uint32_t* inB, const T* scales, const uint32_t* qzeros,
-                          uint32_t groupsize, const uint32_t MATRIX_M, const uint32_t MATRIX_K, const uint32_t MATRIX_N) {
-  const uint32_t block_k = ((MATRIX_K + 31) / 32 + 7) / 8 * 8;
+template <typename T, typename ZEROT>
+__global__ void MatMulW4A16Kernel(T* out, const T* inA, const uint32_t* inB, const T* scales, const ZEROT* qzeros,
+                                  uint32_t groupsize, const uint32_t matrix_M, const uint32_t matrix_k, const uint32_t matrix_N) {
+  const uint32_t block_k = ((matrix_k + 31) / 32 + 7) / 8 * 8;
 
   int bid = blockIdx.x;
   __shared__ float bsum[2][32][32 + 1];
@@ -380,17 +381,23 @@ __global__ void MatMulW4A16Kernel(T* out, const T* inA, const uint32_t* inB, con
   half2 res2 = {};
   half2 res2_1 = {};
 
-  const half2* inA_start = (const half2*)(inA + blockIdx.y * MATRIX_K + y_start);
+  const half2* inA_start = (const half2*)(inA + blockIdx.y * matrix_k + y_start);
 
   int n_offset_x = bid * width_element_per_block + threadIdx.x * 2;
 
   int start_group_id = (y_start / groupsize);
   int compressed_idx = threadIdx.x % 4;
-  half2 scale = ((const half2*)(scales + start_group_id * MATRIX_N + n_offset_x))[0];
-  uint32_t qzero_p = qzeros == nullptr ? 0x88888888 : ((qzeros + n_offset_x / 8 + start_group_id * ((MATRIX_N + 7) / 8)))[0];
-  half2 hzero = __halves2half2(
-      __int2half_rn((qzero_p >> (8 * (compressed_idx))) & 0xf),
-      __int2half_rn(((qzero_p) >> (8 * (compressed_idx) + 4)) & 0xf));
+  half2 scale = ((const half2*)(scales + start_group_id * matrix_N + n_offset_x))[0];
+  half2 hzero;
+  uint32_t qzero_p;
+  if constexpr (std::is_same<ZEROT, uint32_t>::value) {
+    qzero_p = qzeros == nullptr ? 0x88888888 : ((qzeros + n_offset_x / 8 + start_group_id * ((matrix_N + 7) / 8)))[0];
+    hzero = __halves2half2(
+        __int2half_rn((qzero_p >> (8 * (compressed_idx))) & 0xf),
+        __int2half_rn(((qzero_p) >> (8 * (compressed_idx) + 4)) & 0xf));
+  } else {
+    hzero = ((const half2*)(qzeros + start_group_id * matrix_N + n_offset_x))[0];
+  }
   half2 scale_h0 = __half2half2(scale.x);
   half2 scale_h1 = __half2half2(scale.y);
   half2 hzero_scale_0 = __half2half2(hzero.x * scale.x);
@@ -404,12 +411,16 @@ __global__ void MatMulW4A16Kernel(T* out, const T* inA, const uint32_t* inB, con
     int g_id = k_offset / groupsize;
 
     if (g_id > start_group_id) {
-      scale = ((const half2*)(scales + g_id * MATRIX_N + n_offset_x))[0];
-      qzero_p = ((qzeros + n_offset_x / 8 +
-                  g_id * ((MATRIX_N + 7) / 8)))[0];
-      hzero = __halves2half2(
-          __int2half_rn((qzero_p >> (8 * (compressed_idx))) & 0xf),
-          __int2half_rn(((qzero_p) >> (8 * (compressed_idx) + 4)) & 0xf));
+      scale = ((const half2*)(scales + g_id * matrix_N + n_offset_x))[0];
+      if constexpr (std::is_same<ZEROT, uint32_t>::value) {
+        qzero_p = ((qzeros + n_offset_x / 8 +
+                    g_id * ((matrix_N + 7) / 8)))[0];
+        hzero = __halves2half2(
+            __int2half_rn((qzero_p >> (8 * (compressed_idx))) & 0xf),
+            __int2half_rn(((qzero_p) >> (8 * (compressed_idx) + 4)) & 0xf));
+      } else {
+        hzero = ((const half2*)(qzeros + g_id * matrix_N + n_offset_x))[0];
+      }
       scale_h0 = __half2half2(scale.x);
       scale_h1 = __half2half2(scale.y);
       hzero_scale_0 = __half2half2(hzero.x * scale.x);
@@ -417,10 +428,10 @@ __global__ void MatMulW4A16Kernel(T* out, const T* inA, const uint32_t* inB, con
       start_group_id = g_id;
     }
 
-    const uint32_t* hinB = inB + n_offset_x + k_offset / 8 * MATRIX_N;
+    const uint32_t* hinB = inB + n_offset_x + k_offset / 8 * matrix_N;
     uint32_t vbInt1 =
-        (n_offset_x < MATRIX_N && (k_offset < MATRIX_K)) ? hinB[0] : int32_t(0);
-    uint32_t vbInt2 = (n_offset_x + 1 < MATRIX_N && (k_offset < MATRIX_K))
+        (n_offset_x < matrix_N && (k_offset < matrix_k)) ? hinB[0] : int32_t(0);
+    uint32_t vbInt2 = (n_offset_x + 1 < matrix_N && (k_offset < matrix_k))
                           ? (hinB)[1]
                           : int32_t(0);
     half2 vb[8];
@@ -442,10 +453,10 @@ __global__ void MatMulW4A16Kernel(T* out, const T* inA, const uint32_t* inB, con
     }
 
     half2 va[4];
-    va[0] = (k_offset < MATRIX_K) ? ((inA_start))[i] : res2;
-    va[1] = (k_offset + 1 < MATRIX_K) ? ((inA_start))[i + 1] : res2;
-    va[2] = (k_offset + 2 < MATRIX_K) ? ((inA_start))[i + 2] : res2;
-    va[3] = (k_offset + 3 < MATRIX_K) ? ((inA_start))[i + 3] : res2;
+    va[0] = (k_offset < matrix_k) ? ((inA_start))[i] : res2;
+    va[1] = (k_offset + 1 < matrix_k) ? ((inA_start))[i + 1] : res2;
+    va[2] = (k_offset + 2 < matrix_k) ? ((inA_start))[i + 2] : res2;
+    va[3] = (k_offset + 3 < matrix_k) ? ((inA_start))[i + 3] : res2;
 
 #pragma unroll
     for (int j = 0; j < 4; j++) {
@@ -473,7 +484,7 @@ __global__ void MatMulW4A16Kernel(T* out, const T* inA, const uint32_t* inB, con
     __syncthreads();
     sum[i] = warpReduceSum<32>(sum[i]);
     if (threadIdx.x == 0) {
-      out[+blockIdx.y * MATRIX_N + bid * width_element_per_block +
+      out[+blockIdx.y * matrix_N + bid * width_element_per_block +
           threadIdx.y * 2 + i] = __float2half_rn(sum[i]);
     }
   }
@@ -484,11 +495,11 @@ constexpr int kMaxInputBatchInThread = 1;
 
 template <typename scalar_t, int WBITS>
 __global__ void MatMulW4A16GidxKernel(const scalar_t* __restrict__ input,
-                       const int* __restrict__ qweight, scalar_t* __restrict__ output,
-                       const scalar_t* __restrict__ scales,
-                       const int* __restrict__ qzeros,
-                       const int* __restrict__ g_idx, uint32_t mat_m,
-                       uint32_t mat_k, uint32_t mat_n, uint32_t zero_width) {
+                                      const int32_t* __restrict__ qweight, scalar_t* __restrict__ output,
+                                      const scalar_t* __restrict__ scales,
+                                      const uint32_t* __restrict__ qzeros,
+                                      const int* __restrict__ g_idx, uint32_t mat_m,
+                                      uint32_t mat_k, uint32_t mat_n, uint32_t zero_width) {
   const int num_thread_group = kBlockSize / kNumWaves;
   const int thread_num_k = (mat_k + num_thread_group - 1) / num_thread_group;
   const int thread_idx_group = threadIdx.y;
@@ -566,383 +577,53 @@ __global__ void MatMulW4A16GidxKernel(const scalar_t* __restrict__ input,
     }
   }
 }
-#define FETCH_UINT2(pointer) (reinterpret_cast<const uint2*>(&(pointer))[0])
-#define FETCH_HALF2(pointer) (reinterpret_cast<const half2*>(&(pointer))[0])
 
-template <typename T, int WBITS>
-__global__ void kDequantizeAndUnpackWeight248(T* out, const int32_t* qweight, const T* scale, const int32_t* qzeros,
-                                              const int group_size, const int in_features, const int n) {
-  int bid = blockIdx.x;
-  int tid = (bid * kBlockSize + threadIdx.x);
-  // const int qweight_rows = (in_features * WBITS + 31) / 32;
-  const int half_n = n / 2;
-
-  const int compress_group_size = 32 / WBITS;
-  const int max_num_in_bits = (1 << WBITS) - 1;
-
-  uint2 weight_int2 = FETCH_UINT2(qweight[tid * 2]);
-  uint32_t weight_v1 = weight_int2.x;
-  uint32_t weight_v2 = weight_int2.y;
-
-  int col_ind = (tid % half_n) * 2;
-  int weight_in_row = tid / half_n * compress_group_size;
-  half2 scale_v = FETCH_HALF2(scale[weight_in_row / group_size * n + col_ind]);
-  uint32_t zero_v = qzeros == nullptr ? 0x88888888 : qzeros[weight_in_row / group_size * (n / compress_group_size) + (col_ind) / compress_group_size];
-  int zero_ind = col_ind % compress_group_size;
-  uint8_t zv1 = (zero_v >> (zero_ind * WBITS)) & max_num_in_bits;
-  uint8_t zv2 = (zero_v >> (zero_ind * WBITS + WBITS)) & max_num_in_bits;
-  half2 scale_zeros = __hmul2(__halves2half2(__short2half_rn(zv1), __short2half_rn(zv2)), scale_v);
-
-  half2* out_h2 = reinterpret_cast<half2*>(out);
-  // decompress weights
-  int remains = in_features - weight_in_row;
-  if (remains >= compress_group_size) {
-#pragma unroll
-    for (int i = 0; i < compress_group_size; i++) {
-      uint8_t wv1 = (weight_v1 >> (i * WBITS)) & max_num_in_bits;
-      uint8_t wv2 = (weight_v2 >> (i * WBITS)) & max_num_in_bits;
-      half2 wv = __halves2half2(__short2half_rn(wv1), __short2half_rn(wv2));
-      out_h2[((weight_in_row + i) * n + col_ind) / 2] = __hfma2(wv, scale_v, -scale_zeros);
-    }
-  } else {
-    for (int i = 0; i < remains; i++) {
-      uint8_t wv1 = (weight_v1 >> (i * WBITS)) & max_num_in_bits;
-      uint8_t wv2 = (weight_v2 >> (i * WBITS)) & max_num_in_bits;
-      half2 wv = __halves2half2(__short2half_rn(wv1), __short2half_rn(wv2));
-      out_h2[((weight_in_row + i) * n + col_ind) / 2] = __hfma2(wv, scale_v, -scale_zeros);
-    }
-  }
-}
-
-template <typename T, int WBITS>
-__device__ __forceinline__ uchar2 IteratorQweight(const T* ptr, int idx) {
-  int start_bits = idx * WBITS;
-  int first = start_bits / 32;
-  int end_bits = (start_bits + WBITS);
-  int second = end_bits / 32;
-  start_bits = start_bits % 32;
-  end_bits = end_bits % 32;
-  uchar2 res;
-  if (first == second) {
-    res.x = (ptr[first].x >> (start_bits)) & ((1 << WBITS) - 1);
-    res.y = (ptr[first].y >> (start_bits)) & ((1 << WBITS) - 1);
-    return res;
-  } else {
-    res.x = (ptr[first].x >> (start_bits));
-    res.y = (ptr[first].y >> (start_bits));
-
-    res.x |= ((ptr[second].x) & ((1 << (end_bits)) - 1)) << (32 - start_bits);
-    res.y |= ((ptr[second].y) & ((1 << (end_bits)) - 1)) << (32 - start_bits);
-    return res;
-  }
-}
-
-template <typename T, int WBITS>
-__global__ void DequantizeAndUnpackWeight3567(T* out, const uint32_t* qweight, const T* scale, const uint32_t* qzeros,
-                                                 int group_size, const int in_features, const int row_n) {
-  int bid = blockIdx.x;
-  int tid = (bid * kBlockSize + threadIdx.x);
-  const int qweight_rows = (in_features * WBITS + 31) / 32;
-  __shared__ uint2 qweight_shared[WBITS * kBlockSize];
-  const int half_n = row_n / 2;
-
-  const int group_row_n = half_n * (WBITS == 6 ? 3 : WBITS);
-  int total_qw = qweight_rows * half_n;
-
-  uint2* qweight_thread = qweight_shared + WBITS * threadIdx.x;
-
-  int qweight_start = tid / half_n * group_row_n + tid % half_n;
-  const uint2* qweigh2 = (const uint2*)qweight;
-#pragma unroll
-  for (int j = 0; j < WBITS; j++) {
-    int ind = qweight_start + half_n * j;
-    qweight_thread[j] = ind < total_qw ? (qweigh2[ind]) : uint2();
-  }
-
-  const int max_num_in_bits = (1 << WBITS) - 1;
-  const int col_ind = (tid % half_n);
-  const int compress_group_size = 32;
-  const int fp16_weight_in_row = tid / half_n * compress_group_size;
-  half2 scale_v[4];
-  const int scale_zero_from = fp16_weight_in_row / group_size;
-  const int scale_zero_to = min(in_features / group_size - 1, (fp16_weight_in_row + compress_group_size) / group_size);
-
-  // decompress scales
-  const half2* scale2 = reinterpret_cast<const half2*>(scale);
-  for (int i = 0, scale_zero_from_i = scale_zero_from; scale_zero_from_i <= scale_zero_to; scale_zero_from_i++, i++) {
-    scale_v[i] = (scale2[scale_zero_from_i * half_n + col_ind]);
-  }
-
-  // decompress zeros
-  uchar2 zv1[4];
-  int half_col_ind = col_ind * 2;
-  const int zero_col_from = half_col_ind * WBITS / 32;
-  const int zero_col_to = ((half_col_ind + 1) * WBITS - 1) / 32;
-  const int zero_col_to_2 = ((half_col_ind + 2) * WBITS - 1) / 32;
-  const int qzero_width = (row_n * WBITS + 32 - 1) / 32;
-  for (int i = 0, scale_zero_from_i = scale_zero_from; scale_zero_from_i <= scale_zero_to; scale_zero_from_i++, i++) {
-    uint32_t zero_v = qzeros == nullptr ? 0x88888888 : qzeros[scale_zero_from_i * qzero_width + zero_col_from];
-    const int zero_bits_last = (((half_col_ind)*WBITS) % 32);
-    zv1[i].x = (zero_v >> zero_bits_last) & max_num_in_bits;
-    if (zero_col_from != zero_col_to) {
-      const int zero_bits_first = ((half_col_ind + 1) * WBITS) % 32;
-      uint32_t zero_v1 = qzeros == nullptr ? 0x88888888 : qzeros[scale_zero_from * qzero_width + zero_col_to];
-      zv1[i].x |= (zero_v1 & ((1 << zero_bits_first) - 1)) << (32 - zero_bits_last);
-
-      zv1[i].y = (zero_v1 >> zero_bits_first) & max_num_in_bits;
-    } else {
-      zv1[i].y = (zero_v >> (zero_bits_last + WBITS)) & max_num_in_bits;
-    }
-
-    if (zero_col_to != zero_col_to_2) {
-      const int zero_bits_first = ((half_col_ind + 2) * WBITS) % 32;
-      uint32_t zero_v1 = qzeros == nullptr ? 0x88888888 : qzeros[scale_zero_from * qzero_width + zero_col_to_2];
-      zv1[i].y |= (zero_v1 & ((1 << zero_bits_first) - 1)) << (32 - zero_bits_last - WBITS);
-    }
-  }
-
-  half2 scale_zeros[4];
-  for (int i = 0; i <= scale_zero_to - scale_zero_from; i++) {
-    scale_zeros[i] = __hmul2(__halves2half2(__ushort2half_rn(zv1[i].x), __ushort2half_rn(zv1[i].y)), scale_v[i]);
-  }
-  half2 scale_2 = scale_v[0];
-  half2 scale_zeros_2 = scale_zeros[0];
-
-  const int out_offset = ((fp16_weight_in_row)*half_n + col_ind);
-  half2* out_h2 = reinterpret_cast<half2*>(out);
-  // decompress weights
-  int remains = in_features - fp16_weight_in_row;
-  if (remains >= compress_group_size) {
-#pragma unroll
-    for (int i = 0; i < compress_group_size / 2; i++) {
-      uchar2 wv1 = IteratorQweight<uint2, WBITS>(qweight_thread, i);
-      uchar2 wv2 = IteratorQweight<uint2, WBITS>(qweight_thread, 16 + i);
-
-      half2 wv = __halves2half2(__ushort2half_rn(wv1.x), __ushort2half_rn(wv1.y));
-      if (group_size < 32) {
-        half2 scale_2 = scale_v[i / group_size];
-        half2 scale_zeros_2 = scale_zeros[i / group_size];
-      }
-      half2 res = __hfma2(wv, scale_2, -scale_zeros_2);
-      out_h2[out_offset + i * half_n] = res;
-
-      wv = __halves2half2(__ushort2half_rn(wv2.x), __ushort2half_rn(wv2.y));
-      if (group_size < 32) {
-        half2 scale_2 = scale_v[(i + 16) / group_size];
-        half2 scale_zeros_2 = scale_zeros[(i + 16) / group_size];
-      }
-      res = __hfma2(wv, scale_2, -scale_zeros_2);
-      out_h2[(out_offset + (i + 16) * half_n)] = res;
-    }
-  } else {
-    // decompress weights
-    for (int i = 0; i < remains; i++) {
-      uchar2 wv1 = IteratorQweight<uint2, WBITS>(qweight_thread, i);
-
-      half2 wv = __halves2half2(__ushort2half_rn(wv1.x), __ushort2half_rn(wv1.y));
-      if (group_size < 32) {
-        scale_2 = scale_v[i / group_size];
-        scale_zeros_2 = scale_zeros[i / group_size];
-      }
-      half2 res = __hfma2(wv, scale_2, -scale_zeros_2);
-      out_h2[out_offset + i * half_n] = res;
-    }
-  }
-}
-
-template <typename scalar_t, int WBITS>
-__global__ void DequantizeAndUnpackWeight357Gidx(
-    scalar_t* out, const uint32_t* qweight, const scalar_t* scale, const uint32_t* qzeros,
-    const int32_t* g_idx, int group_size, const int in_features, const int n,
-    uint8_t add_zero_bias) {
-  int bid = blockIdx.x;
-  int tid = (bid * kBlockSize + threadIdx.x);
-  int out_x = tid % n;
-  int out_y = tid / n;
-  int scale_row = g_idx[out_y];
-
-  const int max_num_in_bits = (1 << WBITS) - 1;
-
-  const int qzero_width = (n * WBITS + 32 - 1) / 32;
-  scalar_t scale_v = scale[scale_row * n + out_x];
-  uint32_t zero_v1 = 0x88888888;
-  uint8_t zv1 = 0;
-  if (qzeros != nullptr) {
-    int start_bits = out_x * WBITS;
-    int first = start_bits / 32;
-    int end_bits = (start_bits + WBITS);
-    int second = end_bits / 32;
-    start_bits = start_bits % 32;
-    end_bits = end_bits % 32;
-
-    zero_v1 = qzeros[scale_row * qzero_width + first];
-    zv1 = (zero_v1 >> start_bits) & max_num_in_bits;
-    if (first != second) {
-      zero_v1 = qzeros[scale_row * qzero_width + second];
-      zv1 |= (zero_v1 & ((1 << end_bits) - 1)) << (32 - start_bits);
-    }
-  }
-
-  scalar_t scale_zeros = __hmul(scale_v, __ushort2half_rn(zv1 + add_zero_bias));
-
-  uint32_t weight_int = 0;
-  uint8_t wv1 = 0;
-  {
-    int start_bits = out_y * WBITS;
-    int first = start_bits / 32;
-    int end_bits = (start_bits + WBITS);
-    int second = end_bits / 32;
-    start_bits = start_bits % 32;
-    end_bits = end_bits % 32;
-
-    weight_int = qweight[first * n + out_x];
-    wv1 = (weight_int >> start_bits) & max_num_in_bits;
-    if (first != second) {
-      weight_int = qweight[second * n + out_x];
-      wv1 |= (weight_int & ((1 << end_bits) - 1)) << (32 - start_bits);
-    }
-  }
-
-  scalar_t wv = __ushort2half_rn(wv1);
-  out[tid] = __hfma(wv, scale_v, -scale_zeros);
-}
-
-template <typename scalar_t, int WBITS>
-__global__ void DequantizeAndUnpackWeight248Gidx(scalar_t* out, const uint32_t* qweight, const scalar_t* scale, const uint32_t* qzeros, const int32_t* g_idx,
-                                               int group_size, const int in_features, const int n, uint8_t add_zero_bias) {
-  int bid = blockIdx.x;
-  int tid = (bid * kBlockSize + threadIdx.x);
-  int out_x = tid % n;
-  int out_y = tid / n;
-  int scale_row = g_idx[out_y];
-
-  const int compress_group_size = 32 / WBITS;
-  const int max_num_in_bits = (1 << WBITS) - 1;
-
-  scalar_t scale_v = scale[scale_row * n + out_x];
-  uint32_t zero_v = qzeros == nullptr
-                        ? 0x88888888
-                        : qzeros[scale_row * (n / compress_group_size) +
-                                 (out_x / compress_group_size)];
-  int zero_ind = out_x % compress_group_size;
-  uint8_t zv1 = (zero_v >> (zero_ind * WBITS)) & max_num_in_bits;
-
-  scalar_t scale_zeros = __hmul(scale_v, __ushort2half_rn(zv1 + add_zero_bias));
-
-  int weight_int = qweight[(out_y / compress_group_size) * n + out_x];
-  int weight_ind = (out_y) % compress_group_size;
-  uint8_t wv1 = (weight_int >> (weight_ind * WBITS)) & max_num_in_bits;
-  scalar_t wv = __ushort2half_rn(wv1);
-  out[tid] = __hfma(wv, scale_v, -scale_zeros);
-}
-
-void DequantWeightNbitGidx(cudaStream_t stream,
-                         const int32_t* qweight_i32_i, const void* scale_fp16,
-                         const int32_t* qzeros_i32_i, const int32_t* g_dix,
-                         void* b_fp16,
-                         uint32_t mat_k, uint32_t mat_n, int bits,
-                         int groupsize) {
-  using scalar_t = half;
-  int add_zero_bias = 0;
-  dim3 gridDim = {mat_k * mat_n / kBlockSize};
-  dim3 blockDim = {kBlockSize};
-
-  const uint32_t* qweight_i32 = reinterpret_cast<const uint32_t*>(qweight_i32_i);
-  const uint32_t* qzeros_i32 = reinterpret_cast<const uint32_t*>(qzeros_i32_i);
-#define CASE_EVEN(WBITS)                                                                                                       \
-  case WBITS:                                                                                                                  \
-    DequantizeAndUnpackWeight248Gidx<scalar_t, WBITS>                                                                            \
-        <<<gridDim, blockDim, 0, stream>>>(                                                                                    \
-            (scalar_t*)b_fp16, qweight_i32, (scalar_t*)scale_fp16, qzeros_i32, g_dix, groupsize, mat_k, mat_n, add_zero_bias); \
-    break;
-#define CASE_ODD(WBITS)                                                                                                        \
-  case WBITS:                                                                                                                  \
-    DequantizeAndUnpackWeight357Gidx<scalar_t, WBITS>                                                                            \
-        <<<gridDim, blockDim, 0, stream>>>(                                                                                    \
-            (scalar_t*)b_fp16, qweight_i32, (scalar_t*)scale_fp16, qzeros_i32, g_dix, groupsize, mat_k, mat_n, add_zero_bias); \
-    break;
-  switch (bits) {
-    CASE_EVEN(2);
-    CASE_EVEN(4);
-    CASE_EVEN(8);
-    CASE_ODD(3);
-    CASE_ODD(5);
-    CASE_ODD(6);
-    CASE_ODD(7);
-    default:
-      printf("error bits\n");
-      assert(false);
-  }
-#undef CASE_EVEN
-#undef CASE_ODD
-}
-
-void DequantWeightNbit(
-    cudaStream_t stream,
-    const int32_t* qweight_i32,
-    const void* scales_data,
-    const int32_t* zeros_data,
-    void* weight_out,
-    uint32_t MATRIX_K,
-    uint32_t MATRIX_N,
-    uint32_t bits,
-    uint32_t groupsize) {
-  uint32_t compress_ratio = 32 / bits;
-  if (bits != 2 && bits != 4 && bits != 8) {
-    compress_ratio = 32;
-  }
-  dim3 gridDim = {(MATRIX_N / 2 * ((MATRIX_K + compress_ratio - 1) / compress_ratio) + kBlockSize - 1) / kBlockSize};
-  dim3 blockDim = {kBlockSize};
-#define CASE_EVEN(WBITS)                                                          \
-  case WBITS:                                                                     \
-    kDequantizeAndUnpackWeight248<half, WBITS><<<gridDim, blockDim, 0, stream>>>( \
-        (half*)weight_out, qweight_i32, (half*)scales_data, zeros_data,           \
-        groupsize, MATRIX_K, MATRIX_N);                                           \
-    break;
-#define CASE_ODD(WBITS)                                                           \
-  case WBITS:                                                                     \
-    DequantizeAndUnpackWeight3567<half, WBITS><<<gridDim, blockDim, 0, stream>>>( \
-        (half*)weight_out, (const uint32_t*)qweight_i32, (half*)scales_data,      \
-        (const uint32_t*)zeros_data, groupsize, MATRIX_K, MATRIX_N);              \
-    break;
-  switch (bits) {
-    CASE_EVEN(2);
-    CASE_EVEN(4);
-    CASE_EVEN(8);
-    CASE_ODD(3);
-    CASE_ODD(5);
-    CASE_ODD(6);
-    CASE_ODD(7);
-    default:
-      break;
-  }
-#undef CASE_EVEN
-#undef CASE_ODD
-}
-
+template <typename ZeroT>
 void TryMatMul4Bits(
     cudaStream_t stream,
-    const void* vec_data,
-    const int32_t* mat_data,
+    const void* input_data,
+    const int32_t* qweight_data,
     void* mul_out_data,
     const void* scales_data,
-    const int32_t* zeros_data,
-    uint32_t MATRIX_M,
-    uint32_t MATRIX_K,
-    uint32_t MATRIX_N,
+    const ZeroT* zeros_data,
+    uint32_t matrix_M,
+    uint32_t matrix_k,
+    uint32_t matrix_N,
     uint32_t groupsize) {
-  const int block_k = ((MATRIX_K + 31) / 32 + 7) / 8 * 8;
+  const int block_k = ((matrix_k + 31) / 32 + 7) / 8 * 8;
 
-  dim3 gridDim = {(MATRIX_N + width_element_per_block - 1) / width_element_per_block, MATRIX_M};
-  dim3 blockDim = {32, (MATRIX_K + block_k - 1) / block_k};
+  dim3 gridDim = {(matrix_N + width_element_per_block - 1) / width_element_per_block, matrix_M};
+  dim3 blockDim = {32, (matrix_k + block_k - 1) / block_k};
   MatMulW4A16Kernel<half><<<gridDim, blockDim, 0, stream>>>(
-      static_cast<half*>(mul_out_data), static_cast<const half*>(vec_data),
-      reinterpret_cast<const uint32_t*>(mat_data), static_cast<const half*>(scales_data),
-      reinterpret_cast<const uint32_t*>(zeros_data), groupsize, MATRIX_M, MATRIX_K, MATRIX_N);
+      static_cast<half*>(mul_out_data), static_cast<const half*>(input_data),
+      reinterpret_cast<const uint32_t*>(qweight_data), static_cast<const half*>(scales_data),
+      zeros_data, groupsize, matrix_M, matrix_k, matrix_N);
 }
 
+template void TryMatMul4Bits<uint32_t>(
+    cudaStream_t stream,
+    const void* input_data,
+    const int32_t* qweight_data,
+    void* mul_out_data,
+    const void* scales_data,
+    const uint32_t* zeros_data,
+    uint32_t matrix_M,
+    uint32_t matrix_k,
+    uint32_t matrix_N,
+    uint32_t groupsize);
+template void TryMatMul4Bits<half>(
+    cudaStream_t stream,
+    const void* input_data,
+    const int32_t* qweight_data,
+    void* mul_out_data,
+    const void* scales_data,
+    const half* zeros_data,
+    uint32_t matrix_M,
+    uint32_t matrix_k,
+    uint32_t matrix_N,
+    uint32_t groupsize);
 template <typename T>
-__forceinline__ T ceil_div(T a, T b) {
+    __forceinline__ T ceil_div(T a, T b) {
   return (a + b - 1) / b;
 }
 
@@ -967,7 +648,7 @@ void TryMatMul4BitsGidx(
   using scalar_t = __half;
   MatMulW4A16GidxKernel<scalar_t, 4><<<blocks, threads, 0, stream>>>(
       reinterpret_cast<const scalar_t*>(input), qweight, reinterpret_cast<scalar_t*>(output),
-      reinterpret_cast<const scalar_t*>(scales), qzeros, g_idx, matricx_m, matricx_k, matricx_n, zero_width);
+      reinterpret_cast<const scalar_t*>(scales), reinterpret_cast<const uint32_t*>(qzeros), g_idx, matricx_m, matricx_k, matricx_n, zero_width);
 }
 }
 }  // namespace cuda

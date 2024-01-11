@@ -2,6 +2,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cstdint>
 #include <cub/cub.cuh>
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
@@ -351,6 +352,400 @@ DequantizeBlockwise4b(
                     "Unsupported block size for blockwise quantization.");
   }
 }
+
+namespace GPTQPacking {
+constexpr int kBlockSize = 256;
+
+#define FETCH_UINT2(pointer) (reinterpret_cast<const uint2*>(&(pointer))[0])
+#define FETCH_HALF2(pointer) (reinterpret_cast<const half2*>(&(pointer))[0])
+
+template <typename T, int WBITS, typename ZEROT>
+__global__ void kDequantizeAndUnpackWeight248(T* out, const int32_t* qweight, const T* scale, const ZEROT* qzeros,
+                                              const int group_size, const int in_features, const int n) {
+  int bid = blockIdx.x;
+  int tid = (bid * kBlockSize + threadIdx.x);
+  // const int qweight_rows = (in_features * WBITS + 31) / 32;
+  const int half_n = n / 2;
+
+  const int compress_group_size = 32 / WBITS;
+  const int max_num_in_bits = (1 << WBITS) - 1;
+
+  uint2 weight_int2 = FETCH_UINT2(qweight[tid * 2]);
+  uint32_t weight_v1 = weight_int2.x;
+  uint32_t weight_v2 = weight_int2.y;
+
+  int col_ind = (tid % half_n) * 2;
+  int weight_in_row = tid / half_n * compress_group_size;
+  half2 scale_v = FETCH_HALF2(scale[weight_in_row / group_size * n + col_ind]);
+  half2 hzeros;
+  if constexpr (std::is_same<ZEROT, uint32_t>::value) {
+    uint32_t zero_v = qzeros == nullptr ? 0x88888888 : qzeros[weight_in_row / group_size * (n / compress_group_size) + (col_ind) / compress_group_size];
+    int zero_ind = col_ind % compress_group_size;
+    uint8_t zv1 = (zero_v >> (zero_ind * WBITS)) & max_num_in_bits;
+    uint8_t zv2 = (zero_v >> (zero_ind * WBITS + WBITS)) & max_num_in_bits;
+    hzeros = __halves2half2(__short2half_rn(zv1), __short2half_rn(zv2));
+  } else {
+    hzeros = FETCH_HALF2(qzeros[weight_in_row / group_size * n + col_ind]);
+  }
+  half2 scale_zeros = __hmul2(hzeros, scale_v);
+
+  half2* out_h2 = reinterpret_cast<half2*>(out);
+  // decompress weights
+  int remains = in_features - weight_in_row;
+  if (remains >= compress_group_size) {
+#pragma unroll
+    for (int i = 0; i < compress_group_size; i++) {
+      uint8_t wv1 = (weight_v1 >> (i * WBITS)) & max_num_in_bits;
+      uint8_t wv2 = (weight_v2 >> (i * WBITS)) & max_num_in_bits;
+      half2 wv = __halves2half2(__short2half_rn(wv1), __short2half_rn(wv2));
+      out_h2[((weight_in_row + i) * n + col_ind) / 2] = __hfma2(wv, scale_v, -scale_zeros);
+    }
+  } else {
+    for (int i = 0; i < remains; i++) {
+      uint8_t wv1 = (weight_v1 >> (i * WBITS)) & max_num_in_bits;
+      uint8_t wv2 = (weight_v2 >> (i * WBITS)) & max_num_in_bits;
+      half2 wv = __halves2half2(__short2half_rn(wv1), __short2half_rn(wv2));
+      out_h2[((weight_in_row + i) * n + col_ind) / 2] = __hfma2(wv, scale_v, -scale_zeros);
+    }
+  }
+}
+
+template <typename T, int WBITS>
+__device__ __forceinline__ uchar2 IteratorQweight(const T* ptr, int idx) {
+  int start_bits = idx * WBITS;
+  int first = start_bits / 32;
+  int end_bits = (start_bits + WBITS);
+  int second = end_bits / 32;
+  start_bits = start_bits % 32;
+  end_bits = end_bits % 32;
+  uchar2 res;
+  if (first == second) {
+    res.x = (ptr[first].x >> (start_bits)) & ((1 << WBITS) - 1);
+    res.y = (ptr[first].y >> (start_bits)) & ((1 << WBITS) - 1);
+    return res;
+  } else {
+    res.x = (ptr[first].x >> (start_bits));
+    res.y = (ptr[first].y >> (start_bits));
+
+    res.x |= ((ptr[second].x) & ((1 << (end_bits)) - 1)) << (32 - start_bits);
+    res.y |= ((ptr[second].y) & ((1 << (end_bits)) - 1)) << (32 - start_bits);
+    return res;
+  }
+}
+
+template <typename T, int WBITS, typename ZEROT>
+__global__ void DequantizeAndUnpackWeight3567(T* out, const uint32_t* qweight, const T* scale, const ZEROT* qzeros,
+                                              int group_size, const int in_features, const int row_n) {
+  int bid = blockIdx.x;
+  int tid = (bid * kBlockSize + threadIdx.x);
+  const int qweight_rows = (in_features * WBITS + 31) / 32;
+  __shared__ uint2 qweight_shared[WBITS * kBlockSize];
+  const int half_n = row_n / 2;
+
+  const int group_row_n = half_n * (WBITS == 6 ? 3 : WBITS);
+  int total_qw = qweight_rows * half_n;
+
+  uint2* qweight_thread = qweight_shared + WBITS * threadIdx.x;
+
+  int qweight_start = tid / half_n * group_row_n + tid % half_n;
+  const uint2* qweigh2 = (const uint2*)qweight;
+#pragma unroll
+  for (int j = 0; j < WBITS; j++) {
+    int ind = qweight_start + half_n * j;
+    qweight_thread[j] = ind < total_qw ? (qweigh2[ind]) : uint2();
+  }
+
+  const int col_ind = (tid % half_n);
+  const int compress_group_size = 32;
+  const int fp16_weight_in_row = tid / half_n * compress_group_size;
+  half2 scale_v[4];
+  const int scale_zero_from = fp16_weight_in_row / group_size;
+  const int scale_zero_to = min(in_features / group_size - 1, (fp16_weight_in_row + compress_group_size) / group_size);
+
+  // decompress scales
+  const half2* scale2 = reinterpret_cast<const half2*>(scale);
+  for (int i = 0, scale_zero_from_i = scale_zero_from; scale_zero_from_i <= scale_zero_to; scale_zero_from_i++, i++) {
+    scale_v[i] = (scale2[scale_zero_from_i * half_n + col_ind]);
+  }
+
+  // decompress zeros
+  half2 hzeros[4];
+  if constexpr (std::is_same<ZEROT, uint32_t>::value) {
+    const int max_num_in_bits = (1 << WBITS) - 1;
+    uchar2 zv1[4];
+    int half_col_ind = col_ind * 2;
+    const int zero_col_from = half_col_ind * WBITS / 32;
+    const int zero_col_to = ((half_col_ind + 1) * WBITS - 1) / 32;
+    const int zero_col_to_2 = ((half_col_ind + 2) * WBITS - 1) / 32;
+    const int qzero_width = (row_n * WBITS + 32 - 1) / 32;
+    for (int i = 0, scale_zero_from_i = scale_zero_from; scale_zero_from_i <= scale_zero_to; scale_zero_from_i++, i++) {
+      uint32_t zero_v = qzeros == nullptr ? 0x88888888 : qzeros[scale_zero_from_i * qzero_width + zero_col_from];
+      const int zero_bits_last = (((half_col_ind)*WBITS) % 32);
+      zv1[i].x = (zero_v >> zero_bits_last) & max_num_in_bits;
+      if (zero_col_from != zero_col_to) {
+        const int zero_bits_first = ((half_col_ind + 1) * WBITS) % 32;
+        uint32_t zero_v1 = qzeros == nullptr ? 0x88888888 : qzeros[scale_zero_from * qzero_width + zero_col_to];
+        zv1[i].x |= (zero_v1 & ((1 << zero_bits_first) - 1)) << (32 - zero_bits_last);
+
+        zv1[i].y = (zero_v1 >> zero_bits_first) & max_num_in_bits;
+      } else {
+        zv1[i].y = (zero_v >> (zero_bits_last + WBITS)) & max_num_in_bits;
+      }
+
+      if (zero_col_to != zero_col_to_2) {
+        const int zero_bits_first = ((half_col_ind + 2) * WBITS) % 32;
+        uint32_t zero_v1 = qzeros == nullptr ? 0x88888888 : qzeros[scale_zero_from * qzero_width + zero_col_to_2];
+        zv1[i].y |= (zero_v1 & ((1 << zero_bits_first) - 1)) << (32 - zero_bits_last - WBITS);
+      }
+      hzeros[i] = __halves2half2(__ushort2half_rn(zv1[i].x), __ushort2half_rn(zv1[i].y));
+    }
+  } else {
+    const half2* qzeros2 = reinterpret_cast<const half2*>(scale);
+    for (int i = 0, scale_zero_from_i = scale_zero_from; scale_zero_from_i <= scale_zero_to; scale_zero_from_i++, i++) {
+      hzeros[i] = (qzeros2[scale_zero_from_i * half_n + col_ind]);
+    }
+  }
+  half2 scale_zeros[4];
+  for (int i = 0; i <= scale_zero_to - scale_zero_from; i++) {
+    scale_zeros[i] = __hmul2(hzeros[i], scale_v[i]);
+  }
+  half2 scale_2 = scale_v[0];
+  half2 scale_zeros_2 = scale_zeros[0];
+
+  const int out_offset = ((fp16_weight_in_row)*half_n + col_ind);
+  half2* out_h2 = reinterpret_cast<half2*>(out);
+  // decompress weights
+  int remains = in_features - fp16_weight_in_row;
+  if (remains >= compress_group_size) {
+#pragma unroll
+    for (int i = 0; i < compress_group_size / 2; i++) {
+      uchar2 wv1 = IteratorQweight<uint2, WBITS>(qweight_thread, i);
+      uchar2 wv2 = IteratorQweight<uint2, WBITS>(qweight_thread, 16 + i);
+
+      half2 wv = __halves2half2(__ushort2half_rn(wv1.x), __ushort2half_rn(wv1.y));
+      if (group_size < 32) {
+        half2 scale_2 = scale_v[i / group_size];
+        half2 scale_zeros_2 = scale_zeros[i / group_size];
+      }
+      half2 res = __hfma2(wv, scale_2, -scale_zeros_2);
+      out_h2[out_offset + i * half_n] = res;
+
+      wv = __halves2half2(__ushort2half_rn(wv2.x), __ushort2half_rn(wv2.y));
+      if (group_size < 32) {
+        half2 scale_2 = scale_v[(i + 16) / group_size];
+        half2 scale_zeros_2 = scale_zeros[(i + 16) / group_size];
+      }
+      res = __hfma2(wv, scale_2, -scale_zeros_2);
+      out_h2[(out_offset + (i + 16) * half_n)] = res;
+    }
+  } else {
+    // decompress weights
+    for (int i = 0; i < remains; i++) {
+      uchar2 wv1 = IteratorQweight<uint2, WBITS>(qweight_thread, i);
+
+      half2 wv = __halves2half2(__ushort2half_rn(wv1.x), __ushort2half_rn(wv1.y));
+      if (group_size < 32) {
+        scale_2 = scale_v[i / group_size];
+        scale_zeros_2 = scale_zeros[i / group_size];
+      }
+      half2 res = __hfma2(wv, scale_2, -scale_zeros_2);
+      out_h2[out_offset + i * half_n] = res;
+    }
+  }
+}
+
+template <typename scalar_t, int WBITS>
+__global__ void DequantizeAndUnpackWeight357Gidx(
+    scalar_t* out, const uint32_t* qweight, const scalar_t* scale, const uint32_t* qzeros,
+    const int32_t* g_idx, int group_size, const int in_features, const int n,
+    uint8_t add_zero_bias) {
+  int bid = blockIdx.x;
+  int tid = (bid * kBlockSize + threadIdx.x);
+  int out_x = tid % n;
+  int out_y = tid / n;
+  int scale_row = g_idx[out_y];
+
+  const int max_num_in_bits = (1 << WBITS) - 1;
+
+  const int qzero_width = (n * WBITS + 32 - 1) / 32;
+  scalar_t scale_v = scale[scale_row * n + out_x];
+  uint32_t zero_v1 = 0x88888888;
+  uint8_t zv1 = 0;
+  if (qzeros != nullptr) {
+    int start_bits = out_x * WBITS;
+    int first = start_bits / 32;
+    int end_bits = (start_bits + WBITS);
+    int second = end_bits / 32;
+    start_bits = start_bits % 32;
+    end_bits = end_bits % 32;
+
+    zero_v1 = qzeros[scale_row * qzero_width + first];
+    zv1 = (zero_v1 >> start_bits) & max_num_in_bits;
+    if (first != second) {
+      zero_v1 = qzeros[scale_row * qzero_width + second];
+      zv1 |= (zero_v1 & ((1 << end_bits) - 1)) << (32 - start_bits);
+    }
+  }
+
+  scalar_t scale_zeros = __hmul(scale_v, __ushort2half_rn(zv1 + add_zero_bias));
+
+  uint32_t weight_int = 0;
+  uint8_t wv1 = 0;
+  {
+    int start_bits = out_y * WBITS;
+    int first = start_bits / 32;
+    int end_bits = (start_bits + WBITS);
+    int second = end_bits / 32;
+    start_bits = start_bits % 32;
+    end_bits = end_bits % 32;
+
+    weight_int = qweight[first * n + out_x];
+    wv1 = (weight_int >> start_bits) & max_num_in_bits;
+    if (first != second) {
+      weight_int = qweight[second * n + out_x];
+      wv1 |= (weight_int & ((1 << end_bits) - 1)) << (32 - start_bits);
+    }
+  }
+
+  scalar_t wv = __ushort2half_rn(wv1);
+  out[tid] = __hfma(wv, scale_v, -scale_zeros);
+}
+
+template <typename scalar_t, int WBITS>
+__global__ void DequantizeAndUnpackWeight248Gidx(scalar_t* out, const uint32_t* qweight, const scalar_t* scale, const uint32_t* qzeros, const int32_t* g_idx,
+                                                 int group_size, const int in_features, const int n, uint8_t add_zero_bias) {
+  int bid = blockIdx.x;
+  int tid = (bid * kBlockSize + threadIdx.x);
+  int out_x = tid % n;
+  int out_y = tid / n;
+  int scale_row = g_idx[out_y];
+
+  const int compress_group_size = 32 / WBITS;
+  const int max_num_in_bits = (1 << WBITS) - 1;
+
+  scalar_t scale_v = scale[scale_row * n + out_x];
+  uint32_t zero_v = qzeros == nullptr
+                        ? 0x88888888
+                        : qzeros[scale_row * (n / compress_group_size) +
+                                 (out_x / compress_group_size)];
+  int zero_ind = out_x % compress_group_size;
+  uint8_t zv1 = (zero_v >> (zero_ind * WBITS)) & max_num_in_bits;
+
+  scalar_t scale_zeros = __hmul(scale_v, __ushort2half_rn(zv1 + add_zero_bias));
+
+  int weight_int = qweight[(out_y / compress_group_size) * n + out_x];
+  int weight_ind = (out_y) % compress_group_size;
+  uint8_t wv1 = (weight_int >> (weight_ind * WBITS)) & max_num_in_bits;
+  scalar_t wv = __ushort2half_rn(wv1);
+  out[tid] = __hfma(wv, scale_v, -scale_zeros);
+}
+
+void DequantWeightNbitGidx(cudaStream_t stream,
+                           const int32_t* qweight_i32_i, const void* scale_fp16,
+                           const int32_t* qzeros_i32_i, const int32_t* g_dix,
+                           void* b_fp16,
+                           uint32_t mat_k, uint32_t mat_n, int bits,
+                           int groupsize) {
+  using scalar_t = half;
+  int add_zero_bias = 0;
+  dim3 gridDim = {mat_k * mat_n / kBlockSize};
+  dim3 blockDim = {kBlockSize};
+
+  const uint32_t* qweight_i32 = reinterpret_cast<const uint32_t*>(qweight_i32_i);
+  const uint32_t* qzeros_i32 = reinterpret_cast<const uint32_t*>(qzeros_i32_i);
+#define CASE_EVEN(WBITS)                                                                                                       \
+  case WBITS:                                                                                                                  \
+    DequantizeAndUnpackWeight248Gidx<scalar_t, WBITS>                                                                          \
+        <<<gridDim, blockDim, 0, stream>>>(                                                                                    \
+            (scalar_t*)b_fp16, qweight_i32, (scalar_t*)scale_fp16, qzeros_i32, g_dix, groupsize, mat_k, mat_n, add_zero_bias); \
+    break;
+#define CASE_ODD(WBITS)                                                                                                        \
+  case WBITS:                                                                                                                  \
+    DequantizeAndUnpackWeight357Gidx<scalar_t, WBITS>                                                                          \
+        <<<gridDim, blockDim, 0, stream>>>(                                                                                    \
+            (scalar_t*)b_fp16, qweight_i32, (scalar_t*)scale_fp16, qzeros_i32, g_dix, groupsize, mat_k, mat_n, add_zero_bias); \
+    break;
+  switch (bits) {
+    CASE_EVEN(2);
+    CASE_EVEN(4);
+    CASE_EVEN(8);
+    CASE_ODD(3);
+    CASE_ODD(5);
+    CASE_ODD(6);
+    CASE_ODD(7);
+    default:
+      printf("error bits\n");
+      assert(false);
+  }
+#undef CASE_EVEN
+#undef CASE_ODD
+}
+
+template <typename ZEROT>
+void DequantWeightNbit(
+    cudaStream_t stream,
+    const int32_t* qweight_i32,
+    const void* scales_data,
+    const ZEROT* zeros_data,
+    void* weight_out,
+    uint32_t matrix_k,
+    uint32_t matrix_n,
+    uint32_t bits,
+    uint32_t groupsize) {
+  uint32_t compress_ratio = sizeof(uint32_t) / bits;
+  if (bits != 2 && bits != 4 && bits != 8) {
+    compress_ratio = 32;
+  }
+  dim3 gridDim = {(matrix_n / 2 * ((matrix_k + compress_ratio - 1) / compress_ratio) + kBlockSize - 1) / kBlockSize};
+  dim3 blockDim = {kBlockSize};
+#define CASE_EVEN(WBITS)                                                          \
+  case WBITS:                                                                     \
+    kDequantizeAndUnpackWeight248<half, WBITS><<<gridDim, blockDim, 0, stream>>>( \
+        (half*)weight_out, qweight_i32, (half*)scales_data, zeros_data,           \
+        groupsize, matrix_k, matrix_n);                                           \
+    break;
+#define CASE_ODD(WBITS)                                                           \
+  case WBITS:                                                                     \
+    DequantizeAndUnpackWeight3567<half, WBITS><<<gridDim, blockDim, 0, stream>>>( \
+        (half*)weight_out, (const uint32_t*)qweight_i32, (half*)scales_data,      \
+        zeros_data, groupsize, matrix_k, matrix_n);              \
+    break;
+  switch (bits) {
+    CASE_EVEN(2);
+    CASE_EVEN(4);
+    CASE_EVEN(8);
+    CASE_ODD(3);
+    CASE_ODD(5);
+    CASE_ODD(6);
+    CASE_ODD(7);
+    default:
+      break;
+  }
+#undef CASE_EVEN
+#undef CASE_ODD
+}
+template void DequantWeightNbit<uint32_t>(
+    cudaStream_t stream,
+    const int32_t* qweight_i32,
+    const void* scales_data,
+    const uint32_t* zeros_data,
+    void* weight_out,
+    uint32_t matrix_k,
+    uint32_t matrix_n,
+    uint32_t bits,
+    uint32_t groupsize);
+template void DequantWeightNbit<half>(
+    cudaStream_t stream,
+    const int32_t* qweight_i32,
+    const void* scales_data,
+    const half* zeros_data,
+    void* weight_out,
+    uint32_t matrix_k,
+    uint32_t matrix_n,
+    uint32_t bits,
+    uint32_t groupsize);
+}  // namespace GPTQPacking
+
 
 template
 Status DequantizeBlockwise4b<float>(

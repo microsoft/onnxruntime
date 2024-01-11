@@ -6,7 +6,7 @@
 // matmul float32 with right hand side being a 2-D matrix
 // pre-packed and block-compacted into int4
 //
-
+#pragma once
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
@@ -25,14 +25,14 @@ class MatMulNBits final : public CudaKernel {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("bits", &nbits_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<std::string>("packing", &packing_));
-    if (packing_ == "default"){
+    if (packing_ == "default") {
       ORT_ENFORCE(nbits_ == 4,
                   "Only 4b quantization is supported for MatMulNBits op,"
                   " additional bits support is planned.");
-    } else if (packing_ == "gptq"){
+    } else if (packing_ == "gptq") {
       ORT_ENFORCE(nbits_ > 1 && nbits_ < 8, "nbits_ should be in range of 2-8.");
-    } else if (packing_ == "hqq"){
-      ORT_ENFORCE(nbits_ == 4, "nbits_ should be in range of 4.");
+    } else if (packing_ == "hqq") {
+      ORT_ENFORCE(nbits_ == 4, "nbits_ should be in range of 2-8.");
     } else {
       ORT_THROW("Unsupported packing type: ", packing_);
     }
@@ -40,7 +40,7 @@ class MatMulNBits final : public CudaKernel {
 
   Status ComputeInternal(OpKernelContext* context) const override;
   Status ComputeInternalGPTQ(OpKernelContext* context) const;
-  //Status ComputeInternalHQQ(OpKernelContext* context) const override;
+  Status ComputeInternalHQQ(OpKernelContext* context) const;
 
  private:
   int64_t K_;

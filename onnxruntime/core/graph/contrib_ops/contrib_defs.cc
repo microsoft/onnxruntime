@@ -3338,7 +3338,7 @@ MatMulNBits is a MatMul with weight quantized with N bits(e.g., 2, 3, 4, 5, 6, 7
      And block_size is not an arbitrary number and must be a power of 2 and not smaller than 16, like 16, 32, 64, 128,..
   3. Input B's scale and zero point are specified by input scales and zero_points.
 
-It support different packing style, ["default", "gptq", "hqq"]
+It support different packing style, ["default", "gptq", "hqq", "exl2", "awq"], Please note that "exl2", "awq" is not supported yet.
 with "default", we have
   Input B is stored as uint8_t with shape: [N][n_blocks_per_col][blob_size] in which:
   - n_blocks_per_col = (K + block_size - 1) / block_size
@@ -3383,13 +3383,14 @@ with "hqq", we have:
             "type T1.",
             AttributeProto::INT, static_cast<int64_t>(0))
       .Input(0, "A", "The input tensor, not quantized", "T1")
-      .Input(1, "B", "1-dimensional data blob", "T2")
+      .Input(1, "B", "1 or 2 dimensional data blob", "T2")
       .Input(2, "scales", "quantization scale", "T1")
-      .Input(3, "zero_points", "quantization zero points", "T2", OpSchema::Optional)
+      .Input(3, "zero_points", "quantization zero points", "T3", OpSchema::Optional)
       .Input(4, "g_idx", "group_idx for gptq", "T2", OpSchema::Optional)
       .Output(0, "Y", "tensor. The output tensor has the same rank as the input. ", "T1")
       .TypeConstraint("T1", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float/half_float tensors.")
-      .TypeConstraint("T2", {"tensor(uint8)", "tensor(uint32)", "tensor(int32)", "tensor(float16)"}, "Constrain quantized weight types to uint8/uint32/int32/float16.")
+      .TypeConstraint("T2", {"tensor(uint8)", "tensor(uint32)", "tensor(int32)"}, "Constrain quantized weight types to uint8/uint32/int32/float16.")
+      .TypeConstraint("T3", {"tensor(uint8)", "tensor(uint32)", "tensor(int32)", "tensor(float16)"}, "Constrain quantized zero point types to uint8/uint32/int32/float16.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Type inference
         propagateElemTypeFromInputToOutput(ctx, 0, 0);

@@ -65,7 +65,7 @@ class GPTQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         self,
         calibration_data_reader: CalibrationDataReader,
         percdamp=0.01,
-        blocksize=128,
+        block_size=128,
         actorder=False,
         mse=False,
         perchannel=True,
@@ -79,7 +79,7 @@ class GPTQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
                 a calibration data reader. It enumerates calibration data and generates inputs for the original model.
             percdamp:
                 percent of the average Hessian diagonal to use for dampening.
-            blocksize (int, optional):
+            block_size (int, optional):
                 channel number in one block to execute a GPTQ quantization iteration.
             actorder (bool, optional):
                 whether rearrange Hessian matrix considering the diag's value.
@@ -93,42 +93,264 @@ class GPTQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         )
         self.calibration_data_reader = calibration_data_reader
         self.percdamp = percdamp
-        self.blocksize = blocksize
+        self.block_size = block_size
         self.actorder = actorder
         self.mse = mse
         self.perchannel = perchannel
 
 
-class MatMul4BitsQuantizer:
-    """Perform 4b quantization of constant MatMul weights"""
-
+class HQQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
     def __init__(
         self,
-        model: ModelProto | str,
-        block_size: int,
-        is_symmetric: bool,
-        accuracy_level: int | None = None,
-        nodes_to_exclude=None,
-        algo_config: WeightOnlyQuantConfig = None,
+        block_size=128,
+        bits=4,
+        axis=1,
     ):
-        if nodes_to_exclude is None:
-            nodes_to_exclude = []
-        self.model = ONNXModel(onnx.load(model)) if isinstance(model, str) else ONNXModel(model)
-        self.model_path = model if isinstance(model, str) else None
+        """
+        This is a class for HQQ algorithm Weight Only Quant Configuration.
+        HQQ algorithm quant weight without needing calibrate data.
+
+        Args:
+            block_size (int, optional):
+                channel number in one block to execute a GPTQ quantization iteration.
+            bits (int, optional):
+                how many bits to represent weight.
+            axis (int, optional):
+                0 or 1. which axis to quantize. https://arxiv.org/pdf/2309.15531.pdf
+        """
+        super().__init__(
+            algorithm="HQQ",
+        )
+        self.block_size = block_size
+        self.bits = bits
+        self.axis = axis
+
+
+class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
+    def __init__(
+        self,
+        block_size: int = 128,
+        is_symmetric: bool = False,
+    ):
+        super().__init__(algorithm="HQQ")
         self.block_size = block_size
         self.is_symmetric = is_symmetric
-        self.accuracy_level = accuracy_level
-        self.nodes_to_exclude = set(nodes_to_exclude)
-        self.algo_config = algo_config
+
+
+def is_divisible(val1, val2):
+    return int(val2 * np.ceil(val1 / val2)) == val1
+
+
+class HQQWeightOnlyQuantizer:
+    def __init__(
+        self,
+        config: HQQWeightOnlyQuantConfig,
+    ):
+        self.config = config
+
+    # Proximal solver || weight - dequantize(quantize(weight))||_p^p
+    @staticmethod
+    def optimize_weights(
+        tensor: np.ndarray,
+        scale: np.ndarray,
+        zero: np.ndarray,
+        min_max: list[int],
+        axis: int = 0,
+        opt_params: dict = None,  # noqa: RUF013
+        verbose=False,
+    ):
+        opt_params = {"lp_norm": 0.7, "beta": 1e1, "kappa": 1.01, "iters": 20} if opt_params is None else opt_params
+        lp_norm, beta, kappa, iters = (
+            opt_params["lp_norm"],
+            opt_params["beta"],
+            opt_params["kappa"],
+            opt_params["iters"],
+        )
+
+        w_f = tensor.astype(np.float32)
+        scale = scale.astype(np.float32)
+        zero = zero.astype(np.float32)
+
+        if lp_norm == 1:
+
+            def shrink_op(x, beta):
+                return np.sign(x) * np.maximum(np.abs(x) - 1.0 / beta, 0)
+
+        else:
+
+            def shrink_op(x, beta, p=lp_norm):
+                return np.sign(x) * np.maximum(np.abs(x) - (1.0 / beta) * np.power(np.abs(x) + 1e-8, p - 1), 0)
+
+        best_error = 1e4
+        for i in range(iters):
+            w_q = np.round(w_f * scale + zero).clip(min_max[0], min_max[1])
+            w_r = (w_q - zero) / scale
+            w_e = shrink_op(w_f - w_r, beta)
+            zero = np.mean(w_q - (w_f - w_e) * scale, axis=axis, keepdims=True)
+            beta *= kappa
+
+            current_error = float(np.abs(w_f - w_r).mean())
+            if verbose:
+                print(i, np.round(current_error, 6))
+            if current_error < best_error:
+                best_error = current_error
+            else:
+                break
+
+        del w_f, w_q, w_r, w_e
+
+        return scale, zero
 
     @staticmethod
-    def __get_initializer(name, graph_path: list[GraphProto]) -> tuple[TensorProto, GraphProto]:
-        for gid in range(len(graph_path) - 1, -1, -1):
-            graph = graph_path[gid]
-            for tensor in graph.initializer:
-                if tensor.name == name:
-                    return tensor, graph
-        return None, None
+    def pack_on_row_fast_248bit(pack_tensor, ori_int_tensor, bits):
+        if pack_tensor.shape[0] == ori_int_tensor.shape[0]:
+            ori_int_tensor = ori_int_tensor.T
+            pack_tensor = pack_tensor.T
+        compress_ratio = 32 // bits
+        i = 0
+        row = 0
+        while row < pack_tensor.shape[0]:
+            if bits in [2, 4, 8]:
+                for j in range(i, i + compress_ratio):
+                    pack_tensor[row:] |= (ori_int_tensor[j::compress_ratio] << (bits * (j - i))).astype(np.uint32)
+                break
+            else:
+                raise NotImplementedError("Only 2,4,8 bits are supported.")
+
+    # from Official implementation of Half-Quadratic Quantization (HQQ)
+    def quantize_internal(
+        self, tensor, bits=4, channel_wise=True, group_size=64, optimize=True, round_zero=True, axis=1
+    ):
+        if group_size is not None:
+            assert is_divisible(np.size(tensor), group_size), (
+                "group_size should be divisble by the total tensor dimensions. shape: "
+                + str(tensor.shape)
+                + ", group_size: "
+                + str(group_size)
+            )
+
+        weight = tensor.astype(np.float32)
+        shape = weight.shape
+
+        # Reshape for grouping
+        if (group_size is not None) and channel_wise:
+            weight = weight.reshape([-1, group_size]) if (axis == 1) else weight.reshape([group_size, -1])
+
+        # Get min/max values
+        if channel_wise is False:
+            _min, _max = weight.min(), weight.max()
+            optimize = False
+        else:
+            _min = weight.min(axis=axis, keepdims=True)  # [0]
+            _max = weight.max(axis=axis, keepdims=True)  # [0]
+
+        max_v = 2**bits - 1
+        min_v = 0
+        min_max = [min_v, max_v]
+
+        # Note: here we work with the inverse of the scale to avoid division and quantize instead via weight*scale + zero, the scale is inverted later on.
+        # clamp to avoid half-precision problems
+        scale = (max_v / (_max - _min)).clip(max=2e4)
+        zero = -_min * scale
+
+        if round_zero:
+            zero = np.round(zero)
+
+        # Fine-tune weights
+        if optimize:
+            scale, zero = self.optimize_weights(tensor=weight, scale=scale, zero=zero, min_max=min_max, axis=axis)
+
+        # Quantize
+        # Necessary for fake quantization backprop
+        w_q = np.round(weight * scale + zero).clip(min_max[0], min_max[1])
+        w_q = w_q.reshape(shape).astype(np.uint32)
+
+        scale = np.reciprocal(scale)
+        if axis == 1:
+            scale = scale.reshape(shape[0], -1)
+            zero = zero.reshape(shape[0], -1)
+        else:
+            scale = scale.reshape(-1, shape[-1])
+            zero = zero.reshape(-1, shape[-1])
+        # cleanup
+        del weight, _min, _max
+
+        return w_q.T, scale.T.astype(tensor.dtype), zero.T.astype(tensor.dtype)
+
+    def quantize(self, node: NodeProto, graph_stack: list[GraphProto]):
+        """If the node is MatMul with fp32 const weight, quantize the weight with int4, and return the new node"""
+
+        if node.op_type != "MatMul":
+            return node  # only care about MatMul for now
+
+        logger.info(f"start to quantize {node.name} ...")
+        inputB = node.input[1]  # noqa: N806
+        B, Bs_graph = get_initializer(inputB, graph_stack)  # noqa: N806
+        if B is None:
+            logger.info("MatMul doesn't have const weight. Skip to quantize")
+            return node  # only care about constant weight
+
+        B_array = onnx.numpy_helper.to_array(B)  # noqa: N806
+        if len(B_array.shape) != 2:
+            logger.info("MatMul weight is not 2D. Skip to quantize")
+            return node  # can only process 2-D matrix
+
+        quant_weight, scales, zero_points = self.quantize_internal(
+            B_array.T, bits=self.config.bits, group_size=self.config.block_size
+        )
+        packed = np.zeros((quant_weight.shape[0] // 8, quant_weight.shape[1]), dtype="uint32")
+        self.pack_on_row_fast_248bit(packed, quant_weight, self.config.bits)
+        B_quant = onnx.numpy_helper.from_array(packed)  # noqa: N806
+        B_quant.name = B.name + "_Q4"
+        for input in Bs_graph.input:
+            if input.name == inputB:
+                Bs_graph.input.remove(input)
+                break
+
+        scales_tensor = onnx.numpy_helper.from_array(scales)
+        scales_tensor.name = B.name + "_scales"
+        Bs_graph.initializer.extend([B_quant, scales_tensor])
+
+        input_names = [node.input[0], B_quant.name, scales_tensor.name]
+        zp_tensor = onnx.numpy_helper.from_array(zero_points)
+        zp_tensor.name = B.name + "_zero_points"
+        Bs_graph.initializer.extend([zp_tensor])
+        input_names.append(zp_tensor.name)
+
+        kwargs = {}
+        rows, cols = B_array.shape
+        kwargs["K"] = rows
+        kwargs["N"] = cols
+        kwargs["bits"] = self.config.bits
+        kwargs["block_size"] = self.config.block_size
+        kwargs["packing"] = "hqq"
+
+        matmul_q4_node = onnx.helper.make_node(
+            "MatMulNBits",
+            inputs=input_names,
+            outputs=[node.output[0]],
+            name=node.name + "_Q4" if node.name else "",
+            domain="com.microsoft",
+            **kwargs,
+        )
+
+        logger.info(f"complete quantization of {node.name} ...")
+
+        return matmul_q4_node
+
+
+def get_initializer(name, graph_path: list[GraphProto]) -> tuple[TensorProto, GraphProto]:
+    for gid in range(len(graph_path) - 1, -1, -1):
+        graph = graph_path[gid]
+        for tensor in graph.initializer:
+            if tensor.name == name:
+                return tensor, graph
+    return None, None
+
+
+class DefaultWeightOnlyQuantizer:
+    def __init__(self, config: DefaultWeightOnlyQuantConfig):
+        self.config = config
 
     def int4_block_quant(self, fp32weight: npt.ArrayLike) -> np.ndarray:
         """4b quantize fp32 weight to a blob"""
@@ -137,7 +359,7 @@ class MatMul4BitsQuantizer:
             raise ValueError("Current int4 block quantization only supports 2D tensors!")
         rows, cols = fp32weight.shape
 
-        block_size = self.block_size
+        block_size = self.config.block_size
         blob_size = block_size // 2
         k_blocks = (rows + block_size - 1) // block_size
         padded_rows = k_blocks * block_size
@@ -149,23 +371,19 @@ class MatMul4BitsQuantizer:
         packed = np.zeros((cols, k_blocks, blob_size), dtype="uint8")
         scales = np.zeros((cols * k_blocks), dtype=fp32weight.dtype)
         zero_point = np.zeros(cols * ((k_blocks + 1) // 2), dtype="uint8")
-        quantize_matmul_4bits(packed, fp32weight, scales, zero_point, block_size, cols, rows, self.is_symmetric)
+        quantize_matmul_4bits(packed, fp32weight, scales, zero_point, block_size, cols, rows, self.config.is_symmetric)
 
         return (packed, scales, zero_point)
 
-    def _q4_matmul_node_weight(self, node: NodeProto, graph_stack: list[GraphProto]) -> NodeProto:
+    def quantize(self, node: NodeProto, graph_stack: list[GraphProto]) -> NodeProto:
         """If the node is MatMul with fp32 const weight, quantize the weight with int4, and return the new node"""
 
         if node.op_type != "MatMul":
             return node  # only care about MatMul for now
 
         logger.info(f"start to quantize {node.name} ...")
-        if node.name in self.nodes_to_exclude:
-            logger.info(f"exclude to quantize {node.name} as specified by nodes_to_exclude...")
-            return node
-
         inputB = node.input[1]  # noqa: N806
-        B, Bs_graph = MatMul4BitsQuantizer.__get_initializer(inputB, graph_stack)  # noqa: N806
+        B, Bs_graph = get_initializer(inputB, graph_stack)  # noqa: N806
         if B is None:
             logger.info("MatMul doesn't have const weight. Skip to quantize")
             return node  # only care about constant weight
@@ -216,6 +434,29 @@ class MatMul4BitsQuantizer:
 
         return matmul_q4_node
 
+
+class MatMul4BitsQuantizer:
+    """Perform 4b quantization of constant MatMul weights"""
+
+    def __init__(
+        self,
+        model: ModelProto | str,
+        block_size: int,
+        is_symmetric: bool,
+        accuracy_level: int | None = None,
+        nodes_to_exclude=None,
+        algo_config: WeightOnlyQuantConfig = None,
+    ):
+        if nodes_to_exclude is None:
+            nodes_to_exclude = []
+        self.model = ONNXModel(onnx.load(model)) if isinstance(model, str) else ONNXModel(model)
+        self.model_path = model if isinstance(model, str) else None
+        self.block_size = block_size
+        self.is_symmetric = is_symmetric
+        self.accuracy_level = accuracy_level
+        self.nodes_to_exclude = set(nodes_to_exclude)
+        self.algo_config = algo_config
+
     def _process_subgraph(self, graph_stack: list[GraphProto]):
         new_nodes = []
         graph = graph_stack[-1]
@@ -246,8 +487,16 @@ class MatMul4BitsQuantizer:
                 node = onnx.helper.make_node(  # noqa: PLW2901
                     node.op_type, node.input, node.output, name=node.name, **kwargs
                 )
-
-            new_nodes.append(self._q4_matmul_node_weight(node, graph_stack))
+            out_node = None
+            if node.name in self.nodes_to_exclude:
+                logger.info(f"exclude to quantize {node.name} as specified by nodes_to_exclude...")
+                out_node = node
+            elif self.algo_config is not None and self.algo_config.algorithm == "HQQ":
+                hqq_quantizer = HQQWeightOnlyQuantizer(self.algo_config)
+                out_node = hqq_quantizer.quantize(node, graph_stack)
+            else:
+                out_node = DefaultWeightOnlyQuantizer(self.algo_config).quantize(node, graph_stack)
+            new_nodes.append(out_node)
 
         graph.ClearField("node")
         graph.node.extend(new_nodes)
@@ -300,7 +549,7 @@ class MatMul4BitsQuantizer:
             from neural_compressor.adaptor.ox_utils.weight_only import gptq_quantize
 
             kwargs["percdamp"] = self.algo_config.percdamp
-            kwargs["blocksize"] = self.algo_config.blocksize
+            kwargs["blocksize"] = self.algo_config.block_size
             kwargs["actorder"] = self.algo_config.actorder
             kwargs["mse"] = self.algo_config.mse
             kwargs["perchannel"] = self.algo_config.perchannel
@@ -316,7 +565,7 @@ class MatMul4BitsQuantizer:
         logger.info(f"complete quantization of model with {algorithm} algorithm.")
 
     def process(self):
-        if self.algo_config is None:
+        if self.algo_config is None or self.algo_config.algorithm == "HQQ":
             # use a stack to keep track of sub-graphs
             graph_stack = [self.model.graph()]
             opset_import = self.model.opset_import()
@@ -363,6 +612,14 @@ set of 4b integers with a scaling factor and an optional offset.
     parser.add_argument("--output_model", required=True, help="Path to the output model file")
     parser.add_argument("--block_size", required=False, default=32, type=int, help="Block size for quantization")
     parser.add_argument(
+        "--quant_method",
+        default="default",
+        type=str,
+        choices=["default", "hqq"],
+        help="the algorithm used to quantize weight",
+    )
+    parser.add_argument("--bits", default=4, type=int, help="the target bits to represent weight")
+    parser.add_argument(
         "--symmetric",
         required=False,
         default=True,
@@ -404,12 +661,20 @@ if __name__ == "__main__":
         raise Exception(f"file {output_model_path} already exists")
 
     model = onnx.load(input_model_path)
+    if args.quant_method == "hqq":
+        quant_config = HQQWeightOnlyQuantConfig(block_size=args.block_size, bits=args.bits)
+    elif args.quant_method == "default":
+        quant_config = DefaultWeightOnlyQuantConfig(block_size=args.block_size, is_symmetric=args.symmetric)
+    else:
+        quant_config = None
+
     quant = MatMul4BitsQuantizer(
         model=model,
         block_size=args.block_size,
         is_symmetric=args.symmetric,
         accuracy_level=args.accuracy_level,
         nodes_to_exclude=args.nodes_to_exclude,
+        algo_config=quant_config,
     )
     quant.process()
     quant.model.save_model_to_file(output_model_path, True)
