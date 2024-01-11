@@ -2242,8 +2242,24 @@ TEST(ResizeOpTest, Axes_and_Scale_18) {
                           15.5f, 16.833334f, 24.833334f, 26.166666f, 27.5f, 30.166666f, 31.5f,
                           32.833332f, 35.5f, 36.833332f, 38.166668f, 46.166668f, 47.5f, 48.833332f,
                           51.5f, 52.833332f, 54.166668f, 56.833332f, 58.166668f, 59.5};
-  TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "0"}, {"axes", "{2,3,4}"}, {"output_shape", "{1,1,3,3,3}"}, {"antialias", "0"}}, {1, 1, 4, 4, 4}, X,
-                   std::vector<float>{3 / 4.0f, 3 / 4.0f, 3 / 4.0f}, Y);
+  std::vector<float> roi{};
+  std::vector<float> scales{3 / 4.0f, 3 / 4.0f, 3 / 4.0f};
+  std::vector<int64_t> output_shape{1, 1, 3, 3, 3};
+  std::vector<int64_t> axes{2, 3, 4};
+
+  OpTester test("Resize", 18);
+
+  test.AddAttribute<int64_t>("exclude_outside", 0LL);
+  test.AddAttribute<std::vector<int64_t>>("axes", axes);
+  test.AddAttribute<int64_t>("antialias", 0LL);
+  test.AddAttribute("mode", "linear");
+
+  test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
+  test.AddInput<float>("roi", {int64_t(roi.size())}, roi);
+  test.AddInput<float>("scales", {int64_t(scales.size())}, scales, true);
+
+  test.AddOutput<float>("Y", output_shape, Y);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(ResizeOpTest, Axes_and_Size_18) {
@@ -2253,8 +2269,25 @@ TEST(ResizeOpTest, Axes_and_Size_18) {
                           15.5f, 16.833334f, 24.833334f, 26.166666f, 27.5f, 30.166666f, 31.5f,
                           32.833332f, 35.5f, 36.833332f, 38.166668f, 46.166668f, 47.5f, 48.833332f,
                           51.5f, 52.833332f, 54.166668f, 56.833332f, 58.166668f, 59.5};
-  TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "0"}, {"axes", "{2,3,4}"}, {"output_shape", "{1,1,3,3,3}"}, {"antialias", "0"}}, {1, 1, 4, 4, 4}, X,
-                   {3, 3, 3}, Y);
+  std::vector<float> roi{};
+  std::vector<float> scales{};
+  std::vector<int64_t> output_shape{1, 1, 3, 3, 3};
+  std::vector<int64_t> axes{2, 3, 4};
+
+  OpTester test("Resize", 18);
+
+  test.AddAttribute<int64_t>("exclude_outside", 0LL);
+  test.AddAttribute<std::vector<int64_t>>("axes", axes);
+  test.AddAttribute<int64_t>("antialias", 0LL);
+  test.AddAttribute("mode", "linear");
+
+  test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
+  test.AddInput<float>("roi", {int64_t(roi.size())}, roi);
+  test.AddInput<float>("", {0}, scales);
+  test.AddInput<int64_t>("sizes", {3}, {3, 3, 3});
+
+  test.AddOutput<float>("Y", output_shape, Y);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
 
 }  // namespace test
