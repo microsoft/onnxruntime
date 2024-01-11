@@ -104,7 +104,7 @@ ONNX_NAMESPACE::ModelProto* CreateCtxNodeModel(const GraphViewer& graph_viewer,
   // Create EP context node attributes
   auto attr_0 = ONNX_NAMESPACE::AttributeProto::Create();  // embed_mode
   auto attr_1 = ONNX_NAMESPACE::AttributeProto::Create();  // ep_cache_context
-  auto attr_2 = ONNX_NAMESPACE::AttributeProto::Create();  // hardware_arch
+  auto attr_2 = ONNX_NAMESPACE::AttributeProto::Create();  // hardware_architecture
   std::string engine_data_str = "";
   attr_0->set_name(EMBED_MODE);
   attr_0->set_type(onnx::AttributeProto_AttributeType_INT);
@@ -208,7 +208,7 @@ bool TensorRTCacheModelHandler::ValidateEPCtxNode(const GraphViewer& graph_viewe
   auto node = graph_viewer.GetNode(0);
   auto& attrs = node->GetAttributes();
 
-  // Check hardware_arch(compute_capability) if it's present as an attribute
+  // Check hardware_architecture(compute_capability) if it's present as an attribute
   if (attrs.count(COMPUTE_CAPABILITY) > 0) {
     std::string model_compute_capability = attrs.at(COMPUTE_CAPABILITY).s();
     cudaDeviceProp prop;

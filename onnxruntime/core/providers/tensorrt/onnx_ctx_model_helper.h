@@ -14,7 +14,7 @@ namespace onnxruntime {
 static const std::string EPCONTEXT_OP = "EPContext";
 static const std::string EMBED_MODE = "embed_mode";
 static const std::string EP_CACHE_CONTEXT = "ep_cache_context";
-static const std::string COMPUTE_CAPABILITY = "hardware_arch";
+static const std::string COMPUTE_CAPABILITY = "hardware_architecture";
 static const std::string EPCONTEXT_OP_DOMAIN = "com.microsoft";
 
 bool GraphHasCtxNode(const GraphViewer& graph_viewer);
