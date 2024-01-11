@@ -71,14 +71,14 @@ Status StringSplit::Compute(OpKernelContext* context) const {
 
   InlinedVector<InlinedVector<std::string_view>> input_slices;
   input_slices.reserve(input_data.size());
-  int64_t last_dim = 0;
+  size_t last_dim = 0;
 
   for (const auto& s : input_data) {
     auto& substrs = input_slices.emplace_back();
     ComputeSubstrings(s, delimiter_, maxsplit_, substrs);
-    auto substr_count = static_cast<int64_t>(substrs.size());
+    auto substr_count = substrs.size();
     last_dim = std::max(last_dim, substr_count);
-    *num_tokens_iter = substr_count;
+    *num_tokens_iter = static_cast<int64_t>(substr_count);
     ++num_tokens_iter;
   }
 
