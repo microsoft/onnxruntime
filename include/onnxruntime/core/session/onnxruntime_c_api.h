@@ -4418,7 +4418,7 @@ struct OrtApi {
   ORT_API2_STATUS(GetCUDAProviderOptionsByName, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _In_ const char* key, _Outptr_ void** ptr);
 
   /**
-   * Get a EP resoure.
+   * Get a EP resource.
    * E.g. a cuda stream or a cublas handle
    *
    * \param context - Kernel context
