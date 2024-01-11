@@ -313,7 +313,6 @@ Status FlashAttention(
                 parameters.batch_size, parameters.total_sequence_length,
                 parameters.num_heads, parameters.v_head_size);
 
-  // bugbug
   bool is_bf16 = false;
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_fwd(
       device_prop, stream, query, key, value, data.output, reinterpret_cast<void*>(data.scratch),
