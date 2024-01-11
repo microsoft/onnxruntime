@@ -25,7 +25,7 @@ export interface TensorInfo {
 
 
 export interface ProgramUniform {
-  type: 'int32'|'float32'|'uint32';
+  type: 'int32'|'float16'|'float32'|'uint32';
   data: number|readonly number[];
 }
 
