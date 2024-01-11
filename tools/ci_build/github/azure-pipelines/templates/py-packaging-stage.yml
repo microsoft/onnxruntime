@@ -110,7 +110,7 @@ stages:
         setVcvars: true
         BuildConfig: 'RelWithDebInfo'
         ExtraParam: ${{ parameters.build_py_parameters }}
-      timeoutInMinutes: 120
+      timeoutInMinutes: 180
       workspace:
         clean: all
 
@@ -353,7 +353,7 @@ stages:
 
   - ${{ if eq(parameters.enable_mac_cpu, true) }}:
     - job: MacOS_py_Wheels
-      timeoutInMinutes: 120
+      timeoutInMinutes: 180
       workspace:
         clean: all
       pool:
