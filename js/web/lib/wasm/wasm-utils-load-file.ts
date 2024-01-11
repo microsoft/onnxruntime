@@ -35,12 +35,10 @@ export const loadFile = async(file: string|Blob|ArrayBufferLike|Uint8Array): Pro
         throw new Error(`failed to load external data file: ${file}`);
       }
       const contentLengthHeader = response.headers.get('Content-Length');
-      if (!contentLengthHeader) {
-        throw new Error(
-            `failed to load external data file: ${file}, no Content-Length header, cannot determine file size.`);
-      }
-      const fileSize = parseInt(contentLengthHeader, 10);
+      const fileSize = contentLengthHeader ? parseInt(contentLengthHeader, 10) : 0;
       if (fileSize < 1073741824 /* 1GB */) {
+        // when Content-Length header is not set, we cannot determine the file size. We assume it is small enough to
+        // load into memory.
         return new Uint8Array(await response.arrayBuffer());
       } else {
         // file is too large, use stream instead

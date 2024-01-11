@@ -215,12 +215,12 @@ export const createSession = async(
   try {
     [sessionOptionsHandle, allocs] = setSessionOptions(options);
 
-    if (options?.externalData && options.externalData.length > 0) {
+    if (options?.externalData && wasm.mountExternalData) {
       const loadingPromises = [];
       for (const file of options.externalData) {
         const path = typeof file === 'string' ? file : file.path;
         loadingPromises.push(loadFile(typeof file === 'string' ? file : file.data).then(data => {
-          wasm.mountExternalData(path, data);
+          wasm.mountExternalData!(path, data);
         }));
       }
 
@@ -303,7 +303,7 @@ export const createSession = async(
     allocs.forEach(alloc => wasm._free(alloc));
 
     // unmount external data if necessary
-    wasm.unmountExternalData();
+    wasm.unmountExternalData?.();
   }
 };
 

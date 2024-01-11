@@ -116,8 +116,8 @@ export interface OrtWasmModule extends EmscriptenModule {
   // #endregion
 
   // #region external data API
-  mountExternalData(externalDataFilePath: string, externalDataFileData: Uint8Array): void;
-  unmountExternalData(): void;
+  mountExternalData?(externalDataFilePath: string, externalDataFileData: Uint8Array): void;
+  unmountExternalData?(): void;
   // #endregion
 
   // #region JSEP
