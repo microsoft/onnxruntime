@@ -4602,38 +4602,43 @@ TEST_F(GraphTransformationTests, GeluApproximation_SessionOptionConfig) {
 }
 
 // Test DoubleQDQPairsRemover to remove unnecessary DQ->Q nodes in the middle
-TEST_F(GraphTransformationTests, DoublQDQRemover_RemoveDupQDQ) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "qdq_optimization/dup_qdq.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
+TEST_F(GraphTransformationTests, DoublQDQRemover_RemoveDupQDQ_Float16) {
+  auto RunTest = [this](const ORTCHAR_T* model_uri) {
+    std::shared_ptr<Model> p_model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+    Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<DoubleQDQPairsRemover>(), TransformerLevel::Level1));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<DoubleQDQPairsRemover>(), TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  EXPECT_EQ(op_to_count["QuantizeLinear"], 3);
-  EXPECT_EQ(op_to_count["DequantizeLinear"], 4);
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    EXPECT_EQ(op_to_count["QuantizeLinear"], 3);
+    EXPECT_EQ(op_to_count["DequantizeLinear"], 4);
 
-  std::string dq_scale_name_before_reshape_node;
-  std::string zp_name_before_reshape_node;
-  std::string dq_scale_name_after_reshape_node;
-  std::string zp_name_after_reshape_node;
-  for (auto& node : graph.Nodes()) {
-    if (node.Name() == "dq_2") {
-      dq_scale_name_before_reshape_node = node.InputDefs()[QDQ::InputIndex::SCALE_ID]->Name();
-      zp_name_before_reshape_node = node.InputDefs()[QDQ::InputIndex::ZERO_POINT_ID]->Name();
+    std::string dq_scale_name_before_reshape_node;
+    std::string zp_name_before_reshape_node;
+    std::string dq_scale_name_after_reshape_node;
+    std::string zp_name_after_reshape_node;
+    for (auto& node : graph.Nodes()) {
+      if (node.Name() == "dq_2") {
+        dq_scale_name_before_reshape_node = node.InputDefs()[QDQ::InputIndex::SCALE_ID]->Name();
+        zp_name_before_reshape_node = node.InputDefs()[QDQ::InputIndex::ZERO_POINT_ID]->Name();
+      }
+      if (node.Name() == "q_3") {
+        dq_scale_name_after_reshape_node = node.InputDefs()[QDQ::InputIndex::SCALE_ID]->Name();
+        zp_name_after_reshape_node = node.InputDefs()[QDQ::InputIndex::ZERO_POINT_ID]->Name();
+      }
     }
-    if (node.Name() == "q_3") {
-      dq_scale_name_after_reshape_node = node.InputDefs()[QDQ::InputIndex::SCALE_ID]->Name();
-      zp_name_after_reshape_node = node.InputDefs()[QDQ::InputIndex::ZERO_POINT_ID]->Name();
-    }
-  }
-  EXPECT_EQ(dq_scale_name_before_reshape_node.empty(), false);
-  EXPECT_EQ(zp_name_before_reshape_node.empty(), false);
-  EXPECT_EQ(dq_scale_name_before_reshape_node, dq_scale_name_after_reshape_node);
-  EXPECT_EQ(zp_name_before_reshape_node, zp_name_after_reshape_node);
+    EXPECT_EQ(dq_scale_name_before_reshape_node.empty(), false);
+    EXPECT_EQ(zp_name_before_reshape_node.empty(), false);
+    EXPECT_EQ(dq_scale_name_before_reshape_node, dq_scale_name_after_reshape_node);
+    EXPECT_EQ(zp_name_before_reshape_node, zp_name_after_reshape_node);
+  };
+
+  RunTest(MODEL_FOLDER "qdq_optimization/dup_qdq.onnx");
+  RunTest(MODEL_FOLDER "qdq_optimization/dup_qdq_float16.onnx");
+  RunTest(MODEL_FOLDER "qdq_optimization/dup_qdq_bfloat16.onnx");
 }
 
 // Test Gelu -> FastGelu

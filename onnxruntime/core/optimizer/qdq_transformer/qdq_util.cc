@@ -54,9 +54,26 @@ bool IsQDQPairSupported(
   Initializer dq_zp(*dq_zp_tensor_proto, model_path);
   Initializer dq_scale(*dq_scale_tensor_proto, model_path);
 
-  return q_zp.data_type() == dq_zp.data_type() &&
-         SpanEq(q_zp.DataAsByteSpan(), dq_zp.DataAsByteSpan()) &&
-         *q_scale.data<float>() == *dq_scale.data<float>();
+  if (q_zp.data_type() != dq_zp.data_type() ||
+      q_scale.data_type() != q_scale.data_type() ||
+      !SpanEq(q_zp.DataAsByteSpan(), dq_zp.DataAsByteSpan())) {
+    return false;
+  }
+
+  switch (q_scale.data_type()) {
+    case ONNX_NAMESPACE::TensorProto::FLOAT:
+      return *q_scale.data<float>() == *dq_scale.data<float>();
+
+    case ONNX_NAMESPACE::TensorProto::FLOAT16:
+      return *q_scale.data<MLFloat16>() == *dq_scale.data<MLFloat16>();
+
+    case ONNX_NAMESPACE::TensorProto::BFLOAT16:
+      return *q_scale.data<BFloat16>() == *dq_scale.data<BFloat16>();
+
+    default:
+      assert(false);
+      return false;
+  }
 }
 
 bool IsDQSupported(const Node& dq_node, const GetConstantInitializerFn& get_const_initializer) {
