@@ -42,9 +42,9 @@ Platform* Platform::get() {
 }
 
 template <class GemmCore_T>
-static void NSSQ4GemmCompF32(const size_t M, const size_t N, const size_t K, const float* A, const size_t lda,
-                             storage::gemm::StorageWeightKBlockNInteger* B, float* C, const size_t ldc,
-                             int8_t* WorkSpace, parallel::IThreading* th) {
+static void NSSQ4GemmCompF32(size_t M, size_t N, size_t K, const float* A, size_t lda,
+                             storage::gemm::StorageWeightKBlockNInteger* B, float* C, size_t ldc, int8_t* WorkSpace,
+                             parallel::IThreading* th) {
   auto M_ = static_cast<int>(M);
   auto N_ = static_cast<int>(N);
   auto K_ = static_cast<int>(K);
@@ -83,9 +83,9 @@ static void NSSQ4GemmCompF32(const size_t M, const size_t N, const size_t K, con
 }
 
 template <class GemmCore_T>
-static void NSSQ4GemmCompInt8(const size_t M, const size_t N, const size_t K, const float* A, const size_t lda,
-                              storage::gemm::StorageWeightKBlockNInteger* B, float* C, const size_t ldc,
-                              int8_t* WorkSpace, parallel::IThreading* th) {
+static void NSSQ4GemmCompInt8(size_t M, size_t N, size_t K, const float* A, size_t lda,
+                              storage::gemm::StorageWeightKBlockNInteger* B, float* C, size_t ldc, int8_t* WorkSpace,
+                              parallel::IThreading* th) {
   using Parallel = parallel::gemm::SchedulerKBlockS<GemmCore_T>;
   using Launcher =
       wrapper::gemm::LauncherIntKBlock<GemmCore_T::ISA, GemmCore_T, prologue_a::gemm::ActivationF32KBlockQuantize,
@@ -111,9 +111,8 @@ static void NSSQ4GemmCompInt8(const size_t M, const size_t N, const size_t K, co
 }
 
 template <class GemmCore_T>
-static size_t NSSQ4GemmCompF32WorkspaceSize(const size_t M, const size_t N, const size_t K, const float* A,
-                                            const size_t lda, storage::gemm::StorageWeightKBlockNInteger* B, float* C,
-                                            const size_t ldc) {
+static size_t NSSQ4GemmCompF32WorkspaceSize(size_t M, size_t N, size_t K, const float* A, size_t lda,
+                                            storage::gemm::StorageWeightKBlockNInteger* B, float* C, size_t ldc) {
   auto M_ = static_cast<int>(M);
   auto K_ = static_cast<int>(K);
   (void)(A);
@@ -137,9 +136,8 @@ static size_t NSSQ4GemmCompF32WorkspaceSize(const size_t M, const size_t N, cons
 }
 
 template <class GemmCore_T>
-static size_t NSSQ4GemmCompInt8WorkspaceSize(const size_t M, const size_t N, const size_t K, const float* A,
-                                             const size_t lda, storage::gemm::StorageWeightKBlockNInteger* B, float* C,
-                                             const size_t ldc) {
+static size_t NSSQ4GemmCompInt8WorkspaceSize(size_t M, size_t N, size_t K, const float* A, size_t lda,
+                                             storage::gemm::StorageWeightKBlockNInteger* B, float* C, size_t ldc) {
   (void)(N);
   (void)(lda);
   (void)(ldc);
@@ -156,7 +154,7 @@ static size_t NSSQ4GemmCompInt8WorkspaceSize(const size_t M, const size_t N, con
 
 using namespace bestla;
 
-bool NSSQ4GemmBatchDriver(const size_t M, const size_t N, const size_t K, const size_t BatchN,
+bool NSSQ4GemmBatchDriver(size_t M, size_t N, size_t K, size_t BatchN,
                           const NS_SQNBITS_GEMM_DATA_PACKED_PARAMS* DataParams, int8_t* WorkSpace, void* ThreadPool) {
   GetCPUDevice();
   // Prepare system config for AMX instructions
@@ -206,7 +204,7 @@ bool NSSQ4GemmBatchDriver(const size_t M, const size_t N, const size_t K, const 
   return processed;
 }
 
-size_t NSSQ4GemmBatchWorkspaceSize(const size_t M, const size_t N, const size_t K, const size_t BatchN,
+size_t NSSQ4GemmBatchWorkspaceSize(size_t M, size_t N, size_t K, size_t BatchN,
                                    const NS_SQNBITS_GEMM_DATA_PACKED_PARAMS* DataParams) {
   GetCPUDevice();
   size_t size = 0;
