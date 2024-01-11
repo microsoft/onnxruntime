@@ -1492,7 +1492,7 @@ def generate_build_tree(
                 if not args.use_gdk:
                     # Target Windows 10
                     cflags += [
-                        "WINAPI_FAMILY=100",
+                        "/DWINAPI_FAMILY=100",
                         "/DWINVER=0x0A00",
                         "/D_WIN32_WINNT=0x0A00",
                         "/DNTDDI_VERSION=0x0A000000",
