@@ -381,9 +381,9 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetResource, _In_ const OrtKernelCont
   API_IMPL_END
 };
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_ParallelFor, _In_ const OrtKernelContext* context, _In_ void (*fn)(void*, size_t), _In_ size_t total, _In_ size_t num_batch, _In_ void* usr_data) {
   API_IMPL_BEGIN
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   if (!context) {
     return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, "Invalid context");
   }
@@ -404,11 +404,16 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_ParallelFor, _In_ const OrtKernelCont
     }
   }
   return nullptr;
-#else
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "ParallelFor API not implemented for this build");
-#endif
   API_IMPL_END
 };
+#else
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_ParallelFor, _In_ const OrtKernelContext*, _In_ void (*)(void*, size_t), _In_ size_t, _In_ size_t, _In_ void*) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "ParallelFor API not implemented for this build");
+  API_IMPL_END
+};
+#endif
+
 
 #ifdef _WIN32
 #pragma warning(pop)
