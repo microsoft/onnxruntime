@@ -504,7 +504,8 @@ Status FlashAttention(
 
   void* seqlens_k = reinterpret_cast<void*>(data.seqlens_k);
   if (parameters.is_prompt) {
-    // set seqlens_k to zeros
+    // set seqlens_k to zeros... flash api uses seqlens_k to indicate where to append key and value
+    // user should use seqlens_k to index into output to get new tokens
     if (batch_size <= parameters.zeros_count) {
       seqlens_k = parameters.zero_ptr;
     } else {
@@ -642,7 +643,6 @@ Status EfficientAttention(
   p.has_custom_right_padding = true;
   run_memory_efficient_attention(p);
 
-  // DUMP_TENSOR_INIT();
   DUMP_TENSOR("efficient attention output", data.output, batch_size, sequence_length, num_heads, head_size);
 
   return Status::OK();
