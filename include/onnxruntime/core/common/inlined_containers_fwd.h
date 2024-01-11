@@ -23,7 +23,6 @@
 #endif  // _MSC_VER
 
 #include <absl/container/inlined_vector.h>
-#include <absl/container/flat_hash_map.h>
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -102,55 +101,51 @@ struct CalculateInlinedVectorDefaultInlinedElements {
   // 32-bit hosts, dodging the issue. The reverse situation, where development
   // happens on a 32-bit host and then fails due to sizeof(T) *increasing* on a
   // 64-bit host, is expected to be very rare.
-  static_assert(sizeof(T) <= kElementSizeCutoff,
-                "You are trying to use a default number of inlined elements for "
-                "`InlinedVector<T>` but `sizeof(T)` is really big! Please use an "
-                "explicit number of inlined elements with `InlinedVector<T, N>` to make "
-                "sure you really want that much inline storage.");
+  static_assert(
+      sizeof(T) <= kElementSizeCutoff,
+      "You are trying to use a default number of inlined elements for "
+      "`InlinedVector<T>` but `sizeof(T)` is really big! Please use an "
+      "explicit number of inlined elements with `InlinedVector<T, N>` to make "
+      "sure you really want that much inline storage.");
 
   // Discount the size of the header itself when calculating the maximum inline
   // bytes.
   static constexpr size_t InlinedVectorHeaderSize = sizeof(absl::InlinedVector<T, 1>) - sizeof(T);
   static constexpr size_t PreferredInlineBytes = kPreferredInlinedVectorSizeof - InlinedVectorHeaderSize;
   static constexpr size_t NumElementsThatFit = PreferredInlineBytes / sizeof(T);
-  static constexpr size_t value = NumElementsThatFit == 0 ? 1 : NumElementsThatFit;
+  static constexpr size_t value =
+      NumElementsThatFit == 0 ? 1 : NumElementsThatFit;
 };
 
 // Use InlinedVector for small arrays that can fit on a stack with a default
 // value pre-calculated.
 // Use TensorShapeVector for shapes.
-template <typename T, size_t N = CalculateInlinedVectorDefaultInlinedElements<T>::value,
+template <typename T,
+          size_t N = CalculateInlinedVectorDefaultInlinedElements<T>::value,
           typename Allocator = std::allocator<T>>
 using InlinedVector = absl::InlinedVector<T, N, Allocator>;
 
 #else
 
-template <typename T, size_t N = 0, typename Allocator = std::allocator<T>>
+template <typename T,
+          size_t N = 0,
+          typename Allocator = std::allocator<T>>
 using InlinedVector = std::vector<T, Allocator>;
 
 #endif  // DISABLE_ABSEIL
 
-template <typename T, typename Allocator = std::allocator<T>>
+template <typename T,
+          typename Allocator = std::allocator<T>>
 class InlinedHashSet;
 
-#ifndef DISABLE_ABSEIL
-
-template <typename Key, typename Value, typename Allocator = std::allocator<std::pair<const Key, Value>>,
-          typename Hash = absl::container_internal::hash_default_hash<Key>,
-          typename Equal = absl::container_internal::hash_default_eq<Key>>
+template <typename Key, typename Value,
+          typename Allocator = std::allocator<std::pair<const Key, Value>>>
 class InlinedHashMap;
-
-#else
-
-template <typename Key, typename Value, typename Allocator = std::allocator<std::pair<const Key, Value>>,
-          typename Hash = std::hash<Key>, typename Equal = std::equal_to<Key>>
-class InlinedHashMap;
-
-#endif  // DISABLE_ABSEIL
 
 template <typename T, typename Allocator = std::allocator<T>>
 class NodeHashSet;
 
-template <typename Key, typename Value, typename Allocator = std::allocator<std::pair<const Key, Value>>>
+template <typename Key, typename Value,
+          typename Allocator = std::allocator<std::pair<const Key, Value>>>
 class NodeHashMap;
 }  // namespace onnxruntime

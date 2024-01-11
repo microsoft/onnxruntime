@@ -146,18 +146,27 @@ T GetDefault(const OpKernelInfo& info, const std::string& attr_name, const T& ba
   return backup;
 }
 
+// We don't make use of InlinedHashMap since we make use of a custom hash and equality function.
+// Introducing new template parameters in inlined_containers_fwd.h creates compilation errors
+// (see https://github.com/microsoft/onnxruntime/pull/17977#discussion_r1446510961).
 #ifndef DISABLE_ABSEIL
 template <typename T>
 using HashFunc = absl::container_internal::hash_default_hash<T>;
 
 template <typename T>
 using EqualFunc = absl::container_internal::hash_default_eq<T>;
+
+template <typename K, typename V, typename Hash, typename Equal>
+using HashMap = absl::flat_hash_map<K, V, Hash, Equal>;
 #else
 template <typename T>
 using HashFunc = std::hash<T>;
 
 template <typename T>
 using EqualFunc = std::equal_to<T>;
+
+template <typename K, typename V, typename Hash, typename Equal>
+using HashMap = std::unordered_map<K, V, Hash, Equal>;
 #endif  // DISABLE_ABSEIL
 
 template <typename T>
@@ -215,9 +224,8 @@ class LabelEncoder_4 final : public OpKernel {
   }
 
  private:
-  using Allocator = std::allocator<std::pair<const TKey, TValue>>;
   void InitializeAttrFields(const OpKernelInfo& kernel_info);
-  InlinedHashMap<TKey, TValue, Allocator, NaNHash<TKey>, NaNEqual<TKey>> map_;
+  HashMap<TKey, TValue, NaNHash<TKey>, NaNEqual<TKey>> map_;
   TValue default_value_;
   std::string key_field_name_;
   std::string value_field_name_;
