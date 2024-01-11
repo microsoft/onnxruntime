@@ -56,8 +56,8 @@ class _InspectActivation(torch.autograd.Function):
                 module = m
                 break
 
-        if module is None:
-            print(f"Module with index {module_idx} not found.")
+        # if module is None:
+        #     print(f"Module with index {module_idx} not found.")
 
         input_tensor_copied = None
         if input_tensor is None or not isinstance(input_tensor, torch.Tensor):
@@ -72,9 +72,9 @@ class _InspectActivation(torch.autograd.Function):
         ctx.module_pre_backward = module_pre_backward
         ctx.module = module
 
-        module_post_forward(input_tensor_copied, depth, activation_name, ctx.current_step, None, ctx.module)
+        t = module_post_forward(input_tensor_copied, depth, activation_name, ctx.current_step, None, ctx.module)
 
-        return input_tensor.detach() if input_tensor is not None else None
+        return t.detach() if t is not None else None
 
     @staticmethod
     def backward(ctx, grad_output: torch.Tensor):
@@ -84,13 +84,13 @@ class _InspectActivation(torch.autograd.Function):
         else:
             val = grad_output.detach().clone()
 
-        ctx.module_pre_backward(val, ctx.depth, ctx.name, ctx.current_step, None, ctx.module)
+        t = ctx.module_pre_backward(val, ctx.depth, ctx.name, ctx.current_step, None, ctx.module)
 
         return (
             None,
             None,
             None,
-            grad_output.detach() if grad_output is not None else None,
+            t.detach() if t is not None else None,
             None,
             None,
         )
@@ -105,9 +105,9 @@ class _InspectActivation(torch.autograd.Function):
 
     @staticmethod
     def alias_input(node_proto_str: str):
-        fw_alias_map = [3]
+        fw_alias_map = [-1]
         bw_alias_map = [-1] * 6
-        bw_alias_map[3] = 0
+        bw_alias_map[3] = -1
         return fw_alias_map, bw_alias_map
 
 
@@ -152,8 +152,8 @@ class _InspectUnpadActivation(torch.autograd.Function):
                 module = m
                 break
 
-        if module is None:
-            print(f"Module with index {module_idx} not found.")
+        # if module is None:
+        #     print(f"Module with index {module_idx} not found.")
         ctx.module = module
 
         input_tensor_copied = None
@@ -169,9 +169,9 @@ class _InspectUnpadActivation(torch.autograd.Function):
         ctx.module_pre_backward = module_pre_backward
         ctx.indices = indices.detach().clone()
 
-        module_post_forward(input_tensor_copied, depth, activation_name, ctx.current_step, indices, ctx.module)
+        t = module_post_forward(input_tensor_copied, depth, activation_name, ctx.current_step, indices, ctx.module)
 
-        return input_tensor.detach() if input_tensor is not None else None
+        return t.detach() if t is not None else None
 
     @staticmethod
     def backward(ctx, grad_output: torch.Tensor):
@@ -181,13 +181,13 @@ class _InspectUnpadActivation(torch.autograd.Function):
         else:
             val = grad_output.detach().clone()
 
-        ctx.module_pre_backward(val, ctx.depth, ctx.name, ctx.current_step, ctx.indices, ctx.module)
+        t = ctx.module_pre_backward(val, ctx.depth, ctx.name, ctx.current_step, ctx.indices, ctx.module)
 
         return (
             None,
             None,
             None,
-            grad_output.detach() if grad_output is not None else None,
+            t.detach() if t is not None else None,
             None,
             None,
             None,
@@ -203,9 +203,9 @@ class _InspectUnpadActivation(torch.autograd.Function):
 
     @staticmethod
     def alias_input(node_proto_str: str):
-        fw_alias_map = [3]
+        fw_alias_map = [-1]
         bw_alias_map = [-1] * 7
-        bw_alias_map[3] = 0
+        bw_alias_map[3] = -1
         return fw_alias_map, bw_alias_map
 
 
@@ -295,12 +295,18 @@ class StatisticsSubscriber(SubscriberBase):
         step: int,
         module
     ):
+
+        from onnxruntime.training.utils.hooks._subscriber_manager import ORT_NO_INCREASE_GLOBAL_STEP
+
+        if ORT_NO_INCREASE_GLOBAL_STEP[0] is True:
+            return tensor
+
         display_name = name + " forward run" if is_forward is True else name + " backward run"
         output_file_name = name + "_forward" if is_forward is True else name + "_backward"
 
         if tensor is None or not isinstance(tensor, torch.Tensor):
             print(f"{display_name} not a torch tensor, value: {tensor}")
-            return
+            return tensor
 
         step_path = Path(step_folder)
         if not step_path.exists():
@@ -316,6 +322,26 @@ class StatisticsSubscriber(SubscriberBase):
             # Otherwise, we reuse the original tensor.
             tensor_to_analyze = tensor.flatten(start_dim=0, end_dim=1)[indices, ...] if indices is not None else tensor
             _summarize_tensor(display_name, tensor_to_analyze, f, depth, self._run_on_cpu, self._bucket_size, indices, step, module)
+
+        return tensor
+        # if 'hidden_states_' in display_name or 'qp_' in display_name:
+        #     if indices is not None:
+        #         tensor_shape = tensor.shape
+        #         new_t = tensor.view(-1, tensor_shape[2])
+
+        #         mask = torch.ones_like(new_t)
+        #         mask[indices] = torch.zeros_like(new_t[indices])
+
+        #         all_zeros = torch.zeros_like(new_t)
+
+        #         new_t = torch.where(mask == 1, all_zeros, new_t)
+        #         n = new_t.view(tensor_shape)
+        #         return n
+        #     else:
+        #         return tensor
+        # else:
+        #     return tensor
+
 
 
 def _summarize_tensor(
@@ -400,7 +426,8 @@ def _summarize_tensor(
             min_buckets[i] = bucket.min()
             max_buckets[i] = bucket.max()
             mean_buckets[i] = bucket.sum()
-            std_buckets[i] = bucket.std()
+            if isinstance(bucket, (torch.cuda.FloatTensor, torch.cuda.DoubleTensor)):
+                std_buckets[i] = bucket.std()
 
         # Reduction across all buckets
         num_nan = nan_buckets.sum()
@@ -419,13 +446,18 @@ def _summarize_tensor(
         )
         std_value = torch.sqrt(s.sum() / (element_count - 1))
 
+    # https://stackoverflow.com/questions/21008858/formatting-floats-in-a-numpy-array
+    import numpy
+    float_formatter = "{:.6f}".format
+    numpy.set_printoptions(formatter={'float_kind':float_formatter})
+
     f.write(
         f"{'>'*max(0, depth) + display_name} shape: {tensor_shape} dtype: {tensor_dtype} size: {flatten_array.size()} unpad: {unpaded} \n"
         f"min: {min_value} max: {max_value}, mean: {mean_value}, "
         f"std: {std_value} \n"
         f"nan: {num_nan}, inf: {num_inf}\n"
     )
-    f.write(f"samples(top 64): {flatten_array[:64]}\n")
-    f.write(f"samples(strided 64): {flatten_array[::(element_count + 64 - 1) // (64)]}\n")
+    f.write(f"samples(top 64): {flatten_array[:64].cpu().numpy()}\n")
+    f.write(f"samples(strided 64): {flatten_array[::(element_count + 64 - 1) // (64)].cpu().numpy()}\n")
     f.write(f"neg: {num_neg}, pos: {num_pos}, zero: {num_zero},\n")
     f.write(f"{'='*16}\n")
