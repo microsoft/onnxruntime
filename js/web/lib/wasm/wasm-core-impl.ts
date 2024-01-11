@@ -414,8 +414,12 @@ export const run = async(
   if (!session) {
     throw new Error(`cannot run inference. invalid session id: ${sessionId}`);
   }
-  const [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded, ioBindingState, graphCaptureEnabled, inputOutputBounded] =
-      session;
+  const sessionHandle = session[0];
+  const inputNamesUTF8Encoded = session[1];
+  const outputNamesUTF8Encoded = session[2];
+  const ioBindingState = session[3];
+  const graphCaptureEnabled = session[4];
+  const inputOutputBounded = session[5];
 
   const inputCount = inputIndices.length;
   const outputCount = outputIndices.length;
