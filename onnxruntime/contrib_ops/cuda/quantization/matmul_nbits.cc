@@ -7,9 +7,9 @@
 // pre-packed and block-compacted into int4
 //
 
-#include "core/common/safeint.h"
-#include "core/providers/cuda/cuda_kernel.h"
-#include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "matmul_nbits.h"
+#include "core/common/status.h"
+#include "core/framework/float16.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "matmul_nbits.cuh"
 #include "dequantize_blockwise.cuh"
@@ -18,29 +18,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 using namespace onnxruntime::cuda;
-
-template <typename T>
-class MatMulNBits final : public CudaKernel {
- public:
-  MatMulNBits(const OpKernelInfo& info) : CudaKernel(info) {
-    ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("K", &K_));
-    ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("N", &N_));
-    ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
-    ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("bits", &nbits_));
-    ORT_ENFORCE(nbits_ == 4,
-                "Only 4b quantization is supported for MatMulNBits op,"
-                " additional bits support is planned.");
-  }
-
-  Status ComputeInternal(OpKernelContext* context) const override;
-
- private:
-  int64_t K_;
-  int64_t N_;
-  int64_t block_size_;
-  int64_t nbits_;
-  bool column_wise_quant_blk_{true};
-};
 
 template <typename T>
 Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
@@ -162,7 +139,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<MLFloat16>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
+        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int32_t>()}),
     MatMulNBits<MLFloat16>);
 
 }  // namespace cuda
