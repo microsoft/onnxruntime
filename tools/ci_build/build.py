@@ -1486,15 +1486,17 @@ def generate_build_tree(
             and not (is_linux() and platform.machine() != "aarch64" and platform.machine() != "x86_64")
         ):
             if is_windows():
-                cflags = [
-                    "/MP",
-                    "/guard:cf",
-                    "/DWIN32",
-                    "/D_WINDOWS",
-                    "/DWINVER=0x0A00",
-                    "/D_WIN32_WINNT=0x0A00",
-                    "/DNTDDI_VERSION=0x0A000000",
-                ]
+                cflags = ["/guard:cf", "/DWIN32", "/D_WINDOWS"]
+                if args.parallel:
+                    cflags += ["/MP"]
+                if not args.use_gdk:
+                    # Target Windows 10
+                    cflags += [
+                        "WINAPI_FAMILY=100",
+                        "/DWINVER=0x0A00",
+                        "/D_WIN32_WINNT=0x0A00",
+                        "/DNTDDI_VERSION=0x0A000000",
+                    ]
                 # The "/profile" flag implies "/DEBUG:FULL /DEBUGTYPE:cv,fixup /OPT:REF /OPT:NOICF /INCREMENTAL:NO /FIXED:NO". We set it for satisfying a Microsoft internal compliance requirement. External users
                 # do not need to have it.
                 ldflags = ["/profile", "/DYNAMICBASE"]
@@ -1510,10 +1512,9 @@ def generate_build_tree(
                         cflags += ["/fsanitize=address"]
                 elif config == "MinSizeRel":
                     cflags += ["/O1", "/Ob1", "/DNDEBUG"]
-                if args.enable_lto:
-                    cflags += ["/Gw", "/GL"]
                 cxxflags = cflags.copy()
-                cxxflags += ["/EHsc"]
+                if not args.disable_exceptions:
+                    cxxflags += ["/EHsc"]
             elif is_linux() or is_macOS():
                 if is_linux():
                     ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now"]
@@ -2783,6 +2784,7 @@ def main():
     # fail unexpectedly. Similar, if your packaging step forgot to copy a file into the package, we don't know it
     # either.
     if args.build:
+        # TODO: find asan DLL and copy it to onnxruntime/capi folder when args.enable_address_sanitizer is True and the target OS is Windows
         if args.build_wheel:
             nightly_build = bool(os.getenv("NIGHTLY_BUILD") == "1")
             default_training_package_device = bool(os.getenv("DEFAULT_TRAINING_PACKAGE_DEVICE") == "1")
