@@ -103,22 +103,28 @@ class LabelEncoder_2 final : public OpKernel {
 
 template <typename T>
 std::vector<T> GetAttribute(const OpKernelInfo& info, const std::string& name, const std::string& tensor_name) {
-  std::vector<T> attrs;
-  auto result = info.GetAttrs<T>(name, attrs);
-  if (!result.IsOK()) {
-    ONNX_NAMESPACE::TensorProto attr_tensor_proto;
-    result = info.GetAttr(tensor_name, &attr_tensor_proto);
-    ORT_ENFORCE(result.IsOK(), "LabelEncoder is missing attribute ", name);
-    size_t tensor_size = 1;
-    for (auto dim : attr_tensor_proto.dims()) {
-      tensor_size *= dim;
+  if constexpr (std::is_same_v<T, std::string> || std::is_same_v<T, float> || std::is_same_v<T, int64_t>) {
+    std::vector<T> attrs;
+    auto result = info.GetAttrs<T>(name, attrs);
+    if (result.IsOK()) {
+      return attrs;
     }
-    std::vector<T> out(tensor_size);
-    result = utils::UnpackTensor<T>(attr_tensor_proto, Path(), out.data(), tensor_size);
-    ORT_ENFORCE(result.IsOK(), "LabelEncoder could not unpack tensor attribute ", name);
-    return out;
   }
-  return attrs;
+  ONNX_NAMESPACE::TensorProto attr_tensor_proto;
+  auto result = info.GetAttr(tensor_name, &attr_tensor_proto);
+  if (name.empty()) {
+    ORT_ENFORCE(result.IsOK(), "LabelEncoder is missing attribute ", tensor_name);
+  } else {
+    ORT_ENFORCE(result.IsOK(), "LabelEncoder is missing attribute ", tensor_name, " or ", name);
+  }
+  size_t tensor_size = 1;
+  for (auto dim : attr_tensor_proto.dims()) {
+    tensor_size *= dim;
+  }
+  std::vector<T> out(tensor_size);
+  result = utils::UnpackTensor<T>(attr_tensor_proto, Path(), out.data(), tensor_size);
+  ORT_ENFORCE(result.IsOK(), "LabelEncoder could not unpack tensor attribute ", name);
+  return out;
 }
 
 template <typename T>
@@ -130,15 +136,14 @@ T GetDefault(const OpKernelInfo& info, const std::string& attr_name, const T& ba
     result = utils::UnpackTensor<T>(attr_tensor_proto, Path(), &default_value, 1);
     ORT_ENFORCE(result.IsOK(), "LabelEncoder could not unpack default tensor ", attr_name);
     return default_value;
-  } else {
+  } else if constexpr (std::is_same_v<T, std::string> || std::is_same_v<T, float> || std::is_same_v<T, int64_t>) {
     T default_value;
     result = info.GetAttr<T>(attr_name, &default_value);
     if (result.IsOK()) {
       return default_value;
-    } else {
-      return backup;
     }
   }
+  return backup;
 }
 
 #ifndef DISABLE_ABSEIL

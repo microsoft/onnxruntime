@@ -315,5 +315,18 @@ void LabelEncoder_4<std::string, std::string>::InitializeAttrFields(const OpKern
   default_value_ = GetDefault(kernel_info, "default_string", std::string("_Unused"));
 };
 
+ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
+    LabelEncoder, 4, string_int16,
+    KernelDefBuilder()
+        .TypeConstraint("T1", std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::string>()})
+        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<std::int16_t>()}),
+    LabelEncoder_4<std::string, std::int16_t>)
+
+template <>
+void LabelEncoder_4<std::string, std::int16_t>::InitializeAttrFields(const OpKernelInfo& kernel_info) {
+  key_field_name_ = "keys_strings";
+  default_value_ = static_cast<std::int16_t>(GetDefault(kernel_info, "", static_cast<std::int16_t>(-1)));
+};
+
 }  // namespace ml
 }  // namespace onnxruntime

@@ -257,6 +257,40 @@ TEST(LabelEncoder, Int64toInt64Opset4) {
   test.Run();
 }
 
+TEST(LabelEncoder, StringtoInt16Opset4) {
+  std::vector<std::int64_t> dims{1, 5};
+
+  const std::vector<std::string> input{"a", "b", "d", "c", "g"};
+  const std::vector<int16_t> output{0, 1, 42, 2, 42};
+  const std::vector<std::string> key_data{"a", "b", "c"};
+  const std::vector<int16_t> value_data{0, 1, 2};
+
+  OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
+
+  test.AddAttribute("keys_strings", key_data);
+
+  ONNX_NAMESPACE::TensorProto values_proto;
+  values_proto.set_name("values_tensor");
+  values_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT16);
+  values_proto.add_dims(value_data.size());
+  for (const auto value : value_data) {
+    values_proto.add_int32_data(value);
+  }
+
+  test.AddAttribute("values_tensor", values_proto);
+
+  ONNX_NAMESPACE::TensorProto default_proto;
+  default_proto.set_name("default_tensor");
+  default_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT16);
+  default_proto.add_dims(1);
+  default_proto.add_int32_data(42);
+  test.AddAttribute("default_tensor", default_proto);
+
+  test.AddInput<std::string>("X", dims, input);
+  test.AddOutput<int16_t>("Y", dims, output);
+  test.Run();
+}
+
 TEST(LabelEncoder, Int64toStringOpset4) {
   std::vector<std::int64_t> dims{1, 5};
 
