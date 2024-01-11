@@ -3473,7 +3473,8 @@ void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegis
                             stream_,
                             external_stream_ /* use_existing_stream */,
                             external_cudnn_handle_,
-                            external_cublas_handle_);
+                            external_cublas_handle_,
+                            {});
 }
 
 OrtDevice TensorrtExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {

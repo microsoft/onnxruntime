@@ -374,9 +374,6 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetResource, _In_ const OrtKernelCont
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Failed to fetch a stream hosting the requested resource");
   }
   *resource = stream->GetResource(resource_version, resource_id);
-  if (!(*resource)) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Requested resource does not exist");
-  }
   return nullptr;
   API_IMPL_END
 };
