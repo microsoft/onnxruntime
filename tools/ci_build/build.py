@@ -1501,7 +1501,7 @@ def generate_build_tree(
                 # do not need to have it.
                 ldflags = ["/profile", "/DYNAMICBASE"]
                 if args.enable_qspectre:
-                    ldflags += ["/Qspectre"]
+                    cflags += ["/Qspectre"]
                 if config == "Release":
                     cflags += ["/O2", "/Ob2", "/DNDEBUG"]
                 elif config == "RelWithDebInfo":
