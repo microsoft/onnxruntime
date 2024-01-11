@@ -69,6 +69,11 @@
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/util/thread_utils.h"
 
+#ifdef _WIN32
+#include "core/platform/windows/logging/etw_sink.h"
+#include "core/common/logging/sinks/composite_sink.h"
+#endif
+
 // custom ops are not available in a minimal build unless ORT_MINIMAL_BUILD_CUSTOM_OPS is set
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #include "core/framework/customregistry.h"
@@ -307,6 +312,7 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
 
 logging::Severity GetSeverity(const SessionOptions& session_options) {
   logging::Severity severity = logging::Severity::kWARNING;
+
   if (session_options.session_log_severity_level == -1) {
     severity = logging::LoggingManager::DefaultLogger().GetSeverity();
   } else {
@@ -322,11 +328,17 @@ logging::Severity GetSeverity(const SessionOptions& session_options) {
 void InferenceSession::SetLoggingManager(const SessionOptions& session_options,
                                          const Environment& session_env) {
   logging_manager_ = session_env.GetLoggingManager();
+  std::unique_ptr<logging::ISink> sink;
+
   if (session_options.user_logging_function) {
-    std::unique_ptr<logging::ISink> user_sink = std::make_unique<UserLoggingSink>(session_options.user_logging_function,
-                                                                                  session_options.user_logging_param);
-    user_logging_manager_ = std::make_unique<logging::LoggingManager>(std::move(user_sink),
-                                                                      GetSeverity(session_options),
+    sink = std::make_unique<UserLoggingSink>(session_options.user_logging_function,
+                                             session_options.user_logging_param);
+    auto sessionSeverity = GetSeverity(session_options);
+    auto etwOverrideSeverity = logging::OverrideLevelWithEtw(sessionSeverity);
+    sink = EnhanceLoggerWithEtw(std::move(sink), sessionSeverity, etwOverrideSeverity);
+
+    user_logging_manager_ = std::make_unique<logging::LoggingManager>(std::move(sink),
+                                                                      std::min(sessionSeverity, etwOverrideSeverity),
                                                                       false,
                                                                       logging::LoggingManager::InstanceType::Temporal,
                                                                       &session_options.session_logid);
@@ -467,6 +479,8 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
 #ifdef _WIN32
   TraceLoggingWrite(telemetry_provider_handle,
                     "SessionOptions",
+                    TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     TraceLoggingUInt8(static_cast<UINT8>(session_options.execution_mode), "execution_mode"),
                     TraceLoggingUInt8(static_cast<UINT8>(session_options.execution_order), "execution_order"),
                     TraceLoggingBoolean(session_options.enable_profiling, "enable_profiling"),
@@ -487,6 +501,8 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
   TraceLoggingWrite(
       telemetry_provider_handle,
       "SessionOptions_IntraOrtThreadPoolParams",
+      TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
+      TraceLoggingLevel(WINEVENT_LEVEL_INFO),
       TraceLoggingInt32(session_options.intra_op_param.thread_pool_size, "thread_pool_size"),
       TraceLoggingBoolean(session_options.intra_op_param.auto_set_affinity, "auto_set_affinity"),
       TraceLoggingBoolean(session_options.intra_op_param.allow_spinning, "allow_spinning"),
@@ -499,6 +515,8 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
     TraceLoggingWrite(
         telemetry_provider_handle,
         "SessionOptions_ConfigEntry",
+        TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
+        TraceLoggingLevel(WINEVENT_LEVEL_INFO),
         TraceLoggingString(config_pair.first.c_str(), "Key"),
         TraceLoggingString(config_pair.second.c_str(), "Value"));
   }
