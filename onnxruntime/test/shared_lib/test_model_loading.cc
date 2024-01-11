@@ -129,7 +129,7 @@ TEST(CApiTest, TestLoadModelFromArrayWithExternalInitializers) {
   Ort::Session session(*ort_env.get(), buffer.data(), buffer.size(), so);
   // Cleanup.
   ASSERT_EQ(std::remove("testdata/model_with_external_initializers_opt.onnx"), 0);
-  ASSERT_EQ(std::remove( "testdata/test_external_data.bin"), 0);
+  ASSERT_EQ(std::remove("testdata/test_external_data.bin"), 0);
 }
 
 #endif
