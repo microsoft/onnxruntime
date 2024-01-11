@@ -733,7 +733,7 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
   }
 
   // External data path only works for loading model from memory
-  if (!options->value.external_data_path.empty() && model_data != nullptr) {
+  if (options != nullptr && !options->value.external_data_path.empty() && model_data != nullptr) {
     sess->SetExternalDataPath(options->value.external_data_path);
   }
 

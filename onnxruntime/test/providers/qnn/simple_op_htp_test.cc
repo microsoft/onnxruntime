@@ -815,7 +815,8 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCacheNonEmbedModeTest) {
   // Check the Onnx skeleton file is generated
   EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
   // Check the Qnn context cache binary file is generated
-  EXPECT_TRUE(std::filesystem::exists("qnn_context_cache_non_embed.onnx_QNNExecutionProvider_QNN_8283143575221199085_1_0.bin"));
+  std::string qnn_ctx_bin = "qnn_context_cache_non_embed.onnx_QNNExecutionProvider_QNN_8283143575221199085_1_0.bin";
+  EXPECT_TRUE(std::filesystem::exists(qnn_ctx_bin));
 
   // 2nd run loads and run from QDQ model + Onnx skeleton file + Qnn context cache binary file
   TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, {input_def}, {}, {}),
@@ -837,6 +838,9 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCacheNonEmbedModeTest) {
                        QDQTolerance(),
                        logging::Severity::kERROR,
                        context_binary_file);
+
+  ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
+  ASSERT_EQ(std::remove(qnn_ctx_bin.c_str()), 0);
 }
 
 // Run QDQ model on HTP 2 times
@@ -898,6 +902,8 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCache_InvalidGraph) {
   ASSERT_STATUS_OK(session_object.Load(qnn_ctx_model_data.data(), static_cast<int>(qnn_ctx_model_data.size())));
   // Verify the return status with code INVALID_GRAPH
   ASSERT_TRUE(session_object.Initialize().Code() == common::StatusCode::INVALID_GRAPH);
+
+  ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
 }
 
 // Run QDQ model on HTP with 2 inputs
