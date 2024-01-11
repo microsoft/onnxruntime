@@ -15,7 +15,6 @@ enum CudaResource : int {
   arena_extend_strategy_t,
   cudnn_conv_algo_search_t,
   cudnn_conv_use_max_workspace_t,
-  enable_cuda_graph_t,
   cudnn_conv1d_pad_to_nc1d_t,
   enable_skip_layer_norm_strict_mode_t,
   prefer_nhwc_t,

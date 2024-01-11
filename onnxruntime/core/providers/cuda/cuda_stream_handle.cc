@@ -199,9 +199,6 @@ void* CudaStream::GetResource(int version, int id) const {
     case CudaResource::cudnn_conv_use_max_workspace_t:
       return reinterpret_cast<void*>(ep_info_.cudnn_conv_use_max_workspace);
       break;
-    case CudaResource::enable_cuda_graph_t:
-      return reinterpret_cast<void*>(ep_info_.enable_cuda_graph);
-      break;
     case CudaResource::cudnn_conv1d_pad_to_nc1d_t:
       return reinterpret_cast<void*>(ep_info_.cudnn_conv1d_pad_to_nc1d);
       break;

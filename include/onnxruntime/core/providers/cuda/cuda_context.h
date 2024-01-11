@@ -33,7 +33,6 @@ struct CudaContext : public CustomOpContext {
   int32_t arena_extend_strategy = 0;
   int32_t cudnn_conv_algo_search = 0;
   bool cudnn_conv_use_max_workspace = true;
-  bool enable_cuda_graph = false;
   bool cudnn_conv1d_pad_to_nc1d = false;
   bool enable_skip_layer_norm_strict_mode = false;
   bool prefer_nhwc = false;
@@ -49,7 +48,6 @@ struct CudaContext : public CustomOpContext {
     cudnn_conv_algo_search = FetchResource<int32_t>(kernel_ctx, CudaResource::cudnn_conv_algo_search_t);
     cudnn_conv_use_max_workspace = FetchResource<bool>(kernel_ctx, CudaResource::cudnn_conv_use_max_workspace_t);
 
-    enable_cuda_graph = FetchResource<bool>(kernel_ctx, CudaResource::enable_cuda_graph_t);
     cudnn_conv1d_pad_to_nc1d = FetchResource<bool>(kernel_ctx, CudaResource::cudnn_conv1d_pad_to_nc1d_t);
     enable_skip_layer_norm_strict_mode = FetchResource<bool>(kernel_ctx, CudaResource::enable_skip_layer_norm_strict_mode_t);
     prefer_nhwc = FetchResource<bool>(kernel_ctx, CudaResource::prefer_nhwc_t);
