@@ -189,19 +189,29 @@ SQNBitGemmPackQuantBData_BlkBitWidth4(
     size_t N,
     size_t K,
     size_t BlkLen,
-    const std::byte* QuantBData,
-    std::byte* PackedQuantBData,
+    const std::byte* QuantBDataBegin,
+    std::byte* PackedQuantBDataBegin,
     MLAS_THREADPOOL* ThreadPool
 )
 {
-    MLAS_UNREFERENCED_PARAMETER(ThreadPool);  // TODO use ThreadPool
+    constexpr size_t BlkBitWidth = 4;
 
     assert(BlkLen % 16 == 0);
 
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+    const size_t BlkDataSize = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const size_t Iterations = N * BlockCountK;  // one iteration per block
 
-    for (size_t n = 0; n < N; ++n) {
-        for (size_t k_blk = 0; k_blk < BlockCountK; ++k_blk) {
+    MlasTrySimpleParallel(
+        ThreadPool, Iterations,
+        [&](ptrdiff_t tid) {
+            const size_t n = tid / BlockCountK;
+            const size_t k_blk = tid % BlockCountK;
+
+            const size_t data_offset = n * BlockCountK * BlkDataSize + k_blk * BlkDataSize;
+            const std::byte* QuantBData = QuantBDataBegin + data_offset;
+            std::byte* PackedQuantBData = PackedQuantBDataBegin + data_offset;
+
             //
             // Pack 16 4-bit values (8 bytes) at a time like this:
             //
@@ -225,7 +235,7 @@ SQNBitGemmPackQuantBData_BlkBitWidth4(
                 PackedQuantBData += 8;
             }
         }
-    }
+    );
 }
 }  // namespace
 
