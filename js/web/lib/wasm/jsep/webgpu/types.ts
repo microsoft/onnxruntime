@@ -12,8 +12,6 @@ export enum GpuDataType {
 }
 export type GpuDataId = number;
 
-export type TimestampQuery = 'none'|'inside-passes'|'at-passes';
-
 export interface GpuData {
   type: GpuDataType;
   id: GpuDataId;
@@ -173,3 +171,5 @@ export interface ComputeContext {
   compute(program: ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping): TensorView[];
   output(index: number, dims: readonly number[]): number;
 }
+
+export type TimestampQuery = 'none'|'inside-passes'|'at-passes';
