@@ -1315,6 +1315,9 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   InitProviderOrtApi();
 
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
+  cudaDeviceProp prop;
+  CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
+  compute_capability_ = GetComputeCapacity(prop);
   if (info.has_user_compute_stream) {
     external_stream_ = true;
     stream_ = static_cast<cudaStream_t>(info.user_compute_stream);
@@ -2778,19 +2781,15 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
     // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
     // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
-    cudaDeviceProp prop;
-    CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
-    std::string compute_capability = GetComputeCapacity(prop);
-
     if (!has_dynamic_shape) {
       const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
-      const std::string engine_cache_path = cache_path + "_sm" + compute_capability + ".engine";
+      const std::string engine_cache_path = cache_path + "_sm" + compute_capability_ + ".engine";
       const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
-      const std::string profile_cache_path = cache_path + "_sm" + compute_capability + ".profile";
+      const std::string profile_cache_path = cache_path + "_sm" + compute_capability_ + ".profile";
       std::string timing_cache_path = "";
       bool engine_update = false;
       if (timing_cache_enable_) {
-        timing_cache_path = GetTimingCachePath(global_cache_path_, prop);
+        timing_cache_path = GetTimingCachePath(global_cache_path_, compute_capability_);
       }
       {
         // ifstream file check, engine serialization/deserialization and engine build are in critical section. It needs lock protection to prevent race condition when inferencing with multithreading.
@@ -3043,18 +3042,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
       // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
       // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
-      cudaDeviceProp prop;
-      CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
-      std::string compute_capability = GetComputeCapacity(prop);
-
       // Prepare cache name
       const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
-      const std::string engine_cache_path = cache_path + "_sm" + compute_capability + ".engine";
+      const std::string engine_cache_path = cache_path + "_sm" + compute_capability_ + ".engine";
       const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
-      const std::string profile_cache_path = cache_path + "_sm" + compute_capability + ".profile";
+      const std::string profile_cache_path = cache_path + "_sm" + compute_capability_ + ".profile";
       std::string timing_cache_path = "";
       if (timing_cache_enable_) {
-        timing_cache_path = GetTimingCachePath(global_cache_path_, prop);
+        timing_cache_path = GetTimingCachePath(global_cache_path_, compute_capability_);
       }
 
       // Load serialized engine
