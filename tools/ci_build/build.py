@@ -427,7 +427,9 @@ def parse_arguments():
     # The following feature requires installing some special Visual Studio components that do not get installed by default. Therefore the options is default OFF.
     parser.add_argument("--enable_qspectre", action="store_true", help="Enable Qspectre. Windows only.")
     parser.add_argument(
-        "--disable_memleak_checker", action="store_true", help="Disable memory leak checker from Windows build. By default it is enabled in Windows Debug build. This option is Windows only."
+        "--disable_memleak_checker",
+        action="store_true",
+        help="Disable memory leak checker from Windows build. By default it is enabled in Windows Debug build. This option is Windows only.",
     )
 
     # WebAssembly build
