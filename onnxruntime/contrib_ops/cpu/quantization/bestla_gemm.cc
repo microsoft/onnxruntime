@@ -154,12 +154,10 @@ static size_t NSSQ4GemmCompInt8WorkspaceSize(size_t M, size_t N, size_t K, const
 
 using namespace bestla;
 
-bool NSSQ4GemmBatchDriver(size_t M, size_t N, size_t K, size_t BatchN,
-                          const NS_SQNBITS_GEMM_DATA_PACKED_PARAMS* DataParams, int8_t* WorkSpace, void* ThreadPool) {
+static bool NSSQ4GemmBatchDriver(size_t M, size_t N, size_t K, size_t BatchN,
+                                 const NS_SQNBITS_GEMM_DATA_PACKED_PARAMS* DataParams, int8_t* WorkSpace,
+                                 void* ThreadPool) {
   GetCPUDevice();
-  // Prepare system config for AMX instructions
-  auto p = Platform::get();
-  (void)(p);
   bestla::ORTThreading orth(ThreadPool);
   bool processed = true;
   for (size_t i = 0; i < BatchN; i++) {
@@ -204,8 +202,8 @@ bool NSSQ4GemmBatchDriver(size_t M, size_t N, size_t K, size_t BatchN,
   return processed;
 }
 
-size_t NSSQ4GemmBatchWorkspaceSize(size_t M, size_t N, size_t K, size_t BatchN,
-                                   const NS_SQNBITS_GEMM_DATA_PACKED_PARAMS* DataParams) {
+static size_t NSSQ4GemmBatchWorkspaceSize(size_t M, size_t N, size_t K, size_t BatchN,
+                                          const NS_SQNBITS_GEMM_DATA_PACKED_PARAMS* DataParams) {
   GetCPUDevice();
   size_t size = 0;
   for (size_t i = 0; i < BatchN; i++) {
@@ -260,7 +258,7 @@ static size_t NSQ4BuSize(size_t block_size, size_t N, size_t K, bool isAsym) {
   return stor.mSize;
 }
 
-bool NSQ4GemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb, void* ThreadPool) {
+static bool NSQ4GemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb, void* ThreadPool) {
   auto ptr = storage::gemm::PackedWeightParser::deserialBuffer(PackedBuf);
   auto uptr = std::unique_ptr<storage::gemm::IWeightBase>(ptr);
   ORTThreading orth(ThreadPool);
@@ -327,13 +325,11 @@ static void NSQ4GemmPackBImpl(void* PackedBuf, size_t BlkSize, const uint8_t* QD
 #pragma warning(disable : 26819)
 #endif
 
-size_t NSQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, int64_t accuracy_level) {
+static size_t NSQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, NS_SQNBIT_COMPUTE_TYPE CompType) {
   GetCPUDevice();
   if (K % BlkSize != 0) {
     return 0;
   }
-  // Convert accuracy_level attribute of MatMulNBits to local compute_type
-  auto CompType = static_cast<NS_SQNBIT_COMPUTE_TYPE>(accuracy_level);
   // from low precision to high precision
   switch (CompType) {
     case CompInt8:
@@ -365,10 +361,10 @@ size_t NSQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, int64_
   return 0;
 }
 
-bool NSQ4GemmPackB(void* PackedBuf, const uint8_t* QData, const float* Scale, const uint8_t* Zp, size_t N, size_t K,
-                   size_t ldb, size_t BlkSize, bool isAsym, bool lastCall, int64_t accuracy_level, void* ThreadPool) {
+static bool NSQ4GemmPackB(void* PackedBuf, const uint8_t* QData, const float* Scale, const uint8_t* Zp, size_t N,
+                          size_t K, size_t ldb, size_t BlkSize, bool isAsym, bool lastCall,
+                          NS_SQNBIT_COMPUTE_TYPE CompType, void* ThreadPool) {
   GetCPUDevice();
-  auto CompType = static_cast<NS_SQNBIT_COMPUTE_TYPE>(accuracy_level);
   // explicit statement fall through.
   switch (CompType) {
     case CompInt8:
@@ -414,3 +410,50 @@ bool NSQ4GemmPackB(void* PackedBuf, const uint8_t* QData, const float* Scale, co
 #elif defined(_MSC_VER)
 #pragma warning(pop)
 #endif
+
+size_t NSNBitsGemmPackBSize(size_t N, size_t K, size_t BlkSize, int nbits, bool isAsym,
+                            NS_SQNBIT_COMPUTE_TYPE CompType) {
+  if (nbits == 4) {
+    auto jsize = NSQ4GemmPackBSize(N, K, BlkSize, isAsym, CompType);
+    if (jsize) {
+      return jsize;
+    }
+  }
+  return 0;
+}
+
+void NSNBitsGemmPackB(void* PackedBuf, const uint8_t* QData, const float* Scale, const uint8_t* Zp, size_t N, size_t K,
+                      size_t ldb, size_t BlkSize, int nbits, bool isAsym, bool lastCall,
+                      NS_SQNBIT_COMPUTE_TYPE CompType, void* ThreadPool) {
+  if (nbits == 4) {
+    if (NSQ4GemmPackB(PackedBuf, QData, Scale, Zp, N, K, ldb, BlkSize, isAsym, lastCall, CompType, ThreadPool)) {
+      return;
+    }
+  }
+}
+
+void NSNBitsGemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size_t K, size_t ldb, void* ThreadPool) {
+  // only nbits=4 can be packed, so not necessary to check the nbits in DataParams
+  if (NSQ4GemmUnPackB(FpData, PackedBuf, N, K, ldb, ThreadPool)) {
+    return;
+  }
+}
+
+size_t NSSQNBitsGemmBatchWorkspaceSize(const size_t M, const size_t N, const size_t K, const size_t BatchN,
+                                       const NS_SQNBITS_GEMM_DATA_PACKED_PARAMS* DataParams) {
+  // only nbits=4 can be packed, so not necessary to check the nbits in DataParams
+  return NSSQ4GemmBatchWorkspaceSize(M, N, K, BatchN, DataParams);
+}
+
+void NSSQNBitsGemmBatchPackedB(const size_t M, const size_t N, const size_t K, const size_t BatchN,
+                               const NS_SQNBITS_GEMM_DATA_PACKED_PARAMS* DataParams, void* WorkSpace,
+                               void* ThreadPool) {
+  // Prepare system config for AMX instructions
+  auto p = Platform::get();
+  (void)(p);
+  // only nbits=4 can be packed, so not necessary to check the nbits in DataParams
+  if (NSSQ4GemmBatchDriver(M, N, K, BatchN, DataParams, reinterpret_cast<int8_t*>(WorkSpace), ThreadPool)) {
+    // PackedWeight is created by bestla
+    return;
+  }
+}

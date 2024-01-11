@@ -76,14 +76,15 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
   if (nbits_ != 4) {
     return Status::OK();
   }
+  auto comp_type = static_cast<NS_SQNBIT_COMPUTE_TYPE>(accuracy_level_);
   if (input_idx == 1) {
-    packed_b_size_ = NSQ4GemmPackBSize(N_, K_, block_size_, is_asym_, accuracy_level_);
+    packed_b_size_ = NSNBitsGemmPackBSize(N_, K_, block_size_, nbits_, is_asym_, comp_type);
     if (packed_b_size_ == 0) return Status::OK();
     auto qptr = tensor.Data<uint8_t>();
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
     std::memset(packed_b_.get(), 0, packed_b_size_);
-    NSQ4GemmPackB(packed_b_.get(), qptr, nullptr, nullptr, N_, K_, K_, block_size_, is_asym_, false, accuracy_level_,
-                  pool);
+    NSNBitsGemmPackB(packed_b_.get(), qptr, nullptr, nullptr, N_, K_, K_, block_size_, nbits_, is_asym_, false,
+                     comp_type, pool);
     if (prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
@@ -92,8 +93,8 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
   }
   if (input_idx == 2 && packed_b_ != nullptr) {
     auto sptr = tensor.Data<float>();
-    NSQ4GemmPackB(packed_b_.get(), nullptr, sptr, nullptr, N_, K_, K_, block_size_, is_asym_, !is_asym_,
-                  accuracy_level_, pool);
+    NSNBitsGemmPackB(packed_b_.get(), nullptr, sptr, nullptr, N_, K_, K_, block_size_, nbits_, is_asym_, !is_asym_,
+                     comp_type, pool);
     if (prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
@@ -102,8 +103,8 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
   }
   if (input_idx == 3 && packed_b_ != nullptr) {
     auto zptr = tensor.Data<uint8_t>();
-    NSQ4GemmPackB(packed_b_.get(), nullptr, nullptr, zptr, N_, K_, K_, block_size_, is_asym_, is_asym_, accuracy_level_,
-                  pool);
+    NSNBitsGemmPackB(packed_b_.get(), nullptr, nullptr, zptr, N_, K_, K_, block_size_, nbits_, is_asym_, is_asym_,
+                     comp_type, pool);
     if (prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
       prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
@@ -195,10 +196,10 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
       gemm_params[i].C = y_data + helper.OutputOffsets()[i];
       gemm_params[i].ldc = N;
     }
-    auto ws_size = NSSQ4GemmBatchWorkspaceSize(M, N, K, max_len, gemm_params.data());
+    auto ws_size = NSSQNBitsGemmBatchWorkspaceSize(M, N, K, max_len, gemm_params.data());
     // workspace for activation process(dynamic quantization and others)
     auto ws_ptr = IAllocator::MakeUniquePtr<int8_t>(allocator, ws_size);
-    NSSQ4GemmBatchDriver(M, N, K, max_len, gemm_params.data(), ws_ptr.get(), thread_pool);
+    NSSQNBitsGemmBatchPackedB(M, N, K, max_len, gemm_params.data(), ws_ptr.get(), thread_pool);
     return Status::OK();
   }
 
