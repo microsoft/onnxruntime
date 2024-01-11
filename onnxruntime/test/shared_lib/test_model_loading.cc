@@ -105,7 +105,7 @@ TEST(CApiTest, TestExternalInitializersInjection) {
   EXPECT_NO_THROW(Ort::Session(*ort_env, model_path, so));
 }
 
-TEST(CApiTest, TestLoadModelFromArrayWithExternalInitiliazers) {
+TEST(CApiTest, TestLoadModelFromArrayWithExternalInitializers) {
   constexpr auto model_path = ORT_TSTR("testdata/model_with_external_initializers.onnx");
   std::vector<char> buffer;
   {

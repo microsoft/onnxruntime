@@ -3003,8 +3003,8 @@ common::Status InferenceSession::WaitForNotification(Notification* p_executor_do
 
 // Only used while loading model from memory buffer.
 void InferenceSession::SetExternalDataPath(const PathString& external_data_path) {
-  // Pretend there's a virtural model in the external data folder.
-  // Because the external initializer path is relative to the filsystem directory whereh the ONNX protobuf model was stored
+  // Pretend there's a virtual model in the external data folder.
+  // Because the external initializer path is relative to the filsystem directory where the ONNX protobuf model was stored
   model_location_ = external_data_path + ORT_TSTR("/model_from_memory.onnx");
   model_->SetModelPath(model_location_);
 }
