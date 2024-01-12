@@ -838,33 +838,36 @@ Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
 
     // In WebAssembly, try use a simplified preloaded file map in WebAssembly when available.
     auto err_code = EM_ASM_INT(({
-      // If available, "Module.MountedFiles" is a Map for all preloaded files.
-      if (typeof Module === 'undefined' || !Module.MountedFiles) {
-        return 1;  // "Module.MountedFiles" is not available.
-      }
-      const fileName = UTF8ToString($0 >>> 0);
-      const fileData = Module.MountedFiles.get(fileName);
-      if (!fileData) {
-        return 2;  // File not found in preloaded files.
-      }
-      const offset = $1 >>> 0;
-      const length = $2 >>> 0;
-      const buffer = $3 >>> 0;
+                                 // If available, "Module.MountedFiles" is a Map for all preloaded files.
+                                 if (typeof Module == 'undefined' || !Module.MountedFiles) {
+                                   return 1;  // "Module.MountedFiles" is not available.
+                                 }
+                                 const fileName = UTF8ToString($0 >>> 0);
+                                 const fileData = Module.MountedFiles.get(fileName);
+                                 if (!fileData) {
+                                   return 2;  // File not found in preloaded files.
+                                 }
+                                 const offset = $1 >>> 0;
+                                 const length = $2 >>> 0;
+                                 const buffer = $3 >>> 0;
 
-      if (offset + length > fileData.byteLength) {
-        return 3;  // Out of bounds.
-      }
+                                 if (offset + length > fileData.byteLength) {
+                                   return 3;  // Out of bounds.
+                                 }
 
-      try {
-        // Copy the file data (fileData,offset,length) into WebAssembly memory (HEAPU8,buffer,length).
-        HEAPU8.set(fileData.subarray(offset, offset + length), buffer);
-        return 0;
-      } catch {
-        return 4;
-      }
-    }),
-      external_data_file_path.c_str(), static_cast<int32_t>(file_offset), static_cast<int32_t>(raw_data_safe_len), ext_data_buf);
-    const char *err_msg;
+                                 try {
+                                   // Copy the file data (fileData,offset,length) into WebAssembly memory (HEAPU8,buffer,length).
+                                   HEAPU8.set(fileData.subarray(offset, offset + length), buffer);
+                                   return 0;
+                                 } catch {
+                                   return 4;
+                                 }
+                               }),
+                               external_data_file_path.c_str(),
+                               static_cast<int32_t>(file_offset),
+                               static_cast<int32_t>(raw_data_safe_len),
+                               ext_data_buf);
+    const char* err_msg;
     switch (err_code) {
       case 0:
         return Status::OK();
@@ -878,7 +881,7 @@ Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
         err_msg = "Out of bounds.";
         break;
       default:
-        err_msg = ".";
+        err_msg = "Unknown error occurred in memory copy.";
     }
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load external data file \"", external_data_file_path, "\", error:", err_msg);
 #else
