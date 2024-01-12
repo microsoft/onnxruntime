@@ -4547,7 +4547,7 @@ struct OrtApi {
    * \param[in] options
    * \param[in] external_data_path
    *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.17.
    */
   ORT_API2_STATUS(SetExternalDataPath, _Inout_ OrtSessionOptions* options,
                   _In_ const ORTCHAR_T* external_data_path);

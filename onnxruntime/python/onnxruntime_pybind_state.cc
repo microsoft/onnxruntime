@@ -1454,6 +1454,15 @@ Serialized model format will default to ONNX unless:
 
 )pbdoc")
       .def_property(
+          "external_data_path",
+          [](const PySessionOptions* options) -> std::basic_string<ORTCHAR_T> {
+            return options->value.external_data_path;
+          },
+          [](PySessionOptions* options, std::basic_string<ORTCHAR_T> external_data_path) -> void {
+            options->value.external_data_path = std::move(external_data_path);
+          },
+          R"pbdoc(The external data folder path if the model is loaded from memory buffer)pbdoc")
+      .def_property(
           "enable_mem_pattern",
           [](const PySessionOptions* options) -> bool { return options->value.enable_mem_pattern; },
           [](PySessionOptions* options, bool enable_mem_pattern) -> void {
