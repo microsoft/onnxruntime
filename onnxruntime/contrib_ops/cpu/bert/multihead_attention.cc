@@ -284,9 +284,9 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                                                                       nullptr,
                                                                       &parameters,
                                                                       num_heads_,
+                                                                      mask_filter_value_,
                                                                       scale,
                                                                       is_unidirectional_,
-                                                                      mask_filter_value_,
                                                                       past_present_share_buffer,
                                                                       false));
 
