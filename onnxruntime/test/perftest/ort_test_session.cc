@@ -170,6 +170,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     const auto& api = Ort::GetApi();
     OrtTensorRTProviderOptionsV2* tensorrt_options;
     Ort::ThrowOnError(api.CreateTensorRTProviderOptions(&tensorrt_options));
+    std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(
+        tensorrt_options, api.ReleaseTensorRTProviderOptions);
     std::vector<const char*> option_keys, option_values;
     // used to keep all option keys and value strings alive
     std::list<std::string> buffer;

@@ -26,7 +26,7 @@ ONNX_NAMESPACE::ModelProto* CreateCtxNodeModel(const GraphViewer& graph_viewer,
                                                size_t size,
                                                const int64_t embed_mode,
                                                bool compute_capability_enable,
-                                               int device_id,
+                                               std::string compute_capability,
                                                const logging::Logger* logger);
 void DumpCtxNodeModel(ONNX_NAMESPACE::ModelProto* model_proto,
                       const std::string engine_cache_path);
@@ -38,7 +38,7 @@ class TensorRTCacheModelHandler {
  public:
   TensorRTCacheModelHandler(std::unique_ptr<nvinfer1::ICudaEngine>* trt_engine,
                             nvinfer1::IRuntime* trt_runtime,
-                            int device_id = 0) : trt_engine_(trt_engine), trt_runtime_(trt_runtime), device_id_(device_id) {
+                            std::string compute_capability) : trt_engine_(trt_engine), trt_runtime_(trt_runtime), compute_capability_(compute_capability) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TensorRTCacheModelHandler);
 
@@ -50,6 +50,6 @@ class TensorRTCacheModelHandler {
   std::unique_ptr<nvinfer1::ICudaEngine>* trt_engine_;
   nvinfer1::IRuntime* trt_runtime_;
   std::filesystem::path engine_cache_path_;
-  int device_id_ = 0;
+  std::string compute_capability_;
 };  // TRTCacheModelHandler
 }  // namespace onnxruntime

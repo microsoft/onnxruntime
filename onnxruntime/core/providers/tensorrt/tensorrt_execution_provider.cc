@@ -1316,6 +1316,9 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   InitProviderOrtApi();
 
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
+  cudaDeviceProp prop;
+  CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
+  compute_capability_ = GetComputeCapacity(prop);
   if (info.has_user_compute_stream) {
     external_stream_ = true;
     stream_ = static_cast<cudaStream_t>(info.user_compute_stream);
@@ -2769,14 +2772,14 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     }
   }
 
-    // Generate cache suffix in case user would like to customize cache prefix
-    std::string cache_suffix = "_" + GetCacheSuffix(fused_node.Name(), trt_node_name_with_precision);
+  // Generate cache suffix in case user would like to customize cache prefix
+  std::string cache_suffix = "_" + GetCacheSuffix(fused_node.Name(), trt_node_name_with_precision);
 
-    // enable sparse weights
-    if (sparsity_enable_) {
-      trt_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Sparse weights are allowed";
-    }
+  // enable sparse weights
+  if (sparsity_enable_) {
+    trt_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Sparse weights are allowed";
+  }
 #if NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR == 5
   if (build_heuristics_enable_) {
     trt_config->setFlag(nvinfer1::BuilderFlag::kENABLE_TACTIC_HEURISTIC);
@@ -2814,6 +2817,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     LOGS_DEFAULT(WARNING) << "[TensorRT EP] Auxiliary streams can only be set on TRT 8.6 onwards!";
   }
 #endif
+
   // limit used tactic sources
   if (!tactic_sources_.empty()) {
     nvinfer1::TacticSources tactics = trt_config->getTacticSources();
@@ -2852,7 +2856,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     std::string timing_cache_path = "";
     bool engine_update = false;
     if (timing_cache_enable_) {
-      timing_cache_path = GetTimingCachePath(global_cache_path_, prop);
+      timing_cache_path = GetTimingCachePath(global_cache_path_, compute_capability_);
     }
     {
       // ifstream file check, engine serialization/deserialization and engine build are in critical section. It needs lock protection to prevent race condition when inferencing with multithreading.
@@ -2990,7 +2994,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
                                                                                      serialized_engine->size(),
                                                                                      ep_context_embed_mode_,
                                                                                      ep_context_compute_capability_enable_,
-                                                                                     device_id_,
+                                                                                     compute_capability_,
                                                                                      GetLogger())};
           DumpCtxNodeModel(model_proto.get(), cache_path_prefix);
         }
@@ -3058,7 +3062,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
                                           0,
                                           ep_context_embed_mode_,
                                           ep_context_compute_capability_enable_,
-                                          device_id_,
+                                          compute_capability_,
                                           GetLogger()));
     if (ep_context_embed_mode_ == 0) {
       DumpCtxNodeModel(model_proto_.get(), cache_path_prefix);
@@ -3108,8 +3112,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
     bool sync_stream_after_enqueue = trt_state->sync_stream_after_enqueue;
     auto fused_node_name = trt_state->fused_node_name;
-    std::string trt_node_name_with_precision = trt_state->trt_node_name_with_precision;
-    std::string cache_suffix = trt_state->cache_suffix;
     auto& shape_ranges = trt_state->input_shape_ranges;
     auto& dds_output_allocator_map = this->dds_output_allocator_maps_[fused_node_name];
     auto trt_builder = trt_state->builder;
@@ -3136,10 +3138,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
     // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
     // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
-    cudaDeviceProp prop;
-    CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
-    std::string compute_capability = GetComputeCapacity(prop);
-
     // Prepare cache name
     std::string cache_path = "";
     // Customize cache prefix if assigned
@@ -3155,8 +3153,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     const std::string profile_cache_path = cache_path_prefix + ".profile";
     std::string timing_cache_path = "";
     if (timing_cache_enable_) {
-      timing_cache_path = GetTimingCachePath(global_cache_path_, prop);
-      }
+      timing_cache_path = GetTimingCachePath(global_cache_path_, compute_capability_);
+    }
 
     // Load serialized engine
     if (trt_state->engine_cache_enable && trt_engine == nullptr) {
@@ -3582,7 +3580,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
   std::unordered_map<std::string, size_t> output_types;    // TRT engine output name -> ORT output tensor type
 
   // Get engine binary data and deserialize it
-  auto trt_cache_model_handler = TensorRTCacheModelHandler(&trt_engine, runtime_.get(), device_id_);
+  auto trt_cache_model_handler = TensorRTCacheModelHandler(&trt_engine, runtime_.get(), compute_capability_);
   auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer);
   if (status != Status::OK()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
@@ -3860,7 +3858,8 @@ void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegis
                             stream_,
                             external_stream_ /* use_existing_stream */,
                             external_cudnn_handle_,
-                            external_cublas_handle_);
+                            external_cublas_handle_,
+                            {});
 }
 
 OrtDevice TensorrtExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
