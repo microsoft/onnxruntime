@@ -4542,7 +4542,7 @@ struct OrtApi {
    */
   ORT_API2_STATUS(KernelContext_ParallelFor, _In_ const OrtKernelContext* context, _In_ void (*fn)(void*, size_t), _In_ size_t total, _In_ size_t num_batch, _In_ void* usr_data);
 
-   /** \brief Append OpenVINO execution provider to the session options
+  /** \brief Append OpenVINO execution provider to the session options
    *
    * If OpenVINO is not available (due to a non OpenVINO enabled build, or if OpenVINO is not installed on the system), this function will fail.
    *
@@ -4558,7 +4558,6 @@ struct OrtApi {
                   _In_reads_(num_keys) const char* const* provider_options_keys,
                   _In_reads_(num_keys) const char* const* provider_options_values,
                   _In_ size_t num_keys);
-
 };
 
 /*

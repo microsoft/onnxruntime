@@ -1446,7 +1446,7 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
   if (legacy_ov_options->cache_dir != nullptr)
     ov_options_converted_map["cache_dir"] = legacy_ov_options->cache_dir;
 
-  if (legacy_ov_options->context != nullptr){
+  if (legacy_ov_options->context != nullptr) {
     std::stringstream context_string;
     context_string << legacy_ov_options->context;
     ov_options_converted_map["context"] = context_string.str();
@@ -1454,7 +1454,7 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
 
   ov_options_converted_map["enable_opencl_throttling"] = legacy_ov_options->enable_opencl_throttling;
 
-  if (legacy_ov_options->enable_dynamic_shapes != '\0'){
+  if (legacy_ov_options->enable_dynamic_shapes != '\0') {
     std::string enable_dynamic_shapes = reinterpret_cast<const char*>(legacy_ov_options->enable_dynamic_shapes);
     if (enable_dynamic_shapes == "true" || enable_dynamic_shapes == "True") {
       ov_options_converted_map["disable_dynamic_shapes"] = "false";
@@ -1769,7 +1769,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO_V2,
   return nullptr;
   API_IMPL_END
 }
-
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options,
                     _In_ const char* device_type) {

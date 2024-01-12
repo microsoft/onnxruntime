@@ -880,7 +880,7 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_Ope
   }
 
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_OpenVINO_V2(this->p_,
-                                                              keys.data(), values.data(), num_entries));
+                                                                          keys.data(), values.data(), num_entries));
 
   return *this;
 }
