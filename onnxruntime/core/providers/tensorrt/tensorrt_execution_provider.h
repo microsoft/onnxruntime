@@ -49,6 +49,7 @@ static const std::string kCudaGraphEnable = "ORT_TENSORRT_CUDA_GRAPH_ENABLE";
 static const std::string kDumpEpContextModel = "ORT_DUMP_EP_CONTEXT_MODEL";
 static const std::string kEpContextEmbedMode = "ORT_EP_CONTEXT_EMBED_MODE";
 static const std::string kEpContextComputeCapabilityEnable = "ORT_EP_CONTEXT_COMPUTE_CAPABILITY_ENABLE";
+static const std::string kEngineCachePrefix = "ORT_TENSORRT_CACHE_PREFIX";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 }  // namespace tensorrt_env_vars
@@ -178,6 +179,8 @@ struct TensorrtFuncState {
   bool filter_tactic_sources = false;
   nvinfer1::TacticSources tactic_sources;
   bool cuda_graph_enable = 0;
+  std::string cache_prefix;
+  std::string cache_suffix;
 };
 
 // Minimum information to construct kernel function state for direct engine load code path
@@ -287,8 +290,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   int (*engine_encryption_)(const char*, char*, size_t) = nullptr;
   bool timing_cache_enable_ = false;
   bool force_timing_cache_match_ = false;
-  bool detailed_build_log_ = false;
+  bool detailed_build_log_ = true;
   bool cuda_graph_enable_ = false;
+  std::string cache_prefix_;
 
   // The OrtAllocator object will be get during ep compute time
   // and should be kept for the lifetime of TRT EP object.
