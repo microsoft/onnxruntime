@@ -1311,3 +1311,119 @@ class OnnxModel:
             queue = sub_graphs
 
         return False
+
+    def change_graph_input_type(
+        self,
+        graph_input: ValueInfoProto,
+        new_type: int,
+    ):
+        """Change graph input type, and add Cast node if needed.
+
+        Args:
+            graph_input (ValueInfoProto): input of the graph
+            new_type (int): new data type like TensorProto.INT32.
+
+        Returns:
+            NodeProto: a new Cast node that added. None if Cast node is not added.
+            List[NodeProto]: Cast nodes that have been removed.
+        """
+        assert isinstance(graph_input, ValueInfoProto)
+        assert self.find_graph_input(graph_input.name)
+
+        if graph_input.type.tensor_type.elem_type == int(new_type):
+            return None, []
+
+        graph = self.graph()
+        new_cast_node = None
+        nodes_to_remove = []
+
+        input_name_to_nodes = self.input_name_to_nodes()
+        if graph_input.name in input_name_to_nodes:
+            nodes = input_name_to_nodes[graph_input.name]
+
+            # For children that is not Cast node, insert a Cast node to convert int32 to original data type.
+            nodes_not_cast = [node for node in nodes if node.op_type != "Cast"]
+            if nodes_not_cast:
+                node_name = self.create_node_name("Cast")
+                output_name = node_name + "_" + graph_input.name
+                new_value_info = graph.value_info.add()
+                new_value_info.CopyFrom(graph_input)
+                new_value_info.name = output_name
+                new_cast_node = helper.make_node(
+                    "Cast",
+                    [graph_input.name],
+                    [output_name],
+                    to=int(graph_input.type.tensor_type.elem_type),
+                    name=node_name,
+                )
+                graph.node.extend([new_cast_node])
+
+                for node in nodes_not_cast:
+                    OnnxModel.replace_node_input(node, graph_input.name, output_name)
+
+            # For children that is Cast node, no need to insert Cast.
+            # When the children is Cast to int32, we can remove that Cast node since input type is int32 now.
+            nodes_cast = [node for node in nodes if node.op_type == "Cast"]
+            for node in nodes_cast:
+                if OnnxModel.get_node_attribute(node, "to") == int(new_type):
+                    self.replace_input_of_all_nodes(node.output[0], graph_input.name)
+                if not self.find_graph_output(node.output[0]):
+                    nodes_to_remove.append(node)
+            if nodes_to_remove:
+                self.remove_nodes(nodes_to_remove)
+
+        graph_input.type.tensor_type.elem_type = int(new_type)
+        return new_cast_node, nodes_to_remove
+
+    def change_graph_output_type(
+        self,
+        graph_output: ValueInfoProto,
+        new_type: int,
+    ):
+        """Change graph input type, and add Cast node if needed.
+
+        Args:
+            graph_input (str | ValueInfoProto): output of the graph
+            new_type (int): new data type.
+
+        Returns:
+            NodeProto: a new Cast node that added. None if Cast node is not added.
+        """
+        assert isinstance(graph_output, ValueInfoProto)
+        assert self.find_graph_output(graph_output.name)
+
+        if graph_output.type.tensor_type.elem_type == int(new_type):
+            return None
+
+        cast_node = None
+        graph = self.graph()
+
+        # Add a cast node
+        node_name = self.create_node_name("Cast")
+        input_name = node_name + "_" + graph_output.name
+        self.replace_input_of_all_nodes(graph_output.name, input_name)
+        new_value_info = graph.value_info.add()
+        new_value_info.CopyFrom(graph_output)
+        new_value_info.name = input_name
+        cast_node = helper.make_node(
+            "Cast",
+            [input_name],
+            [graph_output.name],
+            to=int(new_type),
+            name=node_name,
+        )
+        graph.node.extend([cast_node])
+        graph_output.type.tensor_type.elem_type = int(new_type)
+        return cast_node
+
+    def rename_graph_output(self, old_name: str, new_name: str):
+        if new_name in self.output_name_to_node():
+            raise RuntimeError("{new_name} exists in graph")
+
+        graph = self.graph()
+        for output in graph.output:
+            if output.name == old_name:
+                logger.debug("replace output name from %s to %s", old_name, new_name)
+                self.replace_input_of_all_nodes(old_name, new_name)
+                self.replace_output_of_all_nodes(old_name, new_name)
+                output.name = new_name

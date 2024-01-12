@@ -116,6 +116,9 @@ struct Tensorrt_Provider : Provider {
     info.profile_max_shapes = options.trt_profile_max_shapes == nullptr ? "" : options.trt_profile_max_shapes;
     info.profile_opt_shapes = options.trt_profile_opt_shapes == nullptr ? "" : options.trt_profile_opt_shapes;
     info.cuda_graph_enable = options.trt_cuda_graph_enable != 0;
+    info.dump_ep_context_model = options.trt_dump_ep_context_model != 0;
+    info.ep_context_embed_mode = options.trt_ep_context_embed_mode;
+    info.ep_context_compute_capability_enable = options.trt_ep_context_compute_capability_enable != 0;
 
     return std::make_shared<TensorrtProviderFactory>(info);
   }

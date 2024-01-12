@@ -56,6 +56,7 @@ struct AttentionParameters {
   int v_head_size;            // hidden size per head of V
   int num_heads;
   int num_splits;
+  int rotary_embedding;
   bool is_unidirectional;
   bool past_present_share_buffer;
   bool do_rotary;
@@ -131,6 +132,10 @@ constexpr int kMinSeqLenForMemoryEfficientAttentionFp32 = 256;
 constexpr const char* kMinSeqLenForFlashAttentionPackedQKV = "ORT_MIN_SEQ_LEN_FLASH_ATTENTION_PACKED_QKV";
 // Default value for the above setting.
 constexpr int kDefaultMinSeqLenForFlashAttentionPackedQKV = 513;
+
+// Environment variable to enable loading more KV data in flight in
+// DecoderMaskedMultiHeadAttention/DecoderMaskedSelfAttention kernels
+constexpr const char* kDecoderMaskedAttentionLoadKVDataInFlight = "ORT_DECODER_MASKED_ATTENTION_LOAD_KV_DATA_IN_FLIGHT";
 
 }  // namespace attention
 

@@ -72,11 +72,6 @@ if (onnxruntime_MINIMAL_BUILD)
   endif()
 
   if (MSVC)
-    # turn on LTO (which adds some compiler flags and turns on LTCG) unless it's a Debug build to minimize binary size
-    if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-      set(onnxruntime_ENABLE_LTO ON)
-    endif()
-
     # undocumented internal flag to allow analysis of a minimal build binary size
     if (ADD_DEBUG_INFO_TO_MINIMAL_BUILD)
       string(APPEND CMAKE_CXX_FLAGS " /Zi")
@@ -265,39 +260,38 @@ if (MSVC)
     string(APPEND CMAKE_C_FLAGS " /arch:AVX512")
   endif()
 
-  if (NOT GDK_PLATFORM)
-    add_compile_definitions(WINAPI_FAMILY=100) # Desktop app
-    message("Building ONNX Runtime for Windows 10 and newer")
-    add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00 NTDDI_VERSION=0x0A000000)
-  endif()
   if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
     set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /Gw /GL")
   endif()
-
-  # The WinML build tool chain builds ARM/ARM64, and the internal tool chain does not have folders for spectre mitigation libs.
-  # WinML performs spectre mitigation differently.
-  if (NOT DEFINED onnxruntime_DISABLE_QSPECTRE_CHECK)
-    check_cxx_compiler_flag(-Qspectre HAS_QSPECTRE)
-    if (HAS_QSPECTRE)
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /Qspectre")
-      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Qspectre")
-    endif()
-  endif()
-  set(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} /DYNAMICBASE")
-  check_cxx_compiler_flag(-guard:cf HAS_GUARD_CF)
-  if (HAS_GUARD_CF)
-    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /guard:cf")
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /guard:cf")
-    set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} /guard:cf")
-    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /guard:cf")
-    set(CMAKE_C_FLAGS_MINSIZEREL "${CMAKE_C_FLAGS_MINSIZEREL} /guard:cf")
-    set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /guard:cf")
-    set(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} /guard:cf")
-  endif()
 else()
   if (NOT APPLE)
+    #XXX: Sometimes the value of CMAKE_SYSTEM_PROCESSOR is set but it's wrong. For example, if you run an armv7 docker
+    #image on an aarch64 machine with an aarch64 Ubuntu host OS, in the docker instance cmake may still report
+    # CMAKE_SYSTEM_PROCESSOR as aarch64 by default. Given compiling this code may need more than 2GB memory, we do not
+    # support compiling for ARM32 natively(only support cross-compiling), we will ignore this issue for now.
+    if(NOT CMAKE_SYSTEM_PROCESSOR)
+      message(WARNING "CMAKE_SYSTEM_PROCESSOR is not set. Please set it in your toolchain cmake file.")
+      # Try to detect it
+      if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" OR "${CMAKE_C_COMPILER_ID}" STREQUAL "Clang")
+        execute_process(
+		COMMAND "${CMAKE_C_COMPILER}" -dumpmachine
+		OUTPUT_VARIABLE GCC_DUMP_MACHINE_OUT OUTPUT_STRIP_TRAILING_WHITESPACE
+		ERROR_VARIABLE _err
+		RESULT_VARIABLE _res
+		)
+		if(NOT _res EQUAL 0)
+			message(SEND_ERROR "Failed to run 'gcc -dumpmachine':\n ${_res}")
+		endif()
+		string(REPLACE "-" ";" GCC_DUMP_MACHINE_OUT_LIST "${GCC_DUMP_MACHINE_OUT}")
+		list(LENGTH GCC_DUMP_MACHINE_OUT_LIST GCC_TRIPLET_LEN)
+		if(GCC_TRIPLET_LEN EQUAL 4)
+		  list(GET GCC_DUMP_MACHINE_OUT_LIST 0 CMAKE_SYSTEM_PROCESSOR)
+          message("Setting CMAKE_SYSTEM_PROCESSOR to ${CMAKE_SYSTEM_PROCESSOR}")
+        endif()
+      endif()
+    endif()
     set(onnxruntime_target_platform ${CMAKE_SYSTEM_PROCESSOR})
   endif()
   if (onnxruntime_BUILD_FOR_NATIVE_MACHINE)
@@ -351,16 +345,9 @@ else()
 
 endif()
 
-if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    #For Mac compliance
-    message("Adding flags for Mac builds")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-strong")
-elseif (WIN32)
-    # parallel build
-    # These compiler opitions cannot be forwarded to NVCC, so cannot use add_compiler_options
-    string(APPEND CMAKE_CXX_FLAGS " /MP")
+if (WIN32)
     # required to be set explicitly to enable Eigen-Unsupported SpecialFunctions
     string(APPEND CMAKE_CXX_FLAGS " -DEIGEN_HAS_C99_MATH")
-else()
+elseif(LINUX)
     add_compile_definitions("_GNU_SOURCE")
 endif()

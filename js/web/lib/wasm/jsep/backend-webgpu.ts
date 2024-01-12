@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Env, Tensor} from 'onnxruntime-common';
+import {Env, Tensor, TRACE_FUNC_BEGIN, TRACE_FUNC_END} from 'onnxruntime-common';
 
 import {configureLogger, LOG_DEBUG} from './log';
 import {createView, TensorView} from './tensor-view';
@@ -144,17 +144,7 @@ export class WebGpuBackend {
    */
   sessionExternalDataMapping: Map<number, Map<number, [number, GPUBuffer]>> = new Map();
 
-  async initialize(env: Env): Promise<void> {
-    if (!navigator.gpu) {
-      // WebGPU is not available.
-      throw new Error('WebGpuBackend: WebGPU is not available.');
-    }
-
-    const adapter = await navigator.gpu.requestAdapter();
-    if (!adapter) {
-      throw new Error('WebGpuBackend: Failed to get GPU adapter.');
-    }
-
+  async initialize(env: Env, adapter: GPUAdapter): Promise<void> {
     this.env = env;
     const requiredFeatures: GPUFeatureName[] = [];
     const deviceDescriptor: GPUDeviceDescriptor = {
@@ -273,6 +263,7 @@ export class WebGpuBackend {
   run(program: ProgramInfo, inputTensorViews: readonly TensorView[], outputIndices: readonly number[],
       createKernelOutput: (index: number, dataType: number, dims: readonly number[]) => TensorView,
       createIntermediateOutput: (dataType: number, dims: readonly number[]) => TensorView): TensorView[] {
+    TRACE_FUNC_BEGIN(program.name);
     // create info for inputs
     const inputDatas: GpuData[] = [];
     for (let i = 0; i < inputTensorViews.length; ++i) {
@@ -397,6 +388,7 @@ export class WebGpuBackend {
         artifact, inputTensorViews, outputTensorViews, inputDatas, outputDatas, normalizedDispatchGroup,
         uniformBufferBinding);
 
+    TRACE_FUNC_END(program.name);
     return outputTensorViews;
   }
 

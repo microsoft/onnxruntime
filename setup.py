@@ -451,6 +451,7 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Operating System :: Microsoft :: Windows",
     "Operating System :: MacOS",
 ]
@@ -464,7 +465,6 @@ if enable_training or enable_training_apis:
                 "onnxruntime.training.experimental",
                 "onnxruntime.training.experimental.gradient_graph",
                 "onnxruntime.training.optim",
-                "onnxruntime.training.torchdynamo",
                 "onnxruntime.training.ortmodule",
                 "onnxruntime.training.ortmodule.experimental",
                 "onnxruntime.training.ortmodule.experimental.json_config",
