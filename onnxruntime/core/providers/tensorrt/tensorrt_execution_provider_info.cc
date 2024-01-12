@@ -46,6 +46,9 @@ constexpr const char* kProfilesMinShapes = "trt_profile_min_shapes";
 constexpr const char* kProfilesMaxShapes = "trt_profile_max_shapes";
 constexpr const char* kProfilesOptShapes = "trt_profile_opt_shapes";
 constexpr const char* kCudaGraphEnable = "trt_cuda_graph_enable";
+constexpr const char* kDumpEpContextModel = "trt_dump_ep_context_model";
+constexpr const char* kEpContextEmbedMode = "trt_ep_context_embed_mode";
+constexpr const char* kEpContextComputeCapabilityEnable = "trt_ep_context_compute_capability_enable";
 }  // namespace provider_option_names
 }  // namespace tensorrt
 
@@ -97,6 +100,9 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kProfilesMaxShapes, info.profile_max_shapes)
           .AddAssignmentToReference(tensorrt::provider_option_names::kProfilesOptShapes, info.profile_opt_shapes)
           .AddAssignmentToReference(tensorrt::provider_option_names::kCudaGraphEnable, info.cuda_graph_enable)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kDumpEpContextModel, info.dump_ep_context_model)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kEpContextEmbedMode, info.ep_context_embed_mode)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kEpContextComputeCapabilityEnable, info.ep_context_compute_capability_enable)
           .Parse(options));  // add new provider option here.
 
   return info;
@@ -138,6 +144,9 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kProfilesMaxShapes, MakeStringWithClassicLocale(info.profile_max_shapes)},
       {tensorrt::provider_option_names::kProfilesOptShapes, MakeStringWithClassicLocale(info.profile_opt_shapes)},
       {tensorrt::provider_option_names::kCudaGraphEnable, MakeStringWithClassicLocale(info.cuda_graph_enable)},
+      {tensorrt::provider_option_names::kDumpEpContextModel, MakeStringWithClassicLocale(info.dump_ep_context_model)},
+      {tensorrt::provider_option_names::kEpContextEmbedMode, MakeStringWithClassicLocale(info.ep_context_embed_mode)},
+      {tensorrt::provider_option_names::kEpContextComputeCapabilityEnable, MakeStringWithClassicLocale(info.ep_context_compute_capability_enable)},
   };
   return options;
 }
@@ -188,6 +197,9 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
       {tensorrt::provider_option_names::kProfilesMaxShapes, kProfilesMaxShapes_},
       {tensorrt::provider_option_names::kProfilesOptShapes, kProfilesOptShapes_},
       {tensorrt::provider_option_names::kCudaGraphEnable, MakeStringWithClassicLocale(info.trt_cuda_graph_enable)},
+      {tensorrt::provider_option_names::kDumpEpContextModel, MakeStringWithClassicLocale(info.trt_dump_ep_context_model)},
+      {tensorrt::provider_option_names::kEpContextEmbedMode, MakeStringWithClassicLocale(info.trt_ep_context_embed_mode)},
+      {tensorrt::provider_option_names::kEpContextComputeCapabilityEnable, MakeStringWithClassicLocale(info.trt_ep_context_compute_capability_enable)},
   };
   return options;
 }
@@ -279,5 +291,8 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   trt_provider_options_v2.trt_profile_opt_shapes = copy_string_if_needed(internal_options.profile_opt_shapes);
 
   trt_provider_options_v2.trt_cuda_graph_enable = internal_options.cuda_graph_enable;
+  trt_provider_options_v2.trt_dump_ep_context_model = internal_options.dump_ep_context_model;
+  trt_provider_options_v2.trt_ep_context_embed_mode = internal_options.ep_context_embed_mode;
+  trt_provider_options_v2.trt_ep_context_compute_capability_enable = internal_options.ep_context_compute_capability_enable;
 }
 }  // namespace onnxruntime

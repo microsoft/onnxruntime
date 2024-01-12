@@ -77,7 +77,7 @@ class UpsampleBase {
 
     auto input_count = info.GetInputCount();
     if (input_count == 1) {  // opset < 10
-      ORT_ENFORCE(info.GetAttrs<float>("scales", scales_).IsOK());
+      ORT_THROW_IF_ERROR(info.GetAttrs<float>("scales", scales_));
       ORT_THROW_IF_ERROR(ScalesValidation(scales_, mode_));
       scales_cached_ = true;
     }

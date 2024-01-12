@@ -7,7 +7,7 @@ import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, ProgramInfo} from '../types';
 
-import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper} from './common';
+import {createTensorShapeVariables, getElementAt, inputVariable, outputVariable, ShaderHelper} from './common';
 
 
 export interface CumSumAttributes extends AttributeWithCacheKey {
@@ -26,7 +26,7 @@ const createCumsumProgramInfo =
           const axis = ShapeUtil.normalizeAxis(axisValue, rank);
           const getShaderSource = (shaderHelper: ShaderHelper) => {
             const index = ` i32(${input.indicesGet('inputIndices', 'uniforms.axis')}) `;
-            const max = rank === 1 ? 'i32(uniforms.input_shape)' : 'i32(uniforms.input_shape[uniforms.axis])';
+            const max = getElementAt('uniforms.input_shape', 'uniforms.axis', rank);
             const lowerLimit = attributes.reverse ? index + (attributes.exclusive ? ' + 1' : '') : '0';
             const upperLimit = attributes.reverse ? max : index + (attributes.exclusive ? '' : ' + 1');
             return `

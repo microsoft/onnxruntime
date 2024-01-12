@@ -8,8 +8,9 @@ import {ComputeContext} from '../types';
 
 import {createConv2DMatMulProgramInfo} from './3rd-party/conv2d_mm_webgpu';
 import {createMatmulProgramInfo} from './3rd-party/matmul_packed_webgpu';
-import {createGroupedConvProgramInfo} from './conv-grouped';
+import {createGroupedConvProgramInfo, createGroupedConvVectorizeProgramInfo} from './conv-grouped';
 import {InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
+import {createNaiveMatmulProgramInfo} from './matmul';
 import {createTransposeProgramInfo} from './transpose';
 
 export const calculateOutputShape =
@@ -135,12 +136,36 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
   // check attributes
 
   // const hasPreluActivationWeights = false; /* TODO: add support for prelu activation weights */
+  const isChannelsLast = attributes.format === 'NHWC';
   if (attributes.group !== 1) {
-    context.compute(createGroupedConvProgramInfo(inputs, adjustedAttributes));
+    // Temporarily disable createGroupedConvVectorizeProgramInfo path due to bots failures with below two cases:
+    // [webgpu]Conv - conv - vectorize group - B
+    // [webgpu]Conv - conv - vectorize group - D
+    const disableGroupedConvVectorize = true;
+    if (!disableGroupedConvVectorize && isChannelsLast && inputs[1].dims[0] === attributes.group &&
+        inputs[1].dims[1] === 1 && attributes.dilations[0] === 1 && attributes.dilations[1] === 1) {
+      const outputShape = calculateOutputShape(
+          inputs[0].dims, inputs[1].dims, attributes.dilations, adjustedAttributes.pads, attributes.strides,
+          isChannelsLast);
+      const transposedWeight = (context.kernelCustomData.wT as TensorView | undefined) ??
+          context.compute(
+              createTransposeProgramInfo(inputs[1], weightTransposeAttribute),
+              {inputs: [1], outputs: [attributes.wIsConst ? -2 : -1]})[0];
+      if (attributes.wIsConst && !context.kernelCustomData.wT) {
+        context.kernelCustomData.wT = transposedWeight;
+      }
+      const convInputs = [inputs[0], transposedWeight];
+      if (inputs.length === 3) {
+        convInputs.push(inputs[2]);
+      }
+      context.compute(
+          createGroupedConvVectorizeProgramInfo(convInputs, adjustedAttributes, outputShape), {inputs: convInputs});
+    } else {
+      context.compute(createGroupedConvProgramInfo(inputs, adjustedAttributes));
+    }
     return;
   }
 
-  const isChannelsLast = attributes.format === 'NHWC';
   const hasBias = inputs.length === 3;
   const inputHeight = inputs[0].dims[isChannelsLast ? 1 : 2];
   const inputWidth = inputs[0].dims[isChannelsLast ? 2 : 3];
@@ -195,9 +220,19 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
     if (hasBias) {
       matmulInputs.push(inputs[2]);
     }
-    context.compute(
-        createMatmulProgramInfo(matmulInputs, adjustedAttributes, outputShape, matmulOutputShape, isChannelsLast),
-        {inputs: matmulInputs});
+    const N = matmulOutputShape[2];
+    const K = matmulInputs[0].dims[matmulInputs[0].dims.length - 1];
+    // Tune the threshold.
+    if (N < 8 && K < 8) {
+      context.compute(
+          createNaiveMatmulProgramInfo(
+              matmulInputs, adjustedAttributes, outputShape, matmulOutputShape, isChannelsLast),
+          {inputs: matmulInputs});
+    } else {
+      context.compute(
+          createMatmulProgramInfo(matmulInputs, adjustedAttributes, outputShape, matmulOutputShape, isChannelsLast),
+          {inputs: matmulInputs});
+    }
     return;
   }
 

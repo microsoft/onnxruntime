@@ -160,7 +160,7 @@ bool IsContextCacheFileExists(const std::string& customer_context_cache_path,
   if (!customer_context_cache_path.empty()) {
     context_cache_path = ToPathString(customer_context_cache_path);
   } else if (!model_pathstring.empty()) {
-    context_cache_path = model_pathstring + ToPathString("_qnn_ctx.onnx");
+    context_cache_path = model_pathstring + ToPathString("_ctx.onnx");
   }
 
   return std::filesystem::is_regular_file(context_cache_path) && std::filesystem::exists(context_cache_path);
