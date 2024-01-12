@@ -11,6 +11,14 @@
 namespace onnxruntime {
 namespace test {
 
+namespace {
+enum class TensorType {
+  kFloat,
+  kFloat16,
+  kBFloat16
+};
+}  // anonymous namespace
+
 static void RunTest(
     const std::vector<float>& input_data,
     const std::vector<int64_t>& position_ids,
@@ -20,10 +28,11 @@ static void RunTest(
     int batch_size,
     int sequence_length,
     int head_size,
+    int rotary_embedding_dim,
     int num_heads,
     int max_sequence_length,
     int64_t interleaved,
-    bool use_float16,
+    TensorType tensor_type,
     bool disable_cpu,
     bool disable_cuda,
     bool disable_dml) {
@@ -36,7 +45,9 @@ static void RunTest(
   int hidden_size = num_heads * head_size;
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> pos_dims;
-  std::vector<int64_t> cache_dims = {max_sequence_length, head_size / 2};
+  std::vector<int64_t> cache_dims = {max_sequence_length, rotary_embedding_dim > 0 
+                                                          ? rotary_embedding_dim / 2 
+                                                          : head_size / 2};
 
   assert(hidden_size != 0 && head_size != 0 && num_heads != 0 && max_sequence_length != 0);
   assert(max_sequence_length >= sequence_length);
@@ -49,7 +60,8 @@ static void RunTest(
   std::string op_type = "RotaryEmbedding";
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 
-  int min_cuda_architecture = use_float16 ? 530 : 0;
+  int min_cuda_architecture = (tensor_type == TensorType::kBFloat16) 
+                              ? 800 : (tensor_type == TensorType::kFloat16) ? 530 : 0;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
   bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get()) && !disable_dml;
 
@@ -59,7 +71,7 @@ static void RunTest(
   if (enable_dml && !disable_dml) {
     execution_providers.push_back(DefaultDmlExecutionProvider());
   }
-  if (!use_float16 && !disable_cpu) {
+  if (tensor_type == TensorType::kFloat && !disable_cpu) {
     execution_providers.push_back(DefaultCpuExecutionProvider());
   }
   if (execution_providers.size() == 0) {
@@ -70,20 +82,36 @@ static void RunTest(
   OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("interleaved", interleaved);
 
-  if (!use_float16) {
+  if (rotary_embedding_dim > 0) {
+    test.AddAttribute<int64_t>("rotary_embedding_dim", rotary_embedding_dim);
+    test.AddAttribute<int64_t>("num_heads", num_heads);
+  }
+
+  if (tensor_type == TensorType::kFloat) {
     test.AddInput<float>("input", input_dims, input_data);
     test.AddInput<int64_t>("position_ids", pos_dims, position_ids);
     test.AddInput<float>("cos_cache", cache_dims, cos_cache);
     test.AddInput<float>("sin_cache", cache_dims, sin_cache);
     test.AddOutput<float>("output", input_dims, output_data);
-  } else {
+  } else if (tensor_type == TensorType::kFloat16) {
     test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
     test.AddInput<int64_t>("position_ids", pos_dims, position_ids);
     test.AddInput<MLFloat16>("cos_cache", cache_dims, ToFloat16(cos_cache));
     test.AddInput<MLFloat16>("sin_cache", cache_dims, ToFloat16(sin_cache));
     test.AddOutput<MLFloat16>("output", input_dims, ToFloat16(output_data));
+  } else {
+    test.AddInput<BFloat16>("input", input_dims, FloatsToBFloat16s(input_data));
+    test.AddInput<int64_t>("position_ids", pos_dims, position_ids);
+    test.AddInput<BFloat16>("cos_cache", cache_dims, FloatsToBFloat16s(cos_cache));
+    test.AddInput<BFloat16>("sin_cache", cache_dims, FloatsToBFloat16s(sin_cache));
+    test.AddOutput<BFloat16>("output", input_dims, FloatsToBFloat16s(output_data));
   }
-  test.SetOutputAbsErr("output", 0.002f);
+  if (tensor_type == TensorType::kBFloat16) {
+    test.SetOutputAbsErr("output", 0.2f);
+  } else {
+    test.SetOutputAbsErr("output", 0.002f);
+  }
+  
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
@@ -95,6 +123,7 @@ static void RunTests(const std::vector<float>& input_data,
                      int batch_size,
                      int sequence_length,
                      int head_size = 0,
+                     int rotary_embedding_dim = 0,
                      int num_heads = 0,
                      int max_sequence_length = 0,
                      int64_t interleaved = 0,
@@ -108,10 +137,11 @@ static void RunTests(const std::vector<float>& input_data,
           batch_size,
           sequence_length,
           head_size,
+          rotary_embedding_dim,
           num_heads,
           max_sequence_length,
           interleaved,
-          false, /* use_fp16 */
+          TensorType::kFloat, 
           false, /* disable_cpu */
           true,  /* disable_cuda */
           true /* disable_dml */);
@@ -125,10 +155,11 @@ static void RunTests(const std::vector<float>& input_data,
           batch_size,
           sequence_length,
           head_size,
+          rotary_embedding_dim,
           num_heads,
           max_sequence_length,
           interleaved,
-          false, /* use_fp16 */
+          TensorType::kFloat,
           false, /* disable_cpu */
           false, /* disable_cuda */
           false /* disable_dml */);
@@ -143,13 +174,31 @@ static void RunTests(const std::vector<float>& input_data,
             batch_size,
             sequence_length,
             head_size,
+            rotary_embedding_dim,
             num_heads,
             max_sequence_length,
             interleaved,
-            true,  /* use_fp16 */
+            TensorType::kFloat16,
             true,  /* disable_cpu */
             false, /* disable_cuda*/
             false /* disable_dml */);
+
+    // RunTest(input_data,
+    //         position_ids,
+    //         cos_cache,
+    //         sin_cache,
+    //         output_data,
+    //         batch_size,
+    //         sequence_length,
+    //         head_size,
+    //         rotary_embedding_dim,
+    //         num_heads,
+    //         max_sequence_length,
+    //         interleaved,
+    //         TensorType::kBFloat16,
+    //         true,  /* disable_cpu */
+    //         false, /* disable_cuda*/
+    //         false /* disable_dml */);    
   }
 }
 
@@ -159,6 +208,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_Interleaved_SmallData_LlamaMSFT) {
   int sequence_length = 3;
   int num_heads = 2;
   int head_size = 4;
+  int rotary_embedding_dim = 0;
   int max_sequence_length = 8;
   int64_t interleaved = 1;  // true
 
@@ -190,6 +240,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_Interleaved_SmallData_LlamaMSFT) {
            batch_size,
            sequence_length,
            head_size,
+           rotary_embedding_dim,
            num_heads,
            max_sequence_length,
            interleaved);
@@ -201,6 +252,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_Interleaved_LargeData_LlamaMSFT) {
   int sequence_length = 8;
   int num_heads = 4;
   int head_size = 6;
+  int rotary_embedding_dim = 0;
   int max_sequence_length = 16;
   int64_t interleaved = 1;  // true
 
@@ -388,6 +440,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_Interleaved_LargeData_LlamaMSFT) {
            batch_size,
            sequence_length,
            head_size,
+           rotary_embedding_dim,
            num_heads,
            max_sequence_length,
            interleaved);
@@ -399,6 +452,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_LargeData_LlamaMSFT) {
   int sequence_length = 8;
   int num_heads = 4;
   int head_size = 6;
+  int rotary_embedding_dim = 0;
   int max_sequence_length = 16;
   int64_t interleaved = 0;  // false
 
@@ -586,6 +640,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_LargeData_LlamaMSFT) {
            batch_size,
            sequence_length,
            head_size,
+           rotary_embedding_dim,
            num_heads,
            max_sequence_length,
            interleaved);
@@ -597,6 +652,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_SmallData_LlamaMSFT) {
   int sequence_length = 2;
   int num_heads = 3;
   int head_size = 6;
+  int rotary_embedding_dim = 0;
   int max_sequence_length = 4;
   int64_t interleaved = 0;  // false
 
@@ -632,6 +688,46 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_SmallData_LlamaMSFT) {
            batch_size,
            sequence_length,
            head_size,
+           rotary_embedding_dim,
+           num_heads,
+           max_sequence_length,
+           interleaved);
+}
+
+TEST(RotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi) {
+  int batch_size = 1;
+  int sequence_length = 2;
+  int num_heads = 1;
+  int head_size = 6;
+  int rotary_embedding_dim = 4;
+  int max_sequence_length = 2;
+  int64_t interleaved = 0;  // false
+
+  std::vector<float> input_data = {
+      -1.0408f, 0.9166f, -1.3042f, -1.1097f, -1.2188f, 1.1676f, 1.0076f, -0.7529f,
+      -0.2250f, -0.4327f, -1.5071f, -0.4586f};
+
+  std::vector<int64_t> position_ids = {0, 1};
+
+  std::vector<float> cos_cache = {
+      1.0000f, 1.0000f, 1.0000f, 0.5403f};
+
+  std::vector<float> sin_cache = {
+      0.0000f, 0.0000f, 0.0000f, 0.8415f};
+
+  std::vector<float> output_data = {
+      -1.0408f, 0.9166f, -1.3042f, -1.1097f, -1.2188f, 1.1676f, 1.0076f, -0.0427f,
+      -0.2250f, -0.8673f, -1.5071f, -0.4586f};
+
+  RunTests(input_data,
+           position_ids,
+           cos_cache,
+           sin_cache,
+           output_data,
+           batch_size,
+           sequence_length,
+           head_size,
+           rotary_embedding_dim,
            num_heads,
            max_sequence_length,
            interleaved);

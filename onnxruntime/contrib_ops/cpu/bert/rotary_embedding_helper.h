@@ -84,6 +84,11 @@ Status CheckInputs(const T* input,
   int max_sequence_length = static_cast<int>(cos_cache_dims[0]);
   int head_size = rotary_embedding_dim == 0 ? static_cast<int>(cos_cache_dims[1]) * 2
                                             : static_cast<int>(hidden_size / num_heads);
+  if (rotary_embedding_dim > 0 && rotary_embedding_dim > head_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "rotary_embedding_dim must be less than or equal to ",
+                           "head_size");
+  }
+  
   int position_ids_format = -1;
 
   // Check position_ids input shapes
