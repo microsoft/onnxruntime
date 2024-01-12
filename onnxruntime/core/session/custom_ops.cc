@@ -26,6 +26,8 @@
 #include "core/session/ort_apis.h"
 #include "core/platform/threadpool.h"
 
+#define ENABLE_CUSTOM_OP_API !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+
 #if !defined(ORT_MINIMAL_BUILD)
 static constexpr uint32_t min_ort_version_with_optional_io_support = 8;
 static constexpr uint32_t min_ort_version_with_variadic_io_support = 14;
@@ -381,8 +383,8 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetResource, _In_ const OrtKernelCont
   API_IMPL_END
 };
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_ParallelFor, _In_ const OrtKernelContext* context, _In_ void (*fn)(void*, size_t), _In_ size_t total, _In_ size_t num_batch, _In_ void* usr_data) {
+#if ENABLE_CUSTOM_OP_API
   API_IMPL_BEGIN
   if (!context) {
     return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, "Invalid context");
@@ -405,14 +407,15 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_ParallelFor, _In_ const OrtKernelCont
   }
   return nullptr;
   API_IMPL_END
-};
 #else
-ORT_API_STATUS_IMPL(OrtApis::KernelContext_ParallelFor, _In_ const OrtKernelContext*, _In_ void (*)(void*, size_t), _In_ size_t, _In_ size_t, _In_ void*) {
-  API_IMPL_BEGIN
+  ORT_UNUSED_PARAMETER(context);
+  ORT_UNUSED_PARAMETER(fn);
+  ORT_UNUSED_PARAMETER(total);
+  ORT_UNUSED_PARAMETER(num_batch);
+  ORT_UNUSED_PARAMETER(usr_data);
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "ParallelFor API not implemented for this build");
-  API_IMPL_END
-};
 #endif
+};
 
 #ifdef _WIN32
 #pragma warning(pop)
