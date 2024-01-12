@@ -40,7 +40,16 @@ stages:
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
       workingDirectory: $(Build.SourcesDirectory)
       displayName: 'Build and Test'
-
+# We only support Maven package for CUDA 11.8
+    - ${{ if eq(parameters.CudaVersion, '11.8') }}:
+      - template: ../templates/java-api-artifacts-package-and-publish-steps-posix.yml
+        parameters:
+          arch: 'linux-x64'
+          buildConfig: 'Release'
+          artifactName: 'onnxruntime-java-linux-x64-cuda'
+          version: '$(OnnxRuntimeVersion)'
+          libraryName: 'libonnxruntime.so'
+          nativeLibraryName: 'libonnxruntime4j_jni.so'
     - template: ../templates/c-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
         buildConfig: 'Release'
@@ -81,6 +90,10 @@ stages:
           submodules: false
         - checkout: manylinux                      # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/manylinux
           submodules: false
+
+        - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+          displayName: 'Clean Agent Directories'
+          condition: always()
 
         - script: |
             set -e -x
@@ -159,3 +172,6 @@ stages:
           inputs:
             targetPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
             artifactName: 'onnxruntime-linux-x64-gpu'
+        - template: templates/component-governance-component-detection-steps.yml
+          parameters:
+            condition: 'succeeded'
