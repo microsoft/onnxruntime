@@ -258,6 +258,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unique_ptr<nvinfer1::IRuntime> runtime_ = nullptr;
   OrtMutex tensorrt_mu_;
   int device_id_;
+  std::string compute_capability_;
   bool context_memory_sharing_enable_ = false;
   bool layer_norm_fp32_fallback_ = false;
   size_t max_ctx_mem_size_ = 0;

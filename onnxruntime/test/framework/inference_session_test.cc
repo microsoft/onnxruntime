@@ -584,6 +584,9 @@ TEST(InferenceSessionTests, ModelMetadata) {
 }
 #endif
 TEST(InferenceSessionTests, CheckRunLogger) {
+  if constexpr (!SessionOptions::DEFAULT_USE_PER_SESSION_THREADS) {
+    GTEST_SKIP() << "Skipping the test";
+  }
   SessionOptions so;
 
   so.session_logid = "CheckRunLogger";
@@ -843,6 +846,9 @@ TEST(InferenceSessionTests, PreAllocateOutputVector) {
 }
 
 TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
+  if constexpr (!SessionOptions::DEFAULT_USE_PER_SESSION_THREADS) {
+    GTEST_SKIP() << "Skipping the test";
+  }
   SessionOptions so;
 
   so.session_logid = "ConfigureVerbosityLevel";
@@ -2649,6 +2655,9 @@ class InferenceSessionTestSharingAllocator : public InferenceSessionWrapper {
 
 // Ensure sessions use the same allocator. It uses ORT created allocator.
 TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllocator) {
+  if constexpr (!SessionOptions::DEFAULT_USE_PER_SESSION_THREADS) {
+    GTEST_SKIP() << "Skipping the test";
+  }
   auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
@@ -2694,6 +2703,9 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllo
 
 // Ensure sessions don't use the same allocator. It uses ORT created allocator.
 TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreatedAllocator) {
+  if constexpr (!SessionOptions::DEFAULT_USE_PER_SESSION_THREADS) {
+    GTEST_SKIP() << "Skipping the test";
+  }
   auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
@@ -2746,6 +2758,9 @@ class InferenceSessionTestSharingInitializer : public InferenceSessionWrapper {
 };
 
 TEST(InferenceSessionTests, InitializerSharing_EnsureSessionsUseUserAddedInitializer) {
+  if constexpr (!SessionOptions::DEFAULT_USE_PER_SESSION_THREADS) {
+    GTEST_SKIP() << "Skipping the test";
+  }
   auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
@@ -2930,6 +2945,9 @@ TEST(InferenceSessionTests, GlobalThreadPoolWithDenormalAsZero) {
 
 // test inter thread pool with setting denormal as zero
 TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
+  if constexpr (!SessionOptions::DEFAULT_USE_PER_SESSION_THREADS) {
+    GTEST_SKIP() << "Skipping the test";
+  }
   // test if denormal-as-zero mode is supported
   if (!SetDenormalAsZero(false)) {
     return;

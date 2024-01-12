@@ -76,7 +76,6 @@ const createWhereOpProgramInfo = (inputs: readonly TensorView[]): ProgramInfo =>
   const isBroadcast = !(ShapeUtil.areEqual(dimsA, dimsB) && ShapeUtil.areEqual(dimsB, dimsC));
   let outputShape = dimsA;
   let outputSize = ShapeUtil.size(dimsA);
-  const vecSize = Math.ceil(outputSize / 4);
   // TODO: deal with zero-sized tensors (eg. dims=[1,0])
 
   if (isBroadcast) {
@@ -87,6 +86,8 @@ const createWhereOpProgramInfo = (inputs: readonly TensorView[]): ProgramInfo =>
     outputShape = calculatedShape;
     outputSize = ShapeUtil.size(outputShape);
   }
+
+  const vecSize = Math.ceil(outputSize / 4);
 
   return {
     name: 'Where',
