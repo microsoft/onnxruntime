@@ -63,7 +63,7 @@ void QuantizeDequantize(std::vector<float>& raw_vals,
       tp.get());
 }
 
-void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t comp_type,
+void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accuracy_level,
              bool has_zeropoint, bool use_float16, float fp16_abs_error = 0.02f) {
   RandomValueGenerator random{1234};
   std::vector<float> input0_vals(random.Gaussian<float>(std::vector<int64_t>({M, K}), 0.0f, 0.25f));
@@ -110,7 +110,7 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t comp_t
   test.AddAttribute<int64_t>("N", N);
   test.AddAttribute<int64_t>("block_size", block_size);
   test.AddAttribute<int64_t>("bits", QBits);
-  test.AddAttribute<int64_t>("accuracy_level", comp_type);
+  test.AddAttribute<int64_t>("accuracy_level", accuracy_level);
   if (use_float16) {
     test.AddInput<MLFloat16>("A", {M, K}, ToFloat16(input0_vals), false);
     test.AddInput<uint8_t>("B", {q_cols, q_rows}, input1_vals, true);
@@ -134,7 +134,7 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t comp_t
     }
 
     test.AddOutput<float>("Y", {M, N}, expected_vals);
-    if (comp_type == 4) {
+    if (accuracy_level == 4) {
       test.SetOutputAbsErr("Y", 0.1f);
     }
 
