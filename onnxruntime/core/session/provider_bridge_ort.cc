@@ -1440,23 +1440,27 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
   if (legacy_ov_options->device_id != nullptr)
     ov_options_converted_map["device_id"] = legacy_ov_options->device_id;
 
-  ov_options_converted_map["num_of_threads"] = std::to_string(legacy_ov_options->num_of_threads);
+  if (legacy_ov_options->num_of_threads != '\0')
+    ov_options_converted_map["num_of_threads"] = std::to_string(legacy_ov_options->num_of_threads);
 
   if (legacy_ov_options->cache_dir != nullptr)
     ov_options_converted_map["cache_dir"] = legacy_ov_options->cache_dir;
 
-  std::stringstream context_string;
-
-  if (legacy_ov_options->context != nullptr)
+  if (legacy_ov_options->context != nullptr){
+    std::stringstream context_string;
     context_string << legacy_ov_options->context;
-  ov_options_converted_map["context"] = context_string.str();
+    ov_options_converted_map["context"] = context_string.str();
+  }
 
   ov_options_converted_map["enable_opencl_throttling"] = legacy_ov_options->enable_opencl_throttling;
-  std::string enable_dynamic_shapes = reinterpret_cast<const char*>(legacy_ov_options->enable_dynamic_shapes);
-  if (enable_dynamic_shapes == "true" || enable_dynamic_shapes == "True") {
-    ov_options_converted_map["disable_dynamic_shapes"] = "false";
-  } else if (enable_dynamic_shapes == "false" || enable_dynamic_shapes == "False") {
-    ov_options_converted_map["disable_dynamic_shapes"] = "true";
+
+  if (legacy_ov_options->enable_dynamic_shapes != '\0'){
+    std::string enable_dynamic_shapes = reinterpret_cast<const char*>(legacy_ov_options->enable_dynamic_shapes);
+    if (enable_dynamic_shapes == "true" || enable_dynamic_shapes == "True") {
+      ov_options_converted_map["disable_dynamic_shapes"] = "false";
+    } else if (enable_dynamic_shapes == "false" || enable_dynamic_shapes == "False") {
+      ov_options_converted_map["disable_dynamic_shapes"] = "true";
+    }
   }
   // Add new provider option below
   ov_options_converted_map["num_streams"] = "1";
