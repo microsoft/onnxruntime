@@ -4,6 +4,7 @@
 steps:
 - task: PythonScript@0
   displayName: 'Set Python manylinux variables'
+  pythonInterpreter: /usr/bin/python3
   inputs:
     scriptSource: inline
     script: |
