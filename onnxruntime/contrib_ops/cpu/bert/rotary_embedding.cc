@@ -27,7 +27,13 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 template <typename T>
 RotaryEmbedding<T>::RotaryEmbedding(const OpKernelInfo& info) : OpKernel(info) {
   scale = info.GetAttrOrDefault<float>("scale", 1.0);
+  rotary_embedding_dim = info.GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0);
+  num_heads = info.GetAttrOrDefault<int64_t>("num_heads", 0);
   interleaved = (info.GetAttrOrDefault<int64_t>("interleaved", 0) == 1);
+
+  if (rotary_embedding_dim > 0) {
+    ORT_ENFORCE(num_heads > 0, "num_heads must be provided if rotary_embedding_dim is specified");
+  }
 }
 
 template <typename T>
@@ -42,6 +48,8 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
                                                                    position_ids,
                                                                    cos_cache,
                                                                    sin_cache,
+                                                                   num_heads,
+                                                                   rotary_embedding_dim,
                                                                    &parameters));
 
   Tensor* output = context->Output(0, input->Shape());
@@ -62,7 +70,9 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
   const int num_heads = parameters.num_heads;
   const int head_size = parameters.head_size;
   const int position_ids_format = parameters.position_ids_format;
-  const int half_head_size = head_size / 2;
+  const int half_rotary_embedding_dim = parameters.rotary_embedding_dim / 2;
+  const int rotary_embedding_dim = parameters.rotary_embedding_dim;
+
   // Default input tensor shape is [batch, seq_len, hidden_size]
   int head_stride = head_size;
   int seq_stride = num_heads * head_stride;
@@ -79,7 +89,7 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
   auto* tp = context->GetOperatorThreadPool();
 
   const int loop_len = batch_size * sequence_length * num_heads;
-  const double cost = static_cast<double>(head_size);
+  const double cost = static_cast<double>(rotary_embedding_dim);
   ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
     for (std::ptrdiff_t ptr = begin; ptr != end; ++ptr) {
       const int b = static_cast<int>((ptr / num_heads) / sequence_length);
@@ -91,26 +101,26 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
       const T* input_data = input_src + block_offset;
       T* output_data = output_dest + block_offset;
 
-      // Cache is (M, H/2)
+      // Cache is (M, H/2) or (M, rotary_embedding_dim/2)
       const int position_id = (position_ids_format == 0)
-                                  ? static_cast<int>(pos_ids_data[0]) + s
-                                  : static_cast<int>(pos_ids_data[b * sequence_length + s]);
-      const int cache_offset = position_id * half_head_size;
+                                        ? static_cast<int>(pos_ids_data[0]) + s
+                                        : static_cast<int>(pos_ids_data[b * sequence_length + s]);
+      const int cache_offset = position_id * half_rotary_embedding_dim;
       const T* cos_data = cos_cache_data + cache_offset;
       const T* sin_data = sin_cache_data + cache_offset;
 
       int cache_idx = 0;
       T sign = 0;
       int j = 0;
-      for (int i = 0; i < head_size; i++) {
+      for (int i = 0; i < rotary_embedding_dim; i++) {
         if (interleaved) {
-          cache_idx = (i / 2) % half_head_size;
+          cache_idx = (i / 2) % half_rotary_embedding_dim;
           sign = (i % 2 == 0) ? static_cast<T>(-1) : static_cast<T>(1);
           j = (i % 2 == 0) ? i + 1 : i - 1;  // i - sign
         } else {
-          cache_idx = i % half_head_size;
-          sign = (i < half_head_size) ? static_cast<T>(-1) : static_cast<T>(1);
-          j = (i + half_head_size) % head_size;
+          cache_idx = i % half_rotary_embedding_dim;
+          sign = (i < half_rotary_embedding_dim) ? static_cast<T>(-1) : static_cast<T>(1);
+          j = (i + half_rotary_embedding_dim) % rotary_embedding_dim;
         }
         output_data[i] = input_data[i] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
       }

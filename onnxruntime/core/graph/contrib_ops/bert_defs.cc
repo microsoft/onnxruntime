@@ -1149,6 +1149,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Rotate using interleaved pattern. Default value is 0 (False).",
               AttributeProto::INT,
               OPTIONAL_VALUE)
+        .Attr("rotary_embedding_dim",
+              "Rotary embedding dimension. Default value is 0.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("num_heads",
+              "Number of attention heads. Default value is 0. Must use with rotary_embedding_dim",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
         .Input(0,
                "input",
                "3D tensor with shape (batch_size, sequence_length, hidden_size) or 4D with shape (batch_size, num_heads, sequence_length, head_size)",
@@ -1159,17 +1167,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "M")
         .Input(2,
                "cos_cache",
-               "2D tensor with shape (max_sequence_length, head_size / 2).",
+               "2D tensor with shape (max_sequence_length, head_size / 2) or (max_sequence_length, rotary_embedding_dim / 2)",
                "T")
         .Input(3,
                "sin_cache",
-               "2D tensor with shape (max_sequence_length, head_size / 2).",
+               "2D tensor with shape (max_sequence_length, head_size / 2) or (max_sequence_length, rotary_embedding_dim / 2)",
                "T")
         .Output(0,
                 "output",
                 "tensor with same shape as input.",
                 "T")
-        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
         .TypeConstraint("M", {"tensor(int64)"}, "Constrain input and output types to integer tensors")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
