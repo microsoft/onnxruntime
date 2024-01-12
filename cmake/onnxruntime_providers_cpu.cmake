@@ -155,7 +155,7 @@ endif()
 
 if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   if(USE_NEURAL_SPEED)
-    target_link_libraries(onnxruntime_providers PRIVATE bestla::bestla)
+    onnxruntime_add_include_to_target(onnxruntime_providers bestla::bestla)
   endif()
 endif()
 
