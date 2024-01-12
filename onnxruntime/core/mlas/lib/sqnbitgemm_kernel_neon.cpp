@@ -174,8 +174,8 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
 
             // load B column vectors
             uint8x8_t bv_packed[NCols];
+            const size_t b_data_block_offset = k_idx_in_blk * BlkBitWidth / 8;
             UnrolledLoop<NCols>([&](size_t i) {
-                const size_t b_data_block_offset = k_idx_in_blk * BlkBitWidth / 8;
                 bv_packed[i] = vld1_u8(
                     reinterpret_cast<const uint8_t*>(QuantBData) + i * StrideQuantBData + b_data_block_offset
                 );
