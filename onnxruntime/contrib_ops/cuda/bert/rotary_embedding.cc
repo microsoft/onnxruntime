@@ -34,8 +34,8 @@ REGISTER_KERNEL_TYPED(BFloat16)
 template <typename T>
 RotaryEmbedding<T>::RotaryEmbedding(const OpKernelInfo& info) : CudaKernel(info) {
   scale = info.GetAttrOrDefault<float>("scale", 1.0);
-  rotary_embedding_dim = info.GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0);
-  num_heads = info.GetAttrOrDefault<int64_t>("num_heads", 0);
+  rotary_embedding_dim = static_cast<int>(info.GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0));
+  num_heads = static_cast<int>(info.GetAttrOrDefault<int64_t>("num_heads", 0));
   interleaved = (info.GetAttrOrDefault<int64_t>("interleaved", 0) == 1);
 }
 

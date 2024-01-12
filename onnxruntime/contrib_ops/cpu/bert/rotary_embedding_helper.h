@@ -88,7 +88,7 @@ Status CheckInputs(const T* input,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "rotary_embedding_dim must be less than or equal to ",
                            "head_size");
   }
-  
+
   int position_ids_format = -1;
 
   // Check position_ids input shapes

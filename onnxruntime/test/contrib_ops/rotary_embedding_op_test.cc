@@ -45,9 +45,9 @@ static void RunTest(
   int hidden_size = num_heads * head_size;
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> pos_dims;
-  std::vector<int64_t> cache_dims = {max_sequence_length, rotary_embedding_dim > 0 
-                                                          ? rotary_embedding_dim / 2 
-                                                          : head_size / 2};
+  std::vector<int64_t> cache_dims = {max_sequence_length, rotary_embedding_dim > 0
+                                                              ? rotary_embedding_dim / 2
+                                                              : head_size / 2};
 
   assert(hidden_size != 0 && head_size != 0 && num_heads != 0 && max_sequence_length != 0);
   assert(max_sequence_length >= sequence_length);
@@ -60,8 +60,10 @@ static void RunTest(
   std::string op_type = "RotaryEmbedding";
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 
-  int min_cuda_architecture = (tensor_type == TensorType::kBFloat16) 
-                              ? 800 : (tensor_type == TensorType::kFloat16) ? 530 : 0;
+  int min_cuda_architecture = (tensor_type == TensorType::kBFloat16)
+                                  ? 800
+                              : (tensor_type == TensorType::kFloat16) ? 530
+                                                                      : 0;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
   bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get()) && !disable_dml;
 
@@ -111,7 +113,7 @@ static void RunTest(
   } else {
     test.SetOutputAbsErr("output", 0.002f);
   }
-  
+
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
@@ -141,7 +143,7 @@ static void RunTests(const std::vector<float>& input_data,
           num_heads,
           max_sequence_length,
           interleaved,
-          TensorType::kFloat, 
+          TensorType::kFloat,
           false, /* disable_cpu */
           true,  /* disable_cuda */
           true /* disable_dml */);
@@ -198,7 +200,7 @@ static void RunTests(const std::vector<float>& input_data,
     //         TensorType::kBFloat16,
     //         true,  /* disable_cpu */
     //         false, /* disable_cuda*/
-    //         false /* disable_dml */);    
+    //         false /* disable_dml */);
   }
 }
 
