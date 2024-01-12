@@ -26,7 +26,9 @@
 #include "core/session/ort_apis.h"
 #include "core/platform/threadpool.h"
 
-#define ENABLE_CUSTOM_OP_API !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#define ENABLE_CUSTOM_OP_API
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
 static constexpr uint32_t min_ort_version_with_optional_io_support = 8;
@@ -384,7 +386,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetResource, _In_ const OrtKernelCont
 };
 
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_ParallelFor, _In_ const OrtKernelContext* context, _In_ void (*fn)(void*, size_t), _In_ size_t total, _In_ size_t num_batch, _In_ void* usr_data) {
-#if ENABLE_CUSTOM_OP_API
+#ifdef ENABLE_CUSTOM_OP_API
   API_IMPL_BEGIN
   if (!context) {
     return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, "Invalid context");
