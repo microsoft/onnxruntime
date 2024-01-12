@@ -727,6 +727,7 @@ stages:
   dependsOn:
   - Setup
   - Windows_Packaging_gpu
+  - Windows_Packaging_CPU_x64_default
   - Windows_Packaging_tensorrt
   - Linux_C_API_Packaging_GPU_x64
   - Linux_C_API_Packaging_GPU_TensorRT_x64
@@ -780,6 +781,7 @@ stages:
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
+    # The following one is from a CPU job that publishes protoc.exe
     - template: templates/flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Pipeline Artifact - NuGet'

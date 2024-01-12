@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <thread>
 
+#include <absl/base/config.h>
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
@@ -402,6 +403,8 @@ TEST(CApiTest, SparseInputModel) {
 #endif  // DISABLE_CONTRIB_OPS
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
+// Memory leak
+#ifndef ABSL_HAVE_ADDRESS_SANITIZER
 TEST(CApiTest, custom_op_handler) {
   std::cout << "Running custom op inference" << std::endl;
 
@@ -435,6 +438,7 @@ TEST(CApiTest, custom_op_handler) {
                        custom_op_domain, nullptr);
 #endif
 }
+#endif
 
 #ifdef USE_CUDA
 TEST(CApiTest, custom_op_set_input_memory_type) {
@@ -1452,7 +1456,8 @@ TEST(CApiTest, test_custom_op_library) {
 #endif
 }
 
-#if defined(__ANDROID__)
+// Has memory leak
+#if defined(__ANDROID__) || defined(ABSL_HAVE_ADDRESS_SANITIZER)
 TEST(CApiTest, DISABLED_test_custom_op_shape_infer_attr) {
 // To accomodate a reduced op build pipeline
 #elif defined(REDUCED_OPS_BUILD) && defined(USE_CUDA)

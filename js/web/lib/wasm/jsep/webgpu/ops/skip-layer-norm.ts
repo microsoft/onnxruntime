@@ -132,11 +132,11 @@ const createSkipLayerNormProgramInfo =
           squareSum += f32Value * f32Value;
         }
         let mean = ${sumVector('sum', components)} / hiddenSize;
-        let variance = sqrt(${sumVector('squareSum', components)} / hiddenSize - mean * mean + epsilon);
+        let invStdDev = inverseSqrt(${sumVector('squareSum', components)} / hiddenSize - mean * mean + epsilon);
         ${hasMeanOutput ? 'meanOutput[global_idx] = mean;' : ''}
-        ${hasInvStdDevOutput ? 'invStdOutput[global_idx] = 1.0 / variance;' : ''}
+        ${hasInvStdDevOutput ? 'invStdOutput[global_idx] = invStdDev;' : ''}
         for (var i: u32 = 0; i < hiddenSizeVectorized; i++) {
-          output[offset + i] = (output[offset + i] - ${dataType}(mean)) / ${dataType}(variance) * gamma[i]
+          output[offset + i] = (output[offset + i] - ${dataType}(mean)) * ${dataType}(invStdDev) * gamma[i]
            + ${hasBetaInput ? 'beta[i]' : '0.0'};
         }
       }`;
