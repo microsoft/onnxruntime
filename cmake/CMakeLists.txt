@@ -909,6 +909,10 @@ function(onnxruntime_set_compile_flags target_name)
       target_compile_definitions(${target_name} PRIVATE USE_CUTLASS)
     endif()
 
+    if(USE_NEURAL_SPEED)
+      target_compile_definitions(${target_name} PRIVATE ORT_NEURAL_SPEED)
+    endif()
+
     set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
     if (onnxruntime_USE_CUDA)
       # Suppress a "conversion_function_not_usable" warning in gsl/span

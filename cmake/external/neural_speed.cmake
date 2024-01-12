@@ -14,5 +14,4 @@ if(USE_NEURAL_SPEED)
       GIT_TAG        ${NEURAL_SPEED_TAG}
   )
   FetchContent_MakeAvailable(neural_speed)
-  add_compile_definitions(ORT_NEURAL_SPEED)
 endif()
