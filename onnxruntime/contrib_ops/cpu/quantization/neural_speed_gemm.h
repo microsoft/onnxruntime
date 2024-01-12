@@ -6,11 +6,11 @@ Licensed under the MIT License.
 
 Module Name:
 
-    bestla_gemm.h
+    neural_speed_gemm.h
 
 Abstract:
 
-    Currently only support Q4 gemm.
+    Prepack-weight GEMM APIs of neural_speed.
 --*/
 
 #pragma once

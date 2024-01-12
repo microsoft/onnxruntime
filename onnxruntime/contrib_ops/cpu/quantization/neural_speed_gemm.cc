@@ -6,15 +6,15 @@ Licensed under the MIT License.
 
 Module Name:
 
-    bestla_gemm.cpp
+    neural_speed_gemm.cpp
 
 Abstract:
 
-    Currently only support Q4 gemm.
+    GEMM template combinations of neural_speed.
 --*/
 
-#include "contrib_ops/cpu/quantization/bestla_defs.h"
-#include "contrib_ops/cpu/quantization/bestla_gemm.h"
+#include "contrib_ops/cpu/quantization/neural_speed_defs.h"
+#include "contrib_ops/cpu/quantization/neural_speed_gemm.h"
 #include "core/platform/threadpool.h"
 
 using ThreadPool = onnxruntime::concurrency::ThreadPool;

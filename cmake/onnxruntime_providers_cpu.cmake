@@ -61,10 +61,10 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     )
   endif()
   set(onnxruntime_cpu_neural_speed_srcs 
-    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/bestla_wrapper.h"
-    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/bestla_defs.h"
-    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/bestla_gemm.cc"
-    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/bestla_gemm.h"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_wrapper.h"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_defs.h"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_gemm.cc"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/quantization/neural_speed_gemm.h"
   )
   if(NOT USE_NEURAL_SPEED)
     list(REMOVE_ITEM onnxruntime_cpu_contrib_ops_srcs ${onnxruntime_cpu_neural_speed_srcs})
