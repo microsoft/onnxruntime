@@ -4,7 +4,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "../backend_utils.h"
 #include "../backend_manager.h"
-#include "capabilities.h"
+#include "capability.h"
 #include "utils.h"
 
 #if defined(_MSC_VER)
@@ -23,19 +23,21 @@ namespace onnxruntime {
 namespace openvino_ep {
 
 // Constructor
-GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string device_type_param,
+GetCapability::GetCapability(const GraphViewer& graph_viewer_param,
+                             const std::string device_type_param,
+                             const std::string device_precision,
                              const std::string version_param)
-    : graph_viewer_(graph_viewer_param), device_type_(device_type_param) {
-  if (version_param == "V_2022_3") {
-    data_ops_ = new DataOps(graph_viewer_, V_2022_3, device_type_);
-  } else if (version_param == "V_2023_0") {
-    data_ops_ = new DataOps(graph_viewer_, V_2023_0, device_type_);
+    : graph_viewer_(graph_viewer_param), device_type_(device_type_param), device_precision_(device_precision) {
+  if (version_param == "V_2023_0") {
+    data_ops_ = new DataOps(graph_viewer_, V_2023_0, device_type_, device_precision_);
   } else if (version_param == "V_2023_1") {
-    data_ops_ = new DataOps(graph_viewer_, V_2023_1, device_type_);
+    data_ops_ = new DataOps(graph_viewer_, V_2023_1, device_type_, device_precision_);
   } else if (version_param == "V_2023_2") {
-    data_ops_ = new DataOps(graph_viewer_, V_2023_2, device_type_);
+    data_ops_ = new DataOps(graph_viewer_, V_2023_2, device_type_, device_precision_);
+  } else if (version_param == "V_2023_3") {
+    data_ops_ = new DataOps(graph_viewer_, V_2023_3, device_type_, device_precision_);
   } else {
-    data_ops_ = new DataOps(graph_viewer_, V_2023_2, device_type_);
+    data_ops_ = new DataOps(graph_viewer_, V_2023_3, device_type_, device_precision_);
   }
 }
 
@@ -111,7 +113,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     if (backend_utils::IsCILogEnabled()) {
       std::cout << "Model is fully supported on OpenVINO" << std::endl;
     }
-    openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph = true;
+    is_wholly_supported_graph_ = true;
 
   } else {                                     // unsupported_nodes_idx.empty()
 #if defined(OPENVINO_DISABLE_GRAPH_PARTITION)  // disables graph partition at build time

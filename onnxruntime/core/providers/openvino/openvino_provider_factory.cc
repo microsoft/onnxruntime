@@ -169,7 +169,6 @@ struct OpenVINO_Provider : Provider {
   }
 
   void Shutdown() override {
-    openvino_ep::BackendManager::ReleaseGlobalContext();
   }
 } g_provider;
 
