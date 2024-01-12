@@ -268,6 +268,8 @@ export class WebGpuBackend {
     }
 
     TRACE_FUNC_BEGIN();
+
+    this.endComputePass();
     let queryReadBuffer: GPUBuffer;
     if (this.queryType !== 'none') {
       this.commandEncoder.resolveQuerySet(
@@ -637,7 +639,7 @@ export class WebGpuBackend {
       return createView(data.buffer, type);
     };
   }
-  writeTimeStamp(index: number): void {
+  writeTimestamp(index: number): void {
     if (this.queryType !== 'inside-passes') {
       return;
     }

@@ -37,7 +37,7 @@ export class ProgramManager {
     TRACE_FUNC_BEGIN(buildArtifact.programInfo.name);
     const device = this.backend.device;
     const computePassEncoder = this.backend.getComputePassEncoder();
-    this.backend.writeTimeStamp(this.backend.pendingDispatchNumber * 2);
+    this.backend.writeTimestamp(this.backend.pendingDispatchNumber * 2);
     computePassEncoder.setPipeline(buildArtifact.computePipeline);
     const entries = [];
     for (const input of inputs) {
@@ -54,7 +54,7 @@ export class ProgramManager {
     computePassEncoder.setBindGroup(0, bindGroup);
 
     computePassEncoder.dispatchWorkgroups(...dispatchGroup);
-    this.backend.writeTimeStamp(this.backend.pendingDispatchNumber * 2 + 1);
+    this.backend.writeTimestamp(this.backend.pendingDispatchNumber * 2 + 1);
     this.backend.pendingDispatchNumber++;
 
     if (this.backend.pendingDispatchNumber >= this.backend.maxDispatchNumber ||
