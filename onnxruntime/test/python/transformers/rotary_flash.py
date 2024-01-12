@@ -1,6 +1,6 @@
 # Copyright (c) 2023, Tri Dao.
 
-import math
+
 from typing import Optional, Tuple, Union
 
 import torch
@@ -13,19 +13,19 @@ from einops import rearrange, repeat
 
 # @triton.autotune(
 #     configs=[
-#         triton.Config({"BLOCK_M": 2}),
-#         triton.Config({"BLOCK_M": 4}),
-#         triton.Config({"BLOCK_M": 8}),
-#         triton.Config({"BLOCK_M": 16}),
+#         triton.Config({"block_m": 2}),
+#         triton.Config({"block_m": 4}),
+#         triton.Config({"block_m": 8}),
+#         triton.Config({"block_m": 16}),
 #     ],
 #     key=["CACHE_KEY_SEQLEN", "BLOCK_K", "INTERLEAVED"],
 # )
 @triton.jit
 def rotary_kernel(
-    OUT,  # Pointers to matrices
-    X,
-    COS,
-    SIN,
+    out_,  # Pointers to matrices
+    x_,
+    cos_,
+    sin_,
     CU_SEQLENS,
     SEQLEN_OFFSETS,  # this could be int or a pointer
     # Matrix dimensions
@@ -44,12 +44,12 @@ def rotary_kernel(
     stride_x_nheads,
     stride_x_headdim,
     # Meta-parameters
-    BLOCK_K: tl.constexpr,
+    block_k: tl.constexpr,
     IS_SEQLEN_OFFSETS_TENSOR: tl.constexpr,
     IS_VARLEN: tl.constexpr,
     INTERLEAVED: tl.constexpr,
     CONJUGATE: tl.constexpr,
-    BLOCK_M: tl.constexpr,
+    block_m: tl.constexpr,
 ):
     pid_m = tl.program_id(axis=0)
     pid_batch = tl.program_id(axis=1)
@@ -57,38 +57,38 @@ def rotary_kernel(
     rotary_dim_half = rotary_dim // 2
 
     if not IS_VARLEN:
-        X = X + pid_batch * stride_x_batch + pid_head * stride_x_nheads
-        OUT = OUT + pid_batch * stride_out_batch + pid_head * stride_out_nheads
+        x_ = x_ + pid_batch * stride_x_batch + pid_head * stride_x_nheads
+        out_ = out_ + pid_batch * stride_out_batch + pid_head * stride_out_nheads
     else:
         start_idx = tl.load(CU_SEQLENS + pid_batch)
         seqlen = tl.load(CU_SEQLENS + pid_batch + 1) - start_idx
-        X = X + start_idx * stride_x_seqlen + pid_head * stride_x_nheads
-        OUT = OUT + start_idx * stride_out_seqlen + pid_head * stride_out_nheads
+        x_ = x_ + start_idx * stride_x_seqlen + pid_head * stride_x_nheads
+        out_ = out_ + start_idx * stride_out_seqlen + pid_head * stride_out_nheads
 
-    if pid_m * BLOCK_M >= seqlen:
+    if pid_m * block_m >= seqlen:
         return
-    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    rm = pid_m * block_m + tl.arange(0, block_m)
     if not IS_SEQLEN_OFFSETS_TENSOR:
         rm_cs = rm + SEQLEN_OFFSETS
     else:
         rm_cs = rm + tl.load(SEQLEN_OFFSETS + pid_batch)
-    rk = tl.arange(0, BLOCK_K)
-    rk_half = tl.arange(0, BLOCK_K // 2)
+    rk = tl.arange(0, block_k)
+    rk_half = tl.arange(0, block_k // 2)
 
     if not INTERLEAVED:
-        # Load the 1st and 2nd halves of X, do calculation, then store to 1st and 2nd halves of OUT
-        X = X + (rm[:, None] * stride_x_seqlen + rk_half[None, :] * stride_x_headdim)
-        COS = COS + (rm_cs[:, None] * rotary_dim_half + rk_half[None, :])
-        SIN = SIN + (rm_cs[:, None] * rotary_dim_half + rk_half[None, :])
-        cos = tl.load(COS, mask=(rm_cs[:, None] < seqlen_ro) & (rk_half[None, :] < rotary_dim_half), other=1.0).to(
+        # Load the 1st and 2nd halves of x_, do calculation, then store to 1st and 2nd halves of out_
+        x_ = x_ + (rm[:, None] * stride_x_seqlen + rk_half[None, :] * stride_x_headdim)
+        cos_ = cos_ + (rm_cs[:, None] * rotary_dim_half + rk_half[None, :])
+        sin_ = sin_ + (rm_cs[:, None] * rotary_dim_half + rk_half[None, :])
+        cos = tl.load(cos_, mask=(rm_cs[:, None] < seqlen_ro) & (rk_half[None, :] < rotary_dim_half), other=1.0).to(
             tl.float32
         )
-        sin = tl.load(SIN, mask=(rm_cs[:, None] < seqlen_ro) & (rk_half[None, :] < rotary_dim_half), other=0.0).to(
+        sin = tl.load(sin_, mask=(rm_cs[:, None] < seqlen_ro) & (rk_half[None, :] < rotary_dim_half), other=0.0).to(
             tl.float32
         )
-        x0 = tl.load(X, mask=(rm[:, None] < seqlen) & (rk_half[None, :] < rotary_dim_half), other=0.0).to(tl.float32)
+        x0 = tl.load(x_, mask=(rm[:, None] < seqlen) & (rk_half[None, :] < rotary_dim_half), other=0.0).to(tl.float32)
         x1 = tl.load(
-            X + rotary_dim_half * stride_x_headdim,
+            x_ + rotary_dim_half * stride_x_headdim,
             mask=(rm[:, None] < seqlen) & (rk_half[None, :] < rotary_dim_half),
             other=0.0,
         ).to(tl.float32)
@@ -97,45 +97,45 @@ def rotary_kernel(
         o0 = x0 * cos - x1 * sin
         o1 = x0 * sin + x1 * cos
         # write back result
-        OUT = OUT + (rm[:, None] * stride_out_seqlen + rk_half[None, :] * stride_out_headdim)
-        tl.store(OUT, o0, mask=(rm[:, None] < seqlen) & (rk_half[None, :] < rotary_dim_half))
+        out_ = out_ + (rm[:, None] * stride_out_seqlen + rk_half[None, :] * stride_out_headdim)
+        tl.store(out_, o0, mask=(rm[:, None] < seqlen) & (rk_half[None, :] < rotary_dim_half))
         tl.store(
-            OUT + rotary_dim_half * stride_out_headdim,
+            out_ + rotary_dim_half * stride_out_headdim,
             o1,
             mask=(rm[:, None] < seqlen) & (rk_half[None, :] < rotary_dim_half),
         )
     else:
-        # We don't want to load X[0, 2, 4, ...] and X[1, 3, 5, ...] separately since both are slow.
-        # Instead, we load x0 = X[0, 1, 2, 3, ...] and x1 = X[1, 0, 3, 2, ...].
+        # We don't want to load x_[0, 2, 4, ...] and x_[1, 3, 5, ...] separately since both are slow.
+        # Instead, we load x0 = x_[0, 1, 2, 3, ...] and x1 = x_[1, 0, 3, 2, ...].
         # Loading x0 will be fast but x1 will be slow.
-        # Then we load cos = COS[0, 0, 1, 1, ...] and sin = SIN[0, 0, 1, 1, ...].
+        # Then we load cos = cos_[0, 0, 1, 1, ...] and sin = sin_[0, 0, 1, 1, ...].
         # Then we do the calculation and use tl.where to pick put the right outputs for the even
         # and for the odd indices.
         rk_swap = rk + ((rk + 1) % 2) * 2 - 1  # 1, 0, 3, 2, 5, 4, ...
-        rk_repeat = tl.arange(0, BLOCK_K) // 2
-        X0 = X + (rm[:, None] * stride_x_seqlen + rk[None, :] * stride_x_headdim)
-        X1 = X + (rm[:, None] * stride_x_seqlen + rk_swap[None, :] * stride_x_headdim)
-        COS = COS + (rm_cs[:, None] * rotary_dim_half + rk_repeat[None, :])
-        SIN = SIN + (rm_cs[:, None] * rotary_dim_half + rk_repeat[None, :])
+        rk_repeat = tl.arange(0, block_k) // 2
+        x0_ = x_ + (rm[:, None] * stride_x_seqlen + rk[None, :] * stride_x_headdim)
+        x1_ = x_ + (rm[:, None] * stride_x_seqlen + rk_swap[None, :] * stride_x_headdim)
+        cos_ = cos_ + (rm_cs[:, None] * rotary_dim_half + rk_repeat[None, :])
+        sin_ = sin_ + (rm_cs[:, None] * rotary_dim_half + rk_repeat[None, :])
         cos = tl.load(
-            COS,
+            cos_,
             mask=(rm_cs[:, None] < seqlen_ro) & (rk_repeat[None, :] < rotary_dim_half),
             other=1.0,
         ).to(tl.float32)
         sin = tl.load(
-            SIN,
+            sin_,
             mask=(rm_cs[:, None] < seqlen_ro) & (rk_repeat[None, :] < rotary_dim_half),
             other=0.0,
         ).to(tl.float32)
-        x0 = tl.load(X0, mask=(rm[:, None] < seqlen) & (rk[None, :] < rotary_dim), other=0.0).to(tl.float32)
-        x1 = tl.load(X1, mask=(rm[:, None] < seqlen) & (rk_swap[None, :] < rotary_dim), other=0.0).to(tl.float32)
+        x0 = tl.load(x0_, mask=(rm[:, None] < seqlen) & (rk[None, :] < rotary_dim), other=0.0).to(tl.float32)
+        x1 = tl.load(x1_, mask=(rm[:, None] < seqlen) & (rk_swap[None, :] < rotary_dim), other=0.0).to(tl.float32)
         if CONJUGATE:
             sin = -sin
         x0_cos = x0 * cos
         x1_sin = x1 * sin
         out = tl.where(rk[None, :] % 2 == 0, x0_cos - x1_sin, x0_cos + x1_sin)
-        OUT = OUT + (rm[:, None] * stride_out_seqlen + rk[None, :] * stride_out_headdim)
-        tl.store(OUT, out, mask=(rm[:, None] < seqlen) & (rk[None, :] < rotary_dim))
+        out_ = out_ + (rm[:, None] * stride_out_seqlen + rk[None, :] * stride_out_headdim)
+        tl.store(out_, out, mask=(rm[:, None] < seqlen) & (rk[None, :] < rotary_dim))
 
 
 def apply_rotary(
@@ -192,9 +192,9 @@ def apply_rotary(
     if rotary_dim < headdim and not inplace:
         output[..., rotary_dim:].copy_(x[..., rotary_dim:])
 
-    BLOCK_K = 32 if rotary_dim <= 32 else (64 if rotary_dim <= 64 else (128 if rotary_dim <= 128 else 256))
-    grid = lambda META: (triton.cdiv(seqlen, META["BLOCK_M"]), batch, nheads)  # noqa
-    BLOCK_M = 4 if interleaved else (8 if rotary_dim <= 64 else 4)
+    block_k = 32 if rotary_dim <= 32 else (64 if rotary_dim <= 64 else (128 if rotary_dim <= 128 else 256))
+    grid = lambda META: (triton.cdiv(seqlen, META["block_m"]), batch, nheads)  # noqa
+    block_m = 4 if interleaved else (8 if rotary_dim <= 64 else 4)
 
     # Need this, otherwise Triton tries to launch from cuda:0 and we get
     # ValueError: Pointer argument (at 0) cannot be accessed from Triton (cpu tensor?)
@@ -219,12 +219,12 @@ def apply_rotary(
             x.stride(-3),  # seqlen stride or total_seqlen_stride
             x.stride(-2),  # nheads stride
             x.stride(-1),  # headdim stride
-            BLOCK_K,
+            block_k,
             isinstance(seqlen_offsets, torch.Tensor),
             is_varlen,
             interleaved,
             conjugate,
-            BLOCK_M,
+            block_m,
         )
     return output
 
@@ -350,7 +350,7 @@ def apply_rotary_emb(
 apply_rotary_emb_func = apply_rotary_emb
 
 
-class ApplyRotaryEmbQKV_(torch.autograd.Function):
+class ApplyRotaryEmbQKV(torch.autograd.Function):
     @staticmethod
     def forward(
         ctx,
@@ -448,10 +448,10 @@ def apply_rotary_emb_qkv_(
     rotary_dim must be <= headdim
     Apply rotary embedding *inplace* to the first rotary_dim of Q and K.
     """
-    return ApplyRotaryEmbQKV_.apply(qkv, cos, sin, cos_k, sin_k, interleaved, seqlen_offsets)
+    return ApplyRotaryEmbQKV.apply(qkv, cos, sin, cos_k, sin_k, interleaved, seqlen_offsets)
 
 
-class ApplyRotaryEmbKV_(torch.autograd.Function):
+class ApplyRotaryEmbKV(torch.autograd.Function):
     @staticmethod
     def forward(ctx, kv, cos, sin, interleaved=False, seqlen_offsets: Union[int, torch.Tensor] = 0):
         batch, seqlen, two, nheads, headdim = kv.shape
@@ -486,7 +486,7 @@ class ApplyRotaryEmbKV_(torch.autograd.Function):
         return dkv, None, None, None, None
 
 
-apply_rotary_emb_kv_ = ApplyRotaryEmbKV_.apply
+apply_rotary_emb_kv_ = ApplyRotaryEmbKV.apply
 
 
 def apply_rotary_emb_kv_(
@@ -509,7 +509,7 @@ def apply_rotary_emb_kv_(
     rotary_dim must be <= headdim
     Apply rotary embedding *inplace* to the first rotary_dim of K.
     """
-    return ApplyRotaryEmbKV_.apply(kv, cos, sin, interleaved, seqlen_offsets)
+    return ApplyRotaryEmbKV.apply(kv, cos, sin, interleaved, seqlen_offsets)
 
 
 class RotaryEmbedding(torch.nn.Module):
