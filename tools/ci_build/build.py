@@ -1474,7 +1474,7 @@ def generate_build_tree(
     cflags = None
     cxxflags = None
     ldflags = None
-    cudaflags = None
+    cudaflags = []
     for config in configs:
         # Setup default values for cflags/cxxflags/ldflags.
         # The values set here are purely for security and compliance purposes. ONNX Runtime should work fine without these flags.
@@ -1519,7 +1519,14 @@ def generate_build_tree(
                     cxxflags += ["/EHsc"]
                 if args.use_cuda:
                     # On Windows, nvcc passes /EHsc to the host compiler by default.
-                    cudaflags = cflags.copy()
+                    cuda_compile_flags_str = ""
+                    for compile_flag in cflags:
+                        if compile_flag.startswith("/D"):
+                            cudaflags.append(compile_flag)
+                        else:
+                            cuda_compile_flags_str =cuda_compile_flags_str + " " +  compile_flag
+                    if len(cuda_compile_flags_str) !=0:
+                        cudaflags.append("-Xcompiler=\"%s\"" %  cuda_compile_flags_str)
             elif is_linux() or is_macOS():
                 if is_linux():
                     ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now"]
@@ -1586,7 +1593,7 @@ def generate_build_tree(
                 "-DCMAKE_C_FLAGS=%s" % (" ".join(cflags)),
                 "-DCMAKE_CXX_FLAGS=%s" % (" ".join(cxxflags)),
             ]
-        if cudaflags is not None:
+        if cudaflags is not None and len(cudaflags) != 0:
             temp_cmake_args += ["-DCMAKE_CUDA_FLAGS_INIT=%s" % (" ".join(cudaflags))]
         if ldflags is not None and len(ldflags) != 0:
             temp_cmake_args += [
