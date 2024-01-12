@@ -108,7 +108,7 @@ const createBatchNormInferenceProgramInfo =
     let inputMean = ${inputMean.getByOffset('cOffset')};
     let inputVar = ${inputVar.getByOffset('cOffset')};
     let x = ${x.getByOffset('global_idx')};
-    let value = (x - inputMean) / sqrt(inputVar + epsilon) * scale + bias;
+    let value = (x - inputMean) * inverseSqrt(inputVar + epsilon) * scale + bias;
     ${y.setByOffset('global_idx', 'value')}
   }`;
       return {
