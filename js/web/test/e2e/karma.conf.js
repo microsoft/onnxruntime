@@ -15,7 +15,7 @@ if (typeof USER_DATA !== 'string') {
   throw new Error('flag --user-data=<CHROME_USER_DATA_FOLDER> is required');
 }
 
-const flags = ['--ignore-gpu-blocklist', '--gpu-vendor-id=0x10de']
+const flags = ['--ignore-gpu-blocklist', '--gpu-vendor-id=0x10de'];
 
 module.exports = function(config) {
   const distPrefix = SELF_HOST ? './node_modules/onnxruntime-web/dist/' : 'http://localhost:8081/dist/';
