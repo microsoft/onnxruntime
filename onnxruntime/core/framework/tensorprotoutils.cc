@@ -842,7 +842,10 @@ Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
                                  if (typeof Module == 'undefined' || !Module.MountedFiles) {
                                    return 1;  // "Module.MountedFiles" is not available.
                                  }
-                                 const fileName = UTF8ToString($0 >>> 0);
+                                 let fileName = UTF8ToString($0 >>> 0);
+                                 if (fileName.startsWith('./')) {
+                                   fileName = fileName.substring(2);
+                                 }
                                  const fileData = Module.MountedFiles.get(fileName);
                                  if (!fileData) {
                                    return 2;  // File not found in preloaded files.
@@ -883,7 +886,7 @@ Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
       default:
         err_msg = "Unknown error occurred in memory copy.";
     }
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load external data file \"", external_data_file_path, "\", error:", err_msg);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load external data file \"", external_data_file_path, "\", error: ", err_msg);
 #else
     size_t file_length;
     // error reporting is inconsistent across platforms. Make sure the full path we attempted to open is included.
