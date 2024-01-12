@@ -92,7 +92,7 @@ const createInstanceNormProgramInfo =
     }
     workgroupBarrier();
 
-    let invStdDev = 1 / sqrt(squaredNormShared / f32(uniforms.normSize) + f32(${attributes.epsilon}));
+    let invStdDev = inverseSqrt(squaredNormShared / f32(uniforms.normSize) + f32(${attributes.epsilon}));
     let channelScale = invStdDev * f32(${scale.getByOffset('channel')});
     let channelShift = f32(${bias.getByOffset('channel')}) - meanShared * channelScale;
     for (var h = localIndex; h < uniforms.normPackedSize; h += workgroupSize) {
@@ -212,7 +212,7 @@ const computeMean =
     }
     sum = sum / f32(uniforms.H);
     squaredSum = squaredSum / f32(uniforms.H);
-    let invStdDev = 1 / sqrt(squaredSum - sum * sum + f32(${epsilon}));
+    let invStdDev = inverseSqrt(squaredSum - sum * sum + f32(${epsilon}));
     let channelScale = invStdDev * ${sumCastType}(scale[currentChannelNumber]);
     let channelShift = ${sumCastType}(bias[currentChannelNumber]) - sum * channelScale;
 

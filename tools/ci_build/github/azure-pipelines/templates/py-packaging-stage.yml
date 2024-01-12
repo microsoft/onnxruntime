@@ -30,11 +30,6 @@ parameters:
   type: boolean
   default: true
 
-- name: enable_mac_silicon
-  displayName: 'Whether Mac silicon package is built.'
-  type: boolean
-  default: true
-
 - name: enable_linux_arm
   displayName: 'Whether Linux ARM package is built.'
   type: boolean
@@ -381,6 +376,8 @@ stages:
         displayName: 'Use Python'
         inputs:
           versionSpec: $(PythonVersion)
+
+      - template: use-xcode-version.yml
 
       - script: |
           set -e -x

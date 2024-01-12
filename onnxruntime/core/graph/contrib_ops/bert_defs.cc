@@ -264,8 +264,8 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
 
   if (ctx.getNumOutputs() > 1) {  // has present output
     if (hasInputShape(ctx, past_key_index)) {
-      auto& query_shape = getInputShape(ctx, 0);
-      auto& query_dims = query_shape.dim();
+      // auto& query_shape = getInputShape(ctx, 0);
+      // auto& query_dims = query_shape.dim();
       auto& past_shape = getInputShape(ctx, past_key_index);
       auto& past_dims = past_shape.dim();
       if (past_dims.size() != 4) {
@@ -1091,7 +1091,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
                 "kv_sequence_length.",
                 "T")
-        .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output to float tensors.")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to int tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           GroupQueryAttentionTypeAndShapeInference(ctx, 3);

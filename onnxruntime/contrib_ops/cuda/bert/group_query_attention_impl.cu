@@ -487,6 +487,7 @@ Status FlashAttention(
   const int head_size = parameters.head_size;
   AttentionQkvFormat past_kv_format = parameters.past_kv_format;
   bool is_causal = true;
+  bool is_bf16 = std::is_same<T, BFloat16>::value;
 
   void* query = reinterpret_cast<void*>(const_cast<T*>(data.query));
   void* key;
@@ -530,7 +531,7 @@ Status FlashAttention(
       reinterpret_cast<void*>(data.softmax_lse), seqlens_k, cos_cache, sin_cache,
       batch_size, num_heads, kv_num_heads, head_size, sequence_length,
       parameters.seqlen_present_kv_cache, kv_sequence_length, parameters.seqlen_present_kv_cache,
-      scale, is_causal, past_bsnh, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
+      scale, is_causal, is_bf16, past_bsnh, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
       reinterpret_cast<void*>(data.out_accum), parameters.local_window_size, parameters.rotary_interleaved,
       parameters.is_packed_qkv));
 
@@ -684,6 +685,15 @@ template Status QkvToContext<half>(
     Stream* ort_stream,
     contrib::GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<half>& data);
+
+template struct GroupQueryAttentionData<BFloat16>;
+
+template Status QkvToContext<BFloat16>(
+    const cudaDeviceProp& device_prop,
+    cublasHandle_t& cublas,
+    Stream* ort_stream,
+    contrib::GroupQueryAttentionParameters& parameters,
+    GroupQueryAttentionData<BFloat16>& data);
 
 }  // namespace cuda
 }  // namespace contrib
