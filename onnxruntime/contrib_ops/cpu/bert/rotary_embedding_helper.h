@@ -11,15 +11,15 @@ namespace rotary_embedding_helper {
 
 // Parameters deduced from node attributes and inputs/outputs.
 struct RotaryParameters {
-  int batch_size;           // Batch size used by input
-  int sequence_length;      // Sequence length used by input
-  int hidden_size;          // Hidden size used by input
-  int head_size;            // Head size
-  int rotary_embedding_dim; // Rotary embedding dimension.
-  int num_heads;            // num_heads = hidden_size / head_size
-  int max_sequence_length;  // Sequence length used by cos/sin cache
-  int position_ids_format;  // Format of position ids - 0 is (1), 1 is (batch_size, sequence_length)
-  bool transposed;          // Whether the input tensor has been transposed into (batch, num_heads, seq_len, hidden)
+  int batch_size;            // Batch size used by input
+  int sequence_length;       // Sequence length used by input
+  int hidden_size;           // Hidden size used by input
+  int head_size;             // Head size
+  int rotary_embedding_dim;  // Rotary embedding dimension.
+  int num_heads;             // num_heads = hidden_size / head_size
+  int max_sequence_length;   // Sequence length used by cos/sin cache
+  int position_ids_format;   // Format of position ids - 0 is (1), 1 is (batch_size, sequence_length)
+  bool transposed;           // Whether the input tensor has been transposed into (batch, num_heads, seq_len, hidden)
 };
 
 template <typename T>
@@ -106,8 +106,7 @@ Status CheckInputs(const T* input,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'cos_cache' dimension 0 should be same as ",
                            "max_sequence_length, got ", cos_cache_dims[0]);
   }
-  if ((head_size / 2) != static_cast<int>(cos_cache_dims[1])
-     && (rotary_embedding_dim > 0 && (rotary_embedding_dim / 2) != static_cast<int>(cos_cache_dims[1]))) {
+  if ((head_size / 2) != static_cast<int>(cos_cache_dims[1]) && (rotary_embedding_dim > 0 && (rotary_embedding_dim / 2) != static_cast<int>(cos_cache_dims[1]))) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'cos_cache' dimension 1 should be same as ",
                            "head_size / 2 or rotary_embedding_dim / 2, got ", cos_cache_dims[1]);
   }
