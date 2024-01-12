@@ -47,7 +47,7 @@ jobs:
       DownloadCUDA: true
       BuildArch: $(buildArch)
       BuildConfig: $(BuildConfig)
-      MachinePool: 'onnxruntime-Win2022-GPU-T4'
+      MachinePool: 'onnxruntime-Win2022-GPU-A10'
       WithCache: true
       Today: $(Today)
 
