@@ -369,11 +369,7 @@ async function main() {
 
   if (BUNDLE_MODE === 'dev') {
     // ort.all.js
-    await addBuildTask(buildOrt({
-      outputBundleName: 'ort.all',
-      format: 'iife',
-      define: {...DEFAULT_DEFINE}
-    }));
+    await addBuildTask(buildOrt({outputBundleName: 'ort.all', format: 'iife', define: {...DEFAULT_DEFINE}}));
   }
 
   if (BUNDLE_MODE === 'perf') {

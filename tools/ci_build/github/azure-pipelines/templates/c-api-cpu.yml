@@ -107,7 +107,8 @@ stages:
     - template: set-version-number-variables-step.yml
 
     - template: use-xcode-version.yml
-
+      parameters:
+        xcodeVersion: 14.3
     - script: |
         /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
           $(Build.SourcesDirectory) \
