@@ -4528,6 +4528,18 @@ struct OrtApi {
    * \since Version 1.17.
    */
   ORT_API2_STATUS(SetDeterministicCompute, _Inout_ OrtSessionOptions* options, bool value);
+
+  /** \brief Set whether to optimize initialization time.
+   *
+   * Default is false. If set to true, this will enable certain assumption -
+   * that the model is well-defined and doesn't require any transformations.
+   *
+   * \param[in] options
+   * \param[in] value
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(SetOptimizeInit, _Inout_ OrtSessionOptions* options, bool value);
 };
 
 /*

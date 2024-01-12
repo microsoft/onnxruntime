@@ -2722,6 +2722,7 @@ static constexpr OrtApi ort_api_1_to_17 = {
     &OrtApis::SetSymbolicDimensions,
     &OrtApis::ReadOpAttr,
     &OrtApis::SetDeterministicCompute,
+    &OrtApis::SetOptimizeInit,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

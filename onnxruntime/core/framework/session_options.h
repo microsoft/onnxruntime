@@ -135,6 +135,9 @@ struct SessionOptions {
   // Deterministic compute is likely not as performant. This option is default to false.
   bool use_deterministic_compute = false;
 
+  // Optimize init is optimized for initialization. This option is default to false.
+  bool optimize_init = false;
+
   // Stores the configurations for this session
   // To add an configuration to this session, call OrtApis::AddSessionConfigEntry
   // The configuration keys and value formats are defined in
