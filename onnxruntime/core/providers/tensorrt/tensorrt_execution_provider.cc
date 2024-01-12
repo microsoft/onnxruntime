@@ -2772,9 +2772,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     }
   }
 
-  // Generate cache suffix in case user would like to customize cache prefix
-  std::string cache_suffix = "_" + GetCacheSuffix(fused_node.Name(), trt_node_name_with_precision);
-
   // enable sparse weights
   if (sparsity_enable_) {
     trt_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
@@ -2836,9 +2833,12 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
   // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
   // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
+  std::string cache_suffix = "";
   std::string cache_path = "";
   // Customize cache prefix if assigned
   if (!cache_prefix_.empty()) {
+    // Generate cache suffix in case user would like to customize cache prefix
+    cache_suffix = "_" + GetCacheSuffix(fused_node.Name(), trt_node_name_with_precision);
     cache_path = GetCachePath(cache_path_, cache_prefix_) + cache_suffix;
   } else {
     cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
