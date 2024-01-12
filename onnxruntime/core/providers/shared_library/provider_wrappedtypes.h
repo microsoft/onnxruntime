@@ -74,6 +74,7 @@ struct AttributeProto final {
   int64_t i() const { return g_host->AttributeProto__i(this); }
   float f() const { return g_host->AttributeProto__f(this); }
   void set_s(const ::std::string& value) { return g_host->AttributeProto__set_s(this, value); }
+  void set_i(int64_t value) { return g_host->AttributeProto__set_i(this, value); }
   const ::std::string& s() const { return g_host->AttributeProto__s(this); }
   void set_name(const ::std::string& value) { return g_host->AttributeProto__set_name(this, value); }
   void set_type(AttributeProto_AttributeType value) { return g_host->AttributeProto__set_type(this, value); }
@@ -118,6 +119,7 @@ struct GraphProto final {
   ValueInfoProtos* mutable_value_info() { return g_host->GraphProto__mutable_value_info(this); }
   TensorProtos* mutable_initializer() { return g_host->GraphProto__mutable_initializer(this); }
   NodeProto* add_node() { return g_host->GraphProto__add_node(this); }
+  NodeProto* mutable_node(int index) { return g_host->GraphProto__mutable_node(this, index); }
 
   GraphProto() = delete;
   GraphProto(const GraphProto&) = delete;
@@ -148,6 +150,7 @@ struct NodeProto final {
   void operator=(const NodeProto& v) { g_host->NodeProto__operator_assign(this, v); }
   int attribute_size() { return g_host->NodeProto__attribute_size(this); }
   const AttributeProto& attribute(int index) const { return g_host->NodeProto__attribute(this, index); }
+  AttributeProto* mutable_attribute(int index) { return g_host->NodeProto__mutable_attribute(this, index); }
 
   NodeProto() = delete;
   NodeProto(const NodeProto&) = delete;

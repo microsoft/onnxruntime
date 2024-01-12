@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <string>
 #include <iostream>
+#include <filesystem>
 #include <experimental/filesystem>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"

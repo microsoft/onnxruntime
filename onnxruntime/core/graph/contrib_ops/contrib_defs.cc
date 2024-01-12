@@ -3231,6 +3231,11 @@ void RegisterContribSchemas() {
           AttributeProto::STRING,
           OPTIONAL_VALUE)
       .Attr(
+          "hardware_architecture",
+          "(Optional) Hardware architecture.",
+          AttributeProto::STRING,
+          OPTIONAL_VALUE)
+      .Attr(
           "partition_name",
           "(Optional) partitioned graph name.",
           AttributeProto::STRING,
