@@ -202,6 +202,8 @@ stages:
 - template: stages/nuget-linux-cuda-packaging-stage.yml
   parameters:
     CudaVersion: ${{ parameters.CudaVersion }}
+    docker_base_image: ${{ variables.docker_base_image }}
+    linux_trt_version: ${{ variables.linux_trt_version }}
 
 #CUDA without tensorrt
 - template: templates/win-ci.yml
