@@ -2839,10 +2839,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   std::string cache_path = "";
   // Customize cache prefix if assigned
   if (!cache_prefix_.empty()) {
-     cache_path = GetCachePath(cache_path_, cache_prefix_) + cache_suffix;
-  }
-  else {
-     cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
+    cache_path = GetCachePath(cache_path_, cache_prefix_) + cache_suffix;
+  } else {
+    cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
   }
   const std::string cache_path_prefix = cache_path + "_sm" + compute_capability_;
   const std::string engine_cache_path = cache_path_prefix + ".engine";
@@ -3139,10 +3138,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     std::string cache_path = "";
     // Customize cache prefix if assigned
     if (!cache_prefix_.empty()) {
-       cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->cache_prefix) + trt_state->cache_suffix;
-    }
-    else {
-       cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
+      cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->cache_prefix) + trt_state->cache_suffix;
+    } else {
+      cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
     }
     const std::string cache_path_prefix = cache_path + "_sm" + compute_capability_;
     const std::string engine_cache_path = cache_path_prefix + ".engine";
