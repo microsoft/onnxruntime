@@ -119,7 +119,7 @@ export const tensorFromImage = async(
       throw new Error('Canvas is not supported');
     }
   };
-  const createCanvasContext = (canvas: HTMLCanvasElement | OffscreenCanvas) => {
+  const createCanvasContext = (canvas: HTMLCanvasElement|OffscreenCanvas) => {
     if (canvas instanceof HTMLCanvasElement) {
       return canvas.getContext('2d');
     } else if (canvas instanceof OffscreenCanvas) {
