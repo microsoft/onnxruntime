@@ -692,7 +692,7 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
 
   if (load_config_from_model) {
 #if !defined(ORT_MINIMAL_BUILD)
-    if (model_data == nullptr) {
+    if (model_path != nullptr) {
       sess = std::make_unique<onnxruntime::InferenceSession>(
           options == nullptr ? onnxruntime::SessionOptions() : options->value,
           env->GetEnvironment(),
@@ -725,7 +725,7 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
     ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load());
 #endif
   } else {
-    if (model_data == nullptr) {
+    if (model_path != nullptr) {
       ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(model_path));
     } else {
       ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(model_data, static_cast<int>(model_data_length)));
