@@ -157,7 +157,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
         transformers.emplace_back(std::make_unique<GeluApproximation>(compatible_eps));
       }
       InlinedHashSet<std::string> excluded_initializers(weights_to_train.begin(), weights_to_train.end());
-      static ConfigOptions empty_config_options;
+      static const ConfigOptions empty_config_options;
       transformers.emplace_back(std::make_unique<ConstantFolding>(
           execution_provider, false /*skip_dequantize_linear*/, empty_config_options, compatible_eps,
           excluded_initializers));

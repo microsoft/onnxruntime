@@ -579,7 +579,7 @@ TEST_F(GraphTransformationTests, ConstantFolding) {
 
   std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ConfigOptions empty_config_options;
+  const ConfigOptions empty_config_options;
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
       std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options),
       TransformerLevel::Level1));
@@ -599,7 +599,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingNodesOnDifferentEP) {
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 2);
   std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ConfigOptions empty_config_options;
+  const ConfigOptions empty_config_options;
 
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
       std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options),
@@ -630,7 +630,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingUnsupportedFloat16) {
   ASSERT_TRUE(op_to_count["Mul"] == 1);
   std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ConfigOptions empty_config_options;
+  const ConfigOptions empty_config_options;
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
       std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options),
       TransformerLevel::Level1));
@@ -714,7 +714,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingSubgraph) {
   ASSERT_TRUE(op_to_count["Add"] == 2);  // one in each subgraph
   std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ConfigOptions empty_config_options;
+  const ConfigOptions empty_config_options;
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
       std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options),
       TransformerLevel::Level1));
@@ -739,7 +739,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithShapeToInitializer) {
   InlinedHashSet<std::string_view> compatible_eps;
   InlinedHashSet<std::string> excluded_initializers = {"matmul_weight"};
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ConfigOptions empty_config_options;
+  const ConfigOptions empty_config_options;
 
   std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
@@ -770,7 +770,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithScalarShapeToInitializer) {
 
   InlinedHashSet<std::string_view> compatible_eps;
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ConfigOptions empty_config_options;
+  const ConfigOptions empty_config_options;
 
   std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
@@ -799,7 +799,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingForOpsWithMissingOptionalInputs)
 
   InlinedHashSet<std::string_view> compatible_eps;
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ConfigOptions empty_config_options;
+  const ConfigOptions empty_config_options;
 
   std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
@@ -974,7 +974,7 @@ TEST_F(GraphTransformationTests, ConstantFolding_RemoveDanglingInputNodesToConst
 
   std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ConfigOptions empty_config_options;
+  const ConfigOptions empty_config_options;
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
       std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options),
       TransformerLevel::Level1));
@@ -996,7 +996,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingAShapeNodeDeepInTheGraph) {
   ASSERT_TRUE(op_to_count["Shape"] == 4);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ConfigOptions empty_config_options;
+  const ConfigOptions empty_config_options;
   std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
 
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
@@ -1025,7 +1025,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingStringInitializer) {
   ASSERT_EQ(op_to_count["Identity"], 1);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ConfigOptions empty_config_options;
+  const ConfigOptions empty_config_options;
   std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
 
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(

@@ -282,7 +282,7 @@ TEST(CseTests, MergeConstants) {
   std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<CommonSubexpressionElimination>(),
                                                      TransformerLevel::Level1));
-  ConfigOptions empty_config_options;
+  const ConfigOptions empty_config_options;
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
       std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options),
       TransformerLevel::Level1));

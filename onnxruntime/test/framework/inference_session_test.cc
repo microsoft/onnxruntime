@@ -84,7 +84,7 @@ class FuseAdd : public OpKernel {
   explicit FuseAdd(const OpKernelInfo& info) : OpKernel(info) {
     // logic for testing that a session options config value can be read here
     auto test_throw_in_ctor = info.GetConfigOptions().GetConfigEntry("ThrowInKernelCtor");
-    if (test_throw_in_ctor.has_value() && test_throw_in_ctor.value() == "1") {
+    if (test_throw_in_ctor == "1") {
       ORT_THROW("Test exception in ctor");
     };
   }

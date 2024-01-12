@@ -85,7 +85,7 @@ TEST(OptimizerTest, Basic) {
   OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
   const logging::Logger& logger = DefaultLoggingManager().DefaultLogger();
 
-  ConfigOptions empty_config_options;
+  const ConfigOptions empty_config_options;
 
   for (auto& node : graph.Nodes()) {
     auto kernel = info.CreateKernel(&node, empty_config_options);
