@@ -1474,12 +1474,14 @@ def generate_build_tree(
     cflags = None
     cxxflags = None
     ldflags = None
+    cudaflags = None
     for config in configs:
         # Setup default values for cflags/cxxflags/ldflags.
         # The values set here are purely for security and compliance purposes. ONNX Runtime should work fine without these flags.
         if (
             "CFLAGS" not in os.environ
             and "CXXFLAGS" not in os.environ
+            and (not args.use_cuda or "CUDAFLAGS" not in os.environ)
             and not args.ios
             and not args.android
             and not args.build_wasm
@@ -1515,6 +1517,9 @@ def generate_build_tree(
                 cxxflags = cflags.copy()
                 if not args.disable_exceptions:
                     cxxflags += ["/EHsc"]
+                if args.use_cuda:
+                    # On Windows, nvcc passes /EHsc to the host compiler by default.
+                    cudaflags = cflags.copy()
             elif is_linux() or is_macOS():
                 if is_linux():
                     ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now"]
@@ -1560,7 +1565,8 @@ def generate_build_tree(
                     # The following flags needs GCC 8 and newer
                     cflags += ["-fstack-clash-protection", "-fcf-protection"]
                 cxxflags = cflags.copy()
-
+                if args.use_cuda:
+                    cudaflags = cflags.copy()
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
         if args.use_tvm:
@@ -1580,6 +1586,8 @@ def generate_build_tree(
                 "-DCMAKE_C_FLAGS=%s" % (" ".join(cflags)),
                 "-DCMAKE_CXX_FLAGS=%s" % (" ".join(cxxflags)),
             ]
+        if cudaflags is not None:
+            temp_cmake_args += ["-DCMAKE_CUDA_FLAGS_INIT=%s" % (" ".join(cudaflags))]
         if ldflags is not None and len(ldflags) != 0:
             temp_cmake_args += [
                 "-DCMAKE_EXE_LINKER_FLAGS_INIT=%s" % (" ".join(ldflags)),
