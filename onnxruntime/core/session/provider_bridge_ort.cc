@@ -1440,23 +1440,27 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
   if (legacy_ov_options->device_id != nullptr)
     ov_options_converted_map["device_id"] = legacy_ov_options->device_id;
 
-  ov_options_converted_map["num_of_threads"] = std::to_string(legacy_ov_options->num_of_threads);
+  if (legacy_ov_options->num_of_threads != '\0')
+    ov_options_converted_map["num_of_threads"] = std::to_string(legacy_ov_options->num_of_threads);
 
   if (legacy_ov_options->cache_dir != nullptr)
     ov_options_converted_map["cache_dir"] = legacy_ov_options->cache_dir;
 
-  std::stringstream context_string;
-
-  if (legacy_ov_options->context != nullptr)
+  if (legacy_ov_options->context != nullptr) {
+    std::stringstream context_string;
     context_string << legacy_ov_options->context;
-  ov_options_converted_map["context"] = context_string.str();
+    ov_options_converted_map["context"] = context_string.str();
+  }
 
   ov_options_converted_map["enable_opencl_throttling"] = legacy_ov_options->enable_opencl_throttling;
-  std::string enable_dynamic_shapes = reinterpret_cast<const char*>(legacy_ov_options->enable_dynamic_shapes);
-  if (enable_dynamic_shapes == "true" || enable_dynamic_shapes == "True") {
-    ov_options_converted_map["disable_dynamic_shapes"] = "false";
-  } else if (enable_dynamic_shapes == "false" || enable_dynamic_shapes == "False") {
-    ov_options_converted_map["disable_dynamic_shapes"] = "true";
+
+  if (legacy_ov_options->enable_dynamic_shapes != '\0') {
+    std::string enable_dynamic_shapes = reinterpret_cast<const char*>(legacy_ov_options->enable_dynamic_shapes);
+    if (enable_dynamic_shapes == "true" || enable_dynamic_shapes == "True") {
+      ov_options_converted_map["disable_dynamic_shapes"] = "false";
+    } else if (enable_dynamic_shapes == "false" || enable_dynamic_shapes == "False") {
+      ov_options_converted_map["disable_dynamic_shapes"] = "true";
+    }
   }
   // Add new provider option below
   ov_options_converted_map["num_streams"] = "1";
@@ -1726,6 +1730,39 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO, _In
   auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(provider_options);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_OpenVINO: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO_V2,
+                    _In_ OrtSessionOptions* options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    _In_ size_t num_keys) {
+  API_IMPL_BEGIN
+  onnxruntime::ProviderOptions provider_options;
+  for (size_t i = 0; i != num_keys; ++i) {
+    if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
+        provider_options_values[i] == nullptr || provider_options_values[i][0] == '\0') {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Provider options key/value cannot be empty");
+    }
+
+    // arbitrary length to validate the key/value. adjust if/when needed.
+    // TODO: are any other input validation checks required here (and in the other functions that process
+    // provider options)?
+    if (strlen(provider_options_keys[i]) > 1024 || strlen(provider_options_values[i]) > 1024) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "Maximum string length for a provider options key/value is 1024.");
+    }
+
+    provider_options[provider_options_keys[i]] = provider_options_values[i];
+  }
+  auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(&provider_options);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_OpenVINO_V2: Failed to load shared library");
   }
 
   options->provider_factories.push_back(factory);

@@ -202,6 +202,11 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'E2E package consuming test'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
+  - script: |
+      npm run test:training:e2e
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'E2E training package test'
+    condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
   - task: CopyFiles@2
     inputs:
       sourceFolder: $(Build.SourcesDirectory)\js\common
