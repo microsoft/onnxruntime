@@ -714,11 +714,18 @@ stages:
         arguments: $(Build.SourcesDirectory)\onnxruntime $(Build.ArtifactStagingDirectory)\onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet
         workingFolder: '$(Build.ArtifactStagingDirectory)'
 
+    - task: DeleteFiles@1
+      displayName: 'Clean up none zip files from ArtifactStagingDirectory'
+      inputs:
+        SourceFolder: $(Build.ArtifactStagingDirectory)
+        Contents: '!(*.zip)'
+
     - task: PublishPipelineArtifact@0
       displayName: 'Publish Pipeline Combined GPU Package Artifact'
       inputs:
         artifactName: 'onnxruntime-win-x64-gpu'
-        targetPath: '$(Build.ArtifactStagingDirectory)/*.zip'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
