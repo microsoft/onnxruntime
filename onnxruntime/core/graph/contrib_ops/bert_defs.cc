@@ -273,19 +273,6 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
       }
       ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, past_key_index, 1);
       ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, static_cast<size_t>(past_key_index) + 1, 2);
-
-
-
-      // int64_t total_sequence_length = query_dims[1].dim_value() + past_shape.dim(2).dim_value();
-
-      // ONNX_NAMESPACE::TensorShapeProto present_shape;
-      // for (auto& dim : past_dims) {
-      //   *present_shape.add_dim() = dim;
-      // }
-      // present_shape.mutable_dim(2)->set_dim_value(total_sequence_length);
-
-      // updateOutputShape(ctx, 1, present_shape);
-      // updateOutputShape(ctx, 2, present_shape);
     }
   }
 }
