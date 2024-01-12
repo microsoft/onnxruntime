@@ -1,6 +1,6 @@
 jobs:
 - job: 'build'
-  pool: 'onnxruntime-Win2022-GPU-T4'
+  pool: 'onnxruntime-Win2022-GPU-A10'
   strategy:
     maxParallel: 2
     matrix:
@@ -32,7 +32,7 @@ jobs:
       WithCache: True
       Today: $(TODAY)
       AdditionalKey: "gpu-reduced-ops | $(BuildConfig)"
-      BuildPyArguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --update --skip_submodule_sync --cmake_generator "Visual Studio 17 2022" --build_wheel --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75" --include_ops_by_config="$(Build.SourcesDirectory)\onnxruntime\test\testdata\required_ops.config"'
+      BuildPyArguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --update --skip_submodule_sync --cmake_generator "Visual Studio 17 2022" --build_wheel --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=86" --include_ops_by_config="$(Build.SourcesDirectory)\onnxruntime\test\testdata\required_ops.config"'
       MsbuildArguments: $(MsbuildArguments)
       BuildArch: $(buildArch)
       Platform: 'x64'
@@ -46,7 +46,7 @@ jobs:
       workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
 
   - powershell: |
-      python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022"  --build_shared_lib --enable_onnx_tests --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75" --include_ops_by_config="$(Build.SourcesDirectory)\onnxruntime\test\testdata\required_ops.config"
+      python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022"  --build_shared_lib --enable_onnx_tests --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=86" --include_ops_by_config="$(Build.SourcesDirectory)\onnxruntime\test\testdata\required_ops.config"
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
     displayName: 'Run tests'
 
