@@ -271,7 +271,7 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
 
   for (auto& th : threads)
     th.join();
-  
+
   // Verify on cache with customized prefix
   ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_engine_cache_prefix));
 }
