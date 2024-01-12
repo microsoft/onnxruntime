@@ -10,7 +10,7 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/common.h"
 #ifdef ORT_NEURAL_SPEED
-#include "contrib_ops/cpu/quantization/bestla_gemm.h"
+#include "contrib_ops/cpu/quantization/neural_speed_gemm.h"
 #endif
 
 namespace onnxruntime {
