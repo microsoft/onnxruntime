@@ -79,8 +79,8 @@ class LabelEncoder_2 final : public OpKernel {
     while (input_iter != input.end()) {
       const auto found = map_.find(*input_iter);
       *output_iter = found == map_.end() ? default_value_ : found->second;
-      output_iter++;
-      input_iter++;
+      ++output_iter;
+      ++input_iter;
     }
     return Status::OK();
   }

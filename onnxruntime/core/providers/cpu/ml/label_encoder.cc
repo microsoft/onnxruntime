@@ -74,7 +74,7 @@ void LabelEncoder_2<float, std::string>::InitializeSomeFields(const OpKernelInfo
   key_field_name_ = "keys_floats";
   value_field_name_ = "values_strings";
   info.GetAttrOrDefault<std::string>("default_string", &default_value_, std::string("_Unused"));
-};
+}
 
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_ML_KERNEL(
     LabelEncoder, 2, 3, string_float,
@@ -88,7 +88,7 @@ void LabelEncoder_2<std::string, float>::InitializeSomeFields(const OpKernelInfo
   key_field_name_ = "keys_strings";
   value_field_name_ = "values_floats";
   info.GetAttrOrDefault<float>("default_float", &default_value_, -0.0f);
-};
+}
 
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_ML_KERNEL(
     LabelEncoder, 2, 3, int64_float,
@@ -102,7 +102,7 @@ void LabelEncoder_2<std::int64_t, float>::InitializeSomeFields(const OpKernelInf
   key_field_name_ = "keys_int64s";
   value_field_name_ = "values_floats";
   info.GetAttrOrDefault<float>("default_float", &default_value_, -0.0f);
-};
+}
 
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_ML_KERNEL(
     LabelEncoder, 2, 3, float_int64,
@@ -116,7 +116,7 @@ void LabelEncoder_2<float, std::int64_t>::InitializeSomeFields(const OpKernelInf
   key_field_name_ = "keys_floats";
   value_field_name_ = "values_int64s";
   info.GetAttrOrDefault<std::int64_t>("default_int64", &default_value_, (std::int64_t)-1);
-};
+}
 
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_ML_KERNEL(
     LabelEncoder, 2, 3, string_string,
@@ -130,7 +130,7 @@ void LabelEncoder_2<std::string, std::string>::InitializeSomeFields(const OpKern
   key_field_name_ = "keys_strings";
   value_field_name_ = "values_strings";
   info.GetAttrOrDefault<std::string>("default_string", &default_value_, std::string("_Unused"));
-};
+}
 
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_ML_KERNEL(
     LabelEncoder, 2, 3, float_float,
@@ -144,7 +144,7 @@ void LabelEncoder_2<float, float>::InitializeSomeFields(const OpKernelInfo& info
   key_field_name_ = "keys_floats";
   value_field_name_ = "values_floats";
   info.GetAttrOrDefault<float>("default_float", &default_value_, -0.0f);
-};
+}
 
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_ML_KERNEL(
     LabelEncoder, 2, 3, int64_string,
@@ -158,7 +158,7 @@ void LabelEncoder_2<std::int64_t, std::string>::InitializeSomeFields(const OpKer
   key_field_name_ = "keys_int64s";
   value_field_name_ = "values_strings";
   info.GetAttrOrDefault<std::string>("default_string", &default_value_, std::string("_Unused"));
-};
+}
 
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_ML_KERNEL(
     LabelEncoder, 2, 3, string_int64,
@@ -172,7 +172,7 @@ void LabelEncoder_2<std::string, std::int64_t>::InitializeSomeFields(const OpKer
   key_field_name_ = "keys_strings";
   value_field_name_ = "values_int64s";
   info.GetAttrOrDefault<std::int64_t>("default_int64", &default_value_, static_cast<std::int64_t>(-1));
-};
+}
 
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_ML_KERNEL(
     LabelEncoder, 2, 3, int64_int64,
@@ -186,7 +186,7 @@ void LabelEncoder_2<std::int64_t, std::int64_t>::InitializeSomeFields(const OpKe
   key_field_name_ = "keys_int64s";
   value_field_name_ = "values_int64s";
   info.GetAttrOrDefault<std::int64_t>("default_int64", &default_value_, static_cast<std::int64_t>(-1));
-};
+}
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder, 4, int64_int64,
@@ -200,7 +200,7 @@ void LabelEncoder_4<std::int64_t, std::int64_t>::InitializeAttrFields(const OpKe
   key_field_name_ = "keys_int64s";
   value_field_name_ = "values_int64s";
   default_value_ = GetDefault(kernel_info, "default_int64", static_cast<int64_t>(-1));
-};
+}
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder, 4, int64_string,
@@ -214,7 +214,7 @@ void LabelEncoder_4<std::int64_t, std::string>::InitializeAttrFields(const OpKer
   key_field_name_ = "keys_int64s";
   value_field_name_ = "values_strings";
   default_value_ = GetDefault(kernel_info, "default_string", std::string("_Unused"));
-};
+}
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder, 4, int64_float,
@@ -228,7 +228,7 @@ void LabelEncoder_4<std::int64_t, float>::InitializeAttrFields(const OpKernelInf
   key_field_name_ = "keys_int64s";
   value_field_name_ = "values_floats";
   default_value_ = GetDefault(kernel_info, "default_float", 0.f);
-};
+}
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(LabelEncoder, 4, float_float,
                                   KernelDefBuilder()
@@ -243,7 +243,7 @@ void LabelEncoder_4<float, float>::InitializeAttrFields(const OpKernelInfo& kern
   key_field_name_ = "keys_floats";
   value_field_name_ = "values_floats";
   default_value_ = GetDefault(kernel_info, "default_float", -0.f);
-};
+}
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder, 4, float_string,
@@ -257,7 +257,7 @@ void LabelEncoder_4<float, std::string>::InitializeAttrFields(const OpKernelInfo
   key_field_name_ = "keys_floats";
   value_field_name_ = "values_strings";
   default_value_ = GetDefault(kernel_info, "default_string", std::string("_Unused"));
-};
+}
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder, 4, float_int64,
@@ -271,7 +271,7 @@ void LabelEncoder_4<float, std::int64_t>::InitializeAttrFields(const OpKernelInf
   key_field_name_ = "keys_floats";
   value_field_name_ = "values_int64s";
   default_value_ = GetDefault(kernel_info, "default_int64", static_cast<int64_t>(-1));
-};
+}
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder, 4, string_int64,
@@ -285,7 +285,7 @@ void LabelEncoder_4<std::string, std::int64_t>::InitializeAttrFields(const OpKer
   key_field_name_ = "keys_strings";
   value_field_name_ = "values_int64s";
   default_value_ = GetDefault(kernel_info, "default_int64", static_cast<int64_t>(-1));
-};
+}
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder, 4, string_float,
@@ -299,7 +299,7 @@ void LabelEncoder_4<std::string, float>::InitializeAttrFields(const OpKernelInfo
   key_field_name_ = "keys_strings";
   value_field_name_ = "values_floats";
   default_value_ = GetDefault(kernel_info, "default_float", 0.f);
-};
+}
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder, 4, string_string,
@@ -313,7 +313,7 @@ void LabelEncoder_4<std::string, std::string>::InitializeAttrFields(const OpKern
   key_field_name_ = "keys_strings";
   value_field_name_ = "values_strings";
   default_value_ = GetDefault(kernel_info, "default_string", std::string("_Unused"));
-};
+}
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder, 4, string_int16,
@@ -326,7 +326,7 @@ template <>
 void LabelEncoder_4<std::string, std::int16_t>::InitializeAttrFields(const OpKernelInfo& kernel_info) {
   key_field_name_ = "keys_strings";
   default_value_ = static_cast<std::int16_t>(GetDefault(kernel_info, "", static_cast<std::int16_t>(-1)));
-};
+}
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(LabelEncoder, 4, double_double,
                                   KernelDefBuilder()
@@ -339,7 +339,7 @@ ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(LabelEncoder, 4, double_double,
 template <>
 void LabelEncoder_4<double, double>::InitializeAttrFields(const OpKernelInfo& kernel_info) {
   default_value_ = GetDefault(kernel_info, "default_float", -0.);
-};
+}
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder, 4, double_string,
@@ -352,7 +352,7 @@ template <>
 void LabelEncoder_4<double, std::string>::InitializeAttrFields(const OpKernelInfo& kernel_info) {
   value_field_name_ = "values_strings";
   default_value_ = GetDefault(kernel_info, "default_string", std::string("_Unused"));
-};
+}
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder, 4, string_double,
@@ -365,7 +365,7 @@ template <>
 void LabelEncoder_4<std::string, double>::InitializeAttrFields(const OpKernelInfo& kernel_info) {
   key_field_name_ = "keys_strings";
   default_value_ = GetDefault(kernel_info, "default_float", -0.);
-};
+}
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder, 4, double_int64,
@@ -378,7 +378,7 @@ template <>
 void LabelEncoder_4<double, std::int64_t>::InitializeAttrFields(const OpKernelInfo& kernel_info) {
   value_field_name_ = "values_int64s";
   default_value_ = GetDefault(kernel_info, "default_int64", static_cast<int64_t>(-1));
-};
+}
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     LabelEncoder, 4, int64_double,
@@ -391,7 +391,7 @@ template <>
 void LabelEncoder_4<std::int64_t, double>::InitializeAttrFields(const OpKernelInfo& kernel_info) {
   key_field_name_ = "keys_int64s";
   default_value_ = GetDefault(kernel_info, "default_float", -0.);
-};
+}
 
 }  // namespace ml
 }  // namespace onnxruntime
