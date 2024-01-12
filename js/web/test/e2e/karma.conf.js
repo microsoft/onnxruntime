@@ -47,9 +47,9 @@ module.exports = function(config) {
     hostname: 'localhost',
     browsers: [],
     customLaunchers: {
-      Chrome_default: {base: 'ChromeHeadless', chromeDataDir: USER_DATA},
+      Chrome_default: {base: 'Chrome', chromeDataDir: USER_DATA},
       Chrome_no_threads: {
-        base: 'ChromeHeadless',
+        base: 'Chrome',
         chromeDataDir: USER_DATA,
         // TODO: no-thread flags
       },
