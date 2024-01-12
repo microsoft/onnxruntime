@@ -2836,9 +2836,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
   // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
   // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
-  cudaDeviceProp prop;
-  CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
-  std::string compute_capability = GetComputeCapacity(prop);
   std::string cache_path = "";
   // Customize cache prefix if assigned
   if (!cache_prefix_.empty()) {
