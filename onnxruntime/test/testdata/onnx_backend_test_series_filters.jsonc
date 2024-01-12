@@ -235,10 +235,6 @@
         "^test_resize_upsample_sizes_nearest_not_larger_cuda",
         "^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cuda",
         // onnx 1.15 (opset 20) new and updated op tests
-        "^test_ai_onnx_ml_label_encoder_string_int",
-        "^test_ai_onnx_ml_label_encoder_string_int_no_default",
-        "^test_ai_onnx_ml_label_encoder_tensor_mapping",
-        "^test_ai_onnx_ml_label_encoder_tensor_value_only_mapping",
         "^test_image_decoder_decode_bmp_rgb",
         "^test_image_decoder_decode_jpeg2k_rgb",
         "^test_image_decoder_decode_jpeg_bgr",
