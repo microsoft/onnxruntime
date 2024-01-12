@@ -199,7 +199,7 @@ stages:
     AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
     BuildVariant: 'default'
 
-- template: nuget-linux-cuda-packaging-stage.yml
+- template: stages/nuget-linux-cuda-packaging-stage.yml
   parameters:
     CudaVersion: ${{ parameters.CudaVersion }}
 
