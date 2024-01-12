@@ -317,14 +317,6 @@ static void NSQ4GemmPackBImpl(void* PackedBuf, size_t BlkSize, const uint8_t* QD
   }
 }
 
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wimplicit-fallthrough="
-#elif defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 26819)
-#endif
-
 static size_t NSQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym, NS_SQNBIT_COMPUTE_TYPE CompType) {
   GetCPUDevice();
   if (K % BlkSize != 0) {
@@ -344,6 +336,7 @@ static size_t NSQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym,
           return NSQ4BuSize<tWeiNInt<tAVX_VNNI_KBlock, tAVX_VNNI_KBlock::ISA>>(BlkSize, N, K, isAsym);
         }
       }
+      [[fallthrough]];
     case CompBf16:
     case CompFp16:
     case CompFp32:
@@ -354,7 +347,7 @@ static size_t NSQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym,
       if (_cd->AVX2() && BlkSize % tAVX2::KTILE == 0) {
         return NSQ4BuSize<tWeiNInt<tAVX2, tAVX2::ISA>>(BlkSize, N, K, isAsym);
       }
-      break;
+      [[fallthrough]];
     default:
       return 0;
   }
@@ -385,6 +378,7 @@ static bool NSQ4GemmPackB(void* PackedBuf, const uint8_t* QData, const float* Sc
           return true;
         }
       }
+      [[fallthrough]];
     case CompBf16:
     case CompFp16:
     case CompFp32:
@@ -399,17 +393,12 @@ static bool NSQ4GemmPackB(void* PackedBuf, const uint8_t* QData, const float* Sc
                                                        ldb, ThreadPool);
         return true;
       }
+      [[fallthrough]];
     default:
       return false;
   }
   return false;
 }
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#elif defined(_MSC_VER)
-#pragma warning(pop)
-#endif
 
 size_t NSNBitsGemmPackBSize(size_t N, size_t K, size_t BlkSize, int nbits, bool isAsym,
                             NS_SQNBIT_COMPUTE_TYPE CompType) {
