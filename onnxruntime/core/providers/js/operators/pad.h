@@ -22,11 +22,11 @@ class Pad : public JsKernel, public PadBase {
 
     JSEP_INIT_KERNEL_ATTRIBUTE(Pad, ({"mode" : $1,
                                       "value" : $2,
-                                      "pads" : $3 ? Array.from(HEAP32.subarray($4, $4 + $3)) : []}),
+                                      "pads" : $3 ? Array.from(HEAP32.subarray($3, $4)) : []}),
                                static_cast<int32_t>(mode_),
                                static_cast<double>(value_),
-                               gsl::narrow_cast<int32_t>(pads.size()),
-                               JSEP_HEAP_PTR((pads.size() > 0) ? pads.data() : nullptr) >> 2);
+                               JSEP_HEAP32_INDEX_START(pads),
+                               JSEP_HEAP32_INDEX_END(pads));
   }
 };
 
