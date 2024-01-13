@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {InferenceSession as InferenceSessionImpl} from './inference-session-impl.js';
+import {OnnxModelOptions} from './onnx-model.js';
 import {OnnxValue, OnnxValueDataLocation} from './onnx-value.js';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
@@ -43,7 +44,7 @@ export declare namespace InferenceSession {
   /**
    * A set of configurations for session behavior.
    */
-  export interface SessionOptions {
+  export interface SessionOptions extends OnnxModelOptions {
     /**
      * An array of execution provider options.
      *

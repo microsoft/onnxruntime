@@ -115,6 +115,11 @@ export interface OrtWasmModule extends EmscriptenModule {
   mainScriptUrlOrBlob?: string|Blob;
   // #endregion
 
+  // #region external data API
+  mountExternalData?(externalDataFilePath: string, externalDataFileData: Uint8Array): void;
+  unmountExternalData?(): void;
+  // #endregion
+
   // #region JSEP
   /**
    * This is the entry of JSEP initialization. This function is called once when initializing ONNX Runtime.
