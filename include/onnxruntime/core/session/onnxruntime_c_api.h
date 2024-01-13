@@ -4418,7 +4418,7 @@ struct OrtApi {
   ORT_API2_STATUS(GetCUDAProviderOptionsByName, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _In_ const char* key, _Outptr_ void** ptr);
 
   /**
-   * Get a EP resoure.
+   * Get a EP resource.
    * E.g. a cuda stream or a cublas handle
    *
    * \param context - Kernel context
@@ -4541,6 +4541,23 @@ struct OrtApi {
    * \since Version 1.17.
    */
   ORT_API2_STATUS(KernelContext_ParallelFor, _In_ const OrtKernelContext* context, _In_ void (*fn)(void*, size_t), _In_ size_t total, _In_ size_t num_batch, _In_ void* usr_data);
+
+  /** \brief Append OpenVINO execution provider to the session options
+   *
+   * If OpenVINO is not available (due to a non OpenVINO enabled build, or if OpenVINO is not installed on the system), this function will fail.
+   *
+   * \param[in] options
+   * \param[in] provider_options_keys
+   * \param[in] provider_options_values
+   * \param[in] num_keys
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_OpenVINO_V2,
+                  _In_ OrtSessionOptions* options,
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
+                  _In_ size_t num_keys);
 };
 
 /*

@@ -5,10 +5,14 @@
 
 #include <benchmark/benchmark.h>
 
+#include <functional>
 #include <random>
 
-void ArgsProduct(benchmark::internal::Benchmark* bench,
-                 const std::vector<std::vector<int64_t>>& arglists);
+// Specifies benchmark arguments from the cartesian product of `arglists`, like Benchmark::ArgsProduct().
+// `include_filter` is called to determine whether a given set of arguments should be included.
+void ArgsProductWithFilter(benchmark::internal::Benchmark* bench,
+                           const std::vector<std::vector<int64_t>>& arglists,
+                           std::function<bool(const std::vector<int64_t>& args)> include_filter);
 
 template <typename ElementType>
 std::vector<ElementType> RandomVectorUniform(

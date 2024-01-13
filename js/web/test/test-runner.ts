@@ -96,7 +96,7 @@ async function loadTensors(
   const outputs: Test.NamedTensor[] = [];
   let dataFileType: 'none'|'pb'|'npy' = 'none';
 
-  const allowInt64 = ['wasm', 'xnnpack', 'webgpu'].includes(backendName);
+  const allowInt64 = ['wasm', 'xnnpack', 'webgpu', 'webnn'].includes(backendName);
 
   for (const dataFile of testCase.dataFiles) {
     const ext = extname(dataFile);
