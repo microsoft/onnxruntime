@@ -140,7 +140,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
     const auto& splits_tensor = *initializers.at(input_defs[1]->Name());
     Initializer unpacked_tensor(splits_tensor);
     auto splits_span = unpacked_tensor.DataAsSpan<int64_t>();
-    int64_t sum_of_splits = std::accumulate(splits_span.begin(), splits_span.end(), uint64_t(0));
+    int64_t sum_of_splits = std::accumulate(splits_span.begin(), splits_span.end(), int64_t{0});
     if (sum_of_splits != split_dims_at_axis) {
       LOGS(logger, VERBOSE) << "Mismatch between the sum of 'split'. Expected: "
                             << split_dims_at_axis
