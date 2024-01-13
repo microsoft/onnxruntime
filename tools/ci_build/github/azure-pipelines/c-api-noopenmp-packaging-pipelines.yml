@@ -1170,6 +1170,7 @@ stages:
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     Skipx86Tests: 'true'
+    CudaVersion: ${{ parameters.CudaVersion }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
@@ -1181,6 +1182,7 @@ stages:
     StageSuffix: 'GPU'
     MoreSuffix: '_Windows'
     Skipx86Tests: 'true'
+    CudaVersion: ${{ parameters.CudaVersion }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
