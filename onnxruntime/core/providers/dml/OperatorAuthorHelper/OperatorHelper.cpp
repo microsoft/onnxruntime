@@ -56,6 +56,17 @@ namespace OperatorHelper
         }
     }
 
+    template <typename T>
+    void ExpandToAxes(/*inout*/ std::vector<T>& attr, std::vector<int32_t> axes, std::vector<T> expanded)
+    {
+        // Fill in roi and scales/sizes
+        for (size_t i = 0; i < axes.size(); i++)
+        {
+            expanded[axes[i]] = attr[i];
+        }
+        attr = expanded;
+    }
+
     float CastFloat16ToFloat32(uint16_t input)
     {
         // Promote float16m10e5s1 to float32m23e8s1.
@@ -184,6 +195,77 @@ namespace OperatorHelper
 
         default:
             ML_INVALID_ARGUMENT("Expecting CPU local tensor of type int32 or int64.");
+            break;
+        }
+    }
+
+    void ReadCpuLocalTensorIntoUInt32(
+        const MLOperatorTensor& tensor,
+        std::vector<uint32_t>& result
+        )
+    {
+        result.clear();
+        ML_CHECK_VALID_ARGUMENT(tensor.IsCpuData(), "Tensor must be CPU Tensor.");
+
+        const std::vector<uint32_t>& tensorDimensions = tensor.GetShape();
+        const uint32_t elementCount = ComputeElementCountFromDimensions(tensorDimensions);
+
+        switch (tensor.GetTensorDataType())
+        {
+        case MLOperatorTensorDataType::UInt32:
+            {
+                const uint32_t* data = tensor.GetData<uint32_t>();
+                result.assign(data, data + elementCount);
+            }
+            break;
+
+        case MLOperatorTensorDataType::UInt64:
+            {
+                const uint64_t* data = tensor.GetData<uint64_t>();
+                result.reserve(elementCount);
+
+                // Use clamped cast rather than static_cast/narrow_cast,
+                // because it's not uncommon for a model to specify a
+                // 64-bit INTMAX constant as a sentinel value to mean
+                // the largest possible value (even though the actual
+                // dimension values come nowhere close to that, far
+                // less than 32-bit INTMAX).
+                for (auto d : gsl::make_span(data, data + elementCount))
+                {
+                    result.push_back(clamp_cast<uint32_t>(d));
+                }
+            }
+            break;
+        case MLOperatorTensorDataType::Int32:
+            {
+                const int32_t* data = tensor.GetData<int32_t>();
+                result.reserve(elementCount);
+                for (auto d : gsl::make_span(data, data + elementCount))
+                {
+                    result.push_back(clamp_cast<uint32_t>(d));
+                }
+            }
+            break;
+        case MLOperatorTensorDataType::Int64:
+            {
+                const int64_t* data = tensor.GetData<int64_t>();
+                result.reserve(elementCount);
+
+                // Use clamped cast rather than static_cast/narrow_cast,
+                // because it's not uncommon for a model to specify a
+                // 64-bit INTMAX constant as a sentinel value to mean
+                // the largest possible value (even though the actual
+                // dimension values come nowhere close to that, far
+                // less than 32-bit INTMAX).
+                for (auto d : gsl::make_span(data, data + elementCount))
+                {
+                    result.push_back(clamp_cast<uint32_t>(d));
+                }
+            }
+            break;
+
+        default:
+            ML_INVALID_ARGUMENT("Expecting CPU local tensor of type uint32 or uint64.");
             break;
         }
     }
@@ -2461,7 +2543,7 @@ namespace OperatorHelper
     {
         auto& attributes = kernelInformation.GetAttributes();
         m_inputDimensions = shapeInformation.GetInputTensorShape(0);
-        std::vector<int32_t> outputSizes;
+        std::vector<uint32_t> outputSizes;
         std::vector<int32_t> axes;
 
         if (opsetVersion >= 11)
@@ -2479,7 +2561,7 @@ namespace OperatorHelper
             if (kernelInformation.IsInputValid(3))
             {
                 MLOperatorTensor outputSizesTensor = kernelInformation.GetConstantInputTensor(3);
-                ReadCpuLocalTensorIntoInt32(outputSizesTensor, /*out*/ outputSizes);
+                ReadCpuLocalTensorIntoUInt32(outputSizesTensor, /*out*/ outputSizes);
             }
 
             axes = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Axes);
@@ -2487,42 +2569,24 @@ namespace OperatorHelper
             if (opsetVersion >= 18 && !axes.empty())
             {
                 uint32_t dimCount = gsl::narrow_cast<uint32_t>(m_inputDimensions.size());
-                HandleEmptyAxes(axes, m_inputDimensions, false);
-                HandleNegativeAxes(axes, dimCount);
+                HandleEmptyAxes(/*inout*/ axes, m_inputDimensions, false);
+                HandleNegativeAxes(/*inout*/ axes, dimCount);
 
                 // Taken from https://github.com/onnx/onnx/blob/3d69db8fd16873d68e7033479467f9478562a12d/onnx/reference/ops/op_resize.py#L303
                 if (!m_scales.empty())
                 {
-                    std::vector<float> newScales(dimCount, 1.f);
-                    // Fill in roi and scales/sizes
-                    uint32_t numAxes = gsl::narrow_cast<uint32_t>(axes.size());
-                    for (int32_t i = 0; i < axes.size(); i++)
-                    {
-                        newScales.at(axes[i]) = m_scales[i];
-                    }
-                    m_scales = newScales;
+                    std::vector<float> newScales(dimCount, 1.0f);
+                    ExpandToAxes(/*inuout*/ m_scales, axes, newScales);
                 }
                 if (!outputSizes.empty())
                 {
-                    std::vector<int32_t> newSizes(m_inputDimensions.size(), 0);
-                    std::transform(m_inputDimensions.begin(), m_inputDimensions.end(), newSizes.begin(), [](auto v) {return static_cast<int32_t>(v);});
-                    // Fill in roi and scales/sizes
-                    uint32_t numAxes = gsl::narrow_cast<uint32_t>(axes.size());
-                    for (int32_t i = 0; i < axes.size(); i++)
-                    {
-                        newSizes.at(axes[i]) = outputSizes[i];
-                    }
-                    outputSizes = newSizes;
+                    ExpandToAxes(/*inuout*/ outputSizes, axes, m_inputDimensions);
                 }
                 if (!m_regionOfInterest.empty())
                 {
-                    std::vector<float> newRois(dimCount, 0.f);
-                    newRois.resize(dimCount*2, 1.f);
-                    for (int32_t i = 0; i < axes.size(); i++)
-                    {
-                        newRois.at(axes[i]) = m_regionOfInterest[i];
-                    }
-                    m_regionOfInterest = newRois;
+                    std::vector<float> newRois(dimCount, 0.0f);
+                    newRois.resize(dimCount * 2, 1.0f);
+                    ExpandToAxes(/*inuout*/ m_regionOfInterest, axes, newRois);
                 }
             }
         }

@@ -408,6 +408,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_Split = 18;
         static const int sc_sinceVer_LpPool = 18;
         static const int sc_sinceVer_Col2Im = 18;
+        static const int sc_sinceVer_Resize = 18;
     }
 
     namespace OnnxOperatorSet19

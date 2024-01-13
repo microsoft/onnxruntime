@@ -1611,6 +1611,7 @@ using ShapeInferenceHelper_Tile = TileHelper;
 using ShapeInferenceHelper_Resize10 = VersionedOpsetHelper<ResizeHelper, 10>;
 using ShapeInferenceHelper_Resize11 = VersionedOpsetHelper<ResizeHelper, 11>;
 using ShapeInferenceHelper_Resize13 = VersionedOpsetHelper<ResizeHelper, 13>;
+using ShapeInferenceHelper_Resize18 = VersionedOpsetHelper<ResizeHelper, 18>;
 using ShapeInferenceHelper_OneHot = OneHotHelper;
 
 using ShapeInferenceHelper_Sqrt = GetOutputShapeAsInputShapeHelper;
