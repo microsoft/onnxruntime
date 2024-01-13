@@ -1524,11 +1524,11 @@ def generate_build_tree(
                         if compile_flag.startswith("/D"):
                             cudaflags.append(compile_flag)
                         else:
-                            cuda_compile_flags_str =cuda_compile_flags_str + " " +  compile_flag
-                    if len(cuda_compile_flags_str) !=0:
-                        cudaflags.append("-Xcompiler=\"%s\"" %  cuda_compile_flags_str)
+                            cuda_compile_flags_str = cuda_compile_flags_str + " " + compile_flag
+                    if len(cuda_compile_flags_str) != 0:
+                        cudaflags.append('-Xcompiler="%s"' % cuda_compile_flags_str)
             elif is_linux() or is_macOS():
-                if is_linux():
+                if is_linux() and not args.use_rocm:
                     ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now"]
                 else:
                     ldflags = []
