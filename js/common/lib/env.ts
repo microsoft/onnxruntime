@@ -110,6 +110,7 @@ export declare namespace Env {
     kernelId: number;
     kernelType: string;
     kernelName: string;
+    programName: string;
     startTime: number;
     endTime: number;
   }

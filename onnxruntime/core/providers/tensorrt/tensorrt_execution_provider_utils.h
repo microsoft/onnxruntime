@@ -4,6 +4,8 @@
 #include <fstream>
 #include <unordered_map>
 #include <string>
+#include <vector>
+#include <sstream>
 #include <iostream>
 #include <filesystem>
 #include <experimental/filesystem>
@@ -694,5 +696,50 @@ bool ParseProfileShapes(std::string profile_shapes_string, std::unordered_map<st
   }
 
   return true;
+}
+
+std::vector<std::string> split(const std::string& str, char delimiter) {
+  std::vector<std::string> tokens;
+  std::string token;
+  std::istringstream tokenStream(str);
+  while (std::getline(tokenStream, token, delimiter)) {
+    tokens.push_back(token);
+  }
+  return tokens;
+}
+
+std::string join(const std::vector<std::string>& vec, const std::string& delimiter) {
+  std::string result;
+  for (size_t i = 0; i < vec.size(); ++i) {
+    result += vec[i];
+    if (i < vec.size() - 1) {
+      result += delimiter;
+    }
+  }
+  return result;
+}
+
+/*
+ * Parse engine cache name suffix when user customizes prefix for engine cache name
+ *
+ * For example:
+ * When default subgraph name is "TensorrtExecutionProvider_TRTKernel_graph_torch-jit-export_2068723788287043730_189_189_fp16"
+ * This func will generate the suffix "2068723788287043730_189_fp16"
+ *
+ */
+std::string GetCacheSuffix(const std::string& fused_node_name, const std::string& trt_node_name_with_precision) {
+  std::vector<std::string> split_fused_node_name = split(fused_node_name, '_');
+  if (split_fused_node_name.size() >= 3) {
+    // Get index of model hash from fused_node_name
+    std::string model_hash = split_fused_node_name[split_fused_node_name.size() - 3];
+    size_t index = fused_node_name.find(model_hash);
+    // Parse suffix from trt_node_name_with_precision, as it has additional precision info
+    std::vector<std::string> suffix_group = split(trt_node_name_with_precision.substr(index), '_');
+    if (suffix_group.size() > 2) {
+      suffix_group.erase(suffix_group.begin() + 2);
+    }
+    return join(suffix_group, "_");
+  }
+  return "";
 }
 }  // namespace onnxruntime

@@ -385,6 +385,7 @@ Do not modify directly.*
 |||[1, 10]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |StringConcat|*in* X:**T**<br> *in* Y:**T**<br> *out* Z:**T**|20+|**T** = tensor(string)|
 |StringNormalizer|*in* X:**tensor(string)**<br> *out* Y:**tensor(string)**|10+|**X** = tensor(string)|
+|StringSplit|*in* X:**T1**<br> *out* Y:**T2**<br> *out* Z:**T3**|20+|**T1** = tensor(string)<br/> **T2** = tensor(string)<br/> **T3** = tensor(int64)|
 |Sub|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T**|14+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
 |||13|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
 |||[7, 12]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
@@ -424,7 +425,8 @@ Do not modify directly.*
 |DictVectorizer|*in* X:**T1**<br> *out* Y:**T2**|1+|**T1** = map(int64,tensor(double)), map(int64,tensor(float)), map(int64,tensor(string)), map(string,tensor(double)), map(string,tensor(float)), map(string,tensor(int64))<br/> **T2** = tensor(double), tensor(float), tensor(int64), tensor(string)|
 |FeatureVectorizer|*in* X:**T1**<br> *out* Y:**tensor(float)**|1+|**T1** = tensor(double), tensor(float), tensor(int32), tensor(int64)|
 |Imputer|*in* X:**T**<br> *out* Y:**T**|1+|**T** = tensor(float), tensor(int64)|
-|LabelEncoder|*in* X:**T1**<br> *out* Y:**T2**|2+|**T1** = tensor(float), tensor(int64), tensor(string)<br/> **T2** = tensor(float), tensor(int64), tensor(string)|
+|LabelEncoder|*in* X:**T1**<br> *out* Y:**T2**|4+|**T1** = tensor(double), tensor(float), tensor(int64), tensor(string)<br/> **T2** = tensor(double), tensor(float), tensor(int16), tensor(int64), tensor(string)|
+|||[2, 3]|**T1** = tensor(float), tensor(int64), tensor(string)<br/> **T2** = tensor(float), tensor(int64), tensor(string)|
 |||1|**T1** = tensor(int64), tensor(string)<br/> **T2** = tensor(int64), tensor(string)|
 |LinearClassifier|*in* X:**T1**<br> *out* Y:**T2**<br> *out* Z:**tensor(float)**|1+|**T1** = tensor(double), tensor(float), tensor(int32), tensor(int64)<br/> **T2** = tensor(int64), tensor(string)|
 |LinearRegressor|*in* X:**T**<br> *out* Y:**tensor(float)**|1+|**T** = tensor(float)|

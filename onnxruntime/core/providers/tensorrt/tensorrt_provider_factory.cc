@@ -119,6 +119,7 @@ struct Tensorrt_Provider : Provider {
     info.dump_ep_context_model = options.trt_dump_ep_context_model != 0;
     info.ep_context_embed_mode = options.trt_ep_context_embed_mode;
     info.ep_context_compute_capability_enable = options.trt_ep_context_compute_capability_enable != 0;
+    info.engine_cache_prefix = options.trt_engine_cache_prefix == nullptr ? "" : options.trt_engine_cache_prefix;
 
     return std::make_shared<TensorrtProviderFactory>(info);
   }
