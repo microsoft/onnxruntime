@@ -64,6 +64,8 @@ static void ParseHtpPerformanceMode(std::string htp_performance_mode_string,
     htp_performance_mode = qnn::HtpPerformanceMode::kHtpLowPowerSaver;
   } else if (htp_performance_mode_string == "power_saver") {
     htp_performance_mode = qnn::HtpPerformanceMode::kHtpPowerSaver;
+  } else if (htp_performance_mode_string == "extreme_power_saver") {
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpExtremePowerSaver;
   } else if (htp_performance_mode_string == "sustained_high_performance") {
     htp_performance_mode = qnn::HtpPerformanceMode::kHtpSustainedHighPerformance;
   } else {

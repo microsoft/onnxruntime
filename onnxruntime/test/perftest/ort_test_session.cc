@@ -347,7 +347,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         // no validation
       } else if (key == "htp_performance_mode") {
         std::set<std::string> supported_htp_perf_mode = {"burst", "balanced", "default", "high_performance",
-                                                         "high_power_saver", "low_balanced", "low_power_saver",
+                                                         "high_power_saver", "low_balanced", "extreme_power_saver", "low_power_saver",
                                                          "power_saver", "sustained_high_performance"};
         if (supported_htp_perf_mode.find(value) == supported_htp_perf_mode.end()) {
           std::ostringstream str_stream;
