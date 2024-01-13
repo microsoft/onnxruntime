@@ -15,7 +15,7 @@ parameters:
 
 - name: NUMPY_VERSION
   type: string
-  default: '1.25'
+  default: '1.25.2'
 
 - name: ENV_SETUP_SCRIPT
   type: string
