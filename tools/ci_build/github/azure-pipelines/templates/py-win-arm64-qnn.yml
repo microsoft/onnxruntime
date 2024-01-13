@@ -7,7 +7,7 @@ parameters:
 - name: QNN_SDK
   displayName: QNN Windows SDK path
   type: string
-  default: qnn-v2.17.0.231124_win
+  default: qnn-v2.18.0.240101_win
 
 - name: PYTHON_VERSION
   type: string
@@ -29,7 +29,7 @@ parameters:
 
 jobs:
 - job: Win_py_arm64_qnn_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}
-  timeoutInMinutes: 120
+  timeoutInMinutes: 160
   workspace:
     clean: all
   pool:
