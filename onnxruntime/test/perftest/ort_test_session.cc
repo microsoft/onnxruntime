@@ -634,6 +634,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     session_options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpThreadAffinities, performance_test_config.run_config.intra_op_thread_affinities.c_str());
   }
 
+  session_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+
   if (performance_test_config.run_config.disable_spinning) {
     fprintf(stdout, "Disabling intra-op thread spinning entirely\n");
     session_options.AddConfigEntry(kOrtSessionOptionsConfigAllowIntraOpSpinning, "0");

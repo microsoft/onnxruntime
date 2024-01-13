@@ -88,6 +88,10 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 #include "core/providers/cann/cann_provider_options.h"
 #include "core/providers/dnnl/dnnl_provider_options.h"
 
+#ifdef USE_TENSORRT
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#endif
+
 // The filename extension for a shared library is different per platform
 #ifdef _WIN32
 #define LIBRARY_PREFIX
@@ -1365,10 +1369,6 @@ std::shared_ptr<IExecutionProviderFactory> DnnlProviderFactoryCreator::Create(in
   return s_library_dnnl.Get().CreateExecutionProviderFactory(use_arena);
 }
 
-std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(int device_id) {
-  return s_library_tensorrt.Get().CreateExecutionProviderFactory(device_id);
-}
-
 std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(int device_id) {
   return s_library_migraphx.Get().CreateExecutionProviderFactory(device_id);
 }
@@ -1414,6 +1414,95 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_cuda_graph_enable = 0;
 
   return trt_options_converted;
+}
+
+// Get configs from session options that are needed for TensorRT EP
+void UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(OrtSessionOptions* session_options, OrtTensorRTProviderOptionsV2* tensorrt_options) {
+  tensorrt_options->trt_dump_ep_context_model = 1;
+  std::string embed_mode = (session_options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "1");
+  if ("1" == embed_mode) {
+    tensorrt_options->trt_ep_context_embed_mode = 1;
+  } else if ("0" == embed_mode) {
+    tensorrt_options->trt_ep_context_embed_mode = 0;
+  } else {
+    LOGS_DEFAULT(VERBOSE) << "Invalid ep.context_embed_mode: " << embed_mode << " only 0 or 1 allowed. Set to 1.";
+  }
+  LOGS_DEFAULT(VERBOSE) << "User specified context cache embed mode: " << tensorrt_options->trt_ep_context_embed_mode;
+}
+
+void CopyOrtTensorRTProviderOptionsV2(OrtTensorRTProviderOptionsV2* dst, const OrtTensorRTProviderOptionsV2* src, bool string_copy) {
+  if (src == nullptr) {
+    return;
+  }
+  auto copy_string_if_needed = [&](std::string s_in) {
+    if (string_copy) {
+      char* dest = nullptr;
+      auto str_size = s_in.size();
+      if (str_size == 0) {
+        return (const char*)nullptr;
+      } else {
+        dest = new char[str_size + 1];
+#ifdef _MSC_VER
+        strncpy_s(dest, str_size + 1, s_in.c_str(), str_size);
+#else
+        strncpy(dest, s_in.c_str(), str_size);
+#endif
+        dest[str_size] = '\0';
+        return (const char*)dest;
+      }
+    } else {
+      return s_in.c_str();
+    }
+  };
+
+  dst->device_id = src->device_id;
+  dst->has_user_compute_stream = src->has_user_compute_stream;
+  dst->trt_max_partition_iterations = src->trt_max_partition_iterations;
+  dst->trt_min_subgraph_size = src->trt_min_subgraph_size;
+  dst->trt_max_workspace_size = src->trt_max_workspace_size;
+  dst->trt_fp16_enable = src->trt_fp16_enable;
+  dst->trt_int8_enable = src->trt_int8_enable;
+
+  dst->trt_int8_calibration_table_name = copy_string_if_needed(src->trt_int8_calibration_table_name);
+
+  dst->trt_int8_use_native_calibration_table = src->trt_int8_use_native_calibration_table;
+  dst->trt_dla_enable = src->trt_dla_enable;
+  dst->trt_dla_core = src->trt_dla_core;
+  dst->trt_dump_subgraphs = src->trt_dump_subgraphs;
+  dst->trt_engine_cache_enable = src->trt_engine_cache_enable;
+
+  dst->trt_engine_cache_path = copy_string_if_needed(src->trt_engine_cache_path);
+  dst->trt_timing_cache_path = copy_string_if_needed(src->trt_timing_cache_path);
+
+  dst->trt_engine_decryption_enable = src->trt_engine_decryption_enable;
+
+  dst->trt_engine_decryption_lib_path = copy_string_if_needed(src->trt_engine_decryption_lib_path);
+
+  dst->trt_force_sequential_engine_build = src->trt_force_sequential_engine_build;
+  dst->trt_context_memory_sharing_enable = src->trt_context_memory_sharing_enable;
+  dst->trt_layer_norm_fp32_fallback = src->trt_layer_norm_fp32_fallback;
+  dst->trt_timing_cache_enable = src->trt_timing_cache_enable;
+  dst->trt_force_timing_cache = src->trt_force_timing_cache;
+  dst->trt_detailed_build_log = src->trt_detailed_build_log;
+  dst->trt_build_heuristics_enable = src->trt_build_heuristics_enable;
+  dst->trt_sparsity_enable = src->trt_sparsity_enable;
+  dst->trt_builder_optimization_level = src->trt_builder_optimization_level;
+  dst->trt_auxiliary_streams = src->trt_auxiliary_streams;
+
+  dst->trt_tactic_sources = copy_string_if_needed(src->trt_tactic_sources);
+  dst->trt_extra_plugin_lib_paths = copy_string_if_needed(src->trt_extra_plugin_lib_paths);
+  dst->trt_profile_min_shapes = copy_string_if_needed(src->trt_profile_min_shapes);
+  dst->trt_profile_max_shapes = copy_string_if_needed(src->trt_profile_max_shapes);
+  dst->trt_profile_opt_shapes = copy_string_if_needed(src->trt_profile_opt_shapes);
+
+  dst->trt_cuda_graph_enable = src->trt_cuda_graph_enable;
+  dst->trt_dump_ep_context_model = src->trt_dump_ep_context_model;
+  dst->trt_ep_context_embed_mode = src->trt_ep_context_embed_mode;
+  dst->trt_ep_context_compute_capability_enable = src->trt_ep_context_compute_capability_enable;
+}
+
+std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(int device_id) {
+  return s_library_tensorrt.Get().CreateExecutionProviderFactory(device_id);
 }
 
 std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(const OrtTensorRTProviderOptions* provider_options) {
@@ -1800,7 +1889,31 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM, _In_ Or
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options) {
   API_IMPL_BEGIN
-  auto factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
+
+  std::shared_ptr<onnxruntime::IExecutionProviderFactory> factory;
+
+  auto ep_context_cache_enabled_from_provider_options = tensorrt_options->trt_dump_ep_context_model != 0;
+  auto ep_context_cache_enabled_from_sess_options = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
+
+  // If EP context configs are provided in session options, we need to propagate them to provider options.
+  // However, if provider options already have the EP context configs provided, the configs in session options
+  // will be ignored since provider options has higher priority than session options.
+  if (!ep_context_cache_enabled_from_provider_options && ep_context_cache_enabled_from_sess_options) {
+    // We need to create another provider V2 object since the tensorrt_options points to the "const" object that can't be updated.
+    OrtTensorRTProviderOptionsV2* new_tensorrt_options = nullptr;
+    if (OrtApis::CreateTensorRTProviderOptions(&new_tensorrt_options) != nullptr) {
+      ORT_THROW("Can't create an OrtProviderOptionsV2 object.");
+    }
+    auto deleter = [](OrtTensorRTProviderOptionsV2* ptr) { OrtApis::ReleaseTensorRTProviderOptions(ptr); };
+    std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(deleter)> rel_trt_options(new_tensorrt_options, deleter);
+
+    onnxruntime::UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(options, new_tensorrt_options);
+    onnxruntime::CopyOrtTensorRTProviderOptionsV2(new_tensorrt_options, tensorrt_options, true);
+    factory = onnxruntime::TensorrtProviderFactoryCreator::Create(new_tensorrt_options);
+  } else {
+    factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
+  }
+
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_TensorRT: Failed to load shared library");
   }
