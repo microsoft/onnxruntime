@@ -119,6 +119,7 @@ async function testAllBrowserCases({hostInKarma}) {
   await runKarma({hostInKarma, main: './browser-test-wasm-path-override-prefix.js'});
   await runKarma({hostInKarma, main: './browser-test-wasm-path-override-prefix.js', ortMain: 'ort.wasm.min.js'});
   await runKarma({hostInKarma, main: './browser-test-wasm-image-tensor-image.js'});
+  await runKarma({hostInKarma, main: './browser-test-webgpu-external-data.js', ortMain: 'ort.webgpu.min.js'});
 }
 
 async function runKarma({hostInKarma, main, browser = BROWSER, ortMain = 'ort.min.js'}) {
