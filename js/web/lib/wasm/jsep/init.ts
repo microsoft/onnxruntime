@@ -61,8 +61,7 @@ class ComputeContextImpl implements ComputeContext {
     return this.backend.currentKernelCustomData;
   }
   get customDataBuffer(): Uint8Array {
-    return this.module.HEAPU8.subarray(
-        this.customDataOffset, this.customDataOffset + this.customDataSize);
+    return this.module.HEAPU8.subarray(this.customDataOffset, this.customDataOffset + this.customDataSize);
   }
   private customDataOffset = 0;
   private customDataSize = 0;
