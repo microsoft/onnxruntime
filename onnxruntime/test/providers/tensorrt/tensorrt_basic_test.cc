@@ -122,6 +122,19 @@ void CreateBaseModel(std::string model_name,
   status = onnxruntime::Model::Save(model, model_name);
 }
 
+bool HasCacheFileWithPrefix(const std::string& prefix) {
+  const std::filesystem::path current_dir = std::filesystem::current_path();
+  for (const auto& entry : std::filesystem::directory_iterator(current_dir)) {
+    if (entry.is_regular_file()) {
+      std::string filename = entry.path().filename().string();
+      if (filename.rfind(prefix, 0) == 0) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 void RunSession(InferenceSession& session_object,
                 RunOptions& run_options,
                 NameMLValMap& feeds,
@@ -177,6 +190,7 @@ void RunWithOneSessionSingleThreadInference(std::string model_name, std::string 
 
   OrtTensorRTProviderOptionsV2 params;
   params.trt_engine_cache_enable = 1;
+  params.trt_engine_cache_prefix = "TRTEP_Cache_Test";
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
   auto status = session_object.Load(model_name);
@@ -192,6 +206,9 @@ void RunWithOneSessionSingleThreadInference(std::string model_name, std::string 
   // Y: 1, 3, 3, 2, 2, 2
   // Z: 1, 3, 3, 2, 2, 2
   RunSession(session_object, run_options, feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
+
+  // Verify on cache with customized prefix
+  ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_engine_cache_prefix));
 }
 
 void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string sess_log_id, bool has_non_zero_node = false) {
@@ -227,6 +244,7 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
 
   OrtTensorRTProviderOptionsV2 params;
   params.trt_engine_cache_enable = 1;
+  params.trt_engine_cache_prefix = "TRTEP_Cache_Test";
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
   auto status = session_object.Load(model_name);
@@ -253,6 +271,9 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
 
   for (auto& th : threads)
     th.join();
+
+  // Verify on cache with customized prefix
+  ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_engine_cache_prefix));
 }
 
 TEST(TensorrtExecutionProviderTest, SessionCreationWithMultiThreadsAndInferenceWithMultiThreads) {
@@ -426,6 +447,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
      */
 
     params.trt_engine_cache_enable = 1;
+    params.trt_engine_cache_prefix = "TRTEP_Cache_Test";
     std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
     EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
     auto status = session_object.Load(model_name);
@@ -550,6 +572,9 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
     ASSERT_TRUE(status.IsOK());
 
     status = session_object2.Run(run_options, feeds, output_names, &fetches);
+
+    // Verify on cache with customized prefix
+    ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_engine_cache_prefix));
 
     if (input_type.compare("static") == 0) {
       // Can't run inference since input shape changes but the engine is built with static input
