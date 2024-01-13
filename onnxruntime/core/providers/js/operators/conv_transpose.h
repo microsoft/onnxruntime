@@ -29,10 +29,6 @@ class ConvTranspose : public JsKernel {
                                             conv_transpose_attrs_.output_shape.end());
     std::vector<int32_t> local_output_padding(conv_transpose_attrs_.output_padding.begin(),
                                               conv_transpose_attrs_.output_padding.end());
-    const auto* local_output_padding_ptr =
-        local_output_padding.size() > 0 ? local_output_padding.data() : nullptr;
-    const auto* local_output_shape_ptr =
-        local_output_shape.size() > 0 ? local_output_shape.data() : nullptr;
 
     // currently only support Conv 1D/2D. TODO: support Conv3D and other
     if (conv_transpose_attrs_.dilations.size() == 1 ||
@@ -52,8 +48,8 @@ class ConvTranspose : public JsKernel {
                                    "pads" : [ $5, $6 ],
                                    "strides" : [$7],
                                    "wIsConst" : () JS_ARROW(!!HEAP8[$9]),
-                                   "outputPadding" : $10 ? Array.from(HEAP32.subarray($11, $11 + $10)) : [],
-                                   "outputShape" : $12 ? Array.from(HEAP32.subarray($13, $13 + $12)) : [],
+                                   "outputPadding" : $10 ? Array.from(HEAP32.subarray($10, $11)) : [],
+                                   "outputShape" : $12 ? Array.from(HEAP32.subarray($12, $13)) : [],
                                    "activation" : UTF8ToString($14)
                                  }),
                                  static_cast<int32_t>(conv_transpose_attrs_.auto_pad),
@@ -64,11 +60,11 @@ class ConvTranspose : public JsKernel {
                                  static_cast<int32_t>(pads_1),
                                  static_cast<int32_t>(strides),
                                  static_cast<int32_t>(channels_last),
-                                 JSEP_HEAP_PTR(&w_is_const_),
-                                 gsl::narrow_cast<int32_t>(local_output_padding.size()),
-                                 JSEP_HEAP_PTR(local_output_padding_ptr) >> 2,
-                                 gsl::narrow_cast<int32_t>(local_output_shape.size()),
-                                 JSEP_HEAP_PTR(local_output_shape_ptr) >> 2,
+                                 JSEP_HEAP8_INDEX(&w_is_const_),
+                                 JSEP_HEAP32_INDEX_START(local_output_padding),
+                                 JSEP_HEAP32_INDEX_END(local_output_padding),
+                                 JSEP_HEAP32_INDEX_START(local_output_shape),
+                                 JSEP_HEAP32_INDEX_END(local_output_shape),
                                  conv_transpose_attrs_.activation.c_str());
     } else {
       constexpr size_t pads_vec_size = 4;
@@ -103,28 +99,28 @@ class ConvTranspose : public JsKernel {
       JSEP_INIT_KERNEL_ATTRIBUTE(ConvTranspose, ({
                                    "format" : $7 ? "NHWC" : "NCHW",
                                    "autoPad" : $1,
-                                   "dilations" : Array.from(HEAP32.subarray($2, $2 + /* dialations_vec_size */ 2)),
+                                   "dilations" : Array.from(HEAP32.subarray($2, ($2 >>> 0) + /* dialations_vec_size */ 2)),
                                    "group" : $3,
-                                   "kernelShape" : Array.from(HEAP32.subarray($4, $4 + /* kernel_shape_vec_size */ 2)),
-                                   "pads" : Array.from(HEAP32.subarray($5, $5 + /* pads_vec_size */ 4)),
-                                   "strides" : Array.from(HEAP32.subarray($6, $6 + /* strides_vec_size */ 2)),
+                                   "kernelShape" : Array.from(HEAP32.subarray($4, ($4 >>> 0) + /* kernel_shape_vec_size */ 2)),
+                                   "pads" : Array.from(HEAP32.subarray($5, ($5 >>> 0) + /* pads_vec_size */ 4)),
+                                   "strides" : Array.from(HEAP32.subarray($6, ($6 >>> 0) + /* strides_vec_size */ 2)),
                                    "wIsConst" : () JS_ARROW(!!HEAP8[$8]),
-                                   "outputPadding" : ($9 > 0) ? Array.from(HEAP32.subarray($10, $10 + $9)) : [],
-                                   "outputShape" : ($11 > 0) ? Array.from(HEAP32.subarray($12, $12 + $11)) : [],
+                                   "outputPadding" : $9 ? Array.from(HEAP32.subarray($9, $10)) : [],
+                                   "outputShape" : $11 ? Array.from(HEAP32.subarray($11, $12)) : [],
                                    "activation" : UTF8ToString($13)
                                  }),
                                  static_cast<int32_t>(conv_transpose_attrs_.auto_pad),
-                                 JSEP_HEAP_PTR(local_dilations.data()) >> 2,
+                                 JSEP_HEAP32_INDEX_START(local_dilations),
                                  static_cast<int32_t>(conv_transpose_attrs_.group),
-                                 JSEP_HEAP_PTR(local_kernel_shape.data()) >> 2,
-                                 JSEP_HEAP_PTR(local_pads.data()) >> 2,
-                                 JSEP_HEAP_PTR(local_strides.data()) >> 2,
+                                 JSEP_HEAP32_INDEX_START(local_kernel_shape),
+                                 JSEP_HEAP32_INDEX_START(local_pads),
+                                 JSEP_HEAP32_INDEX_START(local_strides),
                                  static_cast<int32_t>(channels_last),
-                                 JSEP_HEAP_PTR(&w_is_const_),
-                                 gsl::narrow_cast<int32_t>(local_output_padding.size()),
-                                 JSEP_HEAP_PTR(local_output_padding_ptr) >> 2,
-                                 gsl::narrow_cast<int32_t>(local_output_shape.size()),
-                                 JSEP_HEAP_PTR(local_output_shape_ptr) >> 2,
+                                 JSEP_HEAP8_INDEX(&w_is_const_),
+                                 JSEP_HEAP32_INDEX_START(local_output_padding),
+                                 JSEP_HEAP32_INDEX_END(local_output_padding),
+                                 JSEP_HEAP32_INDEX_START(local_output_shape),
+                                 JSEP_HEAP32_INDEX_END(local_output_shape),
                                  conv_transpose_attrs_.activation.c_str());
     }
   }
