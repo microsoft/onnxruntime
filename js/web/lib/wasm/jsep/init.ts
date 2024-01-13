@@ -62,7 +62,7 @@ class ComputeContextImpl implements ComputeContext {
   }
   get customDataBuffer(): Uint8Array {
     return this.module.HEAPU8.subarray(
-        this.customDataOffset >>> 0, (this.customDataOffset >>> 0) + this.customDataSize);
+        this.customDataOffset, this.customDataOffset + this.customDataSize);
   }
   private customDataOffset = 0;
   private customDataSize = 0;
