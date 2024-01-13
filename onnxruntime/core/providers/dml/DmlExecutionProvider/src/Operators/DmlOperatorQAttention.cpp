@@ -232,7 +232,13 @@ public:
         matMulIntToFloatOperatorDesc.BZeroPointTensor = &inputDescs[InputIndex::weightZeroPointIndex];
         matMulIntToFloatOperatorDesc.BiasTensor = hasBias ? &inputDescs[InputIndex::biasIndex] : nullptr;
         matMulIntToFloatOperatorDesc.OutputTensor = &namedMatMulIntToFloatOutputTensorDesc;
-
+        
+        TryConvertTensorToBroadcastScalar(kernelCreationContext, matMulIntToFloatOperatorDesc.AScaleTensor,           InputIndex::inputScaleIndex);
+        TryConvertTensorToBroadcastScalar(kernelCreationContext, matMulIntToFloatOperatorDesc.AZeroPointTensor,           InputIndex::inputZeroPointIndex);
+        
+        TryConvertTensorToBroadcastScalar(kernelCreationContext, matMulIntToFloatOperatorDesc.BScaleTensor,           InputIndex::weightScaleIndex);
+        TryConvertTensorToBroadcastScalar(kernelCreationContext, matMulIntToFloatOperatorDesc.BZeroPointTensor,           InputIndex::weightZeroPointIndex);
+        
         const DML_OPERATOR_DESC matMulIntToFloatDesc = { DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT, &matMulIntToFloatOperatorDesc};
 
         std::array<uint32_t, 3> queryKeySlicedTensorShape = {batchSize, sequenceLength, hiddenSize + hiddenSize};
