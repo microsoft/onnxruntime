@@ -109,7 +109,7 @@ static void RunTest(
     test.AddOutput<BFloat16>("output", input_dims, FloatsToBFloat16s(output_data));
   }
   if (tensor_type == TensorType::kBFloat16) {
-    test.SetOutputAbsErr("output", 0.2f);
+    test.SetOutputAbsErr("output", 0.03f);
   } else {
     test.SetOutputAbsErr("output", 0.002f);
   }
