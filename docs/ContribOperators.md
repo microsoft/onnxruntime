@@ -1588,6 +1588,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>payload of the execution provider context if embed_mode=1, or path to the context file if embed_mode=0.</dd>
 <dt><tt>ep_sdk_version</tt> : string</dt>
 <dd>(Optional) SDK version used to convert the model.</dd>
+<dt><tt>hardware_architecture</tt> : string</dt>
+<dd>(Optional) Hardware architecture.</dd>
 <dt><tt>main_context</tt> : int</dt>
 <dd>Usually each single EPContext associate with a graph partition.But for some case like QNN, it has single EPContext contains all partitions.In that case, the node with ep_cache_context should set main_context=1. Other nodes set main_context=0 and skip ep_cache_context.The path is relative to this Onnx file. Default is 1.</dd>
 <dt><tt>notes</tt> : string</dt>
@@ -2439,7 +2441,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float16)</dt>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output to float tensors.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain mask to int tensor.</dd>

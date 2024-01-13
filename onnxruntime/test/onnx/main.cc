@@ -54,7 +54,7 @@ void usage() {
       "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
       "\t    [QNN only] [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).\n"
       "\t    [QNN only] [htp_performance_mode]: QNN performance mode, options: 'burst', 'balanced', 'default', 'high_performance', \n"
-      "\t    'high_power_saver', 'low_balanced', 'low_power_saver', 'power_saver', 'sustained_high_performance'. Default to 'default'. \n"
+      "\t    'high_power_saver', 'low_balanced', 'extreme_power_saver', 'low_power_saver', 'power_saver', 'sustained_high_performance'. Default to 'default'. \n"
       "\t    [QNN only] [qnn_context_priority]: QNN context priority, options: 'low', 'normal', 'normal_high', 'high'. Default to 'normal'. \n"
       "\t    0 means dump the QNN context binary into separate bin file and set the path in the Onnx skeleton model.\n"
       "\t    [QNN only] [qnn_saver_path]: QNN Saver backend path. e.g '/folderpath/libQnnSaver.so'.\n"
@@ -487,7 +487,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           // no validation
         } else if (key == "htp_performance_mode") {
           std::set<std::string> supported_htp_perf_mode = {"burst", "balanced", "default", "high_performance",
-                                                           "high_power_saver", "low_balanced", "low_power_saver",
+                                                           "high_power_saver", "low_balanced", "extreme_power_saver", "low_power_saver",
                                                            "power_saver", "sustained_high_performance"};
           if (supported_htp_perf_mode.find(value) == supported_htp_perf_mode.end()) {
             std::ostringstream str_stream;

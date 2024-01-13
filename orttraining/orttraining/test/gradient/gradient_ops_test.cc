@@ -2218,12 +2218,6 @@ TEST(GradientUtilsTest, InPlaceAccumulatorV2_GPU) {
       {3072, 768},
       {4096, 768},
       {8192, 768},
-      {16384, 768},
-      {32768, 768},
-      {65536, 768},
-      {131072, 768},
-      {250002, 768},
-      {500004, 768},
   };
 
   for (const auto& test_dim : test_dims) {

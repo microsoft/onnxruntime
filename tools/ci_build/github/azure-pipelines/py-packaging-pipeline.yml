@@ -24,11 +24,6 @@ parameters:
   type: boolean
   default: true
 
-- name: enable_mac_silicon
-  displayName: 'Whether Mac silicon package is built.'
-  type: boolean
-  default: true
-
 - name: enable_linux_arm
   displayName: 'Whether Linux ARM package is built.'
   type: boolean
@@ -73,7 +68,6 @@ stages:
     enable_windows_cpu: ${{ parameters.enable_windows_cpu }}
     enable_windows_gpu: ${{ parameters.enable_windows_gpu }}
     enable_mac_cpu: ${{ parameters.enable_mac_cpu }}
-    enable_mac_silicon: ${{ parameters.enable_mac_silicon }}
     enable_linux_arm: ${{ parameters.enable_linux_arm }}
     enable_windows_arm64_qnn: ${{ parameters.enable_windows_arm64_qnn }}
     build_py_parameters: ${{ parameters.build_py_parameters }}

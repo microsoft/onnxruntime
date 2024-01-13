@@ -92,6 +92,9 @@ stages:
       vmImage: ubuntu-latest
     steps:
     - checkout: none
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
     - bash: |
         # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
         set +x
@@ -105,6 +108,10 @@ stages:
           echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]"
         fi
       name: Set_Release_Version_Suffix
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
+
 
 - stage: Debug
   dependsOn: Setup
@@ -116,7 +123,14 @@ stages:
       MyVar: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
     steps:
     - checkout: none
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
     - bash: echo $(MyVar)
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
+
 
 - stage: Download_Java_Tools
   dependsOn: []
@@ -126,6 +140,9 @@ stages:
       vmImage: ubuntu-latest
     steps:
     - checkout: none
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
     - task: CmdLine@2
       displayName: Download Java Tools
       inputs:
@@ -141,6 +158,9 @@ stages:
       inputs:
         targetPath: '$(Agent.TempDirectory)/java-tools'
         artifact: 'onnxruntime-java-tools'
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
 
 - template: templates/c-api-cpu.yml
   parameters:
@@ -525,6 +545,9 @@ stages:
       submodules: false
     - checkout: manylinux                      # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/manylinux
       submodules: false
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
 
     - script: |
         set -e -x
@@ -603,6 +626,10 @@ stages:
       inputs:
         targetPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
         artifactName: 'onnxruntime-linux-x64-gpu'
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
+
 
 - stage: Windows_Packaging_combined_GPU
   dependsOn:
@@ -619,6 +646,10 @@ stages:
     - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
     - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
       submodules: false
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
+
     - script: dir $(Build.SourcesDirectory)
     - task: BatchScript@1
       displayName: 'setup env'
@@ -687,13 +718,18 @@ stages:
       displayName: 'Publish Pipeline Combined GPU Package Artifact'
       inputs:
         artifactName: 'onnxruntime-win-x64-gpu'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
+        targetPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip'
 
+
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
 
 - stage: NuGet_Packaging_GPU
   dependsOn:
   - Setup
   - Windows_Packaging_gpu
+  - Windows_Packaging_CPU_x64_default
   - Windows_Packaging_tensorrt
   - Linux_C_API_Packaging_GPU_x64
   - Linux_C_API_Packaging_GPU_TensorRT_x64
@@ -747,6 +783,7 @@ stages:
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
+    # The following one is from a CPU job that publishes protoc.exe
     - template: templates/flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Pipeline Artifact - NuGet'
@@ -857,7 +894,7 @@ stages:
         PackageType: 'nuget'
         PackagePath: '$(Build.ArtifactStagingDirectory)'
         PlatformsSupported: 'win-x64,linux-x64'
-        # 1* stands for version number. we use it to fileter Gpu.Windows and Gpu.Linux packages
+        # 1* stands for version number. we use it to filter Gpu.Windows and Gpu.Linux packages
         PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.1*nupkg'
         VerifyNugetSigning: false
 
@@ -1246,45 +1283,21 @@ stages:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
-- template: nuget/templates/dml-vs-2022.yml
-  parameters:
-    AgentPool : 'onnxruntime-Win-CPU-2022'
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    ArtifactName: 'drop-win-dml-arm-zip'
-    StageName: 'Windows_CI_GPU_DML_Dev_arm'
-    BuildCommand: --build_dir $(Build.BinariesDirectory) --arm --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 17 2022"
-    BuildArch: 'x64'
-    EnvSetupScript: 'setup_env.bat'
-    sln_platform: 'arm'
-    DoDebugBuild: 'false'
-    DoNugetPack : 'true'
-    DoCompliance: ${{ parameters.DoCompliance }}
-    DoEsrp: ${{ parameters.DoEsrp }}
-    RunTests: 'false'
-    BuildNodejs: 'false'
-    NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
-     cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
-     ren Microsoft.ML.OnnxRuntime.DirectML.* win-dml-arm.zip
-     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\win-dml-arm.zip $(Build.ArtifactStagingDirectory)
-     mkdir $(Build.ArtifactStagingDirectory)\testdata
-     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
-
 - stage: NuGet_Packaging_DML
   dependsOn:
   - Windows_CI_GPU_DML_Dev
   - Windows_CI_GPU_DML_Dev_x86
   - Windows_CI_GPU_DML_Dev_arm64
-  - Windows_CI_GPU_DML_Dev_arm
   condition: succeeded()
   jobs:
   - job:
     workspace:
       clean: all
-    pool: 'onnxruntime-Win2022-GPU-T4'
-
+    pool: 'onnxruntime-Win2022-GPU-dml-A10'
     steps:
-
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - NuGet DirectML'
       inputs:
@@ -1301,12 +1314,6 @@ stages:
       displayName: 'Download Pipeline Artifact - NuGet DirectML arm64'
       inputs:
         artifactName: 'drop-win-dml-arm64-zip'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact-dml'
-
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - NuGet DirectML arm'
-      inputs:
-        artifactName: 'drop-win-dml-arm-zip'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact-dml'
 
     - script: |
@@ -1339,13 +1346,6 @@ stages:
                 move win-arm64\runtimes\win-arm64\native\onnxruntime.lib %%~ni\runtimes\win-arm64\native\onnxruntime.lib
                 move win-arm64\runtimes\win-arm64\native\onnxruntime.pdb %%~ni\runtimes\win-arm64\native\onnxruntime.pdb
 
-                unzip win-dml-arm.zip -d win-arm
-                mkdir %%~ni\runtimes\win-arm
-                mkdir %%~ni\runtimes\win-arm\native
-
-                move win-arm\runtimes\win-arm\native\onnxruntime.dll %%~ni\runtimes\win-arm\native\onnxruntime.dll
-                move win-arm\runtimes\win-arm\native\onnxruntime.lib %%~ni\runtimes\win-arm\native\onnxruntime.lib
-                move win-arm\runtimes\win-arm\native\onnxruntime.pdb %%~ni\runtimes\win-arm\native\onnxruntime.pdb
 
                 pushd %%~ni
                 zip -r ..\%%~ni.zip .
@@ -1368,7 +1368,7 @@ stages:
         PackageType: 'nuget'
         PackagePath: '$(Build.ArtifactStagingDirectory)'
         PackageName: 'Microsoft.ML.OnnxRuntime.DirectML*nupkg'
-        PlatformsSupported: 'win-x64,win-x86,win-arm64,win-arm'
+        PlatformsSupported: 'win-x64,win-x86,win-arm64'
         VerifyNugetSigning: ${{ parameters.DoEsrp }}
 
     - task: PublishPipelineArtifact@0
@@ -1376,3 +1376,6 @@ stages:
       inputs:
         artifactName: 'drop-signed-nuget-dml'
         targetPath: '$(Build.ArtifactStagingDirectory)'
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'

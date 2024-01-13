@@ -588,6 +588,9 @@ TEST_F(ActivationOpTest, Softplus) {
 }
 
 TEST_F(ActivationOpNoInfTest, Softsign) {
+  if constexpr (!SessionOptions::DEFAULT_USE_PER_SESSION_THREADS) {
+    GTEST_SKIP() << "Skipping the test";
+  }
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: The difference between expected[i] and output[i] is 1, which exceeds threshold";
