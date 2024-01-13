@@ -1485,6 +1485,7 @@ def generate_build_tree(
             and not args.ios
             and not args.android
             and not args.build_wasm
+            and not args.use_rocm
             and not (is_linux() and platform.machine() != "aarch64" and platform.machine() != "x86_64")
         ):
             if is_windows():
@@ -1528,7 +1529,7 @@ def generate_build_tree(
                     if len(cuda_compile_flags_str) != 0:
                         cudaflags.append('-Xcompiler="%s"' % cuda_compile_flags_str)
             elif is_linux() or is_macOS():
-                if is_linux() and not args.use_rocm:
+                if is_linux():
                     ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now"]
                 else:
                     ldflags = []
