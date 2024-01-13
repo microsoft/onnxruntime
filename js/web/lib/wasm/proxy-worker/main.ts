@@ -43,11 +43,12 @@ self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
   const {type, in : message} = ev.data;
   try {
     switch (type) {
-      case 'init-wasm':
-        initializeWebAssembly(message!.wasm)
+      case 'init-wasm': {
+        const {env, epName} = message!;
+        initializeWebAssembly(env!.wasm, epName)
             .then(
                 () => {
-                  initRuntime(message!).then(
+                  initRuntime(env!).then(
                       () => {
                         postMessage({type});
                       },
@@ -59,6 +60,7 @@ self.onmessage = (ev: MessageEvent<OrtWasmMessage>): void => {
                   postMessage({type, err});
                 });
         break;
+      }
       case 'init-ep': {
         const {epName, env} = message!;
         initEp(env, epName)

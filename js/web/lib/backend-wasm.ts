@@ -50,7 +50,7 @@ export class OnnxruntimeWebAssemblyBackend implements Backend {
     initializeFlags();
 
     // init wasm
-    await initializeWebAssemblyAndOrtRuntime();
+    await initializeWebAssemblyAndOrtRuntime(backendName);
 
     // performe EP specific initialization
     await initializeOrtEp(backendName);

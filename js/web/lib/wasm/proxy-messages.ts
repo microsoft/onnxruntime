@@ -44,7 +44,7 @@ interface MessageError {
 
 interface MessageInitWasm extends MessageError {
   type: 'init-wasm';
-  in ?: Env;
+  in ?: {env: Env; epName: string};
   out?: never;
 }
 

@@ -17,7 +17,7 @@ if (!BUILD_DEFS.DISABLE_TRAINING) {
       BUILD_DEFS.DISABLE_WEBGPU ? require('./binding/ort-wasm.js') : require('./binding/ort-wasm-simd.jsep.js');
 }
 
-const ortWasmFactoryThreaded: EmscriptenModuleFactory<OrtWasmModule> = !BUILD_DEFS.DISABLE_WASM_THREAD ?
+let ortWasmFactoryThreaded: EmscriptenModuleFactory<OrtWasmModule> = !BUILD_DEFS.DISABLE_WASM_THREAD ?
     (BUILD_DEFS.DISABLE_WEBGPU ? require('./binding/ort-wasm-threaded.js') :
                                  require('./binding/ort-wasm-simd-threaded.jsep.js')) :
     ortWasmFactory;
@@ -88,7 +88,7 @@ const getWasmFileName = (useSimd: boolean, useThreads: boolean) => {
   }
 };
 
-export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise<void> => {
+export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags, epName: string): Promise<void> => {
   if (initialized) {
     return Promise.resolve();
   }
@@ -108,6 +108,16 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
 
   const useThreads = numThreads > 1 && isMultiThreadSupported();
   const useSimd = simd && isSimdSupported();
+
+  // If the BUILD_DEFS.DISABLE_WEBGPU is false, the ort-web will laod ort-wasm*.jsep.js by default,
+  // this would cause other ep (e.g. webnn ep) fail in npm test if it is not compiled in the ort-wasm*.jsep.js.
+  // Overrides ortWasmFactory and ortWasmFactoryThreaded to dynamically load ort-wasm*.js according to the epName.
+  if (BUILD_DEFS.DISABLE_TRAINING && epName != 'webgpu') {
+    ortWasmFactory = require('./binding/ort-wasm.js');
+  }
+  if (!BUILD_DEFS.DISABLE_WASM_THREAD && useThreads && epName != 'webgpu') {
+    ortWasmFactoryThreaded = require('./binding/ort-wasm-threaded.js');
+  }
 
   const wasmPaths = flags.wasmPaths;
   const wasmPrefixOverride = typeof wasmPaths === 'string' ? wasmPaths : undefined;
@@ -151,7 +161,7 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
 
           const prefix = wasmPrefixOverride ?? scriptDirectory;
 
-          if (!BUILD_DEFS.DISABLE_WEBGPU) {
+          if (epName == 'webgpu') {
             if (wasmFileName === 'ort-wasm-simd.wasm') {
               return prefix + 'ort-wasm-simd.jsep.wasm';
             } else if (wasmFileName === 'ort-wasm-simd-threaded.wasm') {

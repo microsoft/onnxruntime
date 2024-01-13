@@ -64,7 +64,7 @@ const onProxyWorkerMessage = (ev: MessageEvent<OrtWasmMessage>): void => {
 
 const scriptSrc = typeof document !== 'undefined' ? (document?.currentScript as HTMLScriptElement)?.src : undefined;
 
-export const initializeWebAssemblyAndOrtRuntime = async(): Promise<void> => {
+export const initializeWebAssemblyAndOrtRuntime = async(epName: string): Promise<void> => {
   if (initialized) {
     return;
   }
@@ -100,13 +100,13 @@ export const initializeWebAssemblyAndOrtRuntime = async(): Promise<void> => {
       proxyWorker.onmessage = onProxyWorkerMessage;
       URL.revokeObjectURL(workerUrl);
       initWasmCallbacks = [resolve, reject];
-      const message: OrtWasmMessage = {type: 'init-wasm', in : env};
+      const message: OrtWasmMessage = {type: 'init-wasm', in : {env, epName}};
       proxyWorker.postMessage(message);
     });
 
   } else {
     try {
-      await initializeWebAssembly(env.wasm);
+      await initializeWebAssembly(env.wasm, epName);
       await core.initRuntime(env);
       initialized = true;
     } catch (e) {
