@@ -91,7 +91,7 @@ jobs:
             --skip_submodule_sync
             --cmake_generator "$(VSGenerator)"
             --use_qnn
-            --qnn_home ${{ parameters.QNN_SDK_ROOTDIR }}
+            --qnn_home $(QNN_SDK_ROOTDIR)
             --enable_pybind
             --parallel --update
             --numpy_version ${{ parameters.NUMPY_VERSION }}
