@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.logging.Logger;
 
 /**
  * A container for a map returned by {@link OrtSession#run(Map)}.
@@ -16,6 +17,7 @@ import java.util.Map;
  * values: String, Long, Float, Double.
  */
 public class OnnxMap implements OnnxValue {
+  private static final Logger logger = Logger.getLogger(OnnxMap.class.getName());
 
   static {
     try {
@@ -107,6 +109,8 @@ public class OnnxMap implements OnnxValue {
 
   private final OnnxMapValueType valueType;
 
+  private boolean closed;
+
   /**
    * Constructs an OnnxMap containing a reference to the native map along with the type information.
    *
@@ -122,6 +126,7 @@ public class OnnxMap implements OnnxValue {
     this.info = info;
     this.stringKeys = info.keyType == OnnxJavaType.STRING;
     this.valueType = OnnxMapValueType.mapFromOnnxJavaType(info.valueType);
+    this.closed = false;
   }
 
   /**
@@ -146,6 +151,7 @@ public class OnnxMap implements OnnxValue {
    */
   @Override
   public Map<? extends Object, ? extends Object> getValue() throws OrtException {
+    checkClosed();
     Object[] keys = getMapKeys();
     Object[] values = getMapValues();
     HashMap<Object, Object> map = new HashMap<>(OrtUtil.capacityFromSize(keys.length));
@@ -222,10 +228,27 @@ public class OnnxMap implements OnnxValue {
     return "ONNXMap(size=" + size() + ",info=" + info.toString() + ")";
   }
 
+  @Override
+  public synchronized boolean isClosed() {
+    return closed;
+  }
+
   /** Closes this map, releasing the native memory backing it and it's elements. */
   @Override
-  public void close() {
-    close(OnnxRuntime.ortApiHandle, nativeHandle);
+  public synchronized void close() {
+    if (!closed) {
+      close(OnnxRuntime.ortApiHandle, nativeHandle);
+      closed = true;
+    } else {
+      logger.warning("Closing an already closed map.");
+    }
+  }
+
+  /** Checks if the OnnxValue is closed, if so throws {@link IllegalStateException}. */
+  protected void checkClosed() {
+    if (closed) {
+      throw new IllegalStateException("Trying to use a closed OnnxValue");
+    }
   }
 
   private native String[] getStringKeys(long apiHandle, long nativeHandle, long allocatorHandle)
