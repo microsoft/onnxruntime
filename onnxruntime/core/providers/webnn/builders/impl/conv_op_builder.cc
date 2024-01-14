@@ -184,9 +184,11 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
   size_t element_size{0};
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
       element_size = sizeof(uint8_t);
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+      element_size = sizeof(int8_t);
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
       element_size = sizeof(uint16_t);
