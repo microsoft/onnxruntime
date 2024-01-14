@@ -718,7 +718,9 @@ stages:
       displayName: 'Publish Pipeline Combined GPU Package Artifact'
       inputs:
         artifactName: 'onnxruntime-win-x64-gpu'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
+        targetPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip'
+
+
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
@@ -1170,6 +1172,7 @@ stages:
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
     Skipx86Tests: 'true'
+    CudaVersion: ${{ parameters.CudaVersion }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
@@ -1181,6 +1184,7 @@ stages:
     StageSuffix: 'GPU'
     MoreSuffix: '_Windows'
     Skipx86Tests: 'true'
+    CudaVersion: ${{ parameters.CudaVersion }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
