@@ -54,11 +54,13 @@ def _parse_args():
 def _run_az_pipelines_command(command: typing.List[str]):
     try:
         az = "az.cmd" if is_windows() else "az"
-        return subprocess.run([az, "pipelines", *command], capture_output=True, text=True, check=True)
+        az_output = subprocess.run([az, "pipelines", *command], capture_output=True, text=True, check=True)
     except subprocess.CalledProcessError as cpe:
         print(cpe)
         print(cpe.stderr)
         sys.exit(-1)
+
+    return az_output
 
 
 def main():
