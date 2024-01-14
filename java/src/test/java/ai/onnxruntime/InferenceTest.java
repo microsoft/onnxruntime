@@ -69,7 +69,9 @@ public class InferenceTest {
     // Checks that the environment instance is the same.
     OrtEnvironment otherEnv = OrtEnvironment.getEnvironment();
     assertSame(env, otherEnv);
+    TestHelpers.quietLogger(OrtEnvironment.class);
     otherEnv = OrtEnvironment.getEnvironment("test-name");
+    TestHelpers.loudLogger(OrtEnvironment.class);
     assertSame(env, otherEnv);
   }
 
