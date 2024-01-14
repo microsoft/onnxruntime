@@ -17,7 +17,7 @@ TEST(QuantizeBFPTest, CreateQuantizeGraph) {
   std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
   auto p_model = std::make_unique<Model>(
       "test", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
-      model_specific_functions, DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
+      model_specific_functions, DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true, false));
   onnxruntime::Graph& graph = p_model->MainGraph();
 
   ONNX_NAMESPACE::TypeProto x_float;
@@ -67,7 +67,7 @@ TEST(DequantizeBFPTest, CreateDequantizeGraph) {
   std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
   auto p_model = std::make_unique<Model>(
       "test", true, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
-      model_specific_functions, DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
+      model_specific_functions, DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true, false));
   onnxruntime::Graph& graph = p_model->MainGraph();
 
   ONNX_NAMESPACE::TypeProto x_byte;

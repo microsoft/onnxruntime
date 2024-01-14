@@ -185,7 +185,7 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   p_model = std::make_unique<Model>("test", true, ModelMetaData(), PathString(),
                                     IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
                                     model_specific_functions, DefaultLoggingManager().DefaultLogger(),
-                                    ModelOptions(true, true));
+                                    ModelOptions(true, true, false));
   onnxruntime::Graph& graph = p_model->MainGraph();
 
   TypeProto tensor_float;
@@ -2099,6 +2099,20 @@ TEST(InferenceSessionTests, TestStrictShapeInference) {
   tester.Run(session_options, OpTester::ExpectResult::kExpectFailure,
              "Mismatch between number of inferred and declared dimensions. inferred=1 declared=2",
              excluded_provider_types);
+}
+
+TEST(InferenceSessionTests, TestAssumeCorrectModel) {
+  // Choose some simple correct models
+  std::vector<std::string> test_model_uris = {"testdata/matmul_1.onnx",
+                                              "testdata/matmul_2.onnx"};
+
+  for (const auto& model_uri : test_model_uris) {
+    SessionOptions so;
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigAssumeCorrectModel, "1"));
+    InferenceSession session_object{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session_object.Load(model_uri));
+    ASSERT_STATUS_OK(session_object.Initialize());
+  }
 }
 
 #ifdef USE_CUDA

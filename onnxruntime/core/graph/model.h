@@ -41,7 +41,7 @@ struct ModelOptions {
   ModelOptions(
       bool allow_released_opsets_only,
       bool strict_shape_type_inference,
-      bool assume_correct = false)
+      bool assume_correct)
       : allow_released_opsets_only(allow_released_opsets_only),
         strict_shape_type_inference(strict_shape_type_inference),
         assume_correct(assume_correct) {}

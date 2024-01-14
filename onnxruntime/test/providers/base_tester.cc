@@ -586,7 +586,9 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
 
     const bool strict_shape_type_inference = ctx_.session_options.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "1") == "1";
-    const ModelOptions model_options(allow_released_onnx_opset_only, strict_shape_type_inference);
+    const bool assume_correct_model = ctx_.session_options.config_options.GetConfigOrDefault(
+                                          kOrtSessionOptionsConfigAssumeCorrectModel, "0") == "1";
+    const ModelOptions model_options(allow_released_onnx_opset_only, strict_shape_type_inference, assume_correct_model);
 
     Model* p_model = nullptr;
     CreateModelToTest(model_options, p_model);
