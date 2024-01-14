@@ -195,7 +195,7 @@ stages:
   - job:
     workspace:
       clean: all
-    timeoutInMinutes: 120
+    timeoutInMinutes: 180
     pool: 'Onnxruntime-Linux-GPU'
     variables:
       - name: CUDA_VERSION_MAJOR
