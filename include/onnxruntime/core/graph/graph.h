@@ -1298,6 +1298,8 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     // Whether to set that no proto sync is required after resolving.
     // Useful for resolving right after loading from a GraphProto.
     bool no_proto_sync_required = false;
+    // Whether it is required to perform checks on the graph.
+    bool no_checks = false;
   };
 
   /**

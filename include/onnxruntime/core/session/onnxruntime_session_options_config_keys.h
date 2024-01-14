@@ -175,6 +175,10 @@ static const char* const kOrtSessionOptionsConfigForceSpinningStop = "session.fo
 // May be useful to expose bugs in models.
 static const char* const kOrtSessionOptionsConfigStrictShapeTypeInference = "session.strict_shape_type_inference";
 
+// "1": removes model checking to optimize InferenceSession creation for correct models.
+// "0": no checks are skipped. The default.
+static const char* const kOrtSessionOptionsConfigAssumeCorrectModel = "session.assume_correct_model";
+
 // "1": every model using a more recent opset than the latest released one will fail
 // "0": the model may or may not work if onnxruntime cannot find an implementation, this option
 // is used for development purpose.

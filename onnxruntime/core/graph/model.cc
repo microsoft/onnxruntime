@@ -440,6 +440,7 @@ Status Model::Load(const ModelProto& model_proto,
 
   Graph::ResolveOptions resolve_options;
   resolve_options.no_proto_sync_required = true;
+  resolve_options.no_checks = options.assume_correct;
   ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(resolve_options));
 
   return status;
@@ -479,6 +480,7 @@ Status Model::Load(ModelProto&& model_proto,
 
   Graph::ResolveOptions resolve_options;
   resolve_options.no_proto_sync_required = true;
+  resolve_options.no_checks = options.assume_correct;
   ORT_RETURN_IF_ERROR(model->MainGraph().Resolve(resolve_options));
 
   return status;
@@ -677,6 +679,7 @@ Status Model::LoadFromBytes(int count, void* p_bytes, const PathString& model_pa
 
   Graph::ResolveOptions resolve_options;
   resolve_options.no_proto_sync_required = true;
+  resolve_options.no_checks = options.assume_correct;
   ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(resolve_options));
 
   return Status::OK();
@@ -736,6 +739,7 @@ Status Model::Load(int fd, const PathString& model_path, std::shared_ptr<Model>&
 
   Graph::ResolveOptions resolve_options;
   resolve_options.no_proto_sync_required = true;
+  resolve_options.no_checks = options.assume_correct;
   ORT_RETURN_IF_ERROR(p_model->MainGraph().Resolve(resolve_options));
 
   return Status::OK();

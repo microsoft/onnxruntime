@@ -849,9 +849,11 @@ common::Status InferenceSession::LoadOnnxModel(const PathString& model_uri) {
 #endif
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
+    const bool assume_correct_model = session_options_.config_options.GetConfigOrDefault(
+                                          kOrtSessionOptionsConfigAssumeCorrectModel, "0") == "1";
     return onnxruntime::Model::Load(model_location_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                                     *session_logger_,
-                                    ModelOptions(true, strict_shape_type_inference));
+                                    ModelOptions(true, strict_shape_type_inference, assume_correct_model));
   };
 
   common::Status st = LoadWithLoader(loader, "model_loading_uri");
@@ -935,9 +937,12 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
+
+    const bool assume_correct_model = session_options_.config_options.GetConfigOrDefault(
+                                          kOrtSessionOptionsConfigAssumeCorrectModel, "0") == "1";
     return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
-                                    ModelOptions(true, strict_shape_type_inference));
+                                    ModelOptions(true, strict_shape_type_inference, assume_correct_model));
   };
 
   return LoadWithLoader(loader, "model_loading_array");
@@ -965,10 +970,13 @@ common::Status InferenceSession::LoadOnnxModel(ModelProto model_proto) {
 #endif
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
+
+    const bool assume_correct_model = session_options_.config_options.GetConfigOrDefault(
+                                          kOrtSessionOptionsConfigAssumeCorrectModel, "0") == "1";
     // This call will move model_proto to the constructed model instance
     return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
-                                    ModelOptions(true, strict_shape_type_inference));
+                                    ModelOptions(true, strict_shape_type_inference, assume_correct_model));
   };
 
   return LoadWithLoader(loader, "model_loading_proto");
@@ -1000,8 +1008,11 @@ common::Status InferenceSession::Load(std::istream& model_istream, bool allow_re
 #endif
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
+    const bool assume_correct_model = session_options_.config_options.GetConfigOrDefault(
+                                          kOrtSessionOptionsConfigAssumeCorrectModel, "0") == "1";
     ModelOptions model_opts(allow_released_opsets_only,
-                            strict_shape_type_inference);
+                            strict_shape_type_inference,
+                            assume_correct_model);
     return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                                     *session_logger_, model_opts);
@@ -1029,11 +1040,13 @@ common::Status InferenceSession::Load() {
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
     const bool allow_released_opsets_only = session_options_.config_options.GetConfigOrDefault(
                                                 kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly, "1") == "1";
+    const bool assume_correct_model = session_options_.config_options.GetConfigOrDefault(
+                                          kOrtSessionOptionsConfigAssumeCorrectModel, "0") == "1";
 
     // Pass on ownership of the parsed ModelProto to the Model instance (its job here is done by this stage)
     return Model::Load(std::move(this->model_proto_), model_location_, model,
                        HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
-                       ModelOptions(allow_released_opsets_only, strict_shape_type_inference));
+                       ModelOptions(allow_released_opsets_only, strict_shape_type_inference, assume_correct_model));
   };
 
   return LoadWithLoader(loader, "model_loading_from_saved_proto");

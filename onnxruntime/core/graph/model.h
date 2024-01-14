@@ -35,12 +35,18 @@ struct ModelOptions {
   // warnings will be logged but processing will continue and no error will
   // be returned.
   bool strict_shape_type_inference;
+  // Assume the model is correct.
+  bool assume_correct;
 
-  ModelOptions(bool allow_released_opsets_only, bool strict_shape_type_inference)
+  ModelOptions(
+      bool allow_released_opsets_only,
+      bool strict_shape_type_inference,
+      bool assume_correct = false)
       : allow_released_opsets_only(allow_released_opsets_only),
-        strict_shape_type_inference(strict_shape_type_inference) {}
+        strict_shape_type_inference(strict_shape_type_inference),
+        assume_correct(assume_correct) {}
 
-  ModelOptions() : ModelOptions(true, false) {}
+  ModelOptions() : ModelOptions(true, false, false) {}
 };
 
 // A machine learning model representation class.

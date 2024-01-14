@@ -501,6 +501,5 @@ ORT_API_STATUS_IMPL(ShapeInferContext_SetOutputTypeShape, _In_ const OrtShapeInf
 ORT_API_STATUS_IMPL(SetSymbolicDimensions, _In_ OrtTensorTypeAndShapeInfo* info, _In_ const char* dim_params[], _In_ size_t dim_params_length);
 ORT_API_STATUS_IMPL(ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ OrtOpAttrType type, _Inout_ void* data, _In_ size_t len, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(SetDeterministicCompute, _Inout_ OrtSessionOptions* options, bool value);
-ORT_API_STATUS_IMPL(SetOptimizeInit, _Inout_ OrtSessionOptions* options, bool value);
 
 }  // namespace OrtApis

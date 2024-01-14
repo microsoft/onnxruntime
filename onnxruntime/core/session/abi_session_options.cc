@@ -16,7 +16,7 @@
 OrtSessionOptions::~OrtSessionOptions() = default;
 
 OrtSessionOptions& OrtSessionOptions::operator=(const OrtSessionOptions&) {
- ORT_THROW("not implemented");
+  ORT_THROW("not implemented");
 }
 OrtSessionOptions::OrtSessionOptions(const OrtSessionOptions& other)
     : value(other.value), provider_factories(other.provider_factories) {
@@ -297,13 +297,6 @@ ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializers, _In_ OrtSessionOptions* op
 ORT_API_STATUS_IMPL(OrtApis::SetDeterministicCompute, _Inout_ OrtSessionOptions* options, bool value) {
   API_IMPL_BEGIN
   options->value.use_deterministic_compute = value;
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtApis::SetOptimizeInit, _Inout_ OrtSessionOptions* options, bool value) {
-  API_IMPL_BEGIN
-  options->value.optimize_init = value;
   return nullptr;
   API_IMPL_END
 }

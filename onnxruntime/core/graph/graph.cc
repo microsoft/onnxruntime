@@ -2559,7 +2559,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     const auto& node_name = node.Name();
 
     if (!node.Op()) {
-      {
+      if (!options.no_checks) {
         auto status = Status::OK();
         ORT_TRY {
           NodeProto node_proto;
