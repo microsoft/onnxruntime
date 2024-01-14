@@ -113,10 +113,11 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags, epName: 
   // this would cause other ep (e.g. webnn ep) fail in npm test if it is not compiled in the ort-wasm*.jsep.js.
   // Overrides ortWasmFactory and ortWasmFactoryThreaded to dynamically load ort-wasm*.js according to the epName.
   if (BUILD_DEFS.DISABLE_TRAINING && epName != 'webgpu') {
-    ortWasmFactory = require('./binding/ort-wasm.js');
+    ortWasmFactory = useSimd ? require('./binding/ort-wasm-simd.js') : require('./binding/ort-wasm.js');
   }
   if (!BUILD_DEFS.DISABLE_WASM_THREAD && useThreads && epName != 'webgpu') {
-    ortWasmFactoryThreaded = require('./binding/ort-wasm-threaded.js');
+    ortWasmFactoryThreaded = useSimd ? require('./binding/ort-wasm-simd-threaded.js') :
+                                       require('./binding/ort-wasm-threaded.js');
   }
 
   const wasmPaths = flags.wasmPaths;
