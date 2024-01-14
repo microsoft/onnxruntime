@@ -13,6 +13,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/common/logging/logging.h"
 #ifdef _WIN32
+#include <winmeta.h>
 #include "core/platform/tracing.h"
 #endif
 
@@ -47,6 +48,8 @@ class ExecutionProviders {
       TraceLoggingWrite(
           telemetry_provider_handle,
           "ProviderOptions",
+          TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
+          TraceLoggingLevel(WINEVENT_LEVEL_INFO),
           TraceLoggingString(provider_id.c_str(), "ProviderId"),
           TraceLoggingString(config_pair.first.c_str(), "Key"),
           TraceLoggingString(config_pair.second.c_str(), "Value"));
