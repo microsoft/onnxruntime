@@ -49,7 +49,7 @@ stages:
         isTraining: false
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
-        WITH_CACHE: true
+        WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
 
     - job: build_x64_asan
@@ -95,7 +95,7 @@ stages:
         isTraining: false
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
-        WITH_CACHE: true
+        WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
 
 - stage: x64_release_dnnl
@@ -113,7 +113,7 @@ stages:
         isTraining: false
         ORT_EP_NAME: DNNL
         GenerateDocumentation: false
-        WITH_CACHE: true
+        WITH_CACHE: false
         # Intel EPs require Intel CPUs
         MachinePool: 'onnxruntime-Win2022-Intel-CPU'
 
@@ -133,7 +133,7 @@ stages:
         isTraining: false
         ORT_EP_NAME: XNNPACK
         GenerateDocumentation: false
-        WITH_CACHE: true
+        WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
 
 - stage: x64_release_winml
@@ -153,7 +153,7 @@ stages:
         isTraining: false
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
-        WITH_CACHE: true
+        WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
         
 - stage: x86_release
@@ -172,7 +172,7 @@ stages:
         isTraining: false
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
-        WITH_CACHE: true
+        WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
 
 - stage: training_x64_debug
@@ -190,7 +190,7 @@ stages:
         isTraining: true
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
-        WITH_CACHE: true
+        WITH_CACHE: false
         MachinePool: 'onnxruntime-Win2022-CPU-training-AMD'
 
 - stage: training_x64_release
@@ -208,7 +208,7 @@ stages:
         isTraining: true
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
-        WITH_CACHE: true
+        WITH_CACHE: false
         MachinePool: 'onnxruntime-Win2022-CPU-training-AMD'
 
 - stage: ort_training_apis_x64_release
@@ -227,7 +227,7 @@ stages:
         isTraining: true
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
-        WITH_CACHE: true
+        WITH_CACHE: false
         MachinePool: 'onnxruntime-Win2022-CPU-training-AMD'
 
 - stage: x64_release_azure
@@ -254,7 +254,7 @@ stages:
         isTraining: false
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
-        WITH_CACHE: true
+        WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
 
 
