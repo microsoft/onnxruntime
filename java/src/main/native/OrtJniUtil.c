@@ -373,7 +373,7 @@ jobject convertToTensorInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTensorT
   jobjectArray names = (*jniEnv)->NewObjectArray(jniEnv, safecast_size_t_to_jsize(numDim), stringClazz, NULL);
   for (size_t i = 0; i < numDim; i++) {
     jobject javaName = (*jniEnv)->NewStringUTF(jniEnv, dimensionNames[i]);
-    (*jniEnv)->SetObjectArrayElement(jniEnv, names, i, javaName);
+    (*jniEnv)->SetObjectArrayElement(jniEnv, names, i, safecast_size_t_to_jsize(javaName));
   }
   free(dimensionNames);
 

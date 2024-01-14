@@ -163,6 +163,9 @@ public class TensorInfo implements ValueInfo {
   /** The names of the unbound dimensions. */
   final String[] dimensionNames;
 
+  /** If there are non-empty dimension names */
+  private final boolean hasNames;
+
   /** The Java type of this tensor. */
   public final OnnxJavaType type;
 
@@ -183,6 +186,7 @@ public class TensorInfo implements ValueInfo {
     this.shape = shape;
     this.dimensionNames = new String[shape.length];
     Arrays.fill(dimensionNames, "");
+    this.hasNames = false;
     this.type = type;
     this.onnxType = onnxType;
     this.numElements = elementCount(shape);
@@ -200,6 +204,14 @@ public class TensorInfo implements ValueInfo {
   TensorInfo(long[] shape, String[] names, int typeInt) {
     this.shape = shape;
     this.dimensionNames = names;
+    boolean hasNames = false;
+    for (String s : names) {
+      if (!s.isEmpty()) {
+        hasNames = true;
+        break;
+      }
+    }
+    this.hasNames = hasNames;
     this.onnxType = OnnxTensorType.mapFromInt(typeInt);
     this.type = OnnxJavaType.mapFromOnnxTensorType(this.onnxType);
     this.numElements = elementCount(shape);
@@ -225,24 +237,31 @@ public class TensorInfo implements ValueInfo {
 
   @Override
   public String toString() {
-    return "TensorInfo(javaType="
-        + type.toString()
-        + ",onnxType="
-        + onnxType.toString()
-        + ",shape="
-        + Arrays.toString(shape)
-        + ",dimNames=["
-        + Arrays.stream(dimensionNames)
-            .map(
-                a -> {
-                  if (a.isEmpty()) {
-                    return "\"\"";
-                  } else {
-                    return a;
-                  }
-                })
-            .collect(Collectors.joining(","))
-        + "])";
+    String output =
+        "TensorInfo(javaType="
+            + type.toString()
+            + ",onnxType="
+            + onnxType.toString()
+            + ",shape="
+            + Arrays.toString(shape);
+    if (hasNames) {
+      output =
+          output
+              + ",dimNames=["
+              + Arrays.stream(dimensionNames)
+                  .map(
+                      a -> {
+                        if (a.isEmpty()) {
+                          return "\"\"";
+                        } else {
+                          return a;
+                        }
+                      })
+                  .collect(Collectors.joining(","))
+              + "]";
+    }
+    output = output + ")";
+    return output;
   }
 
   /**
