@@ -3568,12 +3568,7 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
       // on the first call to Graph::Resolve we are removing unnecessary initializers that should be removed
       // from the model.
       // on later calls we are removing initializers that optimizations have made redundant.
-      if (num_resolves_ == 0) {
-        LOGS(logger_, WARNING) << "Removing initializer '"
-                               << name << "'. It is not used by any node and should be removed from the model.";
-      } else {
-        LOGS(logger_, INFO) << "Removing initializer '" << name << "'. It is no longer used by any node.";
-      }
+      LOGS(logger_, INFO) << "Removing initializer '" << name << "'. It is no longer used by any node.";
 
       erase_list.push_back(name);
     }
