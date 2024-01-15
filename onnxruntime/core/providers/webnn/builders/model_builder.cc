@@ -386,7 +386,12 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   for (auto& name : output_names_) {
     named_operands.set(name, wnn_operands_.at(name));
   }
-  emscripten::val wnn_graph = wnn_builder_.call<emscripten::val>("buildSync", named_operands);
+
+  emscripten::val console = emscripten::val::global("console");
+  console.call<void>("log", emscripten::val("start webnn async build()..."));
+  emscripten::val wnn_graph = wnn_builder_.call<emscripten::val>("build", named_operands).await();
+  console.call<void>("log", wnn_builder_);
+  console.call<void>("log", emscripten::val("Done webnn async build()..."));
   if (!wnn_graph.as<bool>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to build WebNN graph.");
   }
