@@ -149,7 +149,7 @@ export const createGroupedConvVectorizeProgramInfo =
     // Use constant instead of uniform can give better performance for w's height/width.
     for (var w_height: u32 = 0u; w_height < ${wShape[0]}; w_height++) {
       let x_height = x_corner.x + i32(w_height);
-      if (x_height >= 0 || u32(x_height) < uniforms.x_shape[1]) {
+      if (x_height >= 0 && u32(x_height) < uniforms.x_shape[1]) {
         for (var i = 0; i < ${xNumber}; i++) {
           let x_width = x_corner.y + i;
           if (x_width >= 0 && u32(x_width) < uniforms.x_shape[2]) {

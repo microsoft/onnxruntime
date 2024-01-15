@@ -138,12 +138,8 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
   // const hasPreluActivationWeights = false; /* TODO: add support for prelu activation weights */
   const isChannelsLast = attributes.format === 'NHWC';
   if (attributes.group !== 1) {
-    // Temporarily disable createGroupedConvVectorizeProgramInfo path due to bots failures with below two cases:
-    // [webgpu]Conv - conv - vectorize group - B
-    // [webgpu]Conv - conv - vectorize group - D
-    const disableGroupedConvVectorize = true;
-    if (!disableGroupedConvVectorize && isChannelsLast && inputs[1].dims[0] === attributes.group &&
-        inputs[1].dims[1] === 1 && attributes.dilations[0] === 1 && attributes.dilations[1] === 1) {
+    if (isChannelsLast && inputs[1].dims[0] === attributes.group && inputs[1].dims[1] === 1 &&
+        attributes.dilations[0] === 1 && attributes.dilations[1] === 1) {
       const outputShape = calculateOutputShape(
           inputs[0].dims, inputs[1].dims, attributes.dilations, adjustedAttributes.pads, attributes.strides,
           isChannelsLast);
