@@ -4,6 +4,7 @@
 #include <string>
 
 #include "core/common/common.h"
+#include "core/common/logging/logging.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/provider_options.h"
 #include "core/providers/provider_factory_creators.h"
@@ -13,6 +14,7 @@
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
 
 #ifdef _WIN32
+#include <winmeta.h>
 #include "core/platform/tracing.h"
 #endif
 
@@ -75,6 +77,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     TraceLoggingWrite(
         telemetry_provider_handle,
         "ProviderOptionsAppendExecutionProvider",
+        TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
+        TraceLoggingLevel(WINEVENT_LEVEL_INFO),
         TraceLoggingString(provider_name, "ProviderName"),
         TraceLoggingString(config_pair.first.c_str(), "Key"),
         TraceLoggingString(config_pair.second.c_str(), "Value"));
@@ -306,6 +310,18 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO,
                     _In_ OrtSessionOptions* options, _In_ const OrtOpenVINOProviderOptions* provider_options) {
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(provider_options);
+  return CreateNotEnabledStatus("OpenVINO");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO_V2,
+                    _In_ OrtSessionOptions* options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    _In_ size_t num_keys) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
   return CreateNotEnabledStatus("OpenVINO");
 }
 

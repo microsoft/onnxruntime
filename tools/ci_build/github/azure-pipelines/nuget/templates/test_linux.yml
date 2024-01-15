@@ -3,6 +3,7 @@ parameters:
   ArtifactSuffix: ''
   NugetPackageName : ''
   StageSuffix: 'CPU'
+  # More Suffix is used to differentiate testing for GPU and GPU-Windows/GPU-Linux packages
   MoreSuffix: ''
   NativePackagePrefix: 'onnxruntime'
   SpecificArtifact: false

@@ -8,10 +8,11 @@ import {Tensor} from './tensor.js';
  * implementation of Tensor.toDataURL()
  */
 export const tensorToDataURL = (tensor: Tensor, options?: TensorToDataUrlOptions): string => {
-  const canvas = document.createElement('canvas');
+  const canvas = typeof document !== 'undefined' ? document.createElement('canvas') : (new OffscreenCanvas(1, 1));
   canvas.width = tensor.dims[3];
   canvas.height = tensor.dims[2];
-  const pixels2DContext = canvas.getContext('2d');
+  const pixels2DContext =
+      canvas.getContext('2d') as (CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null);
 
   if (pixels2DContext != null) {
     // Default values for height and width & format
@@ -88,7 +89,11 @@ export const tensorToDataURL = (tensor: Tensor, options?: TensorToDataUrlOptions
         pixels2DContext.fillRect(j, i, 1, 1);
       }
     }
-    return canvas.toDataURL();
+    if ('toDataURL' in canvas) {
+      return canvas.toDataURL();
+    } else {
+      throw new Error('toDataURL is not supported');
+    }
   } else {
     throw new Error('Can not access image data');
   }
@@ -98,7 +103,9 @@ export const tensorToDataURL = (tensor: Tensor, options?: TensorToDataUrlOptions
  * implementation of Tensor.toImageData()
  */
 export const tensorToImageData = (tensor: Tensor, options?: TensorToImageDataOptions): ImageData => {
-  const pixels2DContext = document.createElement('canvas').getContext('2d');
+  const pixels2DContext = typeof document !== 'undefined' ?
+      document.createElement('canvas').getContext('2d') :
+      new OffscreenCanvas(1, 1).getContext('2d') as OffscreenCanvasRenderingContext2D;
   let image: ImageData;
   if (pixels2DContext != null) {
     // Default values for height and width & format

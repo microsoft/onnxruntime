@@ -60,9 +60,6 @@ const setExecutionProviders =
 
         // check EP name
         switch (epName) {
-          case 'xnnpack':
-            epName = 'XNNPACK';
-            break;
           case 'webnn':
             epName = 'WEBNN';
             if (typeof ep !== 'string') {

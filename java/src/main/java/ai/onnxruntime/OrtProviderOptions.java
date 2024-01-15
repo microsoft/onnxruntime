@@ -5,11 +5,14 @@
 package ai.onnxruntime;
 
 import java.io.IOException;
+import java.util.logging.Logger;
 
 /** An abstract base class for execution provider options classes. */
 // Note this lives in ai.onnxruntime to allow subclasses to access the OnnxRuntime.ortApiHandle
 // package private field.
 public abstract class OrtProviderOptions implements AutoCloseable {
+  private static final Logger logger = Logger.getLogger(OrtProviderOptions.class.getName());
+
   static {
     try {
       OnnxRuntime.init();
@@ -21,6 +24,9 @@ public abstract class OrtProviderOptions implements AutoCloseable {
   /** The native pointer. */
   protected final long nativeHandle;
 
+  /** Is the native object closed? */
+  protected boolean closed;
+
   /**
    * Constructs a OrtProviderOptions wrapped around a native pointer.
    *
@@ -28,6 +34,7 @@ public abstract class OrtProviderOptions implements AutoCloseable {
    */
   protected OrtProviderOptions(long nativeHandle) {
     this.nativeHandle = nativeHandle;
+    this.closed = false;
   }
 
   /**
@@ -46,9 +53,30 @@ public abstract class OrtProviderOptions implements AutoCloseable {
    */
   public abstract OrtProvider getProvider();
 
+  /**
+   * Is the native object closed?
+   *
+   * @return True if the native object has been released.
+   */
+  public synchronized boolean isClosed() {
+    return closed;
+  }
+
   @Override
   public void close() {
-    close(OnnxRuntime.ortApiHandle, nativeHandle);
+    if (!closed) {
+      close(OnnxRuntime.ortApiHandle, nativeHandle);
+      closed = true;
+    } else {
+      logger.warning("Closing an already closed tensor.");
+    }
+  }
+
+  /** Checks if the OrtProviderOptions is closed, if so throws {@link IllegalStateException}. */
+  protected void checkClosed() {
+    if (closed) {
+      throw new IllegalStateException("Trying to use a closed OrtProviderOptions");
+    }
   }
 
   /**
