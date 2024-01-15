@@ -520,11 +520,6 @@ class GraphExecutionManager(GraphExecutionInterface):
                 exported_model,
             ) = post_processing_enable_mem_efficient_training(exported_model, self._flattened_module.named_parameters())
 
-        # if self._runtime_options.run_symbolic_shape_infer:
-        #     exported_model = SymbolicShapeInference.infer_shapes(
-        #         exported_model, auto_merge=True, guess_output_rank=True
-        #     )
-
         # All initializer names along with user inputs are a part of the onnx graph inputs
         # since the onnx model was exported with the flag keep_initializers_as_inputs=True
         # We need to use the raw exported model here since the graph inputs include both user inputrs and

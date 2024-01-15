@@ -50,7 +50,6 @@ def post_processing_enable_mem_efficient_training(
 
     """
     trainable_named_params = get_params_connected_to_pull_param_trigger(named_params, exported_model)
-    # print(exported_model.graph.input)
     if len(trainable_named_params) == 0:
         return False, exported_model
 
@@ -103,7 +102,7 @@ def post_processing_enable_mem_efficient_training(
                 MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_DTYPE,
                 MEM_EFFICIENT_PARAM_TRIGGER_OUTPUT_SHAPE,
             ),
-            graph_input.name,  # Second param is a string, which represent the param_name
+            graph_input.name,  # Second param is a string, which represents the param_name
         ]
 
         node_outputs = [
@@ -126,7 +125,6 @@ def post_processing_enable_mem_efficient_training(
         input_offset += 1
 
     # Delete exported_model.graph.input
-
     names_to_remove = [input.name for input in graph_inputs_to_remove]
     value_infos_to_remove = [
         value_info for value_info in exported_model.graph.value_info if value_info.name in names_to_remove
@@ -138,7 +136,7 @@ def post_processing_enable_mem_efficient_training(
         exported_model.graph.input.remove(input_to_remove)
 
     # Re-order graph input to make sure the weight pull trigger is the first user input.
-    offset = 0  # Find the first trainable param, insert the new input before it, as part of user inputs.
+    offset = 0  # Find the first trainable param, and insert the new input before it, as part of user inputs.
     for input in exported_model.graph.input:
         if input.name in named_params:
             break
