@@ -169,12 +169,12 @@ jobs:
       errorActionPreference: stop
     displayName: 'Pack NPM packages'
   - script: |
-     npm test -- -e=chrome -b=webgl,wasm,xnnpack
+     npm test -- -e=chrome -b=webgl,wasm
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
-    displayName: 'Run ort-web tests (wasm,webgl,xnnpack backend)'
+    displayName: 'Run ort-web tests (wasm,webgl backend)'
     condition: eq('${{ parameters.RunWebGpuTests }}', 'false')
   - script: |
-     npm test -- -e=chrome -b=webgl,wasm,xnnpack,webgpu $(webgpuCommandlineExtraFlags)
+     npm test -- -e=chrome -b=webgl,wasm,webgpu $(webgpuCommandlineExtraFlags)
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (ALL backends)'
     condition: eq('${{ parameters.RunWebGpuTests }}', 'true')

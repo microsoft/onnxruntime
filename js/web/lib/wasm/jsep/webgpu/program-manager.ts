@@ -3,10 +3,8 @@
 
 import {TRACE_FUNC_BEGIN, TRACE_FUNC_END} from 'onnxruntime-common';
 
-import {tensorDataTypeEnumToString} from '../../wasm-common';
 import {WebGpuBackend} from '../backend-webgpu';
 import {LOG_DEBUG} from '../log';
-import {TensorView} from '../tensor-view';
 
 import {createShaderHelper} from './ops/common';
 import {Artifact, GpuData, ProgramInfo} from './types';
@@ -34,13 +32,12 @@ export class ProgramManager {
   setArtifact(key: unknown, artifact: Artifact): void {
     this.repo.set(key, artifact);
   }
-  run(buildArtifact: Artifact, inputTensorViews: readonly TensorView[], outputTensorViews: readonly TensorView[],
-      inputs: GpuData[], outputs: GpuData[], dispatchGroup: [number, number, number],
+  run(buildArtifact: Artifact, inputs: GpuData[], outputs: GpuData[], dispatchGroup: [number, number, number],
       uniformBufferBinding: GPUBindingResource|undefined): void {
     TRACE_FUNC_BEGIN(buildArtifact.programInfo.name);
     const device = this.backend.device;
-
     const computePassEncoder = this.backend.getComputePassEncoder();
+    this.backend.writeTimestamp(this.backend.pendingDispatchNumber * 2);
     computePassEncoder.setPipeline(buildArtifact.computePipeline);
     const entries = [];
     for (const input of inputs) {
@@ -57,78 +54,14 @@ export class ProgramManager {
     computePassEncoder.setBindGroup(0, bindGroup);
 
     computePassEncoder.dispatchWorkgroups(...dispatchGroup);
-
+    this.backend.writeTimestamp(this.backend.pendingDispatchNumber * 2 + 1);
     this.backend.pendingDispatchNumber++;
 
-    if (this.backend.isQueryEnabled()) {
-      if (typeof this.backend.queryData === 'undefined') {
-        this.backend.queryData = this.backend.gpuDataManager.create(
-            // eslint-disable-next-line no-bitwise
-            this.backend.querySetCount * 8, GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE);
-      }
-      const syncData = this.backend.gpuDataManager.create(
-          // eslint-disable-next-line no-bitwise
-          this.backend.querySetCount * 8, GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST);
-
+    if (this.backend.pendingDispatchNumber >= this.backend.maxDispatchNumber ||
+        this.backend.queryType === 'at-passes') {
       this.backend.endComputePass();
-      this.backend.getCommandEncoder().resolveQuerySet(this.backend.querySet!, 0, 2, this.backend.queryData.buffer, 0);
-      this.backend.getCommandEncoder().copyBufferToBuffer(
-          this.backend.queryData.buffer, 0, syncData.buffer, 0, this.backend.querySetCount * 8);
-      this.backend.flush();
-
-      const kernelId = this.backend.currentKernelId!;
-      const kernelInfo = this.backend.kernels.get(kernelId)!;
-
-      void syncData.buffer.mapAsync(GPUMapMode.READ).then(() => {
-        const mappedData = new BigUint64Array(syncData.buffer.getMappedRange());
-        const [startTimeU64, endTimeU64] = mappedData;
-        const [kernelType, kernelName] = kernelInfo;
-
-        syncData.buffer.unmap();
-
-        if (typeof this.backend.queryTimeBase === 'undefined') {
-          this.backend.queryTimeBase = startTimeU64;
-        }
-
-        const startTime = Number(startTimeU64 - this.backend.queryTimeBase);
-        const endTime = Number(endTimeU64 - this.backend.queryTimeBase);
-
-        if (!Number.isSafeInteger(startTime) || !Number.isSafeInteger(endTime)) {
-          throw new RangeError('incorrect timestamp range');
-        }
-
-        this.backend.gpuDataManager.release(syncData.id);
-        if (this.backend.env.webgpu.profiling?.ondata) {
-          this.backend.env.webgpu.profiling.ondata({
-            version: 1,
-            inputsMetadata: inputTensorViews.map(
-                value => ({dims: value.dims, dataType: tensorDataTypeEnumToString(value.dataType)})),
-            outputsMetadata: outputTensorViews.map(
-                value => ({dims: value.dims, dataType: tensorDataTypeEnumToString(value.dataType)})),
-            kernelId,
-            kernelType,
-            kernelName,
-            startTime,
-            endTime,
-          });
-        } else {
-          // if no callback is provided, print the profiling message to console
-          let inputShapes = '';
-          inputTensorViews.forEach((value, i) => {
-            inputShapes += `input[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
-          });
-          let outputShapes = '';
-          outputTensorViews.forEach((value, i) => {
-            outputShapes += `output[${i}]: [${value.dims}] | ${tensorDataTypeEnumToString(value.dataType)}, `;
-          });
-          // eslint-disable-next-line no-console
-          console.log(`[profiling] kernel "${kernelId}|${kernelName}|${buildArtifact.programInfo.name}" ${inputShapes}${
-              outputShapes}execution time: ${endTime - startTime} ns`);
-        }
-      });
     }
-
-    if (this.backend.pendingDispatchNumber >= 16) {
+    if (this.backend.pendingDispatchNumber >= this.backend.maxDispatchNumber) {
       this.backend.flush();
     }
     TRACE_FUNC_END(buildArtifact.programInfo.name);
