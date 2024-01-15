@@ -56,9 +56,9 @@ class MatMulNBits final : public OpKernel {
   const size_t nbits_;
   const int64_t accuracy_level_;
   const bool column_wise_quant_{true};
-#ifdef ORT_NEURAL_SPEED
   IAllocatorUniquePtr<void> packed_b_;
   size_t packed_b_size_{0};
+#ifdef ORT_NEURAL_SPEED
   bool is_asym_{false};
   bool all_constant_{false};
 #endif
@@ -113,7 +113,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     is_packed = true;
   }
 
-#else  // defined(MLAS_JBLAS)
+#else  // defined(ORT_NEURAL_SPEED)
 
   if (input_idx == 1) {
     packed_b_size_ = MlasSQNBitGemmPackQuantBDataSize(N_, K_, nbits_, block_size_);
@@ -128,7 +128,7 @@ Status MatMulNBits::PrePack(const Tensor& tensor, int input_idx, /*out*/ Allocat
     is_packed = true;
   }
 
-#endif  // defined(MLAS_JBLAS)
+#endif  // defined(ORT_NEURAL_SPEED)
 
   return Status::OK();
 }
@@ -151,14 +151,14 @@ Status MatMulNBits::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prep
     packed_b_ = std::move(prepacked_buffers[0]);
   }
 
-#else  // defined(MLAS_JBLAS)
+#else  // defined(ORT_NEURAL_SPEED)
 
   if (input_idx == 1) {
     used_shared_buffers = true;
     packed_b_ = std::move(prepacked_buffers[0]);
   }
 
-#endif  // defined(MLAS_JBLAS)
+#endif  // defined(ORT_NEURAL_SPEED)
   return Status::OK();
 }
 
@@ -204,7 +204,7 @@ Status MatMulNBits::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-#endif  // defined(MLAS_JBLAS)
+#endif  // defined(ORT_NEURAL_SPEED)
 
   const Tensor* scales = ctx->Input<Tensor>(2);
   const Tensor* zero_points = ctx->Input<Tensor>(3);

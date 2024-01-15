@@ -22,11 +22,11 @@ Abstract:
  * @brief Define compute types of block quantization
  */
 enum NS_SQNBIT_COMPUTE_TYPE {
-  CompUndef = 0, /*!< undef */
-  CompFp32 = 1,  /*!< input fp32, accumulator fp32 */
-  CompFp16 = 2,  /*!< input fp16, accumulator fp16 */
-  CompBf16 = 3,  /*!< input bf16, accumulator fp32 */
-  CompInt8 = 4   /*!< input int8, accumulator int32 */
+  NSCompUndef = 0, /*!< undef */
+  NSCompFp32 = 1,  /*!< input fp32, accumulator fp32 */
+  NSCompFp16 = 2,  /*!< input fp16, accumulator fp16 */
+  NSCompBf16 = 3,  /*!< input bf16, accumulator fp32 */
+  NSCompInt8 = 4   /*!< input int8, accumulator int32 */
 };
 
 /**

@@ -323,7 +323,7 @@ static size_t NSQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym,
   }
   // from low precision to high precision
   switch (CompType) {
-    case CompInt8:
+    case NSCompInt8:
       if (!isAsym) {  // asym int8 is not optimized, so fall through to others.
         if (_cd->AMX_INT8() && BlkSize % tAMX_INT8_SS_KBlock::KTILE == 0) {
           return NSQ4BuSize<tWeiNInt<tAMX_INT8_SS_KBlock, tAMX_INT8_SS_KBlock::ISA>>(BlkSize, N, K, isAsym);
@@ -336,10 +336,10 @@ static size_t NSQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym,
         }
       }
       [[fallthrough]];
-    case CompBf16:
-    case CompFp16:
-    case CompFp32:
-    case CompUndef:
+    case NSCompBf16:
+    case NSCompFp16:
+    case NSCompFp32:
+    case NSCompUndef:
       if (_cd->AVX512F() && BlkSize % tAVX512F::KTILE == 0) {
         return NSQ4BuSize<tWeiNInt<tAVX512F, tAVX512F::ISA>>(BlkSize, N, K, isAsym);
       }
@@ -358,7 +358,7 @@ static bool NSQ4GemmPackB(void* PackedBuf, const uint8_t* QData, const float* Sc
   GetCPUDevice();
   // explicit statement fall through.
   switch (CompType) {
-    case CompInt8:
+    case NSCompInt8:
       if (!isAsym) {  // asym int8 is not optimized, so fall through to others.
         if (_cd->AMX_INT8() && BlkSize % tAMX_INT8_SS_KBlock::KTILE == 0) {
           NSQ4GemmPackBImpl<tWeiNInt<tAMX_INT8_SS_KBlock, tAMX_INT8_SS_KBlock::ISA>>(
@@ -377,10 +377,10 @@ static bool NSQ4GemmPackB(void* PackedBuf, const uint8_t* QData, const float* Sc
         }
       }
       [[fallthrough]];
-    case CompBf16:
-    case CompFp16:
-    case CompFp32:
-    case CompUndef:
+    case NSCompBf16:
+    case NSCompFp16:
+    case NSCompFp32:
+    case NSCompUndef:
       if (_cd->AVX512F() && BlkSize % tAVX512F::KTILE == 0) {
         NSQ4GemmPackBImpl<tWeiNInt<tAVX512F, tAVX512F::ISA>>(PackedBuf, BlkSize, QData, Scale, Zp, N, K, isAsym,
                                                              lastCall, ldb, ThreadPool);
