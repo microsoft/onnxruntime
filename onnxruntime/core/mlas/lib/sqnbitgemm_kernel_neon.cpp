@@ -23,12 +23,6 @@ Abstract:
 #include <cassert>
 #include <utility>
 
-//
-// Hardware-specific kernel type.
-//
-struct MLAS_SQNBIT_GEMM_KERNEL_NEON {
-};
-
 namespace
 {
 
@@ -70,7 +64,7 @@ FoldAccumulators(float32x4_t a0, float32x4_t a1, float32x4_t a2, float32x4_t a3)
 
 template <size_t Capacity>
 MLAS_FORCEINLINE void
-LoadData(const float* src, size_t count, float32x4_t (& dst)[Capacity / 4])
+LoadFloatData(const float* src, size_t count, float32x4_t (&dst)[Capacity / 4])
 {
     static_assert(Capacity % 4 == 0, "Capacity must be divisible by 4.");
 
@@ -101,13 +95,14 @@ LoadData(const float* src, size_t count, float32x4_t (& dst)[Capacity / 4])
     }
 }
 
-template <size_t BlkBitWidth, size_t BlkLen, size_t NCols>
+template <size_t NCols>
 MLAS_FORCEINLINE void
-ComputeDotProducts(
+ComputeDotProducts_BlkBitWidth4_CompFp32(
+    size_t BlkLen,
     const float* ARowPtr,
-    const uint8_t* QuantBDataColPtr,
+    const std::byte* QuantBDataColPtr,
     const float* QuantBScaleColPtr,
-    const uint8_t* QuantBZeroPointColPtr,
+    const std::byte* QuantBZeroPointColPtr,
     float* SumPtr,
     size_t CountK,
     size_t StrideQuantBData,
@@ -116,7 +111,12 @@ ComputeDotProducts(
     const float* BiasPtr
 )
 {
+    constexpr size_t BlkBitWidth = 4;
+
     static_assert(NCols == 1 || NCols == 4, "NCols must be 1 or 4");
+
+    constexpr size_t SubBlkLen = 16;  // number of block elements to process in a sub-block iteration
+    assert(BlkLen % SubBlkLen == 0);
 
     const uint8x8_t LowMask = vdup_n_u8(0x0F);
 
@@ -135,7 +135,7 @@ ComputeDotProducts(
 
     float32x4_t acc[NCols]{};
 
-    const uint8_t* QuantBData = QuantBDataColPtr;
+    const std::byte* QuantBData = QuantBDataColPtr;
     const float* QuantBScale = QuantBScaleColPtr;
     size_t QuantBZeroPointIdx = 0;  // track half byte increments with this index instead of a pointer
 
@@ -150,10 +150,12 @@ ComputeDotProducts(
         float offset[NCols];  // Includes zero point and float conversion offset of 16.
         if (QuantBZeroPointColPtr != nullptr) {
             UnrolledLoop<NCols>([&](size_t i) {
-                const uint8_t zp_packed =
+                const std::byte zp_packed =
                     QuantBZeroPointColPtr[i * StrideQuantBZeroPoint + QuantBZeroPointIdx / 2];
-                const uint8_t zp = ((QuantBZeroPointIdx & 1) == 1) ? (zp_packed >> 4) : (zp_packed & 0x0F);
-                offset[i] = 16.0f + zp;
+                const std::byte zp = ((QuantBZeroPointIdx & 1) == 1)
+                                         ? (zp_packed >> 4)
+                                         : (zp_packed & std::byte{0x0F});
+                offset[i] = 16.0f + std::to_integer<uint8_t>(zp);
             });
         } else {
             UnrolledLoop<NCols>([&](size_t i) {
@@ -162,33 +164,27 @@ ComputeDotProducts(
             });
         }
 
-        constexpr size_t SubBlkLen = 16;  // number of block elements to process in one iteration
-
         for (size_t k_idx_in_blk = 0; k_idx_in_blk < k_blk_len; k_idx_in_blk += SubBlkLen) {
             // load A row vector elements
 
             // load `SubBlkLen` elements from A, padded with 0's if there aren't enough
             const size_t k_subblk_len = std::min(k_blk_len - k_idx_in_blk, SubBlkLen);
             float32x4_t av[4]{};
-            LoadData<SubBlkLen>(ARowPtr + k + k_idx_in_blk, k_subblk_len, av);
+            LoadFloatData<SubBlkLen>(ARowPtr + k + k_idx_in_blk, k_subblk_len, av);
 
             // load B column vectors
             uint8x8_t bv_packed[NCols];
+            const size_t b_data_block_offset = k_idx_in_blk * BlkBitWidth / 8;
             UnrolledLoop<NCols>([&](size_t i) {
-                const size_t b_data_block_offset = k_idx_in_blk * BlkBitWidth / 8;
-                bv_packed[i] = vld1_u8(QuantBData + i * StrideQuantBData + b_data_block_offset);
-            });
-
-            uint8x8_t bv_u8_unzipped[NCols][2];
-            UnrolledLoop<NCols>([&](size_t i) {
-                bv_u8_unzipped[i][0] = vand_u8(bv_packed[i], LowMask);
-                bv_u8_unzipped[i][1] = vand_u8(vshr_n_u8(bv_packed[i], 4), LowMask);
+                bv_packed[i] = vld1_u8(
+                    reinterpret_cast<const uint8_t*>(QuantBData) + i * StrideQuantBData + b_data_block_offset
+                );
             });
 
             uint8x8_t bv_u8[NCols][2];
             UnrolledLoop<NCols>([&](size_t i) {
-                bv_u8[i][0] = vzip1_u8(bv_u8_unzipped[i][0], bv_u8_unzipped[i][1]);
-                bv_u8[i][1] = vzip2_u8(bv_u8_unzipped[i][0], bv_u8_unzipped[i][1]);
+                bv_u8[i][0] = vand_u8(bv_packed[i], LowMask);
+                bv_u8[i][1] = vshr_n_u8(bv_packed[i], 4);
             });
 
             // dequantize B
@@ -262,19 +258,13 @@ ComputeDotProducts(
     }
 }
 
-}  // namespace
-
-//
-// MlasSQNBitGemmKernel and helpers.
-//
-
-template <size_t BlkBitWidth, size_t BlkLen>
 MLAS_FORCEINLINE void
-MlasSQNBitGemmM1KernelNeon(
+SQ4BitGemmM1Kernel_CompFp32(
+    size_t BlkLen,
     const float* A,
-    const uint8_t* QuantBData,
+    const std::byte* QuantBData,
     const float* QuantBScale,
-    const uint8_t* QuantBZeroPoint,
+    const std::byte* QuantBZeroPoint,
     float* C,
     size_t CountN,
     size_t CountK,
@@ -282,6 +272,7 @@ MlasSQNBitGemmM1KernelNeon(
     const float* Bias
 )
 {
+    constexpr size_t BlkBitWidth = 4;
     constexpr size_t NCols = 4;
 
     const float* ARowPtr = A;
@@ -295,16 +286,17 @@ MlasSQNBitGemmM1KernelNeon(
 
     const float* BiasPtr = Bias;
 
-    const uint8_t* QuantBDataColPtr = QuantBData;
+    const std::byte* QuantBDataColPtr = QuantBData;
     const float* QuantBScaleColPtr = QuantBScale;
-    const uint8_t* QuantBZeroPointColPtr = QuantBZeroPoint;
+    const std::byte* QuantBZeroPointColPtr = QuantBZeroPoint;
 
     float* SumPtr = CRowPtr;
 
     int64_t nblk = static_cast<int64_t>(CountN) - NCols;
 
     while (nblk >= 0) {
-        ComputeDotProducts<BlkBitWidth, BlkLen, NCols>(
+        ComputeDotProducts_BlkBitWidth4_CompFp32<NCols>(
+            BlkLen,
             ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
             StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
             BiasPtr
@@ -327,7 +319,8 @@ MlasSQNBitGemmM1KernelNeon(
     // left over columns less than `NCols`?
     nblk += NCols;
     for (int64_t n = 0; n < nblk; ++n) {
-        ComputeDotProducts<BlkBitWidth, BlkLen, 1>(
+        ComputeDotProducts_BlkBitWidth4_CompFp32<1>(
+            BlkLen,
             ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
             StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
             BiasPtr
@@ -346,59 +339,26 @@ MlasSQNBitGemmM1KernelNeon(
     }
 }
 
-#define SPECIALIZE_SQNBIT_GEMM_M1_KERNEL(BlkBitWidth, BlkLen)                  \
-    template <>                                                                \
-    MLAS_FORCEINLINE void                                                      \
-    MlasSQNBitGemmM1Kernel<BlkBitWidth, BlkLen, MLAS_SQNBIT_GEMM_KERNEL_NEON>( \
-        const float* A,                                                        \
-        const uint8_t* QuantBData,                                             \
-        const float* QuantBScale,                                              \
-        const uint8_t* QuantBZeroPoint,                                        \
-        float* C,                                                              \
-        size_t CountN,                                                         \
-        size_t CountK,                                                         \
-        size_t BlockStrideQuantB,                                              \
-        const float* Bias                                                      \
-    )                                                                          \
-    {                                                                          \
-        return MlasSQNBitGemmM1KernelNeon<BlkBitWidth, BlkLen>(                \
-            A, QuantBData, QuantBScale, QuantBZeroPoint, C, CountN, CountK,    \
-            BlockStrideQuantB, Bias                                            \
-        );                                                                     \
-    }
-
-SPECIALIZE_SQNBIT_GEMM_M1_KERNEL(4, 16)
-SPECIALIZE_SQNBIT_GEMM_M1_KERNEL(4, 32)
-SPECIALIZE_SQNBIT_GEMM_M1_KERNEL(4, 64)
-SPECIALIZE_SQNBIT_GEMM_M1_KERNEL(4, 128)
-SPECIALIZE_SQNBIT_GEMM_M1_KERNEL(4, 256)
-
-#undef SPECIALIZE_SQNBIT_GEMM_M1_KERNEL
-
-//
-// MlasQNBitBlkDequantBForSgemm and helpers.
-//
-
-template <size_t BlkBitWidth, size_t BlkLen>
 MLAS_FORCEINLINE void
-MlasQNBitBlkDequantBForSgemmNeon(
+Q4BitBlkDequantBForSgemm_CompFp32(
+    size_t BlkLen,
     float* FpData,
-    const uint8_t* QuantBData,
+    const std::byte* QuantBData,
     const float* QuantBScale,
-    const uint8_t* QuantBZeroPoint,
+    const std::byte* QuantBZeroPoint,
     size_t CountN,
     size_t CountK,
     size_t BlockStrideQuantB
 )
 {
     auto impl0_reference = [&]() {
-        static_assert(BlkBitWidth == 4);
+        constexpr size_t BlkBitWidth = 4;
 
         float* Dst = FpData;
 
-        const uint8_t* QuantBDataCol = QuantBData;
+        const std::byte* QuantBDataCol = QuantBData;
         const float* QuantBScaleCol = QuantBScale;
-        const uint8_t* QuantBZeroPointCol = QuantBZeroPoint;
+        const std::byte* QuantBZeroPointCol = QuantBZeroPoint;
 
         for (size_t n = 0; n < CountN; n += 16) {
             const size_t nnlen = std::min(CountN - n, size_t{16});
@@ -407,20 +367,26 @@ MlasQNBitBlkDequantBForSgemmNeon(
                 for (size_t k = 0, k_blk_idx = 0; k < CountK; k += BlkLen, k_blk_idx += 1) {
                     const size_t kklen = std::min(CountK - k, BlkLen);
 
-                    const uint8_t* b_data =
+                    const std::byte* b_data =
                         QuantBDataCol + k_blk_idx * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
                     const float b_s = QuantBScaleCol[k_blk_idx];
                     const uint8_t b_z =
                         (QuantBZeroPointCol != nullptr)
                             ? ((k_blk_idx & 1) == 1)
-                                  ? QuantBZeroPointCol[k_blk_idx / 2] >> 4
-                                  : QuantBZeroPointCol[k_blk_idx / 2] & 0x0F
+                                  ? std::to_integer<uint8_t>(QuantBZeroPointCol[k_blk_idx / 2] >> 4)
+                                  : std::to_integer<uint8_t>(QuantBZeroPointCol[k_blk_idx / 2] & std::byte{0x0F})
                             : 8;
 
                     for (size_t kk = 0; kk < kklen; ++kk) {
-                        const uint8_t b_packed = b_data[kk / 2];
-                        const uint8_t b_byte = ((kk & 1) == 1) ? b_packed >> 4 : b_packed & 0x0F;
-                        const float b_value = (b_byte - b_z) * b_s;
+                        const size_t packed_idx = kk % 16;
+
+                        const bool is_low_half = packed_idx < 8;
+                        const size_t packed_byte_idx = packed_idx % 8;
+                        const size_t packed_range_offset = (kk / 16) * 8;
+
+                        const std::byte b_packed = b_data[packed_range_offset + packed_byte_idx];
+                        const std::byte b_byte = is_low_half ? (b_packed & std::byte{0x0F}) : (b_packed >> 4);
+                        const float b_value = (std::to_integer<int8_t>(b_byte) - b_z) * b_s;
 
                         Dst[(k + kk) * 16 + nn] = b_value;
                     }
@@ -448,31 +414,332 @@ MlasQNBitBlkDequantBForSgemmNeon(
     impl0_reference();
 }
 
-#define SPECIALIZE_QNBIT_BLK_DEQUANT_B_FOR_SGEMM(BlkBitWidth, BlkLen)                           \
-    template <>                                                                                 \
-    MLAS_FORCEINLINE void                                                                       \
-    MlasQNBitBlkDequantBForSgemm<BlkBitWidth, BlkLen, MLAS_SQNBIT_GEMM_KERNEL_NEON>(            \
-        float* FpData,                                                                          \
-        const uint8_t* QuantBData,                                                              \
-        const float* QuantBScale,                                                               \
-        const uint8_t* QuantBZeroPoint,                                                         \
-        size_t CountN,                                                                          \
-        size_t CountK,                                                                          \
-        size_t BlockStrideQuantB                                                                \
-    )                                                                                           \
-    {                                                                                           \
-        MlasQNBitBlkDequantBForSgemmNeon<BlkBitWidth, BlkLen>(                                  \
-            FpData, QuantBData, QuantBScale, QuantBZeroPoint, CountN, CountK, BlockStrideQuantB \
-        );                                                                                      \
+//
+// CompInt8 kernel implementation and related helpers
+//
+
+template <size_t SubBlkLen>
+MLAS_FORCEINLINE void
+QuantizeBlock(
+    size_t BlkLen,
+    const float* A,
+    size_t ElementCount,
+    std::byte* QuantA
+)
+{
+    static_assert(SubBlkLen >= 16 && SubBlkLen % 16 == 0);
+
+    assert(BlkLen % SubBlkLen == 0);
+
+    constexpr size_t VectorCount = SubBlkLen / 4;
+
+    //
+    // Scan block values first to determine scale.
+    //
+
+    float amax = 0.0f;  // max of absolute values of A block
+
+    size_t k;
+    for (k = 0; k < ElementCount; k += SubBlkLen) {
+        const size_t SubBlkElementCount = std::min(ElementCount - k, SubBlkLen);
+
+        float32x4_t a[VectorCount]{};
+        LoadFloatData<SubBlkLen>(A + k, SubBlkElementCount, a);
+
+        float32x4_t abs_a[VectorCount];
+        UnrolledLoop<VectorCount>([&](size_t i) {
+            abs_a[i] = vabsq_f32(a[i]);
+        });
+
+        // find amax of SubBlkLen elements
+        for (size_t interval = VectorCount / 2; interval > 0; interval /= 2) {
+            for (size_t i = 0; i < interval; ++i) {
+                abs_a[i] = vmaxq_f32(abs_a[i], abs_a[i + interval]);
+            }
+        }
+
+        // update existing amax
+        amax = std::max(amax, vmaxvq_f32(abs_a[0]));
     }
 
-SPECIALIZE_QNBIT_BLK_DEQUANT_B_FOR_SGEMM(4, 16)
-SPECIALIZE_QNBIT_BLK_DEQUANT_B_FOR_SGEMM(4, 32)
-SPECIALIZE_QNBIT_BLK_DEQUANT_B_FOR_SGEMM(4, 64)
-SPECIALIZE_QNBIT_BLK_DEQUANT_B_FOR_SGEMM(4, 128)
-SPECIALIZE_QNBIT_BLK_DEQUANT_B_FOR_SGEMM(4, 256)
+    constexpr float range_max = (1 << 7) - 1;
+    const float scale = amax / range_max;
+    const float scale_reciprocal = scale != 0.0f ? 1.0f / scale : 0.0f;
 
-#undef SPECIALIZE_QNBIT_BLK_DEQUANT_B_FOR_SGEMM
+    Q8BlkScale(QuantA) = scale;
+
+    //
+    // Compute quantized block values.
+    //
+
+    int8_t* QuantAData = Q8BlkData(QuantA);
+
+    for (k = 0; k < ElementCount; k += SubBlkLen) {
+        const size_t SubBlkElementCount = std::min(ElementCount - k, SubBlkLen);
+
+        float32x4_t a[VectorCount]{};
+        LoadFloatData<SubBlkLen>(A + k, SubBlkElementCount, a);
+
+        UnrolledLoop<VectorCount>([&](size_t i) {
+            a[i] = vmulq_n_f32(a[i], scale_reciprocal);
+        });
+
+        int32x4_t a_s32[VectorCount];
+        UnrolledLoop<VectorCount>([&](size_t i) {
+            a_s32[i] = vcvtaq_s32_f32(a[i]);
+        });
+
+        UnrolledLoop<VectorCount>([&](size_t i) {
+            QuantAData[k + i * 4 + 0] = static_cast<int8_t>(vgetq_lane_s32(a_s32[i], 0));
+            QuantAData[k + i * 4 + 1] = static_cast<int8_t>(vgetq_lane_s32(a_s32[i], 1));
+            QuantAData[k + i * 4 + 2] = static_cast<int8_t>(vgetq_lane_s32(a_s32[i], 2));
+            QuantAData[k + i * 4 + 3] = static_cast<int8_t>(vgetq_lane_s32(a_s32[i], 3));
+        });
+    }
+
+    //
+    // Zero out any remaining sub-block elements.
+    //
+
+    for (; k < BlkLen; k += SubBlkLen) {
+        const int8x16_t Zeros = vdupq_n_s8(0);
+        UnrolledLoop<SubBlkLen / 16>([&](size_t i) {
+            vst1q_s8(QuantAData + k + i * 16, Zeros);
+        });
+    }
+}
+
+void MLASCALL
+QuantizeARow_CompInt8(
+    size_t BlkLen,
+    const float* A,
+    size_t CountK,
+    std::byte* QuantA
+)
+{
+    const float* ADataBlkPtr = A;
+    std::byte* QuantABlkPtr = QuantA;
+
+    for (size_t k = 0; k < CountK; k += BlkLen) {
+        const size_t k_blk_len = std::min(CountK - k, BlkLen);
+
+        QuantizeBlock<16>(BlkLen, ADataBlkPtr, k_blk_len, QuantABlkPtr);
+
+        ADataBlkPtr += BlkLen;
+        QuantABlkPtr += Q8BlkSize(BlkLen);
+    }
+}
+
+template <size_t NCols>
+MLAS_FORCEINLINE void
+ComputeDotProducts_BlkBitWidth4_CompInt8(
+    size_t BlkLen,
+    const std::byte* QuantARowPtr,
+    const std::byte* QuantBDataColPtr,
+    const float* QuantBScaleColPtr,
+    const std::byte* QuantBZeroPointColPtr,
+    float* SumPtr,
+    size_t CountK,
+    size_t StrideQuantBData,
+    size_t StrideQuantBScale,
+    size_t StrideQuantBZeroPoint,
+    const float* BiasPtr
+)
+{
+    static_assert(NCols == 1 || NCols == 4, "NCols must be 1 or 4");
+
+    constexpr size_t BlkBitWidth = 4;
+
+    constexpr size_t SubBlkLen = 16;  // number of block elements to process in a sub-block iteration
+    assert(BlkLen % SubBlkLen == 0);
+
+    const uint8x8_t LowMask = vdup_n_u8(0x0F);
+
+    const std::byte* QuantA = QuantARowPtr;
+
+    const std::byte* QuantBData = QuantBDataColPtr;
+    const float* QuantBScale = QuantBScaleColPtr;
+    size_t QuantBZeroPointIdx = 0;  // track half byte increments with this index instead of a pointer
+
+    float32x4_t acc[NCols]{};
+
+    for (size_t k = 0; k < CountK; k += BlkLen) {
+        const size_t k_blk_len = std::min(CountK - k, BlkLen);
+
+        const float a_scale = Q8BlkScale(QuantA);
+        const int8_t* a_data = Q8BlkData(QuantA);
+
+        float b_scale[NCols];
+        UnrolledLoop<NCols>([&](size_t i) { b_scale[i] = QuantBScale[i * StrideQuantBScale]; });
+
+        int8_t b_zp[NCols];
+        if (QuantBZeroPointColPtr != nullptr) {
+            UnrolledLoop<NCols>([&](size_t i) {
+                const std::byte zp_packed =
+                    QuantBZeroPointColPtr[i * StrideQuantBZeroPoint + QuantBZeroPointIdx / 2];
+                b_zp[i] = ((QuantBZeroPointIdx & 1) == 1)
+                              ? std::to_integer<int8_t>(zp_packed >> 4)
+                              : std::to_integer<int8_t>(zp_packed & std::byte{0x0F});
+            });
+        } else {
+            UnrolledLoop<NCols>([&](size_t i) {
+                b_zp[i] = 8;
+            });
+        }
+
+        for (size_t k_idx_in_blk = 0; k_idx_in_blk < k_blk_len; k_idx_in_blk += SubBlkLen) {
+            // load A row vector
+            int8x16_t av = vld1q_s8(a_data + k_idx_in_blk);
+
+            // load B column vectors
+            uint8x8_t bv_packed[NCols];
+            const size_t b_data_block_offset = k_idx_in_blk * BlkBitWidth / 8;
+            UnrolledLoop<NCols>([&](size_t i) {
+                bv_packed[i] = vld1_u8(
+                    reinterpret_cast<const uint8_t*>(QuantBData) + i * StrideQuantBData + b_data_block_offset
+                );
+            });
+
+            int8x16_t bv[NCols];
+            UnrolledLoop<NCols>([&](size_t i) {
+                const int8x8_t lo = vreinterpret_s8_u8(vand_u8(bv_packed[i], LowMask));
+                const int8x8_t hi = vreinterpret_s8_u8(vshr_n_u8(bv_packed[i], 4));
+                bv[i] = vcombine_s8(lo, hi);
+            });
+
+            // subtract B zero point
+            UnrolledLoop<NCols>([&](size_t i) {
+                const int8x16_t zp_v = vdupq_n_s8(b_zp[i]);
+                bv[i] = vsubq_s8(bv[i], zp_v);
+            });
+
+            // compute quantized dot product
+            int32x4_t dot[NCols]{};
+            UnrolledLoop<NCols>([&](size_t i) {
+                dot[i] = vdotq_s32(dot[i], av, bv[i]);
+            });
+
+            // convert dot product result to float
+            float32x4_t dot_f32[NCols];
+            UnrolledLoop<NCols>([&](size_t i) {
+                dot_f32[i] = vcvtq_f32_s32(dot[i]);
+            });
+
+            // multiply dot product result by scale and update accumulator
+            UnrolledLoop<NCols>([&](size_t i) {
+                const float32x4_t scale_v = vdupq_n_f32(a_scale * b_scale[i]);
+                acc[i] = vfmaq_f32(acc[i], dot_f32[i], scale_v);
+            });
+        }
+
+        // increment pointers to next block
+        QuantA += Q8BlkSize(BlkLen);
+        QuantBData += MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+        QuantBScale += 1;
+        QuantBZeroPointIdx += 1;
+    }
+
+    if constexpr (NCols == 4) {
+        float32x4_t sum = FoldAccumulators(acc[0], acc[1], acc[2], acc[3]);
+
+        if (BiasPtr != nullptr) {
+            sum = vaddq_f32(sum, vld1q_f32(BiasPtr));
+        }
+
+        vst1q_f32(SumPtr, sum);
+    } else {
+        for (size_t i = 0; i < NCols; ++i) {
+            SumPtr[i] = vaddvq_f32(acc[i]);
+            if (BiasPtr != nullptr) {
+                SumPtr[i] += BiasPtr[i];
+            }
+        }
+    }
+}
+
+MLAS_FORCEINLINE
+void
+SQ4BitGemmM1Kernel_CompInt8(
+    size_t BlkLen,
+    const std::byte* QuantA,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* QuantBZeroPoint,
+    float* C,
+    size_t CountN,
+    size_t CountK,
+    size_t BlockStrideQuantB,
+    const float* Bias
+)
+{
+    constexpr size_t BlkBitWidth = 4;
+    constexpr size_t NCols = 4;
+
+    const std::byte* QuantARowPtr = QuantA;
+    float* CRowPtr = C;
+
+    const size_t BlockCountK = BlockStrideQuantB;
+
+    const size_t StrideQuantBData = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    const size_t StrideQuantBScale = BlockCountK;
+    const size_t StrideQuantBZeroPoint = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockCountK);
+
+    const float* BiasPtr = Bias;
+
+    const std::byte* QuantBDataColPtr = QuantBData;
+    const float* QuantBScaleColPtr = QuantBScale;
+    const std::byte* QuantBZeroPointColPtr = QuantBZeroPoint;
+
+    float* SumPtr = CRowPtr;
+
+    int64_t nblk = static_cast<int64_t>(CountN) - NCols;
+
+    while (nblk >= 0) {
+        ComputeDotProducts_BlkBitWidth4_CompInt8<NCols>(
+            BlkLen,
+            QuantARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
+            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
+            BiasPtr
+        );
+
+        // move to next `NCols` columns
+
+        QuantBDataColPtr += NCols * StrideQuantBData;
+        QuantBScaleColPtr += NCols * StrideQuantBScale;
+        if (QuantBZeroPointColPtr != nullptr) {
+            QuantBZeroPointColPtr += NCols * StrideQuantBZeroPoint;
+        }
+
+        BiasPtr += BiasPtr != nullptr ? NCols : 0;
+        SumPtr += NCols;
+
+        nblk -= NCols;
+    }
+
+    // left over columns less than `NCols`?
+    nblk += NCols;
+    for (int64_t n = 0; n < nblk; ++n) {
+        ComputeDotProducts_BlkBitWidth4_CompInt8<1>(
+            BlkLen,
+            QuantARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
+            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
+            BiasPtr
+        );
+
+        // move to next column
+
+        QuantBDataColPtr += StrideQuantBData;
+        QuantBScaleColPtr += StrideQuantBScale;
+        if (QuantBZeroPointColPtr != nullptr) {
+            QuantBZeroPointColPtr += StrideQuantBZeroPoint;
+        }
+
+        BiasPtr += BiasPtr != nullptr ? 1 : 0;
+        SumPtr += 1;
+    }
+}
+
+}  // namespace
 
 //
 // Kernel dispatch structure definition.
@@ -480,10 +747,11 @@ SPECIALIZE_QNBIT_BLK_DEQUANT_B_FOR_SGEMM(4, 256)
 
 const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
     MLAS_SQNBIT_GEMM_DISPATCH d;
-    d.Operations[QuantVariant_BitWidth4_BlockSize16] = MlasSQNBitGemmOperation<4, 16, MLAS_SQNBIT_GEMM_KERNEL_NEON>;
-    d.Operations[QuantVariant_BitWidth4_BlockSize32] = MlasSQNBitGemmOperation<4, 32, MLAS_SQNBIT_GEMM_KERNEL_NEON>;
-    d.Operations[QuantVariant_BitWidth4_BlockSize64] = MlasSQNBitGemmOperation<4, 64, MLAS_SQNBIT_GEMM_KERNEL_NEON>;
-    d.Operations[QuantVariant_BitWidth4_BlockSize128] = MlasSQNBitGemmOperation<4, 128, MLAS_SQNBIT_GEMM_KERNEL_NEON>;
-    d.Operations[QuantVariant_BitWidth4_BlockSize256] = MlasSQNBitGemmOperation<4, 256, MLAS_SQNBIT_GEMM_KERNEL_NEON>;
+
+    d.SQ4BitGemmM1Kernel_CompFp32 = SQ4BitGemmM1Kernel_CompFp32;
+    d.Q4BitBlkDequantBForSgemm_CompFp32 = Q4BitBlkDequantBForSgemm_CompFp32;
+    d.SQ4BitGemmM1Kernel_CompInt8 = SQ4BitGemmM1Kernel_CompInt8;
+    d.QuantizeARow_CompInt8 = QuantizeARow_CompInt8;
+
     return d;
 }();

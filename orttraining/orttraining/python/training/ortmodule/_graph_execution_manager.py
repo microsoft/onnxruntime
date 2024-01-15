@@ -246,7 +246,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # requires PRIORITY_BASED order to work properly. So we use PRIORITY_BASED order when recompute is enabled.
         session_options.execution_order = (
             onnxruntime.ExecutionOrder.PRIORITY_BASED
-            if self._runtime_options.memory_optimizer_config != ""
+            if self._runtime_options.memory_optimizer_is_enabled()
             else onnxruntime.ExecutionOrder.DEFAULT
         )
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.

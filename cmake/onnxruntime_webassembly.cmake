@@ -225,6 +225,7 @@ else()
     "SHELL:-s EXPORT_ALL=0"
     "SHELL:-s VERBOSE=0"
     "SHELL:-s FILESYSTEM=0"
+    "SHELL:-s INCOMING_MODULE_JS_API=[preRun,locateFile,arguments,onExit,wasmMemory,buffer,instantiateWasm,mainScriptUrlOrBlob]"
     ${WASM_API_EXCEPTION_CATCHING}
     --no-entry
   )
@@ -281,6 +282,7 @@ else()
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s EXPORT_NAME=ortWasmThreaded"
       "SHELL:-s DEFAULT_PTHREAD_STACK_SIZE=131072"
+      "SHELL:-s PTHREAD_POOL_SIZE=Module[\\\"numThreads\\\"]"
     )
   else()
     target_link_options(onnxruntime_webassembly PRIVATE

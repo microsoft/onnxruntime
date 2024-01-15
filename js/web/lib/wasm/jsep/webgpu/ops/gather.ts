@@ -31,7 +31,7 @@ const createGatherProgramInfo = (inputs: readonly TensorView[], attributes: Gath
 
   const axisDimLimit = inputShape[axis];
   const components = inputs[0].dataType === DataType.bool ? 4 : 1;
-  const outputSize = ShapeUtil.size(outputShape) / components;
+  const outputSize = Math.ceil(ShapeUtil.size(outputShape) / components);
 
   const enableInputShapesUniforms = enableShapesUniforms(inputs[0].dims.length);
   const inputShapeOrRank = enableInputShapesUniforms ? inputs[0].dims.length : inputs[0].dims;

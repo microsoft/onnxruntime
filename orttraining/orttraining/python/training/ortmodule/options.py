@@ -411,3 +411,12 @@ class _RuntimeOptions:
 
         if "ORTMODULE_DEEPCOPY_BEFORE_MODEL_EXPORT" in os.environ:
             self.deepcopy_before_model_export = int(os.getenv("ORTMODULE_DEEPCOPY_BEFORE_MODEL_EXPORT")) == 1
+
+    def memory_optimizer_is_enabled(self) -> bool:
+        """Check whether memory optimizer is enabled."""
+        if self.memory_optimization_level == _MemoryOptimizationLevel.USER_SPECIFIED:
+            return len(self.memory_optimizer_config) > 0
+        elif self.memory_optimization_level == _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE:
+            return True
+
+        return False
