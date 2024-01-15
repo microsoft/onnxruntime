@@ -67,7 +67,10 @@ namespace js {
                             float value;                                           \
                             ORT_ENFORCE(info.GetAttr<float>(#attr_name, &value));, \
                                                                                  , ({#attr_name : $1}), static_cast<double>(value))
-#define JSEP_HEAP_PTR(ptr) reinterpret_cast<uintptr_t>(ptr)
+
+#define JSEP_HEAP8_INDEX(ptr) reinterpret_cast<uintptr_t>(ptr)
+#define JSEP_HEAP32_INDEX_START(vec) ((vec.size() > 0) ? reinterpret_cast<uintptr_t>(vec.data()) >> 2 : 0)
+#define JSEP_HEAP32_INDEX_END(vec) ((reinterpret_cast<uintptr_t>(vec.data()) >> 2) + vec.size())
 
 // TODO:
 // class JsMultiProgramKernel : public OpKernel { /* TBD */ };

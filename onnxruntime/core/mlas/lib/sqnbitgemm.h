@@ -10,97 +10,22 @@ Module Name:
 
 Abstract:
 
-    This module includes:
+    This module includes kernel function prototypes and helper functions for
+    implementing SQNBitGemm.
 
-    - Declaration of the set of template functions used to implement a kernel
-    for a matrix/matrix multiplication, A*B, where A is a float matrix and B is
-    a n-bit quantized integer matrix (QNBitGemm).
-
-    - A shared kernel driver function template, MlasSQNBitGemmOperation.
-
-    - Kernel dispatch structure.
-
-    The B matrix is block quantized, which means that its values are grouped
-    into blocks which each have one scale and optional zero point. Each
-    quantized value in B is n-bits wide.
+    SQNBitGemm is a matrix/matrix multiplication, A*B, where A is a float
+    matrix and B is a n-bit quantized integer matrix. B is block quantized,
+    meaning values of B are divided into blocks and each block has its own
+    scale and optional zero point.
 
 --*/
 
 #pragma once
 
+#include <cassert>
+
 #include "mlas_qnbit.h"
 #include "mlasi.h"
-
-//
-// Kernel implementation template declarations
-//
-
-/**
- * @brief Multiply float matrix A with quantized n-bit integer matrix B.
- *        B is block quantized and column major.
- *        This kernel handles the special case where M, the number of rows of A and C, is 1.
- *
- * @tparam BlkBitWidth  Bit width of each value in a block.
- * @tparam BlkLen       Number of values in a block.
- * @tparam KernelType   Hardware-specific kernel type.
- *
- * @param       A                   Supplies the A matrix.
- * @param       QuantBData          Supplies the quantized B matrix block data.
- * @param       QuantBScale         Supplies the quantized B matrix block scale values.
- * @param       QuantBZeroPoint     Supplies the quantized B matrix block zero point values. Optional.
- * @param[out]  C                   Supplies the output C matrix.
- * @param       CountN              Number of columns of B and C.
- * @param       CountK              Number of columns of A and rows of B.
- * @param       BlockStrideQuantB   Number of blocks between adjacent columns of the quantized B matrix.
- * @param       Bias                Bias vector of length N.
- */
-template <size_t BlkBitWidth, size_t BlkLen, typename KernelType>
-MLAS_FORCEINLINE void
-MlasSQNBitGemmM1Kernel(
-    const float* A,
-    const uint8_t* QuantBData,
-    const float* QuantBScale,
-    const uint8_t* QuantBZeroPoint,
-    float* C,
-    size_t CountN,
-    size_t CountK,
-    size_t BlockStrideQuantB,
-    const float* Bias
-);
-
-/**
- * @brief Dequantize B into the format expected by the Sgemm kernel.
- *        B is block quantized and column major.
- *        This is equivalent to dequantizing B and then running
- *        MlasSgemmCopyPackB.
- *
- * @tparam BlkBitWidth  Bit width of each value in a block.
- * @tparam BlkLen       Number of values in a block.
- * @tparam KernelType   Hardware-specific kernel type.
- *
- * @param[out]  FpData              Supplies the output buffer for the dequantized B float data.
- * @param       QuantBData          Supplies the quantized B matrix block data.
- * @param       QuantBScale         Supplies the quantized B matrix block scale values.
- * @param       QuantBZeroPoint     Supplies the quantized B matrix block zero point values. Optional.
- * @param       CountN              Number of columns of B.
- * @param       CountK              Number of rows of B.
- * @param       BlockStrideQuantB   Number of blocks between adjacent columns of the quantized B matrix.
- */
-template <size_t BlkBitWidth, size_t BlkLen, typename KernelType>
-MLAS_FORCEINLINE void
-MlasQNBitBlkDequantBForSgemm(
-    float* FpData,
-    const uint8_t* QuantBData,
-    const float* QuantBScale,
-    const uint8_t* QuantBZeroPoint,
-    size_t CountN,
-    size_t CountK,
-    size_t BlockStrideQuantB
-);
-
-//
-// MlasQNBitGemmOperation and helpers
-//
 
 constexpr MLAS_FORCEINLINE size_t
 MlasQNBitBlkDataSizeInBytes(size_t BlkBitWidth, size_t BlkLen)
@@ -119,169 +44,174 @@ MlasQNBitZeroPointsForBlksSizeInBytes(size_t BlkCount)
     }
 }
 
-MLAS_FORCEINLINE void
-MlasAddBiasForGemm(const float* Bias, float* C, size_t CountM, size_t CountN, size_t ldc)
-{
-    for (size_t m = 0; m < CountM; m++) {
-        const float* bias = Bias;
-        float* sum = C;
-        for (size_t n = 0; n < CountN; n += 4) {
-            if (CountN - n < 4) {
-                for (size_t nn = n; nn < CountN; nn++) {
-                    *sum += *bias;
-                    sum++;
-                    bias++;
-                }
-                break;
-            }
+//
+// Quantized int8 block helpers.
+//
 
-            MLAS_FLOAT32X4 acc_x = MlasLoadFloat32x4(sum);
-            acc_x = MlasAddFloat32x4(acc_x, MlasLoadFloat32x4(bias));
-            MlasStoreFloat32x4(sum, acc_x);
-            bias += 4;
-            sum += 4;
-        }
-        C += ldc;
-    }
+MLAS_FORCEINLINE
+const float&
+Q8BlkScale(const std::byte* BlkPtr)
+{
+    return *reinterpret_cast<const float*>(BlkPtr);
 }
 
-template <size_t BlkBitWidth, size_t BlkLen, typename KernelType>
-MLAS_FORCEINLINE void MLASCALL
-MlasSQNBitGemmOperation(
-    const size_t K,
-    const MLAS_SQNBIT_GEMM_DATA_PARAMS* const DataParams,
-    const size_t RangeStartM,
-    const size_t RangeCountM,
-    const size_t RangeStartN,
-    const size_t RangeCountN
-)
+MLAS_FORCEINLINE
+float&
+Q8BlkScale(std::byte* BlkPtr)
 {
-    const size_t lda = DataParams->lda;
-    const size_t ldc = DataParams->ldc;
+    return *reinterpret_cast<float*>(BlkPtr);
+}
 
-    const size_t k_blks = MlasDivRoundup(K, BlkLen);
-    const size_t ldb = k_blks * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-    const size_t k_blks_zp_bytes = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(k_blks);
+MLAS_FORCEINLINE
+const int8_t*
+Q8BlkData(const std::byte* BlkPtr)
+{
+    return reinterpret_cast<const int8_t*>(BlkPtr + sizeof(float));
+}
 
-    const float* A = DataParams->A + RangeStartM * lda;
+MLAS_FORCEINLINE
+int8_t*
+Q8BlkData(std::byte* BlkPtr)
+{
+    return reinterpret_cast<int8_t*>(BlkPtr + sizeof(float));
+}
 
-    const uint8_t* QuantBData = static_cast<const uint8_t*>(DataParams->QuantBData) + RangeStartN * ldb;
-    const float* QuantBScale = DataParams->QuantBScale + RangeStartN * k_blks;
-    const uint8_t* QuantBZeroPoint =
-        (DataParams->QuantBZeroPoint == nullptr)
-            ? nullptr
-            : static_cast<const uint8_t*>(DataParams->QuantBZeroPoint) + RangeStartN * k_blks_zp_bytes;
+MLAS_FORCEINLINE
+constexpr size_t
+Q8BlkSize(size_t BlkLen)
+{
+    const size_t BlkSize = sizeof(float) + BlkLen * sizeof(int8_t);
+    // Currently, the strictest alignment requirement of a block is for a float.
+    // Ensure contiguous blocks are suitably aligned.
+    assert(BlkSize % alignof(float) == 0);
+    return BlkSize;
+}
 
-    float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
-
-    const float* Bias = (DataParams->Bias == nullptr) ? nullptr : DataParams->Bias + RangeStartN;
-
-    if (RangeCountM == 1) {
-        size_t CountN;
-        for (size_t n = 0; n < RangeCountN; n += CountN) {
-            CountN = std::min(RangeCountN - n, size_t{128});
-
-            const float* a_row = A;
-            const uint8_t* b_col = QuantBData + n * ldb;
-            const float* b_col_scale = QuantBScale + n * k_blks;
-            const uint8_t* b_col_zp =
-                (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
-            float* c_blk = C + n;
-            const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
-
-            MlasSQNBitGemmM1Kernel<BlkBitWidth, BlkLen, KernelType>(
-                a_row, b_col, b_col_scale, b_col_zp, c_blk, CountN, K, k_blks, bias
-            );
-
-            if (DataParams->PostProcessor != nullptr) {
-                DataParams->PostProcessor->Process(
-                    DataParams->C, RangeStartM, RangeStartN + n,
-                    RangeCountM, CountN, ldc
-                );
-            }
-        }
-        return;
-    }
-
-    constexpr size_t StrideN = 32;
-    size_t bufsize = k_blks * BlkLen * StrideN * sizeof(float);
-    MlasThreadedBufAlloc(bufsize);
-    auto* dequant_b = reinterpret_cast<float*>(ThreadedBufHolder.get());
-    //
-    // Step through each slice of matrix B along the N dimension.
-    //
-
-    size_t CountN;
-    for (size_t n = 0; n < RangeCountN; n += CountN) {
-        CountN = std::min(RangeCountN - n, StrideN);
-
-        //
-        // Step through each slice of matrix A along the M dimension.
-        //
-        const float* a_row = A;
-        const uint8_t* b_col = QuantBData + n * ldb;
-        const float* b_col_scale = QuantBScale + n * k_blks;
-        const uint8_t* b_col_zp =
-            (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
-        float* c_blk = C + n;
-        const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
-
-        MlasQNBitBlkDequantBForSgemm<BlkBitWidth, BlkLen, KernelType>(
-            dequant_b, b_col, b_col_scale, b_col_zp, CountN, K, k_blks
-        );
-
-        size_t RowsRemaining = RangeCountM;
-        while (RowsRemaining > 0) {
-#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_LARCH64)
-            auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
-                a_row, dequant_b, c_blk, K, RowsRemaining, CountN, lda, ldc, 1.f, true
-            );
-#else
-            auto RowsHandled = MlasSgemmKernelZero(a_row, dequant_b, c_blk, K, RowsRemaining, CountN, lda, ldc, 1.f);
-#endif
-
-            if (bias) {
-                MlasAddBiasForGemm(bias, c_blk, RowsHandled, CountN, ldc);
-            }
-            if (DataParams->PostProcessor != nullptr) {
-                DataParams->PostProcessor->Process(
-                    DataParams->C, RangeStartM + RangeCountM - RowsRemaining, RangeStartN,
-                    RowsHandled, CountN, ldc
-                );
-            }
-
-            c_blk += ldc * RowsHandled;
-            a_row += lda * RowsHandled;
-            RowsRemaining -= RowsHandled;
-        }
-    }
+MLAS_FORCEINLINE
+constexpr size_t
+Q8BlkAlignment()
+{
+    return alignof(float);
 }
 
 //
 // Kernel dispatch structure.
 //
 
-typedef void(MLASCALL MLAS_SQNBIT_GEMM_OPERATION)(
-    size_t K,
-    const MLAS_SQNBIT_GEMM_DATA_PARAMS* DataParams,
-    size_t RangeStartM,
-    size_t RangeCountM,
-    size_t RangeStartN,
-    size_t RangeCountN
-);
-
-enum QuantVariant {
-    QuantVariant_BitWidth4_BlockSize16,
-    QuantVariant_BitWidth4_BlockSize32,
-    QuantVariant_BitWidth4_BlockSize64,
-    QuantVariant_BitWidth4_BlockSize128,
-    QuantVariant_BitWidth4_BlockSize256,
-    QuantVariantCount,  // Keep this element last and ensure that its value is the number of other QuantVariant values.
-                        // Its value is used as an array size.
-};
-
 struct MLAS_SQNBIT_GEMM_DISPATCH {
-    MLAS_SQNBIT_GEMM_OPERATION* Operations[QuantVariantCount] = {
-        // Initialized to nullptrs. Overwrite in hardware-specific kernel implementation.
-    };
+    //
+    // CompFp32 kernel function prototypes.
+    //
+
+    /**
+     * @brief Multiply float matrix A with quantized 4-bit integer matrix B.
+     *        B is block quantized and column major.
+     *        This kernel handles the special case where M, the number of rows of A and C, is 1.
+     *
+     * @param       BlkLen              Number of values in a block.
+     * @param       A                   Supplies the A matrix.
+     * @param       QuantBData          Supplies the quantized B matrix block data.
+     * @param       QuantBScale         Supplies the quantized B matrix block scale values.
+     * @param       QuantBZeroPoint     Supplies the quantized B matrix block zero point values. Optional.
+     * @param[out]  C                   Supplies the output C matrix.
+     * @param       CountN              Number of columns of B and C.
+     * @param       CountK              Number of columns of A and rows of B.
+     * @param       BlockStrideQuantB   Number of blocks between adjacent columns of the quantized B matrix.
+     * @param       Bias                Bias vector of length N.
+     */
+    typedef void(SQ4BitGemmM1Kernel_CompFp32_Fn)(
+        size_t BlkLen,
+        const float* A,
+        const std::byte* QuantBData,
+        const float* QuantBScale,
+        const std::byte* QuantBZeroPoint,
+        float* C,
+        size_t CountN,
+        size_t CountK,
+        size_t BlockStrideQuantB,
+        const float* Bias
+    );
+
+    SQ4BitGemmM1Kernel_CompFp32_Fn* SQ4BitGemmM1Kernel_CompFp32 = nullptr;
+
+    /**
+     * @brief Dequantize B into the format expected by the Sgemm kernel.
+     *        B is a quantized 4-bit integer matrix that is block quantized and column major.
+     *        This is equivalent to dequantizing B and then running MlasSgemmCopyPackB.
+     *
+     * @param       BlkLen              Number of values in a block.
+     * @param[out]  FpData              Supplies the output buffer for the dequantized B float data.
+     * @param       QuantBData          Supplies the quantized B matrix block data.
+     * @param       QuantBScale         Supplies the quantized B matrix block scale values.
+     * @param       QuantBZeroPoint     Supplies the quantized B matrix block zero point values. Optional.
+     * @param       CountN              Number of columns of B.
+     * @param       CountK              Number of rows of B.
+     * @param       BlockStrideQuantB   Number of blocks between adjacent columns of the quantized B matrix.
+     */
+    typedef void(Q4BitBlkDequantBForSgemm_CompFp32_Fn)(
+        size_t BlkLen,
+        float* FpData,
+        const std::byte* QuantBData,
+        const float* QuantBScale,
+        const std::byte* QuantBZeroPoint,
+        size_t CountN,
+        size_t CountK,
+        size_t BlockStrideQuantB
+    );
+
+    Q4BitBlkDequantBForSgemm_CompFp32_Fn* Q4BitBlkDequantBForSgemm_CompFp32 = nullptr;
+
+    //
+    // CompInt8 kernel function prototypes.
+    //
+
+    /**
+     * @brief Multiply quantized 8-bit integer matrix A with quantized 4-bit integer matrix B.
+     *        A and B are block quantized and B is column major.
+     *        This kernel handles the special case where M, the number of rows of A and C, is 1.
+     *
+     * @param       BlkLen              Number of values in a block.
+     * @param       QuantA              Supplies the quantized A matrix.
+                                        Binary data containing block quantized int8 data and scale values.
+     * @param       QuantBData          Supplies the quantized B matrix block data.
+     * @param       QuantBScale         Supplies the quantized B matrix block scale values.
+     * @param       QuantBZeroPoint     Supplies the quantized B matrix block zero point values. Optional.
+     * @param[out]  C                   Supplies the output C matrix.
+     * @param       CountN              Number of columns of B and C.
+     * @param       CountK              Number of columns of A and rows of B.
+     * @param       BlockStrideQuantB   Number of blocks between adjacent columns of the quantized B matrix.
+     * @param       Bias                Bias vector of length N.
+     */
+    typedef void(SQ4BitGemmM1Kernel_CompInt8_Fn)(
+        size_t BlkLen,
+        const std::byte* QuantA,
+        const std::byte* QuantBData,
+        const float* QuantBScale,
+        const std::byte* QuantBZeroPoint,
+        float* C,
+        size_t CountN,
+        size_t CountK,
+        size_t BlockStrideQuantB,
+        const float* Bias
+    );
+
+    SQ4BitGemmM1Kernel_CompInt8_Fn* SQ4BitGemmM1Kernel_CompInt8 = nullptr;
+
+    /**
+     * @brief Block quantize values from one row of matrix A from floats to quantized 8-bit integers.
+     *
+     * @param       BlkLen  Number of values in a block.
+     * @param       A       Supplies the A matrix.
+     * @param       CountK  Number of columns of A.
+     * @param[out]  QuantA  Supplies the output quantized A matrix.
+     *                      Binary data containing block quantized int8 data and scale values.
+     */
+    typedef void(QuantizeARow_CompInt8_Fn)(
+        size_t BlkLen,
+        const float* A,
+        size_t CountK,
+        std::byte* QuantA
+    );
+
+    QuantizeARow_CompInt8_Fn* QuantizeARow_CompInt8 = nullptr;
 };

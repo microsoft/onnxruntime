@@ -42,7 +42,7 @@ jobs:
       buildArch: x64
       setVcvars: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
-      commonBuildArgs: '--compile_no_warning_as_error --build_dir $(Build.BinariesDirectory)\Windows --skip_submodule_sync --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --use_qnn --qnn_home ${{parameters.qnn_sdk_path_win}}'
+      commonBuildArgs: '--compile_no_warning_as_error --build_dir $(Build.BinariesDirectory)\Windows --skip_submodule_sync --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --use_qnn --qnn_home ${{parameters.qnn_sdk_path_win}} --parallel'
 
     steps:
       - template: templates/set-version-number-variables-step.yml
@@ -125,7 +125,7 @@ jobs:
         displayName: 'Generate CMake Configuration for arm64'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: '--update --arm64 --build_dir $(Build.BinariesDirectory)\Win_arm64 --skip_submodule_sync --skip_tests --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --use_qnn --qnn_home ${{parameters.qnn_sdk_path_win}}'
+          arguments: '--update --arm64 --build_dir $(Build.BinariesDirectory)\Win_arm64 --skip_submodule_sync --skip_tests --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --use_qnn --qnn_home ${{parameters.qnn_sdk_path_win}} --parallel'
 
       - task: VSBuild@1
         displayName: 'Build onnxruntime arm64'

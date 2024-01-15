@@ -12,7 +12,16 @@ import numpy as np
 import onnx
 
 from onnxruntime import quantization
+from onnxruntime.quantization.execution_providers.qnn import get_qnn_qdq_config
 from onnxruntime.quantization.quant_utils import compute_scale_zp, get_qmin_qmax_for_qType
+
+
+class DummyDataReader(quantization.CalibrationDataReader):
+    def __init__(self, activations):
+        self.iterator = ({"INP": act} for act in activations)
+
+    def get_next(self):
+        return next(self.iterator, None)
 
 
 class TestTensorQuantOverridesOption(unittest.TestCase):
@@ -43,7 +52,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
             "OUT": (0, np.float32(0.005075461231172085)),
         }
 
-    def perform_qdq_quantization(self, output_model_name, tensor_quant_overrides=None, per_channel=False):
+    def build_float32_model(self):
         #    (input)
         #       |
         #    Sigmoid
@@ -66,24 +75,18 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         model = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 13)])
         onnx.save(model, "model.onnx")
 
-        # Quantize model
-        class DummyDataReader(quantization.CalibrationDataReader):
-            def __init__(self, activations):
-                self.iterator = ({"INP": act} for act in activations)
+    def perform_qdq_quantization(self, output_model_name, extra_options=None, per_channel=False, activation_type=None):
+        self.build_float32_model()
 
-            def get_next(self):
-                return next(self.iterator, None)
-
-        extra_options = {}
-        if tensor_quant_overrides is not None:
-            extra_options["TensorQuantOverrides"] = tensor_quant_overrides
+        if activation_type is None:
+            activation_type = self.default_act_qtype
 
         quantization.quantize_static(
             model_input="model.onnx",
             model_output=output_model_name,
             calibration_data_reader=DummyDataReader(self.activations),
             quant_format=quantization.QuantFormat.QDQ,
-            activation_type=self.default_act_qtype,
+            activation_type=activation_type,
             weight_type=self.default_wgt_qtype,
             per_channel=per_channel,
             op_types_to_quantize=["Conv", "Sigmoid"],
@@ -129,7 +132,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
             out_sc,
         ) = self.perform_qdq_quantization(
             "model_default_quant_overrides.onnx",
-            tensor_quant_overrides=None,  # default behavior
+            extra_options=None,  # default behavior
         )
 
         # No overrides set. Expect default values
@@ -171,7 +174,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
             out_sc,
         ) = self.perform_qdq_quantization(
             "model_default_per_channel_quant_overrides.onnx",
-            tensor_quant_overrides=None,  # default behavior
+            extra_options=None,  # default behavior
             per_channel=True,
         )
 
@@ -215,10 +218,14 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         """
         inp_zp, inp_sc, sig_out_zp, sig_out_sc, wgt_zp, wgt_sc, bias_zp, bias_sc, _, _ = self.perform_qdq_quantization(
             "model_quant_overrides1.onnx",
-            tensor_quant_overrides={
-                "SIG_OUT": [{"scale": np.array(1.0, dtype=np.float32), "zero_point": np.array(127, dtype=np.uint8)}],
-                "WGT": [{"quant_type": quantization.QuantType.QInt8, "symmetric": True, "reduce_range": True}],
-                "BIAS": [{"quant_type": quantization.QuantType.QInt8, "symmetric": True, "reduce_range": True}],
+            extra_options={
+                "TensorQuantOverrides": {
+                    "SIG_OUT": [
+                        {"scale": np.array(1.0, dtype=np.float32), "zero_point": np.array(127, dtype=np.uint8)}
+                    ],
+                    "WGT": [{"quant_type": quantization.QuantType.QInt8, "symmetric": True, "reduce_range": True}],
+                    "BIAS": [{"quant_type": quantization.QuantType.QInt8, "symmetric": True, "reduce_range": True}],
+                }
             },
         )
 
@@ -257,7 +264,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         sigmoid_rmin, sigmoid_rmax = np.array(0.0, dtype=np.float32), np.array(0.5, dtype=np.float32)
         inp_zp, inp_sc, sig_out_zp, sig_out_sc, _, _, _, _, _, _ = self.perform_qdq_quantization(
             "model_quant_overrides2.onnx",
-            tensor_quant_overrides={"SIG_OUT": [{"rmin": sigmoid_rmin, "rmax": sigmoid_rmax}]},
+            extra_options={"TensorQuantOverrides": {"SIG_OUT": [{"rmin": sigmoid_rmin, "rmax": sigmoid_rmax}]}},
         )
 
         # Input should have same quant params
@@ -280,8 +287,10 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         wgt_rmin, wgt_rmax = np.array(0.0, dtype=np.float32), np.array(1.0, dtype=np.float32)
         _, _, _, _, wgt_zp, wgt_sc, _, _, _, _ = self.perform_qdq_quantization(
             "model_quant_overrides3.onnx",
-            tensor_quant_overrides={
-                "WGT": [{"rmin": wgt_rmin, "rmax": wgt_rmax}],
+            extra_options={
+                "TensorQuantOverrides": {
+                    "WGT": [{"rmin": wgt_rmin, "rmax": wgt_rmax}],
+                }
             },
         )
 
@@ -302,8 +311,10 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         wgt_zp_val, wgt_scale_val = np.array(4, dtype=np.float32), np.array(0.5, dtype=np.float32)
         _, _, _, _, wgt_zp, wgt_sc, _, _, _, _ = self.perform_qdq_quantization(
             "model_quant_overrides4.onnx",
-            tensor_quant_overrides={
-                "WGT": [{"zero_point": wgt_zp_val, "scale": wgt_scale_val}],
+            extra_options={
+                "TensorQuantOverrides": {
+                    "WGT": [{"zero_point": wgt_zp_val, "scale": wgt_scale_val}],
+                }
             },
         )
 
@@ -330,15 +341,17 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
             _,
         ) = self.perform_qdq_quantization(
             "model_per_channel_quant_overrides1.onnx",
-            tensor_quant_overrides={
-                "WGT": [
-                    {"zero_point": zp_vals[0], "scale": scale_vals[0]},
-                    {"zero_point": zp_vals[1], "scale": scale_vals[1]},
-                ],
-                "BIAS": [
-                    {"zero_point": zp_vals[0], "scale": scale_vals[0]},
-                    {"zero_point": zp_vals[1], "scale": scale_vals[1]},
-                ],
+            extra_options={
+                "TensorQuantOverrides": {
+                    "WGT": [
+                        {"zero_point": zp_vals[0], "scale": scale_vals[0]},
+                        {"zero_point": zp_vals[1], "scale": scale_vals[1]},
+                    ],
+                    "BIAS": [
+                        {"zero_point": zp_vals[0], "scale": scale_vals[0]},
+                        {"zero_point": zp_vals[1], "scale": scale_vals[1]},
+                    ],
+                }
             },
             per_channel=True,
         )
@@ -377,21 +390,23 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
             _,
         ) = self.perform_qdq_quantization(
             "model_per_channel_quant_overrides2.onnx",
-            tensor_quant_overrides={
-                "WGT": [
-                    {
-                        "quant_type": quant_type,
-                        "rmin": np.array(rmin_vals[0], dtype=np.float32),
-                        "rmax": np.array(rmax_vals[0], dtype=np.float32),
-                        "reduce_range": reduce_ranges[0],
-                    },
-                    {
-                        "quant_type": quant_type,
-                        "rmin": np.array(rmin_vals[1], dtype=np.float32),
-                        "rmax": np.array(rmax_vals[1], dtype=np.float32),
-                        "reduce_range": reduce_ranges[1],
-                    },
-                ],
+            extra_options={
+                "TensorQuantOverrides": {
+                    "WGT": [
+                        {
+                            "quant_type": quant_type,
+                            "rmin": np.array(rmin_vals[0], dtype=np.float32),
+                            "rmax": np.array(rmax_vals[0], dtype=np.float32),
+                            "reduce_range": reduce_ranges[0],
+                        },
+                        {
+                            "quant_type": quant_type,
+                            "rmin": np.array(rmin_vals[1], dtype=np.float32),
+                            "rmax": np.array(rmax_vals[1], dtype=np.float32),
+                            "reduce_range": reduce_ranges[1],
+                        },
+                    ],
+                }
             },
             per_channel=True,
         )
@@ -415,8 +430,12 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(
                 "model_validation.onnx",
-                tensor_quant_overrides={
-                    "NON_EXISTING": [{"rmin": np.array(0.0, dtype=np.float32), "rmax": np.array(0.5, dtype=np.float32)}]
+                extra_options={
+                    "TensorQuantOverrides": {
+                        "NON_EXISTING": [
+                            {"rmin": np.array(0.0, dtype=np.float32), "rmax": np.array(0.5, dtype=np.float32)}
+                        ]
+                    }
                 },
             )
 
@@ -429,7 +448,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(
                 "model_validation.onnx",
-                tensor_quant_overrides={"SIG_OUT": [{"scale": np.array(0.0, dtype=np.float32)}]},
+                extra_options={"TensorQuantOverrides": {"SIG_OUT": [{"scale": np.array(0.0, dtype=np.float32)}]}},
             )
 
         self.assertIn("Must provide both 'scale' and 'zero_point'", str(context.exception))
@@ -441,14 +460,16 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(
                 "model_validation.onnx",
-                tensor_quant_overrides={
-                    "SIG_OUT": [
-                        {
-                            "scale": np.array(0, dtype=np.float32),
-                            "zero_point": np.array(0, dtype=np.int8),
-                            "rmax": np.array(10.0, dtype=np.float32),
-                        }
-                    ]
+                extra_options={
+                    "TensorQuantOverrides": {
+                        "SIG_OUT": [
+                            {
+                                "scale": np.array(0, dtype=np.float32),
+                                "zero_point": np.array(0, dtype=np.int8),
+                                "rmax": np.array(10.0, dtype=np.float32),
+                            }
+                        ]
+                    }
                 },
             )
 
@@ -457,14 +478,16 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(
                 "model_validation.onnx",
-                tensor_quant_overrides={
-                    "SIG_OUT": [
-                        {
-                            "scale": np.array(0, dtype=np.float32),
-                            "zero_point": np.array(0, dtype=np.int8),
-                            "rmax": np.array(10.0, dtype=np.float32),
-                        }
-                    ]
+                extra_options={
+                    "TensorQuantOverrides": {
+                        "SIG_OUT": [
+                            {
+                                "scale": np.array(0, dtype=np.float32),
+                                "zero_point": np.array(0, dtype=np.int8),
+                                "rmax": np.array(10.0, dtype=np.float32),
+                            }
+                        ]
+                    }
                 },
             )
 
@@ -473,14 +496,16 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(
                 "model_validation.onnx",
-                tensor_quant_overrides={
-                    "SIG_OUT": [
-                        {
-                            "scale": np.array(0, dtype=np.float32),
-                            "zero_point": np.array(0, dtype=np.int8),
-                            "symmetric": True,
-                        }
-                    ]
+                extra_options={
+                    "TensorQuantOverrides": {
+                        "SIG_OUT": [
+                            {
+                                "scale": np.array(0, dtype=np.float32),
+                                "zero_point": np.array(0, dtype=np.int8),
+                                "symmetric": True,
+                            }
+                        ]
+                    }
                 },
             )
 
@@ -489,18 +514,46 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             self.perform_qdq_quantization(
                 "model_validation.onnx",
-                tensor_quant_overrides={
-                    "SIG_OUT": [
-                        {
-                            "scale": np.array(0, dtype=np.float32),
-                            "zero_point": np.array(0, dtype=np.int8),
-                            "reduce_range": True,
-                        }
-                    ]
+                extra_options={
+                    "TensorQuantOverrides": {
+                        "SIG_OUT": [
+                            {
+                                "scale": np.array(0, dtype=np.float32),
+                                "zero_point": np.array(0, dtype=np.int8),
+                                "reduce_range": True,
+                            }
+                        ]
+                    }
                 },
             )
 
         self.assertIn("option 'reduce_range' is invalid with 'scale' and 'zero_point'", str(context.exception))
+
+    def test_get_qnn_qdq_config(self):
+        """
+        Test that the QNN-specific configs override the scale and zero-point of Sigmoid.
+        """
+        self.build_float32_model()
+
+        qnn_config = get_qnn_qdq_config(
+            "model.onnx", DummyDataReader(self.activations), activation_type=quantization.QuantType.QUInt16
+        )
+
+        self.assertEqual(qnn_config.extra_options["MinimumRealRange"], 0.0001)
+
+        inp_zp, inp_sc, sig_out_zp, sig_out_sc, _, _, _, _, _, _ = self.perform_qdq_quantization(
+            "model_qnn_quant_overrides.onnx",
+            extra_options=qnn_config.extra_options,
+            activation_type=quantization.QuantType.QUInt16,
+        )
+
+        # Input should have uint16 quant type
+        self.assertEqual(inp_zp.data_type, onnx.TensorProto.UINT16)
+
+        # Sigmoid output should have overridden scale/zp
+        self.assertEqual(sig_out_zp.int32_data[0], 0)
+        self.assertEqual(sig_out_zp.data_type, onnx.TensorProto.UINT16)
+        self.assertEqual(sig_out_sc.float_data[0], np.float32(1.0 / 65536.0))
 
 
 if __name__ == "__main__":

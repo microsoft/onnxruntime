@@ -1,7 +1,9 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-set(MLAS_SRC_DIR ${ONNXRUNTIME_ROOT}/core/mlas/lib)
+set(MLAS_ROOT ${ONNXRUNTIME_ROOT}/core/mlas)
+set(MLAS_SRC_DIR ${MLAS_ROOT}/lib)
+set(MLAS_INC_DIR ${MLAS_ROOT}/inc)
 
 #
 # All hardware agnostic source files here
@@ -9,6 +11,7 @@ set(MLAS_SRC_DIR ${ONNXRUNTIME_ROOT}/core/mlas/lib)
 # multi-target build
 #
 onnxruntime_add_static_library(onnxruntime_mlas
+  ${MLAS_SRC_DIR}/mlasi.h
   ${MLAS_SRC_DIR}/platform.cpp
   ${MLAS_SRC_DIR}/threading.cpp
   ${MLAS_SRC_DIR}/sgemm.cpp
@@ -33,7 +36,16 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/qpostprocessor.cpp
   ${MLAS_SRC_DIR}/qlgavgpool.cpp
   ${MLAS_SRC_DIR}/qdwconv_kernelsize.cpp
+  ${MLAS_SRC_DIR}/sqnbitgemm.h
   ${MLAS_SRC_DIR}/sqnbitgemm.cpp
+)
+
+target_sources(onnxruntime_mlas PRIVATE
+  ${MLAS_INC_DIR}/mlas_float16.h
+  ${MLAS_INC_DIR}/mlas_gemm_postprocessor.h
+  ${MLAS_INC_DIR}/mlas_q4.h
+  ${MLAS_INC_DIR}/mlas_qnbit.h
+  ${MLAS_INC_DIR}/mlas.h
 )
 
 if (NOT onnxruntime_ORT_MINIMAL_BUILD)
@@ -46,7 +58,7 @@ endif()
 set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)
 
 function(add_jblas)
-    add_subdirectory(${MLAS_SRC_DIR}/x86_64/jblas jblas) 
+    add_subdirectory(${MLAS_SRC_DIR}/x86_64/jblas jblas)
     target_link_libraries(onnxruntime_mlas PRIVATE jblas::jblas)
     target_sources(onnxruntime_mlas PRIVATE
         ${MLAS_SRC_DIR}/jblas_gemm.cpp
@@ -143,10 +155,6 @@ function(setup_mlas_source_for_windows)
     target_sources(onnxruntime_mlas PRIVATE
       ${MLAS_SRC_DIR}/arm/sgemmc.cpp
     )
-    # it should be removed after Visual Stuio is upgraded to 17.7
-    if (MSVC)
-      add_compile_options("-d2SSAOptimizer-")
-    endif()
   elseif(onnxruntime_target_platform STREQUAL "x64")
 
     file(GLOB_RECURSE mlas_platform_srcs_avx CONFIGURE_DEPENDS
@@ -300,8 +308,8 @@ else()
     if(APPLE)
       get_target_property(ONNXRUNTIME_MLAS_MACOSX_ARCH onnxruntime_mlas OSX_ARCHITECTURES)
     endif()
-    list(LENGTH ONNXRUNTIME_MLAS_MACOSX_ARCH  ONNXRUNTIME_MLAS_MACOSX_ARCH_LENGH)
-    if(ONNXRUNTIME_MLAS_MACOSX_ARCH_LENGH GREATER 1)
+    list(LENGTH ONNXRUNTIME_MLAS_MACOSX_ARCH ONNXRUNTIME_MLAS_MACOSX_ARCH_LENGTH)
+    if(ONNXRUNTIME_MLAS_MACOSX_ARCH_LENGTH GREATER 1)
         set(ONNXRUNTIME_MLAS_MULTI_ARCH TRUE)
     endif()
     #If ONNXRUNTIME_MLAS_MULTI_ARCH is true, we need to go through every if branch below
@@ -348,6 +356,8 @@ else()
           ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.cpp
         )
+        set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.cpp
+                                    PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
         if (NOT APPLE)
           set(mlas_platform_srcs
             ${mlas_platform_srcs}
@@ -617,10 +627,12 @@ if(USE_JBLAS)
 endif()
 
 foreach(mlas_target ${ONNXRUNTIME_MLAS_LIBS})
-    target_include_directories(${mlas_target} PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${MLAS_SRC_DIR})
+    target_include_directories(${mlas_target} PRIVATE ${MLAS_INC_DIR} ${MLAS_SRC_DIR})
     onnxruntime_add_include_to_target(${mlas_target} ${GSL_TARGET})
+
+    set_target_properties(${mlas_target} PROPERTIES FOLDER "ONNXRuntime")
 endforeach()
-set_target_properties(onnxruntime_mlas PROPERTIES FOLDER "ONNXRuntime")
+
 if (WIN32)
   target_compile_options(onnxruntime_mlas PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/wd6385>" "$<$<COMPILE_LANGUAGE:CXX>:/wd4127>")
   if (onnxruntime_ENABLE_STATIC_ANALYSIS)
@@ -636,6 +648,21 @@ if (NOT onnxruntime_BUILD_SHARED_LIB)
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
+# set up source group for MLAS source files
+block()
+  set(source_group_srcs)
+  foreach(mlas_target ${ONNXRUNTIME_MLAS_LIBS})
+    get_target_property(mlas_target_srcs ${mlas_target} SOURCES)
+    foreach(mlas_target_src ${mlas_target_srcs})
+      cmake_path(IS_PREFIX MLAS_ROOT ${mlas_target_src} in_mlas_root)
+      if(in_mlas_root)
+        list(APPEND source_group_srcs ${mlas_target_src})
+      endif()
+    endforeach()
+  endforeach()
+  source_group(TREE ${MLAS_ROOT} FILES ${source_group_srcs})
+endblock()
+
 
 if (NOT onnxruntime_ORT_MINIMAL_BUILD)
 
@@ -647,7 +674,7 @@ if (NOT onnxruntime_ORT_MINIMAL_BUILD)
   onnxruntime_add_executable(onnxruntime_mlas_q4dq
     ${MLAS_SRC_DIR}/q4_dq_cli.cpp
   )
-  target_include_directories(onnxruntime_mlas_q4dq PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${MLAS_SRC_DIR})
+  target_include_directories(onnxruntime_mlas_q4dq PRIVATE ${MLAS_INC_DIR} ${MLAS_SRC_DIR})
   set_target_properties(onnxruntime_mlas_q4dq PROPERTIES FOLDER "ONNXRuntimeTest")
 
   target_link_libraries(onnxruntime_mlas_q4dq PRIVATE ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common)
