@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <optional>
+
 // Public wrappers around internal ort interfaces (currently)
 #include "core/providers/shared_library/provider_host_api.h"
 
@@ -361,8 +363,8 @@ struct ProviderHost {
   virtual float AttributeProto__f(const ONNX_NAMESPACE::AttributeProto* p) = 0;
   virtual const ONNX_NAMESPACE::TensorProto& AttributeProto__t(const ONNX_NAMESPACE::AttributeProto* p) = 0;
   virtual void AttributeProto__set_s(ONNX_NAMESPACE::AttributeProto* p, const ::std::string& value) = 0;
-  virtual void AttributeProto__set_i(ONNX_NAMESPACE::AttributeProto* p, const int64_t& value) = 0;
   virtual void AttributeProto__set_f(ONNX_NAMESPACE::AttributeProto* p, const float& value) = 0;
+  virtual void AttributeProto__set_i(ONNX_NAMESPACE::AttributeProto* p, int64_t value) = 0;
   virtual const ::std::string& AttributeProto__s(const ONNX_NAMESPACE::AttributeProto* p) = 0;
   virtual void AttributeProto__set_name(ONNX_NAMESPACE::AttributeProto* p, const ::std::string& value) = 0;
   virtual void AttributeProto__set_type(ONNX_NAMESPACE::AttributeProto* p, ONNX_NAMESPACE::AttributeProto_AttributeType value) = 0;
@@ -385,6 +387,7 @@ struct ProviderHost {
   virtual ONNX_NAMESPACE::TensorProtos* GraphProto__mutable_initializer(ONNX_NAMESPACE::GraphProto* p) = 0;
   virtual ONNX_NAMESPACE::NodeProto* GraphProto__add_node(ONNX_NAMESPACE::GraphProto* p) = 0;
   virtual std::string* GraphProto__mutable_name(ONNX_NAMESPACE::GraphProto* p) = 0;
+  virtual ONNX_NAMESPACE::NodeProto* GraphProto__mutable_node(ONNX_NAMESPACE::GraphProto* p, int index) = 0;
 
   // ModelProto
   virtual std::unique_ptr<ONNX_NAMESPACE::ModelProto> ModelProto__construct() = 0;
@@ -407,6 +410,7 @@ struct ProviderHost {
   virtual void NodeProto__operator_assign(ONNX_NAMESPACE::NodeProto* p, const ONNX_NAMESPACE::NodeProto& v) = 0;
   virtual int NodeProto__attribute_size(ONNX_NAMESPACE::NodeProto* p) = 0;
   virtual const ONNX_NAMESPACE::AttributeProto& NodeProto__attribute(const ONNX_NAMESPACE::NodeProto* p, int index) const = 0;
+  virtual ONNX_NAMESPACE::AttributeProto* NodeProto__mutable_attribute(ONNX_NAMESPACE::NodeProto* p, int index) = 0;
 
   // TensorProto
   virtual std::unique_ptr<ONNX_NAMESPACE::TensorProto> TensorProto__construct() = 0;
@@ -475,6 +479,9 @@ struct ProviderHost {
   virtual const ONNX_NAMESPACE::ValueInfoProto& ValueInfoProtos__operator_array(const ONNX_NAMESPACE::ValueInfoProtos* p, int index) = 0;
 
   virtual void RegisterSchema(const std::string& domain, const OrtCustomOp* op, int type) = 0;
+
+  // ConfigOptions
+  virtual std::optional<std::string> ConfigOptions__GetConfigEntry(const ConfigOptions* p, const std::string& config_key) = 0;
 
   // ComputeCapability
   virtual std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) = 0;
@@ -893,6 +900,7 @@ struct ProviderHost {
   virtual uint32_t OpKernelInfo__GetInputCount(const OpKernelInfo* p) = 0;
   virtual uint32_t OpKernelInfo__GetOutputCount(const OpKernelInfo* p) = 0;
   virtual const Node& OpKernelInfo__node(const OpKernelInfo* p) = 0;
+  virtual const ConfigOptions& OpKernelInfo__GetConfigOptions(const OpKernelInfo* p) = 0;
 
   // SessionState
   virtual const DataTransferManager& SessionState__GetDataTransferMgr(const SessionState* p) = 0;

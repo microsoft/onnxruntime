@@ -40,5 +40,4 @@ stages:
       enable_windows_cpu: false
       enable_windows_gpu: false
       enable_mac_cpu: false
-      enable_mac_silicon: false
       enable_linux_arm: false

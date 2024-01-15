@@ -105,8 +105,8 @@ struct AttributeProto final {
   float f() const { return g_host->AttributeProto__f(this); }
   const ONNX_NAMESPACE::TensorProto& t() const { return g_host->AttributeProto__t(this); }
   void set_s(const ::std::string& value) { return g_host->AttributeProto__set_s(this, value); }
-  void set_i(const int64_t& value) { return g_host->AttributeProto__set_i(this, value); }
   void set_f(const float& value) { return g_host->AttributeProto__set_f(this, value); }
+  void set_i(int64_t value) { return g_host->AttributeProto__set_i(this, value); }
   const ::std::string& s() const { return g_host->AttributeProto__s(this); }
   void set_name(const ::std::string& value) { return g_host->AttributeProto__set_name(this, value); }
   void set_type(AttributeProto_AttributeType value) { return g_host->AttributeProto__set_type(this, value); }
@@ -151,6 +151,7 @@ struct GraphProto final {
   ValueInfoProtos* mutable_value_info() { return g_host->GraphProto__mutable_value_info(this); }
   TensorProtos* mutable_initializer() { return g_host->GraphProto__mutable_initializer(this); }
   NodeProto* add_node() { return g_host->GraphProto__add_node(this); }
+  NodeProto* mutable_node(int index) { return g_host->GraphProto__mutable_node(this, index); }
 
   std::string* mutable_name() { return g_host->GraphProto__mutable_name(this); }
 
@@ -183,6 +184,7 @@ struct NodeProto final {
   void operator=(const NodeProto& v) { g_host->NodeProto__operator_assign(this, v); }
   int attribute_size() { return g_host->NodeProto__attribute_size(this); }
   const AttributeProto& attribute(int index) const { return g_host->NodeProto__attribute(this, index); }
+  AttributeProto* mutable_attribute(int index) { return g_host->NodeProto__mutable_attribute(this, index); }
 
   NodeProto() = delete;
   NodeProto(const NodeProto&) = delete;
@@ -382,6 +384,14 @@ struct DataTypeUtils final {
 };
 
 }  // namespace Utils
+
+struct ConfigOptions final {
+  std::optional<std::string> GetConfigEntry(const std::string& config_key) const {
+    return g_host->ConfigOptions__GetConfigEntry(this, config_key);
+  }
+
+  PROVIDER_DISALLOW_ALL(ConfigOptions)
+};
 
 struct ComputeCapability final {
   static std::unique_ptr<ComputeCapability> Create(std::unique_ptr<IndexedSubGraph> t_sub_graph) { return g_host->ComputeCapability__construct(std::move(t_sub_graph)); }
@@ -1007,6 +1017,8 @@ struct OpKernelInfo final {
   uint32_t GetOutputCount() const { return g_host->OpKernelInfo__GetOutputCount(this); }
 
   const Node& node() const noexcept { return g_host->OpKernelInfo__node(this); }
+
+  const ConfigOptions& GetConfigOptions() const { return g_host->OpKernelInfo__GetConfigOptions(this); }
 
   OpKernelInfo() = delete;
   OpKernelInfo(const OpKernelInfo&) = delete;
