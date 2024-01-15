@@ -101,7 +101,8 @@ TEST_P(ModelTest, Run) {
       model_path.find(ORT_TSTR("DenseNet12")) > 0 ||
       model_path.find(ORT_TSTR("MobileNet_v2")) > 0) {
     if ((provider_name == "tensorrt") && (model_info->GetONNXOpSetVersion() == 12)) {
-      relative_per_sample_tolerance = 1e-1;
+      per_sample_tolerance = 1e-2;
+      relative_per_sample_tolerance = 1e-2;
     }
   }
 
