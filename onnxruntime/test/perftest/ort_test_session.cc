@@ -46,8 +46,6 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                                                const TestModelInfo& m)
     : rand_engine_(rd()), input_names_(m.GetInputCount()), input_names_str_(m.GetInputCount()), input_length_(m.GetInputCount()) {
   Ort::SessionOptions session_options;
-  session_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
-  session_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "E:\\");
   provider_name_ = performance_test_config.machine_config.provider_type_name;
   if (provider_name_ == onnxruntime::kDnnlExecutionProvider) {
 #ifdef USE_DNNL
