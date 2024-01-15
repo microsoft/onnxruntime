@@ -342,7 +342,6 @@ jobject convertToTensorInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTensorT
   if (code != ORT_OK) {
     return NULL;
   }
-  //printf("numDim %d\n",numDim);
   int64_t* dimensions = (int64_t*) malloc(sizeof(int64_t)*numDim);
   code = checkOrtStatus(jniEnv, api, api->GetDimensions(info, dimensions, numDim));
   if (code != ORT_OK) {
@@ -358,12 +357,31 @@ jobject convertToTensorInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTensorT
   free(dimensions);
   dimensions = NULL;
 
+  // Create the string array for the names.
+  const char** dimensionNames = (const char**) malloc(sizeof(char*)*numDim);
+  if (dimensionNames == NULL) {
+    throwOrtException(jniEnv, 1, "Not enough memory");
+    return NULL;
+  }
+  code = checkOrtStatus(jniEnv, api, api->GetSymbolicDimensions(info, dimensionNames, numDim));
+  if (code != ORT_OK) {
+    // extraction failed, exception has been thrown, return to Java.
+    free(dimensionNames);
+    return NULL;
+  }
+  jclass stringClazz = (*jniEnv)->FindClass(jniEnv, "java/lang/String");
+  jobjectArray names = (*jniEnv)->NewObjectArray(jniEnv, safecast_size_t_to_jsize(numDim), stringClazz, NULL);
+  for (size_t i = 0; i < numDim; i++) {
+    jobject javaName = (*jniEnv)->NewStringUTF(jniEnv, dimensionNames[i]);
+    (*jniEnv)->SetObjectArrayElement(jniEnv, names, safecast_size_t_to_jsize(i), javaName);
+  }
+  free(dimensionNames);
+
   // Create the TensorInfo object
   static const char *tensorInfoClassName = "ai/onnxruntime/TensorInfo";
   jclass clazz = (*jniEnv)->FindClass(jniEnv, tensorInfoClassName);
-  jmethodID tensorInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,clazz, "<init>", "([JI)V");
-  //printf("TensorInfo class %p, methodID %p\n",clazz,tensorInfoConstructor);
-  jobject tensorInfo = (*jniEnv)->NewObject(jniEnv, clazz, tensorInfoConstructor, shape, onnxTypeInt);
+  jmethodID tensorInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,clazz, "<init>", "([J[Ljava/lang/String;I)V");
+  jobject tensorInfo = (*jniEnv)->NewObject(jniEnv, clazz, tensorInfoConstructor, shape, names, onnxTypeInt);
   return tensorInfo;
 }
 
