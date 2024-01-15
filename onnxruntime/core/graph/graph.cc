@@ -2367,8 +2367,14 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
       inferred_type = existing_type;
     } else {
       // This should not happen: indicates incompleteness in ONNX inference.
+      std::stringstream ss;
+      ss << "index=" << operand_index;
+      for (auto it = op_formal_parameter.GetTypes().begin(); it != op_formal_parameter.GetTypes().end(); ++it) {
+        ss << "," << *(*it);
+      }
       Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
-                    "Node (" + node_name + ") output arg (" + output_def->Name() + ") type inference failed");
+                    "Node (" + node_name + ") Op (" + node.OpType() + ") output arg (" +
+                        output_def->Name() + ") type inference failed, inferred types: " + ss.str());
       return status;
     }
 

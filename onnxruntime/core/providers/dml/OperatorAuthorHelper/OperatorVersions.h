@@ -407,6 +407,13 @@ namespace OperatorHelper
         static const int sc_sinceVer_BitwiseNot = 18;
         static const int sc_sinceVer_Pad = 18;
         static const int sc_sinceVer_Split = 18;
+        static const int sc_sinceVer_LpPool = 18;
+        static const int sc_sinceVer_Col2Im = 18;
+    }
+
+    namespace OnnxOperatorSet19
+    {
+        static const int sc_sinceVer_AveragePool = 19;
     }
 
     namespace MsftOperatorSet1
@@ -440,7 +447,10 @@ namespace OperatorHelper
         static const int sc_sinceVer_BiasAdd = 1;
         static const int sc_sinceVer_QuickGelu = 1;
         static const int sc_sinceVer_GroupNorm = 1;
+        static const int sc_sinceVer_QLinearConcat = 1;
         static const int sc_sinceVer_RotaryEmbedding = 1;
+        static const int sc_sinceVer_QLinearAveragePool = 1;
+        static const int sc_sinceVer_QLinearGlobalAveragePool = 1;
     } // namespace MsftOperatorSet1
 
 } // namespace OperatorHelper
