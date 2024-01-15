@@ -107,6 +107,7 @@ ONNX_NAMESPACE::ModelProto* CreateCtxNodeModel(const GraphViewer& graph_viewer,
       engine_data_str.assign(engine_data, size);
     }
     attr_1->set_s(engine_data_str);
+    LOGS_DEFAULT(WARNING) << EPCONTEXT_WARNING;
   } else {
     attr_1->set_s(engine_cache_path);
   }
@@ -269,7 +270,7 @@ bool TensorRTCacheModelHandler::ValidateEPCtxNode(const GraphViewer& graph_viewe
   auto& attrs = node->GetAttributes();
 
   // Check hardware_architecture(compute_capability) if it's present as an attribute
-  if (attrs.count(COMPUTE_CAPABILITY) > 0) {
+  if (compute_capability_enable_ && attrs.count(COMPUTE_CAPABILITY) > 0) {
     std::string model_compute_capability = attrs.at(COMPUTE_CAPABILITY).s();
     if (model_compute_capability != compute_capability_) {
       LOGS_DEFAULT(ERROR) << "The compute capability of the engine cache doesn't match with the GPU's compute capability";
@@ -297,6 +298,8 @@ bool TensorRTCacheModelHandler::ValidateEPCtxNode(const GraphViewer& graph_viewe
           return false;
         }
       }
+    } else if (embed_mode == 1) {
+      LOGS_DEFAULT(WARNING) << EPCONTEXT_WARNING;
     }
   }
   return true;

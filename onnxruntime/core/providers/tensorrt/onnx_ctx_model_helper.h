@@ -16,6 +16,9 @@ static const std::string EMBED_MODE = "embed_mode";
 static const std::string EP_CACHE_CONTEXT = "ep_cache_context";
 static const std::string COMPUTE_CAPABILITY = "hardware_architecture";
 static const std::string EPCONTEXT_OP_DOMAIN = "com.microsoft";
+static const std::string EPCONTEXT_WARNING = "It's suggested to set the ORT graph optimization level to 0 and  \
+                                              make \"embed_mode\" to 0 (\"ep_cache_context\" is the cache path)\
+                                              for the best model loading time";
 
 bool GraphHasCtxNode(const GraphViewer& graph_viewer);
 const onnxruntime::Path& GetModelPath(const GraphViewer& graph_viewer);
@@ -41,7 +44,8 @@ class TensorRTCacheModelHandler {
  public:
   TensorRTCacheModelHandler(std::unique_ptr<nvinfer1::ICudaEngine>* trt_engine,
                             nvinfer1::IRuntime* trt_runtime,
-                            std::string compute_capability) : trt_engine_(trt_engine), trt_runtime_(trt_runtime), compute_capability_(compute_capability) {
+                            std::string compute_capability,
+                            bool compute_capability_enable = true) : trt_engine_(trt_engine), trt_runtime_(trt_runtime), compute_capability_(compute_capability), compute_capability_enable_(compute_capability_enable) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TensorRTCacheModelHandler);
 
@@ -54,5 +58,6 @@ class TensorRTCacheModelHandler {
   nvinfer1::IRuntime* trt_runtime_;
   std::filesystem::path engine_cache_path_;
   std::string compute_capability_;
+  bool compute_capability_enable_;
 };  // TRTCacheModelHandler
 }  // namespace onnxruntime
