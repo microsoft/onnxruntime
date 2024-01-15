@@ -132,7 +132,6 @@ static size_t NSSQ4GemmCompF32WorkspaceSize(size_t M, size_t N, size_t K, const 
     // using ProA = prologue_a::gemm::ActivationBase<GemmCore_T, GemmCore_T::ISA>;
     return 0;
   }
-  return 0;
 }
 
 template <class GemmCore_T>
@@ -351,7 +350,6 @@ static size_t NSQ4GemmPackBSize(size_t N, size_t K, size_t BlkSize, bool isAsym,
     default:
       return 0;
   }
-  return 0;
 }
 
 static bool NSQ4GemmPackB(void* PackedBuf, const uint8_t* QData, const float* Scale, const uint8_t* Zp, size_t N,
@@ -397,7 +395,6 @@ static bool NSQ4GemmPackB(void* PackedBuf, const uint8_t* QData, const float* Sc
     default:
       return false;
   }
-  return false;
 }
 
 size_t NSNBitsGemmPackBSize(size_t N, size_t K, size_t BlkSize, int nbits, bool isAsym,
