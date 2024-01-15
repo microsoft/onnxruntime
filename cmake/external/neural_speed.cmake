@@ -13,5 +13,6 @@ if(USE_NEURAL_SPEED)
       GIT_REPOSITORY ${NEURAL_SPEED_URL}
       GIT_TAG        ${NEURAL_SPEED_TAG}
   )
+  set(BTLA_USE_OPENMP OFF)
   FetchContent_MakeAvailable(neural_speed)
 endif()
