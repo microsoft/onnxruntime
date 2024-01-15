@@ -13,6 +13,7 @@ import unittest
 
 import numpy as np
 import onnx
+import packaging.version as pv
 from onnx import TensorProto, helper
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
@@ -24,7 +25,7 @@ class TestOpConvTranspose(unittest.TestCase):
     Class with test_* methods that test quantization of the ConvTranspose operator.
     """
 
-    def input_feeds(self, num_test_inputs, name2shape):
+    def input_feeds(self, num_test_inputs, name2shape, dtype):
         """
         Returns a data reader of input test data.
 
@@ -37,12 +38,12 @@ class TestOpConvTranspose(unittest.TestCase):
         for _ in range(num_test_inputs):
             inputs = {}
             for name, shape in name2shape.items():
-                inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
+                inputs.update({name: np.random.randint(-1, 2, shape).astype(dtype)})
             input_data_list.extend([inputs])
         data_reader = TestDataFeeds(input_data_list)
         return data_reader
 
-    def construct_model(self, output_model_path):
+    def construct_model(self, output_model_path, onnx_type=TensorProto.FLOAT, opset=13, ir_version=7):
         """
         Constructs an ONNX model containing a single ConvTranspose node, and saves
         the model to the specified output path.
@@ -50,10 +51,10 @@ class TestOpConvTranspose(unittest.TestCase):
         :param output_model_path: The output filepath in which to save the model.
         """
 
-        input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 1, 7, 7])
-        output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 1, 8, 8])
-        ini_w = helper.make_tensor("weight", TensorProto.FLOAT, [1, 1, 2, 2], [1.0, 1.0, 1.0, 1.0])
-        ini_b = helper.make_tensor("bias", TensorProto.FLOAT, [1], [0.17])
+        input_tensor = helper.make_tensor_value_info("input", onnx_type, [1, 1, 7, 7])
+        output_tensor = helper.make_tensor_value_info("output", onnx_type, [1, 1, 8, 8])
+        ini_w = helper.make_tensor("weight", onnx_type, [1, 1, 2, 2], [1.0, 1.0, 1.0, 1.0])
+        ini_b = helper.make_tensor("bias", onnx_type, [1], [0.17])
         conv_tranpose_node = onnx.helper.make_node(
             "ConvTranspose",
             ["input", "weight", "bias"],
@@ -72,8 +73,8 @@ class TestOpConvTranspose(unittest.TestCase):
             [output_tensor],
             initializer=[ini_w, ini_b],
         )
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
-        model.ir_version = 7  # use stable onnx ir version
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
+        model.ir_version = ir_version  # use stable onnx ir version
 
         onnx.save(model, output_model_path)
 
@@ -128,15 +129,16 @@ class TestOpConvTranspose(unittest.TestCase):
         data_reader.rewind()
         check_model_correctness(self, model_fp32_path, model_int8_path, data_reader.get_next())
 
-    def test_quantize_conv_transpose_u8u8(self):
+    def quantize_conv_transpose_u8u8(self, onnx_type, opset, ir_version):
         """
         Unit test that quantizes (uint8) an ONNX model containing an ConvTranspose operator.
         """
 
         np.random.seed(1)
         model_fp32_path = "conv_transpose_fp32.onnx"
-        self.construct_model(model_fp32_path)
-        data_reader = self.input_feeds(1, {"input": [1, 1, 7, 7]})
+        self.construct_model(model_fp32_path, onnx_type, opset, ir_version)
+        dtype = onnx.helper.tensor_dtype_to_np_dtype(onnx_type)
+        data_reader = self.input_feeds(1, {"input": [1, 1, 7, 7]}, dtype)
 
         self.static_quant_test_qdq(
             model_fp32_path,
@@ -145,7 +147,16 @@ class TestOpConvTranspose(unittest.TestCase):
             weight_type=QuantType.QUInt8,
         )
 
-    def test_quantize_conv_transpose_s8s8(self):
+    def test_quantize_conv_transpose_u8u8(self):
+        self.quantize_conv_transpose_u8u8(TensorProto.FLOAT, 13, 7)
+
+    @unittest.skipIf(
+        pv.Version(onnx.__version__) < pv.Version("1.15.1"), reason="Shape inference bug, see onnx PR #5709"
+    )
+    def test_quantize_conv_transpose_u8u8_fp16(self):
+        self.quantize_conv_transpose_u8u8(TensorProto.FLOAT16, 19, 9)
+
+    def quantize_conv_transpose_s8s8(self, onnx_type, opset, ir_version):
         """
         Unit test that quantizes (int8) an ONNX model containing an ConvTranspose operator.
         """
@@ -153,7 +164,8 @@ class TestOpConvTranspose(unittest.TestCase):
         np.random.seed(1)
         model_fp32_path = "conv_transpose_fp32.onnx"
         self.construct_model(model_fp32_path)
-        data_reader = self.input_feeds(1, {"input": [1, 1, 7, 7]})
+        dtype = onnx.helper.tensor_dtype_to_np_dtype(onnx_type)
+        data_reader = self.input_feeds(1, {"input": [1, 1, 7, 7]}, dtype)
 
         self.static_quant_test_qdq(
             model_fp32_path,
@@ -162,6 +174,15 @@ class TestOpConvTranspose(unittest.TestCase):
             weight_type=QuantType.QInt8,
             extra_options={"ActivationSymmetric": True},
         )
+
+    def test_quantize_conv_transpose_s8s8(self):
+        self.quantize_conv_transpose_s8s8(TensorProto.FLOAT, 13, 7)
+
+    @unittest.skipIf(
+        pv.Version(onnx.__version__) < pv.Version("1.15.1"), reason="Shape inference bug, see onnx PR #5709"
+    )
+    def test_quantize_conv_transpose_s8s8_fp16(self):
+        self.quantize_conv_transpose_s8s8(TensorProto.FLOAT16, 19, 9)
 
 
 if __name__ == "__main__":

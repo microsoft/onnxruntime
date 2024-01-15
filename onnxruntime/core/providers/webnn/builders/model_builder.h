@@ -36,6 +36,7 @@ class ModelBuilder {
   const emscripten::val& GetContext() const { return wnn_context_; }
   const emscripten::val& GetOperand(const std::string& name) const { return wnn_operands_.at(name); }
   void AddOperand(const std::string& name, const emscripten::val& operand);
+  const emscripten::val& GetZeroConstant(const std::string& data_type);
   // Use the buffers to persist WebNN allocated data like transposed weight.
   // It ensures the validity during inference session.
   std::vector<std::unique_ptr<uint8_t[]>> mem_persist_buffers_;

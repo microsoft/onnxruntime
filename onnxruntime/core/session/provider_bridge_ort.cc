@@ -6,6 +6,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/framework/allocator_utils.h"
+#include "core/framework/config_options.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/data_types.h"
 #include "core/framework/data_transfer_manager.h"
@@ -529,6 +530,11 @@ struct ProviderHostImpl : ProviderHost {
 
   const ONNX_NAMESPACE::ValueInfoProto& ValueInfoProtos__operator_array(const ONNX_NAMESPACE::ValueInfoProtos* p, int index) override { return (*p)[index]; }
 
+  // ConfigOptions (wrapped)
+  std::optional<std::string> ConfigOptions__GetConfigEntry(const ConfigOptions* p, const std::string& config_key) override {
+    return p->GetConfigEntry(config_key);
+  }
+
   // ComputeCapability (wrapped)
   std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) override { return std::make_unique<ComputeCapability>(std::move(t_sub_graph)); }
   void ComputeCapability__operator_delete(ComputeCapability* p) override { delete p; }
@@ -934,6 +940,7 @@ struct ProviderHostImpl : ProviderHost {
   uint32_t OpKernelInfo__GetInputCount(const OpKernelInfo* p) override { return p->GetInputCount(); }
   uint32_t OpKernelInfo__GetOutputCount(const OpKernelInfo* p) override { return p->GetOutputCount(); }
   const Node& OpKernelInfo__node(const OpKernelInfo* p) override { return p->node(); }
+  const ConfigOptions& OpKernelInfo__GetConfigOptions(const OpKernelInfo* p) override { return p->GetConfigOptions(); }
 
   // SessionState (wrapped)
   const DataTransferManager& SessionState__GetDataTransferMgr(const SessionState* p) override { return p->GetDataTransferMgr(); }
@@ -1412,6 +1419,7 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_profile_max_shapes = "";
   trt_options_converted.trt_profile_opt_shapes = "";
   trt_options_converted.trt_cuda_graph_enable = 0;
+  trt_options_converted.trt_engine_cache_prefix = "";
 
   return trt_options_converted;
 }
@@ -1440,23 +1448,27 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
   if (legacy_ov_options->device_id != nullptr)
     ov_options_converted_map["device_id"] = legacy_ov_options->device_id;
 
-  ov_options_converted_map["num_of_threads"] = std::to_string(legacy_ov_options->num_of_threads);
+  if (legacy_ov_options->num_of_threads != '\0')
+    ov_options_converted_map["num_of_threads"] = std::to_string(legacy_ov_options->num_of_threads);
 
   if (legacy_ov_options->cache_dir != nullptr)
     ov_options_converted_map["cache_dir"] = legacy_ov_options->cache_dir;
 
-  std::stringstream context_string;
-
-  if (legacy_ov_options->context != nullptr)
+  if (legacy_ov_options->context != nullptr) {
+    std::stringstream context_string;
     context_string << legacy_ov_options->context;
-  ov_options_converted_map["context"] = context_string.str();
+    ov_options_converted_map["context"] = context_string.str();
+  }
 
   ov_options_converted_map["enable_opencl_throttling"] = legacy_ov_options->enable_opencl_throttling;
-  std::string enable_dynamic_shapes = reinterpret_cast<const char*>(legacy_ov_options->enable_dynamic_shapes);
-  if (enable_dynamic_shapes == "true" || enable_dynamic_shapes == "True") {
-    ov_options_converted_map["disable_dynamic_shapes"] = "false";
-  } else if (enable_dynamic_shapes == "false" || enable_dynamic_shapes == "False") {
-    ov_options_converted_map["disable_dynamic_shapes"] = "true";
+
+  if (legacy_ov_options->enable_dynamic_shapes != '\0') {
+    std::string enable_dynamic_shapes = reinterpret_cast<const char*>(legacy_ov_options->enable_dynamic_shapes);
+    if (enable_dynamic_shapes == "true" || enable_dynamic_shapes == "True") {
+      ov_options_converted_map["disable_dynamic_shapes"] = "false";
+    } else if (enable_dynamic_shapes == "false" || enable_dynamic_shapes == "False") {
+      ov_options_converted_map["disable_dynamic_shapes"] = "true";
+    }
   }
   // Add new provider option below
   ov_options_converted_map["num_streams"] = "1";
@@ -1733,6 +1745,39 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO, _In
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO_V2,
+                    _In_ OrtSessionOptions* options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    _In_ size_t num_keys) {
+  API_IMPL_BEGIN
+  onnxruntime::ProviderOptions provider_options;
+  for (size_t i = 0; i != num_keys; ++i) {
+    if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
+        provider_options_values[i] == nullptr || provider_options_values[i][0] == '\0') {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Provider options key/value cannot be empty");
+    }
+
+    // arbitrary length to validate the key/value. adjust if/when needed.
+    // TODO: are any other input validation checks required here (and in the other functions that process
+    // provider options)?
+    if (strlen(provider_options_keys[i]) > 1024 || strlen(provider_options_values[i]) > 1024) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "Maximum string length for a provider options key/value is 1024.");
+    }
+
+    provider_options[provider_options_keys[i]] = provider_options_values[i];
+  }
+  auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(&provider_options);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_OpenVINO_V2: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options,
                     _In_ const char* device_type) {
   OrtOpenVINOProviderOptions provider_options{};
@@ -1938,6 +1983,7 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
   if (ptr != nullptr) {
     delete[] ptr->trt_int8_calibration_table_name;
     delete[] ptr->trt_engine_cache_path;
+    delete[] ptr->trt_engine_cache_prefix;
     delete[] ptr->trt_timing_cache_path;
     delete[] ptr->trt_engine_decryption_lib_path;
     delete[] ptr->trt_tactic_sources;
