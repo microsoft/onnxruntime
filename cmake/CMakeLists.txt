@@ -1199,7 +1199,9 @@ endif()
 
 if (onnxruntime_USE_NEURAL_SPEED AND NOT onnxruntime_MINIMAL_BUILD)
   include(neural_speed)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES bestla::bestla)
+  if (USE_NEURAL_SPEED)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES bestla::bestla)
+  endif()
 endif()
 
 # TVM EP
