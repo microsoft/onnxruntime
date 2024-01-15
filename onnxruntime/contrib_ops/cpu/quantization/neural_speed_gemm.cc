@@ -169,25 +169,29 @@ static bool NSSQ4GemmBatchDriver(size_t M, size_t N, size_t K, size_t BatchN,
       auto btype = static_cast<gemm::CompType>(gemm::CompTypeHelper::get_B(CType));
       if (ptr->mPrologueID == BTLA_PROLOGUEB_IDS::WeightKBlockNInteger) {
         auto kptr = reinterpret_cast<bestla::storage::gemm::StorageWeightKBlockNInteger*>(ptr);
+        auto BlkSize = kptr->mBlockSize;
         if (btype == gemm::CompType::tFP32 && PackRow == 1) {
-          if (NTile == bestla::tAVX512F::NTILE && _cd->AVX512F()) {
+          if (NTile == bestla::tAVX512F::NTILE && _cd->AVX512F() && BlkSize % tAVX512F::KTILE == 0) {
             bestla::NSSQ4GemmCompF32<bestla::tAVX512F>(M, N, K, DataParams[i].A, DataParams[i].lda, kptr,
                                                        DataParams[i].C, DataParams[i].ldc, WorkSpace, &orth);
-          } else if (NTile == bestla::tAVX2::NTILE && _cd->AVX2()) {
+          } else if (NTile == bestla::tAVX2::NTILE && _cd->AVX2() && BlkSize % tAVX2::KTILE == 0) {
             bestla::NSSQ4GemmCompF32<bestla::tAVX2>(M, N, K, DataParams[i].A, DataParams[i].lda, kptr, DataParams[i].C,
                                                     DataParams[i].ldc, WorkSpace, &orth);
           }
         }
         if (btype == gemm::CompType::tS8 && PackRow == 4) {
-          if (NTile == bestla::tAMX_INT8_SS_KBlock::NTILE && _cd->AMX_INT8()) {
+          if (NTile == bestla::tAMX_INT8_SS_KBlock::NTILE && _cd->AMX_INT8() &&
+              BlkSize % tAMX_INT8_SS_KBlock::KTILE == 0) {
             bestla::NSSQ4GemmCompInt8<bestla::tAMX_INT8_SS_KBlock>(M, N, K, DataParams[i].A, DataParams[i].lda, kptr,
                                                                    DataParams[i].C, DataParams[i].ldc, WorkSpace,
                                                                    &orth);
-          } else if (NTile == bestla::tAVX512_VNNI_KBlock::NTILE && _cd->AVX512_VNNI()) {
+          } else if (NTile == bestla::tAVX512_VNNI_KBlock::NTILE && _cd->AVX512_VNNI() &&
+                     BlkSize % tAVX512_VNNI_KBlock::KTILE == 0) {
             bestla::NSSQ4GemmCompInt8<bestla::tAVX512_VNNI_KBlock>(M, N, K, DataParams[i].A, DataParams[i].lda, kptr,
                                                                    DataParams[i].C, DataParams[i].ldc, WorkSpace,
                                                                    &orth);
-          } else if (NTile == bestla::tAVX_VNNI_KBlock::NTILE && _cd->AVX_VNNI()) {
+          } else if (NTile == bestla::tAVX_VNNI_KBlock::NTILE && _cd->AVX_VNNI() &&
+                     BlkSize % tAVX_VNNI_KBlock::KTILE == 0) {
             bestla::NSSQ4GemmCompInt8<bestla::tAVX_VNNI_KBlock>(M, N, K, DataParams[i].A, DataParams[i].lda, kptr,
                                                                 DataParams[i].C, DataParams[i].ldc, WorkSpace, &orth);
           }
@@ -216,27 +220,29 @@ static size_t NSSQ4GemmBatchWorkspaceSize(size_t M, size_t N, size_t K, size_t B
         auto PackRow = gemm::CoreAttr::get_packrow(ptr->mCoreId);
         auto CType = gemm::CoreAttr::get_comp(ptr->mCoreId);
         auto btype = static_cast<gemm::CompType>(gemm::CompTypeHelper::get_B(CType));
+        auto BlkSize = kptr->mBlockSize;
         if (btype == gemm::CompType::tFP32 && PackRow == 1) {
-          if (NTile == tAVX512F::NTILE && _cd->AVX512F()) {
+          if (NTile == tAVX512F::NTILE && _cd->AVX512F() && BlkSize % tAVX512F::KTILE == 0) {
             size = std::max(NSSQ4GemmCompF32WorkspaceSize<tAVX512F>(M, N, K, DataParams[i].A, DataParams[i].lda, kptr,
                                                                     DataParams[i].C, DataParams[i].ldc),
                             size);
-          } else if (NTile == tAVX2::NTILE && _cd->AVX2()) {
+          } else if (NTile == tAVX2::NTILE && _cd->AVX2() && BlkSize % tAVX2::KTILE == 0) {
             size = std::max(NSSQ4GemmCompF32WorkspaceSize<tAVX2>(M, N, K, DataParams[i].A, DataParams[i].lda, kptr,
                                                                  DataParams[i].C, DataParams[i].ldc),
                             size);
           }
         }
         if (btype == gemm::CompType::tS8 && PackRow == 4) {
-          if (NTile == tAMX_INT8_SS_KBlock::NTILE && _cd->AMX_INT8()) {
+          if (NTile == tAMX_INT8_SS_KBlock::NTILE && _cd->AMX_INT8() && BlkSize % tAMX_INT8_SS_KBlock::KTILE == 0) {
             size = std::max(NSSQ4GemmCompInt8WorkspaceSize<tAMX_INT8_SS_KBlock>(
                                 M, N, K, DataParams[i].A, DataParams[i].lda, kptr, DataParams[i].C, DataParams[i].ldc),
                             size);
-          } else if (NTile == tAVX512_VNNI_KBlock::NTILE && _cd->AVX512_VNNI()) {
+          } else if (NTile == tAVX512_VNNI_KBlock::NTILE && _cd->AVX512_VNNI() &&
+                     BlkSize % tAVX512_VNNI_KBlock::KTILE == 0) {
             size = std::max(NSSQ4GemmCompInt8WorkspaceSize<tAVX512_VNNI_KBlock>(
                                 M, N, K, DataParams[i].A, DataParams[i].lda, kptr, DataParams[i].C, DataParams[i].ldc),
                             size);
-          } else if (NTile == tAVX_VNNI_KBlock::NTILE && _cd->AVX_VNNI()) {
+          } else if (NTile == tAVX_VNNI_KBlock::NTILE && _cd->AVX_VNNI() && BlkSize % tAVX_VNNI_KBlock::KTILE == 0) {
             size = std::max(NSSQ4GemmCompInt8WorkspaceSize<tAVX_VNNI_KBlock>(
                                 M, N, K, DataParams[i].A, DataParams[i].lda, kptr, DataParams[i].C, DataParams[i].ldc),
                             size);
@@ -272,23 +278,25 @@ static bool NSQ4GemmUnPackB(float* FpData, const void* PackedBuf, size_t N, size
     auto btype = static_cast<gemm::CompType>(gemm::CompTypeHelper::get_B(CType));
     if (ptr->mPrologueID == BTLA_PROLOGUEB_IDS::WeightKBlockNInteger) {
       auto wptr = reinterpret_cast<storage::gemm::StorageWeightKBlockNInteger*>(ptr);
+      auto BlkSize = wptr->mBlockSize;
       if (btype == gemm::CompType::tFP32 && PackRow == 1) {
-        if (NTile == tAVX512F::NTILE && _cd->AVX512F()) {
+        if (NTile == tAVX512F::NTILE && _cd->AVX512F() && BlkSize % tAVX512F::KTILE == 0) {
           static tWeiNInt<tAVX512F, tAVX512F::ISA> proB;
           proB.unpackWeight(N_, K_, wptr, FpData, ldb_, &orth);
-        } else if (NTile == tAVX2::NTILE && _cd->AVX2()) {
+        } else if (NTile == tAVX2::NTILE && _cd->AVX2() && BlkSize % tAVX2::KTILE == 0) {
           static tWeiNInt<tAVX2, tAVX2::ISA> proB;
           proB.unpackWeight(N_, K_, wptr, FpData, ldb_, &orth);
         }
       }
       if (btype == gemm::CompType::tS8 && PackRow == 4) {
-        if (NTile == tAMX_INT8_SS_KBlock::NTILE && _cd->AMX_INT8()) {
+        if (NTile == tAMX_INT8_SS_KBlock::NTILE && _cd->AMX_INT8() && BlkSize % tAMX_INT8_SS_KBlock::KTILE == 0) {
           static tWeiNInt<tAMX_INT8_SS_KBlock, tAMX_INT8_SS_KBlock::ISA> proB;
           proB.unpackWeight(N_, K_, wptr, FpData, ldb_, &orth);
-        } else if (NTile == tAVX512_VNNI_KBlock::NTILE && _cd->AVX512_VNNI()) {
+        } else if (NTile == tAVX512_VNNI_KBlock::NTILE && _cd->AVX512_VNNI() &&
+                   BlkSize % tAVX512_VNNI_KBlock::KTILE == 0) {
           static tWeiNInt<tAVX512_VNNI_KBlock, tAVX512_VNNI_KBlock::ISA> proB;
           proB.unpackWeight(N_, K_, wptr, FpData, ldb_, &orth);
-        } else if (NTile == tAVX_VNNI_KBlock::NTILE && _cd->AVX_VNNI()) {
+        } else if (NTile == tAVX_VNNI_KBlock::NTILE && _cd->AVX_VNNI() && BlkSize % tAVX_VNNI_KBlock::KTILE == 0) {
           static tWeiNInt<tAVX_VNNI_KBlock, tAVX_VNNI_KBlock::ISA> proB;
           proB.unpackWeight(N_, K_, wptr, FpData, ldb_, &orth);
         }
