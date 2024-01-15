@@ -47,7 +47,7 @@ jobs:
       DownloadCUDA: true
       BuildArch: 'x64'
       BuildConfig: RelWithDebInfo
-      MachinePool: 'onnxruntime-Win2022-GPU-A10
+      MachinePool: 'onnxruntime-Win2022-GPU-A10'
       WithCache: true
       Today: $(Today)
 
