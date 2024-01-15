@@ -192,43 +192,6 @@ struct GroupNormNHWCParams {
   }
 };
 
-// template <typename T>
-// Status LaunchGroupNormKernel(
-//     cudaStream_t stream,
-//     T* output,
-//     T* add_out,
-//     const T* input,
-//     const T* skip,
-//     const T* bias,
-//     const float* gamma,
-//     const float* beta,
-//     void* workspace,
-//     float epsilon,
-//     int batch_size,
-//     int num_channels,
-//     int height,
-//     int width,
-//     int num_groups,
-//     bool use_silu,
-//     bool broadcast_skip,
-//     int channels_per_block) {
-//   GroupNormNHWCParams<T> params;
-
-//   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
-//       this->group_sum_buffer, 0, GetGroupNormWorkspaceSizeInBytes(batch_size, num_groups), stream));
-
-//   GroupNormNHWCSum<T>(params, stream);
-//   CUDA_RETURN_IF_ERROR(cudaGetLastError());
-
-//   DUMP_TENSOR_INIT();
-//   DUMP_TENSOR("workspace", this->group_sum_buffer, batch_size, 2, num_groups);
-
-//   GroupNormNHWCScale<T>(params, stream);
-//   CUDA_RETURN_IF_ERROR(cudaGetLastError());
-
-//   return Status::OK();
-// }
-
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
