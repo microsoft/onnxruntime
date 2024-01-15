@@ -45,8 +45,8 @@ jobs:
     parameters:
       EnvSetupScript: $(EnvSetupScript)
       DownloadCUDA: true
-      BuildArch: $(buildArch)
-      BuildConfig: $(BuildConfig)
+      BuildArch: 'x64'
+      BuildConfig: RelWithDebInfo
       MachinePool: 'onnxruntime-Win2022-GPU-A10'
       WithCache: true
       Today: $(Today)
@@ -55,8 +55,8 @@ jobs:
     parameters:
       WithCache: True
       Today: $(TODAY)
-      AdditionalKey: "gpu-tensorrt | $(BuildConfig)"
-      BuildPyArguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86'
+      AdditionalKey: "gpu-tensorrt | RelWithDebInfo"
+      BuildPyArguments: '--config RelWithDebInfo --enable_qspectre --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86'
       MsbuildArguments: $(MsbuildArguments)
       BuildArch: $(buildArch)
       Platform: 'x64'
