@@ -29,18 +29,6 @@ void ORTThreading::parallel_for(const parallel::thread_func& func) const {
                                    [&](ptrdiff_t tid) { func(static_cast<int>(tid)); });
 }
 
-Platform::Platform() {
-  GetCPUDevice();
-  if (_cd->AMX_INT8() || _cd->AMX_BF16()) {
-    utils::request_perm_xtile_data();
-  }
-}
-
-Platform* Platform::get() {
-  static Platform instance;
-  return &instance;
-}
-
 template <class GemmCore_T>
 static void NSSQ4GemmCompF32(size_t M, size_t N, size_t K, const float* A, size_t lda,
                              storage::gemm::StorageWeightKBlockNInteger* B, float* C, size_t ldc, int8_t* WorkSpace,
@@ -442,9 +430,6 @@ size_t NSSQNBitsGemmBatchWorkspaceSize(const size_t M, const size_t N, const siz
 void NSSQNBitsGemmBatchPackedB(const size_t M, const size_t N, const size_t K, const size_t BatchN,
                                const NS_SQNBITS_GEMM_DATA_PACKED_PARAMS* DataParams, void* WorkSpace,
                                void* ThreadPool) {
-  // Prepare system config for AMX instructions
-  auto p = Platform::get();
-  (void)(p);
   // only nbits=4 can be packed, so not necessary to check the nbits in DataParams
   if (NSSQ4GemmBatchDriver(M, N, K, BatchN, DataParams, reinterpret_cast<int8_t*>(WorkSpace), ThreadPool)) {
     // PackedWeight is created by bestla

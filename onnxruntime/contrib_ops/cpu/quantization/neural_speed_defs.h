@@ -42,10 +42,4 @@ class ORTThreading : public parallel::IThreading {
   void* mTp;
 };
 
-class Platform {
- public:
-  Platform();
-  static Platform* get();
-};
-
 }  // namespace bestla
