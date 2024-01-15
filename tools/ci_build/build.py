@@ -435,7 +435,7 @@ def parse_arguments():
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build for WebAssembly static library")
-    parser.add_argument("--emsdk_version", default="3.1.44", help="Specify version of emsdk")
+    parser.add_argument("--emsdk_version", default="3.1.51", help="Specify version of emsdk")
 
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threads support")
@@ -1474,15 +1474,18 @@ def generate_build_tree(
     cflags = None
     cxxflags = None
     ldflags = None
+    cudaflags = []
     for config in configs:
         # Setup default values for cflags/cxxflags/ldflags.
         # The values set here are purely for security and compliance purposes. ONNX Runtime should work fine without these flags.
         if (
             "CFLAGS" not in os.environ
             and "CXXFLAGS" not in os.environ
+            and (not args.use_cuda or "CUDAFLAGS" not in os.environ)
             and not args.ios
             and not args.android
             and not args.build_wasm
+            and not args.use_rocm
             and not (is_linux() and platform.machine() != "aarch64" and platform.machine() != "x86_64")
         ):
             if is_windows():
@@ -1515,9 +1518,19 @@ def generate_build_tree(
                 cxxflags = cflags.copy()
                 if not args.disable_exceptions:
                     cxxflags += ["/EHsc"]
+                if args.use_cuda:
+                    # On Windows, nvcc passes /EHsc to the host compiler by default.
+                    cuda_compile_flags_str = ""
+                    for compile_flag in cflags:
+                        if compile_flag.startswith("/D"):
+                            cudaflags.append(compile_flag)
+                        else:
+                            cuda_compile_flags_str = cuda_compile_flags_str + " " + compile_flag
+                    if len(cuda_compile_flags_str) != 0:
+                        cudaflags.append('-Xcompiler="%s"' % cuda_compile_flags_str)
             elif is_linux() or is_macOS():
                 if is_linux():
-                    ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now"]
+                    ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now", "-Wl,-z,noexecstack"]
                 else:
                     ldflags = []
                 if config == "Release":
@@ -1560,7 +1573,8 @@ def generate_build_tree(
                     # The following flags needs GCC 8 and newer
                     cflags += ["-fstack-clash-protection", "-fcf-protection"]
                 cxxflags = cflags.copy()
-
+                if args.use_cuda:
+                    cudaflags = cflags.copy()
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
         if args.use_tvm:
@@ -1580,6 +1594,8 @@ def generate_build_tree(
                 "-DCMAKE_C_FLAGS=%s" % (" ".join(cflags)),
                 "-DCMAKE_CXX_FLAGS=%s" % (" ".join(cxxflags)),
             ]
+        if cudaflags is not None and len(cudaflags) != 0:
+            temp_cmake_args += ["-DCMAKE_CUDA_FLAGS_INIT=%s" % (" ".join(cudaflags))]
         if ldflags is not None and len(ldflags) != 0:
             temp_cmake_args += [
                 "-DCMAKE_EXE_LINKER_FLAGS_INIT=%s" % (" ".join(ldflags)),

@@ -23,7 +23,7 @@ class Resize : public JsKernel, public UpsampleBase {
     std::transform(axes_.begin(), axes_.end(), std::back_inserter(axes), [](auto& axis) { return gsl::narrow_cast<int32_t>(axis); });
     JSEP_INIT_KERNEL_ATTRIBUTE(Resize, ({
                                  "antialias" : $1,
-                                 "axes" : $2 ? Array.from(HEAP32.subarray($3, $3 + $2)) : [],
+                                 "axes" : $2 ? Array.from(HEAP32.subarray($2, $3)) : [],
                                  "coordinateTransformMode" : UTF8ToString($4),
                                  "cubicCoeffA" : $5,
                                  "excludeOutside" : $6,
@@ -33,8 +33,8 @@ class Resize : public JsKernel, public UpsampleBase {
                                  "nearestMode" : UTF8ToString($10),
                                }),
                                static_cast<int32_t>(antialias_),
-                               gsl::narrow_cast<int32_t>(axes.size()),
-                               JSEP_HEAP_PTR((axes.size() > 0) ? axes.data() : nullptr) >> 2,
+                               JSEP_HEAP32_INDEX_START(axes),
+                               JSEP_HEAP32_INDEX_END(axes),
                                resize_coordinate_transformation_mode.c_str(),
                                static_cast<double>(cubic_coeff_a_),
                                static_cast<int32_t>(exclude_outside_),

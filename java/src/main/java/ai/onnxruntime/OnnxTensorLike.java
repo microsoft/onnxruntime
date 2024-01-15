@@ -28,6 +28,9 @@ public abstract class OnnxTensorLike implements OnnxValue {
   /** The size and shape information for this tensor. */
   protected final TensorInfo info;
 
+  /** Is this value closed? */
+  protected boolean closed;
+
   /**
    * Constructs a tensor-like (the base class of OnnxTensor and OnnxSparseTensor).
    *
@@ -39,6 +42,7 @@ public abstract class OnnxTensorLike implements OnnxValue {
     this.nativeHandle = nativeHandle;
     this.allocatorHandle = allocatorHandle;
     this.info = info;
+    this.closed = false;
   }
 
   /**
@@ -58,5 +62,17 @@ public abstract class OnnxTensorLike implements OnnxValue {
   @Override
   public TensorInfo getInfo() {
     return info;
+  }
+
+  @Override
+  public synchronized boolean isClosed() {
+    return closed;
+  }
+
+  /** Checks if the OnnxValue is closed, if so throws {@link IllegalStateException}. */
+  protected void checkClosed() {
+    if (closed) {
+      throw new IllegalStateException("Trying to use a closed OnnxValue");
+    }
   }
 }
