@@ -122,7 +122,11 @@ async function buildOrt({
           case 'node:fs/promises':
           case 'node:fs':
           case 'fs':
-            return {contents: 'export const readFile = undefined;'};
+            return {
+              contents: 'export const readFile = undefined;' +
+                  'export const readFileSync = undefined;' +
+                  'export const createReadStream = undefined;'
+            };
           case 'node:os':
           case 'os':
             return {contents: 'export const cpus = undefined;'};

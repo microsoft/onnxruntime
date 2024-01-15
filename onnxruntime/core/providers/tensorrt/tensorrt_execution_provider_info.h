@@ -54,6 +54,7 @@ struct TensorrtExecutionProviderInfo {
   bool dump_ep_context_model{false};
   int ep_context_embed_mode{0};
   bool ep_context_compute_capability_enable{1};
+  std::string engine_cache_prefix{""};
 
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);
