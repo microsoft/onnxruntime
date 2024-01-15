@@ -61,6 +61,7 @@ static void RunSession(OrtAllocator& allocator, Ort::Session& session_object,
     ASSERT_NEAR(values_y[i], f[i], 1e-6f);
 #else
     ASSERT_NEAR(values_y[i], f[i], 1e-5f);
+#endif
   }
 }
 
