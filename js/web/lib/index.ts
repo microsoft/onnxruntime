@@ -21,13 +21,12 @@ if (!BUILD_DEFS.DISABLE_WEBGL) {
 if (!BUILD_DEFS.DISABLE_WASM) {
   const wasmBackend = BUILD_DEFS.DISABLE_TRAINING ? require('./backend-wasm-inference').wasmBackend :
                                                     require('./backend-wasm-training').wasmBackend;
-  if (!BUILD_DEFS.DISABLE_WEBGPU && typeof navigator !== 'undefined' && navigator.gpu) {
+  if (!BUILD_DEFS.DISABLE_WEBGPU) {
     registerBackend('webgpu', wasmBackend, 5);
   }
   registerBackend('cpu', wasmBackend, 10);
   registerBackend('wasm', wasmBackend, 10);
-  if (BUILD_DEFS.DISABLE_TRAINING) {
-    registerBackend('xnnpack', wasmBackend, 9);
+  if (!BUILD_DEFS.DISABLE_WEBNN) {
     registerBackend('webnn', wasmBackend, 9);
   }
 }

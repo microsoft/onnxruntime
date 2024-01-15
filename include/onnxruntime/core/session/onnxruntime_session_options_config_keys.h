@@ -88,9 +88,9 @@ static const char* const kOrtSessionOptionsDisableAheadOfTimeFunctionInlining = 
 //   the memory.
 static const char* const kOrtSessionOptionsMemoryOptimizerEnabler = "optimization.memory_optimizer_config";
 
-// Specifies the level for detecting subgraphs for memory footprint reduction.
-// The value should be an integer. The default value is 0.
-static const char* const kOrtSessionOptionsMemoryOptimizerProbeLevel = "optimization.enable_memory_probe_recompute_level";
+// Specifies the config for detecting subgraphs for memory footprint reduction.
+// The value should be a string contains int separated using commas. The default value is "0:0".
+static const char* const kOrtSessionOptionsMemoryOptimizerProbeConfig = "optimization.enable_memory_probe_recompute_config";
 #endif
 
 // Enable or disable using device allocator for allocating initialized tensor memory. "1": enable; "0": disable. The default is "0".
@@ -235,3 +235,18 @@ static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersFil
 // Use this config to control the minimum size of the initializer when externalizing it during serialization
 static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes =
     "session.optimized_model_external_initializers_min_size_in_bytes";
+
+// Enable EP context feature to dump the partitioned graph which include the EP context into Onnx file.
+// The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.
+// "0": disable. (default)
+// "1": enable.
+static const char* const kOrtSessionOptionEpContextEnable = "ep.context_enable";
+
+// Specify the file path for the Onnx model which has EP context.
+// Default to original_file_name_ctx.onnx if not specified
+static const char* const kOrtSessionOptionEpContextFilePath = "ep.context_file_path";
+
+// Flag to specify whether to dump the EP context into the Onnx model.
+// "0": dump the EP context into separate file, keep the file name in the Onnx model.
+// "1": dump the EP context into the Onnx model. (default).
+static const char* const kOrtSessionOptionEpContextEmbedMode = "ep.context_embed_mode";

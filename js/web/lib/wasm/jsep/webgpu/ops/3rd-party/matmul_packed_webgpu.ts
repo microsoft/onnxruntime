@@ -510,11 +510,7 @@ export const createMatmulProgramInfo =
         name: 'MatMul',
         shaderCache: {
           hint: activationAttributes.activationCacheKey + `${elementsPerThread}` +
-              `${activationAttributes.activation}` +
-              `${activationAttributes.clipMax}` +
-              `${activationAttributes.clipMin}` +
               `${isVec4}` +
-              `${hasBias}` +
               `${isChannelsLast}`,
           inputDependencies
         },

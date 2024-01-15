@@ -35,6 +35,17 @@ struct PriorityNodeCompare {
       return n1->Priority() > n2->Priority();
     }
 
+    // nodes of forward pass will be output first
+    auto n1_attrs = n1->GetAttributes();
+    auto n2_attrs = n2->GetAttributes();
+    int64_t n1_is_forward = static_cast<int64_t>(n1_attrs.find(kBackwardNodeAttributeName) == n1_attrs.cend()) ||
+                            (n1_attrs.at(kBackwardNodeAttributeName).i() + 1) % 2;
+    int64_t n2_is_forward = static_cast<int64_t>(n2_attrs.find(kBackwardNodeAttributeName) == n2_attrs.cend()) ||
+                            (n2_attrs.at(kBackwardNodeAttributeName).i() + 1) % 2;
+    if (n1_is_forward != n2_is_forward) {
+      return n2_is_forward > n1_is_forward;
+    }
+
     // otherwise, nodes with lower index will be output first
     return n1->Index() > n2->Index();
   }
@@ -57,12 +68,14 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
                       : ConstGraphNodes::NodeFilterFunc(nullptr))},
       filter_info_{filter_info} {
   std::vector<const Node*> leaf_nodes;
+#ifdef ENABLE_TRAINING
   // Keep the info of shape and size nodes and their parents so that after topological sort, we can move them
   // right after their parents. This is to make sure the shape and size nodes are executed right after their parents
   // so it's possible the input tensor memory can be released as soon as possible. This is especially important
   // for non-CPU devices or for training case where some gradient graphs use only shape/size of tensors from forward.
   InlinedHashSet<NodeIndex> shape_size_nodes;
   InlinedHashMap<NodeIndex, InlinedVector<NodeIndex>> shape_size_parents;
+#endif
   for (auto& node : graph_->Nodes()) {
     // This is a leaf node (without any output node)
     if (node.OutputNodesBegin() == node.OutputNodesEnd()) {
@@ -72,6 +85,7 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
     if (node.InputEdgesBegin() == node.InputEdgesEnd()) {
       root_nodes_.push_back(node.Index());
     }
+#ifdef ENABLE_TRAINING
     if ((node.OpType() == "Shape" || node.OpType() == "Size") && node.InputEdgesBegin() != node.InputEdgesEnd()) {
       shape_size_nodes.insert(node.Index());
       NodeIndex parent = node.InputNodesBegin()->Index();
@@ -81,6 +95,7 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
         shape_size_parents[parent].push_back(node.Index());
       }
     }
+#endif
   }
 
   graph.ReverseDFSFrom(
@@ -90,21 +105,24 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
         nodes_in_topological_order_.push_back(n->Index());
       },
       NodeCompare());
-
+#ifdef ENABLE_TRAINING
   auto original = std::move(nodes_in_topological_order_);
   nodes_in_topological_order_.reserve(original.size());
+  InlinedHashSet<NodeIndex> visited;
   for (auto& node : original) {
-    if (shape_size_nodes.find(node) != shape_size_nodes.end()) {
+    if (visited.find(node) != visited.end()) {
       continue;
     }
     nodes_in_topological_order_.push_back(node);
+    visited.insert(node);
     if (shape_size_parents.find(node) != shape_size_parents.end()) {
       for (auto& following_node : shape_size_parents[node]) {
         nodes_in_topological_order_.push_back(following_node);
+        visited.insert(following_node);
       }
     }
   }
-
+#endif
 #if !defined(ORT_MINIMAL_BUILD)
   graph.KahnsTopologicalSort(
       [this](const Node* n) {

@@ -63,14 +63,6 @@ void TestConvOp(const ConvOpAndTestAttributes& attributes,
   // QNN SDK 2.10.0 has a bug that breaks support for dynamic bias inputs.
   excluded_providers.insert(kQnnExecutionProvider);
 
-  // TODO: Enable QNN EP when bug with QNN SDK 2.10.0 is fixed:
-  /*
-  // QNN have issue with dynamic weight, auto pad with SAME_UPPER, SAME_LOWER
-  if (!weight_is_initializer || attributes.auto_pad == "SAME_UPPER" || attributes.auto_pad == "SAME_LOWER") {
-    excluded_providers.insert(kQnnExecutionProvider);
-  }
-  */
-
   test.Run(expect_result, err_str, excluded_providers);
 }
 

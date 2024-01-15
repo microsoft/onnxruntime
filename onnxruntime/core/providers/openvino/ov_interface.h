@@ -6,13 +6,10 @@
 #include <vector>
 #include <memory>
 
-#if defined(OPENVINO_2022_1) || (OPENVINO_2022_2) || (OPENVINO_2022_3) || (OPENVINO_2023_0) || (OPENVINO_2023_1)
 #define OV_API_20
 #include "openvino/openvino.hpp"
 #include "openvino/pass/convert_fp32_to_fp16.hpp"
-#else
-#include <inference_engine.hpp>
-#endif
+#include "openvino/frontend/manager.hpp"
 
 #ifdef IO_BUFFER_ENABLED
 #include <gpu/gpu_context_api_ocl.hpp>
@@ -43,17 +40,15 @@ class OVCore {
   ov::Core oe;
 
  public:
-  std::shared_ptr<OVNetwork> ReadModel(const std::string& model_stream) const;
+  std::shared_ptr<OVNetwork> ReadModel(const std::string& model_stream, const std::string& model_path) const;
   OVExeNetwork LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network,
                            std::string& hw_target,
                            ov::AnyMap& device_config,
                            std::string name);
-#if defined(OPENVINO_2023_0) || (OPENVINO_2023_1)
   OVExeNetwork LoadNetwork(const std::string& model_stream,
                            std::string& hw_target,
                            ov::AnyMap& device_config,
                            std::string name);
-#endif
   void SetCache(std::string cache_dir_path);
 #ifdef IO_BUFFER_ENABLED
   OVExeNetwork LoadNetwork(std::shared_ptr<OVNetwork>& model, OVRemoteContextPtr context, std::string& name);

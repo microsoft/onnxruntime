@@ -38,7 +38,84 @@ stages:
 - stage: x64
   dependsOn: []
   jobs:
-    - job: Linux_Build
+    - job: Linux_Debug
+      timeoutInMinutes: 180
+      workspace:
+        clean: all
+      variables:
+        skipComponentGovernanceDetection: true
+        ORT_CACHE_DIR: $(Agent.TempDirectory)/ort_ccache
+        TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+      pool: onnxruntime-Ubuntu2004-AMD-CPU
+      steps:
+      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+        displayName: 'Clean Agent Directories'
+        condition: always()
+
+      - checkout: self
+        clean: true
+        submodules: none
+
+      - template: templates/get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/inference/x64/default/cpu/Dockerfile
+          Context: tools/ci_build/github/linux/docker/inference/x64/default/cpu
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=registry.access.redhat.com/ubi8/ubi"
+          Repository: onnxruntimecpubuildcentos8x64
+
+      - template: templates/linux-build-step-with-cache.yml
+        parameters:
+          WithCache: false
+          Today: $(TODAY)
+          AdditionalKey: onnxruntime_linux_debug_with_address_sanitizer
+          CacheDir: $(ORT_CACHE_DIR)
+          ChangeEveryCommit: true
+          BuildStep:
+            - task: CmdLine@2
+              displayName: 'build'
+              inputs:
+                script: |
+                  mkdir -p $HOME/.onnx
+                  docker run --rm \
+                    --volume /data/onnx:/data/onnx:ro \
+                    --volume /data/models:/data/models:ro \
+                    --volume $(Build.SourcesDirectory):/onnxruntime_src \
+                    --volume $(Build.BinariesDirectory):/build \
+                    --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+                    -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+                    -e NIGHTLY_BUILD \
+                    -e BUILD_BUILDNUMBER \
+                    onnxruntimecpubuildcentos8x64 \
+                    /bin/bash -c "
+                      set -ex; \
+                      python3.9 /onnxruntime_src/tools/ci_build/build.py \
+                        --build_dir /build --cmake_generator 'Ninja' \
+                        --config Debug \
+                        --skip_submodule_sync \
+                        --build_shared_lib \
+                        --parallel \
+                        --build_csharp \
+                        --enable_onnx_tests --enable_address_sanitizer \
+                        --update --build;
+                      LD_PRELOAD=/usr/lib64/libasan.so.6 python3.9 /onnxruntime_src/tools/ci_build/build.py \
+                        --build_dir /build --cmake_generator 'Ninja' \
+                        --config Debug \
+                        --skip_submodule_sync \
+                        --build_shared_lib \
+                        --parallel \
+                        --build_csharp \
+                        --enable_onnx_tests --enable_address_sanitizer \
+                        --test;"
+                workingDirectory: $(Build.SourcesDirectory)
+
+      - task: PublishTestResults@2
+        displayName: 'Publish unit test results'
+        inputs:
+          testResultsFiles: '**/*.results.xml'
+          searchFolder: '$(Build.BinariesDirectory)'
+          testRunTitle: 'Unit Test Run'
+        condition: succeededOrFailed()
+    - job: Linux_Release
       timeoutInMinutes: 180
       workspace:
         clean: all
@@ -106,8 +183,7 @@ stages:
           ls $(Build.BinariesDirectory)/gccbin/bin
           mkdir $(Build.BinariesDirectory)/arm32build
           cd $(Build.BinariesDirectory)/arm32build
-          # TODO: fix the warnings and remove the --compile-no-warning-as-error arg
-          cmake --compile-no-warning-as-error $(Build.SourcesDirectory)/cmake -Donnxruntime_ENABLE_CPUINFO=OFF -DPython_EXECUTABLE=/usr/bin/python3 -DPYTHON_EXECUTABLE=/usr/bin/python3 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$(Build.SourcesDirectory)/cmake/linux_arm32_crosscompile_toolchain.cmake -G Ninja
+          cmake $(Build.SourcesDirectory)/cmake -Donnxruntime_ENABLE_CPUINFO=OFF -DPython_EXECUTABLE=/usr/bin/python3 -DPYTHON_EXECUTABLE=/usr/bin/python3 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$(Build.SourcesDirectory)/cmake/linux_arm32_crosscompile_toolchain.cmake -G Ninja
           ninja
           rm -rf $(Build.BinariesDirectory)/arm32build $(Build.BinariesDirectory)/gccbin
         displayName: Cross-compile for Linux ARM32 and ARM64
@@ -149,7 +225,7 @@ stages:
                       ccache -s; \
                       /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                         --build_dir /build --cmake_generator 'Ninja' \
-                        --config Debug Release \
+                        --config Release \
                         --skip_submodule_sync \
                         --build_shared_lib \
                         --parallel \
@@ -167,61 +243,7 @@ stages:
           ln -s /data/models $(Build.BinariesDirectory)/models
         displayName: link model dir
 
-      - bash: |
-          mkdir -p $HOME/.onnx
-          docker run --rm \
-            --volume /data/onnx:/data/onnx:ro \
-            --volume $(Build.SourcesDirectory):/onnxruntime_src \
-            --volume $(Build.BinariesDirectory):/build \
-            --volume /data/models:/build/models:ro \
-            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
-            -e NIGHTLY_BUILD \
-            -e BUILD_BUILDNUMBER \
-            onnxruntimecpubuild \
-            /bin/bash -c "
-              set -ex; \
-              pushd /onnxruntime_src/csharp; \
-              dotnet restore /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; \
-              dotnet build /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln; \
-              dotnet test /onnxruntime_src/csharp/OnnxRuntime.DesktopOnly.CSharp.sln -f net6.0 --no-build -l \"console;verbosity=normal\"; \
-              popd
-              "
-        displayName: 'Dotnet build C# sln and Test'
-
-      - bash: |
-          mkdir -p $HOME/.onnx
-          docker run --rm \
-            --volume /data/onnx:/data/onnx:ro \
-            --volume $(Build.SourcesDirectory):/onnxruntime_src \
-            --volume $(Build.BinariesDirectory):/build \
-            --volume /data/models:/build/models:ro \
-            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
-            -e NIGHTLY_BUILD \
-            -e BUILD_BUILDNUMBER \
-            onnxruntimecpubuild \
-              /bin/bash -c "
-                set -ex; \
-                /bin/bash /onnxruntime_src/tools/scripts/python_test.sh /onnxruntime_src /build Release && \
-                /bin/bash /onnxruntime_src/tools/scripts/symbolic_shape_infer_test.sh /build
-              "
-        displayName: 'Run Release tests and symbolic shape infer test'
-
-      - bash: |
-          mkdir -p $HOME/.onnx
-          docker run --rm \
-            --volume /data/onnx:/data/onnx:ro \
-            --volume $(Build.SourcesDirectory):/onnxruntime_src \
-            --volume $(Build.BinariesDirectory):/build \
-            --volume /data/models:/build/models:ro \
-            --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
-            -e NIGHTLY_BUILD \
-            -e BUILD_BUILDNUMBER \
-            onnxruntimecpubuild \
-                /bin/bash /onnxruntime_src/tools/scripts/python_test.sh /onnxruntime_src /build Debug
-        displayName: 'Run Debug tests'
+      
 
       - task: PublishTestResults@2
         displayName: 'Publish unit test results'

@@ -5,7 +5,7 @@
 
 #include <iostream>
 #include <sstream>
-
+#include <iomanip>
 #include "gtest/gtest.h"
 
 #include "core/flatbuffers/schema/ort.fbs.h"

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef USE_CUTLASS
+
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
@@ -421,3 +423,5 @@ TEST(MoETest, MoETest_Relu) {
 
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif

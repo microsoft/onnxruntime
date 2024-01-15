@@ -1,3 +1,13 @@
+# Contents
+ - [LLaMA-2](#llama-2)
+   - [Exporting LLaMA-2](#exporting-llama-2)
+   - [Benchmarking LLaMA-2](#benchmark-llama-2)
+ - [Mistral](#mistral)
+   - [Exporting Mistral](#exporting-mistral)
+   - [Optimizing and Quantizing Mistral](#optimizing-and-quantizing-mistral)
+   - [Benchmarking Mistral](#benchmark-mistral)
+
+
 # LLaMA-2
 
 ## Prerequisites
@@ -372,3 +382,58 @@ python3 -m models.llama.benchmark_all \
     --num-runs 1000 \
     --timeout 60  # number of minutes before moving to the next benchmark
 ```
+
+# Mistral
+
+## Introduction
+
+These tools for LLaMA-2 also allow the quantization and optimization of Mistral in ORT. 
+
+## Exporting Mistral
+
+There is currently one supported way to export Mistral to ONNX format:
+
+### [Hugging Face Optimum](https://github.com/huggingface/optimum)
+
+
+The following command will export Mistral in full precision:
+```
+python -m optimum.exporters.onnx -m mistralai/Mistral-7B-v0.1 --library-name transformers /path/to/model/directory
+```
+
+## Optimizing and Quantizing Mistral
+
+To quantize Mistral to FP16 and apply fusion optimizations, you can run the following command:
+```
+python -m models.llama.convert_to_onnx -i /path/to/model/directory -o /path/to/optimized_model/directory -p fp16 --optimize_optimum -m mistralai/Mistral-7B-v0.1
+```
+
+## Benchmark Mistral
+The benchmarking scripts in the LLaMA directory support Mistral benchmarking. To benchmark the ORT version, you can run: 
+
+```
+CUDA_VISIBLE_DEVICES=0 python -m models.llama.benchmark \
+    -bt ort-convert-to-onnx \
+    -p fp16 \
+    -m mistralai/Mistral-7B-v0.1 \
+    --ort-model-path /path/to/model.onnx
+```
+
+To benchmark the Hugging Face implementation without `torch.compile`:
+
+```
+CUDA_VISIBLE_DEVICES=0 python -m models.llama.benchmark \
+    -bt hf-pt-eager \
+    -p fp16 \
+    -m mistralai/Mistral-7B-v0.1
+```
+
+And to benchmark the Hugging Face implementation with `torch.compile`:
+
+```
+CUDA_VISIBLE_DEVICES=0 python -m models.llama.benchmark \
+    -bt hf-pt-compile \
+    -p fp16 \
+    -m mistralai/Mistral-7B-v0.1
+```
+

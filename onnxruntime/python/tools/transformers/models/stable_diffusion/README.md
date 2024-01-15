@@ -21,7 +21,7 @@ These optimizations are firstly carried out on CUDA EP. They may not work on oth
 | [demo_txt2img.py](./demo_txt2img.py)           | Demo of text to image generation using Stable Diffusion models except XL.                 |
 | [optimize_pipeline.py](./optimize_pipeline.py) | Optimize Stable Diffusion ONNX models exported from Huggingface diffusers or optimum      |
 | [benchmark.py](./benchmark.py)                 | Benchmark latency and memory of OnnxRuntime, xFormers or PyTorch 2.0 on stable diffusion. |
-
+| [benchmark_controlnet.py](./benchmark_controlnet.py)| Benchmark latency of canny control net.                                              |
 
 ## Run demo with docker
 
@@ -54,7 +54,8 @@ python3 -m pip install --upgrade pip
 python3 -m pip install build/Linux/Release/dist/onnxruntime_gpu-1.17.0-cp310-cp310-linux_x86_64.whl --force-reinstall
 ```
 
-If the GPU is not A100, change `CMAKE_CUDA_ARCHITECTURES=80` in the command line according to the GPU compute capacity.
+If the GPU is not A100, change `CMAKE_CUDA_ARCHITECTURES=80` in the command line according to the GPU compute capacity (like 89 for RTX 4090, or 86 for RTX 3090).
+If your machine has less than 64GB memory, replace `--parallel` by `--parallel 4 --nvcc_threads 1 ` to avoid out of memory.
 
 #### Install required packages
 ```
@@ -76,35 +77,46 @@ For example:
 `--work-dir WORK_DIR` can be used to load or save models under the given directory. You can download the [optimized ONNX models of Stable Diffusion XL 1.0](https://huggingface.co/tlwu/stable-diffusion-xl-1.0-onnxruntime#usage-example) to save time in running the XL demo.
 
 #### Generate an image guided by a text prompt
-```python3 demo_txt2img.py "astronaut riding a horse on mars"```
+```
+python3 demo_txt2img.py "astronaut riding a horse on mars"
+```
 
 #### Generate an image with Stable Diffusion XL guided by a text prompt
-```python3 demo_txt2img_xl.py "starry night over Golden Gate Bridge by van gogh"```
+```
+python3 demo_txt2img_xl.py "starry night over Golden Gate Bridge by van gogh"
+
+python3 demo_txt2img_xl.py --enable-refiner "starry night over Golden Gate Bridge by van gogh"
+```
 
 If you do not provide prompt, the script will generate different image sizes for a list of prompts for demonstration.
 
 ### Generate an image guided by a text prompt using LCM LoRA
 ```
-python3 demo_txt2img_xl.py "Self-portrait oil painting, a beautiful cyborg with golden hair, 8k" --scheduler LCM --lora-weights latent-consistency/lcm-lora-sdxl --denoising-steps 4 --disable-refiner
-```
-#### Generate an image with SDXL LCM model guided by a text prompt
-```
-python3 demo_txt2img_xl.py --lcm --disable-refiner "an astronaut riding a rainbow unicorn, cinematic, dramatic"
+python3 demo_txt2img_xl.py --scheduler LCM --lora-weights latent-consistency/lcm-lora-sdxl --denoising-steps 4 "Self-portrait oil painting, a beautiful cyborg with golden hair, 8k"
 ```
 
-#### Generate an image with SDXL Turbo model guided by a text prompt
-It is recommended to use LCM or EuerA scheduler to run SDXL Turbo model.
+#### Generate an image with SDXL LCM model guided by a text prompt
 ```
-python3 demo_txt2img_xl.py --version xl-turbo --height 512 --width 512 --denoising-steps 4 --scheduler LCM "little cute gremlin wearing a jacket, cinematic, vivid colors, intricate masterpiece, golden ratio, highly detailed"
+python3 demo_txt2img_xl.py --lcm "an astronaut riding a rainbow unicorn, cinematic, dramatic"
+```
+
+#### Generate an image with SD-Turbo or SDXL-Turbo model guided by a text prompt
+It is recommended to use LCM or EulerA scheduler to run SD-Turbo or SDXL-Turbo model.
+```
+python3 demo_txt2img.py --version sd-turbo "little cute gremlin wearing a jacket, cinematic, vivid colors, intricate masterpiece, golden ratio, highly detailed"
+
+python3 demo_txt2img_xl.py --version xl-turbo "little cute gremlin wearing a jacket, cinematic, vivid colors, intricate masterpiece, golden ratio, highly detailed"
 ```
 
 #### Generate an image with a text prompt using a control net
-Control Net is supported for 1.5, SD XL and Turbo models in this demo.
+Control Net is supported for 1.5, SDXL base and SDXL-Turbo models in this demo.
 
 ```
-python3 demo_txt2img.py "Stormtrooper's lecture in beautiful lecture hall" --controlnet-type depth --controlnet-scale 1.0
+wget https://huggingface.co/lllyasviel/sd-controlnet-depth/resolve/main/images/stormtrooper.png
+python3 demo_txt2img_xl.py --controlnet-image stormtrooper.png --controlnet-type depth --controlnet-scale 0.5 --version xl-turbo "Stormtrooper's lecture in beautiful lecture hall"
 
-python3 demo_txt2img_xl.py --controlnet-type canny --controlnet-scale 0.5 --version xl-turbo --denoising-steps 2 --scheduler LCM --height 768 --width 768 "portrait of young Mona Lisa with mountain, river and forest in the background"
+wget https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png
+python3 demo_txt2img_xl.py --controlnet-type canny --controlnet-scale 0.5 --controlnet-image input_image_vermeer.png --version xl-turbo --height 1024 --width 1024 "portrait of young Mona Lisa with mountain, river and forest in the background"
 ```
 
 ## Optimize Stable Diffusion ONNX models for Hugging Face Diffusers or Optimum
@@ -366,97 +378,6 @@ Common settings for below test results:
 | model_name                     | disable_safety_checker | height | width | steps | batch_count | num_prompts |
 | ------------------------------ | ---------------------- | ------ | ----- | ----- | ----------- | ----------- |
 | runwayml/stable-diffusion-v1-5 | TRUE                   | 512    | 512   | 50    | 5           | 1           |
-
-#### Results of RTX 3060 (Windows 11)
-
-| engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
-| ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
-| onnxruntime | 1.14.1                  | CUDA                  | 1          | 4.8             | 4,117               | 4,625                |
-| torch       | 2.0.0+cu117             | default               | 1          | 5.6             | 4,325               | 4,047                |
-| torch       | 1.13.1+cu117            | xformers              | 1          | 6.0             | 9,124               | 9,130                |
-| onnxruntime | 1.14.1                  | CUDA                  | 4          | 17.7            | 6,659               | 6,659                |
-| torch       | 2.0.0+cu117             | default               | 4          | 20.1            | 6,421               | 6,907                |
-| torch       | 1.13.1+cu117            | xformers              | 4          | 21.6            | 10,407              | 10,409               |
-| onnxruntime | 1.14.1                  | CUDA                  | 8          | 33.5            | 6,663               | 6,663                |
-| torch       | 2.0.0+cu117             | default               | 8          | 39.5            | 10,767              | 10,813               |
-| torch       | 1.13.1+cu117            | xformers              | 8          | 41.1            | 10,825              | 9,255                |
-
-
-#### Results of A100-SXM4-40GB (Ubuntu 20.04)
-| engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
-| ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
-| onnxruntime | 1.14.1                  | CUDA                  | 1          | 1.1             | 6,883               | 7,395                |
-| torch       | 2.0.0+cu117             | default               | 1          | 1.5             | 13,828              | 4,400                |
-| torch       | 2.0.0+cu117             | compile               | 1          | 1.8             | 13,892              | 4,386                |
-| onnxruntime | 1.14.1                  | CUDA                  | 4          | 3.7             | 7,381               | 7,381                |
-| torch       | 2.0.0+cu117             | default               | 4          | 3.9             | 31,278              | 6,870                |
-| torch       | 2.0.0+cu117             | compile               | 4          | 3.4             | 31,364              | 6,880                |
-| onnxruntime | 1.14.1                  | CUDA                  | 8          | 6.9             | 7,411               | 7,411                |
-| torch       | 2.0.0+cu117             | default               | 8          | 7.6             | 31,660              | 10,122               |
-| torch       | 2.0.0+cu117             | compile               | 8          | 6.5             | 31,800              | 10,308               |
-| onnxruntime | 1.14.1                  | CUDA                  | 16         | 13.6            | 11,479              | 11,479               |
-| torch       | 2.0.0+cu117             | default               | 16         | 14.8            | 32,306              | 16,520               |
-| torch       | 2.0.0+cu117             | compile               | 16         | 12.6            | 32,636              | 16,898               |
-
-#### Results of A100-PCIE-80GB (Ubuntu 20.04)
-| engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
-| ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
-| tensorrt    | 8.6.1                   | default               | 1          | 1.00            | 9,056               | 9,056                |
-| onnxruntime | 1.16.0 nightly          | tensorrt              | 1          | 1.09            | 11,250              | 11,250               |
-| onnxruntime | 1.16.0 nightly          | tensorrt (cuda graph) | 1          | 0.96            | 11,382              | 11,382               |
-| onnxruntime | 1.16.0 nightly          | cuda                  | 1          | 1.11            | 4,760               | 5,144                |
-| onnxruntime | 1.16.0 nightly          | cuda (cuda graph)     | 1          | 1.04            | 5,230               | 5,390                |
-| tensorrt    | 8.6.1                   | default               | 4          | 3.39            | 9,072               | 9,072                |
-| onnxruntime | 1.16.0 nightly          | tensorrt              | 4          | 3.60            | 11,266              | 11,266               |
-| onnxruntime | 1.16.0 nightly          | tensorrt (cuda graph) | 4          | 3.43            | 11,428              | 11,428               |
-
-#### Results of V100-PCIE-16GB (Ubuntu 20.04)
-
-Results from Standard_NC6s_v3 Azure virtual machine:
-
-| engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
-| ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
-| onnxruntime | 1.14.1                  | CUDA                  | 1          | 2.7             | 12,646              | 7,152                |
-| torch       | 2.0.0+cu117             | compile               | 1          | 3.2             | 13,317              | 3,909                |
-| torch       | 2.0.0+cu117             | default               | 1          | 2.7             | 13,343              | 3,921                |
-| torch       | 1.13.1+cu117            | xformers              | 1          | 3.5             | 14,979              | 10,449               |
-| onnxruntime | 1.14.1                  | CUDA                  | 4          | 8.4             | 7,114               | 7,114                |
-| torch       | 2.0.0+cu117             | compile               | 4          | 8.0             | 13,897              | 6,821                |
-| torch       | 2.0.0+cu117             | default               | 4          | 8.7             | 13,873              | 6,607                |
-| torch       | 1.13.1+cu117            | xformers              | 4          | 9.1             | 12,969              | 8,421                |
-| onnxruntime | 1.14.1                  | CUDA                  | 8          | 15.9            | 7,120               | 7,120                |
-| torch       | 2.0.0+cu117             | compile               | 8          | 15.5            | 14,669              | 10,355               |
-| torch       | 2.0.0+cu117             | default               | 8          | 17.0            | 14,469              | 9,657                |
-| torch       | 1.13.1+cu117            | xformers              | 8          | 17.4            | 15,593              | 9,133                |
-
-#### Results of T4 (Ubuntu 20.04)
-
-To make the result stable, we lock the frequency of T4 GPU like
-`sudo nvidia-smi --lock-gpu-clocks=990` for fair comparison. See [nvidia blog](https://developer.nvidia.com/blog/advanced-api-performance-setstablepowerstate/) for more information. Note that performance might be slightly better without locking frequency.
-
-Results are from Standard_NC4as_T4_v3 Azure virtual machine:
-
-| engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
-| ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
-| onnxruntime | 1.14.1                  | CUDA                  | 1          | 5.6             | 4,925               | 4,925                |
-| onnxruntime | 1.15.1                  | CUDA                  | 1          | 5.5             | 3,738               | 4,250                |
-| onnxruntime | 1.15.1 (tensorrt 8.6.1) | Tensorrt              | 1          | 4.8             | 10,710              | 10,710               |
-| onnxruntime | 1.16.0 nightly          | Tensorrt (cuda graph) | 1          | 4.7             | 11,746              | 10,746               |
-| tensorrt    | 8.6.1                   | default               | 1          | 5.0             | 8,530               | 8,530                |
-| torch       | 1.13.1+cu117            | xformers              | 1          | 6.9             | 14,845              | 10,317               |
-| torch       | 2.0.0+cu117             | compile               | 1          | 6.0             | 12,989              | 3,841                |
-| torch       | 2.0.0+cu117             | default               | 1          | 6.4             | 12,987              | 3,841                |
-| onnxruntime | 1.14.1                  | CUDA                  | 4          | 23.0            | 6,977               | 6,977                |
-| onnxruntime | 1.15.1                  | CUDA                  | 4          | 22.6            | 6,298               | 6,298                |
-| onnxruntime | 1.15.1 (tensorrt 8.6.1) | Tensorrt              | 4          | 21.8            | 10,746              | 10,746               |
-| tensorrt    | 8.6.1                   | default               | 4          | 22.2            | 8,542               | 8,542                |
-| torch       | 1.13.1+cu117            | xformers              | 4          | 25.8            | 12,819              | 8,269                |
-| torch       | 2.0.0+cu117             | compile               | 4          | 22.2            | 14,637              | 6,583                |
-| torch       | 2.0.0+cu117             | default               | 4          | 25.2            | 14,409              | 6,355                |
-| onnxruntime | 1.14.1                  | CUDA                  | 8          | 46.4            | 6,779               | 6,779                |
-| torch       | 1.13.1+cu117            | xformers              | 8          | 51.4            | 14,827              | 9,001                |
-| torch       | 2.0.0+cu117             | compile               | 8          | 46.5            | 12,595              | 10,171               |
-| torch       | 2.0.0+cu117             | default               | 8          | 50.7            | 11,955              | 9,531                |
 
 #### Results of MI250X, 1 GCD (Ubuntu 20.04)
 

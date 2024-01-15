@@ -87,7 +87,7 @@ class PipelineInfo:
         version: str,
         is_inpaint: bool = False,
         is_refiner: bool = False,
-        use_vae=False,
+        use_vae=True,  # TODO: this has couple with output type of pipeline
         min_image_size=256,
         max_image_size=1024,
         use_fp16_vae=True,
@@ -133,7 +133,7 @@ class PipelineInfo:
         return self.version == "xl-1.0" and self._is_refiner
 
     def use_safetensors(self) -> bool:
-        return self.is_xl()
+        return self.is_xl() or self.version in ["sd-turbo"]
 
     def stages(self) -> List[str]:
         if self.is_xl_base_or_turbo():
@@ -159,7 +159,24 @@ class PipelineInfo:
 
     @staticmethod
     def supported_versions(is_xl: bool):
-        return ["xl-1.0", "xl-turbo"] if is_xl else ["1.4", "1.5", "2.0-base", "2.0", "2.1", "2.1-base"]
+        return ["xl-1.0", "xl-turbo"] if is_xl else ["1.4", "1.5", "2.0-base", "2.0", "2.1", "2.1-base", "sd-turbo"]
+
+    @staticmethod
+    def supported_models():
+        return {
+            "CompVis/stable-diffusion-v1-4": "1.4",
+            "runwayml/stable-diffusion-v1-5": "1.5",
+            "stabilityai/stable-diffusion-2-base": "2.0-base",
+            "stabilityai/stable-diffusion-2": "2.0",
+            "stabilityai/stable-diffusion-2-1": "2.1",
+            "stabilityai/stable-diffusion-2-1-base": "2.1",
+            "stabilityai/stable-diffusion-xl-base-1.0": "xl-1.0",
+            "stabilityai/stable-diffusion-xl-refiner-1.0": "xl-1.0",
+            "stabilityai/sdxl-turbo": "xl-turbo",
+            "stabilityai/sd-turbo": "sd-turbo",
+            # "runwayml/stable-diffusion-inpainting": "1.5",
+            # "stabilityai/stable-diffusion-2-inpainting": "2.0",
+        }
 
     def name(self) -> str:
         if self.version == "1.4":
@@ -193,6 +210,8 @@ class PipelineInfo:
                 return "stabilityai/stable-diffusion-xl-base-1.0"
         elif self.version == "xl-turbo":
             return "stabilityai/sdxl-turbo"
+        elif self.version == "sd-turbo":
+            return "stabilityai/sd-turbo"
 
         raise ValueError(f"Incorrect version {self.version}")
 
@@ -203,7 +222,7 @@ class PipelineInfo:
         # TODO: can we read from config instead
         if self.version in ("1.4", "1.5"):
             return 768
-        elif self.version in ("2.0", "2.0-base", "2.1", "2.1-base"):
+        elif self.version in ("2.0", "2.0-base", "2.1", "2.1-base", "sd-turbo"):
             return 1024
         elif self.is_xl_base_or_turbo():
             return 768
@@ -219,7 +238,7 @@ class PipelineInfo:
     def unet_embedding_dim(self):
         if self.version in ("1.4", "1.5"):
             return 768
-        elif self.version in ("2.0", "2.0-base", "2.1", "2.1-base"):
+        elif self.version in ("2.0", "2.0-base", "2.1", "2.1-base", "sd-turbo"):
             return 1024
         elif self.is_xl_base_or_turbo():
             return 2048
@@ -234,12 +253,16 @@ class PipelineInfo:
     def max_image_size(self):
         return self._max_image_size
 
-    def default_image_size(self):
-        if self.version == "xl-1.0":
+    @staticmethod
+    def default_resolution(version: str) -> int:
+        if version == "xl-1.0":
             return 1024
-        if self.version in ("2.0", "2.1"):
+        if version in ("2.0", "2.1"):
             return 768
         return 512
+
+    def default_image_size(self) -> int:
+        return PipelineInfo.default_resolution(self.version)
 
     @staticmethod
     def supported_controlnet(version="1.5"):
@@ -323,15 +346,20 @@ class BaseModel:
     def get_model(self):
         return self.model
 
-    def from_pretrained(self, model_class, framework_model_dir, hf_token, subfolder, **kwargs):
-        model_dir = os.path.join(framework_model_dir, self.pipeline_info.name(), subfolder)
+    def from_pretrained(self, model_class, framework_model_dir, subfolder=None, model_name=None, **kwargs):
+        if model_name is None:
+            model_name = self.pipeline_info.name()
+
+        if subfolder:
+            model_dir = os.path.join(framework_model_dir, model_name, subfolder)
+        else:
+            model_dir = os.path.join(framework_model_dir, model_name)
 
         if not os.path.exists(model_dir):
             model = model_class.from_pretrained(
-                self.pipeline_info.name(),
+                model_name,
                 subfolder=subfolder,
                 use_safetensors=self.pipeline_info.use_safetensors(),
-                use_auth_token=hf_token,
                 **kwargs,
             ).to(self.device)
             model.save_pretrained(model_dir)
@@ -341,7 +369,7 @@ class BaseModel:
             model = model_class.from_pretrained(model_dir).to(self.device)
         return model
 
-    def load_model(self, framework_model_dir: str, hf_token: str, subfolder: str):
+    def load_model(self, framework_model_dir: str, subfolder: str):
         pass
 
     def get_input_names(self) -> List[str]:
@@ -393,8 +421,7 @@ class BaseModel:
 
     def fp32_input_output_names(self) -> List[str]:
         """For CUDA EP, we export ONNX model with FP32 first, then convert it to mixed precision model.
-        This is a list of input or output names that are kept as float32 during converting.
-        For the first version, we will use same data type as TensorRT.
+        This is a list of input or output names that are kept as float32 in optimized model.
         """
         return []
 
@@ -507,7 +534,7 @@ class CLIP(BaseModel):
         return ["text_embeddings"]
 
     def get_dynamic_axes(self):
-        return {"input_ids": {0: "B"}, "text_embeddings": {0: "B"}}
+        return {"input_ids": {0: "B", 1: "S"}, "text_embeddings": {0: "B", 1: "S"}}
 
     def get_input_profile(self, batch_size, image_height, image_width, static_batch, static_image_shape):
         self.check_dims(batch_size, image_height, image_width)
@@ -569,7 +596,7 @@ class CLIP(BaseModel):
             onnx.helper.make_tensor_value_info(
                 graph_output_name,
                 graph.output[0].type.tensor_type.elem_type,
-                ["B", self.text_maxlen, self.embedding_dim],
+                ["B", "S", self.embedding_dim],
             )
         )
 
@@ -648,8 +675,8 @@ class CLIP(BaseModel):
         else:
             onnx.save(onnx_opt_graph, optimized_onnx_path)
 
-    def load_model(self, framework_model_dir, hf_token, subfolder="text_encoder"):
-        return self.from_pretrained(CLIPTextModel, framework_model_dir, hf_token, subfolder)
+    def load_model(self, framework_model_dir, subfolder="text_encoder"):
+        return self.from_pretrained(CLIPTextModel, framework_model_dir, subfolder)
 
 
 class CLIPWithProj(CLIP):
@@ -670,8 +697,8 @@ class CLIPWithProj(CLIP):
             clip_skip=clip_skip,
         )
 
-    def load_model(self, framework_model_dir, hf_token, subfolder="text_encoder_2"):
-        return self.from_pretrained(CLIPTextModelWithProjection, framework_model_dir, hf_token, subfolder)
+    def load_model(self, framework_model_dir, subfolder="text_encoder_2"):
+        return self.from_pretrained(CLIPTextModelWithProjection, framework_model_dir, subfolder)
 
     def get_shape_dict(self, batch_size, image_height, image_width):
         self.check_dims(batch_size, image_height, image_width)
@@ -804,17 +831,27 @@ class UNet(BaseModel):
         self.unet_dim = unet_dim
         self.controlnet = pipeline_info.controlnet_name()
 
-    def load_model(self, framework_model_dir, hf_token, subfolder="unet"):
-        options = {"variant": "fp16", "torch_dtype": torch.float16} if self.fp16 else {}
+    def load_model(self, framework_model_dir, subfolder="unet"):
+        options = {"variant": "fp16", "torch_dtype": torch.float16}
 
-        model = self.from_pretrained(UNet2DConditionModel, framework_model_dir, hf_token, subfolder, **options)
+        model = self.from_pretrained(UNet2DConditionModel, framework_model_dir, subfolder, **options)
 
         if self.controlnet:
-            cnet_model_opts = {"torch_dtype": torch.float16} if self.fp16 else {}
-            controlnets = torch.nn.ModuleList(
-                [ControlNetModel.from_pretrained(name, **cnet_model_opts).to(self.device) for name in self.controlnet]
-            )
-            model = UNet2DConditionControlNetModel(model, controlnets)
+            controlnet_list = []
+            for name in self.controlnet:
+                controlnet = self.from_pretrained(
+                    ControlNetModel,
+                    framework_model_dir,
+                    subfolder=None,
+                    model_name=name,
+                    torch_dtype=torch.float16,
+                )
+                controlnet_list.append(controlnet)
+
+            model = UNet2DConditionControlNetModel(model, torch.nn.ModuleList(controlnet_list))
+
+        if not self.fp16:
+            model = model.to(torch.float32)
 
         return model
 
@@ -906,10 +943,8 @@ class UNet(BaseModel):
         dtype = torch.float16 if self.fp16 else torch.float32
         m = self.get_batch_multiplier()
         output = (
-            torch.randn(
-                m * batch_size, self.unet_dim, latent_height, latent_width, dtype=torch.float32, device=self.device
-            ),
-            torch.tensor([1.0], dtype=torch.float32, device=self.device),
+            torch.randn(m * batch_size, self.unet_dim, latent_height, latent_width, dtype=dtype, device=self.device),
+            torch.tensor([1.0], dtype=dtype, device=self.device),
             torch.randn(m * batch_size, self.text_maxlen, self.embedding_dim, dtype=dtype, device=self.device),
         )
 
@@ -922,9 +957,6 @@ class UNet(BaseModel):
                 torch.randn(len(self.controlnet), dtype=dtype, device=self.device),
             )
         return output
-
-    def fp32_input_output_names(self) -> List[str]:
-        return ["sample", "timestep"]
 
 
 class UNetXL(BaseModel):
@@ -954,8 +986,8 @@ class UNetXL(BaseModel):
         self.custom_unet = pipeline_info.custom_unet()
         self.controlnet = pipeline_info.controlnet_name()
 
-    def load_model(self, framework_model_dir, hf_token, subfolder="unet"):
-        options = {"variant": "fp16", "torch_dtype": torch.float16} if self.fp16 else {}
+    def load_model(self, framework_model_dir, subfolder="unet", always_download_fp16=True):
+        options = {"variant": "fp16", "torch_dtype": torch.float16} if self.fp16 or always_download_fp16 else {}
 
         if self.custom_unet:
             model_dir = os.path.join(framework_model_dir, self.custom_unet, subfolder)
@@ -966,14 +998,20 @@ class UNetXL(BaseModel):
                 unet = UNet2DConditionModel.from_pretrained(model_dir, **options)
             model = unet.to(self.device)
         else:
-            model = self.from_pretrained(UNet2DConditionModel, framework_model_dir, hf_token, subfolder, **options)
+            model = self.from_pretrained(UNet2DConditionModel, framework_model_dir, subfolder, **options)
+
+        if always_download_fp16 and not self.fp16:
+            model = model.to(torch.float32)
 
         if self.controlnet:
-            cnet_model_opts = {"torch_dtype": torch.float16} if self.fp16 else {}
+            cnet_model_opts = {"torch_dtype": torch.float16} if self.fp16 or always_download_fp16 else {}
             controlnets = torch.nn.ModuleList(
                 [ControlNetModel.from_pretrained(path, **cnet_model_opts).to(self.device) for path in self.controlnet]
             )
             model = UNet2DConditionXLControlNetModel(model, controlnets)
+
+        if always_download_fp16 and not self.fp16:
+            model = model.to(torch.float32)
 
         return model
 
@@ -1078,9 +1116,9 @@ class UNetXL(BaseModel):
         if not self.controlnet:
             return (
                 torch.randn(
-                    m * batch_size, self.unet_dim, latent_height, latent_width, dtype=torch.float32, device=self.device
+                    m * batch_size, self.unet_dim, latent_height, latent_width, dtype=dtype, device=self.device
                 ),
-                torch.tensor([1.0], dtype=torch.float32, device=self.device),
+                torch.tensor([1.0], dtype=dtype, device=self.device),
                 torch.randn(m * batch_size, self.text_maxlen, self.embedding_dim, dtype=dtype, device=self.device),
                 {
                     "added_cond_kwargs": {
@@ -1093,9 +1131,9 @@ class UNetXL(BaseModel):
             # sample, timestep, encoder_hidden_states, text_embeds, time_ids, controlnet_images, controlnet_scales,
             return (
                 torch.randn(
-                    m * batch_size, self.unet_dim, latent_height, latent_width, dtype=torch.float32, device=self.device
+                    m * batch_size, self.unet_dim, latent_height, latent_width, dtype=dtype, device=self.device
                 ),
-                torch.tensor([1.0], dtype=torch.float32, device=self.device),
+                torch.tensor([1.0], dtype=dtype, device=self.device),
                 torch.randn(m * batch_size, self.text_maxlen, self.embedding_dim, dtype=dtype, device=self.device),
                 torch.randn(m * batch_size, 1280, dtype=dtype, device=self.device),
                 torch.randn(m * batch_size, self.time_dim, dtype=dtype, device=self.device),
@@ -1104,9 +1142,6 @@ class UNetXL(BaseModel):
                 ),
                 torch.randn(len(self.controlnet), dtype=dtype, device=self.device),
             )
-
-    def fp32_input_output_names(self) -> List[str]:
-        return ["sample", "timestep"]
 
 
 # VAE Decoder
@@ -1131,7 +1166,7 @@ class VAE(BaseModel):
         # For SD XL, need custom trained fp16 model to speed up, and avoid overflow at the same time.
         self.custom_fp16_vae = custom_fp16_vae
 
-    def load_model(self, framework_model_dir, hf_token: Optional[str] = None, subfolder: str = "vae_decoder"):
+    def load_model(self, framework_model_dir, subfolder: str = "vae_decoder"):
         model_name = self.custom_fp16_vae or self.pipeline_info.name()
 
         model_dir = os.path.join(framework_model_dir, model_name, subfolder)
@@ -1143,7 +1178,6 @@ class VAE(BaseModel):
                     self.pipeline_info.name(),
                     subfolder="vae",
                     use_safetensors=self.pipeline_info.use_safetensors(),
-                    use_auth_token=hf_token,
                 ).to(self.device)
             vae.save_pretrained(model_dir)
         else:
@@ -1196,13 +1230,14 @@ class VAE(BaseModel):
 
     def get_sample_input(self, batch_size, image_height, image_width):
         latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
-        return (torch.randn(batch_size, 4, latent_height, latent_width, dtype=torch.float32, device=self.device),)
+        dtype = torch.float16 if self.fp16 else torch.float32
+        return (torch.randn(batch_size, 4, latent_height, latent_width, dtype=dtype, device=self.device),)
 
     def fp32_input_output_names(self) -> List[str]:
-        return [] if self.fp16 else ["latent", "images"]
+        return []
 
 
-def get_tokenizer(pipeline_info: PipelineInfo, framework_model_dir, hf_token, subfolder="tokenizer"):
+def get_tokenizer(pipeline_info: PipelineInfo, framework_model_dir, subfolder="tokenizer"):
     tokenizer_dir = os.path.join(framework_model_dir, pipeline_info.name(), subfolder)
 
     if not os.path.exists(tokenizer_dir):
@@ -1210,7 +1245,6 @@ def get_tokenizer(pipeline_info: PipelineInfo, framework_model_dir, hf_token, su
             pipeline_info.name(),
             subfolder=subfolder,
             use_safetensors=pipeline_info.is_xl(),
-            use_auth_token=hf_token,
         )
         model.save_pretrained(tokenizer_dir)
     else:
@@ -1237,8 +1271,8 @@ class VAEEncoder(BaseModel):
             max_batch_size=max_batch_size,
         )
 
-    def load_model(self, framework_model_dir, hf_token, subfolder="vae_encoder"):
-        vae = self.from_pretrained(AutoencoderKL, framework_model_dir, hf_token, subfolder)
+    def load_model(self, framework_model_dir, subfolder="vae_encoder"):
+        vae = self.from_pretrained(AutoencoderKL, framework_model_dir, subfolder)
         return TorchVAEEncoder(vae)
 
     def get_input_names(self):

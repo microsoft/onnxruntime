@@ -4,12 +4,13 @@
 #include "qnn_execution_provider.h"
 
 #include <filesystem>
-#include "core/providers/common.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/kernel_registry.h"
+#include "core/platform/env.h"
+#include "core/providers/common.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/partitioning_utils.h"
@@ -28,7 +29,7 @@ static void ParseProfilingLevel(std::string profiling_level_string,
                  profiling_level_string.end(),
                  profiling_level_string.begin(),
                  [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
-  LOGS_DEFAULT(VERBOSE) << "profiling_level: " << profiling_level_string;
+  LOGS_DEFAULT(INFO) << "profiling_level: " << profiling_level_string;
   if (profiling_level_string == "off") {
     profiling_level = qnn::ProfilingLevel::OFF;
   } else if (profiling_level_string == "basic") {
@@ -63,6 +64,8 @@ static void ParseHtpPerformanceMode(std::string htp_performance_mode_string,
     htp_performance_mode = qnn::HtpPerformanceMode::kHtpLowPowerSaver;
   } else if (htp_performance_mode_string == "power_saver") {
     htp_performance_mode = qnn::HtpPerformanceMode::kHtpPowerSaver;
+  } else if (htp_performance_mode_string == "extreme_power_saver") {
+    htp_performance_mode = qnn::HtpPerformanceMode::kHtpExtremePowerSaver;
   } else if (htp_performance_mode_string == "sustained_high_performance") {
     htp_performance_mode = qnn::HtpPerformanceMode::kHtpSustainedHighPerformance;
   } else {
@@ -114,29 +117,23 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   if (session_options) {
     disable_cpu_ep_fallback_ = session_options->config_options.GetConfigOrDefault(
                                    kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
-  }
 
-  static const std::string CONTEXT_CACHE_ENABLED = "qnn_context_cache_enable";
-  auto context_cache_enabled_pos = provider_options_map.find(CONTEXT_CACHE_ENABLED);
-  if (context_cache_enabled_pos != provider_options_map.end()) {
-    if (context_cache_enabled_pos->second == "1") {
-      context_cache_enabled_ = true;
-      LOGS_DEFAULT(VERBOSE) << "Context cache enabled.";
+    context_cache_enabled_ = session_options->config_options.GetConfigOrDefault(
+                                 kOrtSessionOptionEpContextEnable, "0") == "1";
+    LOGS_DEFAULT(VERBOSE) << "Context cache enable: " << context_cache_enabled_;
+
+    std::string embed_mode = session_options->config_options.GetConfigOrDefault(
+        kOrtSessionOptionEpContextEmbedMode, "1");
+    if ("1" == embed_mode) {
+      qnn_context_embed_mode_ = true;
+    } else if ("0" == embed_mode) {
+      qnn_context_embed_mode_ = false;
+    } else {
+      LOGS_DEFAULT(VERBOSE) << "Invalid ep.context_embed_mode: " << embed_mode << " only 0 or 1 allowed. Set to 1.";
     }
-  }
-
-  static const std::string CONTEXT_CACHE_PATH = "qnn_context_cache_path";
-  auto context_cache_path_pos = provider_options_map.find(CONTEXT_CACHE_PATH);
-  if (context_cache_path_pos != provider_options_map.end()) {
-    context_cache_path_cfg_ = context_cache_path_pos->second;
-    LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << context_cache_path_cfg_;
-  }
-
-  static const std::string CONTEXT_CACHE_EMBED_MODE = "qnn_context_embed_mode";
-  auto context_cache_embed_mode_pos = provider_options_map.find(CONTEXT_CACHE_EMBED_MODE);
-  if (context_cache_embed_mode_pos != provider_options_map.end()) {
-    qnn_context_embed_mode_ = context_cache_embed_mode_pos->second == "1";
     LOGS_DEFAULT(VERBOSE) << "User specified context cache embed mode: " << qnn_context_embed_mode_;
+
+    context_cache_path_cfg_ = session_options->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
   }
 
   static const std::string BACKEND_PATH = "backend_path";
@@ -152,9 +149,30 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 
   static const std::string PROFILING_LEVEL = "profiling_level";
   qnn::ProfilingLevel profiling_level = qnn::ProfilingLevel::OFF;
-  auto profiling_level_pos = provider_options_map.find(PROFILING_LEVEL);
-  if (profiling_level_pos != provider_options_map.end()) {
-    ParseProfilingLevel(profiling_level_pos->second, profiling_level);
+  const Env& env = Env::Default();
+  auto& provider = env.GetTelemetryProvider();
+  if (provider.IsEnabled()) {
+    auto level = provider.Level();
+    auto keyword = provider.Keyword();
+    if ((keyword & static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0) {
+      if (level != 0) {
+        if (level == 5) {
+          LOGS_DEFAULT(INFO) << "Overriding profiling to basic based on ETW level: " << static_cast<int>(level);
+          ParseProfilingLevel("basic", profiling_level);
+        } else if (level < 5) {
+          LOGS_DEFAULT(INFO) << "QNN Profiler ETW level not supported below level 5. Level: "
+                             << static_cast<int>(level);
+        } else {
+          LOGS_DEFAULT(INFO) << "Overriding profiling to detailed based on ETW level: " << static_cast<int>(level);
+          ParseProfilingLevel("detailed", profiling_level);
+        }
+      }
+    }
+  } else {
+    auto profiling_level_pos = provider_options_map.find(PROFILING_LEVEL);
+    if (profiling_level_pos != provider_options_map.end()) {
+      ParseProfilingLevel(profiling_level_pos->second, profiling_level);
+    }
   }
 
   static const std::string RPC_CONTROL_LANTENCY = "rpc_control_latency";

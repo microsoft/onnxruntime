@@ -133,7 +133,8 @@ void RunAndVerifyOutputsWithEP(ModelPathOrBytes model_path_or_bytes, std::string
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds,
                                const EPVerificationParams& params,
-                               const std::function<void(SessionOptions&)>& session_options_updater) {
+                               const std::function<void(SessionOptions&)>& session_options_updater,
+                               bool verify_outputs) {
   std::vector<std::byte> model_data_buffer{};
   const auto model_data = GetModelBytes(model_path_or_bytes, model_data_buffer);
 
@@ -184,7 +185,9 @@ void RunAndVerifyOutputsWithEP(ModelPathOrBytes model_path_or_bytes, std::string
   // Run with EP and verify the result
   std::vector<OrtValue> fetches;
   ASSERT_STATUS_OK(session_object2.Run(run_options, feeds, output_names, &fetches));
-  VerifyOutputs(output_names, expected_fetches, fetches, params);
+  if (verify_outputs) {
+    VerifyOutputs(output_names, expected_fetches, fetches, params);
+  }
 
   if (params.graph_verifier) {
     (*params.graph_verifier)(graph2);

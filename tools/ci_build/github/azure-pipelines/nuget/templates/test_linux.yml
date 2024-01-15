@@ -3,13 +3,15 @@ parameters:
   ArtifactSuffix: ''
   NugetPackageName : ''
   StageSuffix: 'CPU'
+  # More Suffix is used to differentiate testing for GPU and GPU-Windows/GPU-Linux packages
+  MoreSuffix: ''
   NativePackagePrefix: 'onnxruntime'
   SpecificArtifact: false
   CustomOpArtifactName: 'onnxruntime-linux-x64'
   BuildId: '0'
   CudaVersion: '11.8'
 stages:
-- stage: NuGet_Test_Linux_${{ parameters.StageSuffix }}
+- stage: NuGet_Test_Linux_${{ parameters.StageSuffix }}${{ parameters.MoreSuffix }}
   dependsOn:
   - NuGet_Packaging_${{ parameters.StageSuffix }}
   condition: succeeded()

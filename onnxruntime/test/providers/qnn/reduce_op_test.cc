@@ -365,8 +365,7 @@ static void RunReduceOpQDQTest(const std::string& op_type,
                                const std::vector<int64_t>& axes,
                                bool keepdims,
                                int opset,
-                               ExpectedEPNodeAssignment expected_ep_assignment,
-                               float fp32_abs_err = 1e-4f) {
+                               ExpectedEPNodeAssignment expected_ep_assignment) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -383,8 +382,7 @@ static void RunReduceOpQDQTest(const std::string& op_type,
                                                            noop_with_empty_axes),
                        provider_options,
                        opset,
-                       expected_ep_assignment,
-                       fp32_abs_err);
+                       expected_ep_assignment);
 }
 
 //
@@ -405,22 +403,14 @@ TEST_F(QnnHTPBackendTests, ReduceSumU8Opset13) {
                               ExpectedEPNodeAssignment::All);
 }
 
-// TODO: Investigate inaccuracy
-// Input values: 3.21289 -5.9981 -1.72799 6.27263
-// Input quantization params [-10, 10]: scale=0.0784313753, zero_point=127
-//
-// Inaccuracy detected for output 'output', element 0.
-// Output quant params: scale=0.0068997270427644253, zero_point=0.
-// Expected val: 1.7594304084777832
-// QNN QDQ val: 1.731831431388855 (err 0.027598977088928223)
-// CPU QDQ val: 1.7594304084777832 (err 0)
-TEST_F(QnnHTPBackendTests, DISABLED_ReduceSumU8Opset13_Inaccurate) {
+// Test 8-bit QDQ ReduceSum of last axis.
+TEST_F(QnnHTPBackendTests, ReduceSumU8Opset13_LastAxis) {
   const std::vector<float> input_data = {3.21289f, -5.9981f, -1.72799f, 6.27263f};
   RunReduceOpQDQTest<uint8_t>("ReduceSum",
-                              TestInputDef<float>({2, 2}, false, input_data).OverrideValueRange(-10.0f, 10.0f),
-                              {0, 1},  // axes
-                              true,    // keepdims
-                              13,      // opset
+                              TestInputDef<float>({2, 2}, false, input_data),
+                              {1},   // axes
+                              true,  // keepdims
+                              13,    // opset
                               ExpectedEPNodeAssignment::All);
 }
 // Test creates a Q -> DQ -> ReduceSum -> Q -> DQ graph, and checks that all
@@ -443,7 +433,8 @@ TEST_F(QnnHTPBackendTests, ReduceSumU8Opset11) {
 // - Uses int8 as the quantization type.
 // - Uses opset 13, which has "axes" as an input.
 TEST_F(QnnHTPBackendTests, ReduceSumS8Opset13) {
-  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 9);
+  // non-symmetrical input range so output sum is not trivially zero.
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 20.0f, 9);
 
   RunReduceOpQDQTest<int8_t>("ReduceSum",
                              TestInputDef<float>({3, 3}, false, input_data),
@@ -466,14 +457,7 @@ TEST_F(QnnHTPBackendTests, ReduceSumS8Opset13_NoKeepDims) {
 }
 
 // Test rank 5 ReduceSum (s8 quant) with axes = [0, 1, 2, 3, 4], keep_dims = true
-// TODO: QNN 2.15.1 Graph finalization error:
-// graph_prepare.cc:234:ERROR:could not create op: q::Sum
-// graph_prepare.cc:1093:ERROR:Op 0x102500000011 preparation failed with err:-1
-// Completed stage: Graph Transformations and Optimizations (17163 us)
-// QnnDsp <E> "node_token_3" generated: could not create op
-// QnnDsp <E> RouterWindows graph prepare failed 12
-// QnnDsp <E> Failed to finalize graph (id: 1) with err 1002{}
-TEST_F(QnnHTPBackendTests, DISABLED_ReduceSumS8Opset13_Rank5) {
+TEST_F(QnnHTPBackendTests, ReduceSumS8Opset13_Rank5) {
   RunReduceOpQDQTest<int8_t>("ReduceSum",
                              TestInputDef<float>({1, 3, 4, 4, 2}, false, GetFloatDataInRange(-10.0f, 10.0f, 96)),
                              {0, 1, 2, 3, 4},  // axes
@@ -493,8 +477,7 @@ TEST_F(QnnHTPBackendTests, ReduceSumS8Opset13_Rank6_Unsupported) {
 }
 
 // Test rank 5 ReduceSum (u8 quant) with axes = [-1], keep_dims = false
-// TODO: Enable on QNN 2.15.1 (works fine)
-TEST_F(QnnHTPBackendTests, DISABLED_ReduceSumU8Opset13_Rank5_LastAxis) {
+TEST_F(QnnHTPBackendTests, ReduceSumU8Opset13_Rank5_LastAxis) {
   constexpr size_t num_elems = 2ULL * 12 * 124 * 2 * 4;
   std::vector<float> input_data = GetFloatDataInRange(-100.0f, 100.0f, num_elems);
   RunReduceOpQDQTest<uint8_t>("ReduceSum",
@@ -618,22 +601,14 @@ TEST_F(QnnHTPBackendTests, ReduceMeanU8Opset18) {
                               ExpectedEPNodeAssignment::All);
 }
 
-// TODO: Investigate inaccuracy
-// Input values: 3.21289 -5.9981 -1.72799 6.27263
-// Input quantization params [-10, 10]: scale=0.0784313753, zero_point=127
-//
-// Inaccuracy detected for output 'output', element 0.
-// Output quant params: scale=0.0017249317606911063, zero_point=0.
-// Expected val: 0.4398576021194458
-// QNN QDQ val: 0.43295785784721375 (err 0.0068997442722320557)
-// CPU QDQ val: 0.4398576021194458 (err 0)
-TEST_F(QnnHTPBackendTests, DISABLED_ReduceMeanU8Opset18_Inaccurate) {
+// Test 8-bit QDQ ReduceMean of last axis
+TEST_F(QnnHTPBackendTests, ReduceMeanU8Opset18_LastAxis) {
   const std::vector<float> input_data = {3.21289f, -5.9981f, -1.72799f, 6.27263f};
   RunReduceOpQDQTest<uint8_t>("ReduceMean",
-                              TestInputDef<float>({2, 2}, false, input_data).OverrideValueRange(-10.0f, 10.0f),
-                              {0, 1},  // axes
-                              true,    // keepdims
-                              18,      // opset
+                              TestInputDef<float>({2, 2}, false, input_data),
+                              {1},   // axes
+                              true,  // keepdims
+                              18,    // opset
                               ExpectedEPNodeAssignment::All);
 }
 
@@ -656,22 +631,15 @@ TEST_F(QnnHTPBackendTests, ReduceMeanU8Opset13) {
 //
 // - Uses int8 as the quantization type.
 // - Uses opset 18, which has "axes" as an input.
-//
-// TODO(adrianlizarraga): Inaccuracy detected for output 'output', element 0.
-// Output quant params: scale=0.0007829521200619638, zero_point=127.
-// Expected val: -0.19965279102325439
-// QNN QDQ val: -0.19730393588542938 (err 0.0023488551378250122)
-// CPU QDQ val: -0.19965279102325439 (err 0)
 TEST_F(QnnHTPBackendTests, ReduceMeanS8Opset18) {
-  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 48);
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 20.0f, 48);
 
   RunReduceOpQDQTest<int8_t>("ReduceMean",
                              TestInputDef<float>({1, 3, 4, 4}, false, input_data),
                              {0, 1, 2, 3},  // axes
                              true,          // keepdims
                              18,            // opset
-                             ExpectedEPNodeAssignment::All,
-                             0.0016f);  // TODO: Remove additional tolerance needed for inaccuracy
+                             ExpectedEPNodeAssignment::All);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

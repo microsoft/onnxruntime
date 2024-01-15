@@ -76,6 +76,7 @@ namespace Dml
         STDMETHOD(AllocatePooledResource(size_t size, AllocatorRoundingMode roundingMode, ID3D12Resource **d3dResource, IUnknown* *pooledResource)) const noexcept = 0;
 
         STDMETHOD_(bool, IsMcdmDevice)() const noexcept = 0;
+        STDMETHOD_(bool, CustomHeapsSupported)() const noexcept = 0;
         STDMETHOD_(bool, MetacommandsEnabled)() const noexcept = 0;
     };
 } // namespace Dml

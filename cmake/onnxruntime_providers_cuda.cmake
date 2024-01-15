@@ -34,6 +34,8 @@
     if (NOT onnxruntime_USE_NCCL)
       list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/nccl_kernels.cc"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/sharded_moe.h"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/sharded_moe.cc"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/sharding_spec.cc"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/sharding.cc"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/distributed_matmul.cc"

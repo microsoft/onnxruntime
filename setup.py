@@ -408,6 +408,8 @@ packages = [
     "onnxruntime.quantization",
     "onnxruntime.quantization.operators",
     "onnxruntime.quantization.CalTableFlatBuffers",
+    "onnxruntime.quantization.fusions",
+    "onnxruntime.quantization.execution_providers.qnn",
     "onnxruntime.transformers",
     "onnxruntime.transformers.models.bart",
     "onnxruntime.transformers.models.bert",
@@ -449,6 +451,7 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Operating System :: Microsoft :: Windows",
     "Operating System :: MacOS",
 ]
@@ -462,7 +465,6 @@ if enable_training or enable_training_apis:
                 "onnxruntime.training.experimental",
                 "onnxruntime.training.experimental.gradient_graph",
                 "onnxruntime.training.optim",
-                "onnxruntime.training.torchdynamo",
                 "onnxruntime.training.ortmodule",
                 "onnxruntime.training.ortmodule.experimental",
                 "onnxruntime.training.ortmodule.experimental.json_config",
@@ -486,7 +488,7 @@ if enable_training or enable_training_apis:
         )
 
         package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor"] = ["*.cc"]
-        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils"] = ["*.cc"]
+        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils"] = ["*.cc", "*.h"]
         package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator"] = ["*.cc"]
         package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops"] = [
             "*.cpp",

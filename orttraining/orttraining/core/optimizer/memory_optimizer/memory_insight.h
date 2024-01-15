@@ -58,10 +58,20 @@ class MemoryRecord {
 };
 
 /**
+ * @brief Reset `__backwardpass` attribute for all backward nodes in the graph.
+ * `__backwardpass` is used by Priority-Based topology sorting.
+ *
+ * @param graph To be scanned and modified.
+ * @param modified Whether the graph is modified.
+ * @return Status
+ */
+Status ResetNodeBackwardPassAttribute(Graph& graph, bool& modified);
+
+/**
  * @brief Iterate the graph and find all possible memory optimization opportunities for related nodes.
  *
  * @param graph_viewer  The graph to iterate.
- * @param probe_level The level to control allowed operations during recomputable subgraph detecting.
+ * @param probe_config The config for recomputable subgraph detecting.
  * @param logger Logger.
  * @param node_index_to_its_order_in_topological_sort_map  The mapping of node index to its order in topological sort.
  * @param yield_op_order_in_topological_sort The order of the boundary op in the topological sort.
@@ -70,7 +80,7 @@ class MemoryRecord {
  * @return Status
  */
 Status FindORTModuleMemoryOpportunity(const GraphViewer& graph_viewer,
-                                      const ProbeLevel probe_level,
+                                      const ProbeConfig& probe_config,
                                       const logging::Logger& logger,
                                       InlinedHashMap<NodeIndex, ptrdiff_t>&
                                           node_index_to_its_order_in_topological_sort_map,
