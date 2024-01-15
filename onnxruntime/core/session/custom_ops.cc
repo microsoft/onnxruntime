@@ -27,7 +27,8 @@
 #include "core/platform/threadpool.h"
 
 // NOTE: OrtKernelContext is used by both custom ops and compiled kernels.
-// Due to that it's slightly misleading for it to be in custom_ops.cc.
+// In a minimal build, ORT_EXTENDED_MINIMAL_BUILD is used to enable EPs like CoreML/NNAPI which use compiled kernels,
+// and ORT_MINIMAL_BUILD_CUSTOM_OPS is used to allow external custom op libraries to be used.
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #define ENABLE_ORT_KERNEL_CONTEXT_API 1
 #endif
@@ -70,13 +71,15 @@ struct OrtShapeInferContext {
     for (size_t ith_input = 0; ith_input < num_inputs; ++ith_input) {
       const auto* input_type = ctx_.getInputType(ith_input);
       const auto& value_case = input_type->value_case();
-      ORT_ENFORCE(value_case == ONNX_NAMESPACE::TypeProto::kTensorType, "shape inference not yet supported for non-tensor types");
+      ORT_ENFORCE(value_case == ONNX_NAMESPACE::TypeProto::kTensorType,
+                  "shape inference not yet supported for non-tensor types");
       const auto& shape_proto = input_type->tensor_type().shape();
       const auto& type_proto = input_type->tensor_type();
       auto elem_type = ::onnxruntime::utils::CApiElementTypeFromProtoType(type_proto.elem_type());
       auto tensor_shape = ::onnxruntime::utils::GetTensorShapeFromTensorShapeProto(shape_proto);
       auto symbolic_dims = GetSymbolicDims(shape_proto);
-      input_type_shapes_.emplace_back(OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(elem_type, tensor_shape, &symbolic_dims).release());
+      input_type_shapes_.emplace_back(
+          OrtTensorTypeAndShapeInfo::GetTensorShapeAndTypeHelper(elem_type, tensor_shape, &symbolic_dims).release());
     }
   }
 
@@ -175,11 +178,6 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutput, _Inout_ OrtKernelContext* 
   });
 };
 
-// #ifdef _WIN32
-// #pragma warning(push)
-// #pragma warning(disable : 28196 6387)
-// #endif
-
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetGPUComputeStream, _In_ const OrtKernelContext* context,
                     _Outptr_ void** out) {
   return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
@@ -246,10 +244,6 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_ParallelFor, _In_ const OrtKernelCont
     return nullptr;
   });
 };
-
-// #ifdef _WIN32
-// #pragma warning(pop)
-// #endif
 
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetLogger, _In_ const OrtKernelContext* context,
                     _Outptr_ const OrtLogger** logger) {
