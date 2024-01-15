@@ -301,8 +301,8 @@ export const createSession = async(
     }
 
     activeSessions.set(
-      sessionHandle,
-      [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded, bindingState, graphCaptureEnabled, false]);
+        sessionHandle,
+        [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded, bindingState, graphCaptureEnabled, false]);
     return [sessionHandle, inputNames, outputNames];
   } catch (e) {
     inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));

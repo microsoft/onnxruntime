@@ -13,10 +13,10 @@ import {ProgramManager} from './webgpu/program-manager';
 import {ComputeContext, GpuData, ProgramInfo, ProgramInputTensorInfoDependency, StatusType, TimestampQuery} from './webgpu/types';
 
 interface CommandInfo {
-  kernelId: number;
-  computePipeline: GPUComputePipeline;
-  bindGroup: GPUBindGroup;
-  dispatchGroup: [number, number, number];
+  readonly kernelId: number;
+  readonly computePipeline: GPUComputePipeline;
+  readonly bindGroup: GPUBindGroup;
+  readonly dispatchGroup: [number, number, number];
 }
 
 interface KernelInfo {
