@@ -130,7 +130,7 @@ std::unique_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance
                 "Failed to load model because protobuf parsing failed.");
 
     ORT_ENFORCE(Model::Load(std::move(model_proto), model, nullptr,
-                            logging::LoggingManager::DefaultLogger(), ModelOptions(true, true))
+                            logging::LoggingManager::DefaultLogger(), ModelOptions(true, true, false))
                     .IsOK());
   }
 #else
