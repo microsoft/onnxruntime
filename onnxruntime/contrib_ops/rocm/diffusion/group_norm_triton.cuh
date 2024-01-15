@@ -33,7 +33,7 @@ std::string GetGroupNormTritonGroupName() {
 
 template <typename T, bool WithSwish>
 auto GetTritonGroupNormNHWCTypeStringAndOps() {
-  std::vector<std::pair<std::string, tunable::Op<GroupNormNHWCParams<T>>>> ret;
+  std::vector<std::pair<std::string, tunable::Op<GroupNormNHWCTunableParams<T>>>> ret;
   auto group_name = GetGroupNormTritonGroupName<T, WithSwish>();
   auto* kernel_list = GetOrtTritonKernelByGroup(group_name);
   if (kernel_list == nullptr) {
@@ -45,7 +45,7 @@ auto GetTritonGroupNormNHWCTypeStringAndOps() {
     auto* metadata = GetOrtTritonKernelMetadata(i);
     auto block_size = metadata->constants.at("BLOCK_SIZE");
     auto hw_size = metadata->constants.at("HW_SIZE");
-    auto impl = [i, block_size, hw_size](const GroupNormNHWCParams<T>* params) -> Status {
+    auto impl = [i, block_size, hw_size](const GroupNormNHWCTunableParams<T>* params) -> Status {
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           params->cPerGroup > block_size || params->cPerGroup * 2 <= block_size,
           "Arg block_size (", block_size, ") is not the next power of 2 of cPerGroup (", params->cPerGroup, ").");

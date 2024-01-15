@@ -42,24 +42,25 @@ auto GetCKGroupNormNHWCTypeStringAndOps() {
 
   using Activation = std::conditional_t<WithSwish, Swish, Pass>;
 
-  std::vector<std::pair<std::string, onnxruntime::rocm::tunable::Op<GroupNormNHWCParams<T>>>> ret;
+  std::vector<std::pair<std::string, onnxruntime::rocm::tunable::Op<GroupNormNHWCTunableParams<T>>>> ret;
   for (auto&& impl : internal::GetDeviceGroupNormInstances<XDataType, GammaDataType, BetaDataType, YDataType,
                                                            SaveMeanInvStdDataType, Activation, Rank, NumReduceDim>()) {
     std::string swish_suffix = WithSwish ? "_Swish" : "_Pass";
     auto type_string = onnxruntime::MakeString(impl->GetTypeString()) + swish_suffix;
     auto invoker = impl->MakeInvokerPointer();
 
-    auto ck_group_norm_op = [impl = std::move(impl), invoker = std::move(invoker)](const GroupNormNHWCParams<T>* params) -> Status {
+    auto ck_group_norm_op = [impl = std::move(impl), invoker = std::move(invoker)](const GroupNormNHWCTunableParams<T>* params) -> Status {
+      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF((params->skip != nullptr || params->bias != nullptr), "Skip is not supported");
       if constexpr (WithSwish) {
         TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-            !params->withSwish, "Swish version only support groupnorm with swish");
+            !params->use_silu, "Swish version only support groupnorm with swish");
       } else {
         TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-            params->withSwish, "Pass version only support groupnorm without swish");
+            params->use_silu, "Pass version only support groupnorm without swish");
       }
-      std::vector<ck::index_t> in_lengths{params->n, params->h, params->w, params->groups, params->cPerGroup};
-      std::vector<ck::index_t> in_out_strides{params->h * params->w * params->c, params->w * params->c, params->c, params->cPerGroup, 1};
-      std::vector<ck::index_t> gamma_beta_strides{0, 0, 0, params->cPerGroup, 1};
+      std::vector<ck::index_t> in_lengths{params->n, params->h, params->w, params->groups, params->channels_per_group};
+      std::vector<ck::index_t> in_out_strides{params->h * params->w * params->c, params->w * params->c, params->c, params->channels_per_group, 1};
+      std::vector<ck::index_t> gamma_beta_strides{0, 0, 0, params->channels_per_group, 1};
       std::vector<ck::index_t> reduce_dims{1, 2, 4};
 
       auto activation = Activation{};

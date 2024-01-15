@@ -8,20 +8,18 @@
 #include <cuda.h>
 #include <cuda_fp16.h>
 
+#include "core/providers/cuda/tunable/cuda_tunable.h"
+
+using onnxruntime::cuda::tunable::CudaTuningContext;
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-constexpr size_t GetGroupNormWorkspaceSizeInBytes(size_t batch_size, size_t num_groups) {
-  // Two buffers for sum and squared sum
-  return (sizeof(float) * 2) * batch_size * num_groups;
-}
-
-int GetChannelsPerBlock(int num_channels, int num_groups);
-
 template <typename T>
 Status LaunchGroupNormKernel(
-    cudaStream_t stream,
+    CudaTuningContext* tuning_ctx,  // Tuning context, used for rocm ep only
+    Stream* stream,
     T* output,              // normalized output tensor. Shape is (n, h, w, c)
     T* add_out,             // optional output tensor for element-wise sum of input + skip + bias. Shape is (n, h, w, c)
     const T* input,         // input tensor. Shape is (n, h, w, c)
