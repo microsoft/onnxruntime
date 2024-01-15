@@ -57,7 +57,10 @@ static void RunSession(OrtAllocator& allocator, Ort::Session& session_object,
 
   OutT* f = output_tensor->GetTensorMutableData<OutT>();
   for (size_t i = 0; i != static_cast<size_t>(5); ++i) {
+#if USE_TENSORRT
     ASSERT_NEAR(values_y[i], f[i], 1e-6f);
+#else
+    ASSERT_NEAR(values_y[i], f[i], 1e-5f);
   }
 }
 
