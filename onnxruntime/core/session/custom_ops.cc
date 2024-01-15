@@ -26,6 +26,12 @@
 #include "core/session/ort_apis.h"
 #include "core/platform/threadpool.h"
 
+// NOTE: OrtKernelContext is used by both custom ops and compiled kernels.
+// Due to that it's slightly misleading for it to be in custom_ops.cc.
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#define ENABLE_ORT_KERNEL_CONTEXT_API 1
+#endif
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #define ENABLE_CUSTOM_OP_API 1
 #endif
@@ -122,6 +128,180 @@ struct OrtShapeInferContext {
 };
 #endif
 
+#if ENABLE_ORT_KERNEL_CONTEXT_API
+template <typename T>
+static OrtStatusPtr ExecuteIfKernelContextApiEnabled(const T& fn) {
+  API_IMPL_BEGIN
+  return fn();
+  API_IMPL_END
+}
+#else
+template <typename T>
+static OrtStatusPtr ExecuteIfKernelContextApiEnabled(const T&) {
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "OrtKernelContext API is not enabled in this build");
+}
+#endif
+
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetInputCount, _In_ const OrtKernelContext* context, _Out_ size_t* out) {
+  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+    *out = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->InputCount();
+    return nullptr;
+  });
+};
+
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutputCount, _In_ const OrtKernelContext* context, _Out_ size_t* out) {
+  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+    *out = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->OutputCount();
+    return nullptr;
+  });
+};
+
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetInput, _In_ const OrtKernelContext* context, _In_ size_t index,
+                    _Out_ const OrtValue** out) {
+  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+    const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context);
+    *out = reinterpret_cast<const OrtValue*>(ctx->GetInputMLValue(onnxruntime::narrow<int>(index)));
+    return nullptr;
+  });
+};
+
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutput, _Inout_ OrtKernelContext* context, _In_ size_t index,
+                    _In_ const int64_t* dim_values, size_t dim_count, _Out_ OrtValue** out) {
+  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+    onnxruntime::TensorShape shape(dim_values, dim_count);
+    auto* ctx = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
+    *out = reinterpret_cast<OrtValue*>(ctx->OutputMLValue(onnxruntime::narrow<int>(index), shape));
+    return nullptr;
+  });
+};
+
+// #ifdef _WIN32
+// #pragma warning(push)
+// #pragma warning(disable : 28196 6387)
+// #endif
+
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetGPUComputeStream, _In_ const OrtKernelContext* context,
+                    _Outptr_ void** out) {
+  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+    auto* stream = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->GetComputeStream();
+    if (stream)
+      *out = stream->GetHandle();
+    else
+      *out = nullptr;
+    return nullptr;
+  });
+};
+
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetAllocator, _In_ const OrtKernelContext* context,
+                    _In_ const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out) {
+  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+    const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context);
+    onnxruntime::AllocatorPtr allocator = ctx->GetAllocator(mem_info->device);
+    if (!allocator) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "No requested allocator available");
+    }
+
+    auto p = std::make_unique<onnxruntime::OrtAllocatorImplWrappingIAllocator>(std::move(allocator));
+    *out = p.release();
+    return nullptr;
+  });
+};
+
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetResource, _In_ const OrtKernelContext* context,
+                    _In_ int resource_version, _In_ int resource_id, _Outptr_ void** resource) {
+  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+    *resource = {};
+    const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContext*>(context);
+    auto* stream = reinterpret_cast<onnxruntime::Stream*>(ctx->GetComputeStream());
+    if (!stream) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Failed to fetch a stream hosting the requested resource");
+    }
+    *resource = stream->GetResource(resource_version, resource_id);
+    return nullptr;
+  });
+};
+
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_ParallelFor, _In_ const OrtKernelContext* context,
+                    _In_ void (*fn)(void*, size_t), _In_ size_t total, _In_ size_t num_batch, _In_ void* usr_data) {
+  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+    if (!context) {
+      return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, "Invalid context");
+    }
+    if (fn && total) {
+      const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContext*>(context);
+      auto* tp = ctx->GetOperatorThreadPool();
+      if (num_batch) {
+        onnxruntime::concurrency::ThreadPool::TryBatchParallelFor(
+            tp,
+            static_cast<std::ptrdiff_t>(total),
+            [fn, usr_data](std::ptrdiff_t ith) { fn(usr_data, static_cast<size_t>(ith)); },
+            static_cast<std::ptrdiff_t>(num_batch));
+      } else {
+        onnxruntime::concurrency::ThreadPool::TrySimpleParallelFor(
+            tp,
+            static_cast<std::ptrdiff_t>(total),
+            [fn, usr_data](std::ptrdiff_t ith) { fn(usr_data, static_cast<size_t>(ith)); });
+      }
+    }
+    return nullptr;
+  });
+};
+
+// #ifdef _WIN32
+// #pragma warning(pop)
+// #endif
+
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetLogger, _In_ const OrtKernelContext* context,
+                    _Outptr_ const OrtLogger** logger) {
+  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+    const auto& kernel_ctx_logger = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->Logger();
+
+    *logger = reinterpret_cast<const OrtLogger*>(&kernel_ctx_logger);
+    return nullptr;
+  });
+}
+
+// Enabled via ExecuteIfKernelContextApiEnabled due to KernelContext_GetLogger
+ORT_API_STATUS_IMPL(OrtApis::Logger_LogMessage, _In_ const OrtLogger* logger, OrtLoggingLevel log_severity_level,
+                    _In_z_ const char* message, _In_z_ const ORTCHAR_T* file_path, int line_number,
+                    _In_z_ const char* func_name) {
+  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+    const auto& actual_logger = *reinterpret_cast<const onnxruntime::logging::Logger*>(logger);
+    const auto severity = static_cast<onnxruntime::logging::Severity>(log_severity_level);
+    const auto log_data_type = onnxruntime::logging::DataType::SYSTEM;
+
+    if (actual_logger.OutputIsEnabled(severity, log_data_type)) {
+#ifdef _WIN32
+      const std::string file_path_str = onnxruntime::ToUTF8String(file_path);
+      onnxruntime::CodeLocation location(file_path_str.c_str(), line_number, func_name);
+#else
+      onnxruntime::CodeLocation location(file_path, line_number, func_name);
+#endif
+
+      onnxruntime::logging::Capture(
+          actual_logger,
+          severity,
+          onnxruntime::logging::Category::onnxruntime,
+          log_data_type,
+          location)
+              .Stream()
+          << message;
+    }
+
+    return nullptr;
+  });
+}
+
+// Enabled via ExecuteIfKernelContextApiEnabled due to KernelContext_GetLogger
+ORT_API_STATUS_IMPL(OrtApis::Logger_GetLoggingSeverityLevel, _In_ const OrtLogger* logger,
+                    _Out_ OrtLoggingLevel* out) {
+  return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
+    const auto& actual_logger = *reinterpret_cast<const onnxruntime::logging::Logger*>(logger);
+    *out = static_cast<OrtLoggingLevel>(actual_logger.GetSeverity());
+    return nullptr;
+  });
+}
+
 #if ENABLE_CUSTOM_OP_API
 template <typename T>
 static OrtStatusPtr ExecuteIfCustomOpsApiEnabled(const T& fn) {
@@ -132,7 +312,7 @@ static OrtStatusPtr ExecuteIfCustomOpsApiEnabled(const T& fn) {
 #else
 template <typename T>
 static OrtStatusPtr ExecuteIfCustomOpsApiEnabled(const T&) {
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Custom Ops API is not enabled in this build");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Custom operator API is not enabled in this build");
 }
 #endif
 
@@ -165,6 +345,18 @@ ORT_API_STATUS_IMPL(OrtApis::ShapeInferContext_GetAttribute, _In_ const OrtShape
       return nullptr;
     } else {
       return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Attribute does not exist.");
+    }
+  });
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ShapeInferContext_SetOutputTypeShape, _In_ const OrtShapeInferContext* context,
+                    _In_ size_t index, _In_ const OrtTensorTypeAndShapeInfo* info) {
+  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
+    auto status = context->SetOutputTypeShape(index, info);
+    if (status.IsOK()) {
+      return nullptr;
+    } else {
+      return OrtApis::CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
     }
   });
 }
@@ -289,18 +481,6 @@ ORT_API_STATUS_IMPL(OrtApis::ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ Ort
   });
 }
 
-ORT_API_STATUS_IMPL(OrtApis::ShapeInferContext_SetOutputTypeShape, _In_ const OrtShapeInferContext* context,
-                    _In_ size_t index, _In_ const OrtTensorTypeAndShapeInfo* info) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
-    auto status = context->SetOutputTypeShape(index, info);
-    if (status.IsOK()) {
-      return nullptr;
-    } else {
-      return OrtApis::CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
-    }
-  });
-}
-
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name,
                     _Out_ float* out) {
   return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
@@ -320,39 +500,6 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_int64, _In_ const OrtKernelI
     return onnxruntime::ToOrtStatus(status);
   });
 }
-
-ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetInputCount, _In_ const OrtKernelContext* context, _Out_ size_t* out) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
-    *out = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->InputCount();
-    return nullptr;
-  });
-};
-
-ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutputCount, _In_ const OrtKernelContext* context, _Out_ size_t* out) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
-    *out = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->OutputCount();
-    return nullptr;
-  });
-};
-
-ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetInput, _In_ const OrtKernelContext* context, _In_ size_t index,
-                    _Out_ const OrtValue** out) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
-    const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context);
-    *out = reinterpret_cast<const OrtValue*>(ctx->GetInputMLValue(onnxruntime::narrow<int>(index)));
-    return nullptr;
-  });
-};
-
-ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutput, _Inout_ OrtKernelContext* context, _In_ size_t index,
-                    _In_ const int64_t* dim_values, size_t dim_count, _Out_ OrtValue** out) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
-    onnxruntime::TensorShape shape(dim_values, dim_count);
-    auto* ctx = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
-    *out = reinterpret_cast<OrtValue*>(ctx->OutputMLValue(onnxruntime::narrow<int>(index), shape));
-    return nullptr;
-  });
-};
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name,
                     _Out_ char* out, _Inout_ size_t* size) {
@@ -376,84 +523,6 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernel
     return onnxruntime::ToOrtStatus(status);
   });
 }
-
-#ifdef _WIN32
-#pragma warning(push)
-#pragma warning(disable : 28196 6387)
-#endif
-
-// OrtStatusPtr
-
-ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetGPUComputeStream, _In_ const OrtKernelContext* context,
-                    _Outptr_ void** out) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
-    auto* stream = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->GetComputeStream();
-    if (stream)
-      *out = stream->GetHandle();
-    else
-      *out = nullptr;
-    return nullptr;
-  });
-};
-
-ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetAllocator, _In_ const OrtKernelContext* context,
-                    _In_ const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
-    const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context);
-    onnxruntime::AllocatorPtr allocator = ctx->GetAllocator(mem_info->device);
-    if (!allocator) {
-      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "No requested allocator available");
-    }
-
-    auto p = std::make_unique<onnxruntime::OrtAllocatorImplWrappingIAllocator>(std::move(allocator));
-    *out = p.release();
-    return nullptr;
-  });
-};
-
-ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetResource, _In_ const OrtKernelContext* context,
-                    _In_ int resource_version, _In_ int resource_id, _Outptr_ void** resource) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
-    *resource = {};
-    const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContext*>(context);
-    auto* stream = reinterpret_cast<onnxruntime::Stream*>(ctx->GetComputeStream());
-    if (!stream) {
-      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Failed to fetch a stream hosting the requested resource");
-    }
-    *resource = stream->GetResource(resource_version, resource_id);
-    return nullptr;
-  });
-};
-
-ORT_API_STATUS_IMPL(OrtApis::KernelContext_ParallelFor, _In_ const OrtKernelContext* context,
-                    _In_ void (*fn)(void*, size_t), _In_ size_t total, _In_ size_t num_batch, _In_ void* usr_data) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
-    if (!context) {
-      return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, "Invalid context");
-    }
-    if (fn && total) {
-      const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContext*>(context);
-      auto* tp = ctx->GetOperatorThreadPool();
-      if (num_batch) {
-        onnxruntime::concurrency::ThreadPool::TryBatchParallelFor(
-            tp,
-            static_cast<std::ptrdiff_t>(total),
-            [fn, usr_data](std::ptrdiff_t ith) { fn(usr_data, static_cast<size_t>(ith)); },
-            static_cast<std::ptrdiff_t>(num_batch));
-      } else {
-        onnxruntime::concurrency::ThreadPool::TrySimpleParallelFor(
-            tp,
-            static_cast<std::ptrdiff_t>(total),
-            [fn, usr_data](std::ptrdiff_t ith) { fn(usr_data, static_cast<size_t>(ith)); });
-      }
-    }
-    return nullptr;
-  });
-};
-
-#ifdef _WIN32
-#pragma warning(pop)
-#endif
 
 template <typename T, typename std::enable_if<std::is_fundamental<T>::value, int>::type = 0>
 static Status CopyDataFromVectorToMemory(const std::vector<T>& values, T* out, size_t* size) {
@@ -669,55 +738,6 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetLogger, _In_ const OrtKernelInfo* inf
     }
 
     *logger = reinterpret_cast<const OrtLogger*>(ep_logger);
-    return nullptr;
-  });
-}
-
-ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetLogger, _In_ const OrtKernelContext* context,
-                    _Outptr_ const OrtLogger** logger) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
-    const auto& kernel_ctx_logger = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->Logger();
-
-    *logger = reinterpret_cast<const OrtLogger*>(&kernel_ctx_logger);
-    return nullptr;
-  });
-}
-
-ORT_API_STATUS_IMPL(OrtApis::Logger_LogMessage, _In_ const OrtLogger* logger, OrtLoggingLevel log_severity_level,
-                    _In_z_ const char* message, _In_z_ const ORTCHAR_T* file_path, int line_number,
-                    _In_z_ const char* func_name) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
-    const auto& actual_logger = *reinterpret_cast<const onnxruntime::logging::Logger*>(logger);
-    const auto severity = static_cast<onnxruntime::logging::Severity>(log_severity_level);
-    const auto log_data_type = onnxruntime::logging::DataType::SYSTEM;
-
-    if (actual_logger.OutputIsEnabled(severity, log_data_type)) {
-#ifdef _WIN32
-      const std::string file_path_str = onnxruntime::ToUTF8String(file_path);
-      onnxruntime::CodeLocation location(file_path_str.c_str(), line_number, func_name);
-#else
-      onnxruntime::CodeLocation location(file_path, line_number, func_name);
-#endif
-
-      onnxruntime::logging::Capture(
-          actual_logger,
-          severity,
-          onnxruntime::logging::Category::onnxruntime,
-          log_data_type,
-          location)
-              .Stream()
-          << message;
-    }
-
-    return nullptr;
-  });
-}
-
-ORT_API_STATUS_IMPL(OrtApis::Logger_GetLoggingSeverityLevel, _In_ const OrtLogger* logger,
-                    _Out_ OrtLoggingLevel* out) {
-  return ExecuteIfCustomOpsApiEnabled([&]() -> OrtStatusPtr {
-    const auto& actual_logger = *reinterpret_cast<const onnxruntime::logging::Logger*>(logger);
-    *out = static_cast<OrtLoggingLevel>(actual_logger.GetSeverity());
     return nullptr;
   });
 }
