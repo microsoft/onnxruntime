@@ -19,13 +19,8 @@
 // Modifications: heuristic channels per block; support epsilon; support skip and bias; update coding style.
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
-#include <cuda_fp16.h>
-#include <cuda_runtime_api.h>
-#include <cub/cub.cuh>
+#pragma once
 #include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/cu_inc/common.cuh"
-
 using namespace onnxruntime::cuda;
 
 namespace onnxruntime {

@@ -20,11 +20,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <cuda_fp16.h>
-#include <cuda_runtime_api.h>
-#include <cub/cub.cuh>
-#include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/diffusion/group_norm_common_base.h"
 
 using namespace onnxruntime::cuda;
