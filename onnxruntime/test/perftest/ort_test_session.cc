@@ -46,6 +46,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                                                const TestModelInfo& m)
     : rand_engine_(rd()), input_names_(m.GetInputCount()), input_names_str_(m.GetInputCount()), input_length_(m.GetInputCount()) {
   Ort::SessionOptions session_options;
+  session_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+  session_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "E:\\");
   provider_name_ = performance_test_config.machine_config.provider_type_name;
   if (provider_name_ == onnxruntime::kDnnlExecutionProvider) {
 #ifdef USE_DNNL
@@ -633,8 +635,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     fprintf(stdout, "Setting intra op thread affinity as %s\n", performance_test_config.run_config.intra_op_thread_affinities.c_str());
     session_options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpThreadAffinities, performance_test_config.run_config.intra_op_thread_affinities.c_str());
   }
-
-  session_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
 
   if (performance_test_config.run_config.disable_spinning) {
     fprintf(stdout, "Disabling intra-op thread spinning entirely\n");
