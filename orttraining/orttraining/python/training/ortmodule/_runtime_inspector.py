@@ -200,6 +200,8 @@ class InputDensityObserver:
                 input_node = self._try_get_node_from_its_output(node_arg)
                 if input_node.op_type == "Cast":
                     return _get_embedding_graph_input(input_node.input[0])
+                if input_node.op_type == "PythonOp":
+                    return _get_embedding_graph_input(input_node.input[1])
                 else:
                     self._logger.warning(f"Cannot find embedding input {node_arg}")
                     return None

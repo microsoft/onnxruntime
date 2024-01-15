@@ -515,7 +515,7 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
     return Status(status.Category(), status.Code(), msg_string);
   }
   ctx.RecycleNodeInputs(idx);
-  LOGS(logger, VERBOSE) << "stream " << stream_idx << " launch kernel with idx " << idx;
+  LOGS(logger, VERBOSE) << "stream " << stream_idx << " launch kernel with idx while running " << node.OpType() << " node. Name:'" << node.Name() << idx;
   return Status::OK();
 }
 

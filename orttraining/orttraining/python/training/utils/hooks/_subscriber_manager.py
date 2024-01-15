@@ -155,6 +155,9 @@ class SubscriberManager:
             raise RuntimeError("No subscribers are registered.")
 
         def _pre_forward_outmost_module_hook(module, module_inputs):
+            return _pre_forward_outmost_module_with_kwarg_hook(module, module_inputs, {})
+
+        def _pre_forward_outmost_module_with_kwarg_hook(module, module_inputs, kwargs):
             # This check is to support the case where module is first registered in the subscriber manager,
             # then the module and hook are copied, when new module instance runs to the hook, the global states
             # are not reset, so the logic depends on the global states will fail. So in the outer-most pre-forward hook
@@ -168,9 +171,20 @@ class SubscriberManager:
                     "Initialize global states for the first time, this should only happen once for each outmost module."
                 )
                 self._initialize_one_time_global_states(module)
+
+            # Call pre outmost module forward custom actions for subscribers
+            for sub in self._subscribers:
+                module_inputs = sub.pre_forward_outmost_module_apply(self._run_ctx, module, module_inputs, kwargs)
+
             return module_inputs
 
-        module.register_forward_pre_hook(_pre_forward_outmost_module_hook)
+        # "with_kwargs" is not available for low versions of PyTorch.
+        if "with_kwargs" in inspect.signature(module.register_forward_pre_hook).parameters:
+            self._pre_forward_hooks.append(
+                module.register_forward_pre_hook(_pre_forward_outmost_module_with_kwarg_hook, with_kwargs=True)
+            )
+        else:
+            self._pre_forward_hooks.append(module.register_forward_pre_hook(_pre_forward_outmost_module_hook))
 
         next_module_index = [0]
         self._register_hooks_recursively(module, 1, next_module_index)
@@ -189,7 +203,7 @@ class SubscriberManager:
 
             return restored_outputs
 
-        module.register_forward_hook(_post_forward_outmost_module_hook)
+        self._pre_forward_hooks.append(module.register_forward_hook(_post_forward_outmost_module_hook))
 
     def _initialize_one_time_global_states(self, module: torch.nn.Module):
         def _reset_recursively(module: torch.nn.Module, depth: int, next_module_index: List[int]):

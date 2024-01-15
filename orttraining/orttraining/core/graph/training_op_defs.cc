@@ -4757,7 +4757,7 @@ Return true if all elements are true and false otherwise.
       .Output(0, "output", "output data of rank N+1, [M1, M2, d2, ..., dN]", "T")
       .TypeConstraint(
           "T_INT",
-          {"tensor(int32)", "tensor(int64)"},
+          {"tensor(int64)"},
           "Constrain shape to integer tensors.")
       .TypeConstraint(
           "T",
@@ -4766,7 +4766,33 @@ Return true if all elements are true and false otherwise.
       .TypeConstraint(
           "T_INDEX",
           {"tensor(int32)", "tensor(int64)"},
-          "Constrain indices to integer types");
+          "Constrain indices to integer types")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        if (hasInputShape(ctx, 0)) {
+          const auto& x_shape = getInputShape(ctx, 0);
+          if (x_shape.dim_size() < 1) {
+            fail_shape_inference("Input tensor rank must be >= 1. Actual: ", x_shape.dim_size());
+          }
+
+          static int op_index = 1;
+          op_index += 1;
+
+          ONNX_NAMESPACE::TensorShapeProto output_shape;
+          for (int64_t j = 0; j < 2; ++j) {
+            std::stringstream ss;
+            ss << "padunfl_" << op_index << "_dim_" << j;
+            output_shape.add_dim()->set_dim_param(ss.str());
+          }
+          for (int64_t j = 1; j < x_shape.dim_size(); ++j) {
+            output_shape.add_dim()->CopyFrom(x_shape.dim(j));
+          }
+
+          // Assign symbolic shape.
+          updateOutputShape(ctx, 0, output_shape);
+        }
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(FlattenAndUnpad)
       .SetDomain(kMSDomain)
@@ -4781,12 +4807,48 @@ Return true if all elements are true and false otherwise.
       .Output(1, "unflatten_dims", "1D tensor with two values, [M1, M2].", "T_INT")
       .TypeConstraint(
           "T_INT",
-          {"tensor(int32)", "tensor(int64)"},
+          {"tensor(int64)"},
           "Constrain indices and shape to integer tensors.")
       .TypeConstraint(
           "T",
           {"tensor(int32)", "tensor(int64)", "tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to float tensors.");
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        static int op_index = 1;
+        op_index += 1;
+
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        // Set the second output type to be INT
+        updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::INT64);
+
+        if (hasInputShape(ctx, 0)) {
+          const auto& x_shape = getInputShape(ctx, 0);
+          if (x_shape.dim_size() < 2) {
+            fail_shape_inference("Input tensor rank must be >= 2. Actual: ", x_shape.dim_size());
+          }
+
+          ONNX_NAMESPACE::TensorShapeProto output_shape;
+          for (int64_t j = 0; j < 1; ++j) {
+            std::stringstream ss;
+            ss << "flatunp_" << op_index << "_o1_dim_" << j;
+            output_shape.add_dim()->set_dim_param(ss.str());
+          }
+          for (int64_t j = 2; j < x_shape.dim_size(); ++j) {
+            output_shape.add_dim()->CopyFrom(x_shape.dim(j));
+          }
+
+          // Assign symbolic shape.
+          updateOutputShape(ctx, 0, output_shape);
+        }
+
+        // The second output has only two values, so set the shape.
+        ONNX_NAMESPACE::TensorShapeProto output_shape;
+        for (int64_t j = 0; j < 2; ++j) {
+          std::stringstream ss;
+          ss << "flatunp_" << op_index << "_o2_dim_" << j;
+          output_shape.add_dim()->set_dim_param(ss.str());
+        }
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GRUTraining)
       .SetDomain(kMSDomain)

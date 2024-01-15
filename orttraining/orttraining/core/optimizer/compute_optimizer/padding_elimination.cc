@@ -414,18 +414,19 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   for (auto node_index : node_topology_list) {
     auto& node = *graph.GetNode(node_index);
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
-
+    const Node* input_producer = nullptr;
     if (IsATenEmbedding(&node) &&
         graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) &&
         node.InputDefs().size() >= 3 &&
         node.InputDefs()[2]->Exists() &&
         graph_utils::IsConstantInitializer(graph, node.InputDefs()[2]->Name()) &&
         node.InputDefs()[1]->Exists() &&
-        graph_utils::IsGraphInput(graph, node.InputDefs()[1]) &&
+        (graph_utils::IsGraphInput(graph, node.InputDefs()[1]) || ((input_producer = graph.GetProducerNode(node.InputDefs()[1]->Name())) && input_producer->OpType() == "PythonOp")) &&
         node.InputDefs()[1]->Shape() &&
         node.InputDefs()[1]->Shape()->dim_size() >= 2) {
+      std::string input_name_to_check = input_producer ? input_producer->InputDefs()[1]->Name() : node.InputDefs()[1]->Name();
       if (std::find(sparse_embedding_input_names_.begin(), sparse_embedding_input_names_.end(),
-                    node.InputDefs()[1]->Name()) == sparse_embedding_input_names_.end()) {
+                    input_name_to_check) == sparse_embedding_input_names_.end()) {
         LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
                                    ") due to embedding input is not in the sparse embedding input list.");
         continue;
@@ -628,7 +629,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
     return Status::OK();
   }
 
-  bool fallback_full_sized_shape = false;
+  bool fallback_full_sized_shape = true;
 
   // Get the first two dims value of input_ids which is [batch_size, seq_len]
   NodeArg* first_two_dims_arg = GetDimsValue(graph,

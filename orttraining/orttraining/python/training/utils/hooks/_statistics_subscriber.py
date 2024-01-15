@@ -14,6 +14,7 @@ import onnx
 import torch
 
 from ._subscriber_base import RuntimeStates, SubscriberBase
+from onnxruntime.training.utils import extract_data_and_schema, unflatten_data_using_schema
 
 
 class _InspectActivation(torch.autograd.Function):
@@ -209,6 +210,64 @@ class _InspectUnpadActivation(torch.autograd.Function):
         return fw_alias_map, bw_alias_map
 
 
+class _InspectParameter(torch.autograd.Function):
+    """This class is used to print the memory statistics in the forward and backward passes."""
+
+    @staticmethod
+    def forward(
+        ctx,
+        run_ctx: RuntimeStates,
+        module_post_forward,
+        module_pre_backward,
+        module: torch.nn.Module,
+        *input_tensor_list: Tuple[torch.Tensor, ...]
+    ) -> Tuple[torch.Tensor, ...]:
+        """Make sure there is the same number of `tensor` inputs and outputs."""
+
+        ctx.current_step = run_ctx.global_states.execution_step
+        ctx.module = module
+        ctx.module_pre_backward = module_pre_backward
+
+        for name, tensor in module.named_parameters():
+            module_post_forward(tensor, 0, name, ctx.current_step, None, ctx.module)
+
+        return tuple(t.detach().requires_grad_(t.requires_grad) for t in input_tensor_list)
+
+    @staticmethod
+    def backward(ctx, *grad_output: Tuple[Optional[torch.Tensor], ...]) -> Tuple[Optional[torch.Tensor], ...]:
+        for name, tensor in ctx.module.named_parameters():
+            ctx.module_pre_backward(tensor.grad, 0, name + "_grad", ctx.current_step, None, ctx.module)
+        return (None, None, None, None, *tuple(g for g in grad_output))
+
+    @staticmethod
+    def infer_shape(
+        node: onnx.NodeProto,
+        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
+        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
+    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        return tensor_input_shapes, tensor_input_dtypes
+
+    @staticmethod
+    def alias_input(node_proto_str: str):
+        node = onnx.NodeProto()
+        node.ParseFromString(node_proto_str)
+        non_tensor_fw_input_count = 4
+        fw_output_count = len(node.output) - 1  # exclude the first output appended in ONNX
+        fw_alias_map = [-1] * fw_output_count
+        bw_alias_map = [-1] * (non_tensor_fw_input_count + len(node.input))
+
+        for i in range(fw_output_count):
+            fw_alias_map[i] = i + non_tensor_fw_input_count
+
+        tensor_input_index = 0
+        for i in range(len(bw_alias_map)):
+            if i < non_tensor_fw_input_count:
+                continue
+            bw_alias_map[i] = tensor_input_index
+            tensor_input_index += 1
+        return fw_alias_map, bw_alias_map
+
+
 class StatisticsSubscriber(SubscriberBase):
     """
     This subscriber is used to dump the activation statistics into files.
@@ -272,6 +331,25 @@ class StatisticsSubscriber(SubscriberBase):
             name, module_index, run_rtx, tensor, self.module_post_forward_impl, self.module_pre_backward_impl
         )
 
+    def pre_forward_outmost_module_apply_impl(
+        self,
+        run_ctx: RuntimeStates,
+        module: torch.nn.Module,
+        args,
+        kwargs,
+    ) :
+        flatten_args_tensor_list, args_schema = extract_data_and_schema(args)
+        flatten_kwargs_tensor_list, kwargs_schema = extract_data_and_schema(kwargs)
+        flatten_out = _InspectParameter.apply(
+            run_ctx, self.module_post_forward_impl, self.module_pre_backward_impl, module, *(flatten_args_tensor_list + flatten_kwargs_tensor_list)
+        )
+        args_tensors = flatten_out[: len(flatten_args_tensor_list)]
+        kwargs_tensors = flatten_out[len(flatten_args_tensor_list) :]
+        restored_args = unflatten_data_using_schema(args_tensors, args_schema)
+        restored_kwargs = unflatten_data_using_schema(kwargs_tensors, kwargs_schema)
+
+        return restored_args, restored_kwargs
+
     def module_post_forward_impl(
         self, activation: torch.Tensor, depth: int, name: str, step: int, indices: Optional[torch.Tensor], module
     ):
@@ -323,24 +401,24 @@ class StatisticsSubscriber(SubscriberBase):
             tensor_to_analyze = tensor.flatten(start_dim=0, end_dim=1)[indices, ...] if indices is not None else tensor
             _summarize_tensor(display_name, tensor_to_analyze, f, depth, self._run_on_cpu, self._bucket_size, indices, step, module)
 
-        return tensor
-        # if 'hidden_states_' in display_name or 'qp_' in display_name:
-        #     if indices is not None:
-        #         tensor_shape = tensor.shape
-        #         new_t = tensor.view(-1, tensor_shape[2])
+        # return tensor
+        if 'hidden_states_' in display_name or 'qp_' in display_name:
+            if indices is not None:
+                tensor_shape = tensor.shape
+                new_t = tensor.view(-1, tensor_shape[2])
 
-        #         mask = torch.ones_like(new_t)
-        #         mask[indices] = torch.zeros_like(new_t[indices])
+                mask = torch.ones_like(new_t)
+                mask[indices] = torch.zeros_like(new_t[indices])
 
-        #         all_zeros = torch.zeros_like(new_t)
+                all_zeros = torch.zeros_like(new_t)
 
-        #         new_t = torch.where(mask == 1, all_zeros, new_t)
-        #         n = new_t.view(tensor_shape)
-        #         return n
-        #     else:
-        #         return tensor
-        # else:
-        #     return tensor
+                new_t = torch.where(mask == 1, all_zeros, new_t)
+                n = new_t.view(tensor_shape)
+                return n
+            else:
+                return tensor
+        else:
+            return tensor
 
 
 
