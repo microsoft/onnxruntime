@@ -308,8 +308,8 @@ class _RuntimeOptions:
         # Experimental features.
         self.enable_zero_stage3_support = False  # Once enabled, cannot be disabled.
 
-        # If auto grad function support is enabled, we will enable memory efficient grad management by default.
-        self.enable_mem_efficient_grad_management = self.enable_custom_autograd_function
+        # We disable memory efficient grad management by default, will enable once it's fully validated.
+        self.enable_mem_efficient_grad_management = False
 
         self.deepcopy_before_model_export = True
 
