@@ -293,6 +293,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool force_timing_cache_match_ = false;
   bool detailed_build_log_ = false;
   bool cuda_graph_enable_ = false;
+  std::string ctx_model_path_;
   std::string cache_prefix_;
 
   // The OrtAllocator object will be get during ep compute time
@@ -301,8 +302,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   // For create/dump EP context node model
   bool dump_ep_context_model_ = false;
+  std::string ep_context_file_path_;
   int ep_context_embed_mode_ = 0;
-  bool ep_context_compute_capability_enable_ = true;
+  bool ep_context_compute_capability_enable_ = false;
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_ = ONNX_NAMESPACE::ModelProto::Create();
 
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};

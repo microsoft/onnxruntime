@@ -52,8 +52,9 @@ struct TensorrtExecutionProviderInfo {
   std::string profile_opt_shapes{""};
   bool cuda_graph_enable{false};
   bool dump_ep_context_model{false};
+  std::string ep_context_file_path{""};
   int ep_context_embed_mode{0};
-  bool ep_context_compute_capability_enable{1};
+  bool ep_context_compute_capability_enable{0};
   std::string engine_cache_prefix{""};
 
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);

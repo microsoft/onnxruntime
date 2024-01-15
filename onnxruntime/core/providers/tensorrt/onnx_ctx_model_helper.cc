@@ -138,14 +138,89 @@ ONNX_NAMESPACE::ModelProto* CreateCtxNodeModel(const GraphViewer& graph_viewer,
 }
 
 /*
+ * Get "EP context node" model path
+ * 
+ * 
+ * If ep_context_file_path is provided:
+ *     - If ep_context_file_path is a file:
+ *         - If it's a file name without any path associated with it, return "engine_cache_path/ep_context_file_path".
+           - If it's a file name with path associated with it, return "ep_context_file_path".
+ *     - If ep_context_file_path is a directory, return "ep_context_file_path/original_model_name_ctx.onnx".
+ * If ep_context_file_path is not provided:
+ *     - Return "engine_cache_path/original_model_name_ctx.onnx".
+ * 
+ * 
+ * Example 1:
+ * ep_context_file_path = "/home/user/ep_context_model_foler"
+ * engine_cache_path = "trt_engine.engine"
+ * original_model_path = "model.onnx"
+ * => return "/home/user/ep_context_model_folder/model_ctx.onnx"
+ * 
+ * Example 2:
+ * ep_context_file_path = "my_ctx_model.onnx"
+ * engine_cache_path = "/home/user/cache_folder/trt_engine.engine"
+ * original_model_path = "model.onnx"
+ * => return "/home/user/cache_folder/my_ctx_model.onnx"
+ *
+ * Example 3:
+ * ep_context_file_path = "/home/user2/ep_context_model_foler/my_ctx_model.onnx"
+ * engine_cache_path = "trt_engine.engine"
+ * original_model_path = "model.onnx"
+ * => return "/home/user2/ep_context_model_foler/my_ctx_model.onnx"
+ * 
+ * Example 4:
+ * ep_context_file_path = ""
+ * engine_cache_path = "/home/user3/cache_folder/trt_engine.engine"
+ * original_model_path = "model.onnx"
+ * => return "/home/user3/cache_folder/model_ctx.onnx"
+ * 
+ */
+std::string GetCtxNodeModelPath(const std::string& ep_context_file_path,
+                                const std::string& engine_cache_path,
+                                const std::string& original_model_path) {
+  std::string ctx_model_path;
+
+  if (!ep_context_file_path.empty() && !std::filesystem::is_directory(ep_context_file_path)) {
+    std::filesystem::path ctx_model_file_path = ep_context_file_path;
+    if (ctx_model_file_path.filename().string() == ep_context_file_path) {
+      std::filesystem::path cache_path = engine_cache_path;
+      if (cache_path.has_parent_path()) {
+        ctx_model_path = cache_path.parent_path().append(ep_context_file_path).string();
+      } else {
+        ctx_model_path = ep_context_file_path;
+      }
+    } else {
+      ctx_model_path = ep_context_file_path;
+    }
+  } else {
+    std::filesystem::path model_path = original_model_path;
+    std::filesystem::path model_name_stem = model_path.stem();  // model_name.onnx -> model_name
+    std::string ctx_model_name = model_name_stem.string() + "_ctx.onnx";
+
+    if (std::filesystem::is_directory(ep_context_file_path)) {
+      std::filesystem::path model_directory = ep_context_file_path;
+      ctx_model_path = model_directory.append(ctx_model_name).string();
+    } else {
+      std::filesystem::path cache_path = engine_cache_path;
+      if (cache_path.has_parent_path()) {
+        ctx_model_path = cache_path.parent_path().append(ctx_model_name).string();
+      } else {
+        ctx_model_path = ctx_model_name;
+      }
+    }
+  }
+  return ctx_model_path;
+}
+
+/*
  * Dump "EP context node" model
  *
  */
 void DumpCtxNodeModel(ONNX_NAMESPACE::ModelProto* model_proto,
-                      const std::string engine_cache_path) {
-  std::fstream dump(engine_cache_path + "_wrapper.onnx", std::ios::out | std::ios::trunc | std::ios::binary);
+                      const std::string& ctx_model_path) {
+  std::fstream dump(ctx_model_path, std::ios::out | std::ios::trunc | std::ios::binary);
   model_proto->SerializeToOstream(dump);
-  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path + "_wrapper.onnx";
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Dumped " + ctx_model_path;
 }
 
 Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph_viewer) {

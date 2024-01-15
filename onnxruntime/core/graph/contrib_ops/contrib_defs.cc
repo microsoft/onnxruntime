@@ -3232,7 +3232,7 @@ void RegisterContribSchemas() {
           OPTIONAL_VALUE)
       .Attr(
           "hardware_architecture",
-          "(Optional) Hardware architecture.",
+          "(Optional) Hardware architecture for running this EP context node.",
           AttributeProto::STRING,
           OPTIONAL_VALUE)
       .Attr(

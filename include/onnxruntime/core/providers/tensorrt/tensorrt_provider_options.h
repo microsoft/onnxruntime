@@ -11,6 +11,8 @@
 /// User can only get the instance of OrtTensorRTProviderOptionsV2 via CreateTensorRTProviderOptions.
 /// </summary>
 struct OrtTensorRTProviderOptionsV2 {
+  OrtTensorRTProviderOptionsV2& operator=(const OrtTensorRTProviderOptionsV2& other);  // copy assignment operator
+
   int device_id{0};                                      // cuda device id.
   int has_user_compute_stream{0};                        // indicator of user specified CUDA compute stream.
   void* user_compute_stream{nullptr};                    // user specified CUDA compute stream.
@@ -47,7 +49,8 @@ struct OrtTensorRTProviderOptionsV2 {
   const char* trt_profile_opt_shapes{nullptr};           // Specify the range of the input shapes to build the engine with
   int trt_cuda_graph_enable{0};                          // Enable CUDA graph in ORT TRT
   int trt_dump_ep_context_model{0};                      // Dump EP context node model
+  const char* trt_ep_context_file_path{nullptr};         // Specify file name to dump EP context node model.
   int trt_ep_context_embed_mode{0};                      // Specify EP context embed mode. Default 0 = context is engine cache path, 1 = context is engine binary data
-  int trt_ep_context_compute_capability_enable{1};       // Add GPU compute capability as an EP context node's attribute
+  int trt_ep_context_compute_capability_enable{0};       // Add GPU compute capability as an EP context node's attribute
   const char* trt_engine_cache_prefix{nullptr};          // specify engine cache prefix
 };
