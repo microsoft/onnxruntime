@@ -15,6 +15,7 @@ class TensorRTEngineWrapperCreator:
         engine_cache_path = args.trt_engine_cache_path
         self.model_name = args.model_name
         self.dynamic_dim_count = 0
+        self.plugins = args.plugins
 
         # Get serialized engine from engine cache
         with open(engine_cache_path, "rb") as file:
@@ -25,8 +26,15 @@ class TensorRTEngineWrapperCreator:
         else:
             ep_cache_context_content = engine_cache_path
 
-        # Deserialize an TRT engine
         logger = trt.Logger(trt.Logger.WARNING)
+
+        # Enable TRT plugins
+        trt.init_libnvinfer_plugins(logger, "")
+        if len(self.plugins):
+            import ctypes
+            ctypes.CDLL(self.plugins)
+
+        # Deserialize an TRT engine
         runtime = trt.Runtime(logger)
         engine = runtime.deserialize_cuda_engine(engine_buffer)
         num_bindings = engine.num_bindings
@@ -163,6 +171,14 @@ def main():
         help="Model name to be created",
         required=False,
         default="trt_engine_wrapper.onnx",
+        type=str,
+    )
+    parser.add_argument(
+        "--plugins",
+        help="List of plugin paths to load",
+        required=False,
+        default=[],
+        nargs="+",
         type=str,
     )
     args = parser.parse_args()
