@@ -74,7 +74,7 @@ class TestQDQExtraOptions(unittest.TestCase):
         onnx.save(model, test_model_path)
 
         def td(vals):
-            return TensorData(lowest=vals[0], highest=vals[1])
+            return TensorData(lowest=np.array(vals[0], dtype=np.float32), highest=np.array(vals[1], dtype=np.float32))
 
         compute_data = {
             "P": td([0.1, 0.1]),
@@ -175,7 +175,7 @@ class TestQDQExtraOptions(unittest.TestCase):
         onnx.save(model, test_model_path)
 
         def td(vals):
-            return TensorData(lowest=vals[0], highest=vals[1])
+            return TensorData(lowest=np.array(vals[0], dtype=np.float32), highest=np.array(vals[1], dtype=np.float32))
 
         compute_data = {
             "L": td([0.1, 0.1]),

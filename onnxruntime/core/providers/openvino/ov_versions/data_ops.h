@@ -25,7 +25,8 @@ enum versionNum {
   V_2022_3,
   V_2023_0,
   V_2023_1,
-  V_2023_2
+  V_2023_2,
+  V_2023_3
 };
 
 using VersionNum = enum versionNum;
@@ -50,6 +51,7 @@ class DataOps {
   const GraphViewer& graph_viewer_;
   VersionNum version_id_;
   std::string device_id_;
+  std::string device_precision_;
   std::multimap<std::string, UnsupportedOpMode> op_list_;
   std::vector<SupportedOp> subgraph_supported_;
   std::vector<SupportedOp> no_dimension_supported_;
@@ -70,8 +72,8 @@ class DataOps {
                          const NodeIndex node_idx);
 
  public:
-  DataOps(const GraphViewer& graph_viewer_param, VersionNum ver, std::string dev_id)
-      : graph_viewer_(graph_viewer_param), version_id_(ver), device_id_(dev_id) {
+  DataOps(const GraphViewer& graph_viewer_param, VersionNum ver, const std::string dev_id, const std::string device_precision)
+      : graph_viewer_(graph_viewer_param), version_id_(ver), device_id_(dev_id), device_precision_(device_precision) {
     populate_op_mode_supported();
     populate_types_supported();
   }

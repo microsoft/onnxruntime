@@ -307,7 +307,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_npu_fast_compile', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling', 'disable_dynamic_shapes'] \n");
       }
     }
-    session_options.AppendExecutionProvider("OpenVINO", ov_options);
+    session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
 #endif
@@ -347,7 +347,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         // no validation
       } else if (key == "htp_performance_mode") {
         std::set<std::string> supported_htp_perf_mode = {"burst", "balanced", "default", "high_performance",
-                                                         "high_power_saver", "low_balanced", "low_power_saver",
+                                                         "high_power_saver", "low_balanced", "extreme_power_saver", "low_power_saver",
                                                          "power_saver", "sustained_high_performance"};
         if (supported_htp_perf_mode.find(value) == supported_htp_perf_mode.end()) {
           std::ostringstream str_stream;
