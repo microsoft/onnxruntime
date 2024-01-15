@@ -29,7 +29,6 @@ class ConvBase : public JsKernel {
     }
     conv_attrs_.activation = info.GetAttrOrDefault<std::string>("activation", "");
     std::vector<float> activation_params = info.GetAttrsOrDefault<float>("activation_params");
-    const auto* activation_params_ptr = activation_params.size() > 0 ? activation_params.data() : nullptr;
     int64_t channels_last = is_channels_last ? 1 : info.GetAttrOrDefault<int64_t>("channels_last", 0);
     auto kernel_shape_0 = conv_attrs_.kernel_shape_specified && kernel_shape.size() > 0 ? kernel_shape[0] : 0;
     auto kernel_shape_1 = conv_attrs_.kernel_shape_specified && kernel_shape.size() > 1 ? kernel_shape[1] : 0;
@@ -43,24 +42,24 @@ class ConvBase : public JsKernel {
                                    "dilations" : [$2],
                                    "group" : $3,
                                    "kernel_shape" : [$4],
-                                   "pads" : $5 ? Array.from(HEAP32.subarray($6, $6 + $5)) : [],
+                                   "pads" : $5 ? Array.from(HEAP32.subarray($5, $6)) : [],
                                    "strides" : [$7],
                                    "w_is_const" : () JS_ARROW(!!HEAP8[$9]),
                                    "activation" : UTF8ToString($10),
-                                   "activation_params" : $11 ? Array.from(HEAPF32.subarray($12, $12 + $11)) : []
+                                   "activation_params" : $11 ? Array.from(HEAPF32.subarray($11, $12)) : []
                                  }),
                                  static_cast<int32_t>(conv_attrs_.auto_pad),
                                  static_cast<int32_t>(conv_attrs_.dilations.size() > 0 ? conv_attrs_.dilations[0] : 0),
                                  static_cast<int32_t>(conv_attrs_.group),
                                  static_cast<int32_t>(kernel_shape_0),
-                                 static_cast<int32_t>(local_pads.size()),
-                                 JSEP_HEAP_PTR(local_pads.size() > 0 ? local_pads.data() : nullptr) >> 2,
+                                 JSEP_HEAP32_INDEX_START(local_pads),
+                                 JSEP_HEAP32_INDEX_END(local_pads),
                                  static_cast<int32_t>(conv_attrs_.strides.size() > 0 ? conv_attrs_.strides[0] : 0),
                                  static_cast<int32_t>(channels_last),
-                                 JSEP_HEAP_PTR(&w_is_const_),
+                                 JSEP_HEAP8_INDEX(&w_is_const_),
                                  conv_attrs_.activation.c_str(),
-                                 activation_params.size(),
-                                 JSEP_HEAP_PTR(activation_params_ptr) >> 2);
+                                 JSEP_HEAP32_INDEX_START(activation_params),
+                                 JSEP_HEAP32_INDEX_END(activation_params));
     } else {
       JSEP_INIT_KERNEL_ATTRIBUTE(Conv, ({
                                    "format" : $11 ? "NHWC" : "NCHW",
@@ -68,11 +67,11 @@ class ConvBase : public JsKernel {
                                    "dilations" : [ $2, $3 ],
                                    "group" : $4,
                                    "kernel_shape" : [ $5, $6 ],
-                                   "pads" : $7 ? Array.from(HEAP32.subarray($8, $8 + $7)) : [],
+                                   "pads" : $7 ? Array.from(HEAP32.subarray($7, $8)) : [],
                                    "strides" : [ $9, $10 ],
                                    "w_is_const" : () JS_ARROW(!!HEAP8[$12]),
                                    "activation" : UTF8ToString($13),
-                                   "activation_params" : $14 ? Array.from(HEAPF32.subarray($15, $15 + $14)) : []
+                                   "activation_params" : $14 ? Array.from(HEAPF32.subarray($14, $15)) : []
                                  }),
                                  static_cast<int32_t>(conv_attrs_.auto_pad),
                                  static_cast<int32_t>(conv_attrs_.dilations.size() > 0 ? conv_attrs_.dilations[0] : 0),
@@ -80,15 +79,15 @@ class ConvBase : public JsKernel {
                                  static_cast<int32_t>(conv_attrs_.group),
                                  static_cast<int32_t>(kernel_shape_0),
                                  static_cast<int32_t>(kernel_shape_1),
-                                 static_cast<int32_t>(local_pads.size()),
-                                 JSEP_HEAP_PTR(local_pads.size() > 0 ? local_pads.data() : nullptr) >> 2,
+                                 JSEP_HEAP32_INDEX_START(local_pads),
+                                 JSEP_HEAP32_INDEX_END(local_pads),
                                  static_cast<int32_t>(conv_attrs_.strides.size() > 0 ? conv_attrs_.strides[0] : 0),
                                  static_cast<int32_t>(conv_attrs_.strides.size() > 1 ? conv_attrs_.strides[1] : 0),
                                  static_cast<int32_t>(channels_last),
-                                 JSEP_HEAP_PTR(&w_is_const_),
+                                 JSEP_HEAP8_INDEX(&w_is_const_),
                                  conv_attrs_.activation.c_str(),
-                                 activation_params.size(),
-                                 JSEP_HEAP_PTR(activation_params_ptr) >> 2);
+                                 JSEP_HEAP32_INDEX_START(activation_params),
+                                 JSEP_HEAP32_INDEX_END(activation_params));
     }
   }
 

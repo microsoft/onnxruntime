@@ -33,8 +33,6 @@ jobs:
   variables:
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
     EnvSetupScript: setup_env_trt.bat
-    buildArch: x64
-    BuildConfig: 'RelWithDebInfo'
     skipComponentGovernanceDetection: true
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   timeoutInMinutes: 150

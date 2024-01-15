@@ -11,7 +11,6 @@ jobs:
   variables:
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
     EnvSetupScript: setup_env_cuda.bat
-    buildArch: x64
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   timeoutInMinutes: 120
   workspace:
@@ -21,7 +20,7 @@ jobs:
     parameters:
       EnvSetupScript: $(EnvSetupScript)
       DownloadCUDA: true
-      BuildArch: $(buildArch)
+      BuildArch: 'x64'
       BuildConfig: $(BuildConfig)
       MachinePool: 'onnxruntime-Win2022-GPU-A10'
       WithCache: true
@@ -34,7 +33,7 @@ jobs:
       AdditionalKey: "gpu-reduced-ops | $(BuildConfig)"
       BuildPyArguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --update --skip_submodule_sync --cmake_generator "Visual Studio 17 2022" --build_wheel --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=86" --include_ops_by_config="$(Build.SourcesDirectory)\onnxruntime\test\testdata\required_ops.config"'
       MsbuildArguments: $(MsbuildArguments)
-      BuildArch: $(buildArch)
+      BuildArch: 'x64'
       Platform: 'x64'
       BuildConfig: $(BuildConfig)
 

@@ -21,13 +21,10 @@ class Transpose final : public JsKernel, public TransposeBase {
       }
     }
     JSEP_INIT_KERNEL_ATTRIBUTE(Transpose, ({
-                                 "perm" : $1 ? Array.from(HEAP32.subarray($2, $2 + $1)) : []
+                                 "perm" : $1 ? Array.from(HEAP32.subarray($1, $2)) : []
                                }),
-                               // $1: length of attribute "perm" (int32[])
-                               gsl::narrow_cast<int32_t>(perm_specified_ ? perm_.size() : 0),
-                               // $2: index to HEAP32 of the first int32 element. calculated from right shift memory
-                               //     address by 2
-                               JSEP_HEAP_PTR(perm_specified_ && !perm.empty() ? perm.data() : nullptr) >> 2);
+                               JSEP_HEAP32_INDEX_START(perm),
+                               JSEP_HEAP32_INDEX_END(perm));
   }
 };
 
