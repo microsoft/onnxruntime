@@ -69,7 +69,9 @@ public class InferenceTest {
     // Checks that the environment instance is the same.
     OrtEnvironment otherEnv = OrtEnvironment.getEnvironment();
     assertSame(env, otherEnv);
+    TestHelpers.quietLogger(OrtEnvironment.class);
     otherEnv = OrtEnvironment.getEnvironment("test-name");
+    TestHelpers.loudLogger(OrtEnvironment.class);
     assertSame(env, otherEnv);
   }
 
@@ -588,6 +590,12 @@ public class InferenceTest {
         Map<String, NodeInfo> infoMap = session.getInputInfo();
         TensorInfo aInfo = (TensorInfo) infoMap.get("A").getInfo();
         assertArrayEquals(new long[] {-1, 2}, aInfo.shape);
+        assertEquals(2, aInfo.dimensionNames.length);
+        assertEquals("n", aInfo.dimensionNames[0]);
+        assertEquals("", aInfo.dimensionNames[1]);
+        TensorInfo bInfo = (TensorInfo) infoMap.get("B").getInfo();
+        assertEquals(1, bInfo.dimensionNames.length);
+        assertEquals("m", bInfo.dimensionNames[0]);
       }
     }
     // Check that when the options are assigned it overrides the symbolic dimension

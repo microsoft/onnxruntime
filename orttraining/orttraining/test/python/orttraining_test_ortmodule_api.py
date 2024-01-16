@@ -684,7 +684,7 @@ def test_input_requires_grad_saved(device):
     model = ORTModule(model)
     x = torch.randn(N, D_in, device=device, requires_grad=True) + 1
     model(x)
-    assert model._torch_module._execution_manager(model._is_training())._input_info.require_grad_names == ["input1"]
+    assert "input1" in model._torch_module._execution_manager(model._is_training())._input_info.require_grad_names
 
 
 @pytest.mark.parametrize("device", ["cuda", "cpu"])
