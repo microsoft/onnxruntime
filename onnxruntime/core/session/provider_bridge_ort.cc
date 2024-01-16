@@ -1428,6 +1428,7 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   return trt_options_converted;
 }
 
+#ifdef USE_TENSORRT
 // Apply configs from session options to TensorRT provider options V2 that are needed for TensorRT EP.
 // For example, EP context configs.
 void UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(OrtSessionOptions* session_options, OrtTensorRTProviderOptionsV2* tensorrt_options) {
@@ -1455,6 +1456,7 @@ void UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(OrtSessionOptio
     LOGS_DEFAULT(VERBOSE) << "User specified context hardware architecture enable: " << tensorrt_options->trt_ep_context_compute_capability_enable;
   }
 }
+#endif
 
 std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(int device_id) {
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(device_id);
@@ -1467,7 +1469,11 @@ std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Creat
 
 std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(void* session_options, const OrtTensorRTProviderOptions* provider_options) {
   OrtTensorRTProviderOptionsV2 trt_options_converted = onnxruntime::OrtTensorRTProviderOptionsToOrtTensorRTProviderOptionsV2(provider_options);
+#ifdef USE_TENSORRT
   onnxruntime::UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(reinterpret_cast<OrtSessionOptions*>(session_options), &trt_options_converted);
+#else
+  ORT_UNUSED_PARAMETER(session_options);
+#endif
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(&trt_options_converted);
 }
 
@@ -1481,7 +1487,11 @@ std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Creat
   // Note: No need to worry about tensorrt_options being a local variable, CreateExecutionProviderFactory() in TRT EP will
   // create a factory object that copies any provider options from tensorrt_options including "const char*" provider options.
   OrtTensorRTProviderOptionsV2 tensorrt_options = *provider_options; // copy and assign from provider_options
+#ifdef USE_TENSORRT
   onnxruntime::UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(reinterpret_cast<OrtSessionOptions*>(session_options), &tensorrt_options);
+#else
+  ORT_UNUSED_PARAMETER(session_options);
+#endif
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(&tensorrt_options);
 }
 
