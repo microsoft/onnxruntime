@@ -192,7 +192,7 @@ inline __device__ void AddSkip<float, 2>(float* add_out, const float* src, const
   sum_sq += f2.x * f2.x + f2.y * f2.y;
 }
 
-template <typename T, int32_t THREADS_PER_BLOCK, int32_t CHANNELS_PER_THREAD>
+template <typename T, int32_t THREADS_PER_BLOCK, int32_t ILP>
 __global__ void GroupNormNHWCSumKernel(T* skip_workspace, float* group_sum_buffer, const T* src, const T* skip, const T* bias,
                                        int32_t channels_per_block, int32_t hw_per_block, int32_t hw, int32_t hwc, int32_t c,
                                        int32_t channels_per_group, int32_t groups, int32_t groups_per_block, bool broadcast_skip) {
@@ -209,9 +209,9 @@ __global__ void GroupNormNHWCSumKernel(T* skip_workspace, float* group_sum_buffe
   int32_t ni = blockIdx.z;
 
   // The channel loaded by that thread.
-  int32_t ci = blockIdx.x * channels_per_block + threadIdx.x * CHANNELS_PER_THREAD;
+  int32_t ci = blockIdx.x * channels_per_block + threadIdx.x * ILP;
 
-  if (ci >= c || threadIdx.x * CHANNELS_PER_THREAD >= channels_per_block) {
+  if (ci >= c || threadIdx.x * ILP >= channels_per_block) {
     return;
   }
 
@@ -235,32 +235,32 @@ __global__ void GroupNormNHWCSumKernel(T* skip_workspace, float* group_sum_buffe
 
       if (bias != nullptr) {
         for (int32_t hwi = hw_begin; hwi < hw_end; ++hwi, offset += c) {
-          AddSkipBias<T, CHANNELS_PER_THREAD>(add_out, src, skip, bias, offset, skip_offset, bias_offset, sum, sum_sq);
+          AddSkipBias<T, ILP>(add_out, src, skip, bias, offset, skip_offset, bias_offset, sum, sum_sq);
         }
       } else {
         for (int32_t hwi = hw_begin; hwi < hw_end; ++hwi, offset += c) {
-          AddSkip<T, CHANNELS_PER_THREAD>(add_out, src, skip, offset, skip_offset, sum, sum_sq);
+          AddSkip<T, ILP>(add_out, src, skip, offset, skip_offset, sum, sum_sq);
         }
       }
     } else {
       if (bias != nullptr) {
         for (int32_t hwi = hw_begin; hwi < hw_end; ++hwi, offset += c) {
-          AddSkipBias<T, CHANNELS_PER_THREAD>(add_out, src, skip, bias, offset, offset, bias_offset, sum, sum_sq);
+          AddSkipBias<T, ILP>(add_out, src, skip, bias, offset, offset, bias_offset, sum, sum_sq);
         }
       } else {
         for (int32_t hwi = hw_begin; hwi < hw_end; ++hwi, offset += c) {
-          AddSkip<T, CHANNELS_PER_THREAD>(add_out, src, skip, offset, offset, sum, sum_sq);
+          AddSkip<T, ILP>(add_out, src, skip, offset, offset, sum, sum_sq);
         }
       }
     }
   } else {  // GroupNorm
     for (int32_t hwi = hw_begin; hwi < hw_end; ++hwi, offset += c) {
-      UpdateSum<T, CHANNELS_PER_THREAD>(src, offset, sum, sum_sq);
+      UpdateSum<T, ILP>(src, offset, sum, sum_sq);
     }
   }
 
   // The group index relative to the first group within the same block.
-  int32_t gi = threadIdx.x * CHANNELS_PER_THREAD / channels_per_group;
+  int32_t gi = threadIdx.x * ILP / channels_per_group;
   // The channel in the group.
   int32_t cj = ci % channels_per_group;
 
@@ -273,7 +273,7 @@ __global__ void GroupNormNHWCSumKernel(T* skip_workspace, float* group_sum_buffe
 
   // Store the results for the groups in shared memory (to produce coalesced stores later).
   // For each group, only the last thread of that group is picked to save sum to shared memory.
-  if (cj == channels_per_group - CHANNELS_PER_THREAD) {
+  if (cj == channels_per_group - ILP) {
     smem[gi] = make_float2(out.sum, out.sum_sq);
   }
 
@@ -371,15 +371,15 @@ __device__ void ComputeGroupNorm(const float* src, float* dst, int64_t offset, f
   *reinterpret_cast<float2*>(&dst[offset]) = f2;
 }
 
-template <typename T, int32_t CHANNELS_PER_THREAD>
+template <typename T, int32_t ILP>
 __global__ void GroupNormNHWCScaleKernel(T* dst, const T* src, const T* skip, const float* gamma, const float* beta,
                                          const T* skip_workspace, const float* group_sum_buffer, float epsilon,
                                          int32_t c, int32_t channels_per_block, int32_t channels_per_group,
                                          int32_t groups, int32_t hwc, float inv_hw_channels_per_group,
                                          int32_t hw, int32_t hw_per_block, bool use_silu) {
   // The channel loaded by that thread.
-  int32_t ci = blockIdx.x * channels_per_block + threadIdx.x * CHANNELS_PER_THREAD;
-  if (ci >= c || threadIdx.x * CHANNELS_PER_THREAD >= channels_per_block) {
+  int32_t ci = blockIdx.x * channels_per_block + threadIdx.x * ILP;
+  if (ci >= c || threadIdx.x * ILP >= channels_per_block) {
     return;
   }
 
@@ -410,7 +410,7 @@ __global__ void GroupNormNHWCScaleKernel(T* dst, const T* src, const T* skip, co
   const T* input = (skip != nullptr) ? skip_workspace : src;
   int64_t offset = static_cast<int64_t>(ni) * hwc + static_cast<int64_t>(hw_begin) * c + ci;
 
-  if (CHANNELS_PER_THREAD == 2) {
+  if (ILP == 2) {
     // Load gamma/beta. Fetch two per thread.
     float2 gamma_f2 = *reinterpret_cast<float2 const*>(&gamma[ci]);
     float2 beta_f2 = *reinterpret_cast<float2 const*>(&beta[ci]);
@@ -418,14 +418,14 @@ __global__ void GroupNormNHWCScaleKernel(T* dst, const T* src, const T* skip, co
       ComputeGroupNorm<T>(input, dst, offset, mean, inv_std_dev, gamma_f2, beta_f2, use_silu);
     }
   } else {
-    using VecF = onnxruntime::rocm::aligned_vector<float, CHANNELS_PER_THREAD>;
+    using VecF = onnxruntime::rocm::aligned_vector<float, ILP>;
 
     const VecF gamma_v = *reinterpret_cast<const VecF*>(gamma + ci);
     const VecF beta_v = *reinterpret_cast<const VecF*>(beta + ci);
     // Iterate over the activations to compute the sums.
     for (int32_t hwi = hw_begin; hwi < hw_end; ++hwi, offset += c) {
-      // Fetch CHANNELS_PER_THREAD channels per thread.
-      computeGroupNormVec<T, float, CHANNELS_PER_THREAD>(input, dst, offset, mean, inv_std_dev, gamma_v.val, beta_v.val, use_silu);
+      // Fetch ILP channels per thread.
+      computeGroupNormVec<T, float, ILP>(input, dst, offset, mean, inv_std_dev, gamma_v.val, beta_v.val, use_silu);
     }
   }
 }

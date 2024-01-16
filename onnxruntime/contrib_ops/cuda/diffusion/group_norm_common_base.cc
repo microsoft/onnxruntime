@@ -29,6 +29,20 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+int NextSize(int x) {
+  for (size_t i = 0; i < kNumOfSizes; ++i) {
+    if (x <= kSizes[i]) {
+      return kSizes[i];
+    }
+  }
+
+  return x;
+}
+
+int32_t GetThreadsPerBlock(int32_t channels_per_block, int32_t channels_per_thread) {
+  return NextSize(channels_per_block) / channels_per_thread;
+}
+
 int32_t FindMaxDivisor(int32_t n, int32_t max_allowed_divisor) {
   int32_t max_divisor = -1;
   for (int32_t i = 1; i <= std::sqrt(n); i++) {
