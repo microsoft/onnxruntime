@@ -56,7 +56,7 @@ class UsageError(BaseError):
 
 
 def _check_python_version():
-    required_minor_version = 7
+    required_minor_version = 8
     if (sys.version_info.major, sys.version_info.minor) < (3, required_minor_version):
         raise UsageError(
             f"Invalid Python version. At least Python 3.{required_minor_version} is required. "
@@ -786,11 +786,6 @@ def get_linux_distro():
         return "", ""
 
 
-def is_ubuntu_1604():
-    dist, ver = get_linux_distro()
-    return dist == "Ubuntu" and ver.startswith("16.04")
-
-
 def get_config_build_dir(build_dir, config):
     # build directory per configuration
     return os.path.join(build_dir, config)
@@ -842,15 +837,6 @@ def run_subprocess(
 def update_submodules(source_dir):
     run_subprocess(["git", "submodule", "sync", "--recursive"], cwd=source_dir)
     run_subprocess(["git", "submodule", "update", "--init", "--recursive"], cwd=source_dir)
-
-
-def is_docker():
-    path = "/proc/self/cgroup"
-    return (
-        os.path.exists("/.dockerenv")
-        or os.path.isfile(path)
-        and any("docker" in line for line in open(path))  # noqa: SIM115
-    )
 
 
 def install_python_deps(numpy_version=""):
@@ -2401,16 +2387,6 @@ def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt
     run_subprocess(cmd_args, cwd=csharp_source_dir)
 
 
-def is_cross_compiling_on_apple(args):
-    if not is_macOS():
-        return False
-    if args.ios:
-        return True
-    if args.osx_arch != platform.machine():
-        return True
-    return False
-
-
 def generate_documentation(source_dir, build_dir, configs, validate):
     # Randomly choose one build config
     config = next(iter(configs))
@@ -2724,12 +2700,6 @@ def main():
             run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
             log.info("Activating emsdk...")
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
-
-        if is_ubuntu_1604():
-            if args.arm or args.arm64:
-                raise BuildError("Only Windows ARM(64) cross-compiled builds supported currently through this script")
-            if not is_docker() and not args.use_acl and not args.use_armnn:
-                install_python_deps()
 
         if args.enable_pybind and is_windows():
             install_python_deps(args.numpy_version)
