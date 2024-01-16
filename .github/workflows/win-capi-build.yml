@@ -31,4 +31,4 @@ jobs:
       - name: PythonScript@0
         run: python $GITHUB_WORKSPACE/tools/ci_build/build.py --config RelWithDebInfo --enable_qspectre --enable_lto --disable_rtti --build_dir $GITHUB_WORKSPACE/build --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --test_all_timeout 72000
       - name: Build Source
-        run: ms`1`  build $GITHUB_WORKSPACE/build/RelWithDebInfo/onnxruntime.sln
+        run: msbuild  build $GITHUB_WORKSPACE/build/RelWithDebInfo/onnxruntime.sln
