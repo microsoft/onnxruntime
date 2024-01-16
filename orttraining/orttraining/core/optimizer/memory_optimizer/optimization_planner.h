@@ -83,7 +83,7 @@ class NodeOptimizationPlanBase {
   /**
    * Get a symbolic string to represent the memory saving for this optimization plan.
    */
-  std::string GetMemorySavingSymbolicString() const;
+  virtual std::string GetMemorySavingSymbolicString() const = 0;
 
   std::string GetActivationOutputDimParamString(size_t index) const {
     ORT_ENFORCE(activation_output_dim_params_.find(index) != activation_output_dim_params_.end(),

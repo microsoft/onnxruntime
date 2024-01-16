@@ -168,20 +168,39 @@
         "name": "Expand - last dim is not divisible by 4",
         "inputs": [
           {
-            "data": [true, false, false, true, true, true, false, false, false, true, true, true],
-            "dims": [2, 6],
+            "data": [true, false, false, true, true, true],
+            "dims": [1, 6],
             "type": "bool"
           },
           {
-            "data": [2, 1],
+            "data": [3, 1],
             "dims": [2],
             "type": "int64"
           }
         ],
         "outputs": [
           {
-            "data": [true, false, false, true, true, true, false, false, false, true, true, true],
-            "dims": [2, 6],
+            "data": [
+              true,
+              false,
+              false,
+              true,
+              true,
+              true,
+              true,
+              false,
+              false,
+              true,
+              true,
+              true,
+              true,
+              false,
+              false,
+              true,
+              true,
+              true
+            ],
+            "dims": [3, 6],
             "type": "bool"
           }
         ]

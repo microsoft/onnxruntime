@@ -107,7 +107,8 @@ stages:
     - template: set-version-number-variables-step.yml
 
     - template: use-xcode-version.yml
-
+      parameters:
+        xcodeVersion: 14.3
     - script: |
         /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
           $(Build.SourcesDirectory) \
@@ -165,20 +166,6 @@ stages:
   parameters:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    stage_name_suffix: CPU_arm_${{ parameters.BuildVariant }}
-    buildArch: x64
-    msbuildPlatform: arm
-    packageName: arm
-    buildparameter: --arm ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}} --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
-    runTests: false
-    buildJava: false
-    buildNodejs: false
-    ort_build_pool_name: onnxruntime-Win-CPU-2022
-
-- template: win-ci.yml
-  parameters:
-    DoCompliance: ${{ parameters.DoCompliance }}
-    DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: CPU_arm64_${{ parameters.BuildVariant }}
     buildArch: x64
     msbuildPlatform: arm64
@@ -205,10 +192,7 @@ stages:
   dependsOn:
   - Linux_C_API_Packaging_CPU
   - MacOS_C_API_Package_Publish
-  - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
-  - Windows_Packaging_CPU_arm_${{ parameters.BuildVariant }}
-  - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
   - Download_Java_Tools
   condition: succeeded()
   jobs:
@@ -297,7 +281,6 @@ stages:
   - MacOS_C_API_Package_Publish
   - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
-  - Windows_Packaging_CPU_arm_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
   - Android_Java_API_AAR_Packaging_Full
   - iOS_Full_xcframework
@@ -336,14 +319,6 @@ stages:
       parameters:
         StepName: 'Download win-arm64 Pipeline Artifact'
         ArtifactName: 'onnxruntime-win-arm64'
-        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-        SpecificArtifact: ${{ parameters.specificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download win-arm Pipeline Artifact'
-        ArtifactName: 'onnxruntime-win-arm'
         TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}

@@ -53,7 +53,7 @@ stages:
     displayName: "Set common variables"
 
     pool:
-      vmImage: "macOS-13"
+      vmImage: "macOS-12"  # macOS-13 seems less stable. macOS-12 will work for this job.
 
     timeoutInMinutes: 5
 

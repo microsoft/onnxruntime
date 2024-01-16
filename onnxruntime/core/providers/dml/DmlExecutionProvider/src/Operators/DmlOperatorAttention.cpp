@@ -571,6 +571,12 @@ void CALLBACK QueryAttention(IMLOperatorSupportQueryContextPrivate* context, /*o
         return;
     }
 
+    // `past_present_share_buffer == 1` is not supported yet
+    if (attributes.GetOptionalAttribute<int32_t>(AttrName::PastPresentShareBuffer, 0) != 0)
+    {
+        return;
+    }
+
     *isSupported = true;
 }
 
