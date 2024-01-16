@@ -23,9 +23,9 @@ from .build_helpers import (
     setup_cuda_vars,
 
 )
-from .BaseError import BaseError
-from .UsageError import UsageError
-from .BuildError import BuildError
+from .base_error import BaseError
+from .usage_error import UsageError
+from .build_error import BuildError
 from .open_vino_utils import openvino_verify_device_type
 
 try:
