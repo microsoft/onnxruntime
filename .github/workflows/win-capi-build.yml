@@ -36,4 +36,4 @@ jobs:
       - name: PythonScript@0
         run: python $GITHUB_WORKSPACE/tools/ci_build/build.py --config RelWithDebInfo --enable_qspectre --enable_lto --disable_rtti --build_dir $GITHUB_WORKSPACE/build --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} --test_all_timeout 72000
       - name: Build Source
-        run: $GITHUB_WORKSPACE/build/RelWithDebInfo/onnxruntime.sln
+        run: msbuild $GITHUB_WORKSPACE/build/RelWithDebInfo/onnxruntime.sln
