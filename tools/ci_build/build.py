@@ -734,11 +734,8 @@ def update_submodules(source_dir):
 
 
 def install_python_deps(numpy_version=""):
-    dep_packages = ["setuptools", "wheel", "pytest"]
-    dep_packages.append(f"numpy=={numpy_version}" if numpy_version else "numpy>=1.16.6")
-    dep_packages.append("sympy>=1.10")
-    dep_packages.append("packaging")
-    dep_packages.append("cerberus")
+    dep_packages = ["setuptools", "wheel", "pytest", f"numpy=={numpy_version}" if numpy_version else "numpy>=1.16.6",
+                    "sympy>=1.10", "packaging", "cerberus"]
     run_subprocess([sys.executable, "-m", "pip", "install", *dep_packages])
 
 
@@ -2127,16 +2124,6 @@ def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt
         ort_build_dir,
     ]
     run_subprocess(cmd_args, cwd=csharp_source_dir)
-
-
-def is_cross_compiling_on_apple(args):
-    if not is_macOS():
-        return False
-    if args.ios:
-        return True
-    if args.osx_arch != platform.machine():
-        return True
-    return False
 
 
 def generate_documentation(source_dir, build_dir, configs, validate):
