@@ -244,7 +244,7 @@ stages:
           versionSpec: '3.8'
           addToPath: true
           architecture: ${{ parameters.buildArch }}
-
+      - template: telemetry-steps.yml
       - task: PythonScript@0
         displayName: 'test'
         inputs:
