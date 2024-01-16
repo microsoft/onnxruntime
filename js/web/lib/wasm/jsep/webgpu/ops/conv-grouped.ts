@@ -161,7 +161,7 @@ export const createGroupedConvVectorizeProgramInfo =
         for (var w_width: u32 = 0u; w_width < ${wShape[1]}; w_width++) {
           let w_val = ${w.get('w_height', 'w_width', '0', 'output_channel')};
           for (var i = 0u; i < ${outputNumber}u; i++) {
-            values[i] = fma(x_vals[i * ${attributes.strides[1]}u + w_width], w_val, values[i]);
+            values[i] = fma(x_vals[i * u32(uniforms.strides[1]) + w_width], w_val, values[i]);
           }
         }
       }
