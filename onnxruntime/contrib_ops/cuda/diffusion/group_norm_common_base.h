@@ -27,8 +27,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-namespace {
-
 // TODO: Similar to SkipLayerNorm kernel, read/write up to 8 channels at same time.
 constexpr static int32_t CHANNELS_PER_THREAD = 2;
 
@@ -36,16 +34,8 @@ constexpr static int kSizes[] = {128, 256, 320, 384, 512};
 constexpr static size_t kNumOfSizes = sizeof(kSizes) / sizeof(kSizes[0]);
 constexpr static int kMaxSize = kSizes[kNumOfSizes - 1];
 
-int NextSize(int x) {
-  for (size_t i = 0; i < kNumOfSizes; ++i) {
-    if (x <= kSizes[i]) {
-      return kSizes[i];
-    }
-  }
 
-  return x;
-}
-}  // namespace
+int32_t GetThreadsPerBlock(int32_t channels_per_block, int32_t channels_per_thread);
 
 static inline int32_t DivUp(int32_t m, int32_t n) {
   return (m + n - 1) / n;
@@ -188,7 +178,7 @@ struct GroupNormNHWCParams {
     // Workspace for SkipGroupNorm to store intermediate results of src+skip+bias.
     this->skip_workspace = (this->add_out != nullptr) ? this->add_out : this->dst;
 
-    this->threads_per_block = NextSize(channels_per_block) / CHANNELS_PER_THREAD;
+    this->threads_per_block = GetThreadsPerBlock(channels_per_block, CHANNELS_PER_THREAD);
   }
 };
 
