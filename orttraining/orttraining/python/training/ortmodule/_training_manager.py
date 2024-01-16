@@ -310,11 +310,22 @@ class TrainingManager(GraphExecutionManager):
 
             self._gradient_accumulation_manager.maybe_update_cache_before_run()
 
-            if self._runtime_options.enable_zero_stage3_support:
+            if self._runtime_options.enable_zero_stage3_support or self._mem_efficient_grad_management_is_enabled:
                 self._append_pull_weight_trigger_as_input(kwargs, self._device)
 
+            param_to_append_as_onnx_graph_inputs = []
+            if self._mem_efficient_grad_management_is_enabled:
+                from ._mem_efficient_grad_mgmt import get_params_not_connected_to_pull_param_trigger
+
+                param_to_append_as_onnx_graph_inputs = get_params_not_connected_to_pull_param_trigger(
+                    self._flattened_module.named_parameters(), self._onnx_models.exported_model
+                )
+
+            else:
+                param_to_append_as_onnx_graph_inputs = self._graph_initializers
+
             prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
-                self._graph_initializers,
+                param_to_append_as_onnx_graph_inputs,
                 self._graph_info.user_input_names,
                 self._input_info,
                 self._flattened_module.named_buffers(),
@@ -492,10 +503,20 @@ class TrainingManager(GraphExecutionManager):
             if param.requires_grad and name in self._graph_initializer_names
         }
 
+        if self._mem_efficient_grad_management_is_enabled:
+            from ._mem_efficient_grad_mgmt import MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME
+
+            # Remove the inputs we added during model post-processing.
+            existing_require_grad_names = [
+                n for n in self._input_info.require_grad_names if n != MEM_EFFICIENT_PARAM_TRIGGER_INPUT_NAME
+            ]
+        else:
+            existing_require_grad_names = self._input_info.require_grad_names
+
         # If inputs requiring gradient change from forward to the next, the module_gradient_graph_builder
         # needs to be reinitialized so it can compute the backward output for the new inputs that require_grad
         if (
-            input_info.require_grad_names != self._input_info.require_grad_names
+            input_info.require_grad_names != existing_require_grad_names
             or initializer_names_to_train_set_user_model != self._graph_initializer_names_to_train
         ):
             self._input_info = input_info
