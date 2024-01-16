@@ -1,6 +1,6 @@
 #  // Copyright (c) Microsoft Corporation. All rights reserved.
 #  // Licensed under the MIT License.
-import BaseError
+from .BaseError import BaseError
 
 
 class UsageError(BaseError):
