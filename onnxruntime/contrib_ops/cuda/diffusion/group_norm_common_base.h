@@ -34,7 +34,6 @@ constexpr static int kSizes[] = {128, 256, 320, 384, 512};
 constexpr static size_t kNumOfSizes = sizeof(kSizes) / sizeof(kSizes[0]);
 constexpr static int kMaxSize = kSizes[kNumOfSizes - 1];
 
-
 int32_t GetThreadsPerBlock(int32_t channels_per_block, int32_t channels_per_thread);
 
 static inline int32_t DivUp(int32_t m, int32_t n) {
