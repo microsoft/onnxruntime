@@ -6,34 +6,34 @@ on:
   pull_request:
     branches:
       - main
-  jobs:
-    build:
-      name: Build
-      runs-on: windows-latest
-      steps:
-        - uses: actions/checkout@v2
-        - name: Install Visual Studio 2022
-          uses: microsoft/setup-msbuild@v1.1
-          with:
-            vs-version: '17.5'
-            cmake-version: '3.26'
-        - name: Install Python
-          uses: actions/setup-python@v2
-          with:
-            python-version: '3.8'
-        - name: Install Ninja
-          run: |
-            pip install ninja
-        - name: Install Doxygen
-          run: |
-            choco install doxygen.install
-        - name: Install Protobuf
-          run: |
-            choco install protoc
-        - name: Install ONNX
-          run: |
-            pip install onnx
-        - name: PythonScript@0
-          run: python $GITHUB_WORKSPACE/tools/ci_build/build.py --config RelWithDebInfo --enable_qspectre --enable_lto --disable_rtti --build_dir $GITHUB_WORKSPACE/build --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} --test_all_timeout 72000
-        - name: Build Source
-          run: $GITHUB_WORKSPACE/build/RelWithDebInfo/onnxruntime.sln
+jobs:
+  build:
+    name: Build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Visual Studio 2022
+        uses: microsoft/setup-msbuild@v1.1
+        with:
+          vs-version: '17.5'
+          cmake-version: '3.26'
+      - name: Install Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.8'
+      - name: Install Ninja
+        run: |
+          pip install ninja
+      - name: Install Doxygen
+        run: |
+          choco install doxygen.install
+      - name: Install Protobuf
+        run: |
+          choco install protoc
+      - name: Install ONNX
+        run: |
+          pip install onnx
+      - name: PythonScript@0
+        run: python $GITHUB_WORKSPACE/tools/ci_build/build.py --config RelWithDebInfo --enable_qspectre --enable_lto --disable_rtti --build_dir $GITHUB_WORKSPACE/build --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} --test_all_timeout 72000
+      - name: Build Source
+        run: $GITHUB_WORKSPACE/build/RelWithDebInfo/onnxruntime.sln
