@@ -52,7 +52,7 @@ parameters:
 
 - name: ort_test_pool_name
   type: string
-  default: 'onnxruntime-Win2022-GPU-T4'
+  default: 'onnxruntime-Win-CPU-2022'
 
 #'onnxruntime' or 'onnxruntime_gpu'
 - name: java_artifact_id
