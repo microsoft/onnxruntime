@@ -1293,8 +1293,8 @@ def generate_build_tree(
     ldflags = None
     cudaflags = []
     for config in configs:
-        # Setup default values for cflags/cxxflags/ldflags.
-        # The values set here are purely for security and compliance purposes. ONNX Runtime should work fine without these flags.
+        # Setup default values for cflags/cxxflags/ldflags. The values set here are purely for security and
+        # compliance purposes. ONNX Runtime should work fine without these flags.
         if (
                 "CFLAGS" not in os.environ
                 and "CXXFLAGS" not in os.environ
@@ -1317,8 +1317,9 @@ def generate_build_tree(
                         "/D_WIN32_WINNT=0x0A00",
                         "/DNTDDI_VERSION=0x0A000000",
                     ]
-                # The "/profile" flag implies "/DEBUG:FULL /DEBUGTYPE:cv,fixup /OPT:REF /OPT:NOICF /INCREMENTAL:NO /FIXED:NO". We set it for satisfying a Microsoft internal compliance requirement. External users
-                # do not need to have it.
+                # The "/profile" flag implies "/DEBUG:FULL /DEBUGTYPE:cv,fixup /OPT:REF /OPT:NOICF /INCREMENTAL:NO
+                # /FIXED:NO". We set it for satisfying a Microsoft internal compliance requirement. External users do
+                # not need to have it.
                 ldflags = ["/profile", "/DYNAMICBASE"]
                 if args.enable_qspectre:
                     cflags += ["/Qspectre"]
