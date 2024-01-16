@@ -235,16 +235,16 @@ stages:
         displayName: 'Append dotnet x86  Directory to PATH'
         condition: and(succeeded(), eq('${{ parameters.buildArch}}', 'x86'))
       - template: download-deps.yml
-      - task: DownloadPipelineArtifact@2
-        inputs:
-          targetPath: '$(Build.BinariesDirectory)'
-          artifactName: 'drop-build-${{ parameters.packageName }}'
       - task: UsePythonVersion@0
         inputs:
           versionSpec: '3.8'
           addToPath: true
           architecture: ${{ parameters.buildArch }}
       - template: telemetry-steps.yml
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          targetPath: '$(Build.BinariesDirectory)'
+          artifactName: 'drop-build-${{ parameters.packageName }}'
       - task: PythonScript@0
         displayName: 'test'
         inputs:
