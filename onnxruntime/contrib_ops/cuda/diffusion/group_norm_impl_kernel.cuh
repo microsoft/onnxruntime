@@ -23,7 +23,6 @@
 #include <cuda_fp16.h>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "contrib_ops/cuda/diffusion/group_norm_impl.h"
 
 using namespace onnxruntime::cuda;
 
@@ -54,11 +53,21 @@ struct GroupSumsOp {
   }
 };
 
-template <typename T>
-inline __device__ void UpdateSum(const T* src, int64_t offset, float& sum, float& sum_sq);
+template <typename T, int ILP>
+inline __device__ void UpdateSum(const T* src, int64_t offset, float& sum, float& sum_sq) {
+  using VecT = onnxruntime::cuda::aligned_vector<T, ILP>;
+  const VecT input_v = *reinterpret_cast<const VecT*>(src + offset);
+
+#pragma unroll
+  for (int i = 0; i < ILP; i++) {
+    const float val = static_cast<float>(input_v.val[i]);
+    sum += val;
+    sum_sq += val * val;
+  }
+}
 
 template <>
-inline __device__ void UpdateSum(const half* src, int64_t offset, float& sum, float& sum_sq) {
+inline __device__ void UpdateSum<half, 2>(const half* src, int64_t offset, float& sum, float& sum_sq) {
   // Fetch two channels per thread.
   __half2 h2 = *reinterpret_cast<__half2 const*>(&src[offset]);
 
@@ -72,7 +81,7 @@ inline __device__ void UpdateSum(const half* src, int64_t offset, float& sum, fl
 }
 
 template <>
-inline __device__ void UpdateSum(const float* src, int64_t offset, float& sum, float& sum_sq) {
+inline __device__ void UpdateSum<half, 2>(const float* src, int64_t offset, float& sum, float& sum_sq) {
   // Fetch two channels per thread.
   float2 f2 = *reinterpret_cast<float2 const*>(&src[offset]);
 
@@ -84,13 +93,28 @@ inline __device__ void UpdateSum(const float* src, int64_t offset, float& sum, f
 }
 
 // Sum for SkipGroupNorm: add_out[offset] = src[offset] + skip[skip_offset] + bias[bias_offset]
-template <typename T>
+template <typename T, int32_t ILP>
 inline __device__ void AddSkipBias(T* add_out, const T* src, const T* skip, const T* bias,
-                                   int64_t offset, int64_t skip_offset, int64_t bias_offset, float& sum, float& sum_sq);
+                                   int64_t offset, int64_t skip_offset, int64_t bias_offset, float& sum, float& sum_sq) {
+  using VecT = onnxruntime::cuda::aligned_vector<T, ILP>;
+  const VecT input_v = *reinterpret_cast<const VecT*>(src + offset);
+  const VecT skip_v = *reinterpret_cast<const VecT*>(skip + skip_offset);
+  const VecT bias_v = *reinterpret_cast<const VecT*>(bias + bias_offset);
+  VecT output_v = *reinterpret_cast<VecT*>(add_out + offset);
+
+#pragma unroll
+  for (int i = 0; i < ILP; i++) {
+    output_v.val[i] = input_v.val[i] + skip_v.val[i] + bias_v.val[i];
+    const float val = static_cast<float>(output_v.val[i]);
+    sum += val;
+    sum_sq += val * val;
+  }
+  *(reinterpret_cast<VecT*>(add_out + offset)) = output_v;
+}
 
 template <>
-inline __device__ void AddSkipBias(half* add_out, const half* src, const half* skip, const half* bias,
-                                   int64_t offset, int64_t skip_offset, int64_t bias_offset, float& sum, float& sum_sq) {
+inline __device__ void AddSkipBias<half, 2>(half* add_out, const half* src, const half* skip, const half* bias,
+                                            int64_t offset, int64_t skip_offset, int64_t bias_offset, float& sum, float& sum_sq) {
   // Fetch two channels per thread.
   __half2 h2 = *reinterpret_cast<__half2 const*>(&src[offset]);
   __half2 s = *reinterpret_cast<__half2 const*>(&skip[skip_offset]);
@@ -106,8 +130,8 @@ inline __device__ void AddSkipBias(half* add_out, const half* src, const half* s
 }
 
 template <>
-inline __device__ void AddSkipBias(float* add_out, const float* src, const float* skip, const float* bias,
-                                   int64_t offset, int64_t skip_offset, int64_t bias_offset, float& sum, float& sum_sq) {
+inline __device__ void AddSkipBias<float, 2>(float* add_out, const float* src, const float* skip, const float* bias,
+                                             int64_t offset, int64_t skip_offset, int64_t bias_offset, float& sum, float& sum_sq) {
   float2 f2 = *reinterpret_cast<float2 const*>(&src[offset]);
   float2 s = *reinterpret_cast<float2 const*>(&skip[skip_offset]);
   float2 b = *reinterpret_cast<float2 const*>(&bias[bias_offset]);
@@ -121,13 +145,27 @@ inline __device__ void AddSkipBias(float* add_out, const float* src, const float
 }
 
 // Sum for SkipGroupNorm without bias: add_out[offset] = src[offset] + skip[skip_offset]
-template <typename T>
+template <typename T, int32_t ILP>
 inline __device__ void AddSkip(T* add_out, const T* src, const T* skip,
-                               int64_t offset, int64_t skip_offset, float& sum, float& sum_sq);
+                               int64_t offset, int64_t skip_offset, float& sum, float& sum_sq) {
+  using VecT = onnxruntime::cuda::aligned_vector<T, ILP>;
+  const VecT input_v = *reinterpret_cast<const VecT*>(src + offset);
+  const VecT skip_v = *reinterpret_cast<const VecT*>(skip + skip_offset);
+  VecT output_v = *reinterpret_cast<VecT*>(add_out + offset);
+
+#pragma unroll
+  for (int i = 0; i < ILP; i++) {
+    output_v.val[i] = input_v.val[i] + skip_v.val[i];
+    const float val = static_cast<float>(output_v.val[i]);
+    sum += val;
+    sum_sq += val * val;
+  }
+  *(reinterpret_cast<VecT*>(add_out + offset)) = output_v;
+}
 
 template <>
-inline __device__ void AddSkip(half* add_out, const half* src, const half* skip,
-                               int64_t offset, int64_t skip_offset, float& sum, float& sum_sq) {
+inline __device__ void AddSkip<half, 2>(half* add_out, const half* src, const half* skip,
+                                        int64_t offset, int64_t skip_offset, float& sum, float& sum_sq) {
   __half2 h2 = *reinterpret_cast<__half2 const*>(&src[offset]);
   __half2 s = *reinterpret_cast<__half2 const*>(&skip[skip_offset]);
   h2 = h2 + s;
@@ -140,8 +178,8 @@ inline __device__ void AddSkip(half* add_out, const half* src, const half* skip,
 }
 
 template <>
-inline __device__ void AddSkip(float* add_out, const float* src, const float* skip,
-                               int64_t offset, int64_t skip_offset, float& sum, float& sum_sq) {
+inline __device__ void AddSkip<float, 2>(float* add_out, const float* src, const float* skip,
+                                         int64_t offset, int64_t skip_offset, float& sum, float& sum_sq) {
   float2 f2 = *reinterpret_cast<float2 const*>(&src[offset]);
   float2 s = *reinterpret_cast<float2 const*>(&skip[skip_offset]);
   f2.x += s.x;
@@ -151,8 +189,10 @@ inline __device__ void AddSkip(float* add_out, const float* src, const float* sk
   sum_sq += f2.x * f2.x + f2.y * f2.y;
 }
 
-template <typename T, int32_t THREADS_PER_BLOCK>
-__global__ void GroupNormNHWCSumKernel(GroupNormNHWCParams<T> params) {
+template <typename T, int32_t THREADS_PER_BLOCK, int32_t ILP>
+__global__ void GroupNormNHWCSumKernel(T* skip_workspace, float* group_sum_buffer, const T* src, const T* skip, const T* bias,
+                                       int32_t channels_per_block, int32_t hw_per_block, int32_t hw, int32_t hwc, int32_t c,
+                                       int32_t channels_per_group, int32_t groups, int32_t groups_per_block, bool broadcast_skip) {
   // The object in charge of doing the sums for the different blocks.
   typedef cub::BlockScan<GroupSums, THREADS_PER_BLOCK> BlockScan;
 
@@ -166,9 +206,9 @@ __global__ void GroupNormNHWCSumKernel(GroupNormNHWCParams<T> params) {
   int32_t ni = blockIdx.z;
 
   // The channel loaded by that thread.
-  int32_t ci = blockIdx.x * params.channels_per_block + threadIdx.x * CHANNELS_PER_THREAD;
+  int32_t ci = blockIdx.x * params.channels_per_block + threadIdx.x * ILP;
 
-  if (ci >= params.c || threadIdx.x * CHANNELS_PER_THREAD >= params.channels_per_block) {
+  if (ci >= params.c || threadIdx.x * ILP >= params.channels_per_block) {
     return;
   }
 
@@ -217,7 +257,7 @@ __global__ void GroupNormNHWCSumKernel(GroupNormNHWCParams<T> params) {
   }
 
   // The group index relative to the first group within the same block.
-  int32_t gi = threadIdx.x * CHANNELS_PER_THREAD / params.channels_per_group;
+  int32_t gi = threadIdx.x * ILP / params.channels_per_group;
   // The channel in the group.
   int32_t cj = ci % params.channels_per_group;
 
@@ -230,7 +270,7 @@ __global__ void GroupNormNHWCSumKernel(GroupNormNHWCParams<T> params) {
 
   // Store the results for the groups in shared memory (to produce coalesced stores later).
   // For each group, only the last thread of that group is picked to save sum to shared memory.
-  if (cj == params.channels_per_group - CHANNELS_PER_THREAD) {
+  if (cj == params.channels_per_group - ILP) {
     smem[gi] = make_float2(out.sum, out.sum_sq);
   }
 
@@ -252,6 +292,27 @@ __global__ void GroupNormNHWCSumKernel(GroupNormNHWCParams<T> params) {
     atomicAdd(&params.group_sum_buffer[index], sums.x);
     atomicAdd(&params.group_sum_buffer[index + params.groups], sums.y);
   }
+}
+
+template <typename T, int32_t ILP>
+__device__ void computeGroupNormVec(const T* src, T* dst, int64_t offset, float mean, float inv_std_dev,
+                                    const float* gamma_v, const float* beta_v, bool silu) {
+  using VecT = onnxruntime::rocm::aligned_vector<T, ILP>;
+  const VecT input_v = *reinterpret_cast<const VecT*>(src + offset);
+  VecT output_v;
+
+#pragma unroll
+  for (int i = 0; i < ILP; i++) {
+    float val = static_cast<float>(input_v.val[i]);
+    val = (val - mean) * inv_std_dev;
+    val = gamma_v[i] * val + beta_v[i];
+
+    if (silu) {
+      val = val * sigmoid(val);
+    }
+    output_v.val[i] = static_cast<T>(val);
+  }
+  *(reinterpret_cast<VecT*>(dst + offset)) = output_v;
 }
 
 template <typename T>
@@ -307,11 +368,51 @@ __device__ void ComputeGroupNorm(const float* src, float* dst, int64_t offset, f
   *reinterpret_cast<float2*>(&dst[offset]) = f2;
 }
 
-template <typename T>
-__global__ void GroupNormNHWCScaleKernel(GroupNormNHWCParams<T> params) {
+template <typename T, int32_t ILP>
+__device__ void ComputeGroupNormKernel(const T* input, T* dst, int64_t offset, float mean, float inv_std_dev,
+                                       const float* gamma, const float* beta, bool use_silu, int32_t ci, int32_t hw_begin, int32_t hw_end) {
+  using VecF = onnxruntime::rocm::aligned_vector<float, ILP>;
+
+  const VecF gamma_v = *reinterpret_cast<const VecF*>(gamma + ci);
+  const VecF beta_v = *reinterpret_cast<const VecF*>(beta + ci);
+  // Iterate over the activations to compute the sums.
+  for (int32_t hwi = hw_begin; hwi < hw_end; ++hwi, offset += c) {
+    // Fetch ILP channels per thread.
+    computeGroupNormVec<T, ILP>(input, dst, offset, mean, inv_std_dev, gamma_v.val, beta_v.val, use_silu);
+  }
+}
+
+template <>
+__device__ void ComputeGroupNormKernel<float, 2>(const T* input, T* dst, int64_t offset, float mean, float inv_std_dev,
+                                                 const float* gamma, const float* beta, bool use_silu, int32_t ci, int32_t hw_begin, int32_t hw_end) {
+  // Load gamma/beta. Fetch two per thread.
+  float2 gamma_f2 = *reinterpret_cast<float2 const*>(&gamma[ci]);
+  float2 beta_f2 = *reinterpret_cast<float2 const*>(&beta[ci]);
+  for (int32_t hwi = hw_begin; hwi < hw_end; ++hwi, offset += c) {
+    ComputeGroupNorm<float>(input, dst, offset, mean, inv_std_dev, gamma_f2, beta_f2, use_silu);
+  }
+}
+
+template <>
+__device__ void ComputeGroupNormKernel<half, 2>(const T* input, T* dst, int64_t offset, float mean, float inv_std_dev,
+                                                const float* gamma, const float* beta, bool use_silu, int32_t ci, int32_t hw_begin, int32_t hw_end) {
+  // Load gamma/beta. Fetch two per thread.
+  float2 gamma_f2 = *reinterpret_cast<float2 const*>(&gamma[ci]);
+  float2 beta_f2 = *reinterpret_cast<float2 const*>(&beta[ci]);
+  for (int32_t hwi = hw_begin; hwi < hw_end; ++hwi, offset += c) {
+    ComputeGroupNorm<half>(input, dst, offset, mean, inv_std_dev, gamma_f2, beta_f2, use_silu);
+  }
+}
+
+template <typename T, int32_t ILP>
+__global__ void GroupNormNHWCScaleKernel(T* dst, const T* src, const T* skip, const float* gamma, const float* beta,
+                                         const T* skip_workspace, const float* group_sum_buffer, float epsilon,
+                                         int32_t c, int32_t channels_per_block, int32_t channels_per_group,
+                                         int32_t groups, int32_t hwc, float inv_hw_channels_per_group,
+                                         int32_t hw, int32_t hw_per_block, bool use_silu) {
   // The channel loaded by that thread.
-  int32_t ci = blockIdx.x * params.channels_per_block + threadIdx.x * CHANNELS_PER_THREAD;
-  if (ci >= params.c || threadIdx.x * CHANNELS_PER_THREAD >= params.channels_per_block) {
+  int32_t ci = blockIdx.x * params.channels_per_block + threadIdx.x * ILP;
+  if (ci >= params.c || threadIdx.x * ILP >= params.channels_per_block) {
     return;
   }
 
@@ -329,10 +430,6 @@ __global__ void GroupNormNHWCScaleKernel(GroupNormNHWCParams<T> params) {
     sum_sq = params.group_sum_buffer[index + params.groups];
   }
 
-  // Load gamma/beta. Fetch two per thread.
-  float2 gamma_f2 = *reinterpret_cast<float2 const*>(&params.gamma[ci]);
-  float2 beta_f2 = *reinterpret_cast<float2 const*>(&params.beta[ci]);
-
   // Compute the mean.
   float mean = sum * params.inv_hw_channels_per_group;
   // Compute the variance.
@@ -345,9 +442,7 @@ __global__ void GroupNormNHWCScaleKernel(GroupNormNHWCParams<T> params) {
 
   const T* input = (params.skip != nullptr) ? params.skip_workspace : params.src;
   int64_t offset = static_cast<int64_t>(ni) * params.hwc + static_cast<int64_t>(hw_begin) * params.c + ci;
-  for (int32_t hwi = hw_begin; hwi < hw_end; ++hwi, offset += params.c) {
-    ComputeGroupNorm<T>(input, params.dst, offset, mean, inv_std_dev, gamma_f2, beta_f2, params.use_silu);
-  }
+  ComputeGroupNormKernel<T, ILP>(input, params.dst, offset, mean, inv_std_dev, params.gamma, params.beta, params.use_silu, ci, hw_begin, hw_end);
 }
 
 }  // namespace cuda
