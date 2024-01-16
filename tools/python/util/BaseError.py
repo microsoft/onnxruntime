@@ -4,4 +4,3 @@ class BaseError(Exception):
     """Base class for errors originating from build.py."""
 
     pass
-

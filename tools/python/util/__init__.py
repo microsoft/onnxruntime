@@ -20,13 +20,13 @@ from .build_helpers import (
     setup_cann_vars,
     setup_tensorrt_vars,
     setup_migraphx_vars,
+    setup_cuda_vars,
 
 )
 
 from .UsageError import UsageError
 from .BuildError import BuildError
 from .open_vino_utils import openvino_verify_device_type
-from .cuda_helpers import setup_cuda_vars
 
 try:
     import flatbuffers  # noqa: F401
