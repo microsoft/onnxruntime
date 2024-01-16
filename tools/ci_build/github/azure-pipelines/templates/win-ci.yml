@@ -50,6 +50,10 @@ parameters:
   type: string
   default: 'onnxruntime-Win-CPU-2022'
 
+- name: ort_test_pool_name
+  type: string
+  default: 'onnxruntime-Win2022-GPU-T4'
+
 #'onnxruntime' or 'onnxruntime_gpu'
 - name: java_artifact_id
   type: string
@@ -70,7 +74,6 @@ parameters:
   values:
       - 11.8
       - 12.2
-
 stages:
 - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}
   dependsOn: []
@@ -79,7 +82,7 @@ stages:
     VSGenerator: 'Visual Studio 17 2022'
     CUDA_MODULE_LOADING: 'LAZY'
   jobs:
-  - job:
+  - job : Windows_Packaging_${{ parameters.stage_name_suffix }}_build_CAPI
     workspace:
       clean: all
     pool: ${{ parameters.ort_build_pool_name }}
@@ -92,27 +95,12 @@ stages:
       - checkout: self
         clean: true
         submodules: none
-
-      - template: telemetry-steps.yml
-
-      - ${{ if eq(parameters['buildJava'], 'true') }}:
-        - task: JavaToolInstaller@0
-          inputs:
-            versionSpec: "11"
-            jdkArchitectureOption: ${{ parameters.buildArch }}
-            jdkSourceOption: 'PreInstalled'
-
       - task: UsePythonVersion@0
         inputs:
           versionSpec: '3.8'
           addToPath: true
           architecture: ${{ parameters.buildArch }}
-
-      - task: NodeTool@0
-        condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
-        inputs:
-          versionSpec: '18.x'
-
+      - template: telemetry-steps.yml
       - ${{ if ne(parameters.CudaVersion, '') }}:
         - template: jobs/download_win_gpu_library.yml
           parameters:
@@ -126,9 +114,7 @@ stages:
           Write-Host "##vso[task.prependpath]C:\Program Files (x86)\dotnet"
         displayName: 'Append dotnet x86  Directory to PATH'
         condition: and(succeeded(), eq('${{ parameters.buildArch}}', 'x86'))
-
       - template: download-deps.yml
-
       - task: PythonScript@0
         displayName: 'Update deps.txt'
         inputs:
@@ -144,7 +130,6 @@ stages:
           arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\RelWithDebInfo\installed -build_config RelWithDebInfo
 
       - template: set-version-number-variables-step.yml
-
       - task: PythonScript@0
         displayName: 'Generate cmake config'
         inputs:
@@ -167,34 +152,17 @@ stages:
           workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
           createLogFile: true
 
-      - task: PythonScript@0
-        displayName: 'test'
-        condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
-        inputs:
-          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: '--config RelWithDebInfo --enable_qspectre --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "$(VSGenerator)" --enable_onnx_tests  $(TelemetryOption) ${{ parameters.buildparameter }}'
-          workingDirectory: '$(Build.BinariesDirectory)'
-
       - script: |
          dir *.dll
          mkdir $(Build.ArtifactStagingDirectory)\testdata
         workingDirectory: '$(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo'
         displayName: 'List built DLLs'
 
-      - template: c-api-artifacts-package-and-publish-steps-windows.yml
-        parameters:
-          buildConfig: RelWithDebInfo
-          artifactName: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}-$(OnnxRuntimeVersion)'
-          artifactNameNoVersionString: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}'
-          commitId: $(OnnxRuntimeGitCommitHash)
-          DoEsrp: ${{ parameters.DoEsrp }}
-
-      - ${{ if eq(parameters.buildNodejs, true) }}:
-        - template: nodejs-artifacts-package-and-publish-steps-windows.yml
-          parameters:
-            arch: ${{ parameters.packageName }}
-            artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.packageName }}${{ parameters.artifact_name_suffix }}'
-            DoEsrp: ${{ parameters.DoEsrp }}
+      - task: PublishPipelineArtifact@1
+        displayName: Publish onnxruntime as drop
+        inputs:
+          targetPath: '$(Build.BinariesDirectory)'
+          artifactName: 'drop-build${{ parameters.artifact_name_suffix }}'
 
       #Upload protoc.exe, which will be used in nuget build for generating C# files
       - task: PublishPipelineArtifact@1
@@ -204,7 +172,13 @@ stages:
           targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe'
           artifactName: 'drop-extra${{ parameters.artifact_name_suffix }}'
 
+      - task: PublishPipelineArtifact@1
+        displayName: Publish protoc as drop-extra
+        inputs:
+          targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo'
+          artifactName: 'drop-extra${{ parameters.artifact_name_suffix }}'
 
+      # --- test
       - task: CopyFiles@2
         displayName: 'Copy custom_op_library to: $(Build.ArtifactStagingDirectory)'
         condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64'))
@@ -213,8 +187,123 @@ stages:
           Contents: 'custom_op_library.dll'
           TargetFolder: '$(Build.ArtifactStagingDirectory)/testdata'
 
+      - ${{ if eq(parameters['DoCompliance'], 'true') }}:
+        - task: CredScan@3
+          displayName: 'Run CredScan'
+          inputs:
+            debugMode: false
+          continueOnError: true
+
+        - task: BinSkim@4
+          displayName: 'Run BinSkim'
+          inputs:
+            AnalyzeTargetGlob: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\**\*.dll'
+          continueOnError: true
+        - task: PostAnalysis@2
+          inputs:
+            GdnBreakAllTools: false
+            GdnBreakGdnToolBinSkim: true
+            GdnBreakPolicy: M365
+            GdnBreakPolicyMinSev: Error
+        - task: TSAUpload@2
+          displayName: 'TSA upload'
+          condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+          inputs:
+            GdnPublishTsaOnboard: false
+            GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
+          continueOnError: true
+      - template: component-governance-component-detection-steps.yml
+        parameters :
+          condition : 'succeeded'
+      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+        displayName: 'Clean Agent Directories'
+        condition: always()
+
+  - job: Windows_Packaging_${{ parameters.stage_name_suffix }}_test_CAPI
+    workspace:
+      clean:
+    dependsOn: Windows_Packaging_${{ parameters.stage_name_suffix }}_build_CAPI
+    condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
+    pool: ${{ parameters.ort_test_pool_name }}
+    timeoutInMinutes: 120
+    steps:
+      - ${{ if ne(parameters.CudaVersion, '') }}:
+          - template: jobs/download_win_gpu_library.yml
+            parameters:
+              CudaVersion: ${{ parameters.CudaVersion }}
+              ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
+                DownloadCUDA: true
+              ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
+                DownloadCUDA: true
+                DownloadTRT: true
+      - powershell: |
+          Write-Host "##vso[task.prependpath]C:\Program Files (x86)\dotnet"
+        displayName: 'Append dotnet x86  Directory to PATH'
+        condition: and(succeeded(), eq('${{ parameters.buildArch}}', 'x86'))
+      - template: download-deps.yml
+      - DowloadPipelineArtifact@2:
+        inputs:
+          targetPath: '$(Build.BinariesDirectory)'
+          artifactName: 'drop-build${{ parameters.artifact_name_suffix }}'
+      - task: UsePythonVersion@0
+        inputs:
+          versionSpec: '3.8'
+          addToPath: true
+          architecture: ${{ parameters.buildArch }}
+
+      - task: PythonScript@0
+        displayName: 'test'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+          arguments: '--config RelWithDebInfo --enable_qspectre --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "$(VSGenerator)" --enable_onnx_tests  $(TelemetryOption) ${{ parameters.buildparameter }}'
+          workingDirectory: '$(Build.BinariesDirectory)'
+      # Test
+      - template: c-api-artifacts-package-and-publish-steps-windows.yml
+        parameters:
+          buildConfig: RelWithDebInfo
+          artifactName: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}-$(OnnxRuntimeVersion)'
+          artifactNameNoVersionString: 'onnxruntime${{ parameters.artifact_name_suffix }}-win-${{ parameters.packageName }}'
+          commitId: $(OnnxRuntimeGitCommitHash)
+          DoEsrp: ${{ parameters.DoEsrp }}
+      - template: component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
+      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+        displayName: 'Clean Agent Directories'
+        condition: always()
+
+  - job: Windows_Packaging_${{ parameters.stage_name_suffix }}_buildJava
+    workspace:
+      clean:
+    dependsOn: Windows_Packaging_${{ parameters.stage_name_suffix }}_test_CAPI
+    condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
+    pool: ${{ parameters.ort_build_pool_name }}
+    steps:
+      - ${{ if ne(parameters.CudaVersion, '') }}:
+          - template: jobs/download_win_gpu_library.yml
+            parameters:
+              CudaVersion: ${{ parameters.CudaVersion }}
+              ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
+                DownloadCUDA: true
+              ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
+                DownloadCUDA: true
+                DownloadTRT: true
+      - powershell: |
+          Write-Host "##vso[task.prependpath]C:\Program Files (x86)\dotnet"
+        displayName: 'Append dotnet x86  Directory to PATH'
+        condition: and(succeeded(), eq('${{ parameters.buildArch}}', 'x86'))
+      - template: download-deps.yml
+      - DowloadPipelineArtifact@2:
+        inputs:
+          targetPath: '$(Build.BinariesDirectory)'
+          artifactName: 'drop-build${{ parameters.artifact_name_suffix }}'
+
+      - task: JavaToolInstaller@0
+        inputs:
+          versionSpec: "11"
+          jdkArchitectureOption: ${{ parameters.buildArch }}
+          jdkSourceOption: 'PreInstalled'
       - task: CmdLine@2
-        condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
         displayName: 'Add symbols and notices to Java'
         inputs:
           script: |
@@ -254,46 +343,54 @@ stages:
             popd
             rd /s /q $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage
             dir /s /b $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
-
       - task: PublishBuildArtifacts@1
-        condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
         displayName: 'Publish Java temp binaries'
         inputs:
           pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
           artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
-
-      - ${{ if eq(parameters['DoCompliance'], 'true') }}:
-        - task: CredScan@3
-          displayName: 'Run CredScan'
-          inputs:
-            debugMode: false
-          continueOnError: true
-
-        - task: BinSkim@4
-          displayName: 'Run BinSkim'
-          inputs:
-            AnalyzeTargetGlob: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\**\*.dll'
-          continueOnError: true
-
-        - task: PostAnalysis@2
-          inputs:
-            GdnBreakAllTools: false
-            GdnBreakGdnToolBinSkim: true
-            GdnBreakPolicy: M365
-            GdnBreakPolicyMinSev: Error
-
-        - task: TSAUpload@2
-          displayName: 'TSA upload'
-          condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-          inputs:
-            GdnPublishTsaOnboard: false
-            GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
-          continueOnError: true
-
       - template: component-governance-component-detection-steps.yml
-        parameters :
-          condition : 'succeeded'
+        parameters:
+          condition: 'succeeded'
+      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+        displayName: 'Clean Agent Directories'
+        condition: always()
 
+  - job: Windows_Packaging_${{ parameters.stage_name_suffix }}_buildNodejs
+    workspace:
+      clean:
+    dependsOn: Windows_Packaging_${{ parameters.stage_name_suffix }}_test_CAPI
+    condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
+    pool: ${{ parameters.ort_build_pool_name }}
+    steps:
+      - ${{ if ne(parameters.CudaVersion, '') }}:
+          - template: jobs/download_win_gpu_library.yml
+            parameters:
+              CudaVersion: ${{ parameters.CudaVersion }}
+              ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
+                DownloadCUDA: true
+              ${{ if contains(parameters.buildparameter, 'use_tensorrt') }}:
+                DownloadCUDA: true
+                DownloadTRT: true
+      - powershell: |
+          Write-Host "##vso[task.prependpath]C:\Program Files (x86)\dotnet"
+        displayName: 'Append dotnet x86  Directory to PATH'
+        condition: and(succeeded(), eq('${{ parameters.buildArch}}', 'x86'))
+      - template: download-deps.yml
+      - DowloadPipelineArtifact@2:
+        inputs:
+          targetPath: '$(Build.BinariesDirectory)'
+          artifactName: 'drop-build${{ parameters.artifact_name_suffix }}'
+      - task: NodeTool@0
+        inputs:
+          versionSpec: '18.x'
+      - template: nodejs-artifacts-package-and-publish-steps-windows.yml
+        parameters:
+          arch: ${{ parameters.packageName }}
+          artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.packageName }}${{ parameters.artifact_name_suffix }}'
+          DoEsrp: ${{ parameters.DoEsrp }}
+      - template: component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
       - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
         displayName: 'Clean Agent Directories'
         condition: always()

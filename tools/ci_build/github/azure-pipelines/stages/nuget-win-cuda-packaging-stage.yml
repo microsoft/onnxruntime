@@ -27,7 +27,6 @@ stages:
 # Windows CUDA without TensorRT Packaging
 - template: ../templates/win-ci.yml
   parameters:
-    ort_build_pool_name: 'onnxruntime-Win2022-GPU-T4'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: gpu
@@ -43,7 +42,6 @@ stages:
 # Windows CUDA with TensorRT Packaging
 - template: ../templates/win-ci.yml
   parameters:
-    ort_build_pool_name: 'onnxruntime-Win2022-GPU-T4'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: tensorrt
