@@ -241,7 +241,7 @@ stages:
         displayName: 'Append dotnet x86  Directory to PATH'
         condition: and(succeeded(), eq('${{ parameters.buildArch}}', 'x86'))
       - template: download-deps.yml
-      - DownloadPipelineArtifact@2:
+      - task: DownloadPipelineArtifact@2
         inputs:
           targetPath: '$(Build.BinariesDirectory)'
           artifactName: 'drop-build${{ parameters.artifact_name_suffix }}'
@@ -293,7 +293,7 @@ stages:
         displayName: 'Append dotnet x86  Directory to PATH'
         condition: and(succeeded(), eq('${{ parameters.buildArch}}', 'x86'))
       - template: download-deps.yml
-      - DownloadPipelineArtifact@2:
+      - task: DownloadPipelineArtifact@2
         inputs:
           targetPath: '$(Build.BinariesDirectory)'
           artifactName: 'drop-build${{ parameters.artifact_name_suffix }}'
@@ -376,7 +376,7 @@ stages:
         displayName: 'Append dotnet x86  Directory to PATH'
         condition: and(succeeded(), eq('${{ parameters.buildArch}}', 'x86'))
       - template: download-deps.yml
-      - DownloadPipelineArtifact@2:
+      - task: DownloadPipelineArtifact@2
         inputs:
           targetPath: '$(Build.BinariesDirectory)'
           artifactName: 'drop-build${{ parameters.artifact_name_suffix }}'
