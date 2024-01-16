@@ -19,9 +19,6 @@ jobs:
       - name: Install Ninja
         run: |
           pip install ninja
-      - name: Install Doxygen
-        run: |
-          choco install doxygen.install
       - name: Install Protobuf
         run: |
           choco install protoc
