@@ -36,9 +36,9 @@ def add_openvino_libs_to_path() -> None:
 
 
 def openvino_verify_device_type(device_read):
-    choices = ["CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU_FP16"]
+    supported_fp = ["CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU_FP16"]
 
-    choices1 = [
+    supported_fp_no_partition = [
         "CPU_FP32_NO_PARTITION",
         "CPU_FP16_NO_PARTITION",
         "GPU_FP32_NO_PARTITION",
@@ -46,9 +46,9 @@ def openvino_verify_device_type(device_read):
     ]
     status_hetero = True
     res = False
-    if device_read in choices:
+    if device_read in supported_fp:
         res = True
-    elif device_read in choices1:
+    elif device_read in supported_fp_no_partition:
         res = True
     elif device_read.startswith("HETERO:") or device_read.startswith("MULTI:") or device_read.startswith("AUTO:"):
         res = True
@@ -76,8 +76,8 @@ def openvino_verify_device_type(device_read):
 
     if res is False:
         print("\nYou have selected wrong configuration for the build.")
-        print("pick the build type for specific Hardware Device from following options: ", choices)
-        print("(or) from the following options with graph partitioning disabled: ", choices1)
+        print("pick the build type for specific Hardware Device from following options: ", supported_fp)
+        print("(or) from the following options with graph partitioning disabled: ", supported_fp_no_partition)
         print("\n")
         if not (device_read.startswith("HETERO") or device_read.startswith("MULTI") or device_read.startswith("AUTO")):
             invalid_hetero_build()

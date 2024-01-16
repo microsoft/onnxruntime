@@ -4,8 +4,8 @@ import contextlib
 import sys
 import shutil
 import os
-from .UsageError import UsageError
-from .BuildError import BuildError
+from .usage_error import UsageError
+from .build_error import BuildError
 from .platform_helpers import is_windows, is_macOS
 
 
@@ -71,7 +71,7 @@ def use_dev_mode(args):
 def add_default_definition(definition_list, key, default_value):
     for x in definition_list:
         if x.startswith(key + "="):
-            return definition_list
+            return
     definition_list.append(key + "=" + default_value)
 
 
@@ -86,18 +86,10 @@ def number_of_parallel_jobs(args):
 def number_of_nvcc_threads(args):
     if args.nvcc_threads >= 0:
         return args.nvcc_threads
-
     nvcc_threads = 1
-    
     try:
         import psutil
-    except ImportError:
-        print(
-            "Failed to import psutil. Please `pip install psutil` for better estimation of nvcc threads. Use "
-            "nvcc_threads=1"
-        )
-   
-   available_memory = psutil.virtual_memory().available
+        available_memory = psutil.virtual_memory().available
         if isinstance(available_memory, int) and available_memory > 0:
             if available_memory > 60 * 1024 * 1024 * 1024:
                 # When available memory is large enough, chance of OOM is small.
@@ -127,7 +119,6 @@ def number_of_nvcc_threads(args):
 
 def setup_cann_vars(args):
     cann_home = ""
-
     if args.use_cann:
         cann_home = args.cann_home if args.cann_home else os.getenv("ASCEND_HOME_PATH")
 
