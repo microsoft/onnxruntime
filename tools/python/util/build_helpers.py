@@ -88,9 +88,16 @@ def number_of_nvcc_threads(args):
         return args.nvcc_threads
 
     nvcc_threads = 1
-    import psutil
+    
     try:
-        available_memory = psutil.virtual_memory().available
+        import psutil
+    except ImportError:
+        print(
+            "Failed to import psutil. Please `pip install psutil` for better estimation of nvcc threads. Use "
+            "nvcc_threads=1"
+        )
+   
+   available_memory = psutil.virtual_memory().available
         if isinstance(available_memory, int) and available_memory > 0:
             if available_memory > 60 * 1024 * 1024 * 1024:
                 # When available memory is large enough, chance of OOM is small.
