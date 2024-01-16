@@ -1428,7 +1428,7 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   return trt_options_converted;
 }
 
-#ifdef USE_TENSORRT
+#if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
 // Apply configs from session options to TensorRT provider options V2 that are needed for TensorRT EP.
 // For example, EP context configs.
 void UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(OrtSessionOptions* session_options, OrtTensorRTProviderOptionsV2* tensorrt_options) {
@@ -1469,11 +1469,13 @@ std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Creat
 
 std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(void* session_options, const OrtTensorRTProviderOptions* provider_options) {
   OrtTensorRTProviderOptionsV2 trt_options_converted = onnxruntime::OrtTensorRTProviderOptionsToOrtTensorRTProviderOptionsV2(provider_options);
-#ifdef USE_TENSORRT
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
   onnxruntime::UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(reinterpret_cast<OrtSessionOptions*>(session_options), &trt_options_converted);
 #else
   ORT_UNUSED_PARAMETER(session_options);
 #endif
+
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(&trt_options_converted);
 }
 
@@ -1487,7 +1489,8 @@ std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Creat
   // Note: No need to worry about tensorrt_options being a local variable, CreateExecutionProviderFactory() in TRT EP will
   // create a factory object that copies any provider options from tensorrt_options including "const char*" provider options.
   OrtTensorRTProviderOptionsV2 tensorrt_options = *provider_options; // copy and assign from provider_options
-#ifdef USE_TENSORRT
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
   onnxruntime::UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(reinterpret_cast<OrtSessionOptions*>(session_options), &tensorrt_options);
 #else
   ORT_UNUSED_PARAMETER(session_options);
@@ -1773,7 +1776,11 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In
   
   std::shared_ptr<onnxruntime::IExecutionProviderFactory> factory;
 
+#if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
   auto ep_context_cache_enabled_from_sess_options = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
+#else
+  auto ep_context_cache_enabled_from_sess_options = false;
+#endif
 
   // If EP context configs are provided in session options, we need to propagate them to provider options
   if (ep_context_cache_enabled_from_sess_options) {
@@ -1921,8 +1928,13 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
 
   std::shared_ptr<onnxruntime::IExecutionProviderFactory> factory;
 
+#if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
   auto ep_context_cache_enabled_from_provider_options = tensorrt_options->trt_dump_ep_context_model != 0;
   auto ep_context_cache_enabled_from_sess_options = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
+#else
+  auto ep_context_cache_enabled_from_provider_options = false;
+  auto ep_context_cache_enabled_from_sess_options = false;
+#endif
 
   // If EP context configs are provided in session options, we need to propagate them to provider options. However,
   // if provider options already have the EP context configs provided, the configs in session options will be ignored
