@@ -17,7 +17,7 @@ def version_to_tuple(version: str) -> tuple:
 
 
 def check_python_version():
-    required_minor_version = 7
+    required_minor_version = 8
     if (sys.version_info.major, sys.version_info.minor) < (3, required_minor_version):
         raise UsageError(
             f"Invalid Python version. At least Python 3.{required_minor_version} is required. "
