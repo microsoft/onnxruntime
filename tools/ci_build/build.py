@@ -13,15 +13,10 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-
-SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
-
-sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
+from ..python.util import android
 
 # The Following utility packages are from onnxruntime/tools/python/util
-import util.android as android  # noqa: E402
-from util import (
+from ..python.util import (
     get_logger,
     is_linux,
     is_macOS,
@@ -47,6 +42,7 @@ from util import (
     setup_cann_vars,
 )  # noqa: E402
 
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 log = get_logger("build")
 check_python_version()
 
