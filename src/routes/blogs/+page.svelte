@@ -8,6 +8,7 @@
 	import ImageBlogs from '../../images/undraw/image_blogs.svelte';
 	import HFImage from '../../images/blogs/hugging-face-blog-img.png';
 	import LlamaImage from '../../images/blogs/accelerating-llama-2/Figure1-LLaMA-2-7B-E2E-Throughput.png';
+	import SDXLTurboImage from '../../images/blogs/sdxl_blog_thumbnail.png';
 	onMount(() => {
 		anime({
 			targets: '.border-primary',
@@ -23,6 +24,15 @@
 		});
 	});
 	let featuredblog = [
+		{
+			title: 'Accelerating SD Turbo and SDXL Turbo Inference with ONNX Runtime and Olive',
+			date: 'January 15th, 2024',
+			blurb:
+				'With ONNX Runtime and Olive, users can easily accelerate SD Turbo and SDXL Turbo models to generate viable images in as little as one step!',
+			link: 'https://huggingface.co/blog/sdxl_ort_inference',
+			image: SDXLTurboImage,
+			imgalt: 'SD Turbo and SDXL Turbo models with ONNX Runtime and Olive'
+		},
 		{
 			title: 'Accelerating LLaMA-2 Inference with ONNX Runtime',
 			date: 'November 14th, 2023',
@@ -40,7 +50,9 @@
 			image:
 				'https://onnxruntime.ai/_app/immutable/assets/pytorch-on-the-edge-with-ort.cdaa9c84.png',
 				imgalt: 'Run PyTorch models on the edge'
-		},
+		}
+	];
+	let blogs = [
 		{
 			title: 'Accelerating over 130,000 Hugging Face models with ONNX Runtime',
 			date: 'October 4th, 2023',
@@ -49,9 +61,7 @@
 			link: 'https://cloudblogs.microsoft.com/opensource/2023/10/04/accelerating-over-130000-hugging-face-models-with-onnx-runtime/',
 			image: HFImage,
 			imgalt: 'Hugging Face models with ONNX Runtime'
-		}
-	];
-	let blogs = [
+		},
 		{
 			title: 'On-Device Training with ONNX Runtime: A deep dive',
 			date: 'July 5th, 2023',
