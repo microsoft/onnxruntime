@@ -155,7 +155,7 @@ endif()
 
 if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   if(USE_NEURAL_SPEED)
-    onnxruntime_add_include_to_target(onnxruntime_providers bestla::bestla)
+    onnxruntime_add_include_to_target(onnxruntime_providers neural_speed::bestla)
   endif()
 endif()
 
