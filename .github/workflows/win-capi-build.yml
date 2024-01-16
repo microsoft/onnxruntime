@@ -3,7 +3,7 @@ on:
   [push,pull_request,workflow_dispatch]
 jobs:
   build:
-    name: Build
+    name: Build Windows C API
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v2
@@ -16,16 +16,7 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: '3.8'
-      - name: Install Ninja
-        run: |
-          pip install ninja
-      - name: Install Protobuf
-        run: |
-          choco install protoc
-      - name: Install ONNX
-        run: |
-          pip install onnx
-      - name: PythonScript@0
+      - name: Generator CMake Files
         run: python ${{ github.workspace }}/tools/ci_build/build.py --config RelWithDebInfo --enable_qspectre --enable_lto --disable_rtti --build_dir ${{ github.workspace }}/build --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --test_all_timeout 72000
-      - name: Build Source
-        run: msbuild  build $GITHUB_WORKSPACE/build/RelWithDebInfo/onnxruntime.sln
+      - name: MSBuild
+        run: msbuild ${{ github.workspace }}/build/RelWithDebInfo/onnxruntime.sln
