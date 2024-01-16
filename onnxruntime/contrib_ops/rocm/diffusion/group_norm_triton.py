@@ -12,13 +12,19 @@ import triton.language as tl
 @triton.jit
 def group_norm_kernel(
     input_ptr,
+    skip_ptr,
+    bias_ptr,
     output_ptr,
+    add_output_ptr,
     gamma_ptr,
     beta_ptr,
     img_size,
     c,
     c_per_group,
     eps,
+    has_skip,
+    has_bias,
+    has_boardcast_skip,
     BLOCK_SIZE: tl.constexpr,
     HW_SIZE: tl.constexpr,
     ACTIVATION_SWISH: tl.constexpr,
@@ -28,6 +34,13 @@ def group_norm_kernel(
     stride = img_size * c
     input_ptr += row_x * stride + row_y * c_per_group
     output_ptr += row_x * stride + row_y * c_per_group
+    add_output_ptr += row_x * stride + row_y * c_per_group
+
+    bias_ptr += row_y * c_per_group
+    skip_ptr += row_x * stride + row_y * c_per_group
+    if has_boardcast_skip:
+        skip_ptr += row_x * c + row_y * c_per_group
+
     gamma_ptr += row_y * c_per_group
     beta_ptr += row_y * c_per_group
 
@@ -41,9 +54,21 @@ def group_norm_kernel(
     _square_sum = tl.zeros([HW_SIZE, BLOCK_SIZE], dtype=tl.float32)
     for i in range(tl.cdiv(img_size, HW_SIZE)):
         x_ptr = input_ptr + i * HW_SIZE * c
-        a = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
-        _sum += a
-        _square_sum += a * a
+        add_y_ptr = add_output_ptr + i * HW_SIZE * c
+        x = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        if has_skip:
+            if has_boardcast_skip:
+                s =  tl.load(skip_ptr + cols, mask=cols < c_per_group).to(tl.float32)
+            else:
+                s_ptr = skip_ptr + i * HW_SIZE * c
+                s = tl.load(s_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+            x += s
+            if has_bias:
+                b = tl.load(bias_ptr + cols, mask=cols < c_per_group).to(tl.float32)
+                x += b
+        _sum += x
+        _square_sum += x * x
+        tl.store(add_y_ptr + offsets, x, mask=mask)
 
     # Set axis=None (or leave it unspecified) to reduce all axes.
     # TODO: In older Triton we have to reduce an axis at a time, but in our case
@@ -57,9 +82,9 @@ def group_norm_kernel(
     gamma = tl.load(gamma_ptr + cols, mask=cols < c_per_group).to(tl.float32)
     beta = tl.load(beta_ptr + cols, mask=cols < c_per_group).to(tl.float32)
     for i in range(tl.cdiv(img_size, HW_SIZE)):
-        x_ptr = input_ptr + i * HW_SIZE * c
+        add_y_ptr = add_output_ptr + i * HW_SIZE * c
         y_ptr = output_ptr + i * HW_SIZE * c
-        x = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        x = tl.load(add_y_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
         x_hat = (x - group_mean) * rstd
         y = x_hat * gamma + beta
         if ACTIVATION_SWISH:
