@@ -19,7 +19,7 @@ REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 
 sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 
-# The Following uil packages is from onnxruntime/tools/python/util
+# The Following utility packages are from onnxruntime/tools/python/util
 import util.android as android  # noqa: E402
 from util import (
     get_logger,
