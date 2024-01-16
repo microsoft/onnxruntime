@@ -4,8 +4,7 @@ import contextlib
 import sys
 import shutil
 import os
-from .usage_error import UsageError
-from .build_error import BuildError
+from .build_errors import BuildError, UsageError
 from .platform_helpers import is_windows, is_macOS
 
 
