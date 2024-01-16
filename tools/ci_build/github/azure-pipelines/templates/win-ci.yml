@@ -162,7 +162,7 @@ stages:
         displayName: Publish onnxruntime as drop
         inputs:
           targetPath: '$(Build.BinariesDirectory)'
-          artifactName: 'drop-build${{ parameters.artifact_name_suffix }}'
+          artifactName: 'drop-build-${{ parameters.packageName }}'
 
       #Upload protoc.exe, which will be used in nuget build for generating C# files
       - task: PublishPipelineArtifact@1
@@ -170,12 +170,6 @@ stages:
         condition: and(succeeded(), or(eq('${{ parameters.packageName}}', 'x64'), eq('${{ parameters.PublishProtoc}}', true)))
         inputs:
           targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe'
-          artifactName: 'drop-extra${{ parameters.artifact_name_suffix }}'
-
-      - task: PublishPipelineArtifact@1
-        displayName: Publish protoc as drop-extra
-        inputs:
-          targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo'
           artifactName: 'drop-extra${{ parameters.artifact_name_suffix }}'
 
       # --- test
@@ -244,7 +238,7 @@ stages:
       - task: DownloadPipelineArtifact@2
         inputs:
           targetPath: '$(Build.BinariesDirectory)'
-          artifactName: 'drop-build${{ parameters.artifact_name_suffix }}'
+          artifactName: 'drop-build-${{ parameters.packageName }}'
       - task: UsePythonVersion@0
         inputs:
           versionSpec: '3.8'
@@ -296,7 +290,7 @@ stages:
       - task: DownloadPipelineArtifact@2
         inputs:
           targetPath: '$(Build.BinariesDirectory)'
-          artifactName: 'drop-build${{ parameters.artifact_name_suffix }}'
+          artifactName: 'drop-build-${{ parameters.packageName }}'
 
       - task: JavaToolInstaller@0
         inputs:
@@ -343,10 +337,10 @@ stages:
             popd
             rd /s /q $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage
             dir /s /b $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
-      - task: PublishBuildArtifacts@1
+      - task: PublishPipelineArtifact@1
         displayName: 'Publish Java temp binaries'
         inputs:
-          pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
+          targetPath: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
           artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
       - template: component-governance-component-detection-steps.yml
         parameters:
@@ -379,7 +373,7 @@ stages:
       - task: DownloadPipelineArtifact@2
         inputs:
           targetPath: '$(Build.BinariesDirectory)'
-          artifactName: 'drop-build${{ parameters.artifact_name_suffix }}'
+          artifactName: 'drop-build-${{ parameters.packageName }}'
       - task: NodeTool@0
         inputs:
           versionSpec: '18.x'
