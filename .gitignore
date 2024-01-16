@@ -196,3 +196,4 @@ Package.resolved
 .build/
 .swiftpm/
 repros/
+!/tools/ci_build/build_uitl/

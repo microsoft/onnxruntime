@@ -14,118 +14,41 @@ import subprocess
 import sys
 from pathlib import Path
 
-
-def version_to_tuple(version: str) -> tuple:
-    v = []
-    for s in version.split("."):
-        with contextlib.suppress(ValueError):
-            v.append(int(s))
-    return tuple(v)
-
-
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 
 sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 
-
+# The Following uil packages is from onnxruntime/tools/python/util
 import util.android as android  # noqa: E402
-from util import get_logger, is_linux, is_macOS, is_windows, run  # noqa: E402
+from util import (
+    get_logger,
+    is_linux,
+    is_macOS,
+    is_windows,
+    run,
+    version_to_tuple,
+    check_python_version,
+    str_to_bool,
+    openvino_verify_device_type,
+    is_reduced_ops_build,
+    resolve_executable_path,
+    get_config_build_dir,
+    use_dev_mode,
+    add_default_definition,
+    normalize_arg_list,
+    number_of_parallel_jobs,
+    number_of_nvcc_threads,
+    BuildError,
+    BaseError,
+    setup_cuda_vars,
+    setup_tensorrt_vars,
+    setup_migraphx_vars,
+    setup_cann_vars,
+)  # noqa: E402
 
 log = get_logger("build")
-
-
-class BaseError(Exception):
-    """Base class for errors originating from build.py."""
-
-    pass
-
-
-class BuildError(BaseError):
-    """Error from running build steps."""
-
-    def __init__(self, *messages):
-        super().__init__("\n".join(messages))
-
-
-class UsageError(BaseError):
-    """Usage related error."""
-
-    def __init__(self, message):
-        super().__init__(message)
-
-
-def _check_python_version():
-    required_minor_version = 7
-    if (sys.version_info.major, sys.version_info.minor) < (3, required_minor_version):
-        raise UsageError(
-            f"Invalid Python version. At least Python 3.{required_minor_version} is required. "
-            f"Actual Python version: {sys.version}"
-        )
-
-
-def _str_to_bool(s):
-    """Convert string to bool (in argparse context)."""
-    if s.lower() not in ["true", "false"]:
-        raise ValueError("Need bool; got %r" % s)
-    return {"true": True, "false": False}[s.lower()]
-
-
-_check_python_version()
-
-
-def _openvino_verify_device_type(device_read):
-    choices = ["CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU_FP16"]
-
-    choices1 = [
-        "CPU_FP32_NO_PARTITION",
-        "CPU_FP16_NO_PARTITION",
-        "GPU_FP32_NO_PARTITION",
-        "GPU_FP16_NO_PARTITION",
-    ]
-    status_hetero = True
-    res = False
-    if device_read in choices:
-        res = True
-    elif device_read in choices1:
-        res = True
-    elif device_read.startswith("HETERO:") or device_read.startswith("MULTI:") or device_read.startswith("AUTO:"):
-        res = True
-        comma_separated_devices = device_read.split(":")
-        comma_separated_devices = comma_separated_devices[1].split(",")
-        if len(comma_separated_devices) < 2:
-            print("At least two devices required in Hetero/Multi/Auto Mode")
-            status_hetero = False
-        dev_options = ["CPU", "GPU"]
-        for dev in comma_separated_devices:
-            if dev not in dev_options:
-                status_hetero = False
-                break
-
-    def invalid_hetero_build():
-        print("\nIf trying to build Hetero/Multi/Auto, specify the supported devices along with it.\n")
-        print("specify the keyword HETERO or MULTI or AUTO followed by the devices ")
-        print("in the order of priority you want to build\n")
-        print("The different hardware devices that can be added in HETERO or MULTI or AUTO")
-        print("are ['CPU','GPU'] \n")
-        print("An example of how to specify the hetero build type. Ex: HETERO:GPU,CPU \n")
-        print("An example of how to specify the MULTI build type. Ex: MULTI:GPU,CPU \n")
-        print("An example of how to specify the AUTO build type. Ex: AUTO:GPU,CPU \n")
-        sys.exit("Wrong Build Type selected")
-
-    if res is False:
-        print("\nYou have selected wrong configuration for the build.")
-        print("pick the build type for specific Hardware Device from following options: ", choices)
-        print("(or) from the following options with graph partitioning disabled: ", choices1)
-        print("\n")
-        if not (device_read.startswith("HETERO") or device_read.startswith("MULTI") or device_read.startswith("AUTO")):
-            invalid_hetero_build()
-        sys.exit("Wrong Build Type selected")
-
-    if status_hetero is False:
-        invalid_hetero_build()
-
-    return device_read
+check_python_version()
 
 
 def parse_arguments():
@@ -171,7 +94,7 @@ def parse_arguments():
         default="1",
         type=int,
         help="Use parallel build. The optional value specifies the maximum number of parallel jobs. "
-        "If the optional value is 0 or unspecified, it is interpreted as the number of CPUs.",
+             "If the optional value is 0 or unspecified, it is interpreted as the number of CPUs.",
     )
     parser.add_argument(
         "--nvcc_threads",
@@ -179,7 +102,7 @@ def parse_arguments():
         default=-1,
         type=int,
         help="Maximum number of NVCC threads in each parallel job."
-        "If the value is unspecified, it will be computed based on available memory and number of parallel jobs.",
+             "If the value is unspecified, it will be computed based on available memory and number of parallel jobs.",
     )
 
     parser.add_argument("--test", action="store_true", help="Run unit tests.")
@@ -204,7 +127,7 @@ def parse_arguments():
     parser.add_argument("--mpi_home", help="Path to MPI installation dir")
     parser.add_argument("--nccl_home", help="Path to NCCL installation dir")
     parser.add_argument(
-        "--use_mpi", nargs="?", default=False, const=True, type=_str_to_bool, help="Disabled by default."
+        "--use_mpi", nargs="?", default=False, const=True, type=str_to_bool, help="Disabled by default."
     )
 
     # enable ONNX tests
@@ -230,8 +153,8 @@ def parse_arguments():
         const="yes",
         type=str,
         help="Generate documentation listing standard ONNX operators and types implemented by "
-        "various execution providers and contrib operator schemas. Must be used for inference builds, only!"
-        "Use `--gen_doc validate` to validate these match the current contents in /docs.",
+             "various execution providers and contrib operator schemas. Must be used for inference builds, only!"
+             "Use `--gen_doc validate` to validate these match the current contents in /docs.",
     )
 
     parser.add_argument("--gen-api-doc", action="store_true", help="Generate API documentation for PyTorch frontend")
@@ -244,14 +167,14 @@ def parse_arguments():
     parser.add_argument(
         "--cuda_home",
         help="Path to CUDA home."
-        "Read from CUDA_HOME environment variable if --use_cuda is true and "
-        "--cuda_home is not specified.",
+             "Read from CUDA_HOME environment variable if --use_cuda is true and "
+             "--cuda_home is not specified.",
     )
     parser.add_argument(
         "--cudnn_home",
         help="Path to CUDNN home. "
-        "Read from CUDNN_HOME environment variable if --use_cuda is true and "
-        "--cudnn_home is not specified.",
+             "Read from CUDNN_HOME environment variable if --use_cuda is true and "
+             "--cudnn_home is not specified.",
     )
     parser.add_argument("--enable_cuda_line_info", action="store_true", help="Enable CUDA line info.")
     parser.add_argument("--enable_cuda_nhwc_ops", action="store_true", help="Enable CUDA NHWC ops in build.")
@@ -273,14 +196,14 @@ def parse_arguments():
         "--build_csharp",
         action="store_true",
         help="Build C#.Net DLL and NuGet package. This should be only used in CI pipelines. "
-        "For building C# bindings and packaging them into nuget package use --build_nuget arg.",
+             "For building C# bindings and packaging them into nuget package use --build_nuget arg.",
     )
 
     parser.add_argument(
         "--build_nuget",
         action="store_true",
         help="Build C#.Net DLL and NuGet package on the local machine. "
-        "Currently only Windows and Linux platforms are supported.",
+             "Currently only Windows and Linux platforms are supported.",
     )
 
     parser.add_argument(
@@ -288,7 +211,7 @@ def parse_arguments():
         nargs="+",
         action="append",
         help="Extra properties to pass to msbuild during build. "
-        "These are just msbuild /p: options without the leading /p:.",
+             "These are just msbuild /p: options without the leading /p:.",
     )
 
     # Java bindings
@@ -314,7 +237,7 @@ def parse_arguments():
         nargs="+",
         action="append",
         help="Extra definitions to pass to CMake during build system "
-        "generation. These are just CMake -D options without the leading -D.",
+             "generation. These are just CMake -D options without the leading -D.",
     )
     parser.add_argument("--target", help="Build a specific target, e.g. winml_dll")
     # This flag is needed when :
@@ -326,25 +249,25 @@ def parse_arguments():
         "--x86",
         action="store_true",
         help="[cross-compiling] Create Windows x86 makefiles. Requires --update and no existing cache "
-        "CMake setup. Delete CMakeCache.txt if needed",
+             "CMake setup. Delete CMakeCache.txt if needed",
     )
     parser.add_argument(
         "--arm",
         action="store_true",
         help="[cross-compiling] Create ARM makefiles. Requires --update and no existing cache "
-        "CMake setup. Delete CMakeCache.txt if needed",
+             "CMake setup. Delete CMakeCache.txt if needed",
     )
     parser.add_argument(
         "--arm64",
         action="store_true",
         help="[cross-compiling] Create ARM64 makefiles. Requires --update and no existing cache "
-        "CMake setup. Delete CMakeCache.txt if needed",
+             "CMake setup. Delete CMakeCache.txt if needed",
     )
     parser.add_argument(
         "--arm64ec",
         action="store_true",
         help="[cross-compiling] Create ARM64EC makefiles. Requires --update and no existing cache "
-        "CMake setup. Delete CMakeCache.txt if needed",
+             "CMake setup. Delete CMakeCache.txt if needed",
     )
     parser.add_argument(
         "--buildasx",
@@ -415,8 +338,8 @@ def parse_arguments():
         "--apple_deploy_target",
         type=str,
         help="Specify the minimum version of the target platform "
-        "(e.g. macOS or iOS)"
-        "This is only supported on MacOS",
+             "(e.g. macOS or iOS)"
+             "This is only supported on MacOS",
     )
     # A 32-bit progress doesn't have enough memory to run all the tests in onnxruntime_test_all.
     # Mimalloc is incompatible with address sanitizer.
@@ -450,7 +373,7 @@ def parse_arguments():
         "--enable_wasm_exception_throwing_override",
         action="store_true",
         help="Enable exception throwing in WebAssembly, this will override default disabling exception throwing "
-        "behavior when disable exceptions.",
+             "behavior when disable exceptions.",
     )
     parser.add_argument("--wasm_run_tests_in_browser", action="store_true", help="Run WebAssembly tests in browser")
 
@@ -475,7 +398,7 @@ def parse_arguments():
         "--use_extensions",
         action="store_true",
         help="Enable custom operators in onnxruntime-extensions, use git submodule onnxruntime-extensions "
-        "in path cmake/external/onnxruntime-extensions by default.",
+             "in path cmake/external/onnxruntime-extensions by default.",
     )
     parser.add_argument(
         "--extensions_overridden_path",
@@ -489,7 +412,7 @@ def parse_arguments():
         "--ctest_path",
         default="ctest",
         help="Path to the CTest program. It can be an empty string. If it is empty, "
-        "we will use this script driving the test programs directly.",
+             "we will use this script driving the test programs directly.",
     )
     parser.add_argument(
         "--skip_submodule_sync",
@@ -506,13 +429,13 @@ def parse_arguments():
         action="store",
         default="",
         help="Path to OpenCL SDK. "
-        'e.g. --dnnl_opencl_root "C:/Program Files (x86)/IntelSWTools/sw_dev_tools/OpenCL/sdk"',
+             'e.g. --dnnl_opencl_root "C:/Program Files (x86)/IntelSWTools/sw_dev_tools/OpenCL/sdk"',
     )
     parser.add_argument(
         "--use_openvino",
         nargs="?",
         const="CPU_FP32",
-        type=_openvino_verify_device_type,
+        type=openvino_verify_device_type,
         help="Build with OpenVINO for specific hardware.",
     )
     parser.add_argument(
@@ -644,13 +567,13 @@ def parse_arguments():
         nargs="*",
         type=str.lower,
         help="Create a build that only supports ORT format models. "
-        "See https://onnxruntime.ai/docs/tutorials/mobile/ for more information. "
-        "RTTI is automatically disabled in a minimal build. "
-        "To enable execution providers that compile kernels at runtime (e.g. NNAPI) pass 'extended' "
-        "as a parameter. e.g. '--minimal_build extended'. "
-        "To enable support for custom operators pass 'custom_ops' as a parameter. "
-        "e.g. '--minimal_build custom_ops'. This can be combined with an 'extended' build by passing "
-        "'--minimal_build extended custom_ops'",
+             "See https://onnxruntime.ai/docs/tutorials/mobile/ for more information. "
+             "RTTI is automatically disabled in a minimal build. "
+             "To enable execution providers that compile kernels at runtime (e.g. NNAPI) pass 'extended' "
+             "as a parameter. e.g. '--minimal_build extended'. "
+             "To enable support for custom operators pass 'custom_ops' as a parameter. "
+             "e.g. '--minimal_build custom_ops'. This can be combined with an 'extended' build by passing "
+             "'--minimal_build extended custom_ops'",
     )
 
     parser.add_argument(
@@ -662,9 +585,9 @@ def parse_arguments():
         "--enable_reduced_operator_type_support",
         action="store_true",
         help="If --include_ops_by_config is specified, and the configuration file has type reduction "
-        "information, limit the types individual operators support where possible to further "
-        "reduce the build size. "
-        "See /docs/Reduced_Operator_Kernel_build.md for more information.",
+             "information, limit the types individual operators support where possible to further "
+             "reduce the build size. "
+             "See /docs/Reduced_Operator_Kernel_build.md for more information.",
     )
 
     parser.add_argument("--disable_contrib_ops", action="store_true", help="Disable contrib ops (reduces binary size)")
@@ -762,49 +685,15 @@ def parse_arguments():
     return args
 
 
-def is_reduced_ops_build(args):
-    return args.include_ops_by_config is not None
-
-
-def resolve_executable_path(command_or_path):
-    """Returns the absolute path of an executable."""
-    if command_or_path and command_or_path.strip():
-        executable_path = shutil.which(command_or_path)
-        if executable_path is None:
-            raise BuildError(f"Failed to resolve executable path for '{command_or_path}'.")
-        return os.path.abspath(executable_path)
-    else:
-        return None
-
-
-def get_linux_distro():
-    try:
-        with open("/etc/os-release") as f:
-            dist_info = dict(line.strip().split("=", 1) for line in f.readlines())
-        return dist_info.get("NAME", "").strip('"'), dist_info.get("VERSION", "").strip('"')
-    except (OSError, ValueError):
-        return "", ""
-
-
-def is_ubuntu_1604():
-    dist, ver = get_linux_distro()
-    return dist == "Ubuntu" and ver.startswith("16.04")
-
-
-def get_config_build_dir(build_dir, config):
-    # build directory per configuration
-    return os.path.join(build_dir, config)
-
-
 def run_subprocess(
-    args,
-    cwd=None,
-    capture_stdout=False,
-    dll_path=None,
-    shell=False,
-    env=None,
-    python_path=None,
-    cuda_home=None,
+        args,
+        cwd=None,
+        capture_stdout=False,
+        dll_path=None,
+        shell=False,
+        env=None,
+        python_path=None,
+        cuda_home=None,
 ):
     if env is None:
         env = {}
@@ -844,15 +733,6 @@ def update_submodules(source_dir):
     run_subprocess(["git", "submodule", "update", "--init", "--recursive"], cwd=source_dir)
 
 
-def is_docker():
-    path = "/proc/self/cgroup"
-    return (
-        os.path.exists("/.dockerenv")
-        or os.path.isfile(path)
-        and any("docker" in line for line in open(path))  # noqa: SIM115
-    )
-
-
 def install_python_deps(numpy_version=""):
     dep_packages = ["setuptools", "wheel", "pytest"]
     dep_packages.append(f"numpy=={numpy_version}" if numpy_version else "numpy>=1.16.6")
@@ -888,92 +768,29 @@ def setup_test_data(source_onnx_model_dir, dest_model_dir_name, build_dir, confi
             os.symlink(source_onnx_model_dir, src_model_dir, target_is_directory=True)
 
 
-def use_dev_mode(args):
-    if args.compile_no_warning_as_error:
-        return False
-    if args.use_acl:
-        return False
-    if args.use_armnn:
-        return False
-    if args.ios and is_macOS():
-        return False
-    SYSTEM_COLLECTIONURI = os.getenv("SYSTEM_COLLECTIONURI")  # noqa: N806
-    if SYSTEM_COLLECTIONURI and SYSTEM_COLLECTIONURI != "https://dev.azure.com/onnxruntime/":
-        return False
-    return True
-
-
-def add_default_definition(definition_list, key, default_value):
-    for x in definition_list:
-        if x.startswith(key + "="):
-            return definition_list
-    definition_list.append(key + "=" + default_value)
-
-
-def normalize_arg_list(nested_list):
-    return [i for j in nested_list for i in j] if nested_list else []
-
-
-def number_of_parallel_jobs(args):
-    return os.cpu_count() if args.parallel == 0 else args.parallel
-
-
-def number_of_nvcc_threads(args):
-    if args.nvcc_threads >= 0:
-        return args.nvcc_threads
-
-    nvcc_threads = 1
-    try:
-        import psutil
-
-        available_memory = psutil.virtual_memory().available
-        if isinstance(available_memory, int) and available_memory > 0:
-            if available_memory > 60 * 1024 * 1024 * 1024:
-                # When available memory is large enough, chance of OOM is small.
-                nvcc_threads = 4
-            else:
-                # NVCC need a lot of memory to compile 8 flash attention cu files in Linux or 4 cutlass fmha cu files in Windows.
-                # Here we select number of threads to ensure each thread has enough memory (>= 4 GB). For example,
-                # Standard_NC4as_T4_v3 has 4 CPUs and 28 GB memory. When parallel=4 and nvcc_threads=2,
-                # total nvcc threads is 4 * 2, which is barely able to build in 28 GB memory so we will use nvcc_threads=1.
-                memory_per_thread = 4 * 1024 * 1024 * 1024
-                fmha_cu_files = 4 if is_windows() else 16
-                fmha_parallel_jobs = min(fmha_cu_files, number_of_parallel_jobs(args))
-                nvcc_threads = max(1, int(available_memory / (memory_per_thread * fmha_parallel_jobs)))
-                print(
-                    f"nvcc_threads={nvcc_threads} to ensure memory per thread >= 4GB for available_memory={available_memory} and fmha_parallel_jobs={fmha_parallel_jobs}"
-                )
-    except ImportError:
-        print(
-            "Failed to import psutil. Please `pip install psutil` for better estimation of nvcc threads. Use nvcc_threads=1"
-        )
-
-    return nvcc_threads
-
-
 def generate_build_tree(
-    cmake_path,
-    source_dir,
-    build_dir,
-    cuda_home,
-    cudnn_home,
-    rocm_home,
-    mpi_home,
-    nccl_home,
-    tensorrt_home,
-    migraphx_home,
-    acl_home,
-    acl_libs,
-    armnn_home,
-    armnn_libs,
-    qnn_home,
-    snpe_root,
-    cann_home,
-    path_to_protoc_exe,
-    configs,
-    cmake_extra_defines,
-    args,
-    cmake_extra_args,
+        cmake_path,
+        source_dir,
+        build_dir,
+        cuda_home,
+        cudnn_home,
+        rocm_home,
+        mpi_home,
+        nccl_home,
+        tensorrt_home,
+        migraphx_home,
+        acl_home,
+        acl_libs,
+        armnn_home,
+        armnn_libs,
+        qnn_home,
+        snpe_root,
+        cann_home,
+        path_to_protoc_exe,
+        configs,
+        cmake_extra_defines,
+        args,
+        cmake_extra_args,
 ):
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
@@ -1397,10 +1214,10 @@ def generate_build_tree(
 
     if args.fuzz_testing:
         if not (
-            args.build_shared_lib
-            and is_windows()
-            and args.cmake_generator == "Visual Studio 17 2022"
-            and args.use_full_protobuf
+                args.build_shared_lib
+                and is_windows()
+                and args.cmake_generator == "Visual Studio 17 2022"
+                and args.use_full_protobuf
         ):
             raise BuildError("Fuzz test has only be tested with build shared libs option using MSVC on windows")
         cmake_args += [
@@ -1479,14 +1296,14 @@ def generate_build_tree(
         # Setup default values for cflags/cxxflags/ldflags.
         # The values set here are purely for security and compliance purposes. ONNX Runtime should work fine without these flags.
         if (
-            "CFLAGS" not in os.environ
-            and "CXXFLAGS" not in os.environ
-            and (not args.use_cuda or "CUDAFLAGS" not in os.environ)
-            and not args.ios
-            and not args.android
-            and not args.build_wasm
-            and not args.use_rocm
-            and not (is_linux() and platform.machine() != "aarch64" and platform.machine() != "x86_64")
+                "CFLAGS" not in os.environ
+                and "CXXFLAGS" not in os.environ
+                and (not args.use_cuda or "CUDAFLAGS" not in os.environ)
+                and not args.ios
+                and not args.android
+                and not args.build_wasm
+                and not args.use_rocm
+                and not (is_linux() and platform.machine() != "aarch64" and platform.machine() != "x86_64")
         ):
             if is_windows():
                 cflags = ["/guard:cf", "/DWIN32", "/D_WINDOWS"]
@@ -1579,13 +1396,13 @@ def generate_build_tree(
         os.makedirs(config_build_dir, exist_ok=True)
         if args.use_tvm:
             os.environ["PATH"] = (
-                os.path.join(config_build_dir, "_deps", "tvm-build")
-                + os.pathsep
-                + os.path.join(config_build_dir, "_deps", "tvm-src")
-                + os.pathsep
-                + os.path.dirname(sys.executable)
-                + os.pathsep
-                + os.environ["PATH"]
+                    os.path.join(config_build_dir, "_deps", "tvm-build")
+                    + os.pathsep
+                    + os.path.join(config_build_dir, "_deps", "tvm-src")
+                    + os.pathsep
+                    + os.path.dirname(sys.executable)
+                    + os.pathsep
+                    + os.environ["PATH"]
             )
         preinstalled_dir = Path(build_dir) / config
         temp_cmake_args = cmake_args.copy()
@@ -1657,96 +1474,6 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
             env["ANDROID_NDK_HOME"] = args.android_ndk_path
 
         run_subprocess(cmd_args, env=env)
-
-
-def add_dir_if_exists(directory, dir_list):
-    if os.path.isdir(directory):
-        dir_list.append(directory)
-
-
-def setup_cuda_vars(args):
-    cuda_home = ""
-    cudnn_home = ""
-
-    if args.use_cuda:
-        cuda_home = args.cuda_home if args.cuda_home else os.getenv("CUDA_HOME")
-        cudnn_home = args.cudnn_home if args.cudnn_home else os.getenv("CUDNN_HOME")
-
-        cuda_home_valid = cuda_home is not None and os.path.exists(cuda_home)
-        cudnn_home_valid = cudnn_home is not None and os.path.exists(cudnn_home)
-
-        if not cuda_home_valid or (not is_windows() and not cudnn_home_valid):
-            raise BuildError(
-                "cuda_home and cudnn_home paths must be specified and valid.",
-                "cuda_home='{}' valid={}. cudnn_home='{}' valid={}".format(
-                    cuda_home, cuda_home_valid, cudnn_home, cudnn_home_valid
-                ),
-            )
-
-    return cuda_home, cudnn_home
-
-
-def setup_cann_vars(args):
-    cann_home = ""
-
-    if args.use_cann:
-        cann_home = args.cann_home if args.cann_home else os.getenv("ASCEND_HOME_PATH")
-
-        cann_home_valid = cann_home is not None and os.path.exists(cann_home)
-
-        if not cann_home_valid:
-            raise BuildError(
-                "cann_home paths must be specified and valid.",
-                f"cann_home='{cann_home}' valid={cann_home_valid}.",
-            )
-
-    return cann_home
-
-
-def setup_tensorrt_vars(args):
-    tensorrt_home = ""
-    if args.use_tensorrt:
-        tensorrt_home = args.tensorrt_home if args.tensorrt_home else os.getenv("TENSORRT_HOME")
-        tensorrt_home_valid = tensorrt_home is not None and os.path.exists(tensorrt_home)
-        if not tensorrt_home_valid:
-            raise BuildError(
-                "tensorrt_home paths must be specified and valid.",
-                f"tensorrt_home='{tensorrt_home}' valid={tensorrt_home_valid}.",
-            )
-
-        # Set maximum workspace size in byte for
-        # TensorRT (1GB = 1073741824 bytes).
-        os.environ["ORT_TENSORRT_MAX_WORKSPACE_SIZE"] = "1073741824"
-
-        # Set maximum number of iterations to detect unsupported nodes
-        # and partition the models for TensorRT.
-        os.environ["ORT_TENSORRT_MAX_PARTITION_ITERATIONS"] = "1000"
-
-        # Set minimum subgraph node size in graph partitioning
-        # for TensorRT.
-        os.environ["ORT_TENSORRT_MIN_SUBGRAPH_SIZE"] = "1"
-
-        # Set FP16 flag
-        os.environ["ORT_TENSORRT_FP16_ENABLE"] = "0"
-
-    return tensorrt_home
-
-
-def setup_migraphx_vars(args):
-    migraphx_home = None
-
-    if args.use_migraphx:
-        print(f"migraphx_home = {args.migraphx_home}")
-        migraphx_home = args.migraphx_home or os.getenv("MIGRAPHX_HOME") or None
-
-        migraphx_home_not_valid = migraphx_home and not os.path.exists(migraphx_home)
-
-        if migraphx_home_not_valid:
-            raise BuildError(
-                "migraphx_home paths must be specified and valid.",
-                f"migraphx_home='{migraphx_home}' valid={migraphx_home_not_valid}.",
-            )
-    return migraphx_home or ""
 
 
 def setup_dml_build(args, cmake_path, build_dir, configs):
@@ -2123,31 +1850,31 @@ def run_nodejs_tests(nodejs_binding_dir):
 
 
 def build_python_wheel(
-    source_dir,
-    build_dir,
-    configs,
-    use_cuda,
-    cuda_version,
-    use_rocm,
-    rocm_version,
-    use_dnnl,
-    use_tensorrt,
-    use_openvino,
-    use_tvm,
-    use_vitisai,
-    use_acl,
-    use_armnn,
-    use_dml,
-    use_cann,
-    use_azure,
-    use_qnn,
-    wheel_name_suffix,
-    enable_training,
-    nightly_build=False,
-    default_training_package_device=False,
-    use_ninja=False,
-    enable_training_apis=False,
-    enable_rocm_profiling=False,
+        source_dir,
+        build_dir,
+        configs,
+        use_cuda,
+        cuda_version,
+        use_rocm,
+        rocm_version,
+        use_dnnl,
+        use_tensorrt,
+        use_openvino,
+        use_tvm,
+        use_vitisai,
+        use_acl,
+        use_armnn,
+        use_dml,
+        use_cann,
+        use_azure,
+        use_qnn,
+        wheel_name_suffix,
+        enable_training,
+        nightly_build=False,
+        default_training_package_device=False,
+        use_ninja=False,
+        enable_training_apis=False,
+        enable_rocm_profiling=False,
 ):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -2205,20 +1932,20 @@ def build_python_wheel(
 
 
 def build_nuget_package(
-    cmake_path,
-    source_dir,
-    build_dir,
-    configs,
-    use_cuda,
-    use_rocm,
-    use_openvino,
-    use_tensorrt,
-    use_dnnl,
-    use_tvm,
-    use_winml,
-    use_qnn,
-    enable_training_apis,
-    msbuild_extra_options,
+        cmake_path,
+        source_dir,
+        build_dir,
+        configs,
+        use_cuda,
+        use_rocm,
+        use_openvino,
+        use_tensorrt,
+        use_dnnl,
+        use_tvm,
+        use_winml,
+        use_qnn,
+        enable_training_apis,
+        msbuild_extra_options,
 ):
     if not (is_windows() or is_linux()):
         raise BuildError(
@@ -2724,12 +2451,6 @@ def main():
             run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
             log.info("Activating emsdk...")
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
-
-        if is_ubuntu_1604():
-            if args.arm or args.arm64:
-                raise BuildError("Only Windows ARM(64) cross-compiled builds supported currently through this script")
-            if not is_docker() and not args.use_acl and not args.use_armnn:
-                install_python_deps()
 
         if args.enable_pybind and is_windows():
             install_python_deps(args.numpy_version)
