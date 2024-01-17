@@ -125,7 +125,6 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
               "logits_processor shall be a non-negative integer, got ", logits_processor);
 
   auto* temperature_tensor = context->Input<Tensor>(14);
-  auto* temperature_tensor = context->Input<Tensor>(6);
   if (temperature_tensor) {
     if (temperature_tensor->IsDataType<float>()) {
       temperature = *temperature_tensor->Data<float>();
