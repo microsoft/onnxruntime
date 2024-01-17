@@ -41,7 +41,7 @@ stages:
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     IsReleasePipeline: true
-    PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
+    PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
     PackageName: 'onnxruntime-web'
     ExtraBuildArgs: ''
     UseWebPoolName: true
@@ -54,7 +54,7 @@ stages:
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     BuildConfig: 'Release'
-    PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
+    PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
     PackageName: 'onnxruntime-react-native'
     BuildAndroidAARStageDependsOn: 'Precheck_and_extract_commit'
 

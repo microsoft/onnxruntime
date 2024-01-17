@@ -4,7 +4,7 @@ stages:
     parameters:
       NpmPackagingMode: 'dev'
       IsReleasePipeline: true
-      PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
+      PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
       BuildStaticLib: true
       ExtraBuildArgs: ''
       UseWebPoolName: true
@@ -367,7 +367,7 @@ stages:
     timeoutInMinutes: 150
     variables:
       skipComponentGovernanceDetection: true
-    pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
+    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
     steps:
     - template: templates/set-version-number-variables-step.yml
 
@@ -413,7 +413,7 @@ stages:
   - job: AndroidCustomBuildScript
     workspace:
       clean: all
-    pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
+    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
     variables:
       dockerImageTag: onnxruntime-android-custom-build
     steps:

@@ -126,7 +126,7 @@ stages:
         BaseImage: 'registry.access.redhat.com/ubi8/ubi'
         OnnxruntimeArch: 'x64'
         OnnxruntimeNodejsBindingArch: 'x64'
-        PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
+        PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
         PackageJava: false
         PackageNodeJS: false
   # Nuget Packaging

@@ -246,7 +246,7 @@ stages:
     workspace:
       clean: all
     timeoutInMinutes: 120
-    pool: onnxruntime-Ubuntu2004-AMD-CPU
+    pool: onnxruntime-Ubuntu2204-AMD-CPU
     variables:
       RocmVersion: '5.6'
     steps:
