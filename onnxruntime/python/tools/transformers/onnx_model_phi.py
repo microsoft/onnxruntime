@@ -233,16 +233,16 @@ class FissionTransformerBlockPhi(Fission):
         o_kv_cache = node.output[0]
 
         # internal nodes weights
-        ln_weight = node.input[4]  # float32[2560]
-        ln_bias = node.input[5]  # float32[2560]
-        attn_qkv_weight = self.process_initializer(node.input[6], ProcessGemmWFunc())  # float32[7680,2560]
-        attn_qkv_bias = node.input[7]  # float32[7680]
-        attn_out_weight = self.process_initializer(node.input[10], ProcessGemmWFunc())  # float32[2560,2560]
-        attn_out_bias = node.input[11]  # float32[2560]
-        mlp_fc1_weight = self.process_initializer(node.input[12], ProcessGemmWFunc())  # float32[10240,2560]
-        mlp_fc1_bias = node.input[13]  # float32[10240]
-        mlp_fc2_weight = self.process_initializer(node.input[14], ProcessGemmWFunc())  # float32[2560,10240]
-        mlp_fc2_bias = node.input[15]  # float32[2560]
+        ln_weight = node.input[5]  # float32[2560]
+        ln_bias = node.input[6]  # float32[2560]
+        attn_qkv_weight = self.process_initializer(node.input[7], ProcessGemmWFunc())  # float32[7680,2560]
+        attn_qkv_bias = node.input[8]  # float32[7680]
+        attn_out_weight = self.process_initializer(node.input[11], ProcessGemmWFunc())  # float32[2560,2560]
+        attn_out_bias = node.input[12]  # float32[2560]
+        mlp_fc1_weight = self.process_initializer(node.input[13], ProcessGemmWFunc())  # float32[10240,2560]
+        mlp_fc1_bias = node.input[14]  # float32[10240]
+        mlp_fc2_weight = self.process_initializer(node.input[15], ProcessGemmWFunc())  # float32[2560,10240]
+        mlp_fc2_bias = node.input[16]  # float32[2560]
 
         # opt graph construction.
         subgraph_nodes = [
