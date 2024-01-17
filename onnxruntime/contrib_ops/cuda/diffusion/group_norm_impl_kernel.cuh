@@ -21,6 +21,7 @@
 // Licensed under the MIT License.
 #pragma once
 #include <cuda_fp16.h>
+#include <cub/cub.cuh>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 
