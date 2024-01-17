@@ -1723,7 +1723,7 @@ TEST_F(GraphTransformationTests, ScaledSumFusionTwoInputs) {
 // end of DISABLE_CONTRIB_OPS
 #endif
 
-// Possibly need to ask Vincent to update this test for bert exported using opset20
+// TODO: Possibly need to ask Vincent to update this test for bert exported using opset20
 #ifdef ENABLE_TRITON
 TEST_F(GraphTransformationTests, TritonFusion) {
   auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
