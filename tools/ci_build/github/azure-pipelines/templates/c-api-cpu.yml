@@ -759,7 +759,7 @@ stages:
 
 - template: ../nuget/templates/test_linux.yml
   parameters:
-    AgentPool : onnxruntime-Ubuntu2004-AMD-CPU
+    AgentPool : onnxruntime-Ubuntu2204-AMD-CPU
     NugetPackageName : 'Microsoft.ML.OnnxRuntime'
     ArtifactSuffix: 'CPU'
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
@@ -796,7 +796,7 @@ stages:
     OS: Linux
     BuildId: ${{ parameters.BuildId }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
+    PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
 
 - template: final-jar-testing.yml
   parameters:
