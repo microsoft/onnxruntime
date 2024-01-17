@@ -17,7 +17,7 @@ namespace rocm {
 template <typename T>
 struct GroupNormNHWCTunableParams : OpParams, GroupNormNHWCParams<T> {
   GroupNormNHWCTunableParams(RocmTuningContext* tuning_ctx,
-                             onnxruntime::Stream* stream,
+                             onnxruntime::Stream* ort_stream,
                              T* output,
                              T* add_out,
                              const T* input,
@@ -35,7 +35,7 @@ struct GroupNormNHWCTunableParams : OpParams, GroupNormNHWCParams<T> {
                              bool use_silu,
                              bool broadcast_skip,
                              int channels_per_block)
-      : OpParams(tuning_ctx, stream),
+      : OpParams(tuning_ctx, ort_stream),
         GroupNormNHWCParams<T>(output, add_out, input, skip, bias, gamma, beta, workspace, epsilon, batch_size,
                                num_channels, height, width, num_groups, use_silu, broadcast_skip, channels_per_block) {}
 
