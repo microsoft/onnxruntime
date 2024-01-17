@@ -132,7 +132,7 @@ Status LaunchGroupNormKernel(
   // tuning_ctx only used for ROCm EP.
   ORT_UNUSED_PARAMETER(tuning_ctx);
 
-  GroupNormNHWCParams<T> params(output, add_out, input, skip, bias, gamma, beta, workspace, epsilon,
+  GroupNormNHWCParams<T> params(output, add_out, input, skip, bias, gamma, beta, reinterpret_cast<float*>(workspace), epsilon,
                                 batch_size, num_channels, height, width, num_groups, use_silu,
                                 broadcast_skip, channels_per_block);
 
