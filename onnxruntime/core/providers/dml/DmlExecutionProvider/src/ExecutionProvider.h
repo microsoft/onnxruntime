@@ -191,6 +191,7 @@ namespace Dml
         bool m_areMetacommandsEnabled = true;
         bool m_dynamicGraphFusionEnabled = false;
         bool m_native16BitShaderOpsSupported = false;
+        bool m_sessionInitialized = false;
         std::shared_ptr<ExecutionContext> m_context;
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;

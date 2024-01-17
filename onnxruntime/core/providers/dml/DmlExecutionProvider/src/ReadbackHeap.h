@@ -12,18 +12,20 @@ namespace Dml
     class ReadbackHeap
     {
     public:
-        ReadbackHeap(ID3D12Device* device, std::shared_ptr<ExecutionContext> executionContext);
+        ReadbackHeap(ID3D12Device* device);
 
         // Copies data from the specified GPU resource into CPU memory pointed-to by the span. This method will block
         // until the copy is complete.
         void ReadbackFromGpu(
+            ExecutionContext* executionContext,
             gsl::span<std::byte> dst,
             ID3D12Resource* src,
             uint64_t srcOffset,
             D3D12_RESOURCE_STATES srcState);
-        
+
         // Overload supporting batching
         void ReadbackFromGpu(
+            ExecutionContext* executionContext,
             gsl::span<void*> dst,
             gsl::span<const uint32_t > dstSizes,
             gsl::span<ID3D12Resource*> src,
@@ -35,7 +37,6 @@ namespace Dml
         static constexpr size_t c_initialCapacity = 1024 * 1024; // 1MB
 
         ComPtr<ID3D12Device> m_device;
-        std::shared_ptr<ExecutionContext> m_executionContext;
 
         ComPtr<ID3D12Resource> m_readbackHeap;
         size_t m_capacity = 0;
