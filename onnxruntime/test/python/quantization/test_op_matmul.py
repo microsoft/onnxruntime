@@ -13,7 +13,20 @@ import packaging.version as pv
 from onnx import TensorProto, helper
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail
 from onnxruntime.quantization import CalibrationMethod, QuantFormat, QuantType, quantize_dynamic, quantize_static
+
+
+def skip_if_new_opset_exception_raised(func):
+    def wrapper(*args, **kwargs):
+        try:
+            func(*args, **kwargs)
+        except Fail as e:
+            if "is under development and support for this is limited" in str(e):
+                raise unittest.SkipTest(f"Skipped {func} due to opset under development.")  # noqa: B904
+            raise
+
+    return wrapper
 
 
 class TestOpMatMul(unittest.TestCase):
@@ -324,10 +337,11 @@ class TestOpMatMul(unittest.TestCase):
     @unittest.skipIf(
         pv.Version(onnx.__version__) < pv.Version("1.15.1"), reason="Shape inference bug, see onnx PR #5709"
     )
+    @skip_if_new_opset_exception_raised
     def test_quantize_matmul_u8u8_f16(self):
-        self.quantize_matmul_u8u8(onnx.TensorProto.FLOAT16, 19, 9)
+        self.quantize_matmul_u8u8(onnx.TensorProto.FLOAT16, 21, 9)
 
-    def quantize_matmul_s8s8(self, tt, opset, ir_version):
+    def quantize_matmul_s8s8(self, tt, opset, ir_version, calibrate_method=CalibrationMethod.MinMax):
         np.random.seed(1)
         model_fp_path = "matmul_fp.onnx"
         self.construct_model_matmul(model_fp_path, tensor_type=tt, opset=opset, ir_version=ir_version)
@@ -341,6 +355,7 @@ class TestOpMatMul(unittest.TestCase):
             activation_type=QuantType.QInt8,
             weight_type=QuantType.QInt8,
             extra_options={"ActivationSymmetric": True},
+            calibrate_method=calibrate_method,
         )
         self.static_quant_test_qdq(
             model_fp_path,
@@ -348,6 +363,7 @@ class TestOpMatMul(unittest.TestCase):
             activation_type=QuantType.QInt8,
             weight_type=QuantType.QInt8,
             extra_options={"ActivationSymmetric": True},
+            calibrate_method=calibrate_method,
         )
 
         # dynamic quantization doesn't support activation:int8
@@ -357,11 +373,42 @@ class TestOpMatMul(unittest.TestCase):
     def test_quantize_matmul_s8s8(self):
         self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT, 18, 8)
 
+    def test_quantize_matmul_s8s8_entropy(self):
+        self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT, 18, 8, calibrate_method=CalibrationMethod.Entropy)
+
+    def test_quantize_matmul_s8s8_percentile(self):
+        self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT, 18, 8, calibrate_method=CalibrationMethod.Percentile)
+
+    def test_quantize_matmul_s8s8_distribution(self):
+        self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT, 18, 8, calibrate_method=CalibrationMethod.Distribution)
+
     @unittest.skipIf(
         pv.Version(onnx.__version__) < pv.Version("1.15.1"), reason="Shape inference bug, see onnx PR #5709"
     )
+    @skip_if_new_opset_exception_raised
     def test_quantize_matmul_s8s8_f16(self):
-        self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT16, 19, 9)
+        self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT16, 21, 9)
+
+    @unittest.skipIf(
+        pv.Version(onnx.__version__) < pv.Version("1.15.1"), reason="Shape inference bug, see onnx PR #5709"
+    )
+    @skip_if_new_opset_exception_raised
+    def test_quantize_matmul_s8s8_f16_entropy(self):
+        self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT16, 21, 9, calibrate_method=CalibrationMethod.Entropy)
+
+    @unittest.skipIf(
+        pv.Version(onnx.__version__) < pv.Version("1.15.1"), reason="Shape inference bug, see onnx PR #5709"
+    )
+    @skip_if_new_opset_exception_raised
+    def test_quantize_matmul_s8s8_f16_percentile(self):
+        self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT16, 21, 9, calibrate_method=CalibrationMethod.Percentile)
+
+    @unittest.skipIf(
+        pv.Version(onnx.__version__) < pv.Version("1.15.1"), reason="Shape inference bug, see onnx PR #5709"
+    )
+    @skip_if_new_opset_exception_raised
+    def test_quantize_matmul_s8s8_f16_distribution(self):
+        self.quantize_matmul_s8s8(onnx.TensorProto.FLOAT16, 21, 9, calibrate_method=CalibrationMethod.Distribution)
 
     def quantize_matmul_e4m3fn_same(self, tt, opset, ir_version):
         np.random.seed(1)
