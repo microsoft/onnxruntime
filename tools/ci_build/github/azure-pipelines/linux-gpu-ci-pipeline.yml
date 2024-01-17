@@ -137,7 +137,7 @@ jobs:
             --enable_cuda_profiling --enable_cuda_nhwc_ops \
             --enable_pybind --build_java \
             --use_cache \
-            --cmake_extra_defines  CMAKE_CUDA_ARCHITECTURES=86; \
+            --cmake_extra_defines  CMAKE_CUDA_ARCHITECTURES=75; \
               ccache -sv; \
               ccache -z"
     workingDirectory: $(Build.SourcesDirectory)
