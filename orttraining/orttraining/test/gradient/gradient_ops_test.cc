@@ -601,9 +601,9 @@ TEST(GradientCheckerTest, GemmGrad) {
 }
 
 // TODO: Reduce mean has changed. Instead of axes being an attribute, it is now an input
-// Additionally, there is a new attribute called noop_with_empty_axis that defines behavior 
-// if 'axes' is empty. Default behavior with 'false' is to reduce all axes. When axes is 
-// empty and this attribute is set to true, input tensor will not be reduced, and the output 
+// Additionally, there is a new attribute called noop_with_empty_axis that defines behavior
+// if 'axes' is empty. Default behavior with 'false' is to reduce all axes. When axes is
+// empty and this attribute is set to true, input tensor will not be reduced, and the output
 // tensor would be equivalent to input tensor.
 
 TEST(GradientCheckerTest, ReduceMeanGrad) {

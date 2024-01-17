@@ -39,8 +39,8 @@ const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v9 = {9};
 const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v9_13 = {9, 13};
 const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> opset_v12_13 = {12, 13};
 const OpInfo add_info = OpInfo("Add", opset_v7_13_14);
-const OpInfo split_info = OpInfo("Split", opset_v2_11_13, kOnnxDomain, 3); // TODO: needs to be updated for opset upgrade
-const OpInfo reshape_info = OpInfo("Reshape", opset_v5_13); // TODO: needs to be updated for opset upgrade
+const OpInfo split_info = OpInfo("Split", opset_v2_11_13, kOnnxDomain, 3);  // TODO: needs to be updated for opset upgrade
+const OpInfo reshape_info = OpInfo("Reshape", opset_v5_13);                 // TODO: needs to be updated for opset upgrade
 const OpInfo transpose_info = OpInfo("Transpose", opset_v1_13);
 const OpInfo matmul_info = OpInfo("MatMul", opset_v9_13);
 const OpInfo div_info = OpInfo("Div", opset_v7_13_14);
@@ -48,7 +48,7 @@ const OpInfo mul_info = OpInfo("Mul", opset_v1_6_7_13_14);
 const OpInfo sub_info = OpInfo("Sub", opset_v7_13_14);
 const OpInfo softmax_info = OpInfo("Softmax", opset_v1_11_13);
 const OpInfo dropout_info = OpInfo("Dropout", opset_v12_13);
-const OpInfo where_info = OpInfo("Where", opset_v9); // TODO: needs to be updated for opset upgrade
+const OpInfo where_info = OpInfo("Where", opset_v9);  // TODO: needs to be updated for opset upgrade
 
 struct NodeInfo {
   NodeInfo(const std::vector<OpInfo>& op_infos,

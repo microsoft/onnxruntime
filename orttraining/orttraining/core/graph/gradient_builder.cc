@@ -583,9 +583,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetConcatGradient) {
   }
   // TODO: Split Op has changed to inclide a num_outputs attribute that can be specified instead of split
   // https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Split-18
-  // "Either input 'split' or the attribute 'num_outputs' should be specified, but not both. If the attribute 
-  // 'num_outputs' is specified, then the tensor is split into equal sized parts. If the tensor is not evenly 
-  // splittable into num_outputs, the last chunk will be smaller. If the input 'split' is specified, it indicates 
+  // "Either input 'split' or the attribute 'num_outputs' should be specified, but not both. If the attribute
+  // 'num_outputs' is specified, then the tensor is split into equal sized parts. If the tensor is not evenly
+  // splittable into num_outputs, the last chunk will be smaller. If the input 'split' is specified, it indicates
   // the sizes of each output in the split.""
 
   std::vector<NodeDef> output;
