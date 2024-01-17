@@ -66,9 +66,9 @@ stages:
   parameters:
     artifactName: 'onnxruntime-linux-x64-tensorrt-$(OnnxRuntimeVersion)'
     artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt'
-    buildJava: false
+    buildJava: true
     buildJavaOption: '--build_java'
-    buildNodejs: false
+    buildNodejs: true
     buildNodejsOption: '--build_nodejs'
     CudaVersion: ${{ parameters.CudaVersion }}
 # Linux CUDA Combined Testing and Publishing
