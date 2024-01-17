@@ -33,7 +33,7 @@ std::string GetGroupNormTritonGroupName() {
 
 template <typename T, bool WithSwish>
 auto GetTritonGroupNormNHWCTypeStringAndOps() {
-  std::vector<std::pair<std::string, tunable::Op<GroupNormNHWCParams<T>>>> ret;
+  std::vector<std::pair<std::string, tunable::Op<GroupNormNHWCTunableParams<T>>>> ret;
   auto group_name = GetGroupNormTritonGroupName<T, WithSwish>();
   auto* kernel_list = GetOrtTritonKernelByGroup(group_name);
   if (kernel_list == nullptr) {
@@ -45,16 +45,17 @@ auto GetTritonGroupNormNHWCTypeStringAndOps() {
     auto* metadata = GetOrtTritonKernelMetadata(i);
     auto block_size = metadata->constants.at("BLOCK_SIZE");
     auto hw_size = metadata->constants.at("HW_SIZE");
-    auto impl = [i, block_size, hw_size](const GroupNormNHWCParams<T>* params) -> Status {
+    auto impl = [i, block_size, hw_size](const GroupNormNHWCTunableParams<T>* params) -> Status {
+      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF((params->skip != nullptr || params->bias != nullptr), "Skip is not supported");
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          params->cPerGroup > block_size || params->cPerGroup * 2 <= block_size,
-          "Arg block_size (", block_size, ") is not the next power of 2 of cPerGroup (", params->cPerGroup, ").");
+          params->channels_per_group > block_size || params->channels_per_group * 2 <= block_size,
+          "Arg block_size (", block_size, ") is not the next power of 2 of channels_per_group (", params->channels_per_group, ").");
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           params->hw % hw_size != 0, "Arg hw_size (", hw_size, ") is not a divisor of hw (", params->hw, ").");
       if constexpr (WithSwish) {
-        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!params->withSwish, "Swish version does not support GN w/o swish.");
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!params->use_silu, "Swish version does not support GN w/o swish.");
       } else {
-        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->withSwish, "Pass version does not support GN w/ swish.");
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->use_silu, "Pass version does not support GN w/ swish.");
       }
       // Construct args for launch kernel
       struct {
@@ -73,7 +74,7 @@ auto GetTritonGroupNormNHWCTypeStringAndOps() {
           (const void*)params->beta,
           params->hw,
           params->c,
-          params->cPerGroup,
+          params->channels_per_group,
           params->epsilon};
 
       // Grid dim is (batch_count, groups, 1)

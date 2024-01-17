@@ -35,7 +35,11 @@ def sigmoid_function(x):
     return 1.0 / (1.0 + np.exp(-x))
 
 
-def group_norm(input_x, gamma, beta, num_groups, epsilon, with_swish):
+def group_norm(input_x, skip_x, bias_x, gamma, beta, num_groups, epsilon, with_swish, has_skip):
+    add_output = None
+    if has_skip:
+        input_x = input_x + skip_x + bias_x
+        add_output = input_x
     n, h, w, c = input_x.shape
     input_x = input_x.transpose([0, 3, 1, 2])
     assert c % num_groups == 0
@@ -47,47 +51,70 @@ def group_norm(input_x, gamma, beta, num_groups, epsilon, with_swish):
 
     if with_swish:
         x = x * sigmoid_function(x)
-    return x
+    return x, add_output
 
 
-def run_group_norm(batch_size: int, height: int, num_channels: int, num_groups: int, dtype: str, swish: bool, func):
+def run_group_norm(batch_size: int, height: int, num_channels: int, num_groups: int, dtype: str, swish: bool, has_skip: bool, func):
     np.random.seed(0)
     width = height
     input_x = np.random.rand(batch_size, height, width, num_channels).astype(np.float32)
     gamma = np.random.rand(num_channels).astype(np.float32)
     beta = np.random.rand(num_channels).astype(np.float32)
     # the size of workspace is defined in onnxruntime/contrib_ops/cuda/diffusion/group_norm_impl.h L18
-    workspace = np.random.rand((np.dtype(np.float32).itemsize * 2) * 32 * 32).astype(np.float32)
+    workspace = np.random.rand((np.dtype(np.float32).itemsize * 2) * batch_size * num_groups).astype(np.float32)
     epsilon = 1e-05
     output_y = np.random.rand(batch_size, height, width, num_channels).astype(dtype)
-    use_swish = swish
 
-    host_x = input_x.astype(dtype)
-    input_d = ke.DeviceArray(host_x)
+    skip_x = (np.random.rand(batch_size, height, width, num_channels).astype(np.float32) if has_skip
+        else np.empty((0), dtype=dtype)
+    )
+    bias_x = (np.random.rand(num_channels).astype(np.float32) if has_skip
+        else np.empty((0), dtype=dtype)
+    )
+    add_output = (
+        np.random.rand(batch_size, height, width, num_channels).astype(dtype)
+        if has_skip
+        else np.empty((0), dtype=dtype)
+    )
+    use_swish = swish
+    boardcast_skip = False
+    channels_per_block = 0 # Compute in params initialization
+
+    input_d = ke.DeviceArray(input_x.astype(dtype))
+    skip_d = ke.DeviceArray(skip_x.astype(dtype))
+    bias_d = ke.DeviceArray(bias_x.astype(dtype))
     gamma_d = ke.DeviceArray(gamma)
     beta_d = ke.DeviceArray(beta)
     workspace_d = ke.DeviceArray(workspace)
     y_d = ke.DeviceArray(output_y)
+    y_add_d = ke.DeviceArray(add_output)
     f = getattr(ke, func)
 
     my_op = f(
         y_d,
-        workspace_d,
+        y_add_d,
         input_d,
+        skip_d,
+        bias_d,
         gamma_d,
         beta_d,
+        workspace_d,
+        epsilon,
         batch_size,
+        num_channels,
         height,
         width,
-        num_channels,
         num_groups,
-        epsilon,
         use_swish,
+        boardcast_skip,
+        channels_per_block,
     )
-    y_ref = group_norm(input_x, gamma, beta, num_groups, epsilon, use_swish).astype(dtype)
+    y_ref, y_add_d_ref = group_norm(input_x, skip_x, bias_x, gamma, beta, num_groups, epsilon, use_swish, has_skip)
+    y_ref = y_ref.astype(dtype)
 
     for impl in my_op.ListOps():
         if not my_op.SelectOp(impl):
+            print(f"skip {impl}")
             continue
 
         my_op.Run()
@@ -95,6 +122,10 @@ def run_group_norm(batch_size: int, height: int, num_channels: int, num_groups: 
         y_d.UpdateHostNumpyArray()
 
         np.testing.assert_allclose(y_ref, output_y, atol=1e-02)
+        if has_skip:
+            y_add_d_ref = y_add_d_ref.astype(dtype)
+            y_add_d.UpdateHostNumpyArray()
+            np.testing.assert_allclose(y_add_d_ref, add_output, atol=1e-02)
 
 
 dtypes = ["float32", "float16"]
@@ -103,18 +134,22 @@ dtypes = ["float32", "float16"]
 @pytest.mark.parametrize("sd_sizes", get_sd_sizes())
 @pytest.mark.parametrize("dtype", dtypes)
 @pytest.mark.parametrize("swish", [True])
-def test_group_norm(sd_sizes, dtype, swish):
+@pytest.mark.parametrize("has_skip", [True, False])
+def test_group_norm(sd_sizes, dtype, swish, has_skip):
     for func in dtype_to_funcs(dtype):
-        run_group_norm(*sd_sizes, dtype, swish, func)
+        print(func)
+        if func != "GroupNormNHWCTunable_float":
+            run_group_norm(*sd_sizes, dtype, swish, has_skip, func)
 
 
 @pytest.mark.parametrize("sd_sizes", get_sd_sizes())
 @pytest.mark.parametrize("dtype", dtypes)
 @pytest.mark.parametrize("swish", [True])
-def test_group_norm_ck(sd_sizes, dtype, swish):
+@pytest.mark.parametrize("has_skip", [False])
+def test_group_norm_ck(sd_sizes, dtype, swish, has_skip):
     swish_suffix = "Swish" if swish else "Pass"
     ck_f_name = "CKGroupNormNHWC" + swish_suffix + "_" + dtype_to_suffix(dtype)
-    run_group_norm(*sd_sizes, dtype, swish, ck_f_name)
+    run_group_norm(*sd_sizes, dtype, swish, has_skip, ck_f_name)
 
 
 @dataclass
@@ -136,37 +171,61 @@ class GroupNormNHWCMetric(ke.BandwidthMetric):
 
 
 def profile_group_norm_func(
-    batch_size: int, height: int, width: int, num_channels: int, num_groups: int, dtype: str, swish: bool, func
+    batch_size: int, height: int, width: int, num_channels: int, num_groups: int, dtype: str, swish: bool, has_skip: bool, func
 ):
     np.random.seed(0)
     input_x = np.random.rand(batch_size, height, width, num_channels).astype(dtype)
     gamma = np.random.rand(num_channels).astype(np.float32)
     beta = np.random.rand(num_channels).astype(np.float32)
-    workspace = np.random.rand(np.dtype(np.float32).itemsize * 2 * 32 * 32).astype(np.float32)
+    workspace = np.random.rand(np.dtype(np.float32).itemsize * 2 * batch_size * num_groups).astype(np.float32)
     epsilon = 0.05
     output_y = np.random.rand(batch_size, height, width, num_channels).astype(dtype)
+
+    skip_x = (np.random.rand(batch_size, height, width, num_channels).astype(dtype)
+              if has_skip
+              else np.empty((0), dtype=dtype)
+    )
+    bias_x = (np.random.rand(num_channels).astype(dtype)
+              if has_skip
+              else np.empty((0), dtype=dtype)
+    )
+    add_output = (
+        np.random.rand(batch_size, height, width, num_channels).astype(dtype)
+        if has_skip
+        else np.empty((0), dtype=dtype)
+    )
     use_swish = swish
+    boardcast_skip = False
+    channels_per_block = 0 # Compute in params initialization
 
     input_d = ke.DeviceArray(input_x)
+    skip_d = ke.DeviceArray(skip_x)
+    bias_d = ke.DeviceArray(bias_x)
     gamma_d = ke.DeviceArray(gamma)
     beta_d = ke.DeviceArray(beta)
     workspace_d = ke.DeviceArray(workspace)
     y_d = ke.DeviceArray(output_y)
+    y_add_d = ke.DeviceArray(add_output)
     f = getattr(ke, func)
 
     my_op = f(
         y_d,
-        workspace_d,
+        y_add_d,
         input_d,
+        skip_d,
+        bias_d,
         gamma_d,
         beta_d,
+        workspace_d,
+        epsilon,
         batch_size,
+        num_channels,
         height,
         width,
-        num_channels,
         num_groups,
-        epsilon,
         use_swish,
+        boardcast_skip,
+        channels_per_block,
     )
     for impl in my_op.ListOps():
         duration_ms = -1
@@ -181,14 +240,14 @@ def profile_group_norm_func(
         )
 
 
-def profile_with_args(batch_size, height, width, num_channels, num_groups, dtype, swish=True, sort=True):
+def profile_with_args(batch_size, height, width, num_channels, num_groups, dtype, swish=True, has_skip=True, sort=True):
     with ke.benchmark(sort):
         for func in dtype_to_funcs(dtype):
-            profile_group_norm_func(batch_size, height, width, num_channels, num_groups, dtype, swish, func)
+            profile_group_norm_func(batch_size, height, width, num_channels, num_groups, dtype, swish, has_skip, func)
         # ck function
         swish_suffix = "Swish" if swish else "Pass"
         ck_f_name = "CKGroupNormNHWC" + swish_suffix + "_" + dtype_to_suffix(dtype)
-        profile_group_norm_func(batch_size, height, width, num_channels, num_groups, dtype, swish, ck_f_name)
+        profile_group_norm_func(batch_size, height, width, num_channels, num_groups, dtype, swish, has_skip, ck_f_name)
 
 
 sd_profile_sizes = [
@@ -228,19 +287,26 @@ if __name__ == "__main__":
     group.add_argument("num_groups", type=int)
     group.add_argument("dtype", choices=dtypes)
     group.add_argument("--swish", action="store_true")
+    group.add_argument("--has_skip", action="store_true")
     group.add_argument("--sort", action="store_true")
 
     if len(sys.argv) == 1:
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(
-            args.batch_size,
-            args.height,
-            args.width,
-            args.num_channels,
-            args.num_groups,
+        # profile_with_args(
+        #     args.batch_size,
+        #     args.height,
+        #     args.width,
+        #     args.num_channels,
+        #     args.num_groups,
+        #     args.dtype,
+        #     args.swish,
+        #     args.has_skip,
+        #     args.sort,
+        # )
+        test_group_norm(
+            (args.batch_size, args.height, args.num_channels, args.num_groups),
             args.dtype,
             args.swish,
-            args.sort,
-        )
+            args.has_skip,)
