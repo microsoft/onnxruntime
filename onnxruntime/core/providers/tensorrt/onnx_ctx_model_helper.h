@@ -28,7 +28,6 @@ ONNX_NAMESPACE::ModelProto* CreateCtxNodeModel(const GraphViewer& graph_viewer,
                                                char* engine_data,
                                                size_t size,
                                                const int64_t embed_mode,
-                                               bool compute_capability_enable,
                                                std::string compute_capability,
                                                const logging::Logger* logger);
 std::string GetCtxNodeModelPath(const std::string& ep_context_file_path,

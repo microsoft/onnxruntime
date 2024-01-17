@@ -1381,7 +1381,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     dump_ep_context_model_ = info.dump_ep_context_model;
     ep_context_file_path_ = info.ep_context_file_path;
     ep_context_embed_mode_ = info.ep_context_embed_mode;
-    ep_context_compute_capability_enable_ = info.ep_context_compute_capability_enable;
   } else {
     try {
       const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
@@ -1552,11 +1551,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
         ep_context_embed_mode_ = std::stoi(ep_context_embed_mode_env);
       }
 
-      const std::string ep_context_compute_capability_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEpContextComputeCapabilityEnable);
-      if (!ep_context_compute_capability_env.empty()) {
-        ep_context_compute_capability_enable_ = (std::stoi(ep_context_compute_capability_env) == 0 ? false : true);
-      }
-
     } catch (const std::invalid_argument& ex) {
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] Invalid Argument (from environment variables): " << ex.what();
     } catch (const std::out_of_range& ex) {
@@ -1699,7 +1693,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_dump_ep_context_model: " << dump_ep_context_model_
                         << ", trt_ep_context_file_path: " << ep_context_file_path_
                         << ", trt_ep_context_embed_mode: " << ep_context_embed_mode_
-                        << ", trt_ep_context_compute_capability_enable: " << ep_context_compute_capability_enable_
                         << ", trt_cache_prefix: " << cache_prefix_;
 }
 
@@ -3003,7 +2996,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
                                                                                      reinterpret_cast<char*>(serialized_engine->data()),
                                                                                      serialized_engine->size(),
                                                                                      ep_context_embed_mode_,
-                                                                                     ep_context_compute_capability_enable_,
                                                                                      compute_capability_,
                                                                                      GetLogger())};
           DumpCtxNodeModel(model_proto.get(), ctx_model_path_);
@@ -3071,7 +3063,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
                                           nullptr,
                                           0,
                                           ep_context_embed_mode_,
-                                          ep_context_compute_capability_enable_,
                                           compute_capability_,
                                           GetLogger()));
     if (ep_context_embed_mode_ == 0) {
@@ -3589,7 +3580,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
   std::unordered_map<std::string, size_t> output_types;    // TRT engine output name -> ORT output tensor type
 
   // Get engine binary data and deserialize it
-  auto trt_cache_model_handler = TensorRTCacheModelHandler(&trt_engine, runtime_.get(), compute_capability_, ep_context_compute_capability_enable_);
+  auto trt_cache_model_handler = TensorRTCacheModelHandler(&trt_engine, runtime_.get(), compute_capability_);
   auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer);
   if (status != Status::OK()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());

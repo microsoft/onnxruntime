@@ -353,6 +353,13 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   ASSERT_EQ(model_hash, model_hash3) << "model 1&3 are same models and they have same hash, no matter where they are loaded";
 }
 
+TEST(TensorrtExecutionProviderTest, EPContextNode) {
+  std::string model_name = "trt_execution_provider_multithreading_test.onnx";
+  std::string graph_name = "multithreading_test";
+  std::string sess_log_id = "TRTEPMultiThreadingTestWithOneSessionMultiThreads";
+  std::vector<int> dims = {1, 3, 2};
+}
+
 TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   std::string model_name = "testdata/trt_plugin_custom_op_test.onnx";
   SessionOptions so;

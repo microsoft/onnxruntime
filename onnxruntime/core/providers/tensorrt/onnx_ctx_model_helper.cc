@@ -74,7 +74,6 @@ ONNX_NAMESPACE::ModelProto* CreateCtxNodeModel(const GraphViewer& graph_viewer,
                                                char* engine_data,
                                                size_t size,
                                                const int64_t embed_mode,
-                                               bool compute_capability_enable,
                                                std::string compute_capability,
                                                const logging::Logger* logger) {
   auto model_build = graph_viewer.CreateModel(*logger);
@@ -111,18 +110,16 @@ ONNX_NAMESPACE::ModelProto* CreateCtxNodeModel(const GraphViewer& graph_viewer,
   } else {
     attr_1->set_s(engine_cache_path);
   }
+  attr_2->set_name(COMPUTE_CAPABILITY);
+  attr_2->set_type(onnx::AttributeProto_AttributeType_STRING);
+  attr_2->set_s(compute_capability);
+
   auto node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
-  int num_attributes = compute_capability_enable ? 3 : 2;
+  int num_attributes = 3;
   node_attributes->reserve(num_attributes);
   node_attributes->emplace(EMBED_MODE, *attr_0);
   node_attributes->emplace(EP_CACHE_CONTEXT, *attr_1);
-
-  if (compute_capability_enable) {
-    attr_2->set_name(COMPUTE_CAPABILITY);
-    attr_2->set_type(onnx::AttributeProto_AttributeType_STRING);
-    attr_2->set_s(compute_capability);
-    node_attributes->emplace(COMPUTE_CAPABILITY, *attr_2);
-  }
+  node_attributes->emplace(COMPUTE_CAPABILITY, *attr_2);
 
   // Create EP context node
   graph_build.AddNode(EPCONTEXT_OP, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
