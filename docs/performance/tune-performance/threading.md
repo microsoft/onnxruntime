@@ -202,5 +202,5 @@ int main() {
 Note that `CreateThreadCustomized` and `JoinThreadCustomized`, once  set, will be applied to both ORT intra op and inter op thread pools uniformly.
 
 ## Usage in custom ops
-Since 1.17, custom op developers are entitled to accelerate their code on cpu with ort intra-op thread pool.
-Please see the API and example for usage.
+Since 1.17, custom op developers are entitled to parallelize their cpu code by ort intra-op thread pool.
+Please refer to the [API](https://github.com/microsoft/onnxruntime/blob/rel-1.17.0/include/onnxruntime/core/session/onnxruntime_cxx_inline.h#L1681), and [example](https://github.com/microsoft/onnxruntime/blob/rel-1.17.0/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc#L87) for usage.
