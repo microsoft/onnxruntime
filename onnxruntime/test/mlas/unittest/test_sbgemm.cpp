@@ -138,4 +138,4 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
   }
   return SBGemmRegistLongExecute() > 0;
 });
-#endif  //defined(__aarch64__) && defined(__linux__)
+#endif  // defined(__aarch64__) && defined(__linux__)

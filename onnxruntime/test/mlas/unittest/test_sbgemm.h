@@ -278,4 +278,4 @@ class MlasSBGemmTest : public MlasTestBase {
   }
 };
 
-#endif  //defined(__aarch64__) && defined(__linux__)
+#endif  // defined(__aarch64__) && defined(__linux__)

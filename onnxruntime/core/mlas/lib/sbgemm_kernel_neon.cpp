@@ -310,7 +310,8 @@ MlasSBGemmConvertCopyPackB(bfloat16_t* D, const float* B, size_t ldb, size_t Cou
 template <typename KernelType>
 void
 MlasSBGemmConvertPackB(
-    bfloat16_t* PackedB, const float* B, size_t ldb, size_t CountN, size_t CountK)
+    bfloat16_t* PackedB, const float* B, size_t ldb, size_t CountN, size_t CountK
+)
 {
     const auto* dispatch = MlasSBGemmGetDispatch();
     if (dispatch == nullptr) return;
@@ -335,16 +336,7 @@ MlasSBGemmConvertPackB(
 
 template <>
 MLAS_FORCEINLINE void
-MlasSBGemmKernel<MLAS_SBGEMM_KERNEL_NEON>(size_t CountM,
-                                          size_t CountN,
-                                          size_t CountK,
-                                          const float* A,
-                                          size_t lda,
-                                          const bfloat16_t* B,
-                                          float* C,
-                                          size_t ldc,
-                                          const float* Bias,
-                                          const bool ZeroMode)
+MlasSBGemmKernel<MLAS_SBGEMM_KERNEL_NEON>(size_t CountM, size_t CountN, size_t CountK, const float* A, size_t lda, const bfloat16_t* B, float* C, size_t ldc, const float* Bias, const bool ZeroMode)
 {
     while (CountM > 0) {
         size_t RowsHandled;
@@ -367,4 +359,4 @@ const MLAS_SBGEMM_DISPATCH MlasSBGemmDispatchNeon = {
     MLAS_SBGEMM_KERNEL_NEON::KernelMaxM,
     32  // kernel may read beyond buffer end by 32 bytes
 };
-#endif //defined(__aarch64__) && defined(__linux__)
+#endif  // defined(__aarch64__) && defined(__linux__)

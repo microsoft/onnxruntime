@@ -302,4 +302,4 @@ TEST(MathOpTest, MatMulUint64Type_DisableFastMath) {
 
 }  // namespace test
 }  // namespace onnxruntime
-#endif  //defined(__aarch64__) && defined(__linux__)
+#endif  // defined(__aarch64__) && defined(__linux__)

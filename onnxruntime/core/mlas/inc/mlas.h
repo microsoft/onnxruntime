@@ -1654,8 +1654,7 @@ class MLAS_SBGEMM_POSTPROCESSOR
 class MLAS_SBGEMM_ACTIVATION_PROCESSOR : public MLAS_SBGEMM_POSTPROCESSOR
 {
    public:
-    MLAS_SBGEMM_ACTIVATION_PROCESSOR(const MLAS_ACTIVATION& Activation,
-                                     const float* SumBuf = nullptr)
+    MLAS_SBGEMM_ACTIVATION_PROCESSOR(const MLAS_ACTIVATION& Activation, const float* SumBuf = nullptr)
         : Activation_(Activation), SumBuf_(SumBuf)
     {
     }
@@ -1701,12 +1700,7 @@ struct MLAS_SBGEMM_DATA_PARAMS {
  * @return
  */
 void MLASCALL
-MlasSBGemmBatch(const size_t M,
-                const size_t N,
-                const size_t K,
-                const size_t BatchN,
-                const MLAS_SBGEMM_DATA_PARAMS* DataParams,
-                MLAS_THREADPOOL* ThreadPool = nullptr);
+MlasSBGemmBatch(const size_t M, const size_t N, const size_t K, const size_t BatchN, const MLAS_SBGEMM_DATA_PARAMS* DataParams, MLAS_THREADPOOL* ThreadPool = nullptr);
 
 /**
  * @brief For bfloat16 precision GEMM, returns size of the

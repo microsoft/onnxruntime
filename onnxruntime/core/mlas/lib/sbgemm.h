@@ -63,7 +63,8 @@ struct MLAS_SBGEMM_STRIDES {
 template <typename KernelType>
 void
 MlasSBGemmConvertPackB(
-    bfloat16_t* PackedB, const float* B, size_t ldb, size_t CountN, size_t CountK);
+    bfloat16_t* PackedB, const float* B, size_t ldb, size_t CountN, size_t CountK
+);
 
 /**
  * @brief Find the location of PackedB[StartK, StartN]
@@ -79,7 +80,8 @@ MlasSBGemmConvertPackB(
 template <typename KernelType>
 MLAS_FORCEINLINE const bfloat16_t*
 MlasSBGemmPackedBOffset(
-    const bfloat16_t* PackedB, size_t DimN, size_t DimK, size_t StartN, size_t StartK)
+    const bfloat16_t* PackedB, size_t DimN, size_t DimK, size_t StartN, size_t StartK
+)
 {
     // By default the packed buffer is just a row major
     // K row by N column buffer
@@ -107,31 +109,11 @@ MlasSBGemmPackedBLeadingDim(size_t DimN, size_t DimK)
 
 template <typename KernelType>
 void
-MlasSBGemmKernel(const size_t CountM,
-                 const size_t CountN,
-                 const size_t CountK,
-                 const float* A,
-                 const size_t lda,
-                 const bfloat16_t* B,
-                 float* C,
-                 size_t ldc,
-                 const float* Bias,
-                 const bool ZeroMode);
+MlasSBGemmKernel(const size_t CountM, const size_t CountN, const size_t CountK, const float* A, const size_t lda, const bfloat16_t* B, float* C, size_t ldc, const float* Bias, const bool ZeroMode);
 
 template <typename KernelType>
 MLAS_FORCEINLINE void
-MlasSBGemmPackedOperation(size_t M,
-                          size_t RangeStartN,
-                          size_t RangeCountN,
-                          size_t AlignedN,
-                          size_t K,
-                          const float* A,
-                          size_t lda,
-                          const void* PackedB,
-                          float* C,
-                          size_t ldc,
-                          const float* Bias,
-                          void* PostProcessor)
+MlasSBGemmPackedOperation(size_t M, size_t RangeStartN, size_t RangeCountN, size_t AlignedN, size_t K, const float* A, size_t lda, const void* PackedB, float* C, size_t ldc, const float* Bias, void* PostProcessor)
 {
     constexpr MLAS_SBGEMM_STRIDES Strides = KernelType::Strides;
     size_t PackedStrideN = Strides.N;
@@ -156,8 +138,7 @@ MlasSBGemmPackedOperation(size_t M,
             const bfloat16_t* pb = (const bfloat16_t*)PackedB + AlignedN * k + CountK * SliceStartN;
             float* c = C + n;
             const float* pbias = ((nullptr == Bias) ? nullptr : Bias + RangeStartN + n);
-            MlasSBGemmKernel<KernelType>(M, CountN, CountK, A + k, lda, pb, c, ldc,
-                                         ZeroMode ? pbias : nullptr, ZeroMode);
+            MlasSBGemmKernel<KernelType>(M, CountN, CountK, A + k, lda, pb, c, ldc, ZeroMode ? pbias : nullptr, ZeroMode);
         }
         if (PostProcessor != nullptr) {
             ((MLAS_SBGEMM_POSTPROCESSOR*)PostProcessor)
@@ -168,17 +149,7 @@ MlasSBGemmPackedOperation(size_t M,
 
 template <typename KernelType>
 void
-MlasSBGemmNonPackedOperation(size_t M,
-                             size_t N,
-                             size_t K,
-                             const float* A,
-                             size_t lda,
-                             const float* B,
-                             size_t ldb,
-                             float* C,
-                             size_t ldc,
-                             const float* Bias,
-                             void* PostProcessor)
+MlasSBGemmNonPackedOperation(size_t M, size_t N, size_t K, const float* A, size_t lda, const float* B, size_t ldb, float* C, size_t ldc, const float* Bias, void* PostProcessor)
 {
     //
     // Compute the strides to step through slices of the input matrices.
@@ -232,8 +203,7 @@ MlasSBGemmNonPackedOperation(size_t M,
                 ((nullptr == Bias) ? nullptr : Bias + n);  // TODO: check the SliceNStart
 
             bool ZeroMode = (k == 0);
-            MlasSBGemmKernel<KernelType>(M, CountN, CountK, A + k, lda, PanelB, c, ldc,
-                                         ZeroMode ? pbias : nullptr, ZeroMode);
+            MlasSBGemmKernel<KernelType>(M, CountN, CountK, A + k, lda, PanelB, c, ldc, ZeroMode ? pbias : nullptr, ZeroMode);
         }
         if (PostProcessor != nullptr) {
             ((MLAS_SBGEMM_POSTPROCESSOR*)PostProcessor)->Process(C + n, M, N, M, CountN, ldc);
@@ -243,13 +213,7 @@ MlasSBGemmNonPackedOperation(size_t M,
 
 template <typename KernelType>
 void
-MlasSBGemmOperation(const ptrdiff_t ThreadCountM,
-                    const ptrdiff_t ThreadCountN,
-                    const size_t M,
-                    const size_t N,
-                    const size_t K,
-                    const MLAS_SBGEMM_DATA_PARAMS* DataParams,
-                    ptrdiff_t ThreadId)
+MlasSBGemmOperation(const ptrdiff_t ThreadCountM, const ptrdiff_t ThreadCountN, const size_t M, const size_t N, const size_t K, const MLAS_SBGEMM_DATA_PARAMS* DataParams, ptrdiff_t ThreadId)
 {
     const ptrdiff_t ThreadIdM = ThreadId / ThreadCountN;
     const ptrdiff_t ThreadIdN = ThreadId % ThreadCountN;
@@ -290,28 +254,23 @@ MlasSBGemmOperation(const ptrdiff_t ThreadCountM,
     if (!DataParams->BIsfp32) {
         MlasSBGemmPackedOperation<KernelType>(
             RangeCountM, RangeStartN, RangeCountN, BlockedN * MLAS_SGEMM_STRIDEN_THREAD_ALIGN, K, A,
-            lda, DataParams->B, C, ldc, bias, (void*)DataParams->OutputProcessor);
+            lda, DataParams->B, C, ldc, bias, (void*)DataParams->OutputProcessor
+        );
     } else {
         const size_t ldb = DataParams->ldb;
         const float* B = (const float*)DataParams->B + RangeStartN;
-        MlasSBGemmNonPackedOperation<KernelType>(RangeCountM, RangeCountN, K, A, lda, B, ldb, C,
-                                                 ldc, bias, (void*)DataParams->OutputProcessor);
+        MlasSBGemmNonPackedOperation<KernelType>(RangeCountM, RangeCountN, K, A, lda, B, ldb, C, ldc, bias, (void*)DataParams->OutputProcessor);
     }
 }
 
 //
 // dispatch structure.
 //
-typedef void(MLAS_SBGEMM_OPERATION)(const ptrdiff_t ThreadCountM,
-                                    const ptrdiff_t ThreadCountN,
-                                    const size_t M,
-                                    const size_t N,
-                                    const size_t K,
-                                    const MLAS_SBGEMM_DATA_PARAMS* DataParams,
-                                    ptrdiff_t ThreadId);
+typedef void(MLAS_SBGEMM_OPERATION)(const ptrdiff_t ThreadCountM, const ptrdiff_t ThreadCountN, const size_t M, const size_t N, const size_t K, const MLAS_SBGEMM_DATA_PARAMS* DataParams, ptrdiff_t ThreadId);
 
 typedef void(MLAS_SBGEMM_CONVERTPACKB_ROUTINE)(
-    bfloat16_t* D, const float* B, size_t ldb, size_t CountN, size_t CountK);
+    bfloat16_t* D, const float* B, size_t ldb, size_t CountN, size_t CountK
+);
 
 /**
  * @brief Hardware dependent dispatch for half precision GEMM
@@ -372,12 +331,7 @@ MlasSBGemmConvertPackB(size_t N, size_t K, const float* B, size_t ldb, void* Pac
 }
 
 void MLASCALL
-MlasSBGemmBatch(const size_t M,
-                const size_t N,
-                const size_t K,
-                const size_t BatchN,
-                const MLAS_SBGEMM_DATA_PARAMS* Data,
-                MLAS_THREADPOOL* ThreadPool)
+MlasSBGemmBatch(const size_t M, const size_t N, const size_t K, const size_t BatchN, const MLAS_SBGEMM_DATA_PARAMS* Data, MLAS_THREADPOOL* ThreadPool)
 {
     const MLAS_SBGEMM_DISPATCH* dispatch = MlasSBGemmGetDispatch();
     if (dispatch == nullptr) return;
@@ -440,6 +394,7 @@ MlasSBGemmBatch(const size_t M,
             ptrdiff_t GemmIdx = tid / ThreadsPerGemm;
             ptrdiff_t ThreadIdx = tid % ThreadsPerGemm;
             operation(ThreadCountM, ThreadCountN, M, N, K, &(Data[GemmIdx]), ThreadIdx);
-        });
+        }
+    );
 }
-#endif //defined(__aarch64__) && defined(__linux__)
+#endif  // defined(__aarch64__) && defined(__linux__)
