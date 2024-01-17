@@ -105,7 +105,7 @@ Status GetEpContextFromGraph(const onnxruntime::GraphViewer& graph_viewer,
   struct _stat64 buff;
   if (file_full_path.empty() || (file_full_path[0] != '#' && _wstat64(file_full_path.c_str(), &buff) != 0)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context does not exist or is not accessible.");
-  }  
+  }
 #else
   ORT_RETURN_IF(external_qnn_ctx_binary_file_name.empty(), "The file path in ep_cache_context should not be empty.");
   ORT_RETURN_IF(external_qnn_ctx_binary_file_name[0] == '/',
