@@ -9,6 +9,11 @@
 #include <fstream>
 #include <filesystem>
 
+#ifdef _WIN32
+#else  // POSIX
+#include <sys/stat.h>
+#endif
+
 namespace onnxruntime {
 namespace qnn {
 
