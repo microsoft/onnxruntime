@@ -109,7 +109,8 @@ void GroupNormNHWCScale(GroupNormNHWCParams<T> const& params, cudaStream_t strea
 
 template <typename T>
 Status LaunchGroupNormKernel(
-    cudaStream_t stream,
+    CudaTuningContext* tuning_ctx,
+    Stream* ort_stream,
     T* output,
     T* add_out,
     const T* input,
@@ -127,6 +128,10 @@ Status LaunchGroupNormKernel(
     bool use_silu,
     bool broadcast_skip,
     int channels_per_block) {
+
+  // tuning_ctx only used for ROCm EP.
+  ORT_UNUSED_PARAMETER(tuning_ctx);
+
   GroupNormNHWCParams<T> params(output, add_out, input, skip, bias, gamma, beta, workspace, epsilon,
                                 batch_size, num_channels, height, width, num_groups, use_silu,
                                 broadcast_skip, channels_per_block);
@@ -142,6 +147,7 @@ Status LaunchGroupNormKernel(
                            " groups=", num_groups);
   }
 
+  auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(
       params.group_sum_buffer, 0, GetGroupNormWorkspaceSizeInBytes(batch_size, num_groups), stream));
 
@@ -157,14 +163,14 @@ Status LaunchGroupNormKernel(
   return Status::OK();
 }
 
-template Status LaunchGroupNormKernel<half>(cudaStream_t stream, half* output, half* add_out,
+template Status LaunchGroupNormKernel<half>(CudaTuningContext* tuning_ctx, Stream* stream, half* output, half* add_out,
                                             const half* input, const half* skip, const half* bias,
                                             const float* gamma, const float* beta, void* workspace,
                                             float epsilon, int batch_size, int num_channels,
                                             int height, int width, int num_groups, bool silu,
                                             bool broadcast_skip, int channels_per_block);
 
-template Status LaunchGroupNormKernel<float>(cudaStream_t stream, float* output, float* add_out,
+template Status LaunchGroupNormKernel<float>(CudaTuningContext* tuning_ctx, Stream* stream, float* output, float* add_out,
                                              const float* input, const float* skip, const float* bias,
                                              const float* gamma, const float* beta, void* workspace,
                                              float epsilon, int batch_size, int num_channels,
