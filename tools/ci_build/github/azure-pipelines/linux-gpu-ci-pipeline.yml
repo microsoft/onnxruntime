@@ -117,7 +117,7 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           -e CCACHE_DIR=/cache \
-          onnxruntimecuda11build \
+          $Repository \
           /bin/bash -c "
             set -ex; \
             env; \
@@ -137,6 +137,11 @@ jobs:
                 ccache -sv; \
                 ccache -z"
       workingDirectory: $(Build.SourcesDirectory)
+      env:
+      ${{ if eq(parameters.CudaVersion, '11.8') }}:
+        Repository: onnxruntimecuda11build
+      ${{ if eq(parameters.CudaVersion, '12.2') }}:
+        Repository: onnxruntimecuda12build
 
   - task: CmdLine@2
     inputs:
