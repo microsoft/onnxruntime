@@ -107,8 +107,8 @@ Status GetEpContextFromGraph(const onnxruntime::GraphViewer& graph_viewer,
 
   std::filesystem::path context_binary_path = folder_path.append(relative_path);
   auto file_full_path = context_binary_path.wstring();
-  struct _stat64 buff;
-  if (file_full_path.empty() || (file_full_path[0] != '#' && _wstat64(file_full_path.c_str(), &buff) != 0)) {
+  struct _stat64 stat_buffer;
+  if (file_full_path.empty() || (file_full_path[0] != '#' && _wstat64(file_full_path.c_str(), &stat_buffer) != 0)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context does not exist or is not accessible.");
   }
 #else
@@ -122,11 +122,11 @@ Status GetEpContextFromGraph(const onnxruntime::GraphViewer& graph_viewer,
   std::filesystem::path context_binary_path = folder_path.append(external_qnn_ctx_binary_file_name);
   std::string file_full_path = context_binary_path.string();
 
-  struct stat64 buffer;  // All POSIX under glibc except APPLE and wasm have stat64
-  if (file_full_path.empty() || (file_full_path[0] != '#' && stat64((file_full_path).c_str(), &buffer) != 0)) {
+  struct stat64 stat_buffer;  // All POSIX under glibc except APPLE and wasm have stat64
+  if (file_full_path.empty() || (file_full_path[0] != '#' && stat64((file_full_path).c_str(), &stat_buffer) != 0)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context does not exist or is not accessible.");
   }
-  if (file_full_path.empty() || (file_full_path[0] != '#' && !S_ISREG(buffer.st_mode))) {
+  if (file_full_path.empty() || (file_full_path[0] != '#' && !S_ISREG(stat_buffer.st_mode))) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context is not regular file.");
   }
 #endif

@@ -934,7 +934,7 @@ std::string CreateQnnCtxModelWithNonEmbedMode(std::string external_bin_path) {
 
 // Create a model with EPContext node. Set the node property ep_cache_context has ".."
 // Verify that it return INVALID_GRAPH status
-TEST(QnnContextBinaryTests, QnnContextBinaryRelativePathTest) {
+TEST_F(QnnHTPBackendTests, QnnContextBinaryRelativePathTest) {
   std::string model_data = CreateQnnCtxModelWithNonEmbedMode("../qnn_context.bin");
 
   SessionOptions so;
@@ -959,7 +959,7 @@ TEST(QnnContextBinaryTests, QnnContextBinaryRelativePathTest) {
 
 // Create a model with EPContext node. Set the node property ep_cache_context has absolute path "/path/ctx.bin"
 // Verify that it return INVALID_GRAPH status
-TEST(QnnContextBinaryTests, QnnContextBinaryAbsolutePathTest) {
+TEST_F(QnnHTPBackendTests, QnnContextBinaryAbsolutePathTest) {
 #if defined(_WIN32)
   std::string external_ctx_bin_path = "D:/qnn_context.bin";
 #else
@@ -989,7 +989,7 @@ TEST(QnnContextBinaryTests, QnnContextBinaryAbsolutePathTest) {
 
 // Create a model with EPContext node. Set the node property ep_cache_context has absolute path "/path/ctx.bin"
 // Verify that it return INVALID_GRAPH status
-TEST(QnnContextBinaryTests, QnnContextBinaryFileNotExistTest) {
+TEST_F(QnnHTPBackendTests, QnnContextBinaryFileNotExistTest) {
   std::string model_data = CreateQnnCtxModelWithNonEmbedMode("qnn_context_not_exist.bin");
 
   SessionOptions so;
