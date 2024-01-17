@@ -82,14 +82,17 @@ jobs:
       --build-arg TRT_VERSION=$(linux_trt_version)
       --build-arg BUILD_UID=$( id -u )
       "
-      Repository: onnxruntimecuda11build
+      ${{ if eq(parameters.CudaVersion, '11.8') }}:
+        Repository: onnxruntimecuda11build
+      ${{ if eq(parameters.CudaVersion, '12.2') }}:
+        Repository: onnxruntimecuda12build
 
   - task: Cache@2
     inputs:
-      key: '"ccache" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
+      key: '"ccache" | "${{parameters.CudaVersion}}" |"$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
       path: $(CCACHE_DIR)
       restoreKeys: |
-        "ccache" | "$(Build.SourceBranch)"
+        "ccache" | "${{parameters.CudaVersion}}" | "$(Build.SourceBranch)"
         "ccache"
       cacheHitVar: CACHE_RESTORED
     displayName: Cach Task
