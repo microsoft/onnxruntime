@@ -1207,7 +1207,7 @@ TEST_F(GraphTransformationTests, Conv1dReplacement) {
     return Status::OK();
   };
 
-  for (auto opset : {11, 12, 13, 14, 15, 16, 17, 18}) {
+  for (auto opset : {11, 12, 13, 14, 15, 16, 17, 18, 20}) {
     for (auto group : {1, 2}) {
       auto build_test_case = [&](ModelTestBuilder& builder) {
         auto [batch_size, in_channel, in_length] = std::make_tuple(8, 16, 128);
@@ -1251,7 +1251,7 @@ TEST_F(GraphTransformationTests, Conv1dReplacement_NoTakeEffect) {
   };
 
   // "group" is 3 so conv not replaced
-  for (auto opset : {11, 12, 13, 14, 15, 16, 17, 18}) {
+  for (auto opset : {11, 12, 13, 14, 15, 16, 17, 18, 20}) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto [batch_size, in_channel, in_length] = std::make_tuple(8, 16, 128);
       auto out_channel = 64;
@@ -1274,7 +1274,7 @@ TEST_F(GraphTransformationTests, Conv1dReplacement_NoTakeEffect) {
   }
 
   // "kernel_shape" is not 1 so conv not replaced
-  for (auto opset : {11, 12, 13, 14, 15, 16, 17, 18}) {
+  for (auto opset : {11, 12, 13, 14, 15, 16, 17, 18, 20}) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto [batch_size, in_channel, in_length] = std::make_tuple(8, 16, 128);
       auto out_channel = 64;
@@ -1523,7 +1523,7 @@ TEST_F(GraphTransformationTests, ScaledSumFusionThreeInputs) {
       builder.AddNode("Identity", {add2_out}, {graph_out});
     };
 
-    const std::vector<int> opsets{12, 13, 14, 15};
+    const std::vector<int> opsets{12, 13, 14, 15, 20};
     for (auto& opset_version : opsets) {
       std::unique_ptr<GraphTransformer> transformer = std::make_unique<ScaledSumFusion>();
       ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer),
@@ -1616,7 +1616,7 @@ TEST_F(GraphTransformationTests, ScaledSumFusionThreeInputs_LastAddNotHaveScaleI
       builder.AddNode("Identity", {add2_out}, {graph_out});
     };
 
-    const std::vector<int> opsets{12, 13, 14, 15};
+    const std::vector<int> opsets{12, 13, 14, 15, 20};
     for (auto& opset_version : opsets) {
       std::unique_ptr<GraphTransformer> transformer = std::make_unique<ScaledSumFusion>();
       ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer),
@@ -1710,7 +1710,7 @@ TEST_F(GraphTransformationTests, ScaledSumFusionTwoInputs) {
       builder.AddNode("Identity", {add1_out}, {graph_output2});
     };
 
-    const std::vector<int> opsets{12, 13, 14, 15};
+    const std::vector<int> opsets{12, 13, 14, 15, 20};
     for (auto& opset_version : opsets) {
       std::unique_ptr<GraphTransformer> transformer = std::make_unique<ScaledSumFusion>();
       ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer),
@@ -1723,6 +1723,7 @@ TEST_F(GraphTransformationTests, ScaledSumFusionTwoInputs) {
 // end of DISABLE_CONTRIB_OPS
 #endif
 
+// Possibly need to ask Vincent to update this test for bert exported using opset20
 #ifdef ENABLE_TRITON
 TEST_F(GraphTransformationTests, TritonFusion) {
   auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";

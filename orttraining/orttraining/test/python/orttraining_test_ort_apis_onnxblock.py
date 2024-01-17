@@ -146,7 +146,7 @@ def _get_onnx_model(torch_model, model_inputs):
         f,
         input_names=input_names,
         output_names=output_names,
-        opset_version=14,
+        opset_version=20,
         do_constant_folding=False,
         training=torch.onnx.TrainingMode.TRAINING,
         dynamic_axes=dynamic_axes,

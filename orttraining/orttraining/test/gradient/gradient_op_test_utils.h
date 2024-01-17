@@ -42,7 +42,7 @@ using TestDataVector = std::tuple<std::vector<std::vector<TensorInfo>>,         
 class GradientOpTester : public OpTester {
  public:
   explicit GradientOpTester(const char* op,
-                            int opset_version = 9,
+                            int opset_version = 20,
                             const char* domain = onnxruntime::kOnnxDomain,
                             bool verify_output = true,
                             const std::vector<TensorInfo>* input_infos = nullptr,

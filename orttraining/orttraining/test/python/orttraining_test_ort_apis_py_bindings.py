@@ -414,7 +414,7 @@ def test_ort_custom_ops():
         custom_op_block = CustomOpBlockWithLinear()
         with onnxblock.base(onnx_model) as model_accessor:
             model_accessor.model.opset_import.append(onnx.helper.make_opsetid("test.customop", 1))
-            model_accessor.model.opset_import.append(onnx.helper.make_opsetid("", 14))
+            model_accessor.model.opset_import.append(onnx.helper.make_opsetid("", 20))
             model_accessor.model.ir_version = 7
             _ = custom_op_block("output_1")
 

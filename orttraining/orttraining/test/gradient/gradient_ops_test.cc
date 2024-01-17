@@ -150,7 +150,7 @@ void GenerateRandomDataWithOneHot(std::vector<std::vector<float>>& x_datas, std:
 }
 
 void UnaryOpGradientTest(const std::string& op_type, const std::string& domain = kOnnxDomain,
-                         const int opset_version = 9,
+                         const int opset_version = 20,
                          std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
                          std::function<float(float)>* transformer = nullptr,
                          const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes = {},
@@ -600,6 +600,12 @@ TEST(GradientCheckerTest, GemmGrad) {
   RunGemmGradTests(op_def_opset13);
 }
 
+// Reduce mean has changed. Instead of axes being an attribute, it is now an input
+// Additionally, there is a new attribute called noop_with_empty_axis that defines behavior 
+// if 'axes' is empty. Default behavior with 'false' is to reduce all axes. When axes is 
+// empty and this attribute is set to true, input tensor will not be reduced, and the output 
+// tensor would be equivalent to input tensor.
+
 TEST(GradientCheckerTest, ReduceMeanGrad) {
   // Attribute axes supports negative values from opset 11.
   OpDef op_def_opset11{"ReduceMean", kOnnxDomain, 11};
@@ -621,6 +627,7 @@ TEST(GradientCheckerTest, ReduceSumGrad) {
   RunReductionTests(op_def_13, true, true);
 }
 
+// Reduce L2 has had similar changes like Reduce mean
 TEST(GradientCheckerTest, ReduceL2Grad) {
   // Attribute axes supports negative values from opset 11.
   OpDef op_def{"ReduceL2", kOnnxDomain, 11};
@@ -643,6 +650,7 @@ TEST(GradientCheckerTest, ReduceL2Grad) {
   }
 }
 
+// Reduce Log Sum Exp has had similar changes like Reduce mean
 TEST(GradientCheckerTest, ReduceLogSumExpGrad) {
   // Attribute axes supports negative values from opset 11.
   OpDef op_def{"ReduceLogSumExp", kOnnxDomain, 11};
@@ -683,6 +691,7 @@ TEST(GradientCheckerTest, CastGrad) {
   }
 }
 
+// Split needs to be updated, see previous notes on updates to split op
 TEST(GradientCheckerTest, SplitGrad) {
   TensorShape shape({9, 5});
   float max_error;
@@ -1029,7 +1038,7 @@ TEST(GradientCheckerTest, ConvGrad) {
   ConvGradientCheckerTest(&execution_providers);
 }
 
-static void TestConcatOpGrad(const std::string& op_type, const std::string& domain = kOnnxDomain, int opset_version = 9,
+static void TestConcatOpGrad(const std::string& op_type, const std::string& domain = kOnnxDomain, int opset_version = 20,
                              bool check_not_have_shape_inferencing = false) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
@@ -1798,6 +1807,8 @@ TEST(GradientCheckerTest, DISABLED_SoftmaxCrossEntropyLossGrad) {
   TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "none", -1);
 }
 
+// Gelu function Op was introduced in v20, will likely need to update these tests
+// and adjust/remove our contrib op
 TEST(GradientCheckerTest, GeluGrad) { UnaryOpGradientTest("Gelu", kMSDomain, 1); }
 
 TEST(GradientCheckerTest, FastGeluGrad) { UnaryOpGradientTest("FastGelu", kMSDomain, 1); }

@@ -19,7 +19,7 @@ void TestElementwiseGradientOp(
     const std::vector<std::pair<std::string, std::vector<float>>>& inputs,
     std::function<float(const std::vector<float>&)> expected_func,
     const std::unordered_map<std::string, float> attrs = {},
-    int opset_version = 7, const char* domain = kOnnxDomain) {
+    int opset_version = 20, const char* domain = kOnnxDomain) {
   const auto first_input = inputs.begin();
   ASSERT_NE(first_input, inputs.end());
   for (auto input = first_input; input != inputs.end(); ++input) {

@@ -98,7 +98,7 @@ void CompareVector(const std::vector<float>& result, const std::vector<float>& e
 
 static std::unique_ptr<onnxruntime::Model> MakeModel() {
   std::unordered_map<std::string, int> domain_to_version;
-  domain_to_version.insert({"", 15});  // Create an opset 15 model
+  domain_to_version.insert({"", 20});  // Create an opset 20 model
   auto model = std::make_unique<onnxruntime::Model>(
       "test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
       domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>{},

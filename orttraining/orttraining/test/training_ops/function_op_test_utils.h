@@ -12,7 +12,7 @@ using TwoDArray = std::vector<std::vector<float>>;
 
 class OpFunctionTester : public OpTester {
  public:
-  OpFunctionTester(const char* op, int opset_version = 9, const char* domain = onnxruntime::kOnnxDomain)
+  OpFunctionTester(const char* op, int opset_version = 20, const char* domain = onnxruntime::kOnnxDomain)
       : OpTester(op, opset_version, domain) {}
 
   // NOTE: wrap this call with ASSERT_NO_FATAL_FAILURE if your test has additional code following it.
@@ -35,7 +35,7 @@ void CompareResults(const onnxruntime::training::OpDef& op_def,
                     const std::vector<std::vector<int64_t>>& input_dims,
                     const std::vector<std::vector<int64_t>>& output_dims,
                     const std::vector<AttributeProto>& attributes,
-                    int opset_version = 7);
+                    int opset_version = 20);
 
 TwoDArray CreateEmpty2DArray(const std::vector<std::vector<int64_t>>& dims);
 
