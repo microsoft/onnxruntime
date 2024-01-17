@@ -160,6 +160,10 @@ Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, relea
   };
 
   // replace the original functions with asyncified versions
+  Module['_OrtCreateSession'] = runAsync(jsepWrapAsync(
+      Module['_OrtCreateSession'],
+      () => Module['_OrtCreateSession'],
+      v => Module['_OrtCreateSession'] = v));
   Module['_OrtRun'] = runAsync(jsepWrapAsync(
       Module['_OrtRun'],
       () => Module['_OrtRun'],

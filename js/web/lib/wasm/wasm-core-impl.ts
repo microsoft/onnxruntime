@@ -228,7 +228,7 @@ export const createSession = async(
       await Promise.all(loadingPromises);
     }
 
-    sessionHandle = wasm._OrtCreateSession(modelDataOffset, modelDataLength, sessionOptionsHandle);
+    sessionHandle = await wasm._OrtCreateSession(modelDataOffset, modelDataLength, sessionOptionsHandle);
     if (sessionHandle === 0) {
       checkLastError('Can\'t create a session.');
     }
