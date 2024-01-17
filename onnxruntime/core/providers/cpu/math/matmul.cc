@@ -125,6 +125,44 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
 
   return Status::OK();
 }
+#if defined(__aarch64__) && defined(__linux__)
+bool GemmPackBBfloat16(AllocatorPtr& alloc,
+                       const Tensor& tensor_b,
+                       bool trans_b,
+                       IAllocatorUniquePtr<void>& packed_b,
+                       size_t& packed_b_size,
+                       TensorShape& b_shape) {
+  // Only handle the common case of a 2D weight matrix. Additional matrices
+  // could be handled by stacking the packed buffers.
+  if (tensor_b.Shape().NumDimensions() != 2) {
+    return false;
+  }
+
+  b_shape = tensor_b.Shape();
+
+  const size_t K = trans_b ? static_cast<size_t>(b_shape[1]) : static_cast<size_t>(b_shape[0]);
+  const size_t N = trans_b ? static_cast<size_t>(b_shape[0]) : static_cast<size_t>(b_shape[1]);
+
+  packed_b_size = MlasSBGemmPackBSize(N, K);
+  if (packed_b_size == 0) {
+    return false;
+  }
+
+  packed_b = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size, true);
+  auto* packed_b_data = packed_b.get();
+
+  // Initialize memory to 0 as there could be some padding associated with pre-packed
+  // buffer memory and we don not want it uninitialized and generate different hashes
+  // if and when we try to cache this pre-packed buffer for sharing between sessions.
+  memset(packed_b_data, 0, packed_b_size);
+  MlasSBGemmConvertPackB(N,
+                         K,
+                         tensor_b.Data<float>(),
+                         trans_b ? K : N,
+                         packed_b_data);
+  return true;
+}
+#endif
 
 Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                               /*out*/ bool& is_packed,
@@ -134,7 +172,24 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ Alloc
   // only pack Matrix B
   if (input_idx == 1) {
     size_t packed_b_size;
-    is_packed = GemmPackBFp32(alloc, tensor, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_);
+#if defined(__aarch64__) && defined(__linux__)
+    size_t dim1 = 0;
+    size_t dim2 = 0;
+    TensorShape b_shape = tensor.Shape();
+
+    if (b_shape.NumDimensions() == 2) {
+      dim1 = static_cast<size_t>(b_shape[0]);
+      dim2 = static_cast<size_t>(b_shape[1]);
+    }
+
+    if (use_fastmath_mode_ && (trans_b_attr_ == 0) && ((dim1 * dim2) >= kFastMathModeKernelsizeThreshold)) {
+      is_packed = GemmPackBBfloat16(alloc, tensor, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_);
+    } else
+#endif
+    {
+      is_packed = GemmPackBFp32(alloc, tensor, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_);
+    }
+
     bool share_prepacked_weights = (prepacked_weights != nullptr);
     if (is_packed && share_prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
@@ -186,22 +241,40 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   const size_t K = static_cast<size_t>(helper.K());
   const size_t lda = helper.Lda(trans_a);
   const size_t ldb = helper.Ldb(trans_b);
-
-  std::vector<MLAS_SGEMM_DATA_PARAMS> data(max_len);
-  for (size_t i = 0; i < max_len; i++) {
-    data[i].BIsPacked = bool(packed_b_);
-    data[i].A = a_data + helper.LeftOffsets()[i];
-    data[i].lda = lda;
-    data[i].B = data[i].BIsPacked ? (float*)packed_b_.get() : b_data + helper.RightOffsets()[i];
-    data[i].ldb = ldb;
-    data[i].C = y_data + helper.OutputOffsets()[i];
-    data[i].ldc = N;
-    data[i].alpha = alpha_attr_;
-    data[i].beta = 0.0f;
+#if defined(__aarch64__) && defined(__linux__)
+  if (use_fastmath_mode_ && !trans_b && ((N * K) >= kFastMathModeKernelsizeThreshold)) {
+    std::vector<MLAS_SBGEMM_DATA_PARAMS> data(max_len);
+    for (size_t i = 0; i < max_len; i++) {
+      data[i].BIsfp32 = !(bool(packed_b_));
+      data[i].AIsfp32 = true;
+      data[i].A = a_data + helper.LeftOffsets()[i];
+      data[i].lda = lda;
+      data[i].B = data[i].BIsfp32 ? b_data + helper.RightOffsets()[i] : (float*)packed_b_.get();
+      data[i].ldb = ldb;
+      data[i].C = y_data + helper.OutputOffsets()[i];
+      data[i].ldc = N;
+      data[i].Bias = nullptr;
+      data[i].OutputProcessor = nullptr;
+    }
+    MlasSBGemmBatch(M, N, K, max_len, data.data(), thread_pool);
+  } else
+#endif
+  {
+    std::vector<MLAS_SGEMM_DATA_PARAMS> data(max_len);
+    for (size_t i = 0; i < max_len; i++) {
+      data[i].BIsPacked = bool(packed_b_);
+      data[i].A = a_data + helper.LeftOffsets()[i];
+      data[i].lda = lda;
+      data[i].B = data[i].BIsPacked ? (float*)packed_b_.get() : b_data + helper.RightOffsets()[i];
+      data[i].ldb = ldb;
+      data[i].C = y_data + helper.OutputOffsets()[i];
+      data[i].ldc = N;
+      data[i].alpha = alpha_attr_;
+      data[i].beta = 0.0f;
+    }
+    MlasGemmBatch(trans_a ? CblasTrans : CblasNoTrans, trans_b ? CblasTrans : CblasNoTrans,
+                  M, N, K, data.data(), max_len, thread_pool);
   }
-  MlasGemmBatch(trans_a ? CblasTrans : CblasNoTrans, trans_b ? CblasTrans : CblasNoTrans,
-                M, N, K, data.data(), max_len, thread_pool);
-
   return Status::OK();
 }
 

@@ -122,7 +122,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UMMLA>(MLAS_GEMM_U8X8_KERNEL_UMMLA:
         const uint8_t* a6 = a0 + lda * 6;
         const uint8_t* a7 = a0 + lda * 7;
 
-        size_t k = CountK;
+        int k = static_cast<int>(CountK);
         uint32x4_t RowSums0 = vmovq_n_u32(0);
         uint32x4_t RowSums1 = vmovq_n_u32(0);
 
@@ -396,7 +396,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UMMLA>(MLAS_GEMM_U8X8_KERNEL_UMMLA:
         const uint8_t* a2 = a1 + lda;
         const uint8_t* a3 = a2 + lda;
 
-        size_t k = CountK;
+        int k = static_cast<int>(CountK);
         uint32x4_t RowSums = vmovq_n_u32(0);
 
         while (k >= 16) {
@@ -561,7 +561,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UMMLA>(MLAS_GEMM_U8X8_KERNEL_UMMLA:
         const uint8_t* a0 = A;
         const uint8_t* a1 = a0 + lda;
 
-        size_t k = CountK;
+        int k = static_cast<int>(CountK);
         uint32x2_t RowSums = vmov_n_u32(0);
 
         while (k >= 16) {
@@ -677,7 +677,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UMMLA>(MLAS_GEMM_U8X8_KERNEL_UMMLA:
     if (CountM > 0) {
         // No need to pad the rows to 2, the .S takes care of zero pdding
         const uint8_t* a = A;
-        size_t k = CountK;
+        int k = static_cast<int>(CountK);
         uint32x4_t RowSums = vmovq_n_u32(0);
 
         while (k >= 16) {
@@ -699,7 +699,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UMMLA>(MLAS_GEMM_U8X8_KERNEL_UMMLA:
 
             vst1q_u8(PaddedMatrixAData, vmovq_n_u8(0));
 
-            for (size_t kk = 0; kk < k; kk++) {
+            for (size_t kk = 0; kk < static_cast<size_t>(k); kk++) {
                 PaddedMatrixAData[kk] = a[kk];
             }
 
@@ -793,7 +793,7 @@ MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_UMMLA>(MLAS_GEMM_U8X8_KERNEL_UMMLA:
     //
     while (CountN >= 8) {
         const uint8_t* b = B;
-        size_t k = CountK;
+        int k = static_cast<int>(CountK);
         uint32x4_t ColumnSums[2];
         ColumnSums[0] = vmovq_n_u32(0);
         ColumnSums[1] = vmovq_n_u32(0);
@@ -850,7 +850,7 @@ MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_UMMLA>(MLAS_GEMM_U8X8_KERNEL_UMMLA:
 
     if (CountN > 0) {
         const uint8_t* b = B;
-        size_t k = CountK;
+        int k = static_cast<int>(CountK);
         uint8_t PaddedMatrixBData[64];
         uint32x4_t ColumnSums[2];
 

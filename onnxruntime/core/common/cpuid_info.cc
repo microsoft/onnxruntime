@@ -30,6 +30,18 @@
 #define HWCAP2_SVEI8MM (1 << 9)
 #endif
 
+#ifndef HWCAP_SVE
+#define HWCAP_SVE (1 << 22)
+#endif
+
+#ifndef HWCAP2_BF16
+#define HWCAP2_BF16 (1 << 14)
+#endif
+
+#ifndef HWCAP2_SVEBF16
+#define HWCAP2_SVEBF16 (1 << 12)
+#endif
+
 #endif  // ARM
 
 #endif  // Linux
@@ -148,6 +160,9 @@ void CPUIDInfo::ArmLinuxInit() {
   has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
   has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
   has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
+  has_arm_sve_ = cpuinfo_has_arm_sve();
+  has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
+  has_arm_sve_bf16_ = cpuinfo_has_arm_sve_bf16();
 
   const uint32_t core_cnt = cpuinfo_get_cores_count();
   core_uarchs_.resize(core_cnt, cpuinfo_uarch_unknown);
@@ -177,6 +192,9 @@ void CPUIDInfo::ArmLinuxInit() {
   has_arm_neon_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_I8MM) != 0);
   has_arm_sve_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_SVEI8MM) != 0);
 
+  has_arm_sve_ = ((getauxval(AT_HWCAP) & HWCAP_SVE) != 0);
+  has_arm_neon_bf16_ = ((getauxval(AT_HWCAP2) & HWCAP2_BF16) != 0);
+  has_arm_sve_bf16_ = ((getauxval(AT_HWCAP2) & HWCAP2_SVEBF16) != 0);
 #endif
 }
 
@@ -278,6 +296,9 @@ void CPUIDInfo::ArmWindowsInit() {
   /* TODO: implement them when hw+sw is available for testing these features */
   has_arm_neon_i8mm_ = false;
   has_arm_sve_i8mm_ = false;
+  has_arm_sve_ = false;
+  has_arm_neon_bf16_ = false;
+  has_arm_sve_bf16_ = false;
 }
 
 #endif /* (arm or arm64) and windows */

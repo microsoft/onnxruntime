@@ -3,7 +3,9 @@
 
 #pragma once
 
+#include "core/common/cpuid_info.h"
 #include "core/framework/op_kernel.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 
@@ -27,6 +29,11 @@ class MatMul<float> final : public OpKernel {
     info.GetAttrOrDefault<int64_t>("transBatchB", &trans_batch_b_attr, 0);
     trans_batch_a_ = trans_batch_a_attr != 0;
     trans_batch_b_ = trans_batch_b_attr != 0;
+
+#if defined(__aarch64__) && defined(__linux__)
+    auto config_ops = info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsGemmFastMathMode);
+    use_fastmath_mode_ = (config_ops == "1") && CPUIDInfo::GetCPUIDInfo().HasArmNeon_BF16();
+#endif
   }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
@@ -48,6 +55,14 @@ class MatMul<float> final : public OpKernel {
   int64_t trans_b_attr_;
   bool trans_batch_a_;
   bool trans_batch_b_;
+
+#if defined(__aarch64__) && defined(__linux__)
+  // fastmath mode state
+  bool use_fastmath_mode_;
+  // sbgemm kernel is implemented as 8x8 blocks with weights pre-packed to 4 blocks of 4x2
+  // so a minimum of 32 elements is defined to outweigh the additional prepacking overhead
+  const size_t kFastMathModeKernelsizeThreshold = 32;
+#endif
 };
 
 }  // namespace onnxruntime
