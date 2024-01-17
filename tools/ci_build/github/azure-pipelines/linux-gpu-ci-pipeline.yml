@@ -139,9 +139,9 @@ jobs:
       workingDirectory: $(Build.SourcesDirectory)
       env:
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
-        Repository: onnxruntimecuda11build
+        Repository: 'onnxruntimecuda11build'
       ${{ if eq(parameters.CudaVersion, '12.2') }}:
-        Repository: onnxruntimecuda12build
+        Repository: 'onnxruntimecuda12build'
 
   - task: CmdLine@2
     inputs:
