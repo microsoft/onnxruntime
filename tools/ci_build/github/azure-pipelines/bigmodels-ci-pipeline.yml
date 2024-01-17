@@ -125,6 +125,8 @@ stages:
     - template: templates/explicitly-defined-final-tasks.yml
 
 - stage: Stale_Diffusion
+  dependsOn:
+  - Linux_Build
   jobs:
   - job: Stale_Diffusion
     variables:
@@ -133,16 +135,7 @@ stages:
     workspace:
       clean: all
     pool: onnxruntime-Linux-GPU-A10-12G
-    dependsOn:
-    - Linux_Build
     steps:
-    - task: tem@2
-      displayName: 'Download Pipeline Artifact'
-      inputs:
-        buildType: 'current'
-        artifactName: 'drop-linux'
-        targetPath: '$(Build.BinariesDirectory)/Release'
-
     - checkout: self
       clean: true
       submodules: none
