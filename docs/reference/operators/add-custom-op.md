@@ -133,9 +133,7 @@ void KernelOne(const Ort::Custom::CudaContext& cuda_ctx,
   cuda_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), cuda_ctx.cuda_stream); // launch a kernel inside
 }
 ```
-Full example could be found [here](https://github.com/microsoft/onnxruntime/tree/rel-1.17.0/onnxruntime/test/testdata/custom_op_library/cuda).
-
-Note - to facilitate the development, a wide variety of cuda ep resources and configurations are exposed via CudaContext, please refer to the [header](https://github.com/microsoft/onnxruntime/blob/rel-1.17.0/include/onnxruntime/core/providers/cuda/cuda_resource.h#L8) for detail.
+Full example could be found [here](https://github.com/microsoft/onnxruntime/tree/rel-1.17.0/onnxruntime/test/testdata/custom_op_library/cuda). To further facilitate development, a wide variety of cuda ep resources and configurations are exposed via CudaContext, please refer to the [header](https://github.com/microsoft/onnxruntime/blob/rel-1.17.0/include/onnxruntime/core/providers/cuda/cuda_resource.h#L8) for detail.
 
 For ROCM, it is like:
 
