@@ -729,12 +729,12 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dump_ep_context_model' should be 'True' or 'False'. Default value is 'False'.\n");
             }
           } else if (option.first == "trt_ep_context_file_path") {
-              if (!option.second.empty()) {
-                ep_context_file_path = option.second;
-                params.trt_ep_context_file_path = ep_context_file_path.c_str();
-              } else {
-                ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_ep_context_file_path' should be a string.\n");
-              }
+            if (!option.second.empty()) {
+              ep_context_file_path = option.second;
+              params.trt_ep_context_file_path = ep_context_file_path.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_ep_context_file_path' should be a string.\n");
+            }
           } else if (option.first == "trt_ep_context_embed_mode") {
             if (!option.second.empty()) {
               params.trt_ep_context_embed_mode = std::stoi(option.second);

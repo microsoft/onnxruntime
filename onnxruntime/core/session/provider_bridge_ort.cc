@@ -1480,10 +1480,10 @@ std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Creat
 
 std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(void* session_options, const OrtTensorRTProviderOptionsV2* provider_options) {
   // We need to create a new provider options V2 object and copy from provider_options, due to the "const" object pointed by provider_options can't be modified.
-  // 
+  //
   // Note: No need to worry about tensorrt_options being a local variable, CreateExecutionProviderFactory() in TRT EP will
   // create a factory object that copies any provider options from tensorrt_options including "const char*" provider options.
-  OrtTensorRTProviderOptionsV2 tensorrt_options = *provider_options; // copy and assign from provider_options
+  OrtTensorRTProviderOptionsV2 tensorrt_options = *provider_options;  // copy and assign from provider_options
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
   onnxruntime::UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(reinterpret_cast<OrtSessionOptions*>(session_options), &tensorrt_options);
@@ -1768,7 +1768,7 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtS
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptions* tensorrt_options) {
   API_IMPL_BEGIN
-  
+
   std::shared_ptr<onnxruntime::IExecutionProviderFactory> factory;
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)

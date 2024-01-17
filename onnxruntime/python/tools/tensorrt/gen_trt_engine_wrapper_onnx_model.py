@@ -32,6 +32,7 @@ class TensorRTEngineWrapperCreator:
         trt.init_libnvinfer_plugins(logger, "")
         if len(self.plugins):
             import ctypes
+
             ctypes.CDLL(self.plugins)
 
         # Deserialize an TRT engine

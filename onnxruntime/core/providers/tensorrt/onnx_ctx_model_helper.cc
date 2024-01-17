@@ -137,8 +137,8 @@ ONNX_NAMESPACE::ModelProto* CreateCtxNodeModel(const GraphViewer& graph_viewer,
 
 /*
  * Get "EP context node" model path
- * 
- * 
+ *
+ *
  * If ep_context_file_path is provided:
  *     - If ep_context_file_path is a file:
  *         - If it's a file name without any path associated with it, return "engine_cache_path/ep_context_file_path".
@@ -146,14 +146,14 @@ ONNX_NAMESPACE::ModelProto* CreateCtxNodeModel(const GraphViewer& graph_viewer,
  *     - If ep_context_file_path is a directory, return "ep_context_file_path/original_model_name_ctx.onnx".
  * If ep_context_file_path is not provided:
  *     - Return "engine_cache_path/original_model_name_ctx.onnx".
- * 
- * 
+ *
+ *
  * Example 1:
  * ep_context_file_path = "/home/user/ep_context_model_foler"
  * engine_cache_path = "trt_engine.engine"
  * original_model_path = "model.onnx"
  * => return "/home/user/ep_context_model_folder/model_ctx.onnx"
- * 
+ *
  * Example 2:
  * ep_context_file_path = "my_ctx_model.onnx"
  * engine_cache_path = "/home/user/cache_folder/trt_engine.engine"
@@ -165,13 +165,13 @@ ONNX_NAMESPACE::ModelProto* CreateCtxNodeModel(const GraphViewer& graph_viewer,
  * engine_cache_path = "trt_engine.engine"
  * original_model_path = "model.onnx"
  * => return "/home/user2/ep_context_model_foler/my_ctx_model.onnx"
- * 
+ *
  * Example 4:
  * ep_context_file_path = ""
  * engine_cache_path = "/home/user3/cache_folder/trt_engine.engine"
  * original_model_path = "model.onnx"
  * => return "/home/user3/cache_folder/model_ctx.onnx"
- * 
+ *
  */
 std::string GetCtxNodeModelPath(const std::string& ep_context_file_path,
                                 const std::string& engine_cache_path,

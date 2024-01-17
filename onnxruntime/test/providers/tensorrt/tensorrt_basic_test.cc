@@ -123,7 +123,7 @@ void CreateBaseModel(std::string model_name,
 }
 
 bool HasCacheFileWithPrefix(const std::string& prefix, std::string file_dir = "") {
-  std::filesystem::path target_dir; 
+  std::filesystem::path target_dir;
   if (file_dir.empty()) {
     target_dir = std::filesystem::current_path();
   } else {
