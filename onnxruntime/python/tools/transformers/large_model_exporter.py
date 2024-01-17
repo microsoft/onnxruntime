@@ -228,6 +228,9 @@ def fetch_onnx_inputs_outputs_name(
     onnx_inp_names = tuple(
         [torch_input_names[i] for i in range(len(torch_input_names)) if isinstance(onnx_inputs[i], torch.Tensor)]
     )
+    assert (
+        "input_ids" in onnx_inp_names and "attention_mask" in onnx_inp_names
+    ), "input_ids and attention_mask must be existed in inputs"
     onnx_out_names = ("logits",)
     onnx_dynamic_axes = {
         "input_ids": {0: "batch_size", 1: "seq_len"},
@@ -240,16 +243,16 @@ def fetch_onnx_inputs_outputs_name(
             onnx_dynamic_axes[name] = unknown_dims
     if input_with_past:
         for i in range(num_of_past_key):
-            onnx_inp_names += (f"present_key.{i}",)
-            onnx_inp_names += (f"present_values.{i}",)
+            onnx_inp_names += (f"past_key_values.{i}.key",)
+            onnx_inp_names += (f"past_key_values.{i}.value",)
 
             onnx_dynamic_axes[onnx_inp_names[-1]] = kv_cache_axis
             onnx_dynamic_axes[onnx_inp_names[-2]] = kv_cache_axis
 
     if with_past or input_with_past:
         for i in range(num_of_past_key):
-            onnx_out_names += (f"past_key.{i}",)
-            onnx_out_names += (f"past_values.{i}",)
+            onnx_out_names += (f"present.{i}.key",)
+            onnx_out_names += (f"present.{i}.value",)
             onnx_dynamic_axes[onnx_out_names[-1]] = kv_cache_axis
             onnx_dynamic_axes[onnx_out_names[-2]] = kv_cache_axis
 
