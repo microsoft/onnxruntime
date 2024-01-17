@@ -28,13 +28,34 @@ let initialized = false;
 let initializing = false;
 let aborted = false;
 
-const isMultiThreadSupported = (): boolean => {
-  try {
-    // If 'SharedArrayBuffer' is not available, WebAssembly threads will not work.
-    if (typeof SharedArrayBuffer === 'undefined') {
-      return false;
-    }
+const isMultiThreadSupported = (numThreads: number): boolean => {
+  // WebAssembly threads are set to 1 (single thread).
+  if (numThreads === 1) {
+    return false;
+  }
 
+  // If 'SharedArrayBuffer' is not available, WebAssembly threads will not work.
+  if (typeof SharedArrayBuffer === 'undefined') {
+    if (typeof self !== 'undefined' && !self.crossOriginIsolated) {
+      // eslint-disable-next-line no-console
+      console.warn(
+          'env.wasm.numThreads is set to ' + numThreads +
+          ', but this will not work unless you enable crossOriginIsolated mode. ' +
+          'See https://web.dev/cross-origin-isolation-guide/ for more info.');
+    }
+    return false;
+  }
+
+  // onnxruntime-web does not support multi-threads in Node.js.
+  if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+    // eslint-disable-next-line no-console
+    console.warn(
+        'env.wasm.numThreads is set to ' + numThreads +
+        ', however, currently onnxruntime-web does not support multi-threads in Node.js. ' +
+        'Please consider using onnxruntime-node for performance critical scenarios.');
+  }
+
+  try {
     // Test for transferability of SABs (for browsers. needed for Firefox)
     // https://groups.google.com/forum/#!msg/mozilla.dev.platform/IHkBZlHETpA/dwsMNchWEQAJ
     if (typeof MessageChannel !== 'undefined') {
@@ -106,7 +127,7 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
   const numThreads = flags.numThreads!;
   const simd = flags.simd!;
 
-  const useThreads = numThreads > 1 && isMultiThreadSupported();
+  const useThreads = isMultiThreadSupported(numThreads);
   const useSimd = simd && isSimdSupported();
 
   const wasmPaths = flags.wasmPaths;
