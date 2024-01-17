@@ -201,5 +201,6 @@ int main() {
 
 Note that `CreateThreadCustomized` and `JoinThreadCustomized`, once  set, will be applied to both ORT intra op and inter op thread pools uniformly.
 
-
-
+## Usage in custom ops
+Since 1.17, custom op developers are entitled to accelerate their code on cpu with ort intra-op thread pool.
+Please see the API and example for usage.

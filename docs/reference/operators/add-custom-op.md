@@ -134,6 +134,7 @@ void KernelOne(const Ort::Custom::CudaContext& cuda_ctx,
 }
 ```
 Details could be found [here](https://github.com/microsoft/onnxruntime/tree/rel-1.16.0/onnxruntime/test/testdata/custom_op_library/cuda).
+To facilitate the development, a wide variety of cuda ep resources/configurations are exposed via CudaContext, please see the header and usage for detail.
 
 For ROCM, it is like:
 
