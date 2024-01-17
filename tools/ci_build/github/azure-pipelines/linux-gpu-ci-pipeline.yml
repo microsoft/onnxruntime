@@ -43,7 +43,6 @@ resources:
     ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 variables:
-  - template: templates/common-variables.yml
   - name: docker_base_image
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
       value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
@@ -78,9 +77,9 @@ jobs:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "
-      --network=host 
+      --network=host
       --build-arg BASEIMAGE=$(docker_base_image)
-      --build-arg TRT_VERSION=$(linux_trt_version) 
+      --build-arg TRT_VERSION=$(linux_trt_version)
       --build-arg BUILD_UID=$( id -u )
       "
       Repository: onnxruntimecuda11build
@@ -127,11 +126,11 @@ jobs:
               --build_shared_lib \
               --parallel \
               --build_wheel \
-              --enable_onnx_tests --use_cuda --cuda_version=${{variables.common_cuda_version}} --cuda_home=/usr/local/cuda-${{variables.common_cuda_version}} --cudnn_home=/usr/local/cuda-${{variables.common_cuda_version}} \
+              --enable_onnx_tests --use_cuda --cuda_version=${{parameters.CudaVersion}} --cuda_home=/usr/local/cuda-${{parameters.CudaVersion}} --cudnn_home=/usr/local/cuda-${{parameters.CudaVersion}} \
               --enable_cuda_profiling --enable_cuda_nhwc_ops \
               --enable_pybind --build_java \
               --use_cache \
-              --cmake_extra_defines  CMAKE_CUDA_ARCHITECTURES=75; \
+              --cmake_extra_defines  CMAKE_CUDA_ARCHITECTURES=86; \
                 ccache -sv; \
                 ccache -z"
       workingDirectory: $(Build.SourcesDirectory)
@@ -159,7 +158,7 @@ jobs:
     skipComponentGovernanceDetection: true
   workspace:
     clean: all
-  pool: Onnxruntime-Linux-GPU-T4
+  pool: Onnxruntime-Linux-GPU-A10
   dependsOn:
   - Linux_Build
   steps:
@@ -179,7 +178,7 @@ jobs:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "
-      --network=host 
+      --network=host
       --build-arg BASEIMAGE=$(docker_base_image)
       --build-arg TRT_VERSION=$(linux_trt_version)
       --build-arg BUILD_UID=$( id -u )
@@ -209,7 +208,7 @@ jobs:
             cd /tmp; \
             /tmp/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --config Release --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_onnx_tests \
-              --use_cuda --cuda_version=${{variables.common_cuda_version}} --cuda_home=/usr/local/cuda --cudnn_home=/usr/local/cuda \
+              --use_cuda --cuda_version=${{parameters.CudaVersion}} --cuda_home=/usr/local/cuda --cudnn_home=/usr/local/cuda \
               --enable_pybind --build_java --ctest_path '' "
 
   - template: templates/clean-agent-build-directory-step.yml
