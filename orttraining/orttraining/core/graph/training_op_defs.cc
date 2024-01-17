@@ -2913,6 +2913,7 @@ Example 4:
                       "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
+  // TODO: As of Opset v17, ONNX introduced LayerNormalization operator, this grad needs to be updated
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalizationGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
