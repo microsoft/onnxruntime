@@ -30,7 +30,7 @@ struct ArgDef {
 
 struct OpDef {
   OpDef() : opset_version(-1) {}
-  OpDef(const std::string& type, const std::string& domain = kOnnxDomain, const int opset_version = 9)
+  OpDef(const std::string& type, const std::string& domain = kOnnxDomain, const int opset_version = 20)
       : type(type),
         domain(domain),
         opset_version(opset_version){};
