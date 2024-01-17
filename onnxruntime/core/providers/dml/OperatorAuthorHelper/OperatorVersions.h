@@ -413,6 +413,7 @@ namespace OperatorHelper
     namespace OnnxOperatorSet19
     {
         static const int sc_sinceVer_AveragePool = 19;
+        static const int sc_sinceVer_Pad = 19;
     }
 
     namespace MsftOperatorSet1
