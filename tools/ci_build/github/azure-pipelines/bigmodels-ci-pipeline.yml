@@ -149,7 +149,7 @@ stages:
         BuildId: ${{ parameters.BuildId }}
 
     - script: |
-        docker run --rm --gpus all -v $PWD:/workspace $(Build.BinariesDirectory)/ort-artifact:/Release nvcr.io/nvidia/pytorch:23.10-py3 \
+        docker run --rm --gpus all -v $PWD:/workspace -v $(Build.BinariesDirectory)/ort-artifact:/Release nvcr.io/nvidia/pytorch:23.10-py3 \
           bash -c "
             set -ex; \
             python3 -m pip install --upgrade pip; \
