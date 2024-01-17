@@ -126,7 +126,7 @@ stages:
 
 - stage: Stale_Diffusion
   dependsOn:
-  - Linux_Build
+  - Build_Onnxruntime_Cuda
   jobs:
   - job: Stale_Diffusion
     variables:
@@ -170,11 +170,12 @@ stages:
       workingDirectory: $(Build.SourcesDirectory)
 
 - stage: Llama2_ONNX_FP16
+  dependsOn:
+  - Build_Onnxruntime_Cuda
   jobs:
   - job: Llama2_ONNX_FP16
     variables:
       skipComponentGovernanceDetection: true
-      CCACHE_DIR: $(Pipeline.Workspace)/ccache
     workspace:
       clean: all
     pool: onnxruntime-Linux-GPU-A10-12G
