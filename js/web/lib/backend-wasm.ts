@@ -31,7 +31,10 @@ export const initializeFlags = (): void => {
   }
 
   if (typeof env.wasm.numThreads !== 'number' || !Number.isInteger(env.wasm.numThreads) || env.wasm.numThreads <= 0) {
-    if (typeof self !== 'undefined' && !self.crossOriginIsolated) {
+    // Web: when crossOriginIsolated is false, SharedArrayBuffer is not available so WebAssembly threads will not work.
+    // Node.js: onnxruntime-web does not support multi-threads in Node.js.
+    if ((typeof self !== 'undefined' && !self.crossOriginIsolated) ||
+        (typeof process !== 'undefined' && process.versions && process.versions.node)) {
       env.wasm.numThreads = 1;
     }
     const numCpuLogicalCores = typeof navigator === 'undefined' ? cpus().length : navigator.hardwareConcurrency;
