@@ -51,10 +51,12 @@ public:
         {
             mode = DML_PADDING_MODE_REFLECTION;
         }
+#if DML_TARGET_VERSION >= 0x6300
         else if (modeString == AttrValue::Wrap)
         {
             mode = DML_PADDING_MODE_WRAP;
         }
+#endif
         else
         {
             ML_INVALID_ARGUMENT("Unknown Pad mode attribute.");
