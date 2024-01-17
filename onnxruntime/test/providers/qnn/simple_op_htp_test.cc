@@ -908,6 +908,49 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCache_InvalidGraph) {
   ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
 }
 
+// Create a model with EPContext node. Set the node property ep_cache_context has ".."
+// Verify that it return INVALID_GRAPH status
+TEST(QnnContextBinaryTests, QnnContextBinaryRelativePathTest) {
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 11}, {kMSDomain, 1}};
+  auto& logging_manager = DefaultLoggingManager();
+  onnxruntime::Model model("QNN_ctx_model", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           logging_manager.DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+  std::vector<int64_t> shape = {2, 3};
+  NodeArg* graph_input = MakeTestInput(helper, TestInputDef<float>(shape, true, {0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f}));
+  auto* graph_output = helper.MakeOutput<float>(shape);
+  Node& ep_context_node = helper.AddNode("EPContext", {graph_input}, {graph_output}, kMSDomain);
+  ep_context_node.AddAttribute("embed_mode", static_cast<int64_t>(0));
+  // The .. in the path will cause INVALID_GRAPH
+  ep_context_node.AddAttribute("ep_cache_context", "../qnn_context.bin");
+  ep_context_node.AddAttribute("partition_name", "QNNExecutionProvider_QNN_1110111000111000111_1_0");
+  ep_context_node.AddAttribute("source", "QNN");
+  helper.SetGraphOutputs();
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  SessionOptions so;
+  so.session_logid = "qnn_ctx_model_logger";
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options)));
+  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
+  // Verify the return status with code INVALID_GRAPH
+  ASSERT_TRUE(session_object.Initialize().Code() == common::StatusCode::INVALID_GRAPH);
+}
+
 // Run QDQ model on HTP with 2 inputs
 // 1st run will generate the Qnn context cache onnx file
 // 2nd run will load and run from QDQ model + Qnn context cache model

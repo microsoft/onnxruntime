@@ -89,6 +89,9 @@ Status GetEpContextFromGraph(const onnxruntime::GraphViewer& graph_viewer,
   }
 
   std::string external_qnn_context_binary_file_name = node_helper.Get(EP_CACHE_CONTEXT, "");
+  if (external_qnn_context_binary_file_name.find("..", 0) != std::string::npos) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The ep_cache_context field has '..'. It's not allowed to point outside the directory.");
+  }
   std::filesystem::path folder_path = std::filesystem::path(ctx_onnx_model_path).parent_path();
   std::filesystem::path context_binary_path = folder_path.append(external_qnn_context_binary_file_name);
 
