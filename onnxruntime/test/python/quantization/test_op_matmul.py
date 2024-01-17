@@ -8,6 +8,7 @@
 import unittest
 
 import numpy as np
+from numpy.testing import assert_almost_equal
 import onnx
 import packaging.version as pv
 from onnx import TensorProto, helper
@@ -15,6 +16,7 @@ from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_
 
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail
 from onnxruntime.quantization import CalibrationMethod, QuantFormat, QuantType, quantize_dynamic, quantize_static
+from onnxruntime.quantization.calibrate import entropy
 
 
 def skip_if_new_opset_exception_raised(func):
@@ -30,6 +32,17 @@ def skip_if_new_opset_exception_raised(func):
 
 
 class TestOpMatMul(unittest.TestCase):
+    def test_entropy(self):
+        try:
+            from scipy.stats import entropy as scipy_entropy
+        except ImportError:
+            raise unittest.SkipTest("scipy not installed.")  # noqa: B904
+        pk = (np.arange(10) - 5).astype(np.float32) / 10
+        qk = -(np.arange(10) - 5).astype(np.float32) / 10
+        ent = scipy_entropy(pk, qk)
+        get = entropy(pk, qk)
+        assert_almost_equal(ent, get)
+
     def input_feeds(self, n, name2shape, dtype):
         input_data_list = []
         for _i in range(n):

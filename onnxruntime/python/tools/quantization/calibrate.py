@@ -5,6 +5,7 @@
 # license information.
 # --------------------------------------------------------------------------
 import abc
+import copy
 import itertools
 import os
 import uuid
@@ -19,6 +20,48 @@ from onnx import ModelProto, TensorProto, helper, numpy_helper
 import onnxruntime
 
 from .quant_utils import apply_plot, load_model_with_shape_infer, smooth_distribution
+
+
+def rel_entr(pk: np.ndarray, qk: np.ndarray) -> np.ndarray:
+    """
+    See https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.rel_entr.html#scipy.special.rel_entr.
+    Python implementation.
+    """
+    res = np.empty(pk.shape, dtype=pk.dtype)
+    res[:] = pk[:] * np.log(pk[:] / qk[:])
+    c2 = (pk == 0) & (qk >= 0)
+    res[c2] = 0
+    c1 = (pk > 0) & (qk > 0)
+    res[~c1] = np.inf
+    return res
+
+
+def entropy(
+    pk: np.ndarray,
+    qk: np.ndarray,
+    base: float | None = None,
+    axis: int = 0,
+) -> np.ndarray:
+    """
+    Simplifeied version of entropy.
+    Source: https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.entropy.html.
+    This avoids taking a dependency on scipy just for this function.
+    """
+    assert base is None or base > 0, "base={base} must be a positive number or `None`."
+    assert qk is not None, "qk is None"
+
+    pk = np.asarray(pk).astype(np.float32)
+    pk = 1.0 * pk / np.sum(pk, axis=axis, keepdims=True)
+
+    qk = np.asarray(qk).astype(np.float32)
+    pk, qk = np.broadcast_arrays(pk, qk)
+    qk = 1.0 * qk / np.sum(qk, axis=axis, keepdims=True)
+    vec = rel_entr(pk, qk)
+
+    s = np.sum(vec, axis=axis)
+    if base is not None:
+        s /= np.log(base)
+    return s.astype(pk.dtype)
 
 
 class TensorData:
@@ -961,10 +1004,6 @@ class HistogramCollector(CalibrationDataCollector):
         `q` is a truncated version of the original distribution.
         Ref: http://on-demand.gputechconf.com/gtc/2017/presentation/s7310-8-bit-inference-with-tensorrt.pdf
         """
-        import copy
-
-        from scipy.stats import entropy
-
         hist = histogram[0]
         hist_edges = histogram[1]
         num_bins = hist.size
