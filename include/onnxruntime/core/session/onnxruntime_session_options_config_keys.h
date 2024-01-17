@@ -250,9 +250,3 @@ static const char* const kOrtSessionOptionEpContextFilePath = "ep.context_file_p
 // "0": dump the EP context into separate file, keep the file name in the Onnx model.
 // "1": dump the EP context into the Onnx model. (default).
 static const char* const kOrtSessionOptionEpContextEmbedMode = "ep.context_embed_mode";
-
-// Enable to dump the EP context node with "hardware_architecture" attribute and check this attribute against the
-// hardware architecture when inferencing.
-// "0": disable. (default)
-// "1": enable.
-static const char* const kOrtSessionOptionEpContextHardwareArchitectureEnable = "ep.context_hardware_architecture_enable";

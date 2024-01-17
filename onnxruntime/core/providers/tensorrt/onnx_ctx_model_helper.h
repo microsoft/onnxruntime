@@ -44,8 +44,7 @@ class TensorRTCacheModelHandler {
  public:
   TensorRTCacheModelHandler(std::unique_ptr<nvinfer1::ICudaEngine>* trt_engine,
                             nvinfer1::IRuntime* trt_runtime,
-                            std::string compute_capability,
-                            bool compute_capability_enable = true) : trt_engine_(trt_engine), trt_runtime_(trt_runtime), compute_capability_(compute_capability), compute_capability_enable_(compute_capability_enable) {
+                            std::string compute_capability) : trt_engine_(trt_engine), trt_runtime_(trt_runtime), compute_capability_(compute_capability) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TensorRTCacheModelHandler);
 
@@ -58,6 +57,5 @@ class TensorRTCacheModelHandler {
   nvinfer1::IRuntime* trt_runtime_;
   std::filesystem::path engine_cache_path_;
   std::string compute_capability_;
-  bool compute_capability_enable_;
 };  // TRTCacheModelHandler
 }  // namespace onnxruntime

@@ -269,14 +269,13 @@ bool TensorRTCacheModelHandler::ValidateEPCtxNode(const GraphViewer& graph_viewe
   auto node = graph_viewer.GetNode(0);
   auto& attrs = node->GetAttributes();
 
-  // Check hardware_architecture(compute_capability) if it's present as an attribute
-  if (compute_capability_enable_ && attrs.count(COMPUTE_CAPABILITY) > 0) {
+  // Show the warning if compute capability is not matched
+  if (attrs.count(COMPUTE_CAPABILITY) > 0) {
     std::string model_compute_capability = attrs.at(COMPUTE_CAPABILITY).s();
     if (model_compute_capability != compute_capability_) {
-      LOGS_DEFAULT(ERROR) << "The compute capability of the engine cache doesn't match with the GPU's compute capability";
-      LOGS_DEFAULT(ERROR) << "The compute capability of the engine cache: " << model_compute_capability;
-      LOGS_DEFAULT(ERROR) << "The compute capability of the GPU: " << compute_capability_;
-      return false;
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] Engine was compiled for a different compatibility level and might not work or perform suboptimal";
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] The compute capability of the engine: " << model_compute_capability;
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] The compute capability of the GPU: " << compute_capability_;
     }
   }
 

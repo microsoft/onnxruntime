@@ -1079,8 +1079,6 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
                         char const* output_name,
                         size_t output_index,
                         size_t output_type,
-                        std::vector<IAllocatorUniquePtr<void>>& scratch_buffers,
-                        OrtAllocator* alloc,
                         cudaStream_t stream) {
   auto allocator = allocator_map[output_name].get();
   auto& shape = allocator->getOutputShape();
@@ -3537,7 +3535,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         if (index_iter != output_indexes.end()) {
           output_index = index_iter->second;
         }
-        auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type, scratch_buffers, alloc, stream);
+        auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type, stream);
         if (status != Status::OK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
         }
@@ -3818,7 +3816,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
         if (index_iter != output_indexes.end()) {
           output_index = index_iter->second;
         }
-        auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type, scratch_buffers, alloc, stream);
+        auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type, stream);
         if (status != Status::OK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
         }

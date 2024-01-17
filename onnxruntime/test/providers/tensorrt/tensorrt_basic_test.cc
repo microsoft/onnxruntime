@@ -191,6 +191,8 @@ void RunWithOneSessionSingleThreadInference(std::string model_name, std::string 
   OrtTensorRTProviderOptionsV2 params;
   params.trt_engine_cache_enable = 1;
   params.trt_engine_cache_prefix = "TRTEP_Cache_Test";
+  params.trt_dump_ep_context_model = 1;
+  params.trt_ep_context_file_path = "EP_Context_model.onnx";
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
   auto status = session_object.Load(model_name);
@@ -209,6 +211,9 @@ void RunWithOneSessionSingleThreadInference(std::string model_name, std::string 
 
   // Verify on cache with customized prefix
   ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_engine_cache_prefix));
+
+  // Verify EP context model with user provided name
+  ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_ep_context_file_path));
 }
 
 void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string sess_log_id, bool has_non_zero_node = false) {
@@ -448,6 +453,8 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
 
     params.trt_engine_cache_enable = 1;
     params.trt_engine_cache_prefix = "TRTEP_Cache_Test";
+    params.trt_dump_ep_context_model = 1;
+    params.trt_ep_context_file_path = "EP_Context_model.onnx";
     std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
     EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
     auto status = session_object.Load(model_name);
@@ -575,6 +582,9 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
 
     // Verify on cache with customized prefix
     ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_engine_cache_prefix));
+
+    // Verify EP context model with user provided name
+    ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_ep_context_file_path));
 
     if (input_type.compare("static") == 0) {
       // Can't run inference since input shape changes but the engine is built with static input

@@ -89,7 +89,7 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 #include "core/providers/cann/cann_provider_options.h"
 #include "core/providers/dnnl/dnnl_provider_options.h"
 
-#ifdef USE_TENSORRT
+#if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #endif
 
@@ -1422,7 +1422,6 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_dump_ep_context_model = 0;
   trt_options_converted.trt_ep_context_file_path = "";
   trt_options_converted.trt_ep_context_embed_mode = 0;
-  trt_options_converted.trt_ep_context_compute_capability_enable = 0;
   trt_options_converted.trt_engine_cache_prefix = "";
 
   return trt_options_converted;
@@ -1450,10 +1449,6 @@ void UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(OrtSessionOptio
       LOGS_DEFAULT(VERBOSE) << "Invalid ep.context_embed_mode: " << embed_mode << " only 0 or 1 allowed. Set to 1.";
     }
     LOGS_DEFAULT(VERBOSE) << "User specified context cache embed mode: " << tensorrt_options->trt_ep_context_embed_mode;
-
-    auto context_hardware_arch_enable = (session_options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextHardwareArchitectureEnable, "0") != "0";
-    tensorrt_options->trt_ep_context_compute_capability_enable = context_hardware_arch_enable;
-    LOGS_DEFAULT(VERBOSE) << "User specified context hardware architecture enable: " << tensorrt_options->trt_ep_context_compute_capability_enable;
   }
 }
 #endif
