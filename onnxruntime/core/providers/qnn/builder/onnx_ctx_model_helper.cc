@@ -95,6 +95,7 @@ Status GetEpContextFromGraph(const onnxruntime::GraphViewer& graph_viewer,
 
   std::filesystem::path folder_path = std::filesystem::path(ctx_onnx_model_path).parent_path();
   std::string external_qnn_ctx_binary_file_name = node_helper.Get(EP_CACHE_CONTEXT, "");
+  ORT_RETURN_IF(external_qnn_ctx_binary_file_name.empty(), "The file path in ep_cache_context should not be empty.");
 #ifdef _WIN32
   onnxruntime::PathString external_qnn_context_binary_path = onnxruntime::ToPathString(external_qnn_ctx_binary_file_name);
   auto ctx_file_path = std::filesystem::path(external_qnn_context_binary_path.c_str());
@@ -106,13 +107,7 @@ Status GetEpContextFromGraph(const onnxruntime::GraphViewer& graph_viewer,
   }
 
   std::filesystem::path context_binary_path = folder_path.append(relative_path);
-  auto file_full_path = context_binary_path.wstring();
-  struct _stat64 stat_buffer;
-  if (file_full_path.empty() || (file_full_path[0] != '#' && _wstat64(file_full_path.c_str(), &stat_buffer) != 0)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context does not exist or is not accessible.");
-  }
 #else
-  ORT_RETURN_IF(external_qnn_ctx_binary_file_name.empty(), "The file path in ep_cache_context should not be empty.");
   ORT_RETURN_IF(external_qnn_ctx_binary_file_name[0] == '/',
                 "External mode should set ep_cache_context field with a relative path, but it is an absolute path: ",
                 external_qnn_ctx_binary_file_name);
@@ -121,15 +116,11 @@ Status GetEpContextFromGraph(const onnxruntime::GraphViewer& graph_viewer,
   }
   std::filesystem::path context_binary_path = folder_path.append(external_qnn_ctx_binary_file_name);
   std::string file_full_path = context_binary_path.string();
-
-  struct stat64 stat_buffer;  // All POSIX under glibc except APPLE and wasm have stat64
-  if (file_full_path.empty() || (file_full_path[0] != '#' && stat64((file_full_path).c_str(), &stat_buffer) != 0)) {
+#endif
+  if (!std::filesystem::is_regular_file(context_binary_path)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context does not exist or is not accessible.");
   }
-  if (file_full_path.empty() || (file_full_path[0] != '#' && !S_ISREG(stat_buffer.st_mode))) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context is not regular file.");
-  }
-#endif
+
   size_t buffer_size{0};
   std::ifstream cache_file(context_binary_path.string().c_str(), std::ifstream::binary);
   ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to open cache file.");

@@ -957,7 +957,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryRelativePathTest) {
   ASSERT_TRUE(session_object.Initialize().Code() == common::StatusCode::INVALID_GRAPH);
 }
 
-// Create a model with EPContext node. Set the node property ep_cache_context has absolute path "/path/ctx.bin"
+// Create a model with EPContext node. Set the node property ep_cache_context has absolute path
 // Verify that it return INVALID_GRAPH status
 TEST_F(QnnHTPBackendTests, QnnContextBinaryAbsolutePathTest) {
 #if defined(_WIN32)
@@ -987,10 +987,35 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryAbsolutePathTest) {
   ASSERT_TRUE(session_object.Initialize().Code() == common::StatusCode::INVALID_GRAPH);
 }
 
-// Create a model with EPContext node. Set the node property ep_cache_context has absolute path "/path/ctx.bin"
+// Create a model with EPContext node. Set the node property ep_cache_context to a file not exist
 // Verify that it return INVALID_GRAPH status
 TEST_F(QnnHTPBackendTests, QnnContextBinaryFileNotExistTest) {
   std::string model_data = CreateQnnCtxModelWithNonEmbedMode("qnn_context_not_exist.bin");
+
+  SessionOptions so;
+  so.session_logid = "qnn_ctx_model_logger";
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options)));
+  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
+  // Verify the return status with code INVALID_GRAPH
+  ASSERT_TRUE(session_object.Initialize().Code() == common::StatusCode::INVALID_GRAPH);
+}
+
+// Create a model with EPContext node. Set the node property ep_cache_context to empty string
+// Verify that it return INVALID_GRAPH status
+TEST_F(QnnHTPBackendTests, QnnContextBinaryFileEmptyStringTest) {
+  std::string model_data = CreateQnnCtxModelWithNonEmbedMode("");
 
   SessionOptions so;
   so.session_logid = "qnn_ctx_model_logger";
