@@ -8,9 +8,9 @@
 import unittest
 
 import numpy as np
-from numpy.testing import assert_almost_equal
 import onnx
 import packaging.version as pv
+from numpy.testing import assert_almost_equal
 from onnx import TensorProto, helper
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 

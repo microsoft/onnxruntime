@@ -39,7 +39,7 @@ def rel_entr(pk: np.ndarray, qk: np.ndarray) -> np.ndarray:
 def entropy(
     pk: np.ndarray,
     qk: np.ndarray,
-    base: float | None = None,
+    base: Optional[float] = None,
     axis: int = 0,
 ) -> np.ndarray:
     """
