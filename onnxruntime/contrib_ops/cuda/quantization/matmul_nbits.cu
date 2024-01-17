@@ -353,7 +353,7 @@ template bool TryMatMul4Bits<half>(
 namespace GPTQPacking {
 constexpr int kBlockSize = 256;
 constexpr int kNumWaves = 32;
-const int width_element_per_block = 32 * 2;
+constexpr int kWidthPerBlock = 32 * 2;
 template <unsigned int WarpSize>
 __device__ __forceinline__ float warpReduceSum(float sum) {
   if (WarpSize >= 32)
@@ -383,7 +383,7 @@ __global__ void MatMulW4A16Kernel(T* out, const T* inA, const uint32_t* inB, con
 
   const half2* inA_start = (const half2*)(inA + blockIdx.y * matrix_k + y_start);
 
-  int n_offset_x = bid * width_element_per_block + threadIdx.x * 2;
+  int n_offset_x = bid * kWidthPerBlock + threadIdx.x * 2;
 
   int start_group_id = (y_start / groupsize);
   int compressed_idx = threadIdx.x % 4;
@@ -484,7 +484,7 @@ __global__ void MatMulW4A16Kernel(T* out, const T* inA, const uint32_t* inB, con
     __syncthreads();
     sum[i] = warpReduceSum<32>(sum[i]);
     if (threadIdx.x == 0) {
-      out[+blockIdx.y * matrix_N + bid * width_element_per_block +
+      out[+blockIdx.y * matrix_N + bid * kWidthPerBlock +
           threadIdx.y * 2 + i] = __float2half_rn(sum[i]);
     }
   }
@@ -592,7 +592,7 @@ void TryMatMul4Bits(
     uint32_t groupsize) {
   const int block_k = ((matrix_k + 31) / 32 + 7) / 8 * 8;
 
-  dim3 gridDim = {(matrix_N + width_element_per_block - 1) / width_element_per_block, matrix_M};
+  dim3 gridDim = {(matrix_N + kWidthPerBlock - 1) / kWidthPerBlock, matrix_M};
   dim3 blockDim = {32, (matrix_k + block_k - 1) / block_k};
   MatMulW4A16Kernel<half><<<gridDim, blockDim, 0, stream>>>(
       static_cast<half*>(mul_out_data), static_cast<const half*>(input_data),

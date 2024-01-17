@@ -3330,13 +3330,13 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
           updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::UINT32);
         }
       });
-
-  static const char* MatMulNBits_ver1_doc = R"DOC(
-MatMulNBits is a MatMul with weight quantized with N bits(e.g., 2, 3, 4, 5, 6, 7).It does Matrix Multiplication like MatMul (https://github.com/onnx/onnx/blob/main/docs/Operators.md#matmul) with differences:
-  1. Input B is a 2D constant Matrix. Its input feature count and output feature count are specified by attribute 'K' and 'N'.
-  2. Input B is quantized with x bits which is specified by attribute 'bits'. It is quantized blockwisely along dimension 0 (e.g. column) with block size specified by attribute block_size.
-     And block_size is not an arbitrary number and must be a power of 2 and not smaller than 16, like 16, 32, 64, 128,..
-  3. Input B's scale and zero point are specified by input scales and zero_points.
+  static const char* DequantizeLinearBlockWise_ver1_doc = R"DOC(
+DequantizeLinearBlockWise de-quantize a input tensor(uint8/int8/uint32/int32) from blockwise quantization with N bits(e.g., 2, 3, 4, 5, 6, 7) packing to a normal(float32/Half) tensor.
+It has two or three inputs, quantized input tensor, scale tensor and zero_point tensor(optional).
+  1. Input is a 2D Tensor. Its original input shape are specified by attribute 'K' and 'N'.
+  2. Packing can along with dimension 0 (e.g. row) or dimension 1 (e.g. column). which can be specified by attribute 'axis'.
+  3. bits and group-size are specified by attribute 'bits' and 'block_size'.
+  4. zero_point is optional. If it is not specified, it means symmetric quantization. zero_point could be type same as input or same as scale, which means it's not packed.
 
 It support different packing style, ["default", "gptq", "hqq", "exl2", "awq"], Please note that "exl2", "awq" is not supported yet.
 with "default", we have
@@ -3356,14 +3356,115 @@ with "default", we have
     - [(N * n_blocks_per_col + 1) / 2] if bits <=4
     - [N * n_blocks_per_col] if bits > 4
 
+for bellow two packing method, bits are squeezed into uint32_t, and each uint32_t contains 32/bits quantized values.
+basiclly, you can packing it with
+```
+def pack_on_row_fast_anybit(pack_tensor, ori_int_tensor, bits):
+    need_transpose = False
+    if pack_tensor.shape[0] != ori_int_tensor.shape[0]:
+        need_transpose = True
+        ori_int_tensor = ori_int_tensor.T
+    pack_tensor.mul_(0)
+    wf = torch.arange(0, bits).to(pack_tensor.device).view(1, 1, -1)
+    out = torch.bitwise_right_shift(ori_int_tensor.unsqueeze(-1), wf)
+    torch.bitwise_and(out, 1, out=out)
+    out = out.reshape(ori_int_tensor.shape[0], -1, 32)
+    wf1 = torch.arange(0, 32, 1).to(pack_tensor.device).view(1, 1, -1)
+    out = torch.bitwise_left_shift(out, wf1)
+    out = out.sum(dim=-1).int()
+
+    if need_transpose:
+        out = out.T.contiguous()
+    pack_tensor.copy_(out)
+```
 with "gptq", we have:
-  Input B is stored as uint32_t with shape: [ceil(N, 32//bits), K]:
-  zero_points has shape uint32_t [N//block_size, K*bits//32]
-  scale has shape float16[N//block_size, K]
+  32 = bits_of(int32)
+  Input is stored as uint32_t with shape: [ceil(K*bits, 32), N]:
+  zero_points has shape uint32_t [K//block_size, ceil(N*bits, 32)]
+  scale has shape float16[K//block_size, K]
 with "hqq", we have:
-  Input B is stored as uint32_t with shape: [ceil(N, 32//bits), K]:
-  zero_points has shape float16 [N//block_size, K]
-  scale has shape [N//block_size, K]
+  Input is stored as uint32_t with shape: [ceil(K*bits, 32), N]:
+  zero_points has shape float16 [K//block_size, N]
+  scale has shape [K//block_size, N]
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DequantizeLinearBlockWise)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(DequantizeLinearBlockWise_ver1_doc)
+      .Attr("K", "original input feature", AttributeProto::INT)
+      .Attr("N", "original output feature", AttributeProto::INT)
+      .Attr("bits", "number of bits used for weight quantization (default 4)", AttributeProto::INT)
+      .Attr("block_size", "number of groupsize used for weight quantization,(default 128). It needs to be a power of 2 and not smaller than 16.", AttributeProto::INT)
+      .Attr("packing", "decribe how the quantized weight is packed, [default,gptq,hqq]", AttributeProto::STRING, std::string("default"))
+      .Attr("accuracy_level",
+            "The minimum accuracy level of input A, can be: 0(unset), 1(fp32), 2(fp16), 3(bf16), or 4(int8) "
+            "(default unset). It is used to control how input A is quantized or downcast internally while "
+            "doing computation, for example: 0 means input A will not be quantized or downcast while doing "
+            "computation. 4 means input A can be quantized with the same block_size to int8 internally from "
+            "type T1.",
+            AttributeProto::INT, static_cast<int64_t>(0))
+      .Input(0, "A", "The input tensor, not quantized", "T2")
+      .Input(2, "scales", "quantization scale", "T1")
+      .Input(3, "zero_points", "quantization zero points", "T3", OpSchema::Optional)
+      .Input(4, "g_idx", "group_idx for gptq", "T2", OpSchema::Optional)
+      .Output(0, "Y", "tensor. The output tensor has the same rank as the input. ", "T1")
+      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float/half_float tensors.")
+      .TypeConstraint("T2", {"tensor(uint8)", "tensor(uint32)", "tensor(int32)"}, "Constrain quantized weight types to uint8/uint32/int32/float16.")
+      .TypeConstraint("T3", {"tensor(uint8)", "tensor(uint32)", "tensor(int32)", "tensor(float16)"}, "Constrain quantized zero point types to uint8/uint32/int32/float16.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        // Shape inference
+        int64_t in_features = getAttribute(ctx, "K", -1);
+        int64_t out_features = getAttribute(ctx, "N", -1);
+        ONNX_NAMESPACE::TensorShapeProto resultShape;
+
+        std::string packing = getAttribute(ctx, "packing", "default");
+        if (packing == "packing") {
+          resultShape.add_dim()->set_dim_value(out_features);
+          resultShape.add_dim()->set_dim_value(in_features);
+          *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() = resultShape;
+        } else {
+          resultShape.add_dim()->set_dim_value(in_features);
+          resultShape.add_dim()->set_dim_value(out_features);
+          *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() = resultShape;
+        }
+      });
+  static const char* MatMulNBits_ver1_doc = R"DOC(
+MatMulNBits is a MatMul with weight quantized with N bits(e.g., 2, 3, 4, 5, 6, 7).It does Matrix Multiplication like MatMul (https://github.com/onnx/onnx/blob/main/docs/Operators.md#matmul) with differences:
+  1. Input B is a 2D constant Matrix. Its input feature count and output feature count are specified by attribute 'K' and 'N'.
+  2. Input B is quantized with x bits which is specified by attribute 'bits'. It is quantized blockwisely along dimension 0 (e.g. column) with block size specified by attribute block_size.
+     And block_size is not an arbitrary number and must be a power of 2 and not smaller than 16, like 16, 32, 64, 128,..
+  3. Input B's scale and zero point are specified by input scales and zero_points.
+
+It support different packing style, ["default", "gptq", "hqq", "exl2", "awq"], Please note that "exl2", "awq" is not supported yet.
+with "default", we have
+  Input is stored as uint8_t with shape: [N][n_blocks_per_col][blob_size] in which:
+  - n_blocks_per_col = (K + block_size - 1) / block_size
+  - blob_size = block_size / 8 * bits
+
+    For a block blob. It is stored in format:
+    struct Blob {
+      uint8 one_bits[(bits & 0x1) * 1 * block_size / 8];  // highest 1 bit for 3, 5, 7 bits quantization
+      uint8 two_bits[(bits & 0x2) * 2 * block_size / 8];  // high 2 bits for 2, 6, 7 bits quantization
+      uint8 four_bits[(bits & 0x4) * 4 * block_size / 8]; // low 4 bits for 4, 5, 6 bits quantization
+    }
+
+  Input scales is stored in same type as original type of B(float32, float16) with shape like: [N * n_blocks_per_col]
+  Input zero_points is stored as uint8_t. If bits <= 4, two zero points are stored as one unit8_t. If bits > 4, one zero point is stored with one unit8_t. Thus, its shape is:
+    - [(N * n_blocks_per_col + 1) / 2] if bits <=4
+    - [N * n_blocks_per_col] if bits > 4
+
+with "gptq", we have:
+  32 = bits_of(int32)
+  Input B is stored as uint32_t with shape: [ceil(K*bits, 32), N]:
+  zero_points has shape uint32_t [K//block_size, ceil(N*bits, 32)]
+  scale has shape float16[K//block_size, N]
+with "hqq", we have:
+  Input B is stored as uint32_t with shape: [ceil(K*bits, 32), N]:
+  zero_points has shape float16 [K//block_size, N]
+  scale has shape [K//block_size, N]
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBits)
