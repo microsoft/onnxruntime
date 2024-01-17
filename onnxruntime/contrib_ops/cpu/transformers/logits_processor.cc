@@ -184,8 +184,6 @@ TemperatureLogitsProcessor<T>::TemperatureLogitsProcessor(float temperature) : t
 template <typename T>
 void TemperatureLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
                                             NextTokenScores<T>& next_token_scores) {
-
-  std::cout << "Applying Temperature!" << std::endl;
   if (temperature_ == 1.0f) {
     return;
   }
@@ -195,7 +193,7 @@ void TemperatureLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
     *p /= temperature_;
     ++p;
   }
-std::cout << "Applied temperature!" << std::endl;
+
 #ifdef DEBUG_GENERATION
   DumpScores("TemperatureLogitsProcessor", next_token_scores);
 #endif
