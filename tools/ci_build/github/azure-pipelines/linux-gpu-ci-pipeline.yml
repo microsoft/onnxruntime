@@ -55,6 +55,12 @@ variables:
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
       value: 8.6.1.6-1.cuda12.0
 
+  - name: Repository
+    ${{ if eq(parameters.CudaVersion, '11.8') }}:
+      value: 'onnxruntimecuda11build'
+    ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      value: 'onnxruntimecuda12build'
+
 jobs:
 - job: Linux_Build
   timeoutInMinutes: 120
@@ -64,6 +70,7 @@ jobs:
   workspace:
     clean: all
   pool: onnxruntime-Ubuntu2204-AMD-CPU
+
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
@@ -72,6 +79,7 @@ jobs:
   - checkout: self
     clean: true
     submodules: none
+
   - template: templates/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
@@ -82,10 +90,7 @@ jobs:
       --build-arg TRT_VERSION=$(linux_trt_version)
       --build-arg BUILD_UID=$( id -u )
       "
-      ${{ if eq(parameters.CudaVersion, '11.8') }}:
-        Repository: onnxruntimecuda11build
-      ${{ if eq(parameters.CudaVersion, '12.2') }}:
-        Repository: onnxruntimecuda12build
+      Repository: $(Repository)
 
   - task: Cache@2
     inputs:
@@ -102,46 +107,41 @@ jobs:
     condition: ne(variables.CACHE_RESTORED, 'true')
     displayName: Create Cache Dir
 
-  - task: CmdLine@2
-    inputs:
-      script: |
-        mkdir -p $HOME/.onnx
-        docker run -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
-          --volume /data/onnx:/data/onnx:ro \
-          --volume $(Build.SourcesDirectory):/onnxruntime_src \
-          --volume $(Build.BinariesDirectory):/build \
-          --volume /data/models:/build/models:ro \
-          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-          --volume $(Pipeline.Workspace)/ccache:/cache \
-          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
-          -e NIGHTLY_BUILD \
-          -e BUILD_BUILDNUMBER \
-          -e CCACHE_DIR=/cache \
-          $Repository \
-          /bin/bash -c "
-            set -ex; \
-            env; \
-            ccache -s; \
-            /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-              --build_dir /build --cmake_generator Ninja \
-              --config Release --update --build \
-              --skip_submodule_sync \
-              --build_shared_lib \
-              --parallel \
-              --build_wheel \
-              --enable_onnx_tests --use_cuda --cuda_version=${{parameters.CudaVersion}} --cuda_home=/usr/local/cuda-${{parameters.CudaVersion}} --cudnn_home=/usr/local/cuda-${{parameters.CudaVersion}} \
-              --enable_cuda_profiling --enable_cuda_nhwc_ops \
-              --enable_pybind --build_java \
-              --use_cache \
-              --cmake_extra_defines  CMAKE_CUDA_ARCHITECTURES=86; \
-                ccache -sv; \
-                ccache -z"
-      workingDirectory: $(Build.SourcesDirectory)
-      env:
-      ${{ if eq(parameters.CudaVersion, '11.8') }}:
-        Repository: 'onnxruntimecuda11build'
-      ${{ if eq(parameters.CudaVersion, '12.2') }}:
-        Repository: 'onnxruntimecuda12build'
+  - script: |
+      set -e -x
+      mkdir -p $HOME/.onnx
+      docker run -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
+        --volume /data/onnx:/data/onnx:ro \
+        --volume $(Build.SourcesDirectory):/onnxruntime_src \
+        --volume $(Build.BinariesDirectory):/build \
+        --volume /data/models:/build/models:ro \
+        --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+        --volume $(Pipeline.Workspace)/ccache:/cache \
+        -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+        -e NIGHTLY_BUILD \
+        -e BUILD_BUILDNUMBER \
+        -e CCACHE_DIR=/cache \
+        $(Repository) \
+        /bin/bash -c "
+          set -ex; \
+          env; \
+          ccache -s; \
+          /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+            --build_dir /build --cmake_generator Ninja \
+            --config Release --update --build \
+            --skip_submodule_sync \
+            --build_shared_lib \
+            --parallel \
+            --build_wheel \
+            --enable_onnx_tests --use_cuda --cuda_version=${{parameters.CudaVersion}} --cuda_home=/usr/local/cuda-${{parameters.CudaVersion}} --cudnn_home=/usr/local/cuda-${{parameters.CudaVersion}} \
+            --enable_cuda_profiling --enable_cuda_nhwc_ops \
+            --enable_pybind --build_java \
+            --use_cache \
+            --cmake_extra_defines  CMAKE_CUDA_ARCHITECTURES=86; \
+              ccache -sv; \
+              ccache -z"
+    workingDirectory: $(Build.SourcesDirectory)
+    displayName: Build Onnxruntime
 
   - task: CmdLine@2
     inputs:
