@@ -113,27 +113,10 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   global_context_->onnx_opset_version =
       graph_viewer.DomainToVersionMap().at(kOnnxDomain);
 
-#if defined(OPENVINO_2023_0)
   openvino_ep::GetCapability obj(graph_viewer,
                                  global_context_->device_type,
-                                 global_context_->precision_str, "V_2023_0");
+                                 global_context_->precision_str);
   result = obj.Execute();
-#elif defined(OPENVINO_2023_1)
-  openvino_ep::GetCapability obj(graph_viewer,
-                                 global_context_->device_type,
-                                 global_context_->precision_str, "V_2023_1");
-  result = obj.Execute();
-#elif defined(OPENVINO_2023_2)
-  openvino_ep::GetCapability obj(graph_viewer,
-                                 global_context_->device_type,
-                                 global_context_->precision_str, "V_2023_2");
-  result = obj.Execute();
-#elif defined(OPENVINO_2023_3)
-  openvino_ep::GetCapability obj(graph_viewer,
-                                 global_context_->device_type,
-                                 global_context_->precision_str, "V_2023_3");
-  result = obj.Execute();
-#endif
 
   global_context_->is_wholly_supported_graph = obj.IsWhollySupportedGraph();
 
