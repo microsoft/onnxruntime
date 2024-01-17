@@ -13,6 +13,8 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
 #include "contrib_ops/cpu/transformers/beam_search_scorer.h"
+#include <stdio.h>
+#include <iostream>
 
 namespace onnxruntime {
 namespace contrib {
@@ -189,6 +191,7 @@ void OutputSequenceScores(BeamSearchScorer* scorer,
                           Tensor* output_sequences,
                           Tensor* output_sequence_scores) {
   // Finalize all open beam hypotheses and add to generated hypotheses.
+  std::cout << "here2" << std::endl;
   for (size_t batch_index = 0; batch_index < scorer->batch_size_; batch_index++) {
     BeamHypotheses& beam_hyp = scorer->beam_hyps_[batch_index];
     if (beam_hyp.done_) {
@@ -209,12 +212,14 @@ void OutputSequenceScores(BeamSearchScorer* scorer,
   // Fill output sequences with pad token ID so that we do not need append it later.
   std::fill_n(output.data(), output.size(), scorer->pad_token_id_);
 
+  std::cout << "here3" << std::endl;
   // Score of each sequence, with shape (batch_size * num_return_sequences).
   gsl::span<T> sequence_scores;
   if (output_sequence_scores) {
     sequence_scores = output_sequence_scores->MutableDataAsSpan<T>();
   }
 
+  std::cout << "here4" << std::endl;
   // Select the best hypotheses according to number of sequences to return.
   for (size_t batch_index = 0; batch_index < scorer->batch_size_; batch_index++) {
     BeamHypotheses& beam_hyp = scorer->beam_hyps_[batch_index];

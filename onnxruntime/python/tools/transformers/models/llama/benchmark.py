@@ -374,7 +374,7 @@ def measure_fn(args, fn, inputs):
     # Measure memory usage
     gc.collect()
     torch.cuda.empty_cache()
-    measure_memory(is_gpu=(args.device != "cpu"), func=lambda: fn(inputs))
+    #measure_memory(is_gpu=(args.device != "cpu"), func=lambda: fn(inputs))
 
     # Flush output so memory usage is printed
     sys.stdout.flush()
@@ -581,12 +581,12 @@ def get_args(rank=0):
     parser.add_argument(
         "-b",
         "--batch-sizes",
-        default="1 2",
+        default="16",
     )
     parser.add_argument(
         "-s",
         "--sequence-lengths",
-        default="32 64 128 256 512",
+        default="32 256 1024",
     )
     parser.add_argument(
         "-d",

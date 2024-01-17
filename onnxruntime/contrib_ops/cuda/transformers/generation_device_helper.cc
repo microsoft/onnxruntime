@@ -430,7 +430,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   // NOTE: currently we treat extra decoding ids are same
   int extra_decoding_len = static_cast<int>(parameters->extra_decoding_ids.size() / parameters->batch_size);
   const bool need_handle_extra_decoding_ids = is_whisper_model && (!parameters->extra_decoding_ids.empty()) && (extra_decoding_len >= step);
-
+  std::cout << "Here1" << std::endl;
   cuda::LaunchLogitsProcessKernel<float>(
       next_token_scores.data(),
       parameters->vocab_mask.data(),
@@ -450,38 +450,51 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       parameters->no_repeat_ngram_size,
       cuda_stream);
 
+  std::cout << "Here2" << std::endl;
+  std::cout << "Here2.5" << std::endl;
   // Whisper time stamp generation.
   // TODO: implement it on GPU
   bool gen_timestamp = is_whisper_model &&
                        (parameters->logits_processor == onnxruntime::contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper);
   if (gen_timestamp) {
+    std::cout << "Here2?" << std::endl;
     // Copy next token scores to cpu memory, copy Sequences to cpu
     std::vector<float> cpu_next_token_scores(next_token_scores.size());
     gsl::span<float> cpu_next_token_scores_span(cpu_next_token_scores.data(), cpu_next_token_scores.size());
+    std::cout << "Here1?" << std::endl;
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_next_token_scores.data(),
                                          next_token_scores.data(),
                                          next_token_scores.size_bytes(),
                                          cudaMemcpyDeviceToHost,
                                          cuda_stream));
+    std::cout << "Here3?" << std::endl;
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(const_cast<int32_t*>(sequences->GetSequence(0).data()),
                                          sequences->GetCurrentDeviceSequences().data(),
                                          sequences->GetSequence(0).size_bytes() * batch_beam_size,
                                          cudaMemcpyDeviceToHost,
                                          cuda_stream));
+    std::cout << "Here4?" << std::endl;
     constexpr int max_initial_timestamp_index = 50;
     onnxruntime::contrib::transformers::TimestampLogitsProcessor<float> time_logit_processor(parameters->eos_token_id, max_initial_timestamp_index);
     onnxruntime::contrib::transformers::NextTokenScores<float> next_token_scores_timestamp({cpu_next_token_scores_span, batch_beam_size, vocab_size});
-
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+    std::cout << "Here5?" << std::endl;
+    //CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream)); // cudaDeviceSynchronize
+    CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize()); // cudaDeviceSynchronize
+    std::cout << "Here6?" << std::endl;
     time_logit_processor.Process(sequences, next_token_scores_timestamp);
+    std::cout << "Here7?" << std::endl;
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(next_token_scores.data(),
                                          cpu_next_token_scores.data(),
                                          next_token_scores.size_bytes(),
                                          cudaMemcpyHostToDevice,
                                          cuda_stream));
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+    std::cout << "Here8?" << std::endl;
+    //CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
+    std::cout << "Here9?" << std::endl;
   }
 
+  std::cout << "Here3" << std::endl;
   if (need_handle_extra_decoding_ids && !parameters->extra_decoding_ids.empty()) {
     cuda::LaunchForceDecodingIds(
         next_token_scores.data(),
@@ -497,6 +510,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after logits process", next_token_scores.data(), batch_size, num_beams, vocab_size);
 #endif
+std::cout << "Here4" << std::endl;
   // Add beam score to next token scores. Corresponding python code is like:
   //    next_token_scores = next_token_scores + beam_scores[:, None].expand_as(next_token_scores)
   cuda::LaunchAddProbsKernel(next_token_scores.data(), beam_state->beam_scores.data(),
@@ -516,6 +530,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     beam_state->remaining_scores = beam_state->remaining_scores.subspan(next_token_scores.size());
   }
 
+  std::cout << "Here5" << std::endl;
   if (num_beams <= 32) {
     constexpr size_t max_parts_of_vocab = 128;
     size_t candidate_count = SafeInt<size_t>(batch_beam_size) * 2 * num_beams;
@@ -576,6 +591,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     // Convert indices in range [0, num_beams * vocab_size) to token ID of range [0, vocab_size) like the following:
     //   next_indices = (next_tokens / vocab_size).long()
     //   next_tokens = next_tokens % vocab_size
+    std::cout << "Here6" << std::endl;
     const int64_t* next_token_indices = topk_indices->Data<int64_t>();
     cuda::LaunchNextTokenKernel(next_token_indices, beam_state->next_indices.data(), beam_state->next_tokens.data(),
                                 batch_size, top_k, vocab_size, cuda_stream);
@@ -587,6 +603,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 #endif
   }
 
+  std::cout << "Here7" << std::endl;
   // gsl::span doesn't convert from non const to const, so all we're doing here is making each const.
   gsl::span<const float> next_scores(beam_state->next_scores.data(), beam_state->next_scores.size());
   gsl::span<const int32_t> next_tokens(beam_state->next_tokens.data(), beam_state->next_tokens.size());
@@ -597,7 +614,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       next_scores,
       next_tokens,
       next_indices);
-
+std::cout << "Here8" << std::endl;
 #ifdef ENABLE_NVTX_PROFILE
   processLogitsRange.End();
 #endif

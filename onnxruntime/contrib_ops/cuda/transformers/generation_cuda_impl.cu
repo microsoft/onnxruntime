@@ -8,6 +8,7 @@
 #include <cub/device/device_segmented_radix_sort.cuh>
 #include "contrib_ops/cuda/bert/utils.cuh"
 #include "contrib_ops/cuda/transformers/generation_cuda_impl.h"
+#include <stdio.h>
 
 namespace onnxruntime {
 namespace contrib {
@@ -202,6 +203,7 @@ void LaunchLogitsProcessKernel(
       current_sequence_length,
       repetition_penalty,
       no_repeat_ngram_size);
+  printf("Done with logits process kernel!");
 }
 
 // Instantiation
