@@ -15,7 +15,7 @@ namespace rocm {
 template <typename T>
 Status LaunchGroupNormKernel(
     RocmTuningContext* tuning_ctx,
-    Stream* stream,
+    Stream* ort_stream,
     T* output,
     T* add_out,
     const T* input,
@@ -33,7 +33,7 @@ Status LaunchGroupNormKernel(
     bool use_silu,
     bool broadcast_skip,
     int channels_per_block) {
-  GroupNormNHWCTunableParams<T> params(tuning_ctx, stream, output, add_out, input, skip, bias, gamma, beta,
+  GroupNormNHWCTunableParams<T> params(tuning_ctx, ort_stream, output, add_out, input, skip, bias, gamma, beta,
                                        reinterpret_cast<float*>(workspace), epsilon, batch_size, num_channels, height, width,
                                        num_groups, use_silu, broadcast_skip, channels_per_block);
 

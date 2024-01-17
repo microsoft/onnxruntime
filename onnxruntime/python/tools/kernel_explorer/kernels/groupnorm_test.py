@@ -114,7 +114,6 @@ def run_group_norm(batch_size: int, height: int, num_channels: int, num_groups: 
 
     for impl in my_op.ListOps():
         if not my_op.SelectOp(impl):
-            print(f"skip {impl}")
             continue
 
         my_op.Run()
@@ -137,9 +136,7 @@ dtypes = ["float32", "float16"]
 @pytest.mark.parametrize("has_skip", [True, False])
 def test_group_norm(sd_sizes, dtype, swish, has_skip):
     for func in dtype_to_funcs(dtype):
-        print(func)
-        if func != "GroupNormNHWCTunable_float":
-            run_group_norm(*sd_sizes, dtype, swish, has_skip, func)
+        run_group_norm(*sd_sizes, dtype, swish, has_skip, func)
 
 
 @pytest.mark.parametrize("sd_sizes", get_sd_sizes())
@@ -294,19 +291,14 @@ if __name__ == "__main__":
         profile()
     else:
         args = parser.parse_args()
-        # profile_with_args(
-        #     args.batch_size,
-        #     args.height,
-        #     args.width,
-        #     args.num_channels,
-        #     args.num_groups,
-        #     args.dtype,
-        #     args.swish,
-        #     args.has_skip,
-        #     args.sort,
-        # )
-        test_group_norm(
-            (args.batch_size, args.height, args.num_channels, args.num_groups),
+        profile_with_args(
+            args.batch_size,
+            args.height,
+            args.width,
+            args.num_channels,
+            args.num_groups,
             args.dtype,
             args.swish,
-            args.has_skip,)
+            args.has_skip,
+            args.sort,
+        )
