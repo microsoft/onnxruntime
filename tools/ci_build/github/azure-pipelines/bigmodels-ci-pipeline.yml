@@ -17,6 +17,14 @@ resources:
     name: pypa/manylinux
     ref: 5eda9aded5462201e6310105728d33016e637ea7
 
+resources:
+  repositories:
+  - repository: LLaMa2Onnx
+    type: Github
+    endpoint: Microsoft
+    name: Microsoft/Llama-2-Onnx
+    ref: main
+
 variables:
   - template: templates/common-variables.yml
   - name: docker_base_image
@@ -118,7 +126,7 @@ stages:
 
     - script: |
         set -ex; \
-        cp $(Build.BinariesDirectory)/Release/dist/*.whl $(Agent.TempDirectory)/
+        cp $(Build.BinariesDirectory)/Release/dist/*.whl $(Agent.TempDirectory)/ort
       displayName: 'Copy Wheels'
 
 
@@ -126,7 +134,7 @@ stages:
       displayName: 'Publish Pipeline Artifact'
       inputs:
         artifactName: 'drop-ort-linux-gpu'
-        targetPath: '$(Agent.TempDirectory)/'
+        targetPath: '$(Agent.TempDirectory)/ort'
 
     - template: templates/explicitly-defined-final-tasks.yml
 
@@ -155,12 +163,15 @@ stages:
         BuildId: ${{ parameters.BuildId }}
 
     - script: |
+        ls -l $(Build.BinariesDirectory)/ort-artifact
+
+    - script: |
         docker run --rm --gpus all -v $PWD:/workspace -v $(Build.BinariesDirectory)/ort-artifact:/Release nvcr.io/nvidia/pytorch:23.10-py3 \
           bash -c "
             set -ex; \
             python3 --version; \
             python3 -m pip install --upgrade pip; \
-            python3 -m pip install /Release/dist/*.whl; \
+            python3 -m pip install /Release/*.whl; \
             pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion; \
             python3 -m pip install -r requirements-cuda11.txt; \
             python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com; \
@@ -185,8 +196,30 @@ stages:
       skipComponentGovernanceDetection: true
     workspace:
       clean: all
-    pool: onnxruntime-Linux-GPU-A10-12G
+    pool: onnxruntime-Linux-GPU-T4
     steps:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
+
+    - template: templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Onnxruntime Artifact'
+        ArtifactName: 'drop-ort-linux-gpu'
+        TargetPath: '$(Build.BinariesDirectory)/ort-artifact/'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+
+    - checkout: LLaMa2Onnx
+      clean: true
+      submodules: none
+
+    - script: |
+        az artifacts universal download --organization https://dev.azure.com/onnxruntime --feed onnxruntime --name llama2_onnx_ft16 --version '*' --path $(Agent.TempDirectory)/llama2_onnx_ft16 --skip-download-errors
+      displayName: 'Download llama2 model'
+
+    - script: |
+        python MinimumExample/Example_ONNX_LlamaV2.py --onnx_file $(Agent.TempDirectory)/llama2_onnx_ft16/7B_FT_float16/ONNX/LlamaV2_7B_FT_float16.onnx
+          --embedding_file $(Agent.TempDirectory)/llama2_onnx_ft16/7B_FT_float16/embeddings.pth --tokenizer_path tokenizer.model --prompt "What is the lightest element?"
+      displayName: 'Run llama2 model'
+      workingDirectory: $(Build.SourcesDirectory)/LLaMa2Onnx
