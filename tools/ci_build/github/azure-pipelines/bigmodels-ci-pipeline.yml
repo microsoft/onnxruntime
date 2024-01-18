@@ -201,6 +201,11 @@ stages:
       displayName: 'Clean Agent Directories'
       condition: always()
 
+    - task: UsePythonVersion@0:
+        inputs:
+          VersionSpec: '3.10'
+      displayName: 'Use Python 3.10'
+
     - template: templates/flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Onnxruntime Artifact'
