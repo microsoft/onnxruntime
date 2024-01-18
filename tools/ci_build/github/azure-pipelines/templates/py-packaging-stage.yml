@@ -456,6 +456,6 @@ stages:
       - template: py-win-arm64-qnn.yml
         parameters:
           MACHINE_POOL: 'onnxruntime-qnn-windows-vs-2022-arm64'
-          QNN_SDK: 'qnn-v2.17.0.231124_win'
+          QNN_SDK: 'qnn-v2.18.0.240101_win'
           PYTHON_VERSION: '3.11'
           NUMPY_VERSION: '1.25.2'
