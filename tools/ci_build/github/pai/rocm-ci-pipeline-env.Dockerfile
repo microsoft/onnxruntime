@@ -90,6 +90,7 @@ RUN wget https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.b
     rm openmpi-4.1.5.tar.bz2
 
 # Install CuPy, No stable version is available
+RUN pip uninstall -y cython
 RUN git clone https://github.com/ROCmSoftwarePlatform/cupy && cd cupy && \
     git checkout 432a8683351d681e00903640489cb2f4055d2e09 && \
     export CUPY_INSTALL_USE_HIP=1 && \
