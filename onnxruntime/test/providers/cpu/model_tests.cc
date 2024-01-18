@@ -699,7 +699,7 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
           continue;
         }
         if (path.filename().extension().compare(ORT_TSTR(".onnx")) != 0) continue;
-        std::basic_string<PATH_CHAR_TYPE> test_case_name = path.parent_path().filename().string();
+        std::basic_string<PATH_CHAR_TYPE> test_case_name = path.parent_path().filename().native();
         if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0)
           test_case_name = test_case_name.substr(5);
         if (all_disabled_tests.find(test_case_name) != all_disabled_tests.end())
@@ -716,7 +716,7 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
         }
 #endif
         std::basic_ostringstream<PATH_CHAR_TYPE> oss;
-        oss << provider_name << ORT_TSTR("_") << path.string();
+        oss << provider_name << ORT_TSTR("_") << path.native();
         v.emplace_back(oss.str());
       }
     }
