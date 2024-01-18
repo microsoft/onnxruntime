@@ -665,7 +665,7 @@ struct ProviderHostImpl : ProviderHost {
     }
     ONNX_NAMESPACE::RegisterSchema(schema, ORT_API_VERSION);
   }
-  
+
   // ConfigOptions (wrapped)
   std::optional<std::string> ConfigOptions__GetConfigEntry(const ConfigOptions* p, const std::string& config_key) override {
     return p->GetConfigEntry(config_key);
