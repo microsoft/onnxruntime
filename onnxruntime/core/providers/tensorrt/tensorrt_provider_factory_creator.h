@@ -15,8 +15,6 @@ namespace onnxruntime {
 struct TensorrtProviderFactoryCreator {
   static std::shared_ptr<IExecutionProviderFactory> Create(int device_id);
   static std::shared_ptr<IExecutionProviderFactory> Create(const OrtTensorRTProviderOptions* provider_options);
-  static std::shared_ptr<IExecutionProviderFactory> Create(void* session_options, const OrtTensorRTProviderOptions* provider_options);
   static std::shared_ptr<IExecutionProviderFactory> Create(const OrtTensorRTProviderOptionsV2* provider_options);
-  static std::shared_ptr<IExecutionProviderFactory> Create(void* session_options, const OrtTensorRTProviderOptionsV2* provider_options);
 };
 }  // namespace onnxruntime
