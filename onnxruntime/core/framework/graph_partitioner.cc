@@ -675,6 +675,34 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
                            graph.DomainToVersionMap(), {}, logger);
     auto& ep_graph = ep_context_model.MainGraph();
     ep_graph.SetDescription(graph.Description());
+
+    // Set inputs outputs explicitly to make sure the order is same as the user model.
+    auto inputs = graph.GetInputs();
+    auto outputs = graph.GetOutputs();
+
+    int i = 0;
+    std::vector<const NodeArg*> ep_graph_inputs;
+    ep_graph_inputs.resize(inputs.size());
+    for (auto& input : inputs) {
+      auto input_arg = graph.GetNodeArg(input->Name());
+      auto& ep_graph_input_arg = ep_graph.GetOrCreateNodeArg(input_arg->Name(), input_arg->TypeAsProto());
+      ep_graph_inputs[i] = &ep_graph_input_arg;
+      ++i;
+    }
+
+    i = 0;
+    std::vector<const NodeArg*> ep_graph_outputs;
+    ep_graph_outputs.resize(outputs.size());
+    for (auto& output : outputs) {
+      auto output_arg = graph.GetNodeArg(output->Name());
+      auto& ep_graph_output_arg = ep_graph.GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
+      ep_graph_outputs[i] = &ep_graph_output_arg;
+      ++i;
+    }
+
+    ep_graph.SetInputs(ep_graph_inputs);
+    ep_graph.SetOutputs(ep_graph_outputs);
+
     for (const auto& node : graph.Nodes()) {
       // the fused node and EPContext node has same node name
       auto ep_context_node = get_ep_context_node(node.Name());
@@ -685,6 +713,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
         ep_graph.AddNode(node);
       }
     }
+    
     ORT_RETURN_IF_ERROR(Model::Save(ep_context_model, context_cache_path));
   }
 
