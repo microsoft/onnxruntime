@@ -91,7 +91,7 @@ stages:
               set -ex; \
               env; \
               ccache -s; \
-              /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              /opt/python/cp310-cp310/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                 --build_dir /build --cmake_generator Ninja \
                 --config Release --update --build \
                 --skip_submodule_sync \
@@ -102,7 +102,7 @@ stages:
                 --enable_cuda_profiling --enable_cuda_nhwc_ops \
                 --enable_pybind --build_java \
                 --use_cache \
-                --cmake_extra_defines  CMAKE_CUDA_ARCHITECTURES=75; \
+                --cmake_extra_defines  CMAKE_CUDA_ARCHITECTURES=86; \
                   ccache -sv; \
                   ccache -z"
         workingDirectory: $(Build.SourcesDirectory)
