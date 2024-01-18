@@ -112,14 +112,14 @@ fn main(@builtin(local_invocation_id) localId : vec3<u32>,
   ${batchDims ? `let batchIndices = ${batchDims.offsetToIndices('u32(batch)')};` : ''}
   let globalRowStart = i32(workgroupId.y) * ${tileAOuter};
 
-  let numTiles = ${splitK ? `${Math.ceil(splitedDimInner / tileInner)}` : '(uniforms.dim_inner - 1) / tileInner + 1'};
+  let num_tiles = ${splitK ? `${Math.ceil(splitedDimInner / tileInner)}` : '(uniforms.dim_inner - 1) / tileInner + 1'};
   var kStart = ${splitK ? `i32(globalId.z) * ${splitedDimInner}` : '0'};
 
   var acc: array<vec4<${type}>, rowPerThread>;
 
   // Loop over shared dimension.
   let tileRowB = localRow * ${rowPerThreadB};
-  for (var t = 0; t < numTiles; t = t + 1) {
+  for (var t = 0; t < num_tiles; t = t + 1) {
       // Load one tile of A into local memory.
       for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {
           let inputRow = tileRow + innerRow;
@@ -204,7 +204,7 @@ export const makeMatMulPackedSource =
     let globalColStart = i32(workgroupId.x) * ${tileBOuter};
 
     // Loop over shared dimension.
-    for (var t = 0; t < numTiles; t = t + 1) {
+    for (var t = 0; t < num_tiles; t = t + 1) {
       // Load one tile of A into local memory.
       for (var inputRow = localRow; inputRow < ${tileAHight}; inputRow = inputRow + ${workgroupSize[1]}) {
         for (var inputCol = localCol; inputCol < ${tileAWidth}; inputCol = inputCol + ${workgroupSize[0]}) {
@@ -260,7 +260,7 @@ let tileRowA = i32(localId.y) * ${rowPerThreadA};
 let tileColA = i32(localId.x) * ${colPerThreadA};
 let tileRowB = i32(localId.y) * ${rowPerThreadB};
 // Loop over shared dimension.
-for (var t = 0; t < numTiles; t = t + 1) {
+for (var t = 0; t < num_tiles; t = t + 1) {
   // Load one tile of A into local memory.
   for (var innerRow = 0; innerRow < ${rowPerThreadA}; innerRow = innerRow + 1) {
     for (var innerCol = 0; innerCol < ${colPerThreadA}; innerCol = innerCol + 1) {
@@ -322,7 +322,7 @@ fn main(@builtin(local_invocation_id) localId : vec3<u32>,
         @builtin(workgroup_id) workgroupId : vec3<u32>) {
     let batch = ${splitK ? '0' : 'i32(globalId.z)'};
     ${batchDims ? `let batchIndices = ${batchDims.offsetToIndices('u32(batch)')};` : ''}
-    let numTiles = ${
+    let num_tiles = ${
           splitK ? `${Math.ceil(splitedDimInner / tileInner)}` : '(uniforms.dim_inner - 1) / tileInner + 1'};
     var kStart = ${splitK ? `i32(globalId.z) * ${splitedDimInner}` : '0'};
 
