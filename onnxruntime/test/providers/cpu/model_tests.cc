@@ -48,7 +48,6 @@
 #include "test/compare_ortvalue.h"
 #include "test/onnx/heap_buffer.h"
 #include "test/onnx/onnx_model_info.h"
-#include "test/onnx/callback.h"
 #include "test/onnx/testcase_request.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;

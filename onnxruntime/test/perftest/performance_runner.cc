@@ -10,7 +10,6 @@
 #include <iostream>
 
 #include "TestCase.h"
-#include "TFModelInfo.h"
 #include "utils.h"
 #include "ort_test_session.h"
 #ifdef HAVE_TENSORFLOW
@@ -268,10 +267,6 @@ static std::unique_ptr<TestModelInfo> CreateModelInfo(const PerformanceTestConfi
     }
 
     ORT_NOT_IMPLEMENTED(ToUTF8String(file_path), " is not supported");
-  }
-
-  if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {
-    return TFModelInfo::Create(performance_test_config_.model_info.model_file_path.c_str());
   }
 
   ORT_NOT_IMPLEMENTED(ToUTF8String(performance_test_config_.backend), " is not supported");
