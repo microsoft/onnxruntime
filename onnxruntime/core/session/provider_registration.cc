@@ -153,7 +153,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #if !defined(ORT_MINIMAL_BUILD)
     options->provider_factories.push_back(VitisAIProviderFactoryCreator::Create(provider_options));
 #else
-    status = CreateNotEnabledStatus("VitisAI");
+    status = create_not_supported_status();
 #endif
   } else {
     ORT_UNUSED_PARAMETER(options);

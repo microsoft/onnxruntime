@@ -556,8 +556,8 @@ struct ProviderHostImpl : ProviderHost {
   void TensorShapeProto_Dimension__set_dim_value(ONNX_NAMESPACE::TensorShapeProto_Dimension* p, int64_t value) override { return p->set_dim_value(value); }
   bool TensorShapeProto_Dimension__has_dim_value(const ONNX_NAMESPACE::TensorShapeProto_Dimension* p) override { return p->has_dim_value(); }
   bool TensorShapeProto_Dimension__has_dim_param(const ONNX_NAMESPACE::TensorShapeProto_Dimension* p) override { return p->has_dim_param(); }
-  const std::string& TensorShapeProto_Dimension__denotation(const ONNX_NAMESPACE::TensorShapeProto_Dimension* p) const { return p->denotation(); }
-  void TensorShapeProto_Dimension__set_denotation(ONNX_NAMESPACE::TensorShapeProto_Dimension* p, const std::string& value) { return p->set_denotation(value); }
+  const std::string& TensorShapeProto_Dimension__denotation(const ONNX_NAMESPACE::TensorShapeProto_Dimension* p) const override { return p->denotation(); }
+  void TensorShapeProto_Dimension__set_denotation(ONNX_NAMESPACE::TensorShapeProto_Dimension* p, const std::string& value) override { return p->set_denotation(value); }
 
   // TensorShapeProto_Dimensions (wrapped)
   std::unique_ptr<TensorShapeProto_Dimension_Iterator> TensorShapeProto_Dimensions__begin(const ONNX_NAMESPACE::TensorShapeProto_Dimensions* p) override {
@@ -920,7 +920,7 @@ struct ProviderHostImpl : ProviderHost {
   void Node__ForEachDef(const Node* p, std::function<void(const NodeArg&, bool is_input)> func, bool include_missing_optional_defs) override { p->ForEachDef(func, std::move(include_missing_optional_defs)); }
   const std::unordered_map<std::string, gsl::not_null<Graph*>>& Node__GetAttributeNameToMutableSubgraphMap(Node* p) noexcept override { return p->GetAttributeNameToMutableSubgraphMap(); }
   std::unordered_map<std::string, gsl::not_null<const Graph*>> Node__GetAttributeNameToSubgraphMap(const Node* p) const override { return p->GetAttributeNameToSubgraphMap(); }
-  int Node__NodeType(const Node* p) const noexcept { return int(p->NodeType()); }
+  int Node__NodeType(const Node* p) const noexcept override { return int(p->NodeType()); }
 
   // NodeArg (wrapped)
   const std::string& NodeArg__Name(const NodeArg* p) noexcept override { return p->Name(); }
@@ -1000,8 +1000,8 @@ struct ProviderHostImpl : ProviderHost {
   const Path& Graph__ModelPath(const Graph* p) const override { return p->ModelPath(); }
   const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept override { return p->GetInputsIncludingInitializers(); }
   bool Graph__IsSubgraph(const Graph* p) override { return p->IsSubgraph(); }
-  const Node* Graph__GetProducerNode(const Graph* p, const std::string& node_arg_name) const { return p->GetProducerNode(node_arg_name); }
-  const Model& Graph__GetModel(const Graph* p) { return p->GetModel(); }
+  const Node* Graph__GetProducerNode(const Graph* p, const std::string& node_arg_name) const override { return p->GetProducerNode(node_arg_name); }
+  const Model& Graph__GetModel(const Graph* p) override { return p->GetModel(); }
   void Graph__ReverseDFSFrom(const Graph* p, gsl::span<const Node* const> from,
                              const std::function<void(const Node*)>& enter,
                              const std::function<void(const Node*)>& leave,
@@ -1078,7 +1078,7 @@ struct ProviderHostImpl : ProviderHost {
   void GraphViewer__ToProto(const GraphViewer* p, ONNX_NAMESPACE::GraphProto& graph_proto, bool include_initializers, bool include_outer_scope_args) noexcept override {
     GraphViewerToProto(*p, graph_proto, include_initializers, include_outer_scope_args);
   }
-  const Node* GraphViewer__GetProducerNode(const GraphViewer* p, const std::string& node_arg_name) const { return p->GetProducerNode(node_arg_name); }
+  const Node* GraphViewer__GetProducerNode(const GraphViewer* p, const std::string& node_arg_name) const override { return p->GetProducerNode(node_arg_name); }
 
   // Path (wrapped)
   PathString Path__ToPathString(const Path* p) noexcept override { return p->ToPathString(); }
