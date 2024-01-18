@@ -613,8 +613,8 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     ORT_RETURN_IF(fused_nodes_and_graphs.size() != 1, "Only support single partition for context cache feature.");
     uint64_t buffer_size(0);
     auto context_buffer = qnn_backend_manager_->GetContextBinaryBuffer(buffer_size);
-    ORT_RETURN_IF_ERROR(qnn::GenerateCtxCacheOnnxModel(model_name,
-                                                       model_description,
+    qnn_ep_context_model_ = std::make_unique<Model>("qnn_ep_context_model", false, logger);
+    ORT_RETURN_IF_ERROR(qnn::GenerateCtxCacheOnnxModel(qnn_ep_context_model_.get(),
                                                        context_buffer.get(),
                                                        buffer_size,
                                                        qnn_backend_manager_->GetSdkVersion(),
@@ -625,5 +625,17 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                        logger));
   }
   return Status::OK();
+}
+
+const std::vector<const Node*> QNNExecutionProvider::GetEpContextNodes() const {
+  std::vector<const Node*> ep_context_nodes;
+  if (qnn_ep_context_model_) {
+    const auto& graph = qnn_ep_context_model_->MainGraph();
+    for (const auto& node : graph.Nodes()) {
+      ep_context_nodes.push_back(graph.GetNode(node.Index()));
+    }
+  }
+
+  return ep_context_nodes;
 }
 }  // namespace onnxruntime
