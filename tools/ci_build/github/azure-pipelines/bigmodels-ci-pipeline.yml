@@ -203,7 +203,7 @@ stages:
 
     - task: UsePythonVersion@0:
       inputs:
-        VersionSpec: '3.10'
+        versionSpec: '3.10'
       displayName: 'Use Python 3.10'
 
     - template: templates/flex-downloadPipelineArtifact.yml
