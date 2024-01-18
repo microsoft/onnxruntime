@@ -120,9 +120,53 @@ double CastToFloat64(MLOperatorTensorDataType tensorDataType, const void* p);
 void ReadScalarTensorData(const MLOperatorTensor& tensor, /*out*/ void* data, size_t dataByteSize);
 int64_t ReadScalarTensorCastToInt64(const MLOperatorTensor& tensor);
 double ReadScalarTensorCastToFloat64(const MLOperatorTensor& tensor);
-
-void ReadCpuLocalTensorIntoInt32(const MLOperatorTensor& tensor, std::vector<int32_t>& result);
 void ReadCpuLocalTensorIntoFloat32(const MLOperatorTensor& tensor, std::vector<float>& result);
+
+template<typename T = int32_t>
+void ReadCpuLocalTensorIntoInt32(
+    const MLOperatorTensor& tensor,
+    std::vector<T>& result
+    )
+{
+    result.clear();
+    ML_CHECK_VALID_ARGUMENT(tensor.IsCpuData(), "Tensor must be CPU Tensor.");
+
+    const std::vector<uint32_t>& tensorDimensions = tensor.GetShape();
+    const uint32_t elementCount = ComputeElementCountFromDimensions(tensorDimensions);
+
+    switch (tensor.GetTensorDataType())
+    {
+    case MLOperatorTensorDataType::Int32:
+        {
+            const int32_t* data = tensor.GetData<int32_t>();
+            std::transform(data, data + elementCount, result.begin(), [](auto v) {return static_cast<T>(v); });
+        }
+        break;
+
+    case MLOperatorTensorDataType::Int64:
+        {
+            const int64_t* data = tensor.GetData<int64_t>();
+            result.reserve(elementCount);
+
+            // Use clamped cast rather than static_cast/narrow_cast,
+            // because it's not uncommon for a model to specify a
+            // 64-bit INTMAX constant as a sentinel value to mean
+            // the largest possible value (even though the actual
+            // dimension values come nowhere close to that, far
+            // less than 32-bit INTMAX).
+            for (auto d : gsl::make_span(data, data + elementCount))
+            {
+                result.push_back(clamp_cast<T>(d));
+            }
+        }
+        break;
+
+    default:
+        ML_INVALID_ARGUMENT("Expecting CPU local tensor of type int32 or int64.");
+        break;
+    }
+}
+
 
 class EdgeShapes
 {

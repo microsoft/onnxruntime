@@ -155,121 +155,6 @@ namespace OperatorHelper
     }
     #pragma warning(pop)
 
-    void ReadCpuLocalTensorIntoInt32(
-        const MLOperatorTensor& tensor,
-        std::vector<int32_t>& result
-        )
-    {
-        result.clear();
-        ML_CHECK_VALID_ARGUMENT(tensor.IsCpuData(), "Tensor must be CPU Tensor.");
-
-        const std::vector<uint32_t>& tensorDimensions = tensor.GetShape();
-        const uint32_t elementCount = ComputeElementCountFromDimensions(tensorDimensions);
-
-        switch (tensor.GetTensorDataType())
-        {
-        case MLOperatorTensorDataType::Int32:
-            {
-                const int32_t* data = tensor.GetData<int32_t>();
-                result.assign(data, data + elementCount);
-            }
-            break;
-
-        case MLOperatorTensorDataType::Int64:
-            {
-                const int64_t* data = tensor.GetData<int64_t>();
-                result.reserve(elementCount);
-
-                // Use clamped cast rather than static_cast/narrow_cast,
-                // because it's not uncommon for a model to specify a
-                // 64-bit INTMAX constant as a sentinel value to mean
-                // the largest possible value (even though the actual
-                // dimension values come nowhere close to that, far
-                // less than 32-bit INTMAX).
-                for (auto d : gsl::make_span(data, data + elementCount))
-                {
-                    result.push_back(clamp_cast<int32_t>(d));
-                }
-            }
-            break;
-
-        default:
-            ML_INVALID_ARGUMENT("Expecting CPU local tensor of type int32 or int64.");
-            break;
-        }
-    }
-
-    void ReadCpuLocalTensorIntoUInt32(
-        const MLOperatorTensor& tensor,
-        std::vector<uint32_t>& result
-        )
-    {
-        result.clear();
-        ML_CHECK_VALID_ARGUMENT(tensor.IsCpuData(), "Tensor must be CPU Tensor.");
-
-        const std::vector<uint32_t>& tensorDimensions = tensor.GetShape();
-        const uint32_t elementCount = ComputeElementCountFromDimensions(tensorDimensions);
-
-        switch (tensor.GetTensorDataType())
-        {
-        case MLOperatorTensorDataType::UInt32:
-            {
-                const uint32_t* data = tensor.GetData<uint32_t>();
-                result.assign(data, data + elementCount);
-            }
-            break;
-
-        case MLOperatorTensorDataType::UInt64:
-            {
-                const uint64_t* data = tensor.GetData<uint64_t>();
-                result.reserve(elementCount);
-
-                // Use clamped cast rather than static_cast/narrow_cast,
-                // because it's not uncommon for a model to specify a
-                // 64-bit INTMAX constant as a sentinel value to mean
-                // the largest possible value (even though the actual
-                // dimension values come nowhere close to that, far
-                // less than 32-bit INTMAX).
-                for (auto d : gsl::make_span(data, data + elementCount))
-                {
-                    result.push_back(clamp_cast<uint32_t>(d));
-                }
-            }
-            break;
-        case MLOperatorTensorDataType::Int32:
-            {
-                const int32_t* data = tensor.GetData<int32_t>();
-                result.reserve(elementCount);
-                for (auto d : gsl::make_span(data, data + elementCount))
-                {
-                    result.push_back(clamp_cast<uint32_t>(d));
-                }
-            }
-            break;
-        case MLOperatorTensorDataType::Int64:
-            {
-                const int64_t* data = tensor.GetData<int64_t>();
-                result.reserve(elementCount);
-
-                // Use clamped cast rather than static_cast/narrow_cast,
-                // because it's not uncommon for a model to specify a
-                // 64-bit INTMAX constant as a sentinel value to mean
-                // the largest possible value (even though the actual
-                // dimension values come nowhere close to that, far
-                // less than 32-bit INTMAX).
-                for (auto d : gsl::make_span(data, data + elementCount))
-                {
-                    result.push_back(clamp_cast<uint32_t>(d));
-                }
-            }
-            break;
-
-        default:
-            ML_INVALID_ARGUMENT("Expecting CPU local tensor of type uint32 or uint64.");
-            break;
-        }
-    }
-
     void ReadCpuLocalTensorIntoFloat32(
         const MLOperatorTensor& tensor,
         std::vector<float>& result
@@ -2561,7 +2446,7 @@ namespace OperatorHelper
             if (kernelInformation.IsInputValid(3))
             {
                 MLOperatorTensor outputSizesTensor = kernelInformation.GetConstantInputTensor(3);
-                ReadCpuLocalTensorIntoUInt32(outputSizesTensor, /*out*/ outputSizes);
+                ReadCpuLocalTensorIntoInt32<uint32_t>(outputSizesTensor, /*out*/ outputSizes);
             }
 
             axes = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::Axes);
