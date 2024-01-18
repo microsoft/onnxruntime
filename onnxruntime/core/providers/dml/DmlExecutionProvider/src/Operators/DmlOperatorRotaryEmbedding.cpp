@@ -84,16 +84,24 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         const MLOperatorTensorDataType dataType = kernelInfo.GetInputEdgeDescription(inputDataIndex).tensorDataType;
 
-        // We can collapse this size into a 1D tensor since it's only used as the input/output of elementwise operations
-        const std::array<uint32_t, 1> inputOutputShape = {batchSize * sequenceLength * numHeads * headSize};
+        const std::array<uint32_t, 4> inputOutputShape = {batchSize, sequenceLength, numHeads, headSize};
         TensorDesc inputOutputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, inputOutputShape);
+        TensorDesc stridedInputOutputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, inputOutputShape);
+
+        if (inputIs4D)
+        {
+            const std::array<uint32_t, 4> inputOutputStrides = {headSize * numHeads * sequenceLength, headSize, sequenceLength * headSize, 1};
+            stridedInputOutputTensorDesc.SetStrides(inputOutputStrides);
+        }
+
         const DML_TENSOR_DESC inputOutputDmlTensorDesc = inputOutputTensorDesc.GetDmlDesc();
+        const DML_TENSOR_DESC stridedInputOutputDmlTensorDesc = stridedInputOutputTensorDesc.GetDmlDesc();
 
         // Copy the input to preserve its real input shape in the graph without reshaping it. This will disappear during DML's graph compilation phase.
         DML_SCALE_BIAS scaleBias = {1.0f, 0.0f};
 
         DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC copyInputDesc{};
-        copyInputDesc.InputTensor = &inputOutputDmlTensorDesc;
+        copyInputDesc.InputTensor = &stridedInputOutputDmlTensorDesc;
         copyInputDesc.OutputTensor = &inputOutputDmlTensorDesc;
         copyInputDesc.ScaleBias = &scaleBias;
         const DML_OPERATOR_DESC copyInputDmlDesc = {DML_OPERATOR_ELEMENT_WISE_IDENTITY, &copyInputDesc};
@@ -108,14 +116,6 @@ public:
             : std::vector<uint32_t>({batchSize, sequenceLength, numHeads, 1, headSize / 2});
 
         TensorDesc inputDataTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, inputDataTensorShape);
-
-        // We need to stride it if the input was 4D
-        if (inputIs4D)
-        {
-            const std::vector<uint32_t> inputDataStrides = interleaved
-                ? std::vector<uint32_t>({sequenceLength * numHeads * headSize, headSize, sequenceLength * headSize, 2, 1})
-                : std::vector<uint32_t>({sequenceLength * numHeads * headSize, headSize, sequenceLength * headSize, headSize / 2, 1});
-        }
 
         const DML_TENSOR_DESC inputDataDmlTensorDesc = inputDataTensorDesc.GetDmlDesc();
 
@@ -244,7 +244,7 @@ public:
         DML_ELEMENT_WISE_ADD_OPERATOR_DESC addDesc{};
         addDesc.ATensor = &inputOutputDmlTensorDesc;
         addDesc.BTensor = &inputOutputDmlTensorDesc;
-        addDesc.OutputTensor = &inputOutputDmlTensorDesc;
+        addDesc.OutputTensor = &stridedInputOutputDmlTensorDesc;
         const DML_OPERATOR_DESC addDmlDesc = {DML_OPERATOR_ELEMENT_WISE_ADD, &addDesc};
 
         // Construct the graph
