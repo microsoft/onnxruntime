@@ -94,7 +94,7 @@ const createLayerNormProgramInfo =
     }
     let mean = ${sumVector('meanVector', components)} / uniforms.norm_size;
     let invStdDev =
-      inverseSqrt(${sumVector('meanSquareVector', components)} / uniforms.norm_size - mean * mean + uniforms.epsilon);
+        inverseSqrt(${sumVector('meanSquareVector', components)} / uniforms.norm_size - mean * mean + uniforms.epsilon);
 
     for (var j: u32 = 0; j < uniforms.norm_size_vectorized; j++) {
       let f32input = ${castToF32(dataType, components, 'x[j + offset]')};
