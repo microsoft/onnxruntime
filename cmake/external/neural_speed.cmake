@@ -7,8 +7,8 @@ endif()
 if(USE_NEURAL_SPEED)
   FetchContent_Declare(
       neural_speed
-      URL ${DEP_URL_neural_speed}
-      URL_HASH SHA1=${DEP_SHA1_neural_speed}
+      URL https://github.com/intel/neural-speed/archive/refs/tags/bestlav0.1.1.zip
+      URL_HASH SHA1=65b0f7a0d04f72f0d5a8d48af70f0366f2ab3939
   )
   set(BTLA_USE_OPENMP OFF)
   FetchContent_MakeAvailable(neural_speed)
