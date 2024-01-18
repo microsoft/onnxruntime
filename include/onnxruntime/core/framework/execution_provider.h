@@ -328,6 +328,7 @@ class IExecutionProvider {
 
   /**
    * Get the array of pointers for EPContext nodes
+   * EP needs to implement this if has the requirement to generate the context cache model. Otherwise leave it.
    * Default return an empty vector if not provided by the Execution Provider
    */
   virtual const std::vector<const Node*> GetEpContextNodes() const {

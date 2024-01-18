@@ -635,41 +635,6 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
   return Status::OK();
 }
 
-static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, GraphPartitioner::Mode mode,
-                                       const ExecutionProviders& execution_providers,
-                                       KernelRegistryManager& kernel_registry_manager) {
-  bool modified_graph = false;
-
-  auto& graph = partition_params.graph.get();
-  auto& func_mgr = partition_params.func_mgr.get();
-  auto& fused_kernel_registry = partition_params.fused_kernel_registry.get();
-  auto& fused_node_unique_id = partition_params.fused_node_unique_id.get();
-  const auto& transform_layout_function = partition_params.transform_layout_function;
-
-  do {
-    // process full graph with each EP
-    for (const auto& ep : execution_providers) {
-      ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(graph, func_mgr, kernel_registry_manager,
-                                                       fused_kernel_registry, *ep, mode, fused_node_unique_id,
-                                                       transform_layout_function,
-                                                       partition_params.debug_graph_fn));
-    }
-
-    // expand any nodes that have an ONNX function definition but no matching ORT kernel.
-    modified_graph = false;
-    ORT_RETURN_IF_ERROR(InlineNodes(graph, modified_graph));
-
-    // Resolve and rerun graph partitioning and inlining if there was a change
-    if (modified_graph) {
-      ORT_RETURN_IF_ERROR(graph.Resolve());
-    }
-  } while (modified_graph);
-
-  return Status::OK();
-}
-
-#endif  // !defined(ORT_MINIMAL_BUILD)
-
 static Status CreateEpContextModel(const ExecutionProviders& execution_providers,
                                    const Graph& graph,
                                    const std::string& ep_context_path,
@@ -766,6 +731,41 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
 
   return Status::OK();
 }
+
+static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, GraphPartitioner::Mode mode,
+                                       const ExecutionProviders& execution_providers,
+                                       KernelRegistryManager& kernel_registry_manager) {
+  bool modified_graph = false;
+
+  auto& graph = partition_params.graph.get();
+  auto& func_mgr = partition_params.func_mgr.get();
+  auto& fused_kernel_registry = partition_params.fused_kernel_registry.get();
+  auto& fused_node_unique_id = partition_params.fused_node_unique_id.get();
+  const auto& transform_layout_function = partition_params.transform_layout_function;
+
+  do {
+    // process full graph with each EP
+    for (const auto& ep : execution_providers) {
+      ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(graph, func_mgr, kernel_registry_manager,
+                                                       fused_kernel_registry, *ep, mode, fused_node_unique_id,
+                                                       transform_layout_function,
+                                                       partition_params.debug_graph_fn));
+    }
+
+    // expand any nodes that have an ONNX function definition but no matching ORT kernel.
+    modified_graph = false;
+    ORT_RETURN_IF_ERROR(InlineNodes(graph, modified_graph));
+
+    // Resolve and rerun graph partitioning and inlining if there was a change
+    if (modified_graph) {
+      ORT_RETURN_IF_ERROR(graph.Resolve());
+    }
+  } while (modified_graph);
+
+  return Status::OK();
+}
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_params,
                                           KernelRegistryManager& kernel_registry_mgr,
@@ -986,18 +986,20 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
 #if !defined(ORT_MINIMAL_BUILD)
     ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode,
                                                  providers_, kernel_registry_mgr_));
+
+    bool ep_context_enabled = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
+    std::string ep_context_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+    if (ep_context_enabled) {
+      ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_path, logger));
+    }
 #else
+    ORT_UNUSED_PARAMETER(config_options);
+    ORT_UNUSED_PARAMETER(logger);
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ONNX models are not supported in this build.");
 #endif  //! defined(ORT_MINIMAL_BUILD)
   } else {
     ORT_RETURN_IF_ERROR(PartitionOrtFormatModel(partition_params,
                                                 providers_, kernel_registry_mgr_));
-  }
-
-  bool ep_context_enabled = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
-  std::string ep_context_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
-  if (ep_context_enabled) {
-    ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_path, logger));
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
