@@ -166,7 +166,7 @@ jobs:
     skipComponentGovernanceDetection: true
   workspace:
     clean: all
-  pool: Onnxruntime-Linux-GPU-A10
+  pool: onnxruntime-Linux-GPU-A10-12G
   dependsOn:
   - Linux_Build
   steps:
