@@ -57,11 +57,12 @@ auto const placeholder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInf
 
 int TEST_MAIN(int argc, char** argv) {
   int status = 0;
-
+  std::cout<<"Init Google Test"<<std::endl;
   ORT_TRY {
     ::testing::InitGoogleTest(&argc, argv);
+	std::cout<<"Init Ort ENV"<<std::endl;
     ortenv_setup();
-
+    std::cout<<"Update Ort ENV"<<std::endl;
     // allow verbose logging to be enabled by setting this environment variable to a numeric log level
     constexpr auto kLogLevelEnvironmentVariableName = "ORT_UNIT_TEST_MAIN_LOG_LEVEL";
     if (auto log_level = onnxruntime::ParseEnvironmentVariable<int>(kLogLevelEnvironmentVariableName);
@@ -72,7 +73,7 @@ int TEST_MAIN(int argc, char** argv) {
       std::cout << "Setting log level to " << *log_level << "\n";
       ort_env->UpdateEnvWithCustomLogLevel(static_cast<OrtLoggingLevel>(*log_level));
     }
-
+    std::cout<<"Start running tests"<<std::endl;
     status = RUN_ALL_TESTS();
   }
   ORT_CATCH(const std::exception& ex) {
