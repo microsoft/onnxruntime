@@ -116,11 +116,17 @@ stages:
           cd $(Build.BinariesDirectory)/Release
           find -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
 
+    - script: |
+        set -ex; \
+        cp $(Build.BinariesDirectory)/Release/dist/*.whl $(Agent.TempDirectory)/
+      displayName: 'Copy Wheels'
+
+
     - task: PublishPipelineArtifact@0
       displayName: 'Publish Pipeline Artifact'
       inputs:
         artifactName: 'drop-ort-linux-gpu'
-        targetPath: '$(Build.BinariesDirectory)/Release'
+        targetPath: '$(Agent.TempDirectory)/'
 
     - template: templates/explicitly-defined-final-tasks.yml
 
@@ -144,7 +150,7 @@ stages:
       parameters:
         StepName: 'Download Onnxruntime Artifact'
         ArtifactName: 'drop-ort-linux-gpu'
-        TargetPath: '$(Build.BinariesDirectory)\ort-artifact\'
+        TargetPath: '$(Build.BinariesDirectory)/ort-artifact/'
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
@@ -152,6 +158,7 @@ stages:
         docker run --rm --gpus all -v $PWD:/workspace -v $(Build.BinariesDirectory)/ort-artifact:/Release nvcr.io/nvidia/pytorch:23.10-py3 \
           bash -c "
             set -ex; \
+            python3 --version; \
             python3 -m pip install --upgrade pip; \
             python3 -m pip install /Release/dist/*.whl; \
             pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion; \
