@@ -516,14 +516,6 @@ public:
 template <typename TOperatorDesc>
 class DmlOperatorElementwiseQLinear : public DmlOperator
 {
-    enum OnnxInputIndex : uint32_t
-    {
-        inputIndex,
-        scaleIndex,
-        zeroPointIndex,
-        inputCount
-    };
-
 public:
     DmlOperatorElementwiseQLinear(const MLOperatorKernelCreationContext& kernelInfo) : DmlOperator(kernelInfo)
     {
