@@ -17,8 +17,6 @@ resources:
     name: pypa/manylinux
     ref: 5eda9aded5462201e6310105728d33016e637ea7
 
-resources:
-  repositories:
   - repository: LLaMa2Onnx
     type: Github
     endpoint: Microsoft
