@@ -39,9 +39,11 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::string operand_type;
   switch (to_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
       operand_type = "uint8";
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+      operand_type = "int8";
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
       operand_type = "float16";

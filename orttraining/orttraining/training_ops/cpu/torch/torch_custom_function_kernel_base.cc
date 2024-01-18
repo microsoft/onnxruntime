@@ -385,7 +385,10 @@ void PythonOpGradBase::RunBackward(OpKernelContext* context,
 
 void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) const {
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
-  ORT_ENFORCE(output_convention_.size() == returned_ortvalues.size(), "backward output count mismatch.");
+  ORT_ENFORCE(output_convention_.size() == returned_ortvalues.size(), "backward output count mismatch. Expected ",
+              output_convention_.size(), ", but got ", returned_ortvalues.size(),
+              ". Please check the backward function return same number of outputs as forward function's input for ",
+              name_, ".");
   int tensor_output_index = 0;
   for (size_t i = 0; i < returned_ortvalues.size(); ++i) {
     if (output_convention_[i] == 'd') {

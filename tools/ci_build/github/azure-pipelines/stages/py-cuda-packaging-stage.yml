@@ -105,7 +105,7 @@ stages:
       - template: ../templates/py-linux-gpu.yml
         parameters:
           arch: 'x86_64'
-          machine_pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
+          machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           docker_base_image: ${{ variables.docker_base_image }}
