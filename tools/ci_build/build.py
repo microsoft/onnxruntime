@@ -13,7 +13,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from ..python.util.android import android
+from ..python.util import android as android
 
 # The Following utility packages are from onnxruntime/tools/python/util
 from ..python.util import (
