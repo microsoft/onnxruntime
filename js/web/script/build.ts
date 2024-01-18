@@ -397,7 +397,7 @@ async function main() {
     // ort.webgpu[.min].js
     await addAllWebBuildTasks({
       outputBundleName: 'ort.webgpu',
-      define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true', 'BUILD_DEFS.DISABLE_WEBNN': 'false'},
+      define: {...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true'},
     });
     // ort.wasm[.min].js
     await addAllWebBuildTasks({
