@@ -511,8 +511,8 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
 
   std::vector<PATH_STRING_TYPE> test_data_pb_files;
 
-  const PATH_STRING_TYPE& dir_path = test_data_dirs_[id];
-  std::filesystem::path dir_fs_path(dir_path);
+  
+  std::filesystem::path dir_fs_path = test_data_dirs_[id];
   if (!std::filesystem::exists(dir_fs_path)) return;
 
   for (auto const& dir_entry : std::filesystem::directory_iterator(dir_fs_path)) {
@@ -524,10 +524,9 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
     if (path.filename().extension().compare(ORT_TSTR(".pb")) != 0) continue;
     const std::basic_string<PATH_CHAR_TYPE> file_prefix =
         is_input ? ORT_TSTR("input_") : ORT_TSTR("output_");
-    auto filename_str = path.filename().string();
+    auto filename_str = path.filename().native();
     if (filename_str.compare(0, file_prefix.length(), file_prefix) == 0) {
-      std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent(dir_path, filename_str);
-      test_data_pb_files.push_back(p);
+      test_data_pb_files.push_back(path.native());
     }
   }
 
