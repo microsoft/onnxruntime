@@ -167,7 +167,6 @@ void ReadCpuLocalTensorIntoInt32(
     }
 }
 
-
 class EdgeShapes
 {
 public:
