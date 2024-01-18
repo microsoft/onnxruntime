@@ -6,6 +6,12 @@ parameters:
   type: string
 - name: linux_trt_version
   type: string
+- name: buildJava
+  type: boolean
+  default: false
+- name: buildNodejs
+  type: boolean
+  default: false
 
 stages:
   # Linux CUDA without TensorRT Packaging
@@ -66,9 +72,9 @@ stages:
   parameters:
     artifactName: 'onnxruntime-linux-x64-tensorrt-$(OnnxRuntimeVersion)'
     artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt'
-    buildJava: false
+    buildJava: ${{ parameters.buildJava }}
     buildJavaOption: '--build_java'
-    buildNodejs: false
+    buildNodejs: ${{ parameters.buildNodejs }}
     buildNodejsOption: '--build_nodejs'
     CudaVersion: ${{ parameters.CudaVersion }}
 # Linux CUDA Combined Testing and Publishing
