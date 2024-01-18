@@ -50,10 +50,24 @@ parameters:
 
 stages:
 
+- template: win-ci.yml
+  parameters:
+    DoCompliance: ${{ parameters.DoCompliance }}
+    DoEsrp: ${{ parameters.DoEsrp }}
+    stage_name_suffix: CPU_x64_${{ parameters.BuildVariant }}
+    buildArch: x64
+    msbuildPlatform: x64
+    packageName: x64
+    buildparameter: --build_java --build_nodejs ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
+    runTests: ${{ parameters.RunOnnxRuntimeTests }}
+    buildJava: true
+    buildNodejs: true
+
 - stage: Nodejs_Packaging_CPU
   dependsOn:
   - Linux_C_API_Packaging_GPU_TensorRT_x64
   - Windows_CI_GPU_DML_Dev
+  - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
 #  - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
   condition: succeeded()
   jobs:
@@ -117,6 +131,12 @@ stages:
 #        artifactName: 'drop-onnxruntime-nodejs-linux-aarch64'
 #        targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/linux/arm64/'
 
+
+    - task: DownloadPipelineArtifact@0
+      displayName: 'Download Pipeline Artifact - NuGet'
+      inputs:
+        artifactName: 'drop-extra'
+        targetPath: '$(Build.BinariesDirectory)/extra-artifact'
 
     - task: PowerShell@2
       displayName: 'PowerShell Script'
