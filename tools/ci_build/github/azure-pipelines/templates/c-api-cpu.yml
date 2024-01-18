@@ -165,7 +165,7 @@ stages:
     - task: CopyFiles@2
       displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64\'
       inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-win-x64-dml\lib'
+        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-win-x64-dml'
         Contents: '*.dll'
         TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
     - task: CopyFiles@2
@@ -190,6 +190,7 @@ stages:
 #        TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\arm64'
 
     # Node.js binding linux/x64
+
     - task: CopyFiles@2
       displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\linux\x64\'
       inputs:
