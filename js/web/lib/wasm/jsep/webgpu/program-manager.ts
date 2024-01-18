@@ -3,8 +3,9 @@
 
 import {TRACE_FUNC_BEGIN, TRACE_FUNC_END} from 'onnxruntime-common';
 
-import {WebGpuBackend} from '../backend-webgpu';
+import {PendingKernelInfo, WebGpuBackend} from '../backend-webgpu';
 import {LOG_DEBUG} from '../log';
+import {TensorView} from '../tensor-view';
 
 import {createShaderHelper} from './ops/common';
 import {Artifact, GpuData, ProgramInfo, StatusType} from './types';
@@ -32,7 +33,8 @@ export class ProgramManager {
   setArtifact(key: unknown, artifact: Artifact): void {
     this.repo.set(key, artifact);
   }
-  run(buildArtifact: Artifact, inputs: GpuData[], outputs: GpuData[], dispatchGroup: [number, number, number],
+  run(buildArtifact: Artifact, inputs: GpuData[], outputs: GpuData[], inputTensorViews: readonly TensorView[],
+      outputTensorViews: readonly TensorView[], dispatchGroup: [number, number, number],
       uniformBufferBinding: GPUBindingResource|undefined): void {
     TRACE_FUNC_BEGIN(buildArtifact.programInfo.name);
     const device = this.backend.device;
@@ -67,6 +69,19 @@ export class ProgramManager {
     computePassEncoder.dispatchWorkgroups(...dispatchGroup);
     this.backend.writeTimestamp(this.backend.pendingDispatchNumber * 2 + 1);
     this.backend.pendingDispatchNumber++;
+
+    if (this.backend.queryType !== 'none' || this.backend.status === StatusType.capture) {
+      const pendingKernelInfo: PendingKernelInfo = {
+        kernelId: this.backend.currentKernelId!,
+        programName: buildArtifact.programInfo.name,
+        inputTensorViews,
+        outputTensorViews,
+      };
+      this.backend.pendingKernels.push(pendingKernelInfo);
+
+      const sessionPendingKernels = this.backend.capturedPendingKernels.get(this.backend.currentSessionId!);
+      sessionPendingKernels!.push(pendingKernelInfo);
+    }
 
     if (this.backend.pendingDispatchNumber >= this.backend.maxDispatchNumber ||
         this.backend.queryType === 'at-passes') {

@@ -26,7 +26,7 @@ interface KernelInfo {
   readonly attributes: [((attribute: unknown) => unknown)|undefined, unknown];
 }
 
-interface PendingKernelInfo {
+export interface PendingKernelInfo {
   readonly kernelId: number;
   readonly programName: string;
   readonly inputTensorViews: readonly TensorView[];
@@ -160,7 +160,7 @@ export class WebGpuBackend {
   pendingDispatchNumber = 0;
 
   // info of kernels pending submission for a single batch
-  private pendingKernels: PendingKernelInfo[] = [];
+  pendingKernels: PendingKernelInfo[] = [];
   // queryReadBuffer -> pendingKernels mapping for all the batches
   private pendingQueries: Map<GPUBuffer, PendingKernelInfo[]> = new Map();
   private queryResolveBuffer?: GPUBuffer;
@@ -174,6 +174,11 @@ export class WebGpuBackend {
    * a SessionID -> CommandInfo[] mapping.
    */
   capturedCommandList: Map<number, CommandInfo[]> = new Map();
+
+  /**
+   * a SessionID -> PendingKernelInfo[] mapping for profiling.
+   */
+  capturedPendingKernels: Map<number, PendingKernelInfo[]> = new Map();
 
   /**
    * a SessionID -> a Map of (InputOutputIndex -> [ID, GPUBuffer]) mapping.
@@ -259,6 +264,8 @@ export class WebGpuBackend {
 
   getComputePassEncoder(): GPUComputePassEncoder {
     if (!this.computePassEncoder) {
+      // getCommandEncoder must be put before checking this.queryType since this.queryType is updated there.
+      const commandEncoder = this.getCommandEncoder();
       const computePassDescriptor: GPUComputePassDescriptor = {};
 
       if (this.queryType === 'at-passes') {
@@ -269,7 +276,7 @@ export class WebGpuBackend {
         };
       }
 
-      this.computePassEncoder = this.getCommandEncoder().beginComputePass(computePassDescriptor);
+      this.computePassEncoder = commandEncoder.beginComputePass(computePassDescriptor);
     }
     return this.computePassEncoder;
   }
@@ -509,17 +516,9 @@ export class WebGpuBackend {
         () => `[ProgramManager] run "${program.name}" (key=${key}) with ${normalizedDispatchGroup[0]}x${
             normalizedDispatchGroup[1]}x${normalizedDispatchGroup[2]}`);
 
-    if (this.queryType !== 'none') {
-      const pendingKernelInfo: PendingKernelInfo = {
-        kernelId: this.currentKernelId!,
-        programName: artifact.programInfo.name,
-        inputTensorViews,
-        outputTensorViews,
-      };
-      this.pendingKernels.push(pendingKernelInfo);
-    }
-
-    this.programManager.run(artifact, inputDatas, outputDatas, normalizedDispatchGroup, uniformBufferBinding);
+    this.programManager.run(
+        artifact, inputDatas, outputDatas, inputTensorViews, outputTensorViews, normalizedDispatchGroup,
+        uniformBufferBinding);
 
     TRACE_FUNC_END(program.name);
     return outputTensorViews;
@@ -682,9 +681,12 @@ export class WebGpuBackend {
     LOG_DEBUG('info', () => `captureBegin ${sessionHandle}`);
     this.currentSessionId = sessionHandle;
     let sessionCommandList = this.capturedCommandList.get(sessionHandle);
+    let sessionPendingKernels = this.capturedPendingKernels.get(sessionHandle);
     if (!sessionCommandList) {
       sessionCommandList = [];
       this.capturedCommandList.set(sessionHandle, sessionCommandList);
+      sessionPendingKernels = [];
+      this.capturedPendingKernels.set(sessionHandle, sessionPendingKernels);
     }
     this.status = StatusType.capture;
   }
@@ -694,28 +696,44 @@ export class WebGpuBackend {
     this.status = StatusType.default;
   }
   replay(sessionHandle: number): void {
+    // make sure previous commands are all submitted.
+    this.flush();
     LOG_DEBUG('info', () => `replay ${sessionHandle}`);
     this.currentSessionId = sessionHandle;
     this.status = StatusType.replay;
     const sessionCommandList = this.capturedCommandList.get(sessionHandle);
+    const sessionPendingKernels = this.capturedPendingKernels.get(sessionHandle);
     const length = sessionCommandList!.length;
+    this.pendingKernels = [];
     for (let i = 0; i < length; i++) {
       const computePassEncoder = this.getComputePassEncoder();
       const command = sessionCommandList![i];
+      this.writeTimestamp(this.pendingDispatchNumber * 2);
       computePassEncoder.setPipeline(command.computePipeline);
       computePassEncoder.setBindGroup(0, command.bindGroup);
       computePassEncoder.dispatchWorkgroups(...command.dispatchGroup);
+      this.writeTimestamp(this.pendingDispatchNumber * 2 + 1);
       this.pendingDispatchNumber++;
-      if (this.pendingDispatchNumber >= 16) {
+      if (this.queryType !== 'none') {
+        this.pendingKernels.push(sessionPendingKernels![i]);
+      }
+      if (this.pendingDispatchNumber >= this.maxDispatchNumber || this.queryType === 'at-passes') {
+        this.endComputePass();
+      }
+      if (this.pendingDispatchNumber >= this.maxDispatchNumber) {
         this.flush();
       }
     }
+    this.flush();
     this.status = StatusType.default;
   }
 
   releaseSession(sessionId: number): void {
     if (this.capturedCommandList.has(sessionId)) {
       this.capturedCommandList.delete(sessionId);
+    }
+    if (this.capturedPendingKernels.has(sessionId)) {
+      this.capturedPendingKernels.delete(sessionId);
     }
     this.gpuDataManager.releaseSession(sessionId);
   }
