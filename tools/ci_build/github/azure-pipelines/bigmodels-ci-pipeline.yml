@@ -201,7 +201,7 @@ stages:
       displayName: 'Clean Agent Directories'
       condition: always()
 
-    - task: UsePythonVersion@0:
+    - task: UsePythonVersion@0
       inputs:
         versionSpec: '3.10'
       displayName: 'Use Python 3.10'
