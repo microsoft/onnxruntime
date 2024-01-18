@@ -122,13 +122,6 @@ stages:
           cd $(Build.BinariesDirectory)/Release
           find -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
 
-    - script: |
-        set -ex; \
-        mkdir -p $(Agent.TempDirectory)/ort
-        cp $(Build.BinariesDirectory)/Release/dist/*.whl $(Agent.TempDirectory)/ort
-      displayName: 'Copy Wheels'
-
-
     - task: PublishPipelineArtifact@0
       displayName: 'Publish Pipeline Artifact'
       inputs:
@@ -160,9 +153,6 @@ stages:
         TargetPath: '$(Build.BinariesDirectory)/Release'
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
-
-    - script: |
-        ls -l $(Build.BinariesDirectory)/ort-artifact
 
     - script: |
         docker run --rm --gpus all -v $PWD:/workspace -v $(Build.BinariesDirectory)/Release:/Release nvcr.io/nvidia/pytorch:23.10-py3 \
