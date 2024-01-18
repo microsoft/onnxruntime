@@ -124,6 +124,7 @@ stages:
 
     - script: |
         set -ex; \
+        mkdir -p $(Agent.TempDirectory)/ort
         cp $(Build.BinariesDirectory)/Release/dist/*.whl $(Agent.TempDirectory)/ort
       displayName: 'Copy Wheels'
 
