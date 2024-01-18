@@ -191,7 +191,7 @@ jobs:
       --build-arg TRT_VERSION=$(linux_trt_version)
       --build-arg BUILD_UID=$( id -u )
       "
-      Repository: onnxruntimecuda11build
+      Repository: $(Repository)
 
   - task: CmdLine@2
     inputs:
@@ -204,7 +204,7 @@ jobs:
           --volume /data/models:/build/models:ro \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
           --volume /data/onnx:/data/onnx \
-          onnxruntimecuda11build \
+          $(Repository) \
           /bin/bash -c "
             set -ex; \
             cp /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt /tmp/requirements.txt; \
