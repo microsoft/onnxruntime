@@ -1746,10 +1746,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
   auto ep_context_cache_enabled_from_sess_options = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
-#else
-  auto ep_context_cache_enabled_from_sess_options = false;
-#endif
-
   // If EP context configs are provided in session options, we need to propagate them to provider options
   if (ep_context_cache_enabled_from_sess_options) {
     OrtTensorRTProviderOptionsV2 trt_options_converted = onnxruntime::OrtTensorRTProviderOptionsToOrtTensorRTProviderOptionsV2(tensorrt_options);
@@ -1759,6 +1755,11 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In
   } else {
     factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
   }
+#else
+  factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
+#endif
+
+
 
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_Tensorrt: Failed to load shared library");
@@ -1902,10 +1903,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
 #if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
   auto ep_context_cache_enabled_from_provider_options = tensorrt_options->trt_dump_ep_context_model != 0;
   auto ep_context_cache_enabled_from_sess_options = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
-#else
-  auto ep_context_cache_enabled_from_provider_options = false;
-  auto ep_context_cache_enabled_from_sess_options = false;
-#endif
 
   // If EP context configs are provided in session options, we need to propagate them to provider options. However,
   // if provider options already have the EP context configs provided, the configs in session options will be ignored
@@ -1921,6 +1918,9 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
   } else {
     factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
   }
+#else
+  factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
+#endif
 
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_TensorRT: Failed to load shared library");
