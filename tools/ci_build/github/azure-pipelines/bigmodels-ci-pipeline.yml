@@ -133,7 +133,7 @@ stages:
       displayName: 'Publish Pipeline Artifact'
       inputs:
         artifactName: 'drop-ort-linux-gpu'
-        targetPath: '$(Agent.TempDirectory)/ort'
+        targetPath: '$(Build.BinariesDirectory)/Release'
 
     - template: templates/explicitly-defined-final-tasks.yml
 
@@ -157,7 +157,7 @@ stages:
       parameters:
         StepName: 'Download Onnxruntime Artifact'
         ArtifactName: 'drop-ort-linux-gpu'
-        TargetPath: '$(Build.BinariesDirectory)/ort-artifact/'
+        TargetPath: '$(Build.BinariesDirectory)/Release'
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
@@ -165,12 +165,12 @@ stages:
         ls -l $(Build.BinariesDirectory)/ort-artifact
 
     - script: |
-        docker run --rm --gpus all -v $PWD:/workspace -v $(Build.BinariesDirectory)/ort-artifact:/Release nvcr.io/nvidia/pytorch:23.10-py3 \
+        docker run --rm --gpus all -v $PWD:/workspace -v $(Build.BinariesDirectory)/Release:/Release nvcr.io/nvidia/pytorch:23.10-py3 \
           bash -c "
             set -ex; \
             python3 --version; \
             python3 -m pip install --upgrade pip; \
-            python3 -m pip install /Release/*.whl; \
+            python3 -m pip install /Release/dist/*.whl; \
             pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion; \
             python3 -m pip install -r requirements-cuda11.txt; \
             python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com; \
@@ -219,7 +219,7 @@ stages:
       submodules: none
 
     - script: |
-        az artifacts universal download --organization https://dev.azure.com/onnxruntime --feed onnxruntime --name llama2_onnx_ft16 --version '*' --path $(Agent.TempDirectory)/llama2_onnx_ft16 --skip-download-errors
+        az artifacts universal download --organization https://dev.azure.com/onnxruntime --feed onnxruntime --name llama2_onnx_ft16 --version '*' --path $(Agent.TempDirectory)/llama2_onnx_ft16
       displayName: 'Download llama2 model'
 
     - script: |
