@@ -131,13 +131,13 @@ Note: unit tests will be skipped due to the incompatible CPU instruction set whe
 ### Architectures
 {: .no_toc }
 
-|           | x86_32       | x86_64       | ARM32v7      | ARM64        | PPC64LE |
-|-----------|:------------:|:------------:|:------------:|:------------:|:-------:|
-|Windows    | YES          | YES          |  YES         | YES          | NO      |
-|Linux      | YES          | YES          |  YES         | YES          | YES     |
-|macOS      | NO           | YES          |  NO          | NO           | NO      |
-|Android      | NO           | NO          |  YES          | YES           | NO      |
-|iOS      | NO           | NO          |  NO          | YES           | NO      |
+|           | x86_32       | x86_64       | ARM32v7      | ARM64        | PPC64LE | RISCV64 |
+|-----------|:------------:|:------------:|:------------:|:------------:|:-------:|:-------:|
+|Windows    | YES          | YES          |  YES         | YES          | NO      | NO      |
+|Linux      | YES          | YES          |  YES         | YES          | YES     | YES     |
+|macOS      | NO           | YES          |  NO          | NO           | NO      | NO      |
+|Android      | NO           | NO          |  YES          | YES           | NO      | NO      |
+|iOS      | NO           | NO          |  NO          | YES           | NO      | NO      |
 
 ### Build Environments(Host)
 {: .no_toc }
@@ -270,6 +270,46 @@ ORT_DEBUG_NODE_IO_DUMP_DATA_TO_FILES=1
 ```
 
 ---
+
+### RISC-V
+
+   Running on a platform like RISC-V involves cross-compiling from a host platform (e.g. Linux) to a target platform (a specific RISC-V CPU architecture and operating system). Follow the instructions below to build ONNX Runtime for RISC-V 64-bit.
+
+#### Cross compiling on Linux
+
+1. Download and install GNU RISC-V cross-compile toolchain and emulator.
+
+    If you are using Ubuntu, you can obtain a prebuilt RISC-V GNU toolchain by visiting https://github.com/riscv-collab/riscv-gnu-toolchain/releases. Look for the appropriate version, such as `riscv64-glibc-ubuntu-22.04-llvm-nightly-XXXX-nightly.tar.gz`. After downloading, extract the archive to your build machine and add the "bin" folder to your $PATH environment variable. The QEMU emulator is also located in the toolchain folder. Skip this step if you've followed these instructions.
+
+    For users with other Linux distributions, the option to compile GCC from its source code is available. It is recommended to choose the a compiler version that corresponds to your target operating system, and opting for the latest stable release is recommended.
+
+    When you get the compiler, run `riscv64-unknown-linux-gnu-gcc -v` This should produce an output like below:
+    ```bash
+       Using built-in specs.
+       COLLECT_GCC=/path/to/riscv64-unknown-linux-gnu-gcc
+       COLLECT_LTO_WRAPPER=/path/to/libexec/gcc/riscv64-unknown-linux-gnu/13.2.0/lto-wrapper
+       Target: riscv64-unknown-linux-gnu
+       Configured with: /path/to/riscv-gnu-toolchain/gcc/configure --target=riscv64-unknown-linux-gnu --prefix=/opt/riscv --with-sysroot=/opt/riscv/sysroot --with-pkgversion= --with-system-zlib --enable-shared --enable-tls --enable-languages=c,c++,fortran --disable-libmudflap --disable-libssp --disable-libquadmath --disable-libsanitizer --disable-nls --disable-bootstrap --src=.././gcc --disable-multilib --with-abi=lp64d --with-arch=rv64gc --with-tune=rocket --with-isa-spec=20191213 'CFLAGS_FOR_TARGET=-O2    -mcmodel=medlow' 'CXXFLAGS_FOR_TARGET=-O2    -mcmodel=medlow'
+       Thread model: posix
+       Supported LTO compression algorithms: zlib zstd
+       gcc version 13.2.0 ()
+    ```
+
+2. Configure the RISC-V 64-bit CMake toolchain file
+
+    The CMake toolchain file is located at `${ORT_ROOT}/cmake/riscv64.toolchain.cmake`. If there are alternative values for the variable that need to be configured, please include the corresponding settings in that file.
+
+3. Cross compiling on Linux
+
+    Execute `./build.sh` with the `--rv64` flag, specify the RISC-V toolchain root using `--riscv_toolchain_root`, and provide the QEMU path using `--riscv_qemu_path` as build options to initiate the build process. Make sure that all installed cross-compilers are accessible from the command prompt used for building by configuring the `PATH` environment variable.
+
+    (Optional) If you intend to utilize xnnpack as the execution provider, be sure to include the `--use_xnnpack` option in your build configuration.
+
+    Example build command:
+    ```bash
+    ./build.sh --parallel --config Debug --rv64 --riscv_toolchain_root=/path/to/toolchain/root --riscv_qemu_path=/path/to/qemu-riscv64 --skip_tests
+    ```
+
 
 ### ARM
 
