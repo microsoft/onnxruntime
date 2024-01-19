@@ -97,7 +97,7 @@ stages:
               set -ex; \
               env; \
               ccache -s; \
-              /opt/python/cp310-cp310/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                 --build_dir /build --cmake_generator Ninja \
                 --config Release --update --build \
                 --skip_submodule_sync \
@@ -155,7 +155,7 @@ stages:
         BuildId: ${{ parameters.BuildId }}
 
     - script: |
-        docker run --rm --gpus all -v $PWD:/workspace -v $(Build.BinariesDirectory)/Release:/Release nvcr.io/nvidia/pytorch:23.10-py3 \
+        docker run --rm --gpus all -v $PWD:/workspace -v $(Build.BinariesDirectory)/Release:/Release nvcr.io/nvidia/pytorch:22.11-py3 \
           bash -c "
             set -ex; \
             python3 --version; \
@@ -208,9 +208,13 @@ stages:
       clean: true
       submodules: none
 
-    - script: |
-        az artifacts universal download --organization https://dev.azure.com/onnxruntime --feed onnxruntime --name llama2_onnx_ft16 --version '*' --path $(Agent.TempDirectory)/llama2_onnx_ft16
-      displayName: 'Download llama2 model'
+    - task: DownloadPackage@1
+      displayName: 'Download ONNX Runtime Build Time Deps'
+      inputs:
+        packageType: upack
+        feed: '/4c7631f5-24c0-4307-8822-1aa8f180c325'
+        definition: 'fd9dd5ad-b73e-4678-890e-edcf680dbc1a'
+        downloadPath: $(Build.BinariesDirectory)/llama2_onnx_ft16
 
     - script: |
         python MinimumExample/Example_ONNX_LlamaV2.py --onnx_file $(Agent.TempDirectory)/llama2_onnx_ft16/7B_FT_float16/ONNX/LlamaV2_7B_FT_float16.onnx
