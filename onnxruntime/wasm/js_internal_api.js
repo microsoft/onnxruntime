@@ -3,7 +3,27 @@
 
 'use strict';
 
-// init JSEP
+/**
+ * Mount external data files of a model to the virtual file system (MEMFS).
+ *
+ * @param {string} externalDataFilesPath
+ * @param {Uint8Array} externalDataFilesData
+ */
+Module['mountExternalData'] = (externalDataFilePath, externalDataFileData) => {
+  const files = Module.MountedFiles || (Module.MountedFiles = new Map());
+    files.set(externalDataFilePath, externalDataFileData);
+};
+
+/**
+ * Unmount external data files of a model from the virtual file system (MEMFS).
+ */
+Module['unmountExternalData'] = () => {
+  delete Module.MountedFiles;
+};
+
+/**
+ * init JSEP
+ */
 Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, releaseKernel, runKernel) => {
   Module.jsepBackend = backend;
   Module.jsepAlloc = alloc;

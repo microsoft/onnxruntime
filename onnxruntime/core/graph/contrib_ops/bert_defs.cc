@@ -333,6 +333,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Whether to use rotary position embedding. Default value is 0.",
               AttributeProto::INT,
               OPTIONAL_VALUE)
+        .Attr("rotary_embedding_dim",
+              "Dimension of rotary embedding. Limited to 32, 64 or 128. Default value is head_size",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
         .Attr("mask_filter_value",
               "The value to be filled in the attention mask. Default value is -10000.0f",
               AttributeProto::FLOAT,
@@ -1055,7 +1059,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
                 "kv_sequence_length.",
                 "T")
-        .TypeConstraint("T", {"tensor(float16)"}, "Constrain input and output to float tensors.")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to int tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           GroupQueryAttentionTypeAndShapeInference(ctx, 3);
@@ -1281,7 +1285,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(3, "input_skip_bias_sum", "Sum of the input and skip inputs (and bias if it exists) with shape (batch_size, sequence_length, hidden_size).", "T", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
         .TypeConstraint("U", {"tensor(float)"}, "Constrain mean and inv_std_var to float tensors.")
-        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+        .TypeAndShapeInferenceFunction(SkipLayerNormalizationShapeInference));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
     SkipSimplifiedLayerNormalization, 1,
@@ -1330,7 +1334,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
         .TypeConstraint("U", {"tensor(float)"}, "Constrain mean and inv_std_var to float tensors.")
-        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+        .TypeAndShapeInferenceFunction(SkipLayerNormalizationShapeInference));
 
 constexpr const char* NGramRepeatBlock_ver1_doc = R"DOC(
 Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form a repeated n-gram if added to the back of the input_ids.

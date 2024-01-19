@@ -354,9 +354,6 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_optim_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/optim/*.py"
   )
-  file(GLOB onnxruntime_python_torchdynamo_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/training/torchdynamo/*.py"
-  )
   file(GLOB onnxruntime_python_ortmodule_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/*.py"
   )
@@ -746,7 +743,6 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/experimental
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/experimental/gradient_graph
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/optim
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/torchdynamo
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/experimental
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/experimental/json_config
@@ -777,9 +773,6 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_optim_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/optim/
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_torchdynamo_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/torchdynamo/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_ortmodule_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/
