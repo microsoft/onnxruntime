@@ -1185,6 +1185,15 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   Status InlineFunctionProto(const ONNX_NAMESPACE::FunctionProto& func_to_inline);
 
+  /**
+  Directly run the first pass through the graph which eliminates the
+  unused initializers and node args in itself and all subgraphs.
+
+  @param initializer_names_to_preserve
+  @returns Status indicating success or providing an error message.
+  */
+  Status InitialCleanAllUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
+
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
   be used as a GraphProto attribute in another Node.
   e.g. when creating a Graph instance that will be used as a subgraph in a control flow operator, it is necessary to
@@ -1551,7 +1560,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   Status ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initializer, bool is_external);
 
   // Clear all unused initializers and NodeArgs
-  void CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
+  void CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr, const bool first_invocation = false);
 
   std::vector<NodeArg*> CreateNodeArgs(const google::protobuf::RepeatedPtrField<std::string>& names,
                                        const ArgNameToTypeMap& name_to_type_map);

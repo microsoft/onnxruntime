@@ -41,7 +41,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     # Needs to update onnxruntime/test/xctest/xcgtest.mm
     set(GTEST_HAS_ABSL OFF CACHE BOOL "" FORCE)
   else()
-    set(GTEST_HAS_ABSL ON CACHE BOOL "" FORCE)
+	  set(GTEST_HAS_ABSL OFF CACHE BOOL "" FORCE)
   endif()
   # gtest and gmock
   FetchContent_Declare(
@@ -184,9 +184,9 @@ FetchContent_Declare(
 )
 
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
-#TODO: we'd better to turn the following option off. However, it will cause 
+#TODO: we'd better to turn the following option off. However, it will cause
 # ".\build.bat --config Debug --parallel --skip_submodule_sync --update" fail with an error message:
-# install(EXPORT "ONNXTargets" ...) includes target "onnx_proto" which requires target "libprotobuf-lite" that is 
+# install(EXPORT "ONNXTargets" ...) includes target "onnx_proto" which requires target "libprotobuf-lite" that is
 # not in any export set.
 #set(protobuf_INSTALL OFF CACHE BOOL "Install protobuf binaries and files" FORCE)
 set(protobuf_USE_EXTERNAL_GTEST ON CACHE BOOL "" FORCE)

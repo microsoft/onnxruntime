@@ -3511,7 +3511,7 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
   }
 }
 
-void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve) {
+void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve, const bool first_invocation) {
   // Node Args being used
   std::unordered_set<const NodeArg*> used_args;
   used_args.reserve(node_args_.size());
@@ -3565,10 +3565,15 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
     ORT_ENFORCE(initializer_node_arg != nullptr, "Cannot find NodeArgs for [", name, "]");
     if (used_args.find(initializer_node_arg) == used_args_end &&
         node_args_to_preserve.find(initializer_node_arg) == node_args_to_preserve.cend()) {
-      // on the first call to Graph::Resolve we are removing unnecessary initializers that should be removed
-      // from the model.
+      // on the first call from InitialCleanAllUnusedInitializersAndNodeArgs we are removing
+	  // unnecessary initializers that should be removed from the model.
       // on later calls we are removing initializers that optimizations have made redundant.
-      LOGS(logger_, INFO) << "Removing initializer '" << name << "'. It is no longer used by any node.";
+      if (first_invocation) {
+        LOGS(logger_, WARNING) << "Removing initializer '"
+                               << name << "'. It is not used by any node and should be removed from the model.";
+      } else {
+        LOGS(logger_, INFO) << "Removing initializer '" << name << "'. It is no longer used by any node.";
+      }
 
       erase_list.push_back(name);
     }
@@ -4424,6 +4429,17 @@ Status Graph::InlineFunctionProto(const ONNX_NAMESPACE::FunctionProto& func_to_i
                                     &new_attr_map, inlined_node->domain()));
   }
 
+  return Status::OK();
+}
+
+Status Graph::InitialCleanAllUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve) {
+  const auto& clean_graph = [&initializer_names_to_preserve](Graph& graph) {
+    graph.CleanUnusedInitializersAndNodeArgs(initializer_names_to_preserve, true);
+    return Status::OK();
+  };
+  std::vector<Graph*> all_subgraphs;
+  FindAllSubgraphs(all_subgraphs);
+  ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, clean_graph));
   return Status::OK();
 }
 
