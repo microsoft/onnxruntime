@@ -124,6 +124,10 @@ stages:
       inputs:
         artifactName: 'drop-onnxruntime-nodejs-linux-x64-tensorrt'
         targetPath: '$(Build.BinariesDirectory)/nodejs-artifacts/linux/x64/'
+    - script: |
+       dir
+      workingDirectory: '$(Build.BinariesDirectory)/nodejs-artifacts/win32/x64/'
+      displayName: 'List Nodejs artifacts from $(Build.BinariesDirectory)/nodejs-artifacts/win32/x64/'
 
 #    - task: DownloadPipelineArtifact@0
 #      displayName: 'Download Pipeline Artifact - Nodejs (Linux aarch64)'
@@ -165,7 +169,7 @@ stages:
     - task: CopyFiles@2
       displayName: 'Copy nuget binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64\'
       inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-win-x64-dml'
+        SourceFolder: '$(Build.BinariesDirectory)\nodejs-artifacts\win32\x64'
         Contents: '*.dll'
         TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
     - task: CopyFiles@2
