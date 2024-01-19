@@ -78,9 +78,9 @@ jobs:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "
-      --network=host 
+      --network=host
       --build-arg BASEIMAGE=$(docker_base_image)
-      --build-arg TRT_VERSION=$(linux_trt_version) 
+      --build-arg TRT_VERSION=$(linux_trt_version)
       --build-arg BUILD_UID=$( id -u )
       "
       Repository: onnxruntimecuda11build
@@ -179,7 +179,7 @@ jobs:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "
-      --network=host 
+      --network=host
       --build-arg BASEIMAGE=$(docker_base_image)
       --build-arg TRT_VERSION=$(linux_trt_version)
       --build-arg BUILD_UID=$( id -u )
