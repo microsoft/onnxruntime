@@ -75,18 +75,20 @@ void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>&
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
   }
 
-  onnxruntime::test::OpTester test1("ScatterElements", 11);
-  if (has_axis) test1.AddAttribute<int64_t>("axis", axis);
-  test1.AddInput<T>("data", input_dims, input_data);
-  test1.AddInput<TIndex>("indices", indices_dims, indices_data);
-  test1.AddInput<T>("updates", indices_dims, updates_data);
-  test1.AddOutput<T>("y", input_dims, output_data);
-  if (std::is_same<T, int8_t>::value) {
-    test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
-  } else if (std::is_same<T, MLFloat16>::value) {
-    test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
-  } else {
-    test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+  for (int opset : {11, 18}) {
+    onnxruntime::test::OpTester test1("ScatterElements", opset);
+    if (has_axis) test1.AddAttribute<int64_t>("axis", axis);
+    test1.AddInput<T>("data", input_dims, input_data);
+    test1.AddInput<TIndex>("indices", indices_dims, indices_data);
+    test1.AddInput<T>("updates", indices_dims, updates_data);
+    test1.AddOutput<T>("y", input_dims, output_data);
+    if (std::is_same<T, int8_t>::value) {
+      test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+    } else if (std::is_same<T, MLFloat16>::value) {
+      test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+    } else {
+      test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+    }
   }
 }
 
