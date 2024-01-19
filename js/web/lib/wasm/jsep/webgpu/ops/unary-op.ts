@@ -259,7 +259,8 @@ export const tan = (context: ComputeContext): void => {
 };
 
 export const tanh = (context: ComputeContext): void => {
-  context.compute(createElementwiseProgramInfo(context.inputs[0], 'Tanh', 'tanh'));
+  context.compute(createElementwiseProgramInfo(
+      context.inputs[0], 'Tanh', a => `sign(${a}) * (1 - exp(-2 * abs(${a}))) / (1 + exp(-2 * abs(${a})))`));
 };
 
 export const thresholdedRelu = (context: ComputeContext, attributes: AlphaAttributes): number => {
