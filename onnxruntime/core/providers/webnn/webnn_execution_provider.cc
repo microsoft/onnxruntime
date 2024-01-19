@@ -42,7 +42,7 @@ WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_f
   if (webnn_power_flags.compare("default") != 0) {
     context_options.set("powerPreference", emscripten::val(webnn_power_flags));
   }
-  emscripten::val console = emscripten::val::global("console");
+
   wnn_context_ = ml.call<emscripten::val>("createContext", context_options).await();
   if (!wnn_context_.as<bool>()) {
     ORT_THROW("Failed to create WebNN context.");
