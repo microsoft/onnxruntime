@@ -63,12 +63,12 @@ void UpdateCtxNodeModelEngineContext(ONNX_NAMESPACE::ModelProto* model_proto,
  * Create "EP context node" model where engine information is embedded
  */
 ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
-                                               const std::string engine_cache_path,
-                                               char* engine_data,
-                                               size_t size,
-                                               const int64_t embed_mode,
-                                               std::string compute_capability,
-                                               const logging::Logger* logger) {
+                                           const std::string engine_cache_path,
+                                           char* engine_data,
+                                           size_t size,
+                                           const int64_t embed_mode,
+                                           std::string compute_capability,
+                                           const logging::Logger* logger) {
   auto model_build = graph_viewer.CreateModel(*logger);
   auto& graph_build = model_build->MainGraph();
 
@@ -199,7 +199,7 @@ std::string GetCtxModelPath(const std::string& ep_context_file_path,
  *
  */
 void DumpCtxModel(ONNX_NAMESPACE::ModelProto* model_proto,
-                      const std::string& ctx_model_path) {
+                  const std::string& ctx_model_path) {
   std::fstream dump(ctx_model_path, std::ios::out | std::ios::trunc | std::ios::binary);
   model_proto->SerializeToOstream(dump);
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Dumped " + ctx_model_path;
@@ -244,7 +244,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
   auto& attrs = node->GetAttributes();
 
   const int64_t embed_mode = attrs.at(EMBED_MODE).i();
-  if (embed_mode) { 
+  if (embed_mode) {
     // Get engine from byte stream.
     const std::string& context_binary = attrs.at(EP_CACHE_CONTEXT).s();
     *(trt_engine_) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_runtime_->deserializeCudaEngine(const_cast<char*>(context_binary.c_str()),
@@ -254,7 +254,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "TensorRT EP could not deserialize engine from binary data");
     }
-  } else { 
+  } else {
     // Get engine from cache file.
     std::string cache_path = attrs.at(EP_CACHE_CONTEXT).s();
 
@@ -281,8 +281,8 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     *(trt_engine_) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_runtime_->deserializeCudaEngine(engine_buf.get(), engine_size));
     if (!(*trt_engine_)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "TensorRT EP could not deserialize engine from cache: " + engine_cache_path.string() + 
-                             ". Please make sure engine cache is inside the directory of trt_ep_context_file_path.");
+                             "TensorRT EP could not deserialize engine from cache: " + engine_cache_path.string() +
+                                 ". Please make sure engine cache is inside the directory of trt_ep_context_file_path.");
     }
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path.string();
   }

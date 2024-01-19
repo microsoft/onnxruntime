@@ -25,18 +25,18 @@ bool GraphHasCtxNode(const GraphViewer& graph_viewer);
 const onnxruntime::Path& GetModelPath(const GraphViewer& graph_viewer);
 std::filesystem::path GetPathOrParentPathOfCtxModel(const std::string& ep_context_file_path);
 ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
-                                               const std::string engine_cache_path,
-                                               char* engine_data,
-                                               size_t size,
-                                               const int64_t embed_mode,
-                                               std::string compute_capability,
-                                               const logging::Logger* logger);
+                                           const std::string engine_cache_path,
+                                           char* engine_data,
+                                           size_t size,
+                                           const int64_t embed_mode,
+                                           std::string compute_capability,
+                                           const logging::Logger* logger);
 std::string GetCtxModelPath(const std::string& ep_context_file_path,
                             const std::string& original_model_path);
 bool IsAbsolutePath(std::string& path_string);
 bool IsRelativePathToParentPath(std::string& path_string);
 void DumpCtxModel(ONNX_NAMESPACE::ModelProto* model_proto,
-                      const std::string& ctx_model_path);
+                  const std::string& ctx_model_path);
 void UpdateCtxNodeModelEngineContext(ONNX_NAMESPACE::ModelProto* model_proto,
                                      char* engine_data,
                                      size_t size);
@@ -57,7 +57,7 @@ class TensorRTCacheModelHandler {
  private:
   std::unique_ptr<nvinfer1::ICudaEngine>* trt_engine_;
   nvinfer1::IRuntime* trt_runtime_;
-  std::string ep_context_model_path_; // If using context model, it implies context model and engine cache is in the same directory
+  std::string ep_context_model_path_;  // If using context model, it implies context model and engine cache is in the same directory
   std::string compute_capability_;
 };  // TRTCacheModelHandler
 }  // namespace onnxruntime

@@ -1458,7 +1458,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       if (!timing_force_match_env.empty()) {
         force_timing_cache_match_ = (std::stoi(timing_force_match_env) == 0 ? false : true);
       }
-     
+
       const std::string dump_ep_context_model_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDumpEpContextModel);
       if (!dump_ep_context_model_env.empty()) {
         dump_ep_context_model_ = (std::stoi(dump_ep_context_model_env) == 0 ? false : true);
@@ -3014,12 +3014,12 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         // dump EP context node model
         if (dump_ep_context_model_) {
           std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto{CreateCtxModel(graph_body_viewer,
-                                                                                     engine_cache_path,
-                                                                                     reinterpret_cast<char*>(serialized_engine->data()),
-                                                                                     serialized_engine->size(),
-                                                                                     ep_context_embed_mode_,
-                                                                                     compute_capability_,
-                                                                                     GetLogger())};
+                                                                                 engine_cache_path,
+                                                                                 reinterpret_cast<char*>(serialized_engine->data()),
+                                                                                 serialized_engine->size(),
+                                                                                 ep_context_embed_mode_,
+                                                                                 compute_capability_,
+                                                                                 GetLogger())};
           DumpCtxModel(model_proto.get(), ctx_model_path_);
         }
       }
@@ -3081,12 +3081,12 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   // However, if the embed_mode is 0 (only includes engine path), TRT EP will serialize it here.
   if (dump_ep_context_model_ && has_dynamic_shape) {
     model_proto_.reset(CreateCtxModel(graph_body_viewer,
-                                          engine_cache_path,
-                                          nullptr,
-                                          0,
-                                          ep_context_embed_mode_,
-                                          compute_capability_,
-                                          GetLogger()));
+                                      engine_cache_path,
+                                      nullptr,
+                                      0,
+                                      ep_context_embed_mode_,
+                                      compute_capability_,
+                                      GetLogger()));
     if (ep_context_embed_mode_ == 0) {
       DumpCtxModel(model_proto_.get(), ctx_model_path_);
     }

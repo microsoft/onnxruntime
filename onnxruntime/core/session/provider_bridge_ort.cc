@@ -1759,8 +1759,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In
   factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
 #endif
 
-
-
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_Tensorrt: Failed to load shared library");
   }
