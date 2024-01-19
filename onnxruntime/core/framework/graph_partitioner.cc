@@ -639,9 +639,9 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
                                    const Graph& graph,
                                    const std::string& ep_context_path,
                                    const logging::Logger& logger) {
-  std::vector<const Node*> all_ep_context_nodes;
+  InlinedVector<const Node*> all_ep_context_nodes;
   for (const auto& ep : execution_providers) {
-    const std::vector<const Node*> ep_context_nodes = ep->GetEpContextNodes();
+    const InlinedVector<const Node*> ep_context_nodes = ep->GetEpContextNodes();
     all_ep_context_nodes.insert(all_ep_context_nodes.begin(), ep_context_nodes.begin(), ep_context_nodes.end());
   }
 
@@ -663,12 +663,13 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
       context_cache_path = model_pathstring + ToPathString("_ctx.onnx");
     }
 
-    bool file_exist = std::filesystem::is_regular_file(context_cache_path) && std::filesystem::exists(context_cache_path);
-
-    if (file_exist) {
-      // User need to remove the existing file if want to re-generate it
-      LOGS(logger, INFO) << "Ep context file exist already.";
-      return Status::OK();
+    {
+#ifdef _WIN32
+      std::wifstream fs(context_cache_path);
+#else
+      std::ifstream fs(context_cache_path);
+#endif
+      ORT_RETURN_IF(fs.good(), "Failed to generate EP context model since the file exist already.");
     }
 
     Model ep_context_model(graph.Name(), false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
@@ -680,24 +681,20 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     auto inputs = graph.GetInputs();
     auto outputs = graph.GetOutputs();
 
-    int i = 0;
-    std::vector<const NodeArg*> ep_graph_inputs;
-    ep_graph_inputs.resize(inputs.size());
+    InlinedVector<const NodeArg*> ep_graph_inputs;
+    ep_graph_inputs.reserve(inputs.size());
     for (auto& input : inputs) {
       auto input_arg = graph.GetNodeArg(input->Name());
       auto& ep_graph_input_arg = ep_graph.GetOrCreateNodeArg(input_arg->Name(), input_arg->TypeAsProto());
-      ep_graph_inputs[i] = &ep_graph_input_arg;
-      ++i;
+      ep_graph_inputs.push_back(&ep_graph_input_arg);
     }
 
-    i = 0;
-    std::vector<const NodeArg*> ep_graph_outputs;
-    ep_graph_outputs.resize(outputs.size());
+    InlinedVector<const NodeArg*> ep_graph_outputs;
+    ep_graph_outputs.reserve(outputs.size());
     for (auto& output : outputs) {
       auto output_arg = graph.GetNodeArg(output->Name());
       auto& ep_graph_output_arg = ep_graph.GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
-      ep_graph_outputs[i] = &ep_graph_output_arg;
-      ++i;
+      ep_graph_inputs.push_back(&ep_graph_output_arg);
     }
 
     ep_graph.SetInputs(ep_graph_inputs);

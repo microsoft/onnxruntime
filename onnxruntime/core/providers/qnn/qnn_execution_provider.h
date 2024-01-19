@@ -36,7 +36,7 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   DataLayout GetPreferredLayout() const override;
 
-  const std::vector<const Node*> GetEpContextNodes() const override;
+  const InlinedVector<const Node*> GetEpContextNodes() const override;
 
  private:
   bool IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,

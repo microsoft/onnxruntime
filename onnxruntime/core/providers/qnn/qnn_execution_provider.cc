@@ -627,8 +627,8 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
   return Status::OK();
 }
 
-const std::vector<const Node*> QNNExecutionProvider::GetEpContextNodes() const {
-  std::vector<const Node*> ep_context_nodes;
+const InlinedVector<const Node*> QNNExecutionProvider::GetEpContextNodes() const {
+  InlinedVector<const Node*> ep_context_nodes;
   if (qnn_ep_context_model_) {
     const auto& graph = qnn_ep_context_model_->MainGraph();
     for (const auto& node : graph.Nodes()) {

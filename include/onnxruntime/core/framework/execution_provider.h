@@ -331,8 +331,8 @@ class IExecutionProvider {
    * EP needs to implement this if has the requirement to generate the context cache model. Otherwise leave it.
    * Default return an empty vector if not provided by the Execution Provider
    */
-  virtual const std::vector<const Node*> GetEpContextNodes() const {
-    return std::vector<const Node*>();
+  virtual const InlinedVector<const Node*> GetEpContextNodes() const {
+    return InlinedVector<const Node*>();
   }
 
  private:
