@@ -26,6 +26,7 @@ class TestEP : public IExecutionProvider {
   int GetId(const GraphViewer& viewer, HashValue& model_hash) {
     return metadef_id_generator_->GenerateId(viewer, model_hash);
   }
+
  private:
   std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
 };
