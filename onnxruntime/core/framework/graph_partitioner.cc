@@ -694,7 +694,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     for (auto& output : outputs) {
       auto output_arg = graph.GetNodeArg(output->Name());
       auto& ep_graph_output_arg = ep_graph.GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
-      ep_graph_inputs.push_back(&ep_graph_output_arg);
+      ep_graph_outputs.push_back(&ep_graph_output_arg);
     }
 
     ep_graph.SetInputs(ep_graph_inputs);
