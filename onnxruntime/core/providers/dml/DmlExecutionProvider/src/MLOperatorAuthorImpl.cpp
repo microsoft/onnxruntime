@@ -3028,12 +3028,18 @@ namespace Windows::AI::MachineLearning::Adapter
         const onnx::TensorProto& initializer,
         const onnxruntime::Path& modelPath)
     {
+        // @reviewer I haven't found a function to determine the number of elements. The size functions
+        // specified as Z to CASE_PROTO returned 0 while the dimensions are non-zero.
+        // Is there some kind of padding required for each row to ensure alignment?
         std::unique_ptr<std::byte[]> unpackedTensor;
         size_t tensorByteSize = 0;
+        int64_t elementCount = initializer.dims_size() ? int64_t(1) : int64_t(0);
+        for (int idx = 0; idx < initializer.dims_size(); ++idx) {
+          elementCount *= initializer.dims()[idx];
+        }
 
-#define CASE_PROTO(X, Y, Z)                                                                        \
+#define CASE_PROTO(X, Y)                                                                        \
   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X: {                           \
-    size_t elementCount = initializer.##Z();                                                       \
     tensorByteSize = elementCount * sizeof(Y);                                                     \
     unpackedTensor.reset(new std::byte[tensorByteSize]);                                           \
     ORT_THROW_HR_IF(E_FAIL, !onnxruntime::utils::UnpackTensor(                                     \
@@ -3045,18 +3051,18 @@ namespace Windows::AI::MachineLearning::Adapter
   }
         switch (initializer.data_type())
         {
-        CASE_PROTO(FLOAT, float, float_data_size);
-        CASE_PROTO(DOUBLE, double, double_data_size);
-        CASE_PROTO(BOOL, bool, int32_data_size);
-        CASE_PROTO(INT8, int8_t, int32_data_size);
-        CASE_PROTO(INT16, int16_t, int32_data_size);
-        CASE_PROTO(INT32, int32_t, int32_data_size);
-        CASE_PROTO(INT64, int64_t, int64_data_size);
-        CASE_PROTO(UINT8, uint8_t, int32_data_size);
-        CASE_PROTO(UINT16, uint16_t, int32_data_size);
-        CASE_PROTO(UINT32, uint32_t, uint64_data_size);
-        CASE_PROTO(UINT64, uint64_t, uint64_data_size);
-        CASE_PROTO(FLOAT16, onnxruntime::MLFloat16, int32_data_size);
+        CASE_PROTO(FLOAT, float);
+        CASE_PROTO(DOUBLE, double);
+        CASE_PROTO(BOOL, bool);
+        CASE_PROTO(INT8, int8_t);
+        CASE_PROTO(INT16, int16_t);
+        CASE_PROTO(INT32, int32_t);
+        CASE_PROTO(INT64, int64_t);
+        CASE_PROTO(UINT8, uint8_t);
+        CASE_PROTO(UINT16, uint16_t);
+        CASE_PROTO(UINT32, uint32_t);
+        CASE_PROTO(UINT64, uint64_t);
+        CASE_PROTO(FLOAT16, onnxruntime::MLFloat16);
         default: ORT_THROW_HR(E_INVALIDARG);
         }
 
