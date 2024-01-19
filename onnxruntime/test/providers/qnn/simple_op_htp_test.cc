@@ -778,6 +778,8 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCacheEmbedModeTest) {
                        QDQTolerance(),
                        logging::Severity::kERROR,
                        context_binary_file);
+  // Clean up
+  ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
 }
 
 // Run QDQ model on HTP 3 times
