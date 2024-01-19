@@ -87,11 +87,13 @@ TEST_P(ModelTest, Run) {
   double per_sample_tolerance = 1e-3;
   double relative_per_sample_tolerance = 1e-3;
 
+#if defined(__linux__)
   // ORT enables TF32 in GEMM for A100. TF32 will cause precsion loss and fail this test.
   if (HasCudaEnvironment(800)) {
     per_sample_tolerance = 1e-1;
     relative_per_sample_tolerance = 1e-1;
   }
+#endif
 
   // when cuda or openvino is enabled, set it to a larger value for resolving random MNIST test failure
   if (model_path.find(ORT_TSTR("_MNIST")) > 0) {
