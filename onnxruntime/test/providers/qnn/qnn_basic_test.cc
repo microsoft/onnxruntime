@@ -600,6 +600,51 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryGeneration2InputTypes) {
 
   // Make sure the Qnn context cache binary file is generated
   EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
+
+  // clean up
+  ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
+}
+
+// Generate context cache model from the ONNX models with 2 inputs.
+// The generated model should have same input order.
+// The input ONNX model is created in the way that the model inputs order
+// is different with the order in the graph (topological order).
+// It cause issue if the generated model doesn't set the inputs/outputs explicitly.
+TEST_F(QnnHTPBackendTests, QnnContextGeneration2InputsOrderIssue) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  // Add kMSDomain to cover contrib op like Gelu
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
+
+  auto& logging_manager = DefaultLoggingManager();
+  logging_manager.SetDefaultLoggerSeverity(logging::Severity::kERROR);
+
+  const std::string context_binary_file = "./qnn_ctx_2_inputs_order_test_gen.onnx";
+  Ort::SessionOptions so;
+  so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+  so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, context_binary_file.c_str());
+
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/qnn_ctx_2_inputs_order_test.onnx"), so);
+
+  // Make sure the Qnn context cache binary file is generated
+  EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(ToPathString(context_binary_file), model, nullptr, DefaultLoggingManager().DefaultLogger()));
+  auto inputs = model->MainGraph().GetInputs();
+  EXPECT_TRUE(inputs.size() == 2);
+  EXPECT_TRUE(inputs[0]->Name() == "attention_mask");
+  EXPECT_TRUE(inputs[1]->Name() == "Add_input_0");
+
+  // clean up
+  ASSERT_EQ(std::remove(context_binary_file.c_str()), 0);
 }
 
 // A repro of QC case 06838696, accuracy issue for Cast + Op (quantized)

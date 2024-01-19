@@ -73,8 +73,7 @@ Status GetMetadataFromEpContextModel(const onnxruntime::PathString& ctx_onnx_mod
                                      std::string& cache_source,
                                      const logging::Logger& logger);
 
-Status GenerateCtxCacheOnnxModel(const std::string model_name,
-                                 const std::string model_description,
+Status GenerateCtxCacheOnnxModel(Model* model,
                                  unsigned char* buffer,
                                  uint64_t buffer_size,
                                  const std::string& sdk_build_version,
