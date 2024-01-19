@@ -1578,6 +1578,31 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     dla_core_ = 0;
   }
 
+  // If dump_ep_context_model_ is enable, TRT EP forces cache_path_ to be the relative path of ep_context_file_path_.
+  // For example, 
+  //    - original cache path = "engine_cache_dir" -> new cache path = "./context_model_dir/engine_cache_dir"
+  //    - original cache path = ""                 -> new cache path = "./context_model_dir"
+  // The new cache path will be saved as the "ep_cache_context" node attritue of the EP context node.
+  // For security reason, it needs to make sure the engine cache is saved inside context model directory.
+  if (dump_ep_context_model_ && engine_cache_enable_) {
+    if (IsAbsolutePath(cache_path_)) {
+      LOGS_DEFAULT(ERROR) << "In the case of dumping context model and for security purpose, the trt_engine_cache_path should be set with a relative path, but it is an absolute path:  " << cache_path_;
+    }
+    if (IsRelativePathToParentPath(cache_path_)) {
+      LOGS_DEFAULT(ERROR) << "In the case of dumping context model and for security purpose, The trt_engine_cache_path has '..', it's not allowed to point outside the directory.";
+    }
+
+    // Make cache_path_ to be the relative path of ep_context_file_path_
+    cache_path_ = GetPathOrParentPathOfCtxModel(ep_context_file_path_).append(cache_path_).string();
+  }
+
+  // If ep_context_file_path_ is provided as a directory, create it if it's not existed
+  if (!ep_context_file_path_.empty() && std::filesystem::path(ep_context_file_path_).extension().empty() && !std::filesystem::is_directory(ep_context_file_path_)) {
+    if (!std::filesystem::create_directory(ep_context_file_path_)) {
+      throw std::runtime_error("Failed to create directory " + ep_context_file_path_);
+    }
+  }
+
   if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
     if (!cache_path_.empty() && !fs::is_directory(cache_path_)) {
       if (!fs::create_directory(cache_path_)) {
@@ -1653,28 +1678,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       profile_max_shapes_.clear();
       profile_opt_shapes_.clear();
     }
-  }
-
-  // If ep_context_file_path_ is provided as a directory, create it if it's not existed
-  if (!ep_context_file_path_.empty() && std::filesystem::path(ep_context_file_path_).extension().empty() && !std::filesystem::is_directory(ep_context_file_path_)) {
-    if (!std::filesystem::create_directory(ep_context_file_path_)) {
-      throw std::runtime_error("Failed to create directory " + ep_context_file_path_);
-    }
-  }
-
-  // If dump_ep_context_model is enable, TRT EP forces cache_path_ to be the relative path of ep_context_file_path_.
-  // The cache path will be saved as the "ep_cache_context" node attritue of the EP context node.
-  // For security reason, it needs to make sure the engine cache is saved inside context model directory.
-  if (dump_ep_context_model_ && engine_cache_enable_) {
-    if (IsAbsolutePath(cache_path_)) {
-      LOGS_DEFAULT(ERROR) << "In the case of dumping context model and for security purpose, the trt_engine_cache_path should be set with a relative path, but it is an absolute path:  " << cache_path_;
-    }
-    if (IsRelativePathToParentPath(cache_path_)) {
-      LOGS_DEFAULT(ERROR) << "In the case of dumping context model and for security purpose, The trt_engine_cache_path has '..', it's not allowed to point outside the directory.";
-    }
-
-    // Make cache_path_ to be the relative path of ep_context_file_path_
-    cache_path_ = GetPathOrParentPathOfCtxModel(ep_context_file_path_).append(cache_path_).string();
   }
 
   {

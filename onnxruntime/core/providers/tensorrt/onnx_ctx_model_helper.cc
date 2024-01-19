@@ -158,7 +158,7 @@ std::filesystem::path GetPathOrParentPathOfCtxModel(const std::string& ep_contex
  *   to the same directory provided by ep_context_file_path_. (i.e. engine_cache_path_ = ep_context_file_path_)
  *
  * Example 1:
- * ep_context_file_path = "/home/user/ep_context_model_foler"
+ * ep_context_file_path = "/home/user/ep_context_model_directory"
  * original_model_path = "model.onnx"
  * => return "/home/user/ep_context_model_folder/model_ctx.onnx"
  *
@@ -168,9 +168,9 @@ std::filesystem::path GetPathOrParentPathOfCtxModel(const std::string& ep_contex
  * => return "my_ctx_model.onnx"
  *
  * Example 3:
- * ep_context_file_path = "/home/user2/ep_context_model_foler/my_ctx_model.onnx"
+ * ep_context_file_path = "/home/user2/ep_context_model_directory/my_ctx_model.onnx"
  * original_model_path = "model.onnx"
- * => return "/home/user2/ep_context_model_foler/my_ctx_model.onnx"
+ * => return "/home/user2/ep_context_model_directory/my_ctx_model.onnx"
  *
  */
 std::string GetCtxModelPath(const std::string& ep_context_file_path,
