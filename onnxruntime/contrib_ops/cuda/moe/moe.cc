@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef USE_CUTLASS
+
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "moe.h"
@@ -117,3 +119,5 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif

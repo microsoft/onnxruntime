@@ -7,7 +7,7 @@
 #include <cfloat>
 
 #include "core/providers/cuda/cuda_common.h"
-
+#ifndef USE_CUDA_MINIMAL
 namespace onnxruntime {
 namespace cuda {
 
@@ -260,3 +260,4 @@ SetPoolingNdDescriptorHelper(cudnnPoolingDescriptor_t poolingDesc,
 
 }  // namespace cuda
 }  // namespace onnxruntime
+#endif

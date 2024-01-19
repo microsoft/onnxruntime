@@ -639,9 +639,9 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
                                    const Graph& graph,
                                    const std::string& ep_context_path,
                                    const logging::Logger& logger) {
-  std::vector<const Node*> all_ep_context_nodes;
+  InlinedVector<const Node*> all_ep_context_nodes;
   for (const auto& ep : execution_providers) {
-    const std::vector<const Node*> ep_context_nodes = ep->GetEpContextNodes();
+    const InlinedVector<const Node*> ep_context_nodes = ep->GetEpContextNodes();
     all_ep_context_nodes.insert(all_ep_context_nodes.begin(), ep_context_nodes.begin(), ep_context_nodes.end());
   }
 
@@ -663,12 +663,13 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
       context_cache_path = model_pathstring + ToPathString("_ctx.onnx");
     }
 
-    bool file_exist = std::filesystem::is_regular_file(context_cache_path) && std::filesystem::exists(context_cache_path);
-
-    if (file_exist) {
-      // User need to remove the existing file if want to re-generate it
-      LOGS(logger, INFO) << "Ep context file exist already.";
-      return Status::OK();
+    {
+#ifdef _WIN32
+      std::wifstream fs(context_cache_path);
+#else
+      std::ifstream fs(context_cache_path);
+#endif
+      ORT_RETURN_IF(fs.good(), "Failed to generate EP context model since the file exist already.");
     }
 
     Model ep_context_model(graph.Name(), false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
@@ -680,24 +681,20 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     auto inputs = graph.GetInputs();
     auto outputs = graph.GetOutputs();
 
-    int i = 0;
-    std::vector<const NodeArg*> ep_graph_inputs;
-    ep_graph_inputs.resize(inputs.size());
+    InlinedVector<const NodeArg*> ep_graph_inputs;
+    ep_graph_inputs.reserve(inputs.size());
     for (auto& input : inputs) {
       auto input_arg = graph.GetNodeArg(input->Name());
       auto& ep_graph_input_arg = ep_graph.GetOrCreateNodeArg(input_arg->Name(), input_arg->TypeAsProto());
-      ep_graph_inputs[i] = &ep_graph_input_arg;
-      ++i;
+      ep_graph_inputs.push_back(&ep_graph_input_arg);
     }
 
-    i = 0;
-    std::vector<const NodeArg*> ep_graph_outputs;
-    ep_graph_outputs.resize(outputs.size());
+    InlinedVector<const NodeArg*> ep_graph_outputs;
+    ep_graph_outputs.reserve(outputs.size());
     for (auto& output : outputs) {
       auto output_arg = graph.GetNodeArg(output->Name());
       auto& ep_graph_output_arg = ep_graph.GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
-      ep_graph_outputs[i] = &ep_graph_output_arg;
-      ++i;
+      ep_graph_outputs.push_back(&ep_graph_output_arg);
     }
 
     ep_graph.SetInputs(ep_graph_inputs);
@@ -713,7 +710,19 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
         ep_graph.AddNode(node);
       }
     }
-    
+
+    // handle initializers
+    for (const auto& input : graph.GetInputsIncludingInitializers()) {
+      const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+      if (graph.GetInitializedTensor(input->Name(), initializer)) {
+        // There initializer could have duplicates so make sure we only add once
+        const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
+        if (!ep_graph.GetInitializedTensor(input->Name(), subgraph_initializer)) {
+          ep_graph.AddInitializedTensor(*initializer);
+        }
+      }
+    }
+
     ORT_RETURN_IF_ERROR(Model::Save(ep_context_model, context_cache_path));
   }
 
@@ -722,10 +731,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
 
 static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, GraphPartitioner::Mode mode,
                                        const ExecutionProviders& execution_providers,
-                                       KernelRegistryManager& kernel_registry_manager,
-                                       bool ep_context_enabled,
-                                       std::string ep_context_path,
-                                       const logging::Logger& logger) {
+                                       KernelRegistryManager& kernel_registry_manager) {
   bool modified_graph = false;
 
   auto& graph = partition_params.graph.get();
@@ -741,10 +747,6 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                                        fused_kernel_registry, *ep, mode, fused_node_unique_id,
                                                        transform_layout_function,
                                                        partition_params.debug_graph_fn));
-    }
-
-    if (ep_context_enabled) {
-      ORT_RETURN_IF_ERROR(CreateEpContextModel(execution_providers, graph, ep_context_path, logger));
     }
 
     // expand any nodes that have an ONNX function definition but no matching ORT kernel.
@@ -979,11 +981,14 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
 
   if (mode == Mode::kNormal || mode == Mode::kAssignOnly) {
 #if !defined(ORT_MINIMAL_BUILD)
+    ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode,
+                                                 providers_, kernel_registry_mgr_));
+
     bool ep_context_enabled = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
     std::string ep_context_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
-    ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode, providers_,
-                                                 kernel_registry_mgr_, ep_context_enabled,
-                                                 ep_context_path, logger));
+    if (ep_context_enabled) {
+      ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_path, logger));
+    }
 #else
     ORT_UNUSED_PARAMETER(config_options);
     ORT_UNUSED_PARAMETER(logger);
