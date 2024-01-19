@@ -151,7 +151,7 @@ jobs:
       - task: BinSkim@4
         displayName: 'Run BinSkim'
         inputs:
-          AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll;-:file|$(Build.ArtifactStagingDirectory)\**\DirectML.dll'
+          AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll'
 
       - task: TSAUpload@2
         displayName: 'TSA upload'
