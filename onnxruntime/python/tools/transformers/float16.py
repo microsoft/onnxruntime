@@ -450,10 +450,10 @@ def convert_float_to_float16(
                     new_value_info.CopyFrom(value_info)
                     output_name = node.name + "_input_cast_" + str(i)
                     new_value_info.name = output_name
-                    new_value_info.type.tensor_type.elem_type = TensorProto.FLOAT
+                    new_value_info.type.tensor_type.elem_type = TensorProto.BFLOAT16
                     # add Cast node (from tensor(float16) to tensor(float) before current node
                     node_name = node.name + "_input_cast" + str(i)
-                    new_node = [helper.make_node("Cast", [input_name], [output_name], to=1, name=node_name)]
+                    new_node = [helper.make_node("Cast", [input_name], [output_name], to=TensorProto.BFLOAT16, name=node_name)]
                     model.graph.node.extend(new_node)
                     # change current node's input name
                     node.input[i] = output_name
@@ -469,7 +469,7 @@ def convert_float_to_float16(
                     new_value_info.CopyFrom(value_info)
                     input_name = node.name + "_output_cast_" + str(i)
                     new_value_info.name = input_name
-                    new_value_info.type.tensor_type.elem_type = TensorProto.FLOAT
+                    new_value_info.type.tensor_type.elem_type = TensorProto.BFLOAT16
                     # add Cast node (from tensor(float) to tensor(float16) after current node
                     node_name = node.name + "_output_cast" + str(i)
                     new_node = [helper.make_node("Cast", [input_name], [output], to=10, name=node_name)]

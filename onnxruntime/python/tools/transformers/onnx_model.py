@@ -993,6 +993,9 @@ class OnnxModel:
 
         last_node_name = None
         while len(sorted_node_set) != len(graph_nodes):
+            # print("------------------")
+            # for node in sorted_nodes:
+            #     print(node.name)
             if len(sorted_node_set) == sorted_node_set_len:
                 break
             sorted_node_set_len = len(sorted_node_set)

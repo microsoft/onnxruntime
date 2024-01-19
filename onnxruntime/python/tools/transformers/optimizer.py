@@ -554,7 +554,7 @@ def main():
 
     if args.float16:
         #op_block_list = ["FastGelu", "SkipLayerNormalization", "LayerNormalization", "Add"]
-        node_block_list = ["Attention_30", "Attention_31", "Attention_32"]
+        node_block_list = ["GroupQueryAttention_0_29", "GroupQueryAttention_0_30", "GroupQueryAttention_0_31"]
         optimizer.convert_float_to_float16(keep_io_types=False, node_block_list=node_block_list)
 
     if args.input_int32:
