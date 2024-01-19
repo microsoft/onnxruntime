@@ -220,7 +220,6 @@ Status SparseTensor::AllocateBuffer(int64_t buffer_size, size_t num_values) {
     ORT_RETURN_IF_NOT(buffer_size_t > values_bytes,
                       "Values size ", static_cast<size_t>(values_bytes), " must be less than total buffer size: ", buffer_size);
     auto data_ptr = IAllocator::MakeUniquePtr<void>(allocator_, buffer_size_t);
-    ORT_RETURN_IF(data_ptr == nullptr, "SparseTensor Allocation failed for size: ", buffer_size);
     if (IsDataTypeString()) {
       // We own the buffer, so we must properly construct strings. Neither of the Tensors
       // we construct on top of the buffer own it. We are constructing empty strings, hopefully

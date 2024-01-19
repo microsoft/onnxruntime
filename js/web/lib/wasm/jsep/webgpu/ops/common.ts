@@ -588,30 +588,39 @@ const createIndicesHelper =
 
       const impl = () => {
         const impls = [];
-        if (!useUniform) {
-          impls.push(`const ${shape} = ${type.indices}(${shapeOrRank.join(',')});`);
-          impls.push(`const ${strides} = ${type.indices}(${ShapeUtil.computeStrides(shapeOrRank).join(',')});`);
-        }
+        let needShapeStrides = false;
         if (implementationUsed.offsetToIndices) {
           impls.push(offsetToIndicesImplementation);
+          needShapeStrides = true;
         }
         if (implementationUsed.indicesToOffset) {
           impls.push(indicesToOffsetImplementation);
+          needShapeStrides = true;
         }
         if (implementationUsed.broadcastedIndicesToOffset) {
           Object.values(broadcastedIndicesToOffsetImplementation).forEach(impl => impls.push(impl));
+          needShapeStrides = true;
         }
         if (implementationUsed.set) {
           impls.push(setImplementation);
+          needShapeStrides = true;
         }
         if (implementationUsed.setByIndices) {
           impls.push(setByIndicesImplementation);
+          needShapeStrides = true;
         }
         if (implementationUsed.get) {
           impls.push(getImplementation);
+          needShapeStrides = true;
         }
         if (implementationUsed.getByIndices) {
           impls.push(getByIndicesImplementation);
+          needShapeStrides = true;
+        }
+        if (!useUniform && needShapeStrides) {
+          impls.unshift(
+              `const ${shape} = ${type.indices}(${shapeOrRank.join(',')});`,
+              `const ${strides} = ${type.indices}(${ShapeUtil.computeStrides(shapeOrRank).join(',')});`);
         }
         return impls.join('\n');
       };
@@ -771,8 +780,10 @@ class ShaderHelperImpl implements ShaderHelper {
 
     const is1DimensionDispatch = this.normalizedDispatchGroup[1] === 1 && this.normalizedDispatchGroup[2] === 1;
     const paramList = is1DimensionDispatch ? `@builtin(global_invocation_id) global_id : vec3<u32>,
+    @builtin(workgroup_id) workgroup_id : vec3<u32>,
     @builtin(local_invocation_id) local_id : vec3<u32>` :
-                                             `@builtin(local_invocation_index) local_idx : u32,
+                                             `@builtin(local_invocation_id) local_id : vec3<u32>,
+    @builtin(local_invocation_index) local_idx : u32,
     @builtin(workgroup_id) workgroup_id : vec3<u32>,
     @builtin(num_workgroups) num_workgroups : vec3<u32>`;
     const globalIdxDefinition = is1DimensionDispatch ?
