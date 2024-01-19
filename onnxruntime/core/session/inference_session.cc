@@ -359,7 +359,10 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   // The call to InitLogger depends on the final state of session_options_. Hence it should be invoked
   // after the invocation of FinalizeSessionOptions.
   InitLogger(logging_manager_);  // this sets session_logger_ so that it can be used for logging after this point.
-  TraceSessionOptions(session_options);
+
+  // TraceSessionOptions logging is disabled as it causes a crash in SecureKernel
+  // Disabling the logging temporarily until the logging crash is resolved.
+  //TraceSessionOptions(session_options);
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Update the number of steps for the graph transformer manager using the "finalized" session options
