@@ -698,7 +698,14 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
         if (!path.filename().has_extension()) {
           continue;
         }
-        if (path.filename().extension().compare(ORT_TSTR(".onnx")) != 0) continue;
+        if (path.filename().native().empty() || path.filename().native().compare(0, 1, ORT_TSTR(".")) == 0) {
+          // Ignore hidden files.
+          continue;
+        }
+        if (path.filename().extension().compare(ORT_TSTR(".onnx")) != 0) {
+          // Ignore the files that are not ONNX models
+          continue;
+        }
         std::basic_string<PATH_CHAR_TYPE> test_case_name = path.parent_path().filename().native();
         if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0)
           test_case_name = test_case_name.substr(5);
