@@ -68,7 +68,7 @@ export interface GpuDataManager {
    * release session related data.
    * @param sessionId - specify the session ID.
    */
-  releaseSession(sessionId: number): void;
+  onReleaseSession(sessionId: number): void;
 }
 
 interface StorageCacheValue {
@@ -331,7 +331,6 @@ class GpuDataManagerImpl implements GpuDataManager {
       return;
     }
 
-    // Don't release intermediate tensors in non-default mode.
     if (this.backend.status === StatusType.default) {
       for (const buffer of this.buffersPending) {
         // eslint-disable-next-line no-bitwise
@@ -348,6 +347,8 @@ class GpuDataManagerImpl implements GpuDataManager {
       }
       this.buffersPending = [];
     } else {
+      // Don't release intermediate tensors in non-default mode.
+      // TODO: reuse the storage buffers in non-default mode.
       let capturedBuffers = this.capturedPendingBuffers.get(this.backend.currentSessionId!);
       if (!capturedBuffers) {
         capturedBuffers = [];
@@ -387,7 +388,7 @@ class GpuDataManagerImpl implements GpuDataManager {
     this.capturedPendingBuffers = new Map();
   }
 
-  releaseSession(sessionId: number) {
+  onReleaseSession(sessionId: number) {
     // release the captured pending buffers.
     const pendingBuffers = this.capturedPendingBuffers.get(sessionId);
     if (pendingBuffers) {

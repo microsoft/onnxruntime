@@ -340,8 +340,7 @@ export const releaseSession = (sessionId: number): void => {
     wasm._OrtReleaseBinding(ioBindingState.handle);
   }
 
-  wasm.jsepUnregisterBuffers?.(sessionId);
-  wasm.jsepReleaseSession?.(sessionId);
+  wasm.jsepOnReleaseSession?.(sessionId);
 
   inputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));
   outputNamesUTF8Encoded.forEach(buf => wasm._OrtFree(buf));

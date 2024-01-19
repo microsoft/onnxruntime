@@ -61,7 +61,7 @@ export class ProgramManager {
         dispatchGroup
       };
       const sessionCommandList = this.backend.capturedCommandList.get(this.backend.currentSessionId!);
-      sessionCommandList?.push(commandInfo);
+      sessionCommandList!.push(commandInfo);
     }
 
     computePassEncoder.setPipeline(buildArtifact.computePipeline);

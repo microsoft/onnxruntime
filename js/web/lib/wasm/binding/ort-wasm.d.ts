@@ -163,12 +163,6 @@ export interface OrtWasmModule extends EmscriptenModule {
    */
   jsepRegisterBuffer: (sessionId: number, index: number, buffer: GPUBuffer, size: number) => number;
   /**
-   * [exported from js_internal_api.js] Unregister all user GPU buffers for a session.
-   *
-   * @param sessionId - specify the session ID.
-   */
-  jsepUnregisterBuffers?: (sessionId: number) => void;
-  /**
    * [exported from js_internal_api.js] Get the GPU buffer by GPU data ID.
    *
    * @param dataId - specify the GPU data ID
@@ -191,7 +185,7 @@ export interface OrtWasmModule extends EmscriptenModule {
    * @param sessionId - specify the session ID.
    * @returns
    */
-  jsepReleaseSession: (sessionId: number) => void;
+  jsepOnReleaseSession: (sessionId: number) => void;
   // #endregion
 }
 

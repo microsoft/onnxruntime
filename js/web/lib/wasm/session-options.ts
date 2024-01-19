@@ -112,10 +112,9 @@ const setExecutionProviders =
                       `Can't set a session config entry: 'preferredLayout' - ${webgpuOptions.preferredLayout}.`);
                 }
               }
-              if (webgpuOptions?.graphCaptureEnabled) {
-                if (webgpuOptions.graphCaptureEnabled !== true && webgpuOptions.graphCaptureEnabled !== false) {
-                  throw new Error(
-                      `graphCaptureEnabled must be either 'true' or 'false': ${webgpuOptions.graphCaptureEnabled}`);
+              if (webgpuOptions?.graphCaptureEnabled !== undefined) {
+                if (typeof webgpuOptions.graphCaptureEnabled !== 'boolean') {
+                  throw new Error(`graphCaptureEnabled must be a boolean value: ${webgpuOptions.graphCaptureEnabled}`);
                 }
                 const keyDataOffset = allocWasmString('graphCaptureEnabled', allocs);
                 const valueDataOffset = allocWasmString(webgpuOptions.graphCaptureEnabled.toString(), allocs);

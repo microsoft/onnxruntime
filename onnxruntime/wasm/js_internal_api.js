@@ -180,16 +180,13 @@ Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, relea
   Module['jsepRegisterBuffer'] = (sessionId, index, buffer, size) => {
     return backend['registerBuffer'](sessionId, index, buffer, size);
   };
-  Module['jsepUnregisterBuffers'] = sessionId => {
-    backend['unregisterBuffers'](sessionId);
-  };
   Module['jsepGetBuffer'] = (dataId) => {
     return backend['getBuffer'](dataId);
   };
   Module['jsepCreateDownloader'] = (gpuBuffer, size, type) => {
     return backend['createDownloader'](gpuBuffer, size, type);
   };
-  Module['jsepReleaseSession'] = sessionId => {
-    backend['releaseSession'](sessionId);
+  Module['jsepOnReleaseSession'] = sessionId => {
+    backend['onReleaseSession'](sessionId);
   };
 };

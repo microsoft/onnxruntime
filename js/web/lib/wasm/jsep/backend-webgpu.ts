@@ -728,13 +728,14 @@ export class WebGpuBackend {
     this.status = StatusType.default;
   }
 
-  releaseSession(sessionId: number): void {
+  onReleaseSession(sessionId: number): void {
+    this.unregisterBuffers(sessionId);
     if (this.capturedCommandList.has(sessionId)) {
       this.capturedCommandList.delete(sessionId);
     }
     if (this.capturedPendingKernels.has(sessionId)) {
       this.capturedPendingKernels.delete(sessionId);
     }
-    this.gpuDataManager.releaseSession(sessionId);
+    this.gpuDataManager.onReleaseSession(sessionId);
   }
 }
