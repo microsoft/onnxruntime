@@ -347,15 +347,20 @@ class GpuDataManagerImpl implements GpuDataManager {
       }
       this.buffersPending = [];
     } else {
-      // Don't release intermediate tensors in non-default mode.
-      // TODO: reuse the storage buffers in non-default mode.
+      // Don't release uniform buffers in non-default mode.
       let capturedBuffers = this.capturedPendingBuffers.get(this.backend.currentSessionId!);
       if (!capturedBuffers) {
         capturedBuffers = [];
         this.capturedPendingBuffers.set(this.backend.currentSessionId!, capturedBuffers);
       }
       for (const buffer of this.buffersPending) {
-        capturedBuffers.push(buffer);
+        // eslint-disable-next-line no-bitwise
+        if ((buffer.usage & GPUBufferUsage.STORAGE) === GPUBufferUsage.STORAGE) {
+          // Put the pending buffer to freeBuffers list instead of really destroying it for buffer reusing.
+          this.freeBuffers.get(buffer.size)!.push(buffer);
+        } else {
+          capturedBuffers.push(buffer);
+        }
       }
       this.buffersPending = [];
     }
