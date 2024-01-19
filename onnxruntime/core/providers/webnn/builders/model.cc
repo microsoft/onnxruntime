@@ -26,6 +26,11 @@ Model::~Model() {}
 
 Status Model::Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
                       const InlinedHashMap<std::string, OnnxTensorData>& outputs) {
+  // Allocate the MLNamedArrayBufferViews for inputs and outputs at every compute()
+  // because they will be transferred after compute() done.
+  // https://webmachinelearning.github.io/webnn/#api-mlcontext-async-execution
+  AllocateInputOutputBuffers();
+
   for (const auto& input : inputs) {
     const std::string& name = input.first;
     const struct OnnxTensorData tensor = input.second;
@@ -70,22 +75,13 @@ Status Model::Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
                                "The input of graph has unsupported type, name: ",
                                name, " type: ", tensor.tensor_info.data_type);
     }
-#ifdef ENABLE_WEBASSEMBLY_THREADS
-    // Copy the inputs from Wasm SharedArrayBuffer to the pre-allocated ArrayBuffers.
+    // Copy the inputs from Wasm ArrayBuffer to the WebNN inputs ArrayBuffer.
+    // As Wasm ArrayBuffer is not detachable.
     wnn_inputs_[name].call<void>("set", view);
-#else
-    wnn_inputs_.set(name, view);
-#endif
   }
 
-#ifdef ENABLE_WEBASSEMBLY_THREADS
-  // This vector uses for recording output buffers from WebNN graph compution when WebAssembly
-  // multi-threads is enabled, since WebNN API only accepts non-shared ArrayBufferView,
-  // https://www.w3.org/TR/webnn/#typedefdef-mlnamedarraybufferviews
-  // and at this time the 'view' defined by Emscripten is shared ArrayBufferView, the memory
-  // address is different from the non-shared one, additional memory copy is required here.
   InlinedHashMap<std::string, emscripten::val> output_views;
-#endif
+
   for (const auto& output : outputs) {
     const std::string& name = output.first;
     const struct OnnxTensorData tensor = output.second;
@@ -131,21 +127,17 @@ Status Model::Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
                                name, " type: ", tensor.tensor_info.data_type);
     }
 
-#ifdef ENABLE_WEBASSEMBLY_THREADS
     output_views.insert({name, view});
-#else
-    wnn_outputs_.set(name, view);
-#endif
   }
-  wnn_context_.call<emscripten::val>("computeSync", wnn_graph_, wnn_inputs_, wnn_outputs_);
-#ifdef ENABLE_WEBASSEMBLY_THREADS
-  // Copy the outputs from pre-allocated ArrayBuffers back to the Wasm SharedArrayBuffer.
+  emscripten::val results = wnn_context_.call<emscripten::val>("compute", wnn_graph_, wnn_inputs_, wnn_outputs_).await();
+
+  // Copy the outputs from pre-allocated ArrayBuffers back to the Wasm ArrayBuffer.
   for (const auto& output : outputs) {
     const std::string& name = output.first;
     emscripten::val view = output_views.at(name);
-    view.call<void>("set", wnn_outputs_[name]);
+    view.call<void>("set", results["outputs"][name]);
   }
-#endif
+
   return Status::OK();
 }
 

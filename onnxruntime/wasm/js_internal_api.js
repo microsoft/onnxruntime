@@ -93,7 +93,6 @@ Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, relea
   //
   const jsepWrapAsync = (func, getFunc, setFunc) => {
     return (...args) => {
-      console.log('log from jsepWrapAsync start');
       // cache the async data before calling the function.
       const previousAsync = Asyncify.currData;
 
@@ -116,7 +115,6 @@ Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, relea
         // returns the promise
         return Asyncify.whenDone();
       }
-      console.log('log from jsepWrapAsync end');
       // the function is synchronous. returns the result.
       return ret;
     };

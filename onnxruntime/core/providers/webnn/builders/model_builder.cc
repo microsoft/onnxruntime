@@ -387,11 +387,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
     named_operands.set(name, wnn_operands_.at(name));
   }
 
-  emscripten::val console = emscripten::val::global("console");
-  console.call<void>("log", emscripten::val("start webnn async build()..."));
   emscripten::val wnn_graph = wnn_builder_.call<emscripten::val>("build", named_operands).await();
-  console.call<void>("log", wnn_builder_);
-  console.call<void>("log", emscripten::val("Done webnn async build()..."));
   if (!wnn_graph.as<bool>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to build WebNN graph.");
   }
@@ -400,13 +396,6 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   model->SetOutputs(std::move(output_names_));
   model->SetScalarOutputs(std::move(scalar_outputs_));
   model->SetInputOutputInfo(std::move(input_output_info_));
-#ifdef ENABLE_WEBASSEMBLY_THREADS
-  // Pre-allocate the input and output tensors for the WebNN graph
-  // when WebAssembly multi-threads is enabled since WebNN API only
-  // accepts non-shared ArrayBufferView.
-  // https://www.w3.org/TR/webnn/#typedefdef-mlnamedarraybufferviews
-  model->AllocateInputOutputBuffers();
-#endif
   return Status::OK();
 }
 
