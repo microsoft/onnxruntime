@@ -212,7 +212,8 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                                   &parameters));
 
   if (parameters.do_rotary) {
-    ORT_NOT_IMPLEMENTED("Rotary embedding is not supported in Attention CPU kernel. \
+    ORT_NOT_IMPLEMENTED(
+        "Rotary embedding is not supported in Attention CPU kernel. \
                         Please fuse the model with MHA + RotaryEmbedding.");
   }
 
