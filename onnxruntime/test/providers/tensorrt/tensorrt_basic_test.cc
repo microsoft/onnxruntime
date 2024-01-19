@@ -394,16 +394,16 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   std::vector<int64_t> expected_dims_mul_m = {1, 3, 2};
   std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
 
-  /* 
+  /*
    * Test case 1: Dump context model
-   * 
+   *
    * provider options=>
    *   trt_ep_context_file_path = "EP_Context_model.onnx"
-   * 
+   *
    * expected result =>
    *   context model "EP_Context_model.onnx" should be created in current directory
-   * 
-   */ 
+   *
+   */
   OrtTensorRTProviderOptionsV2 params;
   params.trt_engine_cache_enable = 1;
   params.trt_dump_ep_context_model = 1;
@@ -423,11 +423,11 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
    *   trt_engine_cache_prefix = "TRT_engine_cache"
    *   trt_ep_context_file_path = "context_model_folder"
    *   trt_engine_cache_path = "engine_cache_folder"
-   * 
+   *
    * expected result =>
    *   engine cache "./context_model_folder/engine_cache_folder/TRT_engine_cache...engine" should be created
    *   context model "./context_model_folder/EPContextNode_test_ctx.onnx" should be created
-   */ 
+   */
   InferenceSession session_object2{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 params2;
   params2.trt_engine_cache_enable = 1;
@@ -453,7 +453,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
    * Test case 3: Run the dumped context model
    *
    * context model path = "./EP_Context_model.onnx" (created from case 1)
-   * 
+   *
    * expected result=>
    *   engine cache is also in the same current dirctory as "./xxxxx.engine"
    *   and the "ep_cache_context" attribute node of the context model should point to that.
@@ -481,7 +481,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
    * Test case 4: Run the dumped context model
    *
    * context model path = "./context_model_folder/EPContextNode_test_ctx.onnx" (created from case 2)
-   * 
+   *
    * expected result=>
    *   engine cache path is "./context_model_folder/engine_cache_folder/xxxxx.engine"
    *   and the "ep_cache_context" attribute node of the context model should point to that.

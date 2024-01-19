@@ -3016,7 +3016,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         }
         // dump EP context node model
         if (dump_ep_context_model_) {
-
           // "ep_cache_context" node attribute should be a relative path to context model directory
           if (ep_cache_context_attr_.empty()) {
             ep_cache_context_attr_ = std::filesystem::relative(engine_cache_path, ep_context_file_path_).string();
