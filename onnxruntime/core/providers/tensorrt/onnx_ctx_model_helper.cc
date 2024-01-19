@@ -38,13 +38,6 @@ const onnxruntime::Path& GetModelPath(const GraphViewer& graph_viewer) {
   return main_graph.ModelPath();
 }
 
-std::filesystem::path LocateEngineRelativeToPath(std::string engine_cache_path, const onnxruntime::Path& path) {
-  std::filesystem::path base_path(path.ToPathString());
-  std::filesystem::path parent_path = base_path.parent_path();
-  std::filesystem::path engine_path = parent_path.append(engine_cache_path);
-  return engine_path;
-}
-
 /*
  * Update ep_cache_context attribute of the EP context node with the given engine binary data
  */
@@ -69,7 +62,7 @@ void UpdateCtxNodeModelEngineContext(ONNX_NAMESPACE::ModelProto* model_proto,
 /*
  * Create "EP context node" model where engine information is embedded
  */
-ONNX_NAMESPACE::ModelProto* CreateCtxNodeModel(const GraphViewer& graph_viewer,
+ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
                                                const std::string engine_cache_path,
                                                char* engine_data,
                                                size_t size,
@@ -136,60 +129,56 @@ ONNX_NAMESPACE::ModelProto* CreateCtxNodeModel(const GraphViewer& graph_viewer,
 }
 
 /*
- * Get "EP context node" model path
+ * Return the directory where the ep context model locates
+ */
+std::filesystem::path GetPathOrParentPathOfCtxModel(const std::string& ep_context_file_path) {
+  if (ep_context_file_path.empty()) {
+    return std::filesystem::path();
+  }
+  std::filesystem::path ctx_path(ep_context_file_path);
+  if (std::filesystem::is_directory(ep_context_file_path)) {
+    return ctx_path;
+  } else {
+    return ctx_path.parent_path();
+  }
+}
+
+/*
+ * Get "EP context" model path.
  *
- *
- * If ep_context_file_path is provided:
- *     - If ep_context_file_path is a file:
- *         - If it's a file name without any path associated with it, return "engine_cache_path/ep_context_file_path".
-           - If it's a file name with path associated with it, return "ep_context_file_path".
+ * Function logic:
+ * If ep_context_file_path is provided,
+ *     - If ep_context_file_path is a file, return "ep_context_file_path".
  *     - If ep_context_file_path is a directory, return "ep_context_file_path/original_model_name_ctx.onnx".
- * If ep_context_file_path is not provided:
- *     - Return "engine_cache_path/original_model_name_ctx.onnx".
+ * If ep_context_file_path is not provided,
+ *     - Return "original_model_name_ctx.onnx".
  *
+ * TRT EP has rules about context model path and engine cache path (see tensorrt_execution_provider.cc):
+ * - If dump_ep_context_model_ and engine_cache_enabled_ is enabled, TRT EP will dump context model and save engine cache
+ *   to the same directory provided by ep_context_file_path_. (i.e. engine_cache_path_ = ep_context_file_path_)
  *
  * Example 1:
  * ep_context_file_path = "/home/user/ep_context_model_foler"
- * engine_cache_path = "trt_engine.engine"
  * original_model_path = "model.onnx"
  * => return "/home/user/ep_context_model_folder/model_ctx.onnx"
  *
  * Example 2:
  * ep_context_file_path = "my_ctx_model.onnx"
- * engine_cache_path = "/home/user/cache_folder/trt_engine.engine"
  * original_model_path = "model.onnx"
- * => return "/home/user/cache_folder/my_ctx_model.onnx"
+ * => return "my_ctx_model.onnx"
  *
  * Example 3:
  * ep_context_file_path = "/home/user2/ep_context_model_foler/my_ctx_model.onnx"
- * engine_cache_path = "trt_engine.engine"
  * original_model_path = "model.onnx"
  * => return "/home/user2/ep_context_model_foler/my_ctx_model.onnx"
  *
- * Example 4:
- * ep_context_file_path = ""
- * engine_cache_path = "/home/user3/cache_folder/trt_engine.engine"
- * original_model_path = "model.onnx"
- * => return "/home/user3/cache_folder/model_ctx.onnx"
- *
  */
-std::string GetCtxNodeModelPath(const std::string& ep_context_file_path,
-                                const std::string& engine_cache_path,
-                                const std::string& original_model_path) {
+std::string GetCtxModelPath(const std::string& ep_context_file_path,
+                            const std::string& original_model_path) {
   std::string ctx_model_path;
 
   if (!ep_context_file_path.empty() && !std::filesystem::is_directory(ep_context_file_path)) {
-    std::filesystem::path ctx_model_file_path = ep_context_file_path;
-    if (ctx_model_file_path.filename().string() == ep_context_file_path) {
-      std::filesystem::path cache_path = engine_cache_path;
-      if (cache_path.has_parent_path()) {
-        ctx_model_path = cache_path.parent_path().append(ep_context_file_path).string();
-      } else {
-        ctx_model_path = ep_context_file_path;
-      }
-    } else {
-      ctx_model_path = ep_context_file_path;
-    }
+    ctx_model_path = ep_context_file_path;
   } else {
     std::filesystem::path model_path = original_model_path;
     std::filesystem::path model_name_stem = model_path.stem();  // model_name.onnx -> model_name
@@ -199,26 +188,52 @@ std::string GetCtxNodeModelPath(const std::string& ep_context_file_path,
       std::filesystem::path model_directory = ep_context_file_path;
       ctx_model_path = model_directory.append(ctx_model_name).string();
     } else {
-      std::filesystem::path cache_path = engine_cache_path;
-      if (cache_path.has_parent_path()) {
-        ctx_model_path = cache_path.parent_path().append(ctx_model_name).string();
-      } else {
-        ctx_model_path = ctx_model_name;
-      }
+      ctx_model_path = ctx_model_name;
     }
   }
   return ctx_model_path;
 }
 
 /*
- * Dump "EP context node" model
+ * Dump "EP context" model
  *
  */
-void DumpCtxNodeModel(ONNX_NAMESPACE::ModelProto* model_proto,
+void DumpCtxModel(ONNX_NAMESPACE::ModelProto* model_proto,
                       const std::string& ctx_model_path) {
   std::fstream dump(ctx_model_path, std::ios::out | std::ios::trunc | std::ios::binary);
   model_proto->SerializeToOstream(dump);
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Dumped " + ctx_model_path;
+}
+
+bool IsAbsolutePath(std::string& path_string) {
+#ifdef _WIN32
+  onnxruntime::PathString ort_path_string = onnxruntime::ToPathString(path_string);
+  auto path = std::filesystem::path(ort_path_string.c_str());
+  return path.is_absolute();
+#else
+  if (!path_string.empty() && path_string[0] == '/') {
+    return true;
+  }
+  return false;
+#endif
+}
+
+// Like "../file_path"
+bool IsRelativePathToParentPath(std::string& path_string) {
+#ifdef _WIN32
+  onnxruntime::PathString ort_path_string = onnxruntime::ToPathString(path_string);
+  auto path = std::filesystem::path(ort_path_string.c_str());
+  auto relative_path = path.lexically_normal().make_preferred().wstring();
+  if (relative_path.find(L"..", 0) != std::string::npos) {
+    return true;
+  }
+  return false;
+#else
+  if (!path_string.empty() && path_string.find("..", 0) != std::string::npos) {
+    return true;
+  }
+  return false;
+#endif
 }
 
 Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph_viewer) {
@@ -229,8 +244,8 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
   auto& attrs = node->GetAttributes();
 
   const int64_t embed_mode = attrs.at(EMBED_MODE).i();
-  if (embed_mode) {
-    // Get engine from byte stream
+  if (embed_mode) { 
+    // Get engine from byte stream.
     const std::string& context_binary = attrs.at(EP_CACHE_CONTEXT).s();
     *(trt_engine_) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_runtime_->deserializeCudaEngine(const_cast<char*>(context_binary.c_str()),
                                                                                                 static_cast<size_t>(context_binary.length())));
@@ -239,20 +254,37 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "TensorRT EP could not deserialize engine from binary data");
     }
-  } else {
-    // Get engine from cache file
-    std::ifstream engine_file(engine_cache_path_.string(), std::ios::binary | std::ios::in);
+  } else { 
+    // Get engine from cache file.
+    std::string cache_path = attrs.at(EP_CACHE_CONTEXT).s();
+
+    // For security purpose, in the case of running context model, TRT EP won't allow
+    // engine cache path to be the relative path like "../file_path" or the absolute path.
+    // It only allows the engine cache to be in the same directory or sub directory of the context model.
+    if (IsAbsolutePath(cache_path)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "For security purpose, the ep_cache_context attribute should be set with a relative path, but it is an absolute path:  " + cache_path);
+    }
+    if (IsRelativePathToParentPath(cache_path)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "The file path in ep_cache_context attribute has '..'. For security purpose, it's not allowed to point outside the directory.");
+    }
+
+    // The engine cache and context model (current model) should be in the same directory
+    std::filesystem::path ctx_model_dir(GetPathOrParentPathOfCtxModel(ep_context_model_path_));
+    auto engine_cache_path = ctx_model_dir.append(cache_path);
+
+    std::ifstream engine_file(engine_cache_path.string(), std::ios::binary | std::ios::in);
     engine_file.seekg(0, std::ios::end);
     size_t engine_size = engine_file.tellg();
     engine_file.seekg(0, std::ios::beg);
     std::unique_ptr<char[]> engine_buf{new char[engine_size]};
     engine_file.read((char*)engine_buf.get(), engine_size);
     *(trt_engine_) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_runtime_->deserializeCudaEngine(engine_buf.get(), engine_size));
-    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path_.string();
     if (!(*trt_engine_)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "TensorRT EP could not deserialize engine from cache: " + engine_cache_path_.string());
+                             "TensorRT EP could not deserialize engine from cache: " + engine_cache_path.string() + 
+                             ". Please make sure engine cache is inside the directory of trt_ep_context_file_path.");
     }
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path.string();
   }
   return Status::OK();
 }
@@ -277,27 +309,15 @@ bool TensorRTCacheModelHandler::ValidateEPCtxNode(const GraphViewer& graph_viewe
   }
 
   // "embed_mode" attr and "ep_cache_context" attr should be present
-  if (attrs.count(EMBED_MODE) > 0 && attrs.count(EP_CACHE_CONTEXT) > 0) {
-    // ep_cache_context: payload of the execution provider context if embed_mode=1, or path to the context file if embed_mode=0
-    const int64_t embed_mode = attrs.at(EMBED_MODE).i();
+  assert(attrs.count(EMBED_MODE) > 0);
+  assert(attrs.count(EP_CACHE_CONTEXT) > 0);
 
-    // engine cache path
-    if (embed_mode == 0) {
-      // First assume engine cache path is relatvie to model path,
-      // If not, then assume the engine cache path is an absolute path.
-      engine_cache_path_ = LocateEngineRelativeToPath(attrs.at(EP_CACHE_CONTEXT).s(), GetModelPath(graph_viewer));
-      auto default_engine_cache_path_ = engine_cache_path_;
-      if (!std::filesystem::exists(engine_cache_path_)) {
-        engine_cache_path_.assign(attrs.at(EP_CACHE_CONTEXT).s());
-        if (!std::filesystem::exists(engine_cache_path_)) {
-          LOGS_DEFAULT(ERROR) << "Can't find " << default_engine_cache_path_.string() << " or " << engine_cache_path_.string() << " TensorRT engine";
-          return false;
-        }
-      }
-    } else if (embed_mode == 1) {
-      LOGS_DEFAULT(WARNING) << EPCONTEXT_WARNING;
-    }
+  const int64_t embed_mode = attrs.at(EMBED_MODE).i();
+  if (embed_mode == 1) {
+    // engine binary data
+    LOGS_DEFAULT(WARNING) << EPCONTEXT_WARNING;
   }
+
   return true;
 }
 }  // namespace onnxruntime
