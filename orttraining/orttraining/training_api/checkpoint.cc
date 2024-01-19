@@ -174,7 +174,7 @@ Status ToFile(const PathString& checkpoint_path, flatbuffers::FlatBufferBuilder&
 Status FromTensorProtos(
     gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_tensor_protos,
     gsl::span<const ONNX_NAMESPACE::TensorProto> non_trainable_tensor_protos,
-    const PathString& checkpoint_path) {
+    const PathString& checkpoint_path, const bool nominal_checkpoint) {
   const auto check_unique = [](gsl::span<const ONNX_NAMESPACE::TensorProto> tensor_protos,
                                InlinedHashSet<std::string>& unique_names) {
     for (const auto& tensor_proto : tensor_protos) {
@@ -230,6 +230,7 @@ Status FromTensorProtos(
   fbs::ModuleStateBuilder module_state_builder(builder);
   module_state_builder.add_requires_grad_params(fbs_trainable_tensors);
   module_state_builder.add_frozen_params(fbs_non_trainable_tensors);
+  module_state_builder.add_is_nominal_state(nominal_checkpoint);
   flatbuffers::Offset<fbs::ModuleState> fbs_module_state = module_state_builder.Finish();
 
   fbs::CheckpointBuilder checkpoint_builder(builder);
@@ -294,6 +295,7 @@ Status FromModuleState(const ModuleCheckpointState& module_state,
   fbs::ModuleStateBuilder module_state_builder(builder);
   module_state_builder.add_requires_grad_params(fbs_trainable_tensors);
   module_state_builder.add_frozen_params(fbs_non_trainable_tensors);
+  module_state_builder.add_is_nominal_state(module_state.is_nominal_state);
   fbs_module_state = module_state_builder.Finish();
 
   return Status::OK();
@@ -513,6 +515,8 @@ Status ToModuleState(
     module_state.named_parameters.insert({name, param});
   }
 
+  module_state.is_nominal_state = fbs_module_state.is_nominal_state();
+
   return Status::OK();
 }
 
@@ -717,14 +721,33 @@ Status ToCheckpointState(gsl::span<const uint8_t> checkpoint_bytes, CheckpointSt
 
 }  // namespace load
 
+#if !defined(ORT_MINIMAL_BUILD)
+InlinedVector<ONNX_NAMESPACE::TensorProto> Nominalize(gsl::span<const ONNX_NAMESPACE::TensorProto> tensor_protos) {
+  InlinedVector<ONNX_NAMESPACE::TensorProto> nominal_tensor_protos;
+  nominal_tensor_protos.reserve(tensor_protos.size());
+  for (const auto& tensor_proto : tensor_protos) {
+    ONNX_NAMESPACE::TensorProto nominal_tensor_proto;
+    nominal_tensor_proto.set_name(tensor_proto.name());
+    nominal_tensor_proto.set_data_type(tensor_proto.data_type());
+    nominal_tensor_protos.push_back(nominal_tensor_proto);
+  }
+
+  return nominal_tensor_protos;
+}
+#endif
+
 }  // namespace
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status SaveCheckpoint(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_tensor_protos,
                       gsl::span<const ONNX_NAMESPACE::TensorProto> non_trainable_tensor_protos,
-                      const PathString& checkpoint_path) {
+                      const PathString& checkpoint_path, const bool nominal_checkpoint) {
   ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ORT training checkpoint format only supports little-endian machines");
-  return save::FromTensorProtos(trainable_tensor_protos, non_trainable_tensor_protos, checkpoint_path);
+  return nominal_checkpoint
+             ? save::FromTensorProtos(Nominalize(trainable_tensor_protos), Nominalize(non_trainable_tensor_protos),
+                                      checkpoint_path, nominal_checkpoint)
+             : save::FromTensorProtos(trainable_tensor_protos, non_trainable_tensor_protos, checkpoint_path,
+                                      nominal_checkpoint);
 }
 #endif
 

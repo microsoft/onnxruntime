@@ -420,4 +420,79 @@ TEST(TrainingCApiTest, UpdateParameterDifferentDevices) {
 }
 #endif
 
+TEST(TrainingCApiTest, ModuleAndOptimizerWithNominalState) {
+  auto training_model_uri = MODEL_FOLDER "training_model.onnx";
+  auto eval_model_uri = MODEL_FOLDER "eval_model.onnx";
+  auto optimizer_model_uri = MODEL_FOLDER "optimizer_model.onnx";
+
+  Ort::Env env;
+  Ort::SessionOptions session_options_for_complete_state;
+  Ort::SessionOptions session_options_for_nominal_state;
+  Ort::CheckpointState complete_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
+  Ort::CheckpointState nominal_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "nominal_checkpoint");
+
+#ifdef USE_CUDA
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options_for_complete_state, 0));
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options_for_nominal_state, 0));
+#endif
+
+  Ort::TrainingSession complete_training_session = Ort::TrainingSession(env, session_options_for_complete_state, complete_state,
+                                                                        training_model_uri, eval_model_uri, optimizer_model_uri);
+  Ort::TrainingSession nominal_training_session = Ort::TrainingSession(env, session_options_for_nominal_state, nominal_state,
+                                                                       training_model_uri, eval_model_uri,
+                                                                       optimizer_model_uri);
+
+  Ort::Value params_buffer = complete_training_session.ToBuffer(false);
+  nominal_training_session.FromBuffer(params_buffer);
+
+  for (size_t i = 0; i < 4U; ++i) {
+    std::vector<float> x(2 * 784);
+    std::vector<int64_t> x_shape{2, 784};
+    GenerateRandomData(x);
+
+    std::vector<int64_t> labels{0, 8};
+    std::vector<int64_t> labels_shape{2};
+
+    Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+    std::vector<Ort::Value> ort_inputs;
+    ort_inputs.emplace_back(Ort::Value::CreateTensor(memory_info, x.data(),
+                                                     x.size() * sizeof(float),
+                                                     x_shape.data(), x_shape.size(),
+                                                     ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
+    ort_inputs.emplace_back(Ort::Value::CreateTensor(memory_info, labels.data(),
+                                                     labels.size() * sizeof(int64_t),
+                                                     labels_shape.data(), labels_shape.size(),
+                                                     ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64));
+
+    std::vector<Ort::Value> complete_fetches = complete_training_session.TrainStep(ort_inputs);
+    std::vector<Ort::Value> nominal_fetches = nominal_training_session.TrainStep(ort_inputs);
+
+    ASSERT_EQ(complete_fetches.size(), nominal_fetches.size());
+    ASSERT_GT(complete_fetches.size(), 0U);
+    for (size_t i = 0; i < complete_fetches.size(); ++i) {
+      ASSERT_TRUE(complete_fetches[i].IsTensor());
+      ASSERT_TRUE(nominal_fetches[i].IsTensor());
+
+      auto complete_tensor_info = complete_fetches[i].GetTensorTypeAndShapeInfo();
+      auto nominal_tensor_info = nominal_fetches[i].GetTensorTypeAndShapeInfo();
+
+      ASSERT_EQ(complete_tensor_info.GetShape(), nominal_tensor_info.GetShape());
+      ASSERT_EQ(complete_tensor_info.GetElementType(), nominal_tensor_info.GetElementType());
+
+      gsl::span complete_data = gsl::span(complete_fetches[i].GetTensorMutableData<float>(),
+                                          complete_tensor_info.GetElementCount());
+      gsl::span nominal_data = gsl::span(nominal_fetches[i].GetTensorMutableData<float>(),
+                                         nominal_tensor_info.GetElementCount());
+
+      ASSERT_EQ(complete_data, nominal_data);
+    }
+
+    complete_training_session.OptimizerStep();
+    nominal_training_session.OptimizerStep();
+
+    complete_training_session.LazyResetGrad();
+    nominal_training_session.LazyResetGrad();
+  }
+}
+
 }  // namespace onnxruntime::training::test
