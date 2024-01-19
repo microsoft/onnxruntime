@@ -154,7 +154,10 @@ class SymbolicShapeInference:
             "MatMulInteger16": self._infer_MatMulInteger,
             "MaxPool": self._infer_Pool,
             "Max": self._infer_symbolic_compute_ops,
+            "MemcpyFromHost": self._pass_on_shape_and_type,
+            "MemcpyToHost": self._pass_on_shape_and_type,
             "Min": self._infer_symbolic_compute_ops,
+            "MoE": self._pass_on_shape_and_type,
             "Mul": self._infer_symbolic_compute_ops,
             "NonMaxSuppression": self._infer_NonMaxSuppression,
             "NonZero": self._infer_NonZero,
@@ -464,6 +467,7 @@ class SymbolicShapeInference:
             "PythonOp",
             "MultiHeadAttention",
             "GroupNorm",
+            "SkipGroupNorm",
             "BiasSplitGelu",
             "BiasAdd",
             "NhwcConv",
@@ -2411,9 +2415,9 @@ class SymbolicShapeInference:
 
     def _infer_PythonOp(self, node):  # noqa: N802
         output_tensor_types = get_attribute(node, "output_tensor_types")
-        assert output_tensor_types
+        assert output_tensor_types, f"PythonOp '{node.name}' has no output_tensor_types attribute."
         output_tensor_ranks = get_attribute(node, "output_tensor_ranks")
-        assert output_tensor_ranks
+        assert output_tensor_ranks, f"PythonOp '{node.name}' has no output_tensor_ranks attribute."
 
         from onnxruntime.capi._pybind_state import get_shape_inference_function
 
@@ -2434,7 +2438,10 @@ class SymbolicShapeInference:
                 input_dtype = self.known_vi_[node.input[input_index]].type.tensor_type.elem_type
                 input_dtypes.append(input_dtype)
             output_shapes, output_dtypes = shape_inferer(node, input_shapes, input_dtypes)
-            assert len(output_shapes) == len(output_dtypes) == (len(node.output) - 1)
+            assert len(output_shapes) == len(output_dtypes) == (len(node.output) - 1), (
+                f"PythonOp '{func_name}' returned {len(output_shapes)} shapes and {len(output_dtypes)} dtypes, "
+                f"but expected {len(node.output) - 1} outputs."
+            )
             for i in range(len(node.output) - 1):
                 output_index = i + 1
                 vi = self.known_vi_[node.output[output_index]]

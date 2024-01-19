@@ -529,6 +529,7 @@ Status FusedScaledDotProductAttentionCutlass(
   p.output = data.output;
   p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? accum_workspace : nullptr;
   p.stream = stream;
+  p.has_custom_right_padding = false;
   run_memory_efficient_attention(p);
 
   DUMP_TENSOR("PackedAttention cutlass output", data.output, parameters.token_count, num_heads, v_head_size);

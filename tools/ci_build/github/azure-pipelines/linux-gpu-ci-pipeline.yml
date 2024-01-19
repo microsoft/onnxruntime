@@ -26,7 +26,14 @@ pr:
     - 'js/web'
     - 'onnxruntime/core/providers/js'
 #### end trigger ####
-
+parameters:
+  - name: CudaVersion
+    displayName: CUDA version
+    type: string
+    default: '11.8'
+    values:
+      - 11.8
+      - 12.2
 resources:
   repositories:
   - repository: manylinux
@@ -36,7 +43,23 @@ resources:
     ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 variables:
-  - template: templates/common-variables.yml
+  - name: docker_base_image
+    ${{ if eq(parameters.CudaVersion, '11.8') }}:
+      value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+    ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      value: nvidia/cuda:12.2.2-cudnn8-devel-ubi8
+
+  - name: linux_trt_version
+    ${{ if eq(parameters.CudaVersion, '11.8') }}:
+      value: 8.6.1.6-1.cuda11.8
+    ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      value: 8.6.1.6-1.cuda12.0
+
+  - name: Repository
+    ${{ if eq(parameters.CudaVersion, '11.8') }}:
+      value: 'onnxruntimecuda11build'
+    ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      value: 'onnxruntimecuda12build'
 
 jobs:
 - job: Linux_Build
@@ -46,7 +69,8 @@ jobs:
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
   workspace:
     clean: all
-  pool: onnxruntime-Ubuntu2004-AMD-CPU
+  pool: onnxruntime-Ubuntu2204-AMD-CPU
+
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
@@ -61,19 +85,19 @@ jobs:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "
-      --network=host 
-      --build-arg BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8 
-      --build-arg TRT_VERSION=8.6.1.6-1.cuda11.8 
+      --network=host
+      --build-arg BASEIMAGE=$(docker_base_image)
+      --build-arg TRT_VERSION=$(linux_trt_version)
       --build-arg BUILD_UID=$( id -u )
       "
-      Repository: onnxruntimecuda11build
+      Repository: $(Repository)
 
   - task: Cache@2
     inputs:
-      key: '"ccache" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
+      key: '"ccache" | "${{parameters.CudaVersion}}" |"$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
       path: $(CCACHE_DIR)
       restoreKeys: |
-        "ccache" | "$(Build.SourceBranch)"
+        "ccache" | "${{parameters.CudaVersion}}" | "$(Build.SourceBranch)"
         "ccache"
       cacheHitVar: CACHE_RESTORED
     displayName: Cach Task
@@ -83,41 +107,41 @@ jobs:
     condition: ne(variables.CACHE_RESTORED, 'true')
     displayName: Create Cache Dir
 
-  - task: CmdLine@2
-    inputs:
-      script: |
-        mkdir -p $HOME/.onnx
-        docker run -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
-          --volume /data/onnx:/data/onnx:ro \
-          --volume $(Build.SourcesDirectory):/onnxruntime_src \
-          --volume $(Build.BinariesDirectory):/build \
-          --volume /data/models:/build/models:ro \
-          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-          --volume $(Pipeline.Workspace)/ccache:/cache \
-          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
-          -e NIGHTLY_BUILD \
-          -e BUILD_BUILDNUMBER \
-          -e CCACHE_DIR=/cache \
-          onnxruntimecuda11build \
-          /bin/bash -c "
-            set -ex; \
-            env; \
-            ccache -s; \
-            /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-              --build_dir /build --cmake_generator Ninja \
-              --config Release --update --build \
-              --skip_submodule_sync \
-              --build_shared_lib \
-              --parallel \
-              --build_wheel \
-              --enable_onnx_tests --use_cuda --cuda_version=${{variables.common_cuda_version}} --cuda_home=/usr/local/cuda-${{variables.common_cuda_version}} --cudnn_home=/usr/local/cuda-${{variables.common_cuda_version}} \
-              --enable_cuda_profiling --enable_cuda_nhwc_ops \
-              --enable_pybind --build_java \
-              --use_cache \
-              --cmake_extra_defines  CMAKE_CUDA_ARCHITECTURES=75; \
-                ccache -sv; \
-                ccache -z"
-      workingDirectory: $(Build.SourcesDirectory)
+  - script: |
+      set -e -x
+      mkdir -p $HOME/.onnx
+      docker run -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
+        --volume /data/onnx:/data/onnx:ro \
+        --volume $(Build.SourcesDirectory):/onnxruntime_src \
+        --volume $(Build.BinariesDirectory):/build \
+        --volume /data/models:/build/models:ro \
+        --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+        --volume $(Pipeline.Workspace)/ccache:/cache \
+        -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+        -e NIGHTLY_BUILD \
+        -e BUILD_BUILDNUMBER \
+        -e CCACHE_DIR=/cache \
+        $(Repository) \
+        /bin/bash -c "
+          set -ex; \
+          env; \
+          ccache -s; \
+          /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+            --build_dir /build --cmake_generator Ninja \
+            --config Release --update --build \
+            --skip_submodule_sync \
+            --build_shared_lib \
+            --parallel \
+            --build_wheel \
+            --enable_onnx_tests --use_cuda --cuda_version=${{parameters.CudaVersion}} --cuda_home=/usr/local/cuda-${{parameters.CudaVersion}} --cudnn_home=/usr/local/cuda-${{parameters.CudaVersion}} \
+            --enable_cuda_profiling --enable_cuda_nhwc_ops \
+            --enable_pybind --build_java \
+            --use_cache \
+            --cmake_extra_defines  CMAKE_CUDA_ARCHITECTURES=75; \
+              ccache -sv; \
+              ccache -z"
+    workingDirectory: $(Build.SourcesDirectory)
+    displayName: Build Onnxruntime
 
   - task: CmdLine@2
     inputs:
@@ -162,12 +186,12 @@ jobs:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "
-      --network=host 
-      --build-arg BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8
-      --build-arg TRT_VERSION=8.6.1.6-1.cuda11.8 
+      --network=host
+      --build-arg BASEIMAGE=$(docker_base_image)
+      --build-arg TRT_VERSION=$(linux_trt_version)
       --build-arg BUILD_UID=$( id -u )
       "
-      Repository: onnxruntimecuda11build
+      Repository: $(Repository)
 
   - task: CmdLine@2
     inputs:
@@ -180,7 +204,7 @@ jobs:
           --volume /data/models:/build/models:ro \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
           --volume /data/onnx:/data/onnx \
-          onnxruntimecuda11build \
+          $(Repository) \
           /bin/bash -c "
             set -ex; \
             cp /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt /tmp/requirements.txt; \
@@ -192,7 +216,7 @@ jobs:
             cd /tmp; \
             /tmp/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --config Release --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_onnx_tests \
-              --use_cuda --cuda_version=${{variables.common_cuda_version}} --cuda_home=/usr/local/cuda --cudnn_home=/usr/local/cuda \
+              --use_cuda --cuda_version=${{parameters.CudaVersion}} --cuda_home=/usr/local/cuda --cudnn_home=/usr/local/cuda \
               --enable_pybind --build_java --ctest_path '' "
 
   - template: templates/clean-agent-build-directory-step.yml

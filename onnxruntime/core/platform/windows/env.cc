@@ -32,7 +32,7 @@ limitations under the License.
 #include "core/common/span_utils.h"
 #include "core/platform/env.h"
 #include "core/platform/scoped_resource.h"
-#include "unsupported/Eigen/CXX11/src/ThreadPool/ThreadPoolInterface.h"
+#include <unsupported/Eigen/CXX11/ThreadPool>
 #include <wil/Resource.h>
 
 #include "core/platform/path_lib.h"  // for LoopDir()
@@ -380,18 +380,6 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
                            " - ", std::system_category().message(error_code));
   }
 
-#if NTDDI_VERSION >= NTDDI_WIN10_RS5 && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP | WINAPI_PARTITION_SYSTEM)
-  wil::unique_hfile file_mapping_handle{
-      CreateFileMapping2(file_handle.get(),
-                         nullptr,
-                         FILE_MAP_READ,
-                         PAGE_READONLY,
-                         SEC_COMMIT,
-                         0,
-                         nullptr,
-                         nullptr,
-                         0)};
-#else
   wil::unique_hfile file_mapping_handle{
       CreateFileMappingW(file_handle.get(),
                          nullptr,
@@ -399,7 +387,6 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
                          0,
                          0,
                          nullptr)};
-#endif
   if (file_mapping_handle.get() == INVALID_HANDLE_VALUE) {
     const auto error_code = GetLastError();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,

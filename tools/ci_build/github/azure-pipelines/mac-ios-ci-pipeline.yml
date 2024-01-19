@@ -38,6 +38,8 @@ jobs:
   timeoutInMinutes: 150
   steps:
     - template: templates/use-xcode-version.yml
+      parameters:
+        xcodeVersion: 14.3
     - template: templates/mac-build-step-with-cache.yml
       parameters:
         WithCache: true
@@ -54,7 +56,7 @@ jobs:
                 --use_coreml \
                 --use_xnnpack \
                 --ios \
-                --ios_sysroot iphonesimulator  \
+                --apple_sysroot iphonesimulator  \
                 --osx_arch x86_64 \
                 --apple_deploy_target 12.0 \
                 --use_xcode \

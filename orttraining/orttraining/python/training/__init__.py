@@ -8,26 +8,16 @@ from onnxruntime.capi._pybind_state import (
     TrainingParameters,
     is_ortmodule_available,
 )
-from onnxruntime.capi.training.training_session import TrainingSession
-
 
 # Options need to be imported before `ORTTrainer`.
-from .orttrainer_options import ORTTrainerOptions
-from .orttrainer import ORTTrainer, TrainStepInfo
-from . import amp, artifacts, checkpoint, model_desc_validation, optim
+from . import amp, artifacts, optim
 
 __all__ = [
     "PropagateCastOpsStrategy",
     "TrainingParameters",
     "is_ortmodule_available",
-    "TrainingSession",
-    "ORTTrainerOptions",
-    "ORTTrainer",
-    "TrainStepInfo",
     "amp",
     "artifacts",
-    "checkpoint",
-    "model_desc_validation",
     "optim",
 ]
 

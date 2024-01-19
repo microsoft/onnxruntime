@@ -27,7 +27,7 @@ from fusion_shape import FusionShape
 from fusion_simplified_layernorm import FusionSimplifiedLayerNormalization, FusionSkipSimplifiedLayerNormalization
 from fusion_skiplayernorm import FusionBiasSkipLayerNormalization, FusionSkipLayerNormalization
 from fusion_utils import FusionUtils
-from onnx import GraphProto, ModelProto, TensorProto, ValueInfoProto, helper
+from onnx import ModelProto, TensorProto, helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -170,78 +170,13 @@ class BertOnnxModel(OnnxModel):
         inputs += self.get_graph_inputs_from_node_type("Attention", [3], casted)
         return inputs
 
-    def change_graph_input_type(
-        self,
-        graph: GraphProto,
-        graph_input: ValueInfoProto,
-        new_type: int = TensorProto.INT32,
-    ):
-        """Change graph input type, and add Cast node if needed.
-
-        Args:
-            graph (GraphProto): graph
-            graph_input (TensorProto): input of the graph
-            new_type (int, optional): new data type. Defaults to TensorProto.INT32.
-
-        Returns:
-            NodeProto: a new Cast node that added. None if Cast node is not added.
-            List[NodeProto]: Cast nodes that have been removed.
-        """
-        assert isinstance(graph, GraphProto)
-        assert isinstance(graph_input, ValueInfoProto)
-        assert self.find_graph_input(graph_input.name)
-
-        if graph_input.type.tensor_type.elem_type == int(new_type):
-            return None, []
-
-        new_cast_node = None
-        nodes_to_remove = []
-
-        input_name_to_nodes = self.input_name_to_nodes()
-        if graph_input.name in input_name_to_nodes:
-            nodes = input_name_to_nodes[graph_input.name]
-
-            # For children that is not Cast node, insert a Cast node to convert int32 to original data type.
-            nodes_not_cast = [node for node in nodes if node.op_type != "Cast"]
-            if nodes_not_cast:
-                node_name = self.create_node_name("Cast")
-                output_name = node_name + "_" + graph_input.name
-                new_value_info = graph.value_info.add()
-                new_value_info.CopyFrom(graph_input)
-                new_value_info.name = output_name
-                new_cast_node = helper.make_node(
-                    "Cast",
-                    [graph_input.name],
-                    [output_name],
-                    to=int(graph_input.type.tensor_type.elem_type),
-                    name=node_name,
-                )
-                graph.node.extend([new_cast_node])
-
-                for node in nodes_not_cast:
-                    OnnxModel.replace_node_input(node, graph_input.name, output_name)
-
-            # For children that is Cast node, no need to insert Cast.
-            # When the children is Cast to int32, we can remove that Cast node since input type is int32 now.
-            nodes_cast = [node for node in nodes if node.op_type == "Cast"]
-            for node in nodes_cast:
-                if OnnxModel.get_node_attribute(node, "to") == int(new_type):
-                    self.replace_input_of_all_nodes(node.output[0], graph_input.name)
-                if not self.find_graph_output(node.output[0]):
-                    nodes_to_remove.append(node)
-            if nodes_to_remove:
-                self.remove_nodes(nodes_to_remove)
-
-        graph_input.type.tensor_type.elem_type = int(new_type)
-        return new_cast_node, nodes_to_remove
-
     def change_graph_inputs_to_int32(self):
         """Change data type of all graph inputs to int32 type, and add Cast node if needed."""
         graph = self.graph()
         add_cast_count = 0
         remove_cast_count = 0
         for graph_input in graph.input:
-            new_node, removed_nodes = self.change_graph_input_type(graph, graph_input, TensorProto.INT32)
+            new_node, removed_nodes = self.change_graph_input_type(graph_input, TensorProto.INT32)
             if new_node:
                 add_cast_count += 1
             remove_cast_count += len(removed_nodes)
@@ -488,16 +423,22 @@ class BertOnnxModel(OnnxModel):
         logger.info(f"Optimized operators: {op_count}")
         return op_count
 
-    def is_fully_optimized(self):
+    def is_fully_optimized(self, fused_op_count=None):
         """
         Returns True when the model is fully optimized.
         """
-        op_count = self.get_fused_operator_statistics()
-        embed = op_count["EmbedLayerNormalization"]
-        attention = op_count["Attention"] + op_count["MultiHeadAttention"] + op_count["QOrderedAttention"]
-        gelu = op_count["Gelu"] + op_count["BiasGelu"] + op_count["FastGelu"]
-        layer_norm = op_count["LayerNormalization"] + op_count["SkipLayerNormalization"]
-        simple_layer_norm = op_count["SimplifiedLayerNormalization"] + op_count["SkipSimplifiedLayerNormalization"]
+        if fused_op_count is None:
+            fused_op_count = self.get_fused_operator_statistics()
+
+        def op_count(op_name: str):
+            return fused_op_count.get(op_name) or 0
+
+        embed = op_count("EmbedLayerNormalization")
+        attention = op_count("Attention") + op_count("MultiHeadAttention") + op_count("QOrderedAttention")
+        gelu = op_count("Gelu") + op_count("BiasGelu") + op_count("FastGelu")
+        layer_norm = op_count("LayerNormalization") + op_count("SkipLayerNormalization")
+        simple_layer_norm = op_count("SimplifiedLayerNormalization") + op_count("SkipSimplifiedLayerNormalization")
+
         is_perfect = (
             (embed > 0)
             and (attention > 0)
@@ -512,13 +453,13 @@ class BertOnnxModel(OnnxModel):
             logger.debug("Simple Layer Normalization not fused")
 
         if gelu == 0:
-            logger.debug("Gelu/FastGelu not fused")
+            logger.debug("Gelu (or FastGelu) not fused")
 
         if embed == 0:
-            logger.debug("Embed Layer not fused")
+            logger.debug("EmbedLayerNormalization not fused")
 
         if attention == 0:
-            logger.warning("Attention not fused")
+            logger.warning("Attention (or MultiHeadAttention) not fused")
 
         return is_perfect
 

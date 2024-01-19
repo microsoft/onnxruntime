@@ -19,9 +19,10 @@ common::Status ComputeConvPads(const std::vector<int64_t> input_shape,
                                const std::vector<int64_t>& onnx_strides,
                                const std::vector<int64_t>& onnx_dilations,
                                AutoPadType auto_pad_type,
-                               std::vector<int64_t>& pads_out) {
-  const int64_t input_size_y = input_shape[2];
-  const int64_t input_size_x = input_shape[3];
+                               std::vector<int64_t>& pads_out,
+                               bool use_nchw) {
+  const int64_t input_size_y = use_nchw ? input_shape[2] : input_shape[1];
+  const int64_t input_size_x = use_nchw ? input_shape[3] : input_shape[2];
   const int64_t stride_y = onnx_strides[0];
   const int64_t stride_x = onnx_strides[1];
   const int64_t dilation_y = onnx_dilations[0];
@@ -53,32 +54,17 @@ common::Status HandleAutoPad(const std::vector<int64_t> input_shape,
                              const std::vector<int64_t>& onnx_strides,
                              const std::vector<int64_t>& onnx_dilations,
                              AutoPadType auto_pad_type,
-                             AutoPadType& auto_pad_type_out) {
-  auto_pad_type_out = auto_pad_type;
-  if (auto_pad_type == AutoPadType::NOTSET && onnx_dilations == std::vector<int64_t>{1, 1}) {
-    {
-      std::vector<int64_t> same_upper_pads;
-      ORT_RETURN_IF_ERROR(ComputeConvPads(input_shape, weight_size_y, weight_size_x,
-                                          onnx_pads, onnx_strides, onnx_dilations,
-                                          AutoPadType::SAME_UPPER, same_upper_pads));
-      if (onnx_pads == same_upper_pads) {
-        auto_pad_type_out = AutoPadType::SAME_UPPER;
-        return Status::OK();
-      }
-    }
-
-    {
-      std::vector<int64_t> same_lower_pads;
-      ORT_RETURN_IF_ERROR(ComputeConvPads(input_shape, weight_size_y, weight_size_x,
-                                          onnx_pads, onnx_strides, onnx_dilations,
-                                          AutoPadType::SAME_LOWER, same_lower_pads));
-      if (onnx_pads == same_lower_pads) {
-        auto_pad_type_out = AutoPadType::SAME_LOWER;
-        return Status::OK();
-      }
-    }
+                             std::vector<int64_t>& pads_out,
+                             bool use_nchw) {
+  if (AutoPadType::SAME_UPPER == auto_pad_type) {
+    ORT_RETURN_IF_ERROR(ComputeConvPads(input_shape, weight_size_y, weight_size_x,
+                                        onnx_pads, onnx_strides, onnx_dilations,
+                                        AutoPadType::SAME_UPPER, pads_out, use_nchw));
+  } else {
+    ORT_RETURN_IF_ERROR(ComputeConvPads(input_shape, weight_size_y, weight_size_x,
+                                        onnx_pads, onnx_strides, onnx_dilations,
+                                        AutoPadType::SAME_LOWER, pads_out, use_nchw));
   }
-
   return Status::OK();
 }
 

@@ -6,10 +6,15 @@
 #include <windows.h>
 #include <psapi.h>
 #include <libloaderapi.h>
+#include <set>
 #else
 #include <dlfcn.h>
 #endif
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
 #include "HTP/QnnHtpDevice.h"
 #include "QnnLog.h"
 #include "System/QnnSystemInterface.h"
@@ -22,7 +27,6 @@ namespace onnxruntime {
 namespace qnn {
 
 class QnnModel;
-class QnnCacheModelHandler;
 
 class QnnBackendManager {
  public:
@@ -30,11 +34,13 @@ class QnnBackendManager {
                     ProfilingLevel profiling_level,
                     uint32_t rpc_control_latency,
                     HtpPerformanceMode htp_performance_mode,
+                    ContextPriority context_priority,
                     std::string&& qnn_saver_path)
       : backend_path_(backend_path),
         profiling_level_(profiling_level),
         rpc_control_latency_(rpc_control_latency),
         htp_performance_mode_(htp_performance_mode),
+        context_priority_(context_priority),
         qnn_saver_path_(qnn_saver_path) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
@@ -116,8 +122,11 @@ class QnnBackendManager {
   void Split(std::vector<std::string>& split_string, const std::string& tokenized_string, const char separator);
 
   Status ExtractBackendProfilingInfo();
-  Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id);
-  Status ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id);
+  Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id, std::ofstream& outfile,
+                                   bool backendSupportsExtendedEventData, bool tracelogging_provider_ep_enabled);
+  Status ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
+                               std::ofstream& outfile, bool backendSupportsExtendedEventData,
+                               bool tracelogging_provider_ep_enabled);
 
   void SetQnnBackendType(uint32_t backend_id);
   QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
@@ -132,6 +141,8 @@ class QnnBackendManager {
   Status LoadQnnSaverBackend();
 
   Status UnloadLib(void* handle);
+
+  Status DestroyHTPPowerConfigID();
 
   void* LibFunction(void* handle, const char* symbol, std::string& error_msg);
 
@@ -172,6 +183,26 @@ class QnnBackendManager {
     return (backend_build_id == nullptr ? std::string("") : std::string(backend_build_id));
   }
 
+  Status ExtractProfilingEventBasic(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
+                                    std::ofstream& outfile, bool tracelogging_provider_ep_enabled);
+  Status ExtractProfilingEventExtended(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
+                                       std::ofstream& outfile, bool tracelogging_provider_ep_enabled);
+  static const std::string& GetUnitString(QnnProfile_EventUnit_t unitType);
+  static const std::unordered_map<QnnProfile_EventUnit_t, std::string>& GetUnitStringMap();
+  static const std::string GetEventTypeString(QnnProfile_EventType_t eventType);
+  static const std::string ExtractQnnScalarValue(const Qnn_Scalar_t& scalar);
+  const char* QnnProfileErrorToString(QnnProfile_Error_t error);
+#ifdef _WIN32
+  void LogQnnProfileEventAsTraceLogging(
+      uint64_t timestamp,
+      const std::string& message,
+      const std::string& qnnScalarValue,
+      const std::string& unit,
+      const std::string& timingSource,
+      const std::string& eventLevel,
+      const char* eventIdentifier);
+#endif
+
  private:
   const std::string backend_path_;
   const logging::Logger* logger_ = nullptr;
@@ -184,7 +215,6 @@ class QnnBackendManager {
   Qnn_LogHandle_t log_handle_ = nullptr;
   Qnn_DeviceHandle_t device_handle_ = nullptr;
   Qnn_ContextHandle_t context_ = nullptr;
-  QnnContext_Config_t** context_config_ = nullptr;
   ProfilingLevel profiling_level_;
   bool backend_initialized_ = false;
   bool device_created_ = false;
@@ -196,11 +226,13 @@ class QnnBackendManager {
   std::vector<std::string> op_package_paths_;
   uint32_t rpc_control_latency_ = 0;
   HtpPerformanceMode htp_performance_mode_;
+  ContextPriority context_priority_;
   std::string sdk_build_version_ = "";
 #ifdef _WIN32
   std::set<HMODULE> mod_handles_;
 #endif
   const std::string qnn_saver_path_;
+  uint32_t htp_power_config_client_id_ = 0;
 };
 
 }  // namespace qnn

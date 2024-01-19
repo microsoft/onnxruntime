@@ -31,7 +31,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: qnn-v2.14.1.230828
+  default: qnn-v2.18.0.240101
 
 jobs:
 - job: Build_QNN_EP
@@ -87,13 +87,6 @@ jobs:
       mkdir -p build_qnn/Release/testdata/QNN/node_tests
       cp -r cmake/external/onnx/onnx/backend/test/data/node/test_basic_conv_with_padding build_qnn/Release/testdata/QNN/node_tests
     displayName: Initialize test directories
-
-  - task: JavaToolInstaller@0
-    displayName: Use jdk 11
-    inputs:
-      versionSpec: '11'
-      jdkArchitectureOption: 'x64'
-      jdkSourceOption: 'PreInstalled'
 
   # This is commented out for now. The emulator runs correctly, onnx_test_runner is executable, and the test passes
   # with the CPU EP but returns 139 when attempting to use the QNN EP. Maybe some QNN EP parameters need to be provided?

@@ -4,6 +4,8 @@
 #include "qnn_backend_manager.h"
 #include "qnn_model.h"
 #include <filesystem>
+#include <fstream>
+#include <string>
 #include "QnnOpDef.h"
 #include "HTP/QnnHtpPerfInfrastructure.h"
 #include "CPU/QnnCpuCommon.h"
@@ -15,6 +17,11 @@
 #include "core/framework/endian_utils.h"
 #include "core/common/logging/capture.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
+
+#ifdef _WIN32
+#include <winmeta.h>
+#include "core/platform/tracing.h"
+#endif
 
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1
@@ -380,15 +387,48 @@ Status QnnBackendManager::ReleaseProfilehandle() {
   return Status::OK();
 }
 
+Status SetQnnContextConfig(ContextPriority context_priority, QnnContext_Config_t& qnn_context_config) {
+  qnn_context_config.option = QNN_CONTEXT_CONFIG_OPTION_PRIORITY;
+  switch (context_priority) {
+    case ContextPriority::LOW: {
+      qnn_context_config.priority = QNN_PRIORITY_LOW;
+      break;
+    }
+    case ContextPriority::NORMAL: {
+      qnn_context_config.priority = QNN_PRIORITY_NORMAL;
+      break;
+    }
+    case ContextPriority::NORMAL_HIGH: {
+      qnn_context_config.priority = QNN_PRIORITY_NORMAL_HIGH;
+      break;
+    }
+    case ContextPriority::HIGH: {
+      qnn_context_config.priority = QNN_PRIORITY_HIGH;
+      break;
+    }
+    case ContextPriority::UNDEFINED: {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid Qnn context priority.");
+    }
+    default:
+      qnn_context_config.priority = QNN_PRIORITY_NORMAL;
+  }  // switch
+
+  return Status::OK();
+}
+
 Status QnnBackendManager::CreateContext() {
   if (true == context_created_) {
     LOGS_DEFAULT(INFO) << "Context created already.";
     return Status::OK();
   }
 
+  QnnContext_Config_t qnn_context_config = QNN_CONTEXT_CONFIG_INIT;
+  ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, qnn_context_config));
+  const QnnContext_Config_t* context_configs[] = {&qnn_context_config, nullptr};
+
   auto result = qnn_interface_.contextCreate(backend_handle_,
                                              device_handle_,
-                                             (const QnnContext_Config_t**)&context_config_,
+                                             context_configs,
                                              &context_);
 
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context.");
@@ -486,9 +526,14 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 
   ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinary,
                 "Invalid function pointer for contextCreateFromBinary.");
+
+  QnnContext_Config_t qnn_context_config = QNN_CONTEXT_CONFIG_INIT;
+  ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, qnn_context_config));
+  const QnnContext_Config_t* context_configs[] = {&qnn_context_config, nullptr};
+
   rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
                                               device_handle_,
-                                              (const QnnContext_Config_t**)&context_config_,
+                                              context_configs,
                                               static_cast<void*>(buffer),
                                               buffer_length,
                                               &context_,
@@ -570,8 +615,7 @@ Status QnnBackendManager::SetHtpPowerConfig() {
                 "HTP infra type = ", htp_infra->infraType, ", which is not perf infra type.");
   QnnHtpDevice_PerfInfrastructure_t& htp_perf_infra = htp_infra->perfInfra;
   // Get power client id
-  uint32_t powerconfig_client_id = 0;
-  status = htp_perf_infra.createPowerConfigId(/*device_id=*/0, /*core_id=*/0, &powerconfig_client_id);
+  status = htp_perf_infra.createPowerConfigId(/*device_id=*/0, /*core_id=*/0, &htp_power_config_client_id_);
   ORT_RETURN_IF(QNN_SUCCESS != status, "createPowerConfigId failed.");
 
   constexpr const int kNumConfigs = 1;
@@ -580,7 +624,7 @@ Status QnnBackendManager::SetHtpPowerConfig() {
   QnnHtpPerfInfrastructure_PowerConfig_t& dcvs_config = power_configs[0];
   dcvs_config.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_DCVS_V3;
   QnnHtpPerfInfrastructure_DcvsV3_t& dcvs_v3 = dcvs_config.dcvsV3Config;
-  dcvs_v3.contextId = powerconfig_client_id;
+  dcvs_v3.contextId = htp_power_config_client_id_;
   dcvs_v3.setSleepDisable = 0;
   dcvs_v3.sleepDisable = 0;
   dcvs_v3.setDcvsEnable = 1;
@@ -649,6 +693,18 @@ Status QnnBackendManager::SetHtpPowerConfig() {
       dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
       dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_VCORNER_SVS_PLUS;
       break;
+    case HtpPerformanceMode::kHtpExtremePowerSaver:
+      dcvs_v3.setSleepLatency = 1;  // true
+      dcvs_v3.sleepLatency = kSleepMediumLatency;
+      dcvs_v3.setBusParams = 1;
+      dcvs_v3.busVoltageCornerMin = DCVS_VOLTAGE_CORNER_DISABLE;
+      dcvs_v3.busVoltageCornerTarget = DCVS_VOLTAGE_CORNER_DISABLE;
+      dcvs_v3.busVoltageCornerMax = DCVS_VOLTAGE_CORNER_DISABLE;
+      dcvs_v3.setCoreParams = 1;
+      dcvs_v3.coreVoltageCornerMin = DCVS_VOLTAGE_CORNER_DISABLE;
+      dcvs_v3.coreVoltageCornerTarget = DCVS_VOLTAGE_CORNER_DISABLE;
+      dcvs_v3.coreVoltageCornerMax = DCVS_VOLTAGE_CORNER_DISABLE;
+      break;
     case HtpPerformanceMode::kHtpLowBalanced:
       dcvs_v3.setSleepLatency = 1;  // true
       dcvs_v3.sleepLatency = kSleepMediumLatency;
@@ -677,13 +733,13 @@ Status QnnBackendManager::SetHtpPowerConfig() {
       ORT_THROW("Invalid performance profile %d", static_cast<int>(htp_performance_mode_));
       break;
   }
-  std::vector<const QnnHtpPerfInfrastructure_PowerConfig_t*> perf_power_configs_ptr_ = ObtainNullTermPtrVector(power_configs);
-  status = htp_perf_infra.setPowerConfig(powerconfig_client_id, perf_power_configs_ptr_.data());
+  std::vector<const QnnHtpPerfInfrastructure_PowerConfig_t*> perf_power_configs_ptr = ObtainNullTermPtrVector(power_configs);
+  status = htp_perf_infra.setPowerConfig(htp_power_config_client_id_, perf_power_configs_ptr.data());
   ORT_RETURN_IF(QNN_SUCCESS != status, "setPowerConfig failed for HTP performance mode.");
 
   // Set rpc control latency here, but note that v68 doesn't support rpc polling mode.
   if (rpc_control_latency_ != 0) {
-    constexpr int kNumRpcPollingPowerConfigs = 1;
+    constexpr int kNumRpcPollingPowerConfigs = 2;
     std::vector<QnnHtpPerfInfrastructure_PowerConfig_t> rpc_power_configs(kNumRpcPollingPowerConfigs);
     QnnHtpPerfInfrastructure_PowerConfig_t& rpc_control_latency = rpc_power_configs[0];
     // v68 doesn't support this.
@@ -691,8 +747,8 @@ Status QnnBackendManager::SetHtpPowerConfig() {
     rpc_control_latency.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_CONTROL_LATENCY;
     rpc_polling_time.option = QNN_HTP_PERF_INFRASTRUCTURE_POWER_CONFIGOPTION_RPC_POLLING_TIME;
     rpc_control_latency.rpcControlLatencyConfig = rpc_control_latency_;
-    perf_power_configs_ptr_ = ObtainNullTermPtrVector(rpc_power_configs);
-    status = htp_perf_infra.setPowerConfig(powerconfig_client_id, perf_power_configs_ptr_.data());
+    perf_power_configs_ptr = ObtainNullTermPtrVector(rpc_power_configs);
+    status = htp_perf_infra.setPowerConfig(htp_power_config_client_id_, perf_power_configs_ptr.data());
     ORT_RETURN_IF(QNN_SUCCESS != status, "setPowerConfig failed for RPC control latency.");
   }
 
@@ -713,12 +769,36 @@ void QnnBackendManager::Split(std::vector<std::string>& split_string,
   }
 }
 
+Status QnnBackendManager::DestroyHTPPowerConfigID() {
+  if (htp_performance_mode_ == HtpPerformanceMode::kHtpDefault) {
+    return Status::OK();
+  }
+
+  QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
+  auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
+  ORT_RETURN_IF(QNN_SUCCESS != status, "backendGetPerfInfrastructure failed.");
+
+  auto* htp_infra = static_cast<QnnHtpDevice_Infrastructure_t*>(qnn_device_infra);
+  ORT_RETURN_IF(QNN_HTP_DEVICE_INFRASTRUCTURE_TYPE_PERF != htp_infra->infraType,
+                "HTP infra type = ", htp_infra->infraType, ", which is not perf infra type.");
+  QnnHtpDevice_PerfInfrastructure_t& htp_perf_infra = htp_infra->perfInfra;
+
+  Qnn_ErrorHandle_t destroy_ret = htp_perf_infra.destroyPowerConfigId(htp_power_config_client_id_);
+  ORT_RETURN_IF(QNN_SUCCESS != destroy_ret, "destroyPowerConfigId failed.");
+  return Status::OK();
+}
+
 void QnnBackendManager::ReleaseResources() {
   if (!backend_setup_completed_) {
     return;
   }
 
-  auto result = ReleaseContext();
+  auto result = DestroyHTPPowerConfigID();
+  if (Status::OK() != result) {
+    ORT_THROW("Failed to DestroyHTPPowerConfigID.");
+  }
+
+  result = ReleaseContext();
   if (Status::OK() != result) {
     ORT_THROW("Failed to ReleaseContext.");
   }
@@ -768,16 +848,68 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
 
   if (num_events > 0) {
     LOGS(*logger_, VERBOSE) << "profile_events: " << profile_events << " num_events: " << num_events;
+
+    bool backendSupportsExtendedEventData = false;
+    Qnn_ErrorHandle_t resultPropertyHasCapability =
+        qnn_interface_.propertyHasCapability(QNN_PROPERTY_PROFILE_SUPPORTS_EXTENDED_EVENT);
+    uint16_t errorCodePropertyHasCapability = static_cast<uint16_t>(resultPropertyHasCapability & 0xFFFF);
+    if (errorCodePropertyHasCapability == QNN_PROFILE_NO_ERROR) {
+      LOGS(*logger_, VERBOSE) << "The QNN backend supports extended event data.";
+      backendSupportsExtendedEventData = true;
+    } else {
+      LOGS(*logger_, VERBOSE) << "The QNN backend does not support extended event data.";
+    }
+
+    bool tracelogging_provider_ep_enabled = false;
+    const Env& env = Env::Default();
+    auto& provider = env.GetTelemetryProvider();
+    if (provider.IsEnabled()) {
+      auto keyword = provider.Keyword();
+      if ((keyword & static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0) {
+        tracelogging_provider_ep_enabled = true;
+      }
+    }
+    std::ofstream outfile;
+    if (!tracelogging_provider_ep_enabled) {
+      // Write to CSV in append mode
+      const char* profilingCsvFilename = "qnn-profiling-data.csv";
+      std::ifstream infile(profilingCsvFilename);
+      bool exists = infile.good();
+      infile.close();
+
+      outfile.open(profilingCsvFilename, std::ios_base::app);
+      ORT_RETURN_IF(!outfile.is_open(), "Failed to open qnn-profiling-data.csv");
+      // If file didn't exist before, write the header
+      if (!exists) {
+        outfile << "Msg Timestamp,Message,Time,Unit of Measurement,Timing Source,Event Level,Event Identifier\n";
+      }
+    }
+
+    for (size_t event_idx = 0; event_idx < num_events; event_idx++) {
+      ORT_RETURN_IF_ERROR(
+          ExtractProfilingEvent(*(profile_events + event_idx), "ROOT", outfile, backendSupportsExtendedEventData,
+                                tracelogging_provider_ep_enabled));
+      ORT_RETURN_IF_ERROR(
+          ExtractProfilingSubEvents(*(profile_events + event_idx), outfile, backendSupportsExtendedEventData,
+                                    tracelogging_provider_ep_enabled));
+    }
+
+    if (!tracelogging_provider_ep_enabled) {
+      outfile.close();
+      LOGS(*logger_, VERBOSE) << "Wrote QNN profiling events (" << num_events << ") to qnn-profiling-data.csv";
+    } else {
+      LOGS(*logger_, VERBOSE) << "Wrote QNN profiling events (" << num_events << ") to ETW";
+    }
   }
 
-  for (size_t event_idx = 0; event_idx < num_events; event_idx++) {
-    ORT_RETURN_IF_ERROR(ExtractProfilingEvent(*(profile_events + event_idx)));
-    ORT_RETURN_IF_ERROR(ExtractProfilingSubEvents(*(profile_events + event_idx)));
-  }
   return Status::OK();
 }
 
-Status QnnBackendManager::ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id) {
+Status QnnBackendManager::ExtractProfilingSubEvents(
+    QnnProfile_EventId_t profile_event_id,
+    std::ofstream& outfile,
+    bool useExtendedEventData,
+    bool tracelogging_provider_ep_enabled) {
   const QnnProfile_EventId_t* profile_sub_events{nullptr};
   uint32_t num_sub_events{0};
   auto result = qnn_interface_.profileGetSubEvents(profile_event_id, &profile_sub_events, &num_sub_events);
@@ -785,26 +917,256 @@ Status QnnBackendManager::ExtractProfilingSubEvents(QnnProfile_EventId_t profile
 
   if (num_sub_events > 0) {
     LOGS(*logger_, VERBOSE) << "profile_sub_events: " << profile_sub_events << " num_sub_events: " << num_sub_events;
+
+    for (size_t sub_event_idx = 0; sub_event_idx < num_sub_events; sub_event_idx++) {
+      ORT_RETURN_IF_ERROR(
+          ExtractProfilingEvent(*(profile_sub_events + sub_event_idx), "SUB-EVENT", outfile, useExtendedEventData,
+                                tracelogging_provider_ep_enabled));
+      ORT_RETURN_IF_ERROR(
+          ExtractProfilingSubEvents(*(profile_sub_events + sub_event_idx), outfile, useExtendedEventData,
+                                    tracelogging_provider_ep_enabled));
+    }
+
+    LOGS(*logger_, VERBOSE) << "Wrote QNN profiling sub events (" << num_sub_events << ")";
   }
 
-  for (size_t sub_event_idx = 0; sub_event_idx < num_sub_events; sub_event_idx++) {
-    ORT_RETURN_IF_ERROR(ExtractProfilingEvent(*(profile_sub_events + sub_event_idx)));
-    ORT_RETURN_IF_ERROR(ExtractProfilingSubEvents(*(profile_sub_events + sub_event_idx)));
-  }
   return Status::OK();
 }
 
-Status QnnBackendManager::ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id) {
+Status QnnBackendManager::ExtractProfilingEvent(
+    QnnProfile_EventId_t profile_event_id,
+    const std::string& eventLevel,
+    std::ofstream& outfile,
+    bool useExtendedEventData,
+    bool tracelogging_provider_ep_enabled) {
+  if (useExtendedEventData) {
+    return ExtractProfilingEventExtended(profile_event_id, eventLevel, outfile, tracelogging_provider_ep_enabled);
+  } else {
+    return ExtractProfilingEventBasic(profile_event_id, eventLevel, outfile, tracelogging_provider_ep_enabled);
+  }
+}
+
+Status QnnBackendManager::ExtractProfilingEventBasic(
+    QnnProfile_EventId_t profile_event_id,
+    const std::string& eventLevel,
+    std::ofstream& outfile,
+    bool tracelogging_provider_ep_enabled) {
   QnnProfile_EventData_t event_data;
   auto result = qnn_interface_.profileGetEventData(profile_event_id, &event_data);
-  ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to get profile event data.");
+  QnnProfile_Error_t errorCode = static_cast<QnnProfile_Error_t>(result & 0xFFFF);
+  ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to get profile event data: " + std::string(QnnProfileErrorToString(errorCode)));
 
-  LOGS(*logger_, VERBOSE) << "Profiling Event Info - Event Type: " << event_data.type
-                          << ", Event Value: " << event_data.value
-                          << ", Event Identifier: " << event_data.identifier
-                          << ", Event Unit: " << event_data.unit;
+  std::string message = GetEventTypeString(event_data.type);
+  std::string unit = GetUnitString(event_data.unit);
+
+#ifndef _WIN32
+  tracelogging_provider_ep_enabled = false;
+#endif
+
+  if (!tracelogging_provider_ep_enabled) {
+    outfile << "UNKNOWN"
+            << ","
+            << message << ","
+            << event_data.value << ","
+            << unit << ","
+            << "BACKEND"
+            << ","
+            << eventLevel << ","
+            << (event_data.identifier ? event_data.identifier : "NULL") << "\n";
+  } else {
+#ifdef _WIN32
+    LogQnnProfileEventAsTraceLogging(
+        (uint64_t)0,
+        message,
+        std::to_string(event_data.value),
+        unit,
+        "BACKEND",
+        eventLevel,
+        (event_data.identifier ? event_data.identifier : "NULL"));
+#endif
+  }
 
   return Status::OK();
+}
+
+Status QnnBackendManager::ExtractProfilingEventExtended(
+    QnnProfile_EventId_t profile_event_id,
+    const std::string& eventLevel,
+    std::ofstream& outfile,
+    bool tracelogging_provider_ep_enabled) {
+  QnnProfile_ExtendedEventData_t event_data_extended;
+  auto resultGetExtendedEventData = qnn_interface_.profileGetExtendedEventData(profile_event_id, &event_data_extended);
+  QnnProfile_Error_t errorCode = static_cast<QnnProfile_Error_t>(resultGetExtendedEventData & 0xFFFF);
+  ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != errorCode, "Failed to get profile event data: " + std::string(QnnProfileErrorToString(errorCode)));
+
+  std::string message = GetEventTypeString(event_data_extended.v1.type);
+  std::string unit = GetUnitString(event_data_extended.v1.unit);
+
+#ifndef _WIN32
+  tracelogging_provider_ep_enabled = false;
+#endif
+
+  if (!tracelogging_provider_ep_enabled) {
+    if (event_data_extended.version == QNN_PROFILE_DATA_VERSION_1) {
+      outfile << event_data_extended.v1.timestamp << ","
+              << message << ","
+              << ExtractQnnScalarValue(event_data_extended.v1.value) << ","
+              << unit << ","
+              << "BACKEND"
+              << ","
+              << eventLevel << ","
+              << (event_data_extended.v1.identifier ? event_data_extended.v1.identifier : "NULL") << "\n";
+    }
+  } else {
+#ifdef _WIN32
+    LogQnnProfileEventAsTraceLogging(
+        event_data_extended.v1.timestamp,
+        message,
+        ExtractQnnScalarValue(event_data_extended.v1.value),
+        unit,
+        "BACKEND",
+        eventLevel,
+        (event_data_extended.v1.identifier ? event_data_extended.v1.identifier : "NULL"));
+#endif
+  }
+
+  return Status::OK();
+}
+
+#ifdef _WIN32
+void QnnBackendManager::LogQnnProfileEventAsTraceLogging(
+    uint64_t timestamp,
+    const std::string& message,
+    const std::string& qnnScalarValue,
+    const std::string& unit,
+    const std::string& timingSource,
+    const std::string& eventLevel,
+    const char* eventIdentifier) {
+  TraceLoggingWrite(
+      telemetry_provider_handle,
+      "QNNProfilingEvent",
+      TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)),
+      TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
+      TraceLoggingValue(timestamp, "Timestamp"),
+      TraceLoggingString(message.c_str(), "Message"),
+      TraceLoggingString(qnnScalarValue.c_str(), "Value"),
+      TraceLoggingString(unit.c_str(), "Unit of Measurement"),
+      TraceLoggingString(timingSource.c_str(), "Timing Source"),
+      TraceLoggingString(eventLevel.c_str(), "Event Level"),
+      TraceLoggingString(eventIdentifier, "Event Identifier"));
+}
+#endif
+
+const std::string& QnnBackendManager::GetUnitString(QnnProfile_EventUnit_t unitType) {
+  const auto& unitStringMap = GetUnitStringMap();
+  auto it = unitStringMap.find(unitType);
+  if (it != unitStringMap.end()) {
+    return it->second;
+  }
+  static const std::string unknown = "UNKNOWN";
+  return unknown;
+}
+
+const std::unordered_map<QnnProfile_EventUnit_t, std::string>& QnnBackendManager::GetUnitStringMap() {
+  static const std::unordered_map<QnnProfile_EventUnit_t, std::string> unitStringMap = {
+      {QNN_PROFILE_EVENTUNIT_MICROSEC, "US"},
+      {QNN_PROFILE_EVENTUNIT_BYTES, "BYTES"},
+      {QNN_PROFILE_EVENTUNIT_CYCLES, "CYCLES"},
+      {QNN_PROFILE_EVENTUNIT_COUNT, "COUNT"},
+      {QNN_PROFILE_EVENTUNIT_OBJECT, "OBJECT"},
+      {QNN_PROFILE_EVENTUNIT_BACKEND, "BACKEND"}};
+  return unitStringMap;
+}
+
+const std::string QnnBackendManager::GetEventTypeString(QnnProfile_EventType_t eventType) {
+  // Interpret the event type
+  switch (eventType) {
+    case QNN_PROFILE_EVENTTYPE_INIT:
+      return "INIT";
+    case QNN_PROFILE_EVENTTYPE_FINALIZE:
+      return "FINALIZE";
+    case QNN_PROFILE_EVENTTYPE_EXECUTE:
+      return "EXECUTE";
+    case QNN_PROFILE_EVENTTYPE_NODE:
+      return "NODE";
+    case QNN_PROFILE_EVENTTYPE_EXECUTE_QUEUE_WAIT:
+      return "EXECUTE QUEUE WAIT";
+    case QNN_PROFILE_EVENTTYPE_EXECUTE_PREPROCESS:
+      return "EXECUTE PREPROCESS";
+    case QNN_PROFILE_EVENTTYPE_EXECUTE_DEVICE:
+      return "EXECUTE DEVICE";
+    case QNN_PROFILE_EVENTTYPE_EXECUTE_POSTPROCESS:
+      return "EXECUTE POSTPROCESS";
+    case QNN_PROFILE_EVENTTYPE_DEINIT:
+      return "DE-INIT";
+    case QNN_PROFILE_EVENTTYPE_BACKEND:
+      return "BACKEND";
+    default:
+      if (eventType > QNN_PROFILE_EVENTTYPE_BACKEND) {
+        return "BACKEND";
+      }
+      return "UNKNOWN";
+  }
+}
+
+const char* QnnBackendManager::QnnProfileErrorToString(QnnProfile_Error_t error) {
+  switch (error) {
+    case QNN_PROFILE_NO_ERROR:
+      return "QNN_PROFILE_NO_ERROR";
+    case QNN_PROFILE_ERROR_UNSUPPORTED:
+      return "QNN_PROFILE_ERROR_UNSUPPORTED";
+    case QNN_PROFILE_ERROR_INVALID_ARGUMENT:
+      return "QNN_PROFILE_ERROR_INVALID_ARGUMENT";
+    case QNN_PROFILE_ERROR_MEM_ALLOC:
+      return "QNN_PROFILE_ERROR_MEM_ALLOC";
+    case QNN_PROFILE_ERROR_INVALID_HANDLE:
+      return "QNN_PROFILE_ERROR_INVALID_HANDLE";
+    case QNN_PROFILE_ERROR_HANDLE_IN_USE:
+      return "QNN_PROFILE_ERROR_HANDLE_IN_USE";
+    case QNN_PROFILE_ERROR_INCOMPATIBLE_EVENT:
+      return "QNN_PROFILE_ERROR_INCOMPATIBLE_EVENT";
+    default:
+      return "UNKNOWN_ERROR";
+  }
+}
+
+const std::string QnnBackendManager::ExtractQnnScalarValue(const Qnn_Scalar_t& scalar) {
+  switch (scalar.dataType) {
+    case QNN_DATATYPE_INT_8:
+      return std::to_string(static_cast<int>(scalar.int8Value));
+    case QNN_DATATYPE_INT_16:
+      return std::to_string(scalar.int16Value);
+    case QNN_DATATYPE_INT_32:
+      return std::to_string(scalar.int32Value);
+    case QNN_DATATYPE_INT_64:
+      return std::to_string(scalar.int64Value);
+    case QNN_DATATYPE_UINT_8:
+      return std::to_string(static_cast<unsigned int>(scalar.uint8Value));
+    case QNN_DATATYPE_UINT_16:
+      return std::to_string(scalar.uint16Value);
+    case QNN_DATATYPE_UINT_32:
+      return std::to_string(scalar.uint32Value);
+    case QNN_DATATYPE_UINT_64:
+      return std::to_string(scalar.uint64Value);
+    case QNN_DATATYPE_FLOAT_16:
+      return std::to_string(scalar.floatValue);
+    case QNN_DATATYPE_FLOAT_32:
+      return std::to_string(scalar.floatValue);
+    case QNN_DATATYPE_SFIXED_POINT_8:
+    case QNN_DATATYPE_SFIXED_POINT_16:
+    case QNN_DATATYPE_SFIXED_POINT_32:
+      return std::to_string(scalar.int32Value);  // Assume using int types for signed fixed points.
+    case QNN_DATATYPE_UFIXED_POINT_8:
+    case QNN_DATATYPE_UFIXED_POINT_16:
+    case QNN_DATATYPE_UFIXED_POINT_32:
+      return std::to_string(scalar.uint32Value);  // Assume using unsigned int types for unsigned fixed points.
+    case QNN_DATATYPE_BOOL_8:
+      return scalar.bool8Value ? "true" : "false";
+    case QNN_DATATYPE_STRING:
+      return scalar.stringValue ? scalar.stringValue : "NULL";
+    default:
+      return "UNKNOWN";
+  }
 }
 
 QnnBackendManager::~QnnBackendManager() {
@@ -897,16 +1259,21 @@ Status QnnBackendManager::UnloadLib(void* handle) {
 
 #ifdef _WIN32
   HMODULE mod = static_cast<HMODULE>(handle);
+
+// TODO: QNN SDK 2.17 crashes for some models/tests on Windows x64 when unloading library.
+// Example: ReductionOpTest.ArgMax
+#if !defined(_M_AMD64)
   if (FreeLibrary(mod) == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to free library.");
   }
+#endif  // !defined(_M_AMD64)
   mod_handles_.erase(mod);
 #else
   auto rt = ::dlclose(handle);
   if (rt != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to free library.");
   }
-#endif
+#endif  // defined(_WIN32)
 
   return Status::OK();
 }

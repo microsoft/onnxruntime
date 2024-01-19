@@ -168,6 +168,13 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                                                                    quantize_param.scaleOffsetEncoding.scale,
                                                                    quantize_param.scaleOffsetEncoding.offset),
                     "Cannot get quantization parameter");
+  if (is_quantized_tensor) {
+    // Make sure the output quantization parameters are equal to the input.
+    ORT_RETURN_IF_ERROR(SetOutputQParamEqualToInputIfNearlyEqual(qnn_model_wrapper, node_unit, logger, input_names,
+                                                                 0 /*input_index*/, 0 /*output_index*/, qnn_data_type,
+                                                                 quantize_param));
+  }
+
   std::vector<uint32_t> target_output_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(gather_output.node_arg, target_output_shape),
                     "Cannot get shape");

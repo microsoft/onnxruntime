@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "module": "ES2015",
+    "module": "Node16",
     "moduleResolution": "Node16",
     "esModuleInterop": true,
     "target": "ES2020",
@@ -10,7 +10,7 @@
     "noImplicitAny": true,
     "noImplicitReturns": true,
     "noImplicitThis": true,
-    "noUnusedParameters": false,
+    "noUnusedParameters": true,
     "alwaysStrict": true,
     "strictNullChecks": true,
     "pretty": true,

@@ -51,10 +51,8 @@ class NodeGroup:
         # r_numel is meant to hint how many elements in a row of tensor will be processed by each kernel.
         # r is a abbreviation of reduction, so, it's only used for reduction nodes.
         r_numel: sympy.Expr = sympy.prod(r_dims) if len(r_dims) > 0 else sympy.Integer(1)
-        # Support concrete shape only for now.
-        assert x_numel.is_integer and r_numel.is_integer
         self.autotune_configs: AutotuneConfigs = AutotuneConfigs(
-            int(x_numel), int(r_numel), len(self.reduce_axes) == 0 or self.reduce_axes[-1] == rank - 1
+            x_numel, r_numel, len(self.reduce_axes) == 0 or self.reduce_axes[-1] == rank - 1
         )
         self.reduced_args: Set[str] = set()
         if keep_dims != 1:
@@ -69,10 +67,8 @@ class NodeGroup:
         if len(shape) > len(self.target_shape):
             return False
         shape = [sympy.Integer(1)] * (len(self.target_shape) - len(shape)) + shape
-        for axis in range(len(shape)):
-            if shape[axis] != self.target_shape[axis] and (
-                not shape[axis].is_number or shape[axis] != sympy.Integer(1)
-            ):
+        for axis, dim in enumerate(shape):
+            if dim != self.target_shape[axis] and (not dim.is_number or dim != sympy.Integer(1)):
                 return False
         return True
 
@@ -129,7 +125,7 @@ class NodeGroup:
         return not is_reduction_node(self.nodes_groups[0]) and len(self.reduced_args) > 0
 
     def dependent_nodes(self, keep_reduce_node: bool):
-        node_map = dict()
+        node_map = {}
         reduce_nodes = []
         if not keep_reduce_node and self.has_reduced_elementwise_nodes():
             for item in self.nodes_groups:
@@ -151,8 +147,8 @@ class NodeGroup:
             layers = []
             group_layer = [self]
             while len(group_layer) > 0:
-                node_map = dict()
-                reduce_node_map = dict()
+                node_map = {}
+                reduce_node_map = {}
                 next_layer = []
                 for group in group_layer:
                     sub_node_map, reduce_nodes = group.dependent_nodes(False)
@@ -201,7 +197,7 @@ class KernelIO:
         self.cross_kernel_inputs: List[str] = []
         self.constants: List[str] = []
         self.module_outputs: List[str] = []
-        self.cross_kernel_outputs: [str] = []
+        self.cross_kernel_outputs: List[str] = []
         self.internal_args: List[str] = []
 
 
@@ -284,7 +280,7 @@ class GraphLowering:
         return dependent_nodes
 
     def _group_nodes(self):
-        producers = dict()
+        producers = {}
         precessors = defaultdict(list)
         processed = set()
         groups = []
@@ -321,13 +317,16 @@ class GraphLowering:
                             group_dependencies[k].add(j)
 
         flag = set()
-        for i in range(len(groups)):
-            if i not in flag:
-                for j in range(i + 1, len(groups)):
-                    if j not in flag and j not in group_dependencies[i] and groups[i].try_merge(groups[j]):
-                        flag.add(j)
-                self._groups.append(groups[i])
-                flag.add(i)
+        for i, group_i in enumerate(groups):
+            if i in flag:
+                continue
+            for j, group_j in enumerate(groups):
+                if j <= i:
+                    continue
+                if j not in flag and j not in group_dependencies[i] and group_i.try_merge(group_j):
+                    flag.add(j)
+            self._groups.append(group_i)
+            flag.add(i)
 
     def _get_node_io(self, node: NodeProto) -> Tuple[List[TensorArg], List[TensorArg]]:
         input_args = []
@@ -395,7 +394,7 @@ class GraphLowering:
 
     def _insert_load_and_store(self, kernel_node: KernelNode):
         input_names = [input.name for input in kernel_node.inputs]
-        output_name_map = dict()
+        output_name_map = {}
         for output in kernel_node.outputs:
             output_name_map[output.name] = 0
         for node in kernel_node.sub_nodes:
@@ -499,7 +498,7 @@ class GraphLowering:
             warnings.warn("Use triton's random for Dropout, ignore the random seed from ORT.", UserWarning)
 
         self._analyze_kernel_io_list()
-        cross_kernel_arg_map = dict()
+        cross_kernel_arg_map = {}
         for idx, kernel_io in enumerate(self._kernel_io_list):
             for output in itertools.chain(kernel_io.cross_kernel_outputs, kernel_io.module_outputs):
                 cross_kernel_arg_map[output] = idx

@@ -330,15 +330,26 @@ TEST(SequenceOpsTest, SequenceConstructPositive) {
 
 // SplitToSequence
 template <typename T>
-static std::vector<T> GetConsequtiveVector(T start, int num) {
+static std::vector<T> GetConsecutiveVector(T start, size_t num) {
   std::vector<T> inputv(num);
   std::iota(inputv.begin(), inputv.end(), start);
   return inputv;
 }
 
+template <>
+std::vector<MLFloat16> GetConsecutiveVector<MLFloat16>(MLFloat16 start, size_t num) {
+  std::vector<MLFloat16> inputv;
+  inputv.reserve(num);
+  float start_f = start.ToFloat();
+  for (size_t i = 0; i < num; ++i) {
+    inputv.push_back(MLFloat16{start_f + static_cast<float>(i)});
+  }
+  return inputv;
+}
+
 TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitFloat) {
   OpTester test("SplitToSequence", 11);
-  test.AddInput<float>("input", {4, 2}, GetConsequtiveVector<float>(1.f, 8));
+  test.AddInput<float>("input", {4, 2}, GetConsecutiveVector<float>(1.f, 8));
   test.AddInput<int64_t>("split", {1, 2}, {2, 2});
   SeqTensors<float> output;
   output.AddTensor({2, 2}, {1.f, 2.f, 3.f, 4.f});
@@ -347,9 +358,31 @@ TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitFloat) {
   test.Run();
 }
 
+TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitMLFloat16) {
+  OpTester test("SplitToSequence", 11);
+  test.AddInput<MLFloat16>("input", {4, 2}, GetConsecutiveVector<MLFloat16>(MLFloat16::One, 8));
+  test.AddInput<int64_t>("split", {1, 2}, {2, 2});
+  SeqTensors<MLFloat16> output;
+
+  std::vector<MLFloat16> tensor_1;
+  const auto data_1 = {1.f, 2.f, 3.f, 4.f};
+  for (auto f : data_1)
+    tensor_1.push_back(MLFloat16{f});
+
+  std::vector<MLFloat16> tensor_2;
+  const auto data_2 = {5.f, 6.f, 7.f, 8.f};
+  for (auto f : data_2)
+    tensor_2.push_back(MLFloat16{f});
+
+  output.AddTensor({2, 2}, tensor_1);
+  output.AddTensor({2, 2}, tensor_2);
+  test.AddSeqOutput("S2", output);
+  test.Run();
+}
+
 TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitLong) {
   OpTester test("SplitToSequence", 11);
-  test.AddInput<int64_t>("input", {4, 2}, GetConsequtiveVector<int64_t>(1, 8));
+  test.AddInput<int64_t>("input", {4, 2}, GetConsecutiveVector<int64_t>(1, 8));
   test.AddInput<int64_t>("split", {1, 2}, {2, 2});
   SeqTensors<int64_t> output;
   output.AddTensor({2, 2}, {1, 2, 3, 4});
@@ -360,7 +393,7 @@ TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitLong) {
 
 TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitFloatScalarSplit) {
   OpTester test("SplitToSequence", 11);
-  test.AddInput<float>("input", {4, 2}, GetConsequtiveVector<float>(1.f, 8));
+  test.AddInput<float>("input", {4, 2}, GetConsecutiveVector<float>(1.f, 8));
   test.AddInput<int64_t>("split", {}, {2});
   SeqTensors<float> output;
   output.AddTensor({2, 2}, {1.f, 2.f, 3.f, 4.f});
@@ -371,7 +404,7 @@ TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0EqualSplitFloatScalarSplit) {
 
 TEST(SequenceOpsTest, SplitToSequence_Axis0DefaultSplitFloatSetAxisExplicitly) {
   OpTester test("SplitToSequence", 11);
-  test.AddInput<float>("input", {4, 2}, GetConsequtiveVector<float>(1.f, 8));
+  test.AddInput<float>("input", {4, 2}, GetConsecutiveVector<float>(1.f, 8));
   int64_t axis = 0;
   test.AddAttribute("axis", axis);
   SeqTensors<float> output;
@@ -385,7 +418,7 @@ TEST(SequenceOpsTest, SplitToSequence_Axis0DefaultSplitFloatSetAxisExplicitly) {
 
 TEST(SequenceOpsTest, SplitToSequence_PositiveAxisScalarSplit) {
   OpTester test("SplitToSequence", 11);
-  test.AddInput<float>("input", {2, 2, 6}, GetConsequtiveVector<float>(1.f, 2 * 2 * 6));
+  test.AddInput<float>("input", {2, 2, 6}, GetConsecutiveVector<float>(1.f, 2 * 2 * 6));
   int64_t axis = 2;
   test.AddAttribute("axis", axis);
   test.AddInput<int64_t>("split", {}, {2});
@@ -411,11 +444,11 @@ TEST(SequenceOpsTest, SplitToSequence_PositiveAxisScalarSplit) {
 
 TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0UnevenSplitFloat) {
   OpTester test("SplitToSequence", 11);
-  test.AddInput<float>("input", {5, 2}, GetConsequtiveVector<float>(1.f, 10));
+  test.AddInput<float>("input", {5, 2}, GetConsecutiveVector<float>(1.f, 10));
   test.AddInput<int64_t>("split", {}, {2});
   SeqTensors<float> output;
-  output.AddTensor({2, 2}, GetConsequtiveVector<float>(1.f, 4));
-  output.AddTensor({2, 2}, GetConsequtiveVector<float>(5.f, 4));
+  output.AddTensor({2, 2}, GetConsecutiveVector<float>(1.f, 4));
+  output.AddTensor({2, 2}, GetConsecutiveVector<float>(5.f, 4));
   output.AddTensor({1, 2}, {9.f, 10.f});
   test.AddSeqOutput("S2", output);
   test.Run();
@@ -423,22 +456,22 @@ TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0UnevenSplitFloat) {
 
 TEST(SequenceOpsTest, SplitToSequence_DefaultAxis0UnevenSplitFloat2) {
   OpTester test("SplitToSequence", 11);
-  test.AddInput<float>("input", {17, 2}, GetConsequtiveVector<float>(1.f, 34));
+  test.AddInput<float>("input", {17, 2}, GetConsecutiveVector<float>(1.f, 34));
   test.AddInput<int64_t>("split", {}, {3});
   SeqTensors<float> output;
-  output.AddTensor({3, 2}, GetConsequtiveVector<float>(1.f, 6));
-  output.AddTensor({3, 2}, GetConsequtiveVector<float>(7.f, 6));
-  output.AddTensor({3, 2}, GetConsequtiveVector<float>(13.f, 6));
-  output.AddTensor({3, 2}, GetConsequtiveVector<float>(19.f, 6));
-  output.AddTensor({3, 2}, GetConsequtiveVector<float>(25.f, 6));
-  output.AddTensor({2, 2}, GetConsequtiveVector<float>(31.f, 4));
+  output.AddTensor({3, 2}, GetConsecutiveVector<float>(1.f, 6));
+  output.AddTensor({3, 2}, GetConsecutiveVector<float>(7.f, 6));
+  output.AddTensor({3, 2}, GetConsecutiveVector<float>(13.f, 6));
+  output.AddTensor({3, 2}, GetConsecutiveVector<float>(19.f, 6));
+  output.AddTensor({3, 2}, GetConsecutiveVector<float>(25.f, 6));
+  output.AddTensor({2, 2}, GetConsecutiveVector<float>(31.f, 4));
   test.AddSeqOutput("S2", output);
   test.Run();
 }
 
 TEST(SequenceOpsTest, SplitToSequence_PositiveAxisUnevenSplit) {
   OpTester test("SplitToSequence", 11);
-  test.AddInput<float>("input", {2, 5}, GetConsequtiveVector<float>(1.f, 10));
+  test.AddInput<float>("input", {2, 5}, GetConsecutiveVector<float>(1.f, 10));
   test.AddInput<int64_t>("split", {}, {2});
   int64_t axis = 1;
   test.AddAttribute("axis", axis);
@@ -452,33 +485,33 @@ TEST(SequenceOpsTest, SplitToSequence_PositiveAxisUnevenSplit) {
 
 TEST(SequenceOpsTest, SplitToSequence_Axis0DefaultSplitFloatSetAxisExplicitlyDontKeepDims3Dim) {
   OpTester test("SplitToSequence", 11);
-  test.AddInput<float>("input", {2, 3, 4}, GetConsequtiveVector<float>(1.f, 2 * 3 * 4));
+  test.AddInput<float>("input", {2, 3, 4}, GetConsecutiveVector<float>(1.f, 2 * 3 * 4));
   test.AddAttribute<int64_t>("keepdims", 0);
   int64_t axis = 0;
   test.AddAttribute("axis", axis);
   SeqTensors<float> output;
-  output.AddTensor({3, 4}, GetConsequtiveVector<float>(1.f, 12));
-  output.AddTensor({3, 4}, GetConsequtiveVector<float>(13.f, 12));
+  output.AddTensor({3, 4}, GetConsecutiveVector<float>(1.f, 12));
+  output.AddTensor({3, 4}, GetConsecutiveVector<float>(13.f, 12));
   test.AddSeqOutput("S2", output);
   test.Run();
 }
 
 TEST(SequenceOpsTest, SplitToSequence_Axis0DefaultSplitFloatSetAxisExplicitlyDontKeepDims2Dim) {
   OpTester test("SplitToSequence", 11);
-  test.AddInput<float>("input", {2, 3}, GetConsequtiveVector<float>(1.f, 2 * 3));
+  test.AddInput<float>("input", {2, 3}, GetConsecutiveVector<float>(1.f, 2 * 3));
   test.AddAttribute<int64_t>("keepdims", 0);
   int64_t axis = 0;
   test.AddAttribute("axis", axis);
   SeqTensors<float> output;
-  output.AddTensor({3}, GetConsequtiveVector<float>(1.f, 3));
-  output.AddTensor({3}, GetConsequtiveVector<float>(4.f, 3));
+  output.AddTensor({3}, GetConsecutiveVector<float>(1.f, 3));
+  output.AddTensor({3}, GetConsecutiveVector<float>(4.f, 3));
   test.AddSeqOutput("S2", output);
   test.Run();
 }
 
 TEST(SequenceOpsTest, SplitToSequence_PositiveAxisDontKeepDims) {
   OpTester test("SplitToSequence", 11);
-  test.AddInput<float>("input", {2, 3, 4}, GetConsequtiveVector<float>(1.f, 2 * 3 * 4));
+  test.AddInput<float>("input", {2, 3, 4}, GetConsecutiveVector<float>(1.f, 2 * 3 * 4));
   test.AddAttribute<int64_t>("keepdims", 0);
   int64_t axis = 2;
   test.AddAttribute("axis", axis);

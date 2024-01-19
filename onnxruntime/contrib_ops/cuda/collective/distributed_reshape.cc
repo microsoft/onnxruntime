@@ -472,8 +472,8 @@ std::tuple<bool, TensorPartitionSpec> ComputeNativeSpecForTwoAxisFusion(
   } else if (src_spec.HasShard() && (src_spec.GetPartitionAxis() < fused_axis_in_src || src_spec.GetPartitionAxis() > fused_axis_in_src + 1)) {
     // It's two-axis fusion but the fused axes is not sharded.
     // Example: S[0]RR, shape=[2, 3, 5], device_mesh=[0, 1] -> S[0]R, shape = [2, 15], device_mesh=[0, 1]
-    auto dst_spec = TensorPartitionSpec::CreateByDropOneAxis(
-        src_spec, fused_axis_in_src + 1);
+    auto dst_spec = TensorPartitionSpec::CreateByDropAxes(
+        src_spec, {fused_axis_in_src + 1});
     return std::make_tuple(true, dst_spec);
   } else {
     return std::make_tuple(false, TensorPartitionSpec());

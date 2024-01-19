@@ -55,6 +55,14 @@ private:
    */
   Napi::Value Run(const Napi::CallbackInfo &info);
 
+  /**
+   * [sync] dispose the session.
+   * @param nothing
+   * @returns nothing
+   * @throw nothing
+   */
+  Napi::Value Dispose(const Napi::CallbackInfo &info);
+
   // private members
 
   // persistent constructor
@@ -62,6 +70,7 @@ private:
 
   // session objects
   bool initialized_;
+  bool disposed_;
   std::unique_ptr<Ort::Session> session_;
   std::unique_ptr<Ort::RunOptions> defaultRunOptions_;
 

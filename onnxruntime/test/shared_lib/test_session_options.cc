@@ -15,6 +15,12 @@ TEST(CApiTest, session_options_graph_optimization_level) {
   options.SetGraphOptimizationLevel(ORT_ENABLE_EXTENDED);
 }
 
+TEST(CApiTest, session_options_deterministic_compute) {
+  // Manual validation currently. Check that SetDeterministicCompute in abi_session_options.cc is hit.
+  Ort::SessionOptions options;
+  options.SetDeterministicCompute(true);
+}
+
 #if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD) && !defined(ORT_NO_EXCEPTIONS)
 
 TEST(CApiTest, session_options_oversized_affinity_string) {

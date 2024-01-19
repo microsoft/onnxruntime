@@ -235,28 +235,6 @@
         "^test_resize_upsample_sizes_nearest_not_larger_cuda",
         "^test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric_cuda",
         // onnx 1.15 (opset 20) new and updated op tests
-        "^test_ai_onnx_ml_label_encoder_string_int",
-        "^test_ai_onnx_ml_label_encoder_string_int_no_default",
-        "^test_ai_onnx_ml_label_encoder_tensor_mapping",
-        "^test_ai_onnx_ml_label_encoder_tensor_value_only_mapping",
-        "^test_gridsample_aligncorners_true",
-        "^test_gridsample_bicubic_align_corners_0_additional_1",
-        "^test_gridsample_bicubic_align_corners_1_additional_1",
-        "^test_gridsample_bicubic",
-        "^test_gridsample_bilinear_align_corners_0_additional_1",
-        "^test_gridsample_bilinear_align_corners_1_additional_1",
-        "^test_gridsample_bilinear",
-        "^test_gridsample_border_padding",
-        "^test_gridsample",
-        "^test_gridsample_nearest_align_corners_0_additional_1",
-        "^test_gridsample_nearest_align_corners_1_additional_1",
-        "^test_gridsample_nearest",
-        "^test_gridsample_reflection_padding",
-        "^test_gridsample_volumetric_bilinear_align_corners_0",
-        "^test_gridsample_volumetric_bilinear_align_corners_1",
-        "^test_gridsample_volumetric_nearest_align_corners_0",
-        "^test_gridsample_volumetric_nearest_align_corners_1",
-        "^test_gridsample_zeros_padding",
         "^test_image_decoder_decode_bmp_rgb",
         "^test_image_decoder_decode_jpeg2k_rgb",
         "^test_image_decoder_decode_jpeg_bgr",
@@ -266,39 +244,18 @@
         "^test_image_decoder_decode_pnm_rgb",
         "^test_image_decoder_decode_tiff_rgb",
         "^test_image_decoder_decode_webp_rgb",
-        "^test_regex_full_match_basic",
-        "^test_regex_full_match_email_domain",
-        "^test_regex_full_match_empty",
-        "^test_string_concat_broadcasting",
-        "^test_string_concat",
-        "^test_string_concat_empty_string",
-        "^test_string_concat_utf8",
-        "^test_string_concat_zero_dimensional",
-        "^test_string_split_basic",
-        "^test_string_split_consecutive_delimiters",
-        "^test_string_split_empty_string_delimiter",
-        "^test_string_split_empty_tensor",
-        "^test_string_split_maxsplit",
-        "^test_string_split_no_delimiter",
-        "^test_dft_axis",
-        "^test_dft",
-        "^test_dft_inverse",
-        "^test_reduce_max_bool_inputs",
-        "^test_reduce_min_bool_inputs",
-        "^test_reduce_min_empty_set",
-        "^test_reduce_l1_empty_set",
-        "^test_reduce_l1_empty_set_expanded",
-        "^test_reduce_l2_empty_set",
-        "^test_reduce_l2_empty_set_expanded",
-        "^test_reduce_log_sum_empty_set",
-        "^test_reduce_log_sum_empty_set_expanded",
-        "^test_reduce_log_sum_exp_empty_set",
-        "^test_reduce_log_sum_exp_empty_set_expanded",
-        "^test_reduce_prod_empty_set",
-        "^test_reduce_sum_empty_set",
-        "^test_reduce_sum_empty_set_non_reduced_axis_zero",
-        "^test_reduce_sum_square_empty_set",
-        "^test_reduce_sum_square_empty_set_expanded"
+        "^test_reduce_l1_empty_set_cuda",
+        "^test_reduce_l1_empty_set_expanded_cuda",
+        "^test_reduce_l2_empty_set_cuda",
+        "^test_reduce_l2_empty_set_expanded_cuda",
+        "^test_reduce_log_sum_empty_set_cuda",
+        "^test_reduce_log_sum_empty_set_expanded_cuda",
+        "^test_reduce_log_sum_exp_empty_set_cuda",
+        "^test_reduce_log_sum_exp_empty_set_expanded_cuda",
+        "^test_reduce_prod_empty_set_cuda",
+        "^test_reduce_sum_empty_set_cuda",
+        "^test_reduce_sum_square_empty_set_cuda",
+        "^test_reduce_sum_square_empty_set_expanded_cuda"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
@@ -398,7 +355,23 @@
         "^test_constantofshape_int_zeros",
         // https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=1141563&view=logs&j=a018b46d-e41a-509d-6581-c95fdaa42fcd&t=d61c1d37-f101-5d28-982f-e5931b720302
         "^test_gelu_tanh_2_cpu",
-        "^test_gelu_tanh_2_expanded_cpu"
+        "^test_gelu_tanh_2_expanded_cpu",
+        "^test_reduce_max_bool_inputs",
+        "^test_reduce_min_bool_inputs",
+        "^test_reduce_min_empty_set",
+        "^test_reduce_l1_empty_set",
+        "^test_reduce_l1_empty_set_expanded",
+        "^test_reduce_l2_empty_set",
+        "^test_reduce_l2_empty_set_expanded",
+        "^test_reduce_log_sum_empty_set",
+        "^test_reduce_log_sum_empty_set_expanded",
+        "^test_reduce_log_sum_exp_empty_set",
+        "^test_reduce_log_sum_exp_empty_set_expanded",
+        "^test_reduce_prod_empty_set",
+        "^test_reduce_sum_empty_set",
+        "^test_reduce_sum_empty_set_non_reduced_axis_zero",
+        "^test_reduce_sum_square_empty_set",
+        "^test_reduce_sum_square_empty_set_expanded"
     ],
     "current_failing_tests_NNAPI": [
         "^test_maxpool_2d_uint8",
@@ -519,7 +492,8 @@
         "test_range_int32_type_negative_delta_expanded_cpu", // Error but not a failure.
         "test_range_float_type_positive_delta_expanded_cpu", // Error but not a failure.
         "test_scan_sum_cpu", // Disabled due to output mismatch with tolerance.
-        "test_scan9_sum_cpu" // Disabled due to output mismatch with tolerance.
+        "test_scan9_sum_cpu", // Disabled due to output mismatch with tolerance.
+        "test_reduce_max_bool_inputs_cpu"
     ],
     "current_failing_tests_OPENVINO_NPU_FP16": [
         "^test_prelu_broadcast",
@@ -677,8 +651,10 @@
         "^test_affine_grid_3d_expanded",
         "^test_constantofshape_float_ones",
         "^test_constantofshape_int_shape_zero",
-        "^test_constantofshape_int_zeros"
-
+        "^test_constantofshape_int_zeros",
+        "^test_reduce_log_sum_empty_set_cpu",
+        "^test_reduce_log_sum_exp_empty_set_cpu",
+        "^test_reduce_prod_empty_set_cpu"
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
     "tests_with_pre_opset7_dependencies": [

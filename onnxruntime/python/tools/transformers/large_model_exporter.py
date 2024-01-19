@@ -157,14 +157,14 @@ def retrieve_onnx_inputs(model: nn.Module, sample_inputs: tuple, with_past: bool
     for idx, (key, value) in enumerate(zip(input_keys, onnx_inputs)):
         if type(value) is torch.Tensor:
             value.to(model.device)
-        # Didn't touch past_key_value now, please change it if you want
         if "use_cache" in key:
             onnx_inputs[idx] = with_past
+            out = model(sample_inputs[0], attention_mask=sample_inputs[1], use_cache=with_past) if with_past else out
 
     return input_keys, onnx_inputs, out.past_key_values
 
 
-def move_to_approprate_device(model: nn.Module, sample_inputs_tp: tuple) -> nn.Module:
+def move_to_appropriate_device(model: nn.Module, sample_inputs_tp: tuple) -> nn.Module:
     """
     According to the model size, we will upload it to
     CPU if has no GPU or enough GPU memory,
@@ -224,24 +224,35 @@ def fetch_onnx_inputs_outputs_name(
     if not num_of_past_key:
         num_of_past_key = model.config.num_hidden_layers
 
-    onnx_inp_names = ("input_ids", "attention_mask")
+    # filter out constant inputs
+    onnx_inp_names = tuple(
+        [torch_input_names[i] for i in range(len(torch_input_names)) if isinstance(onnx_inputs[i], torch.Tensor)]
+    )
+    assert (
+        "input_ids" in onnx_inp_names and "attention_mask" in onnx_inp_names
+    ), "input_ids and attention_mask must be existed in inputs"
     onnx_out_names = ("logits",)
     onnx_dynamic_axes = {
         "input_ids": {0: "batch_size", 1: "seq_len"},
         "attention_mask": {0: "batch_size", 1: "seq_len"},
     }
+    # add dyanmic dimensions for the unkonw inputs
+    for idx, name in enumerate(onnx_inp_names):
+        if name not in onnx_dynamic_axes:
+            unknown_dims = {i: f"{idx}__unknown_dims__{i}" for i in range(onnx_inputs[idx].dim())}
+            onnx_dynamic_axes[name] = unknown_dims
     if input_with_past:
         for i in range(num_of_past_key):
-            onnx_inp_names += (f"present_key.{i}",)
-            onnx_inp_names += (f"present_values.{i}",)
+            onnx_inp_names += (f"past_key_values.{i}.key",)
+            onnx_inp_names += (f"past_key_values.{i}.value",)
 
             onnx_dynamic_axes[onnx_inp_names[-1]] = kv_cache_axis
             onnx_dynamic_axes[onnx_inp_names[-2]] = kv_cache_axis
 
     if with_past or input_with_past:
         for i in range(num_of_past_key):
-            onnx_out_names += (f"past_key.{i}",)
-            onnx_out_names += (f"past_values.{i}",)
+            onnx_out_names += (f"present.{i}.key",)
+            onnx_out_names += (f"present.{i}.value",)
             onnx_dynamic_axes[onnx_out_names[-1]] = kv_cache_axis
             onnx_dynamic_axes[onnx_out_names[-2]] = kv_cache_axis
 
@@ -252,7 +263,8 @@ def fetch_onnx_inputs_outputs_name(
             elif name == "attention_mask":
                 attn_mask = onnx_inputs[idx]
                 onnx_inputs[idx] = torch.cat(
-                    (attn_mask, torch.ones((attn_mask.shape[0], 1), device=attn_mask.device)), dim=1
+                    (attn_mask, torch.ones((attn_mask.shape[0], 1), device=attn_mask.device, dtype=attn_mask.dtype)),
+                    dim=1,
                 )
             elif name == "input_ids":
                 input_ids = onnx_inputs[idx]
@@ -307,7 +319,7 @@ def export_onnx(hf_model: str, cache_dir: Optional[str], onnx_path_str: str, wit
     """
     model, sample_inputs_tp = initialize_model_and_sample_inputs(hf_model, cache_dir)
 
-    model = move_to_approprate_device(model, sample_inputs_tp)
+    model = move_to_appropriate_device(model, sample_inputs_tp)
 
     sample_inputs = adapt_inputs_to_device(sample_inputs_tp, next(model.parameters()).device)
 

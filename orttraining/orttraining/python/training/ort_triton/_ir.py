@@ -88,14 +88,19 @@ class OffsetCalculator:
                 self.r_strides.insert(0, self.r_strides[0] * self.r_dims[i + 1])
         self.r_compute_dims: Set[int] = set()
         self.input_strides: Dict[str, List[sympy.Expr]] = dict()
-        # Support concrete shape only for now.
-        assert self.x_numel.is_integer and self.r_numel.is_integer
         self.autotune_configs: AutotuneConfigs = AutotuneConfigs(
-            int(self.x_numel), int(self.r_numel), not self.is_reduction or self.reduce_axes[-1] == self.rank - 1
+            self.x_numel, self.r_numel, not self.is_reduction or self.reduce_axes[-1] == self.rank - 1
         )
-        self.requires_x_mask: bool = any(int(self.x_numel) % config[0] != 0 for config in self.autotune_configs.configs)
-        self.requires_r_mask: bool = any(int(self.r_numel) % config[1] != 0 for config in self.autotune_configs.configs)
+        simplified_x_numel = self.x_numel.subs({symbol: sympy.Integer(1) for symbol in self.x_numel.free_symbols})
+        self.requires_x_mask: bool = any(
+            simplified_x_numel % sympy.Integer(config[0]) != 0 for config in self.autotune_configs.configs
+        )
+        simplified_r_numel = self.r_numel.subs({symbol: sympy.Integer(1) for symbol in self.r_numel.free_symbols})
+        self.requires_r_mask: bool = any(
+            simplified_r_numel % sympy.Integer(config[1]) != 0 for config in self.autotune_configs.configs
+        )
         self.reduced_args: Set[str] = set()
+        self.symbolic_shape_variables: Set[str] = set()
 
     def get_input_strides(self, name: str) -> List[sympy.Expr]:
         assert name in self.input_strides
@@ -129,7 +134,7 @@ class OffsetCalculator:
         input_shape = tensor_arg.shape
         if tensor_arg.name in self.reduced_args:
             assert self.is_reduction
-            reduced_rank = len(input_shape) - len(self.reduce_axes)
+            reduced_rank = len(self.target_shape) - len(self.reduce_axes)
             if len(input_shape) < reduced_rank:
                 input_shape = [sympy.Integer(1)] * (reduced_rank - len(input_shape)) + input_shape
             input_shape = (
@@ -141,20 +146,40 @@ class OffsetCalculator:
             input_shape = [sympy.Integer(1)] * (len(self.target_shape) - len(input_shape)) + input_shape
         running_stride = sympy.Integer(1)
         for i in range(len(self.target_shape) - 1, -1, -1):
-            if self.target_shape[i] == input_shape[i]:
+            if self.target_shape[i] == input_shape[i] and not (
+                tensor_arg.name in self.reduced_args and i in self.reduce_axes
+            ):
                 strides.insert(0, running_stride)
                 running_stride = running_stride * input_shape[i]
             else:
                 strides.insert(0, sympy.Integer(0))
         self.input_strides[tensor_arg.name] = strides
+        x_input_strides = self.get_x_input_strides(tensor_arg.name)
         if not self.is_same_x_shape(tensor_arg.name):
-            for idx, dim in enumerate(self.get_x_input_strides(tensor_arg.name)):
+            for idx, dim in enumerate(x_input_strides):
                 if dim != sympy.Integer(0):
                     self.x_compute_dims.add(idx)
+                    if idx != self.x_rank - 1:
+                        self.symbolic_shape_variables.update(
+                            [symbol.name for symbol in self.x_strides[idx].free_symbols]
+                        )
+                    if idx != 0:
+                        self.symbolic_shape_variables.update([symbol.name for symbol in self.x_dims[idx].free_symbols])
+        elif len(x_input_strides) > 0 and x_input_strides[-1] != sympy.Integer(1):
+            self.symbolic_shape_variables.update([symbol.name for symbol in x_input_strides[-1].free_symbols])
+        r_input_strides = self.get_r_input_strides(tensor_arg.name)
         if not self.is_same_r_shape(tensor_arg.name):
-            for idx, dim in enumerate(self.get_r_input_strides(tensor_arg.name)):
+            for idx, dim in enumerate(r_input_strides):
                 if dim != sympy.Integer(0):
                     self.r_compute_dims.add(idx)
+                    if idx != self.r_rank - 1:
+                        self.symbolic_shape_variables.update(
+                            [symbol.name for symbol in self.r_strides[idx].free_symbols]
+                        )
+                    if idx != 0:
+                        self.symbolic_shape_variables.update([symbol.name for symbol in self.r_dims[idx].free_symbols])
+        elif len(r_input_strides) > 0 and r_input_strides[-1] != sympy.Integer(1):
+            self.symbolic_shape_variables.update([symbol.name for symbol in r_input_strides[-1].free_symbols])
 
     def is_x_reduced(self, name: str) -> bool:
         strides = self.get_input_strides(name)
@@ -284,7 +309,6 @@ class KernelNode(IRNode):
         self.target_shape: List[sympy.Expr] = target_shape
         self.sub_nodes: List[IRNode] = []
         self.var_map: Dict[str, str] = dict()
-        self.symbolic_shape_variables: List[str] = []
         self.has_dropout: bool = False
         self.offset_calc: OffsetCalculator = OffsetCalculator(target_shape, reduce_axes)
 
@@ -300,17 +324,15 @@ class KernelNode(IRNode):
             self.var_map[name] = "t_" + name
         for name in self.internal_args:
             self.var_map[name] = gen_variable_name(name, "t", existing_names)
-        for constant_name in self.constants:
-            self.var_map[constant_name] = gen_variable_name(constant_name, "c", existing_names)
-            if self.constants[constant_name].data is not None:
-                value = self.constants[constant_name].data
+        for name, tensor_arg in self.constants.items():
+            self.var_map[name] = gen_variable_name(name, "c", existing_names)
+            if tensor_arg.data is not None:
+                value = tensor_arg.data
                 if value is not None:
                     assert value.size == 1, f"unsupported constant array {value}"
-                    variable_name = self.var_map[constant_name]
+                    variable_name = self.var_map[name]
                     assert variable_name not in self.var_map
                     self.var_map[variable_name] = str(np.array(value.item(), value.dtype))
-
-        self.symbolic_shape_variables = [str(dim) for dim in self.target_shape if dim.is_symbol]
 
 
 class ElementwiseKernelNode(KernelNode):

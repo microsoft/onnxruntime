@@ -85,8 +85,7 @@ static void RunWhereQDQTest(const TestInputDef<bool>& condition_def,
                        BuildQDQWhereTestCase<QuantType>(condition_def, x_def, y_def),
                        provider_options,
                        18,
-                       expected_ep_assignment,
-                       1e-5f);
+                       expected_ep_assignment);
 }
 
 // Check that QNN compiles DQ -> Where -> Q as a single unit.
@@ -121,15 +120,18 @@ TEST_F(QnnHTPBackendTests, WhereLargeDataU8) {
 
 // Check that QNN compiles DQ -> Where -> Q as a single unit.
 // Large data broadcast, QNN v2.13 failed to finalize graph
-// C:\qnn_src\QNN\HTP\HTP\src\hexagon\prepare\seq\initial_sequencer_dp.cc:156:ERROR:A single op,
-// "q::Broadcast" (Op ID: 19c700000012), requires 0x500800 bytes of TCM, which is greater than the TCM size of 0x400000!
-// QnnDsp <E> graph prepare failed 13
-// QnnDsp <E> Failed to finalize graph QNN_4851394333842096633_1 with err: 1002
-// QnnDsp <E> Failed to finalize graph (id: 1) with err 1002
-TEST_F(QnnHTPBackendTests, DISABLED_WhereLargeDataBroadcastU8) {
+// Worked with QNN v2.16
+TEST_F(QnnHTPBackendTests, WhereLargeDataBroadcastU8) {
   RunWhereQDQTest(TestInputDef<bool>({5120}, false, false, true),
                   TestInputDef<float>({1, 16, 64, 5120}, true, 0.0f, 1.0f),
                   TestInputDef<float>({1}, true, {3.0f}),
+                  ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnHTPBackendTests, WhereLargeDataBroadcastTransformedU8) {
+  RunWhereQDQTest(TestInputDef<bool>({1, 1, 5120, 1}, false, false, true),
+                  TestInputDef<float>({1, 64, 5120, 16}, true, 0.0f, 1.0f),
+                  TestInputDef<float>({1, 1, 1, 1}, true, {3.0f}),
                   ExpectedEPNodeAssignment::All);
 }
 

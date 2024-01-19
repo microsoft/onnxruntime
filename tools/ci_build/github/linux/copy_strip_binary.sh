@@ -56,6 +56,15 @@ cp $SOURCE_DIR/orttraining/orttraining/training_api/include/onnxruntime_training
 cp $SOURCE_DIR/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_api.h  $BINARY_DIR/$ARTIFACT_NAME/include
 cp $SOURCE_DIR/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_inline.h  $BINARY_DIR/$ARTIFACT_NAME/include
 
+if [[ -f "$BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_cuda.so" ]]; then
+# copy headers for context context used in custom ops
+mkdir -p $BINARY_DIR/$ARTIFACT_NAME/include/core/providers/cuda
+cp $SOURCE_DIR/include/onnxruntime/core/providers/custom_op_context.h $BINARY_DIR/$ARTIFACT_NAME/include/core/providers/custom_op_context.h
+cp $SOURCE_DIR/include/onnxruntime/core/providers/resource.h $BINARY_DIR/$ARTIFACT_NAME/include/core/providers/resource.h
+cp $SOURCE_DIR/include/onnxruntime/core/providers/cuda/cuda_context.h $BINARY_DIR/$ARTIFACT_NAME/include/core/providers/cuda/cuda_context.h
+cp $SOURCE_DIR/include/onnxruntime/core/providers/cuda/cuda_resource.h $BINARY_DIR/$ARTIFACT_NAME/include/core/providers/cuda/cuda_resource.h
+fi
+
 # copy the README, licence and TPN
 cp $SOURCE_DIR/README.md $BINARY_DIR/$ARTIFACT_NAME/README.md
 cp $SOURCE_DIR/docs/Privacy.md $BINARY_DIR/$ARTIFACT_NAME/Privacy.md

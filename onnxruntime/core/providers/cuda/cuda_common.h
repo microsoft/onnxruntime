@@ -22,13 +22,14 @@ namespace onnxruntime {
 namespace cuda {
 
 #define CUDA_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUDA_CALL(expr))
+#ifndef USE_CUDA_MINIMAL
 #define CUBLAS_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUBLAS_CALL(expr))
 #define CUSPARSE_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUSPARSE_CALL(expr))
 #define CURAND_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CURAND_CALL(expr))
 #define CUDNN_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUDNN_CALL(expr))
 #define CUDNN2_RETURN_IF_ERROR(expr, m) ORT_RETURN_IF_ERROR(CUDNN_CALL2(expr, m))
 #define CUFFT_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUFFT_CALL(expr))
-
+#endif
 // Type mapping for MLFloat16 to half
 template <typename T>
 class ToCudaType {
@@ -58,6 +59,8 @@ class ToCudaType<BFloat16> {
   }
 };
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
 template <>
 class ToCudaType<Float8E4M3FN> {
  public:
@@ -76,6 +79,8 @@ class ToCudaType<Float8E5M2> {
   }
 };
 
+#endif
+
 inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int64_t>& dims) {
   int stride = 1;
   if (dims.empty() || p.size() < dims.size())
@@ -89,7 +94,7 @@ inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int6
   }
   return true;
 }
-
+#ifndef USE_CUDA_MINIMAL
 class CublasMathModeSetter {
  public:
   CublasMathModeSetter(const cudaDeviceProp& prop, cublasHandle_t handle, cublasMath_t mode) : handle_(handle) {
@@ -185,6 +190,7 @@ const char* cublasGetErrorEnum(cublasStatus_t error);
 const char* CudaDataTypeToString(cudaDataType_t dt);
 
 const char* CublasComputeTypeToString(cublasComputeType_t ct);
+#endif
 
 cudaDataType_t ToCudaDataType(int32_t element_type);
 

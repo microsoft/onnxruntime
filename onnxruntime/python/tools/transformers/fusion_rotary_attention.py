@@ -29,7 +29,13 @@ class FusionRotaryAttention(FusionAttention):
             hidden_size,
             num_heads,
             use_multi_head_attention=True,
-            search_op_types=["SimplifiedLayerNormalization", "SkipSimplifiedLayerNormalization", "Add"],
+            search_op_types=[
+                "SimplifiedLayerNormalization",
+                "SkipSimplifiedLayerNormalization",
+                "LayerNormalization",
+                "SkipLayerNormalization",
+                "Add",
+            ],
         )
 
     def create_mha_node(
@@ -318,7 +324,7 @@ class FusionRotaryAttention(FusionAttention):
         return True
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
-        if normalize_node.op_type != "SkipSimplifiedLayerNormalization" and normalize_node.op_type != "Add":
+        if normalize_node.op_type not in {"SkipSimplifiedLayerNormalization", "SkipLayerNormalization", "Add"}:
             return
 
         # qkv_nodes_1 is for LLaMA-2 Microsoft
@@ -533,6 +539,8 @@ class FusionRotaryAttention(FusionAttention):
 
         # attn_mask_nodes_1, attn_mask_nodes_2 are for LLaMA-2 Microsoft's 3D attention mask
         # attn_mask_nodes_3, attn_mask_nodes_4 are for LLaMA-2 Hugging Face's 2D attention mask
+        # attn_mask_nodes_5, attn_mask_nodes_6 are for LLaMA-2 Microsoft's model for the DML EP
+        # attn_mask_nodes_7 is for LLaMA-2 Hugging Face's changes to the attention mask
         attn_mask, add_qk_str = "", ""
         attn_mask_nodes_1 = self.model.match_parent_path(
             add_qk,
@@ -564,6 +572,11 @@ class FusionRotaryAttention(FusionAttention):
             ["Expand", "Where", "Sub", "Cast", "Expand", "Unsqueeze", "Unsqueeze"],
             [1, 0, 2, 1, 0, 0, 0],
         )
+        attn_mask_nodes_7 = self.model.match_parent_path(
+            add_qk,
+            ["Where", "Cast", "Where", "Cast", "Sub", "Cast", "Expand", "Unsqueeze", "Unsqueeze"],
+            [1, 0, 0, 0, 0, 1, 0, 0, 0],
+        )
         if attn_mask_nodes_1 is not None:
             _, slice_mask_1, slice_mask_2 = attn_mask_nodes_1
             attn_mask = slice_mask_1.output[0]
@@ -582,6 +595,9 @@ class FusionRotaryAttention(FusionAttention):
         elif attn_mask_nodes_6 is not None:
             # The mask has already been reshaped to (B,N,S,T)
             add_qk_str = attn_mask_nodes_6[0].output[0]
+        elif attn_mask_nodes_7 is not None:
+            # Reshape from (B,1,S,T) to (B,N,S,T)
+            add_qk_str = self.reshape_add_qk(attn_mask_nodes_7[0].output[0])
         else:
             logger.debug("fuse_rotary_attention: failed to match attention mask nodes")
             return

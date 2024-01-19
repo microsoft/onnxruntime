@@ -54,7 +54,7 @@ def get_call_args_from_file(filename: str, function_or_declaration: str) -> typi
                     # TODO: handle automatically by merging lines
                     log.error(
                         "Call/Declaration is split over multiple lines. Please check manually."
-                        "File:{} Line:{}".format(filename, line_num)
+                        f"File:{filename} Line:{line_num}"
                     )
                     continue
 

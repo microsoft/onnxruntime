@@ -48,10 +48,12 @@ class GraphPartitioner {
   /// <param name="model">model instance</param>
   /// <param name="execution_providers">execution providers considered</param>
   /// <param name="kernel_registry_manager">registry manager</param>
+  /// <param name="logger">session logger</param>
   /// <returns></returns>
   Status InlineFunctionsAOT(Model& model,
                             const ExecutionProviders& execution_providers,
-                            const KernelRegistryManager& kernel_registry_manager) const;
+                            const KernelRegistryManager& kernel_registry_manager,
+                            const logging::Logger& logger) const;
 #endif
 
  private:

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/naming-convention */
+/* eslint-disable @typescript-eslint/naming-convention */
 
 /**
  * The interface BuildDefinitions contains a set of flags which are defined at build time.
@@ -18,6 +18,10 @@ interface BuildDefinitions {
    * defines whether to disable the whole WebGpu backend in the build.
    */
   readonly DISABLE_WEBGPU: boolean;
+  /**
+   * defines whether to disable the whole WebNN backend in the build.
+   */
+  readonly DISABLE_WEBNN: boolean;
   /**
    * defines whether to disable the whole WebAssembly backend in the build.
    */

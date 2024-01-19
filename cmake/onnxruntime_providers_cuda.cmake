@@ -1,10 +1,25 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-  file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
-  )
+
+  if (onnxruntime_CUDA_MINIMAL)
+    file(GLOB onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/tunable/*.h"
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/tunable/*.cc"
+    )
+    # Remove pch files
+    list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/integer_gemm.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/triton_kernel.h"
+    )
+  else()
+    file(GLOB_RECURSE onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
+    )
+  endif()
   # Remove pch files
   list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
@@ -16,11 +31,16 @@
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
   )
-  file(GLOB_RECURSE onnxruntime_providers_cuda_cu_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
-    "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
-  )
 
+
+  if (onnxruntime_CUDA_MINIMAL)
+    set(onnxruntime_providers_cuda_shared_srcs "")
+  else()
+    file(GLOB_RECURSE onnxruntime_providers_cuda_cu_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cu"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cuh"
+    )
+  endif()
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   set(onnxruntime_providers_cuda_src ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
 
@@ -34,6 +54,8 @@
     if (NOT onnxruntime_USE_NCCL)
       list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/nccl_kernels.cc"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/sharded_moe.h"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/sharded_moe.cc"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/sharding_spec.cc"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/sharding.cc"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/distributed_matmul.cc"
@@ -41,6 +63,8 @@
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/distributed_reshape.cc"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/distributed_expand.cc"
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/distributed_reduce.cc"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/distributed_unsqueeze.cc"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/distributed_squeeze.cc"
       )
     endif()
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
@@ -152,10 +176,15 @@
     endif()
 
     add_dependencies(${target} onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
-    target_link_libraries(${target} PRIVATE cublasLt cublas cudnn curand cufft ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
-    if(onnxruntime_CUDNN_HOME)
-      target_include_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/include)
-      target_link_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/lib)
+    if(onnxruntime_CUDA_MINIMAL)
+      target_compile_definitions(${target} PRIVATE USE_CUDA_MINIMAL)
+      target_link_libraries(${target} PRIVATE ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
+    else()
+      target_link_libraries(${target} PRIVATE cublasLt cublas cudnn curand cufft ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
+      if(onnxruntime_CUDNN_HOME)
+          target_include_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/include)
+          target_link_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/lib)
+      endif()
     endif()
 
     if (onnxruntime_USE_TRITON_KERNEL)
@@ -170,10 +199,8 @@
       target_link_libraries(${target} PRIVATE cuda)
     endif()
 
-    if (onnxruntime_USE_FLASH_ATTENTION OR onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION)
-      include(cutlass)
-      target_include_directories(${target} PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples)
-    endif()
+    include(cutlass)
+    target_include_directories(${target} PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples)
 
     target_include_directories(${target} PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}  ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
     # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found

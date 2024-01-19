@@ -114,6 +114,22 @@ bool SliceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   if (!GetShape(*input_defs[0], input_shape, logger)) {
     return false;
   }
+
+  if (input_defs.size() < 3) {
+    LOGS(logger, VERBOSE) << op_type << " [" << name << "] requires at least 3 inputs (data, starts, ends) but got "
+                          << input_defs.size();
+    return false;
+  }
+
+  // Inputs: starts, ends, axes, and steps must be constant initializers if present.
+  for (size_t i = 1; i < input_defs.size(); i++) {
+    if (!Contains(initializers, input_defs[i]->Name())) {
+      LOGS(logger, VERBOSE) << "Input [" << input_defs[i]->Name() << "] of " << op_type
+                            << " [" << name << "] must be known as initializer";
+      return false;
+    }
+  }
+
   if (input_defs.size() == 5) {  // Check steps.
     const auto& steps_tensor = *initializers.at(input_defs[4]->Name());
     std::vector<uint8_t> unpacked_tensor;
@@ -140,18 +156,6 @@ bool SliceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
     }
   }
 
-  if (input_defs.size() < 3) {
-    LOGS(logger, VERBOSE) << op_type << " [" << name << "] requires at least 3 inputs (data starts and ends) but got "
-                          << input_defs.size();
-    return false;
-  }
-
-  const auto& starts_name = input_defs[1]->Name();
-  const auto& ends_name = input_defs[2]->Name();
-  if (!Contains(initializers, starts_name) || !Contains(initializers, ends_name)) {
-    LOGS(logger, VERBOSE) << op_type << " [" << name << "] need starts and ends as initializer.";
-    return false;
-  }
   return true;
 }
 

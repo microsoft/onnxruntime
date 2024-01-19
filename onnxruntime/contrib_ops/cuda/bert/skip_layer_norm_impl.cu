@@ -51,7 +51,7 @@ half maybe2half(float x) {
 
 // Using only power of 2 numbers will lead to waste of compute for same size such as 768, which is a very common case
 // in BERT. Ideally we can step by wrap_size * num_unroll, but listing too many steps will cause long compile time.
-constexpr int kSizes[] = {128, 384, 768, 1024, 2048, 4096, 5120, 8192};
+constexpr int kSizes[] = {128, 320, 384, 640, 768, 1024, 1280, 2048, 4096, 5120, 8192};
 constexpr size_t kNumOfSizes = sizeof(kSizes) / sizeof(kSizes[0]);
 constexpr int kMaxSize = kSizes[kNumOfSizes - 1];
 constexpr int kMinBlockSize = 32;
@@ -206,7 +206,7 @@ void LaunchSkipLayerNormKernel(
 #define CASE_NEXT_SIZE(next_size_value)                                         \
   case next_size_value: {                                                       \
     static_assert(next_size_value >= kSizes[0] && next_size_value <= kMaxSize); \
-    if constexpr (next_size_value >= 8 * 256) {                                 \
+    if constexpr (next_size_value >= 320) {                                 \
       if (can_unroll_vec8) {                                                    \
         constexpr int block_size = next_size_value / 8;                         \
         LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(8);                                 \
@@ -239,6 +239,9 @@ void LaunchSkipLayerNormKernel(
     CASE_NEXT_SIZE(kSizes[5]);
     CASE_NEXT_SIZE(kSizes[6]);
     CASE_NEXT_SIZE(kSizes[7]);
+    CASE_NEXT_SIZE(kSizes[8]);
+    CASE_NEXT_SIZE(kSizes[9]);
+    CASE_NEXT_SIZE(kSizes[10]);
     default: {
       constexpr int block_size = 256;
       LAUNCH_SKIP_LAYER_NORM_KERNEL();

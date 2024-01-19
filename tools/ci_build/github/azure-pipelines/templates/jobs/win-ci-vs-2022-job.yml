@@ -4,6 +4,7 @@ parameters:
 
 - name: EnvSetupScript
   type: string
+  default: setup_env.bat
 
 - name: job_name_suffix
   type: string
@@ -174,6 +175,11 @@ jobs:
       configuration: '${{ parameters.BuildConfig }}'
       msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+  - script: |
+      python3 tools\ValidateNativeDelegateAttributes.py
+    displayName: 'Validate C# native delegates'
+    workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: MSBuild@1
     displayName: 'Build C#'
