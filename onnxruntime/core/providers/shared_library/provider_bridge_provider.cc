@@ -547,7 +547,14 @@ Status ScatterND::ValidateShapes(const TensorShape& input_shape,
                                  const TensorShape& indice_shape,
                                  const TensorShape& update_shape) { return g_host_cpu.ScatterNDBase__ValidateShapes(input_shape, indice_shape, update_shape); }
 
-Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape) { return g_host_cpu.PadBase__HandleDimValueZero(mode, input_shape, output_shape); }
+Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, const TensorShape& output_shape) {
+  return g_host_cpu.PadBase__HandleDimValueZero(mode, input_shape, output_shape);
+}
+
+void PadBase::ComputePads(OpKernelContext* ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
+                          PadsVector& pads) {
+  g_host_cpu.PadBase__ComputePads(ctx, data_rank, pads_data, pads);
+}
 
 Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, const ConcatBase::InlinedTensorsVector& input_tensors,
                                      Prepare& p) const {

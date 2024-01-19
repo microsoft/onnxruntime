@@ -87,7 +87,13 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                        const TensorShape& indice_shape,
                                        const TensorShape& update_shape) override { return ScatterND::ValidateShapes(input_shape, indice_shape, update_shape); }
   // From cpu/tensor/padbase.h (direct)
-  Status PadBase__HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape) override { return PadBase::HandleDimValueZero(mode, input_shape, output_shape); }
+  Status PadBase__HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, const TensorShape& output_shape) override { return PadBase::HandleDimValueZero(mode, input_shape, output_shape); }
+
+  void PadBase__ComputePads(OpKernelContext* ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
+                            PadsVector& pads) override {
+    PadBase::ComputePads(ctx, data_rank, pads_data, pads);
+  }
+
   // From cpu/tensor/split.h (direct)
   Status SplitBase__PrepareForCompute(const SplitBase* p, const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
                                       int& after_dims_including_split_axis, int& after_dims_excluding_split,
