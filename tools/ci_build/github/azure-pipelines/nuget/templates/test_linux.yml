@@ -1,5 +1,5 @@
 parameters:
-  AgentPool: 'onnxruntime-Ubuntu2004-AMD-CPU'
+  AgentPool: 'onnxruntime-Ubuntu2204-AMD-CPU'
   ArtifactSuffix: ''
   NugetPackageName : ''
   StageSuffix: 'CPU'

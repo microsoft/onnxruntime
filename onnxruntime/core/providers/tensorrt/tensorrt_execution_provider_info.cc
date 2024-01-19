@@ -26,6 +26,7 @@ constexpr const char* kDLACore = "trt_dla_core";
 constexpr const char* kDumpSubgraphs = "trt_dump_subgraphs";
 constexpr const char* kEngineCacheEnable = "trt_engine_cache_enable";
 constexpr const char* kEngineCachePath = "trt_engine_cache_path";
+constexpr const char* kEngineCachePrefix = "trt_engine_cache_prefix";
 constexpr const char* kDecryptionEnable = "trt_engine_decryption_enable";
 constexpr const char* kDecryptionLibPath = "trt_engine_decryption_lib_path";
 constexpr const char* kForceSequentialEngineBuild = "trt_force_sequential_engine_build";
@@ -81,6 +82,7 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kDumpSubgraphs, info.dump_subgraphs)
           .AddAssignmentToReference(tensorrt::provider_option_names::kEngineCacheEnable, info.engine_cache_enable)
           .AddAssignmentToReference(tensorrt::provider_option_names::kEngineCachePath, info.engine_cache_path)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kEngineCachePrefix, info.engine_cache_prefix)
           .AddAssignmentToReference(tensorrt::provider_option_names::kDecryptionEnable, info.engine_decryption_enable)
           .AddAssignmentToReference(tensorrt::provider_option_names::kDecryptionLibPath, info.engine_decryption_lib_path)
           .AddAssignmentToReference(tensorrt::provider_option_names::kForceSequentialEngineBuild, info.force_sequential_engine_build)
@@ -124,6 +126,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kDumpSubgraphs, MakeStringWithClassicLocale(info.dump_subgraphs)},
       {tensorrt::provider_option_names::kEngineCacheEnable, MakeStringWithClassicLocale(info.engine_cache_enable)},
       {tensorrt::provider_option_names::kEngineCachePath, MakeStringWithClassicLocale(info.engine_cache_path)},
+      {tensorrt::provider_option_names::kEngineCachePrefix, MakeStringWithClassicLocale(info.engine_cache_prefix)},
       {tensorrt::provider_option_names::kDecryptionEnable, MakeStringWithClassicLocale(info.engine_decryption_enable)},
       {tensorrt::provider_option_names::kDecryptionLibPath, MakeStringWithClassicLocale(info.engine_decryption_lib_path)},
       {tensorrt::provider_option_names::kForceSequentialEngineBuild, MakeStringWithClassicLocale(info.force_sequential_engine_build)},
@@ -155,6 +158,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
   auto empty_if_null = [](const char* s) { return s != nullptr ? std::string{s} : std::string{}; };
   const std::string kInt8CalibTable_ = empty_if_null(info.trt_int8_calibration_table_name);
   const std::string kEngineCachePath_ = empty_if_null(info.trt_engine_cache_path);
+  const std::string kEngineCachePrefix_ = empty_if_null(info.trt_engine_cache_prefix);
   const std::string kTimingCachePath_ = empty_if_null(info.trt_timing_cache_path);
   const std::string kTacticSources_ = empty_if_null(info.trt_tactic_sources);
   const std::string kDecryptionLibPath_ = empty_if_null(info.trt_engine_decryption_lib_path);
@@ -178,6 +182,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
       {tensorrt::provider_option_names::kDumpSubgraphs, MakeStringWithClassicLocale(info.trt_dump_subgraphs)},
       {tensorrt::provider_option_names::kEngineCacheEnable, MakeStringWithClassicLocale(info.trt_engine_cache_enable)},
       {tensorrt::provider_option_names::kEngineCachePath, kEngineCachePath_},
+      {tensorrt::provider_option_names::kEngineCachePrefix, kEngineCachePrefix_},
       {tensorrt::provider_option_names::kDecryptionEnable, MakeStringWithClassicLocale(info.trt_engine_decryption_enable)},
       {tensorrt::provider_option_names::kDecryptionLibPath, kDecryptionLibPath_},
       {tensorrt::provider_option_names::kForceSequentialEngineBuild, MakeStringWithClassicLocale(info.trt_force_sequential_engine_build)},
@@ -267,6 +272,7 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   trt_provider_options_v2.trt_engine_cache_enable = internal_options.engine_cache_enable;
 
   trt_provider_options_v2.trt_engine_cache_path = copy_string_if_needed(internal_options.engine_cache_path);
+  trt_provider_options_v2.trt_engine_cache_prefix = copy_string_if_needed(internal_options.engine_cache_prefix);
   trt_provider_options_v2.trt_timing_cache_path = copy_string_if_needed(internal_options.timing_cache_path);
 
   trt_provider_options_v2.trt_engine_decryption_enable = internal_options.engine_decryption_enable;

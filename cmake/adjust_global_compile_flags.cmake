@@ -16,9 +16,7 @@ if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
 endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-  string(APPEND CMAKE_C_FLAGS " -s STRICT=1 -s DEFAULT_TO_CXX=1")
-  string(APPEND CMAKE_CXX_FLAGS " -s STRICT=1 -s DEFAULT_TO_CXX=1")
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s ALLOW_UNIMPLEMENTED_SYSCALLS=1")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s ALLOW_UNIMPLEMENTED_SYSCALLS=1 -s DEFAULT_TO_CXX=1")
 
   # Enable LTO for release single-thread build
   if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -125,6 +123,11 @@ if (onnxruntime_DISABLE_RTTI)
     add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/GR->" "$<$<COMPILE_LANGUAGE:CXX>:/we4541>")
   else()
     add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>")
+    if (onnxruntime_USE_WEBNN)
+      # Avoid unboundTypeError for WebNN EP since unbound type names are illegal with RTTI disabled
+      # in Embind API, relevant issue: https://github.com/emscripten-core/emscripten/issues/7001
+      add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-DEMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0>")
+    endif()
   endif()
 else()
   #MSVC RTTI flag /GR is not added to CMAKE_CXX_FLAGS by default. But, anyway VC++2019 treats "/GR" default on.

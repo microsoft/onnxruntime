@@ -23,7 +23,6 @@ export interface TensorInfo {
   dataType: number;
 }
 
-
 export interface ProgramUniform {
   type: 'int32'|'float32'|'uint32';
   data: number|readonly number[];
@@ -172,3 +171,5 @@ export interface ComputeContext {
   compute(program: ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping): TensorView[];
   output(index: number, dims: readonly number[]): number;
 }
+
+export type TimestampQuery = 'none'|'inside-passes'|'at-passes';
