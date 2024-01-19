@@ -528,7 +528,7 @@ public:
         std::vector<uint32_t> outputShape = kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0);
         const uint32_t outputShapeDimCount = gsl::narrow_cast<uint32_t>(outputShape.size());
         const DML_TENSOR_DATA_TYPE inputDataType = m_inputTensorDescs[0].GetDmlDataType();
-        bool hasZeroPointTensor = kernelInfo.IsInputValid(OnnxInputIndex::zeroPointIndex);
+        bool hasZeroPointTensor = kernelInfo.IsInputValid(2);
 
         uint32_t axis = 0;
 
