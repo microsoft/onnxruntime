@@ -772,6 +772,7 @@ if(NOT IOS)
             ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
 
     set_target_properties(onnx_test_runner_common PROPERTIES FOLDER "ONNXRuntimeTest")
+    set(onnx_test_runner_common_lib onnx_test_runner_common)
 endif()
 
 set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_optimizer_src}
@@ -828,6 +829,12 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   endif()
 endif()
 
+if (IOS OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+   list(REMOVE_ITEM all_tests
+      "${TEST_SRC_DIR}/providers/cpu/providers/cpu/model_tests.cc"
+    )
+endif()
+
 set(test_all_args)
 if (onnxruntime_USE_TENSORRT)
   # TRT EP CI takes much longer time when updating to TRT 8.2
@@ -845,7 +852,7 @@ AddTest(
   TARGET onnxruntime_test_all
   SOURCES ${all_tests} ${onnxruntime_unittest_main_src}
   LIBS
-    onnx_test_runner_common ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
+    ${onnx_test_runner_common_lib} ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
     onnx_test_data_proto
   DEPENDS ${all_dependencies}
   TEST_ARGS ${test_all_args}
