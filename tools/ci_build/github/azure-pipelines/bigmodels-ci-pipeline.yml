@@ -113,13 +113,6 @@ stages:
                   ccache -z"
         workingDirectory: $(Build.SourcesDirectory)
 
-    - task: PythonScript@0
-      displayName: 'Build wheel'
-      inputs:
-        scriptPath: '$(Build.SourcesDirectory)\setup.py'
-        arguments: 'bdist_wheel'
-        workingDirectory: '$(Build.BinariesDirectory)\Release'
-
     - task: CmdLine@2
       inputs:
         script: |
