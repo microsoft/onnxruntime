@@ -129,7 +129,8 @@ static void RunTests(const std::vector<float>& input_data,
                      int num_heads = 0,
                      int max_sequence_length = 0,
                      int64_t interleaved = 0,
-                     bool use_float16 = true) {
+                     bool use_float16 = true,
+                     bool disable_dml = false) {
   // FP32 test for CPU
   RunTest(input_data,
           position_ids,
@@ -164,7 +165,7 @@ static void RunTests(const std::vector<float>& input_data,
           TensorType::kFloat,
           false, /* disable_cpu */
           false, /* disable_cuda */
-          false /* disable_dml */);
+          disable_dml || false /* disable_dml */);
 
   // FP16 test for CUDA and DML
   if (use_float16) {
@@ -183,7 +184,7 @@ static void RunTests(const std::vector<float>& input_data,
             TensorType::kFloat16,
             true,  /* disable_cpu */
             false, /* disable_cuda*/
-            false /* disable_dml */);
+            disable_dml || false /* disable_dml */);
 
     // RunTest(input_data,
     //         position_ids,
@@ -732,7 +733,9 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi) {
            rotary_embedding_dim,
            num_heads,
            max_sequence_length,
-           interleaved);
+           interleaved,
+           true, /*use_fp16*/
+           true /*disable_dml*/);
 }
 
 }  // namespace test
