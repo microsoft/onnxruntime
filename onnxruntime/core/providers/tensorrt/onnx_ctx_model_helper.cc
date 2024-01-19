@@ -272,6 +272,12 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     std::filesystem::path ctx_model_dir(GetPathOrParentPathOfCtxModel(ep_context_model_path_));
     auto engine_cache_path = ctx_model_dir.append(cache_path);
 
+    if (!std::filesystem::exists(engine_cache_path)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "TensorRT EP can't find engine cache: " + engine_cache_path.string() +
+                                 ". Please make sure engine cache is in the same directory or sub-directory of context model.");
+    }
+
     std::ifstream engine_file(engine_cache_path.string(), std::ios::binary | std::ios::in);
     engine_file.seekg(0, std::ios::end);
     size_t engine_size = engine_file.tellg();
@@ -281,8 +287,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     *(trt_engine_) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_runtime_->deserializeCudaEngine(engine_buf.get(), engine_size));
     if (!(*trt_engine_)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "TensorRT EP could not deserialize engine from cache: " + engine_cache_path.string() +
-                                 ". Please make sure engine cache is inside the directory of trt_ep_context_file_path.");
+                             "TensorRT EP could not deserialize engine from cache: " + engine_cache_path.string());
     }
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path.string();
   }

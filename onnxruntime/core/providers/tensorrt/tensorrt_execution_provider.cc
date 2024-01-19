@@ -1578,6 +1578,13 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     dla_core_ = 0;
   }
 
+  // If ep_context_file_path_ is provided as a directory, create it if it's not existed
+  if (dump_ep_context_model_ && !ep_context_file_path_.empty() && std::filesystem::path(ep_context_file_path_).extension().empty() && !std::filesystem::is_directory(ep_context_file_path_)) {
+    if (!std::filesystem::create_directory(ep_context_file_path_)) {
+      throw std::runtime_error("Failed to create directory " + ep_context_file_path_);
+    }
+  }
+
   // If dump_ep_context_model_ is enable, TRT EP forces cache_path_ to be the relative path of ep_context_file_path_.
   // For example,
   //    - original cache path = "engine_cache_dir" -> new cache path = "./context_model_dir/engine_cache_dir"
@@ -1594,13 +1601,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 
     // Make cache_path_ to be the relative path of ep_context_file_path_
     cache_path_ = GetPathOrParentPathOfCtxModel(ep_context_file_path_).append(cache_path_).string();
-  }
-
-  // If ep_context_file_path_ is provided as a directory, create it if it's not existed
-  if (!ep_context_file_path_.empty() && std::filesystem::path(ep_context_file_path_).extension().empty() && !std::filesystem::is_directory(ep_context_file_path_)) {
-    if (!std::filesystem::create_directory(ep_context_file_path_)) {
-      throw std::runtime_error("Failed to create directory " + ep_context_file_path_);
-    }
   }
 
   if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
@@ -2335,6 +2335,14 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
+  // Get ModelPath
+  const auto& path_string = graph.ModelPath().ToPathString();
+#ifdef _WIN32
+  wcstombs_s(nullptr, model_path_, sizeof(model_path_), path_string.c_str(), sizeof(model_path_));
+#else
+  strcpy(model_path_, path_string.c_str());
+#endif
+
   // If the model consists of only a single "EPContext" contrib op, it means TRT EP can fetch the precompiled engine info from the node and
   // load the engine directly without having to go through the processes of graph proto reconstruction, calling TRT parser and engine compilation.
   // So, simply return the ComputeCapability here.
@@ -2344,14 +2352,6 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     result.push_back(ComputeCapability::Create(std::move(sub_graph)));
     return result;
   }
-
-  // Get ModelPath
-  const auto& path_string = graph.ModelPath().ToPathString();
-#ifdef _WIN32
-  wcstombs_s(nullptr, model_path_, sizeof(model_path_), path_string.c_str(), sizeof(model_path_));
-#else
-  strcpy(model_path_, path_string.c_str());
-#endif
 
   // Generate unique kernel name for TRT graph
   HashValue model_hash = TRTGenerateId(graph);
@@ -3016,8 +3016,14 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         }
         // dump EP context node model
         if (dump_ep_context_model_) {
+
+          // "ep_cache_context" node attribute should be a relative path to context model directory
+          if (ep_cache_context_attr_.empty()) {
+            ep_cache_context_attr_ = std::filesystem::relative(engine_cache_path, ep_context_file_path_).string();
+          }
+
           std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto{CreateCtxModel(graph_body_viewer,
-                                                                                 engine_cache_path,
+                                                                                 ep_cache_context_attr_,
                                                                                  reinterpret_cast<char*>(serialized_engine->data()),
                                                                                  serialized_engine->size(),
                                                                                  ep_context_embed_mode_,
@@ -3083,8 +3089,12 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   // TRT EP will serialize the model at inference time due to engine can be updated and the updated engine should be included in the model.
   // However, if the embed_mode is 0 (only includes engine path), TRT EP will serialize it here.
   if (dump_ep_context_model_ && has_dynamic_shape) {
+    // "ep_cache_context" node attribute should be a relative path to context model directory
+    if (ep_cache_context_attr_.empty()) {
+      ep_cache_context_attr_ = std::filesystem::relative(engine_cache_path, ep_context_file_path_).string();
+    }
     model_proto_.reset(CreateCtxModel(graph_body_viewer,
-                                      engine_cache_path,
+                                      ep_cache_context_attr_,
                                       nullptr,
                                       0,
                                       ep_context_embed_mode_,
