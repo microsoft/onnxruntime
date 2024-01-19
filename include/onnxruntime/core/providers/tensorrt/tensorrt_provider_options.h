@@ -48,26 +48,26 @@ struct OrtTensorRTProviderOptionsV2 {
   const char* trt_profile_max_shapes{nullptr};           // Specify the range of the input shapes to build the engine with
   const char* trt_profile_opt_shapes{nullptr};           // Specify the range of the input shapes to build the engine with
   int trt_cuda_graph_enable{0};                          // Enable CUDA graph in ORT TRT
-  
+
   /*
    * Please note that there are rules for using following context model related provider options:
-   * 
-   * 1. In the case of dumping the context model and loading the context model, 
+   *
+   * 1. In the case of dumping the context model and loading the context model,
    *    for security reason, TRT EP doesn't allow the "ep_cache_context" node attribute of EP context node to be
    *    the absolute path or relative path that is outside of context model directory.
    *    It means engine cache needs to be in the same directory or sub-directory of context model.
-   * 
-   * 2. In the case of dumping the context model, the engine cache path will be changed to the relative path of context model directory. 
-   *    For example: 
+   *
+   * 2. In the case of dumping the context model, the engine cache path will be changed to the relative path of context model directory.
+   *    For example:
    *    If "trt_dump_ep_context_model" is enabled and "trt_engine_cache_enable" is enabled,
    *       if "trt_ep_context_file_path" is "./context_model_dir",
    *       - if "trt_engine_cache_path" is "" -> the engine cache will be saved to "./context_model_dir"
    *       - if "trt_engine_cache_path" is "engine_dir" -> the engine cache will be saved to "./context_model_dir/engine_dir"
-   * 
+   *
    */
-  int trt_dump_ep_context_model{0};                      // Dump EP context node model
-  const char* trt_ep_context_file_path{nullptr};         // Specify file name to dump EP context node model.
-  int trt_ep_context_embed_mode{0};                      // Specify EP context embed mode. Default 0 = context is engine cache path, 1 = context is engine binary data
-  
-  const char* trt_engine_cache_prefix{nullptr};          // specify engine cache prefix
+  int trt_dump_ep_context_model{0};               // Dump EP context node model
+  const char* trt_ep_context_file_path{nullptr};  // Specify file name to dump EP context node model.
+  int trt_ep_context_embed_mode{0};               // Specify EP context embed mode. Default 0 = context is engine cache path, 1 = context is engine binary data
+
+  const char* trt_engine_cache_prefix{nullptr};  // specify engine cache prefix
 };

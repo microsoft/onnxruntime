@@ -1579,7 +1579,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   }
 
   // If dump_ep_context_model_ is enable, TRT EP forces cache_path_ to be the relative path of ep_context_file_path_.
-  // For example, 
+  // For example,
   //    - original cache path = "engine_cache_dir" -> new cache path = "./context_model_dir/engine_cache_dir"
   //    - original cache path = ""                 -> new cache path = "./context_model_dir"
   // The new cache path will be saved as the "ep_cache_context" node attritue of the EP context node.
