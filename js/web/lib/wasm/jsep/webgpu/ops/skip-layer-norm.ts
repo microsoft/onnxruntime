@@ -86,12 +86,7 @@ const createSkipLayerNormProgramInfo =
           const hasInputSkipBiasSumOutput = outputCount > 3;
 
           const components = getMaxComponents(hiddenSize);
-          const uniformsArray: UniformsArrayType = [
-            {name: 'output_size', type: 'u32'},
-            {name: 'components', type: 'u32'},
-            {name: 'hidden_size', type: 'u32'},
-            {name: 'epsilon', type: 'f32'},
-          ];
+
           const programUniforms: ProgramUniform[] = [
             {type: 'uint32', data: outputSize},
             {type: 'uint32', data: components},
@@ -99,6 +94,12 @@ const createSkipLayerNormProgramInfo =
             {type: 'float32', data: attributes.epsilon},
           ];
           const getShaderSource = (shaderHelper: ShaderHelper) => {
+            const uniformsArray: UniformsArrayType = [
+              {name: 'output_size', type: 'u32'},
+              {name: 'components', type: 'u32'},
+              {name: 'hidden_size', type: 'u32'},
+              {name: 'epsilon', type: 'f32'},
+            ];
             const variables = [
               inputVariable('x', inputs[0].dataType, inputs[0].dims, components),
               inputVariable('skip', inputs[1].dataType, inputs[1].dims, components),
@@ -122,7 +123,6 @@ const createSkipLayerNormProgramInfo =
             }
             const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
             return `
-      const epsilon: f32 = ${attributes.epsilon};
 
       ${shaderHelper.registerUniforms(uniformsArray).declareVariables(...variables)}
 
