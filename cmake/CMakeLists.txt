@@ -1245,17 +1245,15 @@ if (onnxruntime_USE_TVM)
     $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>)
 
   set(onnxruntime_tvm_libs onnxruntime_providers_tvm)
-
-  # needs to link with stdc++fs in Linux
-  if (UNIX)
-    if (NOT APPLE)
-      set(FS_STDLIB stdc++fs)
-    endif()
-  endif()
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm ${FS_STDLIB})
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
 endif()
 
+# needs to link with stdc++fs in Linux
+if (UNIX AND "${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 9)
+  set(FS_STDLIB stdc++fs)
+endif()
+list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${FS_STDLIB})
 
 # onnxruntime-extensions
 if (onnxruntime_USE_EXTENSIONS)
