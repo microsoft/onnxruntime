@@ -360,6 +360,20 @@ size_t
 
 #else
 
+#if defined(__aarch64__) && defined(__linux__)
+typedef size_t(MLASCALL MLAS_SBGEMM_FLOAT_KERNEL)(
+    const float* A,
+    const bfloat16_t* B,
+    float* C,
+    size_t CountK,
+    size_t CountM,
+    size_t CountN,
+    size_t lda,
+    size_t ldc,
+    const float* Bias
+);
+#endif
+
 typedef
 size_t
 (MLASCALL MLAS_GEMM_FLOAT_KERNEL)(
@@ -730,6 +744,10 @@ extern "C" {
 #else
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
+#if defined(__aarch64__) && defined(__linux__)
+    MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelZero;
+    MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelAdd;
+#endif
     MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelZero;
     MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelAdd;
 #endif
@@ -858,6 +876,10 @@ extern "C" {
 #define MLAS_SGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
 #define MLAS_DGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
 #define MLAS_QGEMM_THREAD_COMPLEXITY                65536
+
+#if defined(__aarch64__) && defined(__linux__)
+#define MLAS_SBGEMM_THREAD_COMPLEXITY (size_t(64) * size_t(1024))
+#endif
 
 //
 // Single-threaded single precision matrix/matrix multiply operation.
