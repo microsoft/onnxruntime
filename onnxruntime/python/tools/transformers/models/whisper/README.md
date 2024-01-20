@@ -75,6 +75,15 @@ $ python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output whis
 $ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-tiny --output whispertiny --use_external_data_format --precision int8 --quantize_embedding_layer
 ```
 
+To see all available options
+```
+# From source:
+$ python3 -m models.whisper.convert_to_onnx --help
+
+# From wheel:
+$ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx --help
+```
+
 ## Benchmark Whisper
 
 Here are some examples of how you can benchmark Whisper across various end-to-end (E2E) implementations.

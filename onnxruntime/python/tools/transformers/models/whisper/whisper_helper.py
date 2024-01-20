@@ -29,14 +29,15 @@ logger = logging.getLogger(__name__)
 PRETRAINED_WHISPER_MODELS = [
     "whisper-tiny",
     "whisper-tiny.en",
+    "whisper-base",
+    "whisper-base.en",
     "whisper-small",
     "whisper-small.en",
     "whisper-medium",
     "whisper-medium.en",
-    "whisper-base",
-    "whisper-base.en",
     "whisper-large",
     "whisper-large-v2",
+    "whisper-large-v3",
 ]
 
 
@@ -333,6 +334,8 @@ class WhisperHelper:
                 inputs[name] = np.array([[0, 0]], dtype=ort_to_np[dtype])
             elif name == "extra_decoding_ids":
                 inputs[name] = np.repeat(np.array([[50259, 50359, 50363]], dtype=ort_to_np[dtype]), batch_size, 0)
+            elif name == "temperature":
+                inputs[name] = np.array([1.0], dtype=ort_to_np[dtype])
             else:
                 inputs[name] = np.array([inputs[name]], dtype=ort_to_np[dtype])
         ort_outputs = ort_session.run(None, inputs)[0][0]

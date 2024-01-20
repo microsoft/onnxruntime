@@ -1,0 +1,16 @@
+# NOTE: In addition to the below packages, you will need to install `ffmpeg` on your machine.
+# Visit https://ffmpeg.org/ for details. You can also install it natively using package managers.
+# Ex:
+# Linux: sudo apt-get install ffmpeg
+# MacOS: sudo brew install ffmpeg
+# Windows: Download from website
+
+torch>=1.13.0
+transformers>=4.24.0
+openai-whisper
+ffmpeg-python
+datasets
+onnxruntime>=1.15.1
+onnxruntime-extensions>=0.9.0
+protobuf==3.20.2
+numpy==1.23.3

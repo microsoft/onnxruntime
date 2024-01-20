@@ -54,6 +54,8 @@ def get_inputs(args: argparse.Namespace):
             inputs["decoder_input_ids"] = np.array([args.decoder_input_ids], dtype=np.int32)
         if args.has_logits_processor:
             inputs["logits_processor"] = np.array([args.logits_processor], dtype=np.int32)
+        if args.has_temperature:
+            inputs["temperature"] = np.array([args.temperature], dtype=np.float32)
 
     # Measure time taken to load audio file
     logger.info(f"Load audio: {args.audio_path}")
@@ -163,6 +165,7 @@ def get_model(args: argparse.Namespace):
 def time_fn(args, fn, inputs):
     warmup_inputs = inputs[0] if type(inputs) is tuple else inputs
     benchmark_inputs = inputs[1] if type(inputs) is tuple else inputs
+    torch_device = torch.device(args.target_device)
 
     # Warm up
     warmup_range = (
@@ -180,7 +183,7 @@ def time_fn(args, fn, inputs):
 
     # Benchmark
     if args.device != "cpu":
-        torch.cuda.synchronize()
+        torch.cuda.synchronize(torch_device)
     start_time = time.time()
 
     bench_range = (
@@ -192,7 +195,7 @@ def time_fn(args, fn, inputs):
         fn(benchmark_inputs)
 
     if args.device != "cpu":
-        torch.cuda.synchronize()
+        torch.cuda.synchronize(torch_device)
     end_time = time.time()
 
     # Newline print after trange in order to print metrics on new lines without progress bar on same line
@@ -500,7 +503,13 @@ def parse_args():
         "--logits-processor",
         type=int,
         default=1,
-        help="Type of logits processor to use. See `BeamSearch` in https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/graph/contrib_ops/contrib_defs.cc for details.",
+        help="Type of logits processor to use. See `WhisperBeamSearch` in https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/graph/contrib_ops/contrib_defs.cc for details.",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=1.0,
+        help="Temperature value for generation.",
     )
 
     # Args for accessing detailed info
@@ -581,6 +590,7 @@ def main():
         args.has_audio_stream = "audio_stream" in ort_model_inputs
         setattr(args, "has_decoder_input_ids", "decoder_input_ids" in ort_model_inputs)  # noqa: B010
         setattr(args, "has_logits_processor", "logits_processor" in ort_model_inputs)  # noqa: B010
+        setattr(args, "has_temperature", "temperature" in ort_model_inputs)  # noqa: B010
 
         if args.decoder_input_ids == []:
             args.decoder_input_ids = [config.decoder_start_token_id]
