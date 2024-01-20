@@ -105,14 +105,7 @@ Status LaunchRotaryEmbeddingKernel(
   ORT_ENFORCE(head_size <= max_threads_per_block,
               "Rotary embedding dim must be <= max_threads_per_block");
 
-  int tpb = head_size;
-  --tpb;
-  tpb |= (tpb >> 1);
-  tpb |= (tpb >> 2);
-  tpb |= (tpb >> 4);
-  tpb |= (tpb >> 8);
-  tpb |= (tpb >> 16);
-  tpb++;
+  int tpb = (head_size + 31)/32*32;
 
   const dim3 block(tpb);
   const dim3 grid(num_heads, sequence_length, batch_size);
