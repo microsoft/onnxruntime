@@ -462,6 +462,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   InferenceSession session_object3{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 params3;
   model_name = params.trt_ep_context_file_path;
+  params3.trt_engine_cache_enable = 1;
   execution_provider = TensorrtExecutionProviderWithOptions(&params3);
   EXPECT_TRUE(session_object3.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
   status = session_object3.Load(model_name);
@@ -504,6 +505,43 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   // Y: 1, 3, 3, 2, 2, 2
   // Z: 1, 3, 3, 2, 2, 2
   RunSession(session_object4, run_options, feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
+
+  /*
+   * Test case 5: Dump context model with embed_model = 1
+   */
+  InferenceSession session_object5{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 params5;
+  params5.trt_dump_ep_context_model = 1;
+  params5.trt_ep_context_embed_mode = 1;
+  params5.trt_ep_context_file_path = "EP_Context_model_2.onnx";
+  model_name = "EPContextNode_test.onnx";
+  execution_provider = TensorrtExecutionProviderWithOptions(&params5);
+  EXPECT_TRUE(session_object5.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+  status = session_object5.Load(model_name);
+  ASSERT_TRUE(status.IsOK());
+  status = session_object5.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  /*
+   * Test case 6: Run context model with embed_model = 1 (created from case 5)
+   */
+  InferenceSession session_object6{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 params6;
+  model_name = params5.trt_ep_context_file_path;
+  execution_provider = TensorrtExecutionProviderWithOptions(&params6);
+  EXPECT_TRUE(session_object6.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+  status = session_object6.Load(model_name);
+  ASSERT_TRUE(status.IsOK());
+  status = session_object6.Initialize();
+  ASSERT_TRUE(status.IsOK());
+  // run inference
+  // TRT engine will be created and cached
+  // TRT profile will be created and cached only for dynamic input shape
+  // Data in profile,
+  // X: 1, 3, 3, 2, 2, 2
+  // Y: 1, 3, 3, 2, 2, 2
+  // Z: 1, 3, 3, 2, 2, 2
+  RunSession(session_object6, run_options, feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
 }
 
 TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
