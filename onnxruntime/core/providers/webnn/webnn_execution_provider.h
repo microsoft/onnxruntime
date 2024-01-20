@@ -49,6 +49,6 @@ class WebNNExecutionProvider : public IExecutionProvider {
   DataLayout preferred_layout_;
   webnn::WebnnDeviceType wnn_device_type_;
   InlinedHashMap<std::string, std::unique_ptr<onnxruntime::webnn::Model>> models_;
-  std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
+  ModelMetadefIdGenerator metadef_id_generator_;
 };
 }  // namespace onnxruntime

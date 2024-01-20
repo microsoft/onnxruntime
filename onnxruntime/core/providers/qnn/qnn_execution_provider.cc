@@ -230,8 +230,6 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
       htp_performance_mode,
       context_priority,
       std::move(qnn_saver_path));
-
-  metadef_id_generator_ = std::make_unique<ModelMetadefIdGenerator>();
 }
 
 bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
@@ -422,7 +420,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   const auto gen_metadef_name = [&]() {
     uint64_t model_hash;
-    int metadef_id = metadef_id_generator_->GenerateId(graph_viewer, model_hash);
+    int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
     return MakeString(QNN, "_", model_hash, "_", metadef_id);
   };
 

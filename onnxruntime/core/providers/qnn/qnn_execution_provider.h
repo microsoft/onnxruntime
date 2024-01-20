@@ -67,7 +67,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool disable_cpu_ep_fallback_ = false;  // True if CPU EP fallback has been disabled for this session.
   bool qnn_context_embed_mode_ = true;
   int32_t vtcm_size_in_mb_ = 0;
-  std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
+  ModelMetadefIdGenerator metadef_id_generator_;
 };
 
 }  // namespace onnxruntime

@@ -71,8 +71,6 @@ NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags,
   // May we could just mark this EP as unavailable instead of throwing an error
   ORT_THROW_IF_ERROR(GetTargetDevices(*nnapi_handle_, target_device_option_, nnapi_target_devices_));
 
-  metadef_id_generator_ = std::make_unique<ModelMetadefIdGenerator>();
-
   LOGS_DEFAULT(VERBOSE) << "Found devices [" << nnapi::GetDevicesDescription(nnapi_target_devices_) << "] in NNAPI";
 }
 
@@ -178,7 +176,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
   const auto gen_metadef_name = [&]() {
     HashValue model_hash;
-    int metadef_id = metadef_id_generator_->GenerateId(graph_viewer, model_hash);
+    int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
     return MakeString(NNAPI, "_", model_hash, "_", metadef_id);
   };
 

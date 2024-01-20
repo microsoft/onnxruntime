@@ -83,7 +83,7 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
   // per-instance kernel registry so tests using static kernels don't clash.
   // shared_ptr as required by IExecutionProvider::GetKernelRegistry
   std::shared_ptr<KernelRegistry> kernel_registry_;
-  std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
+  ModelMetadefIdGenerator metadef_id_generator_;
 };
 
 }  // namespace internal_testing_ep

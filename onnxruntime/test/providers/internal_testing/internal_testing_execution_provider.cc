@@ -91,7 +91,6 @@ InternalTestingExecutionProvider::InternalTestingExecutionProvider(const std::un
       stop_ops_{stop_ops},
       preferred_layout_{preferred_layout},
       kernel_registry_{RegisterKernels()} {
-  metadef_id_generator_ = std::make_unique<ModelMetadefIdGenerator>();
 }
 
 std::vector<AllocatorPtr> InternalTestingExecutionProvider::CreatePreferredAllocators() {
@@ -213,7 +212,7 @@ InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& 
   // create functor to generate a guaranteed unique metadef id
   auto generate_metadef_name = [this, &graph_viewer]() {
     HashValue model_hash;
-    int metadef_id = metadef_id_generator_->GenerateId(graph_viewer, model_hash);
+    int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
     auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
     return ep_name_ + "_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
   };

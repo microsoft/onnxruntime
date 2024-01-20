@@ -8,7 +8,7 @@
 
 namespace onnxruntime {
 int ModelMetadefIdGenerator::GenerateId(const onnxruntime::GraphViewer& graph_viewer,
-                                        HashValue& model_hash) {
+                                        HashValue& model_hash) const {
   // if the EP is shared across multiple sessions there's a very small potential for concurrency issues.
   // use a lock when generating an id to be paranoid
   static OrtMutex mutex;

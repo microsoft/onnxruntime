@@ -35,6 +35,6 @@ class CoreMLExecutionProvider : public IExecutionProvider {
 #ifdef __APPLE__
   std::unordered_map<std::string, std::unique_ptr<onnxruntime::coreml::Model>> coreml_models_;
 #endif
-  std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
+  ModelMetadefIdGenerator metadef_id_generator_;
 };
 }  // namespace onnxruntime

@@ -49,6 +49,6 @@ class NnapiExecutionProvider : public IExecutionProvider {
   const NnApi* nnapi_handle_ = nullptr;
   nnapi::DeviceWrapperVector nnapi_target_devices_;
   nnapi::TargetDeviceOption target_device_option_;
-  std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
+  ModelMetadefIdGenerator metadef_id_generator_;
 };
 }  // namespace onnxruntime

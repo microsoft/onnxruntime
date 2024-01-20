@@ -26,7 +26,6 @@ constexpr const char* COREML = "CoreML";
 CoreMLExecutionProvider::CoreMLExecutionProvider(uint32_t coreml_flags)
     : IExecutionProvider{onnxruntime::kCoreMLExecutionProvider},
       coreml_flags_(coreml_flags) {
-  metadef_id_generator_ = std::make_unique<ModelMetadefIdGenerator>();
 }
 
 CoreMLExecutionProvider::~CoreMLExecutionProvider() {}
@@ -55,7 +54,7 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
   const auto gen_metadef_name = [&]() {
     HashValue model_hash;
-    int metadef_id = metadef_id_generator_->GenerateId(graph_viewer, model_hash);
+    int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
     return MakeString(COREML, "_", model_hash, "_", metadef_id);
   };
 

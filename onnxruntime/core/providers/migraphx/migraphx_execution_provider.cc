@@ -165,8 +165,6 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   MIOPEN_CALL_THROW(miopenCreate(&external_miopen_handle_));
   MIOPEN_CALL_THROW(miopenSetStream(external_miopen_handle_, stream_));
 
-  metadef_id_generator_ = std::make_unique<ModelMetadefIdGenerator>();
-
   LOGS_DEFAULT(VERBOSE) << "[MIGraphX EP] MIGraphX provider options: "
                         << "device_id: " << device_id_
                         << ", migraphx_fp16_enable: " << fp16_enable_
@@ -759,7 +757,7 @@ std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const st
 
   // Generate unique kernel name for MIGraphX subgraph
   uint64_t model_hash = 0;
-  int id = metadef_id_generator_->GenerateId(graph, model_hash);
+  int id = metadef_id_generator_.GenerateId(graph, model_hash);
   std::string subgraph_id = std::to_string(model_hash) + "_" + std::to_string(id);
   auto meta_def = IndexedSubGraph_MetaDef::Create();
   const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";

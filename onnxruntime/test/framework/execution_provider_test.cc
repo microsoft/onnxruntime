@@ -19,16 +19,14 @@ class TestEP : public IExecutionProvider {
   static constexpr const char* kEPType = "TestEP";
 
  public:
-  TestEP() : IExecutionProvider{kEPType} {
-    metadef_id_generator_ = std::make_unique<ModelMetadefIdGenerator>();
-  }
+  TestEP() : IExecutionProvider{kEPType} {}
 
   int GetId(const GraphViewer& viewer, HashValue& model_hash) {
-    return metadef_id_generator_->GenerateId(viewer, model_hash);
+    return metadef_id_generator_.GenerateId(viewer, model_hash);
   }
 
  private:
-  std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
+  ModelMetadefIdGenerator metadef_id_generator_;
 };
 
 TEST(ExecutionProviderTest, MetadefIdGeneratorUsingModelPath) {
