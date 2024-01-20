@@ -305,6 +305,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   int ep_context_embed_mode_ = 0;
   std::string ctx_model_path_;
   std::string ep_cache_context_attr_;
+  std::string engine_cache_relative_path_to_context_model_dir;
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_ = ONNX_NAMESPACE::ModelProto::Create();
 
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};

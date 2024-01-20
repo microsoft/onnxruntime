@@ -1599,6 +1599,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       LOGS_DEFAULT(ERROR) << "In the case of dumping context model and for security purpose, The trt_engine_cache_path has '..', it's not allowed to point outside the directory.";
     }
 
+    // Engine cache relative path to context model directory.
+    // It's used when dumping the "ep_cache_context" node attribute.
+    engine_cache_relative_path_to_context_model_dir = cache_path_;
+
     // Make cache_path_ to be the relative path of ep_context_file_path_
     cache_path_ = GetPathOrParentPathOfCtxModel(ep_context_file_path_).append(cache_path_).string();
   }
@@ -3018,7 +3022,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         if (dump_ep_context_model_) {
           // "ep_cache_context" node attribute should be a relative path to context model directory
           if (ep_cache_context_attr_.empty()) {
-            ep_cache_context_attr_ = std::filesystem::relative(engine_cache_path, ep_context_file_path_).string();
+            auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
+            ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
           }
 
           std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto{CreateCtxModel(graph_body_viewer,
@@ -3090,7 +3095,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   if (dump_ep_context_model_ && has_dynamic_shape) {
     // "ep_cache_context" node attribute should be a relative path to context model directory
     if (ep_cache_context_attr_.empty()) {
-      ep_cache_context_attr_ = std::filesystem::relative(engine_cache_path, ep_context_file_path_).string();
+      auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
+      ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
     }
     model_proto_.reset(CreateCtxModel(graph_body_viewer,
                                       ep_cache_context_attr_,

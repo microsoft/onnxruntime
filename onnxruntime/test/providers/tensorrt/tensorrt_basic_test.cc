@@ -527,6 +527,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
    */
   InferenceSession session_object6{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 params6;
+  params6.trt_ep_context_embed_mode = 1;
   model_name = params5.trt_ep_context_file_path;
   execution_provider = TensorrtExecutionProviderWithOptions(&params6);
   EXPECT_TRUE(session_object6.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
