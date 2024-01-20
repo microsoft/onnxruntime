@@ -60,6 +60,10 @@ void usage() {
       "\t    [QNN only] [qnn_saver_path]: QNN Saver backend path. e.g '/folderpath/libQnnSaver.so'.\n"
       "\t    [QNN only] [htp_graph_finalization_optimization_mode]: QNN graph finalization optimization mode, options: \n"
       "\t    '0', '1', '2', '3', default is '0'.\n"
+      "\t    [QNN only] [soc_model]: The SoC Model number. Refer to QNN SDK documentation for specific values. Defaults to '0' (unknown). \n"
+      "\t    [QNN only] [htp_arch]: The minimum HTP architecture. The driver will use ops compatible with this architecture. \n"
+      "\t    Options are '0', '68', '69', '73', '75'. Defaults to '0' (none). \n"
+      "\t    [QNN only] [device_id]: The ID of the device to use when setting 'htp_arch'. Defaults to '0' (for single device). \n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
       "\t [Example] [For QNN EP] -e qnn -i \"profiling_level|detailed backend_path|/folderpath/libQnnCpu.so\" \n\n"
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
@@ -483,7 +487,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           if (supported_profiling_level.find(value) == supported_profiling_level.end()) {
             ORT_THROW("Supported profiling_level: off, basic, detailed");
           }
-        } else if (key == "rpc_control_latency" || key == "vtcm_mb") {
+        } else if (key == "rpc_control_latency" || key == "vtcm_mb" || key == "soc_model" || key == "device_id") {
           // no validation
         } else if (key == "htp_performance_mode") {
           std::set<std::string> supported_htp_perf_mode = {"burst", "balanced", "default", "high_performance",
@@ -511,6 +515,15 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
                       std::ostream_iterator<std::string>(str_stream, ","));
             std::string str = str_stream.str();
             ORT_THROW("Wrong value for htp_graph_finalization_optimization_mode. select from: " + str);
+          }
+        } else if (key == "htp_arch") {
+          std::unordered_set<std::string> supported_htp_archs = {"0", "68", "69", "73", "75"};
+          if (supported_htp_archs.find(value) == supported_htp_archs.end()) {
+            std::ostringstream str_stream;
+            std::copy(supported_htp_archs.begin(), supported_htp_archs.end(),
+                      std::ostream_iterator<std::string>(str_stream, ","));
+            std::string str = str_stream.str();
+            ORT_THROW("Wrong value for htp_arch. select from: " + str);
           }
         } else {
           ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
