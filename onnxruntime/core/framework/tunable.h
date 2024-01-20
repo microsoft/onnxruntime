@@ -26,6 +26,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/framework/stream_handles.h"
 #include "core/framework/tuning_context.h"
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
 
@@ -259,6 +260,8 @@ class TunableOp {
     constexpr const int max_tuning_iter = 100;
     constexpr const int approx_num_iter = 3;
 
+    bool debug_skip_tuning = ParseEnvironmentVariableWithDefault<bool>("DEBUG_SKIP_TUNING", false);
+
     for (size_t i = 0; i < candidates.size(); i++) {
       auto& candidate = const_cast<Op<ParamsT>&>(candidates[i]);
       auto status = IsSupported(candidate, params);
@@ -267,6 +270,9 @@ class TunableOp {
         LOGS_DEFAULT(VERBOSE) << "│  reason: " << status.ErrorMessage();
         continue;
       }
+
+      if (debug_skip_tuning)
+        return i;
 
       WarmUp(candidate, params);
 
