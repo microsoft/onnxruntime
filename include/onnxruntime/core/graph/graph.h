@@ -1729,6 +1729,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // these don't get recorded as graph inputs in the GraphProto.
   std::unordered_set<std::string> outer_scope_node_arg_names_;
 
+  // have the initial unused initializers and node args been cleaned
+  bool has_cleaned_ = false;
+
   // number of times Resolve has run.
   int num_resolves_ = 0;
 

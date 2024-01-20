@@ -1686,9 +1686,6 @@ common::Status InferenceSession::Initialize() {
       }
 #endif
 
-      // clean all unused initializers and node args
-      ORT_RETURN_IF_ERROR_SESSIONID_(graph.InitialCleanAllUnusedInitializersAndNodeArgs());
-
       // apply any transformations to the main graph and any subgraphs
       ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, saving_ort_format));
 
