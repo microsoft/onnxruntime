@@ -1352,6 +1352,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     detailed_build_log_ = info.detailed_build_log;
     if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
       cache_path_ = info.engine_cache_path;
+      cache_prefix_ = info.engine_cache_prefix;
     }
     // use a more global cache if given
     if (timing_cache_enable_) {
@@ -1463,6 +1464,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
         const std::string engine_cache_path = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCachePath);
         cache_path_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kCachePath);
+        cache_prefix_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCachePrefix);
         if (!engine_cache_path.empty() && cache_path_.empty()) {
           cache_path_ = engine_cache_path;
           LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_ENGINE_CACHE_PATH is deprecated! Please use ORT_TENSORRT_CACHE_PATH to specify engine cache path";
@@ -1578,7 +1580,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     dla_core_ = 0;
   }
 
-  if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
+  if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_ || !cache_prefix_.empty()) {
     if (!cache_path_.empty() && !fs::is_directory(cache_path_)) {
       if (!fs::create_directory(cache_path_)) {
         throw std::runtime_error("Failed to create directory " + cache_path_);
@@ -1689,7 +1691,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_profile_min_shapes: " << profile_min_shapes
                         << ", trt_profile_max_shapes: " << profile_max_shapes
                         << ", trt_profile_opt_shapes: " << profile_opt_shapes
-                        << ", trt_cuda_graph_enable: " << cuda_graph_enable_;
+                        << ", trt_cuda_graph_enable: " << cuda_graph_enable_
+                        << ", trt_cache_prefix: " << cache_prefix_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -2026,7 +2029,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         bool has_control_flow_op = false;
 
         // Add node and node args
-        // If node output is also parent graph output, the  output will be added to the
+        // If node output is also parent graph output, the output will be added to the
         // subgraph's output list
         std::vector<std::string> subgraph_output_names;
         for (const auto& index : group.first) {
@@ -2774,7 +2777,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     trt_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Sparse weights are allowed";
   }
-
 #if NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR == 5
   if (build_heuristics_enable_) {
     trt_config->setFlag(nvinfer1::BuilderFlag::kENABLE_TACTIC_HEURISTIC);
@@ -2831,7 +2833,16 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
   // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
   // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
-  const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
+  std::string cache_suffix = "";
+  std::string cache_path = "";
+  // Customize cache prefix if assigned
+  if (!cache_prefix_.empty()) {
+    // Generate cache suffix in case user would like to customize cache prefix
+    cache_suffix = "_" + GetCacheSuffix(fused_node.Name(), trt_node_name_with_precision);
+    cache_path = GetCachePath(cache_path_, cache_prefix_) + cache_suffix;
+  } else {
+    cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
+  }
   const std::string cache_path_prefix = cache_path + "_sm" + compute_capability_;
   const std::string engine_cache_path = cache_path_prefix + ".engine";
   const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
@@ -3072,7 +3083,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
           runtime_.get(), profiles_[context->node_name], context_memory_sharing_enable_, &max_ctx_mem_size_,
           dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
           global_cache_path_, force_timing_cache_match_, detailed_build_log_, build_heuristics_enable_, sparsity_enable_,
-          builder_optimization_level_, auxiliary_streams_, !tactic_sources_.empty(), tactics};
+          builder_optimization_level_, auxiliary_streams_, !tactic_sources_.empty(), tactics, cuda_graph_enable_, cache_prefix_, cache_suffix};
     *state = p.release();
     return 0;
   };
@@ -3124,7 +3135,13 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
     // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
     // Prepare cache name
-    const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
+    std::string cache_path = "";
+    // Customize cache prefix if assigned
+    if (!cache_prefix_.empty()) {
+      cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->cache_prefix) + trt_state->cache_suffix;
+    } else {
+      cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
+    }
     const std::string cache_path_prefix = cache_path + "_sm" + compute_capability_;
     const std::string engine_cache_path = cache_path_prefix + ".engine";
     const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
