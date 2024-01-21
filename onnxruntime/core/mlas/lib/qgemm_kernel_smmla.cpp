@@ -121,7 +121,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SMMLA>(
         const int8_t* a6 = a0 + lda * 6;
         const int8_t* a7 = a0 + lda * 7;
 
-        size_t k = CountK;
+        int k = static_cast<int>(CountK);
         int32x4_t RowSums0 = vmovq_n_s32(0);
         int32x4_t RowSums1 = vmovq_n_s32(0);
 
@@ -395,7 +395,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SMMLA>(
         const int8_t* a2 = a1 + lda;
         const int8_t* a3 = a2 + lda;
 
-        size_t k = CountK;
+        int k = static_cast<int>(CountK);
         int32x4_t RowSums = vmovq_n_s32(0);
 
         while (k >= 16) {
@@ -560,7 +560,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SMMLA>(
         const int8_t* a0 = reinterpret_cast<const int8_t*>(A);
         const int8_t* a1 = a0 + lda;
 
-        size_t k = CountK;
+        int k = static_cast<int>(CountK);
         int32x2_t RowSums = vmov_n_s32(0);
 
         while (k >= 16) {
@@ -676,7 +676,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SMMLA>(
     if (CountM > 0) {
         // No need to pad the rows to 2, the .S takes care of zero pdding
         const int8_t* a = reinterpret_cast<const int8_t*>(A);
-        size_t k = CountK;
+        int k = static_cast<int>(CountK);
         int32x4_t RowSums = vmovq_n_s32(0);
 
         while (k >= 16) {
@@ -698,7 +698,7 @@ MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_SMMLA>(
 
             vst1q_s8(PaddedMatrixAData, vmovq_n_s8(0));
 
-            for (size_t kk = 0; kk < k; kk++) {
+            for (size_t kk = 0; kk < static_cast<size_t>(k); kk++) {
                 PaddedMatrixAData[kk] = a[kk];
             }
 
@@ -789,7 +789,7 @@ MlasGemmQuantCopyPackB<MLAS_GEMM_S8S8_KERNEL_SMMLA>(MLAS_GEMM_S8S8_KERNEL_SMMLA:
     //
     while (CountN >= 8) {
         const int8_t* b = reinterpret_cast<const int8_t*>(B);
-        size_t k = CountK;
+        int k = static_cast<int>(CountK);
         int32x4_t ColumnSums[2];
 
         ColumnSums[0] = vmovq_n_s32(0);
@@ -847,7 +847,7 @@ MlasGemmQuantCopyPackB<MLAS_GEMM_S8S8_KERNEL_SMMLA>(MLAS_GEMM_S8S8_KERNEL_SMMLA:
 
     if (CountN > 0) {
         const int8_t* b = reinterpret_cast<const int8_t*>(B);
-        size_t k = CountK;
+        int k = static_cast<int>(CountK);
         int8_t PaddedMatrixBData[64];
         int32x4_t ColumnSums[2];
 
