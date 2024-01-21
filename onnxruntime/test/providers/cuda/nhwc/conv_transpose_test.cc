@@ -2,7 +2,6 @@
 // Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
-#include "test/common/cuda_op_test_utils.h"
 #include "test/providers/cuda/nhwc/nhwc_cuda_helper.h"
 
 namespace onnxruntime {
