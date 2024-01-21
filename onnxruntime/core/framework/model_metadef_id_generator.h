@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include "core/common/basic_types.h"
 namespace onnxruntime {
-struct GraphViewer;
+class GraphViewer;
 
 /// <summary>
 /// helper to generate ids that are unique to model and deterministic, even if the execution provider is shared across

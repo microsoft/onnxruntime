@@ -8,12 +8,12 @@
 #include <memory>
 #include <memory.h>
 
-#include "core/framework/model_metadef_id_generator.h"
 #include "core/providers/dnnl/dnnl_execution_provider_info.h"
 #include "core/providers/dnnl/dnnl_threadpool.h"
 #include "core/providers/dnnl/dnnl_op_manager.h"
 #include "core/providers/dnnl/subgraph/dnnl_subgraph.h"
 #include "core/providers/dnnl/subgraph/dnnl_subgraph_primitive.h"
+#include "core/providers/shared_library/provider_wrappedtypes.h"
 
 namespace onnxruntime {
 
