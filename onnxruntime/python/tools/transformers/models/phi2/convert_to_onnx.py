@@ -29,16 +29,67 @@ class ConvertPhi2ToONNX:
         self.batch_size = 2
         self.sequence_length = 8
 
+    def __inline_update_edges(self, model: onnx.ModelProto, edge_mapping: dict) -> onnx.ModelProto:
+        """
+        Updates the edges in the model according to the given mapping.
+        """
+        for node in model.graph.node:
+            for i in range(len(node.input)):
+                if node.input[i] in edge_mapping:
+                    node.input[i] = edge_mapping[node.input[i]]
+            for i in range(len(node.output)):
+                if node.output[i] in edge_mapping:
+                    node.output[i] = edge_mapping[node.output[i]]
+
+        for graph_input in model.graph.input:
+            if graph_input.name in edge_mapping:
+                graph_input.name = edge_mapping[graph_input.name]
+        for graph_output in model.graph.output:
+            if graph_output.name in edge_mapping:
+                graph_output.name = edge_mapping[graph_output.name]
+
+        return model
+
     def __inline_function(self, model: onnx.ModelProto, func_name: str) -> onnx.ModelProto:
         """
         Inlines the function with the given name in the model.
         """
-        for node in [node for node in model.graph.node if node.op_type == func_name]:
+        nodes_to_remove = []
+        nodes_to_add = []
+        edges_to_remove = []
+        edges_to_add = []
+        for node in model.graph.node:
+            if node.op_type == func_name:
+                nodes_to_remove.append(node)
+                for edge in node.input:
+                    edges_to_remove.append(edge)
+                for edge in node.output:
+                    edges_to_remove.append(edge)
+
+        for f in model.functions:
+            if f.name == func_name:
+                for node in f.node:
+                    nodes_to_add.append(node)
+                for edge in f.input:
+                    edges_to_add.append(edge)
+                for edge in f.output:
+                    edges_to_add.append(edge)
+
+        assert len(edges_to_remove) == len(edges_to_add)
+
+        for node in nodes_to_remove:
             model.graph.node.remove(node)
-        for node in [node for f in model.functions if f.name == func_name for node in f.node]:
+        for node in nodes_to_add:
             model.graph.node.append(node)
 
-        return model
+        edge_mapping = {}
+        for i in range(len(edges_to_remove)):
+            k = edges_to_remove[i]
+            v = edges_to_add[i]
+            if k != v:
+                edge_mapping[k] = v
+
+        return self.__inline_update_edges(model, edge_mapping)
 
     def __get_phi2_torch_model(self):
         if self.phi_model is not None:
@@ -129,13 +180,13 @@ model_class = "microsoft/phi-2"
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 converter = ConvertPhi2ToONNX(model_class, device)
-converter.dynamo_export("phi-2_temp.onnx")
-converter.inline_onnx(
-    "phi-2_temp.onnx",
-    "phi-2.onnx",
-    ["transformers_modules_microsoft_phi-2_85d00b03fee509307549d823fdd095473ba5197c_modeling_phi_PhiModel_model_1"],
-)
-converter.erase_onnx_model("phi-2_temp.onnx")
+# converter.dynamo_export("phi-2_temp.onnx")
+# converter.inline_onnx(
+#     "phi-2_temp.onnx",
+#     "phi-2.onnx",
+#     ["transformers_modules_microsoft_phi-2_85d00b03fee509307549d823fdd095473ba5197c_modeling_phi_PhiModel_model_1"],
+# )
+# converter.erase_onnx_model("phi-2_temp.onnx")
 converter.optimize_phi2_onnx("phi-2.onnx", "phi-2_opt.onnx")
 
 

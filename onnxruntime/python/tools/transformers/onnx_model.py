@@ -76,6 +76,12 @@ class OnnxModel:
                     output_name_to_node[output_name] = node
         return output_name_to_node
 
+    def functions(self):
+        all_functions = []
+        for function in self.model.functions:
+            all_functions.append(function)
+        return all_functions
+
     def nodes(self):
         all_nodes = []
         for graph in self.graphs():

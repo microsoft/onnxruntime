@@ -38,6 +38,7 @@ from onnx_model_t5 import T5OnnxModel
 from onnx_model_tnlr import TnlrOnnxModel
 from onnx_model_unet import UnetOnnxModel
 from onnx_model_vae import VaeOnnxModel
+from onnx_model_phi import PhiOnnxModel
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,7 @@ MODEL_TYPES = {
     "vae": (VaeOnnxModel, "pytorch", 1),  # UAE in Stable Diffusion
     "vit": (BertOnnxModel, "pytorch", 1),
     "conformer": (ConformerOnnxModel, "pytorch", 1),
+    "phi": (PhiOnnxModel, "pytorch", 0),
 }
 
 
