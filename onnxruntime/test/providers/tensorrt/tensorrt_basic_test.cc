@@ -485,7 +485,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
    *
    * expected result=>
    *   engine cache path is "./context_model_folder/engine_cache_folder/xxxxx.engine"
-   *   and the "ep_cache_context" attribute node of the context model should point to that.
+   *   and the "ep_cache_context" attribute node of the context model should point to "engine_cache_folder/xxxxx.engine".
    *
    */
   InferenceSession session_object4{so, GetEnvironment()};
