@@ -100,7 +100,7 @@ TEST_P(ModelTest, Run) {
       per_sample_tolerance = 1e-1;
       if (model_path.find(ORT_TSTR("rcnn_mask")) != std::string::npos) {
         // errmsg: expected 827.794 (444ef2d5), got 990.763 (4477b0d4), diff: 162.969, tol=8.28794 idx=238. 8 of 248 differ
-        per_sample_tolerance = 10
+        per_sample_tolerance = 10;
       }
     }
   #endif
