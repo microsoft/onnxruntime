@@ -331,7 +331,6 @@ static std::optional<OrtDmlDeviceFilter> ParseFilter(const ProviderOptions& prov
   static const std::string Any = "any";
   static const std::string Gpu = "gpu";
 #ifdef ENABLE_NPU_ADAPTER_ENUMERATION
-  static const std::string Any = "any";
   static const std::string Npu = "npu";
 #endif
 

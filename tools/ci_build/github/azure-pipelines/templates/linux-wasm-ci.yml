@@ -13,7 +13,7 @@ parameters:
 
 - name: PoolName
   type: string
-  default: 'onnxruntime-Ubuntu2004-AMD-CPU'
+  default: 'onnxruntime-Ubuntu2204-AMD-CPU'
 
 - name: SkipPublish
   type: boolean
@@ -174,7 +174,7 @@ jobs:
         ${{ else }}:
           AdditionalKey: wasm_simd_jsep | ${{ parameters.BuildConfig }}
         CacheDir: $(ORT_CACHE_DIR)/wasm_simd_jsep
-        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd_jsep --enable_wasm_simd --use_jsep --target onnxruntime_webassembly --skip_tests'
+        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd_jsep --enable_wasm_simd --use_jsep --use_webnn --target onnxruntime_webassembly --skip_tests'
         DisplayName: 'Build (simd + JSEP)'
         WithCache: ${{ parameters.WithCache }}
     - template: build-linux-wasm-step.yml
@@ -185,7 +185,7 @@ jobs:
         ${{ else }}:
           AdditionalKey: wasm_simd_threads_jsep | ${{ parameters.BuildConfig }}
         CacheDir: $(ORT_CACHE_DIR)/wasm_simd_threads_jsep
-        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd_threads_jsep --enable_wasm_simd --enable_wasm_threads --use_jsep --target onnxruntime_webassembly --skip_tests'
+        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd_threads_jsep --enable_wasm_simd --enable_wasm_threads --use_jsep  --use_webnn --target onnxruntime_webassembly --skip_tests'
         DisplayName: 'Build (simd + threads + JSEP)'
         WithCache: ${{ parameters.WithCache }}
 

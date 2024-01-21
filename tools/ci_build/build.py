@@ -56,7 +56,7 @@ class UsageError(BaseError):
 
 
 def _check_python_version():
-    required_minor_version = 7
+    required_minor_version = 8
     if (sys.version_info.major, sys.version_info.minor) < (3, required_minor_version):
         raise UsageError(
             f"Invalid Python version. At least Python 3.{required_minor_version} is required. "
@@ -786,11 +786,6 @@ def get_linux_distro():
         return "", ""
 
 
-def is_ubuntu_1604():
-    dist, ver = get_linux_distro()
-    return dist == "Ubuntu" and ver.startswith("16.04")
-
-
 def get_config_build_dir(build_dir, config):
     # build directory per configuration
     return os.path.join(build_dir, config)
@@ -842,15 +837,6 @@ def run_subprocess(
 def update_submodules(source_dir):
     run_subprocess(["git", "submodule", "sync", "--recursive"], cwd=source_dir)
     run_subprocess(["git", "submodule", "update", "--init", "--recursive"], cwd=source_dir)
-
-
-def is_docker():
-    path = "/proc/self/cgroup"
-    return (
-        os.path.exists("/.dockerenv")
-        or os.path.isfile(path)
-        and any("docker" in line for line in open(path))  # noqa: SIM115
-    )
 
 
 def install_python_deps(numpy_version=""):
@@ -1297,10 +1283,6 @@ def generate_build_tree(
     if args.use_webnn:
         if not args.build_wasm:
             raise BuildError("WebNN is only available for WebAssembly build.")
-        if args.disable_rtti:
-            # Avoid unboundTypeError for WebNN EP since unbound type names are illegal with RTTI disabled
-            # in Embind API, relevant issue: https://github.com/emscripten-core/emscripten/issues/16911
-            raise BuildError("WebNN is not supported with RTTI disabled.")
         cmake_args += ["-Donnxruntime_USE_WEBNN=ON"]
 
     if args.use_snpe:
@@ -1474,15 +1456,18 @@ def generate_build_tree(
     cflags = None
     cxxflags = None
     ldflags = None
+    cudaflags = []
     for config in configs:
         # Setup default values for cflags/cxxflags/ldflags.
         # The values set here are purely for security and compliance purposes. ONNX Runtime should work fine without these flags.
         if (
             "CFLAGS" not in os.environ
             and "CXXFLAGS" not in os.environ
+            and (not args.use_cuda or "CUDAFLAGS" not in os.environ)
             and not args.ios
             and not args.android
             and not args.build_wasm
+            and not args.use_rocm
             and not (is_linux() and platform.machine() != "aarch64" and platform.machine() != "x86_64")
         ):
             if is_windows():
@@ -1515,9 +1500,19 @@ def generate_build_tree(
                 cxxflags = cflags.copy()
                 if not args.disable_exceptions:
                     cxxflags += ["/EHsc"]
+                if args.use_cuda:
+                    # On Windows, nvcc passes /EHsc to the host compiler by default.
+                    cuda_compile_flags_str = ""
+                    for compile_flag in cflags:
+                        if compile_flag.startswith("/D"):
+                            cudaflags.append(compile_flag)
+                        else:
+                            cuda_compile_flags_str = cuda_compile_flags_str + " " + compile_flag
+                    if len(cuda_compile_flags_str) != 0:
+                        cudaflags.append('-Xcompiler="%s"' % cuda_compile_flags_str)
             elif is_linux() or is_macOS():
                 if is_linux():
-                    ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now"]
+                    ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now", "-Wl,-z,noexecstack"]
                 else:
                     ldflags = []
                 if config == "Release":
@@ -1560,7 +1555,8 @@ def generate_build_tree(
                     # The following flags needs GCC 8 and newer
                     cflags += ["-fstack-clash-protection", "-fcf-protection"]
                 cxxflags = cflags.copy()
-
+                if args.use_cuda:
+                    cudaflags = cflags.copy()
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
         if args.use_tvm:
@@ -1580,6 +1576,8 @@ def generate_build_tree(
                 "-DCMAKE_C_FLAGS=%s" % (" ".join(cflags)),
                 "-DCMAKE_CXX_FLAGS=%s" % (" ".join(cxxflags)),
             ]
+        if cudaflags is not None and len(cudaflags) != 0:
+            temp_cmake_args += ["-DCMAKE_CUDA_FLAGS_INIT=%s" % (" ".join(cudaflags))]
         if ldflags is not None and len(ldflags) != 0:
             temp_cmake_args += [
                 "-DCMAKE_EXE_LINKER_FLAGS_INIT=%s" % (" ".join(ldflags)),
@@ -2385,16 +2383,6 @@ def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt
     run_subprocess(cmd_args, cwd=csharp_source_dir)
 
 
-def is_cross_compiling_on_apple(args):
-    if not is_macOS():
-        return False
-    if args.ios:
-        return True
-    if args.osx_arch != platform.machine():
-        return True
-    return False
-
-
 def generate_documentation(source_dir, build_dir, configs, validate):
     # Randomly choose one build config
     config = next(iter(configs))
@@ -2708,12 +2696,6 @@ def main():
             run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
             log.info("Activating emsdk...")
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
-
-        if is_ubuntu_1604():
-            if args.arm or args.arm64:
-                raise BuildError("Only Windows ARM(64) cross-compiled builds supported currently through this script")
-            if not is_docker() and not args.use_acl and not args.use_armnn:
-                install_python_deps()
 
         if args.enable_pybind and is_windows():
             install_python_deps(args.numpy_version)

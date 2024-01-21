@@ -69,6 +69,7 @@ CudaStream::CudaStream(cudaStream_t stream,
                                                                    release_cpu_buffer_on_cuda_stream_(release_cpu_buffer_on_cuda_stream),
                                                                    deferred_cpu_allocator_(*this),
                                                                    ep_info_(ep_info) {
+#ifndef USE_CUDA_MINIMAL
   if (own_flag) {
     CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
     CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
@@ -80,10 +81,12 @@ CudaStream::CudaStream(cudaStream_t stream,
     cudnn_handle_ = external_cudnn_handle;
     CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
   }
+#endif
 }
 
 CudaStream::~CudaStream() {
   ORT_IGNORE_RETURN_VALUE(CleanUpOnRunEnd());
+#ifndef USE_CUDA_MINIMAL
   if (own_stream_) {
     cublasDestroy(cublas_handle_);
     cudnnDestroy(cudnn_handle_);
@@ -91,6 +94,7 @@ CudaStream::~CudaStream() {
     if (handle)
       cudaStreamDestroy(static_cast<cudaStream_t>(handle));
   }
+#endif
 }
 
 std::unique_ptr<synchronize::Notification> CudaStream::CreateNotification(size_t /*num_consumers*/) {

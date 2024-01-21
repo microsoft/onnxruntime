@@ -19,7 +19,7 @@ parameters:
 
 - name: PoolName
   type: string
-  default: 'onnxruntime-Ubuntu2004-AMD-CPU'
+  default: 'onnxruntime-Ubuntu2204-AMD-CPU'
 
 - name: ArtifactNamePrefix
   type: string

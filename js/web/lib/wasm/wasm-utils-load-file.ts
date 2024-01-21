@@ -47,9 +47,19 @@ export const loadFile = async(file: string|Blob|ArrayBufferLike|Uint8Array): Pro
         }
         const reader = response.body.getReader();
 
-        // use WebAssembly Memory to allocate larger ArrayBuffer
-        const pages = Math.ceil(fileSize / 65536);
-        const buffer = new WebAssembly.Memory({initial: pages, maximum: pages}).buffer;
+        let buffer;
+        try {
+          // try to create ArrayBuffer directly
+          buffer = new ArrayBuffer(fileSize);
+        } catch (e) {
+          if (e instanceof RangeError) {
+            // use WebAssembly Memory to allocate larger ArrayBuffer
+            const pages = Math.ceil(fileSize / 65536);
+            buffer = new WebAssembly.Memory({initial: pages, maximum: pages}).buffer;
+          } else {
+            throw e;
+          }
+        }
 
         let offset = 0;
         // eslint-disable-next-line no-constant-condition

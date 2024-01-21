@@ -293,6 +293,16 @@ A classical usage of disabling the deep copy: when the deep copy before module e
     export ORTMODULE_MEMORY_OPT_LEVEL=0
     ```
 
+### ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT
+
+- **Feature Area**: *ORTMODULE/Optimizations*
+- **Description**: By default, the memory-efficient gradient management is turned off. The gradient after it is computed in ONNX Runtime, will trigger the corresponding parameter's backward function through `PythonOpGrad` operator. This would help release the gradient buffer managed in ONNX Runtime, which originally is released once all backward computation finishes.
+
+	```bash
+	export ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT=1 # Enable
+	export ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT=0 # Disable
+	```
+
 ### 2.2 Memory Optimization
 
 Q: *Want to run a bigger batch size?*
