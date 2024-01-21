@@ -270,8 +270,7 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                         bool is_qnn_ctx_model,
                                         const logging::Logger& logger) const {
   std::unordered_set<const Node*> supported_nodes{};
-  // Enable Qnn context cache requires the whole graph partitioned to Qnn EP
-  // Blindly filter in all nodes if context cache is enabled
+  // Filter in the EPContext node if its QNN Context model
   if (is_qnn_ctx_model) {
     for (const auto& node : graph_viewer.Nodes()) {
       if (qnn::EPCONTEXT_OP == node.OpType()) {
@@ -483,7 +482,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   // Print list of unsupported nodes to the ERROR logger if the CPU EP
   // has been disabled for this inference session.
-  if (disable_cpu_ep_fallback_ && num_nodes_in_graph != num_of_supported_nodes) {
+  if (!load_from_cached_context && disable_cpu_ep_fallback_ && num_nodes_in_graph != num_of_supported_nodes) {
     LOGS(logger, ERROR) << "Unsupported nodes in QNN EP: " << get_unsupported_node_names();
   }
 
