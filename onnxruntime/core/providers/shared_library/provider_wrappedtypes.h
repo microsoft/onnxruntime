@@ -1153,6 +1153,7 @@ class TensorSeq final {
 };
 
 class ModelMetadefIdGenerator {
+ public:
   int GenerateId(const GraphViewer& graph_viewer, HashValue& model_hash) const { return g_host->ModelMetadefIdGenerator__GenerateId(this, graph_viewer, model_hash); }
 };
 
