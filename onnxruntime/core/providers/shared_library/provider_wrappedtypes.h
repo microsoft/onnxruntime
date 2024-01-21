@@ -1152,6 +1152,10 @@ class TensorSeq final {
   void Reserve(size_t capacity) { g_host->TensorSeq__Reserve(this, capacity); }
 };
 
+class ModelMetadefIdGenerator {
+  int GenerateId(const GraphViewer& graph_viewer, HashValue& model_hash) const { return g_host->ModelMetadefIdGenerator__GenerateId(this, graph_viewer, model_hash); }
+};
+
 template <>
 inline gsl::span<const int64_t> Tensor::DataAsSpan() const { return g_host->Tensor__DataAsSpan_int64(this); }
 

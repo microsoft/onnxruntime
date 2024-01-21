@@ -970,6 +970,9 @@ struct ProviderHost {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   virtual Status LoadDynamicLibrary(onnxruntime::PathString library_name) = 0;
 #endif
+
+  // ModelMetadefIdGenerator
+  virtual int ModelMetadefIdGenerator__GenerateId(const ModelMetadefIdGenerator* p, const GraphViewer& graph_viewer, HashValue& model_hash) = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)
