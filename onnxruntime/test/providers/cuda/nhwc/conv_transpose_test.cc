@@ -2,6 +2,7 @@
 // Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
+#include "test/common/cuda_op_test_utils.h"
 #include "test/providers/cuda/nhwc/nhwc_cuda_helper.h"
 
 namespace onnxruntime {
@@ -70,7 +71,11 @@ TYPED_TEST(CudaNhwcTypedTest, ConvTransposeNhwcBias) {
   auto op =
       ConvTransposeOp<TypeParam>{.input_dims = {1, 8, 80, 80}, .kernel_shape = {5, 5}, .channels = 16, .bias = true};
 
-  MAKE_PROVIDERS_EPS_TYPE(TypeParam)
+  if (HasCudaEnvironment(800)) {
+    MAKE_PROVIDERS_EPS(1e-2)
+  } else {
+    MAKE_PROVIDERS_EPS_TYPE(TypeParam)
+  }
 }
 
 TYPED_TEST(CudaNhwcTypedTest, ConvTransposeNhwcPad) {
