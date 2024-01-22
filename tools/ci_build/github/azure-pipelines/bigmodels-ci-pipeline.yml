@@ -228,12 +228,12 @@ stages:
         python -m pip install $(Build.BinariesDirectory)/ort-artifact/*.whl;
         ls -l
         ls -l $(Agent.TempDirectory)/llama2_onnx_ft16
-        ls -l $(Agent.TempDirectory)/llama2_onnx_ft16/7B_FT_float16/ONNX/
+        ls -l $(Agent.TempDirectory)/llama2_onnx_ft16/ONNX/
       displayName: Install Onnxruntime
       workingDirectory: $(Build.SourcesDirectory)
 
     - script: |
-        python MinimumExample/Example_ONNX_LlamaV2.py --onnx_file $(Agent.TempDirectory)/llama2_onnx_ft16/7B_FT_float16/ONNX/LlamaV2_7B_FT_float16.onnx
-          --embedding_file $(Agent.TempDirectory)/llama2_onnx_ft16/7B_FT_float16/embeddings.pth --tokenizer_path tokenizer.model --prompt "What is the lightest element?"
+        python MinimumExample/Example_ONNX_LlamaV2.py --onnx_file $(Agent.TempDirectory)/llama2_onnx_ft16/ONNX/LlamaV2_7B_FT_float16.onnx
+          --embedding_file $(Agent.TempDirectory)/llama2_onnx_ft16/embeddings.pth --tokenizer_path tokenizer.model --prompt "What is the lightest element?"
       displayName: 'Run llama2 model'
       workingDirectory: $(Build.SourcesDirectory)
