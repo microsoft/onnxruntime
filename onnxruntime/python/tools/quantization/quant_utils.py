@@ -653,7 +653,7 @@ def smooth_distribution(p, eps=0.0001):
 
     if not n_nonzeros:
         # raise ValueError('The discrete probability distribution is malformed. All entries are 0.')
-        return -1
+        return None
     eps1 = eps * float(n_zeros) / float(n_nonzeros)
     assert eps1 < 1.0, "n_zeros=%d, n_nonzeros=%d, eps1=%f" % (
         n_zeros,
