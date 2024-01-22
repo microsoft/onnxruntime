@@ -15,13 +15,13 @@ Abstract:
 
 --*/
 
-#include "sqnbitgemm.h"
-
 #include <arm_neon.h>
 
 #include <algorithm>
 #include <cassert>
 #include <utility>
+
+#include "sqnbitgemm.h"
 
 namespace
 {
@@ -95,9 +95,9 @@ LoadFloatData(const float* src, size_t count, float32x4_t (&dst)[Capacity / 4])
     }
 }
 
-template <size_t NCols>
+template <size_t NCols, size_t SubBlkLen>
 MLAS_FORCEINLINE void
-ComputeDotProducts_BlkBitWidth4_CompFp32(
+ComputeDotProducts_BlkBitWidth4_CompFp32_Impl(
     size_t BlkLen,
     const float* ARowPtr,
     const std::byte* QuantBDataColPtr,
@@ -114,11 +114,9 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
     constexpr size_t BlkBitWidth = 4;
 
     static_assert(NCols == 1 || NCols == 4, "NCols must be 1 or 4");
+    static_assert(SubBlkLen == 16 || SubBlkLen == 32, "SubBlkLen must be 16 or 32");
 
-    constexpr size_t SubBlkLen = 16;  // number of block elements to process in a sub-block iteration
-    assert(BlkLen % SubBlkLen == 0);
-
-    const uint8x8_t LowMask = vdup_n_u8(0x0F);
+    assert(BlkLen >= SubBlkLen && BlkLen % SubBlkLen == 0);
 
     // Manual conversion to float takes place in two steps:
     // 1. Map 4-bit values from [0, 15] to float values from [16.0f, 31.0f].
@@ -169,67 +167,98 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
 
             // load `SubBlkLen` elements from A, padded with 0's if there aren't enough
             const size_t k_subblk_len = std::min(k_blk_len - k_idx_in_blk, SubBlkLen);
-            float32x4_t av[4]{};
+            float32x4_t av[SubBlkLen / 4]{};
             LoadFloatData<SubBlkLen>(ARowPtr + k + k_idx_in_blk, k_subblk_len, av);
 
             // load B column vectors
-            uint8x8_t bv_packed[NCols];
+
+            uint16x8_t bv_u16[NCols][SubBlkLen / 8];
+
             const size_t b_data_block_offset = k_idx_in_blk * BlkBitWidth / 8;
-            UnrolledLoop<NCols>([&](size_t i) {
-                bv_packed[i] = vld1_u8(
-                    reinterpret_cast<const uint8_t*>(QuantBData) + i * StrideQuantBData + b_data_block_offset
-                );
-            });
 
-            uint8x8_t bv_u8[NCols][2];
-            UnrolledLoop<NCols>([&](size_t i) {
-                bv_u8[i][0] = vand_u8(bv_packed[i], LowMask);
-                bv_u8[i][1] = vshr_n_u8(bv_packed[i], 4);
-            });
+            if constexpr (SubBlkLen == 16) {
+                const uint8x8_t LowMask = vdup_n_u8(0x0F);
 
-            // dequantize B
+                uint8x8_t bv_packed[NCols];
+                UnrolledLoop<NCols>([&](size_t i) {
+                    bv_packed[i] = vld1_u8(
+                        reinterpret_cast<const uint8_t*>(QuantBData) + i * StrideQuantBData + b_data_block_offset
+                    );
+                });
 
-            // shift left 3 and widen to 16 bits
-            uint16x8_t bv_u16[NCols][2];
-            UnrolledLoop<NCols>([&](size_t i) {
-                constexpr int shift = 3;
-                bv_u16[i][0] = vshll_n_u8(bv_u8[i][0], shift);
-                bv_u16[i][1] = vshll_n_u8(bv_u8[i][1], shift);
-            });
+                uint8x8_t bv_u8[NCols][2];
+                UnrolledLoop<NCols>([&](size_t i) {
+                    bv_u8[i][0] = vand_u8(bv_packed[i], LowMask);
+                    bv_u8[i][1] = vshr_n_u8(bv_packed[i], 4);
+                });
+
+                // shift left 3 and widen to 16 bits
+                UnrolledLoop<NCols>([&](size_t i) {
+                    constexpr int shift = 3;
+                    bv_u16[i][0] = vshll_n_u8(bv_u8[i][0], shift);
+                    bv_u16[i][1] = vshll_n_u8(bv_u8[i][1], shift);
+                });
+            } else {
+                static_assert(SubBlkLen == 32);
+
+                const uint8x16_t LowMask = vdupq_n_u8(0x0F);
+
+                uint8x16_t bv_packed[NCols];
+                UnrolledLoop<NCols>([&](size_t i) {
+                    bv_packed[i] = vld1q_u8(
+                        reinterpret_cast<const uint8_t*>(QuantBData) + i * StrideQuantBData + b_data_block_offset
+                    );
+                });
+
+                uint8x16_t bv_u8[NCols][2];
+                UnrolledLoop<NCols>([&](size_t i) {
+                    bv_u8[i][0] = vandq_u8(bv_packed[i], LowMask);
+                    bv_u8[i][1] = vshrq_n_u8(bv_packed[i], 4);
+                });
+
+                // shift left 3 and widen to 16 bits
+                UnrolledLoop<NCols>([&](size_t i) {
+                    constexpr int shift = 3;
+                    bv_u16[i][0] = vshll_n_u8(vget_low_u8(bv_u8[i][0]), shift);
+                    bv_u16[i][1] = vshll_n_u8(vget_high_u8(bv_u8[i][0]), shift);
+                    bv_u16[i][2] = vshll_n_u8(vget_low_u8(bv_u8[i][1]), shift);
+                    bv_u16[i][3] = vshll_n_u8(vget_high_u8(bv_u8[i][1]), shift);
+                });
+            }
 
             // combine 4 bits with float high half template
             UnrolledLoop<NCols>([&](size_t i) {
-                bv_u16[i][0] = vorrq_u16(bv_u16[i][0], float_high_half_template_v);
-                bv_u16[i][1] = vorrq_u16(bv_u16[i][1], float_high_half_template_v);
+                UnrolledLoop<SubBlkLen / 8>([&](size_t j) {
+                    bv_u16[i][j] = vorrq_u16(bv_u16[i][j], float_high_half_template_v);
+                });
             });
 
             // `SubBlkLen` floats of B
-            float32x4_t bv[NCols][4];
+            float32x4_t bv[NCols][SubBlkLen / 4];
 
             // shift left 16, widen to 32 bits, and reinterpret as float
             UnrolledLoop<NCols>([&](size_t i) {
-                constexpr int shift = 16;
-                bv[i][0] = vreinterpretq_f32_u32(vshll_n_u16(vget_low_u16(bv_u16[i][0]), shift));
-                bv[i][1] = vreinterpretq_f32_u32(vshll_high_n_u16(bv_u16[i][0], shift));
-
-                bv[i][2] = vreinterpretq_f32_u32(vshll_n_u16(vget_low_u16(bv_u16[i][1]), shift));
-                bv[i][3] = vreinterpretq_f32_u32(vshll_high_n_u16(bv_u16[i][1], shift));
+                UnrolledLoop<SubBlkLen / 8>([&](size_t j) {
+                    constexpr int shift = 16;
+                    bv[i][2 * j] = vreinterpretq_f32_u32(vshll_n_u16(vget_low_u16(bv_u16[i][j]), shift));
+                    bv[i][2 * j + 1] = vreinterpretq_f32_u32(vshll_high_n_u16(bv_u16[i][j], shift));
+                });
             });
 
             // subtract float conversion offset (16) and zero point
             UnrolledLoop<NCols>([&](size_t i) {
                 const float32x4_t offset_v = vdupq_n_f32(offset[i]);
-                UnrolledLoop<4>([&](size_t j) { bv[i][j] = vsubq_f32(bv[i][j], offset_v); });
+                UnrolledLoop<SubBlkLen / 4>([&](size_t j) { bv[i][j] = vsubq_f32(bv[i][j], offset_v); });
             });
 
             // multiply by scale
             UnrolledLoop<NCols>([&](size_t i) {
                 const float32x4_t scale_v = vdupq_n_f32(scale[i]);
-                UnrolledLoop<4>([&](size_t j) { bv[i][j] = vmulq_f32(bv[i][j], scale_v); });
+                UnrolledLoop<SubBlkLen / 4>([&](size_t j) { bv[i][j] = vmulq_f32(bv[i][j], scale_v); });
             });
 
             // c[m,n] += a[m,k] * b[k,n]
-            UnrolledLoop<4>([&](size_t j) {
+            UnrolledLoop<SubBlkLen / 4>([&](size_t j) {
                 UnrolledLoop<NCols>([&](size_t i) { acc[i] = vfmaq_f32(acc[i], av[j], bv[i][j]); });
             });
         }
@@ -255,6 +284,39 @@ ComputeDotProducts_BlkBitWidth4_CompFp32(
                 SumPtr[i] += BiasPtr[i];
             }
         }
+    }
+}
+
+template <size_t NCols>
+MLAS_FORCEINLINE void
+ComputeDotProducts_BlkBitWidth4_CompFp32(
+    size_t BlkLen,
+    const float* ARowPtr,
+    const std::byte* QuantBDataColPtr,
+    const float* QuantBScaleColPtr,
+    const std::byte* QuantBZeroPointColPtr,
+    float* SumPtr,
+    size_t CountK,
+    size_t StrideQuantBData,
+    size_t StrideQuantBScale,
+    size_t StrideQuantBZeroPoint,
+    const float* BiasPtr
+)
+{
+    if (BlkLen == 16) {
+        ComputeDotProducts_BlkBitWidth4_CompFp32_Impl<NCols, 16>(
+            BlkLen,
+            ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
+            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
+            BiasPtr
+        );
+    } else {
+        ComputeDotProducts_BlkBitWidth4_CompFp32_Impl<NCols, 32>(
+            BlkLen,
+            ARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
+            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
+            BiasPtr
+        );
     }
 }
 
@@ -354,6 +416,8 @@ Q4BitBlkDequantBForSgemm_CompFp32(
     auto impl0_reference = [&]() {
         constexpr size_t BlkBitWidth = 4;
 
+        const size_t SubBlkLen = BlkLen == 16 ? 16 : 32;
+
         float* Dst = FpData;
 
         const std::byte* QuantBDataCol = QuantBData;
@@ -378,11 +442,11 @@ Q4BitBlkDequantBForSgemm_CompFp32(
                             : 8;
 
                     for (size_t kk = 0; kk < kklen; ++kk) {
-                        const size_t packed_idx = kk % 16;
+                        const size_t packed_idx = kk % SubBlkLen;
 
-                        const bool is_low_half = packed_idx < 8;
-                        const size_t packed_byte_idx = packed_idx % 8;
-                        const size_t packed_range_offset = (kk / 16) * 8;
+                        const bool is_low_half = packed_idx < (SubBlkLen / 2);
+                        const size_t packed_byte_idx = packed_idx % (SubBlkLen / 2);
+                        const size_t packed_range_offset = (kk / SubBlkLen) * (SubBlkLen / 2);
 
                         const std::byte b_packed = b_data[packed_range_offset + packed_byte_idx];
                         const std::byte b_byte = is_low_half ? (b_packed & std::byte{0x0F}) : (b_packed >> 4);
@@ -431,8 +495,6 @@ QuantizeBlock(
 
     assert(BlkLen % SubBlkLen == 0);
 
-    constexpr size_t VectorCount = SubBlkLen / 4;
-
     //
     // Scan block values first to determine scale.
     //
@@ -443,16 +505,16 @@ QuantizeBlock(
     for (k = 0; k < ElementCount; k += SubBlkLen) {
         const size_t SubBlkElementCount = std::min(ElementCount - k, SubBlkLen);
 
-        float32x4_t a[VectorCount]{};
+        float32x4_t a[SubBlkLen / 4]{};
         LoadFloatData<SubBlkLen>(A + k, SubBlkElementCount, a);
 
-        float32x4_t abs_a[VectorCount];
-        UnrolledLoop<VectorCount>([&](size_t i) {
+        float32x4_t abs_a[SubBlkLen / 4];
+        UnrolledLoop<SubBlkLen / 4>([&](size_t i) {
             abs_a[i] = vabsq_f32(a[i]);
         });
 
         // find amax of SubBlkLen elements
-        for (size_t interval = VectorCount / 2; interval > 0; interval /= 2) {
+        for (size_t interval = SubBlkLen / 4 / 2; interval > 0; interval /= 2) {
             for (size_t i = 0; i < interval; ++i) {
                 abs_a[i] = vmaxq_f32(abs_a[i], abs_a[i + interval]);
             }
@@ -477,19 +539,19 @@ QuantizeBlock(
     for (k = 0; k < ElementCount; k += SubBlkLen) {
         const size_t SubBlkElementCount = std::min(ElementCount - k, SubBlkLen);
 
-        float32x4_t a[VectorCount]{};
+        float32x4_t a[SubBlkLen / 4]{};
         LoadFloatData<SubBlkLen>(A + k, SubBlkElementCount, a);
 
-        UnrolledLoop<VectorCount>([&](size_t i) {
+        UnrolledLoop<SubBlkLen / 4>([&](size_t i) {
             a[i] = vmulq_n_f32(a[i], scale_reciprocal);
         });
 
-        int32x4_t a_s32[VectorCount];
-        UnrolledLoop<VectorCount>([&](size_t i) {
+        int32x4_t a_s32[SubBlkLen / 4];
+        UnrolledLoop<SubBlkLen / 4>([&](size_t i) {
             a_s32[i] = vcvtaq_s32_f32(a[i]);
         });
 
-        UnrolledLoop<VectorCount>([&](size_t i) {
+        UnrolledLoop<SubBlkLen / 4>([&](size_t i) {
             QuantAData[k + i * 4 + 0] = static_cast<int8_t>(vgetq_lane_s32(a_s32[i], 0));
             QuantAData[k + i * 4 + 1] = static_cast<int8_t>(vgetq_lane_s32(a_s32[i], 1));
             QuantAData[k + i * 4 + 2] = static_cast<int8_t>(vgetq_lane_s32(a_s32[i], 2));
@@ -530,9 +592,9 @@ QuantizeARow_CompInt8(
     }
 }
 
-template <size_t NCols>
+template <size_t NCols, size_t SubBlkLen>
 MLAS_FORCEINLINE void
-ComputeDotProducts_BlkBitWidth4_CompInt8(
+ComputeDotProducts_BlkBitWidth4_CompInt8_Impl(
     size_t BlkLen,
     const std::byte* QuantARowPtr,
     const std::byte* QuantBDataColPtr,
@@ -546,14 +608,12 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
     const float* BiasPtr
 )
 {
-    static_assert(NCols == 1 || NCols == 4, "NCols must be 1 or 4");
-
     constexpr size_t BlkBitWidth = 4;
 
-    constexpr size_t SubBlkLen = 16;  // number of block elements to process in a sub-block iteration
-    assert(BlkLen % SubBlkLen == 0);
+    static_assert(NCols == 1 || NCols == 4, "NCols must be 1 or 4");
+    static_assert(SubBlkLen == 16 || SubBlkLen == 32, "SubBlkLen must be 16 or 32");
 
-    const uint8x8_t LowMask = vdup_n_u8(0x0F);
+    assert(BlkLen >= SubBlkLen && BlkLen % SubBlkLen == 0);
 
     const std::byte* QuantA = QuantARowPtr;
 
@@ -589,34 +649,63 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
 
         for (size_t k_idx_in_blk = 0; k_idx_in_blk < k_blk_len; k_idx_in_blk += SubBlkLen) {
             // load A row vector
-            int8x16_t av = vld1q_s8(a_data + k_idx_in_blk);
+            int8x16_t av[SubBlkLen / 16];
+            UnrolledLoop<SubBlkLen / 16>([&](size_t i) {
+                av[i] = vld1q_s8(a_data + k_idx_in_blk + i * 16);
+            });
 
             // load B column vectors
-            uint8x8_t bv_packed[NCols];
-            const size_t b_data_block_offset = k_idx_in_blk * BlkBitWidth / 8;
-            UnrolledLoop<NCols>([&](size_t i) {
-                bv_packed[i] = vld1_u8(
-                    reinterpret_cast<const uint8_t*>(QuantBData) + i * StrideQuantBData + b_data_block_offset
-                );
-            });
+            int8x16_t bv[NCols][SubBlkLen / 16];
 
-            int8x16_t bv[NCols];
-            UnrolledLoop<NCols>([&](size_t i) {
-                const int8x8_t lo = vreinterpret_s8_u8(vand_u8(bv_packed[i], LowMask));
-                const int8x8_t hi = vreinterpret_s8_u8(vshr_n_u8(bv_packed[i], 4));
-                bv[i] = vcombine_s8(lo, hi);
-            });
+            const size_t b_data_block_offset = k_idx_in_blk * BlkBitWidth / 8;
+
+            if constexpr (SubBlkLen == 16) {
+                const uint8x8_t LowMask = vdup_n_u8(0x0F);
+
+                uint8x8_t bv_packed[NCols];
+                UnrolledLoop<NCols>([&](size_t i) {
+                    bv_packed[i] = vld1_u8(
+                        reinterpret_cast<const uint8_t*>(QuantBData) + i * StrideQuantBData + b_data_block_offset
+                    );
+                });
+
+                UnrolledLoop<NCols>([&](size_t i) {
+                    const int8x8_t lo = vreinterpret_s8_u8(vand_u8(bv_packed[i], LowMask));
+                    const int8x8_t hi = vreinterpret_s8_u8(vshr_n_u8(bv_packed[i], 4));
+                    bv[i][0] = vcombine_s8(lo, hi);
+                });
+            } else {
+                static_assert(SubBlkLen == 32);
+
+                const uint8x16_t LowMask = vdupq_n_u8(0x0F);
+
+                uint8x16_t bv_packed[NCols];
+                UnrolledLoop<NCols>([&](size_t i) {
+                    bv_packed[i] = vld1q_u8(
+                        reinterpret_cast<const uint8_t*>(QuantBData) + i * StrideQuantBData + b_data_block_offset
+                    );
+                });
+
+                UnrolledLoop<NCols>([&](size_t i) {
+                    bv[i][0] = vreinterpretq_s8_u8(vandq_u8(bv_packed[i], LowMask));
+                    bv[i][1] = vreinterpretq_s8_u8(vshrq_n_u8(bv_packed[i], 4));
+                });
+            }
 
             // subtract B zero point
             UnrolledLoop<NCols>([&](size_t i) {
                 const int8x16_t zp_v = vdupq_n_s8(b_zp[i]);
-                bv[i] = vsubq_s8(bv[i], zp_v);
+                UnrolledLoop<SubBlkLen / 16>([&](size_t j) {
+                    bv[i][j] = vsubq_s8(bv[i][j], zp_v);
+                });
             });
 
             // compute quantized dot product
             int32x4_t dot[NCols]{};
             UnrolledLoop<NCols>([&](size_t i) {
-                dot[i] = vdotq_s32(dot[i], av, bv[i]);
+                UnrolledLoop<SubBlkLen / 16>([&](size_t j) {
+                    dot[i] = vdotq_s32(dot[i], av[j], bv[i][j]);
+                });
             });
 
             // convert dot product result to float
@@ -654,6 +743,39 @@ ComputeDotProducts_BlkBitWidth4_CompInt8(
                 SumPtr[i] += BiasPtr[i];
             }
         }
+    }
+}
+
+template <size_t NCols>
+MLAS_FORCEINLINE void
+ComputeDotProducts_BlkBitWidth4_CompInt8(
+    size_t BlkLen,
+    const std::byte* QuantARowPtr,
+    const std::byte* QuantBDataColPtr,
+    const float* QuantBScaleColPtr,
+    const std::byte* QuantBZeroPointColPtr,
+    float* SumPtr,
+    size_t CountK,
+    size_t StrideQuantBData,
+    size_t StrideQuantBScale,
+    size_t StrideQuantBZeroPoint,
+    const float* BiasPtr
+)
+{
+    if (BlkLen == 16) {
+        ComputeDotProducts_BlkBitWidth4_CompInt8_Impl<NCols, 16>(
+            BlkLen,
+            QuantARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
+            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
+            BiasPtr
+        );
+    } else {
+        ComputeDotProducts_BlkBitWidth4_CompInt8_Impl<NCols, 32>(
+            BlkLen,
+            QuantARowPtr, QuantBDataColPtr, QuantBScaleColPtr, QuantBZeroPointColPtr, SumPtr, CountK,
+            StrideQuantBData, StrideQuantBScale, StrideQuantBZeroPoint,
+            BiasPtr
+        );
     }
 }
 

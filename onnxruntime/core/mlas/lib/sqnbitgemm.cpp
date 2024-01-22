@@ -193,11 +193,31 @@ SQ4BitGemmPackQuantBData(
 {
     constexpr size_t BlkBitWidth = 4;
 
-    assert(BlkLen % 16 == 0);
+    assert(BlkLen >= 16 && BlkLen % 16 == 0);
 
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
     const size_t BlkDataSize = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     const size_t Iterations = N * BlockCountK;  // one iteration per block
+
+    //
+    // For BlkLen == 16, pack 16 4-bit values (8 bytes) at a time like this:
+    //
+    // src: | v0 v1 | v2 v3 | v4 v5 | v6 v7 | v8 v9 | vA vB | vC vD | vE vF |
+    //   =>
+    // dst: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
+    //
+
+    //
+    // For BlkLen > 16, pack 32 4-bit values (16 bytes) at a time like this:
+    //
+    // src: | v0  v1  | v2  v3  | ... | v28 v29 | v30 v31 |
+    //   =>
+    // dst: | v0  v16 | v1  v17 | ... | v14 v30 | v15 v31 |
+    //
+
+    const size_t SubBlkLen = BlkLen == 16 ? 16 : 32;
+    const size_t SubBlkDataSize = SubBlkLen / 2;
+    const size_t SubBlkBytePairCount = SubBlkLen / 4;
 
     MlasTrySimpleParallel(
         ThreadPool, Iterations,
@@ -209,17 +229,10 @@ SQ4BitGemmPackQuantBData(
             const std::byte* QuantBData = QuantBDataBegin + data_offset;
             std::byte* PackedQuantBData = PackedQuantBDataBegin + data_offset;
 
-            //
-            // Pack 16 4-bit values (8 bytes) at a time like this:
-            //
-            // src: | v0 v1 | v2 v3 | v4 v5 | v6 v7 | v8 v9 | vA vB | vC vD | vE vF |
-            //   =>
-            // dst: | v0 v8 | v1 v9 | v2 vA | v3 vB | v4 vC | v5 vD | v6 vE | v7 vF |
-            //
-            for (size_t kk = 0; kk < BlkLen; kk += 16) {
-                for (size_t byte_pair_idx = 0; byte_pair_idx < 4; ++byte_pair_idx) {
+            for (size_t kk = 0; kk < BlkLen; kk += SubBlkLen) {
+                for (size_t byte_pair_idx = 0; byte_pair_idx < SubBlkBytePairCount; ++byte_pair_idx) {
                     const std::byte src0 = QuantBData[byte_pair_idx];
-                    const std::byte src1 = QuantBData[byte_pair_idx + 4];
+                    const std::byte src1 = QuantBData[byte_pair_idx + SubBlkDataSize / 2];
 
                     std::byte& dst0 = PackedQuantBData[2 * byte_pair_idx];
                     std::byte& dst1 = PackedQuantBData[2 * byte_pair_idx + 1];
@@ -228,8 +241,8 @@ SQ4BitGemmPackQuantBData(
                     dst1 = (src0 >> 4) | ((src1 >> 4) << 4);
                 }
 
-                QuantBData += 8;
-                PackedQuantBData += 8;
+                QuantBData += SubBlkDataSize;
+                PackedQuantBData += SubBlkDataSize;
             }
         }
     );
