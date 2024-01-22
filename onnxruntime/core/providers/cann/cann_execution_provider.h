@@ -17,7 +17,6 @@
 #include "core/providers/cann/cann_inc.h"
 #include "core/providers/cann/cann_utils.h"
 #include "core/providers/cann/cann_graph.h"
-#include "core/providers/shared_library/provider_wrappedtypes.h"
 
 namespace onnxruntime {
 

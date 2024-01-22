@@ -13,7 +13,7 @@
 #include "core/providers/dnnl/dnnl_op_manager.h"
 #include "core/providers/dnnl/subgraph/dnnl_subgraph.h"
 #include "core/providers/dnnl/subgraph/dnnl_subgraph_primitive.h"
-#include "core/providers/shared_library/provider_wrappedtypes.h"
+#include "core/providers/shared_library/provider_api.h"
 
 namespace onnxruntime {
 

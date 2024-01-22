@@ -5,7 +5,7 @@
 
 #include "core/framework/execution_provider.h"
 #include "core/providers/coreml/coreml_provider_factory.h"
-#include "core/providers/shared_library/provider_wrappedtypes.h"
+#include "core/providers/shared_library/provider_api.h"
 
 namespace onnxruntime {
 namespace coreml {

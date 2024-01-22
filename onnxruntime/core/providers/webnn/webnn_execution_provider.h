@@ -7,7 +7,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/framework/execution_provider.h"
 #include "core/providers/webnn/builders/helper.h"
-#include "core/providers/shared_library/provider_wrappedtypes.h"
+#include "core/providers/shared_library/provider_api.h"
 
 #include <emscripten.h>
 #include <emscripten/val.h>
