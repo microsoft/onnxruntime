@@ -223,7 +223,13 @@ stages:
         downloadPath: $(Build.BinariesDirectory)/llama2_onnx_ft16
 
     - script: |
+        ls -l $(Build.BinariesDirectory)/llama2_onnx_ft16/7B_FT_float16/ONNX/
+        ls -l
+      displayName: Check files
+      workingDirectory: $(Build.SourcesDirectory)
+
+    - script: |
         python MinimumExample/Example_ONNX_LlamaV2.py --onnx_file $(Agent.TempDirectory)/llama2_onnx_ft16/7B_FT_float16/ONNX/LlamaV2_7B_FT_float16.onnx
           --embedding_file $(Agent.TempDirectory)/llama2_onnx_ft16/7B_FT_float16/embeddings.pth --tokenizer_path tokenizer.model --prompt "What is the lightest element?"
       displayName: 'Run llama2 model'
-      workingDirectory: $(Build.SourcesDirectory)/LLaMa2Onnx
+      workingDirectory: $(Build.SourcesDirectory)
