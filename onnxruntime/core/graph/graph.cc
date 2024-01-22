@@ -2760,8 +2760,8 @@ Status Graph::Resolve(const ResolveOptions& options) {
 
   if (!GraphResolveNeeded() && !subgraphs_need_resolve) {
     // clean all unused initializers and node args in all subgraphs
-    if (has_cleaned_) {
-      ORT_RETURN_IF_ERROR(InitialCleanAllUnusedInitializersAndNodeArgs());
+    if (!has_cleaned_) {
+      ORT_RETURN_IF_ERROR(CleanAllSubgraphUnusedInitializersAndNodeArgs());
     }
     return Status::OK();
   }
@@ -3515,10 +3515,7 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
   }
 }
 
-void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve, const bool first_invocation) {
-  // Mark this graph as being cleaned initilially
-  has_cleaned_ = true;
-
+void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve) {
   // Node Args being used
   std::unordered_set<const NodeArg*> used_args;
   used_args.reserve(node_args_.size());
@@ -3572,10 +3569,9 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
     ORT_ENFORCE(initializer_node_arg != nullptr, "Cannot find NodeArgs for [", name, "]");
     if (used_args.find(initializer_node_arg) == used_args_end &&
         node_args_to_preserve.find(initializer_node_arg) == node_args_to_preserve.cend()) {
-      // on the first call from InitialCleanAllUnusedInitializersAndNodeArgs we are removing
-      // unnecessary initializers that should be removed from the model.
+      // on the first call we are removing unnecessary initializers that should be removed from the model.
       // on later calls we are removing initializers that optimizations have made redundant.
-      if (first_invocation) {
+      if (!has_cleaned_) {
         LOGS(logger_, WARNING) << "Removing initializer '"
                                << name << "'. It is not used by any node and should be removed from the model.";
       } else {
@@ -3614,6 +3610,9 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
                     }
                   }
                 });
+
+  // Mark this graph as being cleaned from initial initialisers
+  has_cleaned_ = true;
 
   // Clear the unused NodeArgs
   // We also want to scan the output NodeArgs of each node
@@ -4439,9 +4438,9 @@ Status Graph::InlineFunctionProto(const ONNX_NAMESPACE::FunctionProto& func_to_i
   return Status::OK();
 }
 
-Status Graph::InitialCleanAllUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve) {
+Status Graph::CleanAllSubgraphUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve) {
   const auto& clean_graph = [&initializer_names_to_preserve](Graph& graph) {
-    graph.CleanUnusedInitializersAndNodeArgs(initializer_names_to_preserve, true);
+    graph.CleanUnusedInitializersAndNodeArgs(initializer_names_to_preserve);
     return Status::OK();
   };
   std::vector<Graph*> all_subgraphs;

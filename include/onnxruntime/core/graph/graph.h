@@ -1192,7 +1192,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   @param initializer_names_to_preserve
   @returns Status indicating success or providing an error message.
   */
-  Status InitialCleanAllUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
+  Status CleanAllSubgraphUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
 
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
   be used as a GraphProto attribute in another Node.
@@ -1560,7 +1560,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   Status ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initializer, bool is_external);
 
   // Clear all unused initializers and NodeArgs
-  void CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr, const bool first_invocation = false);
+  void CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
 
   std::vector<NodeArg*> CreateNodeArgs(const google::protobuf::RepeatedPtrField<std::string>& names,
                                        const ArgNameToTypeMap& name_to_type_map);
