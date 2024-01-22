@@ -108,9 +108,9 @@ stages:
                 --enable_cuda_profiling --enable_cuda_nhwc_ops \
                 --enable_pybind --build_java \
                 --use_cache \
-                --cmake_extra_defines  CMAKE_CUDA_ARCHITECTURES=75;86; \
-                  ccache -sv; \
-                  ccache -z"
+                --cmake_extra_defines  'CMAKE_CUDA_ARCHITECTURES=75;86' ; \
+                ccache -sv; \
+                ccache -z"
         workingDirectory: $(Build.SourcesDirectory)
 
     - task: CmdLine@2
