@@ -620,15 +620,15 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     uint64_t buffer_size(0);
     auto context_buffer = qnn_backend_manager_->GetContextBinaryBuffer(buffer_size);
     qnn_ep_context_model_ = std::make_unique<Model>("qnn_ep_context_model", false, logger);
-    ORT_RETURN_IF_ERROR(qnn::GenerateCtxCacheOnnxModel(qnn_ep_context_model_.get(),
-                                                       context_buffer.get(),
-                                                       buffer_size,
-                                                       qnn_backend_manager_->GetSdkVersion(),
-                                                       fused_nodes_and_graphs,
-                                                       qnn_models_,
-                                                       context_cache_path,
-                                                       qnn_context_embed_mode_,
-                                                       logger));
+    ORT_RETURN_IF_ERROR(qnn::CreateEPContextNodes(qnn_ep_context_model_.get(),
+                                                  context_buffer.get(),
+                                                  buffer_size,
+                                                  qnn_backend_manager_->GetSdkVersion(),
+                                                  fused_nodes_and_graphs,
+                                                  qnn_models_,
+                                                  context_cache_path,
+                                                  qnn_context_embed_mode_,
+                                                  logger));
   }
   return Status::OK();
 }

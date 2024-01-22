@@ -57,14 +57,14 @@ Status LoadQnnCtxFromOnnxGraph(const onnxruntime::GraphViewer& graph_viewer,
                                QnnBackendManager* qnn_backend_manager,
                                std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models);
 
-Status GenerateCtxCacheOnnxModel(Model* model,
-                                 unsigned char* buffer,
-                                 uint64_t buffer_size,
-                                 const std::string& sdk_build_version,
-                                 const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                 const std::unordered_map<std::string, std::unique_ptr<QnnModel>>& qnn_models,
-                                 const onnxruntime::PathString& context_cache_path,
-                                 bool qnn_context_embed_mode,
-                                 const logging::Logger& logger);
+Status CreateEPContextNodes(Model* model,
+                            unsigned char* buffer,
+                            uint64_t buffer_size,
+                            const std::string& sdk_build_version,
+                            const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
+                            const std::unordered_map<std::string, std::unique_ptr<QnnModel>>& qnn_models,
+                            const onnxruntime::PathString& context_cache_path,
+                            bool qnn_context_embed_mode,
+                            const logging::Logger& logger);
 }  // namespace qnn
 }  // namespace onnxruntime
