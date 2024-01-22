@@ -191,7 +191,7 @@ stages:
       skipComponentGovernanceDetection: true
     workspace:
       clean: all
-    pool: onnxruntime-Linux-GPU-A10-12G
+    pool: onnxruntime-Linux-GPU-T4
     steps:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
