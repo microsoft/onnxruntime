@@ -165,7 +165,7 @@ stages:
             set -ex; \
             python3 --version; \
             python3 -m pip install --upgrade pip; \
-            python3 -m pip install /Release/dist/*.whl; \
+            python3 -m pip install /Release/*.whl; \
             pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion; \
             python3 -m pip install -r requirements-cuda11.txt; \
             python3 -m pip install --upgrade polygraphy onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com; \
@@ -223,9 +223,11 @@ stages:
         downloadPath: $(Build.BinariesDirectory)/llama2_onnx_ft16
 
     - script: |
-        ls -l $(Build.BinariesDirectory)/llama2_onnx_ft16/7B_FT_float16/ONNX/
+        python -m pip install --upgrade pip;
+        python -m pip install $(Build.BinariesDirectory)/ort-artifact/*.whl;
         ls -l
-      displayName: Check files
+        ls -l $(Build.SourcesDirectory)/llama2_onnx_ft16/7B_FT_float16/ONNX/
+      displayName: Install Onnxruntime
       workingDirectory: $(Build.SourcesDirectory)
 
     - script: |
