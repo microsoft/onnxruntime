@@ -51,7 +51,7 @@ sh build.sh --config Release  --build_shared_lib --parallel --use_cuda --cuda_ve
             --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=80 \
             --allow_running_as_root
 python3 -m pip install --upgrade pip
-python3 -m pip install build/Linux/Release/dist/onnxruntime_gpu-1.18.0-cp310-cp310-linux_x86_64.whl --force-reinstall
+python3 -m pip install build/Linux/Release/dist/onnxruntime_gpu-*.whl --force-reinstall
 ```
 
 If the GPU is not A100, change `CMAKE_CUDA_ARCHITECTURES=80` in the command line according to the GPU compute capacity (like 89 for RTX 4090, or 86 for RTX 3090).
