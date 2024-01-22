@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <map>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -21,11 +22,12 @@
 #include "core/framework/session_state.h"
 #include "core/framework/tuning_results.h"
 #include "core/framework/framework_provider_common.h"
+#include "core/framework/session_options.h"
 #include "core/graph/basic_types.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
-#include "core/framework/session_options.h"
+#include "core/platform/ort_mutex.h"
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
 #endif
@@ -119,6 +121,8 @@ class InferenceSession {
   };
 
   using InputOutputDefMetaMap = InlinedHashMap<std::string_view, InputOutputDefMetaData>;
+  static std::map<uint32_t, InferenceSession*> active_sessions_;
+  static OrtMutex active_sessions_mutex_;  // Protects access to active_sessions_
 
  public:
 #if !defined(ORT_MINIMAL_BUILD)
@@ -678,6 +682,10 @@ class InferenceSession {
    * The `arenas_to_shrink` parameter is got from ValidateAndParseShrinkArenaString()
    */
   void ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink);
+
+#ifdef _WIN32
+  void LogAllSessions();
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
   virtual common::Status AddPredefinedTransformers(

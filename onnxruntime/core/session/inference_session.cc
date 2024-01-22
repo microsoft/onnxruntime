@@ -46,10 +46,11 @@
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
 #include "core/platform/Barrier.h"
-#include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
 #ifdef _WIN32
 #include "core/platform/tracing.h"
+#include <Windows.h>
+#include "core/platform/windows/telemetry.h"
 #endif
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -241,6 +242,8 @@ Status GetMinimalBuildOptimizationHandling(
 }  // namespace
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
+std::map<uint32_t, InferenceSession*> InferenceSession::active_sessions_;
+OrtMutex InferenceSession::active_sessions_mutex_;  // Protects access to active_sessions_
 
 static Status FinalizeSessionOptions(const SessionOptions& user_provided_session_options,
                                      const ONNX_NAMESPACE::ModelProto& model_proto,
@@ -351,10 +354,39 @@ void InferenceSession::SetLoggingManager(const SessionOptions& session_options,
 void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                                          const Environment& session_env) {
   auto status = FinalizeSessionOptions(session_options, model_proto_, is_model_proto_parsed_, session_options_);
-  // a monotonically increasing session id for use in telemetry
-  session_id_ = global_session_id_.fetch_add(1);
   ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
               status.ErrorMessage());
+
+  // a monotonically increasing session id for use in telemetry
+  session_id_ = global_session_id_.fetch_add(1);
+  std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
+  active_sessions_[global_session_id_++] = this;
+
+#ifdef _WIN32
+  // auto& manager = WindowsTelemetry:: EtwRegistrationManager::Instance();
+  WindowsTelemetry::RegisterInternalCallback(
+      [this](
+          LPCGUID SourceId,
+          ULONG IsEnabled,
+          UCHAR Level,
+          ULONGLONG MatchAnyKeyword,
+          ULONGLONG MatchAllKeyword,
+          PEVENT_FILTER_DESCRIPTOR FilterData,
+          PVOID CallbackContext) {
+        (void)SourceId;
+        (void)Level;
+        (void)MatchAnyKeyword;
+        (void)MatchAllKeyword;
+        (void)FilterData;
+        (void)CallbackContext;
+
+        // Check if this callback is for capturing state
+        if ((IsEnabled == EVENT_CONTROL_CODE_CAPTURE_STATE) &&
+            ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)) != 0)) {
+          LogAllSessions();
+        }
+      });
+#endif
 
   SetLoggingManager(session_options, session_env);
 
@@ -615,6 +647,10 @@ InferenceSession::~InferenceSession() {
       LOGS(*session_logger_, ERROR) << "Unknown error during EndProfiling()";
     }
   }
+
+  // Unregister the session
+  std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
+  active_sessions_.erase(global_session_id_);
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   if (session_activity_started_)
@@ -3069,5 +3105,15 @@ const IOBinding* SessionIOBinding::Get() const {
 IOBinding* SessionIOBinding::Get() {
   return binding_.get();
 }
+
+#ifdef _WIN32
+void InferenceSession::LogAllSessions() {
+  std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
+  for (const auto& session_pair : active_sessions_) {
+    InferenceSession* session = session_pair.second;
+    TraceSessionOptions(session->session_options_);
+  }
+}
+#endif
 
 }  // namespace onnxruntime
