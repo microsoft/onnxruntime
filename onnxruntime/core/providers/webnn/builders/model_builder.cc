@@ -396,6 +396,10 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   model->SetOutputs(std::move(output_names_));
   model->SetScalarOutputs(std::move(scalar_outputs_));
   model->SetInputOutputInfo(std::move(input_output_info_));
+  // Wasm heap is not transferrable, we have to pre-allocate the MLNamedArrayBufferViews
+  // for inputs and outputs because they will be transferred after compute() done.
+  // https://webmachinelearning.github.io/webnn/#api-mlcontext-async-execution
+  model->AllocateInputOutputBuffers();
   return Status::OK();
 }
 

@@ -26,11 +26,6 @@ Model::~Model() {}
 
 Status Model::Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
                       const InlinedHashMap<std::string, OnnxTensorData>& outputs) {
-  // Allocate the MLNamedArrayBufferViews for inputs and outputs at every compute()
-  // because they will be transferred after compute() done.
-  // https://webmachinelearning.github.io/webnn/#api-mlcontext-async-execution
-  AllocateInputOutputBuffers();
-
   for (const auto& input : inputs) {
     const std::string& name = input.first;
     const struct OnnxTensorData tensor = input.second;
@@ -129,7 +124,8 @@ Status Model::Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
 
     output_views.insert({name, view});
   }
-  emscripten::val results = wnn_context_.call<emscripten::val>("compute", wnn_graph_, wnn_inputs_, wnn_outputs_).await();
+  emscripten::val results = wnn_context_.call<emscripten::val>(
+      "compute", wnn_graph_, wnn_inputs_, wnn_outputs_).await();
 
   // Copy the outputs from pre-allocated ArrayBuffers back to the Wasm ArrayBuffer.
   for (const auto& output : outputs) {
@@ -137,6 +133,10 @@ Status Model::Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
     emscripten::val view = output_views.at(name);
     view.call<void>("set", results["outputs"][name]);
   }
+  // WebNN compute() method would return the input and output buffers via the promise
+  // resolution. Reuse the buffers to avoid additional allocation.
+  wnn_inputs_ = results["inputs"];
+  wnn_outputs_ = results["outputs"];
 
   return Status::OK();
 }
