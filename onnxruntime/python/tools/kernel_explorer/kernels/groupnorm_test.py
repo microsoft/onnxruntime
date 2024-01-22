@@ -80,7 +80,13 @@ def run_group_norm(
     )
     use_silu = silu
     broadcast_skip = False
-    channels_per_block = 0  # Compute in params initialization
+    if(has_skip):
+        skip_x_shape = skip_x.shape
+        b2 = len(skip_x_shape) == 2 and skip_x_shape[0] == batch_size and skip_x_shape[1] == num_channels
+        b4 = len(skip_x_shape) == 4 and skip_x_shape[0] == batch_size and skip_x_shape[1] == 1 and skip_x_shape[2] == 1 and skip_x_shape[3] == num_channels
+        if b2 or b4:
+            broadcast_skip = True
+    channels_per_block = 0 # Compute in params initialization
 
     input_d = ke.DeviceArray(input_x.astype(dtype))
     skip_d = ke.DeviceArray(skip_x.astype(dtype))
