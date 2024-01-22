@@ -336,14 +336,14 @@ export class WebGpuBackend {
         }
         // https://www.w3.org/TR/WGSL/#alignof
         const sizeOfElement = v.type === 'float16' ? 2 : 4;
-        let sizeOfVec;
+        let sizeOfVecOrMat;
         let baseAlignment;
         if (v.type === 'float16') {
           baseAlignment = data.length > 4 ? 16 : (data.length > 2 ? 8 : data.length * sizeOfElement);
-          sizeOfVec = data.length > 4 ? 16 : sizeOfElement * data.length;
+          sizeOfVecOrMat = data.length > 4 ? 16 : sizeOfElement * data.length;
         } else {
           baseAlignment = data.length <= 2 ? data.length * sizeOfElement : 16;
-          sizeOfVec = 16;
+          sizeOfVecOrMat = 16;
         }
         currentOffset = Math.ceil(currentOffset / baseAlignment) * baseAlignment;
         offsets.push(currentOffset);
@@ -353,8 +353,8 @@ export class WebGpuBackend {
         // array<mat2x4<f16>,N>, where N = Math.ceil(data.length / 8) and SizeOf(mat2x4<f16>) = 16. The total byte
         // length is N * SizeOf(mat2x4<f16>).
         const elementPerVecOrMat = v.type === 'float16' ? 8 : 4;
-        currentOffset +=
-            data.length > 4 ? Math.ceil(data.length / elementPerVecOrMat) * sizeOfVec : data.length * sizeOfElement;
+        currentOffset += data.length > 4 ? Math.ceil(data.length / elementPerVecOrMat) * sizeOfVecOrMat :
+                                           data.length * sizeOfElement;
       });
 
       // Meet alignment of struct here: https://www.w3.org/TR/WGSL/#alignment-and-size. For simplicity, set
