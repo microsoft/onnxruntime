@@ -528,7 +528,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         } else {
           ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
 'profiling_level', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
-'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority'])");
+'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority',
+'soc_model', 'htp_arch', 'device_id'])");
         }
 
         qnn_options[key] = value;
