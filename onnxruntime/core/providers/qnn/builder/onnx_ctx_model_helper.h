@@ -57,19 +57,6 @@ Status LoadQnnCtxFromOnnxGraph(const onnxruntime::GraphViewer& graph_viewer,
                                QnnBackendManager* qnn_backend_manager,
                                std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models);
 
-Status ValidateWithContextFile(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
-                               const onnxruntime::PathString& context_cache_path,
-                               const std::string& model_name,
-                               const std::string& model_description,
-                               const logging::Logger& logger);
-
-Status GetMetadataFromEpContextModel(const onnxruntime::PathString& ctx_onnx_model_path,
-                                     std::string& model_name,
-                                     std::string& model_description,
-                                     std::vector<std::string>& graph_partition_names,
-                                     std::string& cache_source,
-                                     const logging::Logger& logger);
-
 Status GenerateCtxCacheOnnxModel(Model* model,
                                  unsigned char* buffer,
                                  uint64_t buffer_size,
