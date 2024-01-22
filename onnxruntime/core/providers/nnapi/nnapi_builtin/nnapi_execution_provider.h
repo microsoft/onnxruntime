@@ -6,9 +6,9 @@
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/optional.h"
 #include "core/framework/execution_provider.h"
-#include "core/framework/model_metadef_id_generator.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
 #include "core/providers/nnapi/nnapi_provider_factory.h"
+#include "core/providers/shared_library/provider_wrappedtypes.h"
 
 struct NnApi;
 namespace onnxruntime {

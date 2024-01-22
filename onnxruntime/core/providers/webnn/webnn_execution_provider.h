@@ -6,8 +6,8 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/framework/execution_provider.h"
-#include "core/framework/model_metadef_id_generator.h"
 #include "core/providers/webnn/builders/helper.h"
+#include "core/providers/shared_library/provider_wrappedtypes.h"
 
 #include <emscripten.h>
 #include <emscripten/val.h>
