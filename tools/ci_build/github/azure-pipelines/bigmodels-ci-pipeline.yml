@@ -108,7 +108,7 @@ stages:
                 --enable_cuda_profiling --enable_cuda_nhwc_ops \
                 --enable_pybind --build_java \
                 --use_cache \
-                --cmake_extra_defines  CMAKE_CUDA_ARCHITECTURES=86; \
+                --cmake_extra_defines  CMAKE_CUDA_ARCHITECTURES=75;86; \
                   ccache -sv; \
                   ccache -z"
         workingDirectory: $(Build.SourcesDirectory)
@@ -122,11 +122,16 @@ stages:
           cd $(Build.BinariesDirectory)/Release
           find -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
 
+    - script: |
+        set -ex; \
+        cp $(Build.BinariesDirectory)/Release/dist/*.whl $(Agent.TempDirectory)/ort
+      displayName: 'Copy Wheels'
+
     - task: PublishPipelineArtifact@0
       displayName: 'Publish Pipeline Artifact'
       inputs:
         artifactName: 'drop-ort-linux-gpu'
-        targetPath: '$(Build.BinariesDirectory)/Release'
+        targetPath: '$(Agent.TempDirectory)/ort'
 
     - template: templates/explicitly-defined-final-tasks.yml
 
@@ -209,7 +214,7 @@ stages:
       submodules: none
 
     - task: DownloadPackage@1
-      displayName: 'Download ONNX Runtime Build Time Deps'
+      displayName: 'Download Llama2 model'
       inputs:
         packageType: upack
         feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
