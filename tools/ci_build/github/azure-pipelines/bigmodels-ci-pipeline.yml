@@ -232,19 +232,20 @@ stages:
         UpdateDepsTxt: false
 
     - script: |
-        docker run --rm --gpus all -v $PWD:/workspace -v $(Build.SourcesDirectory)/Llama-2-Onnx:/workspace \
+        docker run --rm --gpus all -v $(Build.SourcesDirectory)/Llama-2-Onnx:/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
-           -v $(Agent.TempDirectory)/llama2_onnx_ft16:/models onnxruntimeubi8packagestest \
-          bash -c "
-            set -ex; \
-            python3 -m pip install --upgrade pip ; \
-            python3 -m pip install /ort-artifact/*.whl ; \
-            python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
-            python3 -m pip install sentencepiece ; \
-            pushd /workspace ; \
-            python3 python MinimumExample/Example_ONNX_LlamaV2.py --onnx_file /models/ONNX/LlamaV2_7B_FT_float16.onnx \
-              --embedding_file /models/embeddings.pth --tokenizer_path tokenizer.model --prompt "What is the lightest element?" ; \
-            popd ; \
-          "
+           -v $(Agent.TempDirectory)/llama2_onnx_ft16:/models \
+           onnxruntimeubi8packagestest \
+            bash -c "
+              set -ex; \
+              python3 -m pip install --upgrade pip ; \
+              python3 -m pip install /ort-artifact/*.whl ; \
+              python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
+              python3 -m pip install sentencepiece ; \
+              pushd /workspace ; \
+              python3 python MinimumExample/Example_ONNX_LlamaV2.py --onnx_file /models/ONNX/LlamaV2_7B_FT_float16.onnx \
+                --embedding_file /models/embeddings.pth --tokenizer_path tokenizer.model --prompt "What is the lightest element?" ; \
+              popd ; \
+            "
       displayName: 'Run Llama2 demo'
       workingDirectory: $(Build.SourcesDirectory)
