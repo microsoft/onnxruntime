@@ -14,12 +14,13 @@ from fusion_nhwc_conv import FusionNhwcConv
 from fusion_options import FusionOptions
 from fusion_skip_group_norm import FusionSkipGroupNorm
 from fusion_transpose import FusionInsertTranspose, FusionTranspose
+from import_utils import is_installed
 from onnx import ModelProto
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
-import tqdm
 
 logger = logging.getLogger(__name__)
+
 
 class UnetOnnxModel(BertOnnxModel):
     def __init__(self, model: ModelProto, num_heads: int = 0, hidden_size: int = 0):
@@ -120,37 +121,48 @@ class UnetOnnxModel(BertOnnxModel):
         fusion.apply()
 
     def optimize(self, options: Optional[FusionOptions] = None):
-        from tqdm.contrib.logging import logging_redirect_tqdm
-        with logging_redirect_tqdm():
-            self._optimize(options)
+        if is_installed("tqdm"):
+            import tqdm
+            from tqdm.contrib.logging import logging_redirect_tqdm
 
-    def _optimize(self, options: Optional[FusionOptions] = None):
-        steps = 18
-        progress_bar = tqdm.tqdm(range(0, steps), initial=0, desc="fusion")
+            with logging_redirect_tqdm():
+                steps = 18
+                progress_bar = tqdm.tqdm(range(0, steps), initial=0, desc="fusion")
+                self._optimize(options, progress_bar)
+        else:
+            logger.info("tqdm is not installed. Run optimization without progress bar")
+            self._optimize(options, None)
 
+    def _optimize(self, options: Optional[FusionOptions] = None, progress_bar=None):
         if (options is not None) and not options.enable_shape_inference:
             self.disable_shape_inference()
 
         self.utils.remove_identity_nodes()
-        progress_bar.update(1)
+        if progress_bar:
+            progress_bar.update(1)
 
         # Remove cast nodes that having same data type of input and output based on symbolic shape inference.
         self.utils.remove_useless_cast_nodes()
-        progress_bar.update(1)
+        if progress_bar:
+            progress_bar.update(1)
 
         if (options is None) or options.enable_layer_norm:
             self.fuse_layer_norm()
-        progress_bar.update(1)
+        if progress_bar:
+            progress_bar.update(1)
 
         if (options is None) or options.enable_gelu:
             self.fuse_gelu()
-        progress_bar.update(1)
+        if progress_bar:
+            progress_bar.update(1)
 
         self.preprocess()
-        progress_bar.update(1)
+        if progress_bar:
+            progress_bar.update(1)
 
         self.fuse_reshape()
-        progress_bar.update(1)
+        if progress_bar:
+            progress_bar.update(1)
 
         if (options is None) or options.enable_group_norm:
             channels_last = (options is None) or options.group_norm_channels_last
@@ -159,54 +171,66 @@ class UnetOnnxModel(BertOnnxModel):
 
             insert_transpose_fusion = FusionInsertTranspose(self)
             insert_transpose_fusion.apply()
-        progress_bar.update(1)
+        if progress_bar:
+            progress_bar.update(1)
 
         if (options is None) or options.enable_bias_splitgelu:
             bias_split_gelu_fusion = FusionBiasSplitGelu(self)
             bias_split_gelu_fusion.apply()
-        progress_bar.update(1)
+        if progress_bar:
+            progress_bar.update(1)
 
         if (options is None) or options.enable_attention:
             # self.save_model_to_file("before_mha.onnx")
             self.fuse_multi_head_attention(options)
-        progress_bar.update(1)
+        if progress_bar:
+            progress_bar.update(1)
 
         if (options is None) or options.enable_skip_layer_norm:
             self.fuse_skip_layer_norm()
-        progress_bar.update(1)
+        if progress_bar:
+            progress_bar.update(1)
 
         self.fuse_shape()
-        progress_bar.update(1)
+        if progress_bar:
+            progress_bar.update(1)
 
         # Remove reshape nodes that having same shape of input and output based on symbolic shape inference.
         self.utils.remove_useless_reshape_nodes()
-        progress_bar.update(1)
+        if progress_bar:
+            progress_bar.update(1)
 
         if (options is None) or options.enable_skip_group_norm:
             skip_group_norm_fusion = FusionSkipGroupNorm(self)
             skip_group_norm_fusion.apply()
-        progress_bar.update(1)
+        if progress_bar:
+            progress_bar.update(1)
 
         if (options is None) or options.enable_bias_skip_layer_norm:
             # Fuse SkipLayerNormalization and Add Bias before it.
             self.fuse_add_bias_skip_layer_norm()
-        progress_bar.update(1)
+        if progress_bar:
+            progress_bar.update(1)
 
         if options is not None and options.enable_gelu_approximation:
             self.gelu_approximation()
-        progress_bar.update(1)
+        if progress_bar:
+            progress_bar.update(1)
 
         if options is None or options.enable_nhwc_conv:
             self.convert_conv_to_nhwc()
             self.merge_adjacent_transpose()
-        progress_bar.update(1)
+        if progress_bar:
+            progress_bar.update(1)
 
         if options is not None and options.enable_bias_add:
             self.fuse_bias_add()
-        progress_bar.update(1)
+        if progress_bar:
+            progress_bar.update(1)
 
         self.postprocess()
-        progress_bar.update(1)
+        if progress_bar:
+            progress_bar.update(1)
 
         logger.info(f"opset version: {self.get_opset_version()}")
 
