@@ -77,7 +77,13 @@ def run_group_norm(batch_size: int, height: int, num_channels: int, num_groups: 
         else np.empty((0), dtype=dtype)
     )
     use_swish = swish
-    boardcast_skip = False
+    broadcast_skip = False
+    if(has_skip):
+        skip_x_shape = skip_x.shape
+        b2 = len(skip_x_shape) == 2 and skip_x_shape[0] == batch_size and skip_x_shape[1] == num_channels
+        b4 = len(skip_x_shape) == 4 and skip_x_shape[0] == batch_size and skip_x_shape[1] == 1 and skip_x_shape[2] == 1 and skip_x_shape[3] == num_channels
+        if b2 or b4:
+            broadcast_skip = True
     channels_per_block = 0 # Compute in params initialization
 
     input_d = ke.DeviceArray(input_x.astype(dtype))
@@ -106,7 +112,7 @@ def run_group_norm(batch_size: int, height: int, num_channels: int, num_groups: 
         width,
         num_groups,
         use_swish,
-        boardcast_skip,
+        broadcast_skip,
         channels_per_block,
     )
     y_ref, y_add_d_ref = group_norm(input_x, skip_x, bias_x, gamma, beta, num_groups, epsilon, use_swish, has_skip)
@@ -192,7 +198,7 @@ def profile_group_norm_func(
         else np.empty((0), dtype=dtype)
     )
     use_swish = swish
-    boardcast_skip = False
+    broadcast_skip = False
     channels_per_block = 0 # Compute in params initialization
 
     input_d = ke.DeviceArray(input_x)
@@ -221,7 +227,7 @@ def profile_group_norm_func(
         width,
         num_groups,
         use_swish,
-        boardcast_skip,
+        broadcast_skip,
         channels_per_block,
     )
     for impl in my_op.ListOps():

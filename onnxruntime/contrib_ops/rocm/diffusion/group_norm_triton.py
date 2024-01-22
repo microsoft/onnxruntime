@@ -39,11 +39,7 @@ def group_norm_kernel(
 
 
     add_out_ptr += row_x * stride + row_y * c_per_group
-    if has_skip:
-        # if broadcast_skip:
-        #     skip_ptr += row_x * c + row_y * c_per_group
-        # else:
-        skip_ptr += row_x * stride + row_y * c_per_group
+
 
 
     cols = tl.arange(0, BLOCK_SIZE)
@@ -52,6 +48,12 @@ def group_norm_kernel(
     mask = (cols < c_per_group)[None, :]
 
     bias = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    if has_skip:
+        if broadcast_skip:
+            broadcast_skip_ptr = skip_ptr + row_x * c + row_y * c_per_group
+            bias += tl.load(broadcast_skip_ptr + cols, mask=cols < c_per_group, other=0.0).to(tl.float32)
+        else:
+            skip_ptr += row_x * stride + row_y * c_per_group
     if has_bias:
         bias_ptr += row_y * c_per_group
         bias += tl.load(bias_ptr + cols, mask=cols < c_per_group, other=0.0).to(tl.float32)
@@ -62,15 +64,11 @@ def group_norm_kernel(
     for i in range(tl.cdiv(img_size, HW_SIZE)):
         x_ptr = input_ptr + i * HW_SIZE * c
         a = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
-        if has_skip:
-            # if broadcast_skip:
-            #     s =  tl.load(skip_ptr + cols, mask=cols < c_per_group).to(tl.float32)
-            # else:
-            #
+        if has_skip and not broadcast_skip:
             s_ptr = skip_ptr + i * HW_SIZE * c
             s = tl.load(s_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
             a += s
-        if has_bias:
+        if has_bias or broadcast_skip:
             a += bias
         _sum += a
         _square_sum += a * a
