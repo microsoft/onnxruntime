@@ -4,9 +4,6 @@
 # --------------------------------------------------------------------------
 import importlib.metadata
 import importlib.util
-from logging import getLogger
-
-logger = getLogger(__name__)
 
 
 def is_installed(package):
