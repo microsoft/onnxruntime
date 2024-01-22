@@ -134,8 +134,9 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializ
     return false;
 
   const auto& op_type = node.OpType();
+  const auto& axes_name = input_defs[1]->Name();
   // If the optional input 'axes' is provided, it must be an initializer.
-  if (input_defs.size() > 1 && !Contains(initializers, input_defs[1]->Name())) {
+  if (input_defs.size() > 1 && !axes_name.empty() && !Contains(initializers, axes_name)) {
     LOGS(logger, VERBOSE) << "Input axes of " << op_type << " must be a constant";
     return false;
   }

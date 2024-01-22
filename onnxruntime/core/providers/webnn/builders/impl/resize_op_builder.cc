@@ -121,7 +121,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::vector<int32_t> sizes_hw;
   std::vector<int32_t> axes;
   const bool is_nhwc = model_builder.GetPreferredLayout() == DataLayout::NHWC;
-  if (input_defs.size() == 3) {  // Use scales.
+  if (input_defs.size() == 3 || !input_defs[2]->Name().empty()) {  // Use scales.
     ORT_RETURN_IF_NOT(GetResizeScales(initializers, node, scales, logger), "Error getting resize scales");
     if (is_nhwc) {
       scales_hw = {scales[1], scales[2]};
@@ -203,26 +203,40 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
   }
 
   {  // scales and sizes (if present) must be initializers.
-    if (input_defs.size() < 3) {
-      LOGS(logger, VERBOSE) << "Input scales or sizes of Resize must be known";
+    if (input_defs.size() < 3 && node.SinceVersion() == 11) {
+      LOGS(logger, VERBOSE) << "Input scales of Resize must be known for opset 11";
       return false;
     }
 
-    // scales
-    if (input_defs.size() == 3 && !Contains(initializers, input_defs[2]->Name())) {
-      LOGS(logger, VERBOSE) << "Input scales of Resize must be known";
-      return false;
+    // scales (scales maybe empty tensor)
+    bool has_scales = false;
+    if (input_defs.size() == 3) {
+      has_scales = !input_defs[2]->Name().empty();
+      if ((has_scales && !Contains(initializers, input_defs[2]->Name())) ||
+          (!has_scales && node.SinceVersion() == 11)) {
+        LOGS(logger, VERBOSE) << "Input scales of Resize must be known";
+        return false;
+      }
     }
 
-    // sizes
-    if (input_defs.size() > 3 && !Contains(initializers, input_defs[3]->Name())) {
-      LOGS(logger, VERBOSE) << "Input sizes of Resize must be known";
+    // sizes (sizes maybe empty tensor)
+    bool has_sizes = false;
+    if (input_defs.size() > 3) {
+      has_sizes = !input_defs[3]->Name().empty();
+      if (has_sizes && !Contains(initializers, input_defs[3]->Name())) {
+        LOGS(logger, VERBOSE) << "Input sizes of Resize must be known";
+        return false;
+      }
+    }
+
+    if (has_scales && has_sizes) {
+      LOGS(logger, VERBOSE) << "Only one of 'scales' and 'sizes' can be specified";
       return false;
     }
 
     const bool is_nhwc = node.Domain() == kMSInternalNHWCDomain;
     // We want to check if the scales or sizes are not trying to resize on N/C channels here.
-    if (input_defs.size() == 3) {  // We are using scales.
+    if (has_scales) {  // We are using scales.
       std::vector<float> scales;
       if (!GetResizeScales(initializers, node, scales, logger))
         return false;
@@ -251,7 +265,9 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
         LOGS(logger, VERBOSE) << "Resize: scale_w: " << scale_w << " is not a whole number";
         return false;
       }
-    } else {
+    }
+
+    if (has_sizes) {
       // We are using sizes.
       std::vector<int64_t> output_sizes;
       if (!GetResizeOutputSizes(initializers, node, output_sizes, logger))

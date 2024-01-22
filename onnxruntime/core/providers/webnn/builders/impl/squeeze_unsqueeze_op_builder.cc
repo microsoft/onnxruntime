@@ -140,7 +140,7 @@ bool SqueezeUnsqueezeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& in
   if (node.SinceVersion() >= 13) {
     if (input_defs.size() > 1) {
       const auto& axes_name = input_defs[1]->Name();
-      if (!Contains(initializers, axes_name)) {
+      if (!axes_name.empty() && !Contains(initializers, axes_name)) {
         LOGS(logger, ERROR) << "Input axes of " << op_type << " is not present and constant";
         return false;
       }

@@ -137,9 +137,9 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   axis = SafeInt<int32_t>(HandleNegativeAxis(axis, rank));
 
   if (input_defs.size() == 2) {
-    // Inputs contains optional 'split' input
+    // Inputs contain optional 'split' input.
     const auto& split_name = input_defs[1]->Name();
-    if (!Contains(initializers, split_name)) {
+    if (!split_name.empty() && !Contains(initializers, split_name)) {
       LOGS(logger, VERBOSE) << "The split must be a constant initializer.";
       return false;
     }
