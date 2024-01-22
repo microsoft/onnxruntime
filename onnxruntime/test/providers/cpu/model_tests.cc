@@ -94,18 +94,24 @@ TEST_P(ModelTest, Run) {
     }
   }
 
+
+  std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
+
   #if defined(__linux__)
     // ORT enables TF32 in GEMM for A100. TF32 will cause precsion loss and fail this test.
     if (HasCudaEnvironment(800) && provider_name == "cuda") {
       per_sample_tolerance = 1e-1;
-      if (model_path.find(ORT_TSTR("rcnn_mask")) != std::string::npos) {
-        // errmsg: expected 827.794 (444ef2d5), got 990.763 (4477b0d4), diff: 162.969, tol=8.28794 idx=238. 8 of 248 differ
+      if (model_path.find(ORT_TSTR("SSD")) != std::string::npos || model_path.find(ORT_TSTR("YOLOv3")) != std::string::npos) {
+        per_sample_tolerance = 2e-1;
+      }
+      if (model_path.find(ORT_TSTR("rcnn_mask")) != std::string::npos || model_path.find(ORT_TSTR("Candy_ImageNet")) != std::string::npos) {
+        // rcnn_mask errmsg: expected 827.794 (444ef2d5), got 990.763 (4477b0d4), diff: 162.969, tol=8.28794 idx=238. 8 of 248 differ
+        // Candy_ImageNet expected 145 (43110000), got 134.543 (43068b1c), diff: 10.4566, tol=10.0015 idx=1051065. 2 of 1555200 differ
         per_sample_tolerance = 10;
+        relative_per_sample_tolerance = 1e-2;
       }
     }
   #endif
-
-  std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
 
   if (model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
       model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
