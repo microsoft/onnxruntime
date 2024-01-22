@@ -57,14 +57,15 @@ namespace OperatorHelper
     }
 
     template <typename T>
-    void ExpandToAxes(/*inout*/ std::vector<T>& attr, std::vector<int32_t> axes, std::vector<T> expanded)
+    void ExpandToAxes(/*inout*/ std::vector<T>& originalValues, gsl::span<int32_t> axes, std::vector<T> expanded)
     {
+        assert(originalValues.size() == axes.size());
         // Fill in roi and scales/sizes
         for (size_t i = 0; i < axes.size(); i++)
         {
-            expanded[axes[i]] = attr[i];
+            expanded[axes[i]] = originalValues[i];
         }
-        attr = expanded;
+        originalValues = expanded;
     }
 
     float CastFloat16ToFloat32(uint16_t input)
@@ -2460,18 +2461,23 @@ namespace OperatorHelper
                 // Taken from https://github.com/onnx/onnx/blob/3d69db8fd16873d68e7033479467f9478562a12d/onnx/reference/ops/op_resize.py#L303
                 if (!m_scales.empty())
                 {
-                    std::vector<float> newScales(dimCount, 1.0f);
-                    ExpandToAxes(/*inuout*/ m_scales, axes, newScales);
+                    std::vector<float> defaultScales(dimCount, 1.0f);
+                    ExpandToAxes(/*inout*/ m_scales, axes, defaultScales);
                 }
                 if (!outputSizes.empty())
                 {
-                    ExpandToAxes(/*inuout*/ outputSizes, axes, m_inputDimensions);
+                    ExpandToAxes(/*inout*/ outputSizes, axes, m_inputDimensions);
                 }
                 if (!m_regionOfInterest.empty())
                 {
-                    std::vector<float> newRois(dimCount, 0.0f);
-                    newRois.resize(dimCount * 2, 1.0f);
-                    ExpandToAxes(/*inuout*/ m_regionOfInterest, axes, newRois);
+                    std::vector<float> defaultRois(dimCount, 0.0f);
+                    defaultRois.resize(dimCount * 2, 1.0f);
+                    size_t numAxes = axes.size();
+                    for (size_t i = 0; i < axes.size(); i++)
+                    {
+                        defaultRois[axes[i]] = m_regionOfInterest[i];
+                        defaultRois[axes[i + dimCount]] = m_regionOfInterest[i + numAxes];
+                    }
                 }
             }
         }
