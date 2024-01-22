@@ -2105,7 +2105,7 @@ TEST(CApiTest, cuda_graph_with_shape_nodes) {
   // Successful loading of the ONNX model with shape nodes with cuda graph feature enabled
   Ort::Session session(*ort_env, TSTR("testdata/cuda_graph_with_shape_nodes.onnx"), session_options);
 }
-#endif // defined(USE_CUDA) || defined(USE_TENSORRT)
+#endif  // defined(USE_CUDA) || defined(USE_TENSORRT)
 
 #if defined(USE_ROCM)
 TEST(CApiTest, hip_graph_with_shape_nodes) {
@@ -2128,11 +2128,11 @@ TEST(CApiTest, hip_graph_with_shape_nodes) {
   // Successful loading of the ONNX model with shape nodes with hip graph feature enabled
   Ort::Session session(*ort_env, TSTR("testdata/cuda_graph_with_shape_nodes.onnx"), session_options);
 }
-#endif // defined(USE_ROCM)
+#endif  // defined(USE_ROCM)
 
-#endif // REDUCED_OPS_BUILD
+#endif  // REDUCED_OPS_BUILD
 
-#endif // defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
+#endif  // defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM)
 
 TEST(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};
