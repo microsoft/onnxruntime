@@ -101,11 +101,11 @@ TEST_P(ModelTest, Run) {
     // ORT enables TF32 in GEMM for A100. TF32 will cause precsion loss and fail this test.
     if (HasCudaEnvironment(800) && provider_name == "cuda") {
       per_sample_tolerance = 1e-1;
-      if (model_path.find(ORT_TSTR("SSD")) != std::string::npos || model_path.find(ORT_TSTR("YOLOv3")) != std::string::npos) {
+      if (model_path.find(ORT_TSTR("SSD")) > 0 || model_path.find(ORT_TSTR("SSD")) > 0 || model_path.find(ORT_TSTR("yolov3")) >0 ) {
         // e.g. opset10_SSD expected 0.979277 (3f7ab1e0), got 0.039914 (3d237cd7), diff: 0.939363, tol=0.209793 idx=478. 62 of 800 differ
         per_sample_tolerance = 3e-1;
       }
-      if (model_path.find(ORT_TSTR("rcnn_mask")) != std::string::npos || model_path.find(ORT_TSTR("Candy_ImageNet")) != std::string::npos) {
+      if (model_path.find(ORT_TSTR("mask_rcnn")) > 0 || model_path.find(ORT_TSTR("FNS")) > 0 ) {
         // expected 1238.56 (449ad1dc), got 183.735 (4337bc0a), diff: 1054.82, tol=12.4856 idx=156. 24 of 248 differ
         // Candy_ImageNet expected 145 (43110000), got 134.543 (43068b1c), diff: 10.4566, tol=10.0015 idx=1051065. 2 of 1555200 differ
         per_sample_tolerance = 15;
