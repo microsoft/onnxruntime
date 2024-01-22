@@ -36,7 +36,6 @@ Options:
                                    webgl
                                    webgpu
                                    wasm
-                                   xnnpack
                                    webnn
  -e=<...>, --env=<...>         Specify the environment to run the test. Should be one of the following:
                                  chrome     (default)
@@ -79,6 +78,7 @@ Options:
  --webgl-texture-cache-mode    Set the WebGL texture cache mode (initializerOnly/full)
  --webgl-texture-pack-mode     Set the WebGL texture pack mode (true/false)
  --webgpu-profiling-mode       Set the WebGPU profiling mode (off/default)
+ --webnn-device-type           Set the WebNN device type (cpu/gpu)
 
 *** Browser Options ***
 
@@ -110,7 +110,7 @@ Examples:
 
 export declare namespace TestRunnerCliArgs {
   type Mode = 'suite0'|'suite1'|'model'|'unittest'|'op';
-  type Backend = 'cpu'|'webgl'|'webgpu'|'wasm'|'onnxruntime'|'xnnpack'|'webnn';
+  type Backend = 'cpu'|'webgl'|'webgpu'|'wasm'|'onnxruntime'|'webnn';
   type Environment = 'chrome'|'edge'|'firefox'|'electron'|'safari'|'node'|'bs';
   type BundleMode = 'dev'|'perf';
   type IOBindingMode = 'none'|'gpu-tensor'|'gpu-location';
@@ -174,6 +174,7 @@ export interface TestRunnerCliArgs {
   cudaFlags?: Record<string, unknown>;
   wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
   webglOptions?: InferenceSession.WebGLExecutionProviderOption;
+  webnnOptions?: InferenceSession.WebNNExecutionProviderOption;
   globalEnvFlags?: Test.Options['globalEnvFlags'];
   noSandbox?: boolean;
   chromiumFlags: string[];
@@ -335,6 +336,14 @@ function parseWebgpuFlags(args: minimist.ParsedArgs): Partial<Env.WebGpuFlags> {
   return {profilingMode, validateInputContent};
 }
 
+function parseWebNNOptions(args: minimist.ParsedArgs): InferenceSession.WebNNExecutionProviderOption {
+  const deviceType = args['webnn-device-type'];
+  if (deviceType !== undefined && deviceType !== 'cpu' && deviceType !== 'gpu') {
+    throw new Error('Flag "webnn-device-type" is invalid');
+  }
+  return {name: 'webnn', deviceType};
+}
+
 function parseGlobalEnvFlags(args: minimist.ParsedArgs): NonNullable<TestRunnerCliArgs['globalEnvFlags']> {
   const wasm = parseWasmFlags(args);
   const webgl = parseWebglFlags(args);
@@ -368,13 +377,13 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   }
 
   // Option: -b=<...>, --backend=<...>
-  const browserBackends = ['webgl', 'webgpu', 'wasm', 'xnnpack', 'webnn'];
+  const browserBackends = ['webgl', 'webgpu', 'wasm', 'webnn'];
 
   // TODO: remove this when Chrome support WebNN.
   //       we need this for now because Chrome does not support webnn yet,
   //       and ChromeCanary is not in CI.
 
-  const defaultBrowserBackends = ['webgl', 'webgpu', 'wasm', 'xnnpack' /*, 'webnn'*/];
+  const defaultBrowserBackends = ['webgl', 'webgpu', 'wasm' /*, 'webnn'*/];
   const nodejsBackends = ['cpu', 'wasm'];
   const backendArgs = args.backend || args.b;
   const backend = (typeof backendArgs !== 'string') ? (env === 'node' ? nodejsBackends : defaultBrowserBackends) :
@@ -449,6 +458,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   const wasmOptions = parseWasmOptions(args);
 
   const webglOptions = parseWebglOptions(args);
+  const webnnOptions = parseWebNNOptions(args);
 
   // Option: --no-sandbox
   const noSandbox = !!args['no-sandbox'];
@@ -487,6 +497,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     fileCache,
     cpuOptions,
     webglOptions,
+    webnnOptions,
     wasmOptions,
     globalEnvFlags,
     noSandbox,

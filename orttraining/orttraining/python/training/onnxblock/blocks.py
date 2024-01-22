@@ -144,9 +144,10 @@ class Pow(Block):
 class _UnaryOp(Block):
     """Base class for all nodes that take in a single argument."""
 
-    def __init__(self, op_name):
+    def __init__(self, op_name, **attributes):
         super().__init__()
         self._op_name = op_name
+        self._attributes = attributes
 
     def build(self, input_name):
         # get the model to manipulate
@@ -165,6 +166,7 @@ class _UnaryOp(Block):
             node_input_names,
             node_output_names,
             _graph_utils.generate_graph_name(self._op_name),
+            **self._attributes,
         )
         onnx_model.graph.node.append(node)
 
@@ -174,15 +176,15 @@ class _UnaryOp(Block):
 class ReduceMean(_UnaryOp):
     """Adds ReduceMean node to the onnx model."""
 
-    def __init__(self):
-        super().__init__("ReduceMean")
+    def __init__(self, keepdims=True):
+        super().__init__("ReduceMean", keepdims=keepdims)
 
 
 class ReduceSum(_UnaryOp):
     """Adds ReduceSum node to the onnx model."""
 
-    def __init__(self):
-        super().__init__("ReduceSum")
+    def __init__(self, keepdims=True):
+        super().__init__("ReduceSum", keepdims=keepdims)
 
 
 class Sigmoid(_UnaryOp):

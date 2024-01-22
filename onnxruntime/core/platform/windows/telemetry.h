@@ -3,6 +3,8 @@
 
 #pragma once
 #include "core/platform/telemetry.h"
+#include <Windows.h>
+#include <TraceLoggingProvider.h>
 #include "core/platform/ort_mutex.h"
 #include "core/platform/windows/TraceLoggingConfig.h"
 #include <atomic>
@@ -21,6 +23,17 @@ class WindowsTelemetry : public Telemetry {
   void EnableTelemetryEvents() const override;
   void DisableTelemetryEvents() const override;
   void SetLanguageProjection(uint32_t projection) const override;
+
+  bool IsEnabled() const override;
+
+  // Get the current logging level
+  unsigned char Level() const override;
+
+  // Get the current keyword
+  UINT64 Keyword() const override;
+
+  // Get the ETW registration status
+  // static HRESULT Status();
 
   void LogProcessInfo() const override;
 
@@ -50,6 +63,19 @@ class WindowsTelemetry : public Telemetry {
   static uint32_t global_register_count_;
   static bool enabled_;
   static uint32_t projection_;
+
+  static OrtMutex provider_change_mutex_;
+  static UCHAR level_;
+  static ULONGLONG keyword_;
+
+  static void NTAPI ORT_TL_EtwEnableCallback(
+      _In_ LPCGUID SourceId,
+      _In_ ULONG IsEnabled,
+      _In_ UCHAR Level,
+      _In_ ULONGLONG MatchAnyKeyword,
+      _In_ ULONGLONG MatchAllKeyword,
+      _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
+      _In_opt_ PVOID CallbackContext);
 };
 
 }  // namespace onnxruntime

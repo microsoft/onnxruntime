@@ -289,7 +289,7 @@ class ORTZeROOffloadPreForwardFunction(torch.autograd.Function):
                     raise RuntimeError(f"param {p} has no grad, this should not happen.")
                 # Param gradient accumulation is triggered here, along with the attached hooks, done by PyTorch.
                 assert p.shape == g.shape, f"param_index: {param_index} - param shape {p.shape} != grad shape {g.shape}"
-                # p.backward(g)
+                p.backward(g)
 
         # At this point, the **real** param grads are already updated, the following grads are only used for
         # completing the full backward propagation, will not affect parameter updates.
