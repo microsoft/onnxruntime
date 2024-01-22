@@ -226,7 +226,7 @@ stages:
     - script: |
         python -m pip install --upgrade pip
         python -m pip install $(Build.BinariesDirectory)/ort-artifact/*.whl
-        python -m pip install --index-url https://download.pytorch.org/whl/cu118
+        python -m pip install torch --index-url https://download.pytorch.org/whl/cu118
         ls -l
         ls -l $(Agent.TempDirectory)/llama2_onnx_ft16/ONNX/
       displayName: Install Onnxruntime
