@@ -15,7 +15,7 @@
 #include "test/util/include/inference_session_wrapper.h"
 
 // enable to dump model for debugging
-#define SAVE_TEST_GRAPH 0
+#define SAVE_TEST_GRAPH 1
 
 namespace onnxruntime {
 namespace test {
