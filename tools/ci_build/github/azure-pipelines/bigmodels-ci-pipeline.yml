@@ -123,8 +123,9 @@ stages:
           find -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
 
     - script: |
-        set -ex; \
-        cp $(Build.BinariesDirectory)/Release/dist/*.whl $(Agent.TempDirectory)/ort
+        set -ex
+        mkdir -p $(Agent.TempDirectory)/ort
+        cp $(Build.BinariesDirectory)/Release/dist/*.whl $(Agent.TempDirectory)/ort/
       displayName: 'Copy Wheels'
 
     - task: PublishPipelineArtifact@0
@@ -226,7 +227,7 @@ stages:
         python -m pip install --upgrade pip;
         python -m pip install $(Build.BinariesDirectory)/ort-artifact/*.whl;
         ls -l
-        ls -l $(Build.SourcesDirectory)/llama2_onnx_ft16/7B_FT_float16/ONNX/
+        ls -l $(Build.SourcesDirectory)/7B_FT_float16/ONNX/
       displayName: Install Onnxruntime
       workingDirectory: $(Build.SourcesDirectory)
 
