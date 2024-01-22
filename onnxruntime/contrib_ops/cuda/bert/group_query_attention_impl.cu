@@ -510,7 +510,7 @@ Status FlashAttention(
     if (batch_size <= parameters.zeros_count) {
       seqlens_k = parameters.zero_ptr;
     } else {
-      // Launch kernel to copy seqlen
+      // Launch kernel to create larger seqlen tensor when batch_size > 256
       constexpr int thr_per_blk = 256;
       int blk_in_grid = (batch_size + thr_per_blk - 1) / thr_per_blk;
       repeat_seqlen<<<blk_in_grid, thr_per_blk, 0, stream>>>(data.seqlens_k_total, 0, batch_size);
@@ -530,7 +530,7 @@ Status FlashAttention(
       device_prop, stream, query, present_key, present_value, key, value, data.output,
       reinterpret_cast<void*>(data.softmax_lse), seqlens_k, cos_cache, sin_cache,
       batch_size, num_heads, kv_num_heads, head_size, sequence_length,
-      parameters.seqlen_present_kv_cache, kv_sequence_length, parameters.seqlen_present_kv_cache,
+      parameters.seqlen_present_kv_cache, kv_sequence_length,
       scale, is_causal, is_bf16, past_bsnh, parameters.num_splits, reinterpret_cast<void*>(data.softmax_lse_accum),
       reinterpret_cast<void*>(data.out_accum), parameters.local_window_size, parameters.rotary_interleaved,
       parameters.is_packed_qkv));

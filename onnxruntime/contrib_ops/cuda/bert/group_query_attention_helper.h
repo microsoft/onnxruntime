@@ -209,6 +209,11 @@ Status CheckInputs(const Tensor* query,
     const auto& cos_dims = cos_cache->Shape().GetDims();
     const auto& sin_dims = sin_cache->Shape().GetDims();
 
+    if (head_size % 16 != 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "head_size shall be a multiple of 16. Got head_size % 16 == ",
+                             head_size % 16);
+    }
     if (cos_dims[0] != present_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "cos_cache dimension 0 must be of present_sequence_length.");
