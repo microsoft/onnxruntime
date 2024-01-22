@@ -69,10 +69,10 @@ void set_params_fprop(Flash_fwd_params& params,
   }
 
   if (cu_seqlens_q_d == nullptr) {
-    params.q_batch_stride = seqlen_q * num_heads * head_size;        // stride(0)
+    params.q_batch_stride = seqlen_q * num_heads * head_size;    // stride(0)
     params.k_batch_stride = seqlen_k * num_heads_k * head_size;  // stride(0)
     params.v_batch_stride = seqlen_k * num_heads_k * head_size;  // stride(0)
-    params.o_batch_stride = seqlen_q * num_heads * head_size;        // stride(0)
+    params.o_batch_stride = seqlen_q * num_heads * head_size;    // stride(0)
   } else {
     params.q_batch_stride = 0;
     params.k_batch_stride = 0;
