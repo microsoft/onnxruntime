@@ -105,7 +105,7 @@ TEST_P(ModelTest, Run) {
         model_path.find(ORT_TSTR("yolov3")) > 0 ||
         model_path.find(ORT_TSTR("mask_rcnn")) > 0 ||
         model_path.find(ORT_TSTR("FNS")) > 0) {
-        SkipTest("Skipping SSD test for big tolearance failure or shape error");
+        SkipTest("Skipping SSD test for big tolearance failure or other errors");
         return;
       }
   }
