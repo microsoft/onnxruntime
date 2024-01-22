@@ -57,7 +57,7 @@ jobs:
           --build_dir build \
           --skip_submodule_sync \
           --cmake_generator=Ninja \
-          --parallel \
+          --parallel --use_preset_compile_flags \
           --build_shared_lib \
           --config Debug \
           --use_cache \

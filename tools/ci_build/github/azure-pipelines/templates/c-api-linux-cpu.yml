@@ -64,7 +64,7 @@ jobs:
           docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}} /bin/bash -c "python3.9 \
           /onnxruntime_src/tools/ci_build/build.py --enable_lto --build_java --build_nodejs --build_dir /build --config Release \
-          --skip_submodule_sync  --parallel --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/linux-${{parameters.OnnxruntimeArch}}"
+          --skip_submodule_sync --parallel --use_preset_compile_flags --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/linux-${{parameters.OnnxruntimeArch}}"
         workingDirectory: $(Build.SourcesDirectory)
       displayName: 'Build'
 

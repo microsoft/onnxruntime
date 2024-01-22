@@ -37,7 +37,7 @@ jobs:
       buildArch: x64
       setVcvars: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
-      commonBuildArgs: '--compile_no_warning_as_error --build_dir $(Build.BinariesDirectory)\Windows --skip_submodule_sync --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --use_qnn --qnn_home C:\data\qnnsdk\${{parameters.QnnSdk}} --parallel'
+      commonBuildArgs: '--compile_no_warning_as_error --build_dir $(Build.BinariesDirectory)\Windows --skip_submodule_sync --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --use_qnn --qnn_home C:\data\qnnsdk\${{parameters.QnnSdk}} --parallel --use_preset_compile_flags '
 
     steps:
       - template: templates/set-version-number-variables-step.yml

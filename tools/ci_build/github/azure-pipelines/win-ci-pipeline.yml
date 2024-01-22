@@ -74,7 +74,7 @@ stages:
         displayName: 'Build and Test'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --cmake_generator "Visual Studio 17 2022" --disable_memleak_checker --enable_address_sanitizer
+          arguments: --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --use_preset_compile_flags --cmake_generator "Visual Studio 17 2022" --disable_memleak_checker --enable_address_sanitizer
           workingDirectory: '$(Build.BinariesDirectory)'
 
 

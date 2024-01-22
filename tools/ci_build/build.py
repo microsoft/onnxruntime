@@ -425,7 +425,7 @@ def parse_arguments():
         "--enable_address_sanitizer", action="store_true", help="Enable address sanitizer. Windows/Linux/MacOS only."
     )
     # The following feature requires installing some special Visual Studio components that do not get installed by default. Therefore the options is default OFF.
-    parser.add_argument("--enable_qspectre", action="store_true", help="Enable Qspectre. Windows only.")
+    parser.add_argument("--use_preset_compile_flags", action="store_true", help="Enable Qspectre. Windows only.")
     parser.add_argument(
         "--disable_memleak_checker",
         action="store_true",
@@ -1460,16 +1460,7 @@ def generate_build_tree(
     for config in configs:
         # Setup default values for cflags/cxxflags/ldflags.
         # The values set here are purely for security and compliance purposes. ONNX Runtime should work fine without these flags.
-        if (
-            "CFLAGS" not in os.environ
-            and "CXXFLAGS" not in os.environ
-            and (not args.use_cuda or "CUDAFLAGS" not in os.environ)
-            and not args.ios
-            and not args.android
-            and not args.build_wasm
-            and not args.use_rocm
-            and not (is_linux() and platform.machine() != "aarch64" and platform.machine() != "x86_64")
-        ):
+        if args.use_preset_compile_flags and not args.ios and not args.android and not args.build_wasm:
             if is_windows():
                 cflags = ["/guard:cf", "/DWIN32", "/D_WINDOWS"]
                 njobs = number_of_parallel_jobs(args)
@@ -1489,8 +1480,7 @@ def generate_build_tree(
                 # The "/profile" flag implies "/DEBUG:FULL /DEBUGTYPE:cv,fixup /OPT:REF /OPT:NOICF /INCREMENTAL:NO /FIXED:NO". We set it for satisfying a Microsoft internal compliance requirement. External users
                 # do not need to have it.
                 ldflags = ["/profile", "/DYNAMICBASE"]
-                if args.enable_qspectre:
-                    cflags += ["/Qspectre"]
+                cflags += ["/Qspectre"]
                 if config == "Release":
                     cflags += ["/O2", "/Ob2", "/DNDEBUG"]
                 elif config == "RelWithDebInfo":

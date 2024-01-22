@@ -171,7 +171,7 @@ stages:
                   --build_dir /build \
                   --config ${{ variables['buildConfig'] }} \
                   --skip_submodule_sync \
-                  --parallel \
+                  --parallel --use_preset_compile_flags \
                   --build_wheel \
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \

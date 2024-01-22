@@ -24,5 +24,5 @@ python3 -m pip install $build_dir/$config/dist/*.whl
 
 echo Run $config unit tests
 pushd $build_dir/$config/
-python3 $src_dir/tools/ci_build/build.py --build_dir $build_dir --cmake_generator Ninja --config $config --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_onnx_tests --enable_transformers_tool_test --ctest_path ""
+python3 $src_dir/tools/ci_build/build.py --build_dir $build_dir --cmake_generator Ninja --config $config --test --skip_submodule_sync --build_shared_lib --parallel --use_preset_compile_flags  --build_wheel --enable_onnx_tests --enable_transformers_tool_test --ctest_path ""
 popd

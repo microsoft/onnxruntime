@@ -102,7 +102,7 @@ jobs:
               --config Release \
               --skip_submodule_sync \
               --build_shared_lib \
-              --parallel \
+              --parallel --use_preset_compile_flags \
               --build_wheel \
               --enable_onnx_tests \
               --enable_training \

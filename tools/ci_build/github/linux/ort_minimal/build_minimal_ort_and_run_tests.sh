@@ -72,7 +72,7 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --config Debug \
     --skip_submodule_sync \
     --build_shared_lib \
-    --parallel \
+    --parallel --use_preset_compile_flags \
     --minimal_build ${MINIMAL_BUILD_ARGS} \
     --disable_ml_ops \
     --include_ops_by_config ${REDUCED_OPS_CONFIG_FILE} \
