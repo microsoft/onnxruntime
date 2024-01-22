@@ -225,7 +225,8 @@ stages:
     - template: templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: onnxruntime/tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda11_8_tensorrt8_6
-        Context: tools/ci_build/github/linux/docker/
+        Context: onnxruntime/tools/ci_build/github/linux/docker/
+        ScriptName: onnxruntime/tools/ci_build/get_docker_image.py
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
         Repository: onnxruntimeubi8packagestest
         UpdateDepsTxt: false
