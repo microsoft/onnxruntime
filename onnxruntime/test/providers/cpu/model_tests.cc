@@ -100,9 +100,13 @@ TEST_P(ModelTest, Run) {
   // ORT enables TF32 in GEMM for A100. TF32 will cause precsion loss and fail this test.
   if (HasCudaEnvironment(800) && provider_name == "cuda") {
     per_sample_tolerance = 1e-1;
-    if (model_path.find(ORT_TSTR("SSD")) > 0 || model_path.find(ORT_TSTR("ssd")) > 0 || model_path.find(ORT_TSTR("yolov3")) > 0)
-      || model_path.find(ORT_TSTR("mask_rcnn")) > 0 || model_path.find(ORT_TSTR("FNS")) > 0 {
-        GTEST_SKIP() << "Skipping SSD test for big tolearance failure or shape error";
+    if (model_path.find(ORT_TSTR("SSD")) > 0 ||
+        model_path.find(ORT_TSTR("ssd")) > 0 ||
+        model_path.find(ORT_TSTR("yolov3")) > 0 ||
+        model_path.find(ORT_TSTR("mask_rcnn")) > 0 ||
+        model_path.find(ORT_TSTR("FNS")) > 0) {
+        SkipTest("Skipping SSD test for big tolearance failure or shape error");
+        return;
       }
   }
 #endif
