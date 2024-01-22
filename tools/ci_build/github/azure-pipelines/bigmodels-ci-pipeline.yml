@@ -225,28 +225,24 @@ stages:
 
     - template: templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
-        Context: tools/ci_build/github/linux/docker
-        DockerBuildArgs: "
-        --network=host
-        --build-arg BASEIMAGE=$(docker_base_image)
-        --build-arg TRT_VERSION=$(linux_trt_version)
-        --build-arg BUILD_UID=$( id -u )
-        "
-        Repository: onnxruntimecuda11build
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda11_8_tensorrt8_6
+        Context: tools/ci_build/github/linux/docker/
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimeubi8packagestest
+        UpdateDepsTxt: false
 
     - script: |
         docker run --rm --gpus all -v $PWD:/workspace -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
-           -v $(Agent.TempDirectory)/llama2_onnx_ft16:/models onnxruntimecuda11build \
+           -v $(Agent.TempDirectory)/llama2_onnx_ft16:/models onnxruntimeubi8packagestest \
           bash -c "
             set -ex; \
-            /opt/python/cp38-cp38/bin/python3 -m pip install --upgrade pip ; \
-            /opt/python/cp38-cp38/bin/python3 -m pip install /ort-artifact/*.whl ; \
-            /opt/python/cp38-cp38/bin/python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
-            /opt/python/cp38-cp38/bin/python3 -m pip install sentencepiece ; \
-            pushd /workspace ;\
-            /opt/python/cp38-cp38/bin/python3 python MinimumExample/Example_ONNX_LlamaV2.py --onnx_file /models/ONNX/LlamaV2_7B_FT_float16.onnx \
+            python3 -m pip install --upgrade pip ; \
+            python3 -m pip install /ort-artifact/*.whl ; \
+            python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
+            python3 -m pip install sentencepiece ; \
+            pushd /workspace ; \
+            python3 python MinimumExample/Example_ONNX_LlamaV2.py --onnx_file /models/ONNX/LlamaV2_7B_FT_float16.onnx \
               --embedding_file /models/embeddings.pth --tokenizer_path tokenizer.model --prompt "What is the lightest element?" ; \
             popd ; \
           "
