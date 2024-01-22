@@ -243,7 +243,7 @@ stages:
               python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
               python3 -m pip install sentencepiece ; \
               pushd /workspace ; \
-              python3 python MinimumExample/Example_ONNX_LlamaV2.py --onnx_file /models/ONNX/LlamaV2_7B_FT_float16.onnx \
+              python3 MinimumExample/Example_ONNX_LlamaV2.py --onnx_file /models/ONNX/LlamaV2_7B_FT_float16.onnx \
                 --embedding_file /models/embeddings.pth --tokenizer_path tokenizer.model --prompt "What is the lightest element?" ; \
               popd ; \
             "
