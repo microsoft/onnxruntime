@@ -366,21 +366,10 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   const auto& logger = *GetLogger();
   bool load_from_cached_context = false;
   bool is_qnn_ctx_model = qnn::GraphHasEpContextNode(graph_viewer);
-  if (is_qnn_ctx_model) {
-    load_from_cached_context = true;
-  }
 
-  // This is for case: QDQ model + Onnx Qnn context cache model
-  if (context_cache_enabled_ && !is_qnn_ctx_model) {
-    onnxruntime::PathString context_cache_path;
-    load_from_cached_context = qnn::IsContextCacheFileExists(context_cache_path_cfg_,
-                                                             graph_viewer.ModelPath().ToPathString(),
-                                                             context_cache_path);
-  }
-
-  // It will load the QnnSystem lib if load_from_cached_context=true, and
-  // delay the Qnn context creation to Compile() using the cached context
-  auto rt = qnn_backend_manager_->SetupBackend(logger, load_from_cached_context);
+  // It will load the QnnSystem lib if is_qnn_ctx_model=true, and
+  // delay the Qnn context creation to Compile() using the cached context binary
+  auto rt = qnn_backend_manager_->SetupBackend(logger, is_qnn_ctx_model);
   if (Status::OK() != rt) {
     LOGS(logger, ERROR) << "QNN SetupBackend failed " << rt.ErrorMessage();
     return result;
@@ -582,41 +571,33 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     is_ctx_file_exist = qnn::IsContextCacheFileExists(context_cache_path_cfg_,
                                                       graph_viewer_0.ModelPath().ToPathString(),
                                                       context_cache_path);
-    if (is_ctx_file_exist) {
-      ORT_RETURN_IF_ERROR(qnn::ValidateWithContextFile(fused_nodes_and_graphs,
-                                                       context_cache_path,
-                                                       graph_viewer_0.GetGraph().Name(),
-                                                       graph_viewer_0.GetGraph().Description(),
-                                                       logger));
-    }
+    ORT_RETURN_IF(is_ctx_file_exist,
+                  "The inference session is created from normal ONNX model. And an EP context model file is provided and existed. \
+                  Please remove the EP context model manually if you want to re-generate it.");
   }
 
-  if (is_qnn_ctx_model || (context_cache_enabled_ && is_ctx_file_exist)) {
-    // Table<EPContext node name, QnnModel>, the node name is not same with the graph_meta_id
+  if (is_qnn_ctx_model) {
+    // Table<EPContext node name, QnnModel>, the node name is the graph_meta_id (old) created from user model which used to generate the EP context model
+    // for this session (created from an EP context model), the graph_meta_id is new
     std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models;
 
-    if (is_qnn_ctx_model) {
-      int main_context_pos = -1;
-      ORT_RETURN_IF_ERROR(qnn::GetMainContextNode(fused_nodes_and_graphs, qnn_backend_manager_.get(),
-                                                  logger, main_context_pos, qnn_models));
+    int main_context_pos = -1;
+    ORT_RETURN_IF_ERROR(qnn::GetMainContextNode(fused_nodes_and_graphs, qnn_backend_manager_.get(),
+                                                logger, main_context_pos, qnn_models));
 
-      const onnxruntime::GraphViewer& main_ctx_graph_viewer(fused_nodes_and_graphs[main_context_pos].filtered_graph);
-      // Create QNN context from the cached binary, deserialize the QNN graph from the binary
-      ORT_RETURN_IF_ERROR(qnn::LoadQnnCtxFromOnnxGraph(main_ctx_graph_viewer,
-                                                       context_cache_path,
-                                                       qnn_backend_manager_.get(),
-                                                       qnn_models));
-    } else {
-      ORT_RETURN_IF_ERROR(qnn::LoadContextFromOnnxModel(fused_nodes_and_graphs, context_cache_path,
-                                                        qnn_backend_manager_.get(), logger, qnn_models));
-    }
+    const onnxruntime::GraphViewer& main_ctx_graph_viewer(fused_nodes_and_graphs[main_context_pos].filtered_graph);
+    // Create QNN context from the cached binary, deserialize the QNN graph from the binary
+    ORT_RETURN_IF_ERROR(qnn::LoadQnnCtxFromOnnxGraph(main_ctx_graph_viewer,
+                                                     context_cache_path,
+                                                     qnn_backend_manager_.get(),
+                                                     qnn_models));
 
     for (auto fused_node_and_graph : fused_nodes_and_graphs) {
       const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
       const auto& ep_context_node = graph_viewer.Nodes().begin();
       const Node& fused_node = fused_node_and_graph.fused_node;
       const std::string& graph_meta_id = fused_node.Name();
-      std::string key = is_qnn_ctx_model ? ep_context_node->Name() : graph_meta_id;
+      std::string key = ep_context_node->Name();
       ORT_RETURN_IF(qnn_models.find(key) == qnn_models.end(), key + " key name not exist in table qnn_models.");
       auto qnn_model = std::move(qnn_models[key]);
       ORT_RETURN_IF_ERROR(qnn_model->SetGraphInputOutputInfo(graph_viewer, fused_node));

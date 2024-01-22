@@ -13,10 +13,14 @@ namespace onnxruntime {
 namespace qnn {
 
 bool GraphHasEpContextNode(const onnxruntime::GraphViewer& graph_viewer) {
-  // It's an Onnx model with Qnn context cache binary if it has a node with EPContext type
+  // It's an Onnx model with Qnn context cache binary if it has a node with EPContext type and the source is QNN or QNNExecutionProvider.
   for (const auto& node : graph_viewer.Nodes()) {
     if (EPCONTEXT_OP == node.OpType()) {
-      return true;
+      NodeAttrHelper node_helper(node);
+      const std::string cache_source = node_helper.Get(SOURCE, "");
+      if (cache_source == kQnnExecutionProvider || cache_source == "QNN") {
+        return true;
+      }
     }
   }
   return false;
@@ -53,50 +57,6 @@ Status GetMainContextNode(const std::vector<IExecutionProvider::FusedNodeAndGrap
   }
 
   ORT_RETURN_IF(main_context_pos < 0, "Failed to find the EPContext node with main_context=1");
-  return Status::OK();
-}
-
-Status GetContextFromOnnxModel(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
-                               const onnxruntime::PathString& ctx_onnx_model_path,
-                               QnnBackendManager* qnn_backend_manager,
-                               const logging::Logger& logger,
-                               std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models) {
-  for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
-    const Node& fused_node = fused_node_and_graph.fused_node;
-    qnn_models.emplace(fused_node.Name(),
-                       std::make_unique<qnn::QnnModel>(logger, qnn_backend_manager));
-  }
-  using namespace onnxruntime;
-  std::shared_ptr<Model> model;
-  ORT_RETURN_IF_ERROR(Model::Load(ctx_onnx_model_path, model, {}, logger));
-  const auto& graph = GraphViewer(model->MainGraph());
-
-  for (const auto& ep_context_node : graph.Nodes()) {
-    if (EPCONTEXT_OP != ep_context_node.OpType()) {
-      continue;
-    }
-    NodeAttrHelper node_helper(ep_context_node);
-    int64_t is_main_context = node_helper.Get(MAIN_CONTEXT, static_cast<int64_t>(0));
-    if (1 == is_main_context) {
-      return GetEpContextFromMainNode(ep_context_node, ctx_onnx_model_path, qnn_backend_manager, qnn_models);
-    }
-  }
-
-  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Failed to find EPContext node with main_context=1.");
-}
-
-Status LoadContextFromOnnxModel(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                const onnxruntime::PathString& ctx_onnx_model_path,
-                                QnnBackendManager* qnn_backend_manager,
-                                const logging::Logger& logger,
-                                std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models) {
-  Status status = GetContextFromOnnxModel(fused_nodes_and_graphs, ctx_onnx_model_path, qnn_backend_manager, logger, qnn_models);
-
-  // This is the protocol with customer that status with INVALID_GRAPH will be generated if failed to load context model
-  if (!status.IsOK()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Failed to load from EpContextModel. ", status.ErrorMessage());
-  }
-
   return Status::OK();
 }
 

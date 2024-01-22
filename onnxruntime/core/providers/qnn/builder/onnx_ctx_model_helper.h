@@ -57,18 +57,6 @@ Status LoadQnnCtxFromOnnxGraph(const onnxruntime::GraphViewer& graph_viewer,
                                QnnBackendManager* qnn_backend_manager,
                                std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models);
 
-Status GetContextFromOnnxModel(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
-                               const onnxruntime::PathString& ctx_onnx_model_path,
-                               QnnBackendManager* qnn_backend_manager,
-                               const logging::Logger& logger,
-                               std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models);
-
-Status LoadContextFromOnnxModel(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                const onnxruntime::PathString& ctx_onnx_model_path,
-                                QnnBackendManager* qnn_backend_manager,
-                                const logging::Logger& logger,
-                                std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models);
-
 Status ValidateWithContextFile(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
                                const onnxruntime::PathString& context_cache_path,
                                const std::string& model_name,
