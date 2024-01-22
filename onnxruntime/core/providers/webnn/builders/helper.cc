@@ -166,8 +166,13 @@ bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type) {
   // TODO: Remove legacy "type" once all browsers implement the new "dataType".
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
       desc.set("type", emscripten::val("uint8"));
       desc.set("dataType", emscripten::val("uint8"));
+      return true;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+      desc.set("type", emscripten::val("int8"));
+      desc.set("dataType", emscripten::val("int8"));
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
       desc.set("type", emscripten::val("float16"));

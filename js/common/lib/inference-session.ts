@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {InferenceSession as InferenceSessionImpl} from './inference-session-impl.js';
+import {OnnxModelOptions} from './onnx-model.js';
 import {OnnxValue, OnnxValueDataLocation} from './onnx-value.js';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
@@ -43,7 +44,7 @@ export declare namespace InferenceSession {
   /**
    * A set of configurations for session behavior.
    */
-  export interface SessionOptions {
+  export interface SessionOptions extends OnnxModelOptions {
     /**
      * An array of execution provider options.
      *
@@ -180,7 +181,7 @@ export declare namespace InferenceSession {
 
   // Currently, we have the following backends to support execution providers:
   // Backend Node.js binding: supports 'cpu' and 'cuda'.
-  // Backend WebAssembly: supports 'cpu', 'wasm', 'xnnpack' and 'webnn'.
+  // Backend WebAssembly: supports 'cpu', 'wasm', 'webgpu' and 'webnn'.
   // Backend ONNX.js: supports 'webgl'.
   // Backend React Native: supports 'cpu', 'xnnpack', 'coreml' (iOS), 'nnapi' (Android).
   interface ExecutionProviderOptionMap {

@@ -14,6 +14,8 @@
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 
+#include <utility>
+
 namespace onnxruntime {
 namespace webnn {
 
@@ -158,8 +160,15 @@ Status ModelBuilder::RegisterInitializers() {
       }
       switch (data_type) {
         case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+        case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+          desc.set("type", emscripten::val("uint8"));
           view = emscripten::val{emscripten::typed_memory_view(num_elements,
                                                                reinterpret_cast<uint8_t*>(tensor_ptr))};
+          break;
+        case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+          desc.set("type", emscripten::val("int8"));
+          view = emscripten::val{emscripten::typed_memory_view(num_elements,
+                                                               reinterpret_cast<int8_t*>(tensor_ptr))};
           break;
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
           view = emscripten::val{emscripten::typed_memory_view(num_elements,
@@ -313,8 +322,13 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
   ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "Unsupported data type");
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
       view = emscripten::val{emscripten::typed_memory_view(size / sizeof(uint8_t),
                                                            reinterpret_cast<const uint8_t*>(dest))};
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(int8_t),
+                                                           reinterpret_cast<const int8_t*>(dest))};
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
       view = emscripten::val{emscripten::typed_memory_view(size / sizeof(uint16_t),
@@ -437,6 +451,38 @@ void ModelBuilder::AddScalarOutput(const std::string& output_name) {
 
 void ModelBuilder::AddOperand(const std::string& name, const emscripten::val& operand) {
   wnn_operands_.insert(std::make_pair(name, operand));
+}
+
+// Get the zero scalar constant.
+// Workaround for builer.constant(value, type) method since it has not been implemented now.
+// https://webmachinelearning.github.io/webnn/#api-mlgraphbuilder-constant-value-type
+// BTW, the spec is discussing if the builer.constant(value, type) should be dropped at
+// https://github.com/webmachinelearning/webnn/issues/475. Fix me according to the spec decision.
+const emscripten::val& ModelBuilder::GetZeroConstant(const std::string& data_type) {
+  std::string name = "webnn_zero_constant_" + data_type;
+  // If the operand does not exist, create it.
+  if (wnn_operands_.find(name) == wnn_operands_.end()) {
+    emscripten::val desc = emscripten::val::object();
+    emscripten::val dims = emscripten::val::array();
+    desc.set("dimensions", dims);
+    emscripten::val zero_buffer = emscripten::val::undefined();
+    if (data_type == "uint8") {
+      if (!SetWebnnDataType(desc, ONNX_NAMESPACE::TensorProto_DataType_UINT8)) {
+        ORT_THROW("Unsupported data type: " + data_type);
+      }
+      zero_buffer = emscripten::val::global("Uint8Array").new_(1);
+    } else if (data_type == "float32") {
+      if (!SetWebnnDataType(desc, ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
+        ORT_THROW("Unsupported data type: " + data_type);
+      }
+      zero_buffer = emscripten::val::global("Float32Array").new_(1);
+    } else {
+      ORT_THROW("Unsupported data type: " + data_type);
+    }
+    emscripten::val zero_constant = wnn_builder_.call<emscripten::val>("constant", desc, zero_buffer);
+    wnn_operands_.insert(std::make_pair(name, zero_constant));
+  }
+  return wnn_operands_.at(name);
 }
 
 void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {

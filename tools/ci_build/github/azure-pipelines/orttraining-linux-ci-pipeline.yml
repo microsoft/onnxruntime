@@ -44,7 +44,7 @@ jobs:
     skipComponentGovernanceDetection: true
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
-  pool: onnxruntime-Ubuntu-2004-Training-CPU
+  pool: onnxruntime-Ubuntu-2204-Training-CPU
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'

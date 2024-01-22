@@ -16,7 +16,7 @@ stages:
       timeoutInMinutes: 180
       workspace:
         clean: all
-      pool: onnxruntime-Ubuntu2004-AMD-CPU
+      pool: onnxruntime-Ubuntu2204-AMD-CPU
 
       strategy:
         matrix:
@@ -28,6 +28,8 @@ stages:
             PythonVersion: '3.10'
           Python311:
             PythonVersion: '3.11'
+          Python312:
+            PythonVersion: '3.12'
 
       steps:
       - checkout: self
@@ -99,5 +101,4 @@ stages:
     enable_windows_cpu: true
     enable_windows_gpu: false
     enable_mac_cpu: true
-    enable_mac_silicon: true
     enable_linux_arm: false

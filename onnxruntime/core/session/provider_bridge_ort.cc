@@ -6,6 +6,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/framework/allocator_utils.h"
+#include "core/framework/config_options.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/data_types.h"
 #include "core/framework/data_transfer_manager.h"
@@ -87,6 +88,10 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/providers/cann/cann_provider_options.h"
 #include "core/providers/dnnl/dnnl_provider_options.h"
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#endif
 
 // The filename extension for a shared library is different per platform
 #ifdef _WIN32
@@ -427,6 +432,7 @@ struct ProviderHostImpl : ProviderHost {
   int64_t AttributeProto__i(const ONNX_NAMESPACE::AttributeProto* p) override { return p->i(); }
   float AttributeProto__f(const ONNX_NAMESPACE::AttributeProto* p) override { return p->f(); }
   void AttributeProto__set_s(ONNX_NAMESPACE::AttributeProto* p, const ::std::string& value) override { return p->set_s(value); }
+  void AttributeProto__set_i(ONNX_NAMESPACE::AttributeProto* p, int64_t value) override { return p->set_i(value); }
   const ::std::string& AttributeProto__s(const ONNX_NAMESPACE::AttributeProto* p) override { return p->s(); }
   void AttributeProto__set_name(ONNX_NAMESPACE::AttributeProto* p, const ::std::string& value) override { return p->set_name(value); }
   void AttributeProto__set_type(ONNX_NAMESPACE::AttributeProto* p, ONNX_NAMESPACE::AttributeProto_AttributeType value) override { return p->set_type(value); }
@@ -447,6 +453,7 @@ struct ProviderHostImpl : ProviderHost {
   ONNX_NAMESPACE::ValueInfoProtos* GraphProto__mutable_value_info(ONNX_NAMESPACE::GraphProto* p) override { return p->mutable_value_info(); }
   ONNX_NAMESPACE::TensorProtos* GraphProto__mutable_initializer(ONNX_NAMESPACE::GraphProto* p) override { return p->mutable_initializer(); }
   ONNX_NAMESPACE::NodeProto* GraphProto__add_node(ONNX_NAMESPACE::GraphProto* p) override { return p->add_node(); }
+  ONNX_NAMESPACE::NodeProto* GraphProto__mutable_node(ONNX_NAMESPACE::GraphProto* p, int index) override { return p->mutable_node(index); }
 
   void GraphProto__operator_assign(ONNX_NAMESPACE::GraphProto* p, const ONNX_NAMESPACE::GraphProto& v) override { *p = v; }
 
@@ -470,6 +477,7 @@ struct ProviderHostImpl : ProviderHost {
   void NodeProto__operator_assign(ONNX_NAMESPACE::NodeProto* p, const ONNX_NAMESPACE::NodeProto& v) override { *p = v; }
   int NodeProto__attribute_size(ONNX_NAMESPACE::NodeProto* p) override { return p->attribute_size(); }
   const ONNX_NAMESPACE::AttributeProto& NodeProto__attribute(const ONNX_NAMESPACE::NodeProto* p, int index) const override { return p->attribute(index); }
+  ONNX_NAMESPACE::AttributeProto* NodeProto__mutable_attribute(ONNX_NAMESPACE::NodeProto* p, int index) override { return p->mutable_attribute(index); }
 
   // TensorProto (wrapped)
   std::unique_ptr<ONNX_NAMESPACE::TensorProto> TensorProto__construct() override { return std::make_unique<ONNX_NAMESPACE::TensorProto>(); }
@@ -525,6 +533,11 @@ struct ProviderHostImpl : ProviderHost {
   ONNX_NAMESPACE::ValueInfoProto* ValueInfoProtos__Add(ONNX_NAMESPACE::ValueInfoProtos* p) override { return p->Add(); }
 
   const ONNX_NAMESPACE::ValueInfoProto& ValueInfoProtos__operator_array(const ONNX_NAMESPACE::ValueInfoProtos* p, int index) override { return (*p)[index]; }
+
+  // ConfigOptions (wrapped)
+  std::optional<std::string> ConfigOptions__GetConfigEntry(const ConfigOptions* p, const std::string& config_key) override {
+    return p->GetConfigEntry(config_key);
+  }
 
   // ComputeCapability (wrapped)
   std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) override { return std::make_unique<ComputeCapability>(std::move(t_sub_graph)); }
@@ -931,6 +944,7 @@ struct ProviderHostImpl : ProviderHost {
   uint32_t OpKernelInfo__GetInputCount(const OpKernelInfo* p) override { return p->GetInputCount(); }
   uint32_t OpKernelInfo__GetOutputCount(const OpKernelInfo* p) override { return p->GetOutputCount(); }
   const Node& OpKernelInfo__node(const OpKernelInfo* p) override { return p->node(); }
+  const ConfigOptions& OpKernelInfo__GetConfigOptions(const OpKernelInfo* p) override { return p->GetConfigOptions(); }
 
   // SessionState (wrapped)
   const DataTransferManager& SessionState__GetDataTransferMgr(const SessionState* p) override { return p->GetDataTransferMgr(); }
@@ -1362,10 +1376,6 @@ std::shared_ptr<IExecutionProviderFactory> DnnlProviderFactoryCreator::Create(in
   return s_library_dnnl.Get().CreateExecutionProviderFactory(use_arena);
 }
 
-std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(int device_id) {
-  return s_library_tensorrt.Get().CreateExecutionProviderFactory(device_id);
-}
-
 std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(int device_id) {
   return s_library_migraphx.Get().CreateExecutionProviderFactory(device_id);
 }
@@ -1409,8 +1419,42 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_profile_max_shapes = "";
   trt_options_converted.trt_profile_opt_shapes = "";
   trt_options_converted.trt_cuda_graph_enable = 0;
+  trt_options_converted.trt_dump_ep_context_model = 0;
+  trt_options_converted.trt_ep_context_file_path = "";
+  trt_options_converted.trt_ep_context_embed_mode = 0;
+  trt_options_converted.trt_engine_cache_prefix = "";
 
   return trt_options_converted;
+}
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
+// Apply configs from session options to TensorRT provider options V2 that are needed for TensorRT EP.
+// For example, EP context configs.
+void UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(OrtSessionOptions* session_options, OrtTensorRTProviderOptionsV2* tensorrt_options) {
+  if (session_options) {
+    auto context_cache_enabled = (session_options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
+    tensorrt_options->trt_dump_ep_context_model = context_cache_enabled;
+    LOGS_DEFAULT(VERBOSE) << "Context cache enable: " << context_cache_enabled;
+
+    auto context_cache_path = (session_options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+    tensorrt_options->trt_ep_context_file_path = context_cache_path.c_str();
+    LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << tensorrt_options->trt_ep_context_file_path;
+
+    auto embed_mode = (session_options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "1");
+    if ("1" == embed_mode) {
+      tensorrt_options->trt_ep_context_embed_mode = 1;
+    } else if ("0" == embed_mode) {
+      tensorrt_options->trt_ep_context_embed_mode = 0;
+    } else {
+      LOGS_DEFAULT(VERBOSE) << "Invalid ep.context_embed_mode: " << embed_mode << " only 0 or 1 allowed. Set to 1.";
+    }
+    LOGS_DEFAULT(VERBOSE) << "User specified context cache embed mode: " << tensorrt_options->trt_ep_context_embed_mode;
+  }
+}
+#endif
+
+std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(int device_id) {
+  return s_library_tensorrt.Get().CreateExecutionProviderFactory(device_id);
 }
 
 std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(const OrtTensorRTProviderOptions* provider_options) {
@@ -1437,23 +1481,27 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
   if (legacy_ov_options->device_id != nullptr)
     ov_options_converted_map["device_id"] = legacy_ov_options->device_id;
 
-  ov_options_converted_map["num_of_threads"] = std::to_string(legacy_ov_options->num_of_threads);
+  if (legacy_ov_options->num_of_threads != '\0')
+    ov_options_converted_map["num_of_threads"] = std::to_string(legacy_ov_options->num_of_threads);
 
   if (legacy_ov_options->cache_dir != nullptr)
     ov_options_converted_map["cache_dir"] = legacy_ov_options->cache_dir;
 
-  std::stringstream context_string;
-
-  if (legacy_ov_options->context != nullptr)
+  if (legacy_ov_options->context != nullptr) {
+    std::stringstream context_string;
     context_string << legacy_ov_options->context;
-  ov_options_converted_map["context"] = context_string.str();
+    ov_options_converted_map["context"] = context_string.str();
+  }
 
   ov_options_converted_map["enable_opencl_throttling"] = legacy_ov_options->enable_opencl_throttling;
-  std::string enable_dynamic_shapes = reinterpret_cast<const char*>(legacy_ov_options->enable_dynamic_shapes);
-  if (enable_dynamic_shapes == "true" || enable_dynamic_shapes == "True") {
-    ov_options_converted_map["disable_dynamic_shapes"] = "false";
-  } else if (enable_dynamic_shapes == "false" || enable_dynamic_shapes == "False") {
-    ov_options_converted_map["disable_dynamic_shapes"] = "true";
+
+  if (legacy_ov_options->enable_dynamic_shapes != '\0') {
+    std::string enable_dynamic_shapes = reinterpret_cast<const char*>(legacy_ov_options->enable_dynamic_shapes);
+    if (enable_dynamic_shapes == "true" || enable_dynamic_shapes == "True") {
+      ov_options_converted_map["disable_dynamic_shapes"] = "false";
+    } else if (enable_dynamic_shapes == "false" || enable_dynamic_shapes == "False") {
+      ov_options_converted_map["disable_dynamic_shapes"] = "true";
+    }
   }
   // Add new provider option below
   ov_options_converted_map["num_streams"] = "1";
@@ -1693,7 +1741,24 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtS
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptions* tensorrt_options) {
   API_IMPL_BEGIN
-  auto factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
+
+  std::shared_ptr<onnxruntime::IExecutionProviderFactory> factory;
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
+  auto ep_context_cache_enabled_from_sess_options = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
+  // If EP context configs are provided in session options, we need to propagate them to provider options
+  if (ep_context_cache_enabled_from_sess_options) {
+    OrtTensorRTProviderOptionsV2 trt_options_converted = onnxruntime::OrtTensorRTProviderOptionsToOrtTensorRTProviderOptionsV2(tensorrt_options);
+
+    onnxruntime::UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(options, &trt_options_converted);
+    factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&trt_options_converted);
+  } else {
+    factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
+  }
+#else
+  factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
+#endif
+
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_Tensorrt: Failed to load shared library");
   }
@@ -1723,6 +1788,39 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO, _In
   auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(provider_options);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_OpenVINO: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO_V2,
+                    _In_ OrtSessionOptions* options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    _In_ size_t num_keys) {
+  API_IMPL_BEGIN
+  onnxruntime::ProviderOptions provider_options;
+  for (size_t i = 0; i != num_keys; ++i) {
+    if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
+        provider_options_values[i] == nullptr || provider_options_values[i][0] == '\0') {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Provider options key/value cannot be empty");
+    }
+
+    // arbitrary length to validate the key/value. adjust if/when needed.
+    // TODO: are any other input validation checks required here (and in the other functions that process
+    // provider options)?
+    if (strlen(provider_options_keys[i]) > 1024 || strlen(provider_options_values[i]) > 1024) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "Maximum string length for a provider options key/value is 1024.");
+    }
+
+    provider_options[provider_options_keys[i]] = provider_options_values[i];
+  }
+  auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(&provider_options);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_OpenVINO_V2: Failed to load shared library");
   }
 
   options->provider_factories.push_back(factory);
@@ -1797,7 +1895,31 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM, _In_ Or
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options) {
   API_IMPL_BEGIN
-  auto factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
+
+  std::shared_ptr<onnxruntime::IExecutionProviderFactory> factory;
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
+  auto ep_context_cache_enabled_from_provider_options = tensorrt_options->trt_dump_ep_context_model != 0;
+  auto ep_context_cache_enabled_from_sess_options = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
+
+  // If EP context configs are provided in session options, we need to propagate them to provider options. However,
+  // if provider options already have the EP context configs provided, the configs in session options will be ignored
+  // since provider options has higher priority than session options.
+  if (!ep_context_cache_enabled_from_provider_options && ep_context_cache_enabled_from_sess_options) {
+    // We need to create a new provider options V2 object and copy from provider_options, due to the "const" object pointed by provider_options can't be modified.
+    // Note: No need to worry about tensorrt_options being a local variable, CreateExecutionProviderFactory() in TRT EP will
+    // create a factory object that copies any provider options from tensorrt_options including "const char*" provider options.
+    OrtTensorRTProviderOptionsV2 new_tensorrt_options = *tensorrt_options;  // copy and assign from tensorrt_options
+
+    onnxruntime::UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(options, &new_tensorrt_options);
+    factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&new_tensorrt_options);
+  } else {
+    factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
+  }
+#else
+  factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
+#endif
+
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_TensorRT: Failed to load shared library");
   }
@@ -1935,6 +2057,7 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
   if (ptr != nullptr) {
     delete[] ptr->trt_int8_calibration_table_name;
     delete[] ptr->trt_engine_cache_path;
+    delete[] ptr->trt_engine_cache_prefix;
     delete[] ptr->trt_timing_cache_path;
     delete[] ptr->trt_engine_decryption_lib_path;
     delete[] ptr->trt_tactic_sources;
@@ -1942,6 +2065,7 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
     delete[] ptr->trt_profile_min_shapes;
     delete[] ptr->trt_profile_max_shapes;
     delete[] ptr->trt_profile_opt_shapes;
+    delete[] ptr->trt_ep_context_file_path;
   }
 
   std::unique_ptr<OrtTensorRTProviderOptionsV2> p(ptr);

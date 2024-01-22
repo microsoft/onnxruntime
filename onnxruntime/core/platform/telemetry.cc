@@ -12,6 +12,21 @@ void LogRuntimeError(uint32_t sessionId, const common::Status& status, const cha
   env.GetTelemetryProvider().LogRuntimeError(sessionId, status, file, function, line);
 }
 
+bool Telemetry::IsEnabled() const {
+  return false;
+}
+
+// Get the current logging level
+// The Level defined as uchar is coming from the ETW Enable callback in TraceLoggingRegisterEx.
+unsigned char Telemetry::Level() const {
+  return 0;
+}
+
+// Get the current keyword
+uint64_t Telemetry::Keyword() const {
+  return 0;
+}
+
 void Telemetry::EnableTelemetryEvents() const {
 }
 
