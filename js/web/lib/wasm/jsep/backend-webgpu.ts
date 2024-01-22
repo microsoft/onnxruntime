@@ -335,17 +335,26 @@ export class WebGpuBackend {
           return;
         }
         // https://www.w3.org/TR/WGSL/#alignof
-        let sizeOfElement = v.type === 'float16' ? 2 : 4;
-        let sizeOfVec = v.type === 'float16' ? 8 : 16;
-        const baseAlignment = data.length <= 2 ? data.length * sizeOfElement : sizeOfVec;
+        const sizeOfElement = v.type === 'float16' ? 2 : 4;
+        let sizeOfVec;
+        let baseAlignment;
+        if (v.type === 'float16') {
+          baseAlignment = data.length > 4 ? 16 : (data.length > 2 ? 8 : data.length * sizeOfElement);
+          sizeOfVec = data.length > 4 ? 16 : sizeOfElement * data.length;
+        } else {
+          baseAlignment = data.length <= 2 ? data.length * sizeOfElement : 16;
+          sizeOfVec = 16;
+        }
         currentOffset = Math.ceil(currentOffset / baseAlignment) * baseAlignment;
         offsets.push(currentOffset);
         // For non-float16 type, when data.length > 4, the uniform variable is of type array<vec4<i32|u32|f32>,N>, where
         // N = Math.ceil(data.length / 4) and SizeOf(vec4<i32|u32|f32>) = 16. The total byte length is N *
         // SizeOf(vec4<i32|u32|f32>). For float16 type, when data.length > 4, the uniform variable is of type
-        // array<vec4<f16>,N>, where N = Math.ceil(data.length / 4) and SizeOf(vec4<f16>) = 8. The total byte length is
-        // N * SizeOf(vec4<f16>).
-        currentOffset += data.length > 4 ? Math.ceil(data.length / 4) * sizeOfVec : data.length * sizeOfElement;
+        // array<mat2x4<f16>,N>, where N = Math.ceil(data.length / 8) and SizeOf(mat2x4<f16>) = 16. The total byte
+        // length is N * SizeOf(mat2x4<f16>).
+        const elementPerVecOrMat = v.type === 'float16' ? 8 : 4;
+        currentOffset +=
+            data.length > 4 ? Math.ceil(data.length / elementPerVecOrMat) * sizeOfVec : data.length * sizeOfElement;
       });
 
       // Meet alignment of struct here: https://www.w3.org/TR/WGSL/#alignment-and-size. For simplicity, set
