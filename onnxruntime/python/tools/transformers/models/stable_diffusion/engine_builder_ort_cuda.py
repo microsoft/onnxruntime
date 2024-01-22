@@ -314,6 +314,7 @@ class OrtCudaEngineBuilder(EngineBuilder):
                             fp32_op_list=self.model_config[model_name].force_fp32_ops,
                             optimize_by_ort=self.model_config[model_name].optimize_by_ort,
                             tmp_dir=self.get_model_dir(model_name, tmp_dir, opt=False, suffix=".fp32", create=False),
+                            final_target_float16=self.model_config[model_name].fp16,
                         )
                     else:
                         logger.info("Found cached optimized model: %s", onnx_fp32_path)

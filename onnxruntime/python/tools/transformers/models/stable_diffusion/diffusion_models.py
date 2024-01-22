@@ -434,6 +434,8 @@ class BaseModel:
         optimize_by_ort=True,
         optimize_by_fusion=True,
         tmp_dir=None,
+        final_target_float16=True,
+        use_external_data=None,
     ):
         optimizer = self.get_ort_optimizer()
         optimizer.optimize(
@@ -444,7 +446,9 @@ class BaseModel:
             fp32_op_list=fp32_op_list,
             optimize_by_ort=optimize_by_ort,
             optimize_by_fusion=optimize_by_fusion,
+            final_target_float16=final_target_float16,
             tmp_dir=tmp_dir,
+            use_external_data=use_external_data,
         )
 
     def optimize_trt(self, input_onnx_path, optimized_onnx_path):
