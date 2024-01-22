@@ -221,13 +221,13 @@ stages:
         feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
         version: 1.0.0
         definition: '772ebce3-7e06-46d5-b3cc-82040ec4b2ce'
-        downloadPath: $(Build.BinariesDirectory)/llama2_onnx_ft16
+        downloadPath: $(Agent.TempDirectory)/llama2_onnx_ft16
 
     - script: |
         python -m pip install --upgrade pip;
         python -m pip install $(Build.BinariesDirectory)/ort-artifact/*.whl;
         ls -l
-        ls -l $(Build.SourcesDirectory)/7B_FT_float16/ONNX/
+        ls -l $(Agent.TempDirectory)/llama2_onnx_ft16/7B_FT_float16/ONNX/
       displayName: Install Onnxruntime
       workingDirectory: $(Build.SourcesDirectory)
 
