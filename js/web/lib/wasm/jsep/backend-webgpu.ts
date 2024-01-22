@@ -207,6 +207,9 @@ export class WebGpuBackend {
     };
 
     Object.defineProperty(this.env.webgpu, 'device', {value: this.device});
+
+    // init queryType, which is necessary for InferenceSession.create
+    this.setQueryType();
   }
 
   dispose(): void {
