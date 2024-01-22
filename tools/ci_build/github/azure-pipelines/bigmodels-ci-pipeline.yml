@@ -212,8 +212,8 @@ stages:
       displayName: 'Download ONNX Runtime Build Time Deps'
       inputs:
         packageType: upack
-        feed: '/4c7631f5-24c0-4307-8822-1aa8f180c325'
-        definition: 'fd9dd5ad-b73e-4678-890e-edcf680dbc1a'
+        feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
+        definition: '772ebce3-7e06-46d5-b3cc-82040ec4b2ce'
         downloadPath: $(Build.BinariesDirectory)/llama2_onnx_ft16
 
     - script: |
