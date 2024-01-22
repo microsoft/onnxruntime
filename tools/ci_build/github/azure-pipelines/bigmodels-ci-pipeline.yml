@@ -197,10 +197,13 @@ stages:
       displayName: 'Clean Agent Directories'
       condition: always()
 
-    - task: UsePythonVersion@0
-      inputs:
-        versionSpec: '3.8'
-      displayName: 'Use Python 3.8'
+    - checkout: self
+      clean: true
+      submodules: none
+
+    - checkout: LLaMa2Onnx
+      clean: true
+      submodules: none
 
     - template: templates/flex-downloadPipelineArtifact.yml
       parameters:
@@ -209,10 +212,6 @@ stages:
         TargetPath: '$(Build.BinariesDirectory)/ort-artifact/'
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
-
-    - checkout: LLaMa2Onnx
-      clean: true
-      submodules: none
 
     - task: DownloadPackage@1
       displayName: 'Download Llama2 model'
@@ -225,14 +224,14 @@ stages:
 
     - template: templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda11_8_tensorrt8_6
+        Dockerfile: onnxruntime/tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda11_8_tensorrt8_6
         Context: tools/ci_build/github/linux/docker/
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
         Repository: onnxruntimeubi8packagestest
         UpdateDepsTxt: false
 
     - script: |
-        docker run --rm --gpus all -v $PWD:/workspace -v $(Build.SourcesDirectory):/workspace \
+        docker run --rm --gpus all -v $PWD:/workspace -v $(Build.SourcesDirectory)/Llama-2-Onnx:/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            -v $(Agent.TempDirectory)/llama2_onnx_ft16:/models onnxruntimeubi8packagestest \
           bash -c "
