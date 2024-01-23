@@ -5761,7 +5761,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Size of the vocabulary. If not provided, it will be inferred from the decoder subgraph's output shape</dd>
 </dl>
 
-#### Inputs (5 - 14)
+#### Inputs (5 - 15)
 
 <dl>
 <dt><tt>input_ids</tt> : F</dt>
@@ -5792,6 +5792,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only keep this list of (layer, head) of QK in the final cross_qk output when use_cross_qk is set. Default collect allits shape is (number of (layer, head) to keep, 2), i.e., [[layer_id1, head_id1], [layer_id2, head_id2]......]</dd>
 <dt><tt>extra_decoding_ids</tt> (optional) : I</dt>
 <dd>Part of the decoder_input_ids that we need cross qk for it. it is of shape  (batch_size, extra_decoding_ids_len).In such case, we should remove this from the tail of the decoder_input_ids, and put it here. ids < 0 in it (for multiple batch) are treated as stop of the extra_decoding_ids for corresponding batch.</dd>
+<dt><tt>temperature</tt> (optional) : T</dt>
+<dd>Temperature value to apply to logits processing during this execution's decoding. Shape is (1)</dd>
 </dl>
 
 #### Outputs (1 - 5)
