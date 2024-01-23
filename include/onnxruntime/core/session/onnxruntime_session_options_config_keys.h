@@ -236,7 +236,7 @@ static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersFil
 static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes =
     "session.optimized_model_external_initializers_min_size_in_bytes";
 
-// Enable EP context feature to dump the partitioned graph which include the EP context into Onnx file.
+// Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
 // The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.
 // "0": disable. (default)
 // "1": enable.
@@ -250,3 +250,9 @@ static const char* const kOrtSessionOptionEpContextFilePath = "ep.context_file_p
 // "0": dump the EP context into separate file, keep the file name in the Onnx model.
 // "1": dump the EP context into the Onnx model. (default).
 static const char* const kOrtSessionOptionEpContextEmbedMode = "ep.context_embed_mode";
+
+// Gemm fastmath mode provides fp32 gemm acceleration with bfloat16 based matmul.
+// Option values:
+// - "0": Gemm FastMath mode is not enabled. [DEFAULT]
+// - "1": Gemm FastMath mode is enabled.
+static const char* const kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16 = "mlas.enable_gemm_fastmath_arm64_bfloat16";

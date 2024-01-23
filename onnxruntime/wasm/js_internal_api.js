@@ -189,4 +189,7 @@ Module['jsepInit'] = (backend, alloc, free, copy, copyAsync, createKernel, relea
   Module['jsepOnReleaseSession'] = sessionId => {
     backend['onReleaseSession'](sessionId);
   };
+  Module['jsepOnRunStart'] = () => {
+    return backend['onRunStart']();
+  };
 };

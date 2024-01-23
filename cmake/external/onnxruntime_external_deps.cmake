@@ -112,10 +112,10 @@ if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
   # This part of code is only for users' convenience. The code couldn't handle all cases. Users always can manually
   # download protoc from Protobuf's Github release page and pass the local path to the ONNX_CUSTOM_PROTOC_EXECUTABLE
   # variable.
-  if (APPLE)
+  if (CMAKE_HOST_APPLE)
     # Using CMAKE_CROSSCOMPILING is not recommended for Apple target devices.
     # https://cmake.org/cmake/help/v3.26/variable/CMAKE_CROSSCOMPILING.html
-    # To keep it simple, just download and use the universal protoc binary for Apple builds.
+    # To keep it simple, just download and use the universal protoc binary for all Apple host builds.
     FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_mac_universal} URL_HASH SHA1=${DEP_SHA1_protoc_mac_universal})
     FetchContent_Populate(protoc_binary)
     if(protoc_binary_SOURCE_DIR)
@@ -123,7 +123,7 @@ if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
       set(ONNX_CUSTOM_PROTOC_EXECUTABLE ${protoc_binary_SOURCE_DIR}/bin/protoc)
       set(PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
     endif()
-  elseif(CMAKE_CROSSCOMPILING)
+  elseif (CMAKE_CROSSCOMPILING)
     message("CMAKE_HOST_SYSTEM_NAME: ${CMAKE_HOST_SYSTEM_NAME}")
     if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
       if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "AMD64")

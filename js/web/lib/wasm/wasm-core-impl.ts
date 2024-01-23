@@ -526,8 +526,8 @@ export const run = async(
       }
     }
 
+    wasm.jsepOnRunStart?.();
     let errorCode: number;
-
     if (!BUILD_DEFS.DISABLE_WEBGPU && ioBindingState) {
       errorCode = await wasm._OrtRunWithBinding(
           sessionHandle, ioBindingState.handle, outputCount, outputValuesOffset, runOptionsHandle);

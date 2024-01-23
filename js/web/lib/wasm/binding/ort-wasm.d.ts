@@ -181,6 +181,10 @@ export interface OrtWasmModule extends EmscriptenModule {
       (gpuBuffer: GPUBuffer, size: number,
        type: Tensor.GpuBufferDataTypes) => () => Promise<Tensor.DataTypeMap[Tensor.GpuBufferDataTypes]>;
   /**
+   *  [exported from js_internal_api.js] Called when InferenceSession.run started.
+   */
+  jsepOnRunStart: () => void;
+  /**
    * [exported from js_internal_api.js] Release a session.
    * @param sessionId - specify the session ID.
    * @returns
