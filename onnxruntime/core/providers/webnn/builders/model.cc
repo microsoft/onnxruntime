@@ -125,7 +125,8 @@ Status Model::Predict(const InlinedHashMap<std::string, OnnxTensorData>& inputs,
     output_views.insert({name, view});
   }
   emscripten::val results = wnn_context_.call<emscripten::val>(
-      "compute", wnn_graph_, wnn_inputs_, wnn_outputs_).await();
+                                            "compute", wnn_graph_, wnn_inputs_, wnn_outputs_)
+                                .await();
 
   // Copy the outputs from pre-allocated ArrayBuffers back to the Wasm ArrayBuffer.
   for (const auto& output : outputs) {
