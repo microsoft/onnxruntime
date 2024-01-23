@@ -2238,9 +2238,9 @@ class SymbolicShapeInference:
                 # By default, hidden size is same for Q/K/V. Only need check v_hidden_size when value is provided.
                 output_shape = query_shape
                 if key_shape is not None and len(key_shape) == 3:
-                    value_shape = self._try_get_shape(node, 2)
-                    if value_shape is not None and len(value_shape) == 3:
-                        output_shape[2] = value_shape[2]
+                    # value_shape = self._try_get_shape(node, 2)
+                    # if value_shape is not None and len(value_shape) == 3:
+                    #     output_shape[2] = value_shape[2]
                     total_sequence_length = key_shape[1]
 
                 output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
@@ -2415,9 +2415,9 @@ class SymbolicShapeInference:
 
     def _infer_PythonOp(self, node):  # noqa: N802
         output_tensor_types = get_attribute(node, "output_tensor_types")
-        assert output_tensor_types
+        assert output_tensor_types, f"PythonOp '{node.name}' has no output_tensor_types attribute."
         output_tensor_ranks = get_attribute(node, "output_tensor_ranks")
-        assert output_tensor_ranks
+        assert output_tensor_ranks, f"PythonOp '{node.name}' has no output_tensor_ranks attribute."
 
         from onnxruntime.capi._pybind_state import get_shape_inference_function
 
@@ -2438,7 +2438,10 @@ class SymbolicShapeInference:
                 input_dtype = self.known_vi_[node.input[input_index]].type.tensor_type.elem_type
                 input_dtypes.append(input_dtype)
             output_shapes, output_dtypes = shape_inferer(node, input_shapes, input_dtypes)
-            assert len(output_shapes) == len(output_dtypes) == (len(node.output) - 1)
+            assert len(output_shapes) == len(output_dtypes) == (len(node.output) - 1), (
+                f"PythonOp '{func_name}' returned {len(output_shapes)} shapes and {len(output_dtypes)} dtypes, "
+                f"but expected {len(node.output) - 1} outputs."
+            )
             for i in range(len(node.output) - 1):
                 output_index = i + 1
                 vi = self.known_vi_[node.output[output_index]]

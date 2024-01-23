@@ -69,6 +69,11 @@
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/util/thread_utils.h"
 
+#ifdef _WIN32
+#include "core/platform/windows/logging/etw_sink.h"
+#include "core/common/logging/sinks/composite_sink.h"
+#endif
+
 // custom ops are not available in a minimal build unless ORT_MINIMAL_BUILD_CUSTOM_OPS is set
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #include "core/framework/customregistry.h"
@@ -307,6 +312,7 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
 
 logging::Severity GetSeverity(const SessionOptions& session_options) {
   logging::Severity severity = logging::Severity::kWARNING;
+
   if (session_options.session_log_severity_level == -1) {
     severity = logging::LoggingManager::DefaultLogger().GetSeverity();
   } else {
@@ -322,11 +328,17 @@ logging::Severity GetSeverity(const SessionOptions& session_options) {
 void InferenceSession::SetLoggingManager(const SessionOptions& session_options,
                                          const Environment& session_env) {
   logging_manager_ = session_env.GetLoggingManager();
+  std::unique_ptr<logging::ISink> sink;
+
   if (session_options.user_logging_function) {
-    std::unique_ptr<logging::ISink> user_sink = std::make_unique<UserLoggingSink>(session_options.user_logging_function,
-                                                                                  session_options.user_logging_param);
-    user_logging_manager_ = std::make_unique<logging::LoggingManager>(std::move(user_sink),
-                                                                      GetSeverity(session_options),
+    sink = std::make_unique<UserLoggingSink>(session_options.user_logging_function,
+                                             session_options.user_logging_param);
+    auto sessionSeverity = GetSeverity(session_options);
+    auto etwOverrideSeverity = logging::OverrideLevelWithEtw(sessionSeverity);
+    sink = EnhanceLoggerWithEtw(std::move(sink), sessionSeverity, etwOverrideSeverity);
+
+    user_logging_manager_ = std::make_unique<logging::LoggingManager>(std::move(sink),
+                                                                      std::min(sessionSeverity, etwOverrideSeverity),
                                                                       false,
                                                                       logging::LoggingManager::InstanceType::Temporal,
                                                                       &session_options.session_logid);
@@ -467,6 +479,8 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
 #ifdef _WIN32
   TraceLoggingWrite(telemetry_provider_handle,
                     "SessionOptions",
+                    TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     TraceLoggingUInt8(static_cast<UINT8>(session_options.execution_mode), "execution_mode"),
                     TraceLoggingUInt8(static_cast<UINT8>(session_options.execution_order), "execution_order"),
                     TraceLoggingBoolean(session_options.enable_profiling, "enable_profiling"),
@@ -487,6 +501,8 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
   TraceLoggingWrite(
       telemetry_provider_handle,
       "SessionOptions_IntraOrtThreadPoolParams",
+      TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
+      TraceLoggingLevel(WINEVENT_LEVEL_INFO),
       TraceLoggingInt32(session_options.intra_op_param.thread_pool_size, "thread_pool_size"),
       TraceLoggingBoolean(session_options.intra_op_param.auto_set_affinity, "auto_set_affinity"),
       TraceLoggingBoolean(session_options.intra_op_param.allow_spinning, "allow_spinning"),
@@ -499,6 +515,8 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
     TraceLoggingWrite(
         telemetry_provider_handle,
         "SessionOptions_ConfigEntry",
+        TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
+        TraceLoggingLevel(WINEVENT_LEVEL_INFO),
         TraceLoggingString(config_pair.first.c_str(), "Key"),
         TraceLoggingString(config_pair.second.c_str(), "Value"));
   }
@@ -631,26 +649,6 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
           << "Having memory pattern enabled is not supported while using the DML Execution Provider. "
           << "So disabling it for this session since it uses the DML Execution Provider.";
       session_options_.enable_mem_pattern = false;
-    }
-
-    // Default this option to true when the DML EP is registered.
-    // This should be removed if QDQ is supported for DML through QDQSelectorActionTransformer and the DML EP does not
-    // rely on the constant folding pass for DequantizeLinear.
-    optional<std::string> disable_quant_qdq = session_options_.config_options.GetConfigEntry(kOrtSessionOptionsDisableQuantQDQ);
-
-    if (disable_quant_qdq == std::nullopt) {
-      LOGS(*session_logger_, INFO)
-          << "QDQ quantization is not supported while using the DML Execution Provider. "
-          << "So disabling it for this session since it uses the DML Execution Provider.";
-
-      auto st = session_options_.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1");
-      if (!st.IsOK()) {
-        return st;
-      }
-    } else if (*disable_quant_qdq != "1") {
-      LOGS(*session_logger_, WARNING)
-          << "QDQ quantization is not supported while using the DML Execution Provider. "
-          << "It is enabled within session options which may result in lower performance.";
     }
 
     // Parallel execution mode does not support DML EP
@@ -1166,6 +1164,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
 
   // Do partitioning based on execution providers' capabilities.
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
+                                                       session_options_.config_options, *session_logger_,
                                                        mode, debug_graph_fn));
 
   // apply Level2 and higher transformers.
@@ -1460,7 +1459,9 @@ namespace {
 Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                const ExecutionProviders& providers,
                                KernelRegistryManager& kernel_registry_manager,
-                               SessionState& session_state) {
+                               SessionState& session_state,
+                               const ConfigOptions& config_options,
+                               const logging::Logger& logger) {
   layout_transformation::TransformLayoutFunction transform_layout_fn = nullptr;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1481,6 +1482,8 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   ORT_RETURN_IF_ERROR(partitioner.Partition(graph,
                                             session_state.GetMutableFuncMgr(),
                                             transform_layout_fn,
+                                            config_options,
+                                            logger,
                                             GraphPartitioner::Mode::kOrtFormatLoad));
 
   return Status::OK();
@@ -1696,7 +1699,8 @@ common::Status InferenceSession::Initialize() {
         // This transformer applies DML-specific fusions that go beyond what ORT offers by default
         bool dml_operator_fusion_enabled = session_options_.graph_optimization_level >= TransformerLevel::Level2;
         if (dml_operator_fusion_enabled) {
-          std::unique_ptr<onnxruntime::GraphTransformer> dmlOperatorFusionTransformer = std::make_unique<Dml::GraphTransformer>("DmlOperatorFusionTransformer");
+          std::unique_ptr<onnxruntime::GraphTransformer> dmlOperatorFusionTransformer = std::make_unique<Dml::GraphTransformer>("DmlOperatorFusionTransformer",
+                                                                                                                                execution_providers_.Get(kDmlExecutionProvider));
           if (dmlOperatorFusionTransformer == nullptr) {
             return Status(common::ONNXRUNTIME, common::FAIL, "DmlOperatorFusionTransformer is nullptr");
           }
@@ -1834,7 +1838,7 @@ common::Status InferenceSession::Initialize() {
 #endif  // !defined(ORT_MINIMAL_BUILD)
     } else {
       ORT_RETURN_IF_ERROR_SESSIONID_(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
-                                                             *session_state_));
+                                                             *session_state_, session_options_.config_options, *session_logger_));
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);

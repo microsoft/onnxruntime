@@ -182,11 +182,37 @@ namespace Dml
         }
 
         m_isMcdmDevice = (featureLevels.MaxSupportedFeatureLevel == D3D_FEATURE_LEVEL_1_0_CORE_PRIVATE);
+        m_areCustomHeapsSupported = !m_isMcdmDevice;
+
+        if (m_isMcdmDevice)
+        {
+
+            // TODO: Ingest updated header file
+            typedef struct D3D12_FEATURE_DATA_D3D12_OPTIONS19
+            {
+                BOOL MismatchingOutputDimensionsSupported;
+                UINT SupportedSampleCountsWithNoOutputs;
+                BOOL PointSamplingAddressesNeverRoundUp;
+                BOOL RasterizerDesc2Supported;
+                BOOL NarrowQuadrilateralLinesSupported;
+                BOOL AnisoFilterWithPointMipSupported;
+                UINT MaxSamplerDescriptorHeapSize;
+                UINT MaxSamplerDescriptorHeapSizeWithStaticSamplers;
+                UINT MaxViewDescriptorHeapSize;
+                _Out_  BOOL ComputeOnlyCustomHeapSupported;
+            } 	D3D12_FEATURE_DATA_D3D12_OPTIONS19;
+
+            D3D12_FEATURE_DATA_D3D12_OPTIONS19 options19 = {};
+
+            // The call may fail in which case the default value is false
+            d3d12Device->CheckFeatureSupport(static_cast<D3D12_FEATURE>(48) /*D3D12_FEATURE_D3D12_OPTIONS19*/, &options19, sizeof(options19));
+            m_areCustomHeapsSupported = options19.ComputeOnlyCustomHeapSupported;
+        }
 
         m_context = std::make_shared<ExecutionContext>(m_d3d12Device.Get(), m_dmlDevice.Get(), queue);
 
         m_uploadHeap = std::make_unique<PooledUploadHeap>(m_d3d12Device.Get(), m_context);
-        m_readbackHeap = std::make_unique<ReadbackHeap>(m_d3d12Device.Get(), m_context);
+        m_readbackHeap = std::make_unique<ReadbackHeap>(m_d3d12Device.Get());
 
         CreateDmlKernelRegistry(&m_kernelRegistry, &m_internalRegInfoMap);
 
@@ -448,7 +474,12 @@ namespace Dml
             const auto dstState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
 
             m_uploadHeap->BeginUploadToGpu(dstData, dstOffset, dstState, AsByteSpan(srcData, dataSizeInBytes));
-            FlushUploadsIfReady();
+
+            // Continuously upload memory located in upload heaps during session initialization to avoid running out of it
+            if (!m_sessionInitialized)
+            {
+                FlushUploadsIfReady();
+            }
         }
         else if (!src->IsCpuData() && dst->IsCpuData())
         {
@@ -465,7 +496,7 @@ namespace Dml
             const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
 
             // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
-            m_readbackHeap->ReadbackFromGpu(AsByteSpan(dstData, dataSizeInBytes), srcData, srcOffset, srcState);
+            m_readbackHeap->ReadbackFromGpu(m_context.get(), AsByteSpan(dstData, dataSizeInBytes), srcData, srcOffset, srcState);
         }
         else if (!src->IsCpuData() && !dst->IsCpuData())
         {
@@ -534,7 +565,7 @@ namespace Dml
         const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
 
         // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
-        m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcDatas, srcState);
+        m_readbackHeap->ReadbackFromGpu(m_context.get(), dstDatas, dataSizesInBytes, srcDatas, srcState);
 
         return S_OK;
         }
@@ -952,7 +983,7 @@ namespace Dml
         const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
 
         // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
-        m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcDatas, srcState);
+        m_readbackHeap->ReadbackFromGpu(m_context.get(), dstDatas, dataSizesInBytes, srcDatas, srcState);
 
         return onnxruntime::common::Status::OK();
     }
@@ -1089,6 +1120,11 @@ namespace Dml
         return m_isMcdmDevice;
     }
 
+    bool __stdcall ExecutionProviderImpl::CustomHeapsSupported() const noexcept
+    {
+        return m_areCustomHeapsSupported;
+    }
+
     bool __stdcall ExecutionProviderImpl::MetacommandsEnabled() const noexcept
     {
         return m_areMetacommandsEnabled;
@@ -1128,6 +1164,7 @@ namespace Dml
         // Allocations after this point are potentially transient and their sizes are
         // rounded to enable pooling.
         m_allocator->SetDefaultRoundingMode(AllocatorRoundingMode::Enabled);
+        m_sessionInitialized = true;
 
         return onnxruntime::common::Status::OK();
     }

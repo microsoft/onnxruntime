@@ -15,11 +15,22 @@ DmlCommandRecorder::DmlCommandRecorder(
     : m_queue(std::move(commandQueue)),
       m_d3dDevice(d3dDevice),
       m_dmlDevice(dmlDevice),
-      m_descriptorPool(d3dDevice, 2048),
-      m_commandAllocatorRing(d3dDevice, m_queue->GetType(), m_queue->GetCurrentCompletionEvent())
+      m_descriptorPool(d3dDevice, 2048)
 {
     ORT_THROW_IF_FAILED(dmlDevice->CreateOperatorInitializer(0, nullptr, IID_PPV_ARGS(&m_initializer)));
     ORT_THROW_IF_FAILED(dmlDevice->CreateCommandRecorder(IID_PPV_ARGS(&m_recorder)));
+}
+
+DmlCommandRecorder::~DmlCommandRecorder()
+{
+    // Detach the threads to avoid crashes when terminating the program
+    for (auto& resetThread : m_resetThreads)
+    {
+        if (resetThread)
+        {
+            resetThread->detach();
+        }
+    }
 }
 
 void DmlCommandRecorder::SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator)
@@ -251,42 +262,41 @@ void DmlCommandRecorder::ExecuteCommandList(
     _Out_ uint64_t* completionValue
     )
 {
-    ORT_THROW_IF_FAILED(m_currentCommandList->Close());
-
-    if (m_operationsRecordedInCurrentCommandList)
+    if (!m_operationsRecordedInCurrentCommandList)
     {
-        m_pendingCommandLists.push_back(m_currentCommandList.Get());
-        m_pendingCommandListsCacheable.push_back(true);
+        // The caller can re-use relevant resources after the next set of work to be
+        // flushed has completed.  Its command list hasn't been executed yet, just batched.
+        GpuEvent gpuEvent = m_queue->GetNextCompletionEvent();
+        gpuEvent.fence.CopyTo(fence);
+        *completionValue = gpuEvent.fenceValue;
+
+        m_queue->ExecuteCommandLists(
+        gsl::span<ID3D12CommandList*>(reinterpret_cast<ID3D12CommandList**>(&commandList), 1));
+
+        // The fence value at which the current command allocator may be re-used will now be higher
+        m_allocatorRing.back().completionEvent = m_queue->GetNextCompletionEvent();
+
+        // Fail early if something horrifying happens
+        ORT_THROW_IF_FAILED(m_dmlDevice->GetDeviceRemovedReason());
+        ORT_THROW_IF_FAILED(m_d3dDevice->GetDeviceRemovedReason());
+
+        return;
     }
-    else
-    {
-        m_cachedCommandLists.push_back(m_currentCommandList.Get());
-    }
 
-    m_currentCommandList = nullptr;
-    m_operationsRecordedInCurrentCommandList = false;
-
-    m_pendingCommandLists.push_back(commandList);
-    m_pendingCommandListsCacheable.push_back(false);
-
-    // Remember the descriptor heap and apply it to the next command list
+    // Remember the descriptor heap and apply it to the next command list.  This avoids unnecessarily setting it onto
+    // the D3D object lazily at a point when the operation may not be parallelized with GPU work.
     auto heap = m_currentDescriptorHeap;
-    m_currentDescriptorHeap = nullptr;
+
+    // Execute work in the current command list plus provided command list while closing the recorder.
+    CloseAndExecute(commandList);
     Open();
 
-    // The caller can re-use relevant resources after the next set of work to be
-    // flushed has completed.  Its command list hasn't been executed yet, just batched.
-    GpuEvent gpuEvent = m_queue->GetNextCompletionEvent();
+    // Reset the descriptor heap opportunistically per above comment
+    SetDescriptorHeap(heap);
+
+    GpuEvent gpuEvent = m_queue->GetCurrentCompletionEvent();
     gpuEvent.fence.CopyTo(fence);
     *completionValue = gpuEvent.fenceValue;
-
-    // Trigger a flush of the command list, with the assumption that it contains enough GPU work that this
-    // will help parallelize GPU work with subsequent CPU work.  This policy is related to the choice of
-    // minNodeCountToReuseCommandList within FusedGraphKernel, so both should be tuned together.
-    CloseAndExecute();
-    Open();
-
-    SetDescriptorHeap(heap);
 }
 
 ComPtr<ID3D12GraphicsCommandList> DmlCommandRecorder::GetCommandList()
@@ -314,60 +324,93 @@ void DmlCommandRecorder::Open()
 {
     assert(m_currentDescriptorHeap == nullptr);
 
-    ID3D12CommandAllocator* allocator = m_commandAllocatorRing.GetNextAllocator(m_queue->GetNextCompletionEvent());
-
-    if (m_cachedCommandLists.empty())
+    if (m_currentCommandList)
     {
-        ORT_THROW_IF_FAILED(m_d3dDevice->CreateCommandList(
-            0,
-            m_queue->GetType(),
-            allocator,
-            nullptr,
-            IID_GRAPHICS_PPV_ARGS(m_currentCommandList.ReleaseAndGetAddressOf())));
+        if (m_resetThreads.front())
+        {
+            m_resetThreads.front()->join();
+        }
+
+        // Rotate the reset threads to the left
+        for (uint32_t i = 0; i < m_resetThreads.size() - 1; ++i) {
+            m_resetThreads[i] = std::move(m_resetThreads[i + 1]);
+        }
+
+        // Rotate the allocators to the left
+        auto firstAllocator = std::move(m_allocatorRing.front());
+        for (uint32_t i = 0; i < m_allocatorRing.size() - 1; ++i)
+        {
+            m_allocatorRing[i] = std::move(m_allocatorRing[i + 1]);
+        }
+        m_allocatorRing.back() = std::move(firstAllocator);
+
+        // Rotate the command lists to the left
+        auto firstCommandList = std::move(m_commandListRing.front());
+        for (uint32_t i = 0; i < m_commandListRing.size() - 1; ++i)
+        {
+            m_commandListRing[i] = std::move(m_commandListRing[i + 1]);
+        }
+        m_commandListRing.back() = std::move(firstCommandList);
+
+        // The newest dirty allocator is now located before the last element in the ring buffer, so start resetting it
+        m_resetThreads.back() = std::thread([cachedAllocator = m_allocatorRing[m_allocatorRing.size() - 2], cachedCommandList = m_commandListRing[m_commandListRing.size() - 2]]() {
+            cachedAllocator.completionEvent.WaitForSignal();
+            ORT_THROW_IF_FAILED(cachedAllocator.allocator->Reset());
+            ORT_THROW_IF_FAILED(cachedCommandList->Reset(cachedAllocator.allocator.Get(), nullptr));
+        });
     }
     else
     {
-        m_currentCommandList = m_cachedCommandLists.front();
-        m_cachedCommandLists.pop_front();
-        ORT_THROW_IF_FAILED(m_currentCommandList->Reset(allocator, nullptr));
+        assert(m_commandListRing.size() == m_allocatorRing.size());
+
+        for (uint32_t i = 0; i < m_commandListRing.size(); ++i)
+        {
+            ORT_THROW_IF_FAILED(m_d3dDevice->CreateCommandAllocator(
+                m_queue->GetType(),
+                IID_GRAPHICS_PPV_ARGS(m_allocatorRing[i].allocator.ReleaseAndGetAddressOf())));
+
+            ORT_THROW_IF_FAILED(m_d3dDevice->CreateCommandList(
+                0,
+                m_queue->GetType(),
+                m_allocatorRing[i].allocator.Get(),
+                nullptr,
+                IID_GRAPHICS_PPV_ARGS(m_commandListRing[i].ReleaseAndGetAddressOf())));
+        }
     }
+
+    m_currentCommandList = m_commandListRing.back();
+    m_allocatorRing.back().completionEvent = m_queue->GetNextCompletionEvent();
 }
 
 void DmlCommandRecorder::CloseAndExecute()
 {
+    CloseAndExecute(nullptr);
+}
+
+void DmlCommandRecorder::CloseAndExecute(_In_opt_ ID3D12GraphicsCommandList* commandList)
+{
     ORT_THROW_IF_FAILED(m_currentCommandList->Close());
+
+    ID3D12GraphicsCommandList* commandListsToExecute[2] = {};
+    uint32_t commandListsToExecuteCount = 0;
 
     if (m_operationsRecordedInCurrentCommandList)
     {
-        m_pendingCommandLists.push_back(m_currentCommandList.Get());
-        m_pendingCommandListsCacheable.push_back(true);
-    }
-    else
-    {
-        m_cachedCommandLists.push_back(m_currentCommandList.Get());
+        commandListsToExecute[commandListsToExecuteCount++] = m_currentCommandList.Get();
     }
 
-    m_currentCommandList = nullptr;
-    m_operationsRecordedInCurrentCommandList = false;
-
-    if (!m_pendingCommandLists.empty())
+    if (commandList)
     {
-        // Close and execute the command list
+        commandListsToExecute[commandListsToExecuteCount++] = commandList;
+    }
+
+    if (commandListsToExecuteCount > 0)
+    {
         m_queue->ExecuteCommandLists(
-            gsl::span<ID3D12CommandList*>(reinterpret_cast<ID3D12CommandList**>(m_pendingCommandLists.data()), m_pendingCommandLists.size()));
-
-        assert(m_pendingCommandLists.size() == m_pendingCommandListsCacheable.size());
-        for (size_t i = 0; i < m_pendingCommandLists.size(); ++i)
-        {
-            if (m_pendingCommandListsCacheable[i])
-            {
-                m_cachedCommandLists.push_back(m_pendingCommandLists[i]);
-            }
-        }
-
-        m_pendingCommandLists.clear();
-        m_pendingCommandListsCacheable.clear();
+                gsl::span<ID3D12CommandList*>(reinterpret_cast<ID3D12CommandList**>(commandListsToExecute), commandListsToExecuteCount));
     }
+
+    m_operationsRecordedInCurrentCommandList = false;
 
     // The descriptor heap must be set on the command list the next time it's opened.
     m_currentDescriptorHeap = nullptr;

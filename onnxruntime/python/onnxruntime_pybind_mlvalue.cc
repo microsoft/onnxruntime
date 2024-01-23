@@ -228,7 +228,7 @@ AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
 
     // We leak the upload and readback heaps to keep them alive, just like the map
     auto upload_heap = std::make_unique<Dml::PooledUploadHeap>(d3d12_device.Get(), context).release();
-    auto readback_heap = std::make_unique<Dml::ReadbackHeap>(d3d12_device.Get(), context).release();
+    auto readback_heap = std::make_unique<Dml::ReadbackHeap>(d3d12_device.Get()).release();
 
     auto dml_allocator = std::make_shared<Dml::BucketizedBufferAllocator>(
         d3d12_device.Get(),
@@ -285,10 +285,6 @@ void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   ComPtr<ID3D12Device> d3d12_device;
   ORT_THROW_IF_FAILED(src_data->GetDevice(IID_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
 
-  Dml::ExecutionContext* context = nullptr;
-  uint32_t context_size = gsl::narrow_cast<uint32_t>(sizeof(context));
-  ORT_THROW_IF_FAILED(d3d12_device->GetPrivateData(execution_context_guid, &context_size, &context));
-
   Dml::ReadbackHeap* readback_heap = nullptr;
   uint32_t readback_heap_size = gsl::narrow_cast<uint32_t>(sizeof(readback_heap));
   ORT_THROW_IF_FAILED(d3d12_device->GetPrivateData(dml_readback_heap_guid, &readback_heap_size, &readback_heap));
@@ -296,7 +292,11 @@ void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   // ReadbackFromGpu already syncs with the CPU and waits for the copy to be completed, so we don't need to sync after
   // this call
   readback_heap->ReadbackFromGpu(
-      gsl::make_span(static_cast<std::byte*>(dst), num_bytes), src_data, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+      allocInfo->GetOwner()->GetContext(),
+      gsl::make_span(static_cast<std::byte*>(dst), num_bytes),
+      src_data,
+      0,
+      D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 }
 
 const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetDmlToHostMemCpyFunction() {

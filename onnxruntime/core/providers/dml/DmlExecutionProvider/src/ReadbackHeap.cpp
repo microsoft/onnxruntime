@@ -24,9 +24,7 @@ namespace Dml
         return readbackHeap;
     }
 
-    ReadbackHeap::ReadbackHeap(ID3D12Device* device, std::shared_ptr<ExecutionContext> executionContext)
-        : m_device(device)
-        , m_executionContext(std::move(executionContext))
+    ReadbackHeap::ReadbackHeap(ID3D12Device* device) : m_device(device)
     {
     }
 
@@ -48,7 +46,7 @@ namespace Dml
         return newCapacity;
     }
 
-    void ReadbackHeap::EnsureReadbackHeap(size_t size) 
+    void ReadbackHeap::EnsureReadbackHeap(size_t size)
     {
         if (!m_readbackHeap)
         {
@@ -70,17 +68,18 @@ namespace Dml
     }
 
     void ReadbackHeap::ReadbackFromGpu(
+        ExecutionContext* executionContext,
         gsl::span<std::byte> dst,
         ID3D12Resource* src,
         uint64_t srcOffset,
         D3D12_RESOURCE_STATES srcState)
     {
         assert(!dst.empty());
-        
+
         EnsureReadbackHeap(dst.size());
 
         // Copy from the source resource into the readback heap
-        m_executionContext->CopyBufferRegion(
+        executionContext->CopyBufferRegion(
             m_readbackHeap.Get(),
             0,
             D3D12_RESOURCE_STATE_COPY_DEST,
@@ -90,9 +89,9 @@ namespace Dml
             dst.size());
 
         // Wait for completion and map the result
-        m_executionContext->Flush();
-        m_executionContext->GetCurrentCompletionEvent().WaitForSignal();
-        m_executionContext->ReleaseCompletedReferences();
+        executionContext->Flush();
+        executionContext->GetCurrentCompletionEvent().WaitForSignal();
+        executionContext->ReleaseCompletedReferences();
 
         // Map the readback heap and copy it into the destination
         void* readbackHeapData = nullptr;
@@ -100,8 +99,9 @@ namespace Dml
         memcpy(dst.data(), readbackHeapData, dst.size());
         m_readbackHeap->Unmap(0, nullptr);
     }
-    
+
     void ReadbackHeap::ReadbackFromGpu(
+        ExecutionContext* executionContext,
         gsl::span<void*> dst,
         gsl::span<const uint32_t > dstSizes,
         gsl::span<ID3D12Resource*> src,
@@ -127,7 +127,7 @@ namespace Dml
         uint32_t offset = 0;
         for (uint32_t i = 0; i < dst.size(); ++i)
         {
-            m_executionContext->CopyBufferRegion(
+            executionContext->CopyBufferRegion(
                 m_readbackHeap.Get(),
                 offset,
                 D3D12_RESOURCE_STATE_COPY_DEST,
@@ -140,9 +140,9 @@ namespace Dml
         }
 
         // Wait for completion and map the result
-        m_executionContext->Flush();
-        m_executionContext->GetCurrentCompletionEvent().WaitForSignal();
-        m_executionContext->ReleaseCompletedReferences();
+        executionContext->Flush();
+        executionContext->GetCurrentCompletionEvent().WaitForSignal();
+        executionContext->ReleaseCompletedReferences();
 
         // Map the readback heap and copy it into the destination
         void* readbackHeapData = nullptr;

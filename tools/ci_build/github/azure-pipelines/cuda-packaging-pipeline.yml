@@ -125,10 +125,8 @@ stages:
       parameters:
         BaseImage: 'registry.access.redhat.com/ubi8/ubi'
         OnnxruntimeArch: 'x64'
-        OnnxruntimeCFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
-        OnnxruntimeCXXFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
         OnnxruntimeNodejsBindingArch: 'x64'
-        PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
+        PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
         PackageJava: false
         PackageNodeJS: false
   # Nuget Packaging
@@ -151,26 +149,48 @@ stages:
       DoEsrp: ${{ parameters.DoEsrp }}
       IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
   # Testing
-  ## Windows GPU Testing
   - template: nuget/templates/test_win.yml
     parameters:
-      AgentPool: 'onnxruntime-Win2022-GPU-T4'
-      NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
+      AgentPool : 'onnxruntime-Win2022-GPU-T4'
+      NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
       ArtifactSuffix: 'GPU'
       StageSuffix: 'GPU'
       Skipx86Tests: 'true'
       CudaVersion: ${{ parameters.CudaVersion }}
       SpecificArtifact: ${{ parameters.SpecificArtifact }}
       BuildId: ${{ parameters.BuildId }}
-  ## Linux GPU Testing
-  - template: nuget/templates/test_linux.yml
+
+  - template: nuget/templates/test_win.yml
     parameters:
-      AgentPool: Onnxruntime-Linux-GPU
+      AgentPool : 'onnxruntime-Win2022-GPU-T4'
+      NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu.Windows'
       ArtifactSuffix: 'GPU'
       StageSuffix: 'GPU'
-      NugetPackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
-      SpecificArtifact: ${{ parameters.specificArtifact }}
+      MoreSuffix: '_Windows'
+      Skipx86Tests: 'true'
       CudaVersion: ${{ parameters.CudaVersion }}
+      SpecificArtifact: ${{ parameters.SpecificArtifact }}
+      BuildId: ${{ parameters.BuildId }}
+
+  - template: nuget/templates/test_linux.yml
+    parameters:
+      AgentPool : Onnxruntime-Linux-GPU
+      ArtifactSuffix: 'GPU'
+      StageSuffix: 'GPU'
+      NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
+      CudaVersion: ${{ parameters.CudaVersion }}
+      SpecificArtifact: ${{ parameters.specificArtifact }}
+      BuildId: ${{ parameters.BuildId }}
+
+  - template: nuget/templates/test_linux.yml
+    parameters:
+      AgentPool : Onnxruntime-Linux-GPU
+      ArtifactSuffix: 'GPU'
+      StageSuffix: 'GPU'
+      MoreSuffix: '_Linux'
+      NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu.Linux'
+      CudaVersion: ${{ parameters.CudaVersion }}
+      SpecificArtifact: ${{ parameters.specificArtifact }}
       BuildId: ${{ parameters.BuildId }}
 
 ## Win/Linux GPU Combined Publishing

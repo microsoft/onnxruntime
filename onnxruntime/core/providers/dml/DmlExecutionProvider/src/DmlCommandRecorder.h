@@ -4,7 +4,6 @@
 #pragma once
 
 #include "ICommandRecorder.h"
-#include "CommandAllocatorRing.h"
 
 namespace Dml
 {
@@ -16,8 +15,10 @@ namespace Dml
     public:
         DmlCommandRecorder(
             ID3D12Device* d3dDevice,
-            IDMLDevice* device, 
+            IDMLDevice* device,
             std::shared_ptr<CommandQueue> commandQueue);
+
+        ~DmlCommandRecorder();
 
         void InitializeOperator(
             IDMLCompiledOperator* op,
@@ -47,18 +48,18 @@ namespace Dml
             _Out_ uint64_t* completionValue);
 
         ComPtr<ID3D12GraphicsCommandList> GetCommandList();
-        
+
         void ResourceBarrier(gsl::span<const D3D12_RESOURCE_BARRIER> barriers);
         void AddUAVBarrier();
 
         void Open() final;
         void CloseAndExecute() final;
-        
+
         void SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator);
 
         bool HasUnsubmittedWork() override
         {
-            return m_operationsRecordedInCurrentCommandList || !m_pendingCommandLists.empty();
+            return m_operationsRecordedInCurrentCommandList;
         }
 
         // Forces the descriptor heap to be reset to D3D before executing future operations
@@ -68,6 +69,18 @@ namespace Dml
         }
 
     private:
+        struct CommandAllocatorInfo
+        {
+            ComPtr<ID3D12CommandAllocator> allocator;
+
+            // The event which will be signaled when the last command list submitted using this allocator
+            // completes execution on the GPU.
+            GpuEvent completionEvent = {};
+
+            ID3D12CommandAllocator* Get() const { return allocator.Get(); }
+        };
+
+        void CloseAndExecute(_In_opt_ ID3D12GraphicsCommandList* commandList);
 
         std::shared_ptr<CommandQueue> m_queue;
         ComPtr<ID3D12Device> m_d3dDevice;
@@ -83,21 +96,21 @@ namespace Dml
         // The weak pointer avoids a circular reference from context->recorder->allocator->context
         std::weak_ptr<BucketizedBufferAllocator> m_bufferAllocator;
 
-        CommandAllocatorRing<2> m_commandAllocatorRing;
-
         // The command list currently being recorded into, and whether any command have been recorded yet.
         ComPtr<ID3D12GraphicsCommandList> m_currentCommandList;
         bool m_operationsRecordedInCurrentCommandList = false;
 
-        // Command lists which have been batched up for execution.  The values in 
-        // m_pendingCommandListsCacheable indicate whether they can be moved into this
-        // class's cache after execution, versus if they belong to the caller and were
-        // passed to ExecuteCommandList.
-        std::vector<ComPtr<ID3D12GraphicsCommandList>> m_pendingCommandLists;
-        std::vector<bool> m_pendingCommandListsCacheable;
+        static constexpr int commandListCount = 3;
 
-        // A pool of cached command lists which may be re-used.
-        std::deque<ComPtr<ID3D12GraphicsCommandList>> m_cachedCommandLists;
+        // We use enough command lists and allocators to allow command lists to be reset in a different thread while
+        // there is another command list ready to receive commands. When we execute and close a command list, we start
+        // the resetting process on a different thread and set m_currentCommandList to the next available one.
+        std::array<ComPtr<ID3D12GraphicsCommandList>, commandListCount> m_commandListRing;
+        std::array<CommandAllocatorInfo, commandListCount> m_allocatorRing;
+
+        // We should always have 1 less reset thread than command lists since we always need a clean command list, but
+        // the other ones can all be in the process of getting reset
+        std::array<std::optional<std::thread>, commandListCount - 1> m_resetThreads;
 
         void SetDescriptorHeap(ID3D12DescriptorHeap* descriptorHeap);
     };

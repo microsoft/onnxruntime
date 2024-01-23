@@ -14,6 +14,7 @@ import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.nio.ShortBuffer;
 import java.util.Arrays;
+import java.util.logging.Logger;
 
 /**
  * A Java object wrapping an OnnxSparseTensor.
@@ -22,6 +23,7 @@ import java.util.Arrays;
  * different static inner class representing each type.
  */
 public final class OnnxSparseTensor extends OnnxTensorLike {
+  private static final Logger logger = Logger.getLogger(OnnxSparseTensor.class.getName());
   private final SparseTensorType sparseTensorType;
 
   // Held to prevent deallocation while used in native code.
@@ -198,6 +200,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
 
   @Override
   public SparseTensor<? extends Buffer> getValue() throws OrtException {
+    checkClosed();
     Buffer buffer = getValuesBuffer();
     long[] indicesShape = getIndicesShape(OnnxRuntime.ortApiHandle, nativeHandle);
     switch (sparseTensorType) {
@@ -234,8 +237,13 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
   }
 
   @Override
-  public void close() {
-    close(OnnxRuntime.ortApiHandle, nativeHandle);
+  public synchronized void close() {
+    if (!closed) {
+      close(OnnxRuntime.ortApiHandle, nativeHandle);
+      closed = true;
+    } else {
+      logger.warning("Closing an already closed OnnxSparseTensor.");
+    }
   }
 
   /**
@@ -257,6 +265,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @return The indices.
    */
   public Buffer getIndicesBuffer() {
+    checkClosed();
     switch (sparseTensorType) {
       case COO:
       case CSRC:
@@ -295,6 +304,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @return The inner indices.
    */
   public LongBuffer getInnerIndicesBuffer() {
+    checkClosed();
     if (sparseTensorType == SparseTensorType.CSRC) {
       LongBuffer buf =
           getInnerIndicesBuffer(OnnxRuntime.ortApiHandle, nativeHandle)
@@ -320,6 +330,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @return The data buffer.
    */
   public Buffer getValuesBuffer() {
+    checkClosed();
     ByteBuffer buffer =
         getValuesBuffer(OnnxRuntime.ortApiHandle, nativeHandle).order(ByteOrder.nativeOrder());
     switch (info.type) {
@@ -396,6 +407,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @return The indices shape.
    */
   public long[] getIndicesShape() {
+    checkClosed();
     return getIndicesShape(OnnxRuntime.ortApiHandle, nativeHandle);
   }
 
@@ -405,6 +417,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @return The indices shape.
    */
   public long[] getInnerIndicesShape() {
+    checkClosed();
     if (sparseTensorType == SparseTensorType.CSRC) {
       return getInnerIndicesShape(OnnxRuntime.ortApiHandle, nativeHandle);
     } else {
@@ -420,6 +433,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @return The values shape.
    */
   public long[] getValuesShape() {
+    checkClosed();
     return getValuesShape(OnnxRuntime.ortApiHandle, nativeHandle);
   }
 

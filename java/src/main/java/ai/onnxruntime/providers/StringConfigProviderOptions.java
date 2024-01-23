@@ -32,6 +32,7 @@ abstract class StringConfigProviderOptions extends OrtProviderOptions {
    * @throws OrtException If the addition failed.
    */
   public void add(String key, String value) throws OrtException {
+    checkClosed();
     Objects.requireNonNull(key, "Key must not be null");
     Objects.requireNonNull(value, "Value must not be null");
     options.put(key, value);

@@ -1,4 +1,4 @@
-git+https://github.com/huggingface/optimum.git
+optimum>=1.14.1
 transformers>=4.33.2
 torch>=2.2.0.dev20230920
 onnx>=1.14.0

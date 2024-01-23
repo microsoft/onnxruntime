@@ -46,6 +46,8 @@ namespace Dml
 
         void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
 
+        ExecutionContext* GetContext() { return m_context.get(); }
+
     public: // onnxruntime::IAllocator
         void* Alloc(size_t size, AllocatorRoundingMode roundingMode);
         void* Alloc(size_t size) final;
@@ -91,6 +93,7 @@ namespace Dml
 
         std::shared_ptr<ExecutionContext> m_context;
         std::unique_ptr<DmlSubAllocator> m_subAllocator;
+        bool m_logAllocs = false;
 
     #ifndef NDEBUG
         // Useful for debugging; keeps track of all allocations that haven't been freed yet
