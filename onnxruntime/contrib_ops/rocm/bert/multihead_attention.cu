@@ -68,6 +68,7 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
   past_present_share_buffer_ = info.GetAttrOrDefault<int64_t>("past_present_share_buffer", 0LL) != 0LL;
+  is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
 
   using HipT = typename ToHipType<T>::MappedType;
   using AttentionTunableOp = GemmSoftmaxGemmPermuteTunableOp<HipT>;
