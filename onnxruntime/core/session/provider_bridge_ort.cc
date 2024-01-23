@@ -1677,7 +1677,7 @@ ProviderOptions GetProviderInfo_Cuda(const OrtCUDAProviderOptionsV2* provider_op
 
 }  // namespace onnxruntime
 
-void AddTensorRTCustomOpDomainToSessionOption(OrtSessionOptions* options, std::string extra_plugin_lib_paths) {
+void AddTensorRTCustomOpDomainToSessionOption(OrtSessionOptions* options, OrtTensorRTProviderOptionsV2* tensorrt_options, std::string extra_plugin_lib_paths) {
   auto is_already_in_domains = [&](std::string& domain_name, std::vector<OrtCustomOpDomain*>& domains) {
     for (auto ptr : domains) {
       if (domain_name == ptr->domain_) {
@@ -1693,6 +1693,9 @@ void AddTensorRTCustomOpDomainToSessionOption(OrtSessionOptions* options, std::s
   for (auto ptr : custom_op_domains) {
     if (!is_already_in_domains(ptr->domain_, options->custom_op_domains_)) {
       options->custom_op_domains_.push_back(ptr);
+      if (tensorrt_options) {
+        tensorrt_options->custom_op_domain_list.push_back(ptr);  // TensorRT EP should keep all the pointers to OrtCustomOpDomain obejcts for the purpose of releasing them at EP destruction
+      }
     } else {
       LOGS_DEFAULT(WARNING) << "The custom op domain name " << ptr->domain_ << " is already in session option.";
     }
@@ -1721,7 +1724,7 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtS
   options->provider_factories.push_back(factory);
 
   std::string extra_plugin_lib_paths = onnxruntime::Env::Default().GetEnvironmentVar("trt_extra_plugin_lib_paths");
-  AddTensorRTCustomOpDomainToSessionOption(options, extra_plugin_lib_paths);
+  AddTensorRTCustomOpDomainToSessionOption(options, nullptr, extra_plugin_lib_paths);
 
   return nullptr;
   API_IMPL_END
@@ -1744,19 +1747,20 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In
 
   std::shared_ptr<onnxruntime::IExecutionProviderFactory> factory;
 
+  OrtTensorRTProviderOptionsV2 trt_options_converted = onnxruntime::OrtTensorRTProviderOptionsToOrtTensorRTProviderOptionsV2(tensorrt_options);
+  trt_options_converted.custom_op_domain_list.clear();
+  AddTensorRTCustomOpDomainToSessionOption(options, &trt_options_converted, "");
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
   auto ep_context_cache_enabled_from_sess_options = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
   // If EP context configs are provided in session options, we need to propagate them to provider options
   if (ep_context_cache_enabled_from_sess_options) {
-    OrtTensorRTProviderOptionsV2 trt_options_converted = onnxruntime::OrtTensorRTProviderOptionsToOrtTensorRTProviderOptionsV2(tensorrt_options);
-
     onnxruntime::UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(options, &trt_options_converted);
     factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&trt_options_converted);
-  } else {
-    factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
   }
+  factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&trt_options_converted);
 #else
-  factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
+  factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&trt_options_converted);
 #endif
 
   if (!factory) {
@@ -1764,8 +1768,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In
   }
 
   options->provider_factories.push_back(factory);
-
-  AddTensorRTCustomOpDomainToSessionOption(options, "");
 
   return nullptr;
   API_IMPL_END
@@ -1898,6 +1900,16 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
 
   std::shared_ptr<onnxruntime::IExecutionProviderFactory> factory;
 
+  // This function might need to update the "const" OrtTensorRTProviderOptionsV2 object which can't be modified.
+  // Therefore, we need to create a new OrtTensorRTProviderOptionsV2 object and copy from tensorrt_options and use this new object to create the factory instead.
+  // Note: No need to worry about new_tensorrt_options being a local variable, CreateExecutionProviderFactory() in TRT EP will
+  // create a factory object that copies any provider options from tensorrt_options including "const char*" provider options.
+  OrtTensorRTProviderOptionsV2 new_tensorrt_options = *tensorrt_options;  // copy and assign from tensorrt_options
+
+  std::string extra_plugin_lib_paths = (tensorrt_options == nullptr || tensorrt_options->trt_extra_plugin_lib_paths == nullptr) ? "" : tensorrt_options->trt_extra_plugin_lib_paths;
+  new_tensorrt_options.custom_op_domain_list.clear();
+  AddTensorRTCustomOpDomainToSessionOption(options, &new_tensorrt_options, extra_plugin_lib_paths);
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
   auto ep_context_cache_enabled_from_provider_options = tensorrt_options->trt_dump_ep_context_model != 0;
   auto ep_context_cache_enabled_from_sess_options = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
@@ -1906,18 +1918,11 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
   // if provider options already have the EP context configs provided, the configs in session options will be ignored
   // since provider options has higher priority than session options.
   if (!ep_context_cache_enabled_from_provider_options && ep_context_cache_enabled_from_sess_options) {
-    // We need to create a new provider options V2 object and copy from provider_options, due to the "const" object pointed by provider_options can't be modified.
-    // Note: No need to worry about tensorrt_options being a local variable, CreateExecutionProviderFactory() in TRT EP will
-    // create a factory object that copies any provider options from tensorrt_options including "const char*" provider options.
-    OrtTensorRTProviderOptionsV2 new_tensorrt_options = *tensorrt_options;  // copy and assign from tensorrt_options
-
     onnxruntime::UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(options, &new_tensorrt_options);
-    factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&new_tensorrt_options);
-  } else {
-    factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
   }
+  factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&new_tensorrt_options);
 #else
-  factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
+  factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&new_tensorrt_options);
 #endif
 
   if (!factory) {
@@ -1925,9 +1930,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
   }
 
   options->provider_factories.push_back(factory);
-
-  std::string extra_plugin_lib_paths = (tensorrt_options == nullptr || tensorrt_options->trt_extra_plugin_lib_paths == nullptr) ? "" : tensorrt_options->trt_extra_plugin_lib_paths;
-  AddTensorRTCustomOpDomainToSessionOption(options, extra_plugin_lib_paths);
 
   return nullptr;
   API_IMPL_END

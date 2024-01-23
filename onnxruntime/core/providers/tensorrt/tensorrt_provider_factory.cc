@@ -113,6 +113,8 @@ struct Tensorrt_Provider : Provider {
     info.ep_context_file_path = options.trt_ep_context_file_path == nullptr ? "" : options.trt_ep_context_file_path;
     info.ep_context_embed_mode = options.trt_ep_context_embed_mode;
     info.engine_cache_prefix = options.trt_engine_cache_prefix == nullptr ? "" : options.trt_engine_cache_prefix;
+    
+    info.custom_op_domain_list = options.custom_op_domain_list;
 
     return std::make_shared<TensorrtProviderFactory>(info);
   }

@@ -71,7 +71,7 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
 
       std::unique_ptr<TensorRTCustomOp> trt_custom_op = std::make_unique<TensorRTCustomOp>(onnxruntime::kTensorrtExecutionProvider, nullptr);
       trt_custom_op->SetName(plugin_creator->getPluginName());
-      custom_op_domain->custom_ops_.push_back(trt_custom_op.get());
+      custom_op_domain->custom_ops_.push_back(trt_custom_op.release());
       registered_plugin_names.insert(plugin_name);
     }
     domain_list.push_back(custom_op_domain.release());
