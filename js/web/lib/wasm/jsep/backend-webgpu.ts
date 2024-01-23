@@ -700,6 +700,8 @@ export class WebGpuBackend {
   }
   captureEnd(sessionHandle: number): void {
     LOG_DEBUG('info', () => `captureEnd ${sessionHandle}`);
+    // flush the left commands before we change the status.
+    this.flush();
     this.currentSessionId = null;
     this.status = StatusType.default;
   }
@@ -730,6 +732,8 @@ export class WebGpuBackend {
         this.flush();
       }
     }
+    // flush the left commands before we change the status.
+    this.flush();
     this.status = StatusType.default;
   }
 
