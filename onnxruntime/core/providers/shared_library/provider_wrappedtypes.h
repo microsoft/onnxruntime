@@ -750,7 +750,8 @@ struct Graph final {
   PROVIDER_DISALLOW_ALL(Graph)
 };
 
-struct GraphViewer final {
+class GraphViewer final {
+ public:
   static void operator delete(void* p) { g_host->GraphViewer__operator_delete(reinterpret_cast<GraphViewer*>(p)); }
 
   std::unique_ptr<Model> CreateModel(const logging::Logger& logger) const { return g_host->GraphViewer__CreateModel(this, logger); }

@@ -9,7 +9,6 @@
 #include <map>
 #include <unordered_set>
 
-#include "core/providers/shared_library/provider_api.h"
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/cann/cann_execution_provider.h"

@@ -1079,8 +1079,6 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
                         char const* output_name,
                         size_t output_index,
                         size_t output_type,
-                        std::vector<IAllocatorUniquePtr<void>>& scratch_buffers,
-                        OrtAllocator* alloc,
                         cudaStream_t stream) {
   auto allocator = allocator_map[output_name].get();
   auto& shape = allocator->getOutputShape();
@@ -1350,6 +1348,9 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     timing_cache_enable_ = info.timing_cache_enable;
     force_timing_cache_match_ = info.force_timing_cache;
     detailed_build_log_ = info.detailed_build_log;
+    dump_ep_context_model_ = info.dump_ep_context_model;
+    ep_context_file_path_ = info.ep_context_file_path;
+    ep_context_embed_mode_ = info.ep_context_embed_mode;
     if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
       cache_path_ = info.engine_cache_path;
       cache_prefix_ = info.engine_cache_prefix;
@@ -1380,9 +1381,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     profile_max_shapes = info.profile_max_shapes;
     profile_opt_shapes = info.profile_opt_shapes;
     cuda_graph_enable_ = info.cuda_graph_enable;
-    dump_ep_context_model_ = info.dump_ep_context_model;
-    ep_context_embed_mode_ = info.ep_context_embed_mode;
-    ep_context_compute_capability_enable_ = info.ep_context_compute_capability_enable;
   } else {
     try {
       const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
@@ -1459,6 +1457,21 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       const std::string timing_force_match_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kForceTimingCache);
       if (!timing_force_match_env.empty()) {
         force_timing_cache_match_ = (std::stoi(timing_force_match_env) == 0 ? false : true);
+      }
+
+      const std::string dump_ep_context_model_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDumpEpContextModel);
+      if (!dump_ep_context_model_env.empty()) {
+        dump_ep_context_model_ = (std::stoi(dump_ep_context_model_env) == 0 ? false : true);
+      }
+
+      const std::string ep_context_file_path_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEpContextComputeCapabilityEnable);
+      if (!ep_context_file_path_env.empty()) {
+        ep_context_file_path_ = ep_context_file_path_env;
+      }
+
+      const std::string ep_context_embed_mode_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEpContextEmbedMode);
+      if (!ep_context_embed_mode_env.empty()) {
+        ep_context_embed_mode_ = std::stoi(ep_context_embed_mode_env);
       }
 
       if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
@@ -1538,21 +1551,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
         cuda_graph_enable_ = (std::stoi(cuda_graph_enable_env) == 0 ? false : true);
       }
 
-      const std::string dump_ep_context_model_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDumpEpContextModel);
-      if (!dump_ep_context_model_env.empty()) {
-        dump_ep_context_model_ = (std::stoi(dump_ep_context_model_env) == 0 ? false : true);
-      }
-
-      const std::string ep_context_embed_mode_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEpContextEmbedMode);
-      if (!ep_context_embed_mode_env.empty()) {
-        ep_context_embed_mode_ = std::stoi(ep_context_embed_mode_env);
-      }
-
-      const std::string ep_context_compute_capability_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEpContextComputeCapabilityEnable);
-      if (!ep_context_compute_capability_env.empty()) {
-        ep_context_compute_capability_enable_ = (std::stoi(ep_context_compute_capability_env) == 0 ? false : true);
-      }
-
     } catch (const std::invalid_argument& ex) {
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] Invalid Argument (from environment variables): " << ex.what();
     } catch (const std::out_of_range& ex) {
@@ -1580,7 +1578,36 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     dla_core_ = 0;
   }
 
-  if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_ || !cache_prefix_.empty()) {
+  // If ep_context_file_path_ is provided as a directory, create it if it's not existed
+  if (dump_ep_context_model_ && !ep_context_file_path_.empty() && std::filesystem::path(ep_context_file_path_).extension().empty() && !std::filesystem::is_directory(ep_context_file_path_)) {
+    if (!std::filesystem::create_directory(ep_context_file_path_)) {
+      throw std::runtime_error("Failed to create directory " + ep_context_file_path_);
+    }
+  }
+
+  // If dump_ep_context_model_ is enable, TRT EP forces cache_path_ to be the relative path of ep_context_file_path_.
+  // For example,
+  //    - original cache path = "engine_cache_dir" -> new cache path = "./context_model_dir/engine_cache_dir"
+  //    - original cache path = ""                 -> new cache path = "./context_model_dir"
+  // The new cache path will be saved as the "ep_cache_context" node attritue of the EP context node.
+  // For security reason, it needs to make sure the engine cache is saved inside context model directory.
+  if (dump_ep_context_model_ && engine_cache_enable_) {
+    if (IsAbsolutePath(cache_path_)) {
+      LOGS_DEFAULT(ERROR) << "In the case of dumping context model and for security purpose, the trt_engine_cache_path should be set with a relative path, but it is an absolute path:  " << cache_path_;
+    }
+    if (IsRelativePathToParentPath(cache_path_)) {
+      LOGS_DEFAULT(ERROR) << "In the case of dumping context model and for security purpose, The trt_engine_cache_path has '..', it's not allowed to point outside the directory.";
+    }
+
+    // Engine cache relative path to context model directory.
+    // It's used when dumping the "ep_cache_context" node attribute.
+    engine_cache_relative_path_to_context_model_dir = cache_path_;
+
+    // Make cache_path_ to be the relative path of ep_context_file_path_
+    cache_path_ = GetPathOrParentPathOfCtxModel(ep_context_file_path_).append(cache_path_).string();
+  }
+
+  if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
     if (!cache_path_.empty() && !fs::is_directory(cache_path_)) {
       if (!fs::create_directory(cache_path_)) {
         throw std::runtime_error("Failed to create directory " + cache_path_);
@@ -1692,6 +1719,9 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_profile_max_shapes: " << profile_max_shapes
                         << ", trt_profile_opt_shapes: " << profile_opt_shapes
                         << ", trt_cuda_graph_enable: " << cuda_graph_enable_
+                        << ", trt_dump_ep_context_model: " << dump_ep_context_model_
+                        << ", trt_ep_context_file_path: " << ep_context_file_path_
+                        << ", trt_ep_context_embed_mode: " << ep_context_embed_mode_
                         << ", trt_cache_prefix: " << cache_prefix_;
 }
 
@@ -2309,6 +2339,14 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
+  // Get ModelPath
+  const auto& path_string = graph.ModelPath().ToPathString();
+#ifdef _WIN32
+  wcstombs_s(nullptr, model_path_, sizeof(model_path_), path_string.c_str(), sizeof(model_path_));
+#else
+  strcpy(model_path_, path_string.c_str());
+#endif
+
   // If the model consists of only a single "EPContext" contrib op, it means TRT EP can fetch the precompiled engine info from the node and
   // load the engine directly without having to go through the processes of graph proto reconstruction, calling TRT parser and engine compilation.
   // So, simply return the ComputeCapability here.
@@ -2318,14 +2356,6 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     result.push_back(ComputeCapability::Create(std::move(sub_graph)));
     return result;
   }
-
-  // Get ModelPath
-  const auto& path_string = graph.ModelPath().ToPathString();
-#ifdef _WIN32
-  wcstombs_s(nullptr, model_path_, sizeof(model_path_), path_string.c_str(), sizeof(model_path_));
-#else
-  strcpy(model_path_, path_string.c_str());
-#endif
 
   // Generate unique kernel name for TRT graph
   HashValue model_hash = TRTGenerateId(graph);
@@ -2831,10 +2861,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
   std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
 
-  // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
-  // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
-  std::string cache_suffix = "";
   std::string cache_path = "";
+  std::string cache_suffix = "";
   // Customize cache prefix if assigned
   if (!cache_prefix_.empty()) {
     // Generate cache suffix in case user would like to customize cache prefix
@@ -2843,10 +2871,18 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   } else {
     cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
   }
+
+  // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
+  // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
   const std::string cache_path_prefix = cache_path + "_sm" + compute_capability_;
   const std::string engine_cache_path = cache_path_prefix + ".engine";
   const std::string encrypted_engine_cache_path = engine_cache_path + ".encrypted";
   const std::string profile_cache_path = cache_path_prefix + ".profile";
+
+  // Generate file name for dumping ep context model
+  if (dump_ep_context_model_ && ctx_model_path_.empty()) {
+    ctx_model_path_ = GetCtxModelPath(ep_context_file_path_, model_path_);
+  }
 
   if (!has_dynamic_shape) {
     std::string timing_cache_path = "";
@@ -2984,15 +3020,20 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         }
         // dump EP context node model
         if (dump_ep_context_model_) {
-          std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto{CreateCtxNodeModel(graph_body_viewer,
-                                                                                     engine_cache_path,
-                                                                                     reinterpret_cast<char*>(serialized_engine->data()),
-                                                                                     serialized_engine->size(),
-                                                                                     ep_context_embed_mode_,
-                                                                                     ep_context_compute_capability_enable_,
-                                                                                     compute_capability_,
-                                                                                     GetLogger())};
-          DumpCtxNodeModel(model_proto.get(), cache_path_prefix);
+          // "ep_cache_context" node attribute should be a relative path to context model directory
+          if (ep_cache_context_attr_.empty()) {
+            auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
+            ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
+          }
+
+          std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto{CreateCtxModel(graph_body_viewer,
+                                                                                 ep_cache_context_attr_,
+                                                                                 reinterpret_cast<char*>(serialized_engine->data()),
+                                                                                 serialized_engine->size(),
+                                                                                 ep_context_embed_mode_,
+                                                                                 compute_capability_,
+                                                                                 GetLogger())};
+          DumpCtxModel(model_proto.get(), ctx_model_path_);
         }
       }
     }
@@ -3052,16 +3093,20 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   // TRT EP will serialize the model at inference time due to engine can be updated and the updated engine should be included in the model.
   // However, if the embed_mode is 0 (only includes engine path), TRT EP will serialize it here.
   if (dump_ep_context_model_ && has_dynamic_shape) {
-    model_proto_.reset(CreateCtxNodeModel(graph_body_viewer,
-                                          engine_cache_path,
-                                          nullptr,
-                                          0,
-                                          ep_context_embed_mode_,
-                                          ep_context_compute_capability_enable_,
-                                          compute_capability_,
-                                          GetLogger()));
+    // "ep_cache_context" node attribute should be a relative path to context model directory
+    if (ep_cache_context_attr_.empty()) {
+      auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
+      ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
+    }
+    model_proto_.reset(CreateCtxModel(graph_body_viewer,
+                                      ep_cache_context_attr_,
+                                      nullptr,
+                                      0,
+                                      ep_context_embed_mode_,
+                                      compute_capability_,
+                                      GetLogger()));
     if (ep_context_embed_mode_ == 0) {
-      DumpCtxNodeModel(model_proto_.get(), cache_path_prefix);
+      DumpCtxModel(model_proto_.get(), ctx_model_path_);
     }
   }
 
@@ -3382,7 +3427,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       // dump ep context model
       if (dump_ep_context_model_ && ep_context_embed_mode_) {
         UpdateCtxNodeModelEngineContext(model_proto_.get(), reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
-        DumpCtxNodeModel(model_proto_.get(), cache_path_prefix);
+        DumpCtxModel(model_proto_.get(), ctx_model_path_);
       }
       context_update = true;
     }
@@ -3521,7 +3566,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         if (index_iter != output_indexes.end()) {
           output_index = index_iter->second;
         }
-        auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type, scratch_buffers, alloc, stream);
+        auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type, stream);
         if (status != Status::OK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
         }
@@ -3575,7 +3620,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
   std::unordered_map<std::string, size_t> output_types;    // TRT engine output name -> ORT output tensor type
 
   // Get engine binary data and deserialize it
-  auto trt_cache_model_handler = TensorRTCacheModelHandler(&trt_engine, runtime_.get(), compute_capability_);
+  auto trt_cache_model_handler = TensorRTCacheModelHandler(&trt_engine, runtime_.get(), model_path_, compute_capability_);
   auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer);
   if (status != Status::OK()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
@@ -3802,7 +3847,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
         if (index_iter != output_indexes.end()) {
           output_index = index_iter->second;
         }
-        auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type, scratch_buffers, alloc, stream);
+        auto status = BindKernelOutput(ctx, &mem_info, dds_output_allocator_map, output_name, output_index, output_type, stream);
         if (status != Status::OK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
         }

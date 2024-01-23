@@ -5,12 +5,13 @@
 
 #include "core/framework/execution_provider.h"
 #include "core/framework/session_options.h"
+#include "core/framework/model_metadef_id_generator.h"
+#include "core/graph/model.h"
 #include <string>
 #include "core/providers/qnn/builder/qnn_backend_manager.h"
 #include "core/providers/qnn/builder/qnn_model.h"
-#include "core/providers/qnn/builder/qnn_graph_configs_helper.h"
-#include "core/providers/shared_library/provider_api.h"
-#include "core/graph/model.h"
+#include "core/providers/qnn/builder/qnn_configs_helper.h"
+#include "HTP/QnnHtpGraph.h"
 
 namespace onnxruntime {
 
@@ -59,7 +60,7 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   void ParseHtpGraphFinalizationOptimizationMode(const std::string& htp_graph_finalization_opt_mode_string);
 
-  void InitQnnGraphConfigs(qnn::QnnGraphConfigsBuilder& configs_holder) const;
+  void InitQnnGraphConfigs(qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t>& configs_builder) const;
 
  private:
   qnn::HtpGraphFinalizationOptimizationMode htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;

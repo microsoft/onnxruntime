@@ -8,10 +8,10 @@
 
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/model_metadef_id_generator.h"
 #include "core/platform/ort_mutex.h"
 #include "core/providers/migraphx/migraphx_execution_provider_info.h"
 #include "core/providers/migraphx/migraphx_inc.h"
-#include "core/providers/shared_library/provider_api.h"
 
 #include <map>
 #include <unordered_map>
