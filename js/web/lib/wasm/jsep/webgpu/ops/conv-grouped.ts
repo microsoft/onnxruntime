@@ -107,8 +107,8 @@ export const createGroupedConvVectorizeProgramInfo =
       const outputShapeInShader = [outputShape[0], outputShape[1], outputShape[2], outputShape[3] / components];
 
       const programUniforms: ProgramUniform[] = [
-        {type: 'uint32', data: outputSize}, {type: 'int32', data: attributes.strides},
-        {type: 'int32', data: attributes.pads}, ...createTensorShapeVariables(xShape),
+        {type: 'uint32', data: outputSize}, {type: 'int32', data: [attributes.strides[0], attributes.strides[1]]},
+        {type: 'int32', data: [attributes.pads[0], attributes.pads[1]]}, ...createTensorShapeVariables(xShape),
         ...createTensorShapeVariables(wShape), ...createTensorShapeVariables(outputShapeInShader)
       ];
       const xNumber = (outputNumber - 1) * attributes.strides[1] + wShape[1];
