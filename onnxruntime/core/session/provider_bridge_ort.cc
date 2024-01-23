@@ -1693,8 +1693,10 @@ void AddTensorRTCustomOpDomainToSessionOption(OrtSessionOptions* options, OrtTen
   for (auto ptr : custom_op_domains) {
     if (!is_already_in_domains(ptr->domain_, options->custom_op_domains_)) {
       options->custom_op_domains_.push_back(ptr);
+      // The OrtCustomOpDomains objects created by TRT EP's GetTensorRTCustomOpDomainList() should be released once session is finished.
+      // TRT EP needs to keep all the pointers OrtCustomOpDomain obejcts and releases them upon TRT EP destruction.
       if (tensorrt_options) {
-        tensorrt_options->custom_op_domain_list.push_back(ptr);  // TensorRT EP should keep all the pointers to OrtCustomOpDomain obejcts for the purpose of releasing them at EP destruction
+        tensorrt_options->custom_op_domain_list.push_back(ptr);
       }
     } else {
       LOGS_DEFAULT(WARNING) << "The custom op domain name " << ptr->domain_ << " is already in session option.";
@@ -1716,17 +1718,9 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessi
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtSessionOptions* options, int device_id) {
   API_IMPL_BEGIN
-  auto factory = onnxruntime::TensorrtProviderFactoryCreator::Create(device_id);
-  if (!factory) {
-    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Tensorrt: Failed to load shared library");
-  }
-
-  options->provider_factories.push_back(factory);
-
-  std::string extra_plugin_lib_paths = onnxruntime::Env::Default().GetEnvironmentVar("trt_extra_plugin_lib_paths");
-  AddTensorRTCustomOpDomainToSessionOption(options, nullptr, extra_plugin_lib_paths);
-
-  return nullptr;
+  OrtTensorRTProviderOptionsV2 tensorrt_options;
+  tensorrt_options.device_id = device_id;
+  return OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2(options, &tensorrt_options);
   API_IMPL_END
 }
 
@@ -1744,32 +1738,8 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtS
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptions* tensorrt_options) {
   API_IMPL_BEGIN
-
-  std::shared_ptr<onnxruntime::IExecutionProviderFactory> factory;
-
   OrtTensorRTProviderOptionsV2 trt_options_converted = onnxruntime::OrtTensorRTProviderOptionsToOrtTensorRTProviderOptionsV2(tensorrt_options);
-  trt_options_converted.custom_op_domain_list.clear();
-  AddTensorRTCustomOpDomainToSessionOption(options, &trt_options_converted, "");
-
-#if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
-  auto ep_context_cache_enabled_from_sess_options = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
-  // If EP context configs are provided in session options, we need to propagate them to provider options
-  if (ep_context_cache_enabled_from_sess_options) {
-    onnxruntime::UpdateOrtTensorRTProviderOptionsV2FromSessionOptionsConfigs(options, &trt_options_converted);
-    factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&trt_options_converted);
-  }
-  factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&trt_options_converted);
-#else
-  factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&trt_options_converted);
-#endif
-
-  if (!factory) {
-    return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_Tensorrt: Failed to load shared library");
-  }
-
-  options->provider_factories.push_back(factory);
-
-  return nullptr;
+  return OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2(options, &trt_options_converted);
   API_IMPL_END
 }
 
