@@ -699,7 +699,8 @@ TEST(GradientCheckerTest, SplitGrad) {
   OpDef op_def{"Split"};
 
   ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {shape}, {{3, 5}, {3, 5}, {3, 5}}, &max_error,
-                                                         {MakeAttribute("axis", int64_t(0))}));
+                                                         {MakeAttribute("axis", int64_t(0)),
+                                                          MakeAttribute("num_outputs", int64_t(2))}));
   EXPECT_IS_TINY(max_error);
 
   // opset13 test
@@ -1332,8 +1333,6 @@ static void RunSqueezeUnsqueezeTests(const OpDef& op_def, std::vector<std::vecto
       TensorInfo axes_info({static_cast<int64_t>(axes.size())}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
       input.push_back(axes_info);
       x_datas.push_back(axes_float);
-    } else {
-      attributes.push_back(MakeAttribute("axes", axes));
     }
 
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, input, {y_shape}, &max_error, x_datas, attributes));
