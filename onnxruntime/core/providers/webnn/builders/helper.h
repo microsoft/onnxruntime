@@ -101,9 +101,11 @@ inline bool ReadScalarTensorData(const onnx::TensorProto& tensor, emscripten::va
   }
   switch (tensor.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
       scalar = emscripten::val{*reinterpret_cast<uint8_t*>(unpacked_tensor.data())};
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+      scalar = emscripten::val{*reinterpret_cast<int8_t*>(unpacked_tensor.data())};
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
       scalar = emscripten::val{MLFloat16::FromBits(*reinterpret_cast<uint16_t*>(unpacked_tensor.data())).ToFloat()};
