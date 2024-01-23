@@ -157,6 +157,7 @@ struct Tensor;
 struct SparseTensor;
 class TensorSeq;
 class SessionState;
+class ModelMetadefIdGenerator;
 
 class If;
 class Loop;
