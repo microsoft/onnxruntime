@@ -38,16 +38,16 @@ def parse_args():
         dest="patterns",
         action="extend",
         nargs="+",
-        help="Benchmark pattern to run. Each pattern value will have its own invocation of the "
-        "benchmark program (passed to the benchmark program with the --benchmark_filter option). "
-        "To list the benchmark test names that are matched by these patterns, run the benchmark program with the "
-        "--benchmark_list_tests option.",
+        help="Benchmark test name pattern to specify which benchmark tests to run. "
+        "Each pattern value will have its own invocation of the benchmark program (passed to the benchmark program "
+        "with the --benchmark_filter option). "
+        "To list the benchmark test names, run the benchmark program with the --benchmark_list_tests option.",
     )
     parser.add_argument(
         "--repetitions",
         type=int,
         default=10,
-        help="Benchmark repetitions to run (passed to the benchmark program with the "
+        help="Number of benchmark run repetitions (passed to the benchmark program with the "
         "--benchmark_repetitions option).",
     )
 
@@ -55,7 +55,8 @@ def parse_args():
         "--max-cv",
         type=float,
         default=0.05,
-        help="Maximum allowed CV (stddev / mean) value.",
+        help="Maximum allowed CV (stddev / mean) value. "
+        "The CV value is a number, not a percentage. E.g., a value of 0.05 corresponds to 5%.",
     )
     parser.add_argument(
         "--max-attempts",
