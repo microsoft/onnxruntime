@@ -48,7 +48,13 @@ class TestTorchDynamoOrt(unittest.TestCase):
                 tensor_q = tensor_p.sigmoid()
                 return tensor_q
 
-            optimized_elementwise_model = torch.compile(elementwise_model, backend="onnxrt", dynamic=True)
+            # TODO: in order to decompose torch function calls to aten ops,
+            # we need to set user_aot_autograd=True because there is no
+            # decomposition in DORT anymore. A long-term fix will be brining
+            # decomposition pass back into DORT.
+            # optimized_elementwise_model = torch.compile(elementwise_model, backend="onnxrt", dynamic=True)
+            local_backend = make_local_backend(dynamic=True, use_aot_autograd=True)
+            optimized_elementwise_model = torch.compile(elementwise_model, backend=local_backend, dynamic=True)
 
             def run(fun, list_x):
                 tensor_x = torch.tensor(list_x, dtype=torch.float32).requires_grad_()
