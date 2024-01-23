@@ -187,6 +187,38 @@ TEST(MathOpTest, Add_double) {
   test.Run();
 }
 
+TEST(MathOpTest, Add_int8) {
+  OpTester test("Add", 14);
+  test.AddInput<int8_t>("A", {3}, {1, 2, 3});
+  test.AddInput<int8_t>("B", {3}, {4, 5, 6});
+  test.AddOutput<int8_t>("C", {3}, {5, 7, 9});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+}
+
+TEST(MathOpTest, Add_int16) {
+  OpTester test("Add", 14);
+  test.AddInput<int16_t>("A", {3}, {1, 2, 3});
+  test.AddInput<int16_t>("B", {3}, {4, 5, 6});
+  test.AddOutput<int16_t>("C", {3}, {5, 7, 9});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+}
+
+TEST(MathOpTest, Add_uint8) {
+  OpTester test("Add", 14);
+  test.AddInput<uint8_t>("A", {3}, {1, 2, 3});
+  test.AddInput<uint8_t>("B", {3}, {4, 5, 6});
+  test.AddOutput<uint8_t>("C", {3}, {5, 7, 9});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+}
+
+TEST(MathOpTest, Add_uint16) {
+  OpTester test("Add", 14);
+  test.AddInput<uint16_t>("A", {3}, {1, 2, 3});
+  test.AddInput<uint16_t>("B", {3}, {4, 5, 6});
+  test.AddOutput<uint16_t>("C", {3}, {5, 7, 9});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+}
+
 TEST(MathOpTest, Add_Broadcast_Axis) {
   OpTester test("Add");
 
@@ -494,6 +526,38 @@ TEST(MathOpTest, Sub_int64) {
   test.AddInput<int64_t>("A", {3}, {1, 5, 6});
   test.AddInput<int64_t>("B", {3}, {4, 5, 3});
   test.AddOutput<int64_t>("C", {3}, {-3, 0, 3});
+  test.Run();
+}
+
+TEST(MathOpTest, Sub_int8) {
+  OpTester test("Sub", 14);
+  test.AddInput<int8_t>("A", {3}, {1, 5, 6});
+  test.AddInput<int8_t>("B", {3}, {4, 5, 3});
+  test.AddOutput<int8_t>("C", {3}, {-3, 0, 3});
+  test.Run();
+}
+
+TEST(MathOpTest, Sub_int16) {
+  OpTester test("Sub", 14);
+  test.AddInput<int16_t>("A", {3}, {1, 5, 6});
+  test.AddInput<int16_t>("B", {3}, {4, 5, 3});
+  test.AddOutput<int16_t>("C", {3}, {-3, 0, 3});
+  test.Run();
+}
+
+TEST(MathOpTest, Sub_uint8) {
+  OpTester test("Sub", 14);
+  test.AddInput<uint8_t>("A", {3}, {7, 5, 6});
+  test.AddInput<uint8_t>("B", {3}, {4, 5, 3});
+  test.AddOutput<uint8_t>("C", {3}, {3, 0, 3});
+  test.Run();
+}
+
+TEST(MathOpTest, Sub_uint16) {
+  OpTester test("Sub", 14);
+  test.AddInput<uint16_t>("A", {3}, {7, 5, 6});
+  test.AddInput<uint16_t>("B", {3}, {4, 5, 3});
+  test.AddOutput<uint16_t>("C", {3}, {3, 0, 3});
   test.Run();
 }
 
