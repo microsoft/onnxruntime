@@ -5,10 +5,12 @@
 
 #include "core/framework/execution_provider.h"
 #include "core/framework/session_options.h"
+#include "core/graph/model.h"
 #include <string>
 #include "core/providers/qnn/builder/qnn_backend_manager.h"
 #include "core/providers/qnn/builder/qnn_model.h"
-#include "core/providers/qnn/builder/qnn_graph_configs_helper.h"
+#include "core/providers/qnn/builder/qnn_configs_helper.h"
+#include "HTP/QnnHtpGraph.h"
 
 namespace onnxruntime {
 
@@ -35,6 +37,8 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   DataLayout GetPreferredLayout() const override;
 
+  const InlinedVector<const Node*> GetEpContextNodes() const override;
+
  private:
   bool IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
                        std::unordered_map<const NodeUnit*, bool>& node_unit_supported_result,
@@ -55,7 +59,7 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   void ParseHtpGraphFinalizationOptimizationMode(const std::string& htp_graph_finalization_opt_mode_string);
 
-  void InitQnnGraphConfigs(qnn::QnnGraphConfigsBuilder& configs_holder) const;
+  void InitQnnGraphConfigs(qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t>& configs_builder) const;
 
  private:
   qnn::HtpGraphFinalizationOptimizationMode htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
@@ -66,6 +70,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool disable_cpu_ep_fallback_ = false;  // True if CPU EP fallback has been disabled for this session.
   bool qnn_context_embed_mode_ = true;
   int32_t vtcm_size_in_mb_ = 0;
+  std::unique_ptr<onnxruntime::Model> qnn_ep_context_model_;
 };
 
 }  // namespace onnxruntime
