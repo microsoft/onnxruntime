@@ -129,6 +129,9 @@ class FusionAttention(Fusion):
         self.num_heads_warning = True
         self.hidden_size_warning = True
 
+        self.shape_infer = None
+        self.shape_infer_done = True
+
     def get_num_heads_and_hidden_size_from_concat(self, concat: NodeProto) -> Tuple[int, int]:
         """
         Detect num_heads and hidden_size from Concat node in the following subgraph:
@@ -202,12 +205,15 @@ class FusionAttention(Fusion):
         return num_heads, hidden_size
 
     def get_add_qk_str(self, add_qk: NodeProto):
-        shape_infer = self.model.infer_runtime_shape(update=True)
-        if shape_infer is None:
+        if not self.shape_infer_done:
+            self.shape_infer = self.model.infer_runtime_shape(update=True)
+            self.shape_infer_done = True
+
+        if self.shape_infer is None:
             return None
 
-        input_0_shape = shape_infer.get_edge_shape(add_qk.input[0])
-        input_1_shape = shape_infer.get_edge_shape(add_qk.input[1])
+        input_0_shape = self.shape_infer.get_edge_shape(add_qk.input[0])
+        input_1_shape = self.shape_infer.get_edge_shape(add_qk.input[1])
 
         if input_0_shape is None or input_1_shape is None:
             logger.debug(f"one of the inputs of {add_qk} is None")
