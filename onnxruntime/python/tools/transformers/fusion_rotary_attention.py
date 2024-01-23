@@ -364,6 +364,7 @@ class FusionRotaryAttention(FusionAttention):
         # v_nodes_4 is for LLaMA-2 70B model
         past_v, present_v, past_seq_len = "", "", ""
         v_nodes = None
+        add_v = None
         v_nodes_1 = self.model.match_parent_path(
             matmul_qkv,
             ["Reshape", "Transpose", "Concat", "Transpose", "Reshape", "MatMul"],
@@ -491,6 +492,11 @@ class FusionRotaryAttention(FusionAttention):
             ],
             output_name_to_node=None,
         )
+        v_nodes_5 = self.model.match_parent_path(
+            matmul_qkv,
+            ["Concat", "Transpose", "Reshape", "Add", "MatMul"],
+            [1, 1, 0, 0, 1],
+        )
         if v_nodes_1 is not None:
             reshape_v_2, _, concat_v, _, reshape_v_1, matmul_v = v_nodes_1
             v_nodes = v_nodes_1
@@ -519,6 +525,11 @@ class FusionRotaryAttention(FusionAttention):
         elif v_nodes_4 is not None and len(v_nodes_4) == 9:
             concat_v, transpose_v, reshape_v, matmul_v = v_nodes_4[0][-4:]
             v_nodes = v_nodes_4
+            past_v = concat_v.input[0]
+            present_v = concat_v.output[0]
+        elif v_nodes_5 is not None:
+            concat_v, transpose_v, reshape_v, add_v, matmul_v = v_nodes_5
+            v_nodes = v_nodes_5
             past_v = concat_v.input[0]
             present_v = concat_v.output[0]
         else:
@@ -597,6 +608,7 @@ class FusionRotaryAttention(FusionAttention):
         # k_nodes_4 is for LLaMA-2 70B Hugging Face
         past_k, present_k = "", ""
         k_nodes = None
+        add_k = None
         k_nodes_1 = self.model.match_parent_path(
             matmul_qk,
             ["Reshape", "Transpose", "Concat", "Transpose", "RotaryEmbedding", "MatMul"],
@@ -780,6 +792,11 @@ class FusionRotaryAttention(FusionAttention):
             ],
             output_name_to_node=None,
         )
+        k_nodes_5 = self.model.match_parent_path(
+            matmul_qk,
+            ["Transpose", "Concat", "RotaryEmbedding", "Transpose", "Reshape", "Add", "MatMul"],
+            [1, 0, 1, 0, 0, 0, 1],
+        )
         if k_nodes_1 is not None:
             reshape_k_2, _, concat_k, _, rotary_k, matmul_k = k_nodes_1
             k_nodes = k_nodes_1
@@ -813,6 +830,11 @@ class FusionRotaryAttention(FusionAttention):
             k_nodes = k_nodes_4
             past_k = concat_k.input[0]
             present_k = concat_k.output[0]
+        elif k_nodes_5 is not None:
+            _, concat_k, rotary_k, _, reshape_k, add_k, matmul_k = k_nodes_5
+            k_nodes = k_nodes_5
+            past_k = concat_k.input[0]
+            present_k = concat_k.output[0]
         else:
             logger.debug("fuse_rotary_attention: failed to match k nodes")
             return
@@ -820,6 +842,7 @@ class FusionRotaryAttention(FusionAttention):
         # q_nodes_1 is for LLaMA-2 Microsoft
         # q_nodes_2 is for LLaMA-2 Hugging Face
         q_nodes = None
+        add_q = None
         q_nodes_1 = self.model.match_parent_path(
             matmul_qk,
             ["Reshape", "Transpose", "RotaryEmbedding", "MatMul"],
@@ -830,12 +853,20 @@ class FusionRotaryAttention(FusionAttention):
             ["RotaryEmbedding", "Transpose", "Reshape", "MatMul"],
             [0, 0, 0, 0],
         )
+        q_nodes_3 = self.model.match_parent_path(
+            matmul_qk,
+            ["RotaryEmbedding", "Transpose", "Reshape", "Add", "MatMul"],
+            [0, 0, 0, 0, 1],
+        )
         if q_nodes_1 is not None:
             reshape_q_2, _, rotary_q, matmul_q = q_nodes_1
             q_nodes = q_nodes_1
         elif q_nodes_2 is not None:
             rotary_q, _, reshape_q, matmul_q = q_nodes_2
             q_nodes = q_nodes_2
+        elif q_nodes_3 is not None:
+            rotary_q, _, reshape_q, add_q, matmul_q = q_nodes_3
+            q_nodes = q_nodes_3
         else:
             logger.debug("fuse_rotary_attention: failed to match q nodes")
             return
@@ -875,8 +906,8 @@ class FusionRotaryAttention(FusionAttention):
             # Rename inputs of rotary_q/k so it connects with output of matmul_q/k
             # Before: MatMul --> Reshape --> Transpose --> RotaryEmbedding
             # After: MatMul --> RotaryEmbedding
-            rotary_q.input[0] = matmul_q.output[0]
-            rotary_k.input[0] = matmul_k.output[0]
+            rotary_q.input[0] = add_q.output[0] if add_q else matmul_q.output[0]
+            rotary_k.input[0] = add_k.output[0] if add_k else matmul_k.output[0]
 
             # Rename current output of rotary_k (present_key) so it doesn't match output of MHA (present_key)
             rotary_k.output[0] = rotary_k.name + "_output_0"
@@ -889,7 +920,7 @@ class FusionRotaryAttention(FusionAttention):
             root_output,
             rotary_q,
             rotary_k,
-            matmul_v,
+            add_v if add_v else matmul_v,
             attn_mask,
             add_qk_str,
             past_k,
@@ -907,7 +938,10 @@ class FusionRotaryAttention(FusionAttention):
         self.nodes_to_remove.extend(qkv_nodes[1:])
 
         if v_nodes != v_nodes_4:
-            self.nodes_to_remove.extend(v_nodes[:-1])
+            if add_v:
+                self.nodes_to_remove.extend(v_nodes[:-2])
+            else:
+                self.nodes_to_remove.extend(v_nodes[:-1])
         else:
             nodes_to_keep = [v_nodes[0][-1]]
             for temp_path in v_nodes:
@@ -921,7 +955,7 @@ class FusionRotaryAttention(FusionAttention):
             self.nodes_to_remove.append(k_nodes[0])
             self.nodes_to_remove.append(k_nodes[2])
             self.nodes_to_remove.append(k_nodes[3])
-        elif k_nodes == k_nodes_3:
+        elif k_nodes == k_nodes_3 or k_nodes == k_nodes_5:
             self.nodes_to_remove.append(k_nodes[0])
             self.nodes_to_remove.append(k_nodes[1])
             self.nodes_to_remove.append(k_nodes[3])
@@ -933,7 +967,7 @@ class FusionRotaryAttention(FusionAttention):
 
         if q_nodes == q_nodes_1:
             self.nodes_to_remove.extend(q_nodes[:-2])
-        elif q_nodes == q_nodes_2:
+        elif q_nodes == q_nodes_2 or q_nodes == q_nodes_3:
             self.nodes_to_remove.append(q_nodes[1])
             self.nodes_to_remove.append(q_nodes[2])
 
