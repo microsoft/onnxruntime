@@ -56,7 +56,7 @@ def parse_args():
         type=float,
         default=0.05,
         help="Maximum allowed CV (stddev / mean) value. "
-        "The CV value is a number, not a percentage. E.g., a value of 0.05 corresponds to 5%.",
+        "The CV value is a number, not a percentage. E.g., a value of 0.05 corresponds to 5%%.",
     )
     parser.add_argument(
         "--max-attempts",
