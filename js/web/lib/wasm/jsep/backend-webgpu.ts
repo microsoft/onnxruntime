@@ -26,7 +26,7 @@ interface KernelInfo {
   readonly attributes: [((attribute: unknown) => unknown)|undefined, unknown];
 }
 
-export interface PendingKernelInfo {
+interface PendingKernelInfo {
   readonly kernelId: number;
   readonly programName: string;
   readonly inputTensorViews: readonly TensorView[];
@@ -160,7 +160,7 @@ export class WebGpuBackend {
   pendingDispatchNumber = 0;
 
   // info of kernels pending submission for a single batch
-  pendingKernels: PendingKernelInfo[] = [];
+  private pendingKernels: PendingKernelInfo[] = [];
   // queryReadBuffer -> pendingKernels mapping for all the batches
   private pendingQueries: Map<GPUBuffer, PendingKernelInfo[]> = new Map();
   private queryResolveBuffer?: GPUBuffer;
@@ -178,7 +178,7 @@ export class WebGpuBackend {
   /**
    * a SessionID -> PendingKernelInfo[] mapping for profiling.
    */
-  capturedPendingKernels: Map<number, PendingKernelInfo[]> = new Map();
+  private capturedPendingKernels: Map<number, PendingKernelInfo[]> = new Map();
 
   /**
    * a SessionID -> a Map of (InputOutputIndex -> [ID, GPUBuffer]) mapping.
@@ -262,7 +262,6 @@ export class WebGpuBackend {
 
   getComputePassEncoder(): GPUComputePassEncoder {
     if (!this.computePassEncoder) {
-      // getCommandEncoder must be put before checking this.queryType since this.queryType is updated there.
       const commandEncoder = this.getCommandEncoder();
       const computePassDescriptor: GPUComputePassDescriptor = {};
 
@@ -514,9 +513,20 @@ export class WebGpuBackend {
         () => `[ProgramManager] run "${program.name}" (key=${key}) with ${normalizedDispatchGroup[0]}x${
             normalizedDispatchGroup[1]}x${normalizedDispatchGroup[2]}`);
 
-    this.programManager.run(
-        artifact, inputDatas, outputDatas, inputTensorViews, outputTensorViews, normalizedDispatchGroup,
-        uniformBufferBinding);
+    if (this.queryType !== 'none' || this.status === StatusType.capture) {
+      const pendingKernelInfo: PendingKernelInfo = {
+        kernelId: this.currentKernelId!,
+        programName: artifact.programInfo.name,
+        inputTensorViews,
+        outputTensorViews,
+      };
+      this.pendingKernels.push(pendingKernelInfo);
+
+      const sessionPendingKernels = this.capturedPendingKernels.get(this.currentSessionId!);
+      sessionPendingKernels!.push(pendingKernelInfo);
+    }
+
+    this.programManager.run(artifact, inputDatas, outputDatas, normalizedDispatchGroup, uniformBufferBinding);
 
     TRACE_FUNC_END(program.name);
     return outputTensorViews;
@@ -694,8 +704,6 @@ export class WebGpuBackend {
     this.status = StatusType.default;
   }
   replay(sessionHandle: number): void {
-    // make sure previous commands are all submitted.
-    this.flush();
     LOG_DEBUG('info', () => `replay ${sessionHandle}`);
     this.currentSessionId = sessionHandle;
     this.status = StatusType.replay;
@@ -722,7 +730,6 @@ export class WebGpuBackend {
         this.flush();
       }
     }
-    this.flush();
     this.status = StatusType.default;
   }
 
