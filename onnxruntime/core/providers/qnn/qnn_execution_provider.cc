@@ -566,14 +566,14 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
 
   onnxruntime::PathString context_cache_path;
   bool is_ctx_file_exist = false;
-  if (!is_qnn_ctx_model) {
+  if (!is_qnn_ctx_model && context_cache_enabled_) {
     const onnxruntime::GraphViewer& graph_viewer_0(fused_nodes_and_graphs[0].filtered_graph);
     is_ctx_file_exist = qnn::IsContextCacheFileExists(context_cache_path_cfg_,
                                                       graph_viewer_0.ModelPath().ToPathString(),
                                                       context_cache_path);
     ORT_RETURN_IF(is_ctx_file_exist,
-                  "The inference session is created from normal ONNX model. And an EP context model file is provided and existed. \
-                  Please remove the EP context model manually if you want to re-generate it.");
+                  "The inference session is created from normal ONNX model. And an EP context model file is provided and existed. ",
+                  "Please remove the EP context model manually if you want to re-generate it.");
   }
 
   if (is_qnn_ctx_model) {
