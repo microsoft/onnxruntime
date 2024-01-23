@@ -5,8 +5,6 @@
 #pragma warning(disable : 4996)
 #endif
 
-#include "core/providers/dnnl/dnnl_execution_provider.h"
-
 #include <fstream>
 #include <iomanip>
 #include <unordered_set>
@@ -16,6 +14,7 @@
 
 #include "core/platform/ort_mutex.h"
 #include "core/providers/shared_library/provider_api.h"
+#include "core/providers/dnnl/dnnl_execution_provider.h"
 
 #include "core/providers/dnnl/dnnl_fwd.h"
 #include "core/providers/dnnl/dnnl_node_capability.h"
