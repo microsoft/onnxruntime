@@ -283,8 +283,8 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     input = model_builder.GetBuilder().call<emscripten::val>("reshape", input, emscripten::val::array(new_shape));
 
     weight_shape.resize(4, 1);  // Ensure 4D by appending 1's if needed.
-    strides.resize(2, 1);  // Ensure 2D by appending 1's if needed.
-    dilations.resize(2, 1);  // Ensure 2D by appending 1's if needed.
+    strides.resize(2, 1);       // Ensure 2D by appending 1's if needed.
+    dilations.resize(2, 1);     // Ensure 2D by appending 1's if needed.
     if (pads.size() == 2) {
       pads.insert(pads.begin() + 1, 0);
       pads.push_back(0);
