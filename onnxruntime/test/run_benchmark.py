@@ -175,19 +175,16 @@ def main():
         temp_dir = pathlib.Path(temp_dir_name)
         output_file = temp_dir / "benchmark.out.json"
 
-        if args.patterns:
-            for pattern in args.patterns:
-                benchmark_results += run_benchmark(
-                    program=program,
-                    output_file=output_file,
-                    show_output=args.show_program_output,
-                    pattern=pattern,
-                    repetitions=args.repetitions,
-                    max_cv=args.max_cv,
-                    max_attempts=args.max_attempts,
-                )
-        else:
-            warn("No patterns were specified.")
+        for pattern in args.patterns:
+            benchmark_results += run_benchmark(
+                program=program,
+                output_file=output_file,
+                show_output=args.show_program_output,
+                pattern=pattern,
+                repetitions=args.repetitions,
+                max_cv=args.max_cv,
+                max_attempts=args.max_attempts,
+            )
 
     print("name|median_real_time|median_cpu_time")
     print("-|-|-")
