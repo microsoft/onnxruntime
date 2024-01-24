@@ -185,9 +185,11 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
         //         |---> Gather
         // Reshape |---> Gather
         //         |---> Slice
-        if (output_count != 3) continue;
+        //         |... or (other ops)
 
         // Get the output into node args
+        if (output_count < 3) continue;
+
         output_args.push_back(node.OutputDefs()[0]);
     }
 
@@ -196,7 +198,6 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
         auto shape = node_arg->Shape();
         if (!shape) continue;
 
-        // ??? What is the consumers here ???  --> Reshape
         auto consumers = graph.GetConsumerNodes(node_arg->Name());
         size_t consumer_count = consumers.size();
 
@@ -208,8 +209,9 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
         int64_t split_axis = 0;
         int64_t indices_n_dims = -1;
 
-        // 2 Gather, and 1 slice...
-        InlinedVector<NodeArg*> reshape_outputs;
+        // Fuse 2 Gathers and 1 slice to Split
+        // Get those outputs as Split outputs
+        InlinedVector<NodeArg*> split_outputs;
 
         InlinedVector<std::reference_wrapper<Node>> nodes_to_fuse;
         int64_t gather_node_count = 0, slice_node_count = 0;
@@ -224,7 +226,6 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
 
             if ((!consumer || consumer->InputDefs()[0] != node_arg) ||
                 (!IsSupportedGatherOps && !IsSupportedSliceOps)) {
-                    can_fuse = false;
                     break;
             }
 
@@ -262,7 +263,7 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
                 Node& gather_node = *graph.GetNode(consumer->Index());
                 nodes_to_fuse.push_back(gather_node);
                 NodeArg* gather_output_args = gather_node.MutableOutputDefs()[0];
-                reshape_outputs.push_back(gather_output_args);
+                split_outputs.push_back(gather_output_args);
                 gather_node_count++;
             }
 
@@ -276,7 +277,7 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
                 Node& slice_node = *graph.GetNode(consumer->Index());
                 NodeArg* slice_output_args = slice_node.MutableOutputDefs()[0];
                 nodes_to_fuse.push_back(slice_node);
-                reshape_outputs.push_back(slice_output_args);
+                split_outputs.push_back(slice_output_args);
                 slice_node_count++;
             }
         }
@@ -300,7 +301,6 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
             }
         }
 
-        InlinedVector<NodeArg*> split_outputs;
 
         for (size_t i = 0; i < consumer_count; ++i) {
             split_outputs.push_back(
@@ -310,8 +310,7 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
             );
         }
 
-        // how to have multiple output node
-        // do we need to add the Split [71, 1, 1] information here.
+        // Generate the Split Node
         ONNX_NAMESPACE::TensorProto split_initializer_proto;
         split_initializer_proto.set_name(graph.GenerateNodeName("fused_Split"));
         split_initializer_proto.add_dims(static_cast<int64_t>(1));
@@ -323,9 +322,10 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
         split_initializer_proto.set_raw_data(split_value.data(), split_value.size() * sizeof(int64_t));
         NodeArg* split_arg = &graph_utils::AddInitializer(graph, split_initializer_proto);
 
+
         Node& split_node =
             graph.AddNode(graph.GenerateNodeName("Split"), "Split", "Split for fused Gather-Slice fusion",
-                                                {graph.GetNodeArg(node_arg->Name()), split_arg}, reshape_outputs);
+                                                split_inputs, split_outputs);
 
         split_node.AddAttribute("axis", split_axis);
         // to do here

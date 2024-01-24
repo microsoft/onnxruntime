@@ -7647,31 +7647,35 @@ TEST_F(GraphTransformationTests, GatherSliceToSplitFusion) {
   {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* data_arg = builder.MakeInput<float>({{54}});
-      auto* shape_arg = builder.MakeInput<int64_t>({{4}});
+      auto* reshape_arg = builder.MakeInput<int64_t>({{4}});
       auto* reshape_out = builder.MakeIntermediate<float>({{2, 512, 73, 64}});
-      builder.AddNode("Reshape", {data_arg, shape_arg}, {reshape_out});
+      builder.AddNode("Reshape", {data_arg, reshape_arg}, {reshape_out});
+
+      // Create Shape-0 Ops
+      auto* shape_output_0 = builder.MakeOutput();
+      builder.AddNode("Shape", {reshape_out}, {shape_output_0});
 
       // Create Gather-1 Ops
-      auto* gather_index_1 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(2)});
-      auto* gather_out_1 = builder.MakeIntermediate();
+      auto* gather_index_1 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(-2)});
+      auto* gather_out_1 = builder.MakeIntermediate<float>({{2, 512, 1, 64}});
       builder.AddNode("Gather", {reshape_out, gather_index_1}, {gather_out_1})
         .AddAttribute("axis", static_cast<int64_t>(2));
 
       // Create Transpose 1-Ops
       auto* transpose_out_1 = builder.MakeOutput();
       builder.AddNode("Transpose", {gather_out_1}, {transpose_out_1})
-        .AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+        .AddAttribute("perm", std::vector<int64_t>{0, 2, 1, 3});
 
       // Create Gather-2 Ops
-      auto* gather_index_2 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
-      auto* gather_out_2 = builder.MakeIntermediate();
+      auto* gather_index_2 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(-1)});
+      auto* gather_out_2 = builder.MakeIntermediate<float>({{2, 512, 1, 64}});
       builder.AddNode("Gather", {reshape_out, gather_index_2}, {gather_out_2})
         .AddAttribute("axis", static_cast<int64_t>(2));
 
       // Create Transpose-2 Ops
       auto* transpose_out_2 = builder.MakeOutput();
       builder.AddNode("Transpose", {gather_out_2}, {transpose_out_2})
-        .AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+        .AddAttribute("perm", std::vector<int64_t>{0, 2, 1, 3});
 
       // Create Slice Ops
       auto* slice_output = builder.MakeIntermediate();
@@ -7692,7 +7696,7 @@ TEST_F(GraphTransformationTests, GatherSliceToSplitFusion) {
       // Create Transpose-3 Ops
       auto* transpose_out_3 = builder.MakeOutput();
       builder.AddNode("Transpose", {slice_output}, {transpose_out_3})
-        .AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+        .AddAttribute("perm", std::vector<int64_t>{0, 2, 1, 3});
     };
 
     auto pre_graph_checker = [&](Graph& graph) {
