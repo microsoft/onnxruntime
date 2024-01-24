@@ -12,7 +12,7 @@
 #include "../backend_utils.h"
 #include "../backend_manager.h"
 #include "data_ops.h"
-#include "capabilities.h"
+#include "capability.h"
 #include "utils.h"
 
 #if defined(_MSC_VER)
@@ -440,11 +440,14 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Floor", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Gather", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Greater", V_2023_0, {"NPU"}});
+  no_dimension_supported_.push_back({"Identity", V_2023_0, {"All"}});
   no_dimension_supported_.push_back({"Less", V_2022_1, {"CPU"}});
   no_dimension_supported_.push_back({"Loop", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"Max", V_2023_0, {"NPU"}});
   no_dimension_supported_.push_back({"Min", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Mul", V_2020_4, {"All"}});
+  no_dimension_supported_.push_back({"Neg", V_2023_0, {"CPU", "GPU"}});
+  no_dimension_supported_.push_back({"Pow", V_2023_0, {"CPU", "GPU"}});
   no_dimension_supported_.push_back({"QuantizeLinear", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"Range", V_2021_2, {"All"}});
   no_dimension_supported_.push_back({"ReduceMax", V_2021_4, {"All"}});
@@ -453,6 +456,7 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Reshape", V_2022_1, {"All"}});
   no_dimension_supported_.push_back({"Shape", V_2022_1, {"GPU"}});
   no_dimension_supported_.push_back({"Shape", V_2023_0, {"CPU"}});
+  no_dimension_supported_.push_back({"Sqrt", V_2023_0, {"All"}});
   no_dimension_supported_.push_back({"Squeeze", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Sub", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Unsqueeze", V_2020_4, {"All"}});
@@ -640,8 +644,7 @@ void DataOps::populate_op_mode_supported() {
                              [this](const Node* node, const InitializedTensorSet&) {
                                // Max op with one input is not supporting for GPU_FP16
                                if (device_id_.find("GPU") != std::string::npos) {
-                                 auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
-                                 if (prec_str == "FP16") {
+                                 if (device_precision_ == "FP16") {
                                    if (node->InputDefs().size() == 1) {
                                      return true;
                                    }
@@ -656,8 +659,7 @@ void DataOps::populate_op_mode_supported() {
                              [this](const Node* node, const InitializedTensorSet&) {
                                // Min op with one input is not supporting for GPU_FP16
                                if (device_id_.find("GPU") != std::string::npos) {
-                                 auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
-                                 if (prec_str == "FP16") {
+                                 if (device_precision_ == "FP16") {
                                    if (node->InputDefs().size() == 1) {
                                      return true;
                                    }
@@ -672,8 +674,7 @@ void DataOps::populate_op_mode_supported() {
                              [this](const Node* node, const InitializedTensorSet&) {
                                // Sum op with one input is not supporting for GPU_FP16
                                if (device_id_.find("GPU") != std::string::npos) {
-                                 auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
-                                 if (prec_str == "FP16") {
+                                 if (device_precision_ == "FP16") {
                                    if (node->InputDefs().size() == 1) {
                                      return true;
                                    }
@@ -705,7 +706,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"PRelu", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3, V_2023_0, V_2023_1, V_2023_2},
+    UnsupportedOpMode obj = {{V_2023_0, V_2023_1, V_2023_2, V_2023_3},
                              [this](const Node* node, const InitializedTensorSet&) {
                                const auto& input_arg = node->InputDefs()[1];
                                auto shape = input_arg->Shape();
@@ -820,7 +821,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Squeeze", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3, V_2023_0, V_2023_1, V_2023_2},
+    UnsupportedOpMode obj = {{V_2023_0, V_2023_1, V_2023_2, V_2023_3},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // If the operator is unsqueeze
                                // If axes is an input, then we cannot produce a static graph.
@@ -835,7 +836,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Unsqueeze", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3, V_2023_0, V_2023_1, V_2023_2},
+    UnsupportedOpMode obj = {{V_2023_0, V_2023_1, V_2023_2, V_2023_3},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // check for attributes
                                auto& upsample_attr = node->GetAttributes();
@@ -1129,9 +1130,6 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
       // Can't have no dimensions
       if (shape->dim_size() == 0) {
         if (op_is_supported(optype, no_dimension_supported_)) {
-          return;
-        }
-        if ((optype == "Identity") || (optype == "Sqrt")) {
           return;
         }
         has_unsupported_dimension = true;

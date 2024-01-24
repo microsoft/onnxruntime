@@ -56,7 +56,7 @@ class UsageError(BaseError):
 
 
 def _check_python_version():
-    required_minor_version = 7
+    required_minor_version = 8
     if (sys.version_info.major, sys.version_info.minor) < (3, required_minor_version):
         raise UsageError(
             f"Invalid Python version. At least Python 3.{required_minor_version} is required. "
@@ -418,14 +418,24 @@ def parse_arguments():
         "(e.g. macOS or iOS)"
         "This is only supported on MacOS",
     )
+    # A 32-bit progress doesn't have enough memory to run all the tests in onnxruntime_test_all.
+    # Mimalloc is incompatible with address sanitizer.
+    # Address sanitizer itself is also a memory leak checker, so when it is enabled we should disable_memleak_checker.
     parser.add_argument(
-        "--disable_memleak_checker", action="store_true", help="Disable memory leak checker from Windows build"
+        "--enable_address_sanitizer", action="store_true", help="Enable address sanitizer. Windows/Linux/MacOS only."
+    )
+    # The following feature requires installing some special Visual Studio components that do not get installed by default. Therefore the options is default OFF.
+    parser.add_argument("--enable_qspectre", action="store_true", help="Enable Qspectre. Windows only.")
+    parser.add_argument(
+        "--disable_memleak_checker",
+        action="store_true",
+        help="Disable memory leak checker from Windows build. By default it is enabled in Windows Debug build. This option is Windows only.",
     )
 
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build for WebAssembly static library")
-    parser.add_argument("--emsdk_version", default="3.1.44", help="Specify version of emsdk")
+    parser.add_argument("--emsdk_version", default="3.1.51", help="Specify version of emsdk")
 
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threads support")
@@ -600,13 +610,18 @@ def parse_arguments():
         "--use_telemetry", action="store_true", help="Only official builds can set this flag to enable telemetry."
     )
     parser.add_argument("--enable_wcos", action="store_true", help="Build for Windows Core OS.")
+    # Do not enable LTO when the compiler is MSVC and the flag for generating debug symbols is set to /Z7 and training
+    # is also enabled. Because both LTO and /Zi could significantly increase *.obj/*.lib files' size, and on Windows
+    # there is a 4GB per file limit(ERROR LNK1248). We may solve the issue by splitting the big static libs to smaller
+    # ones. Before the refactoring work is done, we should avoid enabling LTO and ccache at the same time because ccache
+    # needs /Z7.
     parser.add_argument("--enable_lto", action="store_true", help="Enable Link Time Optimization")
     parser.add_argument("--enable_transformers_tool_test", action="store_true", help="Enable transformers tool test")
     parser.add_argument(
         "--use_acl",
         nargs="?",
         const="ACL_1905",
-        choices=["ACL_1902", "ACL_1905", "ACL_1908", "ACL_2002"],
+        choices=["ACL_1902", "ACL_1905", "ACL_1908", "ACL_2002", "ACL_2308"],
         help="Build with ACL for ARM architectures.",
     )
     parser.add_argument("--acl_home", help="Path to ACL home dir")
@@ -771,11 +786,6 @@ def get_linux_distro():
         return "", ""
 
 
-def is_ubuntu_1604():
-    dist, ver = get_linux_distro()
-    return dist == "Ubuntu" and ver.startswith("16.04")
-
-
 def get_config_build_dir(build_dir, config):
     # build directory per configuration
     return os.path.join(build_dir, config)
@@ -827,15 +837,6 @@ def run_subprocess(
 def update_submodules(source_dir):
     run_subprocess(["git", "submodule", "sync", "--recursive"], cwd=source_dir)
     run_subprocess(["git", "submodule", "update", "--init", "--recursive"], cwd=source_dir)
-
-
-def is_docker():
-    path = "/proc/self/cgroup"
-    return (
-        os.path.exists("/.dockerenv")
-        or os.path.isfile(path)
-        and any("docker" in line for line in open(path))  # noqa: SIM115
-    )
 
 
 def install_python_deps(numpy_version=""):
@@ -1031,6 +1032,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_ACL_1905=" + ("ON" if args.use_acl == "ACL_1905" else "OFF"),
         "-Donnxruntime_USE_ACL_1908=" + ("ON" if args.use_acl == "ACL_1908" else "OFF"),
         "-Donnxruntime_USE_ACL_2002=" + ("ON" if args.use_acl == "ACL_2002" else "OFF"),
+        "-Donnxruntime_USE_ACL_2308=" + ("ON" if args.use_acl == "ACL_2308" else "OFF"),
         "-Donnxruntime_USE_ARMNN=" + ("ON" if args.use_armnn else "OFF"),
         "-Donnxruntime_ARMNN_RELU_USE_CPU=" + ("OFF" if args.armnn_relu else "ON"),
         "-Donnxruntime_ARMNN_BN_USE_CPU=" + ("OFF" if args.armnn_bn else "ON"),
@@ -1281,10 +1283,6 @@ def generate_build_tree(
     if args.use_webnn:
         if not args.build_wasm:
             raise BuildError("WebNN is only available for WebAssembly build.")
-        if args.disable_rtti:
-            # Avoid unboundTypeError for WebNN EP since unbound type names are illegal with RTTI disabled
-            # in Embind API, relevant issue: https://github.com/emscripten-core/emscripten/issues/16911
-            raise BuildError("WebNN is not supported with RTTI disabled.")
         cmake_args += ["-Donnxruntime_USE_WEBNN=ON"]
 
     if args.use_snpe:
@@ -1405,6 +1403,17 @@ def generate_build_tree(
     if args.use_lock_free_queue:
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_LOCK_FREE_QUEUE", "ON")
 
+    if is_windows():
+        if args.use_cache:
+            add_default_definition(
+                cmake_extra_defines, "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT", "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>"
+            )
+        else:
+            # Always enable debug info even in release build. The debug information is in separated *.pdb files that
+            # can be easily discarded when debug symbols are not needed. We enable it by default because many auditting
+            # tools need to use the symbols.
+            add_default_definition(cmake_extra_defines, "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT", "ProgramDatabase")
+
     cmake_args += [f"-D{define}" for define in cmake_extra_defines]
 
     cmake_args += cmake_extra_args
@@ -1444,8 +1453,110 @@ def generate_build_tree(
                     f"-DVERSION_PRIVATE_PART={MM}{DD}",
                     f"-DVERSION_STRING={ort_major}.{ort_minor}.{build_number}.{source_version[0:7]}",
                 ]
-
+    cflags = None
+    cxxflags = None
+    ldflags = None
+    cudaflags = []
     for config in configs:
+        # Setup default values for cflags/cxxflags/ldflags.
+        # The values set here are purely for security and compliance purposes. ONNX Runtime should work fine without these flags.
+        if (
+            "CFLAGS" not in os.environ
+            and "CXXFLAGS" not in os.environ
+            and (not args.use_cuda or "CUDAFLAGS" not in os.environ)
+            and not args.ios
+            and not args.android
+            and not args.build_wasm
+            and not args.use_rocm
+            and not (is_linux() and platform.machine() != "aarch64" and platform.machine() != "x86_64")
+        ):
+            if is_windows():
+                cflags = ["/guard:cf", "/DWIN32", "/D_WINDOWS"]
+                if args.parallel:
+                    cflags += ["/MP"]
+                if not args.use_gdk:
+                    # Target Windows 10
+                    cflags += [
+                        "/DWINAPI_FAMILY=100",
+                        "/DWINVER=0x0A00",
+                        "/D_WIN32_WINNT=0x0A00",
+                        "/DNTDDI_VERSION=0x0A000000",
+                    ]
+                # The "/profile" flag implies "/DEBUG:FULL /DEBUGTYPE:cv,fixup /OPT:REF /OPT:NOICF /INCREMENTAL:NO /FIXED:NO". We set it for satisfying a Microsoft internal compliance requirement. External users
+                # do not need to have it.
+                ldflags = ["/profile", "/DYNAMICBASE"]
+                if args.enable_qspectre:
+                    cflags += ["/Qspectre"]
+                if config == "Release":
+                    cflags += ["/O2", "/Ob2", "/DNDEBUG"]
+                elif config == "RelWithDebInfo":
+                    cflags += ["/O2", "/Ob1", "/DNDEBUG"]
+                elif config == "Debug":
+                    cflags += ["/Ob0", "/Od", "/RTC1"]
+                    if args.enable_address_sanitizer:
+                        cflags += ["/fsanitize=address"]
+                elif config == "MinSizeRel":
+                    cflags += ["/O1", "/Ob1", "/DNDEBUG"]
+                cxxflags = cflags.copy()
+                if not args.disable_exceptions:
+                    cxxflags += ["/EHsc"]
+                if args.use_cuda:
+                    # On Windows, nvcc passes /EHsc to the host compiler by default.
+                    cuda_compile_flags_str = ""
+                    for compile_flag in cflags:
+                        if compile_flag.startswith("/D"):
+                            cudaflags.append(compile_flag)
+                        else:
+                            cuda_compile_flags_str = cuda_compile_flags_str + " " + compile_flag
+                    if len(cuda_compile_flags_str) != 0:
+                        cudaflags.append('-Xcompiler="%s"' % cuda_compile_flags_str)
+            elif is_linux() or is_macOS():
+                if is_linux():
+                    ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now", "-Wl,-z,noexecstack"]
+                else:
+                    ldflags = []
+                if config == "Release":
+                    cflags = [
+                        "-DNDEBUG",
+                        "-Wp,-D_FORTIFY_SOURCE=2",
+                        "-Wp,-D_GLIBCXX_ASSERTIONS",
+                        "-fstack-protector-strong",
+                        "-O3",
+                        "-pipe",
+                    ]
+                    if is_linux():
+                        ldflags += ["-Wl,--strip-all"]
+                elif config == "RelWithDebInfo":
+                    cflags = [
+                        "-DNDEBUG",
+                        "-Wp,-D_FORTIFY_SOURCE=2",
+                        "-Wp,-D_GLIBCXX_ASSERTIONS",
+                        "-fstack-protector-strong",
+                        "-O3",
+                        "-pipe",
+                        "-ggdb3",
+                    ]
+                elif config == "Debug":
+                    cflags = ["-ggdb3", "-O0"]
+                    if args.enable_address_sanitizer:
+                        cflags += ["-fsanitize=address"]
+                        ldflags += ["-fsanitize=address"]
+                elif config == "MinSizeRel":
+                    cflags = [
+                        "-DNDEBUG",
+                        "-Wp,-D_FORTIFY_SOURCE=2",
+                        "-Wp,-D_GLIBCXX_ASSERTIONS",
+                        "-fstack-protector-strong",
+                        "-Os",
+                        "-pipe",
+                        "-ggdb3",
+                    ]
+                if is_linux() and platform.machine() == "x86_64":
+                    # The following flags needs GCC 8 and newer
+                    cflags += ["-fstack-clash-protection", "-fcf-protection"]
+                cxxflags = cflags.copy()
+                if args.use_cuda:
+                    cudaflags = cflags.copy()
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
         if args.use_tvm:
@@ -1459,20 +1570,23 @@ def generate_build_tree(
                 + os.environ["PATH"]
             )
         preinstalled_dir = Path(build_dir) / config
+        temp_cmake_args = cmake_args.copy()
+        if cflags is not None and cxxflags is not None:
+            temp_cmake_args += [
+                "-DCMAKE_C_FLAGS=%s" % (" ".join(cflags)),
+                "-DCMAKE_CXX_FLAGS=%s" % (" ".join(cxxflags)),
+            ]
+        if cudaflags is not None and len(cudaflags) != 0:
+            temp_cmake_args += ["-DCMAKE_CUDA_FLAGS_INIT=%s" % (" ".join(cudaflags))]
+        if ldflags is not None and len(ldflags) != 0:
+            temp_cmake_args += [
+                "-DCMAKE_EXE_LINKER_FLAGS_INIT=%s" % (" ".join(ldflags)),
+                "-DCMAKE_MODULE_LINKER_FLAGS_INIT=%s" % (" ".join(ldflags)),
+                "-DCMAKE_SHARED_LINKER_FLAGS_INIT=%s" % (" ".join(ldflags)),
+            ]
         run_subprocess(
             [
-                *cmake_args,
-                "-Donnxruntime_ENABLE_MEMLEAK_CHECKER="
-                + (
-                    "ON"
-                    if config.lower() == "debug"
-                    and not args.use_tvm
-                    and not args.use_openvino
-                    and not args.use_gdk
-                    and not args.enable_msvc_static_runtime
-                    and not args.disable_memleak_checker
-                    else "OFF"
-                ),
+                *temp_cmake_args,
                 f"-DCMAKE_BUILD_TYPE={config}",
                 f"-DCMAKE_PREFIX_PATH={build_dir}/{config}/installed"
                 if preinstalled_dir.exists() and not (args.arm64 or args.arm64ec or args.arm)
@@ -1932,7 +2046,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                         numpy_init_version = numpy.__version__
                         pb_init_version = google.protobuf.__version__
                         run_subprocess(
-                            [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], cwd=SCRIPT_DIR
+                            [sys.executable, "-m", "pip", "install", "-r", "requirements-transformers-test.txt"],
+                            cwd=SCRIPT_DIR,
                         )
                         run_subprocess([sys.executable, "-m", "pytest", "transformers"], cwd=cwd)
                         # Restore initial numpy/protobuf version in case other tests use it
@@ -2269,16 +2384,6 @@ def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt
     run_subprocess(cmd_args, cwd=csharp_source_dir)
 
 
-def is_cross_compiling_on_apple(args):
-    if not is_macOS():
-        return False
-    if args.ios:
-        return True
-    if args.osx_arch != platform.machine():
-        return True
-    return False
-
-
 def generate_documentation(source_dir, build_dir, configs, validate):
     # Randomly choose one build config
     config = next(iter(configs))
@@ -2361,6 +2466,10 @@ def main():
 
     cmake_extra_defines = normalize_arg_list(args.cmake_extra_defines)
     cross_compiling = args.arm or args.arm64 or args.arm64ec or args.android
+
+    if args.enable_address_sanitizer:
+        # Disable ONNX Runtime's builtin memory checker
+        args.disable_memleak_checker = True
 
     # If there was no explicit argument saying what to do, default
     # to update, build and test (for native builds).
@@ -2589,12 +2698,6 @@ def main():
             log.info("Activating emsdk...")
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
 
-        if is_ubuntu_1604():
-            if args.arm or args.arm64:
-                raise BuildError("Only Windows ARM(64) cross-compiled builds supported currently through this script")
-            if not is_docker() and not args.use_acl and not args.use_armnn:
-                install_python_deps()
-
         if args.enable_pybind and is_windows():
             install_python_deps(args.numpy_version)
 
@@ -2664,6 +2767,7 @@ def main():
     # fail unexpectedly. Similar, if your packaging step forgot to copy a file into the package, we don't know it
     # either.
     if args.build:
+        # TODO: find asan DLL and copy it to onnxruntime/capi folder when args.enable_address_sanitizer is True and the target OS is Windows
         if args.build_wheel:
             nightly_build = bool(os.getenv("NIGHTLY_BUILD") == "1")
             default_training_package_device = bool(os.getenv("DEFAULT_TRAINING_PACKAGE_DEVICE") == "1")

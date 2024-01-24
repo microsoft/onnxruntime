@@ -24,12 +24,12 @@ namespace js {
       JSEP_INIT_KERNEL_ATTRIBUTE(ReduceKernel, ({                                                       \
                                    "keepDims" : !!$1,                                                   \
                                    "noopWithEmptyAxes" : !!$2,                                          \
-                                   "axes" : $3 ? (Array.from(HEAP32.subarray($4, $4 + $3))) : [],       \
+                                   "axes" : $3 ? (Array.from(HEAP32.subarray($3, $4))) : [],            \
                                  }),                                                                    \
                                  static_cast<int32_t>(keepdims_),                                       \
                                  static_cast<int32_t>(noop_with_empty_axes_),                           \
-                                 gsl::narrow_cast<int32_t>(axes.size()),                                \
-                                 JSEP_HEAP_PTR((axes.size() > 0) ? axes.data() : nullptr) >> 2);        \
+                                 JSEP_HEAP32_INDEX_START(axes),                                         \
+                                 JSEP_HEAP32_INDEX_END(axes));                                          \
     }                                                                                                   \
   };
 

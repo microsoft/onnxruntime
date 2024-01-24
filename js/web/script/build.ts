@@ -122,7 +122,11 @@ async function buildOrt({
           case 'node:fs/promises':
           case 'node:fs':
           case 'fs':
-            return {contents: 'export const readFile = undefined;'};
+            return {
+              contents: 'export const readFile = undefined;' +
+                  'export const readFileSync = undefined;' +
+                  'export const createReadStream = undefined;'
+            };
           case 'node:os':
           case 'os':
             return {contents: 'export const cpus = undefined;'};
@@ -369,11 +373,7 @@ async function main() {
 
   if (BUNDLE_MODE === 'dev') {
     // ort.all.js
-    await addBuildTask(buildOrt({
-      outputBundleName: 'ort.all',
-      format: 'iife',
-      define: {...DEFAULT_DEFINE}
-    }));
+    await addBuildTask(buildOrt({outputBundleName: 'ort.all', format: 'iife', define: {...DEFAULT_DEFINE}}));
   }
 
   if (BUNDLE_MODE === 'perf') {

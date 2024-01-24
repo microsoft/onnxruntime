@@ -170,6 +170,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     const auto& api = Ort::GetApi();
     OrtTensorRTProviderOptionsV2* tensorrt_options;
     Ort::ThrowOnError(api.CreateTensorRTProviderOptions(&tensorrt_options));
+    std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(
+        tensorrt_options, api.ReleaseTensorRTProviderOptions);
     std::vector<const char*> option_keys, option_values;
     // used to keep all option keys and value strings alive
     std::list<std::string> buffer;
@@ -305,7 +307,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_npu_fast_compile', 'num_of_threads', 'cache_dir', 'num_streams', 'enable_opencl_throttling', 'disable_dynamic_shapes'] \n");
       }
     }
-    session_options.AppendExecutionProvider("OpenVINO", ov_options);
+    session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
 #endif
@@ -341,11 +343,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if (supported_profiling_level.find(value) == supported_profiling_level.end()) {
           ORT_THROW("Supported profiling_level: off, basic, detailed");
         }
-      } else if (key == "rpc_control_latency" || key == "vtcm_mb") {
+      } else if (key == "rpc_control_latency" || key == "vtcm_mb" || key == "soc_model" || key == "device_id") {
         // no validation
       } else if (key == "htp_performance_mode") {
         std::set<std::string> supported_htp_perf_mode = {"burst", "balanced", "default", "high_performance",
-                                                         "high_power_saver", "low_balanced", "low_power_saver",
+                                                         "high_power_saver", "low_balanced", "extreme_power_saver", "low_power_saver",
                                                          "power_saver", "sustained_high_performance"};
         if (supported_htp_perf_mode.find(value) == supported_htp_perf_mode.end()) {
           std::ostringstream str_stream;
@@ -370,10 +372,20 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if (supported_qnn_context_priority.find(value) == supported_qnn_context_priority.end()) {
           ORT_THROW("Supported qnn_context_priority: low, normal, normal_high, high");
         }
+      } else if (key == "htp_arch") {
+        std::unordered_set<std::string> supported_htp_archs = {"0", "68", "69", "73", "75"};
+        if (supported_htp_archs.find(value) == supported_htp_archs.end()) {
+          std::ostringstream str_stream;
+          std::copy(supported_htp_archs.begin(), supported_htp_archs.end(),
+                    std::ostream_iterator<std::string>(str_stream, ","));
+          std::string str = str_stream.str();
+          ORT_THROW("Wrong value for htp_arch. select from: " + str);
+        }
       } else {
         ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
 'profiling_level', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
-'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority'])");
+'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority', 'soc_model',
+'htp_arch', 'device_id'])");
       }
 
       qnn_options[key] = value;

@@ -24,6 +24,11 @@
 #include "core/session/custom_ops.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
+#include "core/platform/threadpool.h"
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#define ENABLE_CUSTOM_OP_API
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
 static constexpr uint32_t min_ort_version_with_optional_io_support = 8;
@@ -373,11 +378,42 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetResource, _In_ const OrtKernelCont
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Failed to fetch a stream hosting the requested resource");
   }
   *resource = stream->GetResource(resource_version, resource_id);
-  if (!(*resource)) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Requested resource does not exist");
+  return nullptr;
+  API_IMPL_END
+};
+
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_ParallelFor, _In_ const OrtKernelContext* context, _In_ void (*fn)(void*, size_t), _In_ size_t total, _In_ size_t num_batch, _In_ void* usr_data) {
+#ifdef ENABLE_CUSTOM_OP_API
+  API_IMPL_BEGIN
+  if (!context) {
+    return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, "Invalid context");
+  }
+  if (fn && total) {
+    const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContext*>(context);
+    auto* tp = ctx->GetOperatorThreadPool();
+    if (num_batch) {
+      onnxruntime::concurrency::ThreadPool::TryBatchParallelFor(
+          tp,
+          static_cast<std::ptrdiff_t>(total),
+          [fn, usr_data](std::ptrdiff_t ith) { fn(usr_data, static_cast<size_t>(ith)); },
+          static_cast<std::ptrdiff_t>(num_batch));
+    } else {
+      onnxruntime::concurrency::ThreadPool::TrySimpleParallelFor(
+          tp,
+          static_cast<std::ptrdiff_t>(total),
+          [fn, usr_data](std::ptrdiff_t ith) { fn(usr_data, static_cast<size_t>(ith)); });
+    }
   }
   return nullptr;
   API_IMPL_END
+#else
+  ORT_UNUSED_PARAMETER(context);
+  ORT_UNUSED_PARAMETER(fn);
+  ORT_UNUSED_PARAMETER(total);
+  ORT_UNUSED_PARAMETER(num_batch);
+  ORT_UNUSED_PARAMETER(usr_data);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "ParallelFor API not implemented for this build");
+#endif
 };
 
 #ifdef _WIN32

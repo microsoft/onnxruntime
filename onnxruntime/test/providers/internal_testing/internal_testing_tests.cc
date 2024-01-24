@@ -153,9 +153,8 @@ TEST(InternalTestingEP, PreventSaveOfModelWithCompiledOps) {
       std::make_unique<InternalTestingExecutionProvider>(supported_ops)));
 
   ASSERT_STATUS_OK(session->Load(ort_model_path));
-  auto status = session->Initialize();
-  ASSERT_FALSE(status.IsOK()) << "Initialize should have failed when trying to save model with compiled kernels";
-  ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Unable to serialize model as it contains compiled nodes"));
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session->Initialize(),
+                                      "Unable to serialize model as it contains compiled nodes");
 }
 
 // the internal NHWC operators are only included as part of contrib ops currently. as the EP requests the NHWC
@@ -195,11 +194,10 @@ TEST(InternalTestingEP, TestMixOfStaticAndCompiledKernels) {
   output_names.push_back("Z");
   std::vector<OrtValue> fetches;
 
-  auto status = session.Run(feeds, output_names, &fetches);
   // Error message should come from the Conv implementation with the statically registered kernel
-  ASSERT_THAT(status.ErrorMessage(),
-              ::testing::HasSubstr("Non-zero status code returned while running Conv node. Name:'Conv' "
-                                   "Status Message: TODO: add NHWC implementation here."));
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Run(feeds, output_names, &fetches),
+                                      "Non-zero status code returned while running Conv node. Name:'Conv' "
+                                      "Status Message: TODO: add NHWC implementation here.");
 }
 
 TEST(InternalTestingEP, TestNhwcConversionOfStaticKernels) {
@@ -243,10 +241,9 @@ TEST(InternalTestingEP, TestNhwcConversionOfStaticKernels) {
   output_names.push_back("softmaxout_1");
   std::vector<OrtValue> fetches;
 
-  auto status = session.Run(feeds, output_names, &fetches);
-  ASSERT_THAT(status.ErrorMessage(),
-              ::testing::HasSubstr("Non-zero status code returned while running Conv node. Name:'Conv' "
-                                   "Status Message: TODO: add NHWC implementation here."));
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Run(feeds, output_names, &fetches),
+                                      "Non-zero status code returned while running Conv node. Name:'Conv' "
+                                      "Status Message: TODO: add NHWC implementation here.");
 }
 
 // This test can be deprecated now as the code logic has been changed so the model is not applicable

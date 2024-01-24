@@ -95,13 +95,11 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
       }
     }
 #ifndef NDEBUG
-#if defined(OPENVINO_2022_3) || (OPENVINO_2023_0) || (OPENVINO_2023_1) || (OPENVINO_2023_2)
     if (IsDebugEnabled()) {
       std::string name = cnn_network->get_friendly_name();
       ov::pass::Serialize serializer(name + ".xml", name + ".bin");
       serializer.run_on_model(cnn_network);
     }
-#endif
 #endif
     return cnn_network;
   } catch (std::string const& msg) {

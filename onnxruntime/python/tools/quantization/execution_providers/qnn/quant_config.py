@@ -5,6 +5,7 @@
 # --------------------------------------------------------------------------
 from pathlib import Path
 
+import numpy as np
 import onnx
 
 from ...calibrate import CalibrationDataReader, CalibrationMethod
@@ -55,14 +56,22 @@ def get_qnn_qdq_config(
                     tensor_quant_overrides[input_name] = [{"quant_type": weight_type, "symmetric": weight_symmetric}]
         elif node.op_type == "Sigmoid":
             if activation_type == QuantType.QUInt16:
-                tensor_quant_overrides[node.output[0]] = [{"scale": 1.0 / 65536.0, "zero_point": 0}]
+                tensor_quant_overrides[node.output[0]] = [
+                    {"scale": np.array(1.0 / 65536.0, dtype=np.float32), "zero_point": np.array(0, dtype=np.uint16)}
+                ]
             elif activation_type == QuantType.QInt16:
-                tensor_quant_overrides[node.output[0]] = [{"scale": 1.0 / 32768.0, "zero_point": 0}]
+                tensor_quant_overrides[node.output[0]] = [
+                    {"scale": np.array(1.0 / 32768.0, dtype=np.float32), "zero_point": np.array(0, dtype=np.int16)}
+                ]
         elif node.op_type == "Tanh":
             if activation_type == QuantType.QUInt16:
-                tensor_quant_overrides[node.output[0]] = [{"scale": 1.0 / 32768.0, "zero_point": 32768}]
+                tensor_quant_overrides[node.output[0]] = [
+                    {"scale": np.array(1.0 / 32768.0, dtype=np.float32), "zero_point": np.array(32768, dtype=np.uint16)}
+                ]
             elif activation_type == QuantType.QInt16:
-                tensor_quant_overrides[node.output[0]] = [{"scale": 1.0 / 32768.0, "zero_point": 0}]
+                tensor_quant_overrides[node.output[0]] = [
+                    {"scale": np.array(1.0 / 32768.0, dtype=np.float32), "zero_point": np.array(0, dtype=np.int16)}
+                ]
 
     extra_options = {
         "MinimumRealRange": 0.0001,

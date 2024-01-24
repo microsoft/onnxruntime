@@ -16,6 +16,7 @@ const validRequests = {
   '/dist/ort-wasm-simd.wasm': ['dist/ort-wasm-simd.wasm', 'application/wasm'],
   '/dist/ort-wasm-threaded.wasm': ['dist/ort-wasm-threaded.wasm', 'application/wasm'],
   '/dist/ort-wasm-simd-threaded.wasm': ['dist/ort-wasm-simd-threaded.wasm', 'application/wasm'],
+  '/dist/ort-wasm-simd.jsep.wasm': ['dist/ort-wasm-simd.jsep.wasm', 'application/wasm'],
 
   // proxied .wasm files:
   '/test-wasm-path-override/ort-wasm.wasm': ['dist/ort-wasm.wasm', 'application/wasm'],
@@ -25,6 +26,7 @@ const validRequests = {
   '/dist/ort.min.js': ['dist/ort.min.js', 'text/javascript'],
   '/dist/ort.js': ['dist/ort.js', 'text/javascript'],
   '/dist/ort.webgl.min.js': ['dist/ort.webgl.min.js', 'text/javascript'],
+  '/dist/ort.webgpu.min.js': ['dist/ort.webgpu.min.js', 'text/javascript'],
   '/dist/ort.wasm.min.js': ['dist/ort.wasm.min.js', 'text/javascript'],
   '/dist/ort.wasm-core.min.js': ['dist/ort.wasm-core.min.js', 'text/javascript'],
 };

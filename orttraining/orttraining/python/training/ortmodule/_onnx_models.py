@@ -33,6 +33,7 @@ class ONNXModels:
     """
 
     exported_model: Optional[onnx.ModelProto] = None
+    processed_exported_model: Optional[onnx.ModelProto] = None
     optimized_model: Optional[onnx.ModelProto] = None
 
     def save_exported_model(self, path, name_prefix, export_mode):

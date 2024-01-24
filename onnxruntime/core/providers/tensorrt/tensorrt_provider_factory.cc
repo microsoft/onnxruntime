@@ -61,13 +61,6 @@ std::unique_ptr<IExecutionProvider> TensorrtProviderFactory::CreateProvider() {
   return std::make_unique<TensorrtExecutionProvider>(info_);
 }
 
-std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(int device_id) {
-  TensorrtExecutionProviderInfo info;
-  info.device_id = device_id;
-  info.has_trt_options = false;
-  return std::make_shared<onnxruntime::TensorrtProviderFactory>(info);
-}
-
 struct Tensorrt_Provider : Provider {
   void* GetInfo() override { return &g_info; }
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) override {
@@ -116,6 +109,10 @@ struct Tensorrt_Provider : Provider {
     info.profile_max_shapes = options.trt_profile_max_shapes == nullptr ? "" : options.trt_profile_max_shapes;
     info.profile_opt_shapes = options.trt_profile_opt_shapes == nullptr ? "" : options.trt_profile_opt_shapes;
     info.cuda_graph_enable = options.trt_cuda_graph_enable != 0;
+    info.dump_ep_context_model = options.trt_dump_ep_context_model != 0;
+    info.ep_context_file_path = options.trt_ep_context_file_path == nullptr ? "" : options.trt_ep_context_file_path;
+    info.ep_context_embed_mode = options.trt_ep_context_embed_mode;
+    info.engine_cache_prefix = options.trt_engine_cache_prefix == nullptr ? "" : options.trt_engine_cache_prefix;
 
     return std::make_shared<TensorrtProviderFactory>(info);
   }
