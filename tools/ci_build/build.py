@@ -1472,7 +1472,7 @@ def generate_build_tree(
         ):
             if is_windows():
                 cflags = ["/guard:cf", "/DWIN32", "/D_WINDOWS"]
-                if number_of_parallel_jobs(args) > 1:
+                if args.parallel:
                     cflags += ["/MP"]
                 if not args.use_gdk:
                     # Target Windows 10
