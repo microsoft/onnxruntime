@@ -259,6 +259,7 @@ export const tan = (context: ComputeContext): void => {
 };
 
 export const tanh = (context: ComputeContext): void => {
+  // TODO: revisit after https://github.com/gpuweb/gpuweb/issues/4458 is resolved
   context.compute(createElementwiseProgramInfo(
       context.inputs[0], 'Tanh', a => `sign(${a}) * (1 - exp(-2 * abs(${a}))) / (1 + exp(-2 * abs(${a})))`));
 };
