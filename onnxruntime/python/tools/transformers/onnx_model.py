@@ -482,28 +482,29 @@ class OnnxModel:
     def has_constant_input(self, node, expected_value, delta=0.000001):
         return self.find_constant_input(node, expected_value, delta) >= 0
 
-    def get_children_subgraph_nodes(self, root_node, stop_nodes, input_name_to_nodes=None):
+    def get_children_subgraph_nodes(self, root_input:str, stop_nodes:List[NodeProto], input_name_to_nodes:Optional[Dict[str,List[NodeProto]]]=None):
         if input_name_to_nodes is None:
             input_name_to_nodes = self.input_name_to_nodes()
 
-        children = input_name_to_nodes[root_node.output[0]]
-
         unique_nodes = []
 
-        dq = deque(children)
-        while len(dq) > 0:
-            current_node = dq.pop()
-            if current_node in stop_nodes:
-                continue
+        if root_input in input_name_to_nodes:
+            children = input_name_to_nodes[root_input]
 
-            if current_node not in unique_nodes:
-                unique_nodes.append(current_node)
+            dq = deque(children)
+            while len(dq) > 0:
+                current_node = dq.pop()
+                if current_node in stop_nodes:
+                    continue
 
-                for output in current_node.output:
-                    if output in input_name_to_nodes:
-                        children = input_name_to_nodes[output]
-                        for child in children:
-                            dq.appendleft(child)
+                if current_node not in unique_nodes:
+                    unique_nodes.append(current_node)
+
+                    for output in current_node.output:
+                        if output in input_name_to_nodes:
+                            children = input_name_to_nodes[output]
+                            for child in children:
+                                dq.appendleft(child)
 
         return unique_nodes
 
@@ -1427,3 +1428,17 @@ class OnnxModel:
                 self.replace_input_of_all_nodes(old_name, new_name)
                 self.replace_output_of_all_nodes(old_name, new_name)
                 output.name = new_name
+
+    def find_outputs_to_keep(self, input_names:List[str]) -> List[str]:
+        """Given a list of inputs, find last intermediate outputs that need kept"""
+        input_name_to_nodes = self.input_name_to_nodes()
+
+        intermedidate_name_to_graph_inputs = {}
+
+        for input_name in input_names:
+            assert self.find_graph_input(input_name)
+
+            if input_name not in input_name_to_nodes:
+                continue
+
+            nodes = input_name_to_nodes[input_name]

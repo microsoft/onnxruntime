@@ -87,6 +87,7 @@ class OrtCudaEngineBuilder(EngineBuilder):
         max_batch_size=16,
         device="cuda",
         use_cuda_graph=False,
+        enable_unet_cache=False,
     ):
         """
         Initializes the ONNX Runtime TensorRT ExecutionProvider Engine Builder.
@@ -100,6 +101,10 @@ class OrtCudaEngineBuilder(EngineBuilder):
                 device to run.
             use_cuda_graph (bool):
                 Use CUDA graph to capture engine execution and then launch inference
+            enable_unet_cache (bool):
+                UNet has some inputs does not change (like text_embed, time_ids and encoder_hidden_state) in steps,
+                we will split UNet graph into two graphs, where one "static" graph containing only these inputs, and
+                we only need run the graph once, and cache the outputs then feed them to the second graph.
         """
         super().__init__(
             EngineType.ORT_CUDA,
@@ -109,6 +114,7 @@ class OrtCudaEngineBuilder(EngineBuilder):
             use_cuda_graph=use_cuda_graph,
         )
 
+        self.enable_unet_cache = enable_unet_cache
         self.model_config = {}
 
     def _configure(
@@ -153,6 +159,10 @@ class OrtCudaEngineBuilder(EngineBuilder):
 
     def optimized_onnx_path(self, engine_dir, model_name):
         suffix = "" if self.model_config[model_name].fp16 else ".fp32"
+        return self.get_onnx_path(model_name, engine_dir, opt=True, suffix=suffix)
+
+    def sub_onnx_path(self, engine_dir, model_name, static):
+        suffix = (".static" if static else "") + ("" if self.model_config[model_name].fp16 else ".fp32")
         return self.get_onnx_path(model_name, engine_dir, opt=True, suffix=suffix)
 
     def import_diffusers_engine(self, diffusers_onnx_dir: str, engine_dir: str):
@@ -205,8 +215,14 @@ class OrtCudaEngineBuilder(EngineBuilder):
                 model.save_model_to_file(onnx_opt_path, use_external_data_format=(model_name == "clip2"))
             elif model_name in ["unet", "unetxl"]:
                 model.rename_graph_output("out_sample", "latent")
-                model.save_model_to_file(onnx_opt_path, use_external_data_format=True)
-
+                if self.enable_unet_cache:
+                    static_model, dynamic_model = model.split(inputs=["text_embeds", "time_ids"], new_outputs=["embeddings"])
+                    static_onnx_path = self.sub_onnx_path(engine_dir, model_name, True)
+                    dynamic_onnx_path = self.sub_onnx_path(engine_dir, model_name, False)
+                    static_model.save_model_to_file(static_onnx_path, use_external_data_format=False)
+                    dynamic_model.save_model_to_file(dynamic_onnx_path, use_external_data_format=False)
+                else:
+                    model.save_model_to_file(onnx_opt_path, use_external_data_format=True)
             del model
             continue
 
