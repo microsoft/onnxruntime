@@ -343,7 +343,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if (supported_profiling_level.find(value) == supported_profiling_level.end()) {
           ORT_THROW("Supported profiling_level: off, basic, detailed");
         }
-      } else if (key == "rpc_control_latency" || key == "vtcm_mb") {
+      } else if (key == "rpc_control_latency" || key == "vtcm_mb" || key == "soc_model" || key == "device_id") {
         // no validation
       } else if (key == "htp_performance_mode") {
         std::set<std::string> supported_htp_perf_mode = {"burst", "balanced", "default", "high_performance",
@@ -372,10 +372,20 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if (supported_qnn_context_priority.find(value) == supported_qnn_context_priority.end()) {
           ORT_THROW("Supported qnn_context_priority: low, normal, normal_high, high");
         }
+      } else if (key == "htp_arch") {
+        std::unordered_set<std::string> supported_htp_archs = {"0", "68", "69", "73", "75"};
+        if (supported_htp_archs.find(value) == supported_htp_archs.end()) {
+          std::ostringstream str_stream;
+          std::copy(supported_htp_archs.begin(), supported_htp_archs.end(),
+                    std::ostream_iterator<std::string>(str_stream, ","));
+          std::string str = str_stream.str();
+          ORT_THROW("Wrong value for htp_arch. select from: " + str);
+        }
       } else {
         ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
 'profiling_level', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
-'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority'])");
+'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority', 'soc_model',
+'htp_arch', 'device_id'])");
       }
 
       qnn_options[key] = value;
