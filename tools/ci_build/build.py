@@ -1456,8 +1456,17 @@ def generate_build_tree(
     cflags = None
     cxxflags = None
     ldflags = None
-    cudaflags = []
+    cudaflags = None
     for config in configs:
+        cflags = []
+        cudaflags = []
+        if is_windows():
+            njobs = number_of_parallel_jobs(args)
+            if njobs > 1:
+                if args.parallel == 0:
+                    cflags += ["/MP"]
+                else:
+                    cflags += ["/MP%d" % njobs]
         # Setup default values for cflags/cxxflags/ldflags.
         # The values set here are purely for security and compliance purposes. ONNX Runtime should work fine without these flags.
         if (
@@ -1467,13 +1476,7 @@ def generate_build_tree(
             and not args.build_wasm
         ):
             if is_windows():
-                cflags = ["/guard:cf", "/DWIN32", "/D_WINDOWS"]
-                njobs = number_of_parallel_jobs(args)
-                if njobs > 1:
-                    if args.parallel == 0:
-                        cflags += ["/MP"]
-                    else:
-                        cflags += ["/MP%d" % njobs]
+                cflags += ["/guard:cf", "/DWIN32", "/D_WINDOWS"]
                 if not args.use_gdk:
                     # Target Windows 10
                     cflags += [
@@ -1499,8 +1502,6 @@ def generate_build_tree(
                 if args.enable_address_sanitizer:
                     cflags += ["/fsanitize=address"]
                 cxxflags = cflags.copy()
-                if not args.disable_exceptions:
-                    cxxflags += ["/EHsc"]
                 if args.use_cuda:
                     # On Windows, nvcc passes /EHsc to the host compiler by default.
                     cuda_compile_flags_str = ""
@@ -1558,6 +1559,8 @@ def generate_build_tree(
                 cxxflags = cflags.copy()
                 if args.use_cuda:
                     cudaflags = cflags.copy()
+        if cxxflags is None and cflags is not None and len(cflags) != 0:
+            cxxflags = cflags.copy()
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
         if args.use_tvm:
@@ -1572,7 +1575,7 @@ def generate_build_tree(
             )
         preinstalled_dir = Path(build_dir) / config
         temp_cmake_args = cmake_args.copy()
-        if cflags is not None and cxxflags is not None:
+        if cflags is not None and cxxflags is not None and len(cflags) != 0 and len(cxxflags) != 0:
             temp_cmake_args += [
                 "-DCMAKE_C_FLAGS=%s" % (" ".join(cflags)),
                 "-DCMAKE_CXX_FLAGS=%s" % (" ".join(cxxflags)),
