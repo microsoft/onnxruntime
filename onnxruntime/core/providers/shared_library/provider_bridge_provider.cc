@@ -551,7 +551,7 @@ Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_sh
   return g_host_cpu.PadBase__HandleDimValueZero(mode, input_shape, output_shape);
 }
 
-void PadBase::ComputePads(OpKernelContext* ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
+void PadBase::ComputePads(OpKernelContext& ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
                           PadsVector& pads) {
   g_host_cpu.PadBase__ComputePads(ctx, data_rank, pads_data, pads);
 }

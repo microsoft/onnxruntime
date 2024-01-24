@@ -48,7 +48,7 @@ struct ProviderHostCPU {
   // From cpu/tensor/padbase.h
   virtual Status PadBase__HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, const TensorShape& output_shape) = 0;
 
-  virtual void PadBase__ComputePads(OpKernelContext* ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
+  virtual void PadBase__ComputePads(OpKernelContext& ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
                                     PadsVector& pads) = 0;
 
   // From cpu/tensor/split.h

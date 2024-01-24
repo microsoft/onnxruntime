@@ -4,7 +4,6 @@
 #pragma once
 
 #include "core/common/inlined_containers.h"
-#include <functional>
 
 namespace onnxruntime {
 
@@ -23,8 +22,9 @@ class PadBase {
   // The following several functions are shared among the providers
 
   /// <summary>
-  /// Update the output_shape to make it consistent with numpy handling where there are one or more dimensions
-  /// in the input_shape with a value of zero.
+  /// Handle the case when the input shape has zero dim values.
+  /// Depending on the mode, the input dim with zero value must match the output dim value.
+  /// 
   /// </summary>
   /// <param name="mode">Padding mode enum value</param>
   /// <param name="input_shape">actual input shape</param>
@@ -43,7 +43,7 @@ class PadBase {
   /// <param name="data_rank">input rank</param>
   /// <param name="pads_data">pads data from pads input</param>
   /// <param name="pads">resulting pads</param>
-  static void ComputePads(OpKernelContext* ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
+  static void ComputePads(OpKernelContext& ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
                           PadsVector& pads);
 
   /// <summary>

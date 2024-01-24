@@ -111,7 +111,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
 
     const auto pads_data = pads_tensor.DataAsSpan<int64_t>();
 
-    PadBase::ComputePads(ctx, input_shape.NumDimensions(), pads_data, pads);
+    PadBase::ComputePads(*ctx, input_shape.NumDimensions(), pads_data, pads);
 
     // Separate out any negative pads into the slices array
     PadBase::SeparateNegativeToSlices(pads, slices);

@@ -9,6 +9,8 @@
 #include "core/providers/op_kernel_type_control.h"
 #include "core/util/math.h"
 
+#include <functional>
+
 // there's no way to use a raw pointer as the copy destination with std::copy_n
 // (which gsl::copy uses with span::data() which returns a raw pointer) with the 14.11 toolset
 // without generating a 4996 warning. going through an iterator is way too much overhead so turn off the warning.
@@ -215,10 +217,10 @@ static void ComputePadWithAxes(
   }
 }
 
-void PadBase::ComputePads(OpKernelContext* ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
+void PadBase::ComputePads(OpKernelContext& ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
                           PadsVector& pads) {
   pads.reserve(2 * data_rank);
-  const Tensor* axes_tensor = ctx->Input<Tensor>(3);
+  const Tensor* axes_tensor = ctx.Input<Tensor>(3);
   if (axes_tensor) {
     const size_t num_axes_dims = axes_tensor->Shape().NumDimensions();
     ORT_ENFORCE(num_axes_dims == 1, "Axes tensor should be a 1D tensor ");
@@ -652,7 +654,7 @@ Status Pad::Compute(OpKernelContext* ctx) const {
     const auto pads_data = pads_tensor.DataAsSpan<int64_t>();
 
     // Compute Pads by applying axes if specified otherwise copy the supplied pads.
-    PadBase::ComputePads(ctx, data_rank, pads_data, pads);
+    PadBase::ComputePads(*ctx, data_rank, pads_data, pads);
 
     // Separate out any negative pads into the slices array
     PadBase::SeparateNegativeToSlices(pads, slices);
